@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-0c15bee8.js";
+            window.path_to_searchindex_js = "../searchindex-c0972181.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-79e2ba62.js"></script>
+        <script src="../toc-a2abefc1.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -196,7 +196,7 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="getting-started"><a class="header" href="#getting-started">Getting started</a></h1>
-<p>This chapter takes you from nothing installed to a first real change in your own project. It has four steps: install Veyyon, run the first-time setup, sign in to a provider, and hand Veyyon a small task.</p>
+<p>Four steps take a fresh machine to a first change in a project: install, run the first-time setup, sign in to a provider, hand Veyyon a task.</p>
 <h2 id="1-install"><a class="header" href="#1-install">1. Install</a></h2>
 <p>The quickest path is the one-line installer, which downloads a self-contained binary and links a short <code>vey</code> command.</p>
 <pre><code class="language-console">$ curl -fsSL https://get.veyyon.dev | sh    # Linux or macOS
@@ -242,7 +242,7 @@ $ bun dev --version
 $ veyyon
 </code></pre>
 <p>Open <code>/model</code> and choose an <code>ollama/...</code> entry from the discovered list.</p>
-<p>For the full picture, see <a href="./models.html">Models and providers</a> and <a href="./configuring-providers.html">Configuring providers</a>.</p>
+<p>For the full picture, see <a href="../reference/models-yml.html">Models and providers</a> and <a href="./configuring-providers.html">Configuring providers</a>.</p>
 <h2 id="4-run-your-first-task"><a class="header" href="#4-run-your-first-task">4. Run your first task</a></h2>
 <p>Change into a project you know, and start Veyyon.</p>
 <pre><code class="language-console">$ cd ~/code/my-project
@@ -255,12 +255,12 @@ $ veyyon
 <ol>
 <li>Veyyon reads the files it needs with <code>read</code>, <code>grep</code>, and <code>glob</code>.</li>
 <li>It proposes an edit through the hashline <code>edit</code> and <code>write</code> tools.</li>
-<li>When your policy requires it, you approve the tool call. The <code>tools.approvalMode</code> setting decides when this happens; see <a href="./safety.html">Safety</a>.</li>
+<li>When your policy requires it, you approve the tool call. The <code>tools.approvalMode</code> setting sets when this happens; see <a href="./safety.html">Safety</a>.</li>
 <li>The change lands, and the diff appears in the TUI.</li>
-<li>If you asked for tests, Veyyon runs them with <code>bash</code>; under the default <code>auto</code> mode that call runs without asking, and a stricter mode prompts you first.</li>
+<li>If you asked for tests, Veyyon runs them with <code>bash</code>; under the default <code>auto</code> mode that call runs without a prompt, and a stricter mode prompts you first.</li>
 </ol>
 <h2 id="approval-mode"><a class="header" href="#approval-mode">Approval mode</a></h2>
-<p>Every tool call falls into one of three tiers: <code>read</code>, <code>write</code>, or <code>exec</code>. The <code>tools.approvalMode</code> setting decides which tiers run without asking and which ones prompt you first.</p>
+<p>Every tool call falls into one of three tiers: <code>read</code>, <code>write</code>, or <code>exec</code>. The <code>tools.approvalMode</code> setting sets which tiers run without asking and which ones prompt you first.</p>
 <div class="table-wrapper">
 <table>
 <thead>

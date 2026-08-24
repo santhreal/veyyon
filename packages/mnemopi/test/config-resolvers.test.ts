@@ -118,8 +118,10 @@ describe("embedding toggles + input cap", () => {
 		expect(embeddingsViaApi({ MNEMOPI_EMBEDDINGS_VIA_API: "1" })).toBe(true);
 		expect(embeddingsDisabled({})).toBe(false);
 		expect(embeddingsDisabled({ MNEMOPI_NO_EMBEDDINGS: "1" })).toBe(true);
-		// Any non-empty value disables.
 		expect(embeddingsDisabled({ MNEMOPI_NO_EMBEDDINGS: "yes" })).toBe(true);
+		// A truthy value disables, and every other spelling leaves embeddings on.
+		expect(embeddingsDisabled({ MNEMOPI_NO_EMBEDDINGS: "0" })).toBe(false);
+		expect(embeddingsDisabled({ MNEMOPI_NO_EMBEDDINGS: "false" })).toBe(false);
 		expect(embeddingsDisabled({ MNEMOPI_NO_EMBEDDINGS: "" })).toBe(false);
 	});
 

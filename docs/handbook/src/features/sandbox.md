@@ -6,7 +6,7 @@ Seatbelt, or bubblewrap). Shell commands and file writes run as your user, bound
 this policy, per-tool `tools.approval` overrides, and the hard-coded flagged bash patterns
 below.
 
-This page is the operator reference. For the model behind it, see
+Operator reference. For the model behind it, see
 [Permission model](../concepts/permission-model.md). For the wider boundary, see
 [Safety](../using/safety.md).
 
@@ -26,7 +26,7 @@ This page is the operator reference. For the model behind it, see
 | `ask` | ask | ask | ask |
 | `ask-command` | auto | auto | ask |
 | `auto` | auto | auto | auto, with the per-tool, working-directory, credential and flagged-command guards still asking |
-| `yolo` | auto | auto | auto, except a blatantly destructive command, which still asks |
+| `yolo` | auto | auto | auto, except a blatantly destructive command, which still prompts |
 
 Schema default: **`auto`**. Legacy aliases: `always-ask` → `ask`, `write` and `auto-edit` → `ask-command`.
 
@@ -44,18 +44,18 @@ tools:
 ## The approval prompt
 
 When the active mode requires approval for a tool call, the TUI shows a **Permission required**
-card. The card names the tool, states that the decision applies to this call only, separates the
+card. The card shows the tool, states that the decision applies to this call only, separates the
 reason from the requested command or file operation, and waits on four options:
 
 - **Approve**: run this call once. Nothing is remembered.
 - **Approve for session**: run this and every later call to this tool, until you exit.
-- **Deny**: refuse this call and return `Tool call denied by user: <name>` to the model.
-- **Deny for session**: refuse this and every later call to this tool, until you exit.
+- **Deny**: reject this call and return `Tool call denied by user: <name>` to the model.
+- **Deny for session**: reject this and every later call to this tool, until you exit.
 
 The two "for session" rows are session memory, not policy: nothing is written to
-`tools.approval`, and the next launch asks again. A remembered decision also covers only
+`tools.approval`, and the next launch prompts again. A remembered decision also covers only
 the ordinary tier prompt. The three prompts that are about a call's ARGUMENTS rather than
-its tool name still ask every time: a flagged bash command, a path outside the working
+its tool name still prompt every time: a flagged bash command, a path outside the working
 directory, and a call that spends a stored credential.
 
 The selected option uses a radio marker and includes a short description. Navigate with the usual
@@ -64,7 +64,7 @@ Denied actions return an error to the model, and permissions are never widened.
 
 ## Headless
 
-`veyyon --print` has no terminal to prompt in. If the mode would ask for approval, the tool call
+`veyyon --print` has no terminal to prompt in. If the mode would require approval, the tool call
 fails with an error that explains the required setting or override (set `tools.approvalMode: yolo`,
 add `tools.approval.<name>: allow`, or use an interactive UI), and the model receives that error. To
 run unattended, pass `--yolo` or pick a mode that does not prompt for the tiers you need. The
@@ -104,12 +104,12 @@ refusing your home directory. See
 The destructive half, and the whole of the first half, stop for approval in `yolo` as well, and
 the `/yolo` session bypass does not lift them. That floor is the one place `yolo` is not
 absolute. The dangerous half stops on every rung below `yolo` and not on `yolo` itself, because
-a rung whose entire promise is that it does not ask cannot be stopping an install the operator
+a rung whose entire promise is that it does not prompt cannot be stopping an install the operator
 typed. To turn the floor off on `yolo`, set `tools.approval.bash` to `allow`; below `yolo` an
 `allow` is outranked by the guard, and `deny` is a hard block on every rung.
 
 Separately, the bash interceptor (`bashInterceptor.enabled`, default off) blocks shell
-commands that duplicate dedicated tools, so the model reaches for `read`/`grep`/`glob`
+commands that duplicate dedicated tools, so the model uses `read`/`grep`/`glob`
 instead of `cat`/`rg`/`find`. Its rules live in `bashInterceptor.patterns`.
 
 ## Related

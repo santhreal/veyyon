@@ -18,6 +18,10 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# The tag carries the bun the image was built with; proof/docker/recorder-image.sh
+# owns it, and a bump makes a stale image a missing one.
+# shellcheck source=proof/docker/recorder-image.sh
+source "${REPO_ROOT}/proof/docker/recorder-image.sh"
 # `--fresh` records the same scene, same model, same terminal, on an empty
 # session. It is the LOAD floor the resumed arm is measured against, not a
 # main-vs-branch control: both arms run whatever tree is mounted at /repo.
@@ -77,7 +81,7 @@ docker run --rm \
 	-e SCENE_TERMINAL=kitty \
 	-e SCENE_CWD=/sandbox/home/demo \
 	-w /repo \
-	"${RECORDER_IMAGE:-veyyon-proof-recorder:2}" \
+	"${RECORDER_IMAGE}" \
 	bash -lc '
 		set -e
 		mkdir -p /sandbox/home/.veyyon /sandbox/home/demo/src

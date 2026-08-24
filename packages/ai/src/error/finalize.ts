@@ -29,6 +29,17 @@ export interface FinalizeResult {
 	status: number | undefined;
 	/** `"aborted"` when the caller cancelled, otherwise `"error"`. */
 	stopReason: "aborted" | "error";
+	/**
+	 * How loud a provider's own record of this outcome should be.
+	 *
+	 * A caller abort is not a failure. Pressing stop is the one outcome that was
+	 * asked for, and grading it `error` files a red record for it: four of
+	 * twenty-two recorded terminal Devin stream failures were cancellations
+	 * logged at `error`, which is noise sitting on top of the eighteen that were
+	 * real. The level is derived from the same `aborted` fact `stopReason` comes
+	 * from, so a record can never say "aborted" at `error` or the reverse.
+	 */
+	logLevel: "debug" | "error";
 	/** User-facing message from {@link formatMessage}, or a local abort reason. */
 	message: string;
 }
@@ -65,6 +76,7 @@ export async function finalize(error: unknown, opts: FinalizeOptions = {}): Prom
 		id,
 		status: currentStatus,
 		stopReason: aborted ? "aborted" : "error",
+		logLevel: aborted ? "debug" : "error",
 		message,
 	};
 }

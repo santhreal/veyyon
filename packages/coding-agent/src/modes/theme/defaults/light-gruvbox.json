@@ -51,7 +51,6 @@
 		"toolPendingBg": "bg1",
 		"toolSuccessBg": "bg1",
 		"toolErrorBg": "bg1",
-		"toolText": "",
 		"toolTitle": "",
 		"toolOutput": "fg3",
 		"mdHeading": "yellow",

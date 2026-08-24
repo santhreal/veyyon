@@ -10,7 +10,11 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-IMAGE="${RECORDER_IMAGE:-veyyon-proof-recorder:1}"
+# The tag carries the bun the image was built with; proof/docker/recorder-image.sh
+# owns it, and a bump makes a stale image a missing one.
+# shellcheck source=proof/docker/recorder-image.sh
+source "${REPO_ROOT}/proof/docker/recorder-image.sh"
+IMAGE="${RECORDER_IMAGE}"
 NETWORK="${PROOF_NETWORK:-veyyon-proof}"
 SEED="${REPO_ROOT}/proof/docker/home-seed"
 

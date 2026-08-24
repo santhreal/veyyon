@@ -68,7 +68,7 @@ and that account's remaining quota. A provider you hold credentials for but have
 session is not listed.
 
 If your chosen account hits its rate limit, Veyyon moves to another one so your work continues, and
-says so:
+reports it:
 
 ```text
 Anthropic          personal                    main model  (opus-5)
@@ -93,8 +93,8 @@ Kimi Code · 1 account
   press a to sign in again
 ```
 
-If that provider had only one login, it now has none, and the card says so rather than showing the
-provider as one you never signed into. `/account` names it too, so you do not have to open the card
+If that provider had only one login, it now has none, and the card states that rather than showing the
+provider as one you never signed into. `/account` shows it too, so you do not have to open the card
 to find out:
 
 ```text
@@ -114,7 +114,7 @@ $ veyyon auth-broker list
 $ veyyon auth-broker logout
 ```
 
-`import` and `migrate` are also available. See [Providers](../models/providers.md) and `docs/secrets.md`
+`import` and `migrate` are also available. See [Providers](../models/providers.md) and `docs/handbook/src/architecture/secrets.md`
 for the broker model.
 
 ## Using an environment variable instead
@@ -176,6 +176,6 @@ setting.
 Provider identity (display name, env var, OAuth parameters) and endpoints (base URL, API kind) come
 from the bundled model catalog plus your `~/.veyyon/profiles/default/agent/models.yml`. A new BYOK provider becomes
 selectable by adding a `providers:` entry, not by changing code. See
-[Configuring providers](./configuring-providers.md) and `docs/providers.md`.
+[Configuring providers](./configuring-providers.md) and `docs/handbook/src/reference/providers.md`.
 
-See also: [Models and providers](./models.md) and the [CLI reference](../reference/cli.md).
+See also: [Models and providers](../reference/models-yml.md) and the [CLI reference](../reference/cli.md).

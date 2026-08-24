@@ -92,7 +92,6 @@ const EXTENSION_POLICY: Readonly<Record<string, ExtensionDecision>> = {
 	".proto": "scan",
 	".lark": "scan",
 	".sublime-syntax": "scan",
-	".tape": "scan",
 	".dockerfile": "scan",
 	".dockerignore": "scan",
 	".veybot": "scan",
@@ -109,20 +108,14 @@ const EXTENSION_POLICY: Readonly<Record<string, ExtensionDecision>> = {
 	".exit": RECORDED_OUTPUT,
 	".cmd": RECORDED_OUTPUT,
 	".patch": RECORDED_OUTPUT,
-	".diff": RECORDED_OUTPUT,
-	".err": RECORDED_OUTPUT,
-	".typescript": RECORDED_OUTPUT,
 	".jsonl": NO_COMMENT_SYNTAX,
-	".tsv": NO_COMMENT_SYNTAX,
 	".recorder": "scan", // A Dockerfile named by its stage: `#` comments
 	".typed": { skip: "empty marker file" },
 	".LICENSE": LEGAL_TEXT,
 	".png": BINARY_ASSET,
 	".jpg": BINARY_ASSET,
 	".webp": BINARY_ASSET,
-	".gif": BINARY_ASSET,
 	".ico": BINARY_ASSET,
-	".mp4": BINARY_ASSET,
 	".pdf": BINARY_ASSET,
 	".ttf": BINARY_ASSET,
 	".gz": BINARY_ASSET,
@@ -514,7 +507,7 @@ describe("no comment or internal doc attributes a change to a person", () => {
 		// prefixes are exempt and an ordinary document is not.
 		expect(isProductMarkdown("packages/coding-agent/src/prompts/system.md")).toBe(true);
 		expect(isProductMarkdown("agents/deep.md")).toBe(true);
-		expect(isProductMarkdown(".veyyon/skills/record-demo/SKILL.md")).toBe(true);
+		expect(isProductMarkdown(".veyyon/commands/triage.md")).toBe(true);
 		expect(isProductMarkdown("docs/internal/releasing.md")).toBe(false);
 		expect(isProductMarkdown("packages/coding-agent/src/eval/prelude.py")).toBe(false);
 	});
@@ -569,7 +562,6 @@ describe("no comment or internal doc attributes a change to a person", () => {
 			".proto": line => `// ${line}`,
 			".lark": line => `// ${line}`,
 			".sublime-syntax": line => `# ${line}`,
-			".tape": line => `# ${line}`,
 			".dockerfile": line => `# ${line}`,
 			".recorder": line => `# ${line}`,
 			".dockerignore": line => `# ${line}`,

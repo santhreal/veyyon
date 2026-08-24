@@ -1,35 +1,19 @@
-import { isRetryableError, isUnexpectedSocketCloseMessage } from "@veyyon/utils/fetch-retry";
-import {
-	classify,
-	Flag,
-	is,
-	isRetryableStreamEnvelopeError,
-	isTransientStreamParseError,
-	isUsageLimit,
-	status,
-	TRANSIENT_TRANSPORT_PATTERN,
-} from "./flags";
+import { isRetryableStatus } from "@veyyon/utils/fetch-retry";
+import { classify, Flag, is, recover, status, vetoesRetry } from "./flags";
 
 /**
- * Whether a numeric HTTP status is in the canonical transient/retryable set:
- * 408 (Request Timeout), 429 (Too Many Requests), and any 5xx.
+ * Whether a numeric HTTP status is in the canonical transient set: 408, 429, and any 5xx.
  *
- * This is a pure predicate over a status code already in hand — distinct from
- * {@link classify}, which inspects a whole error (including message text) and
- * may match more. Use this when you only have a `status: number`.
+ * The set itself belongs to `@veyyon/utils`' `isRetryableStatus`, because a status is a fact about a
+ * transport and `utils` cannot import `ai`. This wrapper adds the one thing this layer needs — a
+ * status that may be absent — and nothing else. It used to restate the three comparisons, which is
+ * how two copies of one vocabulary end up disagreeing by a number.
+ *
+ * Distinct from {@link classify}, which reads a whole failure including its wording and may say more.
+ * Use this when a status is all there is.
  */
 export function isTransientStatus(status: number | undefined): boolean {
-	return status !== undefined && (status === 408 || status === 429 || status >= 500);
-}
-
-// Provider-stream transient phrasings not covered by the shared
-// TRANSIENT_TRANSPORT_PATTERN (TLS record corruption, HTTP/2 peer stream
-// errors, upstream code 1302). The shared pattern already covers rate-limit /
-// overloaded / 5xx / timeout / first-event wording.
-const PROVIDER_TRANSIENT_EXTRA_PATTERN = /bad record mac|stream error.*received from peer|1302/i;
-
-function isTransientTransportMessage(message: string): boolean {
-	return message.includes("tls: bad record mac") || message.includes("type=server_error");
+	return status !== undefined && isRetryableStatus(status);
 }
 
 /** Hook for provider-specific transient detection that the error module must not import directly. */
@@ -43,44 +27,43 @@ export interface ProviderRetryableHooks {
 /**
  * Whether a provider stream error should be retried against the same credential.
  *
- * Account-level usage/quota limits are deliberately treated as **non**-retryable
- * here (they are owned by the credential-rotation layer: auth-gateway /
- * `streamSimple` a/b/c policy), not this seconds-scale provider backoff.
+ * ONE DECISION, READ FROM THE REGISTRY. A provider ladder is the transport stage of the same
+ * recovery every other layer performs, so it asks the registry what that stage does about this
+ * failure and does not decide anything itself. Every family states its own answer: `transport` and
+ * `timeout` retry, `quota` rotates a credential, `stream` and `tool-call` re-send the turn one level
+ * up, `refusal`, `content` and `interrupt` refuse outright. Before this, the function was a list of
+ * conditions that re-derived those answers from message prose, and each one it re-derived it
+ * disagreed with: an account-level cap needed a hand-written veto, a fast-mode entitlement wall was
+ * retried through the words "rate_limit_error", and a truncated stream was retried here while
+ * reaching the turn as an unclassified failure because these words lived nowhere else. They now live
+ * in the transport family, next to the rest of the transport vocabulary.
  *
- * THE CLASSIFIER OWNS TRANSIENCE. An error that declares itself transient, either
- * structurally ({@link ProviderResponseError} with an `incomplete-stream` or
- * `empty-body` kind, an Anthropic connection fault, a stream timeout) or through
- * {@link classify}'s text and status rules, is retried here. It used to be
- * re-derived from message prose in this function alone, which is a second opinion
- * and it disagreed: a Devin empty body carried `Flag.Transient` and the turn loop
- * retried it while this predicate refused, and a truncated Cursor stream was
- * retried only because its sentence happened to contain the word "truncated".
- * The text patterns below stay, because they cover transport phrasings the
- * classifier does not (TLS record corruption, HTTP/2 peer stream errors, upstream
- * 1302, mid-JSON truncation, out-of-order stream events).
+ * A 4xx IS A WALL AT THIS STAGE, and that is a fact about the stage rather than about the failure: a
+ * provider ladder is a seconds-scale backoff against the same credential and the same request, and
+ * nothing it can wait for changes a 400. Only 408 and 429 are timing answers. The one exception is a
+ * 400 whose meaning a single provider knows — Copilot's routing flap — which arrives through
+ * {@link ProviderRetryableHooks} rather than as a rule everybody else's 400 also matches.
  *
- * Provider-specific transient cases are injected via {@link ProviderRetryableHooks}
- * so this stays free of provider imports.
+ * A STATUS WITH NOTHING TO READ is the last question, and only when the registry recognised nothing:
+ * `classify` returns the bare number as the id when a failure carries a status and no wording its
+ * rules read, which is deliberate — an id that is only a status says so — so the transient set
+ * answers for it. `error/response.ts` asks the same two questions in the same order about a failed
+ * response, which is the point: one shape for one decision, whether it arrived as a throw or a 503.
  */
 export function isProviderRetryableError(error: unknown, hooks: ProviderRetryableHooks = {}): boolean {
 	if (!(error instanceof Error)) return false;
+	const id = classify(error);
+	// The veto is read before anything else because everything else reads the OUTERMOST message, and a
+	// provider is free to compose a transient-sounding sentence around the cause it wrapped:
+	// `NGHTTP2_CANCEL: operation timed out`, a content filter whose body carried a 503, a cancellation
+	// whose own sentence says "aborted", an undelimited frame inside a wrapper that says "please
+	// retry".
+	if (vetoesRetry(id)) return false;
 	if (hooks.isProviderTransient?.(error)) return true;
-	if (isUsageLimit(error)) return false;
 	const httpStatus = status(error);
-	if (httpStatus !== undefined && httpStatus >= 400 && httpStatus < 500 && httpStatus !== 408 && httpStatus !== 429) {
+	if (httpStatus !== undefined && httpStatus >= 400 && httpStatus < 500 && !isTransientStatus(httpStatus)) {
 		return false;
 	}
-	if (is(classify(error), Flag.Transient)) return true;
-	const msg = error.message.toLowerCase();
-	if (
-		isUnexpectedSocketCloseMessage(msg) ||
-		isTransientTransportMessage(msg) ||
-		TRANSIENT_TRANSPORT_PATTERN.test(msg) ||
-		PROVIDER_TRANSIENT_EXTRA_PATTERN.test(msg) ||
-		isTransientStreamParseError(error) ||
-		isRetryableStreamEnvelopeError(error)
-	) {
-		return true;
-	}
-	return isRetryableError(error);
+	if (!is(id, Flag.Class)) return isTransientStatus(httpStatus);
+	return recover(id, "transport").action === "retry";
 }

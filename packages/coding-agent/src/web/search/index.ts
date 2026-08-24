@@ -22,9 +22,8 @@ import {
 	formatSearchProviderFailures,
 	getSearchProvider,
 	getSearchProviderLabel,
-	resolveProviderCandidates,
 	type SearchProvider,
-	type SearchProviderCandidate,
+	selectSearchProviders,
 } from "./provider";
 import { renderSearchCall, renderSearchResult, type SearchRenderDetails } from "./render";
 import type { SearchProviderId, SearchResponse } from "./types";
@@ -140,20 +139,14 @@ async function executeSearch(
 	options: ExecuteSearchOptions,
 ): Promise<{ content: Array<{ type: "text"; text: string }>; details: SearchRenderDetails }> {
 	const { authStorage, sessionId, signal, resolveProviderTextTransform } = options;
-	const explicitProvider = params.provider;
-	let candidates: SearchProviderCandidate[];
-	if (explicitProvider && explicitProvider !== "auto") {
-		const provider = await getSearchProvider(explicitProvider);
-		candidates = (await provider.isExplicitlyAvailable(authStorage))
-			? [{ id: explicitProvider, explicit: true }]
-			: resolveProviderCandidates("auto");
-	} else if (explicitProvider === "auto") {
-		// Explicit `--provider auto` bypasses the configured preferred provider
-		// for this invocation; exclusions still apply.
-		candidates = resolveProviderCandidates("auto");
-	} else {
-		candidates = resolveProviderCandidates();
+	const selection = selectSearchProviders(params.provider);
+	if ("refusal" in selection) {
+		return {
+			content: [{ type: "text" as const, text: `Error: ${selection.refusal}` }],
+			details: { response: { provider: "none", sources: [] }, error: selection.refusal },
+		};
 	}
+	const candidates = selection.candidates;
 
 	// Invariant across providers; read once and tolerate an uninitialized
 	// Settings singleton (e.g. `veyyon q ...` CLI path, unit tests) so the
@@ -226,10 +219,18 @@ async function executeSearch(
 	}
 
 	if (availableProviderCount === 0 && failures.length === 0) {
-		const message = "No web search provider configured.";
+		// A chosen provider with no credential is a different fact from "nothing is
+		// configured", and it is the one an operator can act on: the search did not quietly
+		// use something else, so the message has to name what was chosen and found unusable.
+		const chosen = candidates.length === 1 && candidates[0]?.explicit ? candidates[0].id : undefined;
+		const message =
+			chosen === undefined
+				? "No web search provider configured."
+				: `${getSearchProviderLabel(chosen)} is the chosen web search provider and is not configured. ` +
+					`Add its credential, or set providers.webSearch to auto.`;
 		return {
 			content: [{ type: "text" as const, text: `Error: ${message}` }],
-			details: { response: { provider: "none", sources: [] }, error: message },
+			details: { response: { provider: chosen ?? "none", sources: [] }, error: message },
 		};
 	}
 

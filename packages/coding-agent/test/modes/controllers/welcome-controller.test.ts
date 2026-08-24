@@ -65,7 +65,7 @@ describe("WelcomeController", () => {
 		const port = makePort();
 		const controller = new WelcomeController(port);
 		expect(controller.hasHero).toBe(false);
-		controller.mountHero(INPUTS, { playIntro: false });
+		controller.mountHero(INPUTS);
 		expect(controller.hasHero).toBe(true);
 		expect(port.uiChildren.length).toBe(3);
 		const cardRows = port.uiChildren[1]!.render(80).length;
@@ -80,7 +80,7 @@ describe("WelcomeController", () => {
 	it("dismisses the hero, removing all children and reporting exact removed rows", () => {
 		const port = makePort(4);
 		const controller = new WelcomeController(port);
-		controller.mountHero(INPUTS, { playIntro: false });
+		controller.mountHero(INPUTS);
 		const cardRows = port.uiChildren[1]!.render(80).length;
 		controller.dismiss();
 		expect(controller.hasHero).toBe(false);
@@ -93,7 +93,7 @@ describe("WelcomeController", () => {
 	it("is idempotent — a second dismiss never re-notifies the layout", () => {
 		const port = makePort();
 		const controller = new WelcomeController(port);
-		controller.mountHero(INPUTS, { playIntro: false });
+		controller.mountHero(INPUTS);
 		controller.dismiss();
 		controller.dismiss();
 		expect(port.dismissed.length).toBe(1);
@@ -106,7 +106,7 @@ describe("WelcomeController", () => {
 	it("showFull dismisses the hero, mounts into the chat container, and remeasures", () => {
 		const port = makePort();
 		const controller = new WelcomeController(port);
-		controller.mountHero(INPUTS, { playIntro: false });
+		controller.mountHero(INPUTS);
 		controller.showFull(INPUTS);
 		expect(controller.hasHero).toBe(false);
 		expect(port.uiChildren).toEqual([]);
@@ -117,12 +117,11 @@ describe("WelcomeController", () => {
 		expect(port.remeasures).toBe(1);
 	});
 
-	/** Without a mounted hero, playIntro and dismiss are safe no-ops — the
-	 * quiet-startup path (`startup.quiet`) never mounts one. */
-	it("no-ops playIntro and dismiss when nothing is mounted", () => {
+	/** Without a mounted hero, dismiss is a safe no-op — the quiet-startup path
+	 * (`startup.quiet`) never mounts one. */
+	it("no-ops dismiss when nothing is mounted", () => {
 		const port = makePort();
 		const controller = new WelcomeController(port);
-		expect(() => controller.playIntro()).not.toThrow();
 		controller.dismiss();
 		expect(port.dismissed).toEqual([]);
 	});

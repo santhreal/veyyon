@@ -37,14 +37,14 @@ const REFERENCE = path.join(REPO, "docs", "handbook", "src", "reference", "keybi
 /**
  * The second page that tabulates chords, in the other column order.
  *
- * `docs/keybindings.md` is not a copy of the handbook page: it carries the
+ * `docs/handbook/src/reference/keybindings-config.md` is not a copy of the handbook page: it carries the
  * terminal-specific notes (Windows Terminal swallowing `Ctrl+Enter`, the `Alt+V`
  * paste fallback, OSC 5522) that a reference table has no room for. But it does
  * duplicate the chords, which is the part that drifts, so it is held to the same
  * rule. It writes the action id first and the chords second, the reverse of the
  * handbook page, which is why there are two readers below and one rule.
  */
-const ACTION_TABLE = path.join(REPO, "docs", "keybindings.md");
+const ACTION_TABLE = path.join(REPO, "docs", "handbook", "src", "reference", "keybindings-config.md");
 
 const BINDINGS = KEYBINDINGS as Record<string, { defaultKeys: string | string[] }>;
 
@@ -130,7 +130,7 @@ export function unboundParagraph(markdown: string): string {
 }
 
 /**
- * Rows of `docs/keybindings.md`, whose table puts the id first and the chords second.
+ * Rows of `docs/handbook/src/reference/keybindings-config.md`, whose table puts the id first and the chords second.
  *
  * A row whose chord cell begins with `Unbound` is claiming the action ships with no
  * key, so its chords are read as none. `app.stt.toggle` is written that way and adds
@@ -276,7 +276,10 @@ describe("the repository action-ID table says the same thing", () => {
 			.filter(id => !(id in BINDINGS))
 			.sort();
 
-		expect(ghosts, "docs/keybindings.md documents an action id that no longer exists. Remove the row").toEqual([]);
+		expect(
+			ghosts,
+			"docs/handbook/src/reference/keybindings-config.md documents an action id that no longer exists. Remove the row",
+		).toEqual([]);
 	});
 
 	/**
@@ -287,7 +290,7 @@ describe("the repository action-ID table says the same thing", () => {
 	it("quotes the declared default chords for every id it names", () => {
 		expect(
 			misquotedChords(ACTION_ROWS),
-			"docs/keybindings.md quotes a Default the binding table does not declare. Update the row",
+			"docs/handbook/src/reference/keybindings-config.md quotes a Default the binding table does not declare. Update the row",
 		).toEqual([]);
 	});
 });
@@ -343,7 +346,7 @@ describe("the row reader sees what the page actually says", () => {
 	 * And it folds case before canonicalizing, because the two pages spell the same
 	 * chord differently. Without this the display form `Ctrl+P` reads as
 	 * `ctrl+shift+p`, since to a key event an uppercase letter really does carry
-	 * shift, and twelve rows of `docs/keybindings.md` are reported as wrong.
+	 * shift, and twelve rows of `docs/handbook/src/reference/keybindings-config.md` are reported as wrong.
 	 */
 	it("reads the UI display spelling of a chord as the same chord", () => {
 		expect(foldChord("Ctrl+P")).toBe("ctrl+p");

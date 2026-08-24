@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-0c15bee8.js";
+            window.path_to_searchindex_js = "../searchindex-c0972181.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-79e2ba62.js"></script>
+        <script src="../toc-a2abefc1.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -218,8 +218,8 @@ each is for. An id is the file’s path under that directory without the <code>.
 <p>Then look at one:</p>
 <pre><code>veyyon prompt --prompt subagent/system-prompt
 </code></pre>
-<p>The lookup spans every registry, so an id from any of them works without naming its package.
-A mistyped id is refused with the nearest real id quoted back.</p>
+<p>The lookup spans every registry, so an id from any of them works without specifying its package.
+A mistyped id is rejected with the nearest real id quoted back.</p>
 <p>For the system prompt itself, <code>veyyon prompt</code> prints the assembled text and
 <code>veyyon prompt --sections</code> breaks it down by section with the byte and token cost of each.</p>
 <p><code>veyyon prompt --statements</code> goes one level finer. The prompt is assembled from named statements,
@@ -231,7 +231,7 @@ tool-policy/lsp                                  412      103   4.0%  tools has 
 </code></pre>
 <p>Two things to read from it. The cost is MARGINAL: it is what the prompt would be shorter by without
 that rule, not the length of the rule’s text, so the numbers add up to their section rather than
-exceeding it. And the condition tells you what turns the rule on, which is what you need to know
+exceeding it. And the condition states what turns the rule on, which is what you need to know
 before deciding a rule is not earning its tokens.</p>
 <p>Under the table is every rule this configuration leaves out, with the condition that would include
 it, so a rule being off is visible as a fact rather than as an absence you have to notice:</p>
@@ -269,7 +269,7 @@ marker files, so inspecting the prompt cannot change what the next session does.
 <h2 id="going-deeper"><a class="header" href="#going-deeper">Going deeper</a></h2>
 <p>The system prompt is not one string. It is an ordered list of parts, and the boundary between the
 first part and the rest is a provider-caching contract rather than a stylistic choice. To change
-what a part says, read <a href="../../../system-prompt-customization.html">System prompt customization</a>. To
+what a part contains, read <a href="system-prompt.html">System prompt customization</a>. To
 understand why the parts are split where they are, and where a new part would belong, read
 <a href="../../../internal/system-prompt-architecture.html"><code>docs/internal/system-prompt-architecture.md</code></a>.</p>
 
@@ -281,7 +281,7 @@ understand why the parts are split where they are, and where a new part would be
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                             </a>
 
-                            <a rel="next prefetch" href="../context/reads-search.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../models/system-prompt.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                             </a>
 
@@ -295,7 +295,7 @@ understand why the parts are split where they are, and where a new part would be
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                     </a>
 
-                    <a rel="next prefetch" href="../context/reads-search.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../models/system-prompt.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                     </a>
             </nav>

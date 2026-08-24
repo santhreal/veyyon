@@ -55,8 +55,21 @@ const reachable = moduleReach(BARREL);
  * IF YOU ARE HERE BECAUSE THIS FAILED: the failure message lists every module the barrel reaches. Check
  * first whether the new import belongs on the barrel at all, or whether the consumer that needed it should
  * name the owning module by subpath, which is what every other reach gate in this repository pushes toward.
+ *
+ * RE-MEASURED 2026-08-22 at 83. The new module is `eval-prompt-overrides.ts`, which owns the
+ * `VEYYON_EVAL_PROMPTS` parse and substitution. It is not a consumer's import choice and a subpath
+ * cannot move it off the graph: `prompt-registry.ts` is exported from the barrel and imports the
+ * override seam directly, because `definePromptRows` applies it. Measured both ways: deleting
+ * `export * from "./eval-prompt-overrides"` from the barrel leaves the reach at 83, and
+ * `moduleReach("prompt-registry.ts")` reaches it in 27.
+ *
+ * RE-MEASURED 2026-08-22 at 84. The new module is `stream-frame-limit.ts`, which owns the frame
+ * bound the streaming readers enforce and the error they throw. `stream.ts` is on the barrel and
+ * re-exports it, so a subpath cannot move it off the graph, and it is deliberately a zero-import
+ * leaf: `@veyyon/ai`'s error classifier keys off the error class structurally and must not pull the
+ * reader stack in to do it. `moduleReach("stream-frame-limit.ts")` is 1.
  */
-const BARREL_CEILING = 82;
+const BARREL_CEILING = 84;
 
 describe("the @veyyon/utils barrel", () => {
 	/** The number that multiplies by six hundred realms. */

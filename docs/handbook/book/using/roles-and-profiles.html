@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-0c15bee8.js";
+            window.path_to_searchindex_js = "../searchindex-c0972181.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-79e2ba62.js"></script>
+        <script src="../toc-a2abefc1.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -246,9 +246,9 @@ modelRoles:
 </table>
 </div>
 <p>Custom role names can appear via <code>modelRoles</code>, <code>modelTags</code>, or <code>cycleOrder</code> entries.</p>
-<p>Unset selectable roles, <code>advisor</code> included, <strong>inherit the live interactive model</strong> at use time. No role carries a built-in model chain: a role you have not set names no model of its own, so nothing you did not choose ends up running.</p>
-<p>A caller may still ask for several roles in order. Title generation, for example, asks for <code>tiny</code>, then <code>commit</code>, then <code>smol</code>, and takes the first one you have set. That order belongs to the caller, not to the role: <code>tiny</code> does not fall back to <code>smol</code>, the title generator prefers <code>tiny</code> and accepts <code>smol</code>. If you have set none of them, the whole list is unset and the caller inherits the interactive model like any other unset role.</p>
-<p>There is no <code>task</code> role. The model your subagents run is set in the Subagents settings area, which owns that decision on its own; see <a href="../../../settings.html#subagents">Settings: Subagents</a>.</p>
+<p>Unset selectable roles, <code>advisor</code> included, <strong>inherit the live interactive model</strong> at use time. No role has a built-in model chain: a role you have not set specifies no model of its own, so nothing you did not choose ends up running.</p>
+<p>A caller may still request several roles in order. Title generation, for example, requests <code>tiny</code>, then <code>commit</code>, then <code>smol</code>, and takes the first one you have set. That order belongs to the caller, not to the role: <code>tiny</code> does not fall back to <code>smol</code>, the title generator prefers <code>tiny</code> and accepts <code>smol</code>. If you have set none of them, the whole list is unset and the caller inherits the interactive model like any other unset role.</p>
+<p>There is no <code>task</code> role. The model your subagents run is set in the Subagents settings area, which sets it on its own; see <a href="../reference/settings.html#subagents">Settings: Subagents</a>.</p>
 <p>To return an assigned role or model policy to its unset state, open its picker in <code>/settings</code> and choose the first row, <code>(inherit main model)</code> (the default model’s picker reads <code>(auto-select on launch)</code>). Del or Backspace with an empty search does the same.</p>
 <h2 id="subagent-policy-and-compaction-overrides"><a class="header" href="#subagent-policy-and-compaction-overrides">Subagent policy and compaction overrides</a></h2>
 <div class="table-wrapper">
@@ -315,8 +315,8 @@ Aliases: <code>always-ask</code> → <code>ask</code>, <code>write</code> and <c
 See <a href="../features/sandbox.html">Approvals</a>.</p>
 <h2 id="related"><a class="header" href="#related">Related</a></h2>
 <ul>
-<li><a href="./models.html">Models and providers</a></li>
-<li><a href="../../../settings.html">Settings: models</a> (repo <code>docs/settings.md</code>)</li>
+<li><a href="../reference/models-yml.html">Models and providers</a></li>
+<li><a href="../reference/settings.html">Settings: models</a> (repo <code>docs/handbook/src/reference/settings.md</code>)</li>
 <li><a href="../context/compaction-memory.html">Compaction</a></li>
 </ul>
 

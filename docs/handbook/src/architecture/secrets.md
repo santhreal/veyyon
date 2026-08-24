@@ -1,0 +1,439 @@
+# Secrets internals
+
+How secret protection is implemented: the modules, the placeholder grammar, the command shapes, and
+the vault on disk. The operator guide is [Secrets](../features/secrets.md).
+
+Sensitive values (API keys, tokens, passwords) are kept out of LLM provider requests. When enabled, secrets are replaced before any provider-bound prompt, message, schema, replay payload, or nested model request leaves the process. Reversible placeholders are restored for local display. A resumed transcript is sanitized again before it is sent.
+
+## Enabling
+
+Disabled by default. Storing a credential with `/secret` turns it on for you, because storing one for the agent to use is the opt-in, and the confirmation reports it. To turn it on without storing anything, use the `/settings` UI or `config.yml` directly:
+
+```yaml
+secrets:
+  enabled: true
+```
+
+Nothing turns it back off on your behalf. Revoking a credential removes it and leaves protection where it is.
+
+## How it works
+
+1. Secrets are collected from three sources at startup and whenever the live secret runtime is refreshed:
+   - **Environment variables** whose names match a keyword from `secrets/env-keywords.yml` (`KEY`, `SECRET`, `TOKEN`, `PASSWORD`, `PASS`, `PASSPHRASE`, `AUTH`, `CREDENTIAL`, `PRIVATE`, `OAUTH`), with values at least 8 characters. Tier B data: a keyword file at `<agent dir>/secret-env-keywords.yml` or `<cwd>/.veyyon/secret-env-keywords.yml` adds to the list and cannot remove from it. See [Env keyword list](#env-keyword-list).
+   - **`secrets.yml` files** (see below).
+   - **Encrypted vault entries** selected for the current profile and working directory.
+
+2. Outbound strings are replaced before provider dispatch. Named vault values use readable placeholders such as `#GITHUB_TOKEN#`. Unnamed values use a stable machine-keyed HMAC placeholder such as `#0A1B2C3D4E5F678901234567#`. The keyed form is stable across restarts without exposing an index or an offline dictionary oracle.
+
+The final provider boundary works from raw strings before trimming, truncation, serialization, or other lossy transforms. It resolves the live runtime for every physical attempt, including authentication retries, fallback models, delayed queues, compaction, commit analysis, evaluation, benchmarks, memory services, TTS, and image tools. JSON object keys and values are both covered, and key collisions fail closed.
+
+Opaque authenticated replay fields are validated rather than mutated. A live secret in a signature, provider item id, encrypted reasoning block, or provider payload rejects dispatch with a value-free error. Provider-bound images are content-detected, decoded, and canonically re-encoded so EXIF, comments, and other container metadata cannot bypass string obfuscation. URLs that appear to carry credentials bypass cloud reader and enrichment services.
+
+3. Local display restoration expands only live reversible placeholders. Replace-mode substitutions are one-way. Expired and removed values lose expansion rights but retain forward redaction tombstones, so old transcript text cannot become provider-visible.
+
+4. Toggling secret protection and running `/secret` commands rebuilds the runtime immediately, and the system-prompt inventory of spendable names with it. A working-directory move loads the destination project scope transactionally and drops the source project's mappings. If loading fails, both the old directory and runtime are restored. Persisted subagents and resumed sessions initialize from their recorded directory. A same-directory refresh retains only forward redaction history for removed values.
+
+### Spending a secret prompts first
+
+Substitution runs on tool arguments just before a tool executes, so the model can put
+`#GITHUB_TOKEN#` in a shell command and Veyyon supplies the credential it never showed the model.
+That is recorded by `secrets.auditLog`, which answers "which credential did this agent use, and
+where" after the fact.
+
+A call whose arguments carry a real credential also needs approval, in the same modes as the
+working-directory boundary: `plan`, `ask`, and `auto-edit`. The prompt states the secret and never
+shows its value, and it is added to whatever the tier already required, so it can only require more
+approval and never less. `yolo` opts out of all permission and opts out of this with it, so the
+shipped default requires nothing extra. An unknown placeholder contains no credential and does not prompt.
+If the name was advertised earlier in this process and expansion is later removed or disabled, the
+tool call is rejected before approval instead of running with stale literal text. See
+[Approval modes](../reference/approval-mode.md).
+
+### What the session file records about the call
+
+Veyyon writes one diagnostic entry when a tool starts, so a session that dies mid-call can tell you
+on resume which call was still running. The entry keeps a truncated copy of the `command` or `path`
+argument and the model's stated intent.
+
+Those arguments are the expanded ones, because expansion has already happened by then. They are
+redacted before the entry is written, so the session file records `printf '%s' '#GITHUB_TOKEN#'`
+and never the credential. Redaction runs before truncation, so a value sitting across the
+200-character cut cannot leave a readable prefix behind. The redaction survives a `/secret disable`:
+the tombstone that keeps an old value hidden from providers keeps it out of this entry too.
+
+The full arguments the model wrote are persisted with the assistant message, and those hold the
+placeholder, since the model never saw anything else.
+
+What the command printed is a different matter. Tool output is saved as it was printed and
+redacted on its way to the provider, not on its way to disk, so a command that echoes a credential
+puts it in the session file. Veyyon redacts what it records itself; it cannot redact what a command
+chose to print.
+
+Two modes control what happens to each secret:
+
+| Mode                  | Behavior                                                     | Reversible                                   |
+| --------------------- | ------------------------------------------------------------ | -------------------------------------------- |
+| `obfuscate` (default) | Replaced with a named or machine-keyed HMAC placeholder      | Yes, while the entry is live                 |
+| `replace`             | Replaced with a deterministic safe same-length string        | No                                           |
+
+### The 8-character minimum
+
+`obfuscate` mode replaces every occurrence of the value, so a very short secret would blank out fragments of ordinary words. Values under 8 characters are therefore rejected rather than protected, and the refusal is loud:
+
+- A plain `obfuscate` entry under 8 characters **stops startup** with an error stating the entry and the fix. It is not skipped. Skipping it would send the value to the provider while the file stated otherwise.
+- Use `mode: replace` for a short value. Replace is one-way, needs no reversible placeholder, and has no minimum.
+- A **regex** match under the floor is skipped rather than rejected, because a short match usually means the pattern reached into ordinary prose. The skip is recorded once per pattern so you can see that the pattern is over-matching. If short matches are genuinely secret, set `minLength` on that entry.
+
+An unreadable or malformed `secrets.yml` also stops startup. A missing file does not: nothing was declared, so there is nothing to protect. The distinction matters because reading a broken file as "no secrets" starts a session that believes it has nothing to hide.
+
+### Per-entry validation is a refusal, not a skip
+
+`validateEntry` rejects a malformed entry instead of warning and dropping it. The default transport set is `{ file: true }` with no console transport (`logger.ts:219`), so a warn-and-drop hides the fault in a log file and sends the credential the operator declared to the provider in plain text.
+
+Problems accumulate and are reported together, so three typos cost one restart. The message states the entry index, the field and the fix. It never quotes the offending `content`: on a plain entry that content is the credential.
+
+Unknown fields, and fields that do not apply to an entry type, are errors. Regex declarations also reject duplicate or incompatible flags, sticky or zero-width matching, and conservatively detected catastrophic-backtracking forms. These checks run before a session can send provider traffic.
+
+## The vault (`/secret`)
+
+Two stores feed the obfuscator. `secrets.yml` below is declarative and plaintext. The **vault** is imperative and encrypted: entries are added at runtime with `/secret`, are named, and expire.
+
+### Two grammars, selected by surface
+
+`parseSecretCommand(args, surface)` reads one of two grammars, and `surface` alone selects between them. `runSecretCommandForSurface` passes `"noninteractive"` when `port.promptForValue` is absent, which is the case where the client cannot hide what is typed, and `"tui"` otherwise. The branch is on the surface and never on the shape of the input, so nothing an operator types moves them from one grammar to the other.
+
+**Both grammars require a command first, and what differs is where the value may come from.** A first word that is not a command is nothing:
+
+| Typed | Parsed as |
+| ----- | --------- |
+| `/secret` | `{ subcommand: "help" }`, on both surfaces. |
+| `/secret <anything unreserved>` | rejected. Nothing is stored, and the refusal never repeats the word. |
+| `/secret <reserved word> ...` | that subcommand, or a refusal when the rest of the line does not fit its shape. Never a credential. |
+| `/secret add` | `{ subcommand: "add" }`. `needsValuePrompt` is then true, so the surface opens the masked field. |
+| `/secret add <anything>` | `{ subcommand: "add", value }`, sliced from the first token's start to the last token's end. A credential may therefore begin with a reserved word. |
+| `/secret add -- ...` | rejected, stating the plain word that replaced `--`. Nothing is stored. |
+| `/secret from-env VAR [NAME] [7d] [project]` | `{ subcommand: "from-env", fromEnv, name?, ttl?, scope? }`. Its own command, not a modifier on `add`. The name is required on a client and optional in a terminal, where a field prompts for it. |
+
+The slice rather than a trim drops the whitespace a terminal adds around what was typed and preserves, byte for byte, any whitespace inside the credential, because a passphrase may contain spaces.
+
+**A value is read in exactly one place, after `add`.** The reserved words are the keys of `SECRET_VERB_SPELLINGS`: every canonical subcommand plus the second spellings `env`, `remove`, `delete`, `wipe`, `purge`, `empty`, `reset`, `name`, `replace`, `move`, `renew` and `audit`. They are a list of what runs, not a list of what a value may not start with. A reserved word whose remainder does not fit its shape is rejected, because falling back to storage would turn `/secret log 50` into a stored credential reported as a success.
+
+**The refusal states the exposure, and never the bytes.** A terminal refusal states that nothing was stored, that the line is exposed, and to rotate the credential, and never echoes the word, because that word is very often the credential. The noninteractive refusal drops the scrollback sentence: its line came from argv rather than a screen.
+
+`--` is rejected as the first word after `add`, stating the plain word that replaced it, rather than passed to the value reader, which would slice `-- sk-live-x` verbatim and store a credential with the dashes attached. That failure is invisible until the credential is spent, and then surfaces as an authentication error with nothing connecting it to a slash command. The match is on the whole first word after `add`, so a value that merely begins with dashes, a PEM block for instance, is stored byte for byte.
+
+**No `/secret` command takes an option.** `--from-env`, `--ttl`, `--scope`, `--limit` and `--name` are rejected, each stating the plain word that replaced it. A word is read by the POSITION it sits in, or by a CLOSED SET or SHAPE it belongs to. Position covers every required word, so `/secret rm PROFILE` removes the secret named `PROFILE`. Shape covers trailing words that may be omitted or reordered, and only where the sets cannot overlap: a vault is one of exactly three words, a lifetime is `isTtlWord` or any digit-leading word, a limit is digits only, a secret name may not begin with a digit and may not contain a hyphen. Each slot states its own disjointness proof in `SECRET_SUBCOMMAND_SHAPES`.
+
+`from-env` is a command of its own rather than a modifier on `add`, and it takes the lifetime and the vault that the value forms cannot: `/secret from-env DEPLOY_KEY DEPLOY_TOKEN 30m project` is a complete store. A terminal `add` takes the `secrets.defaultTtl` lifetime and the default `profile` vault, because everything after `add` is the credential; `/secret extend` sets a different lifetime afterwards and `/secret scope` moves it, from the same prompt.
+
+The terminal form takes no name. `/secret add <name> <value>` had no unique reading once the value was arbitrary text, and `/secret add ghp_realToken` stored a live credential as a NAME with no value attached. The value is the whole line, and the name is prompted afterwards.
+
+**The name is prompted last.** `runSecretCommandForSurface` calls `port.promptForName()` once a value is in hand, for a pasted value, a masked one and a `from-env` one alike, because all three arrive without a name. That field is visible: a label is not a credential, and `maskedPromptTitle` states "value, not a name" because the masked field is the one place the two can be confused. An empty answer keeps the generated name. Escape abandons the store rather than falling back to a generated name.
+
+**One asymmetry.** A client with no terminal cannot accept a credential the caller types, so `add` is rejected there and `from-env` requires the name a terminal prompts for in a field afterwards. Everything else parses identically:
+
+| Subcommand | Purpose |
+| ---------- | ------- |
+| `/secret from-env <VAR> <name>` | Store the value of an environment variable. The credential is never typed. The only entry form a client with no field accepts: an inline value is rejected, because it would be retained in the client's request history. In a terminal the name may be omitted and is prompted afterwards. |
+| `/secret list` | An aligned table of placeholders, scopes and lifetimes, plus a `STATUS` column when a row is near expiry. Never values, not even a prefix. |
+| `/secret rm <name>` | Remove the entry that is currently in effect, and tell the model that its placeholder is revoked. |
+| `/secret rename <name> <new-name>` | Relabel an entry, keeping its value, creation time and expiry. Refused when the new name is taken. |
+| `/secret value <name>` | Replace an entry's value, keeping its name, scope, creation time and expiry. Takes a masked field, or the trailing pair `from-env <VAR>`. |
+| `/secret scope <name> <scope>` | Move an entry to another vault. Refused when the destination holds that name, and what moves is the lifetime REMAINING. |
+| `/secret copy <name>` | Hand the surface `#NAME#` to put on the clipboard. Never the value. |
+| `/secret extend <name> 7d` | Give an entry a fresh lifetime, measured from now, and tell the model the placeholder is still live. |
+| `/secret log [<name>] [<limit>]` | The expansion log: which placeholder went into which command, when. A name narrows it to one credential; a number sets how many records. Either order, because a name may not begin with a digit. |
+| `/secret discard <vault>` | Move one vault's unreadable file aside so that vault works again. Never deletes it. |
+
+A word neither grammar reserves is rejected where a value cannot be typed, and the refusal prints the whole usage without repeating the word: the caller cannot open a help screen, and the unknown first token is very often the credential itself.
+
+Both grammars produce the same `SecretCommandRequest` and run through the same `runSecretCommand`, so the two cannot drift into different ideas of what a lifetime or a scope means. `secretCommandUsage(surface)` picks help to match, and the credential-entry lines are the only text the two help outputs disagree about. They are named once rather than written out twice: a surface with no way to hide what is typed must never advertise typing a credential.
+
+Each slot belongs to the commands that read it, and `SECRET_SUBCOMMAND_SHAPES` is the one owner of that mapping:
+
+| Word | Read by | How it is recognised |
+| ---- | ------- | -------------------- |
+| an environment variable | `from-env` (position 1), `value` (after `from-env`) | position, and a keyword on `value` because a variable name is arbitrary text |
+| a name | every command that takes one entry | position, except on `log` where it is the non-numeric trailing word |
+| a lifetime | `from-env`, `extend` | `30m`, `12h`, `7d`, `2w`, `never`, or any digit-leading word |
+| a vault | `from-env`, `rm`, `clear`, `scope`, `discard` | one of `profile`, `project`, `global`. Position on `clear`, `scope` and `discard`; trailing on `from-env` and `rm` |
+| a limit | `log` | digits only, and a safe integer |
+
+`SECRET_SUBCOMMAND_SHAPES` also records how many words each command reads and which are required: one for `rm`, `value`, `copy`, `clear` and `discard`, two for `rename`, `scope`, `extend` and `from-env`, none for `list`, `log` and `help`, and unbounded for a terminal `add`. `add` is unbounded because the whole line after it is rejoined into the credential and a passphrase contains spaces, so a word count would reject `/secret add gpg my long pass phrase` as five arguments when it is two. `clear` and `discard` read one word and it is a vault rather than a name, because each acts on a whole file.
+
+A word a command does not read is **rejected**, stating the position it arrived in. An earlier grammar parsed every option for every verb and let each subcommand read only the fields it cared about, so `/secret extend NAME --scope global` reported success and did nothing about the scope, and `/secret rm NAME --scope project` read as "the project copy is gone" when the copy in effect had been removed and the others were untouched. The rule covers plain words too: `/secret extend TOKEN global` is rejected rather than re-dated with the vault word ignored.
+
+The refusal states the POSITION and never repeats the word. The common slip is muscle memory for `add` under another command (`/secret extend TOKEN sk-live-...`, `/secret rm TOKEN sk-live-...`, a value appended to `/secret list`), so the extra word is very often the credential, and quoting it would write that credential into the scrollback and the saved transcript permanently. A digit-only word is echoed, because a number cannot be a credential and the echo is what makes the hint useful: `/secret rm TOKEN 50` can then state what a bare number would have meant. In a terminal the refusal also states the value form.
+
+`needsValuePrompt` sets whether a surface prompts, and it lives in the pure command layer so the TUI and text/ACP paths cannot disagree about when a masked field is warranted. A surface that cannot mask must not substitute an unmasked prompt: absent `promptForValue`, `runSecretCommand` rejects the add and names `from-env`. That same absence is what selects the grammar, so a client is never offered a field it cannot open.
+
+### `discard`: the repair for a vault that cannot be read
+
+`load()` skips a scope whose file exists and cannot be read, with a notice, and `remove()` will not touch one. Between them the operator could start and could not repair: `discardUnreadableScope` had no caller, so the only route was deleting the file by hand. `/secret discard <vault>` is that route, and it parses on every surface, so one notice states one repair whichever client prints it.
+
+It **moves** the file to a `vault.json.unreadable-<timestamp>-<uuid>` sibling rather than deleting it. The file still holds real credentials, sealed with a key that is still on disk, so the damage may be a truncated tail with recoverable entries behind it. The new path is returned and printed: it is the operator's only route back to those entries, and a message that omitted it would make a recoverable move indistinguishable from a delete.
+
+**The vault is required here and defaulted everywhere else**, the one exception in the table above. Elsewhere the word states where to PUT something, and `/secret list` shows a wrong guess. Here it selects a file to move aside, so a default would let a bare `/secret discard` move a working vault out from under the session. It sits at position 1 rather than trailing, because `discard` takes no name. The refusal contains the usage and states that there is no default, and the guard is repeated at the dispatch as well as the parser, because ACP and other adapters build a request object without going through `parseSecretCommand`.
+
+Two refusals:
+
+- **A scope that reads normally.** Checked inside `discardUnreadableScope`, under the file lock, rather than trusted from an earlier `load()`, because the file may have been repaired in between. The refusal names `/secret rm <name>`, which can state what it removed.
+- **A scope whose path is also another scope's vault.** A profile directory that is the config root makes the profile and global vaults one file, so moving it aside as one takes the other with it. `#scopePathOwner` resolves the owner by file identity and the refusal states it, because an operator told only "cannot discard" uses `rm` on the file and loses both.
+
+Afterwards the result carries `changed: true`, so the surface rebuilds the obfuscator: the scope's file has stopped existing at the path the loader reads, and until it reloads the session holds the pre-discard view. The moved-aside file keeps mode `0600`.
+
+### Masked entry
+
+`Input.mask` on the shared TUI component is the single place a value becomes something a terminal can show, so masking is one projection applied in `render` rather than a second text field. `maskValue` emits one mask character per **grapheme** and maps the cursor to the grapheme count before it, so an astral character or a combining sequence counts once. `getValue` still returns what was typed: masking the buffer itself would store a row of bullets as the credential.
+
+The masked prompt is `showHookInput`, which is local only. Unlike the selector and editor dialogs it is never raced against a collab guest, so a masked field cannot be answered from another machine.
+
+`request.maskedEntry` records that a value came from the field rather than the command line, and only the confirmation text depends on it. A scrollback warning that fires when it does not apply is one an operator learns to skip, including on the inline path where it is true.
+
+### Named and unnamed placeholders
+
+A vault entry's placeholder is its name, so the model sees `#GITHUB_TOKEN#`. That is what lets it choose between several credentials deliberately, and it makes the placeholder stable across sessions.
+
+Names are 5 to 64 characters of `A-Z`, `0-9` and `_`, starting with a letter. Unnamed HMAC placeholders start with the reserved digit `0`, so a name can never collide with one. `normaliseSecretName` accepts what people type (`github-token`, `github token`, lowercase) and uppercases it. It rejects non-ASCII input before uppercasing, so Unicode case expansion cannot alias an existing name.
+
+Entries without a name get a generated name (`SECRET_1`), so every vault entry has a placeholder the model can reference. Plain environment and `secrets.yml` values use the machine-keyed unnamed form.
+
+### Completing `/secret`
+
+Argument completion offers the subcommands and nothing else, derived from `SECRET_TUI_SUBCOMMANDS`, which the parser builds from the same table it routes with. A verb cannot be typeable and unoffered, and a word cannot be offered and unparseable. The operator-facing account is [Managing what you stored](../features/secrets.md#managing-what-you-stored).
+
+No stored NAME is ever offered. Completing one from `session.obfuscator.namedSecretNames()` renders part of the vault on a keystroke, and accepting a suggestion writes it onto a line whose first word decides between a command and a credential, so a fumbled verb stores the suggestion instead of running it. `/secret list` is where names are read.
+
+The prefix filter keeps the menu out of a paste. A pasted credential arrives as one insert, so the prefix is the whole token and matches nothing; only a hand-typed word that is the start of a subcommand opens the dropdown. Nothing about the vault is read to build it, so completion still works when secret protection is off.
+
+### What the model is told about a stored secret
+
+The operator-facing account is [What the agent knows, and when](../features/secrets.md#what-the-agent-knows-and-when). Two mechanisms carry it, with different jobs.
+
+**The inventory** is a system-prompt section. `SecretObfuscator.namedSecretNames()` returns every readable name the live runtime can expand, sorted, and never a value. It calls `#forgetExpired()` first, so a name stops being answered at the moment it stops working. That list becomes an optional option-backed runtime section registered in `RUNTIME_SECTIONS` (`system-prompt-builder/section-registry.ts`) and supplied where `sdk.ts` calls the system-prompt builder, beside `secretsEnabled`. `AgentSession.refreshSecrets()` reloads the runtime and rebuilds the base prompt, which is what makes a removed or expired name stop appearing.
+
+Sorted because the section sits in the cached prompt prefix. Map insertion order would shuffle between refreshes and invalidate the provider's prompt cache without changing the section text.
+
+An optional section renders only when its option is present, so protection being off, or nothing being spendable, produces no section rather than an empty heading. Names are listed in placeholder form, which is the form the model has to write. Index-form secrets are absent, having no name to list.
+
+It belongs in the prompt rather than in the conversation because the vault outlives the conversation. Vault entries are profile, project or global scoped and persist across sessions; a notice injected into history does not. Before this, a credential stored yesterday was live this morning and unknown to the model that could spend it.
+
+**The notice** is a `developer` message. `runSecretCommand` returns `agentNotice` for `add`, `rm` and `extend`; `list`, `log` and `help` return none. `tellTheAgent` (`slash-commands/helpers/secret.ts`) appends it to the live agent and to the session file, because only the first leaves a resumed session holding a placeholder it was never introduced to, and only the second withholds the news until the next restart.
+
+`rm` states the revocation rather than leaving it to the name's disappearance from the inventory. A model does not reliably notice an absence. The tool boundary also keeps the exact retired placeholder name in memory and rejects a later attempt to spend it, while unknown text such as `#TODO#` remains ordinary input. The removal notice is still delivered even when `secrets.enabled` is off because it reaches the model and persists in resumable history; the boundary is the local backstop that prevents an ignored notice from becoming a confusing remote authentication failure. A revoked placeholder is already in the history; a new one with protection off has nothing to expand into.
+
+No notice contains a lifetime. A duration is accurate when written and wrong afterwards, and the operator reads the exact time left from the terminal confirmation instead.
+
+Expiry that no command triggered has no notice at all. The name leaves the inventory on the next rebuild, `#forgetPlaceholder` has already revoked expansion, and the operator hears about it through `OperatorNotices`.
+
+No path puts a value in front of the model. The inventory carries names, the notices carry names, and substitution happens after the model has written the placeholder.
+
+### Storage
+
+| Scope | Path |
+| ----- | ---- |
+| `global` | `~/.veyyon/vault.json` |
+| `profile` (default) | `<agent dir>/vault.json` |
+| `project` | `<cwd>/.veyyon/vault.json` |
+
+Narrowest scope wins a name clash. `rm` and `extend` walk scopes narrowest-first, so they act on the entry `list` shows.
+
+Encryption is AES-256-GCM with a fresh 12 byte nonce and a full 16 byte authentication tag per write. The key is 32 random bytes at `~/.veyyon/vault.key`, created on first use and never stored inside a project tree. On POSIX, the key is mode 0600 and its directory must be owned by you and not writable by another user. On Windows, Veyyon applies and verifies a protected owner-only ACL.
+
+Vault updates use a synchronized owner-only temporary file. Kernel no-replace and exchange operations publish the synced inode without overwriting a destination that appeared after the last check. Each transaction keeps the scope directory open and performs file I/O through that descriptor. Replacing the lexical directory during a transaction therefore causes a hard error instead of redirecting the read or write.
+
+Read and write paths reject symlinks, hard links, directories, devices, insecure permissions, and other non-regular files. Scope checks resolve real parent directories. The authenticated location includes the semantic scope, canonical path, and physical scope-directory identity. Copying or backing up `vault.json` preserves confidentiality, but the ciphertext is not a portable restore artifact. Store those entries again after moving or recreating the scope directory.
+
+The sealed descriptor is limited to 8 MiB before allocation. Writes also enforce a 6,291,402-byte encoded plaintext limit before JSON serialization, encryption, or Base64 expansion.
+
+Failure behavior is fail-closed:
+
+| Condition | Behavior |
+| --------- | -------- |
+| No vault file | Empty. Nothing was stored. |
+| Vault present, key missing | Hard error. Never read as an empty vault. |
+| Key of wrong length | Hard error, so a new key is not written beside a recoverable one. |
+| Unsafe key directory, key file, or vault permissions | Hard error stating the permission fix. POSIX ownership and modes and Windows owner-only ACLs are checked. |
+| Symlink, hard-linked file, or non-regular key/vault path | Hard error. The path is never followed or shared. |
+| Ciphertext, nonce, authentication tag, scope, canonical path, or physical scope identity modified | Hard error. GCM authenticates the complete envelope and its location. |
+| Legacy version 1 envelope | Hard error directing the operator to re-add the entry in the bound current format. |
+| Unknown envelope version | Hard error advising an upgrade rather than deletion. |
+| Entry name or value contains ill-formed UTF-16 | Hard error before a write, or after authenticated decryption during a read. Existing ciphertext is left unchanged. |
+
+### Lifetimes
+
+`secrets.defaultTtl` sets the default (`1d`). An absent setting uses the built-in default; a setting that does not parse is an error rather than a silent fallback.
+
+Expiry has two ordered effects. At use time, the live obfuscator revokes placeholder expansion and installs a forward-only HMAC tombstone for the old raw value. This prevents a transcript containing that value from becoming provider-visible. The hot path performs no vault I/O, so the encrypted entry remains on disk until the next successful vault refresh prunes it.
+
+Expiry is enforced at use time as well as at load:
+
+- The check sits on `deobfuscate`, `hasNamedSecret` and `knowsPlaceholder`, so no path reaches a value without passing it.
+- `#nextExpiryAt` caches the soonest deadline, so the hot path is one number comparison and the map is scanned only when a deadline is crossed.
+- A lapse calls `onExpiry` with explicit persisted-deletion state. `sdk.ts` renders an operator notice that states expansion was revoked and, until a vault refresh succeeds, that encrypted ciphertext remains.
+- A successful vault refresh prunes expired entries before rebuilding the runtime.
+- `addNamedSecret` takes the deadline, so `/secret extend` moves the moment substitution stops.
+- `#forgetPlaceholder` is the one owner of revoking reverse mappings and installing forward redaction tombstones.
+
+`WARN_AT_FRACTIONS` (`[0.5, 0.9]`) is the single owner of when a warning fires, as fractions rather than absolute times so one rule serves `1d` and `90d` alike. `expiryWarnings` consults `warningThresholdCrossed` rather than doing its own comparison: it previously held an inline `0.9`, which meant two owners disagreeing and a halfway warning that could not fire. The wording reads the urgent threshold off the end of the list for the same reason, so adding a `0.99` would not leave a secret with minutes left described as "over halfway through its lifetime". `expiryUrgency` wraps that one comparison and classifies an entry as `soon` or `halfway`, so the `STATUS` column in `/secret list` reads the same thresholds as the warnings rather than becoming a third owner of the question. Warnings are raised at session startup through `OperatorNotices`, and the channel collapses repeats so a long-running session is told once. Each line states the `/secret extend` command that prevents the loss, since expiry is not recoverable after the fact.
+
+### The expansion log
+
+`secrets.auditLog` (default on) records each tool call that mentioned a secret, one JSON object per line, to `<profile dir>/secret-audit.jsonl`.
+
+| Field | Meaning |
+| ----- | ------- |
+| `at` | Epoch milliseconds at expansion. |
+| `secrets` | Placeholders substituted, in order of appearance, deduplicated. |
+| `tool` | Tool that received them. |
+| `session` | Session id. Omitted when the session has none yet. `/secret log` states how many distinct sessions the shown records came from, since the log is per-profile and two windows append to one file. |
+| `command` | The arguments as the model produced them, JSON-encoded. |
+| `truncated` | `true` when `command` was cut to fit the byte cap. |
+| `omittedSecrets` | Number of additional placeholder references omitted to keep the encoded record under the byte cap. |
+
+Written from the arguments **before** substitution, which is the form in which every secret is still a placeholder. That ordering is the safety property: there is no redaction step to get wrong and no way for a value to reach the file. `buildExpansionRecord` receives the pre-expansion arguments and nothing else.
+
+`MAX_RECORD_BYTES` (2048) is a security and concurrency boundary. Every field and placeholder list is bounded before encoding. Placeholder discovery walks JSON string values and object keys in the same order as expansion. A cross-process file lock covers the size check, atomic rotation rename, append, and generation reads, so two sessions cannot overwrite a rotated generation or push a record past the cap.
+
+Failure behaviour differs from the vault's, deliberately. Obfuscation is the preventive control and it fails closed; the log is a detective control, so a failed append raises an operator notice and the command still runs. Refusing to execute a tool because a log file could not be written turns a full disk into an agent outage while nothing is actually unsafe. What is not permitted is silence: a log that stopped recording must not look like a log with nothing to record.
+
+The log is written in the profile directory, never the project one, and is written 0600. It states which credentials exist and when they are used, which is reconnaissance even without values.
+
+Three properties hold:
+
+- **Rotation.** `ROTATE_AT_BYTES` (2 MiB, about ten thousand uses) atomically moves the file to `secret-audit.jsonl.1` and starts a fresh one, keeping two generations. The same cross-process lock covers both sessions that race at the boundary. `read` spans both generations, so `/secret log 20` immediately after a rotation still answers with twenty records.
+- **Full validation on the way back in.** A parsed line is accepted only when every field the renderer reads has the right type. The check was `typeof at === "number" && Array.isArray(secrets)` followed by a cast, so a line missing `tool` printed `undefined` in the middle of a security report. Anything that fails is counted as malformed and the count is shown, never dropped. Terminal control characters in records, paths, and notices are escaped before display. Hard-linked generations are rejected, and the 2 MiB generation limit is checked before allocating a read buffer.
+- **Flushed on dispose.** Appends are queued so a tool call is never blocked by a write, which means an exit that does not drain the queue loses records silently. the session's `dispose()` awaits `flush()`, because quitting ends the process rather than waiting for pending work, and the last credential used is the one an incident concerns.
+
+### Operator notices
+
+`OperatorNotices` (`session/operator-notices.ts`) is the one channel for a non-fatal problem the operator must see. It exists because there was none: `logger.warn` writes to a file with no console transport, and `AgentSession.skillWarnings` was a getter that production code never read, so skill-loading problems were discarded silently while the field looked like a surface. Both now route here.
+
+Notices buffer until a sink attaches, because they are raised while a session is being built and the TUI does not exist yet. Interactive mode passes a sink-less collector to `createSession` and attaches its own after the first render; every other mode uses the default, which writes to stderr as notices arrive. A caller that attaches nothing gets its notices in the wrong place, never dropped.
+
+Identical notices collapse on `severity + source + text`, keeping the first timestamp. A problem detected once per turn would otherwise train the operator to ignore the channel, which ends in the same silence by another route.
+
+## Env keyword list
+
+`secrets/env-keywords.ts` defines the keyword list and the boundary rule; nothing else matches an environment variable name. The list was an inline regex in `secrets/index.ts` and is Tier B data now, so an operator can extend it without editing source.
+
+The boundary rule is `(?:<keyword>)(?:_|$)`, case-insensitive: a keyword matches only where it ends the name or is followed by an underscore.
+
+| Candidate | Decision | Reason |
+| --------- | -------- | ------ |
+| `PASSPHRASE` | **added** | The one genuine gap. `GPG_PASSPHRASE` matched only because of the underscore; a bare `PASSPHRASE` matched nothing, because `PASS` is followed by `P`. No common non-secret variable is named `*PASSPHRASE`, so there is no false positive traded away. |
+| `APIKEY` | no entry needed | `KEY` at the end of a name already matches it. |
+| `PRIVKEY` | no entry needed | Same. |
+| `SECRETKEY` | no entry needed | Same. |
+| `PWD` | **rejected** | The POSIX current-working-directory variable, present in every shell, with a value that is almost always over the length floor. Detecting it would replace the working directory with a placeholder in every message mentioning a path: text corruption, not protection. `OLDPWD` is the same. |
+
+Three of the five filed candidates turned out to be already covered, which is why the list stays short: the trailing-position half of the boundary rule does most of the work.
+
+User files ADD ONLY. A project file that could remove `TOKEN` would let a cloned repository turn off protection for whoever opens it, which is the wrong direction for a detection list to be configurable in. A missing file is empty; an unreadable or malformed one throws, the same asymmetry `secrets.yml` uses. `buildEnvSecretPattern([])` matches NOTHING rather than emitting an empty alternation that would match every name, and every keyword is regex-escaped because a user file is arbitrary text.
+
+## secrets.yml
+
+Define custom secret entries in YAML. Two locations are checked:
+
+| Level   | Path                                              | Purpose                     |
+| ------- | ------------------------------------------------- | --------------------------- |
+| Profile | `~/.veyyon/profiles/default/agent/secrets.yml` (active agent dir) | Profile-wide secrets |
+| Project | `<cwd>/.veyyon/secrets.yml`                       | Project-specific secrets    |
+
+Project entries override profile entries with matching `content`. The profile level is called `profile` here and everywhere else the agent directory appears, including the vault's scope table above. It was labelled "Global" in this table alone, which read as `~/.veyyon` and is a different directory.
+
+### Schema
+
+Each entry in the array has these fields:
+
+| Field         | Type                         | Required | Description                                       |
+| ------------- | ---------------------------- | -------- | ------------------------------------------------- |
+| `type`        | `"plain"` or `"regex"`       | Yes      | Match strategy                                    |
+| `content`     | string                       | Yes      | The secret value (plain) or regex pattern (regex) |
+| `mode`        | `"obfuscate"` or `"replace"` | No       | Default: `"obfuscate"`                            |
+| `replacement` | string                       | No       | Custom replacement (replace mode only)            |
+| `flags`       | string                       | No       | Regex flags (regex type only)                     |
+| `minLength`   | positive integer             | No       | Shortest match this pattern will obfuscate. Regex entries only; default 8 |
+
+### Examples
+
+#### Plain secrets
+
+```yaml
+# Obfuscate a specific API key (default mode)
+- type: plain
+  content: sk-proj-abc123def456
+
+# Replace a database password with a fixed string
+- type: plain
+  content: hunter2
+  mode: replace
+  replacement: "********"
+```
+
+Generated `replace` aliases use counter-mode HMAC with the machine placeholder key. A custom replacement that looks like `#NAME#` or a machine-keyed placeholder is rejected, so one-way output cannot be reinterpreted as a live credential. Emitted placeholders are protected spans: later literal or regex rules cannot scan inside and corrupt them.
+
+#### Regex secrets
+
+```yaml
+# Obfuscate any AWS-style key
+- type: regex
+  content: "AKIA[0-9A-Z]{16}"
+
+# Case-insensitive match with explicit flags
+- type: regex
+  content: "api[_-]?key\\s*=\\s*\\w+"
+  flags: "i"
+
+# Regex literal syntax (pattern and flags in one string)
+- type: regex
+  content: "/bearer\\s+[a-zA-Z0-9._~+\\/=-]+/i"
+
+# A six-digit one-time code is shorter than the default floor, so say so
+- type: regex
+  content: "\\b[0-9]{6}\\b"
+  minLength: 6
+```
+
+Regex entries always scan globally (the `g` flag is enforced automatically). The regex literal syntax `/pattern/flags` is supported as an alternative to separate `content` + `flags` fields. Escaped slashes within the pattern (`\\/`) are handled correctly.
+
+Alternations whose branches can consume concatenated prefixes are rejected along with nested ambiguous quantifiers. This prevents exponential backtracking even when the ambiguity is spread across alternatives.
+
+Only standard, bounded global matching is accepted. The sticky `y` flag and expressions that can match an empty string are rejected because their scan semantics can skip text or make no progress. Nested ambiguous quantifiers and related catastrophic-backtracking forms are rejected before compilation. Regex replacement rewrites exact match spans rather than every equal substring elsewhere in the message.
+
+#### Replace mode with regex
+
+```yaml
+# One-way replace connection strings (not reversible)
+- type: regex
+  content: "postgres://[^\\s]+"
+  mode: replace
+  replacement: "postgres://***"
+```
+
+## Interaction with env var detection
+
+Environment variables are collected first, then file-defined entries are appended. File entries can cover secrets that do not live in environment variables, such as values in local configuration. Equal plain values converge on the same machine-keyed placeholder, so their provider representation is independent of declaration order.
+
+## Key files
+
+- `packages/coding-agent/src/secrets/audit.ts` -- the expansion log: record shape, atomic-append cap, reader
+- `packages/coding-agent/src/secrets/env-keywords.ts` + `env-keywords.yml` -- the Tier B keyword list and the boundary rule, one owner
+- `packages/coding-agent/src/secrets/index.ts` -- loading, merging, env var collection, refusal of unprotectable entries
+- `packages/coding-agent/src/secrets/obfuscator.ts` -- `SecretObfuscator`, message obfuscation, runtime add/forget
+- `packages/coding-agent/src/secrets/placeholder.ts` -- both placeholder forms and the rule keeping them apart
+- `packages/coding-agent/src/secrets/policy.ts` -- the length rules and the rejection type, defined once
+- `packages/coding-agent/src/secrets/regex.ts` -- regex literal parsing and compilation
+- `packages/coding-agent/src/secrets/secret-command.ts` -- `/secret` logic, pure and session-free
+- `packages/coding-agent/src/secrets/scope-move.ts` -- `planScopeMove`: the two refusals that make a scope move safe to perform as add-then-remove
+- `packages/coding-agent/src/secrets/vault.ts` -- entries, lifetimes, scopes, the store
+- `packages/coding-agent/src/secrets/vault-crypto.ts` -- the key, the seal, and the threat model
+- `packages/coding-agent/src/slash-commands/helpers/secret.ts` -- the session-bound adapter shared by the TUI and text/ACP paths
+- `packages/coding-agent/src/system-prompt-builder/section-registry.ts` -- the runtime section row that puts the inventory of spendable names in the base system prompt
+- `packages/coding-agent/src/session/operator-notices.ts` -- the one channel for a warning that must reach a person
+- `packages/tui/src/components/input.ts` -- `Input.mask` and `maskValue`, the one place a value becomes visible text
+- `packages/coding-agent/src/config/settings-domains/providers.ts` -- the three settings: `secrets.enabled`, `secrets.defaultTtl`, `secrets.auditLog`
+
+## See also
+
+- [`auth-broker-gateway.md`](../../../internal/auth-broker-gateway.md) -- remote credential vault and forward-proxy that keep provider OAuth refresh tokens and access tokens off developer hosts entirely (complementary to in-process obfuscation).

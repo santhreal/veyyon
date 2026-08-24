@@ -214,7 +214,7 @@ describe("the npm/tarball topology stays deleted", () => {
 	it("the SDK guide documents the checkout path that does work", () => {
 		// Removing the false instruction is only half the fix; the reader still
 		// needs a working one, and it lives in exactly one place.
-		const sdk = fs.readFileSync(path.join(repoRoot, "docs", "sdk.md"), "utf8");
+		const sdk = fs.readFileSync(path.join(repoRoot, "docs", "handbook", "src", "reference", "sdk.md"), "utf8");
 		expect(sdk).toContain("bun --cwd=packages/coding-agent link");
 		expect(sdk).toContain("bun link @veyyon/coding-agent");
 		expect(sdk).toContain("are not on npm");

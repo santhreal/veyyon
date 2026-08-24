@@ -1,0 +1,755 @@
+<!DOCTYPE HTML>
+<html lang="en" class="navy sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Compaction internals - The Veyyon Harness Handbook</title>
+
+
+        <!-- Custom HTML head -->
+        <!-- Veyyon handbook: self-contained head additions. No remote resources. -->
+        <meta name="theme-color" content="#050505">
+        <meta name="color-scheme" content="dark">
+        <!-- Site favicons live at the deployed root, one level above /docs/. -->
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+        <link rel="icon" href="/favicon.ico" sizes="48x48">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+        <style>
+          /* Paint the near-black surface before CSS/JS resolve the theme, so there is
+             no light flash on load. Kept in sync with theme/veyyon.css. */
+          html { background: #050505; }
+          /* Tighten the base box model for the premium layout. */
+          *, *::before, *::after { box-sizing: border-box; }
+        </style>
+
+        <meta name="description" content="Operator handbook for the Veyyon terminal coding agent: install, configuration, tools, approvals, edit formats, providers, and harness structure.">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="../favicon-de23e50b.svg">
+        <link rel="shortcut icon" href="../favicon-8114d1fc.png">
+        <link rel="stylesheet" href="../css/variables-8adf115d.css">
+        <link rel="stylesheet" href="../css/general-2459343d.css">
+        <link rel="stylesheet" href="../css/chrome-ae938929.css">
+        <link rel="stylesheet" href="../css/print-9e4910d8.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="../fonts/fonts-9644e21d.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="mdbook-highlight-css" href="../highlight-493f70e1.css">
+        <link rel="stylesheet" id="mdbook-tomorrow-night-css" href="../tomorrow-night-4c0ae647.css">
+        <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="../ayu-highlight-3fdfc3ac.css">
+
+        <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="../theme/veyyon-06f6939e.css">
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "../";
+            const default_light_theme = "navy";
+            const default_dark_theme = "navy";
+            window.path_to_searchindex_js = "../searchindex-c0972181.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="../toc-a2abefc1.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="mdbook-body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('navy')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="mdbook-sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("mdbook-sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="mdbook-sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="../toc.html"></iframe>
+            </noscript>
+            <div id="mdbook-sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="mdbook-page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="mdbook-menu-bar-hover-placeholder"></div>
+                <div id="mdbook-menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="mdbook-sidebar-toggle" class="icon-button" for="mdbook-sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="mdbook-sidebar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M0 96C0 78.3 14.3 64 32 64H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32C14.3 128 0 113.7 0 96zM0 256c0-17.7 14.3-32 32-32H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32c-17.7 0-32-14.3-32-32zM448 416c0 17.7-14.3 32-32 32H32c-17.7 0-32-14.3-32-32s14.3-32 32-32H416c17.7 0 32 14.3 32 32z"/></svg></span>
+                        </label>
+                        <button id="mdbook-theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="mdbook-theme-list">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M371.3 367.1c27.3-3.9 51.9-19.4 67.2-42.9L600.2 74.1c12.6-19.5 9.4-45.3-7.6-61.2S549.7-4.4 531.1 9.6L294.4 187.2c-24 18-38.2 46.1-38.4 76.1L371.3 367.1zm-19.6 25.4l-116-104.4C175.9 290.3 128 339.6 128 400c0 3.9 .2 7.8 .6 11.6c1.8 17.5-10.2 36.4-27.8 36.4H96c-17.7 0-32 14.3-32 32s14.3 32 32 32H240c61.9 0 112-50.1 112-112c0-2.5-.1-5-.2-7.5z"/></svg></span>
+                        </button>
+                        <ul id="mdbook-theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-ayu">Ayu</button></li>
+                        </ul>
+                        <button id="mdbook-search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="mdbook-searchbar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M416 208c0 45.9-14.9 88.3-40 122.7L502.6 457.4c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L330.7 376c-34.4 25.2-76.8 40-122.7 40C93.1 416 0 322.9 0 208S93.1 0 208 0S416 93.1 416 208zM208 352c79.5 0 144-64.5 144-144s-64.5-144-144-144S64 128.5 64 208s64.5 144 144 144z"/></svg></span>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">The Veyyon Harness Handbook</h1>
+
+                    <div class="right-buttons">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
+                            <span class=fa-svg id="print-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M128 0C92.7 0 64 28.7 64 64v96h64V64H354.7L384 93.3V160h64V93.3c0-17-6.7-33.3-18.7-45.3L400 18.7C388 6.7 371.7 0 354.7 0H128zM384 352v32 64H128V384 368 352H384zm64 32h32c17.7 0 32-14.3 32-32V256c0-35.3-28.7-64-64-64H64c-35.3 0-64 28.7-64 64v96c0 17.7 14.3 32 32 32H64v64c0 35.3 28.7 64 64 64H384c35.3 0 64-28.7 64-64V384zm-16-88c-13.3 0-24-10.7-24-24s10.7-24 24-24s24 10.7 24 24s-10.7 24-24 24z"/></svg></span>
+                        </a>
+                        <a href="https://github.com/santhreal/veyyon" title="Git repository" aria-label="Git repository">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6zm-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3zm44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9zM244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8zM97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1zm-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7zm32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1zm-11.4-14.7c-1.6 1-1.6 3.6 0 5.9 1.6 2.3 4.3 3.3 5.6 2.3 1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2z"/></svg></span>
+                        </a>
+                        <a href="https://github.com/santhreal/veyyon/edit/main/docs/handbook/src/architecture/compaction.md" title="Suggest an edit" aria-label="Suggest an edit" rel="edit">
+                            <span class=fa-svg id="git-edit-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M421.7 220.3l-11.3 11.3-22.6 22.6-205 205c-6.6 6.6-14.8 11.5-23.8 14.1L30.8 511c-8.4 2.5-17.5 .2-23.7-6.1S-1.5 489.7 1 481.2L38.7 353.1c2.6-9 7.5-17.2 14.1-23.8l205-205 22.6-22.6 11.3-11.3 33.9 33.9 62.1 62.1 33.9 33.9zM96 353.9l-9.3 9.3c-.9 .9-1.6 2.1-2 3.4l-25.3 86 86-25.3c1.3-.4 2.5-1.1 3.4-2l9.3-9.3H112c-8.8 0-16-7.2-16-16V353.9zM453.3 19.3l39.4 39.4c25 25 25 65.5 0 90.5l-14.5 14.5-22.6 22.6-11.3 11.3-33.9-33.9-62.1-62.1L314.3 67.7l11.3-11.3 22.6-22.6 14.5-14.5c25-25 65.5-25 90.5 0z"/></svg></span>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="mdbook-search-wrapper" class="hidden">
+                    <form id="mdbook-searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="mdbook-searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="mdbook-searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <span class=fa-svg id="fa-spin"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M304 48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zm0 416c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM48 304c26.5 0 48-21.5 48-48s-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48zm464-48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM142.9 437c18.7-18.7 18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zm0-294.2c18.7-18.7 18.7-49.1 0-67.9S93.7 56.2 75 75s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zM369.1 437c18.7 18.7 49.1 18.7 67.9 0s18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9z"/></svg></span>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="mdbook-searchresults-outer" class="searchresults-outer hidden">
+                        <div id="mdbook-searchresults-header" class="searchresults-header"></div>
+                        <ul id="mdbook-searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('mdbook-sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('mdbook-sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#mdbook-sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="mdbook-content" class="content">
+                    <main>
+                        <h1 id="compaction-and-branch-summaries"><a class="header" href="#compaction-and-branch-summaries">Compaction and Branch Summaries</a></h1>
+<p>Compaction and branch summaries are the two mechanisms that keep long sessions usable without losing prior work context.</p>
+<ul>
+<li><strong>Compaction</strong> rewrites old history into a summary on the current branch.</li>
+<li><strong>Branch summary</strong> captures abandoned branch context during <code>/tree</code> navigation.</li>
+</ul>
+<p>Both are persisted as session entries and converted into agent-attributed developer context when rebuilding LLM input.</p>
+<h2 id="key-implementation-files"><a class="header" href="#key-implementation-files">Key implementation files</a></h2>
+<ul>
+<li><code>packages/agent/src/compaction/compaction.ts</code> (context-full summarization and handoff generation)</li>
+<li><code>packages/agent/src/compaction/legacy-snapcompact-archive.ts</code> (reads archives left by the removed image-archive engine so old sessions keep loading)</li>
+<li><code>packages/agent/src/compaction/branch-summarization.ts</code></li>
+<li><code>packages/agent/src/compaction/pruning.ts</code></li>
+<li><code>packages/agent/src/compaction/utils.ts</code></li>
+<li><code>packages/coding-agent/src/session/session-manager.ts</code></li>
+<li><code>packages/coding-agent/src/session/agent-session.ts</code></li>
+<li><code>packages/coding-agent/src/session/messages.ts</code></li>
+<li><code>packages/coding-agent/src/extensibility/hooks/types.ts</code></li>
+<li><code>packages/coding-agent/src/config/settings-schema.ts</code></li>
+</ul>
+<h2 id="session-entry-model"><a class="header" href="#session-entry-model">Session entry model</a></h2>
+<p>Compaction and branch summaries are first-class session entries, not plain assistant/user messages.</p>
+<ul>
+<li><code>CompactionEntry</code>
+<ul>
+<li><code>type: "compaction"</code></li>
+<li><code>summary</code>, optional <code>shortSummary</code> (display only, and no longer produced by <code>compact()</code>: see
+“Short summary” below)</li>
+<li><code>firstKeptEntryId</code> (compaction boundary)</li>
+<li><code>tokensBefore</code></li>
+<li>optional <code>details</code>, <code>preserveData</code>, <code>fromExtension</code></li>
+</ul>
+</li>
+<li><code>BranchSummaryEntry</code>
+<ul>
+<li><code>type: "branch_summary"</code></li>
+<li><code>fromId</code>, <code>summary</code></li>
+<li>optional <code>details</code>, <code>fromExtension</code></li>
+</ul>
+</li>
+</ul>
+<p>When context is rebuilt (<code>buildSessionContext</code>):</p>
+<ol>
+<li>Latest compaction on the active path is converted to one <code>compactionSummary</code> message.</li>
+<li>Kept entries from <code>firstKeptEntryId</code> to the compaction point are re-included.</li>
+<li>Later entries on the path are appended.</li>
+<li><code>branch_summary</code> entries are converted to <code>branchSummary</code> messages.</li>
+<li><code>custom_message</code> entries are converted to <code>custom</code> messages.</li>
+</ol>
+<p><code>convertToLlm()</code> transforms these custom roles into LLM-facing messages, through these static
+templates:</p>
+<ul>
+<li><code>packages/agent/src/prompts/compaction/compaction-summary-context.md</code></li>
+<li><code>packages/agent/src/prompts/compaction/branch-summary-context.md</code></li>
+</ul>
+<p><code>branchSummary</code> becomes an agent-attributed <strong>developer</strong> message.</p>
+<p><code>compactionSummary</code> becomes an agent-attributed <strong>user</strong> message. The role is the trust boundary: a
+compaction summary is model-generated history, so putting it in the user channel means it cannot
+outrank a live developer message that contradicts it. Any image attachments follow the summary text
+in the same message, which is also why the user slot is the safe one: every provider accepts images
+there.</p>
+<p>The compaction template wraps the summary in its own <code>&lt;summary&gt;</code> delimiters, so the untrusted region
+has an explicit start and end. Exactly one wrapper is ever emitted: a legacy or model-authored
+<code>&lt;summary …&gt;</code> wrapper persisted inside the summary text is stripped first
+(<code>withoutSummaryPresentationTags</code>), and embedded or sibling <code>&lt;summary&gt;</code> elements that are not one
+enclosing wrapper are left alone as content. The branch template uses no delimiters.</p>
+<p>Other <code>custom</code> messages pass through as developer messages with their raw content and no template.</p>
+<h2 id="compaction-pipeline"><a class="header" href="#compaction-pipeline">Compaction pipeline</a></h2>
+<h3 id="triggers"><a class="header" href="#triggers">Triggers</a></h3>
+<p>Compaction/context maintenance can run in six ways:</p>
+<ol>
+<li><strong>Manual context compaction</strong>: <code>/compact [summary] [focus]</code> calls <code>AgentSession.compact(...)</code>.</li>
+<li><strong>Automatic overflow recovery</strong>: after a same-model assistant error that matches context overflow.</li>
+<li><strong>Automatic incomplete-output recovery</strong>: after a same-model assistant message ends with <code>stopReason === "length"</code> (OpenAI/Codex <code>response.incomplete</code>).</li>
+<li><strong>Automatic threshold maintenance</strong>: after a successful turn when context exceeds the resolved threshold.</li>
+<li><strong>Mid-turn threshold maintenance</strong>: before the next provider request when a tool-loop turn crosses the threshold and <code>compaction.midTurnEnabled !== false</code>.</li>
+<li><strong>Idle maintenance</strong>: <code>runIdleCompaction()</code> can invoke the same auto-maintenance path with reason <code>"idle"</code>.</li>
+</ol>
+<h3 id="compaction-shape-visual"><a class="header" href="#compaction-shape-visual">Compaction shape (visual)</a></h3>
+<pre><code class="language-text">Before compaction:
+
+  entry:  0     1     2     3      4     5     6      7      8     9
+        ┌─────┬─────┬─────┬──────┬─────┬─────┬──────┬──────┬─────┬──────┐
+        │ hdr │ usr │ ass │ tool │ usr │ ass │ tool │ tool │ ass │ tool │
+        └─────┴─────┴─────┴──────┴─────┴─────┴──────┴──────┴─────┴──────┘
+                └────────┬───────┘ └──────────────┬──────────────┘
+               messagesToSummarize            kept messages
+                                   ↑
+                          firstKeptEntryId (entry 4)
+
+After compaction (new entry appended):
+
+  entry:  0     1     2     3      4     5     6      7      8     9      10
+        ┌─────┬─────┬─────┬──────┬─────┬─────┬──────┬──────┬─────┬──────┬─────┐
+        │ hdr │ usr │ ass │ tool │ usr │ ass │ tool │ tool │ ass │ tool │ cmp │
+        └─────┴─────┴─────┴──────┴─────┴─────┴──────┴──────┴─────┴──────┴─────┘
+               └──────────┬──────┘ └──────────────────────┬───────────────────┘
+                 not sent to LLM                    sent to LLM
+                                                         ↑
+                                              starts from firstKeptEntryId
+
+What the LLM sees:
+
+  ┌────────┬─────────┬─────┬─────┬──────┬──────┬─────┬──────┐
+  │ system │ summary │ usr │ ass │ tool │ tool │ ass │ tool │
+  └────────┴─────────┴─────┴─────┴──────┴──────┴─────┴──────┘
+       ↑         ↑      └─────────────────┬────────────────┘
+    prompt   from cmp          messages from firstKeptEntryId
+</code></pre>
+<h3 id="overflowincomplete-recovery-vs-thresholdidle-maintenance"><a class="header" href="#overflowincomplete-recovery-vs-thresholdidle-maintenance">Overflow/incomplete recovery vs threshold/idle maintenance</a></h3>
+<p>The automatic paths are intentionally different:</p>
+<ul>
+<li>
+<p><strong>Overflow recovery</strong></p>
+<ul>
+<li>Trigger: current-model assistant error is detected as context overflow and the error is not older than the latest compaction.</li>
+<li>The failing assistant error message is removed from active agent state before retry.</li>
+<li>Context promotion is tried first; if a configured larger model is available, the agent switches model and retries without compacting.</li>
+<li>If promotion is unavailable and compaction is enabled, in-place compaction runs with <code>reason: "overflow"</code> and <code>willRetry: true</code>.</li>
+<li>On success, <code>agent.continue()</code> is scheduled to retry the turn.</li>
+</ul>
+</li>
+<li>
+<p><strong>Incomplete-output recovery</strong></p>
+<ul>
+<li>Trigger: same-model assistant message ends with <code>stopReason === "length"</code> and the message is not older than the latest compaction.</li>
+<li>The incomplete assistant message is removed from active agent state before recovery.</li>
+<li>Context promotion is tried first.</li>
+<li>If promotion is unavailable and compaction is enabled, auto maintenance runs with <code>reason: "incomplete"</code> and <code>willRetry: true</code>.</li>
+<li>On context-full success, <code>agent.continue()</code> is scheduled to retry the turn.</li>
+</ul>
+</li>
+<li>
+<p><strong>Threshold maintenance</strong></p>
+<ul>
+<li>Trigger: successful, non-error assistant message whose adjusted context tokens exceed <code>resolveThresholdTokens(...)</code>.</li>
+<li>Mid-turn maintenance also checks safe tool-loop boundaries before the next provider request when <code>compaction.midTurnEnabled !== false</code>.</li>
+<li>Tool-output pruning can reduce the measured token count before threshold comparison.</li>
+<li>Context promotion is tried before post-turn compaction.</li>
+<li>If promotion is unavailable, auto maintenance runs with <code>reason: "threshold"</code> and <code>willRetry: false</code>.</li>
+<li>On success, if <code>compaction.autoContinue !== false</code>, post-turn maintenance schedules an agent-authored developer auto-continue prompt from <code>prompts/turn-control/auto-continue.md</code>; mid-turn maintenance never schedules a separate continuation because the core loop already defines the next provider request.</li>
+</ul>
+</li>
+<li>
+<p><strong>Idle maintenance</strong></p>
+<ul>
+<li>Trigger: <code>runIdleCompaction()</code> when not streaming or already compacting.</li>
+<li>Uses <code>reason: "idle"</code> and does not auto-continue afterward.</li>
+</ul>
+</li>
+</ul>
+<h3 id="compaction-and-manual-handoff"><a class="header" href="#compaction-and-manual-handoff">Compaction and manual handoff</a></h3>
+<p><code>summary</code> is the sole compaction strategy, and it continues the SAME session. The generated summary
+is prefixed onto a retained raw tail in one message array: <code>buildSessionContext</code> pushes the summary,
+then re-emits every entry from <code>firstKeptEntryId</code> onward. <code>findCutPoint</code> walks backwards
+accumulating until <code>keepRecentTokens</code> (default 10000), and because it can only cut at a turn
+boundary, <code>prepareCompaction</code> then hard-bounds the tail: a kept turn whose bulk exceeds the budget
+has its heavy non-error tool results replaced with an elision marker (largest first, originals
+offloaded to a recovery <code>artifact://</code> blob), so the tail stays within budget even when one turn
+alone is bigger. User messages, assistant text, tool calls, and error results are never elided.</p>
+<p>Note that the summary prompt does not state any of that. Its opening line requests “a structured
+handoff summary for another LLM to resume the task”, which describes a cold restart that compaction
+does not perform. This is inherited from upstream, whose engine keeps the same recent tail, so the
+mismatch is upstream’s rather than a fork difference. It is recorded here because a summarizer told
+it is writing for a fresh reader will restate turns that are still in context. Changing the prompt
+is an operator decision, not a fix to apply locally.</p>
+<p><code>/handoff</code> is a separate, explicit operation that starts a new session. Nothing carries over except
+its generated transfer document. Automatic compaction never selects or schedules a handoff.</p>
+<h3 id="legacy-compaction-strategies"><a class="header" href="#legacy-compaction-strategies">Legacy compaction strategies</a></h3>
+<p>Earlier versions offered <code>snap</code>, <code>handoff</code>, and other strategy values. They now
+migrate to <code>summary</code>. Legacy <code>off</code> also sets <code>compaction.enabled: false</code>.</p>
+<p>Sessions compacted by the old engine still open without loss. The removed engine always stored the full plaintext source alongside its image frames, so a legacy archive degrades gracefully:</p>
+<ul>
+<li>On each context rebuild, <code>legacyArchiveSourceText</code> (in <code>packages/agent/src/compaction/legacy-snapcompact-archive.ts</code>) reads the archived source from <code>CompactionEntry.preserveData.snapcompact</code> and re-attaches it as a single recovered text block on the compaction summary. The old image frames are never rehydrated, which also removes the oversized-payload hazard they carried.</li>
+<li>The next compaction over such a session drains that recovered source into the fresh LLM summary and drops the legacy archive from <code>preserveData</code>, so the session converges to a plain summarized history.</li>
+</ul>
+<h3 id="display-transcript"><a class="header" href="#display-transcript">Display transcript</a></h3>
+<p>By default the live TUI collapses pre-compaction history: <code>display.collapseCompacted</code> defaults to <code>true</code>, so only the latest compacted tail renders live above the summary divider and the scrollback is cleared at the compaction point. Set <code>display.collapseCompacted</code> to <code>false</code> to keep the full <strong>display transcript</strong> inline instead (<code>buildSessionContext({ transcript: true })</code> / <code>AgentSession.buildTranscriptSessionContext()</code>): every path entry in chronological order, with each compaction shown as a slim divider, <code>── 📷 compacted · ctrl+o ──</code>, at the point it fired. Expanding (ctrl+o) reveals the summary. In the collapsed default the LLM context and the visible transcript reset together; in the inline mode only the LLM context resets, and the scrollback above the divider stays intact, including across session resume.</p>
+<h3 id="per-turn-and-pre-compaction-pruning"><a class="header" href="#per-turn-and-pre-compaction-pruning">Per-turn and pre-compaction pruning</a></h3>
+<p>Two passes run from <code>AgentSession.#checkCompaction()</code>, after every completed turn, and both persist
+through <code>rewriteEntries()</code> so the session file matches the live context (<code>/fork</code>, <code>/tan</code> and resume
+read the file, and a divergent prefix cold-misses the provider prompt cache):</p>
+<ol>
+<li><strong>Stale-result pass</strong> (<code>#pruneStaleToolResults</code> → <code>pruneSupersededToolResults</code>) runs first, before
+any threshold gating, so it fires even with <code>compaction.enabled</code> off. It is skipped entirely when
+both <code>compaction.supersedeReads</code> and <code>compaction.dropUseless</code> are false.</li>
+<li><strong>Threshold prune</strong> (<code>#pruneToolOutputs</code> → <code>pruneToolOutputs</code>) runs only on the threshold path,
+after the <code>compaction.enabled</code> / strategy check and after error turns are skipped, and only once
+the turn has usable usage data. Its savings feed <code>postMaintenanceContextTokens</code>, which is the
+trigger figure reported to the compaction it may schedule.</li>
+</ol>
+<p>Default prune policy:</p>
+<ul>
+<li>Protect newest <code>40_000</code> tool-output tokens.</li>
+<li>Require at least <code>20_000</code> total estimated savings.</li>
+<li>Never blank a result below <code>50</code> tokens (<code>MIN_PRUNE_TOKENS</code>): the <code>[Output truncated - N tokens]</code> placeholder costs ~8 tokens, so pruning a sub-floor result would grow the context and churn the prompt cache for nothing. (Superseded and useless results keep their own rules: the useless collector already drops no-savings candidates; superseded reads prune for correctness regardless of size.)</li>
+<li>Never prune <code>skill</code> tool results, <code>read</code> results of <code>skill://</code> paths, or reads of the active plan reference file (added via <code>AgentSession</code>’s plan protection).</li>
+</ul>
+<p>Pruned tool results are replaced with:</p>
+<ul>
+<li><code>[Output truncated - N tokens]</code></li>
+</ul>
+<h3 id="superseded-read-elision"><a class="header" href="#superseded-read-elision">Superseded-read elision</a></h3>
+<p>Gated by <code>compaction.supersedeReads</code> (default on). When it is on, the stale-result pass keys every
+<code>read</code> result by <code>readToolSupersedeKey</code> (path plus selector grammar; a selector-free read supersedes
+range reads of the same base path, URL-scheme paths are exempt), and every result but the newest in
+a key group is blanked to the exact placeholder <code>[Superseded by a newer read of this file]</code>
+(<code>SUPERSEDED_NOTICE</code>). Turning the setting off passes no key function, so no read is ever grouped and
+every read result survives at full length.</p>
+<p>Blanking happens only where it is cheap: when the messages after the candidate total at most ~8k
+estimated tokens (<code>PRUNE_CACHE_WARM_SUFFIX_TOKENS</code>, the read→edit→read tail), or when the last
+message is at least 90 minutes old (<code>PRUNE_IDLE_FLUSH_MS</code>, past the 1h Anthropic “long” prompt-cache
+retention), in which case every still-sent candidate flushes at once. Entries before the latest
+compaction’s <code>firstKeptEntryId</code> are summarized away and are never rewritten.</p>
+<h3 id="useless-result-elision"><a class="header" href="#useless-result-elision">Useless-result elision</a></h3>
+<p>Tools can flag a finished result as contextually useless, a search with zero matches, a <code>job</code> poll that timed out with everything still running, an empty <code>irc</code> inbox drain. The flag originates on the tool result (<code>AgentToolResult.useless</code>, set via <code>ToolResultBuilder.useless()</code> or directly on the returned object), is copied by the agent loop onto the persisted <code>ToolResultMessage</code> (never together with <code>isError</code>, errors always win), and is consumed in three places:</p>
+<ul>
+<li><strong>Per-turn stale-result pass</strong> (<code>pruneSupersededToolResults</code>, gated by <code>compaction.dropUseless</code>, default on): flagged results are blanked to the exact placeholder <code>[Uneventful result elided]</code> (<code>USELESS_NOTICE</code>) with the same cache-aware timing as superseded reads: only when the suffix after the candidate is small (≤ ~8k tokens) or the session has idled past the provider prompt-cache lifetime. Results smaller than the notice itself are never blanked (no savings), and protected tools are exempt.</li>
+<li><strong>Threshold prune</strong> (<code>pruneToolOutputs</code>): flagged results bypass the protect-recent window, same as superseded reads, and receive <code>USELESS_NOTICE</code> instead of the token-count placeholder.</li>
+<li><strong>Summary serialization</strong>: <code>serializeConversation</code> drops the whole tool call/result pair from summarizer input: the source region is discarded after summarization anyway, so the exclusion costs no cache.</li>
+</ul>
+<p>The flag never reaches provider wire formats, and flagged pairs are never removed from history (only blanked in place), so tool-call/result pairing stays intact.</p>
+<h3 id="what-the-summary-prompts-request"><a class="header" href="#what-the-summary-prompts-request">What the summary prompts request</a></h3>
+<p><code>compaction-summary.md</code>, <code>compaction-update-summary.md</code>, and <code>compaction-summary-context.md</code> are
+oh-my-pi’s text verbatim, by operator order, on the measurement that upstream scores higher on
+long-run evals. <code>packages/agent/test/compaction-strategy-contracts.test.ts</code> pins each one by
+SHA-256 and preflight runs it, so an unapproved edit fails the build instead of quietly changing
+summary quality. Approving a change means updating the digest in the same commit.</p>
+<p>Both prompts request the same ten sections, in the same order: <code>## Goal</code>,
+<code>## Constraints &amp; Preferences</code>, <code>## Progress</code> (<code>### Done</code>, <code>### In Progress</code>, <code>### Blocked</code>),
+<code>## Key Decisions</code>, <code>## Next Steps</code>, <code>## Critical Context</code>, <code>## Additional Notes</code>. Sections may be
+omitted when they do not apply. The lists have to match, because iterative compaction feeds its own
+output back in: a section the update prompt failed to name would be dropped on every cycle.</p>
+<p>Both require exact file paths, function names, and error messages preserved rather than paraphrased,
+require repository state changes (branch, uncommitted changes) when mentioned, forbid any text
+outside the structured summary, and require an unanswered question to the user to survive. The
+initial prompt preserves that question verbatim; the update prompt files it into <code>## Critical Context</code>, replacing a previous pending question once it has been answered.</p>
+<p><code>## Goal</code> is a single undifferentiated field: the prompts do not separate a durable overarching goal
+from the current task, and only <code>handoff-document.md</code> still draws that line. The update prompt also
+instructs the model to preserve all information from the previous summary and permits removing only
+what is no longer relevant, so iterative compaction accumulates rather than replacing drift.</p>
+<h3 id="empty-responses"><a class="header" href="#empty-responses">Empty responses</a></h3>
+<p>Neither a compaction summary nor an explicit handoff document may be empty. A provider can finish with <code>stopReason: "stop"</code> after spending its output budget on reasoning and emit no text. Both call sites raise instead of persisting an empty artifact. Lower the compaction thinking level if this repeats so the model spends its budget on the document.</p>
+<h3 id="boundary-and-cut-point-logic"><a class="header" href="#boundary-and-cut-point-logic">Boundary and cut-point logic</a></h3>
+<p><code>prepareCompaction()</code> only considers entries since the last compaction entry (if any).</p>
+<ol>
+<li>Find previous compaction index.</li>
+<li>Compute <code>boundaryStart = prevCompactionIndex + 1</code>.</li>
+<li>Adapt <code>keepRecentTokens</code> using measured usage ratio when available.</li>
+<li>Run <code>findCutPoint()</code> over the boundary window.</li>
+</ol>
+<p>Valid cut points include:</p>
+<ul>
+<li>message entries with roles: <code>user</code>, <code>assistant</code>, <code>bashExecution</code>, <code>hookMessage</code>, <code>branchSummary</code>, <code>compactionSummary</code></li>
+<li><code>custom_message</code> entries</li>
+<li><code>branch_summary</code> entries</li>
+</ul>
+<p>Hard rule: never cut at <code>toolResult</code>.</p>
+<p>If there are non-message metadata entries immediately before the cut point (<code>model_change</code>, <code>thinking_level_change</code>, labels, etc.), they are pulled into the kept region by moving cut index backward until a message or compaction boundary is hit.</p>
+<h3 id="split-turn-handling"><a class="header" href="#split-turn-handling">Split-turn handling</a></h3>
+<p>If cut point is not at a user-turn start, compaction treats it as a split turn.</p>
+<p>Turn start detection treats these as user-turn boundaries:</p>
+<ul>
+<li><code>message.role === "user"</code></li>
+<li><code>message.role === "bashExecution"</code></li>
+<li><code>custom_message</code> entry</li>
+<li><code>branch_summary</code> entry</li>
+</ul>
+<p>Split-turn compaction generates two summaries:</p>
+<ol>
+<li>History summary (<code>messagesToSummarize</code>)</li>
+<li>Turn-prefix summary (<code>turnPrefixMessages</code>)</li>
+</ol>
+<p>Final stored summary is merged as:</p>
+<pre><code class="language-markdown">&lt;history summary&gt;
+
+---
+
+**Turn Context (split turn):**
+
+&lt;turn prefix summary&gt;
+</code></pre>
+<h3 id="summary-generation"><a class="header" href="#summary-generation">Summary generation</a></h3>
+<p><code>compact(...)</code> builds summaries from serialized conversation text:</p>
+<ol>
+<li>Convert messages via <code>convertToLlm()</code>.</li>
+<li>Serialize with <code>serializeConversation()</code>.</li>
+<li>Wrap in <code>&lt;conversation&gt;...&lt;/conversation&gt;</code>.</li>
+<li>Optionally include <code>&lt;previous-summary&gt;...&lt;/previous-summary&gt;</code>.</li>
+<li>Optionally inject extension hook context and active memory-backend compaction context as <code>&lt;additional-context&gt;</code> entries.</li>
+<li>Execute summarization prompt with <code>SUMMARIZATION_SYSTEM_PROMPT</code>.</li>
+</ol>
+<p>Prompt selection:</p>
+<ul>
+<li>first compaction: <code>compaction-summary.md</code></li>
+<li>iterative compaction with prior summary: <code>compaction-update-summary.md</code></li>
+<li>split-turn second pass: <code>compaction-turn-prefix.md</code></li>
+<li>handoff document: <code>handoff-document.md</code> (used only by explicit <code>generateHandoff(...)</code>, not serialized compaction)</li>
+</ul>
+<h3 id="short-summary"><a class="header" href="#short-summary">Short summary</a></h3>
+<p><code>CompactionEntry.shortSummary</code> is a display-only, pull-request-style line. <code>compact()</code> no longer
+generates one: a second model request per compaction, spent on text the model never reads, is not
+worth the input cost. Every reader stays, because compaction hooks still set the field and sessions
+written before the change still carry it.</p>
+<p>Its one display consumer is the session-listing title fallback (<code>title: header.title ?? shortSummary</code>
+in <code>packages/coding-agent/src/session/session-listing.ts</code>), which veyyon reaches only when its own
+tiny-model titler declined: <code>VEYYON_NO_TITLE</code> set, or a first message too low-signal to title from.
+In that case the session picker falls back again to the first user message, so nothing renders blank.</p>
+<p>Remote summarizer endpoint:</p>
+<ul>
+<li>When <code>compaction.remoteEndpoint</code> is set, summary generation POSTs one of two wire formats:
+<ul>
+<li>custom veyyon summarizer endpoints receive <code>{ systemPrompt, prompt }</code> and must return JSON containing at least <code>{ summary }</code>.</li>
+<li>OpenAI-compatible endpoints whose path ends in <code>/chat/completions</code> receive <code>{ model, messages, stream: false }</code>, where <code>messages</code> contains one system prompt and one user prompt. The summary is read from <code>choices[0].message.content</code>, which lets self-hosted servers such as llama.cpp and vLLM act as summarizers without a separate shim.</li>
+</ul>
+</li>
+<li>When it is unset, the active model generates the summary locally. That is the default for every provider.</li>
+</ul>
+<p>Server-side compaction (<code>compaction.remote</code>, on by default):</p>
+<p>OpenAI and Azure OpenAI serve <code>POST /responses/compact</code>, which compacts a session’s
+context inside the provider and returns the compacted window. Veyyon uses it when the
+model’s <code>compat.supportsServerCompaction</code> flag is set, which is resolved per host at
+model build time: the official OpenAI API and Azure’s v1 API today, and any gateway
+that opts in with an override. The Codex provider stays out, because its transport
+owns history state server-side and a client-minted window has no replay contract there.
+A re-pointed <code>openai</code> model also stays out, since another vendor’s host does not serve
+that path. Turning <code>compaction.remote</code> off is the only thing that disables it; leaving
+it unset leaves it on.</p>
+<p><strong>A server-side compaction stores no summary text, and that is deliberate.</strong> The window
+it returns is an <code>encrypted_content</code> blob minted under the provider’s key. There is
+nothing in it to read, and nothing to decrypt: it is the compacted context itself, meant
+to be handed straight back to the same provider. The path used to run a full local
+summarization of the same span alongside the remote call and store both, which cost the
+remote call plus the exact summary the remote call was supposed to replace, and only one
+of the two was ever read. Writing readable text here is not a missing feature that could
+be added later. The only way to produce it is to pay a second model to describe a span,
+which is the local strategy with an extra network round trip in front of it, and any text
+derived from the blob rather than the span would be invented. An empty summary is the
+honest record of what happened.</p>
+<p>Because the entry cannot explain itself, the rebuild will not trust it outside the
+provider that minted it. <code>buildSessionContext</code> treats a compaction as usable only when the
+stored window replays on the active provider, or when there is real summary text. When
+neither holds, which is a fork or resume onto a different provider, it re-expands every
+message the compaction hid. Nothing was lost to recover: compaction only advances
+<code>firstKeptEntryId</code>, so the discarded span is still in the session file.</p>
+<p>Sessions compacted by the earlier, removed path (<code>preserveData.openaiRemoteCompaction</code>,
+whose summary field held a fixed placeholder) load through the same rule and re-expand.</p>
+<h3 id="handoff-generation"><a class="header" href="#handoff-generation">Handoff generation</a></h3>
+<p><code>packages/agent/src/compaction/compaction.ts</code> also exports <code>generateHandoff(...)</code>. Handoff generation uses the same <code>completeSimple(...)</code> oneshot style as summarization, but it preserves the live agent cache prefix by sending the active system prompt, tool array, and real LLM message history, then appending one agent-attributed <code>user</code> message containing the handoff prompt. It forces <code>toolChoice: "none"</code> and returns joined text blocks directly.</p>
+<p>Handoff does not write a <code>CompactionEntry</code>. <code>AgentSession.handoff()</code> performs the session transition: it starts a new session, injects the generated document as a visible <code>custom_message</code> with <code>customType: "handoff"</code>, and rebuilds agent messages from that new session.</p>
+<h3 id="file-operation-context-in-summaries"><a class="header" href="#file-operation-context-in-summaries">File-operation context in summaries</a></h3>
+<p>Compaction tracks cumulative file activity using assistant tool calls:</p>
+<ul>
+<li><code>read(path)</code> → read set</li>
+<li><code>write(path)</code> → modified set</li>
+<li><code>edit(path)</code> → modified set</li>
+</ul>
+<p>Cumulative behavior:</p>
+<ul>
+<li>Includes prior compaction details only when prior entry is pi-generated (<code>fromExtension !== true</code>).</li>
+<li>In split turns, includes turn-prefix file ops too.</li>
+<li><code>details.readFiles</code> excludes files also modified; <code>details.modifiedFiles</code> contains the rest (persisted shape is unchanged).</li>
+</ul>
+<p>The file list is a grouped, prefix-folded directory tree (find-tool shape) with a per-file access marker, <code>(Read)</code> for read-only files, <code>(Write)</code> for modified files never read, <code>(RW)</code> for modified files also present in the cumulative read set. Capped at 20 files with an <code>[…N files elided…]</code> line. Compaction and explicit handoff append it as a <code>&lt;files&gt;</code> tag (via <code>upsertFileOperations</code>).</p>
+<pre><code class="language-xml">&lt;files&gt;
+# packages/agent/src/compaction/
+compaction.ts (Read)
+utils.ts (RW)
+## prompts/
+file-operations.md (Write)
+&lt;/files&gt;
+</code></pre>
+<p>Legacy <code>&lt;read-files&gt;</code>/<code>&lt;modified-files&gt;</code> tags from summaries written by earlier versions are stripped (alongside <code>&lt;files&gt;</code>) before re-appending, so old summaries self-heal on the next compaction.</p>
+<h3 id="persist-and-reload"><a class="header" href="#persist-and-reload">Persist and reload</a></h3>
+<p>After summary generation (or a hook-provided summary), agent session:</p>
+<ol>
+<li>Appends a <code>CompactionEntry</code> with <code>appendCompaction(...)</code>.</li>
+<li>Rebuilds display context from the active leaf via <code>buildDisplaySessionContext()</code>.</li>
+<li>Replaces live agent messages with rebuilt context.</li>
+<li>Synchronizes active todo phases from the rebuilt branch and closes provider sessions whose history was rewritten.</li>
+<li>Emits <code>session_compact</code> hook event.</li>
+</ol>
+<h2 id="branch-summarization-pipeline"><a class="header" href="#branch-summarization-pipeline">Branch summarization pipeline</a></h2>
+<p>Branch summarization is tied to tree navigation, not token overflow.</p>
+<h3 id="trigger"><a class="header" href="#trigger">Trigger</a></h3>
+<p>During <code>navigateTree(...)</code>:</p>
+<ol>
+<li>Compute abandoned entries from old leaf to common ancestor using <code>collectEntriesForBranchSummary(...)</code>.</li>
+<li>If caller requested summary (<code>options.summarize</code>), generate summary before switching leaf.</li>
+<li>If summary exists, attach it at the navigation target using <code>branchWithSummary(...)</code>.</li>
+</ol>
+<p>Operationally this is commonly driven by <code>/tree</code> flow when <code>branchSummary.enabled</code> is enabled.</p>
+<h3 id="branch-switch-shape-visual"><a class="header" href="#branch-switch-shape-visual">Branch switch shape (visual)</a></h3>
+<pre><code class="language-text">Tree before navigation:
+
+         ┌─ B ─ C ─ D (old leaf, being abandoned)
+    A ───┤
+         └─ E ─ F (target)
+
+Common ancestor: A
+Entries to summarize: B, C, D
+
+After navigation with summary:
+
+         ┌─ B ─ C ─ D ─ [summary of B,C,D]
+    A ───┤
+         └─ E ─ F (new leaf)
+</code></pre>
+<h3 id="preparation-and-token-budget"><a class="header" href="#preparation-and-token-budget">Preparation and token budget</a></h3>
+<p><code>generateBranchSummary(...)</code> computes budget as:</p>
+<ul>
+<li><code>tokenBudget = model.contextWindow - branchSummary.reserveTokens</code></li>
+</ul>
+<p><code>prepareBranchEntries(...)</code> then:</p>
+<ol>
+<li>First pass: collect cumulative file ops from all summarized entries, including prior pi-generated <code>branch_summary</code> details.</li>
+<li>Second pass: walk newest → oldest, adding messages until token budget is reached.</li>
+<li>Prefer preserving recent context.</li>
+<li>May still include large summary entries near budget edge for continuity.</li>
+</ol>
+<p>Compaction entries are included as messages (<code>compactionSummary</code>) during branch summarization input.</p>
+<h3 id="summary-generation-and-persistence"><a class="header" href="#summary-generation-and-persistence">Summary generation and persistence</a></h3>
+<p>Branch summarization:</p>
+<ol>
+<li>Converts and serializes selected messages.</li>
+<li>Wraps in <code>&lt;conversation&gt;</code>.</li>
+<li>Uses custom instructions if supplied, otherwise <code>branch-summary.md</code>.</li>
+<li>Calls summarization model with <code>SUMMARIZATION_SYSTEM_PROMPT</code>.</li>
+<li>Prepends <code>branch-summary-preamble.md</code>.</li>
+<li>Appends file-operation tags.</li>
+</ol>
+<p>Result is stored as <code>BranchSummaryEntry</code> with optional details (<code>readFiles</code>, <code>modifiedFiles</code>).</p>
+<h2 id="extension-and-hook-touchpoints"><a class="header" href="#extension-and-hook-touchpoints">Extension and hook touchpoints</a></h2>
+<h3 id="session_before_compact"><a class="header" href="#session_before_compact"><code>session_before_compact</code></a></h3>
+<p>Pre-compaction hook.</p>
+<p>Can:</p>
+<ul>
+<li>cancel compaction (<code>{ cancel: true }</code>)</li>
+<li>provide full custom compaction payload (<code>{ compaction: CompactionResult }</code>)</li>
+</ul>
+<h3 id="session_compacting"><a class="header" href="#session_compacting"><code>session_compacting</code></a></h3>
+<p>Prompt/context customization hook for default compaction.</p>
+<p>Can return:</p>
+<ul>
+<li><code>prompt</code> (override base summary prompt)</li>
+<li><code>context</code> (extra context lines injected into <code>&lt;additional-context&gt;</code>)</li>
+<li><code>preserveData</code> (stored on compaction entry)</li>
+</ul>
+<h3 id="session_compact"><a class="header" href="#session_compact"><code>session_compact</code></a></h3>
+<p>Post-compaction notification with saved <code>compactionEntry</code> and <code>fromExtension</code> flag.</p>
+<h3 id="session_before_tree"><a class="header" href="#session_before_tree"><code>session_before_tree</code></a></h3>
+<p>Runs on tree navigation before default branch summary generation.</p>
+<p>Can:</p>
+<ul>
+<li>cancel navigation</li>
+<li>provide custom <code>{ summary: { summary, details } }</code> used when user requested summarization</li>
+</ul>
+<h3 id="session_tree"><a class="header" href="#session_tree"><code>session_tree</code></a></h3>
+<p>Post-navigation event exposing new/old leaf and optional summary entry.</p>
+<h2 id="which-model-compacts"><a class="header" href="#which-model-compacts">Which model compacts</a></h2>
+<p><code>compaction.model</code> (settings/<code>config.yml</code>, <code>--compaction-model</code> CLI, or the Compaction Model picker in <code>/settings</code>) selects the model used for LLM compaction and handoff generation. <strong>Default: unset, compaction inherits the main session model live</strong>, so switching the session model also switches the compactor. When set, <code>resolveCompactionModelPatterns</code> expands the value through the normal pattern/role resolution (role aliases like <code>"@smol"</code> and <code>:thinking</code> suffixes work), and auto compaction tries the resulting candidates in order. The value is a chain and can be written either way, as a comma-separated string (<code>opus,sonnet</code>) or as a YAML list; both normalize to the same ordered candidates. Legacy config keys <code>compaction.compactionModel</code> / top-level <code>compactionModel</code> are migrated to <code>compaction.model</code> on load.</p>
+<h2 id="runtime-behavior-and-failure-semantics"><a class="header" href="#runtime-behavior-and-failure-semantics">Runtime behavior and failure semantics</a></h2>
+<ul>
+<li>Manual compaction aborts current agent operation first.</li>
+<li><code>abortCompaction()</code> cancels manual compaction, auto-compaction, and handoff generation controllers.</li>
+<li>Auto compaction emits start/end session events for UI/state updates.</li>
+<li>Auto compaction can try multiple model candidates and retry transient failures; long retry delays prefer the next candidate when one is available.</li>
+<li>Overflow errors are excluded from generic retry path because they are handled by context promotion/compaction.</li>
+<li>If auto-compaction fails:
+<ul>
+<li>overflow path emits <code>Context overflow recovery failed: ...</code></li>
+<li>incomplete-output path emits <code>Incomplete response recovery failed: ...</code></li>
+<li>threshold/idle paths emit <code>Auto-compaction failed: ...</code></li>
+</ul>
+</li>
+<li>Branch summarization can be cancelled via abort signal (e.g., Escape), returning canceled/aborted navigation result.</li>
+</ul>
+<h2 id="settings-and-defaults"><a class="header" href="#settings-and-defaults">Settings and defaults</a></h2>
+<p>From <code>settings-schema.ts</code>:</p>
+<ul>
+<li><code>compaction.enabled</code> = <code>true</code></li>
+<li><code>compaction.strategy</code> = <code>"summary"</code>, the sole strategy. Every stored legacy strategy token migrates to <code>summary</code>; legacy <code>off</code> also sets <code>compaction.enabled: false</code>. Use <code>/handoff</code> for an explicit transfer to a new session.</li>
+<li><code>compaction.reserveTokens</code> = unset (absent key). When unset the compaction layer falls back to <code>DEFAULT_RESERVE_TOKENS</code> = <code>16384</code>, and small-window recovery may substitute a proportional 15%-of-window reserve when the default does not fit the window (<code>resolveBudgetReserveTokens</code>).</li>
+<li><code>compaction.keepRecentTokens</code> = <code>10000</code></li>
+<li><code>compaction.supersedeReads</code> = <code>true</code> (drop earlier file reads that a later read of the same file makes redundant)</li>
+<li><code>compaction.dropUseless</code> = <code>true</code></li>
+<li><code>compaction.handoffSaveToDisk</code> = <code>false</code> (also write the handoff packet to disk)</li>
+<li><code>compaction.modelContextWindow</code> = unset (absent key); overrides the window size the compaction budget resolves against</li>
+<li><code>compaction.autoContinue</code> = <code>true</code></li>
+<li><code>compaction.midTurnEnabled</code> = <code>true</code></li>
+<li><code>compaction.remoteEndpoint</code> = <code>undefined</code></li>
+<li><code>compaction.threshold</code> = <code>auto</code>; the one trigger setting, with its unit in the value. <code>auto</code> is <code>contextWindow - max(15% of contextWindow, reserveTokens)</code>. <code>85%</code> is a percent of the current model’s window. <code>170000</code> is an absolute token amount, model-independent: compaction runs once context exceeds that many tokens whatever the current model’s window is, and when the amount is larger than that window it is honored up to <code>contextWindow - 1</code> with a one-time warning (never silently reinterpreted). Resolution and the migration off the two retired keys live in <code>packages/agent/src/compaction/threshold.ts</code>.</li>
+<li><code>compaction.thresholdTokens</code> = <code>-1</code> and <code>compaction.thresholdPercent</code> = <code>-1</code>; retired. The global config is rewritten on load (<code>#migrateRawSettings</code>): a positive amount becomes <code>threshold: &lt;amount&gt;</code>, a positive percent becomes <code>threshold: &lt;percent&gt;%</code> (the amount wins when both are set), and both keys are dropped, so the ambiguity leaves the file without moving the trigger. Config sources that are never rewritten — project files, <code>--config</code> overlays — are folded in at read time by <code>withLegacyCompactionThreshold</code> with the same precedence, and the session reports which retired key supplied the value.</li>
+<li><code>compaction.idleEnabled</code> = <code>false</code></li>
+<li><code>compaction.idleThresholdTokens</code> = <code>200000</code></li>
+<li><code>compaction.idleTimeoutSeconds</code> = <code>300</code></li>
+<li><code>branchSummary.enabled</code> = <code>false</code></li>
+<li><code>branchSummary.reserveTokens</code> = <code>16384</code></li>
+</ul>
+<p>These values are consumed at runtime by <code>AgentSession</code> and compaction/branch summarization modules.</p>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="../architecture/memory.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                            </a>
+
+                            <a rel="next prefetch" href="../architecture/tui.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="../architecture/memory.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                    </a>
+
+                    <a rel="next prefetch" href="../architecture/tui.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                    </a>
+            </nav>
+
+        </div>
+
+        <template id=fa-eye><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M288 32c-80.8 0-145.5 36.8-192.6 80.6C48.6 156 17.3 208 2.5 243.7c-3.3 7.9-3.3 16.7 0 24.6C17.3 304 48.6 356 95.4 399.4C142.5 443.2 207.2 480 288 480s145.5-36.8 192.6-80.6c46.8-43.5 78.1-95.4 93-131.1c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C433.5 68.8 368.8 32 288 32zM432 256c0 79.5-64.5 144-144 144s-144-64.5-144-144s64.5-144 144-144s144 64.5 144 144zM288 192c0 35.3-28.7 64-64 64c-11.5 0-22.3-3-31.6-8.4c-.2 2.8-.4 5.5-.4 8.4c0 53 43 96 96 96s96-43 96-96s-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6z"/></svg></span></template>
+        <template id=fa-eye-slash><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M38.8 5.1C28.4-3.1 13.3-1.2 5.1 9.2S-1.2 34.7 9.2 42.9l592 464c10.4 8.2 25.5 6.3 33.7-4.1s6.3-25.5-4.1-33.7L525.6 386.7c39.6-40.6 66.4-86.1 79.9-118.4c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C465.5 68.8 400.8 32 320 32c-68.2 0-125 26.3-169.3 60.8L38.8 5.1zM223.1 149.5C248.6 126.2 282.7 112 320 112c79.5 0 144 64.5 144 144c0 24.9-6.3 48.3-17.4 68.7L408 294.5c5.2-11.8 8-24.8 8-38.5c0-53-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6c0 10.2-2.4 19.8-6.6 28.3l-90.3-70.8zm223.1 298L373 389.9c-16.4 6.5-34.3 10.1-53 10.1c-79.5 0-144-64.5-144-144c0-6.9 .5-13.6 1.4-20.2L83.1 161.5C60.3 191.2 44 220.8 34.5 243.7c-3.3 7.9-3.3 16.7 0 24.6c14.9 35.7 46.2 87.7 93 131.1C174.5 443.2 239.2 480 320 480c47.8 0 89.9-12.9 126.2-32.5z"/></svg></span></template>
+        <template id=fa-copy><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M502.6 70.63l-61.25-61.25C435.4 3.371 427.2 0 418.7 0H255.1c-35.35 0-64 28.66-64 64l.0195 256C192 355.4 220.7 384 256 384h192c35.2 0 64-28.8 64-64V93.25C512 84.77 508.6 76.63 502.6 70.63zM464 320c0 8.836-7.164 16-16 16H255.1c-8.838 0-16-7.164-16-16L239.1 64.13c0-8.836 7.164-16 16-16h128L384 96c0 17.67 14.33 32 32 32h47.1V320zM272 448c0 8.836-7.164 16-16 16H63.1c-8.838 0-16-7.164-16-16L47.98 192.1c0-8.836 7.164-16 16-16H160V128H63.99c-35.35 0-64 28.65-64 64l.0098 256C.002 483.3 28.66 512 64 512h192c35.2 0 64-28.8 64-64v-32h-47.1L272 448z"/></svg></span></template>
+        <template id=fa-play><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M73 39c-14.8-9.1-33.4-9.4-48.5-.9S0 62.6 0 80V432c0 17.4 9.4 33.4 24.5 41.9s33.7 8.1 48.5-.9L361 297c14.3-8.7 23-24.2 23-41s-8.7-32.2-23-41L73 39z"/></svg></span></template>
+        <template id=fa-clock-rotate-left><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M75 75L41 41C25.9 25.9 0 36.6 0 57.9V168c0 13.3 10.7 24 24 24H134.1c21.4 0 32.1-25.9 17-41l-30.8-30.8C155 85.5 203 64 256 64c106 0 192 86 192 192s-86 192-192 192c-40.8 0-78.6-12.7-109.7-34.4c-14.5-10.1-34.4-6.6-44.6 7.9s-6.6 34.4 7.9 44.6C151.2 495 201.7 512 256 512c141.4 0 256-114.6 256-256S397.4 0 256 0C185.3 0 121.3 28.7 75 75zm181 53c-13.3 0-24 10.7-24 24V256c0 6.4 2.5 12.5 7 17l72 72c9.4 9.4 24.6 9.4 33.9 0s9.4-24.6 0-33.9l-65-65V152c0-13.3-10.7-24-24-24z"/></svg></span></template>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="../elasticlunr-ef4e11c1.min.js"></script>
+        <script src="../mark-09e88c2c.min.js"></script>
+        <script src="../searcher-c2a407aa.js"></script>
+
+        <script src="../clipboard-1626706a.min.js"></script>
+        <script src="../highlight-abc7f01d.js"></script>
+        <script src="../book-a0b12cfe.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+
+    </div>
+    </body>
+</html>

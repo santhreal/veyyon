@@ -1,0 +1,611 @@
+# MCP configuration in Veyyon
+
+This guide explains how to add, edit, and validate MCP servers for the Veyyon coding agent.
+
+Source of truth in code:
+
+- Runtime config types: `packages/coding-agent/src/mcp/types.ts`
+- Config writer: `packages/coding-agent/src/mcp/config-writer.ts`
+- Loader + validation: `packages/coding-agent/src/mcp/config.ts`
+- Capability providers (the editor configs Veyyon also reads): `packages/coding-agent/src/discovery/`
+- Schema: `packages/coding-agent/src/config/mcp-schema.json`
+
+## Where MCP config lives
+
+Veyyon-native MCP config lives in exactly one file, the active profile's agent directory:
+
+- `~/.veyyon/profiles/default/agent/mcp.json`
+- `~/.veyyon/profiles/<name>/agent/mcp.json` when a named profile is active (see [Profiles](#profiles))
+
+The native provider also reads `.mcp.json` beside it for compatibility, but Veyyon writes to `mcp.json`.
+
+There is no project scope, and no `/mcp` subcommand takes a scope at all. `.veyyon/mcp.json`, a root
+`mcp.json` and a root `.mcp.json` inside a working tree used to be loaded and used to be writable
+through `/mcp add --scope project`; none of them is read now, and neither the option spelling nor the
+plain words `project` and `user` are accepted. Both are rejected with the reason, on the text surface
+as well as in the terminal: the text handler kept the scope after the terminal dropped it, defaulted
+to it, and wrote a file nothing loads while reporting success. A repository is content you may not
+have written, so a checked-in file must not name a server the agent connects to or a command it
+spawns. Veyyon still discovers servers from other tools' user-level configs (`~/.claude.json`,
+`~/.claude/mcp.json`, `~/.cursor/mcp.json`, `~/.codex/config.toml`, `~/.gemini/settings.json`,
+opencode, windsurf, and more), always from your home directory, never from a working tree, and
+`/mcp list` shows the file each server came from.
+
+One project-controlled route to an MCP server remains, and it is gated rather than removed: a
+project plugin registry (`.veyyon/plugins/installed_plugins.json`) names plugin directories, and a
+plugin may ship a `.mcp.json`. The registry is withheld until you approve it. See
+[Project trust](./project-trust.md).
+
+### Profiles
+
+Named profiles (`veyyon --profile <name>`, the `--alias` shortcut, or `VEYYON_PROFILE` still work) isolate MCP config. When a profile is active, `mcp.json` resolves to that profile's agent directory:
+
+- Default profile: `~/.veyyon/profiles/default/agent/mcp.json`
+- Profile `<name>`: `~/.veyyon/profiles/<name>/agent/mcp.json`
+
+Discovery, the `/mcp` commands, and the config writer all follow the active profile, so a profile sees **only** its own servers, never the default profile's `~/.veyyon/profiles/default/agent/mcp.json`. Add a server to a profile by launching under it (`veyyon --profile <name>`) and running `/mcp add`, or by editing `~/.veyyon/profiles/<name>/agent/mcp.json` directly.
+
+External-tool configs (`.claude/`, `.cursor/`, etc.) are profile-independent because they belong to those tools rather than to a Veyyon profile.
+
+MCP follows the same profile rules as the rest of Veyyon-native config; see [Configuration Discovery → Profiles](../architecture/config.md#profiles).
+
+## Add a schema reference
+
+Add this line at the top of the file for editor autocomplete and validation:
+
+```json
+{
+  "$schema": "https://raw.githubusercontent.com/santhreal/veyyon/main/packages/coding-agent/src/config/mcp-schema.json",
+  "mcpServers": {}
+}
+```
+
+Veyyon now writes this automatically when `/mcp add`, `/mcp enable`, `/mcp disable`, `/mcp reauth`, or other config-writing flows create or update a Veyyon-managed MCP file.
+
+## File shape
+
+Veyyon supports this top-level structure:
+
+```json
+{
+  "$schema": "https://raw.githubusercontent.com/santhreal/veyyon/main/packages/coding-agent/src/config/mcp-schema.json",
+  "mcpServers": {
+    "server-name": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "some-mcp-server"]
+    }
+  },
+  "disabledServers": ["server-name"]
+}
+```
+
+Top-level keys:
+
+- `$schema`: optional JSON Schema URL for tooling
+- `mcpServers`: map of server name to server config
+- `enabledServers`: user-level list that overrides a discovered server's `enabled: false` flag (for example when the source config is owned by another tool such as `opencode.json`); `disabledServers` still wins
+- `disabledServers`: user-level denylist used to turn off discovered servers by name; runtime loading reads this list from the active profile's user MCP file (`~/.veyyon/profiles/default/agent/mcp.json`, or `~/.veyyon/profiles/<name>/agent/mcp.json` under a named profile)
+
+Server names must match `^[a-zA-Z0-9_.-]{1,100}$`.
+
+## Supported server fields
+
+Shared fields for every transport:
+
+- `enabled?: boolean`: skip this server when `false`
+- `timeout?: number`: MCP request timeout in milliseconds; `0` disables client-side MCP timeouts
+- `auth?: { ... }`: auth metadata used by Veyyon for OAuth/API-key flows
+- `oauth?: { ... }`: explicit OAuth client settings used during auth/reauth
+
+Set `VEYYON_MCP_TIMEOUT_MS=0` to disable the client-side timeout for every MCP server in the current process. Set it to a positive millisecond value, such as `VEYYON_MCP_TIMEOUT_MS=120000`, to apply one global timeout without editing each server entry.
+
+### `stdio` transport
+
+`stdio` is the default when `type` is omitted.
+
+Required:
+
+- `command: string`
+
+Optional:
+
+- `type?: "stdio"`
+- `args?: string[]`
+- `env?: Record<string, string>`
+- `envPassthrough?: string[]` — ambient variables to forward by name
+- `inheritEnv?: boolean` — forward the whole ambient environment, credentials included
+- `cwd?: string`
+
+A stdio server receives a baseline of variables a program needs in order to run (`PATH`, `HOME`,
+temp, locale, certificate and proxy settings, and version-manager directories; on Windows also
+`PATHEXT`, `SystemRoot`, `ComSpec` and the `ProgramFiles` variants), plus `env` and the names
+listed in `envPassthrough`. Every other ambient variable is withheld. `inheritEnv: true` disables
+that bound for one server and logs a warning on each spawn. See
+[MCP setup](../using/mcp-setup.md#pass-environment-variables).
+
+Example:
+
+```json
+{
+  "$schema": "https://raw.githubusercontent.com/santhreal/veyyon/main/packages/coding-agent/src/config/mcp-schema.json",
+  "mcpServers": {
+    "filesystem": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "/Users/alice/projects",
+        "/Users/alice/Documents"
+      ]
+    }
+  }
+}
+```
+
+This follows the official Filesystem MCP server package (`@modelcontextprotocol/server-filesystem`).
+
+### `http` transport
+
+Required:
+
+- `type: "http"`
+- `url: string`
+
+Optional:
+
+- `headers?: Record<string, string>`
+
+Example:
+
+```json
+{
+  "$schema": "https://raw.githubusercontent.com/santhreal/veyyon/main/packages/coding-agent/src/config/mcp-schema.json",
+  "mcpServers": {
+    "github": {
+      "type": "http",
+      "url": "https://api.githubcopilot.com/mcp/"
+    }
+  }
+}
+```
+
+This matches GitHub's hosted GitHub MCP server endpoint.
+
+### `sse` transport
+
+Required:
+
+- `type: "sse"`
+- `url: string`
+
+Optional:
+
+- `headers?: Record<string, string>`
+
+Example:
+
+```json
+{
+  "$schema": "https://raw.githubusercontent.com/santhreal/veyyon/main/packages/coding-agent/src/config/mcp-schema.json",
+  "mcpServers": {
+    "legacy-remote": {
+      "type": "sse",
+      "url": "https://example.com/mcp/sse"
+    }
+  }
+}
+```
+
+`sse` is still supported for compatibility, but the MCP spec now prefers Streamable HTTP (`type: "http"`) for new servers.
+
+## Stopping a stdio server
+
+A stdio server is usually started through a wrapper: `npx`, `uvx`, `docker run`, or a script
+in a repository. The wrapper starts the real server as a child of its own, so the process
+Veyyon spawned is not the process serving tools.
+
+Ending a server ends the whole tree. Veyyon signals every live descendant and then the
+process it spawned, waits 500 ms, and repeats the wave with a hard kill if anything is still
+running. The second wave re-walks the tree, so a process started during the wait is included.
+The wait after the hard kill is bounded at 1.5 s, so `/mcp reload`, a disconnect, and session
+shutdown always return. The same teardown runs when a handshake fails, including a server that
+never answers `initialize`.
+
+The process group is signalled only when the server leads a group of its own. On Linux the
+server starts in a new session, so its group holds nothing else. On macOS it stays attached so
+the system can prompt for file access, and Windows has no process groups; there the group is
+Veyyon's own and is left alone.
+
+A server that daemonizes — double-forks into its own session — is outside this. It outlives the
+session that started it and has to be stopped by hand.
+
+## Auth fields
+
+Veyyon understands two auth-related objects.
+
+### `auth`
+
+```json
+{
+  "type": "oauth" | "apikey",
+  "credentialId": "optional-stored-credential-id",
+  "tokenUrl": "optional-token-endpoint",
+  "clientId": "optional-client-id",
+  "clientSecret": "optional-client-secret",
+  "resource": "optional-mcp-resource-uri"
+}
+```
+
+Use this when Veyyon should remember how to rehydrate credentials for a server.
+
+You normally do not need to write this block: when Veyyon completes an OAuth flow
+for an `http`/`sse` server it stores the credential under a deterministic id
+derived from the active profile and server URL
+(`mcp_oauth:profile:<profile>:<url>`), with the refresh material embedded. Any
+config that points at the same URL, including a *definition-only* entry with no
+`auth` block at all, resolves the active profile's own credential automatically,
+including when auth storage is backed by a shared auth broker. An explicit
+`credentialId` is still honored when it resolves; if it points at another
+profile's row, Veyyon falls back to the profile-scoped url-keyed binding.
+
+`/mcp reauth` on a definition-only entry leaves the file untouched, the
+credential (refresh material included) lives entirely in the active profile's
+auth storage (local `agent.db` or broker), so no config file ever picks up local
+auth state. An explicitly configured `Authorization` header always wins over the
+url-keyed binding.
+
+The binding is per profile but not per project: once a profile has authorized a
+URL, any config defining a server at that URL connects with that profile's
+credential automatically. That is one reason a repository cannot define an MCP
+server: a checked-in entry stating an already-authorized URL would have borrowed
+the profile's credential. Servers you add through `/mcp add` are yours, and the
+editor configs Veyyon still reads are named by file in `/mcp list`.
+
+### `oauth`
+
+```json
+{
+  "clientId": "...",
+  "clientSecret": "...",
+  "redirectUri": "...",
+  "callbackPort": 3334,
+  "callbackPath": "/oauth/callback",
+  "prompt": "consent"
+}
+```
+
+Use this when the MCP server requires explicit OAuth client settings.
+
+`prompt` controls the OAuth `prompt` parameter sent with the authorization request. By default the parameter is omitted, matching the reference MCP SDK, except when the granted scopes include `offline_access`: OIDC Core requires `prompt=consent` to issue refresh-token access, so Veyyon sends `consent` for those requests. Without a consent prompt, a provider with an active browser session silently re-approves the same account, making it impossible to switch accounts or workspaces when reauthorizing (e.g. to use a different Linear workspace per Veyyon profile). Set it to `""` to omit the parameter for providers that reject it, or to another value the provider understands (e.g. `"select_account"`).
+
+Slack is the clearest current example. Slack's MCP server is hosted at `https://mcp.slack.com/mcp`, uses Streamable HTTP, and requires confidential OAuth with your Slack app's client credentials.
+
+Example:
+
+```json
+{
+  "$schema": "https://raw.githubusercontent.com/santhreal/veyyon/main/packages/coding-agent/src/config/mcp-schema.json",
+  "mcpServers": {
+    "slack": {
+      "type": "http",
+      "url": "https://mcp.slack.com/mcp",
+      "oauth": {
+        "clientId": "YOUR_SLACK_CLIENT_ID",
+        "clientSecret": "YOUR_SLACK_CLIENT_SECRET"
+      },
+      "auth": {
+        "type": "oauth",
+        "tokenUrl": "https://slack.com/api/oauth.v2.user.access",
+        "clientId": "YOUR_SLACK_CLIENT_ID",
+        "clientSecret": "YOUR_SLACK_CLIENT_SECRET"
+      }
+    }
+  }
+}
+```
+
+Relevant Slack endpoints from Slack's docs:
+
+- MCP endpoint: `https://mcp.slack.com/mcp`
+- Authorization endpoint: `https://slack.com/oauth/v2_user/authorize`
+- Token endpoint: `https://slack.com/api/oauth.v2.user.access`
+
+## Common copy-paste examples
+
+### Filesystem server via stdio
+
+```json
+{
+  "$schema": "https://raw.githubusercontent.com/santhreal/veyyon/main/packages/coding-agent/src/config/mcp-schema.json",
+  "mcpServers": {
+    "filesystem": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "/absolute/path/one",
+        "/absolute/path/two"
+      ]
+    }
+  }
+}
+```
+
+### GitHub hosted server via HTTP
+
+```json
+{
+  "$schema": "https://raw.githubusercontent.com/santhreal/veyyon/main/packages/coding-agent/src/config/mcp-schema.json",
+  "mcpServers": {
+    "github": {
+      "type": "http",
+      "url": "https://api.githubcopilot.com/mcp/"
+    }
+  }
+}
+```
+
+### GitHub local server via Docker
+
+```json
+{
+  "$schema": "https://raw.githubusercontent.com/santhreal/veyyon/main/packages/coding-agent/src/config/mcp-schema.json",
+  "mcpServers": {
+    "github": {
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "-e",
+        "GITHUB_PERSONAL_ACCESS_TOKEN",
+        "ghcr.io/github/github-mcp-server"
+      ],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "GITHUB_PERSONAL_ACCESS_TOKEN"
+      }
+    }
+  }
+}
+```
+
+This matches GitHub's official local Docker image `ghcr.io/github/github-mcp-server`.
+
+### Slack hosted server via OAuth
+
+```json
+{
+  "$schema": "https://raw.githubusercontent.com/santhreal/veyyon/main/packages/coding-agent/src/config/mcp-schema.json",
+  "mcpServers": {
+    "slack": {
+      "type": "http",
+      "url": "https://mcp.slack.com/mcp",
+      "oauth": {
+        "clientId": "YOUR_SLACK_CLIENT_ID",
+        "clientSecret": "YOUR_SLACK_CLIENT_SECRET"
+      },
+      "auth": {
+        "type": "oauth",
+        "tokenUrl": "https://slack.com/api/oauth.v2.user.access",
+        "clientId": "YOUR_SLACK_CLIENT_ID",
+        "clientSecret": "YOUR_SLACK_CLIENT_SECRET"
+      }
+    }
+  }
+}
+```
+
+## Secrets and variable resolution
+
+This is the part that usually trips people up.
+
+### Discovery-time `${...}` expansion
+
+Veyyon expands `${VAR}` and `${VAR:-default}` placeholders while discovering MCP configs from Veyyon-native files and standalone fallback files. Expansion applies recursively to string values in `command`, `args`, `env`, `cwd`, `url`, `headers`, `auth`, and `oauth`.
+
+An unset variable with no default leaves the placeholder text in the value. In `command`, `args`, `cwd`, `url` and `envPassthrough` that text would become a program, an argument, a directory or a hostname, so the server is not started: the connection is refused with the field and the variable named, and nothing is spawned or dialled. `env` and `headers` are resolved again before connect and refuse the same way (below). In `auth` and `oauth` the placeholder is sent to the authorization server, which rejects the exchange.
+
+A placeholder in a structural field is therefore resolved here or refused; it never reaches the server as text. To let a server read a variable itself, name it in `env` (or in `envPassthrough`) and read it from the process environment inside the server.
+
+Example:
+
+```json
+{
+  "mcpServers": {
+    "github": {
+      "type": "http",
+      "url": "https://api.githubcopilot.com/mcp/",
+      "headers": {
+        "Authorization": "Bearer ${GITHUB_TOKEN}"
+      }
+    }
+  }
+}
+```
+
+### Pre-connect env/header resolution
+
+Before Veyyon launches a stdio server or makes an HTTP/SSE request, it resolves stdio `env` values
+and HTTP/SSE `headers` values like this:
+
+1. A value starting with `!` runs as a shell command with a 10s timeout and its trimmed stdout is
+   used. A command that fails, times out, or prints only whitespace omits that entry.
+2. `${NAME}` or `$NAME` reads the environment variable `NAME`.
+3. A bare value shaped like an environment variable name (`GITHUB_TOKEN`, upper case, digits and
+   underscores) reads that variable too.
+4. `literal:<text>` is `<text>`, verbatim, with no lookup.
+5. Any other value is itself.
+
+A variable that is unset, or set to an empty string, resolves to nothing. The connection is not
+attempted and the error states the variable:
+
+```console
+The header "Authorization" for https://api.example.com/mcp refers to the environment variable
+GITHUB_TOKN, which is not set, so the connection was not attempted rather than sent with the
+variable's own name as the value.
+```
+
+Earlier versions used the variable's own name as the value in that case, so a typo was sent to the
+server as the credential and came back as the server's opinion of a bad token.
+
+Examples:
+
+```json
+{
+  "env": {
+    "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_PERSONAL_ACCESS_TOKEN}"
+  },
+  "headers": {
+    "X-MCP-Insiders": "true"
+  }
+}
+```
+
+- `"GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_PERSONAL_ACCESS_TOKEN}"` → copy from the current shell
+  environment, and refuse to connect when it is missing
+- `"Authorization": "Bearer hardcoded-token"` → use the literal value
+- `"X-Api-Key": "literal:PROJECT_KEY"` → send `PROJECT_KEY` as the value, without looking it up
+- `"Authorization": "!printf 'Bearer %s' \"$GITHUB_TOKEN\""` → build the header from a command
+
+### When a command runs again
+
+A command's output is cached under the command text, so the same command is executed once per
+session however many servers and headers use it. Three events drop that cached output and run the
+command again:
+
+- A request answered with 401 or 403. The retry uses the new value.
+- `/mcp reconnect <name>`, which re-reads the credentials of that server only.
+- `/mcp reload`, which re-reads the credentials of every configured MCP server. Commands used
+  outside MCP config, such as a provider `apiKey`, keep their cached value.
+
+An automatic reconnect after a dropped connection reuses the cached value. A lost connection indicates
+nothing about the credential, and re-running a password-manager command on every reconnect means
+an unlock prompt for each one.
+
+A command that fails is not retried for 30 seconds, and an invalidation does not shorten that.
+
+### When a stored credential cannot be presented
+
+A server authorized with OAuth keeps its credential in the profile's credential store. When that
+credential exists but cannot be used, Veyyon does not connect without it. The connection fails,
+`/mcp list` shows the failure, and the message states the state and the command that fixes it:
+
+- The credential was rejected and cleared. Run `/mcp reauth <name>`.
+- The access token expired and the refresh token is held by the auth broker, which this process
+  cannot use. Run `/mcp reauth <name>` to authorize again through the broker.
+- The credential store could not be read or renewed. Run `/mcp reconnect <name>` to retry; the
+  credential is left alone, because a store failure indicates nothing about it.
+
+A refresh that fails while the access token is still valid keeps connecting with that token: the
+refresh runs up to five minutes before expiry, so the session still works.
+
+A server with no stored credential connects as configured. Nothing was authorized, so an
+unauthenticated request is what the server sees, and its own answer is what Veyyon reports.
+
+## `disabledServers`
+
+`disabledServers` is read from the user config file (`~/.veyyon/profiles/default/agent/mcp.json`) when a server is discovered from any source and you want Veyyon to ignore it without editing that other tool's config.
+
+Example:
+
+```json
+{
+  "$schema": "https://raw.githubusercontent.com/santhreal/veyyon/main/packages/coding-agent/src/config/mcp-schema.json",
+  "disabledServers": ["github", "slack"]
+}
+```
+
+## `/mcp add` vs editing JSON directly
+
+Use `/mcp add` when you want guided setup.
+
+Use direct JSON editing when:
+
+- you need a transport or auth option the wizard does not prompt for yet
+- you want to paste a server definition from another MCP client
+- you want schema-backed validation in your editor
+
+After editing, use:
+
+- `/mcp reload` to rediscover and reconnect servers in the current session
+- `/mcp list` to see which config file a server came from
+- `/mcp test <name>` to test a single server
+- `/mcp reconnect <name>` to reconnect one server without rediscovering all configs
+- `/mcp resources`, `/mcp prompts`, and `/mcp notifications` to inspect non-tool MCP capabilities
+
+## Validation rules Veyyon enforces
+
+From `validateServerConfig()` in `packages/coding-agent/src/mcp/config.ts`:
+
+- `stdio` requires `command`
+- `http` and `sse` require `url`
+- a server cannot set both `command` and `url`
+- unknown `type` values are rejected
+
+Practical implications:
+
+- Omitting `type` means `stdio`
+- If you paste a remote server config and forget `"type": "http"`, Veyyon will treat it as `stdio` and complain that `command` is missing
+- `sse` remains valid for compatibility, but new hosted servers should usually be configured as `http`
+
+## Discovery and precedence
+
+Veyyon does not merge duplicate server definitions across files. Discovery providers are prioritized, and the higher-priority definition wins. Separately, `disabledServers` from `~/.veyyon/profiles/default/agent/mcp.json` can suppress a discovered server by name.
+
+In practice:
+
+- prefer `~/.veyyon/profiles/default/agent/mcp.json` when you want a Veyyon-specific override
+- keep server names unique across tools when possible
+- use `disabledServers` in the user config when a third-party config keeps reintroducing a server you do not want
+
+## Troubleshooting
+
+### `Server "name": stdio server requires "command" field`
+
+You probably omitted `type: "http"` on a remote server.
+
+### `Server "name": both "command" and "url" are set`
+
+Pick one transport. Veyyon treats `command` as stdio and `url` as http/sse.
+
+### `/mcp add` worked but the server still does not connect
+
+The JSON is valid, but the server may still be unreachable. Use `/mcp test <name>` and check whether:
+
+- the binary or Docker image exists
+- required environment variables are set
+- the remote URL is reachable
+- the OAuth or API token is valid
+
+### The server exists in another tool's config but not in Veyyon
+
+Run `/mcp list`: it shows the file each server came from. Veyyon discovers many third-party MCP files, but it never reads a repository's own `mcp.json`, `.mcp.json` or `.veyyon/mcp.json`, and a `disabledServers` entry in your profile's `mcp.json` can suppress a discovered server by name.
+
+### A call fails with a protocol error rather than a timeout
+
+JSON-RPC lets a server answer with `"id": null` when it cannot tell which request an error belongs
+to. A parse error is the usual case: the server could not read the request well enough to find its
+id, so it has nothing to attribute the failure to.
+
+Veyyon surfaces that answer instead of waiting. Every call in flight on that connection fails with
+the server's own code and message, for example:
+
+```
+MCP error -32700: Parse error
+```
+
+The alternative would be to ignore a reply with no request id, and then every pending call sits
+until its timeout and reports that the server did not answer. That is the opposite of what
+happened: the server answered, and told you exactly what was wrong.
+
+A `-32700` means the bytes Veyyon sent were not valid JSON to that server, so report it with the
+server name and the tool you called. It is a bug in the server or in the transport, not something a
+config change fixes.
+
+## References
+
+- MCP transport spec: https://modelcontextprotocol.io/specification/2025-03-26/basic/transports
+- Filesystem server package: https://www.npmjs.com/package/@modelcontextprotocol/server-filesystem
+- GitHub MCP server: https://github.com/github/github-mcp-server
+- Slack MCP server docs: https://docs.slack.dev/ai/slack-mcp-server/

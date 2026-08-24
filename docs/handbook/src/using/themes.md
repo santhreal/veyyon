@@ -1,14 +1,15 @@
 # Themes and identity
 
-Veyyon's interface is built around near-black, near-white, and a persistent **Veyyon silver** accent (`#C6CBD4`).
+Veyyon's interface is built around near-black, near-white, silver structure (`#C6CBD4`), and a single
+**ember** accent (`#F0862E`) — the same tokens the website ships.
 
 ## Bundled themes
 
 | File | Name | Notes |
 | --- | --- | --- |
-| `dark.json` | Veyyon Dark | **Default dark theme.** Pitch black `#000000` / `#FAFAFA` / silver `#B8BDC7`; predates the ember accent |
-| `light.json` | Light | **Default light theme.** White `#FFFFFF` ground with dark-silver structure `#5C6470` |
-| `defaults/titanium.json` | Titanium | The brand theme: pitch black `#000000`, silver `#C6CBD4`, ember accent `#F0862E`, matches the website tokens (`website/site.css`) |
+| `defaults/titanium.json` | Titanium | **Default dark theme.** Pitch black `#000000`, silver `#C6CBD4`, ember accent `#F0862E`; mirrors the website tokens (`website/site.css`) |
+| `dark.json` | Veyyon Dark | Bundled alternative. Pitch black `#000000` / `#FAFAFA` / silver `#B8BDC7`; predates the ember accent |
+| `light.json` | Light | **Default light theme.** White `#FFFFFF` ground with dark-silver structure `#5C6470`, ember accent |
 
 A larger bundled catalog ships under `modes/theme/defaults/` and is selectable from the theme picker.
 
@@ -16,7 +17,7 @@ A larger bundled catalog ships under `modes/theme/defaults/` and is selectable f
 
 - **Settings UI:** `/settings` → Appearance → theme (or the theme picker on first run).
 - **Config:** `theme` in `~/.veyyon/profiles/default/agent/config.yml` (profile-specific when using `--profile`).
-- **Custom themes:** drop JSON under `~/.veyyon/profiles/default/agent/themes/`; schema in `docs/theme.md`.
+- **Custom themes:** drop JSON under `~/.veyyon/profiles/default/agent/themes/`; schema in `docs/handbook/src/reference/theme.md`.
 
 Terminal capability detection maps the same hierarchy for truecolor, ANSI-256, ANSI-16, unknown background, and no-color modes. Reduced-motion settings remove decorative animation without hiding state changes.
 
@@ -40,7 +41,7 @@ fills the window edge-to-edge instead of floating on the terminal's configured b
 The original background is restored on exit, including crash exits.
 
 The ground is the theme's page background, the same `export.pageBg` color the HTML export
-uses (see `docs/theme.md`). Every built-in theme declares one.
+uses (see `docs/handbook/src/reference/theme.md`). Every built-in theme declares one.
 
 | Value | Behavior |
 | --- | --- |

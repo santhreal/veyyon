@@ -52,18 +52,21 @@ async function errorMessageFor(body: string): Promise<string> {
 }
 
 describe("Google error bodies are bounded before they reach a message", () => {
-	it("caps a hostile non-JSON body at the detail ceiling and states the real size", async () => {
+	it("stops reading a hostile non-JSON body and states both cuts", async () => {
 		// A gateway HTML page, well past anything a real Google envelope carries.
 		const page = `<!doctype html><html><body>${"A".repeat(200_000)}</body></html>`;
 		expect(page.length).toBe(200_041);
 
 		const message = await errorMessageFor(page);
-		const suffix = " [truncated, 200041 chars total]";
+		// The read stops at the 64 KiB ceiling in `error/error-body.ts`, so the page is
+		// never allocated whole; the character ceiling then cuts what was read. One note
+		// carries both numbers, because two brackets disagreed about what "total" meant.
+		const suffix = ` [truncated, showing ${DETAIL_CAP} of 65536 chars read, read stopped at 65536 bytes]`;
 
 		expect(message).toBe(`${PREFIX}${page.slice(0, DETAIL_CAP)}${suffix}`);
 		// The whole message, not just the detail field: the ceiling has to compose.
 		expect(message.length).toBe(PREFIX.length + DETAIL_CAP + suffix.length);
-		expect(message.length).toBe(4152);
+		expect(message.length).toBe(4195);
 	});
 
 	it("caps an oversized envelope message the same way", async () => {

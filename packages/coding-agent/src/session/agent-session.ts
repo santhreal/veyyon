@@ -127,7 +127,6 @@ import {
 	calculateRateLimitBackoffMs,
 	clearAnthropicFastModeFallback,
 	deriveClaudeDeviceId,
-	isUsageLimitOutcome,
 	parseRateLimitReason,
 	realizesPriorityServiceTier,
 	resolveModelServiceTier,
@@ -161,7 +160,6 @@ import { MacOSPowerAssertion } from "@veyyon/natives";
 import {
 	errorMessage,
 	escapeXmlText,
-	extractHttpStatusFromError,
 	extractRetryHint,
 	formatCount,
 	formatDuration,
@@ -311,7 +309,7 @@ import type { RecoveredRetryError } from "../extensibility/shared-events";
 import type { Skill } from "../extensibility/skills";
 import { expandSlashCommand, type FileSlashCommand } from "../extensibility/slash-commands";
 import { GoalRuntime } from "../goals/runtime";
-import type { Goal, GoalModeState } from "../goals/state";
+import type { Goal, GoalAbortReason, GoalModeState } from "../goals/state";
 import type { HindsightSessionState } from "../hindsight/state";
 // The owning module, not the `../internal-urls` barrel: the barrel re-exports every protocol
 // handler and reaches several hundred modules, and all three of these live in `local-protocol`,
@@ -394,7 +392,11 @@ import {
 	isMCPToolName,
 	selectDiscoverableToolNamesByServer,
 } from "../tool-discovery/tool-index";
-import { resolveEffectiveApprovalMode, validateApprovalModeSetting } from "../tools/approval";
+import {
+	resolveEffectiveApprovalMode,
+	validateApprovalModeSetting,
+	validateApprovalPolicySettings,
+} from "../tools/approval";
 import type { ApprovalMode, SessionToolApprovals } from "../tools/approval-modes";
 import { assertEditableFile } from "../tools/auto-generated-guard";
 import { normalizeToolNames, TOOL } from "../tools/builtin-names";
@@ -402,6 +404,7 @@ import type { CheckpointState, CompletedRewindState } from "../tools/checkpoint"
 import { reportLostOutputArtifact } from "../tools/output-artifact";
 import { outputMeta, wrapToolWithMetaNotice } from "../tools/output-meta";
 import { normalizeLocalScheme, resolveToCwd } from "../tools/path-utils";
+import { shortenPath } from "../tools/render-utils";
 import { isAutoQaEnabled } from "../tools/report-tool-issue";
 import { buildResolveReminderMessage, type ResolveToolDetails, runResolveInvocation } from "../tools/resolve";
 import {
@@ -422,6 +425,7 @@ import { extractFileMentions, generateFileMentionMessages } from "../utils/file-
 import { normalizeModelContextImages } from "../utils/image-loading";
 import { describeAttachedImagesForTextModel } from "../utils/image-vision-fallback";
 import { formatLocalCalendarDate } from "../utils/local-date";
+import { normalizePromptPath } from "../utils/prompt-path";
 import { generateSessionTitle } from "../utils/title-generator";
 import { buildNamedToolChoice, isToolChoiceActive } from "../utils/tool-choice";
 import type { VibeModeState } from "../vibe/state";
@@ -452,6 +456,7 @@ import {
 	createInterruptedTurnAbortMessage,
 	SESSION_EXIT_CUSTOM_TYPE,
 	type SessionExitData,
+	sessionExitLogLevel,
 	summarizeToolArguments,
 	TOOL_EXECUTION_START_CUSTOM_TYPE,
 	type ToolExecutionStartData,
@@ -544,7 +549,17 @@ const MID_RUN_TODO_NUDGE_MUTATING_TOOLS: Record<string, true> = {
 interface PendingContextSnapshot {
 	promptTokens: number;
 	nonMessageTokens: number;
+	/**
+	 * How many messages existed BEFORE this turn: the index in `messages` where the turn begins.
+	 *
+	 * Not "how many messages this prompt accounts for". A turn submits messages that never join the
+	 * conversation -- the session-state line carrying the date and directory, recalled memories --
+	 * so a count of what was submitted overshoots the boundary by however many of those there were,
+	 * and the anchor test below then rejects every provider count the turn produces.
+	 */
 	cutoffCount: number;
+	/** The submitted messages, by identity: each is already inside `promptTokens`. */
+	submitted: ReadonlySet<AgentMessage>;
 	detail: SessionTelemetryDetail;
 	storedMessagesTokens?: number;
 	tailTokens?: number;
@@ -564,6 +579,25 @@ const MID_RUN_TODO_NUDGE_MESSAGE_TYPE = "mid-run-todo-nudge";
  * model's reading order, no prefix invalidation.
  */
 const MEMORY_CONTEXT_MESSAGE_TYPE = "memory-context";
+/**
+ * Custom-message type carrying the two facts that describe NOW rather than the
+ * project: the calendar date and the working directory.
+ *
+ * They used to be one sentence inside the project block of the system prompt,
+ * which is the provider's cache prefix, and the working directory is the one
+ * thing in that prefix a session routinely changes. Measured on this repository,
+ * a re-root from the root to `packages/utils` altered exactly one line of a
+ * 92,921-character prompt — that sentence — and threw away the cached prefix for
+ * the entire conversation behind it. Across 19 local log files, 210 of 232
+ * recorded prefix invalidations were a `cwd-change`, averaging about 85,000
+ * characters re-read each time for a path that had moved a directory down.
+ *
+ * The rebuild on re-root stays: the rules, skills and workspace tree really are
+ * cwd-derived and a cross-project move must change them. What changes is that a
+ * move which alters nothing but the path now rebuilds to BYTE-IDENTICAL bytes, so
+ * there is no invalidation to record.
+ */
+const SESSION_STATE_MESSAGE_TYPE = "session-state";
 /** Hidden plan nudge injected by prewalk; scrubbed from the LLM context
  *  when the switch happens. */
 const PREWALK_PLAN_MESSAGE_TYPE = "prewalk-plan";
@@ -2109,6 +2143,16 @@ export class AgentSession {
 	#unsubscribeModelRoles?: () => void;
 	#unsubscribePromptSettings?: () => void;
 	#promptRefresh: Promise<void> = Promise.resolve();
+	/**
+	 * Startup work that finishes behind the first frame and gates the first turn.
+	 *
+	 * A session's own construction is on the boot path, so anything it awaits there is time before the
+	 * user sees anything. Work whose result no frame reads — a memory backend opening its database and
+	 * installing this session's state — is handed to {@link deferStartupWork} instead and awaited at
+	 * the one place that needs it, the start of a turn. Every tool call and every subagent spawn
+	 * happens inside a turn, so one await covers all of them.
+	 */
+	#startupHydration: Promise<void> = Promise.resolve();
 	/** Last (enable, providerId) tuple resolved by `#syncAppendOnlyContext` — used to skip no-op invalidations. */
 	#lastAppendOnlyResolution?: { enable: boolean; providerId: string | undefined };
 	#eventListeners: AgentSessionEventListener[] = [];
@@ -3132,6 +3176,7 @@ export class AgentSession {
 				: () => config.pruneToolDescriptions === true;
 		this.#validateRetryFallbackChains();
 		this.#validateApprovalModeSetting();
+		this.#validateApprovalPolicySettings();
 		this.#toolRegistry = config.toolRegistry ?? new Map();
 		this.#createVibeTools = config.createVibeTools;
 		this.#builtInToolNames = new Set(config.builtInToolNames ?? []);
@@ -3846,7 +3891,7 @@ export class AgentSession {
 					// only — other failures keep the plain retry/notify path (never
 					// suspect-mark a credential on a transient advisor error).
 					const message = errorMessage(error);
-					if (!isUsageLimitOutcome(extractHttpStatusFromError(error), message)) return;
+					if (!AIError.isUsageLimit(error)) return;
 					await this.#modelRegistry.authStorage.markUsageLimitReached(
 						advisorModel.provider,
 						advisorProviderSessionId,
@@ -4820,10 +4865,9 @@ export class AgentSession {
 		try {
 			this.sessionManager.appendCustomEntry(SESSION_EXIT_CUSTOM_TYPE, data);
 			this.sessionManager.flushSync();
-			// Only pending tool calls or an abnormal teardown are noteworthy; a
-			// clean dispose logs at debug so routine exits don't read as problems.
-			const exitLog = pendingToolCalls.length > 0 || kind !== "normal" ? logger.warn : logger.debug;
-			exitLog("Session exit recorded", {
+			// Looked up on `logger` at call time, not captured in a table: the level is the
+			// method name, and a captured function would also detach the spy a test installs.
+			logger[sessionExitLogLevel(kind, pendingToolCalls.length)]("Session exit recorded", {
 				sessionId: this.sessionManager.getSessionId(),
 				sessionFile: this.sessionManager.getSessionFile(),
 				reason,
@@ -8314,13 +8358,25 @@ export class AgentSession {
 		this.#resetHindsightConversationTrackingIfHindsight();
 		this.#resetMnemopiConversationTrackingIfMnemopi();
 		this.#pendingVolatileMemoryContext = undefined;
-		this.#deliveredVolatileMemoryContext = this.#memoryContextAlreadyInTranscript();
+		this.#deliveredVolatileMemoryContext = this.#lastDeliveredBlock(MEMORY_CONTEXT_MESSAGE_TYPE);
+		// Same question, same answer, for the date and working directory: a fork or a
+		// switch lands on a transcript that already states them, `/new` does not.
+		this.#deliveredSessionState = this.#lastDeliveredBlock(SESSION_STATE_MESSAGE_TYPE);
 	}
 
-	/** The last memory block the current transcript carries, or undefined if it carries none. */
-	#memoryContextAlreadyInTranscript(): string | undefined {
+	/**
+	 * The last block of `customType` the current transcript carries, or undefined if
+	 * it carries none.
+	 *
+	 * Two subsystems dedupe a delivered-once block against the conversation rather
+	 * than against a flag per caller, because the messages answer "will the model
+	 * read this already?" exactly and the caller cannot. A compaction that dropped
+	 * the block is covered for free: gone from the messages, gone from the cache,
+	 * sent again.
+	 */
+	#lastDeliveredBlock(customType: string): string | undefined {
 		for (const message of [...this.agent.state.messages].reverse()) {
-			if (message.role !== "custom" || message.customType !== MEMORY_CONTEXT_MESSAGE_TYPE) continue;
+			if (message.role !== "custom" || message.customType !== customType) continue;
 			return typeof message.content === "string" ? message.content : undefined;
 		}
 		return undefined;
@@ -9466,6 +9522,11 @@ export class AgentSession {
 	#deliveredVolatileMemoryContext: string | undefined;
 	/** Volatile memory context waiting for the next step boundary to carry it in. */
 	#pendingVolatileMemoryContext: string | undefined;
+	/**
+	 * The session-state block already delivered, so the same date and working
+	 * directory are never stated twice. Undefined until the first delivery.
+	 */
+	#deliveredSessionState: string | undefined;
 
 	/**
 	 * Collect the memory backend's volatile context for a turn that is about to
@@ -10418,6 +10479,34 @@ export class AgentSession {
 		};
 	}
 
+	/**
+	 * The date and working directory as they stand now, or null when the model has
+	 * already been told exactly this.
+	 *
+	 * Deduped against the last block delivered, so a session that never re-roots
+	 * states them once and a session that re-roots restates them on the next turn.
+	 * Re-sending an unchanged block would grow the context every turn for no new
+	 * information, which is the cost this whole arrangement exists to avoid.
+	 */
+	#buildSessionStateMessage(): CustomMessage | null {
+		const content = prompt
+			.render(sessionPrompts["session/session-state"].text, {
+				date: formatLocalCalendarDate(),
+				cwd: shortenPath(normalizePromptPath(this.sessionManager.getCwd())),
+			})
+			.trim();
+		if (content === this.#deliveredSessionState) return null;
+		this.#deliveredSessionState = content;
+		return {
+			role: "custom",
+			customType: SESSION_STATE_MESSAGE_TYPE,
+			content,
+			display: false,
+			attribution: "agent",
+			timestamp: Date.now(),
+		};
+	}
+
 	#buildVibeModeMessage(): CustomMessage | null {
 		if (!this.#vibeModeState?.enabled) return null;
 		return {
@@ -10606,6 +10695,22 @@ export class AgentSession {
 	}
 
 	/**
+	 * Hand startup work to the session instead of awaiting it on the boot path.
+	 *
+	 * Chained, so several deferrals order the way they were handed over, and swallowed, so a failure
+	 * cannot reach the process as an unhandled rejection or refuse the first turn — the work logs its
+	 * own failure.
+	 */
+	deferStartupWork(work: Promise<void>): void {
+		this.#startupHydration = this.#startupHydration.then(() => work).catch(() => {});
+	}
+
+	/** Resolves once every deferred startup task has finished. A turn awaits this before it runs. */
+	whenStartupHydrated(): Promise<void> {
+		return this.#startupHydration;
+	}
+
+	/**
 	 * Send a prompt to the agent.
 	 * - Handles extension commands (registered via pi.registerCommand) immediately, even during streaming
 	 * - Expands file-based prompt templates by default
@@ -10623,6 +10728,7 @@ export class AgentSession {
 	 */
 	async prompt(text: string, options?: PromptOptions): Promise<boolean> {
 		await this.#promptRefresh;
+		await this.#startupHydration;
 		const expandPromptTemplates = options?.expandPromptTemplates ?? true;
 
 		// Handle extension commands first (execute immediately, even during streaming)
@@ -10967,6 +11073,11 @@ export class AgentSession {
 			// cache prefix ends before all of it.
 			const memoryContextMessage = await this.#collectVolatileMemoryContext(expandedText);
 			if (memoryContextMessage) messages.unshift(memoryContextMessage);
+			// Ahead of the memories for the same reason the memories are ahead of the
+			// question: the date and the working directory are what the model should
+			// already know when it reads either.
+			const sessionStateMessage = this.#buildSessionStateMessage();
+			if (sessionStateMessage) messages.unshift(sessionStateMessage);
 			const beforeAgentStartSystemPrompt = this.#baseSystemPrompt;
 
 			// Emit before_agent_start extension event
@@ -11048,7 +11159,8 @@ export class AgentSession {
 			const pendingContextSnapshot: PendingContextSnapshot = {
 				promptTokens,
 				nonMessageTokens,
-				cutoffCount: this.messages.length + messages.length,
+				cutoffCount: this.messages.length,
+				submitted: new Set(messages),
 				detail: contextDetail,
 			};
 			if (contextDetail === "rich" || contextDetail === "ultra") {
@@ -11538,6 +11650,9 @@ export class AgentSession {
 			acceptTerminalEmptyStop?: boolean;
 		},
 	): Promise<boolean> {
+		// A message that starts a turn is a turn: it reaches the same tools, so it waits for the same
+		// hydration `prompt` waits for.
+		if (options?.triggerTurn) await this.#startupHydration;
 		const normalizedPayload = normalizeCustomMessagePayload<T>(message);
 		const details =
 			options?.queueChipText && options.deliverAs !== "nextTurn"
@@ -11928,7 +12043,7 @@ export class AgentSession {
 	 * abort. Omit it for internal/lifecycle aborts.
 	 */
 	async abort(options?: {
-		goalReason?: "interrupted" | "internal";
+		goalReason?: GoalAbortReason;
 		reason?: string;
 		/** Internal `/compact` startup keeps the manual-compaction marker alive while aborting the active turn. */
 		preserveCompaction?: boolean;
@@ -16031,10 +16146,10 @@ export class AgentSession {
 		let hookPrompt: string | undefined;
 		let preserveData: Record<string, unknown> | undefined;
 
-		if (!hookCompaction && this.#extensionRunner?.hasHandlers("session.compacting")) {
+		if (!hookCompaction && this.#extensionRunner?.hasHandlers("session_compacting")) {
 			const compactMessages = preparation.messagesToSummarize.concat(preparation.turnPrefixMessages);
 			const result = (await this.#extensionRunner.emit({
-				type: "session.compacting",
+				type: "session_compacting",
 				sessionId: this.sessionId,
 				messages: compactMessages,
 			})) as { context?: string[]; prompt?: string; preserveData?: Record<string, unknown> } | undefined;
@@ -17191,6 +17306,20 @@ export class AgentSession {
 		if (!this.settings.isConfigured("tools.approvalMode")) return;
 		const warning = validateApprovalModeSetting(this.settings.get("tools.approvalMode"));
 		if (warning) {
+			logger.warn(warning);
+			this.configWarnings.push(warning);
+		}
+	}
+
+	/**
+	 * Surface a hand-edited `tools.approval.<tool>` typo loudly, for the same reason as the mode
+	 * above and with the opposite fallback: a malformed per-tool policy DENIES the tool (see
+	 * `normalizePolicy`), so the operator has to be told which entry did it and what the accepted
+	 * values are. Without this, "bash stopped working" is a config typo with no diagnostic.
+	 */
+	#validateApprovalPolicySettings(): void {
+		if (!this.settings.isConfigured("tools.approval")) return;
+		for (const warning of validateApprovalPolicySettings(this.settings.get("tools.approval"))) {
 			logger.warn(warning);
 			this.configWarnings.push(warning);
 		}
@@ -19754,10 +19883,12 @@ export class AgentSession {
 		} else if (pending) {
 			anchored = true;
 			let tailTokens = 0;
-			if (resolvedActiveMessages.length > pending.cutoffCount) {
-				for (let i = pending.cutoffCount; i < resolvedActiveMessages.length; i++) {
-					tailTokens += estimateTokens(resolvedActiveMessages[i]);
-				}
+			for (let i = pending.cutoffCount; i < resolvedActiveMessages.length; i++) {
+				const message = resolvedActiveMessages[i];
+				// A submitted message is already inside `promptTokens`; anything else standing
+				// after the turn boundary arrived since and is estimated.
+				if (pending.submitted.has(message)) continue;
+				tailTokens += estimateTokens(message);
 			}
 			usedTokens =
 				pending.promptTokens +
@@ -19873,6 +20004,9 @@ export class AgentSession {
 			promptTokens,
 			nonMessageTokens,
 			cutoffCount: this.messages.length,
+			// A rewrite recomputed the prompt over the whole current history, so nothing
+			// standing in `messages` is outside `promptTokens` any more.
+			submitted: new Set<AgentMessage>(),
 			detail: this.#pendingContextSnapshot.detail,
 		};
 		if (this.#pendingContextSnapshot.detail === "rich" || this.#pendingContextSnapshot.detail === "ultra") {

@@ -38,7 +38,7 @@ default and the path Veyyon optimizes for.
 - User guide: [Editing and repair](../using/editing.md)
 - Tool contract: [`docs/tools/edit.md`](../../../tools/edit.md)
 - Read/grep anchors: [`docs/tools/read.md`](../../../tools/read.md), [`docs/tools/grep.md`](../../../tools/grep.md)
-- Settings: `edit.mode` in [`docs/settings.md`](../../../settings.md)
+- Settings: `edit.mode` in [`docs/handbook/src/reference/settings.md`](../reference/settings.md)
 
 There is no `veyyon-edit` Rust crate, no V4A-only write path, and no `make_update_patch` envelope
 routing. General schema-based tool-call repair **is** shipped, see

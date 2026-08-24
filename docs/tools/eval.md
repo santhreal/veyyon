@@ -19,7 +19,7 @@
   - `packages/coding-agent/src/eval/py/kernel.ts`: subprocess NDJSON runner protocol, display capture
   - `packages/coding-agent/src/eval/py/prelude.py`: Python helper functions and status events
   - `packages/coding-agent/src/session/streaming-output.ts`: truncation, artifacts, streamed chunks
-  - `docs/python-repl.md`: Python kernel/runner internals
+  - `docs/handbook/src/features/python-repl.md`: Python kernel/runner internals
 
 ## Inputs
 
@@ -185,7 +185,7 @@ Implemented in `packages/coding-agent/src/eval/js/worker-core.ts`, `packages/cod
 
 ### Python runtime
 
-Implemented in `packages/coding-agent/src/eval/py/executor.ts`, `packages/coding-agent/src/eval/py/kernel.ts`, and `packages/coding-agent/src/eval/py/prelude.py`. See `docs/python-repl.md` for kernel and runner details.
+Implemented in `packages/coding-agent/src/eval/py/executor.ts`, `packages/coding-agent/src/eval/py/kernel.ts`, and `packages/coding-agent/src/eval/py/prelude.py`. See `docs/handbook/src/features/python-repl.md` for kernel and runner details.
 
 - Default mode is retained `session` kernels keyed by `python:${sessionId}` plus normalized cwd and interpreter
 - Optional `python.kernelMode = "per-call"` creates a fresh kernel for each cell and shuts it down afterward
@@ -263,7 +263,7 @@ One call runs one cell in one language. You mix languages by making separate cal
   - JS runtime exposes `fetch` and `tool.<name>()`; those tools may perform additional network I/O.
 - Subprocesses / native bindings
   - Python availability check runs `<python> -c ...`.
-  - Python backend spawns one `python -u runner.py` subprocess per kernel; cancellation sends `SIGINT`. Details in `docs/python-repl.md`.
+  - Python backend spawns one `python -u runner.py` subprocess per kernel; cancellation sends `SIGINT`. Details in `docs/handbook/src/features/python-repl.md`.
   - `agent()` runs one in-process subagent via the task executor; that subagent may use its configured tools.
 - Session state
   - `session.assertEvalExecutionAllowed?.()` can block execution.

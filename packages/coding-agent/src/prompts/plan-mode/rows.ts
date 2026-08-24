@@ -18,7 +18,7 @@
  * for these ids, and the coverage suite fails on a second importer.
  */
 
-import type { PromptEntry } from "@veyyon/utils/prompt-registry";
+import { definePromptRows, type PromptEntry } from "@veyyon/utils/prompt-registry";
 
 import planModeActive from "./active.md" with { type: "text" };
 import planModeApproved from "./approved.md" with { type: "text" };
@@ -29,7 +29,7 @@ import planModeToolDecisionReminder from "./tool-decision-reminder.md" with { ty
 import planModeYoloHandoff from "./yolo-handoff.md" with { type: "text" };
 
 /** Every prompt under `src/prompts/plan-mode/`, keyed by its id (the path under `src/prompts/`). */
-export const planModePrompts = {
+export const planModePrompts = definePromptRows({
 	"plan-mode/active": { text: planModeActive, purpose: "the read-only contract while plan mode is on" },
 	"plan-mode/approved": { text: planModeApproved, purpose: "hands over an approved plan for execution" },
 	"plan-mode/compact-instructions": {
@@ -49,4 +49,4 @@ export const planModePrompts = {
 		text: planModeYoloHandoff,
 		purpose: "hands an approved plan to an agent that did not draft it",
 	},
-} satisfies Record<string, PromptEntry>;
+} satisfies Record<string, PromptEntry>);

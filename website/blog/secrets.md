@@ -16,13 +16,10 @@ Use `/secret add` instead. Veyyon stores the value locally and tells the agent o
 placeholder such as `#SECRET_1#`. The agent writes the placeholder into a tool
 call. Veyyon replaces it with the real value immediately before execution.
 
-This guide starts with the shortest path. The later sections add control only
-when you need it.
 
 ## Store one now
 
-A `/secret` line leads with a command. `add` is the one that stores something, and
-sending it by itself is the most private way in:
+The `/secret add` command stores a secret value in the local vault:
 
 ```text
 /secret add
@@ -51,7 +48,7 @@ private. Everything after `add` is the credential, first word included:
 /secret add sk_test_example_not_a_real_key
 ```
 
-Veyyon stores that the same way, and says plainly that the value is now in your
+Veyyon stores the value and outputs a notice that the credential is in terminal
 scrollback.
 
 A first word that is not a command is refused, and nothing is stored. If that word
@@ -211,7 +208,7 @@ from the active inventory and tells the agent that it can no longer use it.
 
 ## See what is active
 
-`/secret list` is the answer to that question. It prints placeholders, scope, and
+Run `/secret list` to inspect active credentials. It prints placeholders, scope, and
 expiry, and never a value, not even a prefix, because a prefix on screen is a
 prefix in a screenshot. A row picks up a status of `past halfway` or `expires
 soon` as it approaches its deadline.
@@ -226,8 +223,8 @@ time. It never records the value. `--name STRIPE_TEST_KEY` narrows the record to
 one credential, and `--limit 5` keeps the last few lines of whatever is left. The
 `secrets.auditLog` setting controls this record and is on by default.
 
-The log answers a different question from masking. Masking shows what the model
-could not read. The log shows where an available placeholder was spent.
+Masking prevents credential exposure in model prompts. The audit log records
+which tool calls expanded a placeholder.
 
 ## Remove or rotate it
 

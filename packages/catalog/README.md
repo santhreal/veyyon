@@ -19,25 +19,19 @@ Model catalog for [veyyon](https://github.com/santhreal/veyyon): bundled model d
 
 Import from subpaths (`@veyyon/catalog/<module>`) or the root barrel.
 
-## models.json is generated
+## Generating models.json
 
-Never edit `src/models.json` by hand — it is produced from upstream sources (models.dev, provider catalog discovery, OpenCode docs) by `scripts/generate-models.ts` and the resolvers in `src/provider-models/`. Regenerate with:
+`src/models.json` is generated from upstream sources (models.dev, provider catalog discovery, OpenCode documentation) via `scripts/generate-models.ts` and resolvers in `src/provider-models/`. Regenerate with:
 
 ```sh
 bun run gen:models
 ```
 
-To change an entry, fix the source: resolver overrides in `provider-models/openai-compat.ts`, provider entries in `provider-models/descriptors.ts`, generator fixups in `scripts/generate-models.ts`, or thinking policies in `model-thinking.ts`.
+To modify entries, update the sources: resolver overrides in `provider-models/openai-compat.ts`, provider entries in `provider-models/descriptors.ts`, generator rules in `scripts/generate-models.ts`, or thinking policies in `model-thinking.ts`.
 
-## Failures travel back, they are not logged
+## Discovery diagnostics
 
-No source file in this package logs. It is a data library: it answers questions about models and it does
-not own a console, a log file, or a user. When something fails, the reason goes back to the caller as a
-value, and the caller decides what to say about it.
-
-Discovery is where this matters. A reader returns `null` when it could not produce a catalog and `[]` when
-the endpoint answered with no models, and those two mean different things: `[]` is an answer, `null` is a
-failure. Pass `onFailure` to learn which failure it was:
+Discovery functions return `null` on failure and `[]` when an endpoint reports zero models. Pass `onFailure` to receive structured error details:
 
 ```ts
 const models = await fetchOpenAICompatibleModels({
@@ -59,17 +53,9 @@ means the JSON parsed and held no model list, so the endpoint is probably not Op
 
 Without `onFailure` you still get `null`, exactly as before. Nothing is thrown for a discovery failure.
 
-Every reader takes the same `onFailure`, and they all use the same `DiscoveryFailure` shape, so you write
-one handler rather than one per provider: `fetchOpenAICompatibleModels`, `fetchCodexModels`,
-`fetchCursorUsableModels`, `fetchDevinModels`, `fetchGeminiModels`,
-`fetchAntigravityDiscoveryModels`, and `fetchGitLabDuoWorkflowModels`.
+The `DiscoveryFailure` shape is shared across discovery readers (`fetchOpenAICompatibleModels`, `fetchCodexModels`, `fetchCursorUsableModels`, `fetchDevinModels`, `fetchGeminiModels`, `fetchAntigravityDiscoveryModels`, `fetchGitLabDuoWorkflowModels`).
 
-Some readers try more than one endpoint before giving up: Codex walks two routes, Antigravity walks its
-fallback endpoints, and a Xiaomi token-plan key is tried against each cluster. Those readers report EVERY
-attempt, so you may receive several reasons for one `null`, and you may receive a reason followed by a
-success when a later attempt works. Both are deliberate. An endpoint that is refusing connections is worth
-knowing about even when a fallback covers for it.
-
+Multi-endpoint readers report every attempt to `onFailure`.
 To receive reasons through a model manager instead of calling a reader directly, pass
 `onDiscoveryFailure`:
 
@@ -81,10 +67,7 @@ const manager = createModelManager({
 });
 ```
 
-The manager passes the hooks to your fetcher and reports through the same channel when the fetcher throws,
-which arrives with the stage `unhandled`: a reader that throws instead of reporting is a bug in the reader,
-not a statement about the provider's endpoint.
-
+The manager invokes `onDiscoveryFailure` when discovery fails or throws.
 ## Install
 
 Veyyon ships through GitHub only, so `@veyyon/catalog` is not on npm or any other
@@ -107,9 +90,9 @@ Then, in your own project:
 bun link @veyyon/catalog
 ```
 
-See [the SDK guide](../../docs/sdk.md#installation) for the same steps in full.
+See [the SDK guide](../../docs/handbook/src/reference/sdk.md#installation) for the same steps in full.
 
-Ships TypeScript source directly (no build step); requires Bun ≥ 1.3.14.
+Ships TypeScript source directly (no build step); requires Bun ≥ 1.4.0.
 
 ## References
 

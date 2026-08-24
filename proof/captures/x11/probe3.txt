@@ -1,2 +1,0 @@
-tty=/dev/pts/0
-GOT:hello

@@ -31,6 +31,7 @@ import type {
 } from "../types";
 import { normalizeSystemPrompts } from "../utils";
 import { AssistantMessageEventStream } from "../utils/event-stream";
+import { openBoundedFirstEventBudget } from "../utils/first-event-budget";
 import { toolWireSchema } from "../utils/schema/wire";
 
 export const GITLAB_DUO_WORKFLOW_PROVIDER_ID = "gitlab-duo-agent";
@@ -68,6 +69,17 @@ const GITLAB_DUO_WORKFLOW_IDLE_TIMEOUT_MS = 90_000;
  * matches the OAuth `TOKEN_REQUEST_TIMEOUT_MS` used by sibling GitLab flows.
  */
 const GITLAB_DUO_WORKFLOW_REST_TIMEOUT_MS = 30_000;
+/**
+ * Absolute deadline (ms) for the WHOLE setup phase, however many REST calls it
+ * takes. Each call has its own {@link GITLAB_DUO_WORKFLOW_REST_TIMEOUT_MS}
+ * deadline and nothing bounded the chain: six calls in series, run twice when a
+ * cached namespace turns out stale, is minutes of a live turn whose `start`
+ * event has already been pushed and whose stream carries nothing. Three times
+ * the per-call deadline is well clear of a healthy setup (single-digit seconds
+ * against gitlab.com) and far below the old worst case. A caller that declared
+ * a shorter `streamFirstEventTimeoutMs` wins over this ceiling.
+ */
+const GITLAB_DUO_WORKFLOW_SETUP_TIMEOUT_MS = 3 * GITLAB_DUO_WORKFLOW_REST_TIMEOUT_MS;
 /**
  * How many times a single stream may restart on a FRESH workflow after the server
  * reports its per-workflow step (graph-recursion) limit. Long veyyon tool-call loops
@@ -1091,6 +1103,17 @@ async function runGitLabDuoWorkflow(
 	const configuredProjectId = nonEmptyString(options.projectId) ?? nonEmptyString(Bun.env.GITLAB_DUO_PROJECT_ID);
 	const goal = extractLatestUserPrompt(context.messages);
 
+	// One deadline for the whole setup phase. Every REST helper below composes the
+	// signal it is handed with its own per-call deadline, so this bounds the chain
+	// without loosening any single call.
+	const setupBudget = openBoundedFirstEventBudget(
+		options.streamFirstEventTimeoutMs,
+		GITLAB_DUO_WORKFLOW_SETUP_TIMEOUT_MS,
+	);
+	const setupFence = setupBudget.fence(options.signal);
+	const setupSignal = setupFence.signal;
+	const setupOptions: GitLabDuoWorkflowOptions = { ...options, signal: setupSignal };
+
 	// Resolve the namespace and everything scoped to it (settings enable, project
 	// auto-discovery, direct_access, workflow create). With auto-discovery the
 	// namespace is cached per account and reused as the first choice; only if a
@@ -1121,7 +1144,7 @@ async function runGitLabDuoWorkflow(
 			// success or 4xx). A transient network error / 5xx returns false so a later
 			// turn retries instead of permanently skipping the PUT on a namespace whose
 			// flags are still off.
-			if (await ensureGitLabDuoWorkflowSettings(fetchImpl, baseUrl, apiKey, restNamespaceId, options.signal)) {
+			if (await ensureGitLabDuoWorkflowSettings(fetchImpl, baseUrl, apiKey, restNamespaceId, setupSignal)) {
 				markGitLabDuoWorkflowSettingsEnsured(apiKey, baseUrl, options.cwd);
 			}
 		}
@@ -1136,7 +1159,7 @@ async function runGitLabDuoWorkflow(
 			!configuredProjectPath && !configuredProjectId && isGitLabDuoWorkflowInlineFlow(workflowDefinition)
 				? namespaceSelection.projectPath
 					? { path: namespaceSelection.projectPath }
-					: await discoverGitLabDuoWorkflowProject(fetchImpl, baseUrl, apiKey, restNamespaceId, options.signal)
+					: await discoverGitLabDuoWorkflowProject(fetchImpl, baseUrl, apiKey, restNamespaceId, setupSignal)
 				: undefined;
 		if (discoveredProject) {
 			traceGitLabDuoWorkflow("project.discover", {
@@ -1158,7 +1181,7 @@ async function runGitLabDuoWorkflow(
 		const webSocketProjectId =
 			projectId ??
 			(projectPath
-				? await resolveGitLabDuoWorkflowNumericProjectId(fetchImpl, baseUrl, apiKey, projectPath, options.signal)
+				? await resolveGitLabDuoWorkflowNumericProjectId(fetchImpl, baseUrl, apiKey, projectPath, setupSignal)
 				: undefined);
 		const workflowConnection: GitLabDuoWorkflowDirectAccessConnection = options.workflowToken
 			? { token: options.workflowToken, headers: {}, serviceEndpoint: false }
@@ -1169,7 +1192,7 @@ async function runGitLabDuoWorkflow(
 					rootNamespaceId,
 					restProjectId,
 					workflowDefinition,
-					options.signal,
+					setupSignal,
 				);
 		const workflowId =
 			options.workflowId ??
@@ -1183,14 +1206,14 @@ async function runGitLabDuoWorkflow(
 				workflowDefinition,
 				model,
 				options.onPayload,
-				options.signal,
+				setupSignal,
 			));
 		const availableModels = await fetchGitLabDuoWorkflowAvailableModels(
 			fetchImpl,
 			baseUrl,
 			apiKey,
 			rootNamespaceId,
-			options.signal,
+			setupSignal,
 		);
 		const selectedModelIdentifier = selectGitLabDuoWorkflowModelRef(model.id, availableModels);
 		// A `toolChoice: "none"` side-request (e.g. handoff keeps live tool definitions
@@ -1230,43 +1253,48 @@ async function runGitLabDuoWorkflow(
 	const cachedNamespace = explicitNamespace
 		? undefined
 		: getGitLabDuoWorkflowCachedNamespace(apiKey, baseUrl, options.cwd);
-	let setup: GitLabDuoWorkflowNamespaceSetup;
-	if (cachedNamespace) {
-		try {
-			setup = await setupForNamespace(cachedNamespace);
-		} catch (cachedError) {
-			// The cached account namespace no longer works (revoked access, deleted
-			// group, membership change). Drop it and re-discover once from scratch.
-			traceGitLabDuoWorkflow("namespace.cache_invalidate", {
-				rootNamespaceId: cachedNamespace.rootNamespaceId,
-				error: gitLabDuoWorkflowErrorText(cachedError),
-			});
-			clearGitLabDuoWorkflowCachedNamespace(apiKey, baseUrl, options.cwd);
-			const rediscovered = await resolveGitLabDuoWorkflowNamespaceSelection(
-				model,
-				options,
-				apiKey,
-				baseUrl,
-				fetchImpl,
-			);
-			setup = await setupForNamespace(rediscovered);
-			setGitLabDuoWorkflowCachedNamespace(apiKey, baseUrl, options.cwd, rediscovered);
+	const resolveSetup = async (): Promise<GitLabDuoWorkflowNamespaceSetup> => {
+		if (cachedNamespace) {
+			try {
+				return await setupForNamespace(cachedNamespace);
+			} catch (cachedError) {
+				// The cached account namespace no longer works (revoked access, deleted
+				// group, membership change). Drop it and re-discover once from scratch.
+				traceGitLabDuoWorkflow("namespace.cache_invalidate", {
+					rootNamespaceId: cachedNamespace.rootNamespaceId,
+					error: gitLabDuoWorkflowErrorText(cachedError),
+				});
+				clearGitLabDuoWorkflowCachedNamespace(apiKey, baseUrl, options.cwd);
+				const rediscovered = await resolveGitLabDuoWorkflowNamespaceSelection(
+					model,
+					setupOptions,
+					apiKey,
+					baseUrl,
+					fetchImpl,
+				);
+				const rediscoveredSetup = await setupForNamespace(rediscovered);
+				setGitLabDuoWorkflowCachedNamespace(apiKey, baseUrl, options.cwd, rediscovered);
+				return rediscoveredSetup;
+			}
 		}
-	} else {
 		const namespaceSelection = await resolveGitLabDuoWorkflowNamespaceSelection(
 			model,
-			options,
+			setupOptions,
 			apiKey,
 			baseUrl,
 			fetchImpl,
 		);
-		setup = await setupForNamespace(namespaceSelection);
+		const freshSetup = await setupForNamespace(namespaceSelection);
 		// Cache the freshly discovered namespace per account so the next session/turn
 		// reuses it instead of re-discovering. Explicit config is never cached.
 		if (!explicitNamespace) {
 			setGitLabDuoWorkflowCachedNamespace(apiKey, baseUrl, options.cwd, namespaceSelection);
 		}
-	}
+		return freshSetup;
+	};
+	// `.finally` rather than try/finally: the deadline's backing timer must be
+	// cleared whether setup resolved or threw, and the phase is over either way.
+	const setup = await resolveSetup().finally(() => setupFence.cancel());
 	const restNamespaceId = setup.restNamespaceId;
 	const createNamespaceId = setup.createNamespaceId;
 	const restProjectId = setup.restProjectId;
@@ -1558,10 +1586,10 @@ async function fetchGitLabDuoWorkflowAvailableModels(
 		const payload: unknown = await response.json();
 		const models = getRecord(getRecord(payload, "data"), "aiChatAvailableModels");
 		return parseGitLabAvailableModelsPayload(models);
-	} catch {
-		// Timeout (AbortSignal.timeout) surfaces as an AbortError here; matches the pre-fix
-		// transient-network behavior (undefined -> caller falls back to defaults), so a
-		// stalled models fetch degrades rather than hanging the whole stream.
+	} catch (error) {
+		// Its own timeout degrades to the default model list; the caller's setup
+		// deadline does not — see `discoverGitLabDuoWorkflowProject`.
+		if (signal?.aborted) throw error;
 		return undefined;
 	} finally {
 		restTimeout.cancel();
@@ -1608,10 +1636,10 @@ async function resolveGitLabDuoWorkflowNumericProjectId(
 		if (!response.ok) return undefined;
 		const payload: unknown = await response.json();
 		return getRecordString(payload, "id");
-	} catch {
-		// Timeout / abort behaves like a transient network fault: undefined leaves the
-		// caller to fall back to the workflow's namespace-only routing rather than block
-		// the stream on a hanging project lookup.
+	} catch (error) {
+		// Its own timeout degrades (namespace-only routing still works); the
+		// caller's setup deadline does not — see `discoverGitLabDuoWorkflowProject`.
+		if (signal?.aborted) throw error;
 		return undefined;
 	} finally {
 		restTimeout.cancel();
@@ -1661,9 +1689,13 @@ async function discoverGitLabDuoWorkflowProject(
 			const id = getRecordString(first, "id");
 			const path = getRecordString(first, "path_with_namespace");
 			if (id && path) return { id, path };
-		} catch {
-			// Timeout/abort on one endpoint: fall through to the next fallback rather than
-			// aborting discovery. Each endpoint gets its own fresh REST budget.
+		} catch (error) {
+			// One endpoint timing out on its OWN budget is a transient fault, and
+			// falling through to the next fallback is right. The setup deadline
+			// firing is not: the phase the caller paid for is over, and trying the
+			// next endpoint spends time nobody granted. Same rule at the two
+			// sibling helpers below and in the catalog reader behind them.
+			if (signal?.aborted) throw error;
 		} finally {
 			restTimeout.cancel();
 		}
@@ -1880,6 +1912,10 @@ async function ensureGitLabDuoWorkflowSettings(
 		return response.status < 500;
 	} catch (error) {
 		traceGitLabDuoWorkflow("settings.ensure_error", { error: gitLabDuoWorkflowErrorText(error) });
+		// A transient fault leaves the guard retryable for a later turn. The
+		// caller's setup deadline is not transient — see
+		// `discoverGitLabDuoWorkflowProject`.
+		if (signal?.aborted) throw error;
 		return false;
 	} finally {
 		restTimeout.cancel();
@@ -2946,6 +2982,7 @@ export async function resolveGitLabDuoWorkflowNamespaceSelection(
 			namespaceId: configured,
 			projectId,
 			cwd: options.cwd,
+			...(options.signal ? { signal: options.signal } : {}),
 		});
 	} catch (error) {
 		throw new AIError.ProviderResponseError(

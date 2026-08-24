@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-0c15bee8.js";
+            window.path_to_searchindex_js = "../searchindex-c0972181.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-79e2ba62.js"></script>
+        <script src="../toc-a2abefc1.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -198,12 +198,12 @@
                         <h1 id="slash-commands"><a class="header" href="#slash-commands">Slash commands</a></h1>
 <p>Slash commands run inside an interactive Veyyon session. Type <code>/</code> in the composer to open the
 picker. Commands below are the <strong>builtin</strong> set; extensions may add more.</p>
-<p>A command nothing can handle is refused, not sent to the model. If you mistype a name, or type a
+<p>A command nothing can handle is rejected, not sent to the model. If you mistype a name, or type a
 command your installed build does not have, you get:</p>
 <pre><code class="language-text">Unknown command "/secrt". Nothing handled it, so it was not sent to the model. Type / to see the
 commands this build has, or drop the leading slash to send it as a message.
 </code></pre>
-<p>The refusal names the command and never repeats what followed it, because the tail of a mistyped
+<p>The refusal states the command and never repeats what followed it, because the tail of a mistyped
 <code>/secret</code> is a credential. The rule reaches further than one mistyped word: in a terminal the whole
 argument line of <code>/secret</code> is the credential, whatever it happens to spell, so there is no tail
 there that is safe to echo back.</p>
@@ -229,26 +229,26 @@ with a grammar to state, and each used to spell part of it with dashes:</p>
 <p>Position covers every required word, so <code>/mcp remove project</code> removes a server actually named
 <code>project</code>. Where meaning is taken from a word’s shape instead, the sets provably cannot overlap: on
 <code>/ssh add</code> a port is digits and nothing else the command reads is, and <code>user</code> and <code>key</code> are the only
-two keywords, each taking the word after it. A word the command cannot use is refused rather than
+two keywords, each taking the word after it. A word the command cannot use is rejected rather than
 ignored, because a word that is silently dropped looks like a setting that was applied.</p>
 <h3 id="a-spelling-that-was-an-option"><a class="header" href="#a-spelling-that-was-an-option">A spelling that was an option</a></h3>
-<p>Each of these commands remembers the option spellings it used to have, and refuses them naming the
+<p>Each of these commands remembers the option spellings it used to have, and rejects them, stating the
 plain word that replaced each one:</p>
 <pre><code class="language-text">/ssh add box example.com --port 2222
 --port is gone: write the port as a plain integer.
 Usage: /ssh add &lt;name&gt; &lt;host&gt; [user &lt;user&gt;] [&lt;port&gt;] [key &lt;keyPath&gt;]
 </code></pre>
-<p>The plain word gets the same answer as the dashed one. <code>/stats port 8080</code> is refused the way
+<p>The plain word gets the same answer as the dashed one. <code>/stats port 8080</code> is rejected the way
 <code>/stats --port 8080</code> is, and <code>/mcp add srv project</code> the way <code>/mcp add srv --scope project</code> is,
 because the operator who types the word an older grammar taught is asking the same question either
 way and wants the same answer. Which words those are is read from the same table the refusal text
 comes from, so the two spellings cannot drift apart.</p>
-<p>A word that never was an option is refused more briefly, since there is no replacement to name:
+<p>A word that never was an option is rejected more briefly, since there is no replacement to name:
 <code>Unknown argument: &lt;word&gt;</code>, or <code>Invalid port: &lt;word&gt;</code> where a port was the only thing the command
 reads.</p>
 <p><code>/mcp smithery-search</code> is the exception, and it is one on purpose: its trailing words are search
 terms, arbitrary text with no closed set, so a plain <code>project</code> there is a keyword to search for and
-is searched for. Only the dashed spellings are refused.</p>
+is searched for. Only the dashed spellings are rejected.</p>
 <h2 id="a-bare-command-that-has-subcommands"><a class="header" href="#a-bare-command-that-has-subcommands">A bare command that has subcommands</a></h2>
 <p>Some commands take a subcommand: <code>/account status</code>, <code>/account manager</code>, <code>/usage reset</code>. Typing the
 command on its own opens a picker listing every subcommand it has, with what each one does. Move
@@ -305,7 +305,7 @@ act on a bare invocation: <code>/yolo</code>, <code>/fast</code>, and <code>/bro
 <tr><td><code>/guided-goal</code></td><td>Guided goal wizard</td></tr>
 <tr><td><code>/loop</code></td><td>Loop mode controls</td></tr>
 <tr><td><code>/prewalk</code></td><td>Prewalk edit path</td></tr>
-<tr><td><code>/secret</code></td><td>Store a credential the agent uses by placeholder and never sees. A command comes first on every surface and every argument after it is a plain word: <code>/secret add &lt;value&gt;</code> stores it in a terminal, <code>/secret add</code> alone opens a hidden field, <code>/secret from-env &lt;VAR&gt;</code> reads it out of the environment, and the name is asked afterwards with Enter accepting the generated one. The commands are <code>add</code>, <code>from-env</code>, <code>list</code>, <code>rm</code>, <code>clear</code>, <code>rename</code>, <code>value</code>, <code>scope</code>, <code>copy</code>, <code>extend</code>, <code>log</code>, <code>discard</code>, <code>help</code>; a first word that is none of them is refused and nothing is stored. See <a href="../features/secrets.html">Secrets</a></td></tr>
+<tr><td><code>/secret</code></td><td>Store a credential the agent uses by placeholder and never sees. A command comes first on every surface and every argument after it is a plain word: <code>/secret add &lt;value&gt;</code> stores it in a terminal, <code>/secret add</code> alone opens a hidden field, <code>/secret from-env &lt;VAR&gt;</code> reads it out of the environment, and the name is prompted afterwards, with Enter accepting the generated one. The commands are <code>add</code>, <code>from-env</code>, <code>list</code>, <code>rm</code>, <code>clear</code>, <code>rename</code>, <code>value</code>, <code>scope</code>, <code>copy</code>, <code>extend</code>, <code>log</code>, <code>discard</code>, <code>help</code>; a first word that is none of them is rejected and nothing is stored. See <a href="../features/secrets.html">Secrets</a></td></tr>
 <tr><td><code>/settings</code>, <code>/setup</code></td><td>Settings UI; <code>/setup</code> opens first-run provider sign-in</td></tr>
 <tr><td><code>/providers</code>, <code>/account manager</code></td><td>Open the account manager: every stored account per provider, with its email, plan, health, and usage. See <a href="../using/authentication.html">Authentication</a></td></tr>
 <tr><td><code>/account status</code></td><td>Show which account each provider is serving this session with. A bare <code>/account</code> opens the picker</td></tr>
@@ -313,6 +313,7 @@ act on a bare invocation: <code>/yolo</code>, <code>/fast</code>, and <code>/bro
 <tr><td><code>/account switch &lt;provider&gt;</code></td><td>Open the manager focused on one provider, to move that provider to another of your accounts</td></tr>
 <tr><td><code>/statusline</code></td><td>Settings UI, jumped to Status Line (preset/segments/separator)</td></tr>
 <tr><td><code>/reload-plugins</code></td><td>Reload extensions</td></tr>
+<tr><td><code>/trust</code></td><td>Decide whether this project’s code may run; <code>approve</code>, <code>deny</code>, <code>forget</code>, or a path (<a href="./project-trust.html">Project trust</a>)</td></tr>
 <tr><td><code>/force &lt;tool&gt; [prompt]</code> (<code>/force:</code>)</td><td>Force the next turn to use a specific tool</td></tr>
 </tbody>
 </table>
@@ -419,6 +420,7 @@ own page; typing the bare command lists them with their descriptions.</p>
 <tr><td><code>/shake</code></td><td><code>elide</code>, <code>images</code></td></tr>
 <tr><td><code>/memory</code></td><td><code>view</code>, <code>stats</code>, <code>diagnose</code>, <code>clear</code>, <code>reset</code>, <code>enqueue</code>, <code>rebuild</code>, <code>mm list</code>, <code>mm show</code>, <code>mm refresh</code>, <code>mm history</code>, <code>mm seed</code>, <code>mm delete</code>, <code>mm reload</code></td></tr>
 <tr><td><code>/plugins</code></td><td><code>list</code></td></tr>
+<tr><td><code>/trust</code></td><td><code>approve</code>, <code>deny</code>, <code>forget</code></td></tr>
 </tbody>
 </table>
 </div>

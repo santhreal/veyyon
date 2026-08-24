@@ -62,9 +62,11 @@ import type { ConfigError, ConfigFile } from "./config-file";
 import {
 	commandFailureReason,
 	configCommandPolicy,
+	describeConfigEnvReference,
 	isConfigValueCommand,
 	parseConfigValueCommand,
-	resolveEnvOrLiteral,
+	reportUnresolvedEnvReference,
+	resolveConfigEnvReference,
 } from "./config-value-resolution";
 import {
 	DISCOVERY_DEFAULT_MAX_TOKENS,
@@ -82,6 +84,94 @@ import { settings } from "./settings";
 
 function isDiscoveryBearerApiKey(apiKey: string | undefined | null): apiKey is string {
 	return isAuthenticated(apiKey) && !LOCAL_PROVIDER_PLACEHOLDERS.has(apiKey);
+}
+
+/**
+ * The local runtimes veyyon probes without being told to, and how each one is spelled.
+ *
+ * ONE TABLE, because there used to be three near-identical `if` blocks and the discovery
+ * severity split reads what they set. A fourth runtime added as a fourth block would get
+ * the loopback-refusal treatment by accident rather than by decision, and no test could
+ * see it: `a-provider-nobody-configured-does-not-warn.test.ts` sweeps this list, so a new
+ * row is exercised the moment it lands and an unexercised row fails.
+ *
+ * `baseUrl` is a function because two of the three read the environment, and reading it at
+ * module load would pin whatever the process started with.
+ */
+interface ImplicitLocalRuntime {
+	readonly provider: string;
+	readonly api: Api;
+	readonly baseUrl: () => string;
+	readonly discovery: "ollama" | "llama.cpp" | "lm-studio";
+	/**
+	 * `unless-authenticated` is llama.cpp's: it accepts a key, so a stored one means the
+	 * endpoint is not keyless and the discovery probe has to send it.
+	 */
+	readonly keyless: "always" | "unless-authenticated";
+}
+
+const IMPLICIT_LOCAL_RUNTIMES: readonly ImplicitLocalRuntime[] = [
+	{
+		provider: "ollama",
+		api: "openai-responses",
+		baseUrl: getImplicitOllamaBaseUrl,
+		discovery: "ollama",
+		keyless: "always",
+	},
+	{
+		provider: "llama.cpp",
+		api: "openai-responses",
+		baseUrl: () => Bun.env.LLAMA_CPP_BASE_URL || "http://127.0.0.1:8080",
+		discovery: "llama.cpp",
+		keyless: "unless-authenticated",
+	},
+	{
+		provider: "lm-studio",
+		api: "openai-completions",
+		baseUrl: () => Bun.env.LM_STUDIO_BASE_URL || "http://127.0.0.1:1234/v1",
+		discovery: "lm-studio",
+		keyless: "always",
+	},
+];
+
+/** Every implicit local runtime's id, for a sweep that has to cover all of them. */
+export const IMPLICIT_LOCAL_RUNTIME_IDS: readonly string[] = IMPLICIT_LOCAL_RUNTIMES.map(runtime => runtime.provider);
+
+/**
+ * Whether a URL addresses this machine.
+ *
+ * The wildcard bind addresses count: a client URL of `http://0.0.0.0:8080` is how a local
+ * server that binds every interface is reached, and it is this machine either way. A
+ * hostname is matched whole rather than by prefix, because `127.example.com` is a legal
+ * remote name and a prefix test silences a remote endpoint's failures.
+ */
+function isLoopbackUrl(url: string | undefined): boolean {
+	if (!url) return false;
+	let hostname: string;
+	try {
+		hostname = new URL(url).hostname.toLowerCase();
+	} catch {
+		return false;
+	}
+	// `URL.hostname` keeps the brackets on an IPv6 literal.
+	if (hostname === "localhost" || hostname.endsWith(".localhost")) return true;
+	if (hostname === "[::1]" || hostname === "[::]" || hostname === "::1" || hostname === "::") return true;
+	if (hostname === "0.0.0.0") return true;
+	return /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname);
+}
+
+/**
+ * Whether a discovery failure means nothing answered, as opposed to something answering badly.
+ *
+ * The distinction is the whole severity decision, and it has to be read out of text: by the
+ * time a failure reaches the reporter it is a formatted message, with the provider's own
+ * wording in it. Bun's fetch says "Unable to connect", node says `ECONNREFUSED`, and a
+ * probe that gave up says it failed to connect.
+ */
+function isConnectionRefusalError(error: string): boolean {
+	return /unable to connect|econnrefused|connection refused|ehostunreach|enetunreach|econnreset|failed to connect/i.test(
+		error,
+	);
 }
 
 /**
@@ -302,13 +392,23 @@ interface CommandApiKeyResolution {
 }
 /**
  * Resolve a models.yml/models.yaml secret/config value to an actual value.
- * `!cmd` runs a shell command and returns trimmed stdout, otherwise env vars are
- * checked first and the input falls back to a literal value.
+ * `!cmd` runs a shell command and returns trimmed stdout; `${NAME}` / `$NAME`
+ * and a bare environment name resolve from the environment and produce nothing
+ * when the variable is unset or empty; `literal:<text>` and any other bare value
+ * are the value itself.
  */
-function resolveConfigValue(valueConfig: string): string | undefined {
+function resolveConfigValue(valueConfig: string, describedAs?: string): string | undefined {
 	const command = parseConfigValueCommand(valueConfig);
-	if (command === null) return resolveEnvOrLiteral(valueConfig);
-	return resolveCommandConfig(command);
+	if (command !== null) return resolveCommandConfig(command);
+	const outcome = resolveConfigEnvReference(valueConfig);
+	if (outcome.ok) return outcome.value;
+	reportUnresolvedEnvReference({
+		variable: outcome.variable,
+		explicit: outcome.explicit,
+		empty: outcome.empty,
+		describedAs,
+	});
+	return undefined;
 }
 
 type HeaderSource = Record<string, string> | undefined;
@@ -326,12 +426,12 @@ function materializeConfigHeaderSources(
 	for (const source of sources) {
 		if (!source) continue;
 		for (const [key, value] of Object.entries(source)) {
-			const next = resolveConfigValue(value);
+			const next = resolveConfigValue(value, `header "${key}"`);
 			if (next) resolved[key] = next;
 		}
 	}
 	if (options?.authHeader && options.apiKeyConfig) {
-		const resolvedKey = resolveConfigValue(options.apiKeyConfig);
+		const resolvedKey = resolveConfigValue(options.apiKeyConfig, "provider API key");
 		if (resolvedKey) resolved.Authorization = `Bearer ${resolvedKey}`;
 	}
 	return Object.keys(resolved).length > 0 ? resolved : undefined;
@@ -743,7 +843,7 @@ export class ModelRegistry {
 	#resolveCommandBackedApiKey(provider: string): CommandApiKeyResolution {
 		const keyConfig = this.#customProviderApiKeys.get(provider);
 		if (!isConfigValueCommand(keyConfig)) return { configured: false };
-		const value = resolveConfigValue(keyConfig);
+		const value = resolveConfigValue(keyConfig, `API key for provider "${provider}"`);
 		if (value) {
 			this.authStorage.setConfigApiKey(provider, value);
 			return { configured: true, value };
@@ -754,10 +854,13 @@ export class ModelRegistry {
 
 	#installProviderApiKey(provider: string, keyConfig: string): void {
 		this.#customProviderApiKeys.set(provider, keyConfig);
-		const resolved = resolveConfigValue(keyConfig);
+		const resolved = resolveConfigValue(keyConfig, `API key for provider "${provider}"`);
 		if (resolved) {
 			this.authStorage.setConfigApiKey(provider, resolved);
-		} else if (isConfigValueCommand(keyConfig)) {
+		} else if (isConfigValueCommand(keyConfig) || describeConfigEnvReference(keyConfig)) {
+			// The config names a source that produced nothing — a failing command or an
+			// unset variable. Whatever was installed for this provider before is not what
+			// the config says now, so it is dropped rather than kept and sent.
 			this.authStorage.removeConfigApiKey(provider);
 		}
 	}
@@ -787,7 +890,7 @@ export class ModelRegistry {
 		this.authStorage.setFallbackResolver(provider => {
 			const keyConfig = this.#customProviderApiKeys.get(provider);
 			if (!keyConfig) return undefined;
-			return resolveConfigValue(keyConfig);
+			return resolveConfigValue(keyConfig, `API key for provider "${provider}"`);
 		});
 		// Load models synchronously in constructor.
 		this.#loadModels();
@@ -1192,38 +1295,21 @@ export class ModelRegistry {
 
 	#addImplicitDiscoverableProviders(configuredProviders: Set<string>): void {
 		const disabledProviders = getDisabledProviderIdsFromSettings();
-		if (!configuredProviders.has("ollama") && !disabledProviders.has("ollama")) {
+		for (const runtime of IMPLICIT_LOCAL_RUNTIMES) {
+			if (configuredProviders.has(runtime.provider) || disabledProviders.has(runtime.provider)) continue;
 			this.#discoverableProviders.push({
-				provider: "ollama",
-				api: "openai-responses",
-				baseUrl: getImplicitOllamaBaseUrl(),
-				discovery: { type: "ollama" },
+				provider: runtime.provider,
+				api: runtime.api,
+				baseUrl: runtime.baseUrl(),
+				discovery: { type: runtime.discovery },
+				// Optional is what marks a provider nobody asked for, and the discovery-failure
+				// severity split reads it: a failure from one of these is only reported at warn
+				// when the endpoint answers, because the operator never said it would be there.
 				optional: true,
 			});
-			this.#keylessProviders.add("ollama");
-		}
-		if (!configuredProviders.has("llama.cpp") && !disabledProviders.has("llama.cpp")) {
-			this.#discoverableProviders.push({
-				provider: "llama.cpp",
-				api: "openai-responses",
-				baseUrl: Bun.env.LLAMA_CPP_BASE_URL || "http://127.0.0.1:8080",
-				discovery: { type: "llama.cpp" },
-				optional: true,
-			});
-			// Only mark as keyless if no API key is configured
-			if (!this.authStorage.hasAuth("llama.cpp")) {
-				this.#keylessProviders.add("llama.cpp");
+			if (runtime.keyless === "always" || !this.authStorage.hasAuth(runtime.provider)) {
+				this.#keylessProviders.add(runtime.provider);
 			}
-		}
-		if (!configuredProviders.has("lm-studio") && !disabledProviders.has("lm-studio")) {
-			this.#discoverableProviders.push({
-				provider: "lm-studio",
-				api: "openai-completions",
-				baseUrl: Bun.env.LM_STUDIO_BASE_URL || "http://127.0.0.1:1234/v1",
-				discovery: { type: "lm-studio" },
-				optional: true,
-			});
-			this.#keylessProviders.add("lm-studio");
 		}
 	}
 
@@ -1524,13 +1610,66 @@ export class ModelRegistry {
 	 * Deduplicated per provider on the exact reason: discovery re-runs on a timer and on demand, and the
 	 * same unreachable endpoint must not fill the log. A CHANGED reason is reported, because that is news.
 	 */
+	#hasStoredCredential(provider: string): boolean {
+		return (
+			this.authStorage.hasAuth(provider) ||
+			this.#customProviderApiKeys.has(provider) ||
+			this.#runtimeProviderApiKeys.has(provider)
+		);
+	}
+
+	/**
+	 * Whether anything says this provider's endpoint is meant to be there.
+	 *
+	 * An explicit `baseUrl` in `models.yml`, a runtime override, a non-optional discovery
+	 * row, or a model overlay naming a URL are all somebody saying where the provider is.
+	 */
+	#hasConfiguredEndpoint(provider: string): boolean {
+		return (
+			this.#providerOverrides.get(provider)?.baseUrl !== undefined ||
+			this.#runtimeProviderOverrides.get(provider)?.baseUrl !== undefined ||
+			this.#discoverableProviders.some(row => row.provider === provider && row.optional === false) ||
+			this.#customModelOverlays.some(overlay => overlay.provider === provider && overlay.baseUrl !== undefined) ||
+			this.#runtimeModelOverlays.some(overlay => overlay.provider === provider && overlay.baseUrl !== undefined)
+		);
+	}
+
+	/**
+	 * Whether a discovery failure is a fault, or software the operator never started.
+	 *
+	 * A configured provider is always a fault: a credential or an endpoint is a statement
+	 * that it should work. Absent both, the failure is a fault only if something answered —
+	 * a status, a malformed body — or if the endpoint is not on this machine, because a
+	 * remote address is itself a configuration. What is left is a loopback port with nothing
+	 * behind it, which is the ordinary state of a machine that does not run that runtime.
+	 */
+	#shouldWarnOnDiscoveryFailure(provider: string, url: string | undefined, error: string): boolean {
+		if (this.#hasStoredCredential(provider) || this.#hasConfiguredEndpoint(provider)) {
+			return true;
+		}
+		const effectiveUrl =
+			url ??
+			this.#runtimeProviderOverrides.get(provider)?.baseUrl ??
+			this.#providerOverrides.get(provider)?.baseUrl ??
+			this.#discoverableProviders.find(row => row.provider === provider)?.baseUrl ??
+			this.getProviderBaseUrl(provider);
+		if (!isLoopbackUrl(effectiveUrl)) {
+			return true;
+		}
+		return !isConnectionRefusalError(error);
+	}
+
 	#warnProviderDiscoveryFailure(provider: string, url: string | undefined, error: string): void {
 		const previous = this.#lastDiscoveryWarnings.get(provider);
 		if (previous === error) {
 			return;
 		}
 		this.#lastDiscoveryWarnings.set(provider, error);
-		logger.warn("model discovery failed for provider", { provider, url, error });
+		if (this.#shouldWarnOnDiscoveryFailure(provider, url, error)) {
+			logger.warn("model discovery failed for provider", { provider, url, error });
+		} else {
+			logger.debug("model discovery failed for provider", { provider, url, error });
+		}
 	}
 
 	async #discoverBuiltInProviderModels(

@@ -7,15 +7,23 @@
 import * as path from "node:path";
 import * as url from "node:url";
 import type { TSchema } from "@veyyon/ai";
-// The owner, not the barrel: classifying an OAuth failure is a string test, and
-// `error/auth-classify.ts` reaches 7 modules.
-import { isDefinitiveOAuthFailure } from "@veyyon/ai/error/auth-classify";
+// The owner, not the barrel: classifying an OAuth failure is a string test that
+// belongs to the flag it decides, and `error/flags.ts` is where that flag lives.
+import { isDefinitiveOAuthFailure } from "@veyyon/ai/error/flags";
 import { errorMessage, logger } from "@veyyon/utils";
 import { FOREIGN_PROVIDER_IDS } from "../capability/index";
 import type { SourceMeta } from "../capability/types";
-import { resolveConfigValue } from "../config/resolve-config-value";
+import { describeConfigEnvReference } from "../config/config-value-resolution";
+import { invalidateConfigValue, resolveConfigValue } from "../config/resolve-config-value";
 import type { CustomTool } from "../extensibility/custom-tools/types";
 import { type AuthStorage, REMOTE_REFRESH_SENTINEL } from "../session/auth-storage";
+import {
+	classifyMcpAuthFailure,
+	MCPAuthRequiredError,
+	type MCPAuthResolution,
+	MCPBrokerRedactedRefreshError,
+	MCPUnresolvedEnvReferenceError,
+} from "./auth-failure";
 import {
 	closeTransportDetached,
 	connectToServer,
@@ -32,6 +40,7 @@ import {
 	unsubscribeFromResources,
 } from "./client";
 import { type LoadMCPConfigsResult, loadAllMCPConfigs, validateServerConfig } from "./config";
+import { hasMcpConfigCommands, mcpConfigCommandValues } from "./config-commands";
 import { mcpManagerInstance, setMcpManagerInstance } from "./manager-instance";
 import {
 	lookupMcpOAuthCredential,
@@ -475,16 +484,22 @@ export class MCPManager {
 						this.#connections.set(name, connection);
 					}
 
-					// Wire auth refresh for HTTP-like transports so 401s trigger token refresh.
-					// Gate on a resolvable managed credential, not on the auth block:
-					// definition-only configs (url-keyed fallback) get Bearer injection
-					// too and need the same mid-session refresh hook.
+					// Wire auth refresh for HTTP-like transports so 401s trigger a fresh credential.
+					// Two kinds qualify, and the second used to be missed entirely: a resolvable
+					// managed OAuth credential (definition-only configs get Bearer injection too and
+					// need the same mid-session refresh), and a `!command` header, which is a server
+					// whose token is minted or read on demand. Without the hook, a rotated token
+					// meant 401s until the process restarted, because nothing ever re-ran the
+					// command.
 					if (
 						isAuthRefreshableMCPTransport(connection.transport) &&
-						lookupMcpOAuthCredential(this.#authStorage, config)
+						(lookupMcpOAuthCredential(this.#authStorage, config) || hasMcpConfigCommands(config))
 					) {
 						connection.transport.onAuthError = async () => {
-							const refreshed = await this.#resolveAuthConfig(config, { forceRefresh: true });
+							const refreshed = await this.#resolveAuthConfig(config, {
+								forceRefresh: true,
+								refreshCommands: true,
+							});
 							if (refreshed.type === "http" || refreshed.type === "sse") {
 								return refreshed.headers ?? null;
 							}
@@ -897,6 +912,12 @@ export class MCPManager {
 	async reconnectServer(name: string, options?: { manual?: boolean }): Promise<MCPServerConnection | null> {
 		if (options?.manual) {
 			this.#reconnectHistory.delete(name);
+			// An operator-driven reconnect is the recovery step after rotating a secret, so this
+			// server's `!command` credentials are re-read rather than re-sent. An automatic
+			// reconnect deliberately does not: a dropped transport says nothing about the
+			// credential, and re-running a password-manager command per reconnect turns a
+			// restarting server into a stream of unlock prompts.
+			this.invalidateCommandCredentials(name);
 		}
 
 		const pending = this.#pendingReconnections.get(name);
@@ -909,6 +930,30 @@ export class MCPManager {
 		const attempt = this.#doReconnect(name);
 		this.#pendingReconnections.set(name, attempt);
 		return attempt.finally(() => this.#pendingReconnections.delete(name));
+	}
+
+	/**
+	 * Drop the cached output of the `!command` credentials of one server, or of every configured
+	 * server when no name is given, and report how many commands were dropped.
+	 *
+	 * The whole-manager form is what `/mcp reload` needs: the operator re-read the config files
+	 * precisely because something about them changed, and a credential minted by a command is
+	 * exactly what a reload cannot see has rotated. It is scoped to MCP configs, so a `!command`
+	 * that resolves a provider API key elsewhere keeps its cached value.
+	 */
+	invalidateCommandCredentials(name?: string): number {
+		const configs =
+			name === undefined
+				? [...this.#serverConfigs.values()]
+				: [this.#connections.get(name)?.config ?? this.#serverConfigs.get(name)].filter(
+						(config): config is MCPServerConfig => config !== undefined,
+					);
+		const commands = new Set<string>();
+		for (const config of configs) {
+			for (const value of mcpConfigCommandValues(config)) commands.add(value);
+		}
+		for (const command of commands) invalidateConfigValue(command);
+		return commands.size;
 	}
 
 	/**
@@ -1052,10 +1097,14 @@ export class MCPManager {
 		this.#connections.set(name, connection);
 
 		// Wire auth refresh for HTTP-like transports, and reconnect for any transport.
-		// Same gate as connectServers: any resolvable managed credential.
-		if (isAuthRefreshableMCPTransport(connection.transport) && lookupMcpOAuthCredential(this.#authStorage, config)) {
+		// Same gate as connectServers: a resolvable managed credential, or a `!command` this
+		// path can re-run.
+		if (
+			isAuthRefreshableMCPTransport(connection.transport) &&
+			(lookupMcpOAuthCredential(this.#authStorage, config) || hasMcpConfigCommands(config))
+		) {
 			connection.transport.onAuthError = async () => {
-				const refreshed = await this.#resolveAuthConfig(config, { forceRefresh: true });
+				const refreshed = await this.#resolveAuthConfig(config, { forceRefresh: true, refreshCommands: true });
 				if (refreshed.type === "http" || refreshed.type === "sse") {
 					return refreshed.headers ?? null;
 				}
@@ -1298,12 +1347,25 @@ export class MCPManager {
 	/**
 	 * Resolve OAuth credentials and shell commands in config.
 	 * `oauth: false` skips credential injection (reauth's unauthenticated probe);
-	 * `forceRefresh` bypasses the expiry buffer (401/403 auth-error hook).
+	 * `forceRefresh` bypasses the expiry buffer (401/403 auth-error hook);
+	 * `refreshCommands` drops the cached output of this server's `!command` values first, so a
+	 * rotated or revoked credential is re-read instead of re-sent. That is the difference between
+	 * a 401 the operator can recover from without restarting and one that repeats forever: the
+	 * cache key is the command text, which does not change when the secret behind it does.
+	 *
+	 * Throws `MCPAuthRequiredError` when a stored credential was found and could not be
+	 * presented — revoked, broker-held and expired, or unreadable. The connection is not
+	 * attempted at all in that state: an anonymous request earns the server's 401 instead
+	 * of the credential's own diagnosis, and enough of them earn a lockout. See
+	 * `auth-failure.ts`.
 	 */
 	async #resolveAuthConfig(
 		config: MCPServerConfig,
-		opts?: { forceRefresh?: boolean; oauth?: boolean },
+		opts?: { forceRefresh?: boolean; oauth?: boolean; refreshCommands?: boolean },
 	): Promise<MCPServerConfig> {
+		if (opts?.refreshCommands) {
+			for (const value of mcpConfigCommandValues(config)) invalidateConfigValue(value);
+		}
 		let resolved: MCPServerConfig = { ...config };
 
 		const auth = config.auth;
@@ -1311,13 +1373,17 @@ export class MCPManager {
 			opts?.oauth !== false ? lookupMcpOAuthCredential(this.#authStorage, config) : undefined;
 		if (lookup && this.#authStorage) {
 			const { credentialId } = lookup;
+			const observed: MCPStoredOAuthCredential = lookup.credential;
+			// A credential that cannot be presented is not a reason to send an anonymous
+			// request. `outcome` carries either the credential to inject or the reason the
+			// connection is refused; see `auth-failure.ts` for why each reason differs.
+			let outcome: MCPAuthResolution;
 			try {
-				let credential: MCPStoredOAuthCredential | undefined = lookup.credential;
 				const REFRESH_BUFFER_MS = 5 * 60_000;
 				const refreshResult = await this.#authStorage.refreshStoredOAuthCredential<MCPStoredOAuthCredential>(
 					credentialId,
 					{
-						observedCredential: credential,
+						observedCredential: observed,
 						credentialFromRow: row => row,
 						forceRefresh: opts?.forceRefresh,
 						refreshSkewMs: REFRESH_BUFFER_MS,
@@ -1327,9 +1393,7 @@ export class MCPManager {
 						},
 						refresh: (current, signal) => {
 							if (current.refresh === REMOTE_REFRESH_SENTINEL) {
-								throw new Error(
-									`The OAuth refresh token for ${describeMCPServerTarget(config)} is held by the auth broker and redacted locally, so this process cannot refresh it. Fix: run \`/mcp reauth <name>\` to authorize again through the broker; \`/mcp list\` gives the server's name.`,
-								);
+								throw new MCPBrokerRedactedRefreshError(describeMCPServerTarget(config));
 							}
 							const material = selectMcpOAuthRefreshMaterial(current, auth);
 							const tokenUrl = material?.tokenUrl;
@@ -1373,10 +1437,9 @@ export class MCPManager {
 						},
 						isDefinitiveFailure: error => isDefinitiveOAuthFailure(errorMessage(error)),
 						disabledCause: error => `oauth refresh failed: ${errorMessage(error)}`,
-						keepCredentialOnRefreshFailure: error =>
-							!(error instanceof Error && error.message.includes("broker-redacted")),
+						keepCredentialOnRefreshFailure: error => !(error instanceof MCPBrokerRedactedRefreshError),
 						onRefreshFailure: refreshError => {
-							if (refreshError instanceof Error && refreshError.message.includes("broker-redacted")) return;
+							if (refreshError instanceof MCPBrokerRedactedRefreshError) return;
 							logger.warn("MCP OAuth refresh failed, using existing token", {
 								credentialId,
 								error: refreshError,
@@ -1387,37 +1450,67 @@ export class MCPManager {
 				if (refreshResult.removed) {
 					logger.warn("MCP OAuth refresh failed definitively; cleared credential", { credentialId });
 				}
-				credential = refreshResult.credential;
-
-				if (credential) {
-					if (resolved.type === "http" || resolved.type === "sse") {
-						resolved = {
-							...resolved,
-							headers: {
-								...resolved.headers,
-								Authorization: `Bearer ${credential.access}`,
-							},
-						};
-					} else {
-						resolved = {
-							...resolved,
-							env: {
-								...resolved.env,
-								OAUTH_ACCESS_TOKEN: credential.access,
-							},
-						};
-					}
-				}
+				outcome = refreshResult.credential
+					? { kind: "credential", credential: refreshResult.credential, brokerRedacted: false }
+					: { kind: "failure", reason: "revoked" };
 			} catch (error) {
 				logger.warn("Failed to resolve OAuth credential", { credentialId, error });
+				outcome = classifyMcpAuthFailure(error, observed, Date.now());
+			}
+
+			if (outcome.kind === "failure") {
+				throw new MCPAuthRequiredError(outcome.reason, describeMCPServerTarget(config), {
+					cause: outcome.cause,
+				});
+			}
+			if (outcome.brokerRedacted) {
+				// The access token still works, so the session continues; the operator is
+				// told once, here, rather than at the 401 this will become when it expires.
+				logger.warn("MCP OAuth refresh token is broker-held; using the unexpired access token", {
+					credentialId,
+				});
+			}
+			const credential = outcome.credential;
+			if (resolved.type === "http" || resolved.type === "sse") {
+				resolved = {
+					...resolved,
+					headers: {
+						...resolved.headers,
+						Authorization: `Bearer ${credential.access}`,
+					},
+				};
+			} else {
+				resolved = {
+					...resolved,
+					env: {
+						...resolved.env,
+						OAUTH_ACCESS_TOKEN: credential.access,
+					},
+				};
 			}
 		}
+
+		const requireResolved = async (key: string, value: string, describedAs: string): Promise<string | undefined> => {
+			const present = await resolveConfigValue(value, `${describedAs} "${key}"`);
+			if (present) return present;
+			const reference = describeConfigEnvReference(value);
+			if (!reference) return undefined;
+			// An unresolved REFERENCE is fatal: proceeding means dialling the server with
+			// the variable's own name as the credential. A failed `!command` is not
+			// handled here — it has its own back-off and report, and its key is skipped.
+			throw new MCPUnresolvedEnvReferenceError({
+				variable: reference.variable,
+				empty: process.env[reference.variable] !== undefined,
+				describedAs: `${describedAs} "${key}"`,
+				target: describeMCPServerTarget(config),
+			});
+		};
 
 		if (resolved.type !== "http" && resolved.type !== "sse") {
 			if (resolved.env) {
 				const nextEnv: Record<string, string> = {};
 				for (const [key, value] of Object.entries(resolved.env)) {
-					const resolvedValue = await resolveConfigValue(value);
+					const resolvedValue = await requireResolved(key, value, "environment variable");
 					if (resolvedValue) nextEnv[key] = resolvedValue;
 				}
 				resolved = { ...resolved, env: nextEnv };
@@ -1426,7 +1519,7 @@ export class MCPManager {
 			if (resolved.headers) {
 				const nextHeaders: Record<string, string> = {};
 				for (const [key, value] of Object.entries(resolved.headers)) {
-					const resolvedValue = await resolveConfigValue(value);
+					const resolvedValue = await requireResolved(key, value, "header");
 					if (resolvedValue) nextHeaders[key] = resolvedValue;
 				}
 				resolved = { ...resolved, headers: nextHeaders };

@@ -1,55 +1,85 @@
 import { errorMessage } from "@veyyon/utils/type-guards";
 import { normalizeBaseUrl } from "@veyyon/utils/url";
-import { type } from "arktype";
 import { getBundledModels } from "../models";
 import { GEMINI_DEVELOPER_API_ENDPOINT } from "../provider-endpoints";
 import { toModelSpec } from "../provider-models/bundled-references";
 import type { FetchImpl, Model, ModelSpec } from "../types";
-import { discoveryFetch } from "../utils";
+import { discoveryFetch, toArray, toFields, toFiniteNumber, toStringValue } from "../utils";
 import type { DiscoveryFailure, DiscoveryHooks } from "./failure";
 
 const DEFAULT_PAGE_SIZE = 100;
 const DEFAULT_MAX_PAGES = 25;
 
-const resilientString = type("unknown").pipe(val => {
-	if (val === undefined) return undefined;
-	const out = type("string")(val);
-	return out instanceof type.errors ? undefined : out;
-});
+/**
+ * One entry of Google's `models.list` page.
+ *
+ * Read field by field rather than through a schema library: every field here was already
+ * declared as "unknown, coerced by hand", and reaching the library cost 362ms of module
+ * evaluation on a launch path that touches this file through the provider descriptor table.
+ */
+interface GeminiModelListItem {
+	name?: string | undefined;
+	displayName?: string | undefined;
+	supportedGenerationMethods?: string[] | undefined;
+	inputTokenLimit?: number | undefined;
+	outputTokenLimit?: number | undefined;
+}
 
-const resilientNumber = type("unknown").pipe(val => {
-	if (val === undefined) return undefined;
-	const out = type("number")(val);
-	return out instanceof type.errors ? undefined : out;
-});
+/**
+ * An entry, or `undefined` for one this reader will not guess at.
+ *
+ * A name or a token limit of the wrong type is dropped and the rest of the entry kept, because
+ * a model with no display name is still a usable model. A `supportedGenerationMethods` that is
+ * not a list of strings drops the whole entry: that field decides whether the model can be
+ * called at all, and a half-read answer would either hide a usable model or offer a broken one.
+ */
+function readModelListItem(value: unknown): GeminiModelListItem | undefined {
+	const fields = toFields(value);
+	if (!fields) {
+		return undefined;
+	}
+	const methods = fields.supportedGenerationMethods;
+	if (methods !== undefined && !(Array.isArray(methods) && methods.every(entry => typeof entry === "string"))) {
+		return undefined;
+	}
+	return {
+		name: toStringValue(fields.name),
+		displayName: toStringValue(fields.displayName),
+		supportedGenerationMethods: methods as string[] | undefined,
+		inputTokenLimit: toFiniteNumber(fields.inputTokenLimit),
+		outputTokenLimit: toFiniteNumber(fields.outputTokenLimit),
+	};
+}
 
-const geminiModelListItemSchema = type({
-	"name?": resilientString,
-	"displayName?": resilientString,
-	"supportedGenerationMethods?": "string[]",
-	"inputTokenLimit?": resilientNumber,
-	"outputTokenLimit?": resilientNumber,
-});
+interface GeminiModelListPage {
+	models: GeminiModelListItem[];
+	nextPageToken?: string | undefined;
+}
 
-type GeminiModelListItem = typeof geminiModelListItemSchema.infer;
-
-const modelsSchema = type("unknown[]")
-	.pipe(items => {
-		const parsedItems: GeminiModelListItem[] = [];
-		for (const item of items) {
-			const parsed = geminiModelListItemSchema(item);
-			if (!(parsed instanceof type.errors)) {
-				parsedItems.push(parsed);
-			}
+/**
+ * A page of the model list, or `undefined` when the response is not one.
+ *
+ * An absent `models` key is an empty page, which is a real answer from a project with no models
+ * enabled. A `models` that is present and not a list is a response shape this reader does not
+ * know, and is reported rather than read as "no models".
+ */
+function readModelListPage(payload: unknown): GeminiModelListPage | undefined {
+	const fields = toFields(payload);
+	if (!fields) {
+		return undefined;
+	}
+	if (fields.models !== undefined && !Array.isArray(fields.models)) {
+		return undefined;
+	}
+	const items: GeminiModelListItem[] = [];
+	for (const entry of toArray(fields.models) ?? []) {
+		const item = readModelListItem(entry);
+		if (item) {
+			items.push(item);
 		}
-		return parsedItems;
-	})
-	.default(() => []);
-
-const geminiModelListResponseSchema = type({
-	models: modelsSchema,
-	"nextPageToken?": resilientString,
-});
+	}
+	return { models: items, nextPageToken: toStringValue(fields.nextPageToken) };
+}
 /**
  * Configuration for Google Generative AI model discovery.
  */
@@ -138,9 +168,10 @@ export async function fetchGeminiModels(
 			return null;
 		}
 
-		const parsed = geminiModelListResponseSchema(payload);
-		if (parsed instanceof type.errors) {
-			report("payload", `response holds no model list: ${parsed.summary}`);
+		const parsed = readModelListPage(payload);
+		if (!parsed) {
+			const shape = payload === null ? "null" : typeof payload;
+			report("payload", `response holds no model list: the body is ${shape}, or its \`models\` field is not a list`);
 			return null;
 		}
 

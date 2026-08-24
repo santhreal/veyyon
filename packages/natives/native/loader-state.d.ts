@@ -85,6 +85,34 @@ export function cleanupStaleNativeVersions(input: CleanupStaleNativeVersionsInpu
 	failed: { dir: string; reason: string }[];
 };
 
+/** Every per-version cache under the root that is not the current version. The single owner of "which directory is dead". */
+export function staleNativeVersionDirs(input: CleanupStaleNativeVersionsInput): string[];
+
+/** The same prune with the unlink work off the calling thread. Never rejects; failures come back in `failed`. */
+export function reclaimStaleNativeVersions(input: CleanupStaleNativeVersionsInput): Promise<NativeCachePruneReport>;
+
+/** What a prune did: the caches it reclaimed, and the ones it could not, with the reason. */
+export interface NativeCachePruneReport {
+	removed: string[];
+	failed: { dir: string; reason: string }[];
+}
+
+export interface ScheduleStaleNativeCleanupInput extends CleanupStaleNativeVersionsInput {
+	schedule?: (callback: () => void, delayMs: number) => unknown;
+	reclaim?: (input: CleanupStaleNativeVersionsInput) => Promise<NativeCachePruneReport>;
+	report?: (message: string) => void;
+}
+
+/**
+ * Hand the prune to the event loop and return at once, so a launch never waits on
+ * deleting a dead cache. The handle is unref'd when it carries `unref`; `settled`
+ * resolves once the prune has run and reported.
+ */
+export function scheduleStaleNativeCleanup(input: ScheduleStaleNativeCleanupInput): {
+	handle: unknown;
+	settled: Promise<NativeCachePruneReport>;
+};
+
 export interface ExtractEmbeddedAddonArchiveInput {
 	archivePath: string;
 	files: EmbeddedAddonFile[];

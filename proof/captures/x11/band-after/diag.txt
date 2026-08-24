@@ -1,1 +1,0 @@
-committedRows=109 scrollTapeRows=109 composedFrameRows=128 topFill=0 bottomFill=0 rows=19

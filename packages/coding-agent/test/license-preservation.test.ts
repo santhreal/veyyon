@@ -206,16 +206,30 @@ describe("license preservation", () => {
 	});
 
 	/**
-	 * The provenance map must name the current crate and repository topology,
-	 * never removed pi-* paths, a nonexistent backlog, or an unconfigured remote.
+	 * `UPSTREAM.md` states the fork and where the notices live. The crate-and-repository
+	 * provenance moved to the porting guide, so each claim is asserted against the file that
+	 * owns it: a stale `pi-*` crate path is a defect wherever it is written.
 	 */
 	it("keeps fork provenance aligned with the current repository", async () => {
 		const upstream = await readRepositoryFile("UPSTREAM.md");
-		for (const current of ["crates/veyyon-natives", "crates/veyyon-shell", "santhreal/veyyon", "can1357/oh-my-pi"]) {
-			expect(upstream).toContain(current);
+		for (const required of ["santhreal/veyyon", "can1357/oh-my-pi", "crates/veyyon-shell/NOTICE", "LICENSE"]) {
+			expect(upstream).toContain(required);
 		}
-		for (const stale of ["crates/pi-grep", "crates/pi-pty", "BACKLOG.md", "origin    ", "upstream  "]) {
-			expect(upstream).not.toContain(stale);
+		const porting = await readRepositoryFile("docs/internal/porting-from-pi-mono.md");
+		for (const current of ["crates/veyyon-natives", "crates/veyyon-shell", "oh-my-pi"]) {
+			expect(porting).toContain(current);
+		}
+		for (const stale of ["crates/pi-grep", "crates/pi-pty", "origin    ", "upstream  "]) {
+			expect({ file: "UPSTREAM.md", stale, present: upstream.includes(stale) }).toEqual({
+				file: "UPSTREAM.md",
+				stale,
+				present: false,
+			});
+			expect({ file: "porting", stale, present: porting.includes(stale) }).toEqual({
+				file: "porting",
+				stale,
+				present: false,
+			});
 		}
 	});
 

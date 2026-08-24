@@ -129,7 +129,7 @@ describe("curves", () => {
 
 	test("a curve runs backwards just as exactly", () => {
 		const clock = new MotionClock();
-		const animation = clock.animate(MOTION.exit, { from: 1, to: 0 });
+		const animation = clock.animate(MOTION.hover, { from: 1, to: 0 });
 		framesToSettle(clock);
 		expect(animation.value).toBe(0);
 	});

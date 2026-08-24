@@ -4,10 +4,11 @@
  */
 import { INTENT_FIELD } from "@veyyon/wire";
 import type { ReactNode } from "react";
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { PartialTail } from "./partial-tail";
 import { resolveToolRenderer } from "./registry";
 import type { ToolRenderHost, ToolRenderProps, ToolResultLike } from "./types";
-import { isRecord, replaceTabs, stripAnsi } from "./util";
+import { isRecord } from "./util";
 import "./tool-render.css";
 
 export interface ToolViewProps {
@@ -51,7 +52,14 @@ export function ToolView(props: ToolViewProps): ReactNode {
 
 	const isError = props.result?.isError === true;
 	const status = props.running ? "run" : isError ? "err" : props.result ? "ok" : "pending";
-	const partial = props.running && !props.result && props.partial ? stripAnsi(replaceTabs(props.partial)) : "";
+	// The tail is stripped incrementally: each arrival costs what arrived, not
+	// the whole buffer stripped again. Feeding the same value twice is a no-op,
+	// so a re-render adds nothing.
+	const tail = useRef<PartialTail | null>(null);
+	tail.current ??= new PartialTail();
+	const streamed = props.running === true && !props.result ? props.partial : undefined;
+	if (typeof streamed === "string") tail.current.push(streamed);
+	const partial = typeof streamed === "string" ? tail.current.text : "";
 
 	return (
 		<div className={`tv-card${isError ? " tv-card--error" : ""}`}>
@@ -79,7 +87,7 @@ export function ToolView(props: ToolViewProps): ReactNode {
 					{renderer.Body ? <renderer.Body {...renderProps} /> : null}
 				</div>
 			)}
-			{partial && <pre className="tv-partial">{partial.length > 2048 ? `…${partial.slice(-2048)}` : partial}</pre>}
+			{partial && <pre className="tv-partial">{partial}</pre>}
 		</div>
 	);
 }

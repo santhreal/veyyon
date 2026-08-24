@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-0c15bee8.js";
+            window.path_to_searchindex_js = "../searchindex-c0972181.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-79e2ba62.js"></script>
+        <script src="../toc-a2abefc1.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -231,7 +231,7 @@ one-time migration from the legacy bare-root layout.</p>
 <p><strong>Provider credentials are the one exception:</strong> by default they live in a machine-wide store (<code>~/.veyyon/shared-auth/agent.db</code>) that every profile reads, so you sign in once. Set <code>profileSharing: false</code> in the global <code>~/.veyyon/config.yml</code> (or toggle it on the <strong>Global</strong> tab of <code>/settings</code>) to give each profile its own private credential store instead. See <a href="../using/authentication.html#credentials-are-shared-across-profiles">Signing in › Credentials are shared across profiles</a>.</p>
 <p><strong>Keybindings:</strong> each profile owns <code>agent/keybindings.*</code>. New profiles seeded with <code>veyyon profile new --from default</code> copy the default profile’s keybindings once. On first launch of an older named profile that has no keybindings file, Veyyon performs the same one-time seed and logs it. There is no live merge from the default profile after that.</p>
 <p>Project-level dirs (<code>&lt;cwd&gt;/.veyyon</code>, <code>.claude</code>, etc.) are <strong>not</strong> profile-scoped; they follow the working directory.</p>
-<p><strong>Other tools’ config</strong> (skills and <code>CLAUDE.md</code>/<code>AGENTS.md</code> written for Claude, Codex, and similar) is <strong>off by default</strong> and controlled per profile by <code>discovery.importForeignConfig</code>, so each profile decides on its own whether to ambiently read foreign files or run native-only. Another tool’s own global dir (<code>~/.claude/skills</code>, …) cannot be relocated into a profile, see <a href="./skills.html#profiles-isolate-skills">Skills › Profiles isolate skills</a>.</p>
+<p><strong>Other tools’ config</strong> (skills and <code>CLAUDE.md</code>/<code>AGENTS.md</code> written for Claude, Codex, and similar) is <strong>off by default</strong> and controlled per profile by <code>discovery.importForeignConfig</code>, so each profile decides on its own whether to ambiently read foreign files or run native-only. Another tool’s own global dir (<code>~/.claude/skills</code>, …) cannot be relocated into a profile, see <a href="../reference/skills.html#discovery-pipeline">Skills › Profiles isolate skills</a>.</p>
 <h2 id="activating-a-profile"><a class="header" href="#activating-a-profile">Activating a profile</a></h2>
 <ul>
 <li><strong>CLI:</strong> <code>veyyon --profile &lt;name&gt;</code> (no short form; <code>-p</code> is <code>--print</code>).</li>
@@ -255,7 +255,7 @@ one-time migration from the legacy bare-root layout.</p>
 <tr><td><code>/profile new &lt;name&gt;</code>, <code>/profile create &lt;name&gt;</code></td><td>Create <code>&lt;name&gt;</code>, then open the copy-items picker.</td></tr>
 <tr><td><code>/profile rename &lt;old&gt; to &lt;new&gt;</code></td><td>Set the display name of <code>&lt;old&gt;</code> to <code>&lt;new&gt;</code>.</td></tr>
 <tr><td><code>/profile rename to &lt;new&gt;</code></td><td>Rename the active profile.</td></tr>
-<tr><td><code>/profile rm &lt;name&gt;</code>, <code>/profile delete &lt;name&gt;</code></td><td>Delete <code>&lt;name&gt;</code> after a confirmation. Refuses the active and default profiles.</td></tr>
+<tr><td><code>/profile rm &lt;name&gt;</code>, <code>/profile delete &lt;name&gt;</code></td><td>Delete <code>&lt;name&gt;</code> after a confirmation. Rejects the active and default profiles.</td></tr>
 </tbody>
 </table>
 </div>
@@ -266,7 +266,7 @@ one-time migration from the legacy bare-root layout.</p>
 <li><strong>Settings:</strong> <code>/settings</code> › Interaction › Profile › Profile Name.</li>
 <li><strong>TUI:</strong> <code>/profile rename to &lt;new&gt;</code> renames the active profile; <code>/profile &lt;name&gt; rename to &lt;new&gt;</code> (or <code>/profile rename &lt;name&gt; to &lt;new&gt;</code>) renames another one. The default profile is renamable too. The profile picker’s <strong>Rename</strong> action prefills this command for you.</li>
 </ul>
-<p><code>/profile list</code> shows <code>name (Display Name)</code> when they differ, and <code>/profile &lt;input&gt;</code> resolves a directory name first, then a unique display name. A copied settings file never carries the source’s display name, <code>profile new</code> clears it so two profiles cannot answer to one name.</p>
+<p><code>/profile list</code> shows <code>name (Display Name)</code> when they differ, and <code>/profile &lt;input&gt;</code> resolves a directory name first, then a unique display name. A copied settings file never contains the source’s display name, <code>profile new</code> clears it so two profiles cannot answer to one name.</p>
 <p>Because directory names resolve first, a rename warns you when the display name you chose will not switch back to this profile: when it matches another profile’s directory name (that directory wins), or when it duplicates another profile’s display name (the switch becomes ambiguous). The rename still applies, so use a distinct name if you want to switch by it.</p>
 <h2 id="creating-and-managing-profiles"><a class="header" href="#creating-and-managing-profiles">Creating and managing profiles</a></h2>
 <pre><code class="language-console">$ veyyon profile list
@@ -281,7 +281,7 @@ $ veyyon profile default work
 <li><code>--from default</code> (default) seeds <code>config.yml</code>, keybindings, MCP, skills, and other identity files from the default profile. Sessions, blobs, and databases are <strong>not</strong> copied.</li>
 <li><code>--from blank</code> creates an empty agent tree.</li>
 <li><code>--from dev</code> seeds a blank tree, then enables the study features. It sets <code>session.instrumentation</code> to <code>ultra</code> and enables Argot, the experimental token-shorthand codec. Use this profile when you want to run <code>veyyon session stats</code> or backtest a stored session. Instrumentation records structured, redacted session data: lifecycle and checkpoints, task transitions, tool and model timing, context attribution, agent-message delivery, and analysis rollups. <code>basic</code> keeps the elementary timing and state record; <code>rich</code> adds context and communication detail; <code>ultra</code> adds fingerprints, abort state, links, routes, cache and reasoning detail, and upstream-provider details.</li>
-<li><code>rm</code> refuses the default profile, the active profile, and destructive deletes without <code>--yes</code>. If you remove the profile that is set as the launch default, its <code>defaultProfile</code> pointer is cleared at the same time, so the next launch falls back to the default profile instead of a directory that no longer exists.</li>
+<li><code>rm</code> rejects the default profile, the active profile, and destructive deletes without <code>--yes</code>. If you remove the profile that is set as the launch default, its <code>defaultProfile</code> pointer is cleared at the same time, so the next launch falls back to the default profile instead of a directory that no longer exists.</li>
 <li><code>default [name]</code> shows or sets the global <code>defaultProfile</code> (which profile a bare <code>vey</code> launches); <code>default --clear</code> removes it.</li>
 </ul>
 <h3 id="reading-the-size-in-profile-list---json"><a class="header" href="#reading-the-size-in-profile-list---json">Reading the size in <code>profile list --json</code></a></h3>
@@ -296,16 +296,16 @@ $ veyyon profile default work
   }
 ]
 </code></pre>
-<p><code>bytes</code> is the total size of every file under <code>rootDir</code>. <code>bytesComplete</code> tells you whether that total is the whole story. The walk skips anything it cannot read rather than failing the listing, so a directory with no read permission would otherwise make a large profile look small. When a path is skipped, <code>bytesComplete</code> is <code>false</code>, <code>bytes</code> becomes a lower bound, and the skipped paths are written to the profile’s log with the message <code>Profile size is incomplete; some paths could not be read</code>. Check that log when you need to know which path to fix.</p>
+<p><code>bytes</code> is the total size of every file under <code>rootDir</code>. <code>bytesComplete</code> reports whether that total is the whole story. The walk skips anything it cannot read rather than failing the listing, so a directory with no read permission would otherwise make a large profile look small. When a path is skipped, <code>bytesComplete</code> is <code>false</code>, <code>bytes</code> becomes a lower bound, and the skipped paths are written to the profile’s log with the message <code>Profile size is incomplete; some paths could not be read</code>. Check that log when you need to know which path to fix.</p>
 <p>A profile whose directory does not exist yet reports <code>"bytes": 0</code> with <code>"bytesComplete": true</code>: there is nothing there, which is a measurement rather than a failure.</p>
-<p>In the TUI, <code>/profile new &lt;name&gt;</code> (or <code>/profile create &lt;name&gt;</code>) opens a picker listing every carry-over item (AGENTS.md, settings, MCP servers, SSH targets, skills, commands, tools, prompts, themes, extensions, keybindings), each individually toggleable (all selected by default). The new profile is seeded from the <strong>active</strong> profile with exactly the chosen items. Deleting is available too: <code>/profile rm &lt;name&gt;</code> (or the picker’s <strong>Delete</strong> action) removes a profile after a confirmation, and refuses the active and default profiles. See <a href="#tui-profile-commands">TUI profile commands</a> for the full verb list.</p>
+<p>In the TUI, <code>/profile new &lt;name&gt;</code> (or <code>/profile create &lt;name&gt;</code>) opens a picker listing every carry-over item (AGENTS.md, settings, MCP servers, SSH targets, skills, commands, tools, prompts, themes, extensions, keybindings), each individually toggleable (all selected by default). The new profile is seeded from the <strong>active</strong> profile with exactly the chosen items. Deleting is available too: <code>/profile rm &lt;name&gt;</code> (or the picker’s <strong>Delete</strong> action) removes a profile after a confirmation, and rejects the active and default profiles. See <a href="#tui-profile-commands">TUI profile commands</a> for the full verb list.</p>
 <p>The instruction row copies only <code>AGENTS.md</code>. A profile switch never carries <code>RULES.md</code>; change it through settings or copy it manually when that is your intent.</p>
 <p>You can still create a profile implicitly by running <code>veyyon --profile &lt;name&gt;</code> once; use <code>profile new</code> when you want seeding without launching the TUI.</p>
 <h2 id="onboarding-import"><a class="header" href="#onboarding-import">Onboarding import</a></h2>
 <p>On the first interactive run of a profile that has not completed setup, the setup wizard scans the machine for user-level config written for other tools (skills and <code>CLAUDE.md</code>/<code>AGENTS.md</code> from Claude Code, Codex, Cursor, and similar) and offers each item for import into the active profile. Imports <strong>copy</strong>: skills land in the profile’s <code>skills/</code>, instruction files append to the profile’s <code>AGENTS.md</code> under a source marker (re-imports are idempotent). The scan runs no matter how <code>discovery.importForeignConfig</code> is set, because importing is how foreign config comes in by default: ambient loading of the originals stays off unless you turn that setting on.</p>
 <p>Do not document inline <code>[profiles.&lt;name&gt;]</code> tables or standalone <code>&lt;name&gt;.config.yml</code> files as shipped; settings use <code>config.yml</code> under the active agent dir.</p>
 <h2 id="model-policies-and-roles-per-profile"><a class="header" href="#model-policies-and-roles-per-profile">Model policies and roles (per profile)</a></h2>
-<p>Each profile’s <code>config.yml</code> owns its interactive default, optional roles, subagent policy, and compaction policy:</p>
+<p>Each profile’s <code>config.yml</code> defines its interactive default, optional roles, subagent policy, and compaction policy:</p>
 <pre><code class="language-yaml">modelRoles:
   default: openai/gpt-5             # interactive (also set live with /model)
   plan: openai/o3

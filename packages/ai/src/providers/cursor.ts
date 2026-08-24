@@ -597,8 +597,23 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 			// conversation ledger: a turn that did not deliver is only a fault when the
 			// conversation has never delivered either.
 			let requestContextDelivered = false;
+			// A gateway that refuses answers with an HTTP status and a body, not
+			// with Connect frames. The status arrived at the handler below and was
+			// read only for the debug log, so a `401`, a `429` or a proxy's error
+			// page reached the operator as "stream ended without a turn_ended
+			// update": the one class of failure whose remedy belongs to the person
+			// at the keyboard, reported as a truncated stream. A refusal body is
+			// collected instead of frame-parsed — it carries no Connect framing —
+			// and the shared bound names it.
+			let refusedStatus: number | undefined;
+			let refusalBody = "";
+			// Enough for any error envelope, and a bound against a proxy that
+			// answers a megabyte of HTML.
+			const REFUSAL_BODY_LIMIT = 8 * 1024;
 
 			h2Request.on("response", headers => {
+				const status = Number(headers[":status"]);
+				if (Number.isFinite(status) && status >= 400) refusedStatus = status;
 				debugResponseLogPromise = debugSession?.openResponseLog(
 					`HTTP/2 ${headers[":status"] ?? ""}`.trim(),
 					headers,
@@ -610,6 +625,10 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 					void debugResponseLogPromise.then(log => {
 						log?.write(chunk);
 					});
+				}
+				if (refusedStatus !== undefined) {
+					if (refusalBody.length < REFUSAL_BODY_LIMIT) refusalBody += chunk.toString("utf8");
+					return;
 				}
 				pendingBuffer = Buffer.concat([pendingBuffer, chunk]);
 
@@ -717,6 +736,19 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 					resolveH2 = undefined;
 					void closeDebugLog()
 						.then(() => {
+							if (refusedStatus !== undefined) {
+								// The status is the remedy: 401 is a credential, 429 is a
+								// wait, 404 is the route. `CursorApiError` carries it, so
+								// the shared classifier reads the same retry decision it
+								// reads for every other provider's HTTP refusal.
+								reject(
+									new AIError.CursorApiError(
+										`Cursor API error ${refusedStatus}: ${AIError.boundProviderErrorDetail(refusalBody)}`,
+										refusedStatus,
+									),
+								);
+								return;
+							}
 							if (endStreamError) {
 								reject(endStreamError);
 								return;

@@ -30,10 +30,10 @@ use std::{
 };
 
 pub use cache::{
-	cache_ttl_ms, classify_file_type, contains_component, empty_recheck_ms, ensure_readable_dir,
-	invalidate_all, invalidate_path, invalidate_path_string, max_cache_entries,
-	normalize_relative_path, parallel_for_each, parallel_for_each_init, resolve_search_path,
-	should_parallelize, should_skip_path, walk_workers,
+	FilteredEntries, cache_ttl_ms, classify_file_type, collect_entries_filtered, contains_component,
+	empty_recheck_ms, ensure_readable_dir, invalidate_all, invalidate_path, invalidate_path_string,
+	max_cache_entries, normalize_relative_path, parallel_for_each, parallel_for_each_init,
+	resolve_search_path, should_parallelize, should_skip_path, walk_workers,
 };
 use globset::{GlobBuilder, GlobSet, GlobSetBuilder};
 
@@ -1399,24 +1399,20 @@ impl WalkRequest {
 		if matches!(rank, Some(WalkRank::MtimeDescPathAsc)) {
 			options.detail = WalkDetail::Full;
 		}
-		let mut scan = self.collect_entries_with_options(options, &heartbeat)?;
-		let mut backend = if scan.cache_age_ms == 0 {
+		let mut scan = self.collect_filtered_with_options(options, &heartbeat)?;
+		if scan.entries.is_empty() && self.should_recheck_empty(scan.cache_age_ms) {
+			options.cache = false;
+			scan = self.collect_filtered_with_options(options, &heartbeat)?;
+		}
+		// An uncached scan reports age zero, so the recheck above lands on `Fresh`
+		// without a second variable tracking it.
+		let backend = if scan.cache_age_ms == 0 {
 			WalkBackend::Fresh
 		} else {
 			WalkBackend::Cached
 		};
-		let filter_entries = |entries: &mut Vec<CollectedEntry>| {
-			let scanned_entries = entries.len();
-			entries.retain(|entry| self.filter.accepts_collected(entry));
-			(scanned_entries, scanned_entries - entries.len())
-		};
-		let (mut scanned_entries, mut filtered_entries) = filter_entries(&mut scan.entries);
-		if scan.entries.is_empty() && self.should_recheck_empty(scan.cache_age_ms) {
-			options.cache = false;
-			scan = self.collect_entries_with_options(options, &heartbeat)?;
-			backend = WalkBackend::Fresh;
-			(scanned_entries, filtered_entries) = filter_entries(&mut scan.entries);
-		}
+		let scanned_entries = scan.scanned;
+		let filtered_entries = scan.scanned - scan.entries.len();
 		if let Some(rank) = rank {
 			Self::rank_entries(&mut scan.entries, rank);
 		}
@@ -1475,26 +1471,36 @@ impl WalkRequest {
 		options
 	}
 
-	fn collect_entries_with_options<E, H>(
+	/// Collect entries this request's filter accepts, without materializing the
+	/// rest.
+	///
+	/// The filter runs where the entries live — inside the walk result or inside
+	/// the cache entry — so a copy is made only for an entry that survives it.
+	fn collect_filtered_with_options<E, H>(
 		&self,
 		options: WalkOptions,
 		heartbeat: &H,
-	) -> std::result::Result<CollectedEntries, WalkError<String>>
+	) -> std::result::Result<FilteredEntries, WalkError<String>>
 	where
 		H: Fn() -> std::result::Result<(), E> + Sync,
 		E: fmt::Display,
 	{
+		let accept = |entry: &CollectedEntry| self.filter.accepts_collected(entry);
 		match self.overrides.clone() {
 			// A cache entry is keyed by `WalkOptions`, which says nothing about globs,
 			// so a request with globs never reads or writes the cache.
 			Some(overrides) => {
 				let mut options = options;
 				options.cache = false;
-				collect_entries_native_with_overrides(&self.root, options, Some(overrides), || {
-					heartbeat().map_err(|err| err.to_string())
-				})
+				let mut scan =
+					collect_entries_native_with_overrides(&self.root, options, Some(overrides), || {
+						heartbeat().map_err(|err| err.to_string())
+					})?;
+				let scanned = scan.entries.len();
+				scan.entries.retain(&accept);
+				Ok(FilteredEntries { entries: scan.entries, cache_age_ms: 0, scanned })
 			},
-			None => collect_entries(&self.root, options, heartbeat),
+			None => collect_entries_filtered(&self.root, options, heartbeat, &accept),
 		}
 	}
 

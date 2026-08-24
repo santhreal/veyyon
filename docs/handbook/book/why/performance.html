@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-0c15bee8.js";
+            window.path_to_searchindex_js = "../searchindex-c0972181.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-79e2ba62.js"></script>
+        <script src="../toc-a2abefc1.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -196,15 +196,18 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="performance"><a class="header" href="#performance">Performance</a></h1>
-<p>Agent wall time is the sum of model latency, tool I/O, retries after failed tool/edit validation, and harness overhead.</p>
-<h2 id="retry-cost"><a class="header" href="#retry-cost">Retry cost</a></h2>
-<p>A tool call or edit that fails schema or apply verification usually costs another model turn. Schema repair (tool arguments) and hashline verification (edits) reduce those failures. Implementation: <code>packages/coding-agent/src/repair/</code>, <code>@veyyon/hashline</code>.</p>
+<p>Agent execution latency is composed of model generation latency, tool execution I/O, validation failure retries, and harness runtime overhead.</p>
+<h2 id="retry-bounds"><a class="header" href="#retry-bounds">Retry bounds</a></h2>
+<p>Tool calls or edits that fail schema validation or patch application require additional model turns. Schema repair on tool arguments and patch validation on edits catch structural issues before execution. Implementation: <code>packages/coding-agent/src/repair/</code>, <code>@veyyon/hashline</code>.</p>
 <h2 id="edit-path"><a class="header" href="#edit-path">Edit path</a></h2>
-<p>Hashline avoids re-emitting large surrounding context when anchors are available. Apply cost scales with patch size, not with re-serializing the full file for every change. See <a href="../edit/engine.html">Hashline engine</a>.</p>
+<p>Hashline edits reference surrounding anchor lines rather than full file rewrites, so a patch contains the changed lines and their anchors instead of a new copy of the file. Applying one costs <code>O(file bytes + output bytes + patch)</code>. The applier splits the body into lines once, walks it once, and joins the result once, so cost tracks file length rather than patch length: about 1ns per input byte, or 3ms for a 100,000-line file on a Ryzen 9 9950X. A file with CRLF endings costs roughly twice that, because the body is normalized to LF before the edit and restored after it. Run <code>bun bench/hot-paths.bench.ts</code> in <code>packages/hashline</code> to reproduce the curve. It prints the cost per byte at 10,000, 100,000 and 1,000,000 lines for a single edit and for a range delete, and fails when that cost stops being flat. See <a href="../edit/engine.html">Hashline engine</a>.</p>
+<h2 id="edit-preview-while-arguments-stream"><a class="header" href="#edit-preview-while-arguments-stream">Edit preview while arguments stream</a></h2>
+<p>A tool call’s edit preview recomputes as arguments arrive. The streaming pass reads its target through a cache keyed by modification time and size, so a stream of chunks against one file reads it once instead of once per chunk; the pass that runs when arguments are complete reads fresh, because that text is what the edit is applied to.</p>
+<p>Off-window boundary rows in a diff or a read window (the enclosing header, the matching closing bracket) come from a scan of the whole source, and the parse cache retains nothing past 4MiB. A source over that size renders without boundary rows rather than paying a scan per redraw. Streaming a one-line replacement against an 11.7MiB, 100,000-line file costs 36ms per preview pass and one read, against 1.9s per pass and a read each pass, on a Ryzen 9 9950X.</p>
+<h2 id="session-persistence"><a class="header" href="#session-persistence">Session persistence</a></h2>
+<p>Entries append to the session JSONL through an open writer. Compaction, elision, a title change and a recovered write fault republish the whole file instead. The body is produced in chunks of about a megabyte and written chunk by chunk, so the transient copy is bounded by the chunk rather than by the transcript. A republish reads the file back first only when what is at the path is no longer the file this session published, compared by inode and by length: a second window writing the same transcript changes both, and reading it back is what keeps its entries. Republishing a 253MiB transcript of 118,000 entries costs 509ms, 44MiB of peak resident memory above the session, and no single pause longer than 3ms, on a Ryzen 9 9950X.</p>
 <h2 id="runtime-architecture"><a class="header" href="#runtime-architecture">Runtime architecture</a></h2>
-<p>The CLI, TUI, and session loop run as TypeScript on Bun. Native grep, PTY, shell support, and tree-sitter parsing handle hot paths. Reusable Rust crates provide glob matching, grep orchestration, key normalization, text indexing, diffing, and directory walking. Hashline apply remains TypeScript in <code>@veyyon/hashline</code>. Streaming returns tokens as they arrive.</p>
-<h2 id="measurement"><a class="header" href="#measurement">Measurement</a></h2>
-<p>Hot-path changes are covered by package tests and criteria where present. Do not treat marketing numbers as SLAs without the linked method and host.</p>
+<p>The CLI, TUI, and session loop run as TypeScript on Bun. Native grep, PTY handling, shell support, and tree-sitter parsing execute via native addons. Rust crates provide glob matching, grep orchestration, key normalization, text indexing, diffing, and directory walking. Token streaming renders output incrementally as chunks arrive from provider streams.</p>
 <h2 id="related"><a class="header" href="#related">Related</a></h2>
 <ul>
 <li><a href="./innovations.html">Mechanisms</a></li>
@@ -219,7 +222,7 @@
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                             </a>
 
-                            <a rel="next prefetch" href="../benefits/first-attempt-edits.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../using/install.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                             </a>
 
@@ -233,7 +236,7 @@
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                     </a>
 
-                    <a rel="next prefetch" href="../benefits/first-attempt-edits.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../using/install.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                     </a>
             </nav>

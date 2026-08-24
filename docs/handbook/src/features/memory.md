@@ -1,6 +1,6 @@
 # Memory
 
-By default, each session starts fresh: Veyyon knows nothing about your last one. Turn memory on and it
+By default, each session starts fresh: Veyyon holds no record of your last one. Turn memory on and it
 carries durable project context forward, so a fact it learned yesterday is available today. Memory is
 off by default. To use it, you pick a backend, which is the store that holds what Veyyon remembers, in
 `config.yml` or `/settings`.
@@ -44,7 +44,7 @@ With `memory.backend: local`, a background pipeline at startup extracts durable 
 session JSONL files, then consolidates into `MEMORY.md`, `memory_summary.md`, and optional
 `skills/`. The agent reads artifacts via `memory://` URLs on the `read` tool.
 
-Engineering detail: [`docs/memory.md`](../../../memory.md).
+Engineering detail: [`docs/handbook/src/architecture/memory.md`](../architecture/memory.md).
 
 ## Compaction (primary knobs)
 

@@ -67,10 +67,8 @@ const SETTLE_BOUND = Math.ceil(900 / FRAME);
  */
 const RENDERS_PER_SETTLE: Record<string, number> = {
 	enter: 16,
-	exit: 8,
 	hover: 6,
 	expand: 11,
-	sweep: 32,
 	move: 28,
 	settle: 39,
 };

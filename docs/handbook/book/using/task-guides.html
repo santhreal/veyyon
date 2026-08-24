@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-0c15bee8.js";
+            window.path_to_searchindex_js = "../searchindex-c0972181.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-79e2ba62.js"></script>
+        <script src="../toc-a2abefc1.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -318,7 +318,7 @@ branch that works. Full behavior: <a href="../features/branching.html">Branching
 task, and status. Compaction and handoff keep that complete structured state, including plans with
 dozens of items.</p>
 <p>When the model tries to finish with open work, Veyyon injects one continuation instruction for that
-exact todo state. The instruction says to continue, puts the active task first, shows at most five
+exact todo state. The instruction states to continue, puts the active task first, shows at most five
 open items, and reports how many more remain hidden. It does not replay an unchanged state after a
 user says <code>continue</code> or after an unrelated tool call. A real todo change makes the new state eligible
 for one reminder, up to the configured limit.</p>
@@ -330,7 +330,7 @@ items keeps their closed history until it is explicitly removed.</p>
 tally, so a stage that just closed three tasks does not look like one that has done nothing, and
 task rows are drawn for the phase being worked and the few after it. The block is bounded by the
 viewport: it never grows past a third of the terminal’s height, it drops finished phases from the
-top before it drops work in flight, and it says how many rows it withheld. Expanding it shows every
+top before it drops work in flight, and it states how many rows it withheld. Expanding it shows every
 task of the phases it draws, not an unbounded list — an anchored region that outgrows the screen
 cannot be scrolled away from.</p>
 <p>Each row’s glyph is its state, before any colour: <code>□</code> waiting, a breathing cell in flight, <code>▪</code> done,
@@ -340,12 +340,8 @@ travels down the rail while anything on the board is in flight and the rail is f
 is, so a board waiting on you is distinguishable from a board being worked. A task closing sweeps a
 strike across its text, exhales its glyph and cools from green to grey; when the last task closes,
 the whole block makes one pass down its rail and clears. Where <code>display.transitions</code> is off, all of
-that is still and the glyphs are static.</p>
-<p>The block was rebuilt in this shape: <a href="../../../../assets/todos-block-before.png">before</a> and
-<a href="../../../../assets/todos-block-after.png">after</a>, one scene recorded twice at 131 columns and
-sampled at the same second of the same script. The after arm comes from <code>proof/docker/record-x11.sh proof/scenes/rail-and-todo.sh</code>. The before arm comes from <code>proof/docker/record-x11-before.sh proof/scenes/rail-and-todo.sh</code>, which holds every changed source file at the content of the commit
-before the rebuild, <code>f1390cf3c</code>.</p>
-<p>Configure the behavior under <strong>Settings → Tools → Todos</strong>:</p>
+that is still and the glyphs are static.
+Configure the behavior under <strong>Settings → Tools → Todos</strong>:</p>
 <ul>
 <li><strong>Todo Reminders</strong> enables continuation instructions for unfinished plans.</li>
 <li><strong>Todo Reminder Limit</strong> caps distinct todo-state reminders before reminders stay silent.</li>
@@ -361,7 +357,7 @@ before the rebuild, <code>f1390cf3c</code>.</p>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../using/themes.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../features/collab.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                             </a>
 
@@ -375,7 +371,7 @@ before the rebuild, <code>f1390cf3c</code>.</p>
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../using/themes.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../features/collab.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                     </a>
 

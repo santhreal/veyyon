@@ -8,6 +8,7 @@ import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { StatusLineComponent } from "@veyyon/coding-agent/modes/components/status-line";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import type { ContextUsageBreakdown } from "@veyyon/coding-agent/session/agent-session";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { computeContextBreakdown } from "@veyyon/coding-agent/session/context-usage";
@@ -60,21 +61,21 @@ describe("Context usage consolidation", () => {
 	function createSession(
 		tempDir: TempDir,
 		messages: AgentMessage[] = [],
+		model: Model = mockModel,
 	): { session: AgentSession; sessionManager: SessionManager; agent: Agent } {
 		const sessionManager = SessionManager.create(tempDir.path(), tempDir.path());
 		for (const msg of messages) {
 			sessionManager.appendMessage(msg as unknown as Parameters<typeof sessionManager.appendMessage>[0]);
 		}
-
 		const agent = new Agent({
 			getApiKey: () => "test-key",
 			initialState: {
-				model: mockModel,
+				model,
 				systemPrompt: ["You are a helpful assistant."],
 				tools: [],
 				messages,
 			},
-			streamFn: (mockModel as unknown as { stream: unknown }).stream as unknown as NonNullable<
+			streamFn: (model as unknown as { stream: unknown }).stream as unknown as NonNullable<
 				ConstructorParameters<typeof Agent>[0]
 			>["streamFn"],
 		});
@@ -513,6 +514,61 @@ describe("Context usage consolidation", () => {
 		await promptPromise;
 		promptSpy.mockRestore();
 		await tempDir.remove();
+	});
+
+	// WHY THIS CASE EXISTS
+	// A turn submits messages besides the question: the session-state line carrying
+	// the date and working directory, and recalled memories. The pending snapshot
+	// recorded its turn boundary as "messages before the turn PLUS everything
+	// submitted", which counts those, so the boundary landed past the assistant
+	// steps the turn produced and a real provider count was rejected in favor of
+	// the turn-start estimate for the rest of the turn -- the case above is what
+	// caught that. The boundary is now where the turn begins, and what the prompt
+	// already counted is identified by the message itself rather than by how many
+	// there were, which is what this case holds: with a real turn in flight, the
+	// question the prompt submitted is inside the submitted count and must not be
+	// estimated a second time as part of the tail. Neither case sees a multi-step
+	// tool turn, where the journal carries an earlier step's anchor while a later
+	// step is still running.
+	function reportDuringTurn(session: AgentSession, agent: Agent): Promise<ContextUsageBreakdown | undefined> {
+		const seen = Promise.withResolvers<ContextUsageBreakdown | undefined>();
+		const unsubscribe = agent.subscribe(event => {
+			if (event.type !== "message_end" || event.message.role !== "assistant") return;
+			seen.resolve(session.getContextBreakdown());
+			unsubscribe();
+		});
+		return seen.promise;
+	}
+
+	it("counts the submitted question once, not once per message the turn carried", async () => {
+		async function usedTokensForQuestion(question: string): Promise<number> {
+			const tempDir = TempDir.createSync("@submitted-once-");
+			const model = createMockModel({
+				id: "gpt-mock-once",
+				provider: "openai",
+				contextWindow: 100_000,
+				responses: [{ content: ["ok"], stopReason: "stop" }],
+			});
+			const { session, agent } = createSession(tempDir, [], model);
+			const duringTurn = reportDuringTurn(session, agent);
+			await session.prompt(question);
+			const usedTokens = (await duringTurn)?.usedTokens ?? 0;
+			await tempDir.remove();
+			return usedTokens;
+		}
+
+		const short = "hi";
+		const long = "explain this in detail ".repeat(200);
+		const questionDelta =
+			estimateTokens({ role: "user", content: long } as AgentMessage) -
+			estimateTokens({ role: "user", content: short } as AgentMessage);
+		const reportedDelta = (await usedTokensForQuestion(long)) - (await usedTokensForQuestion(short));
+
+		// The question is inside the submitted prompt count already. Counting it a
+		// second time as part of the tail doubles this delta, which is what a
+		// boundary that cannot tell a submitted message from a new one does.
+		expect(reportedDelta).toBeGreaterThan(questionDelta * 0.5);
+		expect(reportedDelta).toBeLessThan(questionDelta * 1.5);
 	});
 
 	it("guarantees always numeric nullable-vs-speculative contract", async () => {

@@ -107,4 +107,4 @@ flat legacy names and `keybindings.json` files migrate automatically to the name
 load. Run **`/hotkeys`** in a session to see active chords.
 
 Full action-ID list and status-line gestures: [Keybindings and Vim mode](../features/keybindings.md)
-and repository [`docs/keybindings.md`](../../../keybindings.md).
+and repository [`docs/handbook/src/reference/keybindings-config.md`](keybindings-config.md).

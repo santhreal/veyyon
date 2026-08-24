@@ -793,7 +793,12 @@ export class DefaultResourceLoader implements ResourceLoader {
 	readonly __veyyonLegacyPiLoader = true as const;
 	#state: ResolvedLoaderState;
 	#options: DefaultResourceLoaderOptions;
-	#extensionsResult: LoadExtensionsResult = { extensions: [], errors: [], runtime: new ExtensionRuntime() };
+	#extensionsResult: LoadExtensionsResult = {
+		extensions: [],
+		errors: [],
+		withheld: [],
+		runtime: new ExtensionRuntime(),
+	};
 	#skills: Skill[] = [];
 	#skillDiagnostics: ResourceDiagnostic[] = [];
 	#prompts: PromptTemplate[] = [];
@@ -942,7 +947,7 @@ export class DefaultResourceLoader implements ResourceLoader {
 		const { cwd, agentDir, noExtensions, additionalExtensionPaths, extensionFactories, eventBus } = this.#state;
 
 		if (noExtensions && additionalExtensionPaths.length === 0 && extensionFactories.length === 0) {
-			return { extensions: [], errors: [], runtime: new ExtensionRuntime() };
+			return { extensions: [], errors: [], withheld: [], runtime: new ExtensionRuntime() };
 		}
 
 		// `agentDir` for the same reason `reload()` passes it to skills, prompt
@@ -959,7 +964,10 @@ export class DefaultResourceLoader implements ResourceLoader {
 			agentDir,
 		);
 
-		const result = await loadExtensions(paths, cwd, eventBus);
+		const result = await loadExtensions(paths, cwd, eventBus, undefined, {
+			agentDir,
+			configuredPaths: [...additionalExtensionPaths, ...(settings.get("extensions") ?? [])],
+		});
 		for (let i = 0; i < extensionFactories.length; i++) {
 			const loaded = await loadExtensionFromFactory(
 				extensionFactories[i],

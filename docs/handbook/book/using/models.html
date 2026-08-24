@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-0c15bee8.js";
+            window.path_to_searchindex_js = "../searchindex-c0972181.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-79e2ba62.js"></script>
+        <script src="../toc-a2abefc1.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -208,7 +208,7 @@
 <ul>
 <li>The provider’s environment variable (see <a href="../models/providers.html">Providers</a> for the full map), or</li>
 <li><code>/login</code> inside the TUI, which stores the credential in the auth store, or</li>
-<li>A <code>models.yml</code> <code>apiKey</code> on a custom provider (env-var name or literal).</li>
+<li>A <code>models.yml</code> <code>apiKey</code> on a custom provider (an env-var name, or <code>literal:&lt;text&gt;</code>).</li>
 </ul>
 <p>See <a href="./authentication.html">Signing in</a> for storage modes and <a href="./configuring-providers.html">Configuring providers</a>
 for full <code>models.yml</code> examples.</p>
@@ -238,7 +238,7 @@ selectable when it is not in <code>disabledProviders</code> <strong>and</strong>
 <tr><th>Provider id</th><th>Notes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>anthropic</code>, <code>openai</code>, <code>google</code>, <code>groq</code>, …</td><td>Cloud providers; set the env var. Some (for example <code>anthropic</code>) also support <code>/login &lt;id&gt;</code>; see <a href="../../../providers.html">providers</a>.</td></tr>
+<tr><td><code>anthropic</code>, <code>openai</code>, <code>google</code>, <code>groq</code>, …</td><td>Cloud providers; set the env var. Some (for example <code>anthropic</code>) also support <code>/login &lt;id&gt;</code>; see <a href="../reference/providers.html">providers</a>.</td></tr>
 <tr><td><code>amazon-bedrock</code></td><td>Uses the AWS credential chain (<code>AWS_PROFILE</code>, instance role, …).</td></tr>
 <tr><td><code>ollama</code>, <code>lm-studio</code>, <code>llama.cpp</code></td><td>Local engines, discovered automatically and keyless by default.</td></tr>
 </tbody>

@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-0c15bee8.js";
+            window.path_to_searchindex_js = "../searchindex-c0972181.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-79e2ba62.js"></script>
+        <script src="../toc-a2abefc1.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -201,7 +201,7 @@
 <pre><code class="language-console">$ veyyon setup status
 $ veyyon setup status --json
 </code></pre>
-<p>The install checks run first, because nothing below them can work if the install does not. They are the same questions the installer asks at the end of every install, asked of your machine as it is now:</p>
+<p>The install checks run first, because nothing below them can work if the install does not. They are the same checks the installer runs at the end of every install, run against your machine as it is now:</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -210,10 +210,10 @@ $ veyyon setup status --json
 <tbody>
 <tr><td><code>veyyon on PATH</code></td><td>The shell can find it, and which file it found.</td></tr>
 <tr><td><code>PATH copies</code></td><td>Only one <code>veyyon</code> is on your PATH. A second one earlier on PATH keeps answering after an update writes the first, which is what makes an update look like it did nothing.</td></tr>
-<tr><td><code>veyyon runs</code></td><td>It executes and reports the version you are running. If it will not start, the check quotes what the system said.</td></tr>
+<tr><td><code>veyyon runs</code></td><td>It executes and reports the version you are running. If it will not start, the check quotes the system error text.</td></tr>
 <tr><td><code>Native addon</code></td><td>A real search returns a real match, so the native addon loaded. <code>--version</code> alone passes without it.</td></tr>
 <tr><td><code>Install method</code></td><td>Whether <code>veyyon update</code> swaps the binary or advances a source checkout.</td></tr>
-<tr><td><code>vey alias</code></td><td>The short name the rest of the documentation tells you to type resolves.</td></tr>
+<tr><td><code>vey alias</code></td><td>The short name used throughout the documentation resolves.</td></tr>
 <tr><td><code>Shell completions</code></td><td>Completion files are installed, and for which shells. On Windows that is the single script beside your PowerShell profile, since PowerShell has no directory it autoloads completions from.</td></tr>
 </tbody>
 </table>
@@ -234,7 +234,7 @@ $ veyyon plugin doctor --fix
 <pre><code class="language-text">/memory diagnose
 /memory stats
 </code></pre>
-<p>Run diagnostics and statistics on the configured memory backend (<code>memory.backend</code>: mnemopi, hindsight, local) from the TUI. See <a href="./memory.html">Memory</a>.</p>
+<p>Run diagnostics and statistics on the configured memory backend (<code>memory.backend</code>: mnemopi, hindsight, local) from the TUI. See <a href="../architecture/memory.html">Memory</a>.</p>
 <h2 id="which-one-to-reach-for"><a class="header" href="#which-one-to-reach-for">Which one to reach for</a></h2>
 <ol>
 <li><code>veyyon setup status</code> when veyyon itself is misbehaving: it covers the install and your credentials.</li>

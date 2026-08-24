@@ -18,13 +18,13 @@
  * for these ids, and the coverage suite fails on a second importer.
  */
 
-import type { PromptEntry } from "@veyyon/utils/prompt-registry";
+import { definePromptRows, type PromptEntry } from "@veyyon/utils/prompt-registry";
 
 import skillsAutoload from "./autoload.md" with { type: "text" };
 import skillsUserInvocation from "./user-invocation.md" with { type: "text" };
 
 /** Every prompt under `src/prompts/skills/`, keyed by its id (the path under `src/prompts/`). */
-export const skillsPrompts = {
+export const skillsPrompts = definePromptRows({
 	"skills/autoload": { text: skillsAutoload, purpose: "wraps a skill body that was loaded automatically" },
 	"skills/user-invocation": { text: skillsUserInvocation, purpose: "wraps a skill body the user invoked by name" },
-} satisfies Record<string, PromptEntry>;
+} satisfies Record<string, PromptEntry>);

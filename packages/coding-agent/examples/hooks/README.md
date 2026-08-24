@@ -31,7 +31,7 @@ cp permission-gate.ts ~/.veyyon/agent/hooks/
 
 ## Writing Hooks
 
-See [docs/hooks.md](../../../../docs/hooks.md) for full documentation.
+See [docs/handbook/src/reference/hooks.md](../../../../docs/handbook/src/reference/hooks.md) for full documentation.
 
 ```typescript
 import type { HookAPI } from "@veyyon/coding-agent";

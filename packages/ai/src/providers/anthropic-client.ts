@@ -17,8 +17,9 @@
  * - Caller aborts throw an `Error` with message "Request was aborted.".
  * - Retries: connection errors and 408/409/429/5xx (or `x-should-retry: true`)
  *   are retried up to `maxRetries` times, honoring `retry-after-ms` /
- *   `retry-after`, otherwise exponential backoff (0.5s * 2^n, capped at 8s,
- *   with up to 25% jitter).
+ *   `retry-after` up to `maxRetryDelayMs` (a longer hint surfaces the refusal
+ *   instead of sleeping on it), otherwise exponential backoff (0.5s * 2^n,
+ *   capped at 8s, with up to 25% jitter).
  */
 import { scheduler } from "node:timers/promises";
 import * as AIError from "../error";
@@ -27,6 +28,7 @@ import { AnthropicApiError, AnthropicConnectionError, AnthropicConnectionTimeout
 export { AnthropicApiError, AnthropicConnectionError, AnthropicConnectionTimeoutError };
 
 import { ANTHROPIC_API_ENDPOINT } from "@veyyon/catalog/provider-endpoints";
+import { DEFAULT_MAX_DELAY_MS } from "@veyyon/utils/fetch-retry";
 import type { FetchImpl } from "../types";
 import type { MessageCreateParamsStreaming } from "./anthropic-wire";
 
@@ -44,6 +46,12 @@ export interface AnthropicRequestOptions {
 	timeout?: number;
 	/** Per-request retry budget override. */
 	maxRetries?: number;
+	/**
+	 * Longest single server-directed wait this request will sit on. A
+	 * `retry-after` above it surfaces the refusal instead. Defaults to
+	 * {@link DEFAULT_MAX_DELAY_MS}.
+	 */
+	maxRetryDelayMs?: number;
 	/** Per-request headers merged after client defaults. */
 	headers?: Record<string, string>;
 }
@@ -86,16 +94,13 @@ function createAbortError(): Error {
 	return new AIError.RequestAbortError("Request was aborted.");
 }
 
-/** `x-should-retry` override, then 408/409/429/5xx. */
-function shouldRetryResponse(response: Response): boolean {
-	const shouldRetryHeader = response.headers.get("x-should-retry");
-	if (shouldRetryHeader === "true") return true;
-	if (shouldRetryHeader === "false") return false;
-	const status = response.status;
-	// Canonical transient set (408/429/5xx) plus 409, which Anthropic's client
-	// also retries.
-	return AIError.isTransientStatus(status) || status === 409;
-}
+/**
+ * Anthropic's own addition to what a response says: 409, which its client retries and the registry
+ * does not read as transient. Everything else — the `x-should-retry` instruction, the transient set,
+ * and the difference between a 429 that named a spent allowance and one that named a throttle — is
+ * `retryResponse`'s, so this ladder and the credential layer answer the same failure the same way.
+ */
+const ANTHROPIC_RESPONSE_RETRY_POLICY: AIError.ResponseRetryPolicy = { api: "anthropic", alsoRetry: [409] };
 
 /** Server-suggested delay (`retry-after-ms`, then `retry-after` seconds or HTTP date). */
 export function retryDelayFromHeaders(headers: Headers | undefined): number | undefined {
@@ -217,6 +222,7 @@ export class AnthropicMessagesClient implements AnthropicMessagesClientLike {
 		const callerSignal = options?.signal;
 		const timeoutMs = options?.timeout ?? opts.timeout ?? DEFAULT_TIMEOUT_MS;
 		const maxRetries = Math.max(0, options?.maxRetries ?? opts.maxRetries ?? DEFAULT_MAX_RETRIES);
+		const maxRetryDelayMs = options?.maxRetryDelayMs ?? DEFAULT_MAX_DELAY_MS;
 		const url = `${opts.baseURL ?? ANTHROPIC_API_ENDPOINT}${path}`;
 		const headers = this.#buildHeaders(options?.headers);
 		const body = JSON.stringify(params);
@@ -239,12 +245,23 @@ export class AnthropicMessagesClient implements AnthropicMessagesClientLike {
 
 			if (response.ok) return response;
 
-			if (attempt < maxRetries && shouldRetryResponse(response)) {
-				// Cancelling a body no one will read. The error that matters is raised around this line, and a stream
-				// that refuses to cancel -- usually because it already ended -- changes nothing about it.
-				await response.body?.cancel().catch(() => {});
-				await this.#backoff(attempt, response.headers, callerSignal);
-				continue;
+			if (
+				attempt < maxRetries &&
+				(await AIError.retryResponseAfterReading(response, ANTHROPIC_RESPONSE_RETRY_POLICY))
+			) {
+				// A hint longer than the caller will wait is an answer, not a delay:
+				// the wait was taken verbatim, so a `retry-after` measured in hours
+				// held the request for hours with nothing armed to interrupt it.
+				// Surfacing the refusal is what `fetchWithRetry` does with the same
+				// header, and the status is what tells the operator to wait.
+				const hintedMs = retryDelayFromHeaders(response.headers);
+				if (hintedMs === undefined || hintedMs <= maxRetryDelayMs) {
+					// Cancelling a body no one will read. The error that matters is raised around this line, and a stream
+					// that refuses to cancel -- usually because it already ended -- changes nothing about it.
+					await response.body?.cancel().catch(() => {});
+					await this.#backoff(attempt, response.headers, callerSignal);
+					continue;
+				}
 			}
 			throw await AIError.AnthropicApiError.fromResponse(response);
 		}

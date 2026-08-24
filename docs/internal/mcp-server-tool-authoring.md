@@ -108,13 +108,20 @@ If credential lookup fails, manager logs a warning and continues with unresolved
 
 ### Header/env value resolution
 
-Before connect, manager resolves stdio `env` values and HTTP/SSE `headers` values via `resolveConfigValue()` (`src/config/resolve-config-value.ts`):
+Before connect, manager resolves stdio `env` values and HTTP/SSE `headers` values via `resolveConfigValue()` (`src/config/resolve-config-value.ts`), over the grammar in `src/config/config-value-resolution.ts`:
 
 - value starting with `!` => execute shell command, use trimmed stdout (cached)
 - failed, timed-out, or whitespace-only commands produce `undefined`, so that entry is omitted
-- otherwise, treat value as environment variable name first (`process.env[name]`), fallback to literal value
+- `${NAME}` / `$NAME` => environment reference
+- a bare value matching `^[A-Z][A-Z0-9_]*$` => environment reference
+- `literal:<text>` => `<text>` verbatim
+- any other bare value => the environment variable of that name when it holds a non-empty value, else the value itself
 
-Operational caveat: a mistyped `!` secret command can silently remove that header/env entry, producing downstream 401/403 or server startup failures. A mistyped environment variable name is sent literally unless that literal happens to be meaningful to the server.
+An environment reference whose variable is unset or empty produces `undefined`, and `#resolveAuthConfig()` throws `MCPUnresolvedEnvReferenceError` rather than connecting: nothing is sent, and the message names the variable and the setting. It used to send the variable's own name as the credential, which arrived as a 401 that mentioned neither.
+
+Migration: a value that is upper-case text rather than a variable name must be written `literal:<text>`. A `!command` keeps its own behaviour — the entry is omitted, the failure is reported once per streak, and the connection proceeds.
+
+Operational caveat: a mistyped `!` secret command still silently removes that header/env entry, producing downstream 401/403 or server startup failures.
 
 ## 4) Tool bridge: MCP -> agent-callable tools
 
@@ -231,4 +238,4 @@ For robust MCP authoring in this codebase:
 - [`packages/coding-agent/src/config/resolve-config-value.ts`](../../packages/coding-agent/src/config/resolve-config-value.ts)
 - [`packages/coding-agent/src/mcp/loader.ts`](../../packages/coding-agent/src/mcp/loader.ts)
 
-*Verified against `3fa88a60` on 2026-08-05.*
+*Verified against `434326200` on 2026-08-22.*

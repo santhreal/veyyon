@@ -46,7 +46,7 @@ The contract, in the order it matters:
 - Two severities only, `warning` and `error`. A third is never used honestly.
 - `all()` is the record, so a diagnostic or a test can read what was raised without a sink ever having been attached.
 
-Raise one with `session.operatorNotices.warn(source, text)`, where `source` is the subsystem in one lowercase word. `secrets`, `skills` and `filesystem` are the current callers. `AgentSession.skillWarnings` was the previous attempt: a getter that collected skill-loading problems and was read by no production code at all, which is worse than no channel, because the next person to need one reuses it and inherits the silence. The secrets subsystem's use of this channel is documented in [`secrets.md`](../secrets.md).
+Raise one with `session.operatorNotices.warn(source, text)`, where `source` is the subsystem in one lowercase word. `secrets`, `skills` and `filesystem` are the current callers. `AgentSession.skillWarnings` was the previous attempt: a getter that collected skill-loading problems and was read by no production code at all, which is worse than no channel, because the next person to need one reuses it and inherits the silence. The secrets subsystem's use of this channel is documented in [`../handbook/src/architecture/secrets.md`](../handbook/src/architecture/secrets.md).
 
 ### Reaching the channel from a lower layer
 

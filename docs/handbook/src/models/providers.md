@@ -1,6 +1,6 @@
 # The provider stack and bring-your-own-key
 
-The harness owns the model registry and provider auth.
+The harness provides the model registry and provider auth.
 
 A **provider** is the API namespace (`anthropic`, `openai`, `google`, custom gateways, local
 `ollama`, …). A **model** is `provider/model-id`. Veyyon assembles the selectable catalog from:
@@ -20,7 +20,7 @@ Resolution order (first match wins):
 1. CLI `--api-key` (ephemeral)
 2. `models.yml` `apiKey` on a custom provider
 3. Stored API key / OAuth in the agent auth store (`~/.veyyon/profiles/default/agent/agent.db`)
-4. Provider environment variables (see [`docs/providers.md`](../../../providers.md))
+4. Provider environment variables (see [`docs/handbook/src/reference/providers.md`](../reference/providers.md))
 5. Custom fallback resolvers in `models.yml`
 
 Use `/login`, `/logout`, or `veyyon` OAuth flows in setup. Provider-scoped logins do not cross

@@ -609,7 +609,7 @@ entry.
   buffer restores whatever preceded launch and the transcript is then only in the
   session file.
 - **Still open.** No settings entry yet (adding one regenerates
-  `docs/settings-reference.md`, which currently carries unrelated pending schema
+  `docs/handbook/src/reference/settings-reference.md`, which currently carries unrelated pending schema
   changes), and the engine does not yet push a kitty level that guarantees event
   reporting, so terminals that support the protocol still take the fallback until
   it does. `test/scroll-transport-alt-arrows.test.ts` covers the transport,

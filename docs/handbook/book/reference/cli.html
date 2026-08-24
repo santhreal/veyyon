@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-0c15bee8.js";
+            window.path_to_searchindex_js = "../searchindex-c0972181.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-79e2ba62.js"></script>
+        <script src="../toc-a2abefc1.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -264,6 +264,7 @@ $ veyyon "fix the failing test in auth.rs"
 <tr><td><code>tiny-models</code></td><td></td><td>On-device tiny model utilities</td></tr>
 <tr><td><code>token</code></td><td></td><td>Print a provider’s API key or OAuth token</td></tr>
 <tr><td><code>ttsr</code></td><td></td><td>Time-traveling stream rules test</td></tr>
+<tr><td><code>trust</code></td><td></td><td>Decide whether this project’s code may run (<a href="./project-trust.html">Project trust</a>)</td></tr>
 <tr><td><code>update</code></td><td></td><td>Self-update</td></tr>
 <tr><td><code>usage</code></td><td></td><td>Provider usage limits</td></tr>
 <tr><td><code>worktree</code></td><td><code>wt</code></td><td>Git worktree helpers</td></tr>
@@ -303,7 +304,7 @@ $ veyyon session stats --json
 <code>veyyon profile new dev --from dev</code>. See <a href="../features/profiles.html">Profiles</a> for the
 setting and profile behavior.</p>
 <p><code>--json</code> prints the complete report, including every turn; the text view caps the
-longest tables and says so when it does.</p>
+longest tables and reports it when it does.</p>
 <p>There are no <code>veyyon app-server</code>, <code>exec-server</code>, <code>execpolicy</code>, or <code>responses-api-proxy</code> subcommands,
 and no top-level <code>resume</code> / <code>fork</code> / <code>archive</code> verbs. Resume and branch from the TUI (<code>/resume</code>,
 <code>/fork</code>, <code>/session</code>) or the launch session picker; for non-interactive resume use <code>veyyon --print --resume &lt;id&gt;</code> / <code>--continue</code>.</p>

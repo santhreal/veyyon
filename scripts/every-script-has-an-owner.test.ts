@@ -271,8 +271,8 @@ describe("every script under scripts/ has an owner", () => {
 			SOURCES.get("scripts/check-spoofed-versions.ts") ?? "",
 		);
 		expect(typescript).toContain("spoofed external tool versions");
-		const shell = headerOf("scripts/demos/launch.sh", SOURCES.get("scripts/demos/launch.sh") ?? "");
-		expect(shell).toContain("demo recording");
+		const shell = headerOf("scripts/demos/record-hd-demo.sh", SOURCES.get("scripts/demos/record-hd-demo.sh") ?? "");
+		expect(shell).toContain("landing-page demo");
 	});
 
 	/**

@@ -1,11 +1,11 @@
 # MCP server setup
 
 Veyyon can connect to third-party Model Context Protocol (MCP) servers so external tools and data
-sources become available to the agent. This guide explains how to register those servers, choose a
+sources become available to the agent. Register a server, choose a
 transport, authenticate, and fix the most common connection problems.
 
 For an overview of what MCP does in Veyyon, see [MCP](../features/mcp.md). Engineering reference:
-[`docs/mcp-config.md`](../../../mcp-config.md).
+[`docs/handbook/src/reference/mcp-config.md`](../reference/mcp-config.md).
 
 ## Where servers are configured
 
@@ -17,7 +17,7 @@ MCP servers are configured as **JSON** in `mcp.json`, not in `config.yml`:
 
 There is no project scope: a repository's own `mcp.json`, `.mcp.json`, or `.veyyon/mcp.json` is not
 read, because a checked-in file must not name a server the agent connects to. No `/mcp` subcommand
-takes a scope, and writing `project` or `user` as an argument is refused with that reason rather than
+takes a scope, and writing `project` or `user` as an argument is rejected with that reason rather than
 accepted, in a terminal and in a client alike.
 
 Veyyon also discovers MCP entries from other tools' user-level configs (Claude, Cursor, Codex,
@@ -82,6 +82,39 @@ Local stdio servers often need environment variables:
       "args": ["/path/to/sqlite-mcp-server/index.js"],
       "env": { "DB_PATH": "/var/data/app.db", "SQLITE_LOG_LEVEL": "warn" }
     }
+  }
+}
+```
+
+A stdio server does not inherit the shell environment. It receives a baseline of variables a
+program needs in order to run — `PATH`, `HOME`, temp and locale settings, certificate and proxy
+settings, and the directories version managers use to resolve a command — plus whatever `env`
+sets. Every other ambient variable, including provider keys and CI tokens, is withheld. On
+Windows the baseline also carries `PATHEXT`, `SystemRoot`, `ComSpec` and the `ProgramFiles`
+variants, and names match without regard to case.
+
+To forward an ambient variable, name it:
+
+```json
+{
+  "mcpServers": {
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "envPassthrough": ["GITHUB_TOKEN"]
+    }
+  }
+}
+```
+
+`inheritEnv: true` hands one server the whole environment, including every credential in it. Use
+it when a server needs a variable you cannot name in advance. It is set per server, and each
+spawn logs a warning stating the command.
+
+```json
+{
+  "mcpServers": {
+    "legacy": { "command": "/opt/legacy/mcp", "inheritEnv": true }
   }
 }
 ```

@@ -1,6 +1,6 @@
 # Skills authoring
 
-A skill is a folder that adds a reusable capability to Veyyon. This page explains how to write one from scratch. For background on how skills are discovered and loaded, see [Skills](skills.md).
+A skill is a folder that adds a reusable capability to Veyyon. For how skills are discovered and loaded, see [Skills](../reference/skills.md).
 
 ## Directory structure
 
@@ -12,7 +12,7 @@ Skills load only from the active profile. Veyyon reads these locations, all unde
 | Managed | `$HOME/.veyyon/profiles/<profile>/agent/managed-skills` | Auto-learn skills Veyyon writes itself. A same-named user skill always wins. |
 | Plugins | plugins installed into the active profile | Skills bundled with a plugin you added to this profile. |
 
-Nothing else contributes skills. A project-local `.veyyon/skills` directory and another tool's skill directory (`$HOME/.claude/skills`, `$HOME/.codex/skills`, `$HOME/.agents/skills`, and the rest) are never scanned. To use a skill from another tool, import it into your profile, see [Skills](skills.md#importing-another-tools-skills). For the full provider list and dedup rules, see [Skills](skills.md#skill-locations).
+Nothing else contributes skills. A project-local `.veyyon/skills` directory and another tool's skill directory (`$HOME/.claude/skills`, `$HOME/.codex/skills`, `$HOME/.agents/skills`, and the rest) are never scanned. To use a skill from another tool, import it into your profile, see [Skills](../reference/skills.md#foreign-providers-are-import-only). For the full provider list and dedup rules, see [Skills](../reference/skills.md#discovery-pipeline).
 
 Create a new skill by making a directory inside the profile's `skills` dir and adding a `SKILL.md` file. The name of the directory is the default name of the skill.
 
@@ -24,7 +24,7 @@ my-skill/
 └── scripts/, references/, assets/ ...optional
 ```
 
-Only `SKILL.md` is required. The other files are loaded when the skill is active or when the model explicitly asks for them.
+Only `SKILL.md` is required. The other files are loaded when the skill is active or when the model requests them.
 
 ## SKILL.md frontmatter
 
@@ -77,7 +77,7 @@ Do not leave comments on external platforms unless the user explicitly asks for 
 ## Configuring in config.yml
 
 There is no registration step: a skill placed in any discovered directory (see
-[Skills](./skills.md)) loads automatically. The `skills` section of `config.yml` controls
+[Skills](../reference/skills.md)) loads automatically. The `skills` section of `config.yml` controls
 which discovered skills are active.
 
 Turn skill discovery off entirely:

@@ -69,6 +69,11 @@ SETTINGS=
 # named here. A clip of a static pane is a still with a file size, and the seconds it
 # spends arriving are seconds of a recorder typing.
 STILL=
+# A row about a detail on a 2560-wide screen names the mark to zoom into. The take is
+# captured wider than it publishes, so a 1920-wide crop is a 1.33x zoom with no upscale;
+# empty means the take publishes at full width. `proof/zoom.py --self-check` proves the
+# stage on the host before a take depends on it.
+ZOOM_ARGS=()
 case "${SCENE}" in
 demo-hd)
 	ASSET=assets/demo-hd.webp
@@ -243,7 +248,17 @@ else
 	REHEARSAL=0
 fi
 
-WORK="$(mktemp -d /tmp/veyyon-hd-demo.XXXXXX)"
+# WHERE THE TAKE IS WRITTEN. The recorder writes the video, every frame and the marks
+# file into this directory through a bind mount, as root inside the container. On an NFS
+# export with root_squash -- which is how this repo is mounted on the host that serves the
+# weights -- root maps to an anonymous uid and every one of those writes is denied. The
+# first symptom is `rm: cannot remove .../<scene>-marks.tsv: Permission denied` for a file
+# that did not exist, because unlink in an unwritable directory reports EACCES rather than
+# ENOENT, and by then the display server, the compositor and the model are all up.
+# WORK_DIR names a directory on local disk instead.
+WORK_BASE="${WORK_DIR:-.captures}"
+mkdir -p "${WORK_BASE}"
+WORK="$(mktemp -d "${WORK_BASE}/veyyon-hd-demo.XXXXXX")"
 # Kept on failure, deleted on success. A twenty-five minute take died here on `magick:
 # command not found` and the unconditional cleanup then removed the fifteen frames it had
 # already taken, so a missing publishing tool cost the whole recording rather than the last
@@ -251,16 +266,64 @@ WORK="$(mktemp -d /tmp/veyyon-hd-demo.XXXXXX)"
 # into proof/captures and resampled into assets.
 trap 'if [ "$?" -eq 0 ] && [ "${REHEARSAL}" -eq 0 ]; then rm -rf "${WORK}"; else echo "record-hd-demo.sh: kept ${WORK}" >&2; fi' EXIT
 
-# ImageMagick under either of its two names. ImageMagick 7 ships `magick` and 6 ships
-# `convert`, this fleet has 6 on both hosts, and the resampling step assumed 7 -- which is
-# how a take reached its publish step and lost its stills to a PATH difference. Resolved
-# once, loudly, before anything is recorded, rather than at the end of a long take.
+# The same question the take asks, asked in one second: can the container write here?
+# shellcheck source=proof/docker/recorder-image.sh
+source proof/docker/recorder-image.sh
+if ! docker run --rm --mount "type=bind,src=$(cd "${WORK}" && pwd),dst=/out" "${RECORDER_IMAGE}" \
+	bash -lc 'touch /out/.write-probe && rm /out/.write-probe' >/dev/null 2>&1; then
+	echo "record-hd-demo.sh: the recorder cannot write into ${WORK}. A network mount that squashes root denies every frame the take produces. Set WORK_DIR to a directory on local disk." >&2
+	exit 2
+fi
+
+# EVERY EXTERNAL BINARY THIS RUN WILL NEED, RESOLVED BEFORE ANY WEIGHTS ARE TOUCHED.
+# ImageMagick 7 ships `magick` and 6 ships `convert`, this fleet has 6, and the resampling
+# step assumed 7 -- which is how a take reached its publish step and lost its stills to a
+# PATH difference. The same argument covers the rest of the publish chain: ffmpeg and
+# python3 are first called after the recording is over, so a host without them loses the
+# take rather than the last step of it.
 if command -v magick >/dev/null 2>&1; then
 	IM=(magick)
 elif command -v convert >/dev/null 2>&1; then
 	IM=(convert)
 else
 	echo "record-hd-demo.sh: no ImageMagick (magick or convert) on PATH" >&2
+	exit 2
+fi
+
+REQUIRED_TOOLS=(docker)
+if [[ "${REHEARSAL}" -eq 0 ]]; then
+	REQUIRED_TOOLS+=(ffmpeg python3)
+fi
+for tool in "${REQUIRED_TOOLS[@]}"; do
+	if ! command -v "${tool}" >/dev/null 2>&1; then
+		echo "record-hd-demo.sh: ${tool} is not on PATH. The take needs it, so it is resolved now rather than after the recording." >&2
+		exit 2
+	fi
+done
+
+# The zoom stage measures its region with ffprobe and Pillow, both first called after the
+# recording is over. A row that asks for a zoom resolves them here for the same reason the
+# publish tools are resolved here.
+if [[ ${#ZOOM_ARGS[@]} -gt 0 && "${REHEARSAL}" -eq 0 ]]; then
+	if ! command -v ffprobe >/dev/null 2>&1; then
+		echo "record-hd-demo.sh: the zoom stage needs ffprobe, which is not on PATH." >&2
+		exit 2
+	fi
+	if ! python3 -c "import PIL" >/dev/null 2>&1; then
+		echo "record-hd-demo.sh: the zoom stage needs Pillow (python3 -m pip install pillow)." >&2
+		exit 2
+	fi
+fi
+
+# The scene checker below runs under bun. A recording is driven on the machine serving the
+# weights, which means over ssh, and a non-login shell there does not carry the installer's
+# PATH entry -- so the default install location is tried before giving up.
+if command -v bun >/dev/null 2>&1; then
+	BUN=bun
+elif [[ -x "${HOME}/.bun/bin/bun" ]]; then
+	BUN="${HOME}/.bun/bin/bun"
+else
+	echo "record-hd-demo.sh: no bun on PATH or at ~/.bun/bin/bun. The scene checker needs it." >&2
 	exit 2
 fi
 
@@ -298,6 +361,37 @@ require_every_mark_has_a_frame() {
 	fi
 }
 
+# GUARDS BEFORE WEIGHTS. Every string the scene waits for has to be produced by something --
+# the prompt, the product's own source, or the sandbox seed -- and a needle nothing produces
+# does not fail fast: it waits out its whole timeout, marks the shot missed, and the publish
+# step then leaves the PREVIOUS take's frame under that name. Two guards in this scene were in
+# that state (a board header that dropped its count, a status line that lives in a details
+# panel), which is minutes of a take spent proving nothing.
+"${BUN}" scripts/verify-scene.ts "${SCENE}" >&2
+
+# WHICH MODEL, AND WHERE IT IS. The take is recorded on the host serving the weights, so the
+# endpoint is a loopback address; a base URL pointing at another machine means the session's
+# every token crosses a network the recording then blames for its pauses. Naming it here is
+# cheap and refusing it is the point -- `ALLOW_REMOTE_MODEL=1` records anyway, and says so.
+MODEL_HOST="$(printf '%s' "${PROOF_LLM_BASE_URL}" | sed -E 's#^[a-z]+://([^:/]+).*#\1#')"
+case "${MODEL_HOST}" in
+	localhost | 127.0.0.1 | ::1 | 0.0.0.0) MODEL_IS_LOCAL=1 ;;
+	*) MODEL_IS_LOCAL=0 ;;
+esac
+if [[ ${MODEL_IS_LOCAL} -eq 0 && "${ALLOW_REMOTE_MODEL:-0}" != "1" ]]; then
+	echo "record-hd-demo.sh: ${PROOF_LLM_BASE_URL} is not on this host. Record on the machine serving ${DEMO_MODEL}, or set ALLOW_REMOTE_MODEL=1." >&2
+	exit 1
+fi
+
+# The row has to exist on that server before a take starts. A model name the server does not
+# hold answers every request with an error the session renders as a red block, and the first
+# time anyone sees that is on the recording.
+SERVED_MODELS="$(curl -s --max-time 30 "${PROOF_LLM_BASE_URL%/}/models" || true)"
+if [[ -n "${SERVED_MODELS}" ]] && ! printf '%s' "${SERVED_MODELS}" | grep -qF "${DEMO_MODEL#local/}"; then
+	echo "record-hd-demo.sh: ${PROOF_LLM_BASE_URL} does not serve ${DEMO_MODEL#local/}. Load it, or set DEMO_MODEL to a row it has." >&2
+	exit 1
+fi
+
 # The number the session signs with, generated per run so a published frame pins one
 # specific digest and the check is reproducible rather than decorative. It is passed into
 # the container as an environment variable and stored there with `/secret from-env`, so it
@@ -313,6 +407,19 @@ curl -s --max-time 180 "${PROOF_LLM_BASE_URL%/}/chat/completions" \
 	-H 'content-type: application/json' \
 	-d "{\"model\":\"${DEMO_MODEL#local/}\",\"messages\":[{\"role\":\"user\",\"content\":\"warm\"}],\"max_tokens\":4}" \
 	>/dev/null || echo "record-hd-demo.sh: warm-up request failed; the row may open on a spinner" >&2
+
+# WHAT DROVE THE TAKE, written beside it. A published frame is a claim about a model, and the
+# only record of which row and which endpoint produced it used to be whatever the operator
+# remembered. This file is copied out with the frames, so a take can be traced to its weights.
+{
+	echo "scene: ${SCENE}"
+	echo "model: ${DEMO_MODEL}"
+	echo "endpoint: ${PROOF_LLM_BASE_URL}"
+	echo "endpoint-is-local: ${MODEL_IS_LOCAL}"
+	echo "recorded-on: $(uname -sr) $(hostname)"
+	echo "display-server: ${DEMO_SERVER}"
+	echo "recorded-at: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+} >"${WORK}/${SCENE}-model.txt"
 
 PROOF_LLM_BASE_URL="${PROOF_LLM_BASE_URL}" \
 	SCENE_HIDE_THINKING="${HIDE_THINKING}" \
@@ -355,6 +462,7 @@ if [[ ${PUBLISH_TAKE} -eq 1 ]]; then
 		cp "${still}" "${CAPTURES}/${base}.png"
 		"${IM[@]}" "${still}" -resize 1920x -strip "assets/${base}.png"
 	done
+	cp "${WORK}/${SCENE}-model.txt" "${CAPTURES}/${SCENE}-model.txt"
 	if [[ -f "${WORK}/signature-crosscheck.txt" ]]; then
 		cp "${WORK}/signature-crosscheck.txt" "${CAPTURES}/${SCENE}-signature-crosscheck.txt"
 		echo "--- the signature anyone can check ---"
@@ -411,12 +519,29 @@ MARKS="${WORK}/${SCENE}-marks.tsv"
 if [[ -f "${MARKS}" && ! " ${CUT_ARGS[*]} " =~ " --single " ]]; then
 	CUT_ARGS+=(--marks "${MARKS}")
 fi
+# THE ZOOM RUNS ON THE TAKE, BEFORE THE CUT, and only when a row asked for one. A row whose
+# subject is a block of text on a 2560-wide screen loses it to the downsample, and cropping
+# after the cut would resample a clip that already passed the cadence gate. The stage keeps
+# every frame and the recorded rate, so the gate below still reads the capture's own cadence,
+# and the archived whole take stays as it was recorded.
+CUT_SOURCE="${WORK}/${SCENE}.mp4"
+if [[ ${#ZOOM_ARGS[@]} -gt 0 ]]; then
+	ZOOM_SOURCE="${WORK}/${SCENE}-zoomed.mp4"
+	if [[ -f "${MARKS}" && ! " ${ZOOM_ARGS[*]} " =~ " --marks " ]]; then
+		ZOOM_ARGS+=(--marks "${MARKS}")
+	fi
+	python3 proof/zoom.py "${CUT_SOURCE}" "${ZOOM_SOURCE}" "${ZOOM_ARGS[@]}" || {
+		echo "record-hd-demo.sh: the zoom stage found no region to hold; publishing nothing" >&2
+		exit 1
+	}
+	CUT_SOURCE="${ZOOM_SOURCE}"
+fi
 # EVERY run cuts into the work directory, and a real one copies out of it afterwards. The
 # cut used to write straight over the published asset, so a clip that had been resampled
 # on the way through replaced a good one and was only discovered later, by reading the
 # file's own frame durations. What is published now is a file that passed the gate below.
 CUT_WEBP="${WORK}/$(basename "${ASSET}")"
-python3 proof/hero-cut.py "${WORK}/${SCENE}.mp4" \
+python3 proof/hero-cut.py "${CUT_SOURCE}" \
 	--mp4 "${WORK}/${SCENE}-cut.mp4" --webp "${CUT_WEBP}" \
 	--width "${CUT_WIDTH:-2560}" --webp-width "${WEBP_WIDTH:-1920}" "${CUT_ARGS[@]}"
 
@@ -424,6 +549,12 @@ python3 proof/hero-cut.py "${WORK}/${SCENE}.mp4" \
 # display servers record at 30 fps, so the typical frame of anything published from a take
 # holds 33ms. The hero shipped at a 7.7 fps average because the path resampled it twice and
 # nothing here was looking: it read as a laggy product rather than as a resampled file.
+#
+# The gate then passed a take that averaged 14.2 fps, because it read only the most common
+# frame and 33ms was the most common frame at 44% while the other 56% held for two or three
+# intervals. It now also gates the MOVING portion of the clip against the capture rate, with
+# held still screens named and set aside, so a file that is mostly slower than its most
+# common frame cannot pass. `--expect-ms` supplies both criteria.
 python3 proof/webp-cadence.py "${CUT_WEBP}" --expect-ms 33 || {
 	echo "record-hd-demo.sh: refusing to publish a clip that is not the cadence the recorder captured" >&2
 	exit 1

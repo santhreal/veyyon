@@ -1,6 +1,6 @@
 # Frequently asked questions
 
-This page answers common questions and errors. For a guided diagnostic path, see [Troubleshooting](./troubleshooting.md).
+Common questions and errors. For a guided diagnostic path, see [Troubleshooting](./troubleshooting.md).
 
 ## Setup
 
@@ -22,11 +22,11 @@ For how sessions are stored and resumed, see [Sessions](./sessions.md).
 
 ### "Invalid API key" or "Authentication failed"
 
-The process calls the configured provider endpoint with the configured key. Check env var / auth store / `models.yml` for that provider, key validity, and scopes. See [Models and providers](./models.md).
+The process calls the configured provider endpoint with the configured key. Check env var / auth store / `models.yml` for that provider, key validity, and scopes. See [Models and providers](../reference/models-yml.md).
 
 ### "Unsupported region" or endpoint errors
 
-The base URL you configured must match the provider region and product endpoint. A model id that exists in one region may not exist in another, and the same hostname may host different model catalogs. Verify the endpoint URL in your provider dashboard and compare it with the `base_url` in your config. [Models and providers](./models.md) explains how provider configuration is resolved.
+The base URL you configured must match the provider region and product endpoint. A model id that exists in one region may not exist in another, and the same hostname may host different model catalogs. Verify the endpoint URL in your provider dashboard and compare it with the `base_url` in your config. [Models and providers](../reference/models-yml.md) explains how provider configuration is resolved.
 
 ### Why is my model not listed?
 
@@ -36,7 +36,7 @@ Veyyon lists models from a bundled catalog plus live discovery from providers th
 
 ### Why did my edit ask for approval?
 
-The approval mode decides when Veyyon prompts before a tool runs. In `ask`, every tier prompts, reads included. In `ask-command`, reads and edits run and anything that executes asks. In `auto`, the default, every tier runs with the per-tool, working-directory, credential and critical-call guards still asking. In `plan`, exec is blocked outright and write prompts only inside an active plan-mode session. Change mode with `--approval-mode <mode>` (`plan`, `ask`, `ask-command`, `auto`, `yolo`), `--auto-approve` / `--yolo`, or `tools.approvalMode` in `config.yml`. See [Approvals](../features/sandbox.md).
+The approval mode sets when Veyyon prompts before a tool runs. In `ask`, every tier prompts, reads included. In `ask-command`, reads and edits run and anything that executes prompts. In `auto`, the default, every tier runs with the per-tool, working-directory, credential and critical-call guards still prompting. In `plan`, exec is blocked outright and write prompts only inside an active plan-mode session. Change mode with `--approval-mode <mode>` (`plan`, `ask`, `ask-command`, `auto`, `yolo`), `--auto-approve` / `--yolo`, or `tools.approvalMode` in `config.yml`. See [Approvals](../features/sandbox.md).
 
 ### How do I resume a session?
 
@@ -53,6 +53,6 @@ Output is intentionally truncated when it exceeds a tool budget. The truncation 
 ## Where to go next
 
 - [Troubleshooting](./troubleshooting.md) for the guided diagnostic path.
-- [Models and providers](./models.md) for provider keys, endpoints, and model selection.
+- [Models and providers](../reference/models-yml.md) for provider keys, endpoints, and model selection.
 - [Approvals](../features/sandbox.md) for the approval modes.
 - [Sessions](./sessions.md) for resume, fork, branch, and export.

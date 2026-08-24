@@ -68,7 +68,19 @@ const REAL_CONFIG_ROOT = path.join(os.homedir(), ".veyyon");
 // unprotected, which surfaced when the tripwire's own suite wrote its probe files
 // into the real config root.
 const TRIPWIRE_PRELOAD = path.join(repoRoot, "packages", "utils", "test", "helpers", "real-data-tripwire.ts");
-const preloadArgs = ["--preload", TRIPWIRE_PRELOAD];
+// The second tripwire: a suite that replaces a provider module process-wide and never restores it
+// answers every later file in the same bucket, so the failure lands on an innocent suite. It fails
+// the test that ends with an override it did not inherit, and puts the inherited value back so one
+// leak is one failure.
+const PROVIDER_OVERRIDE_PRELOAD = path.join(
+	repoRoot,
+	"packages",
+	"ai",
+	"test",
+	"helpers",
+	"provider-override-tripwire.ts",
+);
+const preloadArgs = ["--preload", TRIPWIRE_PRELOAD, "--preload", PROVIDER_OVERRIDE_PRELOAD];
 
 // A disposable HOME handed to every test child. This is PREVENTION, and it is
 // structural rather than advisory: config, credential and session paths are all
@@ -292,7 +304,10 @@ export const workspaceTestPackages = [
 // silently ignores unmatched filters when at least one other filter matches, so a
 // typo'd path in this array is invisible rather than fatal. Check the file exists.)
 export const repoScriptTests = [
+	"scripts/a-generated-doc-says-so-on-its-first-line.test.ts",
 	"scripts/a-local-action-is-called-with-everything-it-requires.test.ts",
+	"scripts/a-production-site-deploy-has-one-owner.test.ts",
+	"scripts/a-third-party-action-is-pinned-in-one-place.test.ts",
 	"scripts/ci-concurrency.test.ts",
 	"scripts/ci-test-partitioning-preserves-global-state-isolation.test.ts",
 	"scripts/simulation-watchdogs-do-not-run-under-test-fanout.test.ts",
@@ -367,6 +382,8 @@ export const repoScriptTests = [
 	"scripts/run-rs-task.test.ts",
 	"scripts/verify-deployed-installers.test.ts",
 	"scripts/verify-deployed-changelog.test.ts",
+	"scripts/verify-scene.test.ts",
+	"scripts/a-mark-cannot-capture-a-duplicate-frame.test.ts",
 	"scripts/installer-brand-parity.test.ts",
 	"scripts/upstream-radar.test.ts",
 	"scripts/release-sentinel.test.ts",
@@ -380,8 +397,10 @@ export const repoScriptTests = [
 	"scripts/demos/lib/png.test.ts",
 	"scripts/demos/lib/ansi-grid.test.ts",
 	"scripts/demos/lib/ansi-raster.test.ts",
-	"scripts/every-skill-is-catalogued.test.ts",
 	"scripts/every-script-has-an-owner.test.ts",
+	"scripts/there-is-only-one-capture-path.test.ts",
+	"scripts/a-recorder-container-can-reach-a-model-served-by-its-host.test.ts",
+	"scripts/a-capture-runs-on-the-bun-the-product-requires.test.ts",
 	"scripts/first-party-docs-are-indexed.test.ts",
 	"scripts/script-tests-coverage.test.ts",
 	"scripts/stray-output-path.test.ts",
@@ -433,6 +452,11 @@ export const repoScriptTests = [
 	// Runs in whatever rung the harness picked, and asserts that rung can execute
 	// a file a suite just wrote. Docker's tmpfs defaults could not.
 	"scripts/test-sandbox/the-guest-tmpdir-can-execute.test.ts",
+	// The admissibility gate for visual evidence: an off-screen raster may be a
+	// debugging aid and may never reach `assets/`, a README, or the handbook. It
+	// landed on disk unwired, which for a scan-the-whole-tree gate means the rule
+	// it enforces stops being enforced the moment nobody reruns it by hand.
+	"scripts/an-off-screen-raster-never-enters-assets.test.ts",
 ];
 
 /**

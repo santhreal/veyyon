@@ -1,13 +1,13 @@
 # Configuring providers
 
-This page gives you copy-paste setups for bring-your-own-key (BYOK) and local providers.
-Once a provider works, see [Models and providers](./models.md) to choose and switch models.
+Copy-paste setups for bring-your-own-key (BYOK) and local providers.
+Once a provider works, see [Models and providers](../reference/models-yml.md) to choose and switch models.
 For what the harness owns versus what the provider owns, see
 [Model contract](../concepts/model-contract.md).
 
 Custom providers live under `providers:` in `~/.veyyon/profiles/default/agent/models.yml`. Keys are resolved from the
 environment, stored auth, OAuth, or a `models.yml` `apiKey` (see [Providers](../models/providers.md)
-and `docs/providers.md`).
+and `docs/handbook/src/reference/providers.md`).
 
 ## Anatomy of a provider entry
 
@@ -17,7 +17,7 @@ providers:
   acme:
     baseUrl: https://api.acme.example/v1
     api: openai-completions
-    apiKey: ACME_API_KEY        # env-var name if set, else literal text
+    apiKey: ACME_API_KEY        # env-var name; `literal:text` for verbatim text
     models:
       - id: acme-coder
         name: ACME Coder
@@ -173,12 +173,12 @@ $ veyyon --model <provider>/<id> "reply with the model name you are"
 
 The provider form bypasses the cache and contacts only the named provider. Omit it when you need to refresh every configured catalog.
 
-If discovery or auth fails, the error names the provider and the missing key or unreachable base URL,
+If discovery or auth fails, the error states the provider and the missing key or unreachable base URL,
 fix that rather than retrying with a different silent default.
 
 ## See also
 
-- [Models and providers](./models.md)
+- [Models and providers](../reference/models-yml.md)
 - [Model contract](../concepts/model-contract.md)
 - [Provider stack](../models/providers.md)
 - [Authentication](./authentication.md)

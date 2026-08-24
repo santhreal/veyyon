@@ -1,5 +1,5 @@
 import type { CapturedHttpErrorResponse } from "../utils/http-inspector";
-import { boundProviderErrorDetail } from "./detail-bounds";
+import { readProviderErrorBody } from "./error-body";
 
 /** Prefix on errors raised when an Anthropic SSE stream envelope is malformed. */
 export const STREAM_ENVELOPE_ERROR_PREFIX = "Anthropic stream envelope error:";
@@ -82,13 +82,14 @@ export class AnthropicApiError extends ProviderHttpError {
 
 	static async fromResponse(response: Response): Promise<AnthropicApiError> {
 		// The STATUS is the failure being classified; the body is extra detail on it. A body that cannot be
-		// read (already consumed, connection dropped) must not turn an HTTP error into a read error.
-		const body = (await response.text().catch(() => "")).trim();
+		// read (already consumed, connection dropped) must not turn an HTTP error into a read error, and the
+		// read itself is bounded because a 4xx from a proxy is not always a small envelope.
+		const body = await readProviderErrorBody(response);
 		// THIS SPELLING IS LOAD-BEARING, and it is not the generic empty-detail wording on purpose:
 		// the overflow classifier matches `400`/`413` followed by `status code (no body)` to recognise
 		// an overlong prompt that Anthropic rejects with no envelope at all, so changing these bytes
 		// silently retires auto-compaction for that case.
-		const detail = body.length === 0 ? "status code (no body)" : boundProviderErrorDetail(body);
+		const detail = body.text.trim().length === 0 ? "status code (no body)" : body.detail;
 		return new AnthropicApiError(response.status, `${response.status} ${detail}`, response.headers);
 	}
 }
@@ -150,9 +151,16 @@ export class AuthGatewayError extends ProviderHttpError {
 	}
 }
 
+/** Prefix on the message of every Codex websocket transport failure. */
+export const CODEX_WEBSOCKET_TRANSPORT_ERROR_PREFIX = "Codex websocket transport error";
+
+/**
+ * Raised by the Codex websocket transport. It lives here, not beside the
+ * transport, so `classify()` reaches it by identity instead of by name.
+ */
 export class CodexWebSocketTransportError extends Error {
 	constructor(detail: string) {
-		super(`Codex websocket transport failure: ${detail}`);
+		super(`${CODEX_WEBSOCKET_TRANSPORT_ERROR_PREFIX}: ${detail}`);
 		this.name = "CodexWebSocketTransportError";
 	}
 }
@@ -166,11 +174,14 @@ export class CodexWhitespaceToolCallLoopError extends Error {
 
 export class CodexProviderStreamError extends Error {
 	readonly retryable: boolean;
+	/** Provider error code (`error.code` / `error.type`) when the event carried one. */
+	readonly code: string | undefined;
 
-	constructor(message: string, options?: { retryable?: boolean; cause?: unknown }) {
-		super(message, { cause: options?.cause });
+	constructor(message: string, options: { retryable: boolean; code?: string; cause?: unknown }) {
+		super(message, { cause: options.cause });
 		this.name = "CodexProviderStreamError";
-		this.retryable = options?.retryable !== false;
+		this.retryable = options.retryable;
+		this.code = options.code;
 	}
 }
 
@@ -185,6 +196,11 @@ export class AuthBrokerError extends Error {
 	}
 }
 
+/**
+ * A broker answered 404 to `GET /v1/snapshot/stream`: it predates the SSE
+ * endpoint. `RemoteAuthCredentialStore` reads this as the signal to fall back
+ * to long-polling for the rest of the process.
+ */
 export class AuthBrokerStreamUnsupportedError extends AuthBrokerError {
 	constructor(message = "Auth broker does not support /v1/snapshot/stream") {
 		super(message, { status: 404 });

@@ -39,22 +39,20 @@ afterEach(() => {
 });
 
 describe("resolveProviderCandidates", () => {
-	it("orders the preferred provider before unloaded fallbacks", () => {
-		const candidates = resolveProviderCandidates("exa");
-
-		expect(candidates[0]).toEqual({ id: "exa", explicit: true });
-		expect(candidates.slice(1).map(candidate => candidate.id)).toEqual(
-			SEARCH_PROVIDER_ORDER.filter(id => id !== "exa"),
-		);
+	it("returns the preferred provider without loading any fallback", () => {
+		// This case used to assert the chosen provider was ORDERED IN FRONT of every other
+		// one, which is the defect: a chosen engine with nothing to say handed the query on.
+		// The whole list is the choice now, and `auto` is what ranges over the roster.
+		expect(resolveProviderCandidates("exa")).toEqual([{ id: "exa", explicit: true }]);
 	});
 
-	it("omits excluded providers without resolving them", () => {
+	it("omits excluded providers from the auto chain without resolving them", () => {
 		setExcludedSearchProviders(["duckduckgo", "google"]);
 
-		const candidates = resolveProviderCandidates("exa");
+		const ids = resolveProviderCandidates("auto").map(candidate => candidate.id);
 
-		expect(candidates.map(candidate => candidate.id)).not.toContain("duckduckgo");
-		expect(candidates.map(candidate => candidate.id)).not.toContain("google");
+		expect(ids).not.toContain("duckduckgo");
+		expect(ids).not.toContain("google");
 	});
 });
 
@@ -68,13 +66,16 @@ describe("resolveProviderChain", () => {
 		expect(providers.map(provider => provider.id)).toEqual(["jina"]);
 	});
 
-	it("ignores the preferred provider when it is excluded", async () => {
+	it("resolves nothing when the preferred provider is excluded", async () => {
 		enableKeyBackedProviders();
 		setExcludedSearchProviders(SEARCH_PROVIDER_ORDER.filter(id => id !== "jina"));
 
+		// Brave is chosen and excluded, so the configuration cannot be satisfied. It used to
+		// resolve to Jina — an engine nobody named, reached because the choice was treated as
+		// a preference over a chain rather than as an answer to "which engine".
 		const providers = await resolveProviderChain(authStorage, "brave");
 
-		expect(providers.map(provider => provider.id)).toEqual(["jina"]);
+		expect(providers).toEqual([]);
 	});
 
 	it("applies live settings edits to the exclusion chain", async () => {

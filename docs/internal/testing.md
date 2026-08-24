@@ -1138,22 +1138,17 @@ it, a card with eighteen empty rows: each of those renders as a perfectly valid
 string, and each is obvious the moment you look at a picture of the frame.
 
 **The evidence is a capture taken through the official config**, which is
-[verification.md](../handbook/src/foundations/verification.md): the HD recorder for
-a real interactive session, the VHS baseline block for a screen capture. There are
-no fallbacks. Never judge a visual change from a `tmux capture-pane` dump — tmux
-renders on a pure-black default ground, `capture-pane` strips and distorts styling,
-and the whole class of background-fill and contrast bug is invisible in it; a dump
-that looked fine there has shipped black slabs onto a grey terminal.
+[verification.md](../handbook/src/foundations/verification.md): the single definition of
+the capture path, of the artifact class each kind of change proves with, and of what does
+not count as evidence at all. There are no fallbacks, here or anywhere else.
 
-An off-screen raster is not a capture and is not a proof. `scripts/demos/render-proof.ts`
-reads a render's ANSI on stdin and writes `<out>-grey.png` and `<out>-black.png`,
-which is a good way to look at bytes, fills and grounds WHILE YOU WORK: it needs no
-display, it is deterministic, and it answers "does this fill reach the edge" in
-seconds. What it cannot answer is anything about the product, because it draws a
-fixture you wrote at a width you chose — not that the surface is reachable, not that
-the state is real, not that the block is positioned, sized and clipped the way a
-session draws it. Use it to debug; capture to prove. Producing a pair takes two
-steps and no display:
+`scripts/demos/render-proof.ts` is a debugging aid, not a capture. It reads a render's
+ANSI on stdin and writes `<out>-grey.png` and `<out>-black.png`: no display, deterministic,
+and it answers "does this fill reach the edge" in seconds WHILE YOU WORK. It draws a
+fixture you wrote at a width you chose, so it shows nothing about whether the surface is
+reachable, the state real, or the block positioned, sized and clipped the way a session
+draws it. Use it to debug; capture to prove. Producing a grey/black pair takes two steps
+and no display:
 
 1. Write a small renderer under `scripts/demos/` that builds the REAL component the
    way its suite does (`stubStdoutGeometry`, `initTheme`, a registry seeded with the
@@ -1224,4 +1219,4 @@ Wiring you can't exercise in-process (worker spawn, install flow) is covered by 
 runtime smoke probe (`veyyon --smoke-test`) and the install-test scripts, not by a
 source grep.
 
-*Verified against `61c974a6c` on 2026-08-21.*
+*Verified against `96175566f` on 2026-08-22.*

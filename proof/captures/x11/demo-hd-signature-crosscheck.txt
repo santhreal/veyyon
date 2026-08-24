@@ -1,5 +1,0 @@
-signing number (never typed, never in the transcript; shown in the approval dialog): 4721-8095-3364
-sha256 of that number: b5fb4bcd06dd5e129b7bd1b59fd183f081361018f71714c48be4ee07a3b46e11
-sha256 of that number and a newline: 07fbaac008d5b6d1574121192335894b35113ed61630f4d117d9d76b82cde42a
---- SIGNED.md ---
-signature: b5fb4bcd06dd5e129b7bd1b59fd183f081361018f71714c48be4ee07a3b46e11

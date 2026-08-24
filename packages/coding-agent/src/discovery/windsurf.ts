@@ -17,7 +17,8 @@ import { readFile } from "../capability/fs";
 import { type MCPServer, mcpCapability } from "../capability/mcp";
 import { type Rule, ruleCapability } from "../capability/rule";
 import type { LoadContext, LoadResult } from "../capability/types";
-import { buildRuleFromMarkdown, createSourceMeta, expandEnvVarsDeep, getUserPath } from "./helpers";
+import { expandEnvVarsDeep, warnUnresolved } from "./env-expansion";
+import { buildRuleFromMarkdown, createSourceMeta, getUserPath } from "./helpers";
 
 const PROVIDER_ID = "windsurf";
 const DISPLAY_NAME = "Windsurf";
@@ -32,12 +33,14 @@ function parseServerConfig(
 	serverConfig: unknown,
 	path: string,
 	scope: "user" | "project",
-): { server?: MCPServer; warning?: string } {
+	warnings: string[],
+): { server?: MCPServer } {
 	if (typeof serverConfig !== "object" || serverConfig === null) {
-		return { warning: `Invalid server config for "${name}" in ${path}` };
+		warnings.push(`Invalid server config for "${name}" in ${path}`);
+		return {};
 	}
 
-	const server = expandEnvVarsDeep(serverConfig as Record<string, unknown>);
+	const server = expandEnvVarsDeep(serverConfig as Record<string, unknown>, warnUnresolved(warnings, path));
 	return {
 		server: {
 			name,
@@ -65,8 +68,7 @@ async function loadMCPServers(ctx: LoadContext): Promise<LoadResult<MCPServer>> 
 	if (!config?.mcpServers) return { items, warnings };
 
 	for (const [name, serverConfig] of Object.entries(config.mcpServers)) {
-		const result = parseServerConfig(name, serverConfig, userPath, "user");
-		if (result.warning) warnings.push(result.warning);
+		const result = parseServerConfig(name, serverConfig, userPath, "user", warnings);
 		if (result.server) items.push(result.server);
 	}
 

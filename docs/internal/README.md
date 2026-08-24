@@ -3,7 +3,7 @@
 Implementation and contributor docs, how Veyyon works, ships, and is built, for the people changing
 it. None of this is published to the website or needed to *use* Veyyon; the operator-facing manual is
 the [handbook](../handbook/). For the map from `src/` subsystems to their authoritative doc, start at
-[`packages/coding-agent/DEVELOPMENT.md`](../../packages/coding-agent/DEVELOPMENT.md); load-bearing
+[`packages/coding-agent/DEVELOPMENT.md`](../../packages/coding-agent/DEVELOPMENT.md); architectural
 decisions are recorded as [ADRs](../adr/).
 
 New here? Read [onboarding](onboarding.md) and [testing](testing.md) first.
@@ -12,12 +12,12 @@ New here? Read [onboarding](onboarding.md) and [testing](testing.md) first.
 
 - **One page per topic.** Extend the existing page instead of adding a second one on the same subject.
 - **Match tests and code.** A claim here must be true of the code, or it is a bug in the doc. When a
-  page describes a planned mechanism, label it and say what ships today.
+  page describes a planned mechanism, label it and state what ships today.
 - **Keep it navigable.** Every new internal doc gets a row in the relevant table below.
 - **Verification stamps.** A doc whose claims have been checked against the code ends with
   `*Verified against \`<commit-sha>\` on YYYY-MM-DD.*` as its last line. `scripts/check-doc-freshness.ts`
   (a `docs.yml` gate) fails a stamped doc edited after its stamp date, re-verify and re-stamp in the
-  same change. Stamping is earned by actually verifying, never backfilled blind; unstamped docs are
+  same change. Stamping is earned by verifying, never backfilled blind; unstamped docs are
   reported loudly but do not fail.
 
 ## Getting started and process
@@ -31,6 +31,9 @@ New here? Read [onboarding](onboarding.md) and [testing](testing.md) first.
 | [releasing.md](releasing.md) | The only release page: cut, what runs, what it produces, verify, recover, roll back. |
 | [deployment.md](deployment.md) | Website (Cloudflare Pages) and install-script deployment. |
 | [agent-workflow.md](agent-workflow.md) | How an autonomous agent works this repo and ships updates. |
+| [startup-budget.md](startup-budget.md) | What runs before the first frame, the measured baseline, and how to measure it again. |
+| [repo-gates.md](repo-gates.md) | Which gate runs in which workflow, and the cost measurements behind that split. |
+| [bun-surface.md](bun-surface.md) | The frozen Bun surface: node/fs/stream/spawn conventions, and worker hosting. |
 
 ## Design and brand
 
@@ -93,6 +96,7 @@ New here? Read [onboarding](onboarding.md) and [testing](testing.md) first.
 | [provider-streaming-internals.md](provider-streaming-internals.md) | Streaming decode/encode internals. |
 | [ai-schema-normalize.md](ai-schema-normalize.md) | Tool-schema normalization across providers. |
 | [non-compaction-retry-policy.md](non-compaction-retry-policy.md) | The non-compaction auto-retry policy. |
+| [retry-loops.md](retry-loops.md) | Every loop that sends a request again, its budget, and which verdict it reads. |
 | [local-tiny-models.md](local-tiny-models.md) | Embedded local tiny-model experiments. |
 
 ## Prompts and caching
@@ -107,7 +111,7 @@ New here? Read [onboarding](onboarding.md) and [testing](testing.md) first.
 | Doc | Covers |
 | --- | --- |
 | [session.md](session.md) | Session storage and the entry model. |
-| [session-tree-plan.md](session-tree-plan.md) | The session-tree architecture. |
+| [session-tree-architecture.md](session-tree-architecture.md) | The session-tree architecture. |
 | [session-operations-export-share-fork-resume.md](session-operations-export-share-fork-resume.md) | export / dump / share / fresh / fork / resume. |
 | [session-switching-and-recent-listing.md](session-switching-and-recent-listing.md) | Switching sessions and the recent-list. |
 | [mnemosyne-memory-backend.md](mnemosyne-memory-backend.md) | The mnemopi memory backend. |
@@ -151,4 +155,4 @@ Per-model tool-call wire-format notes live in [toolconv/](toolconv/) (Anthropic,
 
 Step-by-step runbooks for when something breaks live in [runbooks/](runbooks/).
 
-*Verified against `bc781f478` on 2026-08-20.*
+*Verified against `7732a382f` on 2026-08-23.*

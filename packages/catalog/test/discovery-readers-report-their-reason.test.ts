@@ -353,6 +353,10 @@ describe("Cursor discovery", () => {
 	 * Cursor speaks HTTP/2 to a real socket, so an unresolvable host is the failure this suite can provoke
 	 * without a server: it exercises the `client.on("error")` path, which resolved `null` with no record at
 	 * all. The detail says HTTP/2 so the reason distinguishes the transport from a status.
+	 *
+	 * The length is the second half of the contract: ONE reason per request. Four events end this request,
+	 * and one dead host fires two of them under Bun 1.4 — the session error, then the cancelled stream —
+	 * so the reader reported the same failure twice and the cancellation read as a separate fault.
 	 */
 	it("reports a connection failure through its HTTP/2 transport", async () => {
 		const { failures, onFailure } = collector();
@@ -408,6 +412,10 @@ describe("GitLab Duo Workflow discovery", () => {
 	 * catches a throw and labels it `unhandled`, which claims a bug in this reader when what actually
 	 * happened is that the token sees no namespace with Duo models. The reader answers `null` like every
 	 * other one now, and the operator gets the actionable sentence -- which env var to set -- as the reason.
+	 *
+	 * The walk here is driven by `404`s, which is what "this namespace is not visible" looks like, because
+	 * that is the only shape for which the env-var sentence is the right remedy. A rejected TOKEN takes the
+	 * arm below.
 	 */
 	it("reports the unresolved namespace as a payload failure instead of throwing", async () => {
 		const { failures, onFailure } = collector();
@@ -416,7 +424,7 @@ describe("GitLab Duo Workflow discovery", () => {
 			apiKey: "token-without-duo",
 			baseUrl: "https://gitlab.example",
 			namespaceId: "42",
-			fetch: respondWith(() => new Response("unauthorized", { status: 401, statusText: "Unauthorized" })),
+			fetch: respondWith(() => new Response("no such namespace", { status: 404, statusText: "Not Found" })),
 			onFailure,
 		});
 
@@ -424,6 +432,31 @@ describe("GitLab Duo Workflow discovery", () => {
 		const conclusion = failures.find(failure => failure.stage === "payload");
 		expect(conclusion?.url).toBe("https://gitlab.example/api/graphql");
 		expect(conclusion?.detail).toContain("GITLAB_DUO_NAMESPACE_ID");
+	});
+
+	/**
+	 * A REFUSED TOKEN ends the handshake naming the token, and the conclusion must not be the env-var
+	 * sentence. Every step of the walk reported its own `401` and the reader still concluded "set
+	 * GITLAB_DUO_NAMESPACE_ID to a root namespace", which is a configuration remedy for a credential the
+	 * server would not accept -- so the one operator whose problem is fixable in ten seconds was sent to
+	 * edit their environment instead. `403` and `404` keep walking, because those are about the namespace
+	 * rather than the caller and the next candidate may be visible.
+	 */
+	it("names the token, not a namespace setting, when the server refuses the caller", async () => {
+		const { failures, onFailure } = collector();
+
+		const result = await fetchGitLabDuoWorkflowModels({
+			apiKey: "rejected-token",
+			baseUrl: "https://gitlab.example",
+			namespaceId: "42",
+			fetch: respondWith(() => new Response("unauthorized", { status: 401, statusText: "Unauthorized" })),
+			onFailure,
+		});
+
+		expect(result).toBeNull();
+		const conclusion = failures.find(failure => failure.stage === "payload");
+		expect(conclusion?.detail).toContain("HTTP 401");
+		expect(conclusion?.detail).not.toContain("GITLAB_DUO_NAMESPACE_ID");
 	});
 
 	/**

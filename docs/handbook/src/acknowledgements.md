@@ -1,13 +1,12 @@
 # Acknowledgements
 
-Veyyon stands on the work of others, and we credit it plainly. The handbook keeps this as a footnote on
-purpose: Veyyon's public docs explain Veyyon's behavior first, while detailed competitive study stays in
-private research notes.
+Veyyon incorporates ideas and code from upstream and peer projects.
 
 - **oh-my-pi** ([can1357/oh-my-pi](https://github.com/can1357/oh-my-pi)), under the MIT license. Veyyon
-  is a fork of oh-my-pi: the TypeScript/Bun agent loop and TUI, the `pi-*` Rust natives (grep, PTY,
-  hashline edits), provider breadth, role routing, session-tree work, and edit ergonomics all carry
-  forward from it. Incorporated MIT code keeps its permission notice; see the repository `LICENSE`.
+  is a source fork of oh-my-pi: the TypeScript/Bun agent loop and TUI, the Rust natives (search, the
+  shell, the PTY), the hashline edit engine, provider breadth, role routing, session-tree work, and
+  edit ergonomics all carry forward from it. Incorporated MIT code keeps its permission notice; see
+  the repository `LICENSE`.
 - **codex**, by OpenAI, under the Apache 2.0 license. oh-my-pi and Veyyon carry forward the codex
   `apply_patch` patch format and parts of the agent-loop shape as an independent TypeScript
   reimplementation, see `NOTICE` for exactly which files are format-compatible versus which actually

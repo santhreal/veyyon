@@ -43,7 +43,7 @@ describe("issue #3569 fresh launch default role from extension provider", () => 
 	const providerExtension: ExtensionFactory = pi => {
 		pi.registerProvider("runtime-provider", {
 			baseUrl: "https://runtime.example.com/v1",
-			apiKey: "RUNTIME_KEY",
+			apiKey: "literal:RUNTIME_KEY",
 			api: "openai-completions",
 			models: [
 				{

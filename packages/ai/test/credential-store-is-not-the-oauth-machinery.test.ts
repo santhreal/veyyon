@@ -87,8 +87,20 @@ const ROWS_CEILING = 8;
 /**
  * Measured at 30: the rows module, `bun:sqlite`, the sqlite helper, one error class, and the utils owners
  * behind them. It was 83, the same barrel arriving through both this module and the rows module.
+ *
+ * RE-MEASURED 2026-08-22 at 37. The one new module is `@veyyon/utils/stream-frame-limit`, a zero-import
+ * leaf the error classifier reads so a provider stream's framing violation is never retried. It arrives
+ * through the error class this store imports, and the leaf is the whole reason the classifier does not
+ * reach `stream.ts` instead — which the neighbouring assertion still refuses by name.
+ *
+ * RE-MEASURED 2026-08-22 at 43. The six new modules are the error subsystem's classification tree —
+ * `error/flag.ts`, `error/registry.ts` and `error/domains/{network,account,request,turn}.ts` — which
+ * arrive through the same error class, since classifying a failure is what that class is for. Every one
+ * is a leaf inside `ai/src/error/`: their own imports (`../classes`, `../flag`, `../aws`,
+ * `../rate-limit`, `@veyyon/utils/fetch-retry`) were already on this reach before the split, so the
+ * store gained no edge outside the subsystem. `.internal/reach-delta.ts` prints the names.
  */
-const STORE_CEILING = 36;
+const STORE_CEILING = 43;
 
 describe("the row helpers are pure", () => {
 	/**

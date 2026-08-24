@@ -156,19 +156,37 @@ describe("the modules that were repointed stay cut", () => {
 	 * Ceilings, one per file, each a little above its measurement so an unrelated dependency does not fail
 	 * the gate while a returned barrel import does. The numbers are the point: without them the rule above is
 	 * satisfied by a file that takes TWO names from the barrel, which costs exactly the same.
+	 *
+	 * FOUR OF THEM ROSE BY SIX ON 2026-08-22, and the six are named rather than assumed. The error
+	 * subsystem's classification moved out of one file into `error/flag.ts`, `error/registry.ts` and
+	 * `error/domains/{network,account,request,turn}.ts`, and everything that classifies a failure reaches
+	 * all six through `error/flags`. `.internal/reach-delta.ts` prints the reached names: the delta is
+	 * exactly those six, every one a leaf inside `ai/src/error/` whose own imports (`../classes`,
+	 * `../flag`, `../aws`, `../rate-limit`, `@veyyon/utils/fetch-retry`) were already reached before the
+	 * split. No consumer gained an edge to anything outside the subsystem, which is the only reason these
+	 * numbers may move: a raise that cannot name its new edges is a leak with a bigger ceiling.
+	 */
+	/**
+	 * `agent/src/proxy.ts` was re-measured at 145 on 2026-08-23. Thirteen modules in this closure did not
+	 * exist when it was last measured, and every one is a leaf that was carved out of a file already here:
+	 * `error/{registry,flag,error-body,response}.ts` and `error/domains/{network,account,request,turn}.ts`
+	 * from the error subsystem, `catalog/compat/markup-leaks.ts` and
+	 * `catalog/provider-models/wire-capabilities.ts` from the compat and provider tables, and
+	 * `utils/{stream-frame-limit,eval-prompt-overrides}.ts`. No consumer gained an edge to a subsystem it
+	 * did not already reach, which is the only reason this number may move.
 	 */
 	it.each([
-		["agent/src/proxy.ts", 130],
+		["agent/src/proxy.ts", 145],
 		["stats/src/parser.ts", 115],
 		["stats/src/db.ts", 120],
 		["stats/src/sync-worker.ts", 120],
-		["mnemopi/src/core/embeddings.ts", 125],
-		["mnemopi/src/core/extraction/client.ts", 120],
+		["mnemopi/src/core/embeddings.ts", 131],
+		["mnemopi/src/core/extraction/client.ts", 126],
 		["coding-agent/src/config/api-key-resolver.ts", 55],
 		// Re-measured 2026-07-27 at 184, from 112. The file gained a real `completeSimple` call, and the
 		// engine is 72 modules whichever specifier reaches it. Raised only after the barrel import was
 		// repointed and the number stopped moving; the 325 it sat at before that was the leak, not this.
-		["coding-agent/src/commit/shared-llm.ts", 195],
+		["coding-agent/src/commit/shared-llm.ts", 201],
 		// The agent's hot loop and the `Agent` class. Both STREAM, so both reach the engine whatever
 		// specifier they use; the ceilings are what the other ten names cost when taken from the entry
 		// point. 378 -> 321 and 380 -> 323.

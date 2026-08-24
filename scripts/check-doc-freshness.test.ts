@@ -188,6 +188,159 @@ describe("checkFreshness", () => {
 		expect(result.issues).toHaveLength(1);
 		expect(result.issues[0].reason).toContain("does not exist");
 	});
+
+	/**
+	 * WHY: a docs reorganization rewrote the paths inside 8 stamped internal docs
+	 * and the gate demanded all 8 be re-verified, for an edit that changed nothing
+	 * a verification covers. These cases fix the boundary: path tokens are exempt,
+	 * anything else is not. What they do not catch is a rename that also changes
+	 * meaning (a link retargeted at a different page keeps its shape here), which
+	 * is why the exemption is reported by name rather than applied in silence.
+	 */
+	it("keeps the stamp when the only change since it was written is markdown path tokens", () => {
+		const root = makeRepo();
+		const sha = commit(root, "docs/internal/e.md", "# E\n\nSee `docs/models.md` for the registry.\n", "2026-01-10");
+		commit(
+			root,
+			"docs/internal/e.md",
+			`# E\n\nSee \`docs/models.md\` for the registry.\n\n*Verified against \`${sha}\` on 2026-01-10.*\n`,
+			"2026-01-10",
+		);
+		commit(
+			root,
+			"docs/internal/e.md",
+			`# E\n\nSee \`docs/handbook/src/reference/models-yml.md\` for the registry.\n\n*Verified against \`${sha}\` on 2026-01-10.*\n`,
+			"2026-03-01",
+		);
+
+		const result = checkFreshness(root, ["docs/internal/e.md"]);
+
+		expect(result.issues).toEqual([]);
+		expect(result.pathRenamedOnly).toEqual(["docs/internal/e.md"]);
+	});
+
+	it("still fails when a path rename travels with a prose change", () => {
+		const root = makeRepo();
+		const sha = commit(root, "docs/internal/f.md", "# F\n\nSee `docs/models.md`.\n", "2026-01-10");
+		commit(
+			root,
+			"docs/internal/f.md",
+			`# F\n\nSee \`docs/models.md\`.\n\n*Verified against \`${sha}\` on 2026-01-10.*\n`,
+			"2026-01-10",
+		);
+		commit(
+			root,
+			"docs/internal/f.md",
+			`# F\n\nSee \`docs/handbook/src/reference/models-yml.md\`. Discovery now runs at startup.\n\n*Verified against \`${sha}\` on 2026-01-10.*\n`,
+			"2026-03-01",
+		);
+
+		const result = checkFreshness(root, ["docs/internal/f.md"]);
+
+		expect(result.pathRenamedOnly).toEqual([]);
+		expect(result.issues).toHaveLength(1);
+		expect(result.issues[0].reason).toContain("after its 2026-01-10 verification stamp");
+	});
+
+	/** Deleting the path is not renaming it: the sentence that cited a page and the
+	 *  sentence that cites nothing make different claims, so the token is replaced
+	 *  by a placeholder rather than stripped. The path here is bare rather than in a
+	 *  code span, because backticks left behind would mask a stripping normalizer. */
+	it("still fails when a path reference is dropped rather than renamed", () => {
+		const root = makeRepo();
+		const sha = commit(root, "docs/internal/g.md", "# G\n\nSee docs/models.md for the registry.\n", "2026-01-10");
+		commit(
+			root,
+			"docs/internal/g.md",
+			`# G\n\nSee docs/models.md for the registry.\n\n*Verified against \`${sha}\` on 2026-01-10.*\n`,
+			"2026-01-10",
+		);
+		commit(
+			root,
+			"docs/internal/g.md",
+			`# G\n\nSee  for the registry.\n\n*Verified against \`${sha}\` on 2026-01-10.*\n`,
+			"2026-03-01",
+		);
+
+		const result = checkFreshness(root, ["docs/internal/g.md"]);
+
+		expect(result.pathRenamedOnly).toEqual([]);
+		expect(result.issues).toHaveLength(1);
+	});
+
+	/** The baseline is the commit that WROTE the stamp, not the commit the stamp
+	 *  names. Here the page was rewritten wholesale in the stamping commit, so
+	 *  comparing against the stamped code commit would call a later path rename a
+	 *  prose change and fail a doc nobody edited. */
+	it("compares against the stamping commit, not the commit the stamp names", () => {
+		const root = makeRepo();
+		const sha = commit(root, "docs/internal/h.md", "# H\n\nThe old page, entirely different.\n", "2026-01-10");
+		commit(
+			root,
+			"docs/internal/h.md",
+			`# H\n\nRewritten from scratch, citing \`docs/models.md\`.\n\n*Verified against \`${sha}\` on 2026-01-10.*\n`,
+			"2026-01-10",
+		);
+		commit(
+			root,
+			"docs/internal/h.md",
+			`# H\n\nRewritten from scratch, citing \`docs/handbook/src/reference/models-yml.md\`.\n\n*Verified against \`${sha}\` on 2026-01-10.*\n`,
+			"2026-03-01",
+		);
+
+		const result = checkFreshness(root, ["docs/internal/h.md"]);
+
+		expect(result.issues).toEqual([]);
+		expect(result.pathRenamedOnly).toEqual(["docs/internal/h.md"]);
+	});
+
+	/** A stamp that was never committed certifies nothing: there is no snapshot to
+	 *  compare against, so the exemption cannot be claimed and the gate fails. */
+	it("fails a stale doc whose current stamp line exists only in the working tree", () => {
+		const root = makeRepo();
+		const sha = commit(root, "docs/internal/i.md", "# I\n\nBody.\n", "2026-01-10");
+		commit(
+			root,
+			"docs/internal/i.md",
+			`# I\n\nBody.\n\n*Verified against \`${sha}\` on 2026-01-10.*\n`,
+			"2026-03-01",
+		);
+		fs.writeFileSync(
+			path.join(root, "docs/internal/i.md"),
+			`# I\n\nBody.\n\n*Verified against \`${sha}\` on 2026-01-11.*\n`,
+		);
+
+		const result = checkFreshness(root, ["docs/internal/i.md"]);
+
+		expect(result.pathRenamedOnly).toEqual([]);
+		expect(result.issues).toHaveLength(1);
+		expect(result.issues[0].reason).toContain("after its 2026-01-11 verification stamp");
+	});
+
+	/** A stamp dated before the commit that wrote it certifies nothing it can be
+	 *  compared against: the exemption would check the backdating edit against
+	 *  itself. Path-only or not, it fails. */
+	it("refuses the exemption when the stamping commit postdates the stamp date", () => {
+		const root = makeRepo();
+		const sha = commit(root, "docs/internal/j.md", "# J\n\nSee `docs/models.md`.\n", "2026-01-10");
+		commit(
+			root,
+			"docs/internal/j.md",
+			`# J\n\nSee \`docs/models.md\`.\n\n*Verified against \`${sha}\` on 2026-01-10.*\n`,
+			"2026-02-01",
+		);
+		commit(
+			root,
+			"docs/internal/j.md",
+			`# J\n\nSee \`docs/handbook/src/reference/models-yml.md\`.\n\n*Verified against \`${sha}\` on 2026-01-10.*\n`,
+			"2026-03-01",
+		);
+
+		const result = checkFreshness(root, ["docs/internal/j.md"]);
+
+		expect(result.pathRenamedOnly).toEqual([]);
+		expect(result.issues).toHaveLength(1);
+	});
 });
 
 describe("real repo", () => {

@@ -4,6 +4,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { scheduler } from "node:timers/promises";
 import { isOfficialAnthropicApiUrl } from "@veyyon/catalog/compat/anthropic";
+import { isOfficialOpenAIEndpoint } from "@veyyon/catalog/compat/openai";
 import type { Effort } from "@veyyon/catalog/effort";
 import { isVertexExpressOpenAIUrl, isVertexRawPredictUrl } from "@veyyon/catalog/hosts";
 import {
@@ -30,7 +31,7 @@ import { createAuthRetryKeyState, isApiKeyResolver, resolveNextAuthRetryKey } fr
 import { getEnvApiKey } from "./env-api-key";
 import * as AIError from "./error";
 import { ProviderHttpError } from "./error";
-import { isUsageLimitOutcome } from "./error/rate-limit";
+import { isAuthRetryableError } from "./error/auth-classify";
 import { resolveProviderInFlightLimit } from "./provider-inflight-limits";
 import type { BedrockOptions } from "./providers/amazon-bedrock";
 import type { AnthropicOptions } from "./providers/anthropic";
@@ -125,21 +126,14 @@ function isLeakedThinkingHealExempt(model: Model<Api>): boolean {
 			// FOUNDRY_BASE_URL, so exempt only when the effective endpoint is official.
 			return isOfficialAnthropicApiUrl((isFoundryEnabled() && $env.FOUNDRY_BASE_URL?.trim()) || model.baseUrl);
 		case "openai":
-			return isOfficialOpenAIApiUrl(model.baseUrl);
+			// The catalog's check, not a third copy of it: the same hostname question decides whether this
+			// endpoint gets the obfuscation opt-out and server compaction, and a local copy drifted into
+			// answering it here.
+			return isOfficialOpenAIEndpoint("openai", model.baseUrl ?? "");
 		case "openai-codex":
 			return isOfficialCodexApiUrl(model.baseUrl);
 		default:
 			return false;
-	}
-}
-
-/** Strict official-OpenAI endpoint check; missing baseUrl defaults to `api.openai.com`. */
-function isOfficialOpenAIApiUrl(baseUrl: string | undefined): boolean {
-	if (!baseUrl) return true;
-	try {
-		return new URL(baseUrl).hostname === "api.openai.com";
-	} catch {
-		return false;
 	}
 }
 
@@ -1076,21 +1070,21 @@ function extractStatusFromAssistantError(message: AssistantMessage): number | un
 	return AIError.status({ message: message.errorMessage });
 }
 
-function isRetryableUpstreamError(error: unknown, status: number | undefined, message: string | undefined): boolean {
-	// 401 means the credential is bad. Usage-limit phrasing (Codex's
-	// "You have hit your ChatGPT usage limit", Anthropic's "usage_limit_reached",
-	// Google's "resource_exhausted", OpenAI's "insufficient_quota") and 429s
-	// without transient rate-limit wording mean this account is parked but a
-	// sibling credential can usually pick the request up. Both are rotatable
-	// via `onAuthError` — the auth-gateway maps the former to
-	// `invalidateCredentialMatching` and the latter to
-	// `markUsageLimitReached`. Transient 429s ("Too many requests",
-	// per-minute caps) classify as RATE_LIMIT_EXCEEDED in
-	// `parseRateLimitReason` and stay in the provider's own backoff layer
-	// instead of burning siblings.
-	if (AIError.isUsageLimit(error)) return true;
-	if (status === 401) return true;
-	return isUsageLimitOutcome(status, message);
+/**
+ * The failure an assistant message reports, in the shape the classifier reads.
+ *
+ * A terminal `error` event carries its status and wording on the MESSAGE rather than on a thrown
+ * error, so the rotation question could not be asked about it directly and was re-derived here from
+ * the two fields. `errorId` is carried as well: the provider already classified this failure, and
+ * dropping the id would make the same failure answer differently depending on which side of the
+ * event boundary it was asked on.
+ */
+function assistantFailure(message: AssistantMessage): { status?: number; message?: string; errorId?: number } {
+	return {
+		status: extractStatusFromAssistantError(message),
+		message: message.errorMessage,
+		errorId: message.errorId,
+	};
 }
 
 function createAssistantAuthError(message: AssistantMessage): Error {
@@ -1147,11 +1141,7 @@ export function streamSimple<TApi extends Api>(
 					if (
 						!emittedReplayUnsafeEvent &&
 						event.type === "error" &&
-						isRetryableUpstreamError(
-							event.error,
-							extractStatusFromAssistantError(event.error),
-							event.error.errorMessage,
-						)
+						isAuthRetryableError(assistantFailure(event.error))
 					) {
 						return { error: createAssistantAuthError(event.error), bufferedEvents, terminalEvent: event };
 					}
@@ -1163,14 +1153,7 @@ export function streamSimple<TApi extends Api>(
 				flushBuffered();
 				if (!outer.done) outer.end(await inner.result());
 			} catch (error) {
-				if (
-					!emittedReplayUnsafeEvent &&
-					isRetryableUpstreamError(
-						error,
-						AIError.status(error),
-						error instanceof Error ? error.message : undefined,
-					)
-				) {
+				if (!emittedReplayUnsafeEvent && isAuthRetryableError(error)) {
 					return { error, bufferedEvents };
 				}
 				flushBuffered();

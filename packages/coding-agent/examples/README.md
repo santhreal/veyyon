@@ -39,6 +39,6 @@ example, because the reader discovers that only after copying it.
 ## Documentation
 
 - [SDK Reference](sdk/README.md)
-- [Hooks Documentation](../../../docs/hooks.md)
-- [Custom Tools Documentation](../../../docs/custom-tools.md)
-- [Skills Documentation](../../../docs/skills.md)
+- [Hooks Documentation](../../../docs/handbook/src/reference/hooks.md)
+- [Custom Tools Documentation](../../../docs/handbook/src/using/custom-tools.md)
+- [Skills Documentation](../../../docs/handbook/src/reference/skills.md)

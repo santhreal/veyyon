@@ -64,9 +64,7 @@
     <div class="wrap hero-inner">
       <span class="eyebrow">Terminal coding agent</span>
       <h1>The harness, on your machine.</h1>
-      <p class="lede">Same model weights succeed or fail depending on the tools, the edit format, and the
-        control flow around them. Veyyon owns those layers as a local CLI/TUI: tool schemas, hashline
-        edits, approval modes, compaction, context. Your provider keys, your terminal.</p>
+      <p class="lede">Local terminal coding agent. Provides tool execution, hashline edits, approval modes, context compaction, and multi-provider model routing. Configuration and credentials remain on the local machine.</p>
       <div class="cta">
         <a href="./install.html" class="btn primary">Install</a>
         <a href="./docs/" class="btn">Handbook</a>
@@ -91,7 +89,7 @@
   <section class="demo-band">
     <div class="wrap">
       <div class="showcase">
-        <img class="capture" src="./demo-hd.webp" width="1920" height="1080" decoding="async" alt="Veyyon stores a release key as a protected placeholder, writes a three-phase six-task plan, fans three directory refactors out to parallel workers, applies the edits, verifies that nine environment defaults resolve in a stripped environment, and signs the result through the placeholder after an explicit approval" />
+        <img class="capture" src="./demo-hd.webp" width="1280" height="720" decoding="async" alt="Veyyon terminal interface executing tasks and editing files" />
       </div>
     </div>
   </section>
@@ -105,12 +103,7 @@
       <div class="ledger">
         <div class="ledger-row"><span class="ledger-idx">01</span>
           <div><h3>Argot</h3>
-            <p>The largest thing the fork adds (experimental). A per-project shorthand: the agent loads the project it
-              works in with <span class="inline">argot_load</span>, the model writes a short handle like
-              <span class="inline">§dbconn</span> where it would have written a long string it repeats, and Veyyon restores
-              the full text before anything runs or is shown. The round trip is lossless, encoding is gated per model and by
-              context size, and the generated dictionary lives in a local content-keyed cache, never committed. Enable with
-              <span class="inline">argot.enabled</span>. See handbook: Argot.</p></div>
+            <p>Per-project shorthand vocabulary. The agent loads the project dictionary with <span class="inline">argot_load</span>, the model writes short handles like <span class="inline">§dbconn</span> for repeated strings, and Veyyon expands full text before execution or display. Encoding is gated per model and by context size. The generated dictionary is cached locally. Enable with <span class="inline">argot.enabled</span>.</p></div>
         </div>
         <div class="ledger-row"><span class="ledger-idx">02</span>
           <div><h3>Hashline edits</h3>
@@ -159,7 +152,7 @@
     <div class="wrap">
       <div class="lead"><span class="kicker">Implementation</span>
         <h2>Stack and loop</h2>
-        <p class="sub">Code paths, not metaphors.</p></div>
+        <p class="sub">Architecture and core loop.</p></div>
       <div class="values">
         <div>
           <span class="kicker">Loop</span>
@@ -247,7 +240,7 @@
   <div class="wrap foot">
     <div>
       <span class="brand">veyyon</span>
-      <div class="attrib">A fork of <a href="https://github.com/can1357/oh-my-pi">oh-my-pi</a> (MIT), by Can Boluk. Built as its own product.</div>
+      <div class="attrib">A fork of <a href="https://github.com/can1357/oh-my-pi">oh-my-pi</a> (MIT), by Can Boluk.</div>
     </div>
     <nav>
     <!--NAV:START-->

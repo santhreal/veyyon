@@ -121,6 +121,19 @@ export interface GitLabDuoWorkflowDiscoveryConfig {
 	 * does try more than one candidate, and which candidate failed is the diagnosis.
 	 */
 	onFailure?: DiscoveryHooks["onFailure"];
+	/**
+	 * Deadline for every request of the handshake.
+	 *
+	 * The runtime entry point (`discoverGitLabDuoWorkflowRuntimeNamespace`) runs on
+	 * the turn path, before a single assistant event exists, and the handshake is a
+	 * namespace lookup, a project lookup, a paginated group walk and two GraphQL
+	 * queries in series. With no signal each of those waited on the platform's own
+	 * socket timeout, so an endpoint that accepted the connection and answered
+	 * nothing held the turn open indefinitely — no watchdog downstream can see a
+	 * phase that has not produced a stream yet. The caller passes the signal that
+	 * carries its declared first-event budget; a catalog refresh may pass none.
+	 */
+	signal?: AbortSignal;
 }
 
 export interface GitLabDuoWorkflowNamespaceSelection {
@@ -549,9 +562,18 @@ async function requestGitLabJson(
 			method: init.method,
 			headers: buildGitLabJsonHeaders(config.apiKey),
 			...(init.body === undefined ? {} : { body: init.body }),
+			...(config.signal ? { signal: config.signal } : {}),
 		});
 	} catch (error) {
 		config.onFailure?.({ stage: "request", url: reportedUrl, detail: errorMessage(error) });
+		// An abort is not "this candidate produced nothing usable", it is the end of
+		// the phase, and swallowing it made the handshake walk the remaining
+		// candidates against an already-dead signal and then conclude with
+		// "set GITLAB_DUO_NAMESPACE_ID" — a configuration remedy for a stalled
+		// network. Rethrow so the caller reports the deadline it set. A catalog
+		// refresh still degrades: `fetchGitLabDuoWorkflowModels` catches and
+		// answers `null`.
+		if (config.signal?.aborted) throw error;
 		return null;
 	}
 	if (!response.ok) {
@@ -562,11 +584,35 @@ async function requestGitLabJson(
 			url: reportedUrl,
 			detail: `HTTP ${response.status} ${response.statusText}`.trim(),
 		});
+		// A status about the CALLER ends the phase, for the same reason an abort
+		// does: no other candidate improves it, and walking the rest concluded with
+		// "set GITLAB_DUO_NAMESPACE_ID" — a configuration remedy for a credential
+		// the server refused, or for a rate limit that asked the caller to wait.
+		// A 403 or a 404 is about the CANDIDATE: that namespace is not one this
+		// token can see, and the next one may well be.
+		if (response.status === 401) {
+			throw new Error(
+				`GitLab refused the token: HTTP 401 ${response.statusText || "Unauthorized"}. The token is missing, expired, or lacks the api scope.`,
+			);
+		}
+		if (response.status === 429) {
+			throw new Error(
+				`GitLab rate-limited the request: HTTP 429 ${response.statusText || "Too Many Requests"}. Retry after the window the server states.`,
+			);
+		}
 		return null;
 	}
 	try {
 		return { payload: await response.json(), nextPage: nonEmptyHeader(response.headers.get("x-next-page")) };
 	} catch (error) {
+		// Same rule as the request catch above, and the sibling this class needed:
+		// headers can arrive and the body never can, and calling that "response is
+		// not JSON" sent the reader on to the next candidate with a dead signal and
+		// a wrong diagnosis.
+		if (config.signal?.aborted) {
+			config.onFailure?.({ stage: "body", url: reportedUrl, detail: errorMessage(error) });
+			throw error;
+		}
 		config.onFailure?.({ stage: "body", url: reportedUrl, detail: `response is not JSON: ${errorMessage(error)}` });
 		return null;
 	}

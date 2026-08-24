@@ -51,6 +51,7 @@ export const commands: CommandEntry[] = [
 	{ name: "usage", load: () => import("./commands/usage").then(m => m.default) },
 	{ name: "tiny-models", load: () => import("./commands/tiny-models").then(m => m.default) },
 	{ name: "token", load: () => import("./commands/token").then(m => m.default) },
+	{ name: "trust", load: () => import("./commands/trust").then(m => m.default) },
 	{ name: "ttsr", load: () => import("./commands/ttsr").then(m => m.default) },
 	{ name: "worktree", load: () => import("./commands/worktree").then(m => m.default), aliases: ["wt"] },
 	{ name: "search", load: () => import("./commands/web-search").then(m => m.default), aliases: ["q"] },

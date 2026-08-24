@@ -41,6 +41,7 @@
 import { Ellipsis, padding, sanitizeSingleLine, truncateToWidth, visibleWidth } from "@veyyon/tui/utils";
 import { errorMessage, formatCount } from "@veyyon/utils";
 import type { SecretAuditLog, SecretExpansionRecord } from "./audit";
+import type { MaskedInventory } from "./obfuscator";
 import { MAX_SECRET_NAME_LENGTH } from "./placeholder";
 import { planScopeMove } from "./scope-move";
 import {
@@ -52,6 +53,7 @@ import {
 	parseTtl,
 	type ScopedVaultEntry,
 	type SecretVault,
+	VAULT_SCOPES,
 	type VaultScope,
 	WARN_AT_FRACTIONS,
 	warningThresholdCrossed,
@@ -98,6 +100,16 @@ export interface SecretCommandRequest {
 	/** Environment variable to read the credential from. */
 	fromEnv?: string;
 	scope?: VaultScope;
+	/**
+	 * `clear` only: empty every vault rather than one.
+	 *
+	 * A SEPARATE FIELD, not a fourth `VaultScope`. A scope is a place a secret can be stored, and
+	 * every other command that takes one stores into it or reads out of it; "everywhere" is not such
+	 * a place, and widening the type would have made it storable by `add`, movable to by `scope`,
+	 * and discardable by `discard`, none of which mean anything. `scope` stays `undefined` here, so
+	 * a caller that reads it can only act on one real vault.
+	 */
+	allScopes?: true;
 	/** Lifetime in ms, `null` for never, `undefined` to use the configured default. */
 	ttl?: number | null;
 	/** How many records `/secret log` shows. */
@@ -302,24 +314,35 @@ export const SECRET_SUBCOMMAND_SHAPES: Record<
 };
 
 /**
- * Everything you only need once a secret exists, shared by both surfaces.
+ * Everything you only need once a secret exists, in THREE groups rather than one list.
  *
- * ONE LIST, because both surfaces parse all of it. Every capability `/secret` has is a word in this
- * list, including rename, value, scope and copy, which is what makes the list the feature rather
- * than a summary of a screen the operator has to find first.
+ * ONE FLAT "Manage what is already stored" BLOCK WAS THE PROBLEM. Eleven lines in declaration
+ * order gave `rename` the same weight as `clear`, and the operator's question is never "what verbs
+ * are there": it is "what do I have", "change this one", or "get rid of it". Reading the whole
+ * block to find out which of three delete-shaped verbs applies to a secret, a vault, and a file
+ * that cannot be read is what made the surface feel arbitrary. The headings answer the question, so
+ * a verb only has to be recognisable once the group is right.
+ *
+ * Every capability is still a word here, including rename, value, scope and copy, which is what
+ * makes the list the feature rather than a summary of a screen the operator has to find first.
  */
 const USAGE_LIST = "/secret list                          show active secrets, never their values";
-const USAGE_MANAGE = [
+const USAGE_INSPECT = [
 	USAGE_LIST,
-	"/secret rm <name> [global]            remove a secret",
-	"/secret clear profile                 remove every secret in one vault",
-	"/secret rename <name> <new-name>      give a secret a different name",
-	"/secret value <name>                  replace a secret's value, keeping its name and lifetime",
-	"/secret scope <name> global           move a secret to another vault",
-	"/secret copy <name>                   copy #NAME#, the placeholder, never the value",
-	"/secret extend <name> 7d              give a secret a fresh lifetime",
 	"/secret log [<name>] [50]             show which secrets were used, and where",
-	"/secret discard project               move a broken vault file aside",
+	"/secret copy <name>                   copy #NAME#, the placeholder, never the value",
+];
+const USAGE_EDIT = [
+	"/secret value <name>                  replace a secret's value, keeping its name and lifetime",
+	"/secret rename <name> <new-name>      give a secret a different name",
+	"/secret extend <name> 7d              give a secret a fresh lifetime",
+	"/secret scope <name> global           move a secret to another vault",
+];
+const USAGE_REMOVE = [
+	"/secret rm <name> [global]            remove one secret",
+	"/secret clear profile                 remove every secret in one vault",
+	"/secret clear everywhere              remove every secret, in all three vaults",
+	"/secret discard project               move a vault file aside when it cannot be read",
 ];
 
 /**
@@ -368,21 +391,23 @@ const SCROLLBACK_WARNING =
 	"The value was typed on screen, so it is in your scrollback. Use /secret from-env next time to avoid that.";
 
 /**
- * Help, grouped: what you do every day first, management second.
+ * Help, grouped by what the operator came to do.
  *
  * The flat list this replaced gave `rm`, `extend` and `log` exactly the weight of `add`, so the
- * one line a new operator needs was the fourth of seven with nothing separating them. Both
- * surfaces are built from the same call, so the grouping cannot be applied to one and forgotten
- * on the other.
+ * one line a new operator needs was the fourth of seven with nothing separating them. The
+ * management half is grouped for the same reason and one step further: three of its verbs remove
+ * something, and which of a secret, a vault, or an unreadable file each one removes was decidable
+ * only by reading all eleven lines.
+ *
+ * The management groups are identical on both surfaces, because every verb in them parses on both;
+ * only the entry lines differ, which is the one place the surfaces really do differ.
  */
-function buildUsage(
-	entryLines: readonly string[],
-	manageLines: readonly string[],
-	footerLines: readonly string[],
-): string {
+function buildUsage(entryLines: readonly string[], footerLines: readonly string[]): string {
 	const groups: ReadonlyArray<readonly [string, readonly string[]]> = [
 		["Store a credential the agent can use without ever seeing it:", entryLines],
-		["Manage what is already stored:", manageLines],
+		["See what you have:", USAGE_INSPECT],
+		["Change one secret:", USAGE_EDIT],
+		["Remove secrets:", USAGE_REMOVE],
 	];
 	const lines: string[] = [];
 	for (const [heading, entries] of groups) {
@@ -394,18 +419,10 @@ function buildUsage(
 }
 
 /** TUI help leads with the three ways `add` takes a value, then every verb the terminal parses. */
-export const SECRET_COMMAND_USAGE = buildUsage(
-	[USAGE_TUI_MASKED, USAGE_TUI_INLINE, USAGE_TUI_FROM_ENV],
-	USAGE_MANAGE,
-	USAGE_FOOTER,
-);
+export const SECRET_COMMAND_USAGE = buildUsage([USAGE_TUI_MASKED, USAGE_TUI_INLINE, USAGE_TUI_FROM_ENV], USAGE_FOOTER);
 
 /** Noninteractive help exposes only environment-backed creation and the text management verbs. */
-export const NONINTERACTIVE_SECRET_COMMAND_USAGE = buildUsage(
-	[USAGE_ADD_FROM_ENV, USAGE_CLIENT_ADD],
-	USAGE_MANAGE,
-	USAGE_FOOTER,
-);
+export const NONINTERACTIVE_SECRET_COMMAND_USAGE = buildUsage([USAGE_ADD_FROM_ENV, USAGE_CLIENT_ADD], USAGE_FOOTER);
 
 /** Select help that matches what the invoking surface can enter safely. */
 export function secretCommandUsage(surface: SecretCommandSurface): string {
@@ -765,6 +782,16 @@ function matchTrailing(trailing: readonly SecretSlot[], word: string): SecretSlo
 }
 
 /**
+ * Every spelling of "all of them" that `clear` accepts as its vault.
+ *
+ * MORE THAN ONE WORD, for the reason the verb itself has five spellings: an operator emptying a
+ * vault types whatever comes to hand, and a refusal costs them a lookup for a request that has
+ * exactly one meaning. Every word here is reserved by `clear` alone, so none of them can be read as
+ * a vault name anywhere else.
+ */
+export const EVERY_VAULT_WORDS: readonly string[] = ["everywhere", "all", "everything", "every"];
+
+/**
  * Read one word into the slot it fills, refusing a word the slot cannot hold.
  *
  * Every refusal here is about a word the operator DID mean as syntax, so these may name the word's
@@ -795,10 +822,20 @@ function assignSlot(
 			return;
 		case "scope": {
 			const scope = word.toLowerCase();
+			// ONE COMMAND ONLY. `clear` is the only verb for which "all of them" is a coherent
+			// instruction, and it is the instruction there was no way to give: emptying the vault took
+			// three commands and the operator had to already know there were three files. Every other
+			// scope-taking verb stores into a place or names a file, so accepting the word there would
+			// promise something it cannot do.
+			if (EVERY_VAULT_WORDS.includes(scope) && request.subcommand === "clear") {
+				request.allScopes = true;
+				return;
+			}
 			if (scope !== "profile" && scope !== "project" && scope !== "global") {
 				throw new Error(
-					`Which vault? Write profile, project or global. The word you wrote is not repeated here, ` +
-						`in case it is the credential.\n\n${usageText}`,
+					`Which vault? Write profile, project or global${
+						request.subcommand === "clear" ? ", or everywhere for all three" : ""
+					}. The word you wrote is not repeated here, in case it is the credential.\n\n${usageText}`,
 				);
 			}
 			request.scope = scope;
@@ -960,7 +997,11 @@ function refuseExtraWord(
  * still refused rather than quietly allowed.
  */
 function refuseMissingScope(request: SecretCommandRequest, usageText: string): void {
-	if (!SECRET_SUBCOMMAND_SHAPES[request.subcommand].needsScope || request.scope !== undefined) return;
+	// `allScopes` satisfies the requirement without naming a scope: the operator did answer "which
+	// vault", and the answer was all of them. Read here rather than in the parser so the guard cannot
+	// refuse a request the grammar accepted.
+	if (!SECRET_SUBCOMMAND_SHAPES[request.subcommand].needsScope) return;
+	if (request.scope !== undefined || request.allScopes === true) return;
 	if (request.subcommand === "scope") {
 		throw new Error(
 			`/secret scope needs the vault to move the secret INTO, such as /secret scope MY_TOKEN global. ` +
@@ -970,9 +1011,10 @@ function refuseMissingScope(request: SecretCommandRequest, usageText: string): v
 	}
 	if (request.subcommand === "clear") {
 		throw new Error(
-			`/secret clear needs the vault to empty, such as /secret clear profile. There is no ` +
-				`default: a credential you can reach is the narrowest copy of it, so a guessing /secret clear ` +
-				`would empty whichever vault happens to be in front and leave the other two full.` +
+			`/secret clear needs the vault to empty, such as /secret clear profile, or /secret clear ` +
+				`everywhere for all three. There is no default for one vault: a credential you can reach is ` +
+				`the narrowest copy of it, so a guessing /secret clear would empty whichever vault happens ` +
+				`to be in front and leave the other two full.` +
 				`\n\n${usageText}`,
 		);
 	}
@@ -1037,6 +1079,14 @@ export async function runSecretCommand(
 		auditLog?: SecretAuditLog;
 		/** Help/error copy appropriate for the invoking surface. */
 		surface?: SecretCommandSurface;
+		/**
+		 * What the LIVE session is masking with no name, or absent when nothing is running one.
+		 *
+		 * Read from the session's obfuscator by the surface, because the vault holds only what was
+		 * stored and the values in question were never stored: they were detected in the
+		 * environment or declared in `secrets.yml`. `list` is the command that has to say so.
+		 */
+		masked?: MaskedInventory;
 	},
 ): Promise<SecretCommandResult> {
 	switch (request.subcommand) {
@@ -1210,24 +1260,39 @@ const LIST_EXPIRY_FOOTER = "Extend one before it lapses: /secret extend <name> 7
 /** Two words per urgency level: short enough for a table cell, unlike the sentences `expiryWarnings` writes. */
 const LIST_STATUS_LABEL: Record<ExpiryUrgency, string> = { soon: "expires soon", halfway: "past halfway" };
 
+/**
+ * The first line of the empty-vault answer, in two forms.
+ *
+ * "Nothing is being substituted right now" is a claim about the SESSION, and an empty vault is a
+ * fact about a FILE. With ten environment values masked the first form was simply false, and it is
+ * the line an operator reads before deciding to stop reading. The second form says the true thing
+ * an empty vault means -- no placeholder exists to spend -- and leaves what IS being substituted to
+ * {@link describeMaskedValues}.
+ */
+const EMPTY_VAULT_LEAD_NOTHING_MASKED = "No active secrets. Nothing is being substituted right now.";
+const EMPTY_VAULT_LEAD_WITH_MASKED = "No stored secrets, so nothing has a placeholder the agent can spend.";
+
 /** Shared by both empty-vault variants, so only the entry forms differ between surfaces. */
-const EMPTY_VAULT_PREAMBLE = [
-	"No active secrets. Nothing is being substituted right now.",
+const EMPTY_VAULT_INVITE = [
 	"",
 	"Store one and the agent can spend it by writing #NAME#, never seeing the value itself:",
 ];
-const EMPTY_VAULT_HELP = [
-	...EMPTY_VAULT_PREAMBLE,
-	`${OUTPUT_INDENT}${USAGE_TUI_MASKED}`,
-	`${OUTPUT_INDENT}${USAGE_TUI_INLINE}`,
-	`${OUTPUT_INDENT}${USAGE_TUI_FROM_ENV}`,
-].join("\n");
-const NONINTERACTIVE_EMPTY_VAULT_HELP = [...EMPTY_VAULT_PREAMBLE, `${OUTPUT_INDENT}${USAGE_ADD_FROM_ENV}`].join("\n");
+
+/** The empty-vault answer for one surface, led by whichever first line is true. */
+function emptyVaultHelp(surface: SecretCommandSurface, anyMasked: boolean): string {
+	const forms = surface === "tui" ? [USAGE_TUI_MASKED, USAGE_TUI_INLINE, USAGE_TUI_FROM_ENV] : [USAGE_ADD_FROM_ENV];
+	return [
+		anyMasked ? EMPTY_VAULT_LEAD_WITH_MASKED : EMPTY_VAULT_LEAD_NOTHING_MASKED,
+		...EMPTY_VAULT_INVITE,
+		...forms.map(form => `${OUTPUT_INDENT}${form}`),
+	].join("\n");
+}
 
 async function listSecrets(context: {
 	vault: SecretVault;
 	now: number;
 	surface?: SecretCommandSurface;
+	masked?: MaskedInventory;
 }): Promise<SecretCommandResult> {
 	// The list must survive a vault it cannot read, because it is where an operator goes to find out
 	// what is wrong. Throwing here made `-p /secret list` exit non-zero with nothing on stdout while
@@ -1252,6 +1317,7 @@ async function listSecrets(context: {
 			surface: context.surface,
 			unreadable,
 			everywhere,
+			masked: context.masked,
 		}),
 		changed: false,
 	};
@@ -1284,18 +1350,32 @@ export function renderSecretList(
 		surface?: SecretCommandSurface;
 		unreadable?: readonly VaultScope[];
 		everywhere?: readonly ScopedVaultEntry[];
+		/**
+		 * What the session is masking that this list cannot name: the count the footer prints, and
+		 * the labels a person can search for.
+		 *
+		 * Supplied by the surface, from the live obfuscator, because the vault cannot know it. A
+		 * list that omits it is the reported defect: the footer read `10 masked` while this
+		 * function answered "No active secrets. Nothing is being substituted right now.", and
+		 * ten environment values were being substituted on every request.
+		 */
+		masked?: MaskedInventory;
 	},
 ): string {
 	const surface = options.surface ?? "tui";
 	const broken = describeUnreadableScopes(options.unreadable ?? []);
 	const shadowed = describeShadowedCopies(entries, options.everywhere ?? entries);
+	const masked = describeMaskedValues(options.masked);
 	// "No active secrets" is FALSE when a vault exists and could not be read, and it is the specific
 	// falsehood this whole area exists to avoid: it reads as "you have nothing stored" to someone
 	// whose credentials are sitting in a file three lines away. Absent and unreadable are different
 	// answers to "what do I have", so they get different output.
 	if (entries.length === 0) {
-		if (broken !== undefined) return broken;
-		return surface === "tui" ? EMPTY_VAULT_HELP : NONINTERACTIVE_EMPTY_VAULT_HELP;
+		if (broken !== undefined) return masked === undefined ? broken : `${broken}\n\n${masked}`;
+		const help = emptyVaultHelp(surface, masked !== undefined);
+		// The masked report comes FIRST when the vault is empty. Otherwise the operator reads
+		// "nothing is being substituted right now" and stops, which is the falsehood being fixed.
+		return masked === undefined ? help : `${masked}\n\n${help}`;
 	}
 
 	const sorted = [...entries].sort((a, b) => a.name.localeCompare(b.name));
@@ -1328,6 +1408,9 @@ export function renderSecretList(
 	// Before the broken-scope caveat, because a shadowed copy is a fact about the vault you HAVE and
 	// the caveat is about the part that could not be read at all.
 	if (shadowed !== undefined) lines.push(shadowed);
+	// After the shadowed note and before the broken-scope caveat: it is a fact about protection that
+	// is working, not a fault, and the caveat stays last.
+	if (masked !== undefined) lines.push(masked);
 	// LAST, and only when a scope is broken. The table above is the answer to the question; this is
 	// the caveat that some of the answer is missing, and a caveat above the table reads as an error.
 	if (broken !== undefined) lines.push(broken);
@@ -1373,6 +1456,48 @@ function describeShadowedCopies(
 			];
 		})
 		.join("\n");
+}
+
+/**
+ * Say what is masked with no name, so a counted value is a findable one.
+ *
+ * THE DEFECT THIS CLOSES. The footer counts every value the session masks; this list only ever
+ * knew the vault. An operator with ten auto-detected environment secrets read `10 masked` in the
+ * composer and "No active secrets" from the command, and had no way to learn which variables
+ * those were. The count here is the footer's own count, from the same method, so the two can
+ * never disagree again.
+ *
+ * Names the remedy, because "you are masking something and cannot know what" is not a report. A
+ * source-less value gets counted and not listed, and the difference is stated rather than hidden:
+ * only entries carrying a label can name one.
+ */
+function describeMaskedValues(masked: MaskedInventory | undefined): string | undefined {
+	if (masked === undefined || masked.count === 0) return undefined;
+	const lines = [
+		`${OUTPUT_INDENT}${formatCount("value", masked.count)} masked in what is sent, detected rather than declared.`,
+		`${OUTPUT_INDENT}The agent cannot spend ${masked.count === 1 ? "it" : "them"}: only a stored secret has a placeholder.`,
+	];
+	if (masked.sources.length > 0) {
+		// Operator-supplied text: an environment variable name or a file path off disk. The same
+		// sanitize-and-truncate the table cells get, for the same reason.
+		const shown = masked.sources.map(source =>
+			truncateToWidth(sanitizeSingleLine(source), MAX_LIST_CELL_WIDTH, Ellipsis.Unicode),
+		);
+		lines.push(`${OUTPUT_INDENT}From: ${shown.join(", ")}.`);
+	}
+	if (masked.unlabelled > 0) {
+		// Driven by the count of nameless values, not by `sources.length < count`: one value declared
+		// both in a file and in the environment carries two labels, which made that comparison claim
+		// every value was accounted for while one had nothing to name it.
+		lines.push(
+			`${OUTPUT_INDENT}${formatCount("value", masked.unlabelled)} ${masked.unlabelled === 1 ? "was" : "were"} declared without a source and can only be counted.`,
+		);
+	}
+	// Unconditional: narrowing the keywords is the remedy whether or not any entry carried a label,
+	// and a report that says something is masked and offers no way to stop is what sent people to
+	// the issue tracker.
+	lines.push(`${OUTPUT_INDENT}To stop masking one, unset the variable or narrow the keywords in env-keywords.yml.`);
+	return lines.join("\n");
 }
 
 /**
@@ -1504,6 +1629,7 @@ async function clearVaultScope(
 	request: SecretCommandRequest,
 	context: { vault: SecretVault },
 ): Promise<SecretCommandResult> {
+	if (request.allScopes === true) return await clearEveryVault(context);
 	// The parser refuses a scopeless `clear`, so this is unreachable from a parsed line. It is here
 	// because `runSecretCommand` is exported and a caller building a request by hand would otherwise
 	// empty whichever vault an `undefined` narrowed to.
@@ -1532,19 +1658,80 @@ async function clearVaultScope(
 		// that is still real. A revocation notice here would retire live credentials.
 		return { message: lines.join("\n"), changed: true };
 	}
-	const names = revoked.map(name => `#${name}#`).join(", ");
 	return {
 		message: lines.join("\n"),
-		agentNotice:
-			`The user has cleared the ${scope} secret vault, so ${names} ${revoked.length === 1 ? "is" : "are"} no ` +
-			`longer available and you must stop using ${revoked.length === 1 ? "it" : "them"}. ` +
-			`${revoked.length === 1 ? "It is" : "They are"} no longer replaced with a real value: writing ` +
-			`${revoked.length === 1 ? "it" : "one"} now sends the literal placeholder text rather than a ` +
-			`credential, which will fail instead of authenticating. Do not write ${names} into a command, a file, ` +
-			`or a message, and do not ask for the value.`,
+		agentNotice: revocationNotice(revoked, `the ${scope} secret vault`),
 		agentNoticeIsRevocation: true,
 		changed: true,
 	};
+}
+
+/**
+ * Empty every vault in one command.
+ *
+ * WHY THIS EXISTS. `clear` names one of three files, and nothing named all of them: getting back to
+ * no stored secrets meant running the command three times and knowing in advance that there were
+ * three places to run it. "Remove everything" is the request an operator makes when a machine is
+ * shared, handed on, or compromised, and it was the one request the surface could not take.
+ *
+ * EVERY SCOPE IS CLEARED EVEN WHEN AN EARLIER ONE WAS EMPTY, and each is named in the report, so
+ * the answer to "is anything left" is the message rather than a second command. Nothing can be
+ * shadowing afterwards -- there is no vault left to shadow from -- so every removed name is revoked
+ * and the model is told about all of them at once.
+ */
+async function clearEveryVault(context: { vault: SecretVault }): Promise<SecretCommandResult> {
+	const perScope: { scope: VaultScope; names: readonly string[] }[] = [];
+	for (const scope of VAULT_SCOPES) {
+		perScope.push({ scope, names: [...(await context.vault.clear(scope))].sort() });
+	}
+	const removed = perScope.flatMap(entry => entry.names);
+	if (removed.length === 0) {
+		return {
+			message: `No vault holds a secret, so nothing was removed. All three are already empty.`,
+			changed: false,
+		};
+	}
+	const lines = [`Removed ${formatCount("secret", removed.length)} from every vault.`];
+	for (const { scope, names } of perScope) {
+		lines.push(`${OUTPUT_INDENT}${scope}: ${names.length === 0 ? "nothing stored" : names.join(", ")}.`);
+	}
+	// A survivor means a scope was written back while this ran, or one could not be read at all. It
+	// is still spendable, so it is reported rather than covered by "removed from every vault".
+	const live = [...new Set((await context.vault.load()).map(entry => entry.name))].sort();
+	if (live.length > 0) {
+		lines.push(
+			`${live.join(", ")} ${live.length === 1 ? "is" : "are"} still stored and still spendable. ` +
+				`Run /secret list to see where, and /secret clear everywhere again.`,
+		);
+	}
+	const revoked = removed.filter(name => !live.includes(name));
+	if (revoked.length === 0) return { message: lines.join("\n"), changed: true };
+	return {
+		message: lines.join("\n"),
+		agentNotice: revocationNotice(revoked, "every secret vault"),
+		agentNoticeIsRevocation: true,
+		changed: true,
+	};
+}
+
+/**
+ * Tell the model a set of placeholders is dead, in ONE wording.
+ *
+ * Shared by clearing one vault and clearing all of them, because the thing the model has to stop
+ * doing is identical and two phrasings of a revocation is how one of them ends up softer than the
+ * other. `where` is the only part that differs.
+ */
+function revocationNotice(revoked: readonly string[], where: string): string {
+	const names = revoked.map(name => `#${name}#`).join(", ");
+	const one = revoked.length === 1;
+	return (
+		`The user has cleared ${where}, so ${names} ${one ? "is" : "are"} no ` +
+		`longer available and you must stop using ${one ? "it" : "them"}. ` +
+		`${one ? "It is" : "They are"} no longer replaced with a real value: writing ` +
+		`${one ? "it" : "one"} now sends the literal placeholder text rather than a ` +
+		`credential, which will fail instead of authenticating. Do not write ${names} into a command, a file, ` +
+		`or a message, and do not ask for the value.`
+	);
 }
 
 async function extendSecret(

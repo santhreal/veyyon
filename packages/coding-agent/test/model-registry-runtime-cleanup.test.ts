@@ -45,7 +45,9 @@ describe("ModelRegistry runtime source cleanup", () => {
 		const registry = new ModelRegistry(authStorage, modelsJsonPath);
 		const config: ProviderConfigInput = {
 			baseUrl: "https://runtime.example.com/v1",
-			apiKey: "RUNTIME_KEY",
+			// `literal:` because this is the key itself: a bare environment-name shape is
+			// read as a variable reference and installs nothing when it is unset.
+			apiKey: "literal:RUNTIME_KEY",
 			api: "custom-runtime-cleanup-api",
 			streamSimple,
 			models: [baseModel],

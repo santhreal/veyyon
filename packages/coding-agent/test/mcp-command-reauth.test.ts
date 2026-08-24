@@ -46,6 +46,7 @@ function createController(authStorage: AuthStorage, mcpManagerOverrides: Record<
 	const mcpManager = {
 		prepareConfig,
 		disconnectAll: vi.fn(async () => {}),
+		invalidateCommandCredentials: vi.fn(() => 0),
 		discoverAndConnect: vi.fn(async () => ({ errors: new Map<string, string>() })),
 		getTools: vi.fn(() => []),
 		waitForConnection: vi.fn(async () => {}),

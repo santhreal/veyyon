@@ -37,7 +37,7 @@ New consumers MUST treat the value as opaque and MUST NOT derive PII from it; th
 
 ## See also
 
-- [environment-variables.md](../environment-variables.md): `VEYYON_CONFIG_DIR` controls where `install-id` lives.
-- [config-usage.md](../config-usage.md): broader config-root layout.
+- [../handbook/src/reference/environment-complete.md](../handbook/src/reference/environment-complete.md): `VEYYON_CONFIG_DIR` controls where `install-id` lives.
+- [../handbook/src/architecture/config.md](../handbook/src/architecture/config.md): broader config-root layout.
 
 *Verified against `d3e3db30` on 2026-07-23.*

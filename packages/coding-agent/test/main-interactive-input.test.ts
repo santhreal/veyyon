@@ -84,7 +84,13 @@ describe("applyResolvedSystemPromptInputs", () => {
 		expect(rendered.split("CLI CUSTOM BASE")).toHaveLength(2);
 		expect(rendered.split("CLI APPENDED INSTRUCTIONS")).toHaveLength(2);
 		expect(rendered).not.toContain("ROLE\n==============");
-		expect(rendered).toContain(`current working directory is '${projectDir}'`);
+		// The project footer still lands under a custom prompt. This asserted the
+		// footer's cwd sentence until the working directory moved out of the cached
+		// prefix and into a turn message; the footer's own project framing is the
+		// same claim, and it is what a custom prompt would lose if the footer were
+		// dropped.
+		expect(rendered).toContain("<working-directory>");
+		expect(rendered).toContain("<workstation>");
 	});
 });
 

@@ -11,9 +11,9 @@
 # directory and never to assets/. It draws a fixture at a chosen width through a
 # constructed call: it cannot show that the screen is reachable, that the state is
 # real, or that the selector is positioned and clipped the way a session draws it.
-# The evidence a settings differential needs is a VHS capture of the real screen --
-# see docs/handbook/src/foundations/verification.md, and
-# scripts/demos/record-argot-settings.sh for the shape of one.
+# The evidence a settings differential needs is a recorded capture of the real
+# screen -- see docs/handbook/src/foundations/verification.md, which is the only
+# capture path.
 #
 # VEYYON_DEMO_BUN overrides the interpreter, VEYYON_DEMO_PROFILE the demo profile
 # and VEYYON_DEMO_OUT the output directory; all three have defaults.

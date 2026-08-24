@@ -833,12 +833,19 @@ describe("AgentSession message pipeline", () => {
 			await session.sendUserMessage("second");
 
 			expect(contexts).toHaveLength(2);
-			expect(contexts[0]!.messages).toHaveLength(1);
-			expect(contexts[1]!.messages).toHaveLength(3);
+			// WHAT FLIPPED. A fresh transcript now opens with the hidden `session-state` block (the
+			// date and the working directory, moved out of the cached system prompt), so every count
+			// here includes it and the rewritten assistant sits one place later. The contract is
+			// unchanged: the frozen prefix is handed back by identity, rewrite or no rewrite.
+			expect(contexts[0]!.messages).toHaveLength(2);
+			expect(contexts[1]!.messages).toHaveLength(4);
 			expect(contexts[1]!.messages[0]).toBe(contexts[0]!.messages[0]);
-			expect((contexts[1]!.messages[1] as { content: unknown }).content).toEqual([
-				{ type: "text", text: "rewritten assistant" },
-			]);
+			expect(contexts[1]!.messages[1]).toBe(contexts[0]!.messages[1]);
+			const rewritten = contexts[1]?.messages[2];
+			if (!rewritten || !("content" in rewritten)) {
+				throw new Error("expected the rewritten assistant turn to carry content");
+			}
+			expect(rewritten.content).toEqual([{ type: "text", text: "rewritten assistant" }]);
 		} finally {
 			await session.dispose();
 			authStorage.close();

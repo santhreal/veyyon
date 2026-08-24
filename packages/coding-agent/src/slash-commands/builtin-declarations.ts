@@ -372,8 +372,8 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 			},
 			{
 				name: "clear",
-				description: "Remove every secret in one vault, naming what it removed",
-				usage: "/secret clear profile|project|global",
+				description: "Remove every secret in one vault, or in all three, naming what it removed",
+				usage: "/secret clear profile|project|global|everywhere",
 			},
 			{
 				name: "rename",
@@ -845,6 +845,22 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 		textMode: true,
 		description: "Reload all plugins (skills, commands, hooks, tools, agents, MCP)",
 		acpDescription: "Reload all plugins",
+	},
+
+	{
+		name: "trust",
+		textMode: true,
+		description: "Decide whether the code this project carries may run (plugins, extensions, hooks, MCP)",
+		acpDescription: "Decide whether project code may run",
+		acpInputHint: "[approve|deny|forget]",
+		// Bare /trust reports; it never approves. A decision that runs project code is not something
+		// a bare command should do on a keystroke.
+		subcommands: [
+			{ name: "approve", description: "Approve the project files exactly as they are now" },
+			{ name: "deny", description: "Refuse this project, and remember the refusal" },
+			{ name: "forget", description: "Drop the decision so it is asked again" },
+		],
+		allowArgs: true,
 	},
 
 	{

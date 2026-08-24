@@ -1,174 +1,102 @@
 # @veyyon/metaharness
 
-One manager for repository benchmarks. Harbor, TypeScript edit, and DeepSWE
-arms runs use the same experiment → run → trace model, SQLite store, REST/SSE
-API, and dashboard. Benchmark-native artifacts remain on disk; adapters
-normalize their live progress, scores, token usage, costs, and traces.
+Benchmark execution manager for repository evaluation harnesses. Normalizes runs across Harbor, TypeScript edit, and DeepSWE benchmarks using a shared SQLite store, REST/SSE API, and web dashboard.
 
-Registered adapters:
+## Adapters
 
-- `harbor` — terminal-bench trials through the Harbor runner.
-- `edit` — the TypeScript edit benchmark (`adapters/edit/cli.ts`).
-- `deepswe` — `packages/deepswe-bench` arms x tasks runs. Launching spawns
-  `bun run.ts --model <m> --out <jobDir>` in that package; pass `--tasks`,
-  `--arms`, and `--tasks-root` through `extraArgs`. One trace per (arm, task)
-  cell: full verifier reward counts as a pass, a partial reward as a fail, an
-  execution error as an error, and the planned grid drives the running count.
+- `harbor`: Terminal-bench evaluation via the Harbor runner.
+- `edit`: TypeScript edit benchmark (`adapters/edit/cli.ts`).
+- `deepswe`: `packages/deepswe-bench` multi-arm evaluations.
+
+## Usage
+
+Start the dashboard server and API:
 
 ```bash
-# Dashboard + API on :4700; launch every benchmark from the same “new run” form
 bun run serve --port 4700
 ```
 
-## How Harbor runs execute
+## Harbor execution model
 
-1. **Local veyyon, not npm.** By default the runner bind-mounts the repo
-   read-only into each task container (`--install source`) and runs veyyon
-   straight from `packages/coding-agent/src/cli.ts` — TS edits apply to the
-   next trial with no rebuild. A cached linux `node_modules` tree (built once
-   per lockfile change inside `oven/bun`, stored in `<jobs-dir>/_bench/_deps/`)
-   shadows the host's darwin one, and a linux `bun` binary is mounted at
-   `/opt/veyyon/bin` — so trial setup needs zero outbound network. Alternatives:
-   `--install local` (pack a tarball per run) or `--binary` (prebuilt
-   `dist/vey-linux-*` self-contained binaries).
-2. **Auth never enters containers.** A generated `models.yml` routes provider
-   `baseUrl`s at the host pm2 auth-gateway; the gateway resolves credentials
-   host-side.
-3. **Harbor owns trials.** The runner/serve layer polls each trial's
-   `result.json` for progress, spend, and outcomes.
+1. **Source execution:** Mounts repository source into task containers (`--install source`) to run `packages/coding-agent/src/cli.ts` without rebuilds.
+2. **Credential routing:** Routes provider `baseUrl` entries to the host authentication gateway.
+3. **Trial tracking:** Polls per-trial `result.json` files for status, token counts, and verifier results.
 
-## Server
+## Server API
 
-- `GET /` — experiments, runs, normalized traces, and a launch form for every benchmark.
-- `GET /api/experiments[?q=]` — experiment summaries across all benchmark types
-  (`q` filters by id/goal substring).
-- `POST /api/experiments` — register an experiment before its first arm. Body
-  `{ "id": "sb2", "goal": "..." }`; the id is the dash-free token job names
-  group under (`sb2-n8` → experiment `sb2`).
-- `GET /api/experiments/:id` — arms, per-task matrix, and calibrated projections.
-- `PUT /api/experiments/:id` — update the goal and per-run role/note/label.
-- `POST /api/experiments/:id/arms` — launch a comparable arm; sample + config
-  inherited from a sibling.
-- `DELETE /api/experiments/:id` — delete every arm (DB rows **and** job dirs)
-  plus the goal row; rejected while any arm is running.
-- `GET /api/runs[?experiment=&status=&benchmark=]` — uniform run rows with
-  benchmark, score, progress, spend, and tokens.
-- `POST /api/runs` — launch through a benchmark adapter. Body:
+- `GET /`: Dashboard and run launcher.
+- `GET /api/experiments[?q=]`: Experiment list with optional substring filter.
+- `POST /api/experiments`: Register experiment definition (`{ "id": "exp1", "goal": "..." }`).
+- `GET /api/experiments/:id`: Experiment details, task matrix, and projections.
+- `PUT /api/experiments/:id`: Update experiment metadata.
+- `POST /api/experiments/:id/arms`: Launch a new arm inheriting configuration.
+- `DELETE /api/experiments/:id`: Delete experiment and associated runs.
+- `GET /api/runs[?experiment=&status=&benchmark=]`: List runs filtered by experiment, status, or benchmark adapter.
+- `POST /api/runs`: Launch a run with parameters (benchmark, model, tasks, concurrency, attempts, jobName).
+- `GET /api/runs/:name`: Run metadata and execution traces.
+- `POST /api/runs/:name/cancel`: Cancel an active run.
+- `DELETE /api/runs/:name`: Delete a completed run and on-disk job files.
+- `POST /api/runs/:name/resume`: Resume incomplete run trials.
+- `GET /api/runs/:name/traces/:trace[?raw=1]`: Fetch normalized or native execution trace.
+- `GET /api/events`: Server-Sent Events stream for real-time status updates.
 
-  ```json
-  {
-    "benchmark": "edit",
-    "model": "anthropic/claude-opus-4-8",
-    "tasks": 20,
-    "concurrency": 4,
-    "attempts": 2,
-    "jobName": "edit-baseline",
-    "role": "baseline",
-    "goal": "compare edit strategies"
-  }
-  ```
+State is stored in `<jobs-dir>/_manager/metaharness.sqlite`.
 
-  `benchmark` is `harbor`, `edit`, or `deepswe`. Harbor uses `dataset`, `include`,
-  `timeoutMultiplier`, and `prewalk`; edit uses `include` as task IDs; deepswe takes
-  `--tasks`/`--arms`/`--tasks-root` via `extraArgs`.
-- `GET /api/runs/:name` — `{ run, traces }` (syncs native artifacts on read).
-- `POST /api/runs/:name/cancel` — cancel a manager-launched run.
-- `DELETE /api/runs/:name` — permanently delete a finished run (DB row **and**
-  job dir; a surviving dir would be re-discovered on restart); rejected while
-  the run is live.
-- `POST /api/runs/:name/resume` — resume an incomplete harbor run in place:
-  completed trials (and their spend) are reused, interrupted/pending trials
-  re-run, and errored trials retried (body `{ "filterErrorTypes": [...] }`
-  overrides the retry set, which defaults to every exception type in the job's
-  `result.json`). The runner recovers the original launch flags from
-  `_bench/<name>/runner-config.json` (snapshotted at launch) or the run's
-  `manager.json` — nothing needs re-specifying.
-- `GET /api/runs/:name/traces/:trace[?raw=1]` — normalized or native trace.
-- `GET /api/events` — SSE stream of run-list snapshots (sent on change).
+## Harbor runner options
 
-State lives in `<jobs-dir>/_manager/metaharness.sqlite`; the filesystem
-stays the source of truth and historical CLI runs are auto-discovered.
-
-## Harbor runner options (excerpt)
-
-| Option | Default | Notes |
+| Option | Default | Description |
 |---|---|---|
-| `-m, --model <provider/model>` | `anthropic/claude-sonnet-4-6` | Repeatable |
-| `-l, --tasks <N>` | `20` | Max tasks |
-| `-n, --concurrency <N>` | `4` | Concurrent trials |
-| `-k, --attempts <N>` | `1` | Attempts per task (pass@k) |
-| `-d, --dataset <name>` | `terminal-bench@2.0` | Any Harbor dataset id |
-| `-i/-x, --include/--exclude <glob>` | — | Task filters (repeatable) |
-| `--timeout-multiplier <x>` | — | Scales task agent/verifier timeouts |
-| `--agent-arg <arg>` | — | Extra arg forwarded verbatim to the in-container veyyon CLI (repeatable) |
-| `--env <KEY[=VALUE]>` | — | Forward env into the veyyon container (repeatable); `KEY` alone forwards the host value |
-| `--binary <path>` | — | Prebuilt veyyon binary (repeat for arm64+x64) |
-| `--install <source\|local\|published>` | `source` | `source` = repo bind-mount, `local` = tarball pack, `published` = npm `@veyyon/coding-agent` |
-| `--environment <docker\|apple-container>` | `docker` | `apple-container` runs trials via Apple's `container` CLI (no Docker); source/deps mounts go through `harbor --mounts` and the gateway is auto-forwarded from `192.168.64.1:4000` to the loopback-bound gateway |
-| `--gateway-url <url>` | `http://host.docker.internal:4000` | `http://192.168.64.1:4000` under `--environment apple-container` |
-| `--no-gateway` | off | Pass host provider keys into containers instead |
-| `-o, --jobs-dir <path>` | `<repo>/runs/harbor` | Shared with the server |
-| `--resume <name\|path>` | — | Resume that job dir via `harbor job resume`; original flags recovered automatically |
-| `--filter-error-type <T>` | `CancelledError` | With `--resume`: also re-run completed trials that errored with exception type `T` (repeatable) |
-| `--dry-run` | off | Print the harbor command + models.yml and exit |
+| `-m, --model <provider/model>` | `anthropic/claude-sonnet-4-6` | Model identifier (repeatable). |
+| `-l, --tasks <N>` | `20` | Maximum task count. |
+| `-n, --concurrency <N>` | `4` | Concurrent container executions. |
+| `-k, --attempts <N>` | `1` | Attempts per task (pass@k). |
+| `-d, --dataset <name>` | `terminal-bench@2.0` | Harbor dataset identifier. |
+| `-i/-x, --include/--exclude <glob>` | None | Task pattern filters (repeatable). |
+| `--timeout-multiplier <x>` | None | Task timeout scaling factor. |
+| `--agent-arg <arg>` | None | Arguments forwarded to the in-container CLI. |
+| `--env <KEY[=VALUE]>` | None | Environment variables forwarded to container. |
+| `--binary <path>` | None | Prebuilt CLI binary path. |
+| `--install <source\|local\|published>` | `source` | Installation strategy (`source`, `local`, `published`). |
+| `--environment <docker\|apple-container>` | `docker` | Container runtime engine. |
+| `--gateway-url <url>` | `http://host.docker.internal:4000` | Host gateway URL. |
+| `--no-gateway` | off | Use direct host API credentials. |
+| `-o, --jobs-dir <path>` | `<repo>/runs/harbor` | Base directory for job outputs. |
+| `--resume <name\|path>` | None | Resume an existing job directory. |
+| `--filter-error-type <T>` | `CancelledError` | Error types to retry during resume. |
+| `--dry-run` | off | Validate configuration and print commands without execution. |
 
 ## Outputs
 
-- `<jobs-dir>/<jobName>/` — Harbor trial dirs (`result.json` per trial).
-- `<jobs-dir>/_bench/<jobName>/report.md` — markdown summary table.
-- `<jobs-dir>/_bench/<jobName>/harbor.log` — full Harbor output.
-- `<jobs-dir>/_manager/logs/<jobName>.log` — runner output for API-launched runs.
+- `<jobs-dir>/<jobName>/`: Individual trial directories and `result.json` files.
+- `<jobs-dir>/_bench/<jobName>/report.md`: Markdown summary table.
+- `<jobs-dir>/_bench/<jobName>/harbor.log`: Raw Harbor execution log.
+- `<jobs-dir>/_manager/logs/<jobName>.log`: API runner log output.
 
-## Bench results into feature docs
+## Documentation insertion
 
-Bench results live in the doc page of the feature they measure, not in the
-changelog. `src/bench-report.ts` reads a finished run and inserts (or replaces
-in place) a marker-fenced results block in the target page:
+Insert benchmark results into markdown documentation:
 
 ```bash
 bun src/bench-report.ts --run <jobName> --doc docs/argot.md [--key argot]
 ```
 
-The block sits between `<!-- bench-results:<key> -->` markers, so re-benching
-a feature updates one canonical table. The key defaults to the run's
-benchmark kind; give each feature its own key when a page holds several
-blocks. Missing markers append a `## Benchmark results` section on first use.
+Results are placed within `<!-- bench-results:<key> -->` comment markers.
 
 ## Trace reports
 
-`scripts/trace-report.ts` turns one run trace into a narrative markdown report
-(numbered Turn Log with one grounded sentence per assistant turn, harness
-notices in place, then a Story Arc and — for failed runs — a failure analysis).
-It map/reduces the normalized trace through two cheap OpenRouter models
-(defaults: `inclusionai/ling-2.6-flash` per turn, `openai/gpt-oss-120b` for the
-arc; ~$0.001 per report). API keys resolve through veyyon's auth storage.
+Generate a markdown summary from a normalized execution trace:
 
 ```bash
-bun scripts/trace-report.ts <run> <trace> [--focus "reviewer notes"] [--out report.md]
-bun scripts/trace-report.ts "sb3-ntg|django__django-12325__ddQroP4"   # run|trace also accepted
+bun scripts/trace-report.ts <run> <trace> [--focus "context"] [--out report.md]
 ```
 
-Flags: `--base` (server, default `http://localhost:4700`), `--tiny` / `--synth`
-(`<provider>/<model-id>` overrides), `--focus` (extra reviewer context, e.g. the
-known-correct fix for a failed task), `--concurrency` (default 8).
+Flags:
+- `--base <url>`: Metaharness server base URL (default: `http://localhost:4700`).
+- `--tiny <model>`: Per-turn summary model override.
+- `--synth <model>`: Run-level synthesis model override.
+- `--concurrency <N>`: Parallel generation workers (default: 8).
 
-## Caveats
+## Runtime notes
 
-- **Network policy.** On Harbor's local Docker backend only **public**
-  registries work; task containers reach models via the host gateway.
-- **`--install source` reflects local TS changes** with no rebuild, but Rust
-  natives load from the in-tree `packages/natives/native/veyyon_natives.linux-*.node`
-  prebuilds — rebuild those when Rust changes (the loader only warns once, instead of
-  throwing, on workspace loads, so a stale `.node` keeps running after a single warning).
-- **Source mode is single-arch.** The deps tree matches the docker daemon's
-  native arch; trials on emulated images (e.g. x64 tasks on an arm64 host)
-  fail setup with an arch-mismatch error — use `--binary` for those.
-- **The repo is visible (read-only) inside task containers** in source mode;
-  fine for curated benchmarks, but don't point it at untrusted tasks.
-- **Apple Container specifics.** `--environment apple-container` needs
-  `brew install container && container system start` (macOS 26+, Apple
-  silicon). `--host-network` and `--cleanup*` are docker-only, and bind
-  mounts are read-write (the backend ignores `read_only`).
-- **`--install local` reflects local TS changes** (inlined into `dist/cli.js`),
-  but **not** uncommitted Rust natives — rebuild `packages/natives` per target
-  first (the version sentinel must match).
+- Docker network access in Harbor task containers is limited to public registries; LLM requests route through the host gateway.
+- Rust native addons must be compiled for the target platform architecture before running in container environments.

@@ -309,10 +309,23 @@ describe("resolveApproval override and user policy", () => {
 		expect(resolveApproval(writeTool, {}, "yolo", { write: "deny" }).policy).toBe("deny");
 	});
 
-	it("ignores invalid user policy values", () => {
+	/**
+	 * The unit-level statement of the fail-closed rule. `write: "yes"` used to resolve to the
+	 * rung's own answer, which on `write` (an `auto-edit` alias) was `allow`: the value the
+	 * operator wrote was dropped and the tool ran. The behavioural sweep lives in
+	 * `a-malformed-approval-policy-is-a-block-not-a-blank.test.ts`.
+	 */
+	it("denies a present-but-invalid user policy value", () => {
 		const writeTool = tool("write", "write");
-		expect(resolveApproval(writeTool, {}, "always-ask", { write: "yes" }).policy).toBe("prompt");
-		expect(resolveApproval(writeTool, {}, "write", { write: 1 }).policy).toBe("allow");
+		expect(resolveApproval(writeTool, {}, "always-ask", { write: "yes" }).policy).toBe("deny");
+		expect(resolveApproval(writeTool, {}, "write", { write: 1 }).policy).toBe("deny");
+		expect(resolveApproval(writeTool, {}, "yolo", { write: "denyy" }).policy).toBe("deny");
+	});
+
+	it("leaves an absent key unconfigured, so the rung still decides", () => {
+		const writeTool = tool("write", "write");
+		expect(resolveApproval(writeTool, {}, "write", {}).policy).toBe("allow");
+		expect(resolveApproval(writeTool, {}, "always-ask", {}).policy).toBe("prompt");
 	});
 });
 

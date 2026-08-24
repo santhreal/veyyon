@@ -307,7 +307,7 @@ export class HookRunner {
 					if (event.type === "tool_result" && handlerResult) {
 						result = handlerResult as ToolResultEventResult;
 					}
-					if (event.type === "session.compacting" && handlerResult) {
+					if (event.type === "session_compacting" && handlerResult) {
 						result = handlerResult as SessionCompactingResult;
 					}
 				} catch (err) {

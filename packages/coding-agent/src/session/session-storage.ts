@@ -56,6 +56,70 @@ export interface WriteTextAtomicOptions {
 	commitGuard?: () => boolean;
 }
 
+/**
+ * What a whole-file write is handed: either the text, or a factory that produces
+ * it in chunks.
+ *
+ * A session rewrite publishes the entire transcript, and building that as one
+ * string costs a copy of the whole file on top of the lines it is made of: a
+ * 253MiB transcript rewrote at a peak of 684MiB above baseline and held the loop
+ * for 554ms in one stretch. A factory lets a backend write chunk by chunk and
+ * keep only the chunk in hand.
+ *
+ * It is a factory and not an iterable because a write can be attempted more than
+ * once — the EPERM fallback re-writes the same body at the target path — and a
+ * generator is spent after one pass. Every call MUST produce the same bytes.
+ */
+export type SessionFileBody = string | (() => Iterable<string>);
+
+/** Iterate a body's chunks, whichever form it took. */
+export function sessionBodyChunks(body: SessionFileBody): Iterable<string> {
+	return typeof body === "string" ? [body] : body();
+}
+
+/** Materialize a body, for a backend that has to hold the whole text anyway. */
+export function sessionBodyToString(body: SessionFileBody): string {
+	if (typeof body === "string") return body;
+	let text = "";
+	for (const chunk of body()) text += chunk;
+	return text;
+}
+
+/**
+ * Write a whole file from a body's chunks, without ever holding the joined text.
+ *
+ * Truncates on open, so a shorter body cannot leave a tail of the previous file
+ * behind. The fd is closed on every path, including a throwing chunk.
+ */
+function writeChunksSync(fpath: string, body: SessionFileBody): void {
+	const fd = fs.openSync(fpath, "w");
+	try {
+		for (const chunk of sessionBodyChunks(body)) {
+			if (chunk.length > 0) fs.writeSync(fd, chunk);
+		}
+	} finally {
+		fs.closeSync(fd);
+	}
+}
+
+/**
+ * The async twin of {@link writeChunksSync}.
+ *
+ * Each chunk is awaited, so a large rewrite yields to the loop between chunks
+ * instead of holding it for the whole file. That is the point of the async path:
+ * one 253MiB body used to stall the loop for 554ms in a single stretch.
+ */
+async function writeChunks(fpath: string, body: SessionFileBody): Promise<void> {
+	const handle = await fs.promises.open(fpath, "w");
+	try {
+		for (const chunk of sessionBodyChunks(body)) {
+			if (chunk.length > 0) await handle.write(chunk);
+		}
+	} finally {
+		await handle.close();
+	}
+}
+
 export interface SessionStorage {
 	ensureDirSync(dir: string): void;
 	existsSync(path: string): boolean;
@@ -75,7 +139,7 @@ export interface SessionStorage {
 	 * the filesystem about a path those backends never wrote.
 	 */
 	existsStateSync(path: string): PathState;
-	writeTextSync(path: string, content: string): void;
+	writeTextSync(path: string, body: SessionFileBody): void;
 	/**
 	 * Update the current session title through the storage backend.
 	 *
@@ -104,7 +168,7 @@ export interface SessionStorage {
 	/** Read the requested UTF-8 byte windows from the head and tail of the file. */
 	readTextSlices(path: string, prefixBytes: number, suffixBytes: number): Promise<[string, string]>;
 	writeText(path: string, content: string): Promise<void>;
-	writeTextAtomic(path: string, content: string, options?: WriteTextAtomicOptions): Promise<void>;
+	writeTextAtomic(path: string, body: SessionFileBody, options?: WriteTextAtomicOptions): Promise<void>;
 	rename(path: string, nextPath: string): Promise<void>;
 	/**
 	 * Relocate a session transcript and every artifact beneath its sibling
@@ -285,12 +349,12 @@ export class FileSessionStorage implements SessionStorage {
 		return state;
 	}
 
-	writeTextSync(fpath: string, content: string): void {
+	writeTextSync(fpath: string, body: SessionFileBody): void {
 		const dir = path.dirname(fpath);
 		this.ensureDirSync(dir);
 		const tempPath = path.join(dir, `.${path.basename(fpath)}.${Snowflake.next()}.tmp`);
 		try {
-			fs.writeFileSync(tempPath, content);
+			writeChunksSync(tempPath, body);
 			fs.renameSync(tempPath, fpath);
 		} catch (err) {
 			try {
@@ -305,7 +369,7 @@ export class FileSessionStorage implements SessionStorage {
 				}
 			}
 			if (hasFsCode(err, "EPERM")) {
-				fs.writeFileSync(fpath, content);
+				writeChunksSync(fpath, body);
 				return;
 			}
 			throw toError(err);
@@ -410,12 +474,12 @@ export class FileSessionStorage implements SessionStorage {
 		await Bun.write(path, content, { createPath: true });
 	}
 
-	async writeTextAtomic(fpath: string, content: string, options?: WriteTextAtomicOptions): Promise<void> {
+	async writeTextAtomic(fpath: string, body: SessionFileBody, options?: WriteTextAtomicOptions): Promise<void> {
 		const dir = path.resolve(fpath, "..");
 		const tempPath = path.join(dir, `.${path.basename(fpath)}.${Snowflake.next()}.tmp`);
 		await fs.promises.mkdir(dir, { recursive: true });
 		try {
-			await fs.promises.writeFile(tempPath, content);
+			await writeChunks(tempPath, body);
 		} catch (err) {
 			this.#discardTemp(tempPath, fpath);
 			throw toError(err);
@@ -843,8 +907,8 @@ export class MemorySessionStorage implements SessionStorage {
 		return this.#files.has(path) ? "present" : "absent";
 	}
 
-	writeTextSync(path: string, content: string): void {
-		this.#files.set(path, createMemoryFileEntry(content, Date.now()));
+	writeTextSync(path: string, body: SessionFileBody): void {
+		this.#files.set(path, createMemoryFileEntry(sessionBodyToString(body), Date.now()));
 	}
 
 	/**
@@ -942,9 +1006,9 @@ export class MemorySessionStorage implements SessionStorage {
 		return Promise.resolve();
 	}
 
-	writeTextAtomic(path: string, content: string, options?: WriteTextAtomicOptions): Promise<void> {
+	writeTextAtomic(path: string, body: SessionFileBody, options?: WriteTextAtomicOptions): Promise<void> {
 		if (options?.commitGuard && !options.commitGuard()) return Promise.resolve();
-		this.writeTextSync(path, content);
+		this.writeTextSync(path, body);
 		return Promise.resolve();
 	}
 

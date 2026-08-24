@@ -169,6 +169,10 @@ export async function runSecretCommandForSurface(args: string, port: SecretComma
 		now: Date.now(),
 		auditLog,
 		surface,
+		// THE FOOTER'S OWN COUNTER. The composer chip reads `liveSecrets()` off this same obfuscator,
+		// so `list` reading `maskedInventory()` off it is what makes the two agree; a second count
+		// derived anywhere else is the defect being fixed, not a fix.
+		masked: port.session.obfuscator?.maskedInventory(),
 	});
 
 	// THE CLIPBOARD BELONGS TO THE SURFACE. The command layer decides what is worth copying and

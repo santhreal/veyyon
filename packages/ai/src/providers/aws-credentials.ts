@@ -279,10 +279,11 @@ async function readSsoCredentials(
 	});
 	if (!response.ok) {
 		// The STATUS is the failure; the body is the detail attached to it. An unreadable body must not replace
-		// a credential-service error with a read error.
-		const body = await response.text().catch(() => "");
+		// a credential-service error with a read error, and this endpoint answers a bearer token, so its body
+		// goes through the shared redactor rather than a local slice.
+		const detail = await AIError.readProviderErrorDetail(response);
 		throw new AIError.AwsCredentialsError(
-			`AWS SSO GetRoleCredentials failed: ${response.status} ${body.slice(0, 200)}`,
+			`AWS SSO GetRoleCredentials failed: ${response.status} ${detail}`,
 			"sso-role",
 		);
 	}
@@ -600,9 +601,14 @@ async function readImdsCredentials(
 	}
 }
 
-/** Test/diagnostic helper — drops cached credentials. */
+/**
+ * Test/diagnostic helper — drops cached credentials AND any resolution still in
+ * flight. Leaving the in-flight map behind hands the next caller the promise
+ * this reset was meant to discard.
+ */
 export function clearAwsCredentialCache(): void {
 	cache.clear();
+	inflight.clear();
 }
 
 /**
@@ -612,5 +618,9 @@ export function clearAwsCredentialCache(): void {
 export function invalidateAwsCredentialCache(opts: { profile?: string; region?: string } = {}): void {
 	const profile = opts.profile || $env.AWS_PROFILE || "default";
 	const region = opts.region || $env.AWS_REGION || $env.AWS_DEFAULT_REGION || "us-east-1";
-	cache.delete(`${profile}\x00${region}`);
+	const cacheKey = `${profile}\x00${region}`;
+	cache.delete(cacheKey);
+	// A resolution already running was started from the credentials now known to be
+	// stale, so a caller arriving during it must start its own rather than join it.
+	inflight.delete(cacheKey);
 }

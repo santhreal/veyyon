@@ -33,9 +33,17 @@ saveTextLockfile = true
 # because a mnemopi suite is routinely run from the repository root — by the leak
 # tracer, and by anyone typing a path — and cwd is what decides which of the two
 # files Bun reads.
+#
+# The third preload refuses a leaked provider-module override. A suite that replaces
+# a provider for the process and never restores it answers every later test file in
+# the bucket, so the failure lands on an innocent suite: a Bedrock deadline test
+# terminated in 3ms against another file's stub, and bisecting 454 files to find it
+# took nine runs. It is a preload for the same reason as the first: the suite that
+# leaks is the one that must go red, and it cannot be asked to opt in.
 preload = [
   "./packages/utils/test/helpers/real-data-tripwire.ts",
   "./packages/mnemopi/test/helpers/home-isolation.ts",
+  "./packages/ai/test/helpers/provider-override-tripwire.ts",
 ]
 
 # bun test does NOT honor .gitignore; prune veybot's repo clones and

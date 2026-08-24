@@ -14,6 +14,19 @@
 //      doc changed after it was verified, the stamp is stale and must be
 //      renewed (or removed) in the same change.
 //
+// One edit cannot invalidate a verification: renaming another doc and rewriting
+// the paths that point at it. The stamp asserts that this page's claims match
+// the code at a commit, and where a sibling page lives says nothing about that.
+// A docs reorganization used to go stale against every stamped page it touched,
+// which turned 8 verified docs into "re-verify or drop the stamp" for a
+// mechanical path rewrite. So rule 2 exempts a doc whose only change since the
+// stamp was written is markdown path tokens (link targets, link text, code
+// spans — anywhere a `foo/bar.md` appears). Any prose change still fails.
+//
+// The baseline for that judgement is the commit that WROTE the current stamp,
+// not the commit the stamp names: the stamp names the code it was verified
+// against, and the doc at that code commit is usually a different, older page.
+//
 // CI gate: .github/workflows/docs.yml.
 
 import { spawnSync } from "node:child_process";
@@ -36,6 +49,8 @@ export interface FreshnessResult {
 	unstamped: string[];
 	/** Tracked at HEAD but absent from the working tree (an in-flight rename/delete). */
 	missing: string[];
+	/** Edited after the stamp, but only in markdown path tokens — exempt, and named so the exemption is never silent. */
+	pathRenamedOnly: string[];
 	issues: FreshnessIssue[];
 }
 
@@ -67,8 +82,63 @@ function git(root: string, args: string[]): { status: number; stdout: string } {
 	return { status: result.status ?? 1, stdout: result.stdout ?? "" };
 }
 
+/** Every markdown path token in a doc: `foo.md`, `../reference/models-yml.md`, `docs/internal/session.md`. */
+export const MARKDOWN_PATH_TOKEN = /[\w./-]*[\w-]\.md/g;
+
+/**
+ * Fold away where other docs live, so two snapshots compare on what they claim.
+ *
+ * The tokens are replaced rather than stripped: a sentence that lost a path
+ * still differs from one that had a path renamed.
+ */
+export function normalizeDocPaths(markdown: string): string {
+	return markdown.replace(MARKDOWN_PATH_TOKEN, "@");
+}
+
+function lastLine(markdown: string): string {
+	const lines = markdown.trimEnd().split("\n");
+	return lines[lines.length - 1]?.trim() ?? "";
+}
+
+/** The doc as it stood when its current stamp was written, with that commit's date. */
+export interface StampedSnapshot {
+	sha: string;
+	date: string;
+	markdown: string;
+}
+
+/**
+ * The doc as it stood when its current stamp was written, or null when that
+ * cannot be established (the stamp is uncommitted, or history is unreadable).
+ *
+ * Found by walking the file's commits newest-first while the stamp footer still
+ * matches, and keeping the oldest match: that is the commit that introduced the
+ * stamp, and every commit after it is an edit the stamp did not cover.
+ */
+export function stampedSnapshot(root: string, file: string, stamp: string): StampedSnapshot | null {
+	const log = git(root, ["log", "--format=%H %cs", "--", file]);
+	if (log.status !== 0) return null;
+	let snapshot: StampedSnapshot | null = null;
+	for (const line of log.stdout.split("\n").filter(Boolean)) {
+		const [sha, date] = line.split(" ");
+		if (!sha || !date) break;
+		const show = git(root, ["show", `${sha}:${file}`]);
+		if (show.status !== 0) break;
+		if (lastLine(show.stdout) !== stamp) break;
+		snapshot = { sha, date, markdown: show.stdout };
+	}
+	return snapshot;
+}
+
 export function checkFreshness(root: string, files: string[]): FreshnessResult {
-	const result: FreshnessResult = { filesChecked: 0, stamped: 0, unstamped: [], missing: [], issues: [] };
+	const result: FreshnessResult = {
+		filesChecked: 0,
+		stamped: 0,
+		unstamped: [],
+		missing: [],
+		pathRenamedOnly: [],
+		issues: [],
+	};
 	for (const file of files) {
 		const abs = path.join(root, file);
 		// `git ls-files` reports the index; a file deleted (or renamed away) in the
@@ -108,6 +178,19 @@ export function checkFreshness(root: string, files: string[]): FreshnessResult {
 		}
 		const lastEdit = git(root, ["log", "-1", "--format=%cs", "--", file]).stdout.trim();
 		if (lastEdit && lastEdit > stamp.date) {
+			// The exemption needs a snapshot the stamp actually covers: a stamping
+			// commit no later than the stamp date. A stamp written after the date it
+			// claims is backdated, and comparing the doc against the commit that
+			// backdated it would certify the edit with itself.
+			const snapshot = stampedSnapshot(root, file, lastLine(markdown));
+			if (
+				snapshot !== null &&
+				snapshot.date <= stamp.date &&
+				normalizeDocPaths(snapshot.markdown) === normalizeDocPaths(markdown)
+			) {
+				result.pathRenamedOnly.push(file);
+				continue;
+			}
 			result.issues.push({
 				file,
 				reason: `doc last edited ${lastEdit}, after its ${stamp.date} verification stamp — re-verify and re-stamp (or drop the stamp)`,
@@ -134,6 +217,9 @@ if (import.meta.main) {
 	}
 	for (const file of result.missing) {
 		console.log(`  MISSING from working tree (tracked at HEAD — in-flight delete/rename?): ${file}`);
+	}
+	for (const file of result.pathRenamedOnly) {
+		console.log(`  stamp kept across a doc-path rename (no prose change since it was written): ${file}`);
 	}
 	if (result.issues.length > 0) {
 		console.error(`\n${result.issues.length} stale/broken stamp(s):`);

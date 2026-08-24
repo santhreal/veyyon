@@ -245,9 +245,9 @@ export const streamDevin: StreamFunction<"devin-agent"> = (
 			});
 
 			if (!response.ok) {
-				const text = await response.text();
+				const detail = await AIError.readProviderErrorDetail(response);
 				throw new AIError.DevinApiError(
-					`Devin API error ${response.status} ${response.statusText}: ${AIError.boundProviderErrorDetail(text)}`,
+					`Devin API error ${response.status} ${response.statusText}: ${detail}`,
 					response.status,
 				);
 			}
@@ -468,8 +468,19 @@ export const streamDevin: StreamFunction<"devin-agent"> = (
 				if (!stream.done) stream.end(carrySpend(await retried.result()));
 				return;
 			}
-			logger.error("devin: stream failed", { error: String(error) });
+			// Finalized BEFORE the record is written, because the outcome is what decides how loud
+			// it should be: a caller abort is the operator pressing stop, not a provider failure.
 			const result = await AIError.finalize(error, { api: model.api, signal: options?.signal });
+			// Chosen at call time from a static access, not from a table built at module load: a
+			// captured function detaches any spy a test installs on the logger namespace.
+			const record = result.logLevel === "debug" ? logger.debug : logger.error;
+			record("devin: stream failed", {
+				model: model.id,
+				stopReason: result.stopReason,
+				status: result.status,
+				errorId: result.id,
+				error: String(error),
+			});
 			output.stopReason = result.stopReason;
 			output.errorStatus = result.status;
 			output.errorId = result.id;
@@ -534,11 +545,34 @@ async function fetchDevinAuthMetadata(
 	};
 }
 
+/**
+ * Decode a `GetUserJwt` response, which arrives as bare protobuf or gzipped
+ * protobuf depending on what the server negotiated.
+ *
+ * The third case is neither, and it has to name itself: a proxy's error page, a
+ * truncated body, or an SSE keepalive from something that is not Devin all fail
+ * the protobuf parse and then fail `gunzipSync`, whose own message is
+ * "incorrect header check" — a zlib internal that names no provider, no step
+ * and no remedy, and that was reaching the operator as the whole explanation of
+ * a failed turn.
+ */
 function decodeDevinUserJwtResponse(payload: Uint8Array) {
 	try {
 		return fromBinary(GetUserJwtResponseSchema, payload);
 	} catch {
-		return fromBinary(GetUserJwtResponseSchema, gunzipSync(payload));
+		try {
+			return fromBinary(GetUserJwtResponseSchema, gunzipSync(payload));
+		} catch {
+			throw new AIError.ProviderResponseError(
+				`Devin auth error: GetUserJwt answered with ${payload.byteLength} byte(s) that are neither a protobuf response nor gzip: ${AIError.boundProviderErrorDetail(new TextDecoder().decode(payload))}`,
+				// `envelope`, not `incomplete-stream`: a body that is neither
+				// protobuf nor gzip is structurally wrong rather than cut short, so
+				// the three-rung auth ladder cannot improve on it — and retrying
+				// spent the caller's whole first-event budget, which turned an
+				// actionable message into a deadline.
+				{ provider: "devin", kind: "envelope" },
+			);
+		}
 	}
 }
 

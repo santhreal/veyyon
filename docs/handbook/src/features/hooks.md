@@ -2,7 +2,7 @@
 
 A hook lets you run your own code at a moment in the session: before a tool call, after a message,
 when a turn ends. You use one to enforce policy (block a dangerous command), add context, or record
-what happened. The example below refuses any `bash` command containing `rm -rf`.
+what happened. The example below rejects any `bash` command containing `rm -rf`.
 
 A hook is a TypeScript module. You put it under a hook path in your profile (for example
 `~/.veyyon/profiles/<name>/agent/hooks/`), and Veyyon loads it through the extension runner. A
@@ -12,7 +12,7 @@ event you care about.
 
 CLI: `--hook` is an alias for `--extension` (paths merge into extension loading).
 
-Full API and event list: repository `docs/hooks.md` and `packages/coding-agent/src/extensibility/hooks/`.
+Full API and event list: repository `docs/handbook/src/reference/hooks.md` and `packages/coding-agent/src/extensibility/hooks/`.
 
 ## Module shape
 
@@ -46,7 +46,7 @@ Hook/extension paths are resolved as absolute, `~`-expanded, or relative to cwd.
 
 ## Lifecycle (extension bus)
 
-Handlers attach to the runtime event bus used by the extension runner (tool call, session, compaction, and related events as defined in `types.ts`). Exact event names and payloads are in `packages/coding-agent/src/extensibility/hooks/types.ts` and `docs/hooks.md`.
+Handlers attach to the runtime event bus used by the extension runner (tool call, session, compaction, and related events as defined in `types.ts`). Exact event names and payloads are in `packages/coding-agent/src/extensibility/hooks/types.ts` and `docs/handbook/src/reference/hooks.md`.
 
 ## Typical uses
 
@@ -57,4 +57,4 @@ Handlers attach to the runtime event bus used by the extension runner (tool call
 
 ## Related
 
-- Repository `docs/hooks.md`
+- Repository `docs/handbook/src/reference/hooks.md`

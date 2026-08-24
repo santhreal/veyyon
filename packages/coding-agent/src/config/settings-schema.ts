@@ -481,7 +481,7 @@ export type SettingPath = keyof Schema;
  * schema does) makes `Schema[P]` a union that matches none of the branches
  * below, so the whole type collapsed to `never` — and a `never` return silently
  * defeats every narrowing at the call site rather than failing where the mistake
- * is. `docs/settings-reference.md`'s generator hit exactly that: its
+ * is. `docs/handbook/src/reference/settings-reference.md`'s generator hit exactly that: its
  * array-default branch was unreachable code the compiler could not warn about
  * usefully.
  */

@@ -7,7 +7,7 @@ user-facing behavior, see the [handbook](docs/handbook/src/).
 
 ## What it is
 
-veyyon is a terminal coding agent — a fork of
+veyyon is a terminal coding agent — a source fork of
 [oh-my-pi](https://github.com/can1357/oh-my-pi) (MIT; see `UPSTREAM.md`). It ships as a
 single CLI binary, `veyyon` (alias `vey`). The product is **Bun + TypeScript**; the
 performance-critical hot paths are **Rust**, called from TS through a napi native

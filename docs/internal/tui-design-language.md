@@ -44,7 +44,7 @@ The rules:
 - In-terminal background tokens default to `""` (transparent, inherit the real ground). Titanium ships this way.
 - A raised surface or hairline must be a RELATIVE tint derived from the detected terminal background, never an absolute hex. The ONE owner is `modes/theme/ground-tints.ts`: it takes the OSC 11 hex (`terminal.backgroundColor` / `onBackgroundColorChange`) and offsets it a fixed contrast step toward the pole: 12% for hairlines and card outlines (`groundHairlineHex()`), 5% for raised grounds (`groundRaisedHex()`, which has no consumer today, because the raised composer ground was deleted). Two surfaces derive from it: the composer hairline (`ComposerHairline` in `composer-chrome.ts`) and `cardOutlineColor()` in `message-frame.ts`, which is what every `Box.setBorder` in `modes/components` passes (`message-frame.ts:91`, `skill-message.ts:48`). `BorderedLoader`'s full-width `DynamicBorder` rules are not outlines and still paint the static `border` token. Without detection, the static token is the exact fallback; do not paint what you cannot derive.
 - A background fill must close before the row ends. A bg attribute left open at end-of-line paints the remainder of the row on clear-to-EOL: that is the "leaking everywhere" bug class.
-- Never validate a background change in tmux. tmux panes sit on a pure-black default ground, so an absolute dark fill is invisible there and a transparent regression looks identical to a fix. Evidence for any visual change is a capture taken through the official config in [verification.md](../handbook/src/foundations/verification.md) — the HD recorder for a real session, the VHS baseline for a screen capture — plus exact-byte test assertions. There are no fallbacks: an off-screen raster of a component's ANSI (`scripts/demos/render-proof.ts`) is a debugging aid for looking at fills on a grey and a black ground while you work, never a proof. The user's own screenshots outrank everything.
+- Never validate a background change in tmux. tmux panes sit on a pure-black default ground, so an absolute dark fill is invisible there and a transparent regression looks identical to a fix. Evidence for any visual change is a capture taken through the official config in [verification.md](../handbook/src/foundations/verification.md) — the HD recorder driving a scene under `proof/scenes/`, which is the only capture path — plus exact-byte test assertions. There are no fallbacks: an off-screen raster of a component's ANSI (`scripts/demos/render-proof.ts`) is a debugging aid for looking at fills on a grey and a black ground while you work, never a proof. The user's own screenshots outrank everything.
 
 ## Gauges
 
@@ -60,7 +60,7 @@ Motion in a gauge follows the spinner's contract, motion means the model is work
 
 Locked by `status-line-context-bar.test.ts` (bans any glyph outside `▰▱` across every ratio, level, live state, and wall time).
 
-Theme JSON is validated via `getThemeJsonSchema()` (`color.ts`, applied on load in `theme.ts`; built-in themes bypass validation). User overrides live under `~/.veyyon/profiles/default/agent/themes/` (`getCustomThemesDir()`). See [Themes and identity](../handbook/src/using/themes.md) and engine doc `docs/theme.md`.
+Theme JSON is validated via `getThemeJsonSchema()` (`color.ts`, applied on load in `theme.ts`; built-in themes bypass validation). User overrides live under `~/.veyyon/profiles/default/agent/themes/` (`getCustomThemesDir()`). See [Themes and identity](../handbook/src/using/themes.md) and engine doc `docs/handbook/src/reference/theme.md`.
 
 ## Layout and width
 
@@ -83,7 +83,7 @@ home-anchor slack routes ABOVE the transcript (`home-anchor-layout.ts`): the
 first prompt renders directly above the composer at the viewport bottom and
 content climbs upward as replies land. There is no latch. The routing is
 recomputed every frame from the measured content height, so a full screen
-simply means zero slack and the composer sits at the natural bottom, and a
+means zero slack and the composer sits at the natural bottom, and a
 transient tall frame followed by a collapse can never strand it mid-screen.
 Never reintroduce a flexible fill BETWEEN the transcript
 and the composer once a conversation exists: that layout painted the prompt at
@@ -215,7 +215,7 @@ Control Center drew a tofu box. `⤵` and `⤴` (U+2935/U+2934) were the token i
 status line and exist in none of the three fonts measured.
 
 The bar is **DejaVu Sans Mono and FreeMono**, the two broad-repertoire monospace faces shipped nearly
-everywhere. Noto Sans Mono is deliberately not the bar: its repertoire stops at Latin, Greek and
+everywhere. Noto Sans Mono is not the bar: its repertoire stops at Latin, Greek and
 Cyrillic, so it lacks even `✓` and `✗` and relies on fontconfig falling back to Noto Sans Symbols.
 Holding the preset to Noto's own `cmap` would mean giving up the check mark, which is making the
 product worse to satisfy a gate.
@@ -265,11 +265,11 @@ Where a status marker is a bare presence dot, it is a **square**, not a circle:
 | `radio.selected` / `radio.unselected` | `◉` `○` | `▣` `□` (square-in-square vs open square, kept distinct from the `■`/`□` checkbox) |
 | `thinking.minimal…max` | `o ◔ ◑ ◒ ◕ ◉` | text labels `min` `low` `med` `high` `xhigh` `max` (a deliberate exception: the gauge-bar glyphs `▁▂▃…` were retired because they rendered as stray solid rectangles) |
 
-These live in the `unicode` preset (`symbols.ts`), the base the default Titanium theme inherits, and are locked by `test/modes/theme/symbol-presets.test.ts` (with `test/tools/ask.test.ts` pinning the radio/checkbox distinction). The `nerd` and `ascii` presets keep their own icon/text vocabularies. **Named themes may override the house set** when circles are part of their identity (the poimandres themes keep their circular glyphs deliberately); the block style is the Veyyon default, not a constraint on every theme.
+These live in the `unicode` preset (`symbols.ts`), the base the default Titanium theme inherits, and are locked by `test/modes/theme/symbol-presets.test.ts` (with `test/tools/ask.test.ts` pinning the radio/checkbox distinction). The `nerd` and `ascii` presets keep their own icon/text vocabularies. **Named themes may override the house set** when circles are part of their identity (the poimandres themes keep their circular glyphs); the block style is the Veyyon default, not a constraint on every theme.
 
 ## Voice register
 
-The website nav speaks lowercase terse ("docs install models changelog"), a display-typography choice for the marketing surface. The TUI deliberately does **not** copy it: menu items, action rows, and settings labels use sentence case ("Resume session", "Settings") because terminal UIs carry no font-weight hierarchy and lowercase labels read as unfinished next to command literals (`/resume`, `ctrl+d`). Command names, flags, and paths stay verbatim lowercase everywhere. Do not mix registers within one surface.
+The website nav speaks lowercase terse ("docs install models changelog"), a display-typography choice for the marketing surface. The TUI does **not** copy it: menu items, action rows, and settings labels use sentence case ("Resume session", "Settings") because terminal UIs carry no font-weight hierarchy and lowercase labels read as unfinished next to command literals (`/resume`, `ctrl+d`). Command names, flags, and paths stay verbatim lowercase everywhere. Do not mix registers within one surface.
 
 ## Composer and chrome
 

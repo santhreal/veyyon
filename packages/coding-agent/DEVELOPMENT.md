@@ -86,85 +86,86 @@ Top-level entry modules: `cli.ts`, `main.ts`, `sdk.ts`, `index.ts` (SDK barrel),
 | Directory | Responsibility | Reference |
 |---|---|---|
 | `cli/`, `commands/`, `commit/`, `export/` | Command-line adapters and concrete subcommands | — |
-| `modes/` | Interactive TUI, print, and RPC runtimes | [rpc.md](../../docs/rpc.md), [sdk.md](../../docs/sdk.md) |
-| `session/` | `AgentSession`, JSONL session tree, storage, history | [session.md](../../docs/internal/session.md), [session-tree-plan.md](../../docs/internal/session-tree-plan.md) |
-| `config/`, `registry/`, `secrets/` | Settings, model/provider registry, secret obfuscation | [settings.md](../../docs/settings.md), [config-usage.md](../../docs/config-usage.md), [models.md](../../docs/models.md), [secrets.md](../../docs/secrets.md) |
-| `tools/` | Built-in tool implementations + render/meta helpers | [custom-tools.md](../../docs/custom-tools.md), [`tools/`](../../docs/tools/) |
-| `exec/`, `eval/`, `ssh/`, `dap/`, `debug/` | Execution backends (shell, py/js kernels, ssh, debugger) | [bash-tool-runtime.md](../../docs/internal/bash-tool-runtime.md), [python-repl.md](../../docs/python-repl.md) |
-| `lsp/` | Language-server client/runtime | [lsp-config.md](../../docs/lsp-config.md), [tools/lsp.md](../../docs/tools/lsp.md) |
+| `modes/` | Interactive TUI, print, and RPC runtimes | [rpc.md](../../docs/handbook/src/reference/rpc.md), [sdk.md](../../docs/handbook/src/reference/sdk.md) |
+| `session/` | `AgentSession`, JSONL session tree, storage, history | [session.md](../../docs/internal/session.md), [session-tree-architecture.md](../../docs/internal/session-tree-architecture.md) |
+| `config/`, `registry/`, `secrets/` | Settings, model/provider registry, secret obfuscation | [settings.md](../../docs/handbook/src/reference/settings.md), [config-usage.md](../../docs/handbook/src/architecture/config.md), [models.md](../../docs/handbook/src/reference/models-yml.md), [secrets.md](../../docs/handbook/src/architecture/secrets.md) |
+| `tools/` | Built-in tool implementations + render/meta helpers | [custom-tools.md](../../docs/handbook/src/using/custom-tools.md), [`tools/`](../../docs/tools/) |
+| `exec/`, `eval/`, `ssh/`, `dap/`, `debug/` | Execution backends (shell, py/js kernels, ssh, debugger) | [bash-tool-runtime.md](../../docs/internal/bash-tool-runtime.md), [python-repl.md](../../docs/handbook/src/features/python-repl.md) |
+| `lsp/` | Language-server client/runtime | [lsp-config.md](../../docs/handbook/src/features/lsp.md), [tools/lsp.md](../../docs/tools/lsp.md) |
 | `task/`, `swarm/`, `irc/`, `goals/`, `plan-mode/` | Subagent delegation, parallelism, inter-agent IRC, plan mode | [task-agent-discovery.md](../../docs/internal/task-agent-discovery.md), [tools/task.md](../../docs/tools/task.md) |
 | `web/`, `exa/` | Fetch, browser automation, search providers, scrapers | [tools/web_search.md](../../docs/tools/web_search.md), [tools/browser.md](../../docs/tools/browser.md) |
-| `mcp/` | MCP transport / manager / loader / tool bridge | [mcp-config.md](../../docs/mcp-config.md), [mcp-runtime-lifecycle.md](../../docs/internal/mcp-runtime-lifecycle.md) |
-| `extensibility/`, `slash-commands/` | Extensions, hooks, custom tools/commands, skills, plugins | [extensions.md](../../docs/extensions.md), [hooks.md](../../docs/hooks.md), [skills.md](../../docs/skills.md) |
-| `capability/`, `discovery/`, `tool-discovery/` | Capability registry + provider discovery modules | [extension-loading.md](../../docs/internal/extension-loading.md), [context-files.md](../../docs/context-files.md) |
-| `advisor/`, `autolearn/`, `autoresearch/` | Advisor/watchdog, managed skills, background research | [advisor-watchdog.md](../../docs/advisor-watchdog.md) |
-| `memories/`, `memory-backend/`, `mnemopi/`, `hindsight/` | Memory subsystems and backends | [memory.md](../../docs/memory.md), [mnemosyne-memory-backend.md](../../docs/internal/mnemosyne-memory-backend.md) |
-| `internal-urls/` | Router + handlers (`agent://`, `docs://`, `rule://`, …) | [tree.md](../../docs/tree.md) |
-| `tui/`, `collab/` | Low-level TUI primitives, live session sharing | [tui.md](../../docs/tui.md), [collab.md](../../docs/collab.md) |
+| `mcp/` | MCP transport / manager / loader / tool bridge | [mcp-config.md](../../docs/handbook/src/reference/mcp-config.md), [mcp-runtime-lifecycle.md](../../docs/internal/mcp-runtime-lifecycle.md) |
+| `extensibility/`, `slash-commands/` | Extensions, hooks, custom tools/commands, skills, plugins | [extensions.md](../../docs/handbook/src/features/extensions.md), [hooks.md](../../docs/handbook/src/reference/hooks.md), [skills.md](../../docs/handbook/src/reference/skills.md) |
+| `capability/`, `discovery/`, `tool-discovery/` | Capability registry + provider discovery modules | [extension-loading.md](../../docs/internal/extension-loading.md), [context-files.md](../../docs/handbook/src/context/context-files.md) |
+| `advisor/`, `autolearn/`, `autoresearch/` | Advisor/watchdog, managed skills, background research | [advisor-watchdog.md](../../docs/handbook/src/features/advisor.md) |
+| `memories/`, `memory-backend/`, `mnemopi/`, `hindsight/` | Memory subsystems and backends | [memory.md](../../docs/handbook/src/architecture/memory.md), [mnemosyne-memory-backend.md](../../docs/internal/mnemosyne-memory-backend.md) |
+| `internal-urls/` | Router + handlers (`agent://`, `docs://`, `rule://`, …) | [tree.md](../../docs/handbook/src/reference/tree-command.md) |
+| `tui/`, `collab/` | Low-level TUI primitives, live session sharing | [tui.md](../../docs/handbook/src/architecture/tui.md), [collab.md](../../docs/handbook/src/features/collab.md) |
 | `tts/`, `stt/` | Text-to-speech / speech-to-text | — |
 | `tiny/`, `auto-thinking/` | Embedded tiny-model experiments, auto thinking level | [local-tiny-models.md](../../docs/internal/local-tiny-models.md) |
 | `async/`, `lib/`, `utils/`, `prompts/`, `edit/` | Shared plumbing, prompt assets, patch/diff engine | [tools/edit.md](../../docs/tools/edit.md) |
-| `system-prompt-builder/` | Section and statement registries, banner grammar, gate resolution, prompt inspection | [system-prompt-architecture.md](../../docs/internal/system-prompt-architecture.md), [system-prompt-customization.md](../../docs/system-prompt-customization.md) |
+| `system-prompt-builder/` | Section and statement registries, banner grammar, gate resolution, prompt inspection | [system-prompt-architecture.md](../../docs/internal/system-prompt-architecture.md), [system-prompt-customization.md](../../docs/handbook/src/models/system-prompt.md) |
 
 ## Subsystem reference
 
 ### Sessions, persistence, and turn lifecycle
 - [session.md](../../docs/internal/session.md) — storage and entry model
-- [session-tree-plan.md](../../docs/internal/session-tree-plan.md) — branch/tree architecture
+- [session-tree-architecture.md](../../docs/internal/session-tree-architecture.md) — branch/tree architecture
 - [session-switching-and-recent-listing.md](../../docs/internal/session-switching-and-recent-listing.md)
 - [session-operations-export-share-fork-resume.md](../../docs/internal/session-operations-export-share-fork-resume.md)
-- [compaction.md](../../docs/compaction.md) — compaction and branch summaries
+- [compaction.md](../../docs/handbook/src/architecture/compaction.md) — compaction and branch summaries
 - [ttsr-injection-lifecycle.md](../../docs/internal/ttsr-injection-lifecycle.md)
 - [non-compaction-retry-policy.md](../../docs/internal/non-compaction-retry-policy.md)
 - [handoff-generation-pipeline.md](../../docs/internal/handoff-generation-pipeline.md)
 
 ### Configuration, models, providers, auth
-- [settings.md](../../docs/settings.md), [config-usage.md](../../docs/config-usage.md)
-- [environment-variables.md](../../docs/environment-variables.md)
-- [models.md](../../docs/models.md), [providers.md](../../docs/providers.md), [adding-a-provider.md](../../docs/internal/adding-a-provider.md)
+- [settings.md](../../docs/handbook/src/reference/settings.md), [config-usage.md](../../docs/handbook/src/architecture/config.md)
+- [environment-variables.md](../../docs/handbook/src/reference/environment-complete.md)
+- [models.md](../../docs/handbook/src/reference/models-yml.md), [providers.md](../../docs/handbook/src/reference/providers.md), [adding-a-provider.md](../../docs/internal/adding-a-provider.md)
 - [local-tiny-models.md](../../docs/internal/local-tiny-models.md)
 - [provider-streaming-internals.md](../../docs/internal/provider-streaming-internals.md), [ai-schema-normalize.md](../../docs/internal/ai-schema-normalize.md)
 - [toolconv/](../../docs/internal/toolconv/) — per-family tool-call conversion (anthropic, harmony, qwen3, deepseek, glm-4.5, kimi-k2, gemini, gemma, pi-native); see also [ERRATA-GPT5-HARMONY.md](../../docs/internal/ERRATA-GPT5-HARMONY.md)
-- [keybindings.md](../../docs/keybindings.md)
-- [secrets.md](../../docs/secrets.md), [auth-broker-gateway.md](../../docs/internal/auth-broker-gateway.md), [install-id.md](../../docs/internal/install-id.md)
-- [system-prompt-customization.md](../../docs/system-prompt-customization.md) — the operator-facing surface
+- [keybindings.md](../../docs/handbook/src/reference/keybindings-config.md)
+- [secrets.md](../../docs/handbook/src/architecture/secrets.md), [auth-broker-gateway.md](../../docs/internal/auth-broker-gateway.md), [install-id.md](../../docs/internal/install-id.md)
+- [system-prompt-customization.md](../../docs/handbook/src/models/system-prompt.md) — the operator-facing surface
 - [system-prompt-architecture.md](../../docs/internal/system-prompt-architecture.md) — blocks, tiers, ordering rules, adding a section
 - [prompt-caching.md](../../docs/internal/prompt-caching.md) — per-provider cache markers and the breakpoint budget
 
 ### Tools framework and built-in tools
-- Authoring + registry: [custom-tools.md](../../docs/custom-tools.md)
+- Authoring + registry: [custom-tools.md](../../docs/handbook/src/using/custom-tools.md)
 - Output/artifacts: [blob-artifact-architecture.md](../../docs/internal/blob-artifact-architecture.md)
-- Gating/approval: [approval-mode.md](../../docs/approval-mode.md), [resolve-tool-runtime.md](../../docs/internal/resolve-tool-runtime.md)
-- Per-tool reference: [`docs/tools/`](../../docs/tools/) — `read`, `write`, `edit`, `ast-edit`, `ast-grep`, `search`, `search_tool_bm25`, `find`, `bash`, `eval`, `job`, `lsp`, `debug`, `task`, `irc`, `web_search`, `browser`, `github`, `ssh`, `inspect_image`, `ask`, `resolve`, `todo`, `recall`, `retain`, `reflect`, `checkpoint`, `rewind`
+- Gating/approval: [approval-mode.md](../../docs/handbook/src/reference/approval-mode.md), [resolve-tool-runtime.md](../../docs/internal/resolve-tool-runtime.md)
+- Per-tool reference: [`docs/tools/`](../../docs/tools/) — one page per tool, indexed in
+  [`docs/tools/README.md`](../../docs/tools/README.md) by registry and subsystem.
 
 ### Execution backends
 - [bash-tool-runtime.md](../../docs/internal/bash-tool-runtime.md), [tools/bash.md](../../docs/tools/bash.md)
-- [python-repl.md](../../docs/python-repl.md), [notebook-tool-runtime.md](../../docs/internal/notebook-tool-runtime.md), [tools/eval.md](../../docs/tools/eval.md), [tools/job.md](../../docs/tools/job.md)
+- [python-repl.md](../../docs/handbook/src/features/python-repl.md), [notebook-tool-runtime.md](../../docs/internal/notebook-tool-runtime.md), [tools/eval.md](../../docs/tools/eval.md), [tools/job.md](../../docs/tools/job.md)
 - [tools/ssh.md](../../docs/tools/ssh.md)
-- [tools/debug.md](../../docs/tools/debug.md), [tools/lsp.md](../../docs/tools/lsp.md), [lsp-config.md](../../docs/lsp-config.md)
+- [tools/debug.md](../../docs/tools/debug.md), [tools/lsp.md](../../docs/tools/lsp.md), [lsp-config.md](../../docs/handbook/src/features/lsp.md)
 
 ### Task delegation and subagents
 - [task-agent-discovery.md](../../docs/internal/task-agent-discovery.md), [tools/task.md](../../docs/tools/task.md)
-- [collab.md](../../docs/collab.md), [tools/irc.md](../../docs/tools/irc.md)
+- [collab.md](../../docs/handbook/src/features/collab.md), [tools/irc.md](../../docs/tools/irc.md)
 
 ### Web I/O and retrieval
 - [tools/web_search.md](../../docs/tools/web_search.md), [tools/browser.md](../../docs/tools/browser.md), [tools/github.md](../../docs/tools/github.md)
 
 ### MCP
-- [mcp-config.md](../../docs/mcp-config.md), [mcp-runtime-lifecycle.md](../../docs/internal/mcp-runtime-lifecycle.md)
+- [mcp-config.md](../../docs/handbook/src/reference/mcp-config.md), [mcp-runtime-lifecycle.md](../../docs/internal/mcp-runtime-lifecycle.md)
 - [mcp-protocol-transports.md](../../docs/internal/mcp-protocol-transports.md), [mcp-server-tool-authoring.md](../../docs/internal/mcp-server-tool-authoring.md)
 
 ### Memory
-- [memory.md](../../docs/memory.md), [mnemosyne-memory-backend.md](../../docs/internal/mnemosyne-memory-backend.md)
+- [memory.md](../../docs/handbook/src/architecture/memory.md), [mnemosyne-memory-backend.md](../../docs/internal/mnemosyne-memory-backend.md)
 - Memory tools: [tools/recall.md](../../docs/tools/recall.md), [tools/retain.md](../../docs/tools/retain.md), [tools/reflect.md](../../docs/tools/reflect.md)
 
 ### Discovery, context, and rules
-- [context-files.md](../../docs/context-files.md), [rulebook-matching-pipeline.md](../../docs/internal/rulebook-matching-pipeline.md)
-- [advisor-watchdog.md](../../docs/advisor-watchdog.md), [fs-scan-cache-architecture.md](../../docs/internal/fs-scan-cache-architecture.md), [tree.md](../../docs/tree.md)
+- [context-files.md](../../docs/handbook/src/context/context-files.md), [rulebook-matching-pipeline.md](../../docs/internal/rulebook-matching-pipeline.md)
+- [advisor-watchdog.md](../../docs/handbook/src/features/advisor.md), [fs-scan-cache-architecture.md](../../docs/internal/fs-scan-cache-architecture.md), [tree.md](../../docs/handbook/src/reference/tree-command.md)
 
 ### TUI and theming
-- [tui.md](../../docs/tui.md), [tui-core-renderer.md](../../docs/internal/tui-core-renderer.md), [tui-runtime-internals.md](../../docs/internal/tui-runtime-internals.md)
-- [theme.md](../../docs/theme.md)
+- [tui.md](../../docs/handbook/src/architecture/tui.md), [tui-core-renderer.md](../../docs/internal/tui-core-renderer.md), [tui-runtime-internals.md](../../docs/internal/tui-runtime-internals.md)
+- [theme.md](../../docs/handbook/src/reference/theme.md)
 
 ### Natives (`crates/veyyon-natives`, `packages/natives`)
 - [natives-architecture.md](../../docs/internal/natives-architecture.md), [natives-addon-loader-runtime.md](../../docs/internal/natives-addon-loader-runtime.md), [natives-binding-contract.md](../../docs/internal/natives-binding-contract.md)
@@ -185,16 +186,16 @@ Top-level entry modules: `cli.ts`, `main.ts`, `sdk.ts`, `index.ts` (SDK barrel),
 
 | To add… | Start here |
 |---|---|
-| A built-in tool | `src/tools/index.ts` (`BUILTIN_TOOLS` / `HIDDEN_TOOLS`) + [custom-tools.md](../../docs/custom-tools.md) |
-| An extension (TS/JS module) | [extensions.md](../../docs/extensions.md), [extension-loading.md](../../docs/internal/extension-loading.md), [skills/authoring-extensions.md](../../docs/skills/authoring-extensions.md) |
-| A hook | `src/extensibility/hooks/types.ts` + [hooks.md](../../docs/hooks.md), [skills/authoring-hooks.md](../../docs/skills/authoring-hooks.md) |
+| A built-in tool | `src/tools/index.ts` (`BUILTIN_TOOLS` / `HIDDEN_TOOLS`) + [custom-tools.md](../../docs/handbook/src/using/custom-tools.md) |
+| An extension (TS/JS module) | [extensions.md](../../docs/handbook/src/features/extensions.md), [extension-loading.md](../../docs/internal/extension-loading.md), [skills/authoring-extensions.md](../../docs/handbook/src/features/extensions-authoring.md) |
+| A hook | `src/extensibility/hooks/types.ts` + [hooks.md](../../docs/handbook/src/reference/hooks.md), [skills/authoring-hooks.md](../../docs/handbook/src/features/hooks-authoring.md) |
 | A slash command | [slash-command-internals.md](../../docs/internal/slash-command-internals.md) |
-| An RPC command | `src/modes/rpc/rpc-types.ts` + [rpc.md](../../docs/rpc.md) |
-| A skill | [skills.md](../../docs/skills.md) |
-| A marketplace plugin | [marketplace.md](../../docs/marketplace.md), [plugin-manager-installer-plumbing.md](../../docs/internal/plugin-manager-installer-plumbing.md), [skills/authoring-marketplaces.md](../../docs/skills/authoring-marketplaces.md), [gemini-manifest-extensions.md](../../docs/internal/gemini-manifest-extensions.md) |
-| A custom MCP tool/server | [mcp-server-tool-authoring.md](../../docs/internal/mcp-server-tool-authoring.md), [custom-tools.md](../../docs/custom-tools.md) |
+| An RPC command | `src/modes/rpc/rpc-types.ts` + [rpc.md](../../docs/handbook/src/reference/rpc.md) |
+| A skill | [skills.md](../../docs/handbook/src/reference/skills.md) |
+| A marketplace plugin | [marketplace.md](../../docs/handbook/src/features/marketplace.md), [plugin-manager-installer-plumbing.md](../../docs/internal/plugin-manager-installer-plumbing.md), [skills/authoring-marketplaces.md](../../docs/handbook/src/features/marketplace-authoring.md), [gemini-manifest-extensions.md](../../docs/internal/gemini-manifest-extensions.md) |
+| A custom MCP tool/server | [mcp-server-tool-authoring.md](../../docs/internal/mcp-server-tool-authoring.md), [custom-tools.md](../../docs/handbook/src/using/custom-tools.md) |
 | A provider | [adding-a-provider.md](../../docs/internal/adding-a-provider.md) |
-| Programmatic/SDK use | [sdk.md](../../docs/sdk.md) |
+| Programmatic/SDK use | [sdk.md](../../docs/handbook/src/reference/sdk.md) |
 
 See also `AGENTS.md` at the repo root for repo-wide conventions (Bun-over-Node,
 logging, TUI sanitization, generated files, changelog, releasing).

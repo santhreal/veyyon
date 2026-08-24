@@ -19,6 +19,13 @@
  * the real entry points, with exact byte counts rather than "shorter than the
  * input". A per-field cap that does not compose into a stated total is the
  * thing this guards.
+ *
+ * The character ceiling is the SECOND cut a hostile body takes. The first is the
+ * 64 KiB read ceiling in `error/error-body.ts`, which is why the entry-point
+ * expectations below name the bytes that were read rather than the size of the
+ * page on the wire: 200 KB is never allocated any more. The two cuts report in
+ * one note on purpose — two adjacent `[truncated, …]` brackets disagreed about
+ * what "total" meant.
  */
 import { describe, expect, it } from "bun:test";
 import { AnthropicApiError } from "@veyyon/ai/error";
@@ -27,11 +34,15 @@ import {
 	MAX_PROVIDER_ERROR_DETAIL_CHARS,
 	NO_PROVIDER_ERROR_DETAIL,
 } from "@veyyon/ai/error/detail-bounds";
+import { MAX_PROVIDER_ERROR_BODY_BYTES } from "@veyyon/ai/error/error-body";
 import { parseCodexError } from "@veyyon/ai/providers/openai-codex/response-handler";
 
 /** A gateway HTML page, far past anything a real provider envelope carries. */
 const HOSTILE_PAGE = `<!doctype html><html><body>${"A".repeat(200_000)}</body></html>`;
 const HOSTILE_LENGTH = 200_041;
+/** Every entry point stops reading here, so this is the size the note reports. */
+const READ = MAX_PROVIDER_ERROR_BODY_BYTES;
+const READ_NOTE = `[truncated, showing 4096 of ${READ} chars read, read stopped at ${READ} bytes]`;
 
 describe("boundProviderErrorDetail", () => {
 	it("is 4096, the value the busiest path already used", () => {
@@ -87,9 +98,9 @@ describe("provider entry points inherit the ceiling", () => {
 
 		expect(error.status).toBe(429);
 		expect(error.requestId).toBe("req-1");
-		expect(error.message).toBe(`429 ${HOSTILE_PAGE.slice(0, 4096)} [truncated, ${HOSTILE_LENGTH} chars total]`);
+		expect(error.message).toBe(`429 ${HOSTILE_PAGE.slice(0, 4096)} ${READ_NOTE}`);
 		// "429 " plus the bounded detail: the whole message, not just the field.
-		expect(error.message.length).toBe(4132);
+		expect(error.message.length).toBe(4175);
 	});
 
 	it("still says 'no body' for an empty Anthropic response", async () => {
@@ -101,16 +112,19 @@ describe("provider entry points inherit the ceiling", () => {
 	/**
 	 * The Codex path is the one where the raw body survives furthest: `message`
 	 * is seeded from the raw text and only replaced when the body parses as a
-	 * Codex envelope, so a proxy page skips every later assignment.
+	 * Codex envelope, so a proxy page skips every later assignment. `raw` is not
+	 * character-capped, because it feeds classification rather than a message —
+	 * but it is byte-capped, because the read that produced it stopped at the
+	 * ceiling. 200 KB never existed in this process.
 	 */
 	it("bounds a Codex non-JSON body while keeping the raw text for classification", async () => {
 		const info = await parseCodexError(new Response(HOSTILE_PAGE, { status: 502 }));
 
-		expect(info.message).toBe(`${HOSTILE_PAGE.slice(0, 4096)} [truncated, ${HOSTILE_LENGTH} chars total]`);
-		expect(info.message.length).toBe(4128);
+		expect(info.message).toBe(`${HOSTILE_PAGE.slice(0, 4096)} ${READ_NOTE}`);
+		expect(info.message.length).toBe(4171);
 		expect(info.status).toBe(502);
-		// Unbounded on purpose: `raw` feeds classification, never a rendered message.
-		expect(info.raw).toHaveLength(HOSTILE_LENGTH);
+		expect(info.raw).toHaveLength(READ);
+		expect(HOSTILE_LENGTH).toBeGreaterThan(READ);
 	});
 
 	it("bounds an oversized Codex envelope message", async () => {

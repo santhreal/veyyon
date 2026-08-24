@@ -6,11 +6,14 @@ import { isOfficialAnthropicApiUrl } from "@veyyon/catalog/compat/anthropic";
 import { mapEffortToAnthropicAdaptiveEffort } from "@veyyon/catalog/model-thinking";
 import { calculateCost, discardAttemptUsage, emptyCost, emptyUsage, getBundledModel } from "@veyyon/catalog/models";
 import { ANTHROPIC_API_ENDPOINT } from "@veyyon/catalog/provider-endpoints";
+import type { ProviderAnthropicMessagesCapability } from "@veyyon/catalog/provider-models/wire-capabilities";
+import { providerWireCapabilities } from "@veyyon/catalog/provider-models/wire-capabilities";
 import { isAnthropicOAuthToken } from "@veyyon/catalog/utils";
 import { ANTHROPIC_WEB_SEARCH_TOOL, CLAUDE_CODE_VERSION as claudeCodeVersion } from "@veyyon/catalog/wire/anthropic";
 import { parseGitHubCopilotApiKey } from "@veyyon/catalog/wire/github-copilot";
 import { getInstallId } from "@veyyon/utils/dirs";
 import { $env } from "@veyyon/utils/env";
+import { DEFAULT_MAX_DELAY_MS } from "@veyyon/utils/fetch-retry";
 import { isEnoent } from "@veyyon/utils/fs-error";
 import { parseJsonWithRepair, parseStreamingJsonThrottled } from "@veyyon/utils/json-parse";
 import * as logger from "@veyyon/utils/logger";
@@ -59,7 +62,7 @@ import type {
 	ToolResultMessage,
 	Usage,
 } from "../types";
-import { EMPTY_ERROR_TOOL_RESULT_TEXT } from "../types";
+import { EMPTY_ERROR_TOOL_RESULT_TEXT, realizesPriorityServiceTier } from "../types";
 import { isRecord, normalizeSystemPrompts, normalizeToolCallId, resolveCacheRetention } from "../utils";
 import { createAbortSourceTracker } from "../utils/abort";
 import {
@@ -70,6 +73,7 @@ import {
 } from "../utils/block-symbols";
 import { withEmptyCompletionRetry } from "../utils/empty-completion-retry";
 import { AssistantMessageEventStream } from "../utils/event-stream";
+import { isPreResponseStall, openStallLadderBudget } from "../utils/first-event-budget";
 import { isFoundryEnabled } from "../utils/foundry";
 import { finalizeErrorMessage, type RawHttpRequestDump } from "../utils/http-inspector";
 import { getStreamFirstEventTimeoutMs, getStreamIdleTimeoutMs, iterateWithIdleTimeout } from "../utils/idle-iterator";
@@ -523,6 +527,15 @@ export const claudeCodeSystemInstruction = "You are a Claude agent, built on Ant
 // fingerprint. API-key requests keep the full model ceiling.
 export const CLAUDE_CODE_MAX_OUTPUT_TOKENS = 64000;
 
+/**
+ * What the model's provider declares about this wire: which credential it takes,
+ * whether it is Anthropic's own endpoint, and which request features it rejects.
+ * Every branch below reads this instead of comparing a provider id.
+ */
+function anthropicWire(model: Pick<Model<"anthropic-messages">, "provider">): ProviderAnthropicMessagesCapability {
+	return providerWireCapabilities(model.provider)?.anthropicMessages ?? {};
+}
+
 export function mapStainlessOs(platform: string): "MacOS" | "Windows" | "Linux" | "FreeBSD" | `Other::${string}` {
 	switch (platform.toLowerCase()) {
 		case "darwin":
@@ -831,7 +844,7 @@ function getUmansWebSearchProvider(headers: Record<string, string> | undefined):
 }
 
 function isUmansAnthropicModel(model: Model<"anthropic-messages">): boolean {
-	return model.provider === "umans" || model.baseUrl.toLowerCase().includes("api.code.umans.ai");
+	return anthropicWire(model).gatewayWebSearch === true || model.baseUrl.toLowerCase().includes("api.code.umans.ai");
 }
 
 function getUmansWebSearchHeader(
@@ -1248,16 +1261,17 @@ function foundryTlsOptionsCacheKey(): string {
 }
 
 function resolveAnthropicBaseUrl(model: Model<"anthropic-messages">, apiKey?: string): string | undefined {
-	if (model.provider === "github-copilot") {
+	const wire = anthropicWire(model);
+	if (wire.credential === "copilot-bearer") {
 		return normalizeAnthropicBaseUrl(resolveGitHubCopilotBaseUrl(model.baseUrl, apiKey) ?? model.baseUrl);
 	}
-	if (model.provider === "anthropic" && isFoundryEnabled()) {
+	if (wire.directEndpoint && isFoundryEnabled()) {
 		const foundryBaseUrl = normalizeAnthropicBaseUrl($env.FOUNDRY_BASE_URL);
 		if (foundryBaseUrl) {
 			return foundryBaseUrl;
 		}
 	}
-	if (model.provider === "anthropic") {
+	if (wire.directEndpoint) {
 		return normalizeAnthropicBaseUrl(model.baseUrl) ?? ANTHROPIC_API_ENDPOINT;
 	}
 	return normalizeAnthropicBaseUrl(model.baseUrl);
@@ -1300,7 +1314,7 @@ export function resolveAnthropicCustomHeadersForBaseUrl(
 }
 
 function resolveAnthropicCustomHeaders(model: Model<"anthropic-messages">): Record<string, string> | undefined {
-	if (model.provider !== "anthropic") return undefined;
+	if (!anthropicWire(model).directEndpoint) return undefined;
 	return resolveAnthropicCustomHeadersForBaseUrl(model.baseUrl);
 }
 
@@ -1328,7 +1342,7 @@ function resolvePemValue(value: string | undefined, name: string): string | unde
 }
 
 function resolveFoundryTlsOptions(model: Model<"anthropic-messages">): FoundryTlsOptions | undefined {
-	if (model.provider !== "anthropic") return undefined;
+	if (!anthropicWire(model).directEndpoint) return undefined;
 	if (!isFoundryEnabled()) return undefined;
 
 	const cacheKey = foundryTlsOptionsCacheKey();
@@ -1357,7 +1371,7 @@ function buildClaudeCodeTlsFetchOptions(
 	model: Model<"anthropic-messages">,
 	baseUrl: string | undefined,
 ): AnthropicFetchOptions | undefined {
-	if (model.provider !== "anthropic") return undefined;
+	if (!anthropicWire(model).directEndpoint) return undefined;
 	if (!baseUrl) return undefined;
 
 	let serverName: string;
@@ -1615,15 +1629,18 @@ function shouldIgnoreAnthropicPreambleEvent(eventType: unknown): boolean {
 
 /**
  * Whether an Anthropic (or Copilot-over-Anthropic) stream error should be
- * retried. The classification lives in {@link AIError.isProviderRetryableError};
- * this wrapper injects the Copilot-specific `model_not_supported` transient
- * check, which the error module must not import directly.
+ * retried. The classification is {@link AIError.isProviderRetryableError}; this
+ * supplies the one hook it cannot import — Copilot's `model_not_supported`,
+ * which is transient only when the provider is Copilot. It carries its own name
+ * because a second `isProviderRetryableError` in the package made a caller's
+ * retry decision depend on which module it happened to import.
  */
-export function isProviderRetryableError(error: unknown, provider?: string): boolean {
+export function isAnthropicStreamRetryable(error: unknown, provider?: string): boolean {
 	return AIError.isProviderRetryableError(error, {
 		provider,
-		isProviderTransient:
-			provider === "github-copilot" ? (err): boolean => AIError.isCopilotTransientModelError(err) : undefined,
+		isProviderTransient: providerWireCapabilities(provider)?.anthropicMessages?.transientModelErrors
+			? (err): boolean => AIError.isCopilotTransientModelError(err)
+			: undefined,
 	});
 }
 
@@ -1872,7 +1889,7 @@ const streamAnthropicOnce = (
 			// an error event instead of an unhandled rejection that leaves the stream
 			// (and any consumer awaiting `result()`) hanging forever.
 			const copilotDynamicHeaders =
-				model.provider === "github-copilot"
+				anthropicWire(model).credential === "copilot-bearer"
 					? buildCopilotDynamicHeaders({
 							messages: context.messages,
 							hasImages: hasCopilotVisionInput(context.messages),
@@ -1906,7 +1923,7 @@ const streamAnthropicOnce = (
 				isOAuthToken = false;
 			} else {
 				const extraBetas = normalizeExtraBetas(options?.betas);
-				const wantsAnthropicPriority = model.provider === "anthropic" && options?.serviceTier === "priority";
+				const wantsAnthropicPriority = realizesPriorityServiceTier(options?.serviceTier, model);
 				// Skip the fast-mode beta when this session already learned the
 				// endpoint+model rejects fast mode; `speed` is dropped from the params
 				// too (dropFastMode), so the request stays a faithful non-fast request.
@@ -1950,8 +1967,7 @@ const streamAnthropicOnce = (
 				if (
 					model.reasoning &&
 					options?.thinkingEnabled &&
-					model.provider !== "github-copilot" &&
-					model.provider !== "google-vertex" &&
+					!anthropicWire(model).rejectsContextManagement &&
 					!extraBetas.includes(contextManagementBeta)
 				) {
 					extraBetas.push(contextManagementBeta);
@@ -2133,6 +2149,13 @@ const streamAnthropicOnce = (
 			// Provider-level transport/rate-limit failures: only before any streamed content starts.
 			// Malformed envelopes/JSON: only before replay-unsafe text/tool events are visible on this stream.
 			let providerRetryAttempt = 0;
+			// The declared first-event timeout is one attempt's deadline; the
+			// pre-first-event PHASE is that deadline times the stall allowance.
+			// A stall retried PROVIDER_MAX_RETRIES times used to multiply the
+			// caller's number by the ladder plus its backoff, so a dead endpoint
+			// held a turn for minutes under a budget that said one hundred
+			// seconds. One retry survives; the second stall ends the phase.
+			const firstEventBudget = openStallLadderBudget(firstEventTimeoutMs);
 			const firstEventTimeoutAbortError = new AIError.StreamTimeoutError(
 				"Anthropic stream timed out while waiting for the first event",
 			);
@@ -2714,8 +2737,7 @@ const streamAnthropicOnce = (
 					}
 					if (
 						!dropFastMode &&
-						model.provider === "anthropic" &&
-						options?.serviceTier === "priority" &&
+						realizesPriorityServiceTier(options?.serviceTier, model) &&
 						firstTokenTime === undefined &&
 						AIError.isFastModeUnsupported(streamFailure)
 					) {
@@ -2752,10 +2774,26 @@ const streamAnthropicOnce = (
 						!isLocalIdleTimeout &&
 						firstTokenTime === undefined &&
 						!streamedReplayUnsafeContent &&
-						isProviderRetryableError(streamFailure, model.provider);
+						isAnthropicStreamRetryable(streamFailure, model.provider);
+					// A failure where NOTHING came back may not outlive the declared
+					// first-event budget. The server never answered, so another
+					// attempt cannot produce an event any sooner than this one did,
+					// and the caller's number is the whole point of asking. Two
+					// shapes qualify: a stall, and an envelope that ended before
+					// `message_start`. The second is retryable and was retried the
+					// full ten times with exponential backoff, which spent 49s of a
+					// declared 5s budget on an endpoint that answered `200` with an
+					// empty body. A 429 is deliberately NOT in this set: the server
+					// answered, and its retry entitlement is bounded by the caller's
+					// `maxRetryDelayMs` below rather than by this fence.
+					const nothingArrivedOutlivedBudget =
+						firstTokenTime === undefined &&
+						(isPreResponseStall(streamFailure) || AIError.isEmptyStreamEnvelopeError(streamFailure)) &&
+						firstEventBudget.spent();
 					if (
 						activeAbortTracker.wasCallerAbort() ||
 						providerRetryAttempt >= PROVIDER_MAX_RETRIES ||
+						nothingArrivedOutlivedBudget ||
 						(!canRetryTransientEnvelopeFailure && !canRetryProviderFailure)
 					) {
 						throw streamFailure;
@@ -2764,11 +2802,19 @@ const streamAnthropicOnce = (
 					const backoffDelayMs = calculateAnthropicRetryDelayMs(providerRetryAttempt - 1);
 					// Honor the server's retry hint (`retry-after-ms`/`retry-after`) on
 					// 429/529-style failures: retrying sooner than the server asked is a
-					// guaranteed failure that just burns the retry budget.
+					// guaranteed failure that just burns the retry budget. Honor it up to
+					// the longest wait the caller will tolerate, and no further: the hint
+					// was taken verbatim, so a `retry-after: 86400` slept for a day, ten
+					// times over, with nothing armed to interrupt it — the caller's
+					// first-event watchdog covers a request, not the gap between two.
+					// Past the cap the refusal is the answer, which is the rule
+					// `fetchWithRetry` already states for every other provider.
 					const headerDelayMs =
 						streamFailure instanceof Error && streamFailure instanceof AnthropicApiError
 							? retryDelayFromHeaders(streamFailure.headers)
 							: undefined;
+					const maxRetryDelayMs = options?.maxRetryDelayMs ?? DEFAULT_MAX_DELAY_MS;
+					if (headerDelayMs !== undefined && headerDelayMs > maxRetryDelayMs) throw streamFailure;
 					const delayMs = headerDelayMs !== undefined ? Math.max(headerDelayMs, backoffDelayMs) : backoffDelayMs;
 					if (options?.providerRetryWait) {
 						await options.providerRetryWait(delayMs, options.signal);
@@ -2781,7 +2827,7 @@ const streamAnthropicOnce = (
 			}
 			output.duration = performance.now() - startTime;
 			if (firstTokenTime) output.ttft = firstTokenTime - startTime;
-			if (dropFastMode && model.provider === "anthropic" && options?.serviceTier === "priority") {
+			if (dropFastMode && realizesPriorityServiceTier(options?.serviceTier, model)) {
 				output.disabledFeatures = [...(output.disabledFeatures ?? []), "priority"];
 			}
 			if (forceDemoteUnsignedThinking && model.compat.replayUnsignedThinking) {
@@ -2926,7 +2972,8 @@ export function buildAnthropicClientOptions(args: AnthropicClientOptionsArgs): A
 	// Only OAuth requests inject the CC billing header; no API-key request can ever
 	// contain it, so there is no need to install the rewriter for those.
 	const cchFetch = oauthToken ? wrapFetchForCch(baseFetch) : baseFetch;
-	if (model.provider === "github-copilot") {
+	const wire = anthropicWire(model);
+	if (wire.credential === "copilot-bearer") {
 		const copilotApiKey = parseGitHubCopilotApiKey(apiKey).accessToken;
 		// The GitHub Copilot Anthropic proxy doesn't accept Anthropic beta
 		// features (and the catalog already forces `supportsEagerToolInputStreaming
@@ -2980,7 +3027,7 @@ export function buildAnthropicClientOptions(args: AnthropicClientOptionsArgs): A
 			headers,
 			dynamicHeaders,
 		),
-		isCloudflareAiGateway: model.provider === "cloudflare-ai-gateway",
+		isCloudflareAiGateway: wire.credential === "gateway-managed",
 		claudeCodeSessionId,
 		claudeCodeBetas: oauthToken
 			? buildClaudeCodeBetas(
@@ -2992,7 +3039,7 @@ export function buildAnthropicClientOptions(args: AnthropicClientOptionsArgs): A
 			: [],
 	});
 
-	if (model.provider === "cloudflare-ai-gateway") {
+	if (wire.credential === "gateway-managed") {
 		return {
 			isOAuthToken: false,
 			apiKey: null,
@@ -3005,9 +3052,9 @@ export function buildAnthropicClientOptions(args: AnthropicClientOptionsArgs): A
 		};
 	}
 
-	// OpenCode Go and Umans validate Anthropic-compatible API-key auth through
-	// `X-Api-Key`; bearer-only requests reach the endpoint but fail auth.
-	if (model.provider === "opencode-go" || model.provider === "umans") {
+	// A provider declaring `api-key-header` validates Anthropic-compatible API-key
+	// auth through `X-Api-Key`; a bearer-only request reaches it but fails auth.
+	if (wire.credential === "api-key-header") {
 		delete defaultHeaders.Authorization;
 		return {
 			isOAuthToken: false,
@@ -3020,9 +3067,9 @@ export function buildAnthropicClientOptions(args: AnthropicClientOptionsArgs): A
 			fetchOptions,
 		};
 	}
-	// OpenCode Zen's Anthropic-compatible gateway accepts bearer auth only;
-	// leaving apiKey set lets the client add X-Api-Key, which upstream Alibaba rejects.
-	if (model.provider === "opencode-zen") {
+	// A `bearer-only` gateway rejects the client-added `X-Api-Key`, so the key is
+	// dropped and only the `Authorization` header the request already carries goes out.
+	if (wire.credential === "bearer-only") {
 		return {
 			isOAuthToken: false,
 			apiKey: null,
@@ -3461,7 +3508,7 @@ function buildParams(
 		tools = convertTools(
 			context.tools,
 			isOAuthToken,
-			disableStrictTools || model.provider === "github-copilot",
+			disableStrictTools || anthropicWire(model).rejectsBetas === true,
 			model.compat.supportsEagerToolInputStreaming,
 			model.compat.escapeBuiltinToolNames,
 			useUmansGatewayWebSearch,
@@ -3545,8 +3592,7 @@ function buildParams(
 	// Anthropic HTTP beta header this code can add.
 	const shouldKeepThinkingContext =
 		!options?.client &&
-		model.provider !== "github-copilot" &&
-		model.provider !== "google-vertex" &&
+		!anthropicWire(model).rejectsContextManagement &&
 		(thinking?.type === "adaptive" || thinking?.type === "enabled");
 	const contextManagement = shouldKeepThinkingContext
 		? { edits: [{ type: "clear_thinking_20251015" as const, keep: "all" as const }] }
@@ -3608,7 +3654,7 @@ function buildParams(
 			seqs.length > ANTHROPIC_STOP_SEQUENCES_MAX ? seqs.slice(0, ANTHROPIC_STOP_SEQUENCES_MAX) : seqs;
 	}
 
-	if (model.provider === "anthropic" && options?.serviceTier === "priority") {
+	if (realizesPriorityServiceTier(options?.serviceTier, model)) {
 		params.speed = "fast";
 	}
 

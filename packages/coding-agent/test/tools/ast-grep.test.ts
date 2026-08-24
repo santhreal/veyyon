@@ -3,8 +3,12 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
+import { getThemeByName } from "@veyyon/coding-agent/modes/theme/theme";
 import { createTools, type ToolSession } from "@veyyon/coding-agent/tools";
-import { removeWithRetries } from "@veyyon/utils";
+import { astGrepToolRenderer } from "@veyyon/coding-agent/tools/ast-grep";
+import { visibleWidth } from "@veyyon/tui";
+import { removeWithRetries, sanitizeText } from "@veyyon/utils";
+import { useFullColor } from "../helpers/theme-assertions";
 
 function createTestSession(cwd = "/tmp/test", overrides: Partial<ToolSession> = {}): ToolSession {
 	return {
@@ -229,6 +233,138 @@ describe("ast_grep zero-match diagnostics", () => {
 			expect(text).not.toContain("NO FILES were searched");
 		} finally {
 			await removeWithRetries(tempDir);
+		}
+	});
+});
+
+describe("astGrepToolRenderer", () => {
+	useFullColor();
+
+	it("renders matched groups with railed lines and no tree connectors", async () => {
+		const theme = await getThemeByName("dark");
+		expect(theme).toBeDefined();
+		const uiTheme = theme!;
+
+		const result = {
+			content: [{ type: "text", text: "" }],
+			details: {
+				matchCount: 2,
+				fileCount: 2,
+				filesSearched: 10,
+				limitReached: false,
+				displayContent: [
+					"# src/",
+					"## first.ts",
+					"  *10│const a = 1;",
+					"",
+					"# src/",
+					"## second.ts",
+					"  *20│const b = 2;",
+				].join("\n"),
+			},
+		};
+
+		const rendered = astGrepToolRenderer
+			.renderResult(result as never, { expanded: true, isPartial: false }, uiTheme, { pat: "const $A = $_" })
+			.render(240);
+		const plainLines = sanitizeText(rendered.join("\n")).split("\n");
+		const headerLine = plainLines[0]!;
+		const bodyLines = plainLines.slice(1);
+
+		expect(headerLine).toContain("AST Grep");
+		expect(headerLine).toContain("2 matches");
+		expect(headerLine).toContain("2 files");
+
+		expect(bodyLines.length).toBeGreaterThan(0);
+		expect(bodyLines.every(line => line.trimStart().startsWith(uiTheme.symbol("block.rail")))).toBe(true);
+		for (const line of bodyLines) {
+			expect(line).not.toMatch(/[├└]/);
+		}
+	});
+
+	it("truncates collapsed results and appends a dim summary row on the rail", async () => {
+		const theme = await getThemeByName("dark");
+		expect(theme).toBeDefined();
+		const uiTheme = theme!;
+
+		// 10 groups of 3 lines each = 30 lines, which exceeds COLLAPSED_MATCH_LIMIT (16)
+		const groups = Array.from({ length: 10 }, (_, i) => [
+			`# src/`,
+			`## file${i}.ts`,
+			`  *${i + 1}│const x${i} = true;`,
+		]);
+		const displayContent = groups.map(g => g.join("\n")).join("\n\n");
+
+		const result = {
+			content: [{ type: "text", text: "" }],
+			details: {
+				matchCount: 10,
+				fileCount: 10,
+				filesSearched: 20,
+				limitReached: false,
+				displayContent,
+			},
+		};
+
+		const collapsed = astGrepToolRenderer.renderResult(
+			result as never,
+			{ expanded: false, isPartial: false },
+			uiTheme,
+			{ pat: "const $A = true" },
+		);
+		const plainLines = sanitizeText(collapsed.render(240).join("\n")).split("\n");
+		const bodyLines = plainLines.slice(1);
+
+		// Budgeted: must fit collapsed limit and have summary row
+		expect(bodyLines.length).toBeLessThan(30);
+		expect(bodyLines.some(line => line.includes("more matches"))).toBe(true);
+		expect(bodyLines.every(line => line.trimStart().startsWith(uiTheme.symbol("block.rail")))).toBe(true);
+		for (const line of bodyLines) {
+			expect(line).not.toMatch(/[├└]/);
+		}
+
+		const expanded = astGrepToolRenderer.renderResult(
+			result as never,
+			{ expanded: true, isPartial: false },
+			uiTheme,
+			{ pat: "const $A = true" },
+		);
+		const expandedLines = sanitizeText(expanded.render(240).join("\n")).split("\n");
+		const expandedBody = expandedLines.slice(1);
+		expect(expandedBody.length).toBeGreaterThan(bodyLines.length);
+		expect(expandedBody.some(line => line.includes("more matches"))).toBe(false);
+	});
+
+	it("budgets body width against outputBlockContentWidth so lines do not overflow the outer width", async () => {
+		const theme = await getThemeByName("dark");
+		expect(theme).toBeDefined();
+		const uiTheme = theme!;
+
+		const result = {
+			content: [{ type: "text", text: "" }],
+			details: {
+				matchCount: 1,
+				fileCount: 1,
+				filesSearched: 5,
+				limitReached: false,
+				displayContent: [
+					"# src/",
+					"## very-long-file-name-that-exceeds-the-narrow-terminal-width.ts",
+					"  *1│const veryLongVariableNameToEnsureWidthBudgetTruncatesProperly = true;",
+				].join("\n"),
+			},
+		};
+
+		const width = 40;
+		const renderedLines = astGrepToolRenderer
+			.renderResult(result as never, { expanded: true, isPartial: false }, uiTheme, { pat: "const $A = $_" })
+			.render(width);
+
+		// Exactly 1 header + 3 body rows: if body lines are budgeted against outer width
+		// instead of outputBlockContentWidth, renderOutputBlock re-wraps them and overflows the line count.
+		expect(renderedLines).toHaveLength(4);
+		for (const line of renderedLines.slice(1)) {
+			expect(visibleWidth(line)).toBeLessThanOrEqual(width);
 		}
 	});
 });

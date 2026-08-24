@@ -4329,6 +4329,14 @@ export function anthropicModelManagerOptions(
 ): ModelManagerOptions<"anthropic-messages"> {
 	const apiKey = config?.apiKey;
 	const baseUrl = config?.baseUrl ?? ANTHROPIC_BASE_URL;
+	// Anthropic's REST API is versioned at `/v1`, and the SDK takes the host
+	// without it: it appends `/v1/messages` itself. So an operator who points
+	// this provider at `https://api.anthropic.com` streams fine and discovers
+	// nothing — the catalog read asked for `/models` and the endpoint answered
+	// 404, fifty-five times in the recorded logs, each one a warn nobody could
+	// act on. Discovery gets the versioned base; the model specs keep the base
+	// the caller configured, because that is what the SDK is handed.
+	const discoveryBaseUrl = toAnthropicDiscoveryBaseUrl(baseUrl);
 	return {
 		providerId: "anthropic",
 		modelsDev: {
@@ -4357,7 +4365,7 @@ export function anthropicModelManagerOptions(
 						onFailure: hooks?.onFailure,
 						api: "anthropic-messages",
 						provider: "anthropic",
-						baseUrl,
+						baseUrl: discoveryBaseUrl,
 						headers: buildAnthropicDiscoveryHeaders(apiKey),
 						mapModel: (
 							entry: OpenAICompatibleModelRecord,

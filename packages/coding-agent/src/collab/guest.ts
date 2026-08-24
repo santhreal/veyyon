@@ -47,9 +47,8 @@ export const COLLAB_GUEST_ALLOWED_COMMANDS: Record<string, true> = {
 	dump: true,
 	export: true,
 	copy: true,
-	help: true,
+	welcome: true, // `/help` is an alias of `/welcome`; the gate keys on the canonical name
 	hotkeys: true,
-	theme: true,
 	settings: true,
 	leave: true,
 	collab: true,

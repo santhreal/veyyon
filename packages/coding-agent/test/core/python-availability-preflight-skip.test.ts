@@ -13,7 +13,7 @@
  *
  * Both inputs to the short-circuit are asserted, because deleting the flag writes is
  * only safe if the runtime signal really is sufficient, and the flag itself is a
- * documented operator escape hatch (`docs/environment-variables.md`) that must keep
+ * documented operator escape hatch (`docs/handbook/src/reference/environment-complete.md`) that must keep
  * working for someone who is not running tests at all.
  */
 import { afterEach, describe, expect, it } from "bun:test";

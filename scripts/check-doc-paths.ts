@@ -57,11 +57,10 @@ export interface PathCheckResult {
  * `~/.veyyon/config.yml`, `and/or`, other projects' trees. Anchoring on real
  * top-level directories is what keeps the gate's failures worth reading.
  *
- * `.veyyon/` is deliberately absent, even though it is a real tracked directory.
- * It names two different things in this repo's docs and only one of them is a
- * file here: `.veyyon/skills/ui` is tracked, while `.veyyon/mcp.json`,
- * `.veyyon/settings.json` and `.veyyon/RULES.md` are files a USER creates in
- * THEIR project. Every page that teaches project configuration writes the second
+ * `.veyyon/` is deliberately absent. In this repo's docs it names files a USER
+ * creates in THEIR project — `.veyyon/mcp.json`, `.veyyon/settings.json`,
+ * `.veyyon/RULES.md` — not files that exist here. Every page that teaches project
+ * configuration writes that
  * kind, so anchoring on the prefix produces a screenful of failures that are all
  * the documentation working correctly, and a gate whose failures are usually
  * wrong is a gate people turn off.
@@ -252,34 +251,33 @@ function resolvesFor(rootDir: string, relFile: string, target: string): boolean 
  *    `scripts/foo.js` in a prompt teaching skill invocation), which by definition
  *    does not exist yet;
  *  - a path in the USER'S project rather than this one
- *    (`.github/copilot-instructions.md`, the illustrative
- *    `packages/server/src/database/connection.ts` that argot's docs use as a
- *    stand-in for "some long path in your repo").
+ *    (`.github/copilot-instructions.md`).
  *
- * An entry here is a promise to remove it, and two have been kept. The list used
- * to carry `docs/internal/natives-architecture.md:77`, which named a generator
- * script for the per-platform natives leaf packages. The script did not move, it
- * was deleted when the npm publish channel was removed, and the doc had gone on
- * describing it. The doc now describes what actually ships, so the path is gone
- * and the entry with it. It also carried `docs/context-files.md:151:docs/setup.md`,
- * which was only the filler path in an example of trailing-punctuation trimming;
- * the example now uses `notes/setup.md`, which names no source root, so it needs
- * no entry at all. Every remaining entry is one of the three kinds above.
+ * An entry here is a promise to remove it, and four have been kept. The list
+ * used to carry `docs/internal/natives-architecture.md:77`, which named a
+ * generator script for the per-platform natives leaf packages. The script did not
+ * move, it was deleted when the npm publish channel was removed, and the doc had
+ * gone on describing it. The doc now describes what actually ships, so the path is
+ * gone and the entry with it. It also carried
+ * `docs/handbook/src/context/context-files.md:151:docs/setup.md`, which was only the filler path in an
+ * example of trailing-punctuation trimming; the example now uses
+ * `notes/setup.md`, which names no source root, so it needs no entry at all. The
+ * last two to go were the illustrative
+ * `packages/server/src/database/connection.ts` in the argot blog post, which the
+ * post now shows only inside its TOML dictionary example, and a fenced block is
+ * not where this gate reads. Every remaining entry is one of the three kinds
+ * above.
  *
  * Adding to this list is deliberately awkward: the exact line number is part of
  * the key, so an entry stops matching the moment the doc is edited around it, and
  * a stale entry is caught by `check-doc-paths.test.ts`.
  */
 export const DEAD_PATH_BASELINE: readonly string[] = Object.freeze([
-	".veyyon/skills/tool-prompt-optimization/SKILL.md:14:scripts/probe.ts",
-	".veyyon/skills/tool-prompt-optimization/SKILL.md:28:scripts/probe-builtin.ts",
-	"docs/context-files.md:64:.github/copilot-instructions.md",
-	"docs/context-files.md:67:.github/instructions/",
-	"docs/context-files.md:243:.github/copilot-instructions.md",
+	"docs/handbook/src/context/context-files.md:64:.github/copilot-instructions.md",
+	"docs/handbook/src/context/context-files.md:67:.github/instructions/",
+	"docs/handbook/src/context/context-files.md:243:.github/copilot-instructions.md",
 	"docs/internal/toolconv/deepseek.md:101:assets/search_tool_trajectory.html",
 	"packages/coding-agent/src/prompts/skills/user-invocation.md:8:scripts/foo.js",
-	"website/blog/argot.md:12:packages/server/src/database/connection.ts",
-	"website/blog/argot.md:43:packages/server/src/database/connection.ts",
 ]);
 
 /** The baseline key for a finding: file, line, and the span exactly as written. */

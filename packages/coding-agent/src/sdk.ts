@@ -98,6 +98,7 @@ import {
 	type ExtensionFactory,
 	ExtensionRunner,
 	ExtensionToolWrapper,
+	type ExtensionTrustOptions,
 	type ExtensionUIContext,
 	type LoadExtensionsResult,
 	loadExtensionFromFactory,
@@ -548,6 +549,15 @@ export interface CreateAgentSessionOptions {
 	 */
 	preloadedExtensionPaths?: string[];
 	/**
+	 * The operator-named subset of {@link preloadedExtensionPaths}: the parent's `--extension`
+	 * flags and `extensions:` entries.
+	 *
+	 * The project-trust gate exempts a path the operator named and withholds one the project scan
+	 * found. A subagent inherits the parent's path list and cannot tell those apart, so without
+	 * this it re-gated the operator's own file and started without it.
+	 */
+	preloadedNamedExtensionPaths?: string[];
+	/**
 	 * Pre-discovered custom-tool source paths from `.veyyon/tools/`, `.claude/tools/`,
 	 * plugins, etc. When provided, the filesystem-scan inside
 	 * `discoverCustomToolPaths()` is skipped — subagents inherit the parent's
@@ -876,7 +886,10 @@ export async function loadSessionExtensions(
 	adoptSpawnedPid?: (pid: number) => void,
 ): Promise<LoadExtensionsResult> {
 	const paths = await discoverSessionExtensionPaths(options, cwd, settings, agentDir);
-	const result = await logger.time("loadExtensions", loadExtensions, paths, cwd, eventBus, adoptSpawnedPid);
+	const result = await logger.time("loadExtensions", loadExtensions, paths, cwd, eventBus, adoptSpawnedPid, {
+		agentDir,
+		configuredPaths: [...(options.additionalExtensionPaths ?? []), ...(settings.get("extensions") ?? [])],
+	});
 	reportExtensionLoadFailures(result);
 	return result;
 }
@@ -901,6 +914,14 @@ function reportExtensionLoadFailures(result: LoadExtensionsResult, operatorNotic
 	for (const { path, error } of result.errors) {
 		logger.error("Failed to load extension", { path, error });
 		operatorNotices?.error("extensions", `${path}: ${error}`);
+	}
+	// Withheld is not a failure and must not read as one, but it MUST be seen: project code the
+	// operator has not approved is silently absent otherwise, and "my repo's extension does
+	// nothing" would be indistinguishable from a broken extension. A warning names the file and
+	// what would make it run.
+	for (const { path, reason } of result.withheld) {
+		logger.warn("Withheld project extension", { path, reason });
+		operatorNotices?.warn("extensions", reason);
 	}
 }
 
@@ -2855,6 +2876,20 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		// the flag and pre-resolved the result already reflects that choice.
 		let extensionPaths: string[];
 		let extensionsResult: LoadExtensionsResult;
+		// The trust gate reads the SESSION's profile, and the paths the operator named are the
+		// operator's own even when they live inside the project. Both `loadExtensions` calls
+		// below used to pass neither: a `--extension ./dev/tool.ts` was withheld as repository
+		// code, and the decision was looked up in whichever profile the process booted with
+		// rather than the one this session runs under.
+		const namedExtensionPaths = [
+			...(options.additionalExtensionPaths ?? []),
+			...(options.preloadedNamedExtensionPaths ?? []),
+			...(settings.get("extensions") ?? []),
+		];
+		const extensionTrustOptions: ExtensionTrustOptions = {
+			agentDir,
+			configuredPaths: namedExtensionPaths,
+		};
 		if (options.preloadedExtensions) {
 			extensionsResult = {
 				...options.preloadedExtensions,
@@ -2878,6 +2913,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				cwd,
 				eventBus,
 				adoptSpawnedPid,
+				extensionTrustOptions,
 			);
 			reportExtensionLoadFailures(extensionsResult, operatorNotices);
 		} else {
@@ -2891,12 +2927,14 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				cwd,
 				eventBus,
 				adoptSpawnedPid,
+				extensionTrustOptions,
 			);
 			reportExtensionLoadFailures(extensionsResult, operatorNotices);
 		}
 		// Forward the source-path list (NOT the loaded instances) so subagents
 		// rebuild their own session-scoped extensions.
 		toolSession.extensionPaths = extensionPaths;
+		toolSession.namedExtensionPaths = namedExtensionPaths;
 
 		// Load inline extensions from factories
 		if (inlineExtensions.length > 0) {
@@ -4623,25 +4661,28 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			});
 		};
 
-		// Auto-learn can immediately trigger a synthetic capture turn after the
-		// first real stop. When a memory backend is selected, install that backend's
-		// per-session state first so the capture turn's `learn` tool observes the
-		// same initialized state as normal memory tools. Other sessions keep memory
-		// startup in the background to preserve the existing startup profile.
+		// The memory backend's start is HYDRATION, not boot: it opens a database and installs this
+		// session's state, and no frame reads either. It used to be awaited here for an auto-learn
+		// session, which put both in front of the first frame so that a tool call minutes later would
+		// find the state already installed. `deferStartupWork` keeps that guarantee at the only place
+		// that needs it — a turn awaits it before running, and every tool call and subagent spawn is
+		// inside a turn — while the frame paints without it. A session with auto-learn off already ran
+		// this unawaited.
 		//
-		// Gated on `autolearn.enabled` to match the tools: `createTools` builds the
-		// `learn`/`manage_skill` registry ONCE at session start and no settings
-		// change rebuilds it, so installing the controller while disabled would let a
-		// mid-session enable fire a nudge pointing at tools the session never built.
-		// Activation is therefore a session-start decision for BOTH the controller
-		// and the tools; the fire-time re-check in `#onAgentEnd` still handles a
-		// mid-session DISABLE. The subscription lives for the session's lifetime; the
-		// reference is intentionally discarded (the listener retains it).
+		// The controller is installed only when `autolearn.enabled` and only for a top-level session,
+		// to match the tools: `createTools` builds the `learn`/`manage_skill` registry ONCE at session
+		// start and no settings change rebuilds it, so installing the controller while disabled would
+		// let a mid-session enable fire a nudge pointing at tools the session never built. Activation
+		// is a session-start decision for BOTH; the fire-time re-check in `#onAgentEnd` still handles a
+		// mid-session DISABLE. The subscription lives for the session's lifetime; the reference is
+		// intentionally discarded (the listener retains it).
+		session.deferStartupWork(
+			logger.time("startMemoryStartupTask", startMemoryBackend).catch(error => {
+				logger.warn("memory backend startup failed", { error: errorMessage(error) });
+			}),
+		);
 		if (settings.get("autolearn.enabled") && taskDepth === 0) {
-			await logger.time("startMemoryStartupTask", startMemoryBackend);
 			new AutoLearnController({ session, settings });
-		} else {
-			void logger.time("startMemoryStartupTask", startMemoryBackend);
 		}
 
 		// Wire MCP manager callbacks to session for reactive tool updates.

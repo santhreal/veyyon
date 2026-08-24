@@ -39,12 +39,9 @@ import {
 } from "../utils/keybinding-matchers";
 import type { HookSelectorSlider } from "./hook-selector";
 import {
-	applyModalReveal,
-	beginModalExit,
 	computeModalDims,
 	hitTestModalChrome,
 	MODAL_SIZING_LARGE,
-	ModalRevealDriver,
 	type ModalShellGeometry,
 	type ModalShortcut,
 	minModalChromeRows,
@@ -121,8 +118,6 @@ export interface PlanReviewOverlayOptions {
 	slider?: HookSelectorSlider;
 	/** Display label for the external-editor key, surfaced in the footer help. */
 	externalEditorLabel?: string;
-	/** Play the open unfold (TOUCH-5). Show site decides via modalRevealEnabled(). */
-	reveal?: boolean;
 	/** Repaint hook for the unfold ticks (the overlay is otherwise static). */
 	requestRender?: () => void;
 }
@@ -133,14 +128,6 @@ const DEFAULT_HELP_SUFFIX = "esc cancel";
 export class PlanReviewOverlay implements Component {
 	#mdTheme: MarkdownTheme;
 	#scrollView: ScrollView;
-	#reveal = new ModalRevealDriver();
-	/**
-	 * Fade out on the shared clock before the host drops this card. The overlay stack keeps painting
-	 * it and stops routing input to it the moment this is called.
-	 */
-	beginOverlayExit(requestRender: () => void, done: () => void): boolean {
-		return beginModalExit(this.#reveal, requestRender, done);
-	}
 
 	#sections: OverlaySection[] = [];
 	#toc: number[] = [];
@@ -188,9 +175,6 @@ export class PlanReviewOverlay implements Component {
 		options: PlanReviewOverlayOptions,
 		private readonly callbacks: PlanReviewOverlayCallbacks,
 	) {
-		if (options.reveal) {
-			this.#reveal.start(() => options.requestRender?.());
-		}
 		this.#mdTheme = getMarkdownTheme();
 		this.#scrollView = new ScrollView([], {
 			height: MIN_BODY_ROWS,
@@ -951,6 +935,6 @@ export class PlanReviewOverlay implements Component {
 		this.#shellGeometry = shell.geometry;
 		this.#bodyRowOffset = shell.geometry?.bodyRowStart ?? 0;
 		this.#sidebarClickMaxCol = sidebarShown ? (shell.geometry?.leftPad ?? 0) + 2 + sidebarWidth + 1 : 0;
-		return applyModalReveal(shell, width, this.#reveal);
+		return shell.lines;
 	}
 }

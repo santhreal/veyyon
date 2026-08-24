@@ -2,11 +2,32 @@
 
 ## [Unreleased]
 
+### Added
+
+- `Image` accepts an `onDisplayed` callback and reports the cause each time an image starts or stops falling back to a placeholder.
+
+### Changed
+
+- `imageFallback` takes the file name, media type, pixel size and cause of an undrawn image and returns a row naming all four; `ImageFallbackReason` states the cause.
+
+## [1.2.0] - 2026-08-23
+
+### Breaking Changes
+
+- The minimum supported Bun runtime is now 1.4.0.
+
+### Changed
+
+- A streamed markdown frame reads, scans and copies only what arrived. The renderer re-read the settled transcript on every token: two whole-text regex scans for reference definitions and over-nesting, a whole-text normalization pass, a rescan of the frozen token range for a new freeze boundary, three whole-prefix string comparisons, and three copies of every settled row. All of it is now bounded by the arrived tail or answered by string identity, and the settled rows are held as one immutable array copied once, into the array the frame returns — that array is what the render contract hands to callers, so that one copy stays. Streaming 10,000 prose tokens through one component falls from 624ms to 216ms, and the marginal frame at the end of that stream from 0.082ms to 0.010ms. Rendered bytes are unchanged: every frame still byte-matches a cold full render, reference definitions and CR input still fall back to a full lex, and settled-row exposure still resets on a rewritten lineage. `packages/tui/bench/markdown-stream.bench.ts` fails if a frame starts scanning or normalizing the settled prefix again.
+- `sweepSurface`, `SweepSpec` and the sweep entry in `MOTION` are gone: a surface no longer carries a travelling specular highlight, and `fillSurface` is the one material treatment left.
+
 ### Fixed
 
 - A pinned footer's rows are excluded from the history ceiling even when no root child claims the native-scrollback replay contract. The ceiling was derived from the last replay-capable child alone, so a host that declares a pinned footer over a plain container — no transcript implementing replay — had no ceiling at all: growth that pushed the viewport top past the footer's first row committed that chrome into immutable native scrollback and, in the tallest cases, took a destructive erase-and-replay of the whole screen to repair the prefix it had just violated. A host whose transcript does implement replay was already bounded and is unaffected.
-- Kept the transcript on screen when a virtualized root compacts its committed rows. A root can now report the rows it dropped, and the engine slides its commit index onto the new frame instead of reading the shift as a committed-prefix divergence, erasing native scrollback and replaying a frame the component had already emptied. A root that drops rows without reporting them is rehydrated before any destructive replay, so it costs an extra full repaint rather than the history.
 - The tracked hardware cursor row slides with a virtualized root's compaction, so an incremental paint after a drop lands on the row it names. The drop renumbering moved the commit index, the committed prefix, the window top and the previous frame length onto the compacted frame and left the cursor row in the old coordinates, where it stayed too large for the rest of the session; every cursor-relative paint after that — the seam rewrite, the in-window partial, the direct write — moved up from a stale origin, so new rows overwrote live output above them and the previous paint's tail stayed on screen below, which reads as two stacked copies of an anchored block with the transcript rows it covered gone.
+- An Fp escape sequence costs no display width, on the fallback measurer as well as the native one. Fp is the two-byte private class `ESC 0x30`-`ESC 0x3f` — `ESC 7` and `ESC 8` for cursor save and restore, `ESC =` and `ESC >` for keypad mode — which every terminal consumes and draws nothing for. The fallback pattern only recognised the Fe range, so a string carrying `ESC 7` measured two columns wider than it draws, and until Bun 1.4 taught `Bun.stringWidth` to skip the class the two oracles disagreed with each other. A block sized by the wrong one wraps a row early and leaves the column short for the rest of the frame.
+- A `ui.loop-blocked` warning names the span that blocked. The render pass and terminal input dispatch — the two synchronous spans an interactive session spends its time in — now push a loop-phase breadcrumb, so the watchdog reports `ui.render` or `ui.input` instead of `unknown`. Across 56 local session logs the watchdog recorded 2249 blocks of up to 11 seconds and 2182 of them carried no phase at all, because only three call sites in the product pushed one: a stall was reported as having happened and nothing more. The cost is two array operations per frame and per keystroke.
+- One expensive paint no longer holds back the cheap frame behind it. The render loop's adaptive floor targets a 50% duty cycle and read the previous frame's cost to get there, so one full paint — a scrolled viewport, where the frame diff has nothing to reuse — put a 66ms floor under the cheap diff after it. A duty cycle belongs to a window, so the floor comes from a decayed estimate: a loop that paints slowly on every frame still converges to half the CPU, while an isolated spike does not delay the frame behind it. A published recording averaged 14.2 fps with 68% of its moving frames on the 30 fps capture interval.
 
 ## [16.5.2] - 2026-07-14
 
@@ -30,8 +51,6 @@
 - Hid empty HTML comment separators in Markdown-rendered TUI output instead of displaying them literally ([#4911](https://github.com/can1357/oh-my-pi/issues/4911)).
 
 ## [16.5.0] - 2026-07-13
-
-### Changed
 
  - Improved native scrollback history management by introducing an optional erase-and-replay mechanism to rebuild scrollback when mutated rows (such as finalized tool blocks or collapsed transcripts) diverge. This is now gated behind the `tui.scrollbackRebuild` setting and defaults to off.
 

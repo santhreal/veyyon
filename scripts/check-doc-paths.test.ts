@@ -2,7 +2,7 @@
  * The source-path gate for documentation.
  *
  * The gate exists because `prompt-blocks.ts` was split into two modules and
- * `docs/system-prompt-customization.md` went on naming the old file in three
+ * `docs/handbook/src/models/system-prompt.md` went on naming the old file in three
  * places, one of them the line telling a contributor which file to edit. No gate
  * in the repo could see it: doc-links strips inline code spans on purpose,
  * doc-imports only reads `import` statements, and doc-freshness only knows
@@ -74,15 +74,15 @@ describe("looksLikeSourcePath", () => {
 	});
 
 	/**
-	 * `.veyyon/` is deliberately not a source root. It names a tracked directory
-	 * (`.veyyon/skills/`) AND the config a USER writes in their own project
-	 * (`.veyyon/mcp.json`), and every configuration doc teaches the second. Treating
-	 * the prefix as a repo path turns a whole page of correct documentation red.
+	 * `.veyyon/` is deliberately not a source root. In this repo's docs it names the
+	 * config a USER writes in their own project (`.veyyon/mcp.json`,
+	 * `.veyyon/RULES.md`), and every configuration doc teaches that. Treating the
+	 * prefix as a repo path turns a whole page of correct documentation red.
 	 */
 	it("does not treat project-config paths as repo paths", () => {
 		expect(looksLikeSourcePath(".veyyon/mcp.json")).toBe(false);
 		expect(looksLikeSourcePath(".veyyon/settings.json")).toBe(false);
-		expect(looksLikeSourcePath(".veyyon/skills/ui/SKILL.md")).toBe(false);
+		expect(looksLikeSourcePath(".veyyon/RULES.md")).toBe(false);
 	});
 });
 

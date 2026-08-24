@@ -24,7 +24,7 @@ Then, in your own project:
 bun link @veyyon/agent-core
 ```
 
-See [the SDK guide](../../docs/sdk.md#installation) for the same steps in full.
+See [the SDK guide](../../docs/handbook/src/reference/sdk.md#installation) for the same steps in full.
 
 ## Quick Start
 
@@ -392,12 +392,8 @@ for await (const event of agentLoopContinue(context, config)) {
 ## Run-level telemetry
 Every `invoke_agent` produces two values alongside the OTEL spans:
 
-- **`AgentRunSummary`** — chat / tool / usage / cost / error counters bucketed
-  by status, with per-tool-name breakdowns. Pure aggregation, safe to
-  persist, diff, or assert.
-- **`AgentRunCoverage`** — sorted+deduped `toolsAvailable` / `toolsInvoked` /
-  `toolsUnused` / `modelsUsed` / `providersUsed` arrays. Stable for snapshot
-  tests.
+- **`AgentRunSummary`**: chat, tool, usage, cost, and error counters bucketed by status, with per-tool breakdowns.
+- **`AgentRunCoverage`**: sorted arrays for `toolsAvailable`, `toolsInvoked`, `toolsUnused`, `modelsUsed`, and `providersUsed`.
 
 Three delivery channels (use whichever fits):
 
@@ -431,15 +427,11 @@ const stream = agentLoop([userMessage], context, {
 });
 ```
 
-Exceptions thrown from `onRunEnd` are caught and logged via `console.warn`;
-a misbehaving telemetry consumer can **never** turn a successful agent run
-into a failed one.
+Exceptions thrown from `onRunEnd` are caught and logged via `console.warn` without failing the agent execution.
 
-### `agentLoopDetailed` (typed `detailed()` result)
+### `agentLoopDetailed`
 
-Convenience wrapper that preserves the existing stream API and exposes the
-rollup as a typed value:
-
+Function providing stream events alongside a typed rollup promise:
 ```typescript
 const { stream, detailed } = agentLoopDetailed([userMessage], context, {
 	...config,
@@ -453,7 +445,7 @@ for await (const event of stream) {
 const { messages, telemetry, coverage } = await detailed();
 ```
 
-`stream.result()` still resolves to `AgentMessage[]` — no breaking change.
+`stream.result()` resolves to `AgentMessage[]`.
 
 ### Multi-run aggregation
 

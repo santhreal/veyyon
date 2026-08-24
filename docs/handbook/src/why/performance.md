@@ -1,22 +1,28 @@
 # Performance
 
-Agent wall time is the sum of model latency, tool I/O, retries after failed tool/edit validation, and harness overhead.
+Agent execution latency is composed of model generation latency, tool execution I/O, validation failure retries, and harness runtime overhead.
 
-## Retry cost
+## Retry bounds
 
-A tool call or edit that fails schema or apply verification usually costs another model turn. Schema repair (tool arguments) and hashline verification (edits) reduce those failures. Implementation: `packages/coding-agent/src/repair/`, `@veyyon/hashline`.
+Tool calls or edits that fail schema validation or patch application require additional model turns. Schema repair on tool arguments and patch validation on edits catch structural issues before execution. Implementation: `packages/coding-agent/src/repair/`, `@veyyon/hashline`.
 
 ## Edit path
 
-Hashline avoids re-emitting large surrounding context when anchors are available. Apply cost scales with patch size, not with re-serializing the full file for every change. See [Hashline engine](../edit/engine.md).
+Hashline edits reference surrounding anchor lines rather than full file rewrites, so a patch contains the changed lines and their anchors instead of a new copy of the file. Applying one costs `O(file bytes + output bytes + patch)`. The applier splits the body into lines once, walks it once, and joins the result once, so cost tracks file length rather than patch length: about 1ns per input byte, or 3ms for a 100,000-line file on a Ryzen 9 9950X. A file with CRLF endings costs roughly twice that, because the body is normalized to LF before the edit and restored after it. Run `bun bench/hot-paths.bench.ts` in `packages/hashline` to reproduce the curve. It prints the cost per byte at 10,000, 100,000 and 1,000,000 lines for a single edit and for a range delete, and fails when that cost stops being flat. See [Hashline engine](../edit/engine.md).
+
+## Edit preview while arguments stream
+
+A tool call's edit preview recomputes as arguments arrive. The streaming pass reads its target through a cache keyed by modification time and size, so a stream of chunks against one file reads it once instead of once per chunk; the pass that runs when arguments are complete reads fresh, because that text is what the edit is applied to.
+
+Off-window boundary rows in a diff or a read window (the enclosing header, the matching closing bracket) come from a scan of the whole source, and the parse cache retains nothing past 4MiB. A source over that size renders without boundary rows rather than paying a scan per redraw. Streaming a one-line replacement against an 11.7MiB, 100,000-line file costs 36ms per preview pass and one read, against 1.9s per pass and a read each pass, on a Ryzen 9 9950X.
+
+## Session persistence
+
+Entries append to the session JSONL through an open writer. Compaction, elision, a title change and a recovered write fault republish the whole file instead. The body is produced in chunks of about a megabyte and written chunk by chunk, so the transient copy is bounded by the chunk rather than by the transcript. A republish reads the file back first only when what is at the path is no longer the file this session published, compared by inode and by length: a second window writing the same transcript changes both, and reading it back is what keeps its entries. Republishing a 253MiB transcript of 118,000 entries costs 509ms, 44MiB of peak resident memory above the session, and no single pause longer than 3ms, on a Ryzen 9 9950X.
 
 ## Runtime architecture
 
-The CLI, TUI, and session loop run as TypeScript on Bun. Native grep, PTY, shell support, and tree-sitter parsing handle hot paths. Reusable Rust crates provide glob matching, grep orchestration, key normalization, text indexing, diffing, and directory walking. Hashline apply remains TypeScript in `@veyyon/hashline`. Streaming returns tokens as they arrive.
-
-## Measurement
-
-Hot-path changes are covered by package tests and criteria where present. Do not treat marketing numbers as SLAs without the linked method and host.
+The CLI, TUI, and session loop run as TypeScript on Bun. Native grep, PTY handling, shell support, and tree-sitter parsing execute via native addons. Rust crates provide glob matching, grep orchestration, key normalization, text indexing, diffing, and directory walking. Token streaming renders output incrementally as chunks arrive from provider streams.
 
 ## Related
 

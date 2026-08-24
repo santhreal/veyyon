@@ -122,11 +122,13 @@ mod a_truncated_sequence_does_not_eat_the_tail {
 		assert_eq!(strip_ansi("done\x1b[38;5"), "done[38;5");
 	}
 
-	/// A bare `ESC` with no bracket is not an introducer, and the text around it
-	/// is untouched.
+	/// `ESC` plus a final byte in `0x30..=0x7e` is a complete two-byte sequence,
+	/// so `ESC b` (Fs, EMI) goes whole and the text around it stays. This
+	/// expectation used to read `"ab"`, from a grammar that knew only CSI and
+	/// OSC and therefore published every short sequence's final byte as text.
 	#[test]
-	fn a_bare_escape_is_dropped_and_its_neighbours_are_kept() {
-		assert_eq!(strip_ansi("a\x1bb"), "ab");
+	fn a_short_sequence_goes_whole_and_its_neighbours_are_kept() {
+		assert_eq!(strip_ansi("a\x1bbc"), "ac");
 		assert_eq!(strip_ansi("\x1b"), "");
 	}
 

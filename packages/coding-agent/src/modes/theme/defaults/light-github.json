@@ -58,7 +58,6 @@
 		"toolPendingBg": "accentBg",
 		"toolSuccessBg": "successBg",
 		"toolErrorBg": "dangerBg",
-		"toolText": "fgDefault",
 		"toolTitle": "fgDefault",
 		"toolOutput": "fgMuted",
 		"mdHeading": "attention",

@@ -1,6 +1,6 @@
 # Configuration
 
-This page groups settings by what you are trying to do. For provider and sign-in setup, see [Models and providers](./models.md) and [Authentication](./authentication.md). For the full list of every key, see the repository's `docs/settings.md`.
+Settings grouped by task. For provider and sign-in setup, see [Models and providers](../reference/models-yml.md) and [Authentication](./authentication.md). For the full list of every key, see the repository's `docs/handbook/src/reference/settings.md`.
 
 ## Where settings live
 
@@ -39,7 +39,7 @@ $ veyyon config path                     # print the active agent directory
 
 - **Persistent Profile Default (`session.workdir`)**: Configures the default working directory for a profile across all future sessions. Set interactively via `/settings` (Interaction › Profile) or in `~/.veyyon/profiles/<profile>/agent/config.yml`.
 - **Ephemeral Session Re-root (`set_cwd` tool / `/cwd`)**: Re-roots the active session's working directory temporarily. It never writes `session.workdir`.
-- **What a re-root costs**: the system prompt names the working directory and carries that project's context files and workspace tree, so a re-root rebuilds it. That rebuild invalidates the provider's prefix prompt cache, and the next request re-reads the whole context as fresh input. It is done anyway because the alternative is worse: a frozen header tells the model it is working in the directory it just left, so it follows the previous project's `AGENTS.md` and resolves relative paths against a directory it has moved out of. Moving is worth paying for; being lied to about where you are is not. The rebuild happens once per move, in every mode, and a re-root to the directory already in force does nothing at all.
+- **What a re-root costs**: the system prompt includes the working directory and that project's context files and workspace tree, so a re-root rebuilds it. That rebuild invalidates the provider's prefix prompt cache, and the next request re-reads the whole context as fresh input. It is done anyway because the alternative is worse: a frozen header tells the model it is working in the directory it just left, so it follows the previous project's `AGENTS.md` and resolves relative paths against a directory it has moved out of. Moving is worth paying for; being lied to about where you are is not. The rebuild happens once per move, in every mode, and a re-root to the directory already in force does nothing at all.
 ### Your comments and formatting survive a save
 
 `config.yml` is yours to edit by hand, and veyyon writes to the same file when you change a
@@ -105,7 +105,7 @@ arrives exactly as you wrote it.
 ### When a settings file has a syntax error
 
 If you edit a config file by hand and leave it with invalid YAML, veyyon cannot
-read it. It tells you at startup, names the file, and runs the session on
+read it. It reports the file at startup and runs the session on
 defaults for whatever that file held:
 
 ```text
@@ -135,7 +135,7 @@ edit from there.
 
 ### When a setting cannot be saved
 
-If veyyon cannot write your config file, it tells you in the session rather than letting the
+If veyyon cannot write your config file, it reports the failure in the session rather than letting the
 change disappear. This happens when the file or its directory is not writable, when the disk
 is full, or when something has left a directory where `config.yml` should be:
 
@@ -163,7 +163,7 @@ Configure the interactive model, subagent policy, compaction model, and optional
 | Customize one subagent | `subagent.agents.<name>` or Settings → Subagents → Agents |
 | Choose the model for context compaction | `compaction.model` |
 | Add named model assignments | `modelRoles`, per profile (Settings → Model → Roles) |
-| Add a local or BYOK provider | a `providers:` entry in `models.yml` (see [Models](./models.md)) |
+| Add a local or BYOK provider | a `providers:` entry in `models.yml` (see [Models](../reference/models-yml.md)) |
 
 ```yaml
 # ~/.veyyon/profiles/default/agent/config.yml
@@ -271,7 +271,7 @@ git tracks, or a walk of the tree for a `.argot` project), proposes handles for
 the strings that would save the most tokens, and keeps the result in a local
 cache under its own config directory. In a monorepo the agent loads the one
 package it works in, not the repo root. Loading reads a project tree and writes
-the cache, so in the approval-gated autonomy modes veyyon asks before running
+the cache, so in the approval-gated autonomy modes veyyon prompts before running
 it and shows the resolved root; unloading never needs approval, because it only
 teaches less and every handle already written keeps expanding.
 
@@ -328,7 +328,7 @@ argot:
 ```
 
 A model on this list is taught the notation; a model left off never is. The list
-is empty by default, so turning Argot on without naming a model stays inert. This
+is empty by default, so turning Argot on without setting a model stays inert. This
 lets you keep shorthand on for a model you trust to recall the dictionary and off
 for one you are still measuring. Expansion never depends on this list: a handle
 already written expands whatever model is active, so switching models never
@@ -336,7 +336,7 @@ leaves a raw handle behind.
 
 The two settings under `encode` are the two that decide whether a model is taught
 to write shorthand: this list, and the context cutoff described below. Everything
-else about Argot sits directly under `argot`, because it decides whether the
+else about Argot sits directly under `argot`, because it sets whether the
 feature runs, when a dictionary is built, how large it is, and what a subagent
 starts with. The split is there to make one thing obvious: nothing under `encode`
 affects reading. A handle already in the conversation expands whatever these hold.
@@ -378,7 +378,7 @@ which is the same thing `argot_load` does.
 ### Size the dictionary
 
 The generated dictionary is packed under a token budget: handles are added in
-value order until the next one would breach it, so the budget decides how many
+value order until the next one would breach it, so the budget sets how many
 strings earn shorthand. A larger budget teaches more handles, which gives the
 model more chances to save tokens in its writing, but it also makes the notation
 preamble longer every turn. A smaller budget keeps the preamble cheap and teaches
@@ -470,7 +470,7 @@ bash:
 
 Plan mode and agent definitions can narrow the tool set further. `enabled: false` removes the tool from both
 the model-visible set and the dispatch registry; `tools.approval.*: deny` keeps the tool visible but
-refuses every call with an error naming the policy.
+rejects every call with an error stating the policy.
 
 ## Set the default working directory
 

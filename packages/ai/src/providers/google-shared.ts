@@ -1114,10 +1114,11 @@ export function streamGoogleGenAI<T extends "google-generative-ai" | "google-ver
 				await notifyProviderResponse(options, response, model, response.headers.get("x-request-id"));
 				if (!response.ok) {
 					// The STATUS is the failure; the body is the detail. An unreadable body degrades to empty rather than
-					// replacing the status with a read error.
-					const errorText = await response.text().catch(() => "");
+					// replacing the status with a read error, and the read is bounded because the HTML-page case has no
+					// size a provider promised.
+					const errorBody = await AIError.readProviderErrorBody(response);
 					throw new AIError.GoogleApiError(
-						`Google API error (${response.status}): ${extractGoogleErrorMessage(errorText)}`,
+						`Google API error (${response.status}): ${extractGoogleErrorMessage(errorBody)}`,
 						response.status,
 						{ headers: response.headers },
 					);
@@ -1258,13 +1259,14 @@ function paramsToWireBody(params: GenerateContentParameters): Record<string, unk
  * response body, because the per-site caps had drifted to four different
  * numbers and three of them were "none".
  */
-function extractGoogleErrorMessage(errorText: string): string {
-	if (!errorText) return "Unknown error";
+function extractGoogleErrorMessage(body: AIError.ProviderErrorBody): string {
+	if (!body.text) return "Unknown error";
 	try {
-		const parsed = JSON.parse(errorText) as { error?: { message?: string } };
+		const parsed = JSON.parse(body.text) as { error?: { message?: string } };
 		if (parsed.error?.message) return AIError.boundProviderErrorDetail(parsed.error.message);
 	} catch {
-		// Non-JSON body: keep the raw text, capped below.
+		// Non-JSON body: the bounded read's own detail, which is capped and says when it
+		// stopped early.
 	}
-	return AIError.boundProviderErrorDetail(errorText);
+	return body.detail;
 }

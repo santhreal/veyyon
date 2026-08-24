@@ -11,10 +11,45 @@ Product behavior is covered by tests that assert concrete outcomes, not only non
 
 ## Recording terminal proofs
 
-This section is the capture configuration. It is the only source of visual proof.
+The capture configuration below is the only source of visual proof.
 Record interactive proofs on the repository's private display. Do not record a
 logged-in desktop, and do not use a terminal multiplexer capture as visual
 evidence. There are no other capture paths and no fallbacks.
+
+### Which artifact proves which change
+
+The artifact class follows the change class, and a mismatch is a failed proof.
+
+```text
+static surface changed     two PNG frames, before and after
+animation or timing changed  two animated clips, before and after
+setting added or changed   two PNG frames, off and on
+```
+
+A still never proves an animation: a frame cannot show a cadence, a transition, or a
+spinner. An animated clip never substitutes for a frame pair either, because a reader
+comparing two clips cannot hold both states side by side. The recorder publishes
+animation as WebP at 33 ms per frame; a GIF is the same clip in an older container and
+proves the same thing. Both arms of a pair are the same class, produced by one driver
+run, and attached to the pull request body.
+
+The recorder refuses to publish a clip whose cadence is not the one it captured. Two
+criteria, both from `--expect-ms`:
+
+```text
+typical frame    33 ms, +/-1 (34 ms alternates at 30 fps)
+moving average   within 10% of 30 fps, held stills set aside
+```
+
+The first catches a resample, where every frame was rewritten. The second catches a
+clip whose most common frame is correct and whose wall clock is mostly slower than it —
+frames held for two or three intervals in the middle of a scroll. A hold at or past ten
+intervals is a still screen, is reported, and does not count against the average.
+Measure a published file with:
+
+```sh
+python3 proof/webp-cadence.py assets/demo-hd.webp --expect-ms 33
+```
 
 ### Real interactive sessions
 
@@ -42,30 +77,75 @@ PUBLISH=0 DEMO_SERVER=x11 \
 
 The recorder keeps rehearsal output in the temporary directory it prints. Inspect the video and named frames there. Set `PUBLISH=1` only for a complete take whose frame guards all passed.
 
-The scene's task prompt is static at `proof/prompts/demo-hd.md`. The scene stores the secret, submits that prompt once, and sends no phase-by-phase operator prompts; every later turn is the model's own. A take is published only when every named frame guard passed, so a scene whose model does not reach a guarded surface produces a rehearsal and nothing else. The frames and clip published today come from an earlier session of this scene, described in [Examples](../using/examples.md#recorded-end-to-end-workflow).
+The scene's task prompt is static at `proof/prompts/demo-hd.md`. The scene stores the secret, submits that prompt once, and sends no phase-by-phase operator prompts; every later turn is the model's own. A take is published only when every named frame guard passed, so a scene whose model does not reach a guarded surface produces a rehearsal and nothing else.
+
+Record on the machine that serves the weights. The endpoint must be a loopback address, or the
+recorder will not start; `ALLOW_REMOTE_MODEL=1` records against another host and reports it. A
+session driven across a network pauses for reasons the recording cannot separate from the product.
+
+Before anything is recorded the driver checks three things and exits on any of them:
+
+```sh
+bun scripts/verify-scene.ts demo-hd   # the same check, run on its own
+bun scripts/verify-scene.ts --all
+```
+
+Every string the scene waits for must be produced by the submitted prompt, the product's own
+source, the sandbox seed, or a line the scene types. A guard nothing produces does not fail fast:
+it waits out its timeout, marks the shot missed, and the publish step leaves the previous take's
+frame under that name. A needle that comes from somewhere else is declared in the scene:
+
+```sh
+# needle-source: WARP CORE -- printed by the compiled binary's banner
+```
+
+The driver also requires the model row to exist on that server, and writes `<scene>-model.txt`
+beside the frames recording the row, the endpoint, the host and the display server the take was
+recorded on.
+
+Every binary the run will use is resolved before the first frame: `docker`, `bun` for the scene
+check, and `ffmpeg` and `python3` for the publish chain. ImageMagick answers to `magick` on 7 and
+`convert` on 6, and either is accepted. Bun is looked for at `~/.bun/bin/bun` when it is not on
+`PATH`, because a recording is driven over ssh and a non-login shell there does not carry the
+installer's entry. A publish tool first called after the recording is a take lost to a `PATH`
+difference, which is why a rehearsal needs only `docker`.
+
+The container is built by one script and tagged from one declaration:
+
+```sh
+bash proof/docker/build-recorder.sh
+```
+
+The tag contains the bun version in the root `package.json` `packageManager` field,
+because the image contains a bun and the product will not start on a runtime older
+than the one it is built for. A bump therefore makes a stale image a missing image,
+which docker reports before a display server starts. Recording with an image built
+on an older bun ends the take from inside the container after the whole rig is up.
+
+The recorder reaches a model served on the host through the docker host gateway; the
+loopback address the driver requires is rewritten for the container by
+`proof/docker/host-endpoint.sh`, so no scene needs to name a network address.
 
 The archived take remains at capture speed. The landing-page cut keeps the plan, the worker setup, verification and signing at 1×. Visible implementation between the worker launch and the verified build plays at 1.25×. Named marks in the take select those boundaries; untouched screens are shortened to four seconds rather than accelerated.
 
-### VHS settings captures
+### Settings differentials
 
-Use the same baseline for settings differentials:
+A settings change proves with two frames of the settings screen recorded from the
+same scene, one with the setting at its default and one with the operator's value.
+`SCENE_SETTINGS` appends config-file lines to the seeded home before the session
+starts, so each arm is seeded rather than toggled by a keybinding that may not land:
 
-```tape
-Set Shell bash
-Set FontSize 22
-Set Width 1400
-Set Height 720
-Set Padding 30
-Set Margin 40
-Set MarginFill "#000000"
-Set BorderRadius 0
-Set Framerate 30
-Set TypingSpeed 55ms
-Set CursorBlink false
-Set Theme { "name": "veyyon", "black": "#000000", "background": "#000000", "foreground": "#C6CBD4", "cursor": "#F0862E" }
+```sh
+OUT_DIR=proof/captures/x11/off \
+  proof/docker/record-x11.sh proof/scenes/settings-pointer.sh
+
+OUT_DIR=proof/captures/x11/on SCENE_SETTINGS='argot.enabled: true' \
+  proof/docker/record-x11.sh proof/scenes/settings-pointer.sh
 ```
 
-Drive both states from one script. Seed each setting explicitly before capture. Restore the default after the pair is written.
+Both arms run the same scene at the same window size, so the only difference between
+them is the setting. A pair whose two frames are byte-identical, or whose "on" arm
+does not show the value in effect, is a failed proof.
 
 ### Before-and-after pairs for a UI change
 
@@ -85,14 +165,38 @@ tree ends byte-identical. Once the change is on `main`, reproducing the before a
 means pointing that hold at the commit before it.
 
 Both arms record the same scene at the same width and are sampled at the same second
-of the same script, so the only difference between them is the change. Publish the
-pair under `assets/` as `<surface>-before.png` and `<surface>-after.png`;
-`proof/pics.html` folds a `-before`/`-after` stem onto one row, because a comparison
-split across two rows is half an answer.
+of the same script, so the only difference between them is the change. Attach the
+labeled Before and After pair to the pull request body. It is never committed: not to
+`assets/`, not to a README, not to a handbook page, not to the website.
 
 A pair whose two arms differ for an unrelated reason is a failed proof. An arm that
 does not show the surface at all is a failed proof: a lane block is not evidence
 about lanes in a frame where no agent is running.
+
+### Zooming into a detail
+
+A 2560-wide capture published at 1920 loses a small detail to the downsample. A row
+whose subject is one block of text names the mark to hold on, and the stage eases into
+the region and back out:
+
+```sh
+python3 proof/zoom.py take.mp4 zoomed.mp4 --marks take-marks.tsv --mark todo-board
+python3 proof/zoom.py --self-check
+```
+
+The region is measured, not typed in: the stage diffs the frames around the moment and
+holds the bounding box of what changed there, padded and clamped inside the frame at
+the source aspect ratio. A moment with nothing moving in it produces no file.
+
+The zoom ceiling defaults to the capture width over the published width, so a held
+frame is a crop rather than an upscale. The stage runs on the take, before the cut,
+and keeps every frame and the recorded rate, so the cadence gate still measures the
+capture's own cadence. A scene asks for one by setting `ZOOM_ARGS` in
+`scripts/demos/record-hd-demo.sh`.
+
+`--self-check` records a synthetic clip whose moving region is known and asserts the
+measured rect, the frame count, the rate and the held magnification. Run it on a
+recorder host before a take depends on the stage.
 
 ### Off-screen component renders are a debugging aid, not a proof
 
@@ -109,22 +213,14 @@ env -u NO_COLOR FORCE_COLOR=3 bun scripts/demos/render-<surface>.ts [args] |
 `<surface>-black.png` with background `#000000`. Inspect both. A background fill
 can disappear on black while remaining visible as a slab on grey.
 
-The output is not a proof and does not satisfy any evidence requirement. It draws a
-fixture written by hand, at a chosen width, through a constructed call. It cannot
-show that the surface is reachable, that the state is real, or that the block is
-positioned, sized and clipped the way a session draws it. Write the file to a
-temporary path. A rasterized image never enters `assets/`, a README, or a handbook
-page as before-and-after evidence.
+The output draws a fixture written by hand, at a chosen width, through a constructed
+call, so it cannot show that the surface is reachable, that the state is real, or
+that the block is positioned, sized and clipped the way a session draws it. It does
+not satisfy an evidence requirement. Write the file to a temporary path.
 
-Seventeen raster pairs are already committed under `assets/`. They were produced
-under an earlier rule that sanctioned them, they are not evidence, and no handbook
-page or README cites them; `proof/pics.html` enumerates the directory from disk and
-still lists them. Each is replaced by a real capture of its screen when that feature
-is next touched. `scripts/an-off-screen-raster-never-enters-assets.test.ts` pins the
-set by exact equality and fails on any addition, so the list only shrinks, and it
-fails as well on a demo driver that writes a render into `assets/`. Drivers write to
-a temporary directory; `scripts/demos/record-argot-settings.sh` is the shape a real
-settings differential takes.
+`scripts/an-off-screen-raster-never-enters-assets.test.ts` pins the raster set under
+`assets/` by exact equality, so the list only shrinks, and fails on a demo driver
+that writes a render into `assets/`. Drivers write outside the tracked tree.
 
 ## Related
 

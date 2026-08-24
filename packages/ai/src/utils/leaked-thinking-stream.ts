@@ -1,11 +1,14 @@
 /**
- * Central live healing for leaked reasoning markup in the visible text channel.
+ * The stream-wrapping layer over the leaked-markup scanner, for reasoning only.
  *
  * Some providers emit their canonical reasoning idioms (` ```thinking `,
  * `<think>`, Gemma/Harmony channels, …) into the *visible* text stream instead
  * of a structured thinking part. {@link wrapLeakedThinkingStream} re-projects a
  * provider stream into a fresh {@link AssistantMessageEventStream}, splitting the
- * leaked fences out into proper `thinking` blocks *live* as deltas arrive.
+ * leaked fences out into proper `thinking` blocks *live* as deltas arrive. Which
+ * pattern a model needs is not decided here: `stream-markup-healing.ts` owns
+ * that, and a provider that needs to heal inline calls it directly instead of
+ * being wrapped.
  *
  * Applied to every provider stream *except* official first-party endpoints
  * (the official Anthropic API and the official OpenAI / OpenAI-Codex endpoints),

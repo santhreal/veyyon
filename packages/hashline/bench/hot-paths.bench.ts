@@ -122,4 +122,164 @@ for (const name of Object.keys(baseline.cases)) {
 		failed = true;
 	}
 }
+
+// --- size scaling -----------------------------------------------------------
+// The reproducible method behind the complexity the handbook states. Two arms,
+// both measuring cost per input byte at 10k / 100k / 1M lines:
+//
+//   swap-mid   one one-line replacement, LF and CRLF. Applying a patch costs
+//              O(file bytes + output + patch) — `applyEdits` splits the whole
+//              body into lines and joins the whole result — so the per-byte
+//              cost is flat and the wall time tracks the file, not the patch.
+//   del-tenth  a range delete over a tenth of the file, which parses into one
+//              single-line delete per line. Cost stays O(file bytes + output +
+//              patch) in the number of edits too, which is what the forward
+//              rebuild buys over the splice-per-edit pass it replaced.
+//
+// Each guard is a ratio, not an absolute time, so it holds on any machine: a
+// regression to a per-edit splice, a per-line offset rescan, or anything else
+// superlinear shows up as the per-byte cost climbing between 100k and 1M lines.
+// The two arms fail independently, because a regression in per-edit work is
+// invisible to a one-edit patch. On the reference box (Ryzen 9 9950X, Bun 1.4)
+// the swap-mid LF arms read 0.3ms / 3.0ms / 29ms — about 1ns per byte at every
+// size — the CRLF pipeline, which normalizes to LF and restores the endings
+// around the same apply, 0.6ms / 6.1ms / 83ms, and del-tenth 0.9ms / 9ms / 96ms.
+//
+// The budget is 2x rather than something tight because the measured ratio wobbles
+// between 0.78x and 1.40x across runs: allocating a million lines and, on the del
+// arm, a hundred thousand edit objects puts the big arm at the mercy of a
+// collection the small arm never pays for. A quadratic shape costs ~10x over the
+// same 10x of input, so it cannot hide under this band.
+//
+// HASHLINE_SCALE_SIZES and HASHLINE_SCALE_SAMPLES drive the same curve at other
+// sizes, and the guard always compares the two largest arms present. The
+// mutation gate (.internal/mutate-hashline-scale.py) needs that: a genuinely
+// quadratic applier does not finish a million lines this side of an hour, so it
+// is measured over a smaller pair where the shape still shows.
+const SCALE_SIZES = (process.env.HASHLINE_SCALE_SIZES ?? "10000,100000,1000000")
+	.split(",")
+	.map(size => Number.parseInt(size.trim(), 10))
+	.filter(size => Number.isInteger(size) && size >= 1000)
+	.sort((a, b) => a - b);
+const SCALE_SAMPLES = Number.parseInt(process.env.HASHLINE_SCALE_SAMPLES ?? "5", 10);
+const PER_BYTE_BUDGET = 2;
+if (SCALE_SIZES.length < 2 || !Number.isInteger(SCALE_SAMPLES) || SCALE_SAMPLES < 1) {
+	console.error("size scaling: need at least two sizes of >=1000 lines and one sample");
+	process.exit(2);
+}
+
+function scaleBody(lines: number, ending: string): string {
+	const rows = new Array<string>(lines);
+	for (let i = 0; i < lines; i++) rows[i] = `line ${i + 1} const value = ${i};`;
+	return rows.join(ending) + ending;
+}
+
+function minMs(run: () => void): number {
+	let best = Number.POSITIVE_INFINITY;
+	for (let sample = 0; sample < SCALE_SAMPLES; sample++) {
+		const start = Bun.nanoseconds();
+		run();
+		best = Math.min(best, (Bun.nanoseconds() - start) / 1e6);
+	}
+	return best;
+}
+
+const swapPerByte = new Map<number, number>();
+const delPerByte = new Map<number, number>();
+for (const lines of SCALE_SIZES) {
+	const label = `${(lines / 1000).toFixed(0)}k`;
+	const middle = Math.floor(lines / 2);
+	const swapPatch = parsePatch(`SWAP ${middle}.=${middle}:\n+replaced middle line\n`).edits;
+	const delPatch = parsePatch(`DEL ${middle}.=${middle + Math.floor(lines / 10)}`).edits;
+	const lf = scaleBody(lines, "\n");
+	const crlf = scaleBody(lines, "\r\n");
+
+	const swapMs = minMs(() => {
+		applyEdits(lf, swapPatch);
+	});
+	const crlfMs = minMs(() => {
+		const stripped = stripBom(crlf).text;
+		const ending = detectLineEnding(stripped);
+		restoreLineEndings(applyEdits(normalizeToLF(stripped), swapPatch).text, ending);
+	});
+	const delMs = minMs(() => {
+		applyEdits(lf, delPatch);
+	});
+
+	swapPerByte.set(lines, (swapMs * 1e6) / lf.length);
+	delPerByte.set(lines, (delMs * 1e6) / lf.length);
+	console.log(
+		`applyEdits/swap-mid-${label}: ${swapMs.toFixed(2)}ms lf, ${crlfMs.toFixed(2)}ms crlf-pipeline, ` +
+			`${lf.length}B in, ${((swapMs * 1e6) / lf.length).toFixed(2)}ns/B`,
+	);
+	console.log(
+		`applyEdits/del-tenth-${label}: ${delMs.toFixed(2)}ms lf, ${delPatch.length} edits, ` +
+			`${((delMs * 1e6) / lf.length).toFixed(2)}ns/B`,
+	);
+}
+const SMALL_ARM = SCALE_SIZES[SCALE_SIZES.length - 2] ?? 0;
+const LARGE_ARM = SCALE_SIZES[SCALE_SIZES.length - 1] ?? 0;
+
+function guardLinear(arm: string, perByte: Map<number, number>, complaint: string): void {
+	const small = perByte.get(SMALL_ARM);
+	const large = perByte.get(LARGE_ARM);
+	if (small === undefined || large === undefined || small <= 0) {
+		console.error(`size scaling/${arm}: missing arm`);
+		failed = true;
+		return;
+	}
+	const grew = large / small;
+	const line =
+		`size scaling/${arm}: per-byte cost ${grew.toFixed(2)}x from ${SMALL_ARM} to ${LARGE_ARM} lines ` +
+		`(budget ${PER_BYTE_BUDGET}x)`;
+	if (grew > PER_BYTE_BUDGET) {
+		console.error(`${line} — ${complaint}`);
+		failed = true;
+		return;
+	}
+	console.log(`${line} ok`);
+}
+
+guardLinear("swap-mid", swapPerByte, "applying one edit is no longer linear in the file");
+guardLinear("del-tenth", delPerByte, "applying many edits is no longer linear in the file");
+
+// The ratio above defends the SHAPE, and only the shape: a mutant that is
+// quadratic at every size measured looks flat in a ratio of two quadratic
+// numbers. The ceiling below defends the CONSTANT, at every arm, against a
+// reference measured in this same process on this same box.
+//
+// The reference is `splitHashlineLines/10k-lf`, one linear pass over a file of
+// the same shape, and deliberately NOT an `applyEdits` case: a regression inside
+// the applier inflates every apply case at once, so an apply-based reference
+// rises with the thing it is supposed to measure and the ceiling reads green
+// through a 500x blowup (observed while building this guard).
+const REFERENCE = results.get("splitHashlineLines/10k-lf");
+const REFERENCE_PER_BYTE = REFERENCE ? REFERENCE.minNs / LF_10K.length : 0;
+const SWAP_CEILING = 8;
+const DEL_CEILING = 25;
+
+function guardCeiling(arm: string, perByte: Map<number, number>, ceiling: number, complaint: string): void {
+	if (REFERENCE_PER_BYTE <= 0) {
+		console.error(`per-byte ceiling/${arm}: no splitHashlineLines/10k-lf reference`);
+		failed = true;
+		return;
+	}
+	for (const lines of SCALE_SIZES) {
+		const measured = perByte.get(lines);
+		if (measured === undefined) continue;
+		const over = measured / REFERENCE_PER_BYTE;
+		const line =
+			`per-byte ceiling/${arm}-${(lines / 1000).toFixed(0)}k: ${over.toFixed(1)}x the split reference ` +
+			`(${REFERENCE_PER_BYTE.toFixed(2)}ns/B, ceiling ${ceiling}x)`;
+		if (over > ceiling) {
+			console.error(`${line} — ${complaint}`);
+			failed = true;
+			continue;
+		}
+		console.log(`${line} ok`);
+	}
+}
+
+guardCeiling("swap-mid", swapPerByte, SWAP_CEILING, "one edit costs far more per byte than a linear apply");
+guardCeiling("del-tenth", delPerByte, DEL_CEILING, "many edits cost far more per byte than a linear apply");
 process.exit(failed ? 1 : 0);

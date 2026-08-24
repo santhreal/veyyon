@@ -163,7 +163,7 @@ type RunnerEmitResult<TEvent extends RunnerEmitEvent> = TEvent extends { type: "
 			? SessionBeforeCompactResult | undefined
 			: TEvent extends { type: "session_before_tree" }
 				? SessionBeforeTreeResult | undefined
-				: TEvent extends { type: "session.compacting" }
+				: TEvent extends { type: "session_compacting" }
 					? SessionCompactingResult | undefined
 					: TEvent extends { type: "session_stop" }
 						? SessionStopEventResult | undefined
@@ -702,7 +702,7 @@ export class ExtensionRunner {
 					}
 				}
 
-				if (event.type === "session.compacting" && handlerResult) {
+				if (event.type === "session_compacting" && handlerResult) {
 					result = handlerResult as SessionCompactingResult;
 				}
 

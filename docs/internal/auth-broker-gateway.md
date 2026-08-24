@@ -187,14 +187,14 @@ The gateway has no dedicated env vars, it inherits `VEYYON_AUTH_BROKER_*` becaus
 
 ## Interaction with the local API-key resolution order
 
-The broker only owns OAuth credentials and provider-API-key credentials that were uploaded to it. The standard credential ladder in `models.md` (`Auth and API key resolution order`) is preserved, with one addition committed alongside the gateway:
+The broker only owns OAuth credentials and provider-API-key credentials that were uploaded to it. The standard credential ladder in `../handbook/src/reference/models-yml.md` (`Auth and API key resolution order`) is preserved, with one addition committed alongside the gateway:
 
 - `AuthStorage.setConfigApiKey / removeConfigApiKey / clearConfigApiKeys` let a `models.yml` `apiKey` beat a stored OAuth token **without** overriding an explicit `--api-key`. This is what allows a broker-resolved OAuth credential to be reliably shadowed by a per-environment `models.yml` config key when both are present.
 
 ## See also
 
-- [`secrets.md`](../secrets.md): secret obfuscation around tokens that _do_ leak through (e.g. `VEYYON_AUTH_BROKER_TOKEN` in shell output).
-- [`models.md`](../models.md): provider auth resolution order; the broker plugs in at layers 2–3 (stored credentials).
-- [`environment-variables.md`](../environment-variables.md): full env reference including `VEYYON_AUTH_BROKER_URL` / `VEYYON_AUTH_BROKER_TOKEN`.
+- [`../handbook/src/architecture/secrets.md`](../handbook/src/architecture/secrets.md): secret obfuscation around tokens that _do_ leak through (e.g. `VEYYON_AUTH_BROKER_TOKEN` in shell output).
+- [`../handbook/src/reference/models-yml.md`](../handbook/src/reference/models-yml.md): provider auth resolution order; the broker plugs in at layers 2–3 (stored credentials).
+- [`../handbook/src/reference/environment-complete.md`](../handbook/src/reference/environment-complete.md): full env reference including `VEYYON_AUTH_BROKER_URL` / `VEYYON_AUTH_BROKER_TOKEN`.
 
 *Verified against `d3e3db30` on 2026-07-23.*

@@ -18,7 +18,7 @@
  * for these ids, and the coverage suite fails on a second importer.
  */
 
-import type { PromptEntry } from "@veyyon/utils/prompt-registry";
+import { definePromptRows, type PromptEntry } from "@veyyon/utils/prompt-registry";
 
 import commitAgenticAnalyzeFile from "./analyze-file.md" with { type: "text" };
 import commitAgenticSessionUser from "./session-user.md" with { type: "text" };
@@ -26,7 +26,7 @@ import commitAgenticSplitConfirm from "./split-confirm.md" with { type: "text" }
 import commitAgenticSystem from "./system.md" with { type: "text" };
 
 /** Every prompt under `src/prompts/commit-agentic/`, keyed by its id (the path under `src/prompts/`). */
-export const commitAgenticPrompts = {
+export const commitAgenticPrompts = definePromptRows({
 	"commit-agentic/analyze-file": {
 		text: commitAgenticAnalyzeFile,
 		purpose: "asks the agentic commit flow's model to analyze one file",
@@ -40,4 +40,4 @@ export const commitAgenticPrompts = {
 		purpose: "asks the operator to confirm a multi-commit split",
 	},
 	"commit-agentic/system": { text: commitAgenticSystem, purpose: "drives the agentic commit flow" },
-} satisfies Record<string, PromptEntry>;
+} satisfies Record<string, PromptEntry>);

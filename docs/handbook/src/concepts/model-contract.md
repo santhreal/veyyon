@@ -5,7 +5,7 @@ endpoint exposes model choice, provide the key, and Veyyon calls that API direct
 a local server (Ollama, LM Studio), a direct provider API (OpenAI, Anthropic, Google), or any
 OpenAI-compatible gateway.
 
-This page is the contract between the harness and the model. For copy-paste provider setup, see
+The contract between the harness and the model. For copy-paste provider setup, see
 [Configuring providers](../using/configuring-providers.md). For model switching, see
 [Models and providers](../using/models.md).
 
@@ -30,7 +30,7 @@ providers:
   deepseek:
     baseUrl: https://api.deepseek.com
     api: openai-completions
-    apiKey: DEEPSEEK_API_KEY   # env-var name or literal
+    apiKey: DEEPSEEK_API_KEY   # env-var name; unset means no key, not a literal
     models:
       - id: deepseek-chat
         name: DeepSeek Chat
@@ -59,7 +59,7 @@ commands.
 
 ## What the provider owns
 
-The provider owns the wire protocol, auth scheme, model list, rate limits, and the tokens it returns.
+The provider defines the wire protocol, auth scheme, model list, rate limits, and the tokens it returns.
 Veyyon adapts to that surface through the provider's `api` kind:
 
 - Chat-Completions-style endpoints (`api: openai-completions`) talk `/chat/completions`.
@@ -68,7 +68,7 @@ Veyyon adapts to that surface through the provider's `api` kind:
   allowlist for BYOK providers, and discovery returns an error; it does not invent an empty catalog on failure.
 
 Everything beyond the built-in catalog is data in `models.yml`, see
-[Providers](../models/providers.md) and [`docs/providers.md`](../../../providers.md).
+[Providers](../models/providers.md) and [`docs/handbook/src/reference/providers.md`](../reference/providers.md).
 
 ## System prompts and tool schemas
 
@@ -79,7 +79,7 @@ Each turn the harness builds a request that includes:
 2. **User and project instructions** from global, active-profile, and project `AGENTS.md` layers, sticky rules, and session steers. A caller may replace the base for one invocation with `--system-prompt`.
 3. **Tool schemas** the model is allowed to call on this turn (bash, edit/write, web search, MCP tools,
    skills, and so on), filtered by feature flags, harness-profile allowlists, and plan-mode narrowing.
-   A per-tool `deny` policy does not filter this list; it refuses the call at dispatch.
+   A per-tool `deny` policy does not filter this list; it rejects the call at dispatch.
 4. **Conversation context** for the active thread, possibly compacted.
 
 The model is expected to call tools using the schemas it was given. When arguments are almost right but
@@ -116,7 +116,7 @@ for the default edit wire format.
 └───────────────────────────────────────────────────────────────┘
 ```
 
-If something fails, ask which side owns it:
+If something fails, ask which side is responsible:
 
 - Config rejected at load, malformed `models.yml`, missing key → harness / your config.
 - HTTP 401 / 429 / empty model list → provider or key.
@@ -146,15 +146,15 @@ under `modelRoles`:
 Subagent models are not roles. They live in the Subagents settings area, where four layers can
 name one, highest first: that agent's row in `subagent.agents`, the blanket `subagent.model`, the
 agent definition's own `model:`, otherwise the conversation model. There is no silent blend, and a
-configured value that matches no available model refuses the spawn instead of quietly handing the
+configured value that matches no available model rejects the spawn instead of quietly handing the
 decision to the next layer. `/agents` shows the resolved model and which of the four decided.
-See [Settings: Subagents](../../../settings.md#subagents) and
+See [Settings: Subagents](../reference/settings.md#subagents) and
 [Models, roles, and profiles](../using/roles-and-profiles.md).
 
 ## Automation note
 
 For non-interactive runs, pass the prompt and pick an approval mode that matches your trust
-boundary. A headless run has no terminal to answer a prompt on, so a rung that asks turns the
+boundary. A headless run has no terminal to answer a prompt on, so a rung that prompts turns the
 gated tool call into an error rather than a pause: the default `auto` runs every tier while the
 working-directory, credential and critical-command guards still stop the calls they cover.
 

@@ -2144,8 +2144,12 @@ describe("AgentSession retry fallback", () => {
 		expect(mock.calls).toHaveLength(2);
 		expect(retryStartEvents).toHaveLength(1);
 		expect(retryEndEvents).toHaveLength(1);
-		expect(session.agent.state.messages).toHaveLength(2);
-		const assistantMsg = session.agent.state.messages[1];
+		// The leading `custom` row is the per-turn session-state line, which every real
+		// turn carries ahead of the question. Asserting the whole sequence keeps the
+		// point of the case — the failed attempt left no assistant message behind, and
+		// the retry's answer is the only one.
+		expect(session.agent.state.messages.map(message => message.role)).toEqual(["custom", "user", "assistant"]);
+		const assistantMsg = session.agent.state.messages[2];
 		if (assistantMsg.role !== "assistant") {
 			throw new Error(`Expected assistant message, got ${assistantMsg.role}`);
 		}
@@ -2203,8 +2207,8 @@ describe("AgentSession retry fallback", () => {
 		expect(retryStartEvents).toHaveLength(1);
 		expect(retryStartEvents[0].errorMessage).toBe(errorMessage);
 		expect(retryEndEvents).toHaveLength(1);
-		expect(session.agent.state.messages).toHaveLength(2);
-		const assistantMsg = session.agent.state.messages[1];
+		expect(session.agent.state.messages.map(message => message.role)).toEqual(["custom", "user", "assistant"]);
+		const assistantMsg = session.agent.state.messages[2];
 		if (assistantMsg.role !== "assistant") {
 			throw new Error(`Expected assistant message, got ${assistantMsg.role}`);
 		}

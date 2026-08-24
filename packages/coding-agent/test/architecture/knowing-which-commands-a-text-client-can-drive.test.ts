@@ -239,10 +239,14 @@ describe("the declared flag and the handler table agree", () => {
 	 * prints the address it started on, which a headless client can open itself. It was declared at
 	 * all only after its parser and launcher were found exported, fully tested, and called by
 	 * nothing.
+	 *
+	 * `/trust` moved both by one, and is text-drivable for the same reason `/permissions` is: project
+	 * code is withheld until a decision exists, and a headless client that cannot answer the refusal
+	 * has no route to the extensions, hooks, tools, commands or MCP servers the project ships.
 	 */
-	it("34 of the 72 builtins are text-drivable", () => {
-		expect(DECLARATIONS.length).toBe(72);
-		expect(TEXT_MODE_BUILTIN_DECLARATIONS.length).toBe(34);
+	it("35 of the 73 builtins are text-drivable", () => {
+		expect(DECLARATIONS.length).toBe(73);
+		expect(TEXT_MODE_BUILTIN_DECLARATIONS.length).toBe(35);
 	});
 
 	/**

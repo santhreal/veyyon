@@ -184,6 +184,16 @@ export interface ToolSession {
 	 */
 	extensionPaths?: string[];
 	/**
+	 * The subset of {@link extensionPaths} the OPERATOR named — `--extension` flags and
+	 * `extensions:` entries — rather than the project scan finding them.
+	 *
+	 * Forwarded beside the path list because the project-trust gate has to tell the two apart: a
+	 * discovered project extension needs a per-file decision, and a named one is the operator's own
+	 * choice. Without this a subagent re-gated its parent's `--extension ./dev/tool.ts` and ran
+	 * without it, while a repository extension the parent withheld stayed withheld either way.
+	 */
+	namedExtensionPaths?: string[];
+	/**
 	 * Pre-discovered custom-tool source paths from `.veyyon/tools/`, `.claude/tools/`,
 	 * plugins, etc. Forwarded to subagents so they skip the FS scan but still
 	 * re-bind tools to their own session-scoped `CustomToolAPI`.

@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-0c15bee8.js";
+            window.path_to_searchindex_js = "../searchindex-c0972181.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-79e2ba62.js"></script>
+        <script src="../toc-a2abefc1.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -217,7 +217,7 @@ on Linux/macOS the XDG layout is available after <code>veyyon config init-xdg</c
 </div>
 <h2 id="profiles-veyyonprofilesname"><a class="header" href="#profiles-veyyonprofilesname">Profiles (<code>~/.veyyon/profiles/&lt;name&gt;/</code>)</a></h2>
 <p>Every profile, including <code>default</code>, is a directory under <code>profiles/</code> with the same shape.
-A profile owns two layers:</p>
+A profile has two layers:</p>
 <p><strong>Profile root</strong> (<code>profiles/&lt;name&gt;/</code>), operational state:</p>
 <div class="table-wrapper">
 <table>
@@ -275,7 +275,7 @@ a named profile always derives its own agent dir.</p>
 <h3 id="legacy-layout-migration"><a class="header" href="#legacy-layout-migration">Legacy layout migration</a></h3>
 <p>Before this layout, the default profile lived bare in the config root (<code>~/.veyyon/agent/</code>,
 <code>~/.veyyon/logs/</code>, …). On first launch Veyyon migrates that state into <code>profiles/default/</code>
-once, and refuses to guess if both layouts are present, the error names the exact
+once, and will not guess if both layouts are present, the error states the exact
 directories to reconcile.</p>
 <h2 id="credential-storage"><a class="header" href="#credential-storage">Credential storage</a></h2>
 <p>Auth tokens live in the profile’s <code>agent.db</code> (or the OS keyring, depending on the configured

@@ -18,13 +18,13 @@
  * for these ids, and the coverage suite fails on a second importer.
  */
 
-import type { PromptEntry } from "@veyyon/utils/prompt-registry";
+import { definePromptRows, type PromptEntry } from "@veyyon/utils/prompt-registry";
 
 import steeringParentIrc from "./parent-irc.md" with { type: "text" };
 import steeringUserInterjection from "./user-interjection.md" with { type: "text" };
 
 /** Every prompt under `src/prompts/steering/`, keyed by its id (the path under `src/prompts/`). */
-export const steeringPrompts = {
+export const steeringPrompts = definePromptRows({
 	"steering/parent-irc": {
 		text: steeringParentIrc,
 		purpose: "delivers a parent agent's IRC message that broke an interruptible wait",
@@ -33,4 +33,4 @@ export const steeringPrompts = {
 		text: steeringUserInterjection,
 		purpose: "delivers a user message that arrived mid-turn and takes priority",
 	},
-} satisfies Record<string, PromptEntry>;
+} satisfies Record<string, PromptEntry>);

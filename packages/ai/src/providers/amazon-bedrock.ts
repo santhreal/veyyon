@@ -11,7 +11,7 @@ import type { Effort } from "@veyyon/catalog/effort";
 import { mapEffortToAnthropicAdaptiveEffort, requireSupportedEffort } from "@veyyon/catalog/model-thinking";
 import { calculateCost, emptyUsage } from "@veyyon/catalog/models";
 import { $env, $flag } from "@veyyon/utils/env";
-import { fetchWithRetry } from "@veyyon/utils/fetch-retry";
+
 import { parseStreamingJson, parseStreamingJsonThrottled } from "@veyyon/utils/json-parse";
 import { renderDemotedThinking } from "../dialect/demotion";
 import * as AIError from "../error";
@@ -36,6 +36,7 @@ import type {
 import { normalizeToolCallId, resolveCacheRetention } from "../utils";
 import {
 	clearStreamingPartialJson,
+	getStreamingPartialJson,
 	kStreamingBlockIndex,
 	kStreamingLastParseLen,
 	kStreamingPartialJson,
@@ -43,8 +44,10 @@ import {
 import { AssistantMessageEventStream } from "../utils/event-stream";
 import type { RawHttpRequestDump } from "../utils/http-inspector";
 import { armPreResponseTimeout, getStreamFirstEventTimeoutMs } from "../utils/idle-iterator";
+import { fetchProviderWithRetry } from "../utils/provider-fetch";
 import { notifyProviderResponse } from "../utils/provider-response";
 import { toolWireSchema } from "../utils/schema/wire";
+import { stopReasonForTerminallessEof } from "../utils/terminalless-eof";
 import { invalidateAwsCredentialCache, resolveAwsCredentials } from "./aws-credentials";
 import { decodeEventStream } from "./aws-eventstream";
 import { signRequest } from "./aws-sigv4";
@@ -308,6 +311,7 @@ export const streamBedrock: StreamFunction<"bedrock-converse-stream"> = (
 
 		try {
 			let sentinelInjected = false;
+			let sawMessageStop = false;
 			let bearerToken: string | undefined;
 			const host = `bedrock-runtime.${region}.amazonaws.com`;
 			const url = `https://${host}/model/${encodeURIComponent(model.id)}/converse-stream`;
@@ -430,12 +434,13 @@ export const streamBedrock: StreamFunction<"bedrock-converse-stream"> = (
 				// Preserve the provider's payload-capture contract for an
 				// already-aborted call without creating a physical attempt.
 				if (watchdog.signal?.aborted) await prepareRequest();
-				response = await fetchWithRetry(url, {
+				response = await fetchProviderWithRetry(url, {
 					method: "POST",
 					signal: watchdog.signal,
 					fetch: observedFetch,
 					timeout: false,
 					prepareInit: prepareRequest,
+					maxDelayMs: options?.maxRetryDelayMs,
 				});
 				if (responseHookFailed) throw responseHookError;
 			} finally {
@@ -449,15 +454,12 @@ export const streamBedrock: StreamFunction<"bedrock-converse-stream"> = (
 					invalidateAwsCredentialCache({ profile: options.profile, region });
 				}
 				// The STATUS is the failure; the body is Bedrock's explanation of it. Losing an unreadable body still
-				// leaves the status, which is what the error below is built from.
-				const errBody = await response.text().catch(() => "");
-				throw new AIError.BedrockApiError(
-					`Bedrock HTTP ${response.status}: ${errBody.slice(0, 1000)}`,
-					response.status,
-					{
-						headers: response.headers,
-					},
-				);
+				// leaves the status, which is what the error below is built from. The shared reader replaces a local
+				// 1000-character slice, so the read is bounded too and truncation says so.
+				const detail = await AIError.readProviderErrorDetail(response);
+				throw new AIError.BedrockApiError(`Bedrock HTTP ${response.status}: ${detail}`, response.status, {
+					headers: response.headers,
+				});
 			}
 			if (!response.body) throw new AIError.BedrockApiError("Bedrock response has no body", response.status);
 
@@ -511,6 +513,7 @@ export const streamBedrock: StreamFunction<"bedrock-converse-stream"> = (
 						break;
 					}
 					case "messageStop": {
+						sawMessageStop = true;
 						const ev = payload as MessageStopEvent;
 						// A sentinel-only request must never surface a tool-use stop:
 						// no real tool exists for the agent to dispatch.
@@ -532,6 +535,27 @@ export const streamBedrock: StreamFunction<"bedrock-converse-stream"> = (
 			}
 
 			if (options.signal?.aborted) throw new AIError.RequestAbortError();
+
+			// The event stream ended without a `messageStop`, so nothing in the
+			// response ever said the turn was over: `output.stopReason` is still
+			// the optimistic seed it was given before the first byte arrived, and
+			// pushing `done` with it reported an empty body as a finished answer.
+			// The shared rule decides what the accumulated content can stand as;
+			// a tool batch counts only when every call parsed, which on this
+			// dialect means every one of them reached `contentBlockStop`.
+			if (!sawMessageStop) {
+				const toolBatchIsComplete = blocks.every(
+					block => block.type !== "toolCall" || getStreamingPartialJson(block) === undefined,
+				);
+				const stopReason = stopReasonForTerminallessEof(output.content, toolBatchIsComplete);
+				if (stopReason === undefined) {
+					throw new AIError.ProviderResponseError(
+						"Bedrock event stream ended without a messageStop (connection dropped or response truncated)",
+						{ provider: model.provider, kind: "incomplete-stream" },
+					);
+				}
+				output.stopReason = stopReason;
+			}
 
 			if (output.stopReason === "error" || output.stopReason === "aborted") {
 				throw new AIError.BedrockApiError(output.errorMessage ?? "An unknown error occurred", 0);

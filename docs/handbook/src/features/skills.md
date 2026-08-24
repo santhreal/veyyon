@@ -23,7 +23,7 @@ never scanned, and a project-local `.veyyon/skills` directory next to your code 
 not read either. Skills belong to your profile, so switching profiles switches
 the whole skill set, and no repository you open can inject a skill into a session.
 
-Full provider list and dedup rules: [`docs/skills.md`](../../../skills.md).
+Full provider list and dedup rules: [`docs/handbook/src/reference/skills.md`](../reference/skills.md).
 
 ## Importing another tool's skills
 
@@ -195,4 +195,4 @@ Toggles persist immediately to `disabledExtensions`; there is no close-time summ
 For goal-shaped "give the agent a new capability" flows that stitch skills with MCP and
 plugins, see [Task guides](../using/task-guides.md).
 
-Engineering detail: [`docs/skills.md`](../../../skills.md).
+Engineering detail: [`docs/handbook/src/reference/skills.md`](../reference/skills.md).

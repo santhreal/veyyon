@@ -16,7 +16,7 @@
 // a pinned list by exact equality, so a NEW raster fails this suite rather than
 // landing quietly, and a driver that starts publishing one fails with it.
 //
-// THE PINNED SET IS LEGACY AND SHRINK-ONLY. The 34 files below were committed under
+// THE PINNED SET IS LEGACY AND SHRINK-ONLY. The 24 files below were committed under
 // an earlier rule that sanctioned them. They are not evidence and no document may
 // cite them; each is replaced by a real capture when its feature is next touched,
 // and every removal shrinks this list. Adding a line to it is the one edit that is
@@ -48,16 +48,6 @@ const LEGACY_RASTERS = [
 	"model-effort-two-tier-grey.png",
 	"model-effort-wide-ladder-black.png",
 	"model-effort-wide-ladder-grey.png",
-	"onboarding/setup-glyphs-after-black.png",
-	"onboarding/setup-glyphs-after-grey.png",
-	"onboarding/setup-import-after-black.png",
-	"onboarding/setup-import-after-grey.png",
-	"onboarding/setup-providers-after-black.png",
-	"onboarding/setup-providers-after-grey.png",
-	"onboarding/setup-subagents-after-black.png",
-	"onboarding/setup-subagents-after-grey.png",
-	"onboarding/setup-theme-after-black.png",
-	"onboarding/setup-theme-after-grey.png",
 	"rules-experimental-off-black.png",
 	"rules-experimental-off-grey.png",
 	"rules-experimental-on-black.png",

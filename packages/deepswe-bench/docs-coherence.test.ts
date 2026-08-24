@@ -27,8 +27,12 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { parseSectionOverridesJson } from "@veyyon/coding-agent/system-prompt-builder/default-template";
+import { parseStatementOverridesJson } from "@veyyon/coding-agent/system-prompt-builder/statement-registry";
 import YAML from "yaml";
+import { ARM_ATTACHMENT_KINDS, type ArmAttachmentKind, attachmentKindOf } from "./arm-attachments";
 import { armNamesIn } from "./arm-fingerprint";
+import { promptOverrideIdError } from "./arm-prompts";
 import { DEFAULT_MODEL } from "./system-comparison";
 
 const BENCH_DIR = import.meta.dir;
@@ -212,49 +216,6 @@ describe("every flag the runner accepts is documented", () => {
 	});
 });
 
-describe("every shipped prompt-section arm is actually loadable", () => {
-	/**
-	 * A `.sections.yml` that the prompt builder would reject is worse than none at
-	 * all: it is the file an operator COPIES to start a prompt experiment, so a
-	 * broken one propagates into every experiment derived from it, and the failure
-	 * only surfaces once a container is already running.
-	 *
-	 * Validated through the builder's OWN `parseSectionOverridesJson`, the same
-	 * function the agent calls on the staged JSON, rather than by re-checking the
-	 * rules here. Re-implementing "is this a legal section name" and "does it lead
-	 * with its banner" would be a second copy of the contract that drifts from the
-	 * real one, and this file would then certify examples the agent rejects.
-	 */
-	const sectionArms = armFiles.filter(f => f.endsWith(".sections.yml"));
-
-	it.each(sectionArms)("%s is accepted by the prompt builder", async file => {
-		const { parseSectionOverridesJson } = await import("@veyyon/coding-agent/system-prompt-builder/default-template");
-		const parsed = YAML.parse(fs.readFileSync(path.join(BENCH_DIR, "arms", file), "utf8"));
-		const overrides = parseSectionOverridesJson(JSON.stringify(parsed));
-
-		expect(Object.keys(overrides).length).toBeGreaterThan(0);
-	});
-
-	/**
-	 * Every sections file needs a config arm of the same name, or the runner has
-	 * nothing to stage it against and the experiment cannot be selected with
-	 * `--arms`. Easy to forget, since the sections file is the interesting half.
-	 */
-	it.each(sectionArms)("%s has a matching <arm>.yml", file => {
-		const arm = file.replace(/\.sections\.yml$/, "");
-		expect(ARMS).toContain(arm);
-	});
-
-	/**
-	 * The lane must keep a worked example. It was documented in the README with no
-	 * file on disk, which left an operator to reconstruct the format, the legal
-	 * names, and the banner rule from prose before anything would run.
-	 */
-	it("ships at least one prompt-section example", () => {
-		expect(sectionArms.length).toBeGreaterThan(0);
-	});
-});
-
 describe("the documented model agrees with the code and the arms", () => {
 	/** Imported from the module that owns it, not pattern-matched out of run.ts:
 	 * the old regex pinned the exact expression shape and broke the moment the
@@ -346,39 +307,63 @@ describe("the documented model agrees with the code and the arms", () => {
 	});
 });
 
-describe("every shipped prompt-statement arm is actually loadable", () => {
+describe("every shipped arm attachment is loadable by whatever consumes it", () => {
 	/**
-	 * The same contract as the section arms above, at the granularity a rule has, and it needs its own
-	 * check for the same reason: this is the file an operator COPIES to start an ablation, so a broken
-	 * one propagates into every experiment derived from it and only surfaces once a container is
-	 * running and being paid for.
+	 * An attachment the consumer rejects is worse than none: it is the file an operator
+	 * COPIES to start an experiment, so a broken one propagates into everything derived
+	 * from it, and the failure surfaces only once a container is running and being paid for.
 	 *
-	 * Validated through the builder's OWN `parseStatementOverridesJson`, the same function the agent
-	 * calls on the staged JSON. A typo in a statement id is the interesting failure: the builder
-	 * refuses it, so an arm with one would hard-error every trial rather than quietly bench the
-	 * production prompt under a treatment's name, and this test is what catches it before the run.
+	 * Each kind is validated through the code that reads it for real — the builder's own
+	 * `parseSectionOverridesJson` and `parseStatementOverridesJson`, the runner's own
+	 * `promptOverrideIdError` — never by re-checking the rules here. A second copy of "is
+	 * this a legal section name" drifts from the real one, and this file would then certify
+	 * examples the agent refuses.
+	 *
+	 * Swept over `ARM_ATTACHMENT_KINDS` rather than written out per kind: the two
+	 * hand-written blocks this replaces covered sections and statements, and neither the
+	 * prompt override nor the rule file had any check at all.
 	 */
-	const statementArms = armFiles.filter(f => f.endsWith(".statements.yml"));
+	const CONSUMERS: Record<ArmAttachmentKind["field"], (arm: string, text: string) => void> = {
+		sections: (_arm, text) => {
+			expect(Object.keys(parseSectionOverridesJson(JSON.stringify(YAML.parse(text)))).length).toBeGreaterThan(0);
+		},
+		statements: (_arm, text) => {
+			expect(Object.keys(parseStatementOverridesJson(JSON.stringify(YAML.parse(text)))).length).toBeGreaterThan(0);
+		},
+		prompts: (arm, text) => {
+			expect(promptOverrideIdError(arm, YAML.parse(text))).toBeNull();
+		},
+		rule: (_arm, text) => {
+			// A rule is prompt text with no schema, so the only thing to check is that it says
+			// something: an empty rule file is an arm whose treatment is nothing.
+			expect(text.trim().length).toBeGreaterThan(0);
+		},
+	};
 
-	it("ships at least one worked example, since the prose is not the reference", () => {
-		expect(statementArms.length).toBeGreaterThan(0);
+	const attachmentFiles = armFiles.filter(file => attachmentKindOf(file) !== undefined);
+	const armOf = (file: string): string => file.slice(0, -(attachmentKindOf(file)?.suffix.length ?? 0));
+
+	it("has a consumer for every kind the table declares", () => {
+		// Pinned by exact equality: a kind added to the table with nothing validating its
+		// shipped examples is how the prompt lane shipped with no check for two months.
+		expect(Object.keys(CONSUMERS).sort()).toEqual(ARM_ATTACHMENT_KINDS.map(kind => kind.field).sort());
 	});
 
-	it.each(statementArms)("%s is accepted by the prompt builder", async file => {
-		const { parseStatementOverridesJson } = await import(
-			"@veyyon/coding-agent/system-prompt-builder/statement-registry"
-		);
-		const parsed = YAML.parse(fs.readFileSync(path.join(BENCH_DIR, "arms", file), "utf8"));
-		const overrides = parseStatementOverridesJson(JSON.stringify(parsed));
-
-		expect(Object.keys(overrides).length).toBeGreaterThan(0);
+	it.each(attachmentFiles)("%s is accepted by the code that reads it", file => {
+		const kind = attachmentKindOf(file);
+		if (kind === undefined) throw new Error("unreachable: filtered above");
+		CONSUMERS[kind.field](armOf(file), fs.readFileSync(path.join(BENCH_DIR, "arms", file), "utf8"));
 	});
 
-	it.each(statementArms)("%s has a config half so it can actually be run", file => {
-		// An attachment with no arm is unrunnable, and the arm enumerators exclude attachments, so
-		// nothing else would notice.
-		const arm = file.slice(0, -".statements.yml".length);
+	it.each(attachmentFiles)("%s has a config half so it can actually be run", file => {
+		// An attachment with no arm is unrunnable, and the arm enumerators exclude
+		// attachments, so nothing else would notice.
+		expect(ARMS).toContain(armOf(file));
+	});
 
-		expect(fs.existsSync(path.join(BENCH_DIR, "arms", `${arm}.yml`)), `${arm}.yml is missing`).toBe(true);
+	it.each(ARM_ATTACHMENT_KINDS.map(kind => kind.suffix))("ships at least one worked %s example", suffix => {
+		// The prose is not the reference. Each lane was documented in the README before any
+		// file existed, which left an operator to reconstruct the format from paragraphs.
+		expect(attachmentFiles.filter(file => file.endsWith(suffix)).length).toBeGreaterThan(0);
 	});
 });

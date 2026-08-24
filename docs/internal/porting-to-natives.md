@@ -74,8 +74,17 @@ Consumers import directly from `@veyyon/natives`. The generated declarations and
 
 - Put benchmarks next to the owning package (`packages/tui/bench`, `packages/natives/bench`, or `packages/coding-agent/bench`).
 - Include a JS baseline and native version in the same run.
-- Use `Bun.nanoseconds()` and a fixed iteration count.
-- Keep benchmark inputs realistic for the hot path.
+- Time with `process.hrtime.bigint()` and report medians, not a mean alone.
+- Generate the corpus from a version and a seed. A benchmark that searches the
+  repository or a local cache measures a different workload on every machine and after
+  every commit, so its numbers cannot be compared with anyone else's.
+- A benchmark that compares against an external tool asserts the two produced the same
+  result, row for row, and refuses to print a ratio when they did not, when the run
+  recorded no provenance, or when its own halves disagree. `packages/natives/bench/grep.ts`
+  with `grep-corpus.ts` and `grep-parity.ts` is the worked example; the contract is
+  pinned by `packages/natives/test/a-grep-bench-cannot-publish-an-unproven-speed-claim.test.ts`.
+- Check the exit code of anything spawned. A tool that failed to start returns no
+  output and looks like the fastest arm in the run.
 
 5. **Run focused verification**
 
@@ -178,4 +187,4 @@ case, and say in the script why.
 - If native is slower, do not switch callsites. Keep or remove the export based on whether it has a near-term owner.
 - If native is faster and behavior-compatible, switch callsites and keep a benchmark to catch regressions.
 
-*Verified against `7e4c6374` on 2026-08-06.*
+*Verified against `63eb2284` on 2026-08-22.*

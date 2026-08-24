@@ -14,7 +14,7 @@ enters, and point at tests or missing tests.
 ## Make a small fix
 
 ```text
-Fix the config error so it names the invalid file and the setting to change. Add the regression test.
+Fix the config error so it states the invalid file and the setting to change. Add the regression test.
 ```
 
 Veyyon should edit through hashline or `write`, run the focused test (`bun test` in the relevant
@@ -85,22 +85,11 @@ directory-scoped refactors out to parallel workers, one per directory, applies t
 the change is one guard, and verifies that all nine documented defaults resolve in an environment
 stripped of every one of those variables. It then signs its work in one `bash` call: the sha256 of
 `#RELEASE_SIGNATURE#` appended to `SIGNED.md` as a single line. Veyyon resolves the placeholder only
-at the outbound tool boundary and asks for approval before the call runs, so the credential itself is
+at the outbound tool boundary and requires approval before the call runs, so the credential itself is
 never printed and never reaches the transcript. The board closes 6/6.
 
-| Surface | Evidence |
-| --- | --- |
-| Complete task | [Published clip](../../../../assets/demo-hd.webp) · [unedited take](../../../../proof/captures/x11/demo-hd.mp4) |
-| Secret setup | [Release key stored from the environment](../../../../assets/demo-hd-secret-stored.png) |
-| Plan | [Three phases, six tasks, nothing started](../../../../assets/demo-hd-todo-board.png) · [tasks closing on the board](../../../../assets/demo-hd-todo-strike.png) |
-| Parallel implementation | [Three directory refactors fanned out at once](../../../../assets/demo-hd-agent-lanes.png) |
-| Integration | [The applied guard, as a diff](../../../../assets/demo-hd-edit-diff.png) |
-| Verification | [Nine defaults resolved in a stripped environment](../../../../assets/demo-hd-verify-command.png) |
-| Protected signing | [The approval card names the tool, the scope and the secret the call would spend](../../../../assets/demo-hd-secret-approval.png) · [the digest appended to SIGNED.md, the credential never echoed](../../../../assets/demo-hd-signature-written.png) |
-| Stored secrets | [The placeholder inventory](../../../../assets/demo-hd-secret-list.png) · [the spend log](../../../../assets/demo-hd-secret-log.png) |
-
-Every frame and the clip come from the same guarded take. Untouched screens are shortened rather than
-accelerated, and no frame is composited from a second session.
+The [recorded clip](../../../../assets/demo-hd.webp) runs the whole task. Untouched screens are
+shortened rather than accelerated.
 
 See [Testing and verification](../foundations/verification.md#recording-terminal-proofs) for the
-recording environment, the regeneration command, and the before-and-after proof requirements.
+recording environment and the regeneration command.

@@ -350,7 +350,7 @@ Prefix caching is positional, so an edit invalidates everything **after** it, no
 | More than 5 minutes idle (`short`) or 1 hour (`long`) | the entry expires; the next turn is a cold write |
 
 Compaction is written to preserve the prefix rather than to minimize tokens for its own sake.
-[Compaction](../compaction.md) records the rule directly: a divergent prefix cold-misses the
+[Compaction](../handbook/src/architecture/compaction.md) records the rule directly: a divergent prefix cold-misses the
 provider prompt cache, so entries are rewritten through `rewriteEntries()` and a sub-floor tool
 result is never blanked, because the `[Output truncated - N tokens]` placeholder costs about 8
 tokens and pruning below that would grow the context and churn the cache for nothing.
@@ -434,7 +434,7 @@ nothing.
 - Do not add a `cache_control` or `cachePoint` in a new place without counting the budget. On
   Anthropic the budget is 4 including markers you did not place, and going over means
   `enforceCacheControlLimit` silently strips one of yours.
-- Do not iterate a `Map` into a prompt section. `secrets.md` records why the secret inventory is
+- Do not iterate a `Map` into a prompt section. `../handbook/src/architecture/secrets.md` records why the secret inventory is
   sorted: insertion order shuffles between refreshes and invalidates the prefix without changing
   anything the section says.
 - Do not mix TTLs and rely on the request surviving. Longer must precede shorter, and the

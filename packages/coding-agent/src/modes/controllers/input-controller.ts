@@ -13,7 +13,7 @@ import { resolveLocalRoot } from "../../internal-urls/local-protocol";
 import { AGENT_VIEW_LEFT_TAP_WINDOW_MS } from "../../modes/components/agent-view-timings";
 import { AssistantMessageComponent } from "../../modes/components/assistant-message";
 import { extractImagePathFromText } from "../../modes/components/custom-editor";
-import { modalRevealEnabled } from "../../modes/components/modal-shell";
+import { pointerMotionEnabled } from "../../modes/components/modal-shell";
 import { renderSegmentTrack } from "../../modes/components/segment-track";
 import { TinyTitleDownloadProgressComponent } from "../../modes/components/tiny-title-download-progress";
 import { expandEmoticons } from "../../modes/emoji-autocomplete";
@@ -241,7 +241,7 @@ export class InputController {
 		// terminals get the jump they had, everything else gets the travel.
 		const component = new TinyTitleDownloadProgressComponent(modelKey, {
 			requestRender: () => this.ctx.ui.requestRender(),
-			enabled: modalRevealEnabled(),
+			enabled: pointerMotionEnabled(),
 		});
 		let added = false;
 		let disposed = false;

@@ -6,7 +6,6 @@ import {
 	renderGalleryForThemes,
 	renderGalleryState,
 	resolveFixture,
-	themedOutPath,
 } from "@veyyon/coding-agent/cli/gallery-cli";
 import type { GalleryFixture } from "@veyyon/coding-agent/cli/gallery-fixtures";
 import { Settings } from "@veyyon/coding-agent/config/settings";
@@ -96,11 +95,12 @@ describe("gallery harness", () => {
 		const lines = await renderGalleryState("task", task, "error", 100);
 		const stripped = lines.map(line => Bun.stripANSI(line).trim());
 		const rail = theme.symbol("block.rail");
-		// The block's title row carries the label, and the output hangs on the rail under
-		// it: the label is the block's own title and not a line of its body...
+		// The block's title row carries the label on the rail, and the output hangs on
+		// the same rail under it: the label is the block's own title and not a line of
+		// its body...
 		const titleIndex = stripped.findIndex(line => line.includes("Task"));
 		expect(titleIndex).toBeGreaterThanOrEqual(0);
-		expect(stripped[titleIndex]).not.toStartWith(rail);
+		expect(stripped[titleIndex]).toStartWith(rail);
 		expect(stripped.slice(titleIndex + 1).some(line => line.startsWith(rail))).toBe(true);
 		// ...but no standalone "Task" label line precedes it.
 		expect(stripped).not.toContain("Task");
@@ -248,18 +248,6 @@ describe("gallery --theme matrix (GALLERY-THEME-FLAG)", () => {
 		await renderGalleryForThemes(["titanium", "light"], ["bash"], ["success"], 100, false);
 		expect(settings.get("theme.dark")).toBe(beforeDark);
 		expect(settings.get("theme.light")).toBe(beforeLight);
-	});
-
-	it("suffixes the output path per theme so matrix files never collide", () => {
-		// Extension preserved, tag inserted before it.
-		expect(themedOutPath("shot.png", "light")).toBe("shot-light.png");
-		expect(themedOutPath("out/dir/shot.png", "titanium")).toBe("out/dir/shot-titanium.png");
-		// Only the final extension is treated as the extension.
-		expect(themedOutPath("a.b.png", "light")).toBe("a.b-light.png");
-		// No extension: append.
-		expect(themedOutPath("shot", "light")).toBe("shot-light");
-		// A theme name with path-hostile characters is slugified, never a separator.
-		expect(themedOutPath("shot.png", "my/weird theme")).toBe("shot-my-weird-theme.png");
 	});
 
 	it("wires --theme through the CLI: a repeated flag prints one labeled block per theme", async () => {

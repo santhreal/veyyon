@@ -1,7 +1,7 @@
 {
 	"type": "module",
 	"name": "@veyyon/tool-render",
-	"version": "1.1.1",
+	"version": "1.2.0",
 	"description": "Shared React tool-call renderers for Veyyon HTML export and collab-web",
 	"homepage": "https://veyyon.dev",
 	"author": "santhreal",
@@ -39,7 +39,7 @@
 		"react-dom": "catalog:"
 	},
 	"engines": {
-		"bun": ">=1.3.14"
+		"bun": ">=1.4.0"
 	},
 	"files": ["src", "README.md"],
 	"exports": {

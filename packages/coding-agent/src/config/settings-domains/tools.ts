@@ -16,7 +16,7 @@ export const TOOLS_SETTINGS = {
 			group: "Approvals",
 			label: "Tool Approval Policies",
 			description:
-				"Per-tool approval policies. Set to 'allow' to auto-approve, 'prompt' to require confirmation, or 'deny' to block. Overrides are honored in every approval mode.",
+				"Per-tool approval policies. Set to 'allow' to auto-approve, 'prompt' to require confirmation, or 'deny' to block. Overrides are honored in every approval mode. Any other value denies that tool and is reported at startup.",
 		},
 	},
 
@@ -308,7 +308,7 @@ export const TOOLS_SETTINGS = {
 	},
 	"generate_image.enabled": {
 		type: "boolean",
-		default: true,
+		default: false,
 		ui: {
 			tab: "tools",
 			group: "Available Tools",

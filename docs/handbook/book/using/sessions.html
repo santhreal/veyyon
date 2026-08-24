@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-0c15bee8.js";
+            window.path_to_searchindex_js = "../searchindex-c0972181.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-79e2ba62.js"></script>
+        <script src="../toc-a2abefc1.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -218,12 +218,12 @@ recent turns, working files, verification facts, and unresolved blockers through
 session resumes, Veyyon should make the important state visible to the next model turn instead of
 presenting a clean-looking summary that dropped the real constraint.</p>
 <h2 id="session-files-are-trees"><a class="header" href="#session-files-are-trees">Session files are trees</a></h2>
-<p>A session file (<code>~/.veyyon/profiles/default/agent/sessions/**/&lt;timestamp&gt;_&lt;id&gt;.jsonl</code>) is an append-oriented log whose entries form a tree. Recorded session entries carry an <code>id</code> and a <code>parentId</code>. Branching appends a new entry whose <code>parentId</code> names an earlier entry, so it starts a sibling branch from that point.</p>
+<p>A session file (<code>~/.veyyon/profiles/default/agent/sessions/**/&lt;timestamp&gt;_&lt;id&gt;.jsonl</code>) is an append-oriented log whose entries form a tree. Recorded session entries carry an <code>id</code> and a <code>parentId</code>. Branching appends a new entry whose <code>parentId</code> states an earlier entry, so it starts a sibling branch from that point.</p>
 <p>The <em>active leaf</em> advances to each appended entry. On load it falls back to the last entry in the file. Not every line carries <code>parentId</code>: the first-line session header does not, and in-place refresh records are full replacements of the original logical record rather than tree entries. Storage maintenance may atomically rewrite the file to update the header or representation, but it preserves the history entries. Branches you navigate away from remain addressable.</p>
 <p>Four properties are guaranteed by the storage layer:</p>
 <ul>
 <li><strong>No history deletion during navigation.</strong> Branching appends new entries; abandoned entries remain addressable.</li>
-<li><strong>A corrupt header never initializes over existing bytes.</strong> A non-empty file without a valid first session record is refused. Veyyon leaves it byte-for-byte unchanged so you can inspect or repair it.</li>
+<li><strong>A corrupt header never initializes over existing bytes.</strong> A non-empty file without a valid first session record is rejected. Veyyon leaves it byte-for-byte unchanged so you can inspect or repair it.</li>
 <li><strong>Recoverable record loss is operator-visible.</strong> A malformed later record is skipped so one damaged line does not make the entire session unopenable. The session shows one bounded warning with the file, one-based line and byte offset, and shape problem. It never quotes the dropped record’s content. Duplicate ids are last-write-win, and broken parent chains appear as extra roots.</li>
 <li><strong>Moves are transactional.</strong> Moving a session changes the transcript, its artifacts, and its recorded working directory as one operation through the active storage backend. If relocation or the final header write fails, Veyyon restores the old paths and in-memory working directory.</li>
 </ul>
@@ -295,7 +295,7 @@ gc:
 </code></pre>
 <p>Pass <code>--write-grace-minutes</code> to override it for one run. The minimum is one minute: a shorter window
 would let GC delete a blob a live session wrote a moment ago, so a smaller value is raised to the minimum
-and the run says so.</p>
+and the run reports it.</p>
 <h2 id="typing-while-the-agent-works"><a class="header" href="#typing-while-the-agent-works">Typing while the agent works</a></h2>
 <p>Input entered during a running turn goes to one of two places, and the bottom pane always shows
 which:</p>

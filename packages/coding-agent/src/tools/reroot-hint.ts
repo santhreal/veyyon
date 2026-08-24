@@ -24,6 +24,7 @@
  * being outside cwd.
  */
 
+import type { Dirent } from "node:fs";
 import * as fsPromises from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -213,16 +214,19 @@ async function findNestedRepositories(root: string): Promise<string[]> {
 	let frontier = [root];
 
 	for (let depth = 0; depth < CONTAINER_SCAN_DEPTH && frontier.length > 0; depth++) {
+		// One depth is one round of I/O rather than one per directory. The walk is
+		// breadth-first and every directory at a depth is independent, so reading them
+		// one at a time made the scan cost the SUM of a tree's directories when it only
+		// needs to cost its height: this predicate ran for 169ms of a 215ms system-prompt
+		// build on a workspace of a few hundred directories, all of it startup latency
+		// before the first frame. A directory this process cannot list contributes no
+		// evidence either way, and it cannot hold a project this session could have
+		// reached, so it reads as empty.
+		const listings = await Promise.all(
+			frontier.map(async current => ({ current, entries: await readDirectoryOrEmpty(current) })),
+		);
 		const next: string[] = [];
-		for (const current of frontier) {
-			let entries: import("node:fs").Dirent[];
-			try {
-				entries = await fsPromises.readdir(current, { withFileTypes: true });
-			} catch {
-				// A directory this process cannot list contributes no evidence either way, and it
-				// cannot hold a project this session could have reached.
-				continue;
-			}
+		for (const { current, entries } of listings) {
 			for (const entry of entries) {
 				if (!entry.isDirectory()) continue;
 				if (entry.name === REPOSITORY_MARKER) {
@@ -236,12 +240,23 @@ async function findNestedRepositories(root: string): Promise<string[]> {
 				if (entry.name.startsWith(".") || CONTAINER_SCAN_SKIP.has(entry.name)) continue;
 				next.push(path.join(current, entry.name));
 			}
-			if (found.length >= CONTAINER_SAMPLE_LIMIT) return found;
 		}
+		// The cap is applied once the depth is complete rather than mid-frontier, so the
+		// sample is the same list whatever order the reads finished in.
+		if (found.length >= CONTAINER_SAMPLE_LIMIT) return found.slice(0, CONTAINER_SAMPLE_LIMIT);
 		frontier = next;
 	}
 
 	return found;
+}
+
+/** Directory entries, or none when this process cannot list it. */
+async function readDirectoryOrEmpty(directory: string): Promise<Dirent[]> {
+	try {
+		return await fsPromises.readdir(directory, { withFileTypes: true });
+	} catch {
+		return [];
+	}
 }
 
 /**
@@ -340,16 +355,15 @@ export function isNonProjectDirectory(directory: string, options: { home?: strin
 export async function isNonProjectRoot(directory: string): Promise<NonProjectReason | null> {
 	if (isNonProjectDirectory(directory)) return "launch-directory";
 
-	let marked = false;
-	for (const marker of PROJECT_ROOT_MARKERS) {
-		if (await hasEntry(directory, marker)) {
-			marked = true;
-			break;
-		}
-	}
-	if (!marked) return "no-project-marker";
+	// One round of stats rather than one per marker, and the repository marker's answer is
+	// reused by the container question below instead of being asked for twice. The markers
+	// are independent and the loop was ordered only so the cheapest answer came first,
+	// which costs nothing to keep while paying a syscall's latency per marker to check.
+	const present = await Promise.all(PROJECT_ROOT_MARKERS.map(marker => hasEntry(directory, marker)));
+	if (!present.some(Boolean)) return "no-project-marker";
 
-	if ((await hasEntry(directory, REPOSITORY_MARKER)) && (await isRepositoryContainer(directory))) {
+	const repositoryIndex = PROJECT_ROOT_MARKERS.indexOf(REPOSITORY_MARKER);
+	if (present[repositoryIndex] === true && (await isRepositoryContainer(directory))) {
 		return "holds-other-projects";
 	}
 	return null;

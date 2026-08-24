@@ -1,8 +1,7 @@
 import { errorMessage } from "@veyyon/utils/type-guards";
 import { trimTrailingSlashes } from "@veyyon/utils/url";
-import { type } from "arktype";
 import type { ModelSpec } from "../types";
-import { discoveryFetch } from "../utils";
+import { discoveryFetch, toArray, toBoolean, toFields, toFiniteNumber, toStringArray, toStringValue } from "../utils";
 import {
 	ANTIGRAVITY_VARIANT_COLLAPSE_TABLE,
 	collapseEffortVariants,
@@ -70,78 +69,95 @@ export interface AntigravityDiscoveryApiResponse {
 	models?: Record<string, AntigravityDiscoveryApiModel>;
 	agentModelSorts?: AntigravityDiscoveryAgentModelSort[];
 }
-const AntigravityDiscoveryApiModelSchema = type({
-	"displayName?": type("unknown").pipe(value => (typeof value === "string" ? value : undefined)),
-	"supportsImages?": type("unknown").pipe(value => (typeof value === "boolean" ? value : undefined)),
-	"supportsThinking?": type("unknown").pipe(value => (typeof value === "boolean" ? value : undefined)),
-	"thinkingBudget?": type("unknown").pipe(value =>
-		typeof value === "number" && Number.isFinite(value) ? value : undefined,
-	),
-	"recommended?": type("unknown").pipe(value => (typeof value === "boolean" ? value : undefined)),
-	"maxTokens?": type("unknown").pipe(value =>
-		typeof value === "number" && Number.isFinite(value) ? value : undefined,
-	),
-	"maxOutputTokens?": type("unknown").pipe(value =>
-		typeof value === "number" && Number.isFinite(value) ? value : undefined,
-	),
-	"model?": type("unknown").pipe(value => (typeof value === "string" ? value : undefined)),
-	"apiProvider?": type("unknown").pipe(value => (typeof value === "string" ? value : undefined)),
-	"modelProvider?": type("unknown").pipe(value => (typeof value === "string" ? value : undefined)),
-	"isInternal?": type("unknown").pipe(value => (typeof value === "boolean" ? value : undefined)),
-	"supportsVideo?": type("unknown").pipe(value => (typeof value === "boolean" ? value : undefined)),
-});
+/**
+ * Antigravity's `fetchAvailableModels` payload, read field by field.
+ *
+ * Every field here is optional and every one was already declared as `unknown` piped through a
+ * `typeof` check, so a schema library contributed nothing but its 362ms module evaluation on a
+ * launch path that reaches this file through the provider descriptor table. A field of the wrong
+ * type is dropped and the rest of the entry kept: this endpoint adds fields without notice, and
+ * one unreadable flag is not a reason to hide a model the account can use.
+ */
+function readDiscoveryModel(value: unknown): AntigravityDiscoveryApiModel | undefined {
+	const fields = toFields(value);
+	if (!fields) {
+		return undefined;
+	}
+	return {
+		displayName: toStringValue(fields.displayName),
+		supportsImages: toBoolean(fields.supportsImages),
+		supportsThinking: toBoolean(fields.supportsThinking),
+		thinkingBudget: toFiniteNumber(fields.thinkingBudget),
+		recommended: toBoolean(fields.recommended),
+		maxTokens: toFiniteNumber(fields.maxTokens),
+		maxOutputTokens: toFiniteNumber(fields.maxOutputTokens),
+		model: toStringValue(fields.model),
+		apiProvider: toStringValue(fields.apiProvider),
+		modelProvider: toStringValue(fields.modelProvider),
+		isInternal: toBoolean(fields.isInternal),
+		supportsVideo: toBoolean(fields.supportsVideo),
+	};
+}
 
-const AntigravityDiscoveryAgentModelGroupSchema = type({
-	"modelIds?": type("unknown").pipe(value =>
-		Array.isArray(value) ? value.filter((modelId): modelId is string => typeof modelId === "string") : undefined,
-	),
-});
-
-const AntigravityDiscoveryAgentModelSortSchema = type({
-	"groups?": type("unknown").pipe(value => {
-		if (!Array.isArray(value)) return undefined;
-		const result: AntigravityDiscoveryAgentModelGroup[] = [];
-		for (const group of value) {
-			const parsedGroup = AntigravityDiscoveryAgentModelGroupSchema(group);
-			if (!(parsedGroup instanceof type.errors)) {
-				result.push(parsedGroup);
-			}
+function readAgentModelSort(value: unknown): AntigravityDiscoveryAgentModelSort | undefined {
+	const fields = toFields(value);
+	if (!fields) {
+		return undefined;
+	}
+	const groups = toArray(fields.groups);
+	if (!groups) {
+		return {};
+	}
+	const parsed: AntigravityDiscoveryAgentModelGroup[] = [];
+	for (const group of groups) {
+		const groupFields = toFields(group);
+		if (groupFields) {
+			parsed.push({ modelIds: toStringArray(groupFields.modelIds) });
 		}
-		return result;
-	}),
-});
+	}
+	return { groups: parsed };
+}
 
-const AntigravityDiscoveryApiResponseSchema = type({
-	"models?": type("unknown").pipe(value => {
-		if (typeof value !== "object" || value === null) {
-			return undefined;
-		}
+/**
+ * The response, or `undefined` when the body is not an object at all.
+ *
+ * A `models` map that is not an object, and an `agentModelSorts` that is not a list, read as
+ * absent rather than as a failure: the caller falls back to the endpoint's other signals and
+ * reports its own reason, and this endpoint has shipped both shapes.
+ */
+function readDiscoveryResponse(value: unknown): AntigravityDiscoveryApiResponse | undefined {
+	const fields = toFields(value);
+	if (!fields) {
+		return undefined;
+	}
+	const response: AntigravityDiscoveryApiResponse = {};
+
+	const models = toFields(fields.models);
+	if (models) {
 		const normalized: Record<string, AntigravityDiscoveryApiModel> = {};
-		for (const [modelId, modelValue] of Object.entries(value)) {
-			if (typeof modelValue !== "object" || modelValue === null) {
-				continue;
-			}
-			const parsedModel = AntigravityDiscoveryApiModelSchema(modelValue);
-			if (!(parsedModel instanceof type.errors)) {
-				normalized[modelId] = parsedModel;
+		for (const [modelId, modelValue] of Object.entries(models)) {
+			const model = readDiscoveryModel(modelValue);
+			if (model) {
+				normalized[modelId] = model;
 			}
 		}
-		return normalized;
-	}),
-	"agentModelSorts?": type("unknown").pipe(value => {
-		if (!Array.isArray(value)) {
-			return undefined;
-		}
-		const result: AntigravityDiscoveryAgentModelSort[] = [];
-		for (const sort of value) {
-			const parsedSort = AntigravityDiscoveryAgentModelSortSchema(sort);
-			if (!(parsedSort instanceof type.errors)) {
-				result.push(parsedSort);
+		response.models = normalized;
+	}
+
+	const sorts = toArray(fields.agentModelSorts);
+	if (sorts) {
+		const parsed: AntigravityDiscoveryAgentModelSort[] = [];
+		for (const sort of sorts) {
+			const readSort = readAgentModelSort(sort);
+			if (readSort) {
+				parsed.push(readSort);
 			}
 		}
-		return result;
-	}),
-});
+		response.agentModelSorts = parsed;
+	}
+
+	return response;
+}
 /**
  * Options for fetching Antigravity discovery models.
  */
@@ -280,9 +296,5 @@ export async function fetchAntigravityDiscoveryModels(
 }
 
 function parseAntigravityDiscoveryResponse(value: unknown): AntigravityDiscoveryApiResponse | null {
-	const parsed = AntigravityDiscoveryApiResponseSchema(value);
-	if (parsed instanceof type.errors) {
-		return null;
-	}
-	return parsed;
+	return readDiscoveryResponse(value) ?? null;
 }

@@ -1,11 +1,11 @@
 import * as http2 from "node:http2";
 import { create, fromBinary, toBinary } from "@bufbuild/protobuf";
 import { errorMessage, trimTrailingSlashes } from "@veyyon/utils";
-import { type } from "arktype";
 import { getBundledModels } from "../models";
 import { CURSOR_API_ENDPOINT } from "../provider-endpoints";
 import { toModelSpec } from "../provider-models/bundled-references";
 import type { Model, ModelSpec } from "../types";
+import { toArray, toFields, toStringArray, toStringValue } from "../utils";
 import { stripEffortTierSuffix } from "../variant-collapse";
 import { GetUsableModelsRequestSchema, GetUsableModelsResponseSchema } from "./cursor-gen/agent_pb";
 import type { DiscoveryFailure, DiscoveryHooks } from "./failure";
@@ -21,35 +21,45 @@ const CURSOR_GET_USABLE_MODELS_PATH = "/agent.v1.AgentService/GetUsableModels";
  */
 const CURSOR_MULTIMODAL_ID_PATTERN = /claude|gemini|gpt-|codex/;
 
-const OptionalDisplayNameSchema = type("unknown").pipe(raw => (typeof raw === "string" ? raw : undefined));
-const CursorAliasesSchema = type("unknown").pipe(raw => {
-	if (Array.isArray(raw)) {
-		return raw.filter((alias: unknown): alias is string => typeof alias === "string");
+/**
+ * One model as `GetUsableModels` describes it.
+ *
+ * Read field by field. The schemas this file declared typed every field `unknown` and coerced
+ * it in a pipe, so the only thing the library contributed was 362ms of module evaluation on a
+ * launch path that reaches this file through the provider descriptor table.
+ */
+interface CursorModelDetailsValue {
+	modelId: string;
+	displayName?: string | undefined;
+	displayNameShort?: string | undefined;
+	displayModelId?: string | undefined;
+	aliases: string[];
+	thinkingDetails?: unknown;
+	maxMode: boolean;
+}
+
+/**
+ * A model entry, or `undefined` when it carries no id.
+ *
+ * `modelId` is the only required field: without it there is nothing to select. A display name
+ * of the wrong type falls through to the next candidate name, and a non-list `aliases` reads as
+ * no aliases, because neither decides whether the model can be used.
+ */
+function readCursorModelDetails(value: unknown): CursorModelDetailsValue | undefined {
+	const fields = toFields(value);
+	if (!fields || typeof fields.modelId !== "string") {
+		return undefined;
 	}
-	return [];
-});
-
-const CursorModelDetailsSchema = type({
-	modelId: "string",
-	displayName: OptionalDisplayNameSchema.default(undefined),
-	displayNameShort: OptionalDisplayNameSchema.default(undefined),
-	displayModelId: OptionalDisplayNameSchema.default(undefined),
-	aliases: CursorAliasesSchema.default(() => []),
-	"thinkingDetails?": "unknown",
-	maxMode: "boolean = false",
-});
-
-const CursorModelsInnerSchema = type("unknown[]");
-const ResilientCursorModelsSchema = type("unknown").pipe(raw => {
-	const out = CursorModelsInnerSchema(raw);
-	return out instanceof type.errors ? [] : out;
-});
-
-const CursorDecodedResponseSchema = type({
-	models: ResilientCursorModelsSchema.default(() => []),
-});
-
-type CursorModelDetailsValue = typeof CursorModelDetailsSchema.infer;
+	return {
+		modelId: fields.modelId,
+		displayName: toStringValue(fields.displayName),
+		displayNameShort: toStringValue(fields.displayNameShort),
+		displayModelId: toStringValue(fields.displayModelId),
+		aliases: toStringArray(fields.aliases) ?? [],
+		thinkingDetails: fields.thinkingDetails,
+		maxMode: fields.maxMode === true,
+	};
+}
 
 /**
  * Options for fetching dynamic Cursor models from `GetUsableModels`.
@@ -104,14 +114,19 @@ export async function fetchCursorUsableModels(
 			return null;
 		}
 		const decoded = decodeGetUsableModelsResponse(responseBuffer, detail => report("body", detail));
-		const parsedDecoded = CursorDecodedResponseSchema(decoded);
-		if (parsedDecoded instanceof type.errors) {
-			report("payload", `response holds no model list: ${parsedDecoded.summary}`);
+		const decodedFields = toFields(decoded);
+		if (!decodedFields) {
+			report(
+				"payload",
+				`response holds no model list: the decoded body is ${decoded === null ? "null" : typeof decoded}`,
+			);
 			return null;
 		}
 
 		const references = createCursorReferenceMap();
-		return normalizeCursorModels(parsedDecoded.models, options.baseUrl, references);
+		// A `models` field that is missing or not a list reads as no models: this body came off a
+		// protobuf decode, so a shape surprise here is an empty catalog rather than a failed read.
+		return normalizeCursorModels(toArray(decodedFields.models) ?? [], options.baseUrl, references);
 	} catch (error) {
 		// Null means this provider produced no catalog, which the caller records as an unavailable provider.
 		// Nothing is swallowed twice over: `[]` is never returned for a failure, so the caller can still tell
@@ -143,17 +158,27 @@ async function fetchViaHttp2(
 ): Promise<Uint8Array | null> {
 	const { promise, resolve } = Promise.withResolvers<Uint8Array | null>();
 	const client = http2.connect(baseUrl);
-	const timer = setTimeout(() => {
-		client.destroy();
-		report("request", `no response within ${timeoutMs}ms`);
-		resolve(null);
-	}, timeoutMs);
+	// ONE REASON PER REQUEST. Four events end this request and every one of them used to
+	// report: `Promise.withResolvers` made the second `resolve` a no-op, so the RESULT was
+	// single-valued while the reasons were not. One unresolvable host under Bun 1.4 fires
+	// the session `error` and then the cancelled stream's `error`, which reported
+	// "HTTP/2 connection failed: getaddrinfo ENOTFOUND" and "HTTP/2 stream failed: The
+	// pending stream has been canceled" for one failure, so a caller listing why discovery
+	// found nothing showed the same failure twice and the cancellation read as a second
+	// fault. The first event is the cause, and it is the only one anybody can act on.
+	let settled = false;
+	const timer = setTimeout(() => giveUp("request", `no response within ${timeoutMs}ms`), timeoutMs);
 
-	client.on("error", error => {
+	function giveUp(stage: DiscoveryFailure["stage"], detail: string): void {
+		if (settled) return;
+		settled = true;
 		clearTimeout(timer);
-		report("request", `HTTP/2 connection failed: ${errorMessage(error)}`);
+		client.destroy();
+		report(stage, detail);
 		resolve(null);
-	});
+	}
+
+	client.on("error", error => giveUp("request", `HTTP/2 connection failed: ${errorMessage(error)}`));
 
 	const req = client.request({
 		":method": "POST",
@@ -164,25 +189,19 @@ async function fetchViaHttp2(
 	const chunks: Buffer[] = [];
 	req.on("data", (chunk: Buffer) => chunks.push(chunk));
 	req.on("end", () => {
+		if (settled) return;
+		settled = true;
 		clearTimeout(timer);
 		client.close();
 		resolve(new Uint8Array(Buffer.concat(chunks)));
 	});
-	req.on("error", error => {
-		clearTimeout(timer);
-		client.close();
-		report("request", `HTTP/2 stream failed: ${errorMessage(error)}`);
-		resolve(null);
-	});
+	req.on("error", error => giveUp("request", `HTTP/2 stream failed: ${errorMessage(error)}`));
 	req.on("response", headers => {
 		const status = Number(headers[":status"] ?? 0);
 		if (status < 200 || status >= 300) {
-			clearTimeout(timer);
-			client.close();
 			// Cursor answers 464 to an HTTP/1.1 request and 401 to a stale token, and an operator does
 			// different things about each, so the status is the reason rather than a bare "unavailable".
-			report("status", `HTTP ${status}`);
-			resolve(null);
+			giveUp("status", `HTTP ${status}`);
 		}
 	});
 
@@ -302,12 +321,11 @@ function normalizeCursorModel(
 	baseUrlOverride: string | undefined,
 	references: Map<string, ModelSpec<"cursor-agent">>,
 ): ModelSpec<"cursor-agent"> | null {
-	const parsedModel = CursorModelDetailsSchema(model);
-	if (parsedModel instanceof type.errors) {
+	const details = readCursorModelDetails(model);
+	if (!details) {
 		return null;
 	}
 
-	const details = parsedModel;
 	const id = details.modelId.trim();
 	if (!id) {
 		return null;

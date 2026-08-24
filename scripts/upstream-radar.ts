@@ -11,10 +11,9 @@ import { fileURLToPath } from "node:url";
  * (30 releases in 3 days). Each merged upstream PR becomes an issue carrying
  * the diff surface and porting instructions, labeled `upstream-port`. veybot
  * (python/veybot) watches that label, prepares the change on a branch, and
- * opens a candidate port PR that closes the issue. It never merges: a
- * maintainer requests `/devin review`, and a human gates every PR. Dedup is by
- * an HTML-comment marker (`upstream-pr: <number>`) in the issue body, so re-runs
- * are idempotent and concurrent runs converge.
+ * opens a candidate port PR that closes the issue. It never merges: a human
+ * gates every PR. Dedup is by an HTML-comment marker (`upstream-pr: <number>`)
+ * in the issue body, so re-runs are idempotent and concurrent runs converge.
  *
  * What gets mirrored is policy, not everything: veyyon ports upstream fixes
  * and performance corrections, plus feature additions whose file surface does

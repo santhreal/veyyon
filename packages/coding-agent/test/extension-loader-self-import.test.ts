@@ -95,7 +95,9 @@ describe("extension loader host runtime binding", () => {
 			`,
 		);
 
-		const extensionResult = await loadExtensions([extensionPath], cwd);
+		const extensionResult = await loadExtensions([extensionPath], cwd, undefined, undefined, {
+			configuredPaths: [extensionPath],
+		});
 		expect(extensionResult.errors).toEqual([]);
 		expect(extensionResult.extensions).toHaveLength(1);
 		expect(extensionResult.extensions[0].commands.has("identity_extension")).toBe(true);

@@ -13,24 +13,48 @@
 import { executeShell } from "@veyyon/natives";
 import { errorMessage } from "@veyyon/utils";
 import {
+	clearUnresolvedEnvReports,
 	commandFailureReason,
 	configCommandPolicy,
 	parseConfigValueCommand,
-	resolveEnvOrLiteral,
+	reportUnresolvedEnvReference,
+	resolveConfigEnvReference,
 } from "./config-value-resolution";
 
+/**
+ * The run currently executing a command, with the cache generation it started at.
+ *
+ * The generation is what lets an invalidation tell a run that predates it from one that is
+ * already reading the rotated secret, which is the difference between one execution per
+ * rotation and one per caller that noticed.
+ */
+interface InFlightCommand {
+	promise: Promise<string | undefined>;
+	generation: number;
+}
+
 /** De-duplicates concurrent executions for the same command within this async path. */
-const commandInFlight = new Map<string, Promise<string | undefined>>();
+const commandInFlight = new Map<string, InFlightCommand>();
 
 /**
  * Resolve a config value (API key, header value, etc.) to an actual value.
  * - If it starts with "!", the rest runs as a shell command and its stdout is used (cached).
- * - Otherwise the environment is checked first, then the value is treated as a literal.
+ * - `${NAME}` / `$NAME` and a bare environment name resolve from the environment
+ *   and produce nothing when the variable is unset or empty.
+ * - `literal:<text>` and any other bare value are the value itself.
  */
 export async function resolveConfigValue(config: string, describedAs?: string): Promise<string | undefined> {
 	const command = parseConfigValueCommand(config);
-	if (command === null) return resolveEnvOrLiteral(config);
-	return await executeCommand(command, describedAs);
+	if (command !== null) return await executeCommand(command, describedAs);
+	const outcome = resolveConfigEnvReference(config);
+	if (outcome.ok) return outcome.value;
+	reportUnresolvedEnvReference({
+		variable: outcome.variable,
+		explicit: outcome.explicit,
+		empty: outcome.empty,
+		describedAs,
+	});
+	return undefined;
 }
 
 async function executeCommand(command: string, describedAs?: string): Promise<string | undefined> {
@@ -42,18 +66,23 @@ async function executeCommand(command: string, describedAs?: string): Promise<st
 	if (configCommandPolicy.isBackedOff(command)) return undefined;
 
 	const existing = commandInFlight.get(command);
-	if (existing) return await existing;
+	if (existing) return await existing.promise;
 
-	const promise = runShellCommand(command, 10_000, describedAs)
+	// Read before the run, handed back after it: an invalidation that lands while
+	// the command is running must not be undone by the run it interrupted.
+	const generation = configCommandPolicy.generationOf(command);
+	const promise: Promise<string | undefined> = runShellCommand(command, 10_000, describedAs)
 		.then(result => {
-			if (result !== undefined) configCommandPolicy.recordSuccess(command, result);
+			if (result !== undefined) configCommandPolicy.recordSuccess(command, result, generation);
 			return result;
 		})
 		.finally(() => {
-			commandInFlight.delete(command);
+			// Only if it is still ours. An invalidation drops the entry so the next
+			// caller starts a fresh run, and this one must not delete that run.
+			if (commandInFlight.get(command)?.promise === promise) commandInFlight.delete(command);
 		});
 
-	commandInFlight.set(command, promise);
+	commandInFlight.set(command, { promise, generation });
 	return await promise;
 }
 
@@ -117,8 +146,43 @@ export async function resolveHeaders(
 	return Object.keys(resolved).length > 0 ? resolved : undefined;
 }
 
-/** Clear the shared config-value command cache and this path's in-flight map. Exported for testing. */
+/**
+ * Drop the cached result of one config value, so the next resolution runs it again.
+ *
+ * Returns whether the value was a `!command` at all: an environment reference or a
+ * literal is read afresh every time and has nothing to invalidate.
+ *
+ * The caller is whoever learned the value is stale — an authenticated request answered
+ * with 401/403, an operator-driven reconnect, a config reload. A transport that merely
+ * dropped is NOT that: a network blip is no evidence about a credential, and re-running
+ * a password-manager command on every reconnect is how a reconnect loop turns into a
+ * stream of touch-ID prompts.
+ */
+export function invalidateConfigValue(config: string): boolean {
+	const command = parseConfigValueCommand(config);
+	if (command === null) return false;
+	// A run may be joined instead of restarted only when it was itself started BY an
+	// invalidation, which is what tells "already reading the rotated secret" apart from "reading
+	// the value that was just rejected". The generation counter only advances on an invalidation,
+	// so a run that recorded generation G at its start began after the G-th one; if G is still
+	// current, nothing has been learned since and both callers can take its answer. Two endpoints
+	// answering 401 at the same instant is therefore one rotation and one execution of the
+	// command, not one per caller that noticed. G of zero means no invalidation has happened yet,
+	// so the run in flight predates this one and must be replaced.
+	const generation = configCommandPolicy.generationOf(command);
+	const inFlight = commandInFlight.get(command);
+	if (generation > 0 && inFlight?.generation === generation) return true;
+	configCommandPolicy.invalidate(command);
+	commandInFlight.delete(command);
+	return true;
+}
+
+/**
+ * Clear the shared config-value command cache, this path's in-flight map, and
+ * which unresolved variables have been reported. Exported for testing.
+ */
 export function clearConfigValueCache(): void {
 	configCommandPolicy.clear();
 	commandInFlight.clear();
+	clearUnresolvedEnvReports();
 }

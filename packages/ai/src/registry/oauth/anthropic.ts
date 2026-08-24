@@ -62,14 +62,17 @@ async function postJson(
 			signal,
 		});
 
-		const responseBody = await response.text();
 		if (!response.ok) {
+			// A token endpoint's error body is where a credential is most likely to be echoed
+			// back, so the failure path reads it through the shared bounded reader. The success
+			// body is the caller's to parse and is read whole.
+			const detail = await AIError.readProviderErrorDetail(response);
 			throw new AIError.ProviderHttpError(
-				`HTTP request failed. status=${response.status}; url=${url}; body=${responseBody}`,
+				`HTTP request failed. status=${response.status}; url=${url}; body=${detail}`,
 				response.status,
 			);
 		}
-		return responseBody;
+		return await response.text();
 	});
 }
 
@@ -157,21 +160,21 @@ async function fetchBootstrapIdentity(accessToken: string, fetchImpl: FetchImpl)
 			},
 			signal,
 		});
-		const body = await response.text();
 		if (!response.ok) {
+			const detail = await AIError.readProviderErrorDetail(response);
 			throw new AIError.ProviderHttpError(
-				`HTTP request failed. status=${response.status}; url=${url}; body=${body}`,
+				`HTTP request failed. status=${response.status}; url=${url}; body=${detail}`,
 				response.status,
 			);
 		}
-		return body;
+		return await response.text();
 	});
 	let data: AnthropicBootstrapResponse;
 	try {
 		data = JSON.parse(responseBody) as AnthropicBootstrapResponse;
 	} catch (error) {
 		throw new AIError.OAuthError(
-			`Anthropic bootstrap returned invalid JSON. url=${url}; body=${responseBody}; details=${formatErrorDetails(error)}`,
+			`Anthropic bootstrap returned invalid JSON. url=${url}; body=${AIError.boundProviderErrorDetail(responseBody)}; details=${formatErrorDetails(error)}`,
 			{ kind: "validation", provider: "anthropic", cause: error },
 		);
 	}

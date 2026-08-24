@@ -1,9 +1,9 @@
 /**
- * The hand-written settings catalog in `docs/settings.md` agrees with the schema.
+ * The hand-written settings catalog in `docs/handbook/src/reference/settings.md` agrees with the schema.
  *
- * There are two catalogs of the same keys. `docs/settings-reference.md` is
+ * There are two catalogs of the same keys. `docs/handbook/src/reference/settings-reference.md` is
  * generated and cannot drift — a test regenerates it and compares bytes. But
- * `docs/settings.md` keeps a curated catalog of its own, roughly 160 rows of
+ * `docs/handbook/src/reference/settings.md` keeps a curated catalog of its own, roughly 160 rows of
  * `| key | type | default | notes |` wrapped in the narrative, YAML examples,
  * and cross-links that make the page worth reading. Those rows are typed by
  * hand and nothing checked them.
@@ -41,7 +41,7 @@ import {
 } from "../packages/coding-agent/src/config/settings-schema";
 
 const REPO_ROOT = fileURLToPath(new URL("..", import.meta.url));
-const DOC_PATH = "docs/settings.md";
+const DOC_PATH = "docs/handbook/src/reference/settings.md";
 
 interface DocumentedKey {
 	readonly key: string;
@@ -54,7 +54,8 @@ interface DocumentedKey {
 function catalogSection(markdown: string): { text: string; startLine: number } {
 	const lines = markdown.split("\n");
 	const start = lines.findIndex(line => line.trim() === "## Settings catalog");
-	if (start < 0) throw new Error("docs/settings.md no longer has a '## Settings catalog' section");
+	if (start < 0)
+		throw new Error("docs/handbook/src/reference/settings.md no longer has a '## Settings catalog' section");
 	let end = lines.length;
 	for (let i = start + 1; i < lines.length; i++) {
 		if (lines[i].startsWith("## ")) {
@@ -145,7 +146,7 @@ const doc = readFileSync(join(REPO_ROOT, DOC_PATH), "utf8");
 const keys = documentedKeys(doc);
 const known = keys.filter(k => k.key in SETTINGS_SCHEMA);
 
-describe("the settings catalog in docs/settings.md", () => {
+describe("the settings catalog in docs/handbook/src/reference/settings.md", () => {
 	/** Guards every assertion below: an empty parse would make them all vacuous. */
 	it("parses a substantial number of key rows", () => {
 		expect(keys.length).toBeGreaterThan(100);

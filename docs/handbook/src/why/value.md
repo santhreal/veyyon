@@ -1,27 +1,25 @@
 # Overview
 
-Veyyon is a local terminal coding agent. The loop, the tools, and your credentials all stay on your machine. You choose which model to use from the bundled provider catalog, either by signing in to a subscription or by bringing your own key.
+Veyyon is a local terminal coding agent. The loop, tools, and credentials run locally on the host machine. Model selection uses the bundled provider catalog via subscription sign-in or API keys.
 
-This chapter is a one-page map of what the harness does. Each row links to the chapter that explains it in full, so you can skim now and follow up later.
+## Subsystem summary
 
-## What the harness does
-
-| Area | What you get |
+| Area | Capability |
 | --- | --- |
-| Edits | Hashline `edit` and `write`, verified before anything is written to disk |
-| Tools | read, grep, glob, bash, LSP, DAP, browser, MCP, task subagents, and more |
-| Approvals | `tools.approvalMode` gates the read, write, and exec tiers (there is no operating-system process sandbox) |
-| Models | Separate slots for the interactive, subagent, and compaction models, plus optional roles per profile |
-| Sessions | Branchable session trees that you can resume and fork |
-| Memory | Memory backends, active whenever `memory.backend` is not `off` |
-| Config | `~/.veyyon`, or a relocated agent directory per profile; a working tree contributes `AGENTS.md` instructions and nothing else |
+| Edits | Hashline `edit` and `write`, checked against file contents before writing to disk |
+| Tools | `read`, `grep`, `glob`, `bash`, LSP, DAP, browser, MCP, task subagents, and extensions |
+| Approvals | `tools.approvalMode` gates read, write, and exec tiers |
+| Models | Separate slots for interactive, subagent, and compaction models, with role mappings per profile |
+| Sessions | Branchable session trees with resume and fork support |
+| Memory | Local SQLite memory backends, active when `memory.backend` is not `off` |
+| Config | `~/.veyyon` or profile-specific agent directories; repository trees contribute `AGENTS.md` instructions |
 
 ## Lineage
 
 Veyyon is built from [oh-my-pi](https://github.com/can1357/oh-my-pi) and [Pi](https://github.com/badlogic/pi-mono). See [Acknowledgements](../acknowledgements.md) for credits.
 
-## Next
+## Related
 
-- [Mechanisms](./innovations.md) explains how the harness works.
-- [Getting started](../using/getting-started.md) walks through your first session.
-- [Editing and repair](../using/editing.md) covers the edit path in depth.
+- [Mechanisms](./innovations.md)
+- [Getting started](../using/getting-started.md)
+- [Editing and repair](../using/editing.md)

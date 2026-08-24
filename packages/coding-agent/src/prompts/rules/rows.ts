@@ -18,16 +18,16 @@
  * for these ids, and the coverage suite fails on a second importer.
  */
 
-import type { PromptEntry } from "@veyyon/utils/prompt-registry";
+import { definePromptRows, type PromptEntry } from "@veyyon/utils/prompt-registry";
 
 import rulesTtsrInterrupt from "./ttsr-interrupt.md" with { type: "text" };
 import rulesTtsrToolReminder from "./ttsr-tool-reminder.md" with { type: "text" };
 
 /** Every prompt under `src/prompts/rules/`, keyed by its id (the path under `src/prompts/`). */
-export const rulesPrompts = {
+export const rulesPrompts = definePromptRows({
 	"rules/ttsr-interrupt": { text: rulesTtsrInterrupt, purpose: "interrupts output that violated a user-defined rule" },
 	"rules/ttsr-tool-reminder": {
 		text: rulesTtsrToolReminder,
 		purpose: "reports a rule that matched a tool call without interrupting it",
 	},
-} satisfies Record<string, PromptEntry>;
+} satisfies Record<string, PromptEntry>);

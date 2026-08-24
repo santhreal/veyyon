@@ -1,11 +1,11 @@
 # Environment variables
 
-This page covers the common operator surface: identity/profile selection, provider auth, and the
+The common operator surface: identity and profile selection, provider auth, and the
 handful of `VEYYON_*` variables that are actually read by the runtime today. Veyyon also reads a large
 number of `VEYYON_*` debug/behavior-toggle variables (timing, startup tracing, TUI flags, eval-runtime
 toggles, and more) that are less common configuration. For the complete, code-grounded reference,
 including every provider credential var, precedence chains, and internal toggles, see
-[`docs/environment-variables.md`](../../../environment-variables.md).
+[`docs/handbook/src/reference/environment-complete.md`](environment-complete.md).
 
 ## Location and identity
 
@@ -14,7 +14,7 @@ active profile is selected by its own variable:
 
 | Variable | Purpose |
 | --- | --- |
-| `VEYYON_CONFIG_DIR` | Overrides the config directory **name** under `$HOME` (default `.veyyon`). It is a name, not a path. An absolute value is refused at startup, with a message naming the directory it would otherwise have created inside your home; to place the config root on another volume, use the `XDG_*_HOME` variables below. |
+| `VEYYON_CONFIG_DIR` | Overrides the config directory **name** under `$HOME` (default `.veyyon`). It is a name, not a path. An absolute value is rejected at startup, with a message stating the directory it would otherwise have created inside your home; to place the config root on another volume, use the `XDG_*_HOME` variables below. |
 | `VEYYON_CODING_AGENT_DIR` | Full override for the agent directory (default `~/<config-dir-name>/profiles/<active-or-default>/agent`). |
 | `VEYYON_PROFILE` | Selects the active named profile (`~/.veyyon/profiles/<name>/agent`). |
 | `VEYYON_PACKAGE_DIR` | Override package directory for bundled assets (Nix/Guix). |
@@ -23,6 +23,7 @@ active profile is selected by its own variable:
 | `VEYYON_PIPED_STDIN_WAIT_MS` | Milliseconds `veyyon -p "prompt"` waits for the first byte of piped stdin when a prompt is already on the command line (default `10000`). Only the wait before the first byte is bounded, so slow producers are still read in full. Set `0` to wait indefinitely. |
 | `VEYYON_WORKTREE_DIR` | Absolute path for agent-managed git worktrees (default profile path `~/.veyyon/profiles/<name>/wt`; also settable via the `worktree.base` setting). `~` is expanded; a relative value is ignored. |
 | `VEYYON_GITHUB_CACHE_DB` | Full path override for the GitHub view cache database (default `~/.veyyon/profiles/<name>/cache/github-cache.db`). |
+| `VEYYON_STREAM_FRAME_MAX_BYTES` | Bytes one frame of a streamed protocol may occupy before the reader rejects it: a line, a JSONL record, or an SSE event ending at a blank line. Default `67108864` (64 MiB). Applies to a provider's response stream, an MCP server's stdout, and session files. A value that is not a positive integer keeps the default. |
 
 On Linux, `veyyon config init-xdg` migrates state under `$XDG_DATA_HOME`/`$XDG_STATE_HOME`/`$XDG_CACHE_HOME`
 when those are set; unmigrated installs stay under `~/.veyyon`. See
@@ -38,7 +39,7 @@ token (a `VEYYON_API_KEY`/`VEYYON_ACCESS_TOKEN` legacy alias does not exist in t
 When a provider's key variable is set, it is used without an interactive sign-in. For providers with
 OAuth (Anthropic, xAI, Qwen, Cursor, and others), the OAuth token variable takes precedence over the
 plain API key, see the provider tables below and
-[`docs/environment-variables.md`](../../../environment-variables.md#1-modelprovider-authentication).
+[`docs/handbook/src/reference/environment-complete.md`](environment-complete.md#1-modelprovider-authentication).
 
 OAuth sign-in itself is interactive: run `/login` inside the TUI (or `--provider <id>` at startup) to
 open the OAuth selector. There is no `veyyon login --with-api-key`/`--with-access-token` CLI subcommand;
@@ -66,7 +67,7 @@ sign-in and wins over a stored key.
 
 A custom provider uses whatever variable its `[model_providers.<id>].env_key` names. See
 [Configuration](../using/configuration.md) and the full provider table in
-[`docs/environment-variables.md`](../../../environment-variables.md#1-modelprovider-authentication)
+[`docs/handbook/src/reference/environment-complete.md`](environment-complete.md#1-modelprovider-authentication)
 (30+ providers, cloud auth chains for Bedrock/Vertex/Azure, and web-search provider keys).
 
 ## Local and self-hosted providers
@@ -151,7 +152,7 @@ There is no `VEYYON_REPAIR_LOG`, and Veyyon does not emit per-`(model,tool,shape
 
 There is no `VEYYON_TUI_DISABLE_KEYBOARD_ENHANCEMENT`, `VEYYON_TUI_RECORD_SESSION`, or
 `VEYYON_TUI_SESSION_LOG_PATH`; see
-[`docs/environment-variables.md`](../../../environment-variables.md#9-tui-runtime-flags-shared-package-affects-coding-agent-ux)
+[`docs/handbook/src/reference/environment-complete.md`](environment-complete.md#9-tui-runtime-flags-shared-package-affects-coding-agent-ux)
 for the real `VEYYON_*`-prefixed TUI flags.
 
 ## Removed / does not exist

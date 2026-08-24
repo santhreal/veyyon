@@ -11,7 +11,10 @@
 #
 # Both states come out of one run so they can never drift apart, and the run fails
 # if the two frames are byte-identical — a degenerate pair is a failed proof, not a
-# proof that the setting has no visible effect.
+# proof that the setting has no visible effect. Attach the resulting pair to the
+# pull request body; evidence pairs are never committed.
+#
+# VEYYON_DEMO_OUT overrides the output directory (defaults to .captures/rules-settings).
 #
 # Usage:
 #     bash scripts/demos/record-rules-settings.sh
@@ -19,10 +22,10 @@
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/../.." && pwd)"
-assets="$root/assets"
+out="${VEYYON_DEMO_OUT:-.captures/rules-settings}"
+mkdir -p "$out"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
-
 # One geometry for every frame here, so the off/on pair and the two levels are read
 # side by side. Tall enough that the longest section shows all twelve of its rules
 # AND the footer under them: the footer is where "Esc for sections" is stated, which
@@ -39,11 +42,11 @@ for state in off on; do
 		--tab rules --open Rules --agent-dir "$work/$state" \
 		--width "$width" --height "$height" |
 		bun "$root/scripts/demos/render-proof.ts" \
-			--out "$assets/rules-experimental-$state" --width "$width" --scale 2
+			--out "$out/rules-experimental-$state" --width "$width" --scale 2
 done
 
 for ground in grey black; do
-	if cmp -s "$assets/rules-experimental-off-$ground.png" "$assets/rules-experimental-on-$ground.png"; then
+	if cmp -s "$out/rules-experimental-off-$ground.png" "$out/rules-experimental-on-$ground.png"; then
 		echo "degenerate pair on the $ground ground: the two frames are identical" >&2
 		exit 1
 	fi
@@ -57,7 +60,7 @@ bun "$root/scripts/demos/render-settings-rules-tab.ts" \
 	--tab rules --open Rules --section TypeScript --agent-dir "$work/off" \
 	--width "$width" --height "$height" |
 	bun "$root/scripts/demos/render-proof.ts" \
-		--out "$assets/rules-section-typescript" --width "$width" --scale 2
+		--out "$out/rules-section-typescript" --width "$width" --scale 2
 
-echo "wrote $assets/rules-experimental-{off,on}-{grey,black}.png"
-echo "wrote $assets/rules-section-typescript-{grey,black}.png"
+echo "wrote $out/rules-experimental-{off,on}-{grey,black}.png"
+echo "wrote $out/rules-section-typescript-{grey,black}.png"

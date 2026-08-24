@@ -25,6 +25,7 @@
  */
 
 import { createHash } from "node:crypto";
+import { ARM_ATTACHMENT_SUFFIXES } from "./arm-attachments";
 
 /**
  * What one arm reduces to: its parsed config overlay, an optional per-section
@@ -48,6 +49,13 @@ export interface ArmInputs {
 	 * attributed to a cause. `null` removes exactly one rule.
 	 */
 	readonly statements?: unknown;
+	/**
+	 * The arm's `.prompts.yml` after parse, if any: `prompt id -> replacement text`.
+	 *
+	 * The prompt registry vehicle: overrides a tool description, subagent prompt, or agent prompt
+	 * without modifying the prompt files in the shared repository tree.
+	 */
+	readonly prompts?: unknown;
 	/** Optional always-apply rule bytes; prompt text, so whitespace-significant. */
 	readonly rule?: Uint8Array;
 }
@@ -76,18 +84,18 @@ function sortDeep(value: unknown): unknown {
 }
 
 /**
- * The suffixes that make an `arms/` file an ATTACHMENT to an arm rather than an arm.
+ * Which `arms/` files are attachments, from the one table that declares the kinds.
  *
- * WHY THIS IS DECLARED ONCE. "Which files in `arms/` are arms" was answered in three places and one of
- * them was wrong: `docs-coherence.test.ts` took every `*.yml`, so `candidate-delivery-terse.sections.yml`
- * became a phantom arm named `candidate-delivery-terse.sections`, while the other two enumerators
- * excluded it. A phantom arm is not cosmetic here, because these lists are what the coherence checks
- * quantify over: an arm nobody can run reads as an arm nobody documented.
- *
- * Adding `.statements.yml` made the duplication urgent rather than merely untidy, since a third suffix
- * would have had to be added to three places to avoid inventing a second phantom.
+ * WHY IT IS RE-EXPORTED RATHER THAN DECLARED. "Which files in `arms/` are arms" was
+ * answered in three places and one of them was wrong: `docs-coherence.test.ts` took every
+ * `*.yml`, so `candidate-delivery-terse.sections.yml` became a phantom arm named
+ * `candidate-delivery-terse.sections`, while the other two enumerators excluded it. A
+ * phantom arm is not cosmetic here, because these lists are what the coherence checks
+ * quantify over: an arm nobody can run reads as an arm nobody documented. The suffixes
+ * now come from `ARM_ATTACHMENT_KINDS`, which also owns each kind's staging and env var,
+ * so a new kind is one row and cannot arrive half-wired.
  */
-export const ARM_ATTACHMENT_SUFFIXES: readonly string[] = [".sections.yml", ".statements.yml"];
+export { ARM_ATTACHMENT_SUFFIXES };
 
 /** Whether an `arms/` filename is an arm's config, as opposed to an attachment to one. */
 export function isArmConfigFile(name: string): boolean {
@@ -133,7 +141,7 @@ export function armSelectionError(arm: string, available: readonly string[]): st
 /**
  * A stable content fingerprint of everything the container sees for an arm.
  * Two arms fingerprint equal iff their canonical config, canonical section
- * override, canonical statement override AND rule bytes are all identical. Each field is length-prefixed so
+ * override, canonical statement override, canonical prompt override AND rule bytes are all identical. Each field is length-prefixed so
  * the encoding is injective: a plain-concatenation scheme is ambiguous (config
  * text ending in the rule's bytes could hash the same as a separate rule),
  * whereas prefixing every field's byte length makes the tuple unambiguous. A
@@ -156,6 +164,8 @@ export function computeArmFingerprint(mod: ArmInputs): string {
 	// file cannot pass the single-IV guard by looking different from an identical arm without one.
 	const statements = canonicalizeConfig(mod.statements ?? {});
 	if (statements !== "{}") field("statements", new TextEncoder().encode(statements));
+	const prompts = canonicalizeConfig(mod.prompts ?? {});
+	if (prompts !== "{}") field("prompts", new TextEncoder().encode(prompts));
 	if (mod.rule !== undefined) field("rule", mod.rule);
 	return h.digest("hex");
 }

@@ -18,6 +18,13 @@ import shlex
 from pathlib import Path
 from typing import Any, ClassVar
 
+from arm_attachments import (
+    attachment_directories,
+    environment_prefix,
+    missing_attachment_files,
+    read_arm_attachments,
+    rules_setup_command,
+)
 from model_catalog_bootstrap import (
     build_model_catalog_refresh_command,
     build_status_preserving_tee_command,
@@ -142,49 +149,37 @@ class VeyyonAgent(BaseInstalledAgent):
             await environment.upload_file(
                 replay_driver, f"{CONTAINER_ASSETS_DIR}/veyyon_replay_driver.py"
             )
-        # An arm MAY carry a .rule.md, staged by run.ts, injected as an
-        # always-apply rule.
-        has_rule = (host_assets / "rules" / f"{self._arm_name}.md").is_file()
-        if has_rule:
-            await environment.exec(command=f"mkdir -p {CONTAINER_ASSETS_DIR}/rules", user="root")
-            await environment.upload_file(
-                host_assets / "rules" / f"{self._arm_name}.md",
-                f"{CONTAINER_ASSETS_DIR}/rules/{self._arm_name}.md",
+        # Every attachment an arm carries, read from the manifest the runner wrote. No
+        # kind is named here: a section override, a statement override, a prompt override
+        # and a rule file differ only in where they are staged and how they are delivered,
+        # and both facts are in the manifest. Adding a kind is one row in
+        # arm-attachments.ts and no edit to this file.
+        #
+        # The deliveries and what they buy: `env-json` reads the staged JSON into an
+        # eval-only environment variable scoped to the vey process, so no config key can
+        # reach it and a normal run cannot see it. Whole-prompt replacement and
+        # --append-system-prompt are deliberately NOT wired: they freeze a snapshot that
+        # stops responding to settings and can silently drop a settings-gated section.
+        # `rules-dir` copies a context file into ~/.veyyon/rules, which is how a rule
+        # reaches a session at all.
+        attachments = read_arm_attachments(host_assets, self._arm_name)
+        missing = missing_attachment_files(attachments, host_assets)
+        if missing:
+            raise ValueError(
+                "veyyon arm attachment staged in the manifest but missing on host: "
+                + ", ".join(f"{host_assets / rel}" for rel in missing)
             )
-        # An arm MAY carry a per-section prompt override, staged by run.ts as
-        # sections/<arm>.json. It reaches the agent ONLY through the eval-only
-        # VEYYON_EVAL_SYSTEM_PROMPT_SECTIONS env var — never a config key — so a
-        # normal run cannot see it and it cannot contaminate production behavior.
-        # It swaps exactly one banner region and leaves every other section, and
-        # its {{#if <setting>}} gating, byte-for-byte intact. Whole-prompt
-        # replacement and --append-system-prompt are deliberately NOT wired: they
-        # freeze a snapshot that stops responding to settings and can silently
-        # drop a settings-gated section (the delegation-block catastrophe).
-        has_sections = (host_assets / "sections" / f"{self._arm_name}.json").is_file()
-        if has_sections:
-            await environment.exec(command=f"mkdir -p {CONTAINER_ASSETS_DIR}/sections", user="root")
+        for directory in attachment_directories(attachments, CONTAINER_ASSETS_DIR):
+            await environment.exec(command=f"mkdir -p {directory}", user="root")
+        for attachment in attachments:
             await environment.upload_file(
-                host_assets / "sections" / f"{self._arm_name}.json",
-                f"{CONTAINER_ASSETS_DIR}/sections/{self._arm_name}.json",
-            )
-        # An arm MAY carry a per-STATEMENT override, staged by run.ts as
-        # statements/<arm>.json, reaching the agent only through the eval-only
-        # VEYYON_EVAL_SYSTEM_PROMPT_STATEMENTS env var. This is the vehicle for an
-        # ABLATION: `{"tool-policy/delegation-gates": null}` removes exactly one
-        # rule, which a section override cannot express, since TOOL POLICY is one
-        # banner region and 34 rules, so no score change across it is attributable
-        # to a cause. A string value rewords the rule instead of removing it.
-        has_statements = (host_assets / "statements" / f"{self._arm_name}.json").is_file()
-        if has_statements:
-            await environment.exec(command=f"mkdir -p {CONTAINER_ASSETS_DIR}/statements", user="root")
-            await environment.upload_file(
-                host_assets / "statements" / f"{self._arm_name}.json",
-                f"{CONTAINER_ASSETS_DIR}/statements/{self._arm_name}.json",
+                host_assets / attachment.file,
+                f"{CONTAINER_ASSETS_DIR}/{attachment.file}",
             )
         await environment.exec(
             command=f"chmod +x {CONTAINER_ASSETS_DIR}/vey", user="root"
         )
-        rule_setup = f" && mkdir -p ~/.veyyon/rules && cp {CONTAINER_ASSETS_DIR}/rules/* ~/.veyyon/rules/" if has_rule else ""
+        rule_setup = rules_setup_command(attachments, CONTAINER_ASSETS_DIR)
         setup = (
             # Seed the store veyyon actually opens: the machine-wide
             # ~/.veyyon/shared-auth/agent.db (getSharedAuthDir). This used to
@@ -195,22 +190,7 @@ class VeyyonAgent(BaseInstalledAgent):
             f"cp {CONTAINER_ASSETS_DIR}/auth-agent.db ~/.veyyon/shared-auth/agent.db && "
             f"cp {CONTAINER_ASSETS_DIR}/arm.yml ~/.veyyon/arm.yml{rule_setup}"
         )
-        # Read the section-override JSON into the env var IN the vey process only.
-        # `VAR="$(cat file)" vey ...` scopes it to that one command and captures
-        # the JSON verbatim (quotes, braces) with no shell re-parsing of content.
-        sections_env = (
-            f'VEYYON_EVAL_SYSTEM_PROMPT_SECTIONS="$(cat {CONTAINER_ASSETS_DIR}/sections/{self._arm_name}.json)" '
-            if has_sections
-            else ""
-        )
-        # Same scoping for the per-statement override, and for the same reason: the
-        # JSON reaches the vey process verbatim, with no shell re-parsing of braces
-        # or quotes, and exists for that one command only.
-        statements_env = (
-            f'VEYYON_EVAL_SYSTEM_PROMPT_STATEMENTS="$(cat {CONTAINER_ASSETS_DIR}/statements/{self._arm_name}.json)" '
-            if has_statements
-            else ""
-        )
+        attachment_env = environment_prefix(attachments, CONTAINER_ASSETS_DIR)
         catalog_refresh = build_model_catalog_refresh_command(
             f"{CONTAINER_ASSETS_DIR}/vey",
             self.model_name,
@@ -219,7 +199,7 @@ class VeyyonAgent(BaseInstalledAgent):
         )
         if replay_path is not None:
             driver_command = (
-                f"{sections_env}{statements_env}python3 "
+                f"{attachment_env}python3 "
                 f"{CONTAINER_ASSETS_DIR}/veyyon_replay_driver.py "
                 f"--binary {CONTAINER_ASSETS_DIR}/vey "
                 f"--config $HOME/.veyyon/arm.yml "
@@ -234,7 +214,7 @@ class VeyyonAgent(BaseInstalledAgent):
             )
         else:
             agent_command = (
-                f"{sections_env}{statements_env}{CONTAINER_ASSETS_DIR}/vey "
+                f"{attachment_env}{CONTAINER_ASSETS_DIR}/vey "
                 f"--model {shlex.quote(self.model_name)} "
                 f"--auto-approve --config $HOME/.veyyon/arm.yml "
                 f"--print {shlex.quote(instruction)} </dev/null 2>&1"

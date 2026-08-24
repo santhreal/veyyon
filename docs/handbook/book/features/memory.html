@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-0c15bee8.js";
+            window.path_to_searchindex_js = "../searchindex-c0972181.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-79e2ba62.js"></script>
+        <script src="../toc-a2abefc1.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -196,7 +196,7 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="memory"><a class="header" href="#memory">Memory</a></h1>
-<p>By default, each session starts fresh: Veyyon knows nothing about your last one. Turn memory on and it
+<p>By default, each session starts fresh: Veyyon holds no record of your last one. Turn memory on and it
 carries durable project context forward, so a fact it learned yesterday is available today. Memory is
 off by default. To use it, you pick a backend, which is the store that holds what Veyyon remembers, in
 <code>config.yml</code> or <code>/settings</code>.</p>
@@ -236,7 +236,7 @@ The <code>/memory</code> slash command exposes <code>view</code>, <code>stats</c
 <p>With <code>memory.backend: local</code>, a background pipeline at startup extracts durable signal from past
 session JSONL files, then consolidates into <code>MEMORY.md</code>, <code>memory_summary.md</code>, and optional
 <code>skills/</code>. The agent reads artifacts via <code>memory://</code> URLs on the <code>read</code> tool.</p>
-<p>Engineering detail: <a href="../../../memory.html"><code>docs/memory.md</code></a>.</p>
+<p>Engineering detail: <a href="../architecture/memory.html"><code>docs/handbook/src/architecture/memory.md</code></a>.</p>
 <h2 id="compaction-primary-knobs"><a class="header" href="#compaction-primary-knobs">Compaction (primary knobs)</a></h2>
 <p>Context compaction is separate from durable memory. Settings → Compaction (or <code>config.yml</code>) exposes
 these primary fields:</p>

@@ -4,7 +4,7 @@ A concise vocabulary of the primitives that shape Veyyon's runtime behavior.
 
 - **apply_patch**: Edit mode (`edit.mode: apply_patch`) for a Codex-style `*** Begin Patch … *** End Patch` envelope. Default edit mode is **hashline** via the `edit` tool. Apply-patch shares approval policy with other write paths.
 
-- **approval mode**: The autonomy control (`tools.approvalMode`) for tool tiers: `plan`, `ask`, `ask-command`, `auto` (the default), `yolo` (legacy `always-ask` → `ask`, `write` and `auto-edit` → `ask-command`). There is no OS command sandbox; the mode, per-tool `tools.approval` overrides, the working-directory and secret-use boundaries, and hard-coded flagged bash patterns are the boundary. Of those patterns, the destructive ones ask on every rung, `yolo` included, and the merely dangerous ones ask on every rung below it.
+- **approval mode**: The autonomy control (`tools.approvalMode`) for tool tiers: `plan`, `ask`, `ask-command`, `auto` (the default), `yolo` (legacy `always-ask` → `ask`, `write` and `auto-edit` → `ask-command`). There is no OS command sandbox; the mode, per-tool `tools.approval` overrides, the working-directory and secret-use boundaries, and hard-coded flagged bash patterns are the boundary. Of those patterns, the destructive ones prompt on every rung, `yolo` included, and the merely dangerous ones prompt on every rung below it.
 
 - **model catalog**: Bundled provider/model data plus `models.yml` / `models.yaml` custom entries. There is no separate `backends.toml` subsystem.
 
@@ -24,7 +24,7 @@ A concise vocabulary of the primitives that shape Veyyon's runtime behavior.
 
 - **personality**: Style-only system prompt block. Built-ins include `default`, `pragmatic`, `friendly`, and `none`.
 
-- **plugin**: A directory with a `.claude-plugin/plugin.json` manifest (or a `package.json` carrying the `veyyon` manifest) that can add skills, MCP servers, hooks, and related assets. Plugins are discovered through marketplaces, npm installs, or `veyyon plugin link`.
+- **plugin**: A directory with a `.claude-plugin/plugin.json` manifest (or a `package.json` containing the `veyyon` manifest) that can add skills, MCP servers, hooks, and related assets. Plugins are discovered through marketplaces, npm installs, or `veyyon plugin link`.
 
 - **profile**: A directory under `~/.veyyon/profiles/<name>/` (including `default`) holding agent settings, sessions, MCP, skills, and related state. Activate with `--profile`, `VEYYON_PROFILE`, or `/profile` (relaunch).
 
@@ -34,7 +34,7 @@ A concise vocabulary of the primitives that shape Veyyon's runtime behavior.
 
 - **repair cascade**: The ordered set of sound transforms the repair engine applies to a tool call (parse leniency, alias/typo key repair, strict unknown-key rejection, ambiguity guard). The engine returns a status (`clean` / `repaired` / `unrepairable`), the coerced arguments, and coaching hints; an unrepairable call returns an error tool result without dispatch.
 
-- **rollout**: The append-only JSONL log of a session's entries. Each entry carries an `id` and a `parentId`. Branching moves the in-memory leaf; the next appended entry's `parentId` (and an optional `branch_summary` entry) records the move without rewriting history.
+- **rollout**: The append-only JSONL log of a session's entries. Each entry contains an `id` and a `parentId`. Branching moves the in-memory leaf; the next appended entry's `parentId` (and an optional `branch_summary` entry) records the move without rewriting history.
 
 - **session**: The unit of interactive work in Veyyon. A session records turns, tool activity, approvals, edits, and verification output.
 

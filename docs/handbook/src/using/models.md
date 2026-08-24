@@ -14,7 +14,7 @@ Set the key one of three ways:
 
 - The provider's environment variable (see [Providers](../models/providers.md) for the full map), or
 - `/login` inside the TUI, which stores the credential in the auth store, or
-- A `models.yml` `apiKey` on a custom provider (env-var name or literal).
+- A `models.yml` `apiKey` on a custom provider (an env-var name, or `literal:<text>`).
 
 See [Signing in](./authentication.md) for storage modes and [Configuring providers](./configuring-providers.md)
 for full `models.yml` examples.
@@ -48,7 +48,7 @@ selectable when it is not in `disabledProviders` **and** it is keyless or has re
 
 | Provider id | Notes |
 | --- | --- |
-| `anthropic`, `openai`, `google`, `groq`, … | Cloud providers; set the env var. Some (for example `anthropic`) also support `/login <id>`; see [providers](../../../providers.md). |
+| `anthropic`, `openai`, `google`, `groq`, … | Cloud providers; set the env var. Some (for example `anthropic`) also support `/login <id>`; see [providers](../reference/providers.md). |
 | `amazon-bedrock` | Uses the AWS credential chain (`AWS_PROFILE`, instance role, …). |
 | `ollama`, `lm-studio`, `llama.cpp` | Local engines, discovered automatically and keyless by default. |
 

@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-0c15bee8.js";
+            window.path_to_searchindex_js = "../searchindex-c0972181.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-79e2ba62.js"></script>
+        <script src="../toc-a2abefc1.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -200,7 +200,7 @@
 endpoint exposes model choice, provide the key, and Veyyon calls that API directly. The endpoint can be
 a local server (Ollama, LM Studio), a direct provider API (OpenAI, Anthropic, Google), or any
 OpenAI-compatible gateway.</p>
-<p>This page is the contract between the harness and the model. For copy-paste provider setup, see
+<p>The contract between the harness and the model. For copy-paste provider setup, see
 <a href="../using/configuring-providers.html">Configuring providers</a>. For model switching, see
 <a href="../using/models.html">Models and providers</a>.</p>
 <h2 id="the-three-things-you-bring"><a class="header" href="#the-three-things-you-bring">The three things you bring</a></h2>
@@ -225,7 +225,7 @@ providers:
   deepseek:
     baseUrl: https://api.deepseek.com
     api: openai-completions
-    apiKey: DEEPSEEK_API_KEY   # env-var name or literal
+    apiKey: DEEPSEEK_API_KEY   # env-var name; unset means no key, not a literal
     models:
       - id: deepseek-chat
         name: DeepSeek Chat
@@ -248,7 +248,7 @@ $ veyyon --model deepseek/deepseek-chat
 <p>Provider is configuration (endpoint, credentials, model id). Keep the same
 commands.</p>
 <h2 id="what-the-provider-owns"><a class="header" href="#what-the-provider-owns">What the provider owns</a></h2>
-<p>The provider owns the wire protocol, auth scheme, model list, rate limits, and the tokens it returns.
+<p>The provider defines the wire protocol, auth scheme, model list, rate limits, and the tokens it returns.
 Veyyon adapts to that surface through the provider’s <code>api</code> kind:</p>
 <ul>
 <li>Chat-Completions-style endpoints (<code>api: openai-completions</code>) talk <code>/chat/completions</code>.</li>
@@ -257,7 +257,7 @@ Veyyon adapts to that surface through the provider’s <code>api</code> kind:</p
 allowlist for BYOK providers, and discovery returns an error; it does not invent an empty catalog on failure.</li>
 </ul>
 <p>Everything beyond the built-in catalog is data in <code>models.yml</code>, see
-<a href="../models/providers.html">Providers</a> and <a href="../../../providers.html"><code>docs/providers.md</code></a>.</p>
+<a href="../models/providers.html">Providers</a> and <a href="../reference/providers.html"><code>docs/handbook/src/reference/providers.md</code></a>.</p>
 <h2 id="system-prompts-and-tool-schemas"><a class="header" href="#system-prompts-and-tool-schemas">System prompts and tool schemas</a></h2>
 <p>Each turn the harness builds a request that includes:</p>
 <ol>
@@ -266,7 +266,7 @@ tool guidance). See <a href="../models/prompts.html">Execution-order prompts</a>
 <li><strong>User and project instructions</strong> from global, active-profile, and project <code>AGENTS.md</code> layers, sticky rules, and session steers. A caller may replace the base for one invocation with <code>--system-prompt</code>.</li>
 <li><strong>Tool schemas</strong> the model is allowed to call on this turn (bash, edit/write, web search, MCP tools,
 skills, and so on), filtered by feature flags, harness-profile allowlists, and plan-mode narrowing.
-A per-tool <code>deny</code> policy does not filter this list; it refuses the call at dispatch.</li>
+A per-tool <code>deny</code> policy does not filter this list; it rejects the call at dispatch.</li>
 <li><strong>Conversation context</strong> for the active thread, possibly compacted.</li>
 </ol>
 <p>The model is expected to call tools using the schemas it was given. When arguments are almost right but
@@ -302,7 +302,7 @@ for the default edit wire format.</p>
 │ model weights, rate limits, provider-side refusals            │
 └───────────────────────────────────────────────────────────────┘
 </code></pre>
-<p>If something fails, ask which side owns it:</p>
+<p>If something fails, ask which side is responsible:</p>
 <ul>
 <li>Config rejected at load, malformed <code>models.yml</code>, missing key → harness / your config.</li>
 <li>HTTP 401 / 429 / empty model list → provider or key.</li>
@@ -329,13 +329,13 @@ under <code>modelRoles</code>:</p>
 <p>Subagent models are not roles. They live in the Subagents settings area, where four layers can
 name one, highest first: that agent’s row in <code>subagent.agents</code>, the blanket <code>subagent.model</code>, the
 agent definition’s own <code>model:</code>, otherwise the conversation model. There is no silent blend, and a
-configured value that matches no available model refuses the spawn instead of quietly handing the
+configured value that matches no available model rejects the spawn instead of quietly handing the
 decision to the next layer. <code>/agents</code> shows the resolved model and which of the four decided.
-See <a href="../../../settings.html#subagents">Settings: Subagents</a> and
+See <a href="../reference/settings.html#subagents">Settings: Subagents</a> and
 <a href="../using/roles-and-profiles.html">Models, roles, and profiles</a>.</p>
 <h2 id="automation-note"><a class="header" href="#automation-note">Automation note</a></h2>
 <p>For non-interactive runs, pass the prompt and pick an approval mode that matches your trust
-boundary. A headless run has no terminal to answer a prompt on, so a rung that asks turns the
+boundary. A headless run has no terminal to answer a prompt on, so a rung that prompts turns the
 gated tool call into an error rather than a pause: the default <code>auto</code> runs every tier while the
 working-directory, credential and critical-command guards still stop the calls they cover.</p>
 <pre><code class="language-console">$ veyyon --print "run the unit tests and fix failures"

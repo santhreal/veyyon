@@ -24,11 +24,11 @@ import { type DiscoveredCustomTool, toolCapability } from "../capability/tool";
 import type { LoadContext, LoadResult } from "../capability/types";
 import { expandTilde } from "../tools/path-utils";
 import { getGlobalAgentsPath, getProfileAgentsCandidates, stripManagedGuidance } from "./agents-guidance";
+import { expandEnvVarsDeep, warnUnresolved } from "./env-expansion";
 import {
 	buildRuleFromMarkdown,
 	createSourceMeta,
 	discoverExtensionModulePaths,
-	expandEnvVarsDeep,
 	getExtensionNameFromPath,
 	loadFilesFromDir,
 	readContextFile,
@@ -126,7 +126,7 @@ async function loadMCPServers(ctx: LoadContext): Promise<LoadResult<MCPServer>> 
 		}
 		if (!data.mcpServers) return result;
 
-		const expanded = expandEnvVarsDeep(data.mcpServers);
+		const expanded = expandEnvVarsDeep(data.mcpServers, warnUnresolved(warnings, path));
 		for (const [serverName, config] of Object.entries(expanded)) {
 			const serverConfig = config as Record<string, unknown>;
 
@@ -798,7 +798,7 @@ registerProvider<DiscoveredCustomTool>(toolCapability.id, {
  * PROJECT CONTEXT PRECEDENCE, ONE DIRECTORY LEVEL AT A TIME.
  *
  * This comment is the single owner of the rule. Everything else in this file,
- * in `capability/context-file.ts`, and in `docs/context-files.md` points here
+ * in `capability/context-file.ts`, and in `docs/handbook/src/context/context-files.md` points here
  * instead of restating it: precedence prose that lives in four places is how the
  * resolution-order axis and the prominence axis got confused before.
  *

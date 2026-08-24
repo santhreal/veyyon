@@ -18,7 +18,7 @@ import {
 	getAntigravityUserAgent,
 	getGeminiCliHeaders,
 } from "@veyyon/catalog/wire/gemini-headers";
-import { extractHttpStatusFromError, fetchWithRetry } from "@veyyon/utils/fetch-retry";
+import { extractHttpStatusFromError } from "@veyyon/utils/fetch-retry";
 import { readSseJson } from "@veyyon/utils/stream";
 import { trimTrailingSlashes } from "@veyyon/utils/url";
 import { type } from "arktype";
@@ -40,6 +40,7 @@ import { AssistantMessageEventStream } from "../utils/event-stream";
 import { extractGoogleValidationUrl, formatGoogleValidationRequiredMessage } from "../utils/google-validation";
 import type { RawHttpRequestDump } from "../utils/http-inspector";
 import { armPreResponseTimeout, getStreamFirstEventTimeoutMs } from "../utils/idle-iterator";
+import { fetchProviderWithRetry } from "../utils/provider-fetch";
 // Refresh is the sole responsibility of AuthStorage (broker-aware, single-flighted);
 // the stream provider trusts the access token threaded through `options.apiKey`.
 import { normalizeSchemaForCCA } from "../utils/schema";
@@ -925,13 +926,14 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli"> = (
 					started = false;
 					resetOutput();
 
+					const requestUrl = `${endpoint}/v1internal:streamGenerateContent?alt=sse`;
 					// Per attempt: arm a pre-response (TTFT) timer, cleared the instant
 					// headers arrive so it never aborts the actively streaming body —
 					// an absolute `AbortSignal.timeout` would (issue #2422).
 					const watchdog = armPreResponseTimeout(callerSignal, firstEventTimeoutMs);
 					let response: Response;
 					try {
-						response = await fetchWithRetry(() => `${endpoint}/v1internal:streamGenerateContent?alt=sse`, {
+						response = await fetchProviderWithRetry(() => requestUrl, {
 							method: "POST",
 							headers: requestHeaders,
 							body: requestBodyJson,
@@ -952,15 +954,15 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli"> = (
 								continue;
 							}
 						}
-						const errorText = await response.text();
-						const validationUrl = extractGoogleValidationUrl(errorText);
+						const errorBody = await AIError.readProviderErrorBody(response);
+						const validationUrl = extractGoogleValidationUrl(errorBody.text);
 						const errorMessage = validationUrl
 							? formatGoogleValidationRequiredMessage(
 									validationUrl,
 									"retry your request",
 									parsedCredentials.email,
 								)
-							: errorText;
+							: errorBody.detail;
 						throw new AIError.GeminiCliApiError(
 							`Cloud Code Assist API error (${response.status}): ${errorMessage}`,
 							response.status,
@@ -968,7 +970,11 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli"> = (
 						);
 					}
 
-					const requestUrl = response.url;
+					// The URL this attempt POSTed to, not `response.url`: a custom
+					// `options.fetch` that answers with a constructed `Response`
+					// leaves that empty, and the empty-stream retry below then
+					// failed with a configuration error naming a URL the provider
+					// had in hand all along.
 					let currentResponse = response;
 
 					for (let emptyAttempt = 0; emptyAttempt <= MAX_EMPTY_STREAM_RETRIES; emptyAttempt++) {
@@ -982,10 +988,6 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli"> = (
 								await scheduler.wait(backoffMs, { signal: options?.signal });
 							} catch {
 								throw new AIError.RequestAbortError("Request was aborted");
-							}
-
-							if (!requestUrl) {
-								throw new AIError.ConfigurationError("Missing request URL");
 							}
 
 							currentResponse = await (options?.fetch ?? fetch)(requestUrl, {

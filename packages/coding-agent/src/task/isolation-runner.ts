@@ -163,6 +163,7 @@ export async function runIsolatedSubprocess(opts: IsolatedRunOptions): Promise<S
 			...opts.baseOptions,
 			worktree: isolationDir,
 			preloadedExtensionPaths: undefined,
+			preloadedNamedExtensionPaths: undefined,
 			preloadedCustomToolPaths: undefined,
 		});
 		if (opts.mergeMode === "branch" && result.exitCode === 0) {

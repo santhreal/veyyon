@@ -53,6 +53,17 @@ exchange still puts a refresh token in the file.
 
 Recording never interferes with the session it records. If a log cannot be
 written, because the disk is full or the directory is read-only, veyyon logs an
-error naming the file and the cause, stops recording that response, and lets the
+error stating the file and the cause, stops recording that response, and lets the
 response through untouched. You get your answer and a truncated log, not a
 failed request.
+
+Each file stops at 32 MiB. Past that the response log writes a line stating the
+ceiling, then a final line stating how many bytes it recorded and how many it
+omitted; a request body that ran past the ceiling contains the same counts under
+`bodyCapture`, and the body itself is stored as `bodyText` rather than parsed
+JSON. The response you get is unaffected: the ceiling bounds the recording, not
+the request. Raise or lower it with `VEYYON_REQ_DEBUG_MAX_BYTES`, in bytes; a
+value that is not a positive integer is a typo rather than a request for no
+ceiling, so veyyon warns and keeps the default. An omitted count of `null` on a
+request body means the sender declared no length, so the bytes past the ceiling
+were never counted.

@@ -117,6 +117,12 @@ mnemopi:
   llmModel: gpt-4.1-mini
 ```
 
+`mnemopi.llmApiKey` and `mnemopi.embeddingApiKey` resolve through the config-value grammar the rest of
+the product uses: `${VAR}` or a bare `VAR` reads the environment, `literal:<text>` is verbatim, and
+`!command` runs a command and takes its stdout. A named variable that is unset resolves to nothing, so
+no credential is sent. Resolution happens where the client is built (`resolveMnemopiProviderOptions` in
+`src/mnemopi/backend.ts`); a config loaded without it carries the request text and no LLM.
+
 Equivalent constructor shapes:
 
 ```ts
@@ -162,4 +168,4 @@ new Mnemopi({
 - `/memory stats` and `/memory diagnose` render backend-specific bank statistics/diagnostics when the Mnemopi backend is active.
 - Subagents do not own separate Mnemopi retain loops; they alias the parent state when a parent Mnemopi state exists, and otherwise remain inert.
 
-*Verified against `d3e3db30` on 2026-07-23.*
+*Verified against `37e0fd8b` on 2026-08-22.*

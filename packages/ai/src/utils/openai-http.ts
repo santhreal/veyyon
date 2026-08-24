@@ -14,7 +14,7 @@
  *   captured response body for the strict-tools fallback and the responses
  *   chain-state detectors, which regex over `error.message`.
  */
-import { fetchWithRetry } from "@veyyon/utils/fetch-retry";
+
 import { readSseJson, type SseEventObserver } from "@veyyon/utils/stream";
 import * as AIError from "../error";
 import { OpenAIHttpError } from "../error";
@@ -23,6 +23,7 @@ export { OpenAIHttpError };
 
 import type { FetchImpl } from "../types";
 import { captureHttpErrorResponse } from "./http-inspector";
+import { fetchProviderWithRetry } from "./provider-fetch";
 
 /**
  * Total attempts (initial + retries). Parity with the removed SDK clients'
@@ -45,6 +46,12 @@ export interface OpenAIStreamRequestInit {
 	prepareInit?: (attempt: number) => RequestInit | Promise<RequestInit>;
 	signal: AbortSignal;
 	fetch?: FetchImpl;
+	/**
+	 * The longest single retry wait the caller will tolerate. A server hint above
+	 * it returns the refusal immediately instead of sleeping on it. Omitted, the
+	 * retry helper's own 60s cap applies.
+	 */
+	maxRetryDelayMs?: number;
 	/** Raw wire-frame observer (`onSseEvent` debug pipeline). */
 	onSseEvent?: SseEventObserver;
 }
@@ -65,7 +72,7 @@ export interface OpenAIStreamHandle<TEvent> {
  * watchdog timers and abort-reason bookkeeping.
  */
 export async function postOpenAIStream<TEvent>(init: OpenAIStreamRequestInit): Promise<OpenAIStreamHandle<TEvent>> {
-	const response = await fetchWithRetry(init.url, {
+	const response = await fetchProviderWithRetry(init.url, {
 		method: "POST",
 		headers: { "Content-Type": "application/json", Accept: "text/event-stream", ...init.headers },
 		body: JSON.stringify(init.body),
@@ -73,6 +80,7 @@ export async function postOpenAIStream<TEvent>(init: OpenAIStreamRequestInit): P
 		fetch: init.fetch,
 		prepareInit: init.prepareInit,
 		maxAttempts: DEFAULT_MAX_ATTEMPTS,
+		maxDelayMs: init.maxRetryDelayMs,
 		// Bun's native fetch enforces a hard ~300s pre-response timeout (issue #2422).
 		// Cold large-context streams legitimately exceed it; the caller's
 		// `firstEventTimeoutMs`/`AbortSignal` already govern stuck requests.

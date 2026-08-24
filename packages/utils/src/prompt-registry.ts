@@ -21,7 +21,7 @@
  * concern and lives with the parser that reads it. This file describes what a row
  * claims; the grammar decides what the bytes look like.
  */
-
+import { announceEvalPromptOverrides, applyEvalPromptOverrides } from "./eval-prompt-overrides";
 import { nearestNames } from "./levenshtein";
 
 /**
@@ -68,6 +68,31 @@ export interface PromptEntry {
 	readonly purpose: string;
 	/** Present only where a prompt has addressable regions; absent means one undivided body. */
 	readonly sections?: readonly PromptSection[];
+}
+
+/**
+ * Declare a directory's prompt rows — the seam where prompt text enters the program.
+ *
+ * WHY THE ROWS AND NOT ONLY THE REGISTRY. A module that sends one prompt imports its
+ * row table directly (`toolsPrompts["tools/bash"].text`) rather than the aggregate,
+ * which is the documented convention and is what 190 call sites do. The registry is
+ * built from the same rows, so replacing text there alone reaches the inspection
+ * commands and nothing a model is sent: an eval-only override announced itself
+ * loudly, `veyyon prompt --tools` reported the bash description unchanged at 971
+ * bytes, and the arm would have measured its own control while the results table
+ * called it a treatment. Text is substituted where it is READ, so every consumer of a
+ * row sees one prompt.
+ *
+ * Takes no directory, deliberately: the directory a row's id is relative to is stated
+ * once, in the `definePromptRegistry` call that owns it, and a rows file that restated
+ * it would be a second copy of that fact in 21 more places.
+ *
+ * Costs nothing when no override is set: the table is returned by identity.
+ */
+export function definePromptRows<const T extends Record<string, PromptEntry>>(rows: T): T {
+	const { prompts, appliedIds } = applyEvalPromptOverrides(rows);
+	announceEvalPromptOverrides(appliedIds);
+	return prompts as T;
 }
 
 /**
@@ -185,6 +210,12 @@ export interface PromptRegistry<T extends Record<string, PromptEntry> = Record<s
  * union with no members to derive, which is the same widening an explicit
  * `readonly PromptEntry[]` annotation causes on a section list.
  *
+ * An eval-only override (`VEYYON_EVAL_PROMPTS`, see `eval-prompt-overrides.ts`) may
+ * replace the text of rows this registry owns. That is the ONLY thing it may do here:
+ * the id list, the file paths and every other field stay the shipped ones, and an id
+ * this package does not hold is left alone rather than refused, because a sibling
+ * registry may own it.
+ *
  * @param dir repository-relative directory holding the `.md` files, without a trailing slash
  * @param prompts every row, keyed by the file's path under `dir` without `.md`
  */
@@ -192,14 +223,21 @@ export function definePromptRegistry<const T extends Record<string, PromptEntry>
 	dir: string,
 	prompts: T,
 ): PromptRegistry<T> {
+	// The production path is the identity path. A registry is read once per tool per
+	// turn, so an unconditional spread or a per-read sweep would be paid by every
+	// session to serve a benchmark that is not running; with no override set,
+	// `applyEvalPromptOverrides` hands back this very table and the accessors below
+	// close over it directly.
+	const { prompts: effective, appliedIds } = applyEvalPromptOverrides(prompts);
+	announceEvalPromptOverrides(appliedIds);
 	const ids = Object.keys(prompts) as (keyof T & string)[];
 	return {
 		dir,
-		prompts,
+		prompts: effective as T,
 		ids,
-		text: id => prompts[id].text,
-		require: id => requirePromptFrom(prompts as Record<string, PromptEntry>, id, dir),
-		has: id => Object.hasOwn(prompts, id),
+		text: id => effective[id].text,
+		require: id => requirePromptFrom(effective, id, dir),
+		has: id => Object.hasOwn(effective, id),
 		fileFor: id => `${dir}/${id}.md`,
 	};
 }

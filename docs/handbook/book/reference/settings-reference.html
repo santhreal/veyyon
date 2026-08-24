@@ -1,0 +1,1465 @@
+<!DOCTYPE HTML>
+<html lang="en" class="navy sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Settings, every key - The Veyyon Harness Handbook</title>
+
+
+        <!-- Custom HTML head -->
+        <!-- Veyyon handbook: self-contained head additions. No remote resources. -->
+        <meta name="theme-color" content="#050505">
+        <meta name="color-scheme" content="dark">
+        <!-- Site favicons live at the deployed root, one level above /docs/. -->
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+        <link rel="icon" href="/favicon.ico" sizes="48x48">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+        <style>
+          /* Paint the near-black surface before CSS/JS resolve the theme, so there is
+             no light flash on load. Kept in sync with theme/veyyon.css. */
+          html { background: #050505; }
+          /* Tighten the base box model for the premium layout. */
+          *, *::before, *::after { box-sizing: border-box; }
+        </style>
+
+        <meta name="description" content="Operator handbook for the Veyyon terminal coding agent: install, configuration, tools, approvals, edit formats, providers, and harness structure.">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="../favicon-de23e50b.svg">
+        <link rel="shortcut icon" href="../favicon-8114d1fc.png">
+        <link rel="stylesheet" href="../css/variables-8adf115d.css">
+        <link rel="stylesheet" href="../css/general-2459343d.css">
+        <link rel="stylesheet" href="../css/chrome-ae938929.css">
+        <link rel="stylesheet" href="../css/print-9e4910d8.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="../fonts/fonts-9644e21d.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="mdbook-highlight-css" href="../highlight-493f70e1.css">
+        <link rel="stylesheet" id="mdbook-tomorrow-night-css" href="../tomorrow-night-4c0ae647.css">
+        <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="../ayu-highlight-3fdfc3ac.css">
+
+        <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="../theme/veyyon-06f6939e.css">
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "../";
+            const default_light_theme = "navy";
+            const default_dark_theme = "navy";
+            window.path_to_searchindex_js = "../searchindex-c0972181.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="../toc-a2abefc1.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="mdbook-body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('navy')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="mdbook-sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("mdbook-sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="mdbook-sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="../toc.html"></iframe>
+            </noscript>
+            <div id="mdbook-sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="mdbook-page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="mdbook-menu-bar-hover-placeholder"></div>
+                <div id="mdbook-menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="mdbook-sidebar-toggle" class="icon-button" for="mdbook-sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="mdbook-sidebar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M0 96C0 78.3 14.3 64 32 64H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32C14.3 128 0 113.7 0 96zM0 256c0-17.7 14.3-32 32-32H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32c-17.7 0-32-14.3-32-32zM448 416c0 17.7-14.3 32-32 32H32c-17.7 0-32-14.3-32-32s14.3-32 32-32H416c17.7 0 32 14.3 32 32z"/></svg></span>
+                        </label>
+                        <button id="mdbook-theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="mdbook-theme-list">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M371.3 367.1c27.3-3.9 51.9-19.4 67.2-42.9L600.2 74.1c12.6-19.5 9.4-45.3-7.6-61.2S549.7-4.4 531.1 9.6L294.4 187.2c-24 18-38.2 46.1-38.4 76.1L371.3 367.1zm-19.6 25.4l-116-104.4C175.9 290.3 128 339.6 128 400c0 3.9 .2 7.8 .6 11.6c1.8 17.5-10.2 36.4-27.8 36.4H96c-17.7 0-32 14.3-32 32s14.3 32 32 32H240c61.9 0 112-50.1 112-112c0-2.5-.1-5-.2-7.5z"/></svg></span>
+                        </button>
+                        <ul id="mdbook-theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-ayu">Ayu</button></li>
+                        </ul>
+                        <button id="mdbook-search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="mdbook-searchbar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M416 208c0 45.9-14.9 88.3-40 122.7L502.6 457.4c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L330.7 376c-34.4 25.2-76.8 40-122.7 40C93.1 416 0 322.9 0 208S93.1 0 208 0S416 93.1 416 208zM208 352c79.5 0 144-64.5 144-144s-64.5-144-144-144S64 128.5 64 208s64.5 144 144 144z"/></svg></span>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">The Veyyon Harness Handbook</h1>
+
+                    <div class="right-buttons">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
+                            <span class=fa-svg id="print-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M128 0C92.7 0 64 28.7 64 64v96h64V64H354.7L384 93.3V160h64V93.3c0-17-6.7-33.3-18.7-45.3L400 18.7C388 6.7 371.7 0 354.7 0H128zM384 352v32 64H128V384 368 352H384zm64 32h32c17.7 0 32-14.3 32-32V256c0-35.3-28.7-64-64-64H64c-35.3 0-64 28.7-64 64v96c0 17.7 14.3 32 32 32H64v64c0 35.3 28.7 64 64 64H384c35.3 0 64-28.7 64-64V384zm-16-88c-13.3 0-24-10.7-24-24s10.7-24 24-24s24 10.7 24 24s-10.7 24-24 24z"/></svg></span>
+                        </a>
+                        <a href="https://github.com/santhreal/veyyon" title="Git repository" aria-label="Git repository">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6zm-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3zm44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9zM244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8zM97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1zm-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7zm32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1zm-11.4-14.7c-1.6 1-1.6 3.6 0 5.9 1.6 2.3 4.3 3.3 5.6 2.3 1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2z"/></svg></span>
+                        </a>
+                        <a href="https://github.com/santhreal/veyyon/edit/main/docs/handbook/src/reference/settings-reference.md" title="Suggest an edit" aria-label="Suggest an edit" rel="edit">
+                            <span class=fa-svg id="git-edit-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M421.7 220.3l-11.3 11.3-22.6 22.6-205 205c-6.6 6.6-14.8 11.5-23.8 14.1L30.8 511c-8.4 2.5-17.5 .2-23.7-6.1S-1.5 489.7 1 481.2L38.7 353.1c2.6-9 7.5-17.2 14.1-23.8l205-205 22.6-22.6 11.3-11.3 33.9 33.9 62.1 62.1 33.9 33.9zM96 353.9l-9.3 9.3c-.9 .9-1.6 2.1-2 3.4l-25.3 86 86-25.3c1.3-.4 2.5-1.1 3.4-2l9.3-9.3H112c-8.8 0-16-7.2-16-16V353.9zM453.3 19.3l39.4 39.4c25 25 25 65.5 0 90.5l-14.5 14.5-22.6 22.6-11.3 11.3-33.9-33.9-62.1-62.1L314.3 67.7l11.3-11.3 22.6-22.6 14.5-14.5c25-25 65.5-25 90.5 0z"/></svg></span>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="mdbook-search-wrapper" class="hidden">
+                    <form id="mdbook-searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="mdbook-searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="mdbook-searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <span class=fa-svg id="fa-spin"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M304 48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zm0 416c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM48 304c26.5 0 48-21.5 48-48s-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48zm464-48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM142.9 437c18.7-18.7 18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zm0-294.2c18.7-18.7 18.7-49.1 0-67.9S93.7 56.2 75 75s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zM369.1 437c18.7 18.7 49.1 18.7 67.9 0s18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9z"/></svg></span>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="mdbook-searchresults-outer" class="searchresults-outer hidden">
+                        <div id="mdbook-searchresults-header" class="searchresults-header"></div>
+                        <ul id="mdbook-searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('mdbook-sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('mdbook-sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#mdbook-sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="mdbook-content" class="content">
+                    <main>
+                        <!-- generated by scripts/gen-settings-reference.ts -- do not edit by hand -->
+<h1 id="settings-reference"><a class="header" href="#settings-reference">Settings reference</a></h1>
+<p>Every setting the schema declares: the ones <code>/settings</code> shows, grouped as that screen groups them, then the ones that exist only in a configuration file.</p>
+<p>Generated by <code>scripts/gen-settings-reference.ts</code>. Edit the <code>ui</code> block on the setting in <code>packages/coding-agent/src/config/settings-domains/</code>, then run <code>bun scripts/gen-settings-reference.ts --write</code>. Never edit this file by hand: a test compares it against the generator and fails when the two disagree.</p>
+<p>Read <a href="./settings.html">Settings</a> first for where settings live, how precedence and merging work, and how to read and write them. The tables below are grouped as the <code>/settings</code> tabs are.</p>
+<p>Set any of these keys in <code>config.yml</code> with the dotted path shown in the first column, or from the command line:</p>
+<pre><code class="language-bash">veyyon config set tui.tight true
+veyyon config get compaction.threshold
+</code></pre>
+<h2 id="appearance"><a class="header" href="#appearance">Appearance</a></h2>
+<h3 id="theme"><a class="header" href="#theme">Theme</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>theme.dark</code></td><td>Dark Theme</td><td>string</td><td><code>titanium</code></td><td>Theme used when the terminal has a dark background.</td></tr>
+<tr><td><code>theme.light</code></td><td>Light Theme</td><td>string</td><td><code>light</code></td><td>Theme used when the terminal has a light background.</td></tr>
+<tr><td><code>symbolPreset</code></td><td>Symbol Preset</td><td>enum</td><td><code>unicode</code></td><td>Glyph set for icons and symbols (Unicode, Nerd Font, or ASCII). Values: <code>unicode</code>, <code>nerd</code>, <code>ascii</code>.</td></tr>
+<tr><td><code>colorBlindMode</code></td><td>Color-Blind Mode</td><td>boolean</td><td><code>false</code></td><td>Use blue instead of green for diff additions.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="status-line"><a class="header" href="#status-line">Status Line</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>statusLine.enabled</code></td><td>Composer Footline</td><td>boolean</td><td><code>true</code></td><td>Show the quiet metadata line under the composer (model, mode, path, git, context). Off leaves the composer carrying nothing; the agent-focus exit hint still shows while a view is proxied.</td></tr>
+<tr><td><code>statusLine.preset</code></td><td>Status Line Preset</td><td>enum</td><td><code>default</code></td><td>Pre-built status line configurations. Values: <code>default</code>, <code>minimal</code>, <code>compact</code>, <code>full</code>, <code>nerd</code>, <code>ascii</code>, <code>custom</code>.</td></tr>
+<tr><td><code>statusLine.sessionAccent</code></td><td>Session Accent</td><td>boolean</td><td><code>true</code></td><td>Use the session name color for the editor border. Shown under the tab’s Advanced fold.</td></tr>
+<tr><td><code>statusLine.compactThinkingLevel</code></td><td>Compact Thinking Level</td><td>boolean</td><td><code>false</code></td><td>Show the thinking level as a single icon on the model name instead of a separate <code> · \&lt;level&gt;</code> suffix. Shown under the tab’s Advanced fold.</td></tr>
+<tr><td><code>statusLine.showHookStatus</code></td><td>Show Hook Status</td><td>boolean</td><td><code>true</code></td><td>Display hook status messages below the status line. Shown under the tab’s Advanced fold.</td></tr>
+<tr><td><code>statusLine.showAccount</code></td><td>Show Serving Account</td><td>boolean</td><td><code>false</code></td><td>Name the account serving the next request on the composer footline, when the active provider stores more than one. Off: /account answers it on demand. Shown under the tab’s Advanced fold.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="display"><a class="header" href="#display">Display</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>terminal.showImages</code></td><td>Show Inline Images</td><td>boolean</td><td><code>true</code></td><td>Render images inline in the terminal.</td></tr>
+<tr><td><code>images.autoResize</code></td><td>Auto-Resize Images</td><td>boolean</td><td><code>true</code></td><td>Resize large images to 2000x2000 max for better model compatibility. Shown under the tab’s Advanced fold.</td></tr>
+<tr><td><code>terminal.showProgress</code></td><td>Native Terminal Progress</td><td>boolean</td><td><code>false</code></td><td>Emit OSC 9;4 indeterminate progress while the agent or context maintenance is running. Shown under the tab’s Advanced fold.</td></tr>
+<tr><td><code>tui.textSizing</code></td><td>Large Headings (Kitty)</td><td>boolean</td><td><code>false</code></td><td>Render Markdown H1 headings at 2x scale using Kitty’s OSC 66 text-sizing protocol. Only takes effect on Kitty terminals; ignored everywhere else. Off by default. Shown under the tab’s Advanced fold.</td></tr>
+<tr><td><code>tui.renderMermaid</code></td><td>Render Mermaid Diagrams</td><td>boolean</td><td><code>true</code></td><td>Render Mermaid fenced code blocks as ASCII diagrams. Shown under the tab’s Advanced fold.</td></tr>
+<tr><td><code>tui.hyperlinks</code></td><td>Terminal Hyperlinks</td><td>enum</td><td><code>auto</code></td><td>Wrap paths and URLs in OSC 8 hyperlinks for terminal-native click-to-open (auto: detect support; off: never; always: unconditional). Values: <code>off</code>, <code>auto</code>, <code>always</code>.</td></tr>
+<tr><td><code>tui.paintGround</code></td><td>Paint Theme Ground</td><td>enum</td><td><code>auto</code></td><td>Set the terminal background (OSC 11) to the theme’s ground color while Veyyon runs, restoring it on exit (auto: only when the terminal background already matches the theme so no seam appears; always: unconditional; never: inherit the terminal background). Values: <code>auto</code>, <code>always</code>, <code>never</code>.</td></tr>
+<tr><td><code>tui.tight</code></td><td>Tight Layout</td><td>boolean</td><td><code>false</code></td><td>Remove the 1-character horizontal padding from the left and right of the terminal output. Shown under the tab’s Advanced fold.</td></tr>
+<tr><td><code>tui.scrollbackRebuild</code></td><td>Rewrite Scrollback</td><td>boolean</td><td><code>true</code></td><td>Erase and replay terminal scrollback when a block’s final form replaces its live preview. On by default: with it off, the stale preview stays in history and the final content is appended underneath, so the same paragraph appears twice. Terminal multiplexers keep the append-below behaviour either way, because erasing there would take the pane’s own history with it. Shown under the tab’s Advanced fold.</td></tr>
+<tr><td><code>tui.scrollIsolation</code></td><td>Scroll Isolation</td><td>boolean</td><td><code>false</code></td><td>Read the mouse wheel so the transcript scrolls with the prompt pinned at the bottom, showing the position on the right edge. This costs you drag-select: while it is on, veyyon holds the mouse, so plain dragging selects nothing and you need shift+drag, or <code>/copy</code> to pick text and code out of the conversation without the mouse. When off (default), the terminal keeps the wheel and the mouse, so native scrollback, drag-select and copy all behave exactly as they do in any other program, and the prompt still sits at the bottom of the live view. Shown under the tab’s Advanced fold.</td></tr>
+<tr><td><code>display.transitions</code></td><td>Transitions</td><td>enum</td><td><code>on</code></td><td>Structural motion: overlay open transitions and the moving rail beside a running tool. Values: <code>on</code>, <code>off</code>.</td></tr>
+<tr><td><code>display.shimmer</code></td><td>Shimmer</td><td>enum</td><td><code>disabled</code></td><td>Animation style for working/loading messages. Values: <code>classic</code>, <code>kitt</code>, <code>living</code>, <code>disabled</code>.</td></tr>
+<tr><td><code>display.smoothStreaming</code></td><td>Smooth Streaming</td><td>boolean</td><td><code>true</code></td><td>Reveal assistant text and streamed tool input smoothly while chunks arrive.</td></tr>
+<tr><td><code>display.showTokenUsage</code></td><td>Show Token Usage</td><td>boolean</td><td><code>false</code></td><td>Show what each turn spent under the assistant message: tokens, how long it took, and its rate.</td></tr>
+<tr><td><code>display.cacheMissMarker</code></td><td>Cache Miss Marker</td><td>boolean</td><td><code>false</code></td><td>Show a divider above an assistant turn whose request lost (missed) the prompt cache. Shown under the tab’s Advanced fold.</td></tr>
+<tr><td><code>display.toolOutputExpanded</code></td><td>Expand Tool Output</td><td>boolean</td><td><code>false</code></td><td>Start tool calls expanded, showing full input and output instead of a preview; the in-session toggle updates this. Shown under the tab’s Advanced fold.</td></tr>
+<tr><td><code>showHardwareCursor</code></td><td>Show Hardware Cursor</td><td>boolean</td><td><code>true</code></td><td>Show terminal cursor for IME support. Shown under the tab’s Advanced fold.</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="model"><a class="header" href="#model">Model</a></h2>
+<h3 id="compaction"><a class="header" href="#compaction">Compaction</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>display.collapseCompacted</code></td><td>Collapse Compacted History</td><td>boolean</td><td><code>true</code></td><td>Collapse pre-compaction history behind the summary divider on the live transcript; disable to keep the full transcript inline with dividers at each compaction point.</td></tr>
+<tr><td><code>compaction.remote</code></td><td>Remote Compaction</td><td>boolean</td><td><code>true</code></td><td>Applies only when the session model is a supported OpenAI Responses model, which includes Azure OpenAI Responses deployments and a ChatGPT Codex session; every other model ignores this setting and compacts locally. On, veyyon calls the OpenAI compaction endpoint and keeps the window it returns, which preserves reasoning state across the cut. That window is the whole compacted context, so the entry stores no summary text and the compaction model chain does not apply. There is no second local summary on purpose: it would pay a model to re-summarize a span the provider already compacted and leave two versions of one range that can disagree. Off, compaction runs locally on the usual summary path and stores readable summary text.</td></tr>
+<tr><td><code>compaction.strategy</code></td><td>Compaction Type</td><td>enum</td><td><code>summary</code></td><td>Summary condenses history in place and continues the same session. Values: <code>summary</code>.</td></tr>
+<tr><td><code>compaction.threshold</code></td><td>Auto-Compaction Threshold</td><td>string</td><td><code>auto</code></td><td>When auto-compaction triggers. Auto uses the model’s window minus the reserve; a percent scales with each model’s window; a token amount is the same trigger on every model that can reach it, and a smaller model compacts at its own maximum.</td></tr>
+<tr><td><code>compaction.model</code></td><td>Compaction Model</td><td>modelChain</td><td><em>(unset)</em></td><td>Models used for in-place summary compaction, tried in order. Default: inherit — follows the main model live. Add fallbacks for when the first is unauthenticated or its window is too small.</td></tr>
+<tr><td><code>compaction.modelFallbackStrategy</code></td><td>Compaction Fallback</td><td>enum</td><td><code>auto</code></td><td>What to try after the compaction models you configured. Auto stays on models you named: the main model, its same-provider compaction sibling, and your model roles. Any authenticated model also reaches the largest window available, on any provider you have credentials for. Configured only stops at the chain and fails loudly. Values: <code>auto</code>, <code>any-model</code>, <code>configured-only</code>.</td></tr>
+<tr><td><code>compaction.modelContextWindow</code></td><td>Compaction Model Context</td><td>number</td><td><em>(unset)</em></td><td>Context window in tokens to assume for the compaction model. Unset uses the compaction model’s own reported window. Candidates whose window cannot fit the summarization payload are skipped loudly.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="roles"><a class="header" href="#roles">Roles</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>modelRoles</code></td><td>Role Models</td><td>record</td><td><code>{}</code></td><td>Assign a model to each role (task, plan, advisor, …). Opens a searchable picker with auth status. Scoped to the active profile — never edit config by hand.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="thinking"><a class="header" href="#thinking">Thinking</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>defaultEffort</code></td><td>Default Effort</td><td>record</td><td><code>{}</code></td><td>Effort per model, applied when a run does not ask for one. Add a model and pick its effort; the “any model” row covers every model without its own. Per profile.</td></tr>
+<tr><td><code>hideThinkingBlock</code></td><td>Hide Thinking Blocks</td><td>boolean</td><td><code>false</code></td><td>Hide thinking blocks in assistant responses.</td></tr>
+<tr><td><code>proseOnlyThinking</code></td><td>Prose Only Thinking</td><td>boolean</td><td><code>true</code></td><td>Omit code blocks from thinking summaries and replace them with an ellipsis.</td></tr>
+<tr><td><code>omitThinking</code></td><td>Omit Thinking summaries</td><td>boolean</td><td><code>false</code></td><td>Instruct upstream providers to completely omit thinking summaries from responses (where supported).</td></tr>
+<tr><td><code>model.loopGuard.enabled</code></td><td>Loop Guard</td><td>boolean</td><td><code>true</code></td><td>Enable automatic stream loop detection for model reasoning and prose.</td></tr>
+<tr><td><code>model.loopGuard.checkAssistantContent</code></td><td>Loop Guard Scan Prose</td><td>boolean</td><td><code>true</code></td><td>Apply loop guard to assistant prose messages in addition to thinking logs.</td></tr>
+<tr><td><code>model.loopGuard.toolCallReminder</code></td><td>Loop Guard Tool-Call Reminder</td><td>boolean</td><td><code>true</code></td><td>When a Gemini reasoning stream emits many consecutive planning headers without calling a tool, interrupt it and inject a reminder to issue a tool call (requires Loop Guard).</td></tr>
+<tr><td><code>model.toolCallLoopGuard.enabled</code></td><td>Tool-Call Loop Guard</td><td>boolean</td><td><code>true</code></td><td>Detect consecutive identical tool calls across turns and inject a corrective steer.</td></tr>
+<tr><td><code>model.toolCallLoopGuard.threshold</code></td><td>Tool-Call Loop Threshold</td><td>number</td><td><code>5</code></td><td>Consecutive identical tool calls required before the corrective steer is injected.</td></tr>
+<tr><td><code>model.toolCallLoopGuard.exemptTools</code></td><td>Tool-Call Loop Exempt Tools</td><td>array</td><td><code>["job","irc"]</code></td><td>Tool names that may repeat consecutively without triggering the cross-turn loop guard.</td></tr>
+<tr><td><code>providers.autoThinkingModel</code></td><td>Auto Thinking Model</td><td>enum</td><td><code>online</code></td><td>Difficulty classifier for the <code>auto</code> thinking level: online (the TINY role from /models, else smol) by default, or a local on-device model. Values: <code>online</code>, <code>qwen3-1.7b</code>, <code>llama3.2:3b</code>, <code>gemma-3-1b</code>, <code>qwen2.5-1.5b</code>, <code>lfm2-1.2b</code>.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="sampling"><a class="header" href="#sampling">Sampling</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>temperature</code></td><td>Temperature</td><td>number</td><td><em>(unset)</em></td><td>Sampling temperature. 0 is deterministic, 1 is creative. Unset lets the provider choose.</td></tr>
+<tr><td><code>topP</code></td><td>Top P</td><td>number</td><td><em>(unset)</em></td><td>Nucleus sampling cutoff, 0 to 1. Unset lets the provider choose.</td></tr>
+<tr><td><code>topK</code></td><td>Top K</td><td>number</td><td><em>(unset)</em></td><td>Sample from the top K tokens. Unset lets the provider choose.</td></tr>
+<tr><td><code>minP</code></td><td>Min P</td><td>number</td><td><em>(unset)</em></td><td>Minimum probability threshold, 0 to 1. Unset lets the provider choose.</td></tr>
+<tr><td><code>presencePenalty</code></td><td>Presence Penalty</td><td>number</td><td><em>(unset)</em></td><td>Penalty for introducing tokens already present. Negative values encourage repetition; unset lets the provider choose.</td></tr>
+<tr><td><code>repetitionPenalty</code></td><td>Repetition Penalty</td><td>number</td><td><em>(unset)</em></td><td>Penalty for repeated tokens. Values below 1 encourage repetition; unset lets the provider choose.</td></tr>
+<tr><td><code>textVerbosity</code></td><td>Text Verbosity</td><td>enum</td><td><code>medium</code></td><td>OpenAI Responses and Codex response verbosity (low, medium, or high). Values: <code>low</code>, <code>medium</code>, <code>high</code>.</td></tr>
+<tr><td><code>tier.openai</code></td><td>Service Tier — OpenAI</td><td>enum</td><td><code>none</code></td><td>How your OpenAI / OpenAI-Codex requests are queued and served, including OpenAI-family models routed via OpenRouter (none = omit the field). Sent as <code>service_tier</code>. This is serving speed and cost, not reasoning depth; depth is Default Effort. Values: <code>none</code>, <code>auto</code>, <code>default</code>, <code>flex</code>, <code>scale</code>, <code>priority</code>.</td></tr>
+<tr><td><code>tier.anthropic</code></td><td>Service Tier — Anthropic</td><td>enum</td><td><code>none</code></td><td>How your Claude requests are queued and served. <code>priority</code> realizes fast mode (<code>speed: "fast"</code>) on supported direct Anthropic models, and is ignored on Bedrock/Vertex Claude and via OpenRouter. This is serving speed and cost, not reasoning depth; depth is Default Effort. Values: <code>none</code>, <code>priority</code>.</td></tr>
+<tr><td><code>tier.google</code></td><td>Service Tier — Google</td><td>enum</td><td><code>none</code></td><td>How your Gemini (Google AI Studio + Vertex) requests are queued and served, including Google-family models routed via OpenRouter (none = omit the field). Sent as the top-level <code>serviceTier</code> field. This is serving speed and cost, not reasoning depth; depth is Default Effort. Values: <code>none</code>, <code>flex</code>, <code>priority</code>.</td></tr>
+<tr><td><code>tier.subagent</code></td><td>Service Tier — Subagent</td><td>enum</td><td><code>inherit</code></td><td>How spawned task/eval subagent requests are queued and served. Inherit matches the main agent’s live per-family tiers (tracks /fast); pick a value to apply it to whichever family the subagent’s model belongs to. Values: <code>inherit</code>, <code>none</code>, <code>auto</code>, <code>default</code>, <code>flex</code>, <code>scale</code>, <code>priority</code>.</td></tr>
+<tr><td><code>tier.advisor</code></td><td>Service Tier — Advisor</td><td>enum</td><td><code>none</code></td><td>How advisor-model requests are queued and served. None is standard processing, Inherit matches the main agent’s live per-family tiers, and picking a value applies it to the advisor model’s family. Values: <code>inherit</code>, <code>none</code>, <code>auto</code>, <code>default</code>, <code>flex</code>, <code>scale</code>, <code>priority</code>.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="prompt"><a class="header" href="#prompt">Prompt</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>inlineToolDescriptors</code></td><td>Inline Tool Descriptors</td><td>enum</td><td><code>auto</code></td><td>Render full tool descriptors in the system prompt and strip top-level/nested descriptions from provider tool schemas so descriptor text is sent once. Auto follows the active model, enabling this for Gemini and disabling it otherwise. Values: <code>auto</code>, <code>on</code>, <code>off</code>.</td></tr>
+<tr><td><code>includeModelInPrompt</code></td><td>Include Model in Prompt</td><td>boolean</td><td><code>false</code></td><td>Surface the active model identifier in the system prompt so the agent knows which model it is. Costs a full prompt-cache invalidation on every model switch.</td></tr>
+<tr><td><code>includeWorkspaceTree</code></td><td>Include Workspace Tree</td><td>boolean</td><td><code>false</code></td><td>Render the workspace directory tree in the system prompt. WARNING: This can bust prompt caching across sessions when files are modified.</td></tr>
+<tr><td><code>personality</code></td><td>Personality</td><td>string</td><td><code>default</code></td><td>Communication style rendered into the system prompt’s personality block. Extend via ~/.veyyon/personalities/&lt;name&gt;.md or project .veyyon/personalities/&lt;name&gt;.md.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="retry--fallback"><a class="header" href="#retry--fallback">Retry &amp; Fallback</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>retry.maxRetries</code></td><td>Retry Attempts</td><td>number</td><td><code>10</code></td><td>Maximum retry attempts on API errors.</td></tr>
+<tr><td><code>retry.maxDelayMs</code></td><td>Max Retry Delay</td><td>number</td><td><code>300000</code></td><td>Maximum wait between retries, in ms. When the provider asks us to wait longer than this and no credential or model fallback succeeds, the request fails fast instead of sleeping (e.g. 3-hour Anthropic rate-limit windows).</td></tr>
+<tr><td><code>retry.modelFallback</code></td><td>Retry Model Fallback</td><td>boolean</td><td><code>true</code></td><td>Allow retry recovery to switch to configured fallback models.</td></tr>
+<tr><td><code>retry.fallbackChains</code></td><td>Retry Fallback Chains</td><td>record</td><td><code>{}</code></td><td>JSON object mapping model roles, model selectors (“provider/model-id”), or provider wildcards (“provider/<em>”) to ordered fallback selectors, e.g. {“default”:[“openai/gpt-4o-mini”],“google-antigravity/</em>”:[“google/<em>”,“google-vertex/</em>”]}. Model-oriented keys apply whenever that model/provider is active, regardless of role; a “provider/*” entry keeps the failing model’s id and swaps the provider.</td></tr>
+<tr><td><code>retry.perProvider</code></td><td>Per-Provider Retry</td><td>record</td><td><code>{}</code></td><td>JSON object overriding retry limits for specific backends, keyed like Retry Fallback Chains: a model selector (“provider/model-id”), a provider wildcard (“provider/*”), or a bare provider name. Each value may set maxRetries, baseDelayMs, and maxDelayMs; anything omitted falls back to the global retry settings. Example: {“cursor”:{“maxRetries”:3,“baseDelayMs”:2000}}. Backends whose retries are intrinsically expensive (cursor, devin) already ship with sensible limits; an entry here overrides those.</td></tr>
+<tr><td><code>retry.fallbackRevertPolicy</code></td><td>Fallback Revert Policy</td><td>enum</td><td><code>cooldown-expiry</code></td><td>When to return to the primary model after a fallback. Values: <code>cooldown-expiry</code>, <code>never</code>.</td></tr>
+<tr><td><code>providers.anthropic.serverSideFallback</code></td><td>Anthropic Server-Side Fallback (Fable 5)</td><td>boolean</td><td><code>false</code></td><td>When a Claude Fable 5 / Mythos 5 request is blocked by Anthropic’s safety classifier, retry it on Claude Opus 4.8 server-side (Anthropic <code>server-side-fallback-2026-06-01</code> beta). Opt-in — leaving this off preserves the pre-fallback behavior for every request.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="advisor"><a class="header" href="#advisor">Advisor</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>advisor.enabled</code></td><td>Enable Advisor</td><td>boolean</td><td><code>false</code></td><td>Pair a second model (assigned to the ‘advisor’ role) that passively reviews each turn and injects notes.</td></tr>
+<tr><td><code>advisor.subagents</code></td><td>Advisor for Subagents</td><td>boolean</td><td><code>false</code></td><td>Also enable the advisor on spawned task/eval subagents.</td></tr>
+<tr><td><code>advisor.syncBacklog</code></td><td>Advisor Sync Backlog</td><td>enum</td><td><code>off</code></td><td>Pause the main agent for up to 30 seconds if the advisor falls behind by this many turns. Off disables catch-up delays. Values: <code>off</code>, <code>1</code>, <code>3</code>, <code>5</code>.</td></tr>
+<tr><td><code>advisor.immuneTurns</code></td><td>Advisor Immune Turns</td><td>number</td><td><code>3</code></td><td>After an advisor concern or blocker interrupts, route further concerns/blockers non-interruptingly for this many primary turns.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="prewalk"><a class="header" href="#prewalk">Prewalk</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>prewalk.enabled</code></td><td>Enable Prewalk</td><td>boolean</td><td><code>false</code></td><td>Start on the active model, then switch to a fast/cheap model (default the ‘smol’ role) at the first edit/write after the plan nudge’s todo list exists — the strong model plans, commits the todos, and starts the implementation before handing off. Overridable per session with –prewalk / –no-prewalk.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="vision"><a class="header" href="#vision">Vision</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>images.describeForTextModels</code></td><td>Describe Images for Text Models</td><td>boolean</td><td><code>true</code></td><td>When an image is attached to a model without vision support, save it under local:// and inject a description from a vision-capable model instead of dropping it.</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="interaction"><a class="header" href="#interaction">Interaction</a></h2>
+<h3 id="input"><a class="header" href="#input">Input</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>steeringMode</code></td><td>Steering Mode</td><td>enum</td><td><code>one-at-a-time</code></td><td>How to process queued messages while agent is working. Values: <code>all</code>, <code>one-at-a-time</code>.</td></tr>
+<tr><td><code>followUpMode</code></td><td>Follow-Up Mode</td><td>enum</td><td><code>one-at-a-time</code></td><td>How to drain follow-up messages after a turn completes. Values: <code>all</code>, <code>one-at-a-time</code>.</td></tr>
+<tr><td><code>interruptMode</code></td><td>Interrupt Mode</td><td>enum</td><td><code>immediate</code></td><td>When steering messages interrupt tool execution. Values: <code>immediate</code>, <code>wait</code>.</td></tr>
+<tr><td><code>loop.mode</code></td><td>Loop Mode</td><td>enum</td><td><code>prompt</code></td><td>What happens between /loop iterations before re-submitting the prompt. Values: <code>prompt</code>, <code>compact</code>, <code>reset</code>.</td></tr>
+<tr><td><code>doubleEscapeAction</code></td><td>Double-Escape Action</td><td>enum</td><td><code>tree</code></td><td>Action when pressing Escape twice with empty editor. Values: <code>branch</code>, <code>tree</code>, <code>none</code>.</td></tr>
+<tr><td><code>treeFilterMode</code></td><td>Session Tree Filter</td><td>enum</td><td><code>default</code></td><td>Default filter mode when opening the session tree. Values: <code>default</code>, <code>no-tools</code>, <code>user-only</code>, <code>labeled-only</code>, <code>all</code>.</td></tr>
+<tr><td><code>autocompleteMaxVisible</code></td><td>Autocomplete Items</td><td>number</td><td><code>5</code></td><td>Max visible items in autocomplete dropdown (3-20).</td></tr>
+<tr><td><code>emojiAutocomplete</code></td><td>Emoji Autocomplete</td><td>boolean</td><td><code>true</code></td><td>Suggest emojis from <code>:name:</code> shortcodes and expand text emoticons like <code>:D</code> or <code>:-)</code>.</td></tr>
+<tr><td><code>paste.largeMenuThreshold</code></td><td>Large Paste Menu</td><td>number</td><td><code>100</code></td><td>When a paste reaches this many lines, offer a menu to wrap it in a code block, wrap it in XML tags, or save it to a file. 0 disables the menu (large pastes still collapse to a [Paste] marker).</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="approvals"><a class="header" href="#approvals">Approvals</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>tools.approval</code></td><td>Tool Approval Policies</td><td>record</td><td><code>{}</code></td><td>Per-tool approval policies. Set to ‘allow’ to auto-approve, ‘prompt’ to require confirmation, or ‘deny’ to block. Overrides are honored in every approval mode. Any other value denies that tool and is reported at startup.</td></tr>
+<tr><td><code>tools.protectedPaths</code></td><td>Extra Protected Paths</td><td>array</td><td><code>[]</code></td><td>Additional absolute paths (a leading ~ is expanded) that a recursive delete must never target without approval. Adds to the built-in set; it cannot remove from it.</td></tr>
+<tr><td><code>tools.approvalMode</code></td><td>Tool Approval</td><td>enum</td><td><code>auto</code></td><td>How much the agent may do without asking. Defaults to Auto: every tier runs, with the per-tool policies, working-directory boundary, credential and critical-call guards still asking. This is the persisted default; override it for one session with /permissions. Values: <code>plan</code>, <code>ask</code>, <code>ask-command</code>, <code>auto</code>, <code>yolo</code>, <code>always-ask</code>, <code>write</code>, <code>auto-edit</code>.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="notifications"><a class="header" href="#notifications">Notifications</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>completion.notify</code></td><td>Completion Notification</td><td>enum</td><td><code>off</code></td><td>Notify when the agent finishes a turn (off by default: the turn is on your screen). Values: <code>on</code>, <code>off</code>.</td></tr>
+<tr><td><code>ask.timeout</code></td><td>Ask Timeout</td><td>number</td><td><code>0</code></td><td>Auto-select the recommended ask option after this many seconds (0 disables).</td></tr>
+<tr><td><code>ask.notify</code></td><td>Ask Notification</td><td>enum</td><td><code>on</code></td><td>Notify when the agent is blocked on a question you have not answered. Values: <code>on</code>, <code>off</code>.</td></tr>
+<tr><td><code>recap.enabled</code></td><td>Idle Recap</td><td>boolean</td><td><code>true</code></td><td>Generate a brief LLM recap of where things stand after the terminal has been idle.</td></tr>
+<tr><td><code>recap.idleSeconds</code></td><td>Idle Recap Delay</td><td>number</td><td><code>240</code></td><td>Seconds to wait while idle before showing the recap.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="speech"><a class="header" href="#speech">Speech</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>stt.enabled</code></td><td>Speech-to-Text</td><td>boolean</td><td><code>false</code></td><td>Enable speech-to-text input via microphone.</td></tr>
+<tr><td><code>stt.modelName</code></td><td>Speech Model</td><td>enum</td><td><code>parakeet</code></td><td>Local on-device speech model. Parakeet TDT v3 (sherpa-onnx) is the SoTA default; Whisper base/small/large-v3-turbo tiers (transformers.js) trade size for multilingual coverage. Downloaded on first use. Values: <code>fast</code>, <code>balanced</code>, <code>turbo</code>, <code>parakeet</code>.</td></tr>
+<tr><td><code>stt.submitTrigger</code></td><td>Speech-to-Text Submit Trigger</td><td>enum</td><td><code>never</code></td><td>Choose when speech dictation automatically submits: Never, Release (2+ words), Release with complete sentence, or When I Say Submit. Values: <code>never</code>, <code>release</code>, <code>release-complete</code>, <code>say-submit</code>.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="collab"><a class="header" href="#collab">Collab</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>collab.relayUrl</code></td><td>Relay URL</td><td>string</td><td><code>wss://share.veyyon.dev</code></td><td>Relay used by /collab (wss://host[:port]).</td></tr>
+<tr><td><code>collab.webUrl</code></td><td>Web UI URL</td><td>string</td><td><em>(empty)</em></td><td>Browser UI used by /collab links; empty derives from collab.relayUrl; explicit http:// is localhost-only.</td></tr>
+<tr><td><code>collab.displayName</code></td><td>Display Name</td><td>string</td><td><em>(empty)</em></td><td>Name shown to other collab participants (default: OS username).</td></tr>
+<tr><td><code>share.serverUrl</code></td><td>Share Server</td><td>string</td><td><code>https://share.veyyon.dev/s</code></td><td>Share viewer/upload base used by /share (encrypted blob upload + viewer; links are &lt;base&gt;/&lt;id&gt;#&lt;key&gt;).</td></tr>
+<tr><td><code>share.store</code></td><td>Share Store</td><td>enum</td><td><code>blob</code></td><td>Where /share uploads the encrypted session blob. Values: <code>blob</code>, <code>gist</code>.</td></tr>
+<tr><td><code>share.redactSecrets</code></td><td>Share Secret Redaction</td><td>boolean</td><td><code>true</code></td><td>Run the secret obfuscator over /share snapshots before upload (uses the secrets.* config).</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="magic-keywords"><a class="header" href="#magic-keywords">Magic Keywords</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>magicKeywords.enabled</code></td><td>Enable Magic Keywords</td><td>boolean</td><td><code>true</code></td><td>Enable hidden notices for standalone ultrathink, orchestratez, and workflowz keywords.</td></tr>
+<tr><td><code>magicKeywords.ultrathink</code></td><td>Ultrathink Keyword</td><td>boolean</td><td><code>true</code></td><td>Let standalone ultrathink request maximum automatic thinking and append its hidden notice.</td></tr>
+<tr><td><code>magicKeywords.orchestrate</code></td><td>Orchestrate Keyword</td><td>boolean</td><td><code>true</code></td><td>Let standalone orchestratez append its hidden multi-agent orchestration notice.</td></tr>
+<tr><td><code>magicKeywords.workflow</code></td><td>Workflow Keyword</td><td>boolean</td><td><code>true</code></td><td>Let standalone workflowz append its hidden eval workflow notice.</td></tr>
+<tr><td><code>magicKeywords.turnBudget</code></td><td>Turn Budget Directive</td><td>boolean</td><td><code>false</code></td><td>Let a standalone +500k or +2m set this turn’s output-token budget; when off, +Nk in a message is treated as ordinary text.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="startup--updates"><a class="header" href="#startup--updates">Startup &amp; Updates</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>autoResume</code></td><td>Auto Resume</td><td>boolean</td><td><code>false</code></td><td>Automatically resume the most recent session in the current directory.</td></tr>
+<tr><td><code>startup.quiet</code></td><td>Quiet Startup</td><td>boolean</td><td><code>false</code></td><td>Skip welcome screen and startup status messages.</td></tr>
+<tr><td><code>startup.showSplash</code></td><td>Show Startup Splash</td><td>boolean</td><td><code>false</code></td><td>Show the full animated setup splash on normal interactive startup without rerunning setup. Quiet Startup still suppresses it.</td></tr>
+<tr><td><code>startup.clearScrollback</code></td><td>Clear Scrollback on Startup</td><td>boolean</td><td><code>false</code></td><td>Erase the terminal’s saved scrollback when veyyon starts, so the session begins on an empty terminal. This also erases what was on screen before you launched, such as your shell history and any command output, and it cannot be undone. Off still starts you on a clear screen; it just leaves your history reachable by scrolling up.</td></tr>
+<tr><td><code>startup.setupWizard</code></td><td>Setup Wizard</td><td>boolean</td><td><code>true</code></td><td>Run onboarding on first install only (updates never re-run it).</td></tr>
+<tr><td><code>startup.checkUpdate</code></td><td>Check for Updates</td><td>boolean</td><td><code>true</code></td><td>Check for Veyyon updates on startup.</td></tr>
+<tr><td><code>marketplace.autoUpdate</code></td><td>Marketplace Auto-Update</td><td>enum</td><td><code>notify</code></td><td>Check for plugin updates on startup. Values: <code>off</code>, <code>notify</code>, <code>auto</code>.</td></tr>
+<tr><td><code>startup.autoUpdate</code></td><td>Automatic Updates</td><td>boolean</td><td><code>true</code></td><td>Install a newer version in the background; off means updates only when you run <code>veyyon update</code>.</td></tr>
+<tr><td><code>startup.updateNotice</code></td><td>Update Notice</td><td>boolean</td><td><code>true</code></td><td>Show a one-line notice on the first launch after an update.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="profile"><a class="header" href="#profile">Profile</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>profile.displayName</code></td><td>Profile Name</td><td>string</td><td><em>(empty)</em></td><td>Display name for the active profile, shown in /profile list and resolvable by /profile &lt;name&gt;. Stored per profile; empty falls back to the profile’s directory name (“default” for the base profile).</td></tr>
+<tr><td><code>session.workdir</code></td><td>Default Working Directory</td><td>string</td><td><em>(unset)</em></td><td>Per-profile default session working directory used when launching without an explicit –cwd. Precedence: an explicit –cwd wins, then this setting, then the directory you launched from. Use an absolute or ~-relative path; a relative path or a missing directory makes launch fail loudly. The agent can override the live session cwd for that session only via set_cwd / /cwd without writing this setting.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="power-macos"><a class="header" href="#power-macos">Power (macOS)</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>power.sleepPrevention</code></td><td>Sleep Prevention</td><td>enum</td><td><code>idle</code></td><td>Prevent macOS sleep during active sessions. Each level is cumulative — it adds the flags of all lower levels. Values: <code>off</code>, <code>idle</code>, <code>display</code>, <code>system</code>.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="agent"><a class="header" href="#agent">Agent</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>features.unexpectedStopDetection</code></td><td>Detect unexpected stops</td><td>boolean</td><td><code>false</code></td><td>Use a small model to detect when the assistant says it will continue but stops without tool calls; automatically prompt it to continue.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="git"><a class="header" href="#git">Git</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>git.enabled</code></td><td>Enable Git Integration</td><td>boolean</td><td><code>true</code></td><td>Show git branch, status, and PR information in the TUI and watch repository metadata.</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="resources"><a class="header" href="#resources">Resources</a></h2>
+<h3 id="cpu"><a class="header" href="#cpu">CPU</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>session.cpuLimitCores</code></td><td>Session CPU Limit</td><td>number</td><td><code>0</code></td><td>Maximum CPU a session’s spawned processes may use, in cores (0 = off). This is the per-profile default: every session that profile starts inherits it, and one session can depart from it with /cpu-limit &lt;cores&gt; or lift it entirely with /cpu-limit remove, neither of which writes this setting. Every process the session starts (bash commands, MCP servers, custom tools, launch tasks, workers) joins a per-session budget group: a cgroup v2 quota on Linux, a Job Object hard cap on Windows, both kernel-enforced, so the group throttles as a whole. While the group runs saturated, new commands are refused with an error naming the budget. On macOS there is no kernel quota, so enforcement is policy-only (refuse new commands, renice, optional kill) and a startup warning says so. The harness’s own compute (agent turns, in-process workers) is never capped.</td></tr>
+<tr><td><code>session.cpuLimitKill</code></td><td>Kill Over-Budget Commands</td><td>boolean</td><td><code>false</code></td><td>What happens when spawned commands stay at the CPU limit for seconds at a time. Off (default): new commands are refused until usage drops, running ones keep running (throttled where the OS offers a quota, reniced on macOS). On: the over-budget group is also sent SIGTERM, and the kill is reported as a budget action, not a crash. /cpu-limit kill on|off changes it for one session without writing this setting.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="memory"><a class="header" href="#memory">Memory</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>session.memoryLimitGb</code></td><td>Session Memory Limit</td><td>number</td><td><code>0</code></td><td>Maximum resident memory the session tree may hold at once, in gigabytes (0 = off). The session tree is this session, every subagent under it at any depth, and every process any of them spawned: they share one budget group, so delegating work cannot multiply the allowance. This is a kernel cap, not a polite refusal: on Linux it is cgroup v2 memory.max on the session budget group, so a group at the limit is reclaimed first and then a process INSIDE it is OOM-killed by the kernel, whichever process the kernel picks, with no warning and no chance to finish. Set it where an OOM kill is preferable to the machine swapping, and leave it off if a killed command would cost more than the memory does. A host without a memory controller reports the limit as unenforceable once at startup rather than pretending to hold it.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="disk"><a class="header" href="#disk">Disk</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>session.writeBudgetGb</code></td><td>Session Write Budget</td><td>number</td><td><code>0</code></td><td>Cumulative gigabytes the session tree may WRITE to disk before further writes are refused (0 = off). The session tree is this session, every subagent under it at any depth, and every process any of them spawned: they share one budget group, so delegating work cannot multiply the allowance. Writes are metered by the same group that meters CPU (cgroup v2 io accounting on Linux, Job Object I/O accounting on Windows). Once the total is reached, a new command is refused with an error naming the budget and how much it has written; already running commands keep running unless Kill Over-Budget Writers is on. A host where write accounting cannot be read reports the limit as unenforceable once at startup rather than pretending to hold it.</td></tr>
+<tr><td><code>session.writeBudgetKill</code></td><td>Kill Over-Budget Writers</td><td>boolean</td><td><code>false</code></td><td>What happens when the session tree passes its write budget. Off (default): new commands are refused, and whatever is already writing runs to completion. On: the over-budget group is also sent SIGTERM, and the kill is reported as a budget action rather than a crash, so a command that vanished mid-write is explained instead of looking like a failure. Hidden while the write budget is 0, because a kill policy for a budget that does not exist is a knob with nothing behind it.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="processes"><a class="header" href="#processes">Processes</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>session.maxProcesses</code></td><td>Max Processes</td><td>number</td><td><code>0</code></td><td>Hard cap on how many processes may be alive at once across the session tree (0 = off). The session tree is this session, every subagent under it at any depth, and every process any of them spawned, all in one budget group, so the cap is not multiplied by delegating. Enforced by the kernel where it can be: cgroup v2 pids.max on Linux and a Job Object process limit on Windows both refuse the fork itself, so a runaway loop stops instead of filling the process table. Elsewhere the cap is policy-only, refusing a new spawn with an error naming the limit and the current count, and a startup notice says the kernel is not holding it.</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="context"><a class="header" href="#context">Context</a></h2>
+<h3 id="general"><a class="header" href="#general">General</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>contextPromotion.enabled</code></td><td>Auto-Promote Context</td><td>boolean</td><td><code>false</code></td><td>Promote to a larger-context model on context overflow instead of compacting.</td></tr>
+<tr><td><code>branchSummary.enabled</code></td><td>Branch Summaries</td><td>boolean</td><td><code>false</code></td><td>Prompt to summarize when leaving a branch.</td></tr>
+<tr><td><code>context.thinkingRetention</code></td><td>Thinking Retention</td><td>number</td><td><code>-1</code></td><td>How many of the most recent assistant turns keep their unsigned thinking when the conversation is sent back. Gemini summarises its reasoning for you to read but replays the real reasoning from the signature on the tool call, so an old summary is transcript text the model re-reads and the provider ignores. Keep All resends every summary ever produced. Thinking that does carry a signature is always kept. Other providers ignore this. Shown under the tab’s Advanced fold.</td></tr>
+<tr><td><code>context.thoughtSignatureRetention</code></td><td>Thought Signature Retention</td><td>number</td><td><code>-1</code></td><td>How many of the most recent assistant turns keep their Gemini thought signature when the conversation is sent back. Signatures let the model replay its own reasoning, and they are large, so the recent ones are the ones worth paying to resend. Keep All resends every signature ever produced, which on a long session is the single biggest thing in the context. Other providers ignore this. Shown under the tab’s Advanced fold.</td></tr>
+<tr><td><code>context.thoughtSignatureMaxLength</code></td><td>Thought Signature Size Limit</td><td>number</td><td><code>-1</code></td><td>Longest Gemini thought signature still worth resending, in characters. Anything longer sends the skip sentinel instead, however recent it is. Signature sizes are lopsided: the largest tenth of them carry roughly two thirds of all signature bytes, so a limit sheds most of the weight while keeping the great majority of the reasoning chain. Use this instead of Thought Signature Retention when you want a gentler trade, or alongside it, in which case a signature is resent only if it is both recent enough and small enough. Other providers ignore this. Shown under the tab’s Advanced fold.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="prompt-cache"><a class="header" href="#prompt-cache">Prompt Cache</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>cache.reportRejection</code></td><td>Report Cache Rejections</td><td>boolean</td><td><code>true</code></td><td>Warn when a turn asked the provider to cache a prefix and the provider cached nothing. Anthropic only; other providers do not report cache rejection.</td></tr>
+<tr><td><code>cache.blockOnRejection</code></td><td>Block On Cache Rejection</td><td>boolean</td><td><code>false</code></td><td>Anthropic only. Fail the next request after a rejected cache instead of continuing to pay full input rate. Off by default: the verdict is proven against provider usage reporting, so a provider that changes what it reports would stop the session rather than cost money.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="session-instrumentation"><a class="header" href="#session-instrumentation">Session Instrumentation</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>session.instrumentation</code></td><td>Instrumentation Level</td><td>enum</td><td><code>off</code></td><td>Record structured, redacted study data in the session file. Higher levels add lifecycle, task-state, tool, model-turn, context, and agent-communication detail for <code>veyyon session stats</code>. Off still stores the normal resumable conversation and tool history, but adds no study fields. Values: <code>off</code>, <code>basic</code>, <code>rich</code>, <code>ultra</code>.</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="rules"><a class="header" href="#rules">Rules</a></h2>
+<h3 id="rules-1"><a class="header" href="#rules-1">Rules</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>ttsr.builtinRules</code></td><td>Built-in Rules</td><td>boolean</td><td><code>true</code></td><td>Load the default rules shipped with the agent. Turn individual rules off under All Rules.</td></tr>
+<tr><td><code>ttsr.disabledRules</code></td><td>All Rules</td><td>array</td><td><code>[]</code></td><td>Every rule this project loads, each on or off. Stores only the ones you turn off, so a rule added in a later release arrives on.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="stream-interrupts-ttsr"><a class="header" href="#stream-interrupts-ttsr">Stream Interrupts (TTSR)</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>ttsr.enabled</code></td><td>TTSR</td><td>boolean</td><td><code>true</code></td><td>Interrupt the agent mid-stream when output matches rule patterns (Time-Traveling Stream Rules).</td></tr>
+<tr><td><code>ttsr.contextMode</code></td><td>Context Mode</td><td>enum</td><td><code>discard</code></td><td>What to do with partial output when TTSR triggers. Values: <code>discard</code>, <code>keep</code>.</td></tr>
+<tr><td><code>ttsr.interruptMode</code></td><td>Rule Interrupt Mode</td><td>enum</td><td><code>always</code></td><td>When to interrupt mid-stream vs inject warning after completion. Values: <code>never</code>, <code>prose-only</code>, <code>tool-only</code>, <code>always</code>.</td></tr>
+<tr><td><code>ttsr.repeatMode</code></td><td>Repeat Mode</td><td>enum</td><td><code>once</code></td><td>How rules can repeat: once per session or after a message gap. A rule may override this in its frontmatter. Values: <code>once</code>, <code>after-gap</code>.</td></tr>
+<tr><td><code>ttsr.repeatGap</code></td><td>Repeat Gap</td><td>number</td><td><code>10</code></td><td>Messages before a rule can trigger again. A rule may override this in its frontmatter.</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="memory-1"><a class="header" href="#memory-1">Memory</a></h2>
+<h3 id="general-1"><a class="header" href="#general-1">General</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>memory.backend</code></td><td>Memory Backend</td><td>enum</td><td><code>off</code></td><td>Off, local summary pipeline, Mnemopi SQLite, or Hindsight remote memory. Values: <code>off</code>, <code>local</code>, <code>hindsight</code>, <code>mnemopi</code>.</td></tr>
+<tr><td><code>providers.memoryModel</code></td><td>Memory Model</td><td>enum</td><td><code>online</code></td><td>Mnemopi LLM for fact extraction + consolidation: online (the TINY role from /models, else smol/remote) by default, or a local on-device model. Values: <code>online</code>, <code>qwen3-1.7b</code>, <code>llama3.2:3b</code>, <code>gemma-3-1b</code>, <code>qwen2.5-1.5b</code>, <code>lfm2-1.2b</code>.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="mnemopi"><a class="header" href="#mnemopi">Mnemopi</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>mnemopi.dbPath</code></td><td>Mnemopi DB Path</td><td>string</td><td><em>(unset)</em></td><td>Optional SQLite DB path. Defaults to the agent memories directory.</td></tr>
+<tr><td><code>mnemopi.bank</code></td><td>Mnemopi Bank</td><td>string</td><td><em>(unset)</em></td><td>Optional shared bank base name. Per-project modes derive project-local banks from it.</td></tr>
+<tr><td><code>mnemopi.scoping</code></td><td>Mnemopi Scoping</td><td>enum</td><td><code>per-project</code></td><td>global = one shared bank; per-project = isolated bank per cwd; per-project-tagged = project-local writes plus global recall visibility. Values: <code>global</code>, <code>per-project</code>, <code>per-project-tagged</code>.</td></tr>
+<tr><td><code>mnemopi.embeddingVariant</code></td><td>Embedding variant</td><td>enum</td><td><code>en</code></td><td>Local embedding model family. en = stronger English model; multilingual = cross-language model. Changing this rebuilds existing memory embeddings on next start. Values: <code>en</code>, <code>multilingual</code>.</td></tr>
+<tr><td><code>mnemopi.autoRecall</code></td><td>Mnemopi Auto Recall</td><td>boolean</td><td><code>true</code></td><td>Recall local memories into the first turn of each session.</td></tr>
+<tr><td><code>mnemopi.autoRetain</code></td><td>Mnemopi Auto Retain</td><td>boolean</td><td><code>true</code></td><td>Retain completed conversation turns into local Mnemopi memory.</td></tr>
+<tr><td><code>mnemopi.polyphonicRecall</code></td><td>Mnemopi Polyphonic Recall</td><td>boolean</td><td><code>false</code></td><td>Enable 4-voice recall (vector, graph, fact, temporal) fused with reciprocal rank fusion.</td></tr>
+<tr><td><code>mnemopi.enhancedRecall</code></td><td>Mnemopi Enhanced Recall</td><td>boolean</td><td><code>false</code></td><td>Enable the tiered query result cache for repeated and similar recall queries.</td></tr>
+<tr><td><code>mnemopi.proactiveLinking</code></td><td>Mnemopi Proactive Linking</td><td>boolean</td><td><code>false</code></td><td>Ingest new memories into the episodic graph as they are stored, linking them to related entities and memories.</td></tr>
+<tr><td><code>mnemopi.noEmbeddings</code></td><td>Mnemopi Disable Embeddings</td><td>boolean</td><td><code>false</code></td><td>Force deterministic FTS-only recall instead of vector embeddings.</td></tr>
+<tr><td><code>mnemopi.embeddingModel</code></td><td>Mnemopi Embedding Model</td><td>string</td><td><em>(unset)</em></td><td>Advanced: explicit embedding model id that overrides the variant. Leave empty to use mnemopi.embeddingVariant.</td></tr>
+<tr><td><code>mnemopi.embeddingApiUrl</code></td><td>Mnemopi Embedding API URL</td><td>string</td><td><em>(unset)</em></td><td>Optional OpenAI-compatible embedding endpoint passed to Mnemopi.</td></tr>
+<tr><td><code>mnemopi.embeddingApiKey</code></td><td>Mnemopi Embedding API Key</td><td>string</td><td><em>(unset)</em></td><td>Optional embedding API key passed to Mnemopi.</td></tr>
+<tr><td><code>mnemopi.llmMode</code></td><td>Mnemopi LLM Mode</td><td>enum</td><td><code>smol</code></td><td>Use no LLM, the online tiny model (the TINY role from /models, else @smol), or a remote OpenAI-compatible endpoint. Values: <code>none</code>, <code>smol</code>, <code>remote</code>.</td></tr>
+<tr><td><code>mnemopi.llmBaseUrl</code></td><td>Mnemopi LLM Base URL</td><td>string</td><td><em>(unset)</em></td><td>Optional OpenAI-compatible LLM endpoint for Mnemopi remote mode.</td></tr>
+<tr><td><code>mnemopi.llmApiKey</code></td><td>Mnemopi LLM API Key</td><td>string</td><td><em>(unset)</em></td><td>Optional LLM API key for Mnemopi remote mode.</td></tr>
+<tr><td><code>mnemopi.llmModel</code></td><td>Mnemopi LLM Model</td><td>string</td><td><em>(unset)</em></td><td>Optional LLM model name for Mnemopi remote mode.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="hindsight"><a class="header" href="#hindsight">Hindsight</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>hindsight.apiUrl</code></td><td>Hindsight API URL</td><td>string</td><td><code>http://localhost:8888</code></td><td>Hindsight server URL (Cloud or self-hosted).</td></tr>
+<tr><td><code>hindsight.bankId</code></td><td>Hindsight Bank ID</td><td>string</td><td><em>(unset)</em></td><td>Base memory bank name. Unset uses <code>veyyon</code>. Hindsight Bank Prefix is prepended when set, and Hindsight Scoping decides whether the project name is appended (per-project) or carried as a <code>project:</code> tag instead (per-project-tagged).</td></tr>
+<tr><td><code>hindsight.scoping</code></td><td>Hindsight Scoping</td><td>enum</td><td><code>per-project-tagged</code></td><td>global = one shared bank; per-project = isolated bank per cwd; per-project-tagged = shared bank with project tags so global + project memories merge on recall. Values: <code>global</code>, <code>per-project</code>, <code>per-project-tagged</code>.</td></tr>
+<tr><td><code>hindsight.autoRecall</code></td><td>Hindsight Auto Recall</td><td>boolean</td><td><code>true</code></td><td>Recall memories on the first turn of each session.</td></tr>
+<tr><td><code>hindsight.autoRetain</code></td><td>Hindsight Auto Retain</td><td>boolean</td><td><code>true</code></td><td>Retain transcript every N turns and at session boundaries.</td></tr>
+<tr><td><code>hindsight.retainMode</code></td><td>Hindsight Retain Mode</td><td>enum</td><td><code>full-session</code></td><td>full-session = upsert one document per session, last-turn = chunked. Values: <code>full-session</code>, <code>last-turn</code>.</td></tr>
+<tr><td><code>hindsight.mentalModelsEnabled</code></td><td>Hindsight Mental Models</td><td>boolean</td><td><code>true</code></td><td>Read curated reflect summaries (mental models) into developer instructions at boot. Loads existing models on the bank — does not write. Pair with hindsight.mentalModelAutoSeed to also auto-create the built-in seed set.</td></tr>
+<tr><td><code>hindsight.mentalModelAutoSeed</code></td><td>Hindsight Mental Model Auto-Seed</td><td>boolean</td><td><code>true</code></td><td>At session start, create any built-in mental models (project-conventions, project-decisions, user-preferences) that do not yet exist on the bank.</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="files"><a class="header" href="#files">Files</a></h2>
+<h3 id="editing"><a class="header" href="#editing">Editing</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>edit.mode</code></td><td>Edit Mode</td><td>enum</td><td><code>hashline</code></td><td>Select the edit tool variant (replace, patch, hashline, or apply_patch). Values: <code>apply_patch</code>, <code>hashline</code>, <code>patch</code>, <code>replace</code>.</td></tr>
+<tr><td><code>edit.fuzzyMatch</code></td><td>Fuzzy Match</td><td>boolean</td><td><code>true</code></td><td>Accept high-confidence fuzzy matches for whitespace differences.</td></tr>
+<tr><td><code>edit.fuzzyThreshold</code></td><td>Fuzzy Match Threshold</td><td>number</td><td><code>0.95</code></td><td>Similarity threshold (0-1) for accepting fuzzy matches.</td></tr>
+<tr><td><code>edit.streamingAbort</code></td><td>Abort on Failed Preview</td><td>boolean</td><td><code>false</code></td><td>Abort streaming edit tool calls when patch preview fails.</td></tr>
+<tr><td><code>edit.blockAutoGenerated</code></td><td>Block Auto-Generated Files</td><td>boolean</td><td><code>true</code></td><td>Prevent editing of files that appear to be auto-generated (protoc, sqlc, swagger, etc.).</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="reading"><a class="header" href="#reading">Reading</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>readLineNumbers</code></td><td>Line Numbers</td><td>boolean</td><td><code>false</code></td><td>Prepend line numbers to read tool output by default.</td></tr>
+<tr><td><code>read.defaultLimit</code></td><td>Default Read Limit</td><td>number</td><td><code>300</code></td><td>Default number of lines returned when agent calls read without a limit.</td></tr>
+<tr><td><code>read.toolResultPreview</code></td><td>Inline Read Previews</td><td>boolean</td><td><code>false</code></td><td>Render read tool results inline in the transcript instead of summary rows.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="read-summaries"><a class="header" href="#read-summaries">Read Summaries</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>read.summarize.enabled</code></td><td>Enable Read Summaries</td><td>boolean</td><td><code>true</code></td><td>Return structural code summaries when read is called without an explicit selector.</td></tr>
+<tr><td><code>read.summarize.prose</code></td><td>Prose Summaries</td><td>boolean</td><td><code>false</code></td><td>Return structural summaries for Markdown and plain text reads.</td></tr>
+<tr><td><code>read.summarize.minBodyLines</code></td><td>Read Summary Body Lines</td><td>number</td><td><code>4</code></td><td>Minimum multiline body or literal length before read summaries collapse it.</td></tr>
+<tr><td><code>read.summarize.minCommentLines</code></td><td>Read Summary Comment Lines</td><td>number</td><td><code>6</code></td><td>Minimum multiline block comment length before read summaries collapse it.</td></tr>
+<tr><td><code>read.summarize.minTotalLines</code></td><td>Read Summary Minimum File Length</td><td>number</td><td><code>100</code></td><td>Files with fewer total lines are read verbatim instead of structurally summarized.</td></tr>
+<tr><td><code>read.summarize.unfoldUntil</code></td><td>Read Summary Unfold Target</td><td>number</td><td><code>50</code></td><td>BFS-unfold elidable spans until the summary is at least this many visible lines. 0 keeps only the outermost elisions.</td></tr>
+<tr><td><code>read.summarize.unfoldLimit</code></td><td>Read Summary Unfold Ceiling</td><td>number</td><td><code>100</code></td><td>Hard ceiling on summary size while BFS-unfolding. An unfold whose revealed lines would exceed this is skipped (that span stays folded) and unfolding continues with the remaining spans.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="lsp"><a class="header" href="#lsp">LSP</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>lsp.enabled</code></td><td>Enable LSP</td><td>boolean</td><td><code>false</code></td><td>Enable the lsp tool for code intelligence (definitions, references, diagnostics, rename).</td></tr>
+<tr><td><code>lsp.lazy</code></td><td>Lazy LSP Startup</td><td>boolean</td><td><code>true</code></td><td>Start language servers on first use (lsp tool or editing a matching file type) instead of at session startup.</td></tr>
+<tr><td><code>lsp.formatOnWrite</code></td><td>Format on Write</td><td>boolean</td><td><code>false</code></td><td>Automatically format code files using LSP after writing.</td></tr>
+<tr><td><code>lsp.diagnosticsOnWrite</code></td><td>Diagnostics on Write</td><td>boolean</td><td><code>true</code></td><td>Return LSP diagnostics after writing code files.</td></tr>
+<tr><td><code>lsp.diagnosticsOnEdit</code></td><td>Diagnostics on Edit</td><td>boolean</td><td><code>false</code></td><td>Return LSP diagnostics after editing code files.</td></tr>
+<tr><td><code>lsp.diagnosticsDeduplicate</code></td><td>Deduplicate Diagnostics</td><td>boolean</td><td><code>true</code></td><td>Suppress post-edit LSP diagnostics already shown for a file; only surface new or changed ones.</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="shell"><a class="header" href="#shell">Shell</a></h2>
+<h3 id="bash"><a class="header" href="#bash">Bash</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>bash.enabled</code></td><td>Enable Bash</td><td>boolean</td><td><code>true</code></td><td>Enable the bash tool for shell command execution.</td></tr>
+<tr><td><code>bash.stallDetection.enabled</code></td><td>Bash Stall Detection</td><td>boolean</td><td><code>false</code></td><td>Watch for a bash command that stops producing output; background it and tell the model it may be stuck so it can cancel a truly hung command. Recommends, never force-kills.</td></tr>
+<tr><td><code>bashInterceptor.enabled</code></td><td>Bash Interceptor</td><td>boolean</td><td><code>false</code></td><td>Block shell commands that have dedicated tools.</td></tr>
+<tr><td><code>shellMinimizer.enabled</code></td><td>Shell Minimizer</td><td>boolean</td><td><code>true</code></td><td>Compress verbose shell output (git, npm, cargo, etc.) before returning it to the agent.</td></tr>
+<tr><td><code>shellMinimizer.sourceOutlineLevel</code></td><td>Shell Minimizer Source Outline</td><td>enum</td><td><code>default</code></td><td>Source outline mode for cat/read of source files: default or aggressive. Values: <code>default</code>, <code>aggressive</code>.</td></tr>
+<tr><td><code>bash.autoBackground.enabled</code></td><td>Bash Auto-Background</td><td>boolean</td><td><code>true</code></td><td>Move a long-running bash command to a background job on its own and deliver the result when it lands, instead of holding the turn open. Off, a command holds the foreground until it finishes or times out. Either way you can background the running command yourself with the composer’s background key.</td></tr>
+<tr><td><code>bash.autoBackground.thresholdMs</code></td><td>Auto-Background After</td><td>number</td><td><code>300000</code></td><td>Max wall-clock time a bash call runs in the foreground before it is moved to a background job (result delivered later). Frees the model to keep working and protects the prompt cache, which a long foreground command would otherwise blow past. Fires on elapsed time even while output is streaming. 0 backgrounds immediately.</td></tr>
+<tr><td><code>bash.stallDetection.stallMs</code></td><td>Stall After</td><td>number</td><td><code>30000</code></td><td>When stall detection is on, how long a bash call may produce no new output before it is treated as possibly stuck, backgrounded, and flagged so the model can cancel it if it is truly hung. Measures idle time (quiet output), not total run time.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="eval--runtimes"><a class="header" href="#eval--runtimes">Eval &amp; Runtimes</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>eval.py</code></td><td>Python Eval Backend</td><td>boolean</td><td><code>true</code></td><td>Allow the eval tool to dispatch Python cells to the IPython kernel.</td></tr>
+<tr><td><code>eval.js</code></td><td>JavaScript Eval Backend</td><td>boolean</td><td><code>true</code></td><td>Allow the eval tool to dispatch JavaScript cells to the in-process runtime.</td></tr>
+<tr><td><code>eval.rb</code></td><td>Ruby Eval Backend</td><td>boolean</td><td><code>false</code></td><td>Allow the eval tool to dispatch Ruby cells to the persistent Ruby kernel.</td></tr>
+<tr><td><code>eval.jl</code></td><td>Julia Eval Backend</td><td>boolean</td><td><code>false</code></td><td>Allow the eval tool to dispatch Julia cells to the persistent Julia kernel.</td></tr>
+<tr><td><code>ruby.kernelMode</code></td><td>Ruby Kernel Mode</td><td>enum</td><td><code>session</code></td><td>Keep the Ruby kernel alive across eval calls or start fresh each time. Values: <code>session</code>, <code>per-call</code>.</td></tr>
+<tr><td><code>julia.kernelMode</code></td><td>Julia Kernel Mode</td><td>enum</td><td><code>session</code></td><td>Keep the Julia kernel alive across eval calls or start fresh each time. Values: <code>session</code>, <code>per-call</code>.</td></tr>
+<tr><td><code>python.kernelMode</code></td><td>Python Kernel Mode</td><td>enum</td><td><code>session</code></td><td>Keep the IPython kernel alive across eval calls or start fresh each time. Values: <code>session</code>, <code>per-call</code>.</td></tr>
+<tr><td><code>python.interpreter</code></td><td>Python Interpreter</td><td>string</td><td><em>(empty)</em></td><td>Optional path to an exact Python executable. When set, automatic Python runtime discovery is skipped.</td></tr>
+<tr><td><code>ruby.interpreter</code></td><td>Ruby Interpreter</td><td>string</td><td><em>(empty)</em></td><td>Optional path to an exact Ruby executable. When set, automatic Ruby runtime discovery is skipped.</td></tr>
+<tr><td><code>julia.interpreter</code></td><td>Julia Interpreter</td><td>string</td><td><em>(empty)</em></td><td>Optional path to an exact Julia executable. When set, automatic Julia runtime discovery is skipped.</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="tools"><a class="header" href="#tools">Tools</a></h2>
+<h3 id="available-tools"><a class="header" href="#available-tools">Available Tools</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>todo.enabled</code></td><td>Todos</td><td>boolean</td><td><code>true</code></td><td>Enable the todo tool for task tracking.</td></tr>
+<tr><td><code>glob.enabled</code></td><td>Glob</td><td>boolean</td><td><code>true</code></td><td>Enable the glob tool for glob-based file lookup.</td></tr>
+<tr><td><code>grep.enabled</code></td><td>Grep</td><td>boolean</td><td><code>true</code></td><td>Enable the grep tool for regex content search.</td></tr>
+<tr><td><code>astGrep.enabled</code></td><td>AST Grep</td><td>boolean</td><td><code>true</code></td><td>Enable the ast_grep tool for structural AST search.</td></tr>
+<tr><td><code>astEdit.enabled</code></td><td>AST Edit</td><td>boolean</td><td><code>true</code></td><td>Enable the ast_edit tool for structural AST rewrites.</td></tr>
+<tr><td><code>debug.enabled</code></td><td>Debug</td><td>boolean</td><td><code>true</code></td><td>Enable the debug tool for DAP-based debugging.</td></tr>
+<tr><td><code>launch.enabled</code></td><td>Launch</td><td>boolean</td><td><code>true</code></td><td>Enable the launch tool for supervising shared long-running project processes.</td></tr>
+<tr><td><code>speechgen.enabled</code></td><td>Speech Generation</td><td>boolean</td><td><code>false</code></td><td>Enable the tts tool for on-device (Kokoro) or xAI Grok Voice speech-file synthesis.</td></tr>
+<tr><td><code>generate_image.enabled</code></td><td>Generate Image</td><td>boolean</td><td><code>false</code></td><td>Enable the generate_image tool for text-to-image generation and editing.</td></tr>
+<tr><td><code>inspect_image.enabled</code></td><td>Inspect Image</td><td>boolean</td><td><code>false</code></td><td>Enable the inspect_image tool, delegating image understanding to a vision-capable model.</td></tr>
+<tr><td><code>checkpoint.enabled</code></td><td>Checkpoint/Rewind</td><td>boolean</td><td><code>false</code></td><td>Enable the checkpoint and rewind tools for context checkpointing.</td></tr>
+<tr><td><code>fetch.enabled</code></td><td>Read URLs</td><td>boolean</td><td><code>true</code></td><td>Allow the read tool to fetch and process URLs.</td></tr>
+<tr><td><code>vault.enabled</code></td><td>Obsidian Vault</td><td>boolean</td><td><code>false</code></td><td>Enable the vault:// internal URL for reading and editing Obsidian vault content via the Obsidian CLI. When disabled, vault:// resolution is refused and the vault:// entry is omitted from the system prompt.</td></tr>
+<tr><td><code>github.enabled</code></td><td>GitHub CLI</td><td>boolean</td><td><code>false</code></td><td>Enable the github tool (op-based dispatch for repository, issue, pull request, diff, search, checkout, push, and Actions watch workflows).</td></tr>
+<tr><td><code>web_search.enabled</code></td><td>Web Search</td><td>boolean</td><td><code>true</code></td><td>Enable the web_search tool for live web results.</td></tr>
+<tr><td><code>ask.enabled</code></td><td>Ask</td><td>boolean</td><td><code>true</code></td><td>Enable the ask tool for interactive user questions.</td></tr>
+<tr><td><code>browser.enabled</code></td><td>Browser</td><td>boolean</td><td><code>false</code></td><td>Enable the browser tool for scripted Chromium automation (puppeteer).</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="todos"><a class="header" href="#todos">Todos</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>todo.reminders</code></td><td>Todo Reminders</td><td>boolean</td><td><code>true</code></td><td>Prompt continued execution when unfinished todos remain.</td></tr>
+<tr><td><code>todo.reminders.max</code></td><td>Todo Reminder Limit</td><td>number</td><td><code>3</code></td><td>Maximum distinct todo-state reminders before reminders stay silent.</td></tr>
+<tr><td><code>todo.eager</code></td><td>Create Todos Automatically</td><td>enum</td><td><code>default</code></td><td>How strongly to push automatic todo-list creation after the first message. Values: <code>default</code>, <code>preferred</code>, <code>always</code>.</td></tr>
+<tr><td><code>tasks.todoClearDelay</code></td><td>Todo Auto-Clear Delay</td><td>number</td><td><code>-1</code></td><td>Delay before completed or abandoned todos are removed from the todo widget.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="grep--browser"><a class="header" href="#grep--browser">Grep &amp; Browser</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>grep.contextBefore</code></td><td>Grep Context Before</td><td>number</td><td><code>1</code></td><td>Lines of context before each grep match.</td></tr>
+<tr><td><code>grep.contextAfter</code></td><td>Grep Context After</td><td>number</td><td><code>3</code></td><td>Lines of context after each grep match.</td></tr>
+<tr><td><code>browser.headless</code></td><td>Headless Browser</td><td>boolean</td><td><code>true</code></td><td>Launch browser in headless mode (disable to show browser UI).</td></tr>
+<tr><td><code>browser.cmux</code></td><td>cmux Browser</td><td>boolean</td><td><code>true</code></td><td>Use cmux WKWebView surfaces for browser automation when a cmux socket is available. Set VEYYON_BROWSER_CMUX=0 or VEYYON_BROWSER_CMUX=1 to override.</td></tr>
+<tr><td><code>browser.screenshotDir</code></td><td>Screenshot Directory</td><td>string</td><td><em>(unset)</em></td><td>Directory to save screenshots. If unset, screenshots go to a temp file. Supports ~. Examples: ~/Downloads, ~/Desktop, /sdcard/Download (Android).</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="github"><a class="header" href="#github">GitHub</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>github.cache.enabled</code></td><td>GitHub View Cache</td><td>boolean</td><td><code>true</code></td><td>Cache rendered issue/PR view output in the active profile’s <code>cache/github-cache.db</code> so repeated reads are free.</td></tr>
+<tr><td><code>github.cache.softTtlSec</code></td><td>GitHub Cache Soft TTL</td><td>number</td><td><code>300</code></td><td>Within this window, cached issue/PR view rows are returned directly (seconds; default 5 minutes).</td></tr>
+<tr><td><code>github.cache.hardTtlSec</code></td><td>GitHub Cache Hard TTL</td><td>number</td><td><code>604800</code></td><td>Past the soft TTL the cached row is returned and refreshed in the background; past the hard TTL it is dropped (seconds; default 7 days).</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="output-limits"><a class="header" href="#output-limits">Output Limits</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>tools.artifactSpillThreshold</code></td><td>Artifact Spill Threshold (KB)</td><td>number</td><td><code>50</code></td><td>Tool output above this size is saved as an artifact and the result keeps a head/tail window plus the artifact:// id that reads the full text back, so a lower threshold costs a re-read rather than losing output. It governs every tool that streams output, including bash, eval, ssh and the interactive shell, as well as grep and the browser.</td></tr>
+<tr><td><code>tools.artifactTailBytes</code></td><td>Artifact Tail Size (KB)</td><td>number</td><td><code>20</code></td><td>Amount of tail content kept inline when output spills to artifact.</td></tr>
+<tr><td><code>tools.artifactHeadBytes</code></td><td>Artifact Head Size (KB)</td><td>number</td><td><code>20</code></td><td>Amount of head content kept inline alongside the tail when output spills to artifact (middle elision). 0 disables — keep tail only.</td></tr>
+<tr><td><code>tools.outputMaxColumns</code></td><td>Output Column Cap</td><td>number</td><td><code>768</code></td><td>Per-line byte cap for streaming tool outputs (bash, ssh, python, js eval) and <code>read</code>. Lines wider than this are ellipsis-truncated; remaining bytes up to the next newline are dropped. 0 disables.</td></tr>
+<tr><td><code>tools.artifactTailLines</code></td><td>Artifact Tail Lines</td><td>number</td><td><code>500</code></td><td>Maximum lines of tail content kept inline when output spills to artifact.</td></tr>
+<tr><td><code>tools.inlineOutputFloor</code></td><td>Inline Output Floor</td><td>number</td><td><code>0.25</code></td><td>Smallest share of the inline output budget an early tool result may use before the rest spills to an artifact. A result that arrives early is re-read on every later turn, so it is charged more tightly than one that arrives near the end. Lower spills sooner and costs fewer context tokens; 1 keeps the flat cap and never spills early. This governs every tool that streams output, including eval, bash, ssh and the interactive shell, as well as grep and the browser. Shown under the tab’s Advanced fold.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="execution"><a class="header" href="#execution">Execution</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>tools.intentTracing</code></td><td>Intent Tracing</td><td>boolean</td><td><code>true</code></td><td>Ask the agent to describe the intent of each tool call before executing it.</td></tr>
+<tr><td><code>tools.abortOnFabricatedResult</code></td><td>Abort On Fabricated Tool Result</td><td>boolean</td><td><code>true</code></td><td>With in-band tool calls, stop the model immediately when it starts hallucinating a tool result mid-turn. Disable to let the model finish generating and discard the fabricated continuation instead.</td></tr>
+<tr><td><code>tools.maxTimeout</code></td><td>Max Tool Timeout</td><td>number</td><td><code>0</code></td><td>Maximum timeout in seconds the agent can set for any tool (0 = no limit).</td></tr>
+<tr><td><code>async.enabled</code></td><td>Async Execution</td><td>boolean</td><td><code>true</code></td><td>Enable async bash commands and background task execution.</td></tr>
+<tr><td><code>async.pollWaitDuration</code></td><td>Max Poll Time</td><td>enum</td><td><code>smart</code></td><td>How long the poll tool waits for background job updates before returning the current state. A fixed value waits that exact duration every time. <code>smart</code> adapts: it starts at 30s and climbs to 4m on a back-to-back poll, then resets to 30s after about a minute without polling. The 4m ceiling stays below the 5-minute prompt-cache boundary. Values: <code>5s</code>, <code>10s</code>, <code>30s</code>, <code>1m</code>, <code>5m</code>, <code>smart</code>.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="discovery--mcp"><a class="header" href="#discovery--mcp">Discovery &amp; MCP</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>tools.discoveryMode</code></td><td>Tool Discovery</td><td>enum</td><td><code>auto</code></td><td>Hide tools behind a search tool to save tokens. ‘auto’ hides MCP tools once the tool set has more than 40 tools; ‘mcp-only’ always hides MCP tools; ‘all’ also hides non-essential built-ins and first-party heavyweight tools such as generate_image. Values: <code>auto</code>, <code>off</code>, <code>mcp-only</code>, <code>all</code>.</td></tr>
+<tr><td><code>tools.essentialOverride</code></td><td>Essential Tools Override</td><td>array</td><td><code>[]</code></td><td>Override the always-loaded built-in tools (default: read, bash, launch, edit, write, glob, eval). Leave empty to use defaults.</td></tr>
+<tr><td><code>mcp.discoveryMode</code></td><td>MCP Tool Discovery</td><td>boolean</td><td><code>false</code></td><td>Hide MCP tools by default and expose them through a tool discovery tool.</td></tr>
+<tr><td><code>mcp.discoveryDefaultServers</code></td><td>MCP Discovery Default Servers</td><td>array</td><td><code>[]</code></td><td>Keep MCP tools from these servers visible while discovery mode hides other MCP tools.</td></tr>
+<tr><td><code>mcp.notifications</code></td><td>MCP Update Injection</td><td>boolean</td><td><code>false</code></td><td>Inject MCP resource updates into the agent conversation.</td></tr>
+<tr><td><code>mcp.notificationDebounceMs</code></td><td>MCP Notification Debounce</td><td>number</td><td><code>500</code></td><td>Debounce window in milliseconds for MCP resource updates before injecting them into the conversation.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="developer"><a class="header" href="#developer">Developer</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>dev.autoqa</code></td><td>Auto QA</td><td>boolean</td><td><code>false</code></td><td>Record unexpected built-in tool behavior in this profile’s local grievance database.</td></tr>
+<tr><td><code>dev.autoqaPush.enabled</code></td><td>Auto-upload Grievances</td><td>boolean</td><td><code>false</code></td><td>Send new and queued grievances to veyyon.dev after recording them. Off keeps reports local until you run veyyon grievances push.</td></tr>
+<tr><td><code>dev.autoqaPush.endpoint</code></td><td>Grievance Upload Endpoint</td><td>string</td><td><code>https://veyyon.dev/api/grievances</code></td><td>Destination for automatic and manual grievance uploads.</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="tasks"><a class="header" href="#tasks">Tasks</a></h2>
+<h3 id="modes"><a class="header" href="#modes">Modes</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>plan.enabled</code></td><td>Plan Mode</td><td>boolean</td><td><code>true</code></td><td>Enable plan mode for read-only exploration and planning before execution.</td></tr>
+<tr><td><code>plan.defaultOnStartup</code></td><td>Start in Plan Mode</td><td>boolean</td><td><code>false</code></td><td>Automatically enter plan mode at the start of every new session.</td></tr>
+<tr><td><code>goal.enabled</code></td><td>Goal Mode</td><td>boolean</td><td><code>true</code></td><td>Enable per-session goal mode and the hidden goal tool.</td></tr>
+<tr><td><code>goal.modelBudgetsEnabled</code></td><td>Model Goal Budgets</td><td>boolean</td><td><code>false</code></td><td>Expose and enforce persisted per-goal token budgets for the model. This control is available only in Settings.</td></tr>
+<tr><td><code>goal.statusInFooter</code></td><td>Goal Progress Bar in Footer</td><td>boolean</td><td><code>true</code></td><td>Add a compact progress bar next to the goal token count in the status line. The token count is always shown; this controls the extra bar.</td></tr>
+<tr><td><code>goal.continuationModes</code></td><td>Goal Continuation Modes</td><td>array</td><td><code>["interactive"]</code></td><td>Run modes where active goals may auto-continue between turns.</td></tr>
+<tr><td><code>title.refreshOnReplan</code></td><td>Refresh Title on Replan</td><td>boolean</td><td><code>true</code></td><td>Refresh generated session titles after todo init replans unless the title was set by the user.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="commands--skills"><a class="header" href="#commands--skills">Commands &amp; Skills</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>skills.enableSkillCommands</code></td><td>Skill Commands</td><td>boolean</td><td><code>true</code></td><td>Register skills as /skill:name commands.</td></tr>
+<tr><td><code>commands.enableClaudeUser</code></td><td>Claude User Commands</td><td>boolean</td><td><code>true</code></td><td>Load commands from ~/.claude/commands/.</td></tr>
+<tr><td><code>commands.enableOpencodeUser</code></td><td>OpenCode User Commands</td><td>boolean</td><td><code>true</code></td><td>Load commands from ~/.config/opencode/commands/.</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="subagents"><a class="header" href="#subagents">Subagents</a></h2>
+<h3 id="delegation"><a class="header" href="#delegation">Delegation</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>subagent.enabled</code></td><td>Subagents</td><td>boolean</td><td><code>true</code></td><td>Whether this session may use subagents at all. Off removes the task tool and every delegation instruction from the prompt, so nothing can be spawned. This is the only setting that takes the ability away: Subagent Delegation below decides how hard the model is PUSHED to delegate, never whether it may. Your delegation strength and Subagent Roster are kept while this is off and take effect again when you turn it back on.</td></tr>
+<tr><td><code>subagent.delegation</code></td><td>Subagent Delegation</td><td>enum</td><td><code>preferred</code></td><td>How strongly this session routes work to the subagent types you enabled. Allowed leaves delegation available without prompting for it. Preferred asks for substantial eligible work to be delegated. Required adds a first-turn reminder. The enabled Subagent Roster is the routing policy: each name is a distinct type that owns only work matching its description, no type is a fallback for another, and work no enabled type covers stays with the main agent. Turn Subagents off above to remove delegation entirely. Values: <code>allowed</code>, <code>preferred</code>, <code>required</code>.</td></tr>
+<tr><td><code>subagent.batch</code></td><td>Batch Task Calls</td><td>boolean</td><td><code>true</code></td><td>Switch the task tool to its batch shape: one call carries { agent, context, tasks[] } — one subagent per item (with per-item isolation) and a required shared context prepended to every assignment. With async.enabled=true, each spawn runs as an independent background agent with the normal idle/parked lifecycle; otherwise the call blocks for merged results. Disable to restore the flat single-spawn schema. Shown under the tab’s Advanced fold.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="subagents-1"><a class="header" href="#subagents-1">Subagents</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>subagent.agents</code></td><td>Subagent Roster</td><td>record</td><td><code>{}</code></td><td>Which subagent types the model may choose, and what each one runs. Enabled means the model can pick that subagent on its own; disabled means it cannot. With no row, only the general-purpose deep worker is enabled. Bundled specialists and subagents you add are opt-in through onboarding or this roster. Each subagent’s page carries its own Model and Effort, and a Subagents chain naming what it may spawn in turn, level by level; unset anywhere follows the level above. The roster also carries Subagent Model and Subagent Effort, which decide what a subagent with no row of its own runs.</td></tr>
+<tr><td><code>subagent.maxNestedSpawnDepth</code></td><td>Max Nested Spawn Depth</td><td>number</td><td><code>0</code></td><td>How many nested levels subagents may spawn, for every level no roster chain decides. 0 still lets this session spawn direct subagents, but those children do not receive the task tool. Open Subagent Roster above, pick a subagent, then Subagents, to turn individual levels on or off for that one; this number answers from the first level its chain does not name.</td></tr>
+<tr><td><code>subagent.model</code></td><td>Subagent Model</td><td>modelChain</td><td><em>(unset)</em></td><td>Models every enabled subagent runs, tried in order: the rest are used when an earlier one errors. Each entry carries its own effort. Unset means inherit: subagents follow the session’s live main model. An agent whose own file names a <code>model:</code> uses that when this is unset. Editable from the roster as well, which is the same setting and not a copy.</td></tr>
+<tr><td><code>subagent.thinkingLevel</code></td><td>Subagent Effort</td><td>string</td><td><em>(unset)</em></td><td>Thinking level for every enabled subagent, applied when the model above names no effort of its own. Inherit follows the session’s effort. An explicit <code>:level</code> suffix on a model pattern still wins. Editable from the roster as well, which is the same setting and not a copy.</td></tr>
+<tr><td><code>subagent.modelByDepth</code></td><td>Models by Depth</td><td>record</td><td><code>{}</code></td><td>Model chains chosen by spawn depth: depth 1 is a direct child, depth 2 a grandchild, and so on. A row outranks Subagent Model for a spawn at exactly that depth and leaves every other depth to Subagent Model. A row whose chain matches no model refuses the spawn and names the row, exactly like an unresolvable Subagent Model. Shown under the tab’s Advanced fold.</td></tr>
+<tr><td><code>subagent.showResolvedModelBadge</code></td><td>Show Resolved Model Badge</td><td>boolean</td><td><code>true</code></td><td>Show each subagent’s resolved model, and the setting that decided it, in the task widget status line and the agent surfaces. Shown under the tab’s Advanced fold.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="limits"><a class="header" href="#limits">Limits</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>subagent.maxConcurrency</code></td><td>Max Concurrent Subagents</td><td>number</td><td><code>32</code></td><td>Maximum number of subagents running concurrently.</td></tr>
+<tr><td><code>subagent.maxRuntimeMs</code></td><td>Max Subagent Runtime</td><td>number</td><td><code>0</code></td><td>Hard wall-clock limit per subagent (ms). 0 disables it. Defense-in-depth against provider-side stream hangs that escape the inference-layer watchdog; triggers a normal subagent abort with a ‘timed out’ reason.</td></tr>
+<tr><td><code>subagent.softRequestBudget</code></td><td>Soft Request Budget</td><td>number</td><td><code>200</code></td><td>Soft per-subagent request budget (assistant requests per run). Crossing it injects a wrap-up steering notice (see the notice setting below); at 1.5x the budget the run is force-stopped and the agent must yield its partial findings. 0 disables the guard. Bundled scout/sonic agents use a lower built-in budget.</td></tr>
+<tr><td><code>subagent.softRequestBudgetNotice</code></td><td>Soft Request Budget Notice</td><td>boolean</td><td><code>true</code></td><td>Inject one steering notice when a subagent crosses its soft request budget, asking it to wrap up before the 1.5x forced-yield stop.</td></tr>
+<tr><td><code>subagent.enableLsp</code></td><td>LSP in Subagents</td><td>boolean</td><td><code>false</code></td><td>Allow spawned subagents to use the lsp tool. Off by default to keep subagents cheap; enable when LSP-aware delegation is worth the extra tokens.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="auto-close"><a class="header" href="#auto-close">Auto Close</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>subagent.idleTtlMs</code></td><td>Park After</td><td>number</td><td><code>300000</code></td><td>How long a finished subagent stays live before parking (ms). The default is 5 minutes. Parking releases the live session and keeps the transcript, so a parked agent revives automatically when messaged or resumed. Set ‘Until exit’ to keep idle agents live for the whole session. Counted from the agent’s last activity, so a revived agent starts this budget again from the revival.</td></tr>
+<tr><td><code>subagent.autoClose.enabled</code></td><td>Close Parked Subagents</td><td>boolean</td><td><code>true</code></td><td>Close a parked subagent for good once it has been quiet long enough, instead of keeping it in the roster for the whole session. Parking already released the session; this decides whether the revivable reference is eventually dropped too. Turn it off to keep every finished subagent listed and revivable until you exit.</td></tr>
+<tr><td><code>subagent.autoClose.parkedMs</code></td><td>Close After</td><td>number</td><td><code>300000</code></td><td>How long a parked subagent stays listed and revivable before it is closed (ms). Counted from the moment it parked, not from when it started. Its transcript survives either way and stays readable through <code>history://</code>.</td></tr>
+<tr><td><code>subagent.autoClose.waitingMs</code></td><td>Close After (Waiting)</td><td>number</td><td><code>1800000</code></td><td>The same budget for a subagent whose last message said it was waiting on another agent (ms). It stopped on purpose to let a peer finish, so it gets a longer grace than one that simply went quiet: closing it on the ordinary timer would drop the agent you are most likely to message next. Set it equal to Close After to treat both the same.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="isolation"><a class="header" href="#isolation">Isolation</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>subagent.isolation.mode</code></td><td>Isolation Mode</td><td>enum</td><td><code>none</code></td><td>Isolation backend for subagents. “auto” lets the native PAL pick the best available backend (CoW-aware filesystems, then overlayfs/ProjFS, then a git worktree / recursive-copy fallback). Values: <code>none</code>, <code>auto</code>, <code>apfs</code>, <code>btrfs</code>, <code>zfs</code>, <code>reflink</code>, <code>overlayfs</code>, <code>projfs</code>, <code>block-clone</code>, <code>rcopy</code>.</td></tr>
+<tr><td><code>subagent.isolation.merge</code></td><td>Isolation Merge Strategy</td><td>enum</td><td><code>patch</code></td><td>How isolated subagent changes are integrated (patch apply or branch merge). Values: <code>patch</code>, <code>branch</code>.</td></tr>
+<tr><td><code>subagent.isolation.commits</code></td><td>Isolation Commit Style</td><td>enum</td><td><code>generic</code></td><td>Commit message style for nested repo changes (generic or AI-generated). Values: <code>generic</code>, <code>ai</code>.</td></tr>
+<tr><td><code>worktree.base</code></td><td>Worktree Base Directory</td><td>string</td><td><em>(unset)</em></td><td>Base directory for agent-managed worktrees: subagent isolation copies, <code>github</code> PR checkouts, and <code>veyyon worktree</code> cleanup all live here. Unset uses the active profile’s <code>wt/</code> directory (~/.veyyon/profiles/&lt;name&gt;/wt, or its XDG data equivalent). Must be an absolute or ~-relative path; relative paths are ignored. The VEYYON_WORKTREE_DIR env var overrides this.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="coordination"><a class="header" href="#coordination">Coordination</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>irc.timeoutMs</code></td><td>IRC Timeout</td><td>number</td><td><code>120000</code></td><td>Default timeout for irc wait (and send await:true) in milliseconds; 0 disables the timeout. IRC is how a parent and its subagents talk, which is why it is configured here.</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="providers"><a class="header" href="#providers">Providers</a></h2>
+<h3 id="accounts"><a class="header" href="#accounts">Accounts</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>accounts.loadBalancing</code></td><td>Account Load Balancing</td><td>boolean</td><td><code>false</code></td><td>Off: only the account you chose is used, and a session waits out its quota window. On: when that account hits its quota or rate limit, continue on another account of the same provider and say so. A revoked account always fails over regardless, with a notice.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="services"><a class="header" href="#services">Services</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>providers.maxInFlightRequests</code></td><td>Max In-Flight Requests</td><td>record</td><td><code>{}</code></td><td>Maximum concurrent LLM requests per provider id (for example “openai” or “anthropic”), shared across local veyyon processes with this config root. Omitted providers are unlimited.</td></tr>
+<tr><td><code>providers.ollama-cloud.maxConcurrency</code></td><td>Ollama Cloud Max Concurrency</td><td>number</td><td><code>3</code></td><td>Maximum concurrent Ollama Cloud subagent runs per process; 0 disables the provider-specific limit.</td></tr>
+<tr><td><code>providers.webSearch</code></td><td>Web Search Provider</td><td>enum</td><td><code>auto</code></td><td>The provider web_search uses; auto tries each in turn. Values: <code>auto</code>, <code>perplexity</code>, <code>gemini</code>, <code>anthropic</code>, <code>codex</code>, <code>xai</code>, <code>zai</code>, <code>exa</code>, <code>tinyfish</code>, <code>jina</code>, <code>kagi</code>, <code>tavily</code>, <code>firecrawl</code>, <code>brave</code>, <code>kimi</code>, <code>parallel</code>, <code>synthetic</code>, <code>searxng</code>, <code>startpage</code>, <code>duckduckgo</code>, <code>ecosia</code>, <code>google</code>, <code>mojeek</code>, <code>public</code>.</td></tr>
+<tr><td><code>providers.webSearchExclude</code></td><td>Excluded Web Search Providers</td><td>array</td><td><code>[]</code></td><td>Providers that web_search should never use, even as fallbacks.</td></tr>
+<tr><td><code>providers.webSearchGeminiModel</code></td><td>Gemini web_search model</td><td>string</td><td><em>(unset)</em></td><td>Model ID for Gemini Google Search grounding. Defaults to gemini-2.5-flash.</td></tr>
+<tr><td><code>providers.antigravityEndpoint</code></td><td>Antigravity Endpoint Mode</td><td>enum</td><td><code>auto</code></td><td>Endpoint routing strategy for google-antigravity providers (chat, search, image, discovery). Values: <code>auto</code>, <code>production</code>, <code>sandbox</code>.</td></tr>
+<tr><td><code>providers.image</code></td><td>Image Provider</td><td>enum</td><td><code>auto</code></td><td>Preferred provider for image generation. Values: <code>auto</code>, <code>openai</code>, <code>antigravity</code>, <code>xai</code>, <code>gemini</code>, <code>openrouter</code>.</td></tr>
+<tr><td><code>providers.tts</code></td><td>Text-to-Speech Provider</td><td>enum</td><td><code>auto</code></td><td>Backend for the tts tool: local on-device neural TTS (Kokoro-82M) or xAI Grok Voice. Values: <code>auto</code>, <code>local</code>, <code>xai</code>.</td></tr>
+<tr><td><code>tts.localModel</code></td><td>Local TTS Model</td><td>enum</td><td><code>kokoro</code></td><td>On-device neural TTS model (Kokoro-82M) used by the local TTS backend. Values: <code>kokoro</code>.</td></tr>
+<tr><td><code>tts.localVoice</code></td><td>Local TTS Voice</td><td>enum</td><td><code>af_heart</code></td><td>Kokoro voice used by the local TTS backend (American/British, female/male). Values: <code>af_heart</code>, <code>af_bella</code>, <code>af_nicole</code>, <code>af_aoede</code>, <code>af_kore</code>, <code>af_sarah</code>, <code>am_michael</code>, <code>am_fenrir</code>, <code>am_puck</code>, <code>bf_emma</code>, <code>bm_george</code>, <code>bm_fable</code>.</td></tr>
+<tr><td><code>speech.enabled</code></td><td>Speech Vocalization</td><td>boolean</td><td><code>false</code></td><td>Speak the assistant’s output aloud through the speakers as it streams.</td></tr>
+<tr><td><code>speech.mode</code></td><td>Speech Vocalization Mode</td><td>enum</td><td><code>assistant</code></td><td>What to speak: all = assistant messages + thinking; assistant = messages only; yield = only the final message at turn end. Values: <code>all</code>, <code>assistant</code>, <code>yield</code>.</td></tr>
+<tr><td><code>speech.enhanced</code></td><td>Enhanced Speech Rewriting</td><td>boolean</td><td><code>false</code></td><td>Rewrite assistant output into natural spoken prose with the tiny/smol model before synthesis (describes code, drops links and markdown). Falls back to mechanical cleanup on failure.</td></tr>
+<tr><td><code>speech.voice</code></td><td>Speech Vocalization Voice</td><td>enum</td><td><code>af_heart</code></td><td>Kokoro voice used when speaking the assistant’s output aloud. Values: <code>af_heart</code>, <code>af_bella</code>, <code>af_nicole</code>, <code>af_aoede</code>, <code>af_kore</code>, <code>af_sarah</code>, <code>am_michael</code>, <code>am_fenrir</code>, <code>am_puck</code>, <code>bf_emma</code>, <code>bm_george</code>, <code>bm_fable</code>.</td></tr>
+<tr><td><code>providers.fetch</code></td><td>Fetch Provider</td><td>enum</td><td><code>auto</code></td><td>Reader backend priority for the fetch/read URL tool. Values: <code>auto</code>, <code>native</code>, <code>trafilatura</code>, <code>lynx</code>, <code>parallel</code>, <code>jina</code>.</td></tr>
+<tr><td><code>codexResets.autoRedeem</code></td><td>Codex Auto-Redeem Saved Resets</td><td>enum</td><td><code>unset</code></td><td>When a turn is blocked by the Codex weekly limit on the active account and no other account is available, run the conservative saved-reset check. unset asks before spending the first eligible reset, yes spends eligible resets without prompting, and no disables the check entirely. Requires retries enabled. Values: <code>unset</code>, <code>yes</code>, <code>no</code>.</td></tr>
+<tr><td><code>codexResets.minBlockedMinutes</code></td><td>Codex Auto-Redeem Min Block</td><td>number</td><td><code>60</code></td><td>Only auto-redeem when the natural weekly reset is at least this many minutes away (don’t spend a ~30-day credit to save a short wait).</td></tr>
+<tr><td><code>codexResets.keepCredits</code></td><td>Codex Auto-Redeem Reserve</td><td>number</td><td><code>0</code></td><td>Never auto-spend below this many saved resets (0 = the last credit may be spent automatically).</td></tr>
+<tr><td><code>exa.enabled</code></td><td>Exa</td><td>boolean</td><td><code>true</code></td><td>Master toggle for all Exa search tools.</td></tr>
+<tr><td><code>exa.enableSearch</code></td><td>Exa Search</td><td>boolean</td><td><code>true</code></td><td>Enable Exa basic search, deep search, code search, and crawl tools.</td></tr>
+<tr><td><code>exa.searchDelayMs</code></td><td>Exa Search Delay</td><td>number</td><td><code>1000</code></td><td>Minimum delay between Exa web search requests in milliseconds; set 0 to disable pacing.</td></tr>
+<tr><td><code>exa.enableResearcher</code></td><td>Exa Researcher</td><td>boolean</td><td><code>false</code></td><td>Enable the Exa researcher tool for AI-powered deep research.</td></tr>
+<tr><td><code>exa.enableWebsets</code></td><td>Exa Websets</td><td>boolean</td><td><code>false</code></td><td>Enable Exa webset management and enrichment tools.</td></tr>
+<tr><td><code>searxng.endpoint</code></td><td>SearXNG Endpoint</td><td>string</td><td><em>(unset)</em></td><td>Base URL of a self-hosted SearXNG instance used for web search.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="discovery"><a class="header" href="#discovery">Discovery</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>discovery.importForeignConfig</code></td><td>Import Other Tools’ Config</td><td>boolean</td><td><code>false</code></td><td>Auto-discover skills, context files, rules, and MCP servers authored for other AI tools (Claude, Codex, Gemini, Cursor, opencode, and more) found on disk. Off by default: veyyon runs on its own instruction layers only (the system prompt, the global ~/.veyyon/AGENTS.md, the active profile’s AGENTS.md, and the project’s own AGENTS.md/CLAUDE.md walked from the repo root down to cwd), and never ambiently picks up a foreign tool’s own config directory, GEMINI.md, or the skills, rules and MCP servers those tools define. Turn on to import them as a base layer.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="fireworks"><a class="header" href="#fireworks">Fireworks</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>providers.fireworksTier</code></td><td>Fireworks Tier</td><td>enum</td><td><code>standard</code></td><td>Serving path for Fireworks requests. Priority sends <code>service_tier: "priority"</code> for higher reliability during peak traffic at a higher price; Standard omits it. Fast (<code>-fast</code>) models ignore this — Fast is its own serving path. Values: <code>standard</code>, <code>priority</code>.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="tiny-model"><a class="header" href="#tiny-model">Tiny Model</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>providers.tinyModel</code></td><td>Session Title Model</td><td>enum</td><td><code>online</code></td><td>Session-title model: online (the TINY role from /models, else @smol) by default, or a local on-device model. Values: <code>online</code>, <code>lfm2-350m</code>, <code>qwen3-0.6b</code>, <code>gemma-270m</code>, <code>qwen2.5-0.5b</code>, <code>lfm2-700m</code>.</td></tr>
+<tr><td><code>providers.tinyModelDevice</code></td><td>Tiny Model Device</td><td>enum</td><td><code>default</code></td><td>ONNX execution provider for local tiny models (titles + memory). Default uses CPU-only inference. The VEYYON_TINY_DEVICE env var overrides this. Values: <code>default</code>, <code>gpu</code>, <code>cpu</code>, <code>metal</code>, <code>webgpu</code>, <code>cuda</code>, <code>dml</code>, <code>coreml</code>, <code>auto</code>, <code>wasm</code>, <code>webnn</code>, <code>webnn-gpu</code>, <code>webnn-cpu</code>, <code>webnn-npu</code>.</td></tr>
+<tr><td><code>providers.tinyModelDtype</code></td><td>Tiny Model Precision</td><td>enum</td><td><code>default</code></td><td>ONNX quantization/precision for local tiny models. Default uses each model’s shipped dtype (q4); lower precision is faster, higher is more faithful. The VEYYON_TINY_DTYPE env var overrides this. Values: <code>default</code>, <code>q4</code>, <code>q4f16</code>, <code>q8</code>, <code>fp16</code>, <code>fp32</code>, <code>int8</code>, <code>uint8</code>, <code>bnb4</code>, <code>q2</code>, <code>q2f16</code>, <code>q1</code>, <code>q1f16</code>, <code>auto</code>.</td></tr>
+<tr><td><code>providers.unexpectedStopModel</code></td><td>Unexpected Stop Model</td><td>enum</td><td><code>online</code></td><td>Classifier for unexpected-stop detection: online (the TINY role from /models, else smol) by default, or a local on-device model. Values: <code>online</code>, <code>qwen3-1.7b</code>, <code>llama3.2:3b</code>, <code>gemma-3-1b</code>, <code>qwen2.5-1.5b</code>, <code>lfm2-1.2b</code>.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="protocol"><a class="header" href="#protocol">Protocol</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>providers.kimiApiFormat</code></td><td>Kimi API Format</td><td>enum</td><td><code>anthropic</code></td><td>API format for Kimi Code provider. Values: <code>openai</code>, <code>anthropic</code>.</td></tr>
+<tr><td><code>providers.openaiWebsockets</code></td><td>OpenAI WebSockets</td><td>enum</td><td><code>auto</code></td><td>Websocket policy for OpenAI Codex models (auto uses model defaults, on forces, off disables). Values: <code>auto</code>, <code>off</code>, <code>on</code>.</td></tr>
+<tr><td><code>providers.openrouterVariant</code></td><td>OpenRouter Routing</td><td>enum</td><td><code>default</code></td><td>Default routing-variant suffix appended to OpenRouter model IDs (overridden when the selector already names a variant). Values: <code>default</code>, <code>nitro</code>, <code>floor</code>, <code>online</code>, <code>exacto</code>.</td></tr>
+<tr><td><code>provider.appendOnlyContext</code></td><td>Append-Only Context</td><td>enum</td><td><code>auto</code></td><td>Cache system prompt + tool specs and keep an append-only message log so provider prefix caches (DeepSeek, Xiaomi/SGLang, Anthropic) hit at maximum rate. Auto enables for known prefix-cache providers. Values: <code>auto</code>, <code>on</code>, <code>off</code>.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="timeouts"><a class="header" href="#timeouts">Timeouts</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>providers.streamFirstEventTimeoutSeconds</code></td><td>Stream First Event Timeout</td><td>number</td><td><code>-1</code></td><td>Seconds to wait for the first model stream event; -1 uses provider/env defaults, 0 disables the watchdog.</td></tr>
+<tr><td><code>providers.streamIdleTimeoutSeconds</code></td><td>Stream Idle Timeout</td><td>number</td><td><code>-1</code></td><td>Seconds a model stream may stay silent between events; -1 uses provider/env defaults, 0 disables the watchdog.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="privacy"><a class="header" href="#privacy">Privacy</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>images.blockImages</code></td><td>Block Images</td><td>boolean</td><td><code>false</code></td><td>Prevent images from being sent to LLM providers.</td></tr>
+<tr><td><code>secrets.enabled</code></td><td>Hide Secrets</td><td>boolean</td><td><code>false</code></td><td>Obfuscate secrets before sending to AI providers. Storing a credential with /secret turns this on for you.</td></tr>
+<tr><td><code>secrets.defaultTtl</code></td><td>Secret Lifetime</td><td>string</td><td><code>1d</code></td><td>How long a /secret lasts when the command does not say. Default 1d; also accepts forms like 30m, 12h, 7d, 2w, or “never”.</td></tr>
+<tr><td><code>secrets.auditLog</code></td><td>Record Secret Use</td><td>boolean</td><td><code>true</code></td><td>Append which secret was used in which command to the profile’s log. Never records values.</td></tr>
+<tr><td><code>secrets.expiryWarnings</code></td><td>Warn Before A Secret Expires</td><td>boolean</td><td><code>true</code></td><td>Say at the start of a session when a stored secret is halfway through its lifetime, and again near the end. Off: /secret list still shows the STATUS column and the status line still shows a deadline in the last hour.</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="experimental"><a class="header" href="#experimental">Experimental</a></h2>
+<h3 id="argot"><a class="header" href="#argot">Argot</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>argot.enabled</code></td><td>Argot Shorthand</td><td>boolean</td><td><code>false</code></td><td>Let the agent load token-saving shorthand for the projects it works in, kept in a local cache (nothing is written to the repository). The project you launch in is loaded for you, and the model loads any further project with the argot_load tool; it then writes short handles that the harness expands to full text before any tool runs or the display shows them.</td></tr>
+<tr><td><code>argot.autoload</code></td><td>Argot Startup Load</td><td>boolean</td><td><code>true</code></td><td>Load the project you started the session in, in the background, so shorthand works without the model spending a turn on it. Off, a session starts with no dictionary until the model calls argot_load itself. Either way a handle already written still expands.</td></tr>
+<tr><td><code>argot.encode.models</code></td><td>Argot Models</td><td>array</td><td><code>[]</code></td><td>Models allowed to write Argot shorthand, by model id. Empty (the default) means no model does, so turning Argot on alone stays inert until you add one here. A model left off this list is never taught the shorthand; handles already in history still expand.</td></tr>
+<tr><td><code>argot.tokenBudget</code></td><td>Argot Dictionary Budget</td><td>number</td><td><code>1000</code></td><td>How many tokens the generated Argot dictionary may spend on its handle table. A larger budget teaches more handles (more transcript savings) but adds a longer preamble each turn; a smaller budget teaches only the most central strings. Changing it regenerates the dictionary.</td></tr>
+<tr><td><code>argot.encode.disableAboveTokens</code></td><td>Argot Context Cutoff</td><td>number</td><td><code>-1</code></td><td>Stop teaching Argot shorthand once context passes this many tokens (the model then writes in full). Handles already written still expand losslessly. -1 disables the cutoff.</td></tr>
+<tr><td><code>argot.subagents</code></td><td>Argot in Subagents</td><td>enum</td><td><code>off</code></td><td>How a subagent starts with Argot shorthand. Correctness never depends on this (handles never cross the parent/child wire); it only trades tokens. off: no shorthand in subagents. fresh: the subagent loads its task’s project itself through argot_load. inherit: the subagent starts from a copy of the parent’s loaded shorthand. Values: <code>off</code>, <code>fresh</code>, <code>inherit</code>.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="tool-calling"><a class="header" href="#tool-calling">Tool Calling</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>tools.format</code></td><td>Tool Calling Mode</td><td>enum</td><td><code>auto</code></td><td>Controls how tools are exposed to the model. Auto uses provider-native tool calls unless the selected model is marked as not supporting them, then falls back to the GLM owned dialect. Native forces provider-native tools; the other values force the named owned dialect. Applies on session start. Values: <code>auto</code>, <code>native</code>, <code>glm</code>, <code>hermes</code>, <code>kimi</code>, <code>xml</code>, <code>anthropic</code>, <code>deepseek</code>, <code>harmony</code>, <code>qwen3</code>, <code>gemini</code>, <code>gemma</code>, <code>minimax</code>, <code>pi-native</code>.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="auto-learn"><a class="header" href="#auto-learn">Auto-Learn</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>autolearn.enabled</code></td><td>Enable Auto-Learn</td><td>boolean</td><td><code>false</code></td><td>After the agent stops, nudge it to capture lessons to memory and create/enhance isolated managed skills.</td></tr>
+<tr><td><code>autolearn.autoContinue</code></td><td>Auto-run capture at stop</td><td>boolean</td><td><code>false</code></td><td>When on, auto-run one capture turn at stop (uses extra tokens). Off = passive reminder on your next turn.</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="global"><a class="header" href="#global">Global</a></h2>
+<h3 id="profiles"><a class="header" href="#profiles">Profiles</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>defaultProfile</code></td><td>Default Profile</td><td>string</td><td><code>default</code></td><td>Profile used when no –profile flag or VEYYON_PROFILE is set. Stored in ~/.veyyon/config.yml. Use the profile name (<code>default</code> clears the override). Stored machine-wide, not per profile.</td></tr>
+<tr><td><code>onboardingVersion</code></td><td>Onboarding Version</td><td>number</td><td><code>0</code></td><td>Setup generation this machine has already completed. Stored in ~/.veyyon/config.yml, so switching profile or working directory never re-runs onboarding. Stored machine-wide, not per profile.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="credentials"><a class="header" href="#credentials">Credentials</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>profileSharing</code></td><td>Share Credentials Across Profiles</td><td>boolean</td><td><code>true</code></td><td>When on (the default), every profile reads one machine-wide set of provider logins. Turn off to give each profile its own private credential store. Changing this setting shuts down the active session; restart is required before any further model dispatch. Stored machine-wide, not per profile.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="auth-broker"><a class="header" href="#auth-broker">Auth Broker</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>authBrokerUrl</code></td><td>Auth Broker URL</td><td>string</td><td><em>(empty)</em></td><td>Base URL of the auth broker that mints provider credentials for this machine. Stored in ~/.veyyon/config.yml under auth.broker.url; empty disables broker discovery via config. Stored machine-wide, not per profile.</td></tr>
+<tr><td><code>authBrokerToken</code></td><td>Auth Broker Token</td><td>string</td><td><em>(empty)</em></td><td>Bearer token for the auth broker. Write-only: a stored token shows as a mask and is never echoed. Enter a new value to replace it, leave the mask to keep it, or clear the field to delete it. Stored machine-wide, not per profile.</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="configuration-file-only"><a class="header" href="#configuration-file-only">Configuration file only</a></h2>
+<p>These keys are not in <code>/settings</code>. Some are state veyyon writes for itself (a schema version, an onboarding marker), some are credentials that belong in a secret store rather than on a settings screen, and the rest are shapes a selector cannot edit, such as a table of patterns. All of them are read by production code, all of them are valid in <code>config.yml</code>, and all of them can be set with <code>veyyon config set</code>.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Type</th><th>Default</th><th>Notes</th></tr>
+</thead>
+<tbody>
+<tr><td><code>async.maxJobs</code></td><td>number</td><td><code>100</code></td><td></td></tr>
+<tr><td><code>auth.broker.token</code></td><td>string</td><td><em>(unset)</em></td><td></td></tr>
+<tr><td><code>auth.broker.url</code></td><td>string</td><td><em>(unset)</em></td><td></td></tr>
+<tr><td><code>autolearn.minToolCalls</code></td><td>number</td><td><code>5</code></td><td></td></tr>
+<tr><td><code>bashInterceptor.patterns</code></td><td>array</td><td><code>[{"pattern":"^\\s*(cat|head|tail|less|more)\\s+","tool":"read","message":"Use the </code>read<code>tool instead of cat/head/tail. It provides better context and handles binary files."},{"pattern":"^\\s*(grep|rg|ripgrep|ag|ack)\\s+","tool":"grep","message":"Use the</code>grep<code>tool instead of grep/rg. It respects .gitignore and provides structured output."},{"pattern":"^\\s*(find|fd|locate)\\s+.*(-name|-iname|-type|--type|-glob)","tool":"glob","message":"Use the</code>glob<code>tool instead of find/fd. It respects .gitignore and is faster for glob patterns."},{"pattern":"^\\s*sed\\s+(-i|--in-place)","tool":"edit","message":"Use the</code>edit<code>tool instead of sed -i. It provides diff preview and fuzzy matching."},{"pattern":"^\\s*perl\\s+.*-[pn]?i","tool":"edit","message":"Use the</code>edit<code>tool instead of perl -i. It provides diff preview and fuzzy matching."},{"pattern":"^\\s*awk\\s+.*-i\\s+inplace","tool":"edit","message":"Use the</code>edit<code>tool instead of awk -i inplace. It provides diff preview and fuzzy matching."},{"pattern":"^\\s*(echo|printf|cat\\s*\&lt;\&lt;)\\s+(?:(?:[^\"'&gt;]|\"[^\"]*\"|'[^']*')|(?\&lt;!\\|)&gt;{1,2}\\|?\\s*(?:\"/dev/(?:null|tty|stdout|stderr)\"|'/dev/(?:null|tty|stdout|stderr)'|/dev/(?:null|tty|stdout|stderr))(?:[\\s;&amp;|]|$))*(?\&lt;!\\|)&gt;{1,2}\\|?\\s*(?!(?:\"/dev/(?:null|tty|stdout|stderr)\"|'/dev/(?:null|tty|stdout|stderr)'|/dev/(?:null|tty|stdout|stderr))(?:[\\s;&amp;|]|$))[$\\w./~\"'-]","tool":"write","message":"Use the</code>write<code>tool instead of echo/cat redirection. It handles encoding and provides confirmation."},{"pattern":"^\\s*nohup\\s+|(?\&lt;!&amp;)\\&amp;\\s*$","tool":"launch","message":"Use the</code>launch<code>tool instead of nohup or background shell syntax so the process stays observable and managed."},{"pattern":"^\\s*(?:(?:bun|npm|pnpm|yarn)\\s+(?:run\\s+)?(?:dev|start)(?:\\s|$)|(?:vite|next\\s+dev|nuxt\\s+dev|nodemon|lldb|gdb|tail\\s+-f)(?:\\s|$)|docker\\s+compose\\s+up(?!.*(?:\\s-d(?:\\s|$)|--detach))(?:\\s|$))","tool":"launch","message":"Use the</code>launch<code>tool for services, watchers, and debuggers so other veyyon instances can observe and control them."},{"pattern":"^\\s*(?:(?:bun|npm|pnpm|yarn)\\s+(?:run\\s+)?\\S+|cargo\\s+watch|watchexec|pytest|vitest|jest|tsc)(?:.|\\n)*(?:--watch|-w)(?:\\s|$)","tool":"launch","message":"Use the</code>launch<code> tool for watch mode so its output, input, and lifecycle stay managed."}]</code></td><td></td></tr>
+<tr><td><code>branchSummary.reserveTokens</code></td><td>number</td><td><code>16384</code></td><td></td></tr>
+<tr><td><code>commit.changelogMaxDiffChars</code></td><td>number</td><td><code>120000</code></td><td></td></tr>
+<tr><td><code>commit.mapReduceEnabled</code></td><td>boolean</td><td><code>true</code></td><td></td></tr>
+<tr><td><code>commit.mapReduceMaxConcurrency</code></td><td>number</td><td><code>5</code></td><td></td></tr>
+<tr><td><code>commit.mapReduceMaxFileTokens</code></td><td>number</td><td><code>50000</code></td><td></td></tr>
+<tr><td><code>commit.mapReduceMinFiles</code></td><td>number</td><td><code>4</code></td><td></td></tr>
+<tr><td><code>commit.mapReduceTimeoutMs</code></td><td>number</td><td><code>120000</code></td><td></td></tr>
+<tr><td><code>compaction.autoContinue</code></td><td>boolean</td><td><code>true</code></td><td></td></tr>
+<tr><td><code>compaction.dropUseless</code></td><td>boolean</td><td><code>true</code></td><td></td></tr>
+<tr><td><code>compaction.enabled</code></td><td>boolean</td><td><code>true</code></td><td></td></tr>
+<tr><td><code>compaction.handoffSaveToDisk</code></td><td>boolean</td><td><code>false</code></td><td></td></tr>
+<tr><td><code>compaction.idleEnabled</code></td><td>boolean</td><td><code>false</code></td><td></td></tr>
+<tr><td><code>compaction.idleThresholdTokens</code></td><td>number</td><td><code>200000</code></td><td></td></tr>
+<tr><td><code>compaction.idleTimeoutSeconds</code></td><td>number</td><td><code>300</code></td><td></td></tr>
+<tr><td><code>compaction.keepRecentTokens</code></td><td>number</td><td><code>10000</code></td><td></td></tr>
+<tr><td><code>compaction.midTurnEnabled</code></td><td>boolean</td><td><code>true</code></td><td></td></tr>
+<tr><td><code>compaction.remoteEndpoint</code></td><td>string</td><td><em>(unset)</em></td><td></td></tr>
+<tr><td><code>compaction.reserveTokens</code></td><td>number</td><td><em>(unset)</em></td><td></td></tr>
+<tr><td><code>compaction.supersedeReads</code></td><td>boolean</td><td><code>true</code></td><td></td></tr>
+<tr><td><code>compaction.thresholdPercent</code></td><td>number</td><td><code>-1</code></td><td>Retired: use <code>compaction.threshold</code> instead.</td></tr>
+<tr><td><code>compaction.thresholdTokens</code></td><td>number</td><td><code>-1</code></td><td>Retired: use <code>compaction.threshold</code> instead.</td></tr>
+<tr><td><code>cycleOrder</code></td><td>array</td><td><code>["smol","slow"]</code></td><td></td></tr>
+<tr><td><code>defaultThinkingLevel</code></td><td>enum</td><td><code>high</code></td><td>Values: <code>minimal</code>, <code>low</code>, <code>medium</code>, <code>high</code>, <code>xhigh</code>, <code>max</code>, <code>auto</code>. Retired: use <code>defaultEffort</code> instead.</td></tr>
+<tr><td><code>dev.autoqaPush.token</code></td><td>string</td><td><em>(unset)</em></td><td></td></tr>
+<tr><td><code>disabledExtensions</code></td><td>array</td><td><code>[]</code></td><td></td></tr>
+<tr><td><code>disabledProviders</code></td><td>array</td><td><code>[]</code></td><td></td></tr>
+<tr><td><code>edit.modelVariants</code></td><td>record</td><td><code>{}</code></td><td></td></tr>
+<tr><td><code>enabledModels</code></td><td>array</td><td><code>[]</code></td><td></td></tr>
+<tr><td><code>extensions</code></td><td>array</td><td><code>[]</code></td><td></td></tr>
+<tr><td><code>gc.archive</code></td><td>boolean</td><td><code>true</code></td><td></td></tr>
+<tr><td><code>gc.blobs</code></td><td>boolean</td><td><code>true</code></td><td></td></tr>
+<tr><td><code>gc.coldArchiveAfterDays</code></td><td>number</td><td><code>30</code></td><td></td></tr>
+<tr><td><code>gc.retainNewestGlobal</code></td><td>number</td><td><code>20</code></td><td></td></tr>
+<tr><td><code>gc.retainNewestPerCwd</code></td><td>number</td><td><code>10</code></td><td></td></tr>
+<tr><td><code>gc.wal</code></td><td>boolean</td><td><code>true</code></td><td></td></tr>
+<tr><td><code>gc.writeGraceMinutes</code></td><td>number</td><td><code>5</code></td><td></td></tr>
+<tr><td><code>harness.profiles</code></td><td>record</td><td><code>{}</code></td><td></td></tr>
+<tr><td><code>hindsight.apiToken</code></td><td>string</td><td><em>(unset)</em></td><td></td></tr>
+<tr><td><code>hindsight.bankIdPrefix</code></td><td>string</td><td><em>(unset)</em></td><td></td></tr>
+<tr><td><code>hindsight.bankMission</code></td><td>string</td><td><em>(unset)</em></td><td></td></tr>
+<tr><td><code>hindsight.debug</code></td><td>boolean</td><td><code>false</code></td><td></td></tr>
+<tr><td><code>hindsight.mentalModelMaxRenderChars</code></td><td>number</td><td><code>16000</code></td><td></td></tr>
+<tr><td><code>hindsight.mentalModelRefreshIntervalMs</code></td><td>number</td><td><code>300000</code></td><td></td></tr>
+<tr><td><code>hindsight.recallBudget</code></td><td>enum</td><td><code>mid</code></td><td>Values: <code>low</code>, <code>mid</code>, <code>high</code>.</td></tr>
+<tr><td><code>hindsight.recallContextTurns</code></td><td>number</td><td><code>1</code></td><td></td></tr>
+<tr><td><code>hindsight.recallMaxQueryChars</code></td><td>number</td><td><code>800</code></td><td></td></tr>
+<tr><td><code>hindsight.recallMaxTokens</code></td><td>number</td><td><code>1024</code></td><td></td></tr>
+<tr><td><code>hindsight.recallTimeoutMs</code></td><td>number</td><td><code>30000</code></td><td></td></tr>
+<tr><td><code>hindsight.recallTypes</code></td><td>array</td><td><code>["world","experience"]</code></td><td></td></tr>
+<tr><td><code>hindsight.reflectTimeoutMs</code></td><td>number</td><td><code>120000</code></td><td></td></tr>
+<tr><td><code>hindsight.requestTimeoutMs</code></td><td>number</td><td><code>30000</code></td><td></td></tr>
+<tr><td><code>hindsight.retainContext</code></td><td>string</td><td><code>veyyon</code></td><td></td></tr>
+<tr><td><code>hindsight.retainEveryNTurns</code></td><td>number</td><td><code>3</code></td><td></td></tr>
+<tr><td><code>hindsight.retainMission</code></td><td>string</td><td><em>(unset)</em></td><td></td></tr>
+<tr><td><code>hindsight.retainOverlapTurns</code></td><td>number</td><td><code>2</code></td><td></td></tr>
+<tr><td><code>hindsight.retainTimeoutMs</code></td><td>number</td><td><code>60000</code></td><td></td></tr>
+<tr><td><code>memories.enabled</code></td><td>boolean</td><td><code>false</code></td><td></td></tr>
+<tr><td><code>memories.fallbackTokenLimit</code></td><td>number</td><td><code>16000</code></td><td></td></tr>
+<tr><td><code>memories.maxRawMemoriesForGlobal</code></td><td>number</td><td><code>200</code></td><td></td></tr>
+<tr><td><code>memories.maxRolloutAgeDays</code></td><td>number</td><td><code>30</code></td><td></td></tr>
+<tr><td><code>memories.maxRolloutsPerStartup</code></td><td>number</td><td><code>64</code></td><td></td></tr>
+<tr><td><code>memories.minRolloutIdleHours</code></td><td>number</td><td><code>12</code></td><td></td></tr>
+<tr><td><code>memories.phase1InputTokenLimit</code></td><td>number</td><td><code>4000</code></td><td></td></tr>
+<tr><td><code>memories.phase2HeartbeatSeconds</code></td><td>number</td><td><code>30</code></td><td></td></tr>
+<tr><td><code>memories.phase2LeaseSeconds</code></td><td>number</td><td><code>180</code></td><td></td></tr>
+<tr><td><code>memories.phase2RetryDelaySeconds</code></td><td>number</td><td><code>180</code></td><td></td></tr>
+<tr><td><code>memories.rolloutPayloadPercent</code></td><td>number</td><td><code>0.7</code></td><td></td></tr>
+<tr><td><code>memories.stage1Concurrency</code></td><td>number</td><td><code>8</code></td><td></td></tr>
+<tr><td><code>memories.stage1LeaseSeconds</code></td><td>number</td><td><code>120</code></td><td></td></tr>
+<tr><td><code>memories.stage1RetryDelaySeconds</code></td><td>number</td><td><code>120</code></td><td></td></tr>
+<tr><td><code>memories.summaryInjectionTokenLimit</code></td><td>number</td><td><code>5000</code></td><td></td></tr>
+<tr><td><code>memories.threadScanLimit</code></td><td>number</td><td><code>300</code></td><td></td></tr>
+<tr><td><code>mnemopi.debug</code></td><td>boolean</td><td><code>false</code></td><td></td></tr>
+<tr><td><code>mnemopi.injectionTokenLimit</code></td><td>number</td><td><code>5000</code></td><td></td></tr>
+<tr><td><code>mnemopi.recallContextTurns</code></td><td>number</td><td><code>3</code></td><td></td></tr>
+<tr><td><code>mnemopi.recallLimit</code></td><td>number</td><td><code>8</code></td><td></td></tr>
+<tr><td><code>mnemopi.recallMaxQueryChars</code></td><td>number</td><td><code>4000</code></td><td></td></tr>
+<tr><td><code>mnemopi.retainEveryNTurns</code></td><td>number</td><td><code>4</code></td><td></td></tr>
+<tr><td><code>modelProviderOrder</code></td><td>array</td><td><code>[]</code></td><td></td></tr>
+<tr><td><code>modelTags</code></td><td>record</td><td><code>{}</code></td><td></td></tr>
+<tr><td><code>retry.baseDelayMs</code></td><td>number</td><td><code>500</code></td><td></td></tr>
+<tr><td><code>retry.enabled</code></td><td>boolean</td><td><code>true</code></td><td></td></tr>
+<tr><td><code>searxng.basicPassword</code></td><td>string</td><td><em>(unset)</em></td><td></td></tr>
+<tr><td><code>searxng.basicUsername</code></td><td>string</td><td><em>(unset)</em></td><td></td></tr>
+<tr><td><code>searxng.categories</code></td><td>string</td><td><em>(unset)</em></td><td></td></tr>
+<tr><td><code>searxng.language</code></td><td>string</td><td><em>(unset)</em></td><td></td></tr>
+<tr><td><code>searxng.token</code></td><td>string</td><td><em>(unset)</em></td><td></td></tr>
+<tr><td><code>settingsMigrationVersion</code></td><td>number</td><td><code>0</code></td><td></td></tr>
+<tr><td><code>setupVersion</code></td><td>number</td><td><code>0</code></td><td>Retired: use <code>onboardingVersion</code> instead.</td></tr>
+<tr><td><code>shellMinimizer.except</code></td><td>array</td><td><code>[]</code></td><td></td></tr>
+<tr><td><code>shellMinimizer.legacyFilters</code></td><td>boolean</td><td><em>(unset)</em></td><td></td></tr>
+<tr><td><code>shellMinimizer.maxCaptureBytes</code></td><td>number</td><td><code>4194304</code></td><td></td></tr>
+<tr><td><code>shellMinimizer.only</code></td><td>array</td><td><code>[]</code></td><td></td></tr>
+<tr><td><code>shellMinimizer.settingsPath</code></td><td>string</td><td><em>(unset)</em></td><td></td></tr>
+<tr><td><code>shellPath</code></td><td>string</td><td><em>(unset)</em></td><td></td></tr>
+<tr><td><code>skills.enabled</code></td><td>boolean</td><td><code>true</code></td><td></td></tr>
+<tr><td><code>skills.ignoredSkills</code></td><td>array</td><td><code>[]</code></td><td></td></tr>
+<tr><td><code>skills.includeSkills</code></td><td>array</td><td><code>[]</code></td><td></td></tr>
+<tr><td><code>statusLine.leftSegments</code></td><td>array</td><td><code>[]</code></td><td></td></tr>
+<tr><td><code>statusLine.rightSegments</code></td><td>array</td><td><code>[]</code></td><td></td></tr>
+<tr><td><code>statusLine.segmentOptions</code></td><td>record</td><td><code>{}</code></td><td></td></tr>
+<tr><td><code>statusLine.separator</code></td><td>enum</td><td><code>pipe</code></td><td>Values: <code>powerline</code>, <code>powerline-thin</code>, <code>slash</code>, <code>pipe</code>, <code>block</code>, <code>none</code>, <code>ascii</code>.</td></tr>
+<tr><td><code>statusLine.transparent</code></td><td>boolean</td><td><code>true</code></td><td></td></tr>
+<tr><td><code>stt.language</code></td><td>string</td><td><code>en</code></td><td></td></tr>
+<tr><td><code>thinkingBudgets.high</code></td><td>number</td><td><code>16384</code></td><td></td></tr>
+<tr><td><code>thinkingBudgets.low</code></td><td>number</td><td><code>2048</code></td><td></td></tr>
+<tr><td><code>thinkingBudgets.max</code></td><td>number</td><td><code>32768</code></td><td></td></tr>
+<tr><td><code>thinkingBudgets.medium</code></td><td>number</td><td><code>8192</code></td><td></td></tr>
+<tr><td><code>thinkingBudgets.minimal</code></td><td>number</td><td><code>1024</code></td><td></td></tr>
+<tr><td><code>thinkingBudgets.xhigh</code></td><td>number</td><td><code>32768</code></td><td></td></tr>
+<tr><td><code>ttsr.experimentalRules</code></td><td>array</td><td><code>[]</code></td><td></td></tr>
+<tr><td><code>tui.maxInlineImageColumns</code></td><td>number</td><td><code>100</code></td><td></td></tr>
+<tr><td><code>tui.maxInlineImageRows</code></td><td>number</td><td><code>20</code></td><td></td></tr>
+<tr><td><code>tui.maxInlineImages</code></td><td>number</td><td><code>8</code></td><td></td></tr>
+</tbody>
+</table>
+</div>
+<p>345 settings in /settings, 119 configuration-file keys, 464 in all.</p>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="../reference/settings.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                            </a>
+
+                            <a rel="next prefetch" href="../reference/models-yml.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="../reference/settings.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                    </a>
+
+                    <a rel="next prefetch" href="../reference/models-yml.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                    </a>
+            </nav>
+
+        </div>
+
+        <template id=fa-eye><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M288 32c-80.8 0-145.5 36.8-192.6 80.6C48.6 156 17.3 208 2.5 243.7c-3.3 7.9-3.3 16.7 0 24.6C17.3 304 48.6 356 95.4 399.4C142.5 443.2 207.2 480 288 480s145.5-36.8 192.6-80.6c46.8-43.5 78.1-95.4 93-131.1c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C433.5 68.8 368.8 32 288 32zM432 256c0 79.5-64.5 144-144 144s-144-64.5-144-144s64.5-144 144-144s144 64.5 144 144zM288 192c0 35.3-28.7 64-64 64c-11.5 0-22.3-3-31.6-8.4c-.2 2.8-.4 5.5-.4 8.4c0 53 43 96 96 96s96-43 96-96s-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6z"/></svg></span></template>
+        <template id=fa-eye-slash><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M38.8 5.1C28.4-3.1 13.3-1.2 5.1 9.2S-1.2 34.7 9.2 42.9l592 464c10.4 8.2 25.5 6.3 33.7-4.1s6.3-25.5-4.1-33.7L525.6 386.7c39.6-40.6 66.4-86.1 79.9-118.4c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C465.5 68.8 400.8 32 320 32c-68.2 0-125 26.3-169.3 60.8L38.8 5.1zM223.1 149.5C248.6 126.2 282.7 112 320 112c79.5 0 144 64.5 144 144c0 24.9-6.3 48.3-17.4 68.7L408 294.5c5.2-11.8 8-24.8 8-38.5c0-53-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6c0 10.2-2.4 19.8-6.6 28.3l-90.3-70.8zm223.1 298L373 389.9c-16.4 6.5-34.3 10.1-53 10.1c-79.5 0-144-64.5-144-144c0-6.9 .5-13.6 1.4-20.2L83.1 161.5C60.3 191.2 44 220.8 34.5 243.7c-3.3 7.9-3.3 16.7 0 24.6c14.9 35.7 46.2 87.7 93 131.1C174.5 443.2 239.2 480 320 480c47.8 0 89.9-12.9 126.2-32.5z"/></svg></span></template>
+        <template id=fa-copy><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M502.6 70.63l-61.25-61.25C435.4 3.371 427.2 0 418.7 0H255.1c-35.35 0-64 28.66-64 64l.0195 256C192 355.4 220.7 384 256 384h192c35.2 0 64-28.8 64-64V93.25C512 84.77 508.6 76.63 502.6 70.63zM464 320c0 8.836-7.164 16-16 16H255.1c-8.838 0-16-7.164-16-16L239.1 64.13c0-8.836 7.164-16 16-16h128L384 96c0 17.67 14.33 32 32 32h47.1V320zM272 448c0 8.836-7.164 16-16 16H63.1c-8.838 0-16-7.164-16-16L47.98 192.1c0-8.836 7.164-16 16-16H160V128H63.99c-35.35 0-64 28.65-64 64l.0098 256C.002 483.3 28.66 512 64 512h192c35.2 0 64-28.8 64-64v-32h-47.1L272 448z"/></svg></span></template>
+        <template id=fa-play><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M73 39c-14.8-9.1-33.4-9.4-48.5-.9S0 62.6 0 80V432c0 17.4 9.4 33.4 24.5 41.9s33.7 8.1 48.5-.9L361 297c14.3-8.7 23-24.2 23-41s-8.7-32.2-23-41L73 39z"/></svg></span></template>
+        <template id=fa-clock-rotate-left><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M75 75L41 41C25.9 25.9 0 36.6 0 57.9V168c0 13.3 10.7 24 24 24H134.1c21.4 0 32.1-25.9 17-41l-30.8-30.8C155 85.5 203 64 256 64c106 0 192 86 192 192s-86 192-192 192c-40.8 0-78.6-12.7-109.7-34.4c-14.5-10.1-34.4-6.6-44.6 7.9s-6.6 34.4 7.9 44.6C151.2 495 201.7 512 256 512c141.4 0 256-114.6 256-256S397.4 0 256 0C185.3 0 121.3 28.7 75 75zm181 53c-13.3 0-24 10.7-24 24V256c0 6.4 2.5 12.5 7 17l72 72c9.4 9.4 24.6 9.4 33.9 0s9.4-24.6 0-33.9l-65-65V152c0-13.3-10.7-24-24-24z"/></svg></span></template>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="../elasticlunr-ef4e11c1.min.js"></script>
+        <script src="../mark-09e88c2c.min.js"></script>
+        <script src="../searcher-c2a407aa.js"></script>
+
+        <script src="../clipboard-1626706a.min.js"></script>
+        <script src="../highlight-abc7f01d.js"></script>
+        <script src="../book-a0b12cfe.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+
+    </div>
+    </body>
+</html>

@@ -21,8 +21,10 @@ import type {
 	MCPTransport,
 } from "../../mcp/types";
 import { toJsonRpcError } from "../../mcp/types";
+import { buildMcpChildEnv } from "../child-environment";
 import { isMCPTimeoutEnabled, resolveMCPTimeoutMs } from "../timeout";
 import { describeJsonRpcError, isUnattributableError, rejectAllPending } from "../unattributable-error";
+import { terminateMcpServerTree } from "./process-tree";
 import { mcpNotConnectedMessage, mcpTimeoutMessage } from "./transport-failure";
 
 /** Subprocess argv and platform-derived spawn flags for an MCP stdio server. */
@@ -411,10 +413,18 @@ export class StdioTransport implements MCPTransport {
 	async connect(): Promise<void> {
 		if (this.#connected) return;
 
-		const env = {
-			...Bun.env,
-			...this.config.env,
-		};
+		// A server sees what a program needs in order to run, plus what the operator named. The
+		// whole ambient environment used to be handed over, which made every credential on the
+		// machine readable by a subprocess nobody reads. `mcp/child-environment.ts` owns the rule.
+		const { env, withheld, inherited } = buildMcpChildEnv(this.config, Bun.env, process.platform);
+		if (inherited) {
+			logger.warn("MCP server spawned with the whole environment", {
+				command: this.config.command,
+				reason: "inheritEnv is set for this server, so every ambient credential is readable by it",
+			});
+		} else if (withheld.length > 0) {
+			logger.debug("MCP server environment bounded", { command: this.config.command, withheld });
+		}
 		const cwd = this.config.cwd ?? getProjectDir();
 		const spawnCommand = await resolveStdioSpawnCommand(this.config, {
 			cwd,
@@ -804,8 +814,21 @@ export class StdioTransport implements MCPTransport {
 		}
 
 		if (this.#process) {
-			this.#process.kill();
+			const child = this.#process;
+			// Cleared before the await so a concurrent or repeat close is a no-op rather
+			// than a second teardown of the same tree.
 			this.#process = null;
+			// A wrapper (`npx`, `uvx`, `docker run`, a shell script) is what veyyon
+			// spawned; the server itself is usually its grandchild. `child.kill()` alone
+			// left that grandchild running with the environment it was handed.
+			const reaped = await terminateMcpServerTree(child.pid);
+			if (!reaped) {
+				child.kill();
+				logger.debug("MCP server tree was not confirmed gone; signalled the child directly", {
+					server: this.config.command,
+					pid: child.pid,
+				});
+			}
 		}
 
 		if (this.#readLoop) {

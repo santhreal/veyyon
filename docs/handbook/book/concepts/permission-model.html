@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-0c15bee8.js";
+            window.path_to_searchindex_js = "../searchindex-c0972181.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-79e2ba62.js"></script>
+        <script src="../toc-a2abefc1.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -196,8 +196,8 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="permission-model"><a class="header" href="#permission-model">Permission model</a></h1>
-<p>Every tool the model wants to run passes through one gate: the approval mode. The
-approval mode decides whether a tool runs on its own or waits for you to say yes. You
+<p>Every tool the model attempts to run passes through one gate: the approval mode. The
+approval mode sets whether a tool runs on its own or waits for you to say yes. You
 set it once in config, and you can change it for a single run from the command line.</p>
 <p>One setting controls this: <code>tools.approvalMode</code>. Nothing else confines what a command
 can do once it runs. Veyyon does not wrap commands in an operating-system sandbox
@@ -211,7 +211,7 @@ it as the boundary.</p>
 <li><strong>exec</strong> runs commands: <code>bash</code> and anything else that executes a program.</li>
 </ul>
 <p>A mode approves whole tiers, not individual tools. That is why the tiers come first: once
-you know which tier a tool is in, the mode tells you whether it runs.</p>
+you know which tier a tool is in, the mode determines whether it runs.</p>
 <h2 id="modes"><a class="header" href="#modes">Modes</a></h2>
 <p>A mode is a named choice of which tiers run without asking. There are five:</p>
 <div class="table-wrapper">
@@ -235,7 +235,7 @@ you know which tier a tool is in, the mode tells you whether it runs.</p>
 </code></pre>
 <p>The launch flags <code>--yolo</code> and <code>--plan-yolo</code> set <code>yolo</code> and a plan-mode variant of it.</p>
 <h2 id="the-working-directory-boundary"><a class="header" href="#the-working-directory-boundary">The working-directory boundary</a></h2>
-<p>A tier tells you what kind of thing a tool does. It does not tell you which file the
+<p>A tier describes what kind of thing a tool does. It does not identify which file the
 tool is about to touch. In <code>ask-command</code> and <code>auto</code>, the <code>write</code> tier is approved, so
 <code>write</code> runs without asking whether the target is <code>src/main.ts</code> or a file in your home
 directory.</p>
@@ -243,14 +243,14 @@ directory.</p>
 <blockquote>
 <p>Does this call touch a path outside the session working directory?</p>
 </blockquote>
-<p>If it does, the call asks for approval even though its tier would have allowed it. This
+<p>If it does, the call requires approval even though its tier would have allowed it. This
 holds in <code>plan</code>, <code>ask</code>, <code>ask-command</code> and <code>auto</code>, so the shipped default is inside it. It
 does not hold in <code>yolo</code>, which turns off permission entirely.</p>
 <p>Say you launched in <code>~/projects/api</code> and the model runs this:</p>
 <pre><code class="language-console">$ veyyon --approval-mode ask-command "update the config"
 </code></pre>
 <p>Writing <code>~/projects/api/config.yml</code> runs without asking, because it is inside the
-working directory and <code>write</code> is an approved tier. Writing <code>~/.ssh/config</code> asks, because
+working directory and <code>write</code> is an approved tier. Writing <code>~/.ssh/config</code> prompts, because
 it is outside, even though the tier is the same.</p>
 <p>The check looks at where a path really leads, not at how it is spelled. A path written
 entirely inside the working directory that reaches outside it through a symlink counts
@@ -260,11 +260,11 @@ treating an unreadable path as safe is the assumption you least want to be wrong
 <code>inspect_image</code>, and <code>set_cwd</code>.</p>
 <p><code>set_cwd</code> is on that list because it changes the working directory itself. If it were
 not bound, you could move the boundary instead of obeying it: re-root to the parent
-directory, and every later write counts as inside. So re-rooting outward asks, the same
-as writing outward. Re-rooting into a subdirectory does not ask, because that narrows
+directory, and every later write counts as inside. So re-rooting outward prompts, the same
+as writing outward. Re-rooting into a subdirectory does not prompt, because that narrows
 what the session can reach rather than widening it.</p>
 <p>When no interactive prompt is available, such as a headless or ACP run, a call that
-needs approval fails instead of proceeding. The error names the path that crossed the
+needs approval fails instead of proceeding. The error states the path that crossed the
 boundary, so you can see why the run stopped.</p>
 <h2 id="secrets-in-arguments"><a class="header" href="#secrets-in-arguments">Secrets in arguments</a></h2>
 <p>A tier does not tell you whether a call is about to spend a credential either. The
@@ -275,10 +275,10 @@ secret-use boundary is the third question, asked the same way and in the same mo
 <p>Your secrets reach a tool as real values. The model works with placeholders such as
 <code>#GITHUB_TOKEN#</code>, and Veyyon substitutes the credential just before the tool runs, so the
 model can use a secret it never reads. That substitution used to be recorded and never
-asked about: <code>secrets.auditLog</code> could tell you afterwards which credential an agent had
-spent, and nothing could ask you first.</p>
-<p>Now a call whose arguments carry a real credential asks for approval in <code>plan</code>, <code>ask</code>,
-<code>ask-command</code> and <code>auto</code>, even when its tier would have allowed it. The prompt names the
+asked about: <code>secrets.auditLog</code> could report afterwards which credential an agent had
+spent, and nothing prompted you first.</p>
+<p>Now a call whose arguments carry a real credential requires approval in <code>plan</code>, <code>ask</code>,
+<code>ask-command</code> and <code>auto</code>, even when its tier would have allowed it. The prompt states the
 secret and never shows its value:</p>
 <pre><code class="language-text">Allow tool: bash
 Reason: This call uses stored secret: GITHUB_TOKEN. Approving it runs the call with the
@@ -287,11 +287,11 @@ real credential.
 <p>As with the working-directory boundary, <code>yolo</code> turns permission off entirely and turns
 this off with it. Every other rung keeps it, the shipped <code>auto</code> included. A call that
 mentions a placeholder without expanding it, such as one made while <code>secrets.enabled</code> is
-false, is not carrying a credential and does not ask.</p>
+false, is not a credential reference and does not prompt.</p>
 <h2 id="per-tool-overrides"><a class="header" href="#per-tool-overrides">Per-tool overrides</a></h2>
 <p>When you want one tool to behave differently from its tier, name it under
 <code>tools.approval</code>. Each entry maps a tool to <code>allow</code>, <code>deny</code>, or <code>prompt</code>, and that choice
-wins for that tool whatever the mode says, with one exception: while a plan-mode session is
+wins for that tool whatever the mode is, with one exception: while a plan-mode session is
 active, a per-tool <code>allow</code> does not let an exec-tier tool run. Plan mode is a cap rather
 than a default, so it outranks both the configured mode and the per-tool setting. A <code>deny</code>
 is a hard block in every direction.</p>
@@ -302,7 +302,7 @@ tools:
     bash: prompt
     read: allow
 </code></pre>
-<p>Here the mode is <code>ask-command</code>, so writes run without asking. The override then pulls <code>bash</code>
+<p>Here the mode is <code>ask-command</code>, so writes run without a prompt. The override then pulls <code>bash</code>
 back to <code>prompt</code>, so commands still stop for your approval.</p>
 <h2 id="critical-bash-commands"><a class="header" href="#critical-bash-commands">Critical bash commands</a></h2>
 <p>Within the exec tier, a guard (<code>packages/coding-agent/src/tools/bash-guard.ts</code>) forces a prompt in
@@ -314,7 +314,7 @@ are recognized as the home directory. Every target is judged, not just the first
 it, of the system directories, and of the directories that hold your credentials all stop for
 approval. So does a recursive delete whose target the guard cannot resolve, such as
 <code>rm -rf "$dir"/*</code>: if <code>$dir</code> is empty that command starts at the root, and nothing in the command
-text says whether it is.</p>
+text states whether it is.</p>
 <p>The same half stops a truncating redirect into a directory that holds credentials, because
 <code>echo x &gt; ~/.ssh/id_ed25519</code> destroys a private key as thoroughly as a delete does. Appending with
 <code>&gt;&gt;</code> is left alone, since that is how you add a key to <code>authorized_keys</code>.</p>
