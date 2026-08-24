@@ -72,20 +72,24 @@ describe("AgentPauseGate multi-waiter and re-engage", () => {
 		gate = new AgentPauseGate();
 		gate.pause();
 		const ac = new AbortController();
-		let abortedDone = false;
+		let abortedError: unknown;
 		let otherDone = false;
-		const aborted = gate.waitUntilResumed(ac.signal).then(() => {
-			abortedDone = true;
+		const aborted = gate.waitUntilResumed(ac.signal).catch(err => {
+			abortedError = err;
 		});
 		const other = gate.waitUntilResumed().then(() => {
 			otherDone = true;
 		});
-		await Bun.sleep(5);
-		ac.abort();
-		await aborted;
-		expect(abortedDone).toBe(true);
+		await Promise.resolve();
+		expect(abortedError).toBeUndefined();
 		expect(otherDone).toBe(false);
+
+		ac.abort("stop");
+		await aborted;
+		expect(abortedError).toBe("stop");
+		expect(otherDone).toBe(false); // second waiter still parked
 		expect(gate.paused).toBe(true);
+
 		gate.resume();
 		await other;
 		expect(otherDone).toBe(true);

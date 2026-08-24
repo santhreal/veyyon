@@ -195,7 +195,7 @@ describe("SessionFocusController", () => {
 		]);
 	});
 
-	it("parking the focused agent auto-unfocuses back to the main session", async () => {
+	it("aborting the focused agent auto-unfocuses back to the main session, while parking retains focus", async () => {
 		const h = makeHarness();
 		const worker = makeSessionStub();
 		registerSub(h.registry, "Worker", worker.session, MAIN_AGENT_ID);
@@ -203,7 +203,13 @@ describe("SessionFocusController", () => {
 		await h.controller.focusAgent("Worker");
 		expect(h.controller.focusedAgentId).toBe("Worker");
 
+		// Parking the focused agent keeps the operator focused on the agent
 		h.registry.setStatus("Worker", "parked");
+		await flushAsync();
+		expect(h.controller.focusedAgentId).toBe("Worker");
+
+		// Aborting the focused agent returns to main
+		h.registry.setStatus("Worker", "aborted");
 		await flushAsync();
 
 		expect(h.controller.focusedAgentId).toBeUndefined();
