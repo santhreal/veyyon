@@ -6,10 +6,13 @@
 
 ### Added
 
+- `read` takes `depth` and `limit` arguments for directory listings, and a read of the session working directory root with neither now returns a concise top-level listing with per-subdirectory entry counts instead of the recursive tree.
 - A tool result that carries an image now states whether the picture reached the screen, so a model reading a file describes what it shows instead of reporting that it displayed it.
 - A picture the block gives up on after the fact, because the session's image budget demoted it or a Kitty session could not convert it, is stated to the model as undrawn instead of being reported as displayed.
 - `read` accepts a semicolon-delimited list of internal resources (`skill://demo/one.md;skill://demo/two.md`), the same list form `grep` and `glob` take, and returns one section per entry.
 - A ChatGPT OAuth (Codex) session compacts server-side via the Responses compaction endpoint, preserving encrypted reasoning state.
+- Eval kernels gain `kv`, a bounded JSON store under the session's artifacts directory that survives kernel resets and is shared between JavaScript and Python without cross-session filename collisions or lost concurrent updates, and `defs()`, which lists the names user code has defined in the kernel.
+- Every supervised process termination records which component ended it and why, with distinct attribution for each path (operator stop, signal, restart, broker shutdown, idle reaper, OS signal, broker recovery, launch failure, external signal, and natural exit); `launch list` output shows the lifetime owning condition and retained completion records with exit codes, reasons, and output tails, queryable after the name is reused and across broker restarts.
 - Added Command Code API-key login through the Studio Provider page, with validation against its Provider API, and Nous Research Portal OAuth device login with rotating refresh tokens and short-lived inference JWTs.
 - `explain(error)` in `@veyyon/ai/error/flags` returns the classification id together with the names of the rules that produced it, and every classification rule states a name.
 - Added the Command Code provider catalog, with its documented coding flagships as the offline seed and credentialed discovery for the wider Provider API list.
@@ -32,6 +35,7 @@
 - The debug log records which classification rules decided a failed turn's retry, next to the classified kind, so a retry nobody expected is diagnosed from the log instead of by re-reading the provider's sentence.
 - The browser tab worker and supervisor state why each teardown step and each optional probe discards its failure; behavior is unchanged.
 - The browser tab worker and supervisor reach `bestEffort` and `optionalResult` through `@veyyon/utils/discarded-fault` rather than the package barrel; behavior is unchanged.
+- Superseded and useless tool results are now pruned as a batch whose combined size pays for the prompt-cache rewrite it forces, instead of only when a single result sits within 8,000 tokens of the end of the conversation.
 - The Anthropic provider reads its endpoint, credential placement, rejected betas and retry policy from the catalog's wire-capability table instead of comparing provider ids at seventeen call sites.
 - A message that names a dead socket reads the same everywhere: `namesDeadSocket` in `@veyyon/ai/error/flags` is the one list of errnos and phrases, and `ENETUNREACH`, `EHOSTUNREACH` and `EAI_AGAIN` now count as transient transport failures like the rest of them.
 - `MNEMOPI_NO_EMBEDDINGS=0`, `false`, `no` or `off` now leaves embeddings on everywhere instead of disabling them on the API path.
@@ -42,12 +46,22 @@
 
 ### Fixed
 
+- A completed background job now fills its still-pending originating tool call instead of starting an unrelated recap turn after an interruption, including when zero retention is configured or foreground completion races background delivery.
+- When every summarizer candidate refuses, automatic compaction now parks the run (or drains already-queued input once) instead of reporting that nothing happened and looping. A successful local rescue retries without restoring the failed overflow or truncated assistant turn; idle compaction stays silent.
+- Agent transcript headers and roster rows share terminal, approval-blocked, and peer-waiting status precedence, so interrupted agents settle red and untyped agents render without a dangling separator.
+- `/agents` keeps a parked subagent focused, preserves its reconstructed assistant messages, tool calls, and results, reattaches a revived session, and rejects stale revival, removal, scope, and rapid-focus races instead of switching to the wrong transcript.
+- IRC broadcasts no longer wake completed idle peers; direct messages still wake the addressed peer.
+- ImageMagick pixel caches used by proof capture and HD demo scripts stay inside an owned scoped directory that the parent removes after child failure without deleting concurrent or inherited unrelated directories.
 - An indented row inside a tool block keeps its indent when it wraps at a narrow width, instead of continuing at the block's left edge.
 - A colour or title escape sequence a command writes in two pieces no longer leaves part of itself in tool output: the sink holds a sequence its chunk ended inside until the piece that finishes it arrives, and drops one the stream never completes.
 - The `compaction.remote` setting description documents that server-side compaction applies to supported OpenAI, Azure OpenAI, and ChatGPT Codex Responses models.
 - Fixed OpenAI server-side compaction requests omitting the `Authorization` header when constructing headers from request setup.
 - Supported server-side compaction on the ChatGPT Codex backend with OAuth credential and turn identity headers.
 - A wrapped line now continues under the indent its first row opened at, so an indented row no longer reads as a new top-level row at a narrow width.
+- Side requests derive a stable conversation ID per oneshot kind, preventing compaction, handoff, and branch summaries from overwriting live Cursor and Devin conversation state.
+- Aborting while paused rejects the pause wait and prevents the agent loop from starting another provider turn or paused tool.
+- API option mapping preserves side-request conversation IDs, preventing Cursor and Devin requests from falling back to the live session ID.
+- Cursor turns fail immediately when an asynchronous exec-server handler fails; malformed grep line or count values and oversized Connect frames fail before protobuf or buffer exhaustion; and success waits for queued handlers and gRPC trailers so quota and availability statuses are preserved.
 - `splitTrailingPartialEscape` lets a streaming reader hold back an escape sequence a chunk ended inside, so a sequence divided across two reads is stripped whole instead of losing its head and leaking its tail as text.
 - `discarded-fault.ts`: `bestEffort` and `optionalResult` state which contract discarded a promise's failure, one for a step nobody waits on and one for a probe whose failure is the answer, each taking a mandatory reason.
 

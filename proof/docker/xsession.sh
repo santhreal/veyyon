@@ -18,7 +18,19 @@ H="${SCENE_HEIGHT:-1000}"
 FPS="${SCENE_FPS:-30}"
 OUT="/out"
 mkdir -p "${OUT}"
+# magick (backdrop) and import (stills) leave magick-* in /tmp when killed.
+# shellcheck source=proof/docker/magick-tmpdir.sh
+source "$(cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)/magick-tmpdir.sh"
+magick_tmpdir_scope /tmp
 
+cleanup() {
+	trap - EXIT
+	[ -n "${FFMPEG_PID:-}" ] && { kill -INT "${FFMPEG_PID}" 2>/dev/null || true; wait "${FFMPEG_PID}" 2>/dev/null || true; FFMPEG_PID=; }
+	[ -n "${KITTY_PID:-}" ] && { kill "${KITTY_PID}" 2>/dev/null || true; KITTY_PID=; }
+	[ -n "${XVFB_PID:-}" ] && { kill "${XVFB_PID}" 2>/dev/null || true; XVFB_PID=; }
+	magick_tmpdir_release
+}
+trap cleanup EXIT
 # COMPOSITE and RENDER are what a compositor needs; Xvfb offers them only when
 # they are asked for, and picom without them starts, stays alive, and never
 # claims the manager selection, which reads exactly like a theme that did not
@@ -314,14 +326,7 @@ FFMPEG_PID=$!
 rm -f "${OUT}/${NAME}-marks.tsv"
 export SCENE_T0="$(date +%s%3N)"
 
-cleanup() {
-	kill -INT "${FFMPEG_PID}" 2>/dev/null || true
-	wait "${FFMPEG_PID}" 2>/dev/null || true
-	kill "${KITTY_PID}" 2>/dev/null || true
-	kill "${XVFB_PID}" 2>/dev/null || true
-}
-trap cleanup EXIT
-
+# Clean up processes and temporary files on exit via trap.
 export SCENE_NAME="${NAME}"
 export SCENE_WINDOW="${WINDOW}"
 export SCENE_OUT="${OUT}"
@@ -331,9 +336,10 @@ source "${SCENE_LIB:-/repo/proof/scenes/lib.sh}"
 source "${SCENE}"
 
 sleep 1
-cleanup
-trap - EXIT
-
+# Stop recording so the mp4 is finalised before gif conversion
+[ -n "${FFMPEG_PID:-}" ] && { kill -INT "${FFMPEG_PID}" 2>/dev/null || true; wait "${FFMPEG_PID}" 2>/dev/null || true; FFMPEG_PID=; }
+[ -n "${KITTY_PID:-}" ] && { kill "${KITTY_PID}" 2>/dev/null || true; KITTY_PID=; }
+[ -n "${XVFB_PID:-}" ] && { kill "${XVFB_PID}" 2>/dev/null || true; XVFB_PID=; }
 # A GIF of the same recording, for a page that has to open in a browser without a
 # video codec argument. The palette pass is what keeps the terminal's greys from
 # banding.

@@ -264,7 +264,17 @@ WORK="$(mktemp -d "${WORK_BASE}/veyyon-hd-demo.XXXXXX")"
 # already taken, so a missing publishing tool cost the whole recording rather than the last
 # step of it. On success there is nothing left worth keeping: every frame has been copied
 # into proof/captures and resampled into assets.
-trap 'if [ "$?" -eq 0 ] && [ "${REHEARSAL}" -eq 0 ]; then rm -rf "${WORK}"; else echo "record-hd-demo.sh: kept ${WORK}" >&2; fi' EXIT
+cleanup() {
+	local code=$?
+	trap - EXIT
+	type magick_tmpdir_release >/dev/null 2>&1 && magick_tmpdir_release 2>/dev/null || true
+	if [ "${code}" -eq 0 ] && [ "${REHEARSAL:-0}" -eq 0 ]; then
+		rm -rf "${WORK}"
+	else
+		echo "record-hd-demo.sh: kept ${WORK}" >&2
+	fi
+}
+trap cleanup EXIT
 
 # The same question the take asks, asked in one second: can the container write here?
 # shellcheck source=proof/docker/recorder-image.sh
@@ -289,6 +299,12 @@ else
 	echo "record-hd-demo.sh: no ImageMagick (magick or convert) on PATH" >&2
 	exit 2
 fi
+# ImageMagick 6 writes magick-* pixel-cache files under MAGICK_TMPDIR and leaves
+# them on SIGKILL. Scope them under WORK so they never land in /tmp; the EXIT
+# trap already deletes WORK on success, and a kept failure directory is bounded.
+# shellcheck source=proof/docker/magick-tmpdir.sh
+source "${REPO_ROOT}/proof/docker/magick-tmpdir.sh"
+magick_tmpdir_scope "${WORK}"
 
 REQUIRED_TOOLS=(docker)
 if [[ "${REHEARSAL}" -eq 0 ]]; then

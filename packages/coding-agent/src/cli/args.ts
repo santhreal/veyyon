@@ -440,7 +440,7 @@ const BUILTIN_TOOL_HELP: Record<BuiltinToolName, string> = {
 	lsp: "Query LSP (language server) for diagnostics, hover info, and references",
 	manage_skill: "Create, update, or delete an isolated managed skill",
 	memory_edit: "Update, forget, or invalidate Mnemopi memories",
-	read: "Read files, directories, archives, documents, images, and URLs",
+	read: "Read files, directories (optionally bounded by depth/limit), archives, documents, images, and URLs",
 	recall: "Search memory for relevant prior context",
 	reflect: "Synthesize an answer from long-term memory",
 	retain: "Store important facts in long-term memory",
