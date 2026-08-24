@@ -2,15 +2,9 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import {
-	bestEffort,
-	errorMessage,
-	isTimeoutError,
-	optionalResult,
-	postmortem,
-	Snowflake,
-	untilAborted,
-} from "@veyyon/utils";
+import { errorMessage, isTimeoutError, postmortem, Snowflake, untilAborted } from "@veyyon/utils";
+// The owner, not the barrel: this module reaches the two discard contracts and nothing else.
+import { bestEffort, optionalResult } from "@veyyon/utils/discarded-fault";
 import type { HTMLElement } from "linkedom";
 import type {
 	Browser,
