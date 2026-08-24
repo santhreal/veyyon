@@ -178,8 +178,15 @@ export function embeddingsViaApi(env: Env = process.env): boolean {
 	return envTruthy("MNEMOPI_EMBEDDINGS_VIA_API", env);
 }
 
+/**
+ * `MNEMOPI_NO_EMBEDDINGS`, read the way every other boolean here is read: a
+ * truthy value turns embeddings off, and `0`, `false`, `no` or `off` leaves them
+ * on. Any non-empty value used to disable them through this reader while the
+ * embedder's own copy used the truthy table, so `MNEMOPI_NO_EMBEDDINGS=0` turned
+ * the API path off and the local path on.
+ */
 export function embeddingsDisabled(env: Env = process.env): boolean {
-	return envString("MNEMOPI_NO_EMBEDDINGS", "", env) !== "";
+	return envTruthy("MNEMOPI_NO_EMBEDDINGS", env);
 }
 
 /**
@@ -461,6 +468,24 @@ export function llmEnabled(env: Env = process.env): boolean {
 
 export function llmMaxTokens(env: Env = process.env): number {
 	return envInt("MNEMOPI_LLM_MAX_TOKENS", 2048, env);
+}
+
+/** `MNEMOPI_FORCE_LOCAL`: keep extraction on the local tier even when a remote endpoint is configured. */
+export function forceLocalLlm(env: Env = process.env): boolean {
+	return envBool("MNEMOPI_FORCE_LOCAL", false, env);
+}
+
+/** `MNEMOPI_EXTRACTION_PROMPT`: replaces the bundled extraction template when set. */
+export function extractionPromptOverride(env: Env = process.env): string {
+	return envString("MNEMOPI_EXTRACTION_PROMPT", "", env);
+}
+
+/** The model the cloud extraction tier asks for when nothing names another one. */
+export const BUNDLED_EXTRACTION_MODEL = "google/gemini-2.5-flash";
+
+/** `MNEMOPI_EXTRACTION_MODEL`: the model the cloud extraction tier asks for first. */
+export function extractionModel(env: Env = process.env): string {
+	return envString("MNEMOPI_EXTRACTION_MODEL", BUNDLED_EXTRACTION_MODEL, env);
 }
 
 export function llmThreads(env: Env = process.env): number {

@@ -123,15 +123,15 @@ export class RecallDiagnostics {
 
 let singleton: RecallDiagnostics | undefined;
 
-export function getDiagnostics(): RecallDiagnostics {
+export function recallDiagnostics(): RecallDiagnostics {
 	if (singleton === undefined) singleton = new RecallDiagnostics();
 	return singleton;
 }
 export function getRecallDiagnostics(): RecallDiagnosticsSnapshot {
-	return getDiagnostics().snapshot();
+	return recallDiagnostics().snapshot();
 }
 export function resetRecallDiagnostics(): void {
-	getDiagnostics().reset();
+	recallDiagnostics().reset();
 }
 export function explainRecallDiagnostics(snapshot: RecallDiagnosticsSnapshot): string[] {
 	const explanations: string[] = [];
