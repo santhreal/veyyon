@@ -10791,7 +10791,9 @@ export class AgentSession {
 		// re-enables advisor auto-resume that a prior user interrupt suppressed.
 		// Agent-initiated synthetic prompts (auto-continue, plan, reminders) do not.
 		if (options?.userInitiated ?? !options?.synthetic) {
-			this.#verificationEvidence.startUserTurn();
+			this.#verificationEvidence.startUserTurn({
+				preservePendingCodeReview: this.settings.get("edit.critiqueCodeMutations"),
+			});
 			this.#advisorAutoResumeSuppressed = false;
 			this.#planModeReminderCount = 0;
 			this.#planModeReminderAwaitingProgress = false;
@@ -14862,9 +14864,7 @@ export class AgentSession {
 
 	#enforceCodeReviewBeforeFinalize(): boolean {
 		if (this.#isSubagent) return false;
-		const isCritiqueEnabled =
-			this.settings.get("edit.critiqueCodeMutations") || this.settings.get("session.critiqueCodeMutations");
-		if (!isCritiqueEnabled) return false;
+		if (!this.settings.get("edit.critiqueCodeMutations")) return false;
 		const reminder = this.#verificationEvidence.takeCodeReviewReminder();
 		if (!reminder) return false;
 		const reminderMessage: CustomMessage = {

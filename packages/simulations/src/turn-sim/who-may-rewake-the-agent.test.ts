@@ -263,6 +263,38 @@ describe("every settle continuation route defers to a question", () => {
 			ROUTE_RIGS[route].assertHeld?.();
 		});
 	}
+
+	it("delivers a held code review after the user answers", async () => {
+		sim = await createSimulation({
+			settings: {
+				"retry.enabled": false,
+				"edit.critiqueCodeMutations": true,
+			},
+			tools: ROUTE_RIGS["code-review"].tools,
+			script: scriptTurns(
+				...(ROUTE_RIGS["code-review"].lead ?? []),
+				turn => {
+					turn.text(QUESTION_REPLY);
+					turn.finish();
+				},
+				turn => {
+					turn.text(STATEMENT_REPLY);
+					turn.finish();
+				},
+				turn => {
+					turn.text(QUESTION_REPLY);
+					turn.finish();
+				},
+			),
+		});
+
+		await sim.session.prompt("change both files");
+		expect(sim.providerCalls()).toBe(2);
+
+		await sim.session.prompt("use the first approach");
+		expect(sim.providerCalls()).toBe(4);
+		expect(sim.session.isStreaming).toBe(false);
+	});
 });
 
 describe("all routes armed at once", () => {

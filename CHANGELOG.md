@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- `edit.critiqueCodeMutations` prompts a bounded self-review before finalization after one turn modifies at least two distinct code files.
+
 ### Changed
 
 - The vibe screens, the image-inspection call and an LSP hover code block draw no border of their own inside a tool block, so a block keeps one left edge; a tree connector remains only where a row belongs to the row above it, in the eval value tree, the grep line gutter, the job tree and the LSP reference tree.
@@ -12,7 +16,6 @@
 
 ### Added
 
-- `edit.critiqueCodeMutations` (and `session.critiqueCodeMutations`) enables post-edit code review reminders before turn finalization when two or more distinct code files are modified in a single turn.
 - The HD recorder resolves every binary a take will need before it records one frame: docker, bun for the scene check, and ffmpeg and python3 for the publish chain, with ImageMagick accepted under either of its two names and bun looked for at `~/.bun/bin/bun` when a non-login ssh shell does not carry it. A publish tool first called after the recording is a take lost to a PATH difference; a rehearsal, which publishes nothing, needs only docker.
 - `bun scripts/verify-scene.ts <scene>` checks a capture scene without recording it: every string the scene waits for must be produced by the prompt it submits, the product's own source, the sandbox seed, or a line the scene types, and anything else is declared in the scene with a `# needle-source:` line. A guard nothing produces does not fail fast — it waits out its timeout and the publish step then leaves the previous take's frame under that name. The HD recorder runs it as a preflight, refuses an endpoint that is not on the recording host, refuses a model row the server does not serve, and writes `<scene>-model.txt` beside the frames naming the row, endpoint and host the take was driven by. Two guards in the hero scene were already stale: the todo board carries no count in its header, and "Status: complete" is only drawn in a goal details panel the scene never opens.
 - `veyyon trust` and `/trust` decide what a project may run: bare reports, `approve` records the files exactly as they are now, `--deny`/`deny` remembers a refusal so the next launch does not ask again, `--forget`/`forget` drops the decision, and a named path decides one file — which is how a refusal that names a file the scan does not list gets answered without leaving the session. Decisions live in `<agent dir>/project-trust.json`, keyed by the symlink-resolved project root, so a symlink to a project is not a second identity; a store from another version, or one whose records are malformed, is discarded rather than half-believed.

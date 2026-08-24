@@ -1,13 +1,25 @@
+import * as path from "node:path";
 import type { AgentToolResult } from "@veyyon/agent-core";
 import { collapseWhitespace, prompt } from "@veyyon/utils";
 import { sessionPrompts } from "../prompts/session/rows";
 
-const MUTATION_TOOLS: Record<string, true> = { edit: true, write: true, ast_edit: true };
+export const MUTATION_TOOL_NAMES = ["edit", "write", "ast_edit"] as const;
+type MutationToolName = (typeof MUTATION_TOOL_NAMES)[number];
+const MUTATION_TOOLS = new Set<string>(MUTATION_TOOL_NAMES);
 const PROOF_TOOLS: Record<string, true> = { bash: true, eval: true, debug: true, browser: true };
 const MAX_EVIDENCE = 32;
 const MAX_PENDING_CALLS = 64;
 const MAX_PATHS_PER_MUTATION = 12;
+const MAX_CODE_REVIEW_PATHS = 24;
 const MAX_TEXT_LENGTH = 240;
+
+function isMutationToolName(toolName: string): toolName is MutationToolName {
+	return MUTATION_TOOLS.has(toolName);
+}
+
+function unreachableMutationTool(toolName: never): never {
+	throw new Error(`Unhandled mutation tool: ${toolName}`);
+}
 
 export const VERIFICATION_EVIDENCE_REMINDER_TYPE = "verification-evidence-reminder";
 export const CODE_REVIEW_REMINDER_TYPE = "code-review-reminder";
@@ -25,6 +37,32 @@ const NON_CODE_EXTENSIONS: Record<string, true> = {
 	".asciidoc": true,
 	".org": true,
 	".log": true,
+	".7z": true,
+	".avi": true,
+	".bmp": true,
+	".db": true,
+	".doc": true,
+	".docx": true,
+	".epub": true,
+	".gif": true,
+	".gz": true,
+	".ico": true,
+	".jpeg": true,
+	".jpg": true,
+	".mov": true,
+	".mp3": true,
+	".mp4": true,
+	".pdf": true,
+	".png": true,
+	".rar": true,
+	".rtf": true,
+	".sqlite": true,
+	".sqlite3": true,
+	".tar": true,
+	".tgz": true,
+	".wav": true,
+	".webp": true,
+	".zip": true,
 };
 
 const NON_CODE_FILENAMES: Record<string, true> = {
@@ -56,7 +94,7 @@ export function isCodeFile(filePath: string): boolean {
 }
 export interface MutationEvidence {
 	sequence: number;
-	toolName: "edit" | "write" | "ast_edit";
+	toolName: MutationToolName;
 	paths: readonly string[];
 }
 
@@ -73,6 +111,7 @@ export interface VerificationLedgerSnapshot {
 	proofs: readonly ProofEvidence[];
 	intervenedThisTurn: boolean;
 	intervenedCodeReviewThisTurn?: boolean;
+	codeReviewStartedAtSequence?: number;
 	turnStartedAtSequence: number;
 }
 
@@ -130,55 +169,114 @@ function summarizeProofCall(toolName: string, args: unknown, intent?: string): s
 	return `${toolName} call`;
 }
 
-function uniquePaths(values: unknown[]): string[] {
+function normalizeMutationPath(value: unknown, cwd?: string): string | undefined {
+	if (typeof value !== "string") return undefined;
+	const rawPath = boundedText(value).replace(/\\/g, "/");
+	if (rawPath.length === 0) return undefined;
+	const hasRoot = rawPath.startsWith("/") || /^[A-Za-z]:\//.test(rawPath) || rawPath.startsWith("//");
+	if (!hasRoot && cwd) {
+		return path.posix.normalize(`${cwd.replace(/\\/g, "/").replace(/\/+$/, "")}/${rawPath}`);
+	}
+	return path.posix.normalize(rawPath);
+}
+
+function pathIdentity(filePath: string): string {
+	return process.platform === "win32" || /^[A-Za-z]:\//.test(filePath) || filePath.startsWith("//")
+		? filePath.toLowerCase()
+		: filePath;
+}
+
+function uniquePaths(values: unknown[], cwd?: string): string[] {
 	const paths: string[] = [];
 	const seen = new Set<string>();
 	for (const value of values) {
-		if (typeof value !== "string") continue;
-		const path = boundedText(value);
-		if (path.length === 0 || seen.has(path)) continue;
-		seen.add(path);
-		paths.push(path);
+		const normalized = normalizeMutationPath(value, cwd);
+		if (!normalized) continue;
+		const identity = pathIdentity(normalized);
+		if (seen.has(identity)) continue;
+		seen.add(identity);
+		paths.push(normalized);
 		if (paths.length === MAX_PATHS_PER_MUTATION) break;
 	}
 	return paths;
 }
 
-function mutationFromResult(toolName: string, detailsValue: unknown): Omit<MutationEvidence, "sequence"> | undefined {
+function mutationFromResult(
+	toolName: string,
+	detailsValue: unknown,
+	resultFailed: boolean,
+): Omit<MutationEvidence, "sequence"> | undefined {
 	let effectiveTool = toolName;
 	let details = record(detailsValue);
 	if (toolName === "resolve" && details?.action === "apply" && details.sourceToolName === "ast_edit") {
 		effectiveTool = "ast_edit";
 		details = record(details.sourceResultDetails);
 	}
-	if (!MUTATION_TOOLS[effectiveTool] || !details) return undefined;
+	if (!isMutationToolName(effectiveTool) || !details) return undefined;
 
-	let paths: string[];
-	if (effectiveTool === "edit") {
-		const perFileResults = Array.isArray(details.perFileResults) ? details.perFileResults : [];
-		paths = uniquePaths([
-			details.path,
-			details.sourcePath,
-			...perFileResults.flatMap(result => {
+	switch (effectiveTool) {
+		case "edit": {
+			const perFileResults = Array.isArray(details.perFileResults) ? details.perFileResults : [];
+			const successfulPerFilePaths = perFileResults.flatMap(result => {
 				const perFile = record(result);
-				return perFile ? [perFile.path, perFile.sourcePath] : [];
-			}),
-		]);
-	} else if (effectiveTool === "write") {
-		paths = uniquePaths([details.resolvedPath]);
-	} else {
-		if (details.applied !== true || typeof details.totalReplacements !== "number" || details.totalReplacements <= 0) {
-			return undefined;
+				return perFile && perFile.isError !== true ? [perFile.path, perFile.sourcePath] : [];
+			});
+			const paths = uniquePaths(
+				resultFailed ? successfulPerFilePaths : [details.path, details.sourcePath, ...successfulPerFilePaths],
+			);
+			return paths.length > 0 ? { toolName: effectiveTool, paths } : undefined;
 		}
-		paths = uniquePaths(Array.isArray(details.files) ? details.files : []);
+		case "write": {
+			if (resultFailed) return undefined;
+			const paths = uniquePaths([details.resolvedPath]);
+			return paths.length > 0 ? { toolName: effectiveTool, paths } : undefined;
+		}
+		case "ast_edit": {
+			if (
+				details.applied !== true ||
+				typeof details.totalReplacements !== "number" ||
+				details.totalReplacements <= 0
+			) {
+				return undefined;
+			}
+			const paths = uniquePaths(Array.isArray(details.files) ? details.files : [], stringValue(details.cwd));
+			return paths.length > 0 ? { toolName: effectiveTool, paths } : undefined;
+		}
+		default:
+			return unreachableMutationTool(effectiveTool);
 	}
-	if (paths.length === 0) return undefined;
-	return { toolName: effectiveTool as MutationEvidence["toolName"], paths };
 }
 
 function appendBounded<T>(items: T[], item: T): void {
 	items.push(item);
 	if (items.length > MAX_EVIDENCE) items.splice(0, items.length - MAX_EVIDENCE);
+}
+
+interface CodeReviewPathSelection {
+	paths: string[];
+	total: number;
+}
+
+function selectCodeReviewPaths(mutations: readonly MutationEvidence[], afterSequence: number): CodeReviewPathSelection {
+	const paths: string[] = [];
+	const seen = new Set<string>();
+	let total = 0;
+	for (const mutation of mutations) {
+		if (mutation.sequence <= afterSequence) continue;
+		for (const filePath of mutation.paths) {
+			if (!isCodeFile(filePath)) continue;
+			const identity = pathIdentity(filePath);
+			if (seen.has(identity)) continue;
+			seen.add(identity);
+			total += 1;
+			if (paths.length < MAX_CODE_REVIEW_PATHS) paths.push(filePath);
+		}
+	}
+	return { paths, total };
+}
+
+function escapePromptPath(filePath: string): string {
+	return filePath.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 }
 
 /**
@@ -191,14 +289,22 @@ export class VerificationEvidenceLedger {
 	#intervenedThisTurn = false;
 	#intervenedCodeReviewThisTurn = false;
 	#turnStartedAtSequence = 0;
+	#codeReviewStartedAtSequence = 0;
 	readonly #mutations: MutationEvidence[] = [];
 	readonly #proofs: ProofEvidence[] = [];
 	readonly #pendingProofCalls = new Map<string, ToolStartEvidence>();
 
-	startUserTurn(): void {
+	startUserTurn(options?: { preservePendingCodeReview?: boolean }): void {
+		const pendingCodeReview =
+			options?.preservePendingCodeReview === true &&
+			!this.#intervenedCodeReviewThisTurn &&
+			selectCodeReviewPaths(this.#mutations, this.#codeReviewStartedAtSequence).total >= 2;
 		this.#intervenedThisTurn = false;
-		this.#intervenedCodeReviewThisTurn = false;
 		this.#turnStartedAtSequence = this.#sequence;
+		if (!pendingCodeReview) {
+			this.#intervenedCodeReviewThisTurn = false;
+			this.#codeReviewStartedAtSequence = this.#sequence;
+		}
 	}
 
 	restore(snapshot: VerificationLedgerSnapshot): void {
@@ -221,6 +327,10 @@ export class VerificationEvidenceLedger {
 		this.#intervenedThisTurn = snapshot.intervenedThisTurn;
 		this.#intervenedCodeReviewThisTurn = snapshot.intervenedCodeReviewThisTurn ?? false;
 		this.#turnStartedAtSequence = Math.min(snapshot.turnStartedAtSequence, this.#sequence);
+		this.#codeReviewStartedAtSequence = Math.min(
+			snapshot.codeReviewStartedAtSequence ?? snapshot.turnStartedAtSequence,
+			this.#sequence,
+		);
 	}
 
 	recordToolStart(event: ToolStart): void {
@@ -240,13 +350,13 @@ export class VerificationEvidenceLedger {
 	recordToolEnd(event: ToolEnd): void {
 		const pendingProof = this.#pendingProofCalls.get(event.toolCallId);
 		this.#pendingProofCalls.delete(event.toolCallId);
-		if (event.isError === true || event.result.isError === true) return;
-
-		const mutation = mutationFromResult(event.toolName, event.result.details);
+		const resultFailed = event.isError === true || event.result.isError === true;
+		const mutation = mutationFromResult(event.toolName, event.result.details, resultFailed);
 		if (mutation) {
 			appendBounded(this.#mutations, { ...mutation, sequence: ++this.#sequence });
 			return;
 		}
+		if (resultFailed) return;
 		if (
 			!pendingProof ||
 			pendingProof.toolName !== event.toolName ||
@@ -275,35 +385,26 @@ export class VerificationEvidenceLedger {
 		this.#intervenedThisTurn = true;
 		return prompt.render(sessionPrompts["session/verification-evidence-reminder"].text, {
 			toolName: mutation.toolName,
-			pathsMarkdown: mutation.paths.map(path => `- ${path}`).join("\n"),
+			pathsMarkdown: mutation.paths.map(filePath => `- ${escapePromptPath(filePath)}`).join("\n"),
 		});
 	}
 
 	/**
-	 * Returns a code review reminder when multi-file (>= 2) code mutations occurred this turn.
-	 * Triggered at most once per user turn.
+	 * Returns a code review reminder when at least two distinct code files remain
+	 * unreviewed. A pending reminder can span a user answer, but a one-file turn
+	 * never combines with a later independent turn.
 	 */
 	takeCodeReviewReminder(): string | undefined {
 		if (this.#intervenedCodeReviewThisTurn) return undefined;
-		const turnMutations = this.#mutations.filter(m => m.sequence > this.#turnStartedAtSequence);
-		if (turnMutations.length === 0) return undefined;
-
-		const distinctCodePaths: string[] = [];
-		const seen = new Set<string>();
-		for (const mutation of turnMutations) {
-			for (const path of mutation.paths) {
-				if (isCodeFile(path) && !seen.has(path)) {
-					seen.add(path);
-					distinctCodePaths.push(path);
-				}
-			}
-		}
-
-		if (distinctCodePaths.length < 2) return undefined;
+		const selection = selectCodeReviewPaths(this.#mutations, this.#codeReviewStartedAtSequence);
+		if (selection.total < 2) return undefined;
 
 		this.#intervenedCodeReviewThisTurn = true;
+		const omitted = selection.total - selection.paths.length;
+		const pathLines = selection.paths.map(filePath => `- ${escapePromptPath(filePath)}`);
+		if (omitted > 0) pathLines.push(`- … ${omitted} more code file${omitted === 1 ? "" : "s"}`);
 		return prompt.render(sessionPrompts["session/code-review-reminder"].text, {
-			pathsMarkdown: distinctCodePaths.map(path => `- ${path}`).join("\n"),
+			pathsMarkdown: pathLines.join("\n"),
 		});
 	}
 
@@ -313,6 +414,7 @@ export class VerificationEvidenceLedger {
 			proofs: this.#proofs.map(item => ({ ...item })),
 			intervenedThisTurn: this.#intervenedThisTurn,
 			intervenedCodeReviewThisTurn: this.#intervenedCodeReviewThisTurn,
+			codeReviewStartedAtSequence: this.#codeReviewStartedAtSequence,
 			turnStartedAtSequence: this.#turnStartedAtSequence,
 		};
 	}
