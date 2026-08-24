@@ -24,7 +24,7 @@
 
 - An indented row inside a tool block keeps its indent when it wraps at a narrow width, instead of continuing at the block's left edge.
 - A colour or title escape sequence a command writes in two pieces no longer leaves part of itself in tool output: the sink holds a sequence its chunk ended inside until the piece that finishes it arrives, and drops one the stream never completes.
-- The `compaction.remote` setting description documents that server-side compaction applies to supported OpenAI and Azure OpenAI Responses models, excluding ChatGPT Codex sessions which compact locally.
+- The `compaction.remote` setting description documents that server-side compaction applies to supported OpenAI, Azure OpenAI, and ChatGPT Codex Responses models.
 
 ## [1.2.0] - 2026-08-23
 
