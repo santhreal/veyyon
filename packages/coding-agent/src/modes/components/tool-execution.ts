@@ -6,6 +6,7 @@ import {
 	Container,
 	getImageDimensions,
 	Image,
+	type ImageFallbackReason,
 	ImageProtocol,
 	imageFallback,
 	type NativeScrollbackLiveRegion,
@@ -19,6 +20,7 @@ import { EDIT_MODE_STRATEGIES, type EditMode, type PerFileDiffPreview } from "..
 import { transitionsEnabled } from "../../modes/theme/shimmer";
 import type { Theme } from "../../modes/theme/theme";
 import { getThemeEpoch, theme } from "../../modes/theme/theme";
+import { recordImageDisplay } from "../../session/image-visibility";
 import { BASH_DEFAULT_PREVIEW_LINES } from "../../tools/bash";
 // From the renderer that owns the number, not from `tools/eval`, which is the tool that RUNS a cell: reading
 // a preview height should not instantiate the Python kernel machinery.
@@ -39,6 +41,7 @@ import {
 	formatStatusIcon,
 	replaceTabs,
 	resolveImageOptions,
+	shortenPath,
 	truncateToWidth,
 } from "../../tools/render-utils";
 import { type FirstResultViewportRepaint, toolRenderers } from "../../tools/renderers";
@@ -197,6 +200,12 @@ function getArgsWithStreamedTextInput(args: unknown): unknown {
 	if (typeof record.input === "string") return args;
 	const input = rawTextInputFromPartialJson(record.__partialJson);
 	return input === undefined ? args : { ...record, input };
+}
+
+/** One image this block will not draw, and why, so the row can state both. */
+interface ImagePlaceholder {
+	readonly block: { data?: string; mimeType?: string };
+	readonly reason: ImageFallbackReason;
 }
 
 /**
@@ -425,6 +434,14 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 	#editDiffDirty = false;
 	// Cached converted images for Kitty protocol (which requires PNG), keyed by index
 	#convertedImages: Map<number, { data: string; mimeType: string }> = new Map();
+	// Images whose conversion to PNG failed, keyed by the same index. A Kitty
+	// session draws only PNG, so a block in here can never be drawn and gets a
+	// placeholder rather than silence.
+	#imageConversionFailures: Set<number> = new Set();
+	// The call this block belongs to, so what the screen did with its pictures can
+	// be recorded against the tool result the model reads. Absent in a gallery
+	// render, which has no call.
+	#toolCallId?: string;
 	// Spinner animation for partial task results
 	#spinnerFrame?: number;
 	#spinnerInterval?: NodeJS.Timeout;
@@ -489,7 +506,7 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 		tool: AnyAgentTool | undefined,
 		ui: TUI,
 		cwd: string = getProjectDir(),
-		_toolCallId?: string,
+		toolCallId?: string,
 	) {
 		super();
 		this.#toolName = toolName;
@@ -503,6 +520,7 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 		this.#ui = ui;
 		this.#cwd = cwd;
 		this.#args = args;
+		this.#toolCallId = toolCallId;
 		this.#editMode = resolveEditModeForTool(toolName, tool);
 
 		// Always create both - contentBox for custom tools/bash/tools with renderers, contentText for other built-ins.
@@ -537,7 +555,8 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 		this.#schedulePreviewDiff();
 	}
 
-	updateArgs(args: unknown, _toolCallId?: string): void {
+	updateArgs(args: unknown, toolCallId?: string): void {
+		if (toolCallId) this.#toolCallId = toolCallId;
 		// Reference-equality short-circuit before any further work. Callers
 		// always allocate a new arg object on each streamed delta (see
 		// event-controller.ts and ui-helpers.ts), so a same-reference assignment
@@ -554,7 +573,8 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 	 * Signal that args are complete (tool is about to execute).
 	 * This triggers an immediate final diff computation for edit-like tools.
 	 */
-	setArgsComplete(_toolCallId?: string): void {
+	setArgsComplete(toolCallId?: string): void {
+		if (toolCallId) this.#toolCallId = toolCallId;
 		this.#argsComplete = true;
 		this.#updateSpinnerAnimation();
 		this.#schedulePreviewDiff();
@@ -672,8 +692,9 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 			isError?: boolean;
 		},
 		isPartial = false,
-		_toolCallId?: string,
+		toolCallId?: string,
 	): void {
+		if (toolCallId) this.#toolCallId = toolCallId;
 		// A detached task spawn keeps streaming progress snapshots after the
 		// block froze (left the transcript live region). Drop them: the rows are
 		// static gray history now, and repainting would rewrite rows the engine
@@ -722,6 +743,48 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 	}
 
 	/**
+	 * The file a placeholder row stands in for, so a user who cannot see the
+	 * picture can still open it. Taken from the result's resolved path when the
+	 * tool recorded one, otherwise from the path the call asked for.
+	 */
+	#imageSourceName(): string | undefined {
+		const details = this.#result?.details as { resolvedPath?: unknown; sourcePath?: unknown } | undefined;
+		const args = this.#args && typeof this.#args === "object" ? (this.#args as Record<string, unknown>) : undefined;
+		for (const candidate of [details?.resolvedPath, details?.sourcePath, args?.file_path, args?.path]) {
+			if (typeof candidate === "string" && candidate.trim().length > 0) return shortenPath(candidate);
+		}
+		return undefined;
+	}
+
+	/**
+	 * The rows that stand in for pictures this terminal will not draw: one per
+	 * image, naming the file, the media type, the pixel size and the cause, so a
+	 * user can tell which image is missing and why.
+	 */
+	#imagePlaceholderRows(placeholders: readonly ImagePlaceholder[]): string {
+		const filename = this.#imageSourceName();
+		return placeholders
+			.map(({ block, reason }) => {
+				// A block missing mimeType used to render "[Image: [undefined]]"
+				// through the old `any`-typed path; label it generically instead.
+				const mimeType = block.mimeType ?? "image";
+				const dimensions = block.data ? (getImageDimensions(block.data, mimeType) ?? undefined) : undefined;
+				return imageFallback({ mimeType, dimensions, filename, reason });
+			})
+			.join("\n");
+	}
+
+	/**
+	 * Tell the session what the screen did with one of this call's pictures, so
+	 * the tool result the model reads says the same thing the user is looking at.
+	 * A block with no call id — a gallery render, a probe — states nothing.
+	 */
+	#reportImageDisplay(index: number, fallback: ImageFallbackReason | undefined): void {
+		if (!this.#toolCallId) return;
+		recordImageDisplay(this.#toolCallId, index, fallback);
+	}
+
+	/**
 	 * Convert non-PNG images to PNG for Kitty graphics protocol.
 	 * Kitty requires PNG format (f=100), so JPEG/GIF/WebP won't display.
 	 */
@@ -738,6 +801,7 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 			// Skip if already PNG or already converted
 			if (img.mimeType === "image/png") continue;
 			if (this.#convertedImages.has(i)) continue;
+			if (this.#imageConversionFailures.has(i)) continue;
 
 			// Convert async - catch errors from processing
 			const index = i;
@@ -751,7 +815,13 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 					this.#ui.requestRender();
 				})
 				.catch(() => {
-					// Ignore conversion failures - display will use original image format
+					// A Kitty session draws only PNG, so a failed conversion means this
+					// picture will never appear: record it and let the rebuild place a
+					// row that says so rather than leaving the block silent.
+					this.#imageConversionFailures.add(index);
+					this.#displayInputVersion++;
+					this.#updateDisplay();
+					this.#ui.requestRender();
 				});
 		}
 	}
@@ -1499,32 +1569,63 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 
 		if (this.#result) {
 			const imageBlocks = this.#getAllImageBlocks();
+			const canDraw = Boolean(TERMINAL.imageProtocol) && this.#showImages;
+			const undrawable: ImagePlaceholder[] = [];
 
 			for (let i = 0; i < imageBlocks.length; i++) {
 				const img = imageBlocks[i];
-				if (TERMINAL.imageProtocol && this.#showImages && img.data && img.mimeType) {
-					// Use converted PNG for Kitty protocol if available
-					const converted = this.#convertedImages.get(i);
-					const imageData = converted?.data ?? img.data;
-					const imageMimeType = converted?.mimeType ?? img.mimeType;
-
-					// For Kitty, skip non-PNG images that haven't been converted yet
-					if (TERMINAL.imageProtocol === ImageProtocol.Kitty && imageMimeType !== "image/png") {
-						continue;
-					}
-
-					const spacer = new Spacer(1);
-					this.addChild(spacer);
-					this.#imageSpacers.push(spacer);
-					const imageComponent = new Image(
-						imageData,
-						imageMimeType,
-						{ fallbackColor: (s: string) => theme.fg("toolOutput", s) },
-						{ ...resolveImageOptions(), budget: this.#ui.imageBudget, imageKey: `te${this.#instanceId}:${i}` },
-					);
-					this.#imageComponents.push(imageComponent);
-					this.addChild(imageComponent);
+				if (!canDraw) {
+					const reason = TERMINAL.imageProtocol ? "images-off" : "no-protocol";
+					undrawable.push({ block: img, reason });
+					this.#reportImageDisplay(i, reason);
+					continue;
 				}
+				if (!img.data || !img.mimeType) continue;
+
+				// Use converted PNG for Kitty protocol if available
+				const converted = this.#convertedImages.get(i);
+				const imageData = converted?.data ?? img.data;
+				const imageMimeType = converted?.mimeType ?? img.mimeType;
+
+				// Kitty draws only PNG. A conversion still in flight will repaint this
+				// block when it lands, so it says nothing yet; one that failed never
+				// will, so it gets a row.
+				if (TERMINAL.imageProtocol === ImageProtocol.Kitty && imageMimeType !== "image/png") {
+					if (this.#imageConversionFailures.has(i)) {
+						undrawable.push({ block: img, reason: "unsupported-format" });
+						this.#reportImageDisplay(i, "unsupported-format");
+					}
+					continue;
+				}
+
+				const spacer = new Spacer(1);
+				this.addChild(spacer);
+				this.#imageSpacers.push(spacer);
+				// This picture is about to be drawn, so an earlier decision against it
+				// no longer holds; the component reports its own cause if the budget or
+				// the format stops it during the paint.
+				this.#reportImageDisplay(i, undefined);
+				const imageComponent = new Image(
+					imageData,
+					imageMimeType,
+					{ fallbackColor: (s: string) => theme.fg("toolOutput", s) },
+					{
+						...resolveImageOptions(),
+						budget: this.#ui.imageBudget,
+						imageKey: `te${this.#instanceId}:${i}`,
+						onDisplayed: fallback => this.#reportImageDisplay(i, fallback),
+					},
+				);
+				this.#imageComponents.push(imageComponent);
+				this.addChild(imageComponent);
+			}
+
+			// A picture the terminal cannot draw still has to appear as something:
+			// every renderer, custom or built-in, gets the row from here, so a tool
+			// that owns its result layout does not have to state it again.
+			if (undrawable.length > 0) {
+				const rows = this.#imagePlaceholderRows(undrawable);
+				this.#contentBox.addChild(this.#onRail(new Text(theme.fg("dim", rows), 0, 0)));
 			}
 		}
 
@@ -1635,28 +1736,16 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 		return context;
 	}
 
+	/**
+	 * The text a renderer-less result shows. Image blocks are not stated here:
+	 * `#rebuildDisplay` owns the placeholder row for every renderer, so a copy
+	 * here would print it twice.
+	 */
 	#getTextOutput(): string {
 		if (!this.#result) return "";
 
 		const textBlocks = this.#result.content?.filter(c => c.type === "text") || [];
-		const imageBlocks = this.#getAllImageBlocks();
-
-		let output = textBlocks.map(c => sanitizeWithOptionalSixelPassthrough(c.text || "", sanitizeText)).join("\n");
-
-		if (imageBlocks.length > 0 && (!TERMINAL.imageProtocol || !this.#showImages)) {
-			const imageIndicators = imageBlocks
-				.map(img => {
-					// A block missing mimeType used to render "[Image: [undefined]]"
-					// through the old `any`-typed path; label it generically instead.
-					const mimeType = img.mimeType ?? "image";
-					const dims = img.data ? (getImageDimensions(img.data, mimeType) ?? undefined) : undefined;
-					return imageFallback(mimeType, dims);
-				})
-				.join("\n");
-			output = output ? `${output}\n${imageIndicators}` : imageIndicators;
-		}
-
-		return output;
+		return textBlocks.map(c => sanitizeWithOptionalSixelPassthrough(c.text || "", sanitizeText)).join("\n");
 	}
 
 	/**

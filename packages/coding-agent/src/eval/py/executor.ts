@@ -198,7 +198,7 @@ async function startKernel(cwd: string, options: PythonExecutorOptions): Promise
 	requireRemainingTimeoutMs(options.deadlineMs);
 	return await PythonKernel.start({
 		cwd,
-		env: buildManagedKernelEnv(options),
+		env: buildManagedKernelEnv({ ...options, evalSessionId: options.sessionId }),
 		signal: options.signal,
 		deadlineMs: options.deadlineMs,
 		interpreter: options.interpreter,
@@ -360,7 +360,7 @@ async function executeWithKernel(
 		runIdPrefix: "py",
 		errorLogLabel: "Python",
 		cancelledErrorClass: PythonExecutionCancelledError,
-		buildKernelEnvPatch: buildManagedKernelEnvPatch,
+		buildKernelEnvPatch: opts => buildManagedKernelEnvPatch({ ...opts, evalSessionId: options?.sessionId }),
 		formatKernelTimeoutAnnotation,
 		formatTimeoutAnnotation,
 	});

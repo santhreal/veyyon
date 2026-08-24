@@ -143,3 +143,58 @@ export function declarersOfStringValue(modules: Iterable<DeclaringModule>, value
 export function stringConstantValue(source: string, name: string): string | undefined {
 	return stringConstantsIn(source).find(constant => constant.name === name)?.value;
 }
+
+/**
+ * `export function f`, `export const C`, `export class K`, `export type T`, `export enum E` — a name a
+ * module DECLARES and exports, as opposed to one it re-exports from somewhere else.
+ */
+const EXPORTED_DECLARATION_RE =
+	/(?:^|\n)[ \t]*export\s+(?:declare\s+)?(?:default\s+)?(?:async\s+)?(?:function\*?|const|let|var|class|interface|type|enum|abstract\s+class)\s+([A-Za-z_$][\w$]*)/g;
+
+/** `export { a, b as c }` with no `from`, which exports names declared in this module. */
+const LOCAL_EXPORT_CLAUSE_RE = /(?:^|\n)[ \t]*export\s+(?:type\s+)?\{([^}]*)\}\s*(?!\s*from)[;\n]/g;
+
+/**
+ * The names `source` declares and exports, in source order.
+ *
+ * The value census above answers "who declares this value". This answers "who declares this NAME", which
+ * is the other half of the same claim and was checked by matching the declaration's own bytes:
+ * `expect(owner).toMatch(/^export function parse\(/m)` passes on a comment that quotes the signature,
+ * fails on a reflow that moves the parameter list to the next line, and says nothing about a second
+ * module that declares the same name.
+ *
+ * A re-export (`export { x } from "./owner"`) is NOT a declaration and is excluded: the module that
+ * re-exports a name is the module that does not own it.
+ */
+export function exportedDeclarationsIn(source: string): string[] {
+	const code = withoutComments(source);
+	const found: string[] = [];
+	for (const match of code.matchAll(EXPORTED_DECLARATION_RE)) {
+		if (match[1]) found.push(match[1]);
+	}
+	for (const match of code.matchAll(LOCAL_EXPORT_CLAUSE_RE)) {
+		for (const entry of (match[1] ?? "").split(",")) {
+			const name = entry.trim().replace(/^type\s+/, "");
+			if (!name) continue;
+			// `a as b` exports `b`, which is the name a consumer imports.
+			const parts = name.split(/\s+as\s+/);
+			const exported = (parts.length > 1 ? parts[1] : parts[0])?.trim();
+			if (exported) found.push(exported);
+		}
+	}
+	return found;
+}
+
+/**
+ * Which modules declare `name`, in the order given, so a gate can assert the set by exact equality.
+ *
+ * The answer is a LIST rather than a boolean because the interesting failures are two owners and no
+ * owner, and a boolean per module turns both into a sequence of separate assertions that each pass.
+ */
+export function declarersOfName(modules: Iterable<DeclaringModule>, name: string): string[] {
+	const declarers: string[] = [];
+	for (const module of modules) {
+		if (exportedDeclarationsIn(module.source).includes(name)) declarers.push(module.file);
+	}
+	return declarers;
+}

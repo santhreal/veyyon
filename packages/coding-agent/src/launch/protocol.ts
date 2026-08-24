@@ -21,11 +21,12 @@ export const DAEMON_RUNTIME_DIR_ENV = "VEYYON_DAEMON_RUNTIME_DIR";
 export const DAEMON_IDLE_GRACE_ENV = "VEYYON_DAEMON_IDLE_GRACE_MS";
 
 /** Stable lifecycle states exposed by the launch tool. */
-export type DaemonState = "starting" | "running" | "ready" | "restarting" | "stopping" | "exited" | "failed";
+export const DAEMON_STATES = ["starting", "running", "ready", "restarting", "stopping", "exited", "failed"] as const;
+export type DaemonState = (typeof DAEMON_STATES)[number];
 
 /** Restart behavior applied after an unexpected daemon exit. */
-export type DaemonRestartPolicy = "no" | "on-failure" | "always";
-
+export const DAEMON_RESTART_POLICIES = ["no", "on-failure", "always"] as const;
+export type DaemonRestartPolicy = (typeof DAEMON_RESTART_POLICIES)[number];
 /** Readiness conditions; every configured condition must pass. */
 export interface DaemonReadySpec {
 	log?: string;
@@ -65,6 +66,8 @@ export interface DaemonSnapshot {
 	restartCount: number;
 	outputBytes: number;
 	owner?: string;
+	/** Which component ended the process; set on every terminal transition. */
+	terminatedBy?: DaemonTerminationOwner;
 	readyMatch?: string;
 	/** Readiness conditions still unmet while `state` is `starting`; absent once ready or without a ready spec. */
 	readyPending?: ("log" | "port")[];
@@ -73,7 +76,78 @@ export interface DaemonSnapshot {
 }
 
 /** Signals accepted by daemon input operations. */
-export type DaemonSignal = "SIGINT" | "SIGTERM" | "SIGHUP" | "SIGQUIT" | "SIGKILL";
+export const DAEMON_SIGNALS = ["SIGINT", "SIGTERM", "SIGHUP", "SIGQUIT", "SIGKILL"] as const;
+export type DaemonSignal = (typeof DAEMON_SIGNALS)[number];
+
+/**
+ * Every component that can end a supervised process, as a run-time array so a
+ * consumer can enumerate the paths instead of restating them.
+ *
+ * An unexplained death is indistinguishable from a crash, so every terminal
+ * transition names one of these owners plus a human reason:
+ * - `process-exit`: the process ended on its own (any exit code, or a
+ *   broker-side observation error); nothing in veyyon asked it to stop.
+ * - `external-signal`: a signal killed the process and NO veyyon component
+ *   sent one — the answer to "who SIGTERMed my browser?" being "not us",
+ *   which points at an OOM kill or another process.
+ * - `operator-stop`: `launch stop`.
+ * - `operator-restart`: `launch restart` stopped the previous generation.
+ * - `operator-signal`: `launch send signal=...`.
+ * - `broker-shutdown`: a client asked the broker to shut down, and it stopped
+ *   every non-detached daemon on the way out.
+ * - `idle-reaper`: the last veyyon client disconnected, no persistent daemon
+ *   or live project presence remained, and the idle grace elapsed — the
+ *   default that kills a non-persistent daemon when its last client exits.
+ * - `os-signal`: the broker process itself is exiting (OS signal or normal
+ *   process exit) and stopped its non-detached daemons first.
+ * - `broker-recovery`: a replacement broker found a non-detached daemon its
+ *   predecessor left running and terminated it.
+ * - `launch-failure`: the broker failed to spawn or attach the process.
+ *
+ * Adding a member here turns the termination-attribution suite red until the
+ * new path is driven and recorded; removing the recording for a member turns
+ * it red too.
+ */
+export const DAEMON_TERMINATION_OWNERS = [
+	"process-exit",
+	"external-signal",
+	"operator-stop",
+	"operator-restart",
+	"operator-signal",
+	"broker-shutdown",
+	"idle-reaper",
+	"os-signal",
+	"broker-recovery",
+	"launch-failure",
+] as const;
+
+/** The component responsible for a supervised process's termination. */
+export type DaemonTerminationOwner = (typeof DAEMON_TERMINATION_OWNERS)[number];
+
+/**
+ * The retained record of one completed daemon generation: what it was, how it
+ * ended, who ended it, and the tail of its output. Written to the per-project
+ * completions store when a daemon reaches a terminal state, so a finished
+ * finite job stays queryable after it leaves the active list and across
+ * broker restarts.
+ */
+export interface DaemonCompletionRecord {
+	name: string;
+	id: string;
+	/** The session that started the daemon, when the start named one. */
+	owner?: string;
+	terminatedBy: DaemonTerminationOwner;
+	exitReason?: string;
+	exitCode?: number;
+	signal?: string;
+	createdAt: number;
+	startedAt: number;
+	exitedAt: number;
+	restartCount: number;
+	outputBytes: number;
+	/** Sanitized tail of the daemon's captured output at termination. */
+	outputTail: string;
+}
 
 /** Typed broker operation sent over the authenticated socket. */
 export type DaemonOperation =
@@ -101,7 +175,7 @@ export type DaemonOperation =
 export type DaemonRpcResult =
 	| { op: "ping"; projectDir: string }
 	| { op: "start"; daemon: DaemonSnapshot; readyTimedOut: boolean }
-	| { op: "list"; daemons: DaemonSnapshot[] }
+	| { op: "list"; daemons: DaemonSnapshot[]; completions: DaemonCompletionRecord[] }
 	| {
 			op: "logs";
 			name: string;
@@ -187,22 +261,34 @@ function stringRecord(value: unknown, label: string): Record<string, string> {
 
 function daemonState(value: unknown): DaemonState {
 	const state = stringValue(value, "daemon state");
-	if (state === "starting" || state === "running" || state === "ready" || state === "restarting") return state;
-	if (state === "stopping" || state === "exited" || state === "failed") return state;
+	for (const known of DAEMON_STATES) {
+		if (known === state) return known;
+	}
 	throw new Error(`Unknown daemon state: ${state}`);
 }
 
 function restartPolicy(value: unknown): DaemonRestartPolicy {
 	const policy = stringValue(value, "restart policy");
-	if (policy === "no" || policy === "on-failure" || policy === "always") return policy;
+	for (const known of DAEMON_RESTART_POLICIES) {
+		if (known === policy) return known;
+	}
 	throw new Error(`Unknown restart policy: ${policy}`);
 }
 
 function daemonSignal(value: unknown): DaemonSignal {
 	const signal = stringValue(value, "signal");
-	if (signal === "SIGINT" || signal === "SIGTERM" || signal === "SIGHUP") return signal;
-	if (signal === "SIGQUIT" || signal === "SIGKILL") return signal;
+	for (const known of DAEMON_SIGNALS) {
+		if (known === signal) return known;
+	}
 	throw new Error(`Unknown daemon signal: ${signal}`);
+}
+
+function terminationOwner(value: unknown): DaemonTerminationOwner {
+	const owner = stringValue(value, "terminatedBy");
+	for (const known of DAEMON_TERMINATION_OWNERS) {
+		if (known === owner) return known;
+	}
+	throw new Error(`Unknown daemon termination owner: ${owner}`);
 }
 
 function readyPendingList(value: unknown): ("log" | "port")[] {
@@ -261,10 +347,31 @@ export function parseDaemonSnapshot(value: unknown): DaemonSnapshot {
 		restartCount: numberValue(source.restartCount, "daemon.restartCount"),
 		outputBytes: numberValue(source.outputBytes, "daemon.outputBytes"),
 		owner: optionalString(source.owner, "daemon.owner"),
+		terminatedBy: source.terminatedBy === undefined ? undefined : terminationOwner(source.terminatedBy),
 		readyMatch: optionalString(source.readyMatch, "daemon.readyMatch"),
 		readyPending: source.readyPending === undefined ? undefined : readyPendingList(source.readyPending),
 		persist: booleanValue(source.persist, "daemon.persist"),
 		detached: source.detached === undefined ? false : booleanValue(source.detached, "daemon.detached"),
+	};
+}
+
+/** Decode and validate one retained completion record. */
+export function parseDaemonCompletionRecord(value: unknown): DaemonCompletionRecord {
+	const source = record(value, "daemon completion");
+	return {
+		name: stringValue(source.name, "completion.name"),
+		id: stringValue(source.id, "completion.id"),
+		owner: optionalString(source.owner, "completion.owner"),
+		terminatedBy: terminationOwner(source.terminatedBy),
+		exitReason: optionalString(source.exitReason, "completion.exitReason"),
+		exitCode: optionalNumber(source.exitCode, "completion.exitCode"),
+		signal: optionalString(source.signal, "completion.signal"),
+		createdAt: numberValue(source.createdAt, "completion.createdAt"),
+		startedAt: numberValue(source.startedAt, "completion.startedAt"),
+		exitedAt: numberValue(source.exitedAt, "completion.exitedAt"),
+		restartCount: numberValue(source.restartCount, "completion.restartCount"),
+		outputBytes: numberValue(source.outputBytes, "completion.outputBytes"),
+		outputTail: rawString(source.outputTail, "completion.outputTail"),
 	};
 }
 
@@ -358,7 +465,15 @@ export function parseDaemonRpcResult(operation: DaemonOperation, value: unknown)
 			};
 		case "list": {
 			if (!Array.isArray(source.daemons)) throw new Error("result.daemons must be an array");
-			return { op: "list", daemons: source.daemons.map(parseDaemonSnapshot) };
+			if (source.completions !== undefined && !Array.isArray(source.completions)) {
+				throw new Error("result.completions must be an array");
+			}
+			const completions: unknown[] = source.completions === undefined ? [] : source.completions;
+			return {
+				op: "list",
+				daemons: source.daemons.map(parseDaemonSnapshot),
+				completions: completions.map(parseDaemonCompletionRecord),
+			};
 		}
 		case "logs":
 			return {

@@ -296,7 +296,17 @@ WORK="$(mktemp -d "${WORK_BASE}/veyyon-hd-demo.XXXXXX")"
 # already taken, so a missing publishing tool cost the whole recording rather than the last
 # step of it. On success there is nothing left worth keeping: every frame has been copied
 # into proof/captures and resampled into assets.
-trap 'if [ "$?" -eq 0 ] && [ "${REHEARSAL}" -eq 0 ]; then rm -rf "${WORK}"; else echo "record-hd-demo.sh: kept ${WORK}" >&2; fi' EXIT
+cleanup() {
+	local code=$?
+	trap - EXIT
+	type magick_tmpdir_release >/dev/null 2>&1 && magick_tmpdir_release 2>/dev/null || true
+	if [ "${code}" -eq 0 ] && [ "${REHEARSAL:-0}" -eq 0 ]; then
+		rm -rf "${WORK}"
+	else
+		echo "record-hd-demo.sh: kept ${WORK}" >&2
+	fi
+}
+trap cleanup EXIT
 
 # The same question the take asks, asked in one second: can the container write here?
 # shellcheck source=proof/docker/recorder-image.sh
@@ -321,6 +331,12 @@ else
 	echo "record-hd-demo.sh: no ImageMagick (magick or convert) on PATH" >&2
 	exit 2
 fi
+# ImageMagick 6 writes magick-* pixel-cache files under MAGICK_TMPDIR and leaves
+# them on SIGKILL. Scope them under WORK so they never land in /tmp; the EXIT
+# trap already deletes WORK on success, and a kept failure directory is bounded.
+# shellcheck source=proof/docker/magick-tmpdir.sh
+source "${REPO_ROOT}/proof/docker/magick-tmpdir.sh"
+magick_tmpdir_scope "${WORK}"
 
 REQUIRED_TOOLS=(docker)
 if [[ "${REHEARSAL}" -eq 0 ]]; then
@@ -616,11 +632,11 @@ python3 proof/hero-cut.py "${CUT_SOURCE}" \
 # shipped at a 7.7 fps average because the path resampled it twice and nothing here was
 # looking: it read as a laggy product rather than as a resampled file.
 #
-# The gate then passed a take that averaged 14.2 fps, because it read only the most common
-# frame and 33ms was the most common frame at 44% while the other 56% held for two or three
-# intervals. It now also gates the MOVING portion of the clip against the capture rate, with
-# held still screens named and set aside, so a file that is mostly slower than its most
-# common frame cannot pass. `--expect-ms` supplies both criteria.
+# The gate then passed a take that averaged 14.2 fps, because it read only the most
+# common frame: 44% held 33ms while the rest held for two or more intervals. The gate
+# now requires both an average within 20% of capture and 85% of moving frames at the
+# capture interval. Normal keyboard, spinner and token pauses fit both; a clip whose
+# fast mode hides frequent short holds does not. `--expect-ms` supplies all criteria.
 python3 proof/webp-cadence.py "${CUT_WEBP}" --expect-ms "${CADENCE_MS:-33}" || {
 	echo "record-hd-demo.sh: refusing to publish a clip that is not the cadence the recorder captured" >&2
 	exit 1

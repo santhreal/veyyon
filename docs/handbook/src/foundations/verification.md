@@ -33,18 +33,21 @@ animation as WebP at 33 ms per frame; a GIF is the same clip in an older contain
 proves the same thing. Both arms of a pair are the same class, produced by one driver
 run, and attached to the pull request body.
 
-The recorder refuses to publish a clip whose cadence is not the one it captured. Two
-criteria, both from `--expect-ms`:
+The recorder refuses to publish a clip whose cadence is not the one it captured. Three
+criteria come from `--expect-ms`:
 
 ```text
-typical frame    capture interval +/-1 ms (33/34 ms at 30 fps)
-moving average   within 10% of the capture rate, held stills set aside
+typical frame     capture interval +/-1 ms (33/34 ms at 30 fps)
+moving average    at least 80% of the capture rate, held stills set aside
+cadence share     at least 85% of moving frames at the capture interval
 ```
 
-The first catches a resample, where every frame was rewritten. The second catches a
-clip whose most common frame is correct and whose wall clock is mostly slower than it —
-frames held for two or three intervals in the middle of a scroll. A hold at or past ten
-intervals is a still screen, is reported, and does not count against the average.
+The typical frame catches a resample, where every frame was rewritten. The moving
+average catches a clip whose wall clock is mostly slower than its most common frame.
+The cadence share catches frequent short holds that an acceptable average can hide.
+Byte-identical frames from normal terminal input and model output are coalesced by the
+WebP encoder, so the average allows 20% while the share limits how often that occurs.
+A hold at or past ten intervals is a still screen, is reported, and does not count.
 Measure a published file with:
 
 ```sh

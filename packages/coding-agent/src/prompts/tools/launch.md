@@ -14,7 +14,9 @@ Supervises a process that does NOT end on its own, shared by every veyyon instan
 - `wait` blocks. An exit already arrives on its own, so `wait` is for readiness or a pattern you need before the next step — never a poll loop.
 - `send.keys` accepts ENTER, TAB, ESCAPE, CTRL_C, CTRL_D, UP, DOWN, LEFT, RIGHT. PTY input is serialized: many clients MAY observe, but writes share one input stream.
 - `stop` terminates the process tree gracefully before hard-kill; `restart` reuses the retained spec. Neither reports an exit you asked for, and `on-failure`/`always` restarts use bounded backoff.
-- The broker stops every non-persistent process once the last veyyon in this directory exits. `persist` opts out of that; `detached` also survives broker shutdown and reports no exit.
+- Lifetime is decided at `start` and shown in `list` as `lifetime=`: `last-client-exit` (default — dies when the last veyyon in this directory exits), `broker-shutdown` (`persist` — outlives the last client, dies with the broker), or `detached` (survives every veyyon and broker exit, reports no exit). Read it before assuming a process is still alive later.
+- Every termination records WHO ended the process and WHY: `list` and terminal results carry `terminated-by=` plus a reason. Owners: `process-exit`, `external-signal` (nothing in veyyon asked — suspect the OOM killer or another process), `operator-stop`, `operator-restart`, `operator-signal`, `broker-shutdown`, `idle-reaper`, `os-signal`, `broker-recovery`, `launch-failure`.
+- A finished process's completion record (exit code, termination owner and reason, output tail) is retained — the last 100 or 24h, across broker restarts — and `list` shows it under "Recently completed".
 </instruction>
 
 <critical>

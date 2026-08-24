@@ -1418,6 +1418,7 @@ export function mapOptionsForApi<TApi extends Api>(
 		metadata: options?.metadata,
 		taskBudget: options?.taskBudget,
 		sessionId: options?.sessionId,
+		conversationId: options?.conversationId,
 		promptCacheKey: options?.promptCacheKey,
 		streamFirstEventTimeoutMs: options?.streamFirstEventTimeoutMs,
 		streamIdleTimeoutMs: options?.streamIdleTimeoutMs,

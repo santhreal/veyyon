@@ -72,10 +72,6 @@ import { toolWireSchema } from "../utils/schema/wire";
 export { DEVIN_CASCADE_ENDPOINT } from "@veyyon/catalog/provider-endpoints";
 
 export interface DevinOptions extends StreamOptions {
-	/** Cascade conversation id; reused as `cascade_id` so the server threads turns. */
-	conversationId?: string;
-	/** Falls back to `cascade_id` when no `conversationId` is supplied. */
-	sessionId?: string;
 	/** Wire model uid selected after thinking-effort routing. */
 	chatModelUid?: string;
 	/**
@@ -479,6 +475,7 @@ export const streamDevin: StreamFunction<"devin-agent"> = (
 				stopReason: result.stopReason,
 				status: result.status,
 				errorId: result.id,
+				rules: result.rules,
 				error: String(error),
 			});
 			output.stopReason = result.stopReason;

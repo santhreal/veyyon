@@ -23,6 +23,10 @@ H="${SCENE_HEIGHT}"
 FPS="${SCENE_FPS}"
 OUT="/out"
 mkdir -p "${OUT}"
+# magick (backdrop) and import (stills) leave magick-* in /tmp when killed.
+# shellcheck source=proof/docker/magick-tmpdir.sh
+source "$(cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)/magick-tmpdir.sh"
+magick_tmpdir_scope /tmp
 
 # kitty/glfw refuse to open a window without a machine-id. Some recorder images
 # ship without /etc/machine-id, and the first thing the operator sees is
@@ -37,6 +41,14 @@ if [ ! -s /etc/machine-id ]; then
 	fi
 fi
 
+cleanup() {
+	trap - EXIT
+	[ -n "${FFMPEG_PID:-}" ] && { kill -INT "${FFMPEG_PID}" 2>/dev/null || true; wait "${FFMPEG_PID}" 2>/dev/null || true; FFMPEG_PID=; }
+	[ -n "${KITTY_PID:-}" ] && { kill "${KITTY_PID}" 2>/dev/null || true; KITTY_PID=; }
+	[ -n "${XVFB_PID:-}" ] && { kill "${XVFB_PID}" 2>/dev/null || true; XVFB_PID=; }
+	magick_tmpdir_release
+}
+trap cleanup EXIT
 # COMPOSITE and RENDER are what a compositor needs; Xvfb offers them only when
 # they are asked for, and picom without them starts, stays alive, and never
 # claims the manager selection, which reads exactly like a theme that did not
@@ -389,14 +401,7 @@ FFMPEG_PID=$!
 rm -f "${OUT}/${NAME}-marks.tsv"
 export SCENE_T0="$(date +%s%3N)"
 
-cleanup() {
-	kill -INT "${FFMPEG_PID}" 2>/dev/null || true
-	wait "${FFMPEG_PID}" 2>/dev/null || true
-	kill "${KITTY_PID}" 2>/dev/null || true
-	kill "${XVFB_PID}" 2>/dev/null || true
-}
-trap cleanup EXIT
-
+# Clean up processes and temporary files on exit via trap.
 export SCENE_NAME="${NAME}"
 export SCENE_WINDOW="${WINDOW}"
 export SCENE_OUT="${OUT}"
@@ -438,7 +443,6 @@ fi
 if [ "${SCENE_MOTION_GATE}" = "1" ]; then
 	bash "${SCENE_MOTION_GATE_BIN}" "${OUT}/${NAME}.mp4" >&2
 fi
-
 # A GIF of the same recording, for a page that has to open in a browser without a
 # video codec argument. The palette pass is what keeps the terminal's greys from
 # banding.

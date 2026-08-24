@@ -7,11 +7,12 @@ import * as AIError from "@veyyon/ai/error";
 import { OPENROUTER_API_ENDPOINT } from "@veyyon/catalog/provider-endpoints";
 import { trimTrailingSlashes, withScopedTimeoutSignal } from "@veyyon/utils";
 import { isRecord } from "@veyyon/utils/type-guards";
+import { extractionModel } from "../../config";
 import { getMnemopiRuntimeOptions, type MnemopiProviderTextSanitizer } from "../runtime-options";
-import { getDiagnostics } from "./diagnostics";
+import { extractionDiagnostics } from "./diagnostics";
 import { EXTRACTION_SYSTEM_PROMPT, EXTRACTION_USER_TEMPLATE } from "./prompts";
 
-export const DEFAULT_EXTRACTION_MODEL = process.env.MNEMOPI_EXTRACTION_MODEL || "google/gemini-2.5-flash";
+export const DEFAULT_EXTRACTION_MODEL = extractionModel();
 export const OPENROUTER_BASE_URL = trimTrailingSlashes(process.env.OPENROUTER_BASE_URL || OPENROUTER_API_ENDPOINT);
 export const FALLBACK_MODELS = ["google/gemini-flash-latest"] as const;
 const RATE_LIMIT_BACKOFF_BASE_MS = 1_000;
@@ -89,7 +90,7 @@ export class ExtractionClient {
 	}
 
 	async chat(messages: readonly ChatMessage[], temperature = 0, maxTokens = 4096): Promise<string> {
-		const diag = getDiagnostics();
+		const diag = extractionDiagnostics();
 		diag.recordAttempt("cloud");
 		const models = [this.model, ...FALLBACK_MODELS.filter(m => m !== this.model)];
 		let lastError: unknown = null;
@@ -196,7 +197,7 @@ export class ExtractionClient {
 			4096,
 		);
 
-		const diag = getDiagnostics();
+		const diag = extractionDiagnostics();
 		if (response === "") {
 			diag.recordCall({ succeeded: false, allEmpty: true });
 			return [];

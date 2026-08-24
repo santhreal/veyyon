@@ -74,7 +74,7 @@ import {
 import { getLanguageFromPath } from "../utils/lang-from-path";
 import { convertFileWithMarkit } from "../utils/markit";
 import { type ArchiveReader, formatArchiveEntryLines, openArchive, parseArchivePathCandidates } from "../utils/zip";
-import { buildDirectoryTree, type DirectoryTree } from "../workspace-tree";
+import { buildDirectoryTree, buildTopLevelDirectoryListing, type DirectoryTree } from "../workspace-tree";
 import {
 	type ConflictEntry,
 	type ConflictScope,
@@ -103,8 +103,10 @@ import {
 	stripOutputNotice,
 } from "./output-meta";
 import {
+	type DelimitedPathSplitOptions,
 	expandPath,
 	formatPathRelativeToCwd,
+	isInternalUrlPath,
 	isReadableUrlPath,
 	type LineRange,
 	parseLineRanges,
@@ -962,6 +964,12 @@ const readSchema = type({
 	path: type("string").describe(
 		"Local path, internal URI (e.g. memory://, skill://), or URL. Inline selectors are supported.",
 	),
+	"depth?": type("number.integer > 0").describe(
+		"Directory listings only: recursion depth (1 = top level). Default 2.",
+	),
+	"limit?": type("number.integer > 0").describe(
+		"Directory listings only: max entries returned; omitted entries are reported with the limit and how to see more.",
+	),
 });
 
 export type ReadToolInput = typeof readSchema.infer;
@@ -1103,12 +1111,22 @@ type SuffixMatchCache = Map<string, { absolutePath: string; displayPath: string 
 
 /**
  * Filesystem path(s) a read call targets, for the cwd boundary (cwd-boundary.ts).
- * Just the `path` arg — a selector suffix is left attached (it cannot introduce
- * `../` traversal), and URL/ssh/internal targets are filtered by the boundary.
+ * A selector suffix stays attached (it cannot introduce `../` traversal), and
+ * URL/ssh/internal targets are filtered by the boundary.
+ *
+ * A semicolon-delimited argument reads every entry it names, so every entry is
+ * measured, the way the search tools measure theirs. Measuring the joint string
+ * instead resolves `a.md;/etc/passwd` to one path inside the working directory
+ * that no read ever opens, and the entry outside it is never gated.
  */
 export function readFilesystemTargets(args: unknown): string[] {
-	const path = (args as { path?: unknown }).path;
-	return typeof path === "string" ? [path] : [];
+	if (!args || typeof args !== "object" || !("path" in args)) return [];
+	const rawPath = args.path;
+	if (typeof rawPath !== "string") return [];
+	return rawPath
+		.split(";")
+		.map(entry => entry.trim())
+		.filter(entry => entry.length > 0);
 }
 
 /**
@@ -1154,9 +1172,12 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 	async #tryReadDelimitedPaths(
 		readPath: string,
 		signal?: AbortSignal,
+		options: DelimitedPathSplitOptions = {},
+		directory: { depth?: number; limit?: number } = {},
 	): Promise<AgentToolResult<ReadToolDetails> | null> {
-		const parts = await splitDelimitedPathEntry(readPath, this.session.cwd);
+		const parts = await splitDelimitedPathEntry(readPath, this.session.cwd, options);
 		if (!parts) return null;
+		const listHasInternalUrl = parts.some(part => isInternalUrlPath(part));
 
 		const notice = `Note: interpreted as ${parts.length} paths: ${parts.join(", ")}`;
 		const notes = [notice];
@@ -1174,7 +1195,13 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 
 		for (const part of parts) {
 			try {
-				const result = await this.execute("read-delimited-part", { path: part }, signal);
+				// Directory params apply per entry: every delimited part re-enters
+				// execute with the same `depth`/`limit` the caller asked for.
+				const result = await this.execute(
+					"read-delimited-part",
+					{ path: part, depth: directory.depth, limit: directory.limit },
+					signal,
+				);
 				displayReadTargets.push(result.details?.suffixResolution?.to ?? part);
 				for (const block of result.content) {
 					if (block.type === "text") {
@@ -1187,7 +1214,15 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 			} catch (error) {
 				if (error instanceof ToolAbortError || signal?.aborted) throw error;
 				const message = errorMessage(error);
-				const errorNote = `Could not read ${part}: ${message}`;
+				// A list written as `skill://a/one.md;two.md` names one internal
+				// resource and one cwd-relative path. Each entry is a complete
+				// target, so state that on the entry that missed instead of
+				// resolving it inside the resource the previous entry named.
+				const hint =
+					listHasInternalUrl && !isInternalUrlPath(part)
+						? " (every entry in a semicolon-delimited list is a complete target: give this one its own scheme)"
+						: "";
+				const errorNote = `Could not read ${part}: ${message}${hint}`;
 				notes.push(errorNote);
 				displayReadTargets.push(part);
 				appendText(`[${errorNote}]`);
@@ -1196,6 +1231,38 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 		flushText();
 
 		return toolResult<ReadToolDetails>({ notes, displayReadTargets }).content(content).done();
+	}
+
+	/**
+	 * One internal URL, or a semicolon-delimited list of them.
+	 *
+	 * An internal resource cannot be probed on disk the way a file can, so the
+	 * literal URL is resolved first and the list only after it fails: a resource
+	 * whose own name contains a semicolon still resolves, and
+	 * `skill://a/one.md;two.md` fans out into one read per entry.
+	 */
+	async #readInternalUrlOrList(
+		rawPath: string,
+		urlPath: string,
+		parsedSel: ParsedSelector,
+		signal?: AbortSignal,
+		directory: { depth?: number; limit?: number } = {},
+	): Promise<AgentToolResult<ReadToolDetails>> {
+		try {
+			return await this.#handleInternalUrl(urlPath, parsedSel, signal);
+		} catch (error) {
+			if (error instanceof ToolAbortError || signal?.aborted) throw error;
+			const delimited = await this.#tryReadDelimitedPaths(
+				rawPath,
+				signal,
+				{
+					internalUrls: "split-on-semicolon",
+				},
+				directory,
+			);
+			if (delimited) return delimited;
+			throw error;
+		}
 	}
 
 	/**
@@ -2462,10 +2529,16 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 					// cannot shadow the URL's selector semantics during filesystem routing.
 					promotedSelector = internalTarget.sel;
 				} else {
-					return this.#handleInternalUrl(internalTarget.path, parsed, signal);
+					return this.#readInternalUrlOrList(readPath, internalTarget.path, parsed, signal, {
+						depth: params.depth,
+						limit: params.limit,
+					});
 				}
 			} else {
-				return this.#handleInternalUrl(internalTarget.path, parsed, signal);
+				return this.#readInternalUrlOrList(readPath, internalTarget.path, parsed, signal, {
+					depth: params.depth,
+					limit: params.limit,
+				});
 			}
 		}
 
@@ -2564,7 +2637,15 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 				}
 
 				if (!suffixResolution) {
-					const delimitedResult = await this.#tryReadDelimitedPaths(readPath, signal);
+					const delimitedResult = await this.#tryReadDelimitedPaths(
+						readPath,
+						signal,
+						{},
+						{
+							depth: params.depth,
+							limit: params.limit,
+						},
+					);
 					if (delimitedResult) return delimitedResult;
 					throw new ToolError(`Path '${localReadPath}' not found`);
 				}
@@ -2580,7 +2661,10 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 			const { offset, limit } = selToOffsetLimit(parsed);
 			// Directory listings are deterministic and fast; never abort them mid-scan
 			// (an interrupt would otherwise surface a misleading "Operation aborted").
-			const dirResult = await this.#readDirectory(absolutePath, offset, limit, undefined);
+			const dirResult = await this.#readDirectory(absolutePath, offset, limit, {
+				depth: params.depth,
+				entryLimit: params.limit,
+			});
 			if (suffixResolution) {
 				dirResult.details ??= {};
 				dirResult.details.suffixResolution = suffixResolution;
@@ -3501,29 +3585,71 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 		absolutePath: string,
 		offset: number | undefined,
 		limit: number | undefined,
+		directory: { depth?: number; entryLimit?: number },
 		signal?: AbortSignal,
 	): Promise<AgentToolResult<ReadToolDetails>> {
 		const READ_DIRECTORY_MAX_DEPTH = 2;
 		const READ_DIRECTORY_CHILD_LIMIT = 12;
+		// Top-level cap for the concise session-root listing. Generous enough
+		// that an ordinary project root fits whole; a monorepo root gets the
+		// omission notice naming how to see the rest.
+		const ROOT_LISTING_ENTRY_LIMIT = 100;
 
 		throwIfAborted(signal);
+		// Field feedback: `read('.')` on a large workspace usually needs the
+		// top-level convention, not a recursive tree. Default the session
+		// working directory root to a concise depth-1 listing with per-
+		// subdirectory entry counts; an explicit `depth`/`limit`, or any other
+		// directory, keeps the full recursive listing.
+		const conciseRoot =
+			directory.depth === undefined &&
+			directory.entryLimit === undefined &&
+			path.resolve(absolutePath) === path.resolve(this.session.cwd);
+
 		let tree: DirectoryTree;
-		try {
-			tree = await buildDirectoryTree(absolutePath, {
-				maxDepth: READ_DIRECTORY_MAX_DEPTH,
-				perDirLimit: READ_DIRECTORY_CHILD_LIMIT,
-				rootLimit: null,
-				// `lineCap` truncates the rendered tree itself, so apply it only when the caller
-				// did not request an offset — otherwise we'd cap the first N lines before slicing.
-				lineCap: offset === undefined && limit !== undefined ? limit : null,
-			});
-		} catch (error) {
-			const message = errorMessage(error);
-			throw new ToolError(`Cannot read directory: ${message}`);
+		let rootFooter: string | undefined;
+		if (conciseRoot) {
+			const listing = await buildTopLevelDirectoryListing(absolutePath, { entryLimit: ROOT_LISTING_ENTRY_LIMIT });
+			if (listing.totalLines > 1) {
+				rootFooter =
+					listing.omittedTopLevel > 0
+						? `[${listing.omittedTopLevel} more top-level entries not shown (capped at ${ROOT_LISTING_ENTRY_LIMIT}). Re-issue read with depth: 2 for the recursive listing, or read a subdirectory by name.]`
+						: "[Top-level listing of the working directory root. Re-issue read with depth: 2 for the recursive listing, or read a subdirectory by name.]";
+			}
+			tree = listing;
+		} else {
+			try {
+				tree = await buildDirectoryTree(absolutePath, {
+					maxDepth: directory.depth ?? READ_DIRECTORY_MAX_DEPTH,
+					perDirLimit: READ_DIRECTORY_CHILD_LIMIT,
+					rootLimit: null,
+					// `lineCap` truncates the rendered tree itself, so apply it only when the caller
+					// did not request an offset — otherwise we'd cap the first N lines before slicing.
+					lineCap: offset === undefined && limit !== undefined ? limit : null,
+				});
+			} catch (error) {
+				const message = errorMessage(error);
+				throw new ToolError(`Cannot read directory: ${message}`);
+			}
 		}
 		throwIfAborted(signal);
 
-		const output = tree.totalLines <= 1 ? "(empty directory)" : tree.rendered;
+		let output = tree.totalLines <= 1 ? "(empty directory)" : tree.rendered;
+		let listingTruncated = tree.truncated;
+
+		// The `limit` argument caps the number of returned entries head-first.
+		// The notice names the cap, the omission count, and the arguments that
+		// reveal the rest — never a bare ellipsis.
+		if (directory.entryLimit !== undefined && tree.totalLines > 1) {
+			const [rootLine, ...entryLines] = output.split("\n");
+			if (entryLines.length > directory.entryLimit) {
+				const omitted = entryLines.length - directory.entryLimit;
+				const notice = `[${omitted} ${omitted === 1 ? "entry" : "entries"} omitted (limit: ${directory.entryLimit}). Re-issue read with a higher limit (at least ${entryLines.length}) or no limit to see every entry.]`;
+				output = [rootLine, ...entryLines.slice(0, directory.entryLimit), "", notice].join("\n");
+				listingTruncated = true;
+			}
+		}
+
 		const details: ReadToolDetails = {
 			isDirectory: true,
 			resolvedPath: tree.rootPath,
@@ -3556,16 +3682,19 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 				const remaining = allLines.length - end;
 				text += `\n\n[${formatMoreLines(remaining)} in listing. Use :${end + 1} to continue]`;
 			}
+			if (rootFooter) text += `\n\n${rootFooter}`;
 			resultBuilder.text(text);
-			if (tree.truncated) {
+			if (listingTruncated) {
 				resultBuilder.limits({ resultLimit: 1 });
 			}
 			return resultBuilder.done();
 		}
 
-		const truncation = truncateHead(output, { maxLines: Number.MAX_SAFE_INTEGER });
+		const truncation = truncateHead(rootFooter ? `${output}\n\n${rootFooter}` : output, {
+			maxLines: Number.MAX_SAFE_INTEGER,
+		});
 		const resultBuilder = toolResult(details).text(truncation.content).sourcePath(tree.rootPath);
-		if (tree.truncated) {
+		if (listingTruncated) {
 			resultBuilder.limits({ resultLimit: 1 });
 		}
 		if (truncation.truncated) {
