@@ -42,7 +42,7 @@ import {
 	kStreamingPartialJson,
 } from "../utils/block-symbols";
 import { AssistantMessageEventStream } from "../utils/event-stream";
-import type { RawHttpRequestDump } from "../utils/http-inspector";
+import { materializeDumpBody, type RawHttpRequestDump } from "../utils/http-inspector";
 import { armPreResponseTimeout, getStreamFirstEventTimeoutMs } from "../utils/idle-iterator";
 import { fetchProviderWithRetry } from "../utils/provider-fetch";
 import { notifyProviderResponse } from "../utils/provider-response";
@@ -307,6 +307,8 @@ export const streamBedrock: StreamFunction<"bedrock-converse-stream"> = (
 
 		const blocks = output.content as Block[];
 		let rawRequestDump: RawHttpRequestDump | undefined;
+		/** Exact bytes of the last sent request body; materialized into a dump only on the 400/413 path. */
+		let wireBodyJson: string | undefined;
 		const region = resolveBedrockRegion(model.id, options);
 
 		try {
@@ -404,9 +406,11 @@ export const streamBedrock: StreamFunction<"bedrock-converse-stream"> = (
 					model: model.id,
 					method: "POST",
 					url,
-					body: commandInput,
 				};
-				const body = new TextEncoder().encode(JSON.stringify(commandInput));
+				// Retain the exact sent BYTES, not the parsed object: a dump body is
+				// read only on the 400/413 path.
+				wireBodyJson = JSON.stringify(commandInput);
+				const body = new TextEncoder().encode(wireBodyJson);
 
 				if (bearerToken) {
 					return {
@@ -590,12 +594,15 @@ export const streamBedrock: StreamFunction<"bedrock-converse-stream"> = (
 					diagnostics = `\n[thinking-diag] ${JSON.stringify(thinkingBlocks)}`;
 				}
 			}
-			const result = await AIError.finalize(error, { api: model.api, signal: options.signal, rawRequestDump });
+			const result = await AIError.finalize(error, {
+				api: model.api,
+				signal: options.signal,
+				rawRequestDump: materializeDumpBody(rawRequestDump, wireBodyJson),
+			});
 			output.stopReason = result.stopReason;
 			output.errorStatus = result.status;
 			output.errorId = result.id;
 			output.errorMessage = result.message + diagnostics;
-			output.duration = performance.now() - startTime;
 			if (firstTokenTime) output.ttft = firstTokenTime - startTime;
 			stream.push({ type: "error", reason: output.stopReason, error: output });
 			stream.end();

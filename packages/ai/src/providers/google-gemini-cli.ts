@@ -38,7 +38,8 @@ import type {
 import { normalizeSystemPrompts } from "../utils";
 import { AssistantMessageEventStream } from "../utils/event-stream";
 import { extractGoogleValidationUrl, formatGoogleValidationRequiredMessage } from "../utils/google-validation";
-import type { RawHttpRequestDump } from "../utils/http-inspector";
+import { materializeDumpBody, type RawHttpRequestDump } from "../utils/http-inspector";
+
 import { armPreResponseTimeout, getStreamFirstEventTimeoutMs } from "../utils/idle-iterator";
 import { fetchProviderWithRetry } from "../utils/provider-fetch";
 // Refresh is the sole responsibility of AuthStorage (broker-aware, single-flighted);
@@ -538,6 +539,8 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli"> = (
 			timestamp: Date.now(),
 		};
 		let rawRequestDump: RawHttpRequestDump | undefined;
+		/** Exact bytes of the last sent request body; materialized into a dump only on the 400/413 path. */
+		let wireBodyJson: string | undefined;
 
 		try {
 			const apiKeyRaw = options?.apiKey;
@@ -630,9 +633,9 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli"> = (
 				api: output.api,
 				model: model.id,
 				method: "POST",
-				body: requestBody,
 				headers: requestHeaders,
 			};
+			wireBodyJson = requestBodyJson;
 
 			// Direct callers that skip `register-builtins` (which installs the
 			// iterator-level watchdog) need a pre-response timer alongside
@@ -1080,7 +1083,11 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli"> = (
 			stream.push({ type: "done", reason: output.stopReason, message: output });
 			stream.end();
 		} catch (error) {
-			const result = await AIError.finalize(error, { api: model.api, signal: options?.signal, rawRequestDump });
+			const result = await AIError.finalize(error, {
+				api: model.api,
+				signal: options?.signal,
+				rawRequestDump: materializeDumpBody(rawRequestDump, wireBodyJson),
+			});
 			output.stopReason = result.stopReason;
 			output.errorStatus = result.status;
 			output.errorId = result.id;

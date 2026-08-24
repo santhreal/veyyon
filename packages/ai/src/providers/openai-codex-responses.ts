@@ -70,7 +70,7 @@ import { clearStreamingPartialJson, kStreamingLastParseLen, kStreamingPartialJso
 import { withEmptyCompletionRetry } from "../utils/empty-completion-retry";
 import { AssistantMessageEventStream } from "../utils/event-stream";
 import { type FirstEventBudget, isPreResponseStall, openStallLadderBudget } from "../utils/first-event-budget";
-import type { RawHttpRequestDump } from "../utils/http-inspector";
+import { materializeDumpBody, type RawHttpRequestDump } from "../utils/http-inspector";
 import {
 	armPreResponseTimeout,
 	getOpenAIStreamFirstEventTimeoutMs,
@@ -735,6 +735,13 @@ interface CodexRequestContext {
 	requestMetadata?: CodexRequestMetadata;
 	transformedBody: RequestBody;
 	rawRequestDump: RawHttpRequestDump;
+	/**
+	 * Exact bytes of the last sent request body. The dump retains these instead
+	 * of the parsed object, which pinned a full context-sized graph for the
+	 * whole stream; `materializeDumpBody` parses them back when a 400/413 dump
+	 * is actually being built.
+	 */
+	wireBodyJson?: string;
 }
 
 interface CodexRequestSetup {
@@ -1323,7 +1330,6 @@ async function buildCodexRequestContext(
 		model: model.id,
 		method: "POST",
 		url,
-		body: transformedBody,
 	};
 
 	const providerSessionState = getCodexProviderSessionState(options?.providerSessionState);
@@ -1561,15 +1567,13 @@ async function openCodexWebSocketTransport(
 	} else {
 		requestBodyForState.stream_options = websocketRequest.stream_options;
 	}
-	requestContext.rawRequestDump.body = websocketRequest;
+	requestContext.wireBodyJson = JSON.stringify(websocketRequest);
 	CODEX_DEBUG &&
 		logger.debug("[codex] codex websocket request", {
 			url: toWebSocketUrl(requestContext.url),
 			model: requestContext.transformedBody.model,
 			reasoningEffort: requestContext.transformedBody.reasoning?.effort ?? null,
 			headers: redactHeaders(websocketHeaders),
-			sentTurnStateHeader: websocketHeaders.has(X_CODEX_TURN_STATE_HEADER),
-			sentModelsEtagHeader: websocketHeaders.has(X_MODELS_ETAG_HEADER),
 			requestType: websocketRequest.type,
 			retry,
 			retryBudget: CODEX_WEBSOCKET_RETRY_BUDGET,
@@ -1640,7 +1644,7 @@ async function openCodexSseTransport(
 		const replacementWireBody = await options?.onPayload?.(attemptBody, model);
 		wireBody = replacementWireBody !== undefined ? (replacementWireBody as RequestBody) : attemptBody;
 		// Keep the 400 dump honest: record the body actually sent on this attempt.
-		requestContext.rawRequestDump.body = wireBody;
+		requestContext.wireBodyJson = JSON.stringify(wireBody);
 		return wireBody;
 	};
 	// Preserve payload capture for callers that intentionally use an
@@ -1762,7 +1766,7 @@ async function handleCodexStreamFailure(context: CodexStreamFailureContext, erro
 	const result = await AIError.finalize(error, {
 		api: context.model.api,
 		signal: context.options?.signal,
-		rawRequestDump: context.requestContext.rawRequestDump,
+		rawRequestDump: materializeDumpBody(context.requestContext.rawRequestDump, context.requestContext.wireBodyJson),
 	});
 	output.stopReason = result.stopReason;
 	output.errorStatus = result.status;
