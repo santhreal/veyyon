@@ -47,7 +47,7 @@ import {
 	withEmptyCompletionRetry,
 } from "../utils/empty-completion-retry";
 import { AssistantMessageEventStream } from "../utils/event-stream";
-import type { RawHttpRequestDump } from "../utils/http-inspector";
+import { materializeDumpBody, type RawHttpRequestDump } from "../utils/http-inspector";
 import {
 	getOpenAIStreamFirstEventTimeoutMs,
 	getOpenAIStreamIdleTimeoutMs,
@@ -608,6 +608,8 @@ const streamOpenAICompletionsOnce = (
 
 		const output: AssistantMessage = createInitialResponsesAssistantMessage(model.api, model.provider, model.id);
 		let rawRequestDump: RawHttpRequestDump | undefined;
+		/** Exact bytes of the last sent request body; materialized into a dump only on the 400/413 path. */
+		let wireBodyJson: string | undefined;
 		const abortTracker = createAbortSourceTracker(options?.signal);
 		const firstEventTimeoutAbortError = new AIError.StreamTimeoutError(
 			OPENAI_COMPLETIONS_FIRST_EVENT_TIMEOUT_MESSAGE,
@@ -689,6 +691,10 @@ const streamOpenAICompletionsOnce = (
 					const wireParams =
 						replacementPayload !== undefined ? (replacementPayload as OpenAICompletionsParams) : attemptParams;
 					activeRequestParams = wireParams;
+					const body = JSON.stringify(wireParams);
+					// Retain the exact sent BYTES, not the parsed object: a dump body
+					// is read only on the 400/413 path, and holding the graph here
+					// pinned a full context-sized clone for the whole stream.
 					rawRequestDump = {
 						provider: model.provider,
 						api: output.api,
@@ -696,9 +702,9 @@ const streamOpenAICompletionsOnce = (
 						method: "POST",
 						url: completionsUrl,
 						headers: requestHeaders,
-						body: wireParams,
 					};
-					return { body: JSON.stringify(wireParams) };
+					wireBodyJson = body;
+					return { body };
 				};
 				if (captureOnly) {
 					await prepareRequest();
@@ -1429,7 +1435,7 @@ const streamOpenAICompletionsOnce = (
 				api: model.api,
 				provider: model.provider,
 				abortTracker,
-				rawRequestDump,
+				rawRequestDump: materializeDumpBody(rawRequestDump, wireBodyJson),
 				capturedErrorResponse,
 			});
 			output.stopReason = result.stopReason;

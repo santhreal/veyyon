@@ -5,6 +5,7 @@
 ### Changed
 
 - The Anthropic provider reads its endpoint, credential placement, rejected betas and retry policy from the catalog's wire-capability table instead of comparing provider ids at seventeen call sites.
+- A streaming request no longer pins a full clone of its wire payload for the whole stream. `openai-completions`, `openai-responses` and `azure-openai-responses` kept the parsed request object in the diagnostic dump from the moment headers left until the stream ended, so a large context stayed resident twice for the life of every request; the dump now retains only the exact sent bytes and materializes its body through `materializeDumpBody` when a 400/413 dump is actually being built. The pi-native client serializes its body once and hands the payload hook an isolated parse of those bytes, reusing them on the wire when the hook leaves the payload alone instead of serializing the full context a second time.
 
 ## [1.2.0] - 2026-08-23
 
