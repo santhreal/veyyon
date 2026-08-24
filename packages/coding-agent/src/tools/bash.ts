@@ -1198,6 +1198,7 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 				this.session.settings.get("session.cpuLimitKill"),
 				sessionBudgetLimits(this.session.settings),
 			);
+			await cpuLimit.ensureGroup();
 			cpuLimit.assertMaySpawn("a bash command");
 		}
 		if (timeoutSec !== undefined) {

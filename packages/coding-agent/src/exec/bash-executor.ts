@@ -298,7 +298,12 @@ export async function executeBash(command: string, options?: BashExecutorOptions
 	// saturation, and hand the native shell the budget name so every external
 	// command it spawns joins the group (see veyyon-shell's spawn observer).
 	const cpuLimit = sessionCpuLimit(options?.cpuSessionId ?? options?.sessionKey);
-	cpuLimit?.assertMaySpawn("a bash command");
+	if (cpuLimit) {
+		// Group first: assertMaySpawn is sync and used to skip memory/setup
+		// checks until #group existed, so the first command raced unbounded.
+		await cpuLimit.ensureGroup();
+		cpuLimit.assertMaySpawn("a bash command");
+	}
 	const cpuBudgetId =
 		options?.cpuBudgetId ?? (cpuLimit && (await cpuLimit.ensureGroup()) ? cpuLimit.budgetName : undefined);
 	const sessionKey = buildSessionKey(shell, prefix, snapshotPath, shellEnv, options?.sessionKey, minimizer);

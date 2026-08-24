@@ -232,6 +232,21 @@ describe("every spawn site in src is wired into the session CPU budget or exempt
 		expect(stale).toEqual([]);
 	});
 
+	it("calls ensureGroup before assertMaySpawn at every gated spawn site", async () => {
+		// The spawn gate is sync and does not create the group. Memory and
+		// setup refusals only exist after ensureGroup(). A site that gates
+		// first lets the first command run unbounded on a failed host.
+		const gated = ["exec/bash-executor.ts", "tools/bash.ts", "tools/launch.ts"];
+		for (const file of gated) {
+			const text = await fs.readFile(path.join(SRC_ROOT, file), "utf8");
+			const ensure = text.indexOf("ensureGroup()");
+			const gate = text.indexOf("assertMaySpawn(");
+			expect(ensure, `${file} must call ensureGroup`).toBeGreaterThan(-1);
+			expect(gate, `${file} must call assertMaySpawn`).toBeGreaterThan(-1);
+			expect(ensure, `${file} must ensureGroup before assertMaySpawn`).toBeLessThan(gate);
+		}
+	});
+
 	it("proves the guard catches a new, unwired spawn site", async () => {
 		// RED PROOF: a fixture tree with a spawn site absent from the manifest
 		// must be reported. If this ever passes vacuously, the guard is dead.

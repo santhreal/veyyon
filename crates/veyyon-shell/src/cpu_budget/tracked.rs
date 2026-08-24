@@ -7,6 +7,8 @@
 //! `BudgetGroup::throttles` is false for this backend and the session layer
 //! says so on the settings row and at startup.
 
+#[cfg(any(target_os = "macos", test))]
+use std::collections::HashMap;
 use std::collections::HashSet;
 
 use parking_lot::Mutex;
@@ -27,6 +29,22 @@ impl TrackedBudget {
 
 	#[must_use]
 	pub fn members(&self) -> Vec<i32> {
+		#[cfg(target_os = "macos")]
+		{
+			// Adopt records the spawn hook's direct child. Forked grandchildren
+			// (make -j, a compiler fleet) never get a second adopt, so the
+			// meter / renice / kill set has to close under the live process
+			// tree. Newly discovered descendants are remembered so they stay
+			// in the group after their parent exits.
+			let extra = {
+				let roots: Vec<i32> = self.members.lock().iter().copied().collect();
+				close_descendant_set(&roots, &macos_child_map())
+			};
+			let mut guard = self.members.lock();
+			guard.extend(extra);
+			return guard.iter().copied().collect();
+		}
+		#[cfg(not(target_os = "macos"))]
 		self.members.lock().iter().copied().collect()
 	}
 
@@ -116,7 +134,7 @@ impl TrackedBudget {
 	/// only; on Windows this backend never runs, so the lever is a no-op.
 	pub fn renice(&self, level: i32) {
 		#[cfg(unix)]
-		for &pid in self.members.lock().iter() {
+		for pid in self.members() {
 			// SAFETY: setpriority with PRIO_PROCESS targets exactly the pid
 			// given; a dead pid fails with ESRCH and changes nothing.
 			unsafe {
@@ -132,8 +150,67 @@ impl TrackedBudget {
 	}
 }
 
+/// Every pid reachable from `roots` by walking `children` (pid → kids),
+/// including the roots themselves. Idempotent; ignores missing keys.
+#[cfg(any(target_os = "macos", test))]
+fn close_descendant_set(roots: &[i32], children: &HashMap<i32, Vec<i32>>) -> HashSet<i32> {
+	let mut out = HashSet::new();
+	let mut stack: Vec<i32> = roots.to_vec();
+	while let Some(pid) = stack.pop() {
+		if !out.insert(pid) {
+			continue;
+		}
+		if let Some(kids) = children.get(&pid) {
+			stack.extend(kids.iter().copied());
+		}
+	}
+	out
+}
+
+/// Live pid → children, from libproc. Used only to close the adopted set.
+#[cfg(target_os = "macos")]
+fn macos_child_map() -> HashMap<i32, Vec<i32>> {
+	let mut map = HashMap::new();
+	let mut pids = vec![0i32; 4096];
+	// SAFETY: proc_listpids writes at most the buffer length in bytes.
+	let bytes = unsafe {
+		libc::proc_listpids(
+			libc::PROC_ALL_PIDS,
+			0,
+			pids.as_mut_ptr().cast(),
+			(std::mem::size_of::<i32>() * pids.len()) as i32,
+		)
+	};
+	if bytes <= 0 {
+		return map;
+	}
+	let n = (bytes as usize) / std::mem::size_of::<i32>();
+	for &pid in &pids[..n.min(pids.len())] {
+		if pid <= 0 {
+			continue;
+		}
+		let mut info: libc::proc_bsdinfo = unsafe { std::mem::zeroed() };
+		let written = unsafe {
+			libc::proc_pidinfo(
+				pid,
+				libc::PROC_PIDTBSDINFO,
+				0,
+				std::ptr::from_mut(&mut info).cast(),
+				std::mem::size_of::<libc::proc_bsdinfo>() as i32,
+			)
+		};
+		if written as usize != std::mem::size_of::<libc::proc_bsdinfo>() {
+			continue;
+		}
+		map.entry(info.pbi_ppid as i32).or_default().push(pid);
+	}
+	map
+}
+
 #[cfg(test)]
 mod tests {
+	use std::collections::{HashMap, HashSet};
+
 	use super::*;
 
 	/// The nice value the kernel currently has for `pid`, read from
@@ -384,5 +461,49 @@ mod tests {
 		members.sort_unstable();
 		assert_eq!(members, vec![202, 303], "the mid-sample adopt survives, the dead pid does not");
 		assert_eq!(total_ns, 7_000, "only the live member contributes, and exactly once");
+	}
+
+	/// Descendants of an adopted pid are members of the budget, not just the
+	/// pid the spawn hook saw. A closure that missed a child would skip it
+	/// on meter, renice, and kill — the macOS tracked backend's whole job.
+	#[test]
+	fn close_descendant_set_includes_every_reachable_child() {
+		let mut children = HashMap::new();
+		children.insert(1, vec![2, 3]);
+		children.insert(2, vec![4]);
+		children.insert(4, vec![5]);
+		let mut got: Vec<i32> = close_descendant_set(&[1], &children).into_iter().collect();
+		got.sort_unstable();
+		assert_eq!(got, vec![1, 2, 3, 4, 5]);
+		assert_eq!(close_descendant_set(&got, &children), close_descendant_set(&[1], &children));
+		let only_roots = close_descendant_set(&[9, 9, 8], &HashMap::new());
+		assert_eq!(only_roots, HashSet::from([8, 9]));
+		let mut cycle = HashMap::new();
+		cycle.insert(1, vec![2]);
+		cycle.insert(2, vec![1]);
+		assert_eq!(close_descendant_set(&[1], &cycle), HashSet::from([1, 2]));
+	}
+
+	/// Property: every root is in the closure, every listed child of a member
+	/// is in the closure, and nothing else is.
+	#[test]
+	fn close_descendant_set_is_the_least_set_closed_under_the_child_map() {
+		for n in 1..=12 {
+			let mut children = HashMap::new();
+			for pid in 1..n {
+				children.entry(pid).or_insert_with(Vec::new).push(pid + 1);
+			}
+			let closed = close_descendant_set(&[1], &children);
+			assert_eq!(closed.len(), n as usize);
+			for pid in 1..=n {
+				assert!(closed.contains(&pid), "missing {pid} in 1..={n}");
+			}
+			let start = n / 2 + 1;
+			let from_mid = close_descendant_set(&[start], &children);
+			assert!(from_mid.contains(&start));
+			if start > 1 {
+				assert!(!from_mid.contains(&1));
+			}
+		}
 	}
 }
