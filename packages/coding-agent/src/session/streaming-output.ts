@@ -2,7 +2,7 @@ import type { AgentToolUpdateCallback } from "@veyyon/agent-core";
 // Owners, not the `@veyyon/utils` barrel: 3 modules against 74.
 import { capTextBytes, truncateHeadBytes, truncateTailBytes } from "@veyyon/utils/byte-truncate";
 import { clampLow } from "@veyyon/utils/math";
-import { sanitizeText } from "@veyyon/utils/sanitize-text";
+import { sanitizeText, splitTrailingPartialEscape } from "@veyyon/utils/sanitize-text";
 
 export { type ByteTruncationResult, truncateHeadBytes, truncateTailBytes } from "@veyyon/utils/byte-truncate";
 
@@ -759,6 +759,13 @@ export class OutputSink {
 	#lastChunkTime = 0;
 	#pendingChunk = "";
 	#pendingChunkTimer: Timer | undefined;
+	/**
+	 * A trailing escape sequence the last chunk ended inside, held until the
+	 * chunk that finishes it. Sanitizing half a sequence leaks its tail as text,
+	 * and where a pipe splits is not ours to choose. Dropped by `dump()` and
+	 * `replace()`: a sequence that never completed is not text.
+	 */
+	#partialEscape = "";
 
 	// Per-line column cap streaming state (persists across `push` calls so a
 	// long line split across chunks still trips the same trigger).
@@ -828,7 +835,10 @@ export class OutputSink {
 	 * synchronously. File sink writes are deferred and serialized internally.
 	 */
 	push(chunk: string): void {
-		chunk = sanitizeWithOptionalSixelPassthrough(chunk, sanitizeText);
+		const { head, partial } = splitTrailingPartialEscape(this.#partialEscape + chunk);
+		this.#partialEscape = partial;
+		if (head.length === 0) return;
+		chunk = sanitizeWithOptionalSixelPassthrough(head, sanitizeText);
 
 		// Throttled onChunk: coalesce chunks arriving inside the throttle window.
 		// A timer flushes quiet tails at the throttle boundary; dump() catches a
@@ -1159,6 +1169,7 @@ export class OutputSink {
 		this.#columnDroppedBytes = 0;
 		this.#columnTruncatedLines = 0;
 		this.#pendingChunk = "";
+		this.#partialEscape = "";
 	}
 
 	#clearPendingChunkTimer(): void {
@@ -1235,6 +1246,9 @@ export class OutputSink {
 		// Flush any chunk still held back by the throttle so the live preview
 		// ends with the complete stream.
 		this.#flushPendingChunk();
+		// A sequence the stream ended inside never completed, so it is not text:
+		// drop it rather than emitting the fragment the reader happened to see.
+		this.#partialEscape = "";
 		const totalLines = this.#sawData ? this.#totalLines + 1 : 0;
 
 		if (this.#file) {
