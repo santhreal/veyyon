@@ -591,6 +591,17 @@ export class Mnemopi {
 	}
 }
 
+/**
+ * The module-level verbs below are the facade: each one resolves the default
+ * instance for a bank and calls the same-named method on it, which calls the
+ * same-named function in `beam/store.ts` with that instance's state. Three names
+ * per verb, one implementation, and the store keeps the state parameter the
+ * facade hides.
+ *
+ * `test/a-memory-verb-has-one-implementation.test.ts` writes through one layer
+ * and reads through another, so a second store cannot appear behind this file.
+ */
+
 export function setBank(bank: string): void {
 	defaultBank = bank;
 	defaultInstance?.close();

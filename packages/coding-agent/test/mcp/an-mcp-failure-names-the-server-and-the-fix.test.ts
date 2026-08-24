@@ -37,7 +37,7 @@
 
 import { describe, expect, it } from "bun:test";
 import { commands } from "@veyyon/coding-agent/cli-commands";
-import { isRetriableConnectionError } from "@veyyon/coding-agent/mcp/tool-bridge";
+import { mcpFailureWarrantsReconnect } from "@veyyon/coding-agent/mcp/tool-bridge";
 import { mcpHttpFailureMessage } from "@veyyon/coding-agent/mcp/transports/http-failure";
 import {
 	describeMCPServerTarget,
@@ -197,7 +197,7 @@ describe("a stream that ended without answering is not a timeout", () => {
 /**
  * THE COUPLING THAT REWORDING WOULD HAVE BROKEN SILENTLY.
  *
- * `isRetriableConnectionError` decides whether a failed MCP tool call is worth a
+ * `mcpFailureWarrantsReconnect` decides whether a failed MCP tool call is worth a
  * reconnect-and-retry, and it decides it by reading the message. It used to
  * match the literals `"transport not connected"` and `"transport closed"` — the
  * exact sentences these builders replaced — so this rewording would have turned
@@ -213,13 +213,13 @@ describe("the reconnect decision still fires on the new wording", () => {
 			mcpStreamClosedMessage(URL_TARGET, "its SSE stream ended"),
 		]) {
 			expect(isMCPTransportStateMessage(message)).toBe(true);
-			expect(isRetriableConnectionError(new Error(message))).toBe(true);
+			expect(mcpFailureWarrantsReconnect(new Error(message))).toBe(true);
 		}
 	});
 
 	it("does not classify a timeout or a 4xx refusal as retriable", () => {
 		expect(isMCPTransportStateMessage(mcpTimeoutMessage(URL_TARGET, "request", 100))).toBe(false);
-		expect(isRetriableConnectionError(new Error(mcpHttpFailureMessage(URL_TARGET.url, 400, "bad")))).toBe(false);
+		expect(mcpFailureWarrantsReconnect(new Error(mcpHttpFailureMessage(URL_TARGET.url, 400, "bad")))).toBe(false);
 	});
 
 	/**
@@ -232,7 +232,7 @@ describe("the reconnect decision still fires on the new wording", () => {
 		for (const status of [404, 502, 503]) {
 			const message = mcpHttpFailureMessage(URL_TARGET.url, status, "session gone");
 			expect(message).not.toStartWith("HTTP ");
-			expect(isRetriableConnectionError(new Error(message))).toBe(true);
+			expect(mcpFailureWarrantsReconnect(new Error(message))).toBe(true);
 		}
 	});
 });

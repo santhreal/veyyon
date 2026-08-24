@@ -57,7 +57,12 @@ runs:
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
            path: ~/.bun/install/cache
-           key: bun-${{ runner.os }}-${{ hashFiles('**/bun.lock') }}
+           # The workspace lockfile, by exact path. A `**/bun.lock` glob also walks
+           # `packages/deepswe-bench/repo-cache/`, where a checked-out fixture
+           # repository carries its own lockfile that appears and disappears while a
+           # job runs; the save phase of a native build then fails the whole job with
+           # "hashFiles('**/bun.lock') failed. Fail to hash files under directory".
+           key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
 
       - name: Install dependencies
         shell: bash
