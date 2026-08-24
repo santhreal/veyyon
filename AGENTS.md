@@ -48,15 +48,27 @@ of `Model`, `Api`, `ThinkingConfig` and `Effort` from `@veyyon/ai` are fine.
 the only capture authority. Read it and use it verbatim. There are no fallbacks: a capture taken any
 other way is not evidence and satisfies no gate here.
 
-None of these is evidence, and none substitutes for a capture:
+### Recording UI captures
 
-- A tmux capture, of anything. It renders on a black default ground and strips styling in
-  `capture-pane`, which hid dark background fills that shipped as black slabs (2026-07-22).
-- An off-screen raster of a component's ANSI. `scripts/demos/render-proof.ts` is a debugging aid: it
-  renders a fixture you wrote at a width you chose, so it cannot show that the surface is reachable,
-  that the state is real, or that the block is positioned, sized and clipped the way a session draws
-  it.
-- A mock-up, a hand-built frame, a snippet in a comment, or one unpaired image.
+Record all visual proof through the containerized X11 capture harness on the private display:
+
+```sh
+# UI change: record After and Before pair
+proof/docker/record-x11.sh proof/scenes/<name>.sh        # writes After to proof/captures/x11/
+proof/docker/record-x11-before.sh proof/scenes/<name>.sh # writes Before to proof/captures/x11/before/
+
+# Settings change: record Off and On differential
+OUT_DIR=proof/captures/x11/off proof/docker/record-x11.sh proof/scenes/<name>.sh
+OUT_DIR=proof/captures/x11/on SCENE_SETTINGS='<setting>: <val>' proof/docker/record-x11.sh proof/scenes/<name>.sh
+```
+
+### What is NOT evidence
+
+None of these is evidence, and none satisfies any gate or PR visual requirement:
+
+- **Off-screen ANSI PNG rasters** (`scripts/demos/render-proof.ts`). This is strictly a local debugging aid for checking ANSI contrast/fills on synthetic fixtures; it never proves reachable UI, live state, correct sizing, or window clipping. It must never be presented as satisfying visual proof requirements.
+- **tmux captures** (`capture-pane`). It renders on a black ground, stripping styles and background fills.
+- **Mock-ups, hand-built frames, or unpaired images**.
 
 Two things stand beside a capture and replace neither: string/ANSI assertions that pin exact bytes,
 colours and widths, and the operator's own screenshots, which are ground truth.
@@ -66,11 +78,10 @@ colours and widths, and the operator's own screenshots, which are ground truth.
 A pull request that changes visible UI carries a labeled **Before** and **After** pair in its body
 before it can merge. Both frames show the same surface, dimensions, terminal configuration and state
 apart from the intended change, and both come from the capture config above. A static change proves
-with a PNG pair, an animation with a GIF pair; a still never proves an animation.
+with a PNG pair, an animation with a GIF/WebP pair; a still never proves an animation.
 
 Proof frames are committed nowhere: not `assets/`, not a README, not the handbook, not the website.
 The regeneration command belongs in the handbook page that owns the surface.
-
 ## GitHub
 
 Never comment on GitHub (issues, PRs, discussions) and never create issues, unless the request says
