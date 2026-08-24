@@ -20,6 +20,7 @@
 - A picture a terminal will not draw now leaves a row naming the file, the media type, the pixel size and the cause, in place of `[Image: image/png]`, including when a Kitty session cannot convert it to PNG.
 - A failed MCP tool call decides on a reconnect from the shared socket vocabulary plus this layer's own stale-session rules, so an unreachable or unresolvable host reconnects the server the way a refused connection already did, while a live server answering 500 or holding a request past its deadline stays a failed call.
 - The debug log records which classification rules decided a failed turn's retry, next to the classified kind, so a retry nobody expected is diagnosed from the log instead of by re-reading the provider's sentence.
+- The browser tab worker and supervisor state why each teardown step and each optional probe discards its failure; behavior is unchanged.
 - The Anthropic provider reads its endpoint, credential placement, rejected betas and retry policy from the catalog's wire-capability table instead of comparing provider ids at seventeen call sites.
 - A message that names a dead socket reads the same everywhere: `namesDeadSocket` in `@veyyon/ai/error/flags` is the one list of errnos and phrases, and `ENETUNREACH`, `EHOSTUNREACH` and `EAI_AGAIN` now count as transient transport failures like the rest of them.
 - `MNEMOPI_NO_EMBEDDINGS=0`, `false`, `no` or `off` now leaves embeddings on everywhere instead of disabling them on the API path.
@@ -30,7 +31,10 @@
 ### Fixed
 
 - An indented row inside a tool block keeps its indent when it wraps at a narrow width, instead of continuing at the block's left edge.
+- A colour or title escape sequence a command writes in two pieces no longer leaves part of itself in tool output: the sink holds a sequence its chunk ended inside until the piece that finishes it arrives, and drops one the stream never completes.
 - A wrapped line now continues under the indent its first row opened at, so an indented row no longer reads as a new top-level row at a narrow width.
+- `splitTrailingPartialEscape` lets a streaming reader hold back an escape sequence a chunk ended inside, so a sequence divided across two reads is stripped whole instead of losing its head and leaking its tail as text.
+- `discarded-fault.ts`: `bestEffort` and `optionalResult` state which contract discarded a promise's failure, one for a step nobody waits on and one for a probe whose failure is the answer, each taking a mandatory reason.
 
 ## [1.2.0] - 2026-08-23
 

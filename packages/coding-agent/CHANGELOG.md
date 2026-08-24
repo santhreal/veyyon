@@ -14,10 +14,12 @@
 - A picture a terminal will not draw now leaves a row naming the file, the media type, the pixel size and the cause, in place of `[Image: image/png]`, including when a Kitty session cannot convert it to PNG.
 - A failed MCP tool call decides on a reconnect from the shared socket vocabulary plus this layer's own stale-session rules, so an unreachable or unresolvable host reconnects the server the way a refused connection already did, while a live server answering 500 or holding a request past its deadline stays a failed call.
 - The debug log records which classification rules decided a failed turn's retry, next to the classified kind, so a retry nobody expected is diagnosed from the log instead of by re-reading the provider's sentence.
+- The browser tab worker and supervisor state why each teardown step and each optional probe discards its failure; behavior is unchanged.
 
 ### Fixed
 
 - An indented row inside a tool block keeps its indent when it wraps at a narrow width, instead of continuing at the block's left edge.
+- A colour or title escape sequence a command writes in two pieces no longer leaves part of itself in tool output: the sink holds a sequence its chunk ended inside until the piece that finishes it arrives, and drops one the stream never completes.
 
 ## [1.2.0] - 2026-08-23
 
