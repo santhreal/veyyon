@@ -51,6 +51,9 @@ const AGENT_STATUS_SYMBOL = {
 	aborted: "status.aborted",
 } as const;
 
+/** All canonical agent display states derived from the visual language owner. */
+export const AGENT_DISPLAY_STATES = Object.keys(AGENT_STATUS_COLOR) as readonly AgentDisplayState[];
+
 // AGENT_STATUS_ORDER was here: a canonical sort rank per status, shared so the
 // Agent Hub roster and the Subagent Inbox sidebar could not disagree about which
 // agents floated to the top. Both views are gone, and the Agent Control Center

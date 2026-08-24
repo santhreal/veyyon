@@ -1,10 +1,13 @@
 /**
- * WHY: Focusing a parked subagent used to attach its durable transcript and then
- * immediately unfocus when the registry reported `parked`, leaving the parent
- * transcript in view. This drives the persisted revival and interactive render
- * path with a synthetic session containing user, assistant, tool-call, and
- * tool-result entries. It does not cover a missing working directory or a
- * registry entry removed after its close TTL.
+ * WHY: Focusing a parked subagent attaches its durable transcript and reconstructs
+ * all conversation history, tool calls, and tool execution results. When durable state
+ * is unrevivable (missing file, deleted cwd, corrupted JSONL), focusing must fail cleanly
+ * without corrupting or orphaning the driving session view.
+ *
+ * Closes the class of:
+ * - Transcript component loss on parked subagent revival
+ * - Unhandled crashes / orphaned views when revived session directory or file is missing/corrupted
+ * - Spurious auto-unfocus on parked state vs true termination
  */
 import "./helpers/tool-views-preload";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";
@@ -270,5 +273,213 @@ describe("focused agent transcript reconstruction", () => {
 		registry.setStatus("Worker", "parked");
 		for (let i = 0; i < 5; i++) await Promise.resolve();
 		expect(mode.focusedAgentId).toBe("Worker");
+	});
+
+	it("refuses to focus a parked subagent whose session file does not exist, keeping main view intact", async () => {
+		if (!mode || !terminal || !mainSession || !subagentDir) throw new Error("not booted");
+
+		const missingFilePath = path.join(subagentDir, "NonExistent.jsonl");
+		const registry = AgentRegistry.global();
+		registry.register({
+			id: "MissingAgent",
+			displayName: "MissingAgent",
+			kind: "sub",
+			parentId: MAIN_AGENT_ID,
+			session: null,
+			sessionFile: missingFilePath,
+			status: "parked",
+		});
+
+		const settings = Settings.isolated({ "startup.quiet": true });
+		AgentLifecycleManager.global().setPersistedSubagentReviverFactory(
+			createPersistedSubagentReviverFactory({
+				session: mainSession,
+				authStorage: authStorage!,
+				modelRegistry: mainSession.modelRegistry,
+				settings,
+				enableLsp: false,
+			}),
+			60_000,
+		);
+
+		await expect(mode.focusAgentSession("MissingAgent")).rejects.toThrow();
+		expect(mode.focusedAgentId).toBeUndefined();
+		expect(mode.viewSession).toBe(mainSession);
+	});
+
+	it("refuses to focus a parked subagent whose recorded working directory was deleted", async () => {
+		if (!mode || !terminal || !mainSession || !subagentDir) throw new Error("not booted");
+
+		const deletedSubDir = path.join(subagentDir, "deleted-worktree");
+		await fs.mkdir(deletedSubDir, { recursive: true });
+		const sessionFilePath = path.join(deletedSubDir, "DeletedCwdAgent.jsonl");
+		const sessionLines = [
+			JSON.stringify({
+				type: "session",
+				version: 3,
+				id: "deleted-cwd-fixture",
+				timestamp: "2026-01-01T00:00:00.000Z",
+				cwd: deletedSubDir,
+			}),
+			JSON.stringify({
+				type: "session_init",
+				id: "init",
+				parentId: null,
+				timestamp: "2026-01-01T00:00:00.001Z",
+				systemPrompt: "Synthetic fixture",
+				tools: ["read"],
+			}),
+		];
+		await fs.writeFile(sessionFilePath, `${sessionLines.join("\n")}\n`, "utf-8");
+
+		// Delete the working directory
+		await fs.rm(deletedSubDir, { recursive: true, force: true });
+
+		const registry = AgentRegistry.global();
+		registry.register({
+			id: "DeletedCwdAgent",
+			displayName: "DeletedCwdAgent",
+			kind: "sub",
+			parentId: MAIN_AGENT_ID,
+			session: null,
+			sessionFile: sessionFilePath,
+			status: "parked",
+		});
+
+		const settings = Settings.isolated({ "startup.quiet": true });
+		AgentLifecycleManager.global().setPersistedSubagentReviverFactory(
+			createPersistedSubagentReviverFactory({
+				session: mainSession,
+				authStorage: authStorage!,
+				modelRegistry: mainSession.modelRegistry,
+				settings,
+				enableLsp: false,
+			}),
+			60_000,
+		);
+
+		await expect(mode.focusAgentSession("DeletedCwdAgent")).rejects.toThrow();
+		expect(mode.focusedAgentId).toBeUndefined();
+		expect(mode.viewSession).toBe(mainSession);
+	});
+
+	it("refuses to focus a parked subagent with corrupted or truncated JSONL", async () => {
+		if (!mode || !terminal || !mainSession || !subagentDir) throw new Error("not booted");
+
+		const corruptFilePath = path.join(subagentDir, "Corrupt.jsonl");
+		// Corrupted file missing session_init contract
+		await fs.writeFile(
+			corruptFilePath,
+			`{"type":"session","version":3,"cwd":"${subagentDir}"}\n{"bad_json\n`,
+			"utf-8",
+		);
+
+		const registry = AgentRegistry.global();
+		registry.register({
+			id: "CorruptAgent",
+			displayName: "CorruptAgent",
+			kind: "sub",
+			parentId: MAIN_AGENT_ID,
+			session: null,
+			sessionFile: corruptFilePath,
+			status: "parked",
+		});
+
+		const settings = Settings.isolated({ "startup.quiet": true });
+		AgentLifecycleManager.global().setPersistedSubagentReviverFactory(
+			createPersistedSubagentReviverFactory({
+				session: mainSession,
+				authStorage: authStorage!,
+				modelRegistry: mainSession.modelRegistry,
+				settings,
+				enableLsp: false,
+			}),
+			60_000,
+		);
+		await expect(mode.focusAgentSession("CorruptAgent")).rejects.toThrow();
+		expect(mode.focusedAgentId).toBeUndefined();
+		expect(mode.viewSession).toBe(mainSession);
+	});
+
+	it("refuses to focus an agent belonging to a different conversation scope on the real interactive mode path", async () => {
+		if (!mode || !terminal || !mainSession || !subagentDir) throw new Error("not booted");
+
+		const registry = AgentRegistry.global();
+		const mainScope = mainSession.sessionManager.getSessionId();
+		registry.register({
+			id: MAIN_AGENT_ID,
+			displayName: "Main",
+			kind: "main",
+			session: mainSession,
+			scope: mainScope,
+		});
+
+		// Register an agent belonging to another conversation
+		registry.register({
+			id: "ForeignMain",
+			displayName: "ForeignMain",
+			kind: "main",
+			session: null,
+			scope: "foreign-session-scope",
+		});
+		registry.register({
+			id: "ForeignWorker",
+			displayName: "ForeignWorker",
+			kind: "sub",
+			parentId: "ForeignMain",
+			session: null,
+			sessionFile: path.join(subagentDir, "foreign.jsonl"),
+			status: "parked",
+			scope: "foreign-session-scope",
+		});
+
+		await expect(mode.focusAgentSession("ForeignWorker")).rejects.toThrow(/different conversation/);
+		expect(mode.focusedAgentId).toBeUndefined();
+		expect(mode.viewSession).toBe(mainSession);
+	});
+
+	it("auto-unfocuses the real interactive mode to main session when the focused agent is removed from registry", async () => {
+		if (!mode || !terminal || !mainSession || !subagentDir) throw new Error("not booted");
+
+		// Create and register a live subagent session
+		const subagentSession = new AgentSession({
+			agent: new Agent({
+				initialState: {
+					model: mainSession.modelRegistry.find("anthropic", "claude-sonnet-4-5")!,
+					systemPrompt: ["Sub"],
+					tools: [],
+					messages: [],
+				},
+			}),
+			sessionManager: SessionManager.create(subagentDir, subagentDir),
+			settings: Settings.isolated({ "startup.quiet": true }),
+			modelRegistry: mainSession.modelRegistry,
+		});
+
+		const registry = AgentRegistry.global();
+		registry.register({
+			id: "LiveWorker",
+			displayName: "LiveWorker",
+			kind: "sub",
+			parentId: MAIN_AGENT_ID,
+			session: subagentSession,
+			status: "running",
+		});
+
+		await mode.focusAgentSession("LiveWorker");
+		expect(mode.focusedAgentId).toBe("LiveWorker");
+		expect(mode.viewSession).toBe(subagentSession);
+
+		// Remove the agent from registry (simulating close budget expiry or hard release)
+		registry.unregister("LiveWorker");
+
+		// Settle registry event and unfocus chain
+		for (let i = 0; i < 5; i++) await Promise.resolve();
+		await terminal.waitForRender();
+
+		expect(mode.focusedAgentId).toBeUndefined();
+		expect(mode.viewSession).toBe(mainSession);
+
+		await subagentSession.dispose();
 	});
 });
