@@ -25,11 +25,15 @@
  *     pinned by exact equality, derived from `STATUS_LINE_PRESETS` at run time.
  *     Adding a segment to any preset turns this suite red until someone gives the
  *     new id a rank or records it as deliberately unranked.
+ *   - The members of `mode` -- the base modes and the approval rungs -- are pinned
+ *     the same way, because the capture matrix in `proof/scenes/statusline-widths.sh`
+ *     carries one frame per member and nothing else notices a new one. A sixth base
+ *     mode or rung lands with no frame and no failure otherwise.
  *
  * WHAT IT DOES NOT CATCH. `subagents` (rank 5, the last part standing) renders
  * empty text in a session with no subagents, so it has no slot to observe here;
  * `status-line-running-subagents.test.ts` owns that contract. Nothing here checks
- * the text inside a segment — colour, provider icon, or thinking-level suffix.
+ * the text inside a segment -- colour, provider icon, or thinking-level suffix.
  */
 import { beforeAll, describe, expect, it } from "bun:test";
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -38,9 +42,11 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { QuietSegmentBounds } from "@veyyon/coding-agent/modes/components/status-line/component";
 import { StatusLineComponent } from "@veyyon/coding-agent/modes/components/status-line/component";
 import { STATUS_LINE_PRESETS } from "@veyyon/coding-agent/modes/components/status-line/presets";
+import { BASE_MODE_STATES } from "@veyyon/coding-agent/modes/components/status-line/segments";
 import type { StatusLinePreset } from "@veyyon/coding-agent/modes/components/status-line/types";
 import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import { AUTONOMY_LABEL } from "@veyyon/coding-agent/tools/approval-modes";
 import { useTrackedTempDirs } from "../../../helpers/tracked-temp-dir";
 
 /**
@@ -269,5 +275,19 @@ describe("the model segment survives long paths and branch names", () => {
 			}
 		}
 		expect([...ids].sort()).toEqual([...RIGHT_GROUP_CAPABLE_SEGMENT_IDS]);
+	});
+
+	// The `mode` segment is the widest thing in the right group and the only one whose
+	// content is a composition: a bypass marker, one base mode, one approval rung. The
+	// capture matrix carries a frame per member, so a member added without a frame is a
+	// hole in the evidence rather than in the code, and no other suite reads either table.
+	// Pinned by equality, not by count, and derived from the exported tables at run time.
+	//
+	// `prewalk` has no frame on purpose: arming it needs a fast model distinct from the
+	// session's own, which the capture host does not serve. It stays in this list because
+	// the list is the render order, and losing it here would hide a reordering.
+	it("names every base mode and approval rung, so a new one needs a frame", () => {
+		expect(BASE_MODE_STATES.map(state => state.id)).toEqual(["plan", "prewalk", "goal", "vibe", "loop"]);
+		expect(Object.keys(AUTONOMY_LABEL).sort()).toEqual(["ask", "ask-command", "auto", "plan", "yolo"]);
 	});
 });
