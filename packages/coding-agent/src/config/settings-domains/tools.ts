@@ -292,7 +292,7 @@ export const TOOLS_SETTINGS = {
 			tab: "tools",
 			group: "Available Tools",
 			label: "Launch",
-			description: "Enable the launch tool for supervising shared long-running project processes",
+			description: "Enable the launch tool for supervising long-running processes",
 		},
 	},
 

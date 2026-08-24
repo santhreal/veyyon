@@ -98,17 +98,9 @@ describe("daemonBrokerEndpoint", () => {
 		});
 	});
 
-	/**
-	 * The pipe name and the runtime directory identify the same project through what used to be two
-	 * copies of the hash expression. A drift between them keys a broker to a pipe no client computes,
-	 * so this asserts the shared key rather than trusting that both copies were edited together.
-	 */
-	it("reuses the runtime-dir key verbatim in the Windows pipe name", () => {
-		const key = daemonRuntimeDir("/home/x/proj", "/cfg").split("/").pop() ?? "";
-		withPlatform("win32", () => {
-			expect(daemonBrokerEndpoint("/home/x/proj", "/cfg")).toBe(`\\\\.\\pipe\\veyyon-daemon-${key}`);
-		});
-	});
+	// The historical "pipe key reuses the runtime-dir key verbatim" pin is gone on purpose:
+	// session scopes need their own pipe namespace, so a foreign runtime dir now hashes its
+	// own name (covered above) and only the canonical project layout keeps the verbatim key.
 });
 
 const RUNTIME = "/cfg/run/daemons/0f63cb695d3d99fc";

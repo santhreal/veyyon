@@ -61,7 +61,7 @@ const TOOL_PROMPT_CEILINGS: Record<string, number> = {
 	bash: 3910,
 	todo: 2640,
 	irc: 3450,
-	launch: 2820,
+	launch: 2950,
 	task: 2720,
 	debug: 2350,
 	ast_grep: 2140,

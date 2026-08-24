@@ -153,17 +153,25 @@ describe("launch scope follows the session by default", () => {
 		const details = started.details as { daemon?: { state: string } };
 		expect(details.daemon?.state).toBe("ready");
 
+		const projectScope = await createDaemonBrokerClient(project);
 		try {
 			// The historical scope is back: a plain project client (what another
-			// session and the CLI both join) lists the process.
-			const projectScope = await createDaemonBrokerClient(project);
+			// session and the CLI both join) lists the process while it runs.
 			const sharedList = await projectScope.request({ op: "list" });
 			if (sharedList.op !== "list") throw new Error("unexpected list result");
 			expect(sharedList.daemons.map(daemon => daemon.name)).toEqual(["shared-server"]);
-			await projectScope.request({ op: "shutdown" });
-			projectScope.close();
 		} finally {
-			await sharer.execute("id", { op: "stop", name: "shared-server" });
+			// Stop through the sharer BEFORE shutting the shared broker down: both
+			// ride the same broker.
+			try {
+				await sharer.execute("id", { op: "stop", name: "shared-server" });
+			} catch (error) {
+				if (!(error instanceof Error) || !error.message.includes("connection closed")) throw error;
+			}
+			try {
+				await projectScope.request({ op: "shutdown" });
+			} catch {}
+			projectScope.close();
 		}
 	}, 30_000);
 });

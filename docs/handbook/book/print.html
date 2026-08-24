@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-a452f796.js";
+            window.path_to_searchindex_js = "searchindex-02b057d9.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-a2abefc1.js"></script>
@@ -10028,7 +10028,7 @@ lsp:
 </thead>
 <tbody>
 <tr><td><code>bash.enabled</code></td><td>boolean</td><td><code>true</code></td><td>Enable the bash tool.</td></tr>
-<tr><td><code>launch.enabled</code></td><td>boolean</td><td><code>true</code></td><td>Enable the launch tool for shared long-running project processes.</td></tr>
+<tr><td><code>launch.enabled</code></td><td>boolean</td><td><code>true</code></td><td>Enable the launch tool for supervising long-running processes.</td></tr>
 <tr><td><code>launch.sharedCrossSession</code></td><td>boolean</td><td><code>false</code></td><td>Share launched processes across every session in this project. Default off: a launch is supervised by a session-private broker and ends when the session does, and no other session can see, read, or stop it.</td></tr>
 <tr><td><code>bash.autoBackground.enabled</code></td><td>boolean</td><td><code>true</code></td><td>Auto-background long-running commands. You can also background the running command yourself with the composer’s background key, whatever this is set to.</td></tr>
 <tr><td><code>bash.autoBackground.thresholdMs</code></td><td>number</td><td><code>300000</code></td><td>Max wall-clock time a bash call runs in the foreground before it is moved to a background job. Frees the model and protects the prompt cache. Fires on elapsed time even while output streams. <code>0</code> backgrounds immediately.</td></tr>
@@ -10984,7 +10984,7 @@ veyyon config get compaction.threshold
 <tr><td><code>astEdit.enabled</code></td><td>AST Edit</td><td>boolean</td><td><code>true</code></td><td>Enable the ast_edit tool for structural AST rewrites.</td></tr>
 <tr><td><code>debug.enabled</code></td><td>Debug</td><td>boolean</td><td><code>true</code></td><td>Enable the debug tool for DAP-based debugging.</td></tr>
 <tr><td><code>launch.enabled</code></td><td>Launch</td><td>boolean</td><td><code>true</code></td><td>Enable the launch tool for supervising long-running processes.</td></tr>
-<tr><td><code>launch.sharedCrossSession</code></td><td>Launch Shared Cross-Session</td><td>boolean</td><td><code>false</code></td><td>Share launched processes across every session in this project. Default off: a launch is private to the session that started it and ends with it.</td></tr>
+<tr><td><code>launch.sharedCrossSession</code></td><td>Launch Shared Cross-Session</td><td>boolean</td><td><code>false</code></td><td>Let launched processes be visible and controllable from every veyyon session in this project instead of only the session that started them.</td></tr>
 <tr><td><code>speechgen.enabled</code></td><td>Speech Generation</td><td>boolean</td><td><code>false</code></td><td>Enable the tts tool for on-device (Kokoro) or xAI Grok Voice speech-file synthesis.</td></tr>
 <tr><td><code>generate_image.enabled</code></td><td>Generate Image</td><td>boolean</td><td><code>false</code></td><td>Enable the generate_image tool for text-to-image generation and editing.</td></tr>
 <tr><td><code>inspect_image.enabled</code></td><td>Inspect Image</td><td>boolean</td><td><code>false</code></td><td>Enable the inspect_image tool, delegating image understanding to a vision-capable model.</td></tr>
@@ -11544,7 +11544,7 @@ veyyon config get compaction.threshold
 </tbody>
 </table>
 </div>
-<p>345 settings in /settings, 119 configuration-file keys, 464 in all.</p>
+<p>346 settings in /settings, 119 configuration-file keys, 465 in all.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="model-and-provider-configuration-modelsyml--modelsyaml"><a class="header" href="#model-and-provider-configuration-modelsyml--modelsyaml">Model and Provider Configuration (<code>models.yml</code> / <code>models.yaml</code>)</a></h1>
 <p>How the coding agent loads models, applies overrides, resolves credentials, and chooses models at runtime.</p>

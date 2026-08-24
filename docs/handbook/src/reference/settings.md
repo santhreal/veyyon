@@ -791,7 +791,7 @@ lsp:
 | Key | Type | Default | Notes |
 |---|---|---|---|
 | `bash.enabled` | boolean | `true` | Enable the bash tool. |
-| `launch.enabled` | boolean | `true` | Enable the launch tool for shared long-running project processes. |
+| `launch.enabled` | boolean | `true` | Enable the launch tool for supervising long-running processes. |
 | `launch.sharedCrossSession` | boolean | `false` | Share launched processes across every session in this project. Default off: a launch is supervised by a session-private broker and ends when the session does, and no other session can see, read, or stop it. |
 | `bash.autoBackground.enabled` | boolean | `true` | Auto-background long-running commands. You can also background the running command yourself with the composer's background key, whatever this is set to. |
 | `bash.autoBackground.thresholdMs` | number | `300000` | Max wall-clock time a bash call runs in the foreground before it is moved to a background job. Frees the model and protects the prompt cache. Fires on elapsed time even while output streams. `0` backgrounds immediately. |
