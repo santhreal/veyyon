@@ -271,11 +271,14 @@ describe("every spawn site in src is wired into the session CPU budget or exempt
 		// These files call ptree only through execCommand. Adopting after spawn
 		// still lets a saturated session start the process. The wrappers must
 		// pass gateSpawn into withSessionCpuExec so beforeSpawn can refuse.
+		// Hook factories loaded as session extensions already go through
+		// extensions/loader.ts; hooks/loader.ts is the public HookAPI.exec path.
 		const files = [
 			"exec/exec.ts",
 			"extensibility/custom-tools/loader.ts",
 			"extensibility/custom-commands/loader.ts",
 			"extensibility/extensions/loader.ts",
+			"extensibility/hooks/loader.ts",
 			"sdk.ts",
 		];
 		for (const file of files) {

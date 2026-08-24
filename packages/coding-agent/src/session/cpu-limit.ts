@@ -1439,7 +1439,7 @@ export async function gateSessionCpuSpawn(sessionId: string | null | undefined, 
 }
 
 /**
- * Spawn hooks for `exec` wrappers (custom tools, commands, extensions).
+ * Spawn hooks for `exec` wrappers (custom tools, commands, extensions, hooks).
  * `adoptPid` joins the child to the session group; `gate` refuses the spawn
  * when the group is saturated or could not be created. Call `gate` before
  * the process exists — adopting afterwards cannot un-run an uncapped child.
