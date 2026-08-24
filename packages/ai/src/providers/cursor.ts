@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import * as fs from "node:fs/promises";
 import http2 from "node:http2";
+import { setImmediate as yieldToProtocolEvents } from "node:timers/promises";
 import { create, fromBinary, fromJson, type JsonValue, toBinary, toJson } from "@bufbuild/protobuf";
 import { ValueSchema } from "@bufbuild/protobuf/wkt";
 import type { McpToolDefinition } from "@veyyon/catalog/discovery/cursor-gen/agent_pb";
@@ -249,6 +250,13 @@ export interface CursorOptions extends StreamOptions {
 
 const CONNECT_END_STREAM_FLAG = 0b00000010;
 
+/**
+ * Hard upper bound on a single Connect frame payload in Cursor streams. The 4-byte length prefix
+ * is otherwise attacker-controlled (up to `2**32 - 1`), so a corrupt length prefix fails fast
+ * instead of buffering indefinitely until memory exhaustion or watchdog timeout.
+ */
+const MAX_CONNECT_FRAME_PAYLOAD = 16 * 1024 * 1024;
+
 interface CursorLogEntry {
 	ts: number;
 	type: string;
@@ -474,11 +482,14 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 		let abortHandler: (() => void) | undefined;
 
 		try {
+			if (options?.signal?.aborted) {
+				throw new AIError.RequestAbortError();
+			}
+
 			const apiKey = options?.apiKey;
 			if (!apiKey) {
 				throw new AIError.MissingApiKeyError(undefined, "Cursor API key (access token) is required");
 			}
-
 			const conversationId = options?.conversationId ?? options?.sessionId ?? crypto.randomUUID();
 			const blobStore = conversationBlobStores.get(conversationId) ?? new Map<string, Uint8Array>();
 			conversationBlobStores.set(conversationId, blobStore);
@@ -588,6 +599,8 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 			};
 
 			let resolveH2: (() => void) | undefined;
+			let rejectH2: ((err: unknown) => void) | undefined;
+			let streamTerminated = false;
 			// `turnEnded` is the only thing that says the server finished this turn.
 			// The h2 stream also ends when the connection simply stops, and those two
 			// are not the same event.
@@ -609,6 +622,62 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 			// Enough for any error envelope, and a bound against a proxy that
 			// answers a megabyte of HTML.
 			const REFUSAL_BODY_LIMIT = 8 * 1024;
+			const pendingMessagePromises = new Set<Promise<void>>();
+
+			const closeDebugLog = async (): Promise<void> => {
+				try {
+					const log = await debugResponseLogPromise;
+					await log?.close();
+				} catch {
+					// Ignore debug log close failure so logging never masks the turn result
+				}
+			};
+
+			const terminateStream = (reason?: () => void) => {
+				if (streamTerminated) return;
+				streamTerminated = true;
+				const resolve = resolveH2;
+				const reject = rejectH2;
+				resolveH2 = undefined;
+				rejectH2 = undefined;
+				void (async () => {
+					if (pendingMessagePromises.size > 0) {
+						await Promise.allSettled(Array.from(pendingMessagePromises));
+					}
+					await closeDebugLog();
+					if (refusedStatus !== undefined) {
+						// The status is the remedy: 401 is a credential, 429 is a
+						// wait, 404 is the route. `CursorApiError` carries it, so
+						// the shared classifier reads the same retry decision it
+						// reads for every other provider's HTTP refusal.
+						reject?.(
+							new AIError.CursorApiError(
+								`Cursor API error ${refusedStatus}: ${AIError.boundProviderErrorDetail(refusalBody)}`,
+								refusedStatus,
+							),
+						);
+						return;
+					}
+					if (endStreamError) {
+						reject?.(endStreamError);
+						return;
+					}
+					if (reason) {
+						reason();
+						return;
+					}
+					if (turnCompleted) {
+						resolve?.();
+						return;
+					}
+					reject?.(
+						new AIError.ProviderResponseError(
+							"Cursor stream ended without a turn_ended update (connection dropped or response truncated)",
+							{ provider: model.provider, kind: "incomplete-stream" },
+						),
+					);
+				})().catch(err => reject?.(err));
+			};
 
 			h2Request.on("response", headers => {
 				const status = Number(headers[":status"]);
@@ -618,7 +687,6 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 					headers,
 				);
 			});
-
 			h2Request.on("data", (chunk: Buffer) => {
 				if (debugResponseLogPromise) {
 					void debugResponseLogPromise.then(log => {
@@ -634,6 +702,15 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 				while (pendingBuffer.length >= 5) {
 					const flags = pendingBuffer[0];
 					const msgLen = pendingBuffer.readUInt32BE(1);
+					if (msgLen > MAX_CONNECT_FRAME_PAYLOAD) {
+						failTurn(
+							new AIError.ProviderResponseError(
+								`Cursor Connect frame length ${msgLen} exceeds ${MAX_CONNECT_FRAME_PAYLOAD}-byte cap`,
+								{ provider: model.provider, kind: "envelope" },
+							),
+						);
+						break;
+					}
 					if (pendingBuffer.length < 5 + msgLen) break;
 
 					const messageBytes = pendingBuffer.subarray(5, 5 + msgLen);
@@ -642,8 +719,7 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 					if (flags & CONNECT_END_STREAM_FLAG) {
 						const endError = parseConnectEndStream(messageBytes);
 						if (endError) {
-							endStreamError = endError;
-							h2Request?.close();
+							failTurn(endError);
 						}
 						continue;
 					}
@@ -653,49 +729,67 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 						const isTurnEnded =
 							serverMessage.message.case === "interactionUpdate" &&
 							serverMessage.message.value.message?.case === "turnEnded";
-						void handleServerMessage(
-							serverMessage,
-							output,
-							stream,
-							state,
-							blobStore,
-							h2Request!,
-							options?.execHandlers,
-							options?.onToolResult,
-							requestContextTools,
-							requestContextRules,
-							onConversationCheckpoint,
-							{
-								systemPromptBlobIds,
-								onFatal: failTurn,
-								onRequestContextDelivered: () => {
-									requestContextDelivered = true;
+
+						const messagePromise = (async () => {
+							await handleServerMessage(
+								serverMessage,
+								output,
+								stream,
+								state,
+								blobStore,
+								h2Request!,
+								options?.execHandlers,
+								options?.onToolResult,
+								requestContextTools,
+								requestContextRules,
+								onConversationCheckpoint,
+								{
+									systemPromptBlobIds,
+									onFatal: failTurn,
+									onRequestContextDelivered: () => {
+										requestContextDelivered = true;
+									},
 								},
-							},
-						).catch(error => {
-							// `log` is a no-op unless DEBUG_CURSOR is set, so every failure inside a server-message
-							// handler used to vanish: an exec handler that threw, a malformed interaction update, a
-							// checkpoint that could not be applied. The turn then completed as though nothing had
-							// gone wrong. Report it and fail the turn immediately so the client does not wait for a watchdog.
-							logger.warn("Cursor server message handler failed", {
-								model: model.id,
-								messageCase: serverMessage.message.case,
-								error: errorMessage(error),
+							);
+						})();
+
+						pendingMessagePromises.add(messagePromise);
+
+						messagePromise
+							.catch(error => {
+								// `log` is a no-op unless DEBUG_CURSOR is set, so every failure inside a server-message
+								// handler used to vanish: an exec handler that threw, a malformed interaction update, a
+								// checkpoint that could not be applied. The turn then completed as though nothing had
+								// gone wrong. Report it and fail the turn immediately so the client does not wait for a watchdog.
+								logger.warn("Cursor server message handler failed", {
+									model: model.id,
+									messageCase: serverMessage.message.case,
+									error: errorMessage(error),
+								});
+								failTurn(error instanceof Error ? error : new Error(String(error)));
+							})
+							.finally(() => {
+								pendingMessagePromises.delete(messagePromise);
 							});
-							failTurn(error instanceof Error ? error : new Error(String(error)));
-						});
 
 						// The one place the turn is declared over. Both the resolve and the
 						// completion check below read this, so there is no second opinion.
-						if (isTurnEnded) turnCompleted = true;
-						if (isTurnEnded && resolveH2) {
-							const r = resolveH2;
-							resolveH2 = undefined;
-							r();
+						// Await all in-flight server message handlers before resolving so
+						// turnEnded arriving while an exec handler is pending cannot emit
+						// false success or orphan the handler.
+						if (isTurnEnded) {
+							turnCompleted = true;
+							void Promise.allSettled(Array.from(pendingMessagePromises)).then(async () => {
+								// Give already-arrived protocol terminal events (e.g. HTTP/2 trailers)
+								// one event-loop turn to be dispatched and set endStreamError before resolving success.
+								await yieldToProtocolEvents();
+								terminateStream();
+							});
 						}
 					} catch (e) {
 						log("error", "parseServerMessage", { error: String(e) });
 						failTurn(e instanceof Error ? e : new Error(String(e)));
+						break;
 					}
 				}
 			});
@@ -703,75 +797,37 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 			h2Request.write(frameConnectMessage(requestBytes));
 
 			const sendHeartbeat = () => {
-				if (!h2Request || h2Request.closed) {
+				if (!h2Request || h2Request.closed || h2Request.destroyed) {
 					return;
 				}
-				const heartbeatMessage = create(AgentClientMessageSchema, {
-					message: { case: "clientHeartbeat", value: create(ClientHeartbeatSchema, {}) },
-				});
-				const heartbeatBytes = toBinary(AgentClientMessageSchema, heartbeatMessage);
-				h2Request.write(frameConnectMessage(heartbeatBytes));
+				try {
+					const heartbeatMessage = create(AgentClientMessageSchema, {
+						message: { case: "clientHeartbeat", value: create(ClientHeartbeatSchema, {}) },
+					});
+					const heartbeatBytes = toBinary(AgentClientMessageSchema, heartbeatMessage);
+					h2Request.write(frameConnectMessage(heartbeatBytes));
+				} catch {
+					// Ignore heartbeat write failures on closing streams
+				}
 			};
 
 			heartbeatTimer = setInterval(sendHeartbeat, 5000);
 
 			await new Promise<void>((resolve, reject) => {
 				resolveH2 = resolve;
-
-				const closeDebugLog = async (): Promise<void> => {
-					const log = await debugResponseLogPromise;
-					await log?.close();
-				};
-
-				let streamTerminated = false;
-				const terminateStream = (reason?: () => void) => {
-					if (streamTerminated) return;
-					streamTerminated = true;
-					resolveH2 = undefined;
-					void closeDebugLog()
-						.then(() => {
-							if (refusedStatus !== undefined) {
-								// The status is the remedy: 401 is a credential, 429 is a
-								// wait, 404 is the route. `CursorApiError` carries it, so
-								// the shared classifier reads the same retry decision it
-								// reads for every other provider's HTTP refusal.
-								reject(
-									new AIError.CursorApiError(
-										`Cursor API error ${refusedStatus}: ${AIError.boundProviderErrorDetail(refusalBody)}`,
-										refusedStatus,
-									),
-								);
-								return;
-							}
-							if (endStreamError) {
-								reject(endStreamError);
-								return;
-							}
-							if (reason) {
-								reason();
-								return;
-							}
-							if (turnCompleted) {
-								resolve();
-								return;
-							}
-							reject(
-								new AIError.ProviderResponseError(
-									"Cursor stream ended without a turn_ended update (connection dropped or response truncated)",
-									{ provider: model.provider, kind: "incomplete-stream" },
-								),
-							);
-						})
-						.catch(reject);
-				};
+				rejectH2 = reject;
 
 				h2Request!.on("trailers", trailers => {
 					const status = trailers["grpc-status"];
-					const msg = trailers["grpc-message"];
+					const rawMsg = String(trailers["grpc-message"] || "");
+					let msg = rawMsg;
+					try {
+						msg = decodeURIComponent(rawMsg);
+					} catch {
+						// Malformed percent-encoding in grpc-message should not crash event handler
+					}
 					if (status && status !== "0") {
-						terminateStream(() => {
-							reject(cursorStreamFailure(String(status), decodeURIComponent(String(msg || "")), "gRPC error"));
-						});
+						failTurn(cursorStreamFailure(String(status), msg, "gRPC error"));
 					}
 				});
 
@@ -789,7 +845,11 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 
 				if (abortSignal) {
 					abortHandler = () => {
-						h2Request?.close();
+						try {
+							h2Request?.close();
+						} catch {
+							// Ignore close errors
+						}
 						terminateStream(() => reject(new AIError.RequestAbortError()));
 					};
 					// Already aborted before we attached: the event will never fire, so
@@ -873,14 +933,26 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 			stream.push({ type: "error", reason: output.stopReason, error: output });
 			stream.end();
 		} finally {
-			const log = await debugResponseLogPromise;
-			await log?.close();
+			try {
+				const log = await debugResponseLogPromise;
+				await log?.close();
+			} catch {
+				// Ignore debug log close failure
+			}
 			if (heartbeatTimer) {
 				clearInterval(heartbeatTimer);
 				heartbeatTimer = null;
 			}
-			h2Request?.close();
-			h2Client?.close();
+			try {
+				h2Request?.close();
+			} catch {
+				// Ignore close errors
+			}
+			try {
+				h2Client?.close();
+			} catch {
+				// Ignore close errors
+			}
 			// Detach the abort listener so it cannot outlive this round on the
 			// shared run signal (removeEventListener is a no-op if it already fired).
 			if (abortSignal && abortHandler) abortSignal.removeEventListener("abort", abortHandler);

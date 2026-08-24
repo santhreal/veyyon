@@ -334,4 +334,533 @@ describe("Cursor exec server message handler failure closes turn immediately", (
 			await server.close();
 		}
 	});
+
+	it("awaits in-flight exec handlers when turnEnded arrives concurrently and completes cleanly after handler resolves", async () => {
+		const handlerGate = Promise.withResolvers<ToolResultMessage>();
+		let serverReceivedClientResponse = false;
+
+		const server = await startMockCursorH2Server((serverStream: http2.ServerHttp2Stream) => {
+			serverStream.respond({ ":status": 200, "content-type": "application/connect+proto" });
+
+			const execMsg = create(AgentServerMessageSchema, {
+				message: {
+					case: "execServerMessage",
+					value: create(ExecServerMessageSchema, {
+						id: 3,
+						execId: "exec-concurrent-1",
+						message: {
+							case: "grepArgs",
+							value: create(GrepArgsSchema, { pattern: "concurrent-test" }),
+						},
+					}),
+				},
+			});
+
+			const turnEndedMsg = create(AgentServerMessageSchema, {
+				message: {
+					case: "interactionUpdate",
+					value: {
+						message: {
+							case: "turnEnded",
+							value: {},
+						},
+					},
+				},
+			});
+
+			// Send exec message followed immediately by turnEnded
+			serverStream.write(frameConnect(toBinary(AgentServerMessageSchema, execMsg)));
+			serverStream.write(frameConnect(toBinary(AgentServerMessageSchema, turnEndedMsg)));
+
+			serverStream.on("data", (chunk: Buffer) => {
+				if (chunk.length >= 5) {
+					serverReceivedClientResponse = true;
+					serverStream.end();
+				}
+			});
+		});
+
+		try {
+			const execHandlers: CursorExecHandlers = {
+				grep: async () => handlerGate.promise,
+			};
+
+			const context: Context = { messages: [{ role: "user", content: "concurrent test", timestamp: 1 }] };
+			const stream = streamCursor(testCursorModel(server.baseUrl), context, {
+				apiKey: "test-key",
+				execHandlers,
+			});
+
+			const streamSettled = Promise.withResolvers<AssistantMessage>();
+			(async () => {
+				try {
+					for await (const event of stream) {
+						if (event.type === "done") streamSettled.resolve(event.message);
+						if (event.type === "error") streamSettled.reject(event.error);
+					}
+				} catch (err) {
+					streamSettled.reject(err);
+				}
+			})();
+
+			// Microtask tick: ensure initial frames are delivered
+			await Promise.resolve();
+			expect(serverReceivedClientResponse).toBe(false);
+
+			// Now resolve the in-flight handler
+			handlerGate.resolve({
+				role: "toolResult",
+				toolCallId: "call-concurrent-1",
+				toolName: "grep",
+				content: [{ type: "text", text: "src/main.ts:1: found" }],
+				isError: false,
+				timestamp: 1,
+			});
+
+			const finalMessage = await streamSettled.promise;
+			expect(finalMessage).toBeDefined();
+			expect(finalMessage.stopReason).toBe("stop");
+			expect(serverReceivedClientResponse).toBe(true);
+		} finally {
+			await server.close();
+		}
+	});
+
+	it("fails the turn and rejects false success when in-flight exec handler throws after turnEnded has arrived", async () => {
+		const handlerGate = Promise.withResolvers<any>();
+
+		const server = await startMockCursorH2Server((serverStream: http2.ServerHttp2Stream) => {
+			serverStream.respond({ ":status": 200, "content-type": "application/connect+proto" });
+
+			const execMsg = create(AgentServerMessageSchema, {
+				message: {
+					case: "execServerMessage",
+					value: create(ExecServerMessageSchema, {
+						id: 4,
+						execId: "exec-concurrent-fail",
+						message: {
+							case: "grepArgs",
+							value: create(GrepArgsSchema, { pattern: "concurrent-fail-test" }),
+						},
+					}),
+				},
+			});
+
+			const turnEndedMsg = create(AgentServerMessageSchema, {
+				message: {
+					case: "interactionUpdate",
+					value: {
+						message: {
+							case: "turnEnded",
+							value: {},
+						},
+					},
+				},
+			});
+
+			// Send exec message followed immediately by turnEnded
+			serverStream.write(frameConnect(toBinary(AgentServerMessageSchema, execMsg)));
+			serverStream.write(frameConnect(toBinary(AgentServerMessageSchema, turnEndedMsg)));
+		});
+
+		try {
+			const execHandlers: CursorExecHandlers = {
+				grep: async () => handlerGate.promise,
+			};
+
+			const context: Context = { messages: [{ role: "user", content: "concurrent fail", timestamp: 1 }] };
+			const stream = streamCursor(testCursorModel(server.baseUrl), context, {
+				apiKey: "test-key",
+				execHandlers,
+			});
+
+			const streamResultPromise = Promise.withResolvers<AssistantMessage>();
+			(async () => {
+				for await (const event of stream) {
+					if (event.type === "done") streamResultPromise.resolve(event.message);
+					if (event.type === "error") streamResultPromise.resolve(event.error);
+				}
+			})();
+
+			// Microtask tick
+			await Promise.resolve();
+
+			// Resolve with an un-serializable int32 value that throws in toBinary during sendExecClientMessage
+			handlerGate.resolve({
+				result: create(GrepResultSchema, {
+					result: {
+						case: "success",
+						value: create(GrepSuccessSchema, {
+							pattern: "p",
+							path: "",
+							outputMode: "content",
+							workspaceResults: {
+								".": create(GrepUnionResultSchema, {
+									result: {
+										case: "content",
+										value: create(GrepContentResultSchema, {
+											matches: [
+												create(GrepFileMatchSchema, {
+													file: "log.txt",
+													matches: [
+														create(GrepContentMatchSchema, {
+															lineNumber: 1753660800000,
+															content: "overflow",
+															contentTruncated: false,
+															isContextLine: false,
+														}),
+													],
+												}),
+											],
+											totalLines: 1,
+											totalMatchedLines: 1,
+											clientTruncated: false,
+											ripgrepTruncated: false,
+										}),
+									},
+								}),
+							},
+						}),
+					},
+				}),
+			});
+
+			const finalMessage = await streamResultPromise.promise;
+			expect(finalMessage).toBeDefined();
+			expect(finalMessage.stopReason).toBe("error");
+			expect(finalMessage.errorMessage).toContain("GrepContentMatch.line_number");
+		} finally {
+			await server.close();
+		}
+	});
+
+	it("propagates real HTTP/2 gRPC trailer status 8 (resource_exhausted) as CursorApiError 429", async () => {
+		const server = await startMockCursorH2Server((serverStream: http2.ServerHttp2Stream) => {
+			serverStream.respond(
+				{ ":status": 200, "content-type": "application/connect+proto" },
+				{ waitForTrailers: true },
+			);
+			serverStream.on("wantTrailers", () => {
+				serverStream.sendTrailers({
+					"grpc-status": "8",
+					"grpc-message": encodeURIComponent("Resource exhausted: monthly quota exceeded"),
+				});
+			});
+			serverStream.end();
+		});
+
+		try {
+			const context: Context = { messages: [{ role: "user", content: "test", timestamp: 1 }] };
+			const stream = streamCursor(testCursorModel(server.baseUrl), context, { apiKey: "test-key" });
+			let finalMessage: AssistantMessage | undefined;
+			for await (const event of stream) {
+				if (event.type === "done") finalMessage = event.message;
+				if (event.type === "error") finalMessage = event.error;
+			}
+			expect(finalMessage).toBeDefined();
+			expect(finalMessage?.stopReason).toBe("error");
+			expect(finalMessage?.errorStatus).toBe(429);
+			expect(finalMessage?.errorMessage).toContain("Resource exhausted: monthly quota exceeded");
+		} finally {
+			await server.close();
+		}
+	});
+
+	it("propagates real HTTP/2 gRPC trailer status 14 (unavailable) as CursorApiError 503", async () => {
+		const server = await startMockCursorH2Server((serverStream: http2.ServerHttp2Stream) => {
+			serverStream.respond(
+				{ ":status": 200, "content-type": "application/connect+proto" },
+				{ waitForTrailers: true },
+			);
+			serverStream.on("wantTrailers", () => {
+				serverStream.sendTrailers({
+					"grpc-status": "14",
+					"grpc-message": encodeURIComponent("Service temporarily unavailable"),
+				});
+			});
+			serverStream.end();
+		});
+
+		try {
+			const context: Context = { messages: [{ role: "user", content: "test", timestamp: 1 }] };
+			const stream = streamCursor(testCursorModel(server.baseUrl), context, { apiKey: "test-key" });
+			let finalMessage: AssistantMessage | undefined;
+			for await (const event of stream) {
+				if (event.type === "done") finalMessage = event.message;
+				if (event.type === "error") finalMessage = event.error;
+			}
+			expect(finalMessage).toBeDefined();
+			expect(finalMessage?.stopReason).toBe("error");
+			expect(finalMessage?.errorStatus).toBe(503);
+			expect(finalMessage?.errorMessage).toContain("Service temporarily unavailable");
+		} finally {
+			await server.close();
+		}
+	});
+
+	it("ensures nonzero gRPC trailer status wins when received after turnEnded while an exec handler is pending", async () => {
+		const handlerStarted = Promise.withResolvers<void>();
+		const handlerGate = Promise.withResolvers<ToolResultMessage>();
+		const serverStreamClosed = Promise.withResolvers<void>();
+
+		const server = await startMockCursorH2Server((serverStream: http2.ServerHttp2Stream) => {
+			serverStream.respond(
+				{ ":status": 200, "content-type": "application/connect+proto" },
+				{ waitForTrailers: true },
+			);
+
+			const execMsg = create(AgentServerMessageSchema, {
+				message: {
+					case: "execServerMessage",
+					value: create(ExecServerMessageSchema, {
+						id: 5,
+						execId: "exec-trailer-race",
+						message: {
+							case: "grepArgs",
+							value: create(GrepArgsSchema, { pattern: "trailer-race-test" }),
+						},
+					}),
+				},
+			});
+
+			const turnEndedMsg = create(AgentServerMessageSchema, {
+				message: {
+					case: "interactionUpdate",
+					value: {
+						message: {
+							case: "turnEnded",
+							value: {},
+						},
+					},
+				},
+			});
+
+			// Send exec message followed immediately by turnEnded
+			serverStream.write(frameConnect(toBinary(AgentServerMessageSchema, execMsg)));
+			serverStream.write(frameConnect(toBinary(AgentServerMessageSchema, turnEndedMsg)));
+
+			serverStream.on("wantTrailers", () => {
+				serverStream.sendTrailers({
+					"grpc-status": "8",
+					"grpc-message": encodeURIComponent("Resource exhausted: monthly limit exceeded"),
+				});
+			});
+
+			serverStream.on("close", () => {
+				serverStreamClosed.resolve();
+			});
+
+			// Once the handler starts, end stream to emit wantTrailers
+			void handlerStarted.promise.then(() => {
+				serverStream.end();
+			});
+		});
+
+		try {
+			const execHandlers: CursorExecHandlers = {
+				grep: async () => {
+					handlerStarted.resolve();
+					return handlerGate.promise;
+				},
+			};
+
+			const context: Context = { messages: [{ role: "user", content: "trailer race", timestamp: 1 }] };
+			const stream = streamCursor(testCursorModel(server.baseUrl), context, {
+				apiKey: "test-key",
+				execHandlers,
+			});
+
+			const streamResultPromise = Promise.withResolvers<AssistantMessage>();
+			(async () => {
+				for await (const event of stream) {
+					if (event.type === "done") streamResultPromise.resolve(event.message);
+					if (event.type === "error") streamResultPromise.resolve(event.error);
+				}
+			})();
+
+			// Wait until handler is running and server stream has closed with trailer status 8
+			await handlerStarted.promise;
+			await serverStreamClosed.promise;
+			await Promise.resolve();
+			handlerGate.resolve({
+				role: "toolResult",
+				toolCallId: "call-trailer-race-1",
+				toolName: "grep",
+				content: [{ type: "text", text: "src/main.ts:1: match" }],
+				isError: false,
+				timestamp: 1,
+			});
+
+			const finalMessage = await streamResultPromise.promise;
+			expect(finalMessage).toBeDefined();
+			// The trailer error MUST win over turnEnded
+			expect(finalMessage.stopReason).toBe("error");
+			expect(finalMessage.errorStatus).toBe(429);
+			expect(finalMessage.errorMessage).toContain("Resource exhausted: monthly limit exceeded");
+		} finally {
+			await server.close();
+		}
+	});
+
+	it("ensures nonzero gRPC trailer status wins when received immediately after turnEnded with no pending exec handlers", async () => {
+		const server = await startMockCursorH2Server((serverStream: http2.ServerHttp2Stream) => {
+			serverStream.respond(
+				{ ":status": 200, "content-type": "application/connect+proto" },
+				{ waitForTrailers: true },
+			);
+
+			const turnEndedMsg = create(AgentServerMessageSchema, {
+				message: {
+					case: "interactionUpdate",
+					value: {
+						message: {
+							case: "turnEnded",
+							value: {},
+						},
+					},
+				},
+			});
+
+			// Send turnEnded and immediately end stream with status 8 in trailers
+			serverStream.write(frameConnect(toBinary(AgentServerMessageSchema, turnEndedMsg)));
+
+			serverStream.on("wantTrailers", () => {
+				serverStream.sendTrailers({
+					"grpc-status": "8",
+					"grpc-message": encodeURIComponent("Resource exhausted: monthly limit exceeded"),
+				});
+			});
+			serverStream.end();
+		});
+
+		try {
+			const context: Context = { messages: [{ role: "user", content: "no handler trailer test", timestamp: 1 }] };
+			const stream = streamCursor(testCursorModel(server.baseUrl), context, {
+				apiKey: "test-key",
+			});
+
+			let finalMessage: AssistantMessage | undefined;
+			for await (const event of stream) {
+				if (event.type === "done") finalMessage = event.message;
+				if (event.type === "error") finalMessage = event.error;
+			}
+			expect(finalMessage).toBeDefined();
+			expect(finalMessage?.stopReason).toBe("error");
+			expect(finalMessage?.errorStatus).toBe(429);
+			expect(finalMessage?.errorMessage).toContain("Resource exhausted: monthly limit exceeded");
+		} finally {
+			await server.close();
+		}
+	});
+
+	it("fails immediately on Connect frame exceeding MAX_CONNECT_FRAME_PAYLOAD without buffering or watchdog", async () => {
+		const server = await startMockCursorH2Server((serverStream: http2.ServerHttp2Stream) => {
+			serverStream.respond({ ":status": 200, "content-type": "application/connect+proto" });
+			// Send 5-byte header with oversized length (20 MiB)
+			const header = Buffer.alloc(5);
+			header.writeUInt8(0, 0);
+			header.writeUInt32BE(20 * 1024 * 1024, 1);
+			serverStream.write(header);
+			// Deliberately do not send the 20 MiB of data
+		});
+
+		try {
+			const context: Context = { messages: [{ role: "user", content: "oversized payload", timestamp: 1 }] };
+			const stream = streamCursor(testCursorModel(server.baseUrl), context, { apiKey: "test-key" });
+			let finalMessage: AssistantMessage | undefined;
+			for await (const event of stream) {
+				if (event.type === "done") finalMessage = event.message;
+				if (event.type === "error") finalMessage = event.error;
+			}
+			expect(finalMessage).toBeDefined();
+			expect(finalMessage?.stopReason).toBe("error");
+			expect(finalMessage?.errorMessage).toContain("exceeds 16777216-byte cap");
+		} finally {
+			await server.close();
+		}
+	});
+
+	it("safely handles malformed percent-encoding in gRPC trailers without crashing event handler", async () => {
+		const server = await startMockCursorH2Server((serverStream: http2.ServerHttp2Stream) => {
+			serverStream.respond(
+				{ ":status": 200, "content-type": "application/connect+proto" },
+				{ waitForTrailers: true },
+			);
+			serverStream.on("wantTrailers", () => {
+				serverStream.sendTrailers({
+					"grpc-status": "8",
+					"grpc-message": "%ZZ_invalid_percent_encoding",
+				});
+			});
+			serverStream.end();
+		});
+
+		try {
+			const context: Context = { messages: [{ role: "user", content: "test", timestamp: 1 }] };
+			const stream = streamCursor(testCursorModel(server.baseUrl), context, { apiKey: "test-key" });
+			let finalMessage: AssistantMessage | undefined;
+			for await (const event of stream) {
+				if (event.type === "done") finalMessage = event.message;
+				if (event.type === "error") finalMessage = event.error;
+			}
+			expect(finalMessage).toBeDefined();
+			expect(finalMessage?.stopReason).toBe("error");
+			expect(finalMessage?.errorStatus).toBe(429);
+			expect(finalMessage?.errorMessage).toContain("%ZZ_invalid_percent_encoding");
+		} finally {
+			await server.close();
+		}
+	});
+
+	it("terminates immediately when receiving a corrupt/unparseable protobuf frame", async () => {
+		const server = await startMockCursorH2Server((serverStream: http2.ServerHttp2Stream) => {
+			serverStream.respond({ ":status": 200, "content-type": "application/connect+proto" });
+			// Send invalid non-protobuf payload in a valid Connect frame
+			const invalidPayload = Buffer.from([0xff, 0xff, 0xff, 0xff, 0xff]);
+			serverStream.write(frameConnect(invalidPayload));
+		});
+
+		try {
+			const context: Context = { messages: [{ role: "user", content: "test", timestamp: 1 }] };
+			const stream = streamCursor(testCursorModel(server.baseUrl), context, { apiKey: "test-key" });
+			let finalMessage: AssistantMessage | undefined;
+			for await (const event of stream) {
+				if (event.type === "done") finalMessage = event.message;
+				if (event.type === "error") finalMessage = event.error;
+			}
+			expect(finalMessage).toBeDefined();
+			expect(finalMessage?.stopReason).toBe("error");
+		} finally {
+			await server.close();
+		}
+	});
+
+	it("fails fast on pre-aborted signal without dispatching HTTP/2 connection", async () => {
+		let serverHit = false;
+		const server = await startMockCursorH2Server((serverStream: http2.ServerHttp2Stream) => {
+			serverHit = true;
+			serverStream.respond({ ":status": 200, "content-type": "application/connect+proto" });
+			serverStream.end();
+		});
+
+		try {
+			const controller = new AbortController();
+			controller.abort();
+			const context: Context = { messages: [{ role: "user", content: "test", timestamp: 1 }] };
+			const stream = streamCursor(testCursorModel(server.baseUrl), context, {
+				apiKey: "test-key",
+				signal: controller.signal,
+			});
+			let finalMessage: AssistantMessage | undefined;
+			for await (const event of stream) {
+				if (event.type === "done") finalMessage = event.message;
+				if (event.type === "error") finalMessage = event.error;
+			}
+			expect(finalMessage).toBeDefined();
+			expect(finalMessage?.stopReason).toBe("aborted");
+			expect(serverHit).toBe(false);
+		} finally {
+			await server.close();
+		}
+	});
 });
