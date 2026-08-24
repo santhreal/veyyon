@@ -18,15 +18,12 @@
 - Bundled model resolution persists a content-verified enriched snapshot, and a registry cache stamp moves on every row-content write, and on a row crossing the freshness window it is read under, without treating SQLite sidecar churn or a provider re-verifying models it already had as a change.
 - `Image` accepts an `onDisplayed` callback and reports the cause each time an image starts or stops falling back to a placeholder.
 - `run()` accepts verified command summaries for root help and falls back to loading the full registry when any summary is absent.
+- `source-declarations.ts`: `exportedDeclarationsIn` and `declarersOfName` report which modules declare a name, so a one-owner gate no longer matches the declaration's own bytes; a reflowed signature, a signature quoted in a comment and a second module declaring the same name are now all answered correctly.
 
 ### Changed
 
 - `veyyon --help` renders its command list from registry summaries verified against command statics and loads only the hidden default command for its flag table, reducing a measured warm Windows invocation from 1.2 seconds to 0.13 seconds.
 - The default launch command imports the session runtime and ACP terminal authentication only when it runs, so loading its flag table no longer imports the runtime graph.
-- `source-declarations.ts`: `exportedDeclarationsIn` and `declarersOfName` report which modules declare a name, so a one-owner gate no longer matches the declaration's own bytes; a reflowed signature, a signature quoted in a comment and a second module declaring the same name are now all answered correctly.
-
-### Changed
-
 - Multi-target `ast_grep` searches now execute concurrently while preserving globally ordered paging, totals, parse errors, cancellation, and target-order failures.
 - The vibe screens, the image-inspection call and an LSP hover code block draw no border of their own inside a tool block, so a block keeps one left edge; a tree connector remains only where a row belongs to the row above it, in the eval value tree, the grep line gutter, the job tree and the LSP reference tree.
 - A picture a terminal will not draw now leaves a row naming the file, the media type, the pixel size and the cause, in place of `[Image: image/png]`, including when a Kitty session cannot convert it to PNG.
@@ -45,9 +42,9 @@
 ### Fixed
 
 - An indented row inside a tool block keeps its indent when it wraps at a narrow width, instead of continuing at the block's left edge.
+- A colour or title escape sequence a command writes in two pieces no longer leaves part of itself in tool output: the sink holds a sequence its chunk ended inside until the piece that finishes it arrives, and drops one the stream never completes.
 - Fixed stock Windows AVX2 detection by trying PowerShell 7 before an isolated modern-addon trial; only explicit shell answers or illegal-instruction exits become verdicts, while missing, incompatible, timed-out, and unexpectedly crashing addons remain unknown.
 - Persisted AVX2 verdicts are schema-versioned and keyed by platform, architecture, and CPU model, so copied or stale caches cannot select a native variant for different hardware.
-- A colour or title escape sequence a command writes in two pieces no longer leaves part of itself in tool output: the sink holds a sequence its chunk ended inside until the piece that finishes it arrives, and drops one the stream never completes.
 - A wrapped line now continues under the indent its first row opened at, so an indented row no longer reads as a new top-level row at a narrow width.
 - `splitTrailingPartialEscape` lets a streaming reader hold back an escape sequence a chunk ended inside, so a sequence divided across two reads is stripped whole instead of losing its head and leaking its tail as text.
 - `discarded-fault.ts`: `bestEffort` and `optionalResult` state which contract discarded a promise's failure, one for a step nobody waits on and one for a probe whose failure is the answer, each taking a mandatory reason.
