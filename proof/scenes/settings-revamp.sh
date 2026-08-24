@@ -17,35 +17,35 @@ k Escape
 settle 1
 
 # Search ranks the label that IS the typed phrase first.
-t "/compaction model"
+t "compaction model"
 settle 2
 shot search-ranking
 k Escape
 settle 1
 
 # A clipped value carries the ellipsis marker.
-t "/session title"
+t "web ui url"
 settle 2
 shot truncation-ellipsis
 k Escape
 settle 1
 
 # A duration reads as a duration, not a millisecond count.
-t "/exa search delay"
+t "exa search delay"
 settle 2
 shot exa-duration
 k Escape
 settle 1
 
 # The master toggle names what it switches.
-t "/ttsr"
+t "ttsr"
 settle 2
 shot labels-ttsr
 k Escape
 settle 1
 
 # Empty value cells are marked, and the description rides the selection.
-t "/auth broker"
+t "auth broker"
 settle 2
 shot search-auth
 k Escape
