@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Side requests derive a stable conversation ID per oneshot kind, preventing compaction, handoff, and branch summaries from overwriting live Cursor and Devin conversation state.
+
 ## [1.2.0] - 2026-08-23
 
 ### Breaking Changes
