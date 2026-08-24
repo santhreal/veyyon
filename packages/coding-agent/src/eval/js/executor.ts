@@ -35,6 +35,8 @@ export interface JsExecutorOptions {
 	session: ToolSession;
 	/** On-disk roots the helpers substitute for internal-URL schemes (e.g. `local://`). */
 	localRoots?: Record<string, string>;
+	/** Session artifacts directory; the `kv` helper stores under it so values outlive the kernel. */
+	artifactsDir?: string | null;
 }
 
 export interface JsResult {
@@ -96,6 +98,7 @@ export async function executeJs(code: string, options: JsExecutorOptions): Promi
 			cwd: options.cwd ?? options.session.cwd,
 			session: options.session,
 			localRoots: options.localRoots,
+			artifactsDir: options.artifactsDir,
 			reset: options.reset,
 			code,
 			filename: `js-cell-${crypto.randomUUID()}.js`,

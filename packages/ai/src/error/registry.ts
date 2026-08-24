@@ -140,23 +140,32 @@ export function retriable(id: number | undefined, opts?: { replayUnsafe?: boolea
 	return ((id ?? 0) & TURN_RETRIABLE_MASK) !== 0;
 }
 
-/** Apply every signal rule to one failure and return the flags they set between them. */
-export function classifySignal(signal: Signal): number {
+/**
+ * Apply every signal rule to one failure and return the flags they set between them.
+ *
+ * `trace`, when given, collects the name of every rule that fired, in registry order. That is the
+ * only way to answer "which rule classified this", which used to be answered by re-running the
+ * conditions by hand against the provider's sentence.
+ */
+export function classifySignal(signal: Signal, trace?: string[]): number {
 	let kinds = 0;
 	for (const rule of CLASSIFICATION_RULES) {
 		if (rule.structural && !rule.structural(signal)) continue;
 		if (rule.text && !rule.text(signal.text)) continue;
 		if (rule.structural === undefined && rule.text === undefined) continue;
 		kinds |= rule.flags;
+		trace?.push(rule.name);
 	}
 	return kinds;
 }
 
 /** Apply every identity rule to one link of a cause chain and return the flags they state. */
-export function classifyIdentity(link: unknown): number {
+export function classifyIdentity(link: unknown, trace?: string[]): number {
 	let kinds = 0;
 	for (const rule of CLASS_RULES) {
-		if (rule.matches(link)) kinds |= rule.flags(link);
+		if (!rule.matches(link)) continue;
+		kinds |= rule.flags(link);
+		trace?.push(rule.name);
 	}
 	return kinds;
 }

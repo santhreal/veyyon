@@ -36,6 +36,11 @@ H="${SCENE_HEIGHT}"
 FPS="${SCENE_FPS}"
 MARGIN=0
 mkdir -p "${OUT}"
+# magick (backdrop) and any later convert leave magick-* in /tmp when killed.
+# shellcheck source=proof/docker/magick-tmpdir.sh
+source "$(cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)/magick-tmpdir.sh"
+magick_tmpdir_scope /tmp
+trap magick_tmpdir_release EXIT
 
 if [ "${SCENE_THEME}" != "plain" ]; then
 	MARGIN="${SCENE_MARGIN}"
@@ -164,6 +169,7 @@ chmod 666 /dev/dri/* 2>/dev/null || true
 mkdir -p /tmp/xdg
 chmod 700 /tmp/xdg
 chown -R "${PUID}:${PGID}" /tmp/xdg "${OUT}"
+[ -n "${MAGICK_SCOPED_TMPDIR:-}" ] && chown -R "${PUID}:${PGID}" "${MAGICK_SCOPED_TMPDIR}" 2>/dev/null || true
 chown "${PUID}:${PGID}" /tmp/sway.conf /tmp/bootstrap.sh /tmp/backdrop.png 2>/dev/null || true
 # The seeded HOME is handed over rather than copied: it already holds the profile
 # record-wl.sh wrote, including the models file whose base URL was rewritten for
@@ -172,6 +178,8 @@ chown -R "${PUID}:${PGID}" "${SESSION_HOME}" 2>/dev/null || true
 
 cat >/tmp/session.sh <<'SESSION'
 set -euo pipefail
+# shellcheck disable=SC1091
+[ -f /repo/proof/docker/magick-tmpdir.sh ] && source /repo/proof/docker/magick-tmpdir.sh
 export XDG_RUNTIME_DIR=/tmp/xdg
 export WLR_BACKENDS=headless
 export WLR_HEADLESS_OUTPUTS=1
@@ -255,6 +263,7 @@ cleanup() {
 	for log in /tmp/term.log /tmp/sway.log /tmp/wf.log /tmp/app-stderr.log /tmp/app-exit /tmp/app-out.raw; do
 		[ -s "${log}" ] && cp -f "${log}" "${SCENE_OUT}/${SCENE_NAME}-$(basename "${log}")" 2>/dev/null
 	done
+	type magick_tmpdir_release >/dev/null 2>&1 && magick_tmpdir_release || true
 	# The verdict is taken after the artifacts are out, so a failed take is still a
 	# take somebody can look at, and `exit` here rather than `return` because an
 	# EXIT trap that only returns leaves the status the run already had -- which is
@@ -303,6 +312,8 @@ setpriv --reuid "${PUID}" --regid "${PGID}" --init-groups --inh-caps=-all \
 	"TYPE_DELAY=${TYPE_DELAY:-}" \
 	"SCENE_TYPING_REPEAT=${SCENE_TYPING_REPEAT:-}" \
 	"TERM=xterm-kitty" "COLORTERM=truecolor" "LANG=C.UTF-8" "LC_ALL=C.UTF-8" \
+	"MAGICK_SCOPED_TMPDIR=${MAGICK_SCOPED_TMPDIR:-}" "MAGICK_SCOPED_TMPDIR_TOKEN=${MAGICK_SCOPED_TMPDIR_TOKEN:-}" \
+	"MAGICK_TMPDIR=${MAGICK_TMPDIR:-}" "MAGICK_TEMPORARY_PATH=${MAGICK_TEMPORARY_PATH:-}" \
 	bash /tmp/session.sh
 
 ls -la "${OUT}/${NAME}.mp4"

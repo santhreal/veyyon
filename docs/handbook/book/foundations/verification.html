@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-bf5e189a.js";
+            window.path_to_searchindex_js = "../searchindex-76f2d439.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-a2abefc1.js"></script>
@@ -221,15 +221,18 @@ comparing two clips cannot hold both states side by side. The recorder publishes
 animation as WebP at 33 ms per frame; a GIF is the same clip in an older container and
 proves the same thing. Both arms of a pair are the same class, produced by one driver
 run, and attached to the pull request body.</p>
-<p>The recorder refuses to publish a clip whose cadence is not the one it captured. Two
-criteria, both from <code>--expect-ms</code>:</p>
-<pre><code class="language-text">typical frame    capture interval +/-1 ms (33/34 ms at 30 fps)
-moving average   within 10% of the capture rate, held stills set aside
+<p>The recorder refuses to publish a clip whose cadence is not the one it captured. Three
+criteria come from <code>--expect-ms</code>:</p>
+<pre><code class="language-text">typical frame     capture interval +/-1 ms (33/34 ms at 30 fps)
+moving average    at least 80% of the capture rate, held stills set aside
+cadence share     at least 85% of moving frames at the capture interval
 </code></pre>
-<p>The first catches a resample, where every frame was rewritten. The second catches a
-clip whose most common frame is correct and whose wall clock is mostly slower than it —
-frames held for two or three intervals in the middle of a scroll. A hold at or past ten
-intervals is a still screen, is reported, and does not count against the average.
+<p>The typical frame catches a resample, where every frame was rewritten. The moving
+average catches a clip whose wall clock is mostly slower than its most common frame.
+The cadence share catches frequent short holds that an acceptable average can hide.
+Byte-identical frames from normal terminal input and model output are coalesced by the
+WebP encoder, so the average allows 20% while the share limits how often that occurs.
+A hold at or past ten intervals is a still screen, is reported, and does not count.
 Measure a published file with:</p>
 <pre><code class="language-sh">python3 proof/webp-cadence.py assets/demo-hd.webp --expect-ms 33
 </code></pre>

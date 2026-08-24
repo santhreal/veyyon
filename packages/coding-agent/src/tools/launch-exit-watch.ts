@@ -53,7 +53,13 @@ function tail(text: string): string {
 async function exitNotice(client: DaemonBrokerClient, daemon: DaemonSnapshot, signal: AbortSignal): Promise<string> {
 	const ran = formatDuration((daemon.exitedAt ?? Date.now()) - daemon.startedAt);
 	const lines = [`Launched process ${daemon.name} ${exitPhrase(daemon)} after ${ran}.`];
-	if (daemon.exitReason) lines.push(`Reason: ${daemon.exitReason}`);
+	// Who ended it and why: an exit the caller did not request must never read
+	// as an unexplained death.
+	if (daemon.terminatedBy) {
+		lines.push(`Terminated by: ${daemon.terminatedBy}${daemon.exitReason ? ` — ${daemon.exitReason}` : ""}`);
+	} else if (daemon.exitReason) {
+		lines.push(`Reason: ${daemon.exitReason}`);
+	}
 	let output = "";
 	try {
 		const logs = await client.request(

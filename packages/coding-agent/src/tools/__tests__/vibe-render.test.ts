@@ -3,10 +3,10 @@
  *
  * 1. spawn/send render a mini composer — the message typed into a tiny CLI
  *    frame with a prompt glyph and (while pending) a blinking cursor.
- * 2. wait/list render the TV wall: one boxed screen per worker, stacked, a
- *    running screen showing its tool-call trace, current tool, and streamed
- *    text tail; an idle screen its last-activity gist; a settled screen its
- *    delivery footer.
+ * 2. wait/list render the TV wall: one screen per worker, stacked and unframed
+ *    (the transcript rail is the block's only left edge), a running screen
+ *    showing its tool-call trace, current tool, and streamed text tail; an idle
+ *    screen its last-activity gist; a settled screen its delivery footer.
  * 3. Animated content (cursor blink, spinner) re-derives from the shared
  *    mutable options on every paint of the SAME component — spinner ticks
  *    repaint the block without re-invoking renderCall/renderResult.
@@ -161,9 +161,15 @@ describe("vibe tool renderers", () => {
 		const lines = renderLines(component);
 		const text = lines.join("\n");
 
-		// One framed screen per worker, stacked.
-		expect(lines.filter(line => line.includes("┌─")).length).toBe(2);
-		expect(lines.filter(line => line.startsWith("└─")).length).toBe(2);
+		// One screen per worker, stacked in the order the wall lists them, each
+		// opening on its own header row with its body indented under it. The
+		// block's left edge is the transcript rail, so no screen draws a frame.
+		const headers = lines.filter(line => /(Anna|Bob)\s+(running|completed|idle)/u.test(line));
+		expect(headers.length).toBe(2);
+		expect(headers[0]).toContain("Anna");
+		expect(headers[1]).toContain("Bob");
+		expect(lines.filter(line => line.startsWith("  ")).length).toBeGreaterThan(0);
+		expect(lines.filter(line => /[┌┐└┘─│]/u.test(line))).toEqual([]);
 		// Live screen: header, typed turn message, trace, current tool, streamed tail.
 		expect(text).toContain("Anna");
 		// Badge glyphs are theme-driven (⟦fast⟧ on dark); assert the flavor label itself.

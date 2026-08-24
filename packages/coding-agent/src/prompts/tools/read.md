@@ -1,4 +1,4 @@
-Read files, directories, archives, SQLite, images, documents, internal resources, and web URLs via `path`.
+Read files, directories (optionally bounded by `depth`/`limit`), archives, SQLite, images, documents, internal resources, and web URLs via `path`.
 
 <instruction>
 - SHOULD use `read` (not a browser tool) for web content; browser only when `read` can't deliver.
@@ -7,6 +7,9 @@ Read files, directories, archives, SQLite, images, documents, internal resources
 ## Parameters
 
 - `path` — required. Local path, internal URI (`skill://`, `agent://`, `artifact://`, `memory://`, `rule://`, `local://`, `vault://`, `mcp://`, `veyyon://`, `issue://`, `pr://`, `ssh://`), or URL. Append `:<sel>` for ranges/modes (e.g. `src/foo.ts:50-200`, `src/foo.ts:raw`, `db.sqlite:users:42`).
+- Several targets in one call: a semicolon-delimited list (`src/foo.ts:1-40; skill://demo/notes.md`), one section per entry, each with its own selector. Every entry is a complete target, so a later one needs its own scheme. `depth`/`limit` apply per entry.
+- `depth` — directories only. Recursion depth of the listing (1 = top level). Default 2.
+- `limit` — directories only. Maximum entries returned; the listing reports exactly what was omitted and the arguments that reveal it.
 
 ## Selectors
 
@@ -24,7 +27,7 @@ A bounded range is padded with up to 1 line before (when you constrain the start
 
 # Files
 
-- Directory → depth-limited dirent listing.
+- Directory → depth-limited dirent listing (`depth`, `limit`). Reading the session working directory root with neither returns a concise top-level listing with per-subdirectory entry counts; pass `depth: 2` there for the recursive listing.
 {{#if IS_HL_MODE}}
 - File + selector → filename-only snapshot header + numbered lines: `[foo.ts#1A2B]` then `41:def alpha():`. Copy `[FILENAME#TAG]` for anchored edits; ops use bare line numbers. NEVER fabricate the tag.
 - A file that ends in a newline shows one extra numbered line with an empty body (a 2-line file `x\ny\n` reads as `1:x`, `2:y`, `3:`). That final empty line is not content: it marks the trailing newline and is the anchor you insert after to append at end of file.

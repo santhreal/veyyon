@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- An indented row inside a tool block keeps its indent when it wraps at a narrow width, instead of continuing at the block's left edge.
+
 ## [1.2.0] - 2026-08-23
 
 ### Breaking Changes
