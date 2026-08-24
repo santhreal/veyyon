@@ -1,14 +1,20 @@
 import { collapseWhitespace, isRecord } from "@veyyon/utils";
-import { envBool, envInt, envString } from "../util/env";
-import { getDiagnostics, safeForLog } from "./extraction/diagnostics";
-import { callHostLlm, getHostLlmBackend } from "./llm-backends";
+import { extractionPromptOverride, hostLlmModel, hostLlmProvider } from "../config";
+import { extractionDiagnostics, safeForLog } from "./extraction/diagnostics";
+import { callHostLlm } from "./llm-backends";
 import type { RemoteLlmOptions } from "./local-llm";
 // The questions come statically, the CALLS come on demand. Asking whether an LLM is configured, and
 // cleaning what one returned, is configuration and text; performing the call reaches the streaming
 // engine, 299 modules. Extraction asks far more often than it calls, and the memory engine sits
 // behind extraction through `beam/consolidate.ts`, so a static import here put a provider on the
 // graph of every module that can remember something. See {@link llmClient}.
-import { cleanOutput, configuredLlmWillHandleCall, llmAvailable } from "./local-llm-config";
+import {
+	cleanOutput,
+	configuredLlmWillHandleCall,
+	hostBackendWillHandleCall,
+	llmAvailable,
+	llmMaxTokens,
+} from "./local-llm-config";
 
 /**
  * Load the half of the LLM client that performs calls.
@@ -24,20 +30,8 @@ function llmClient() {
 
 import { getMnemopiRuntimeOptions } from "./runtime-options";
 
-function llmEnabled(): boolean {
-	return envBool("MNEMOPI_LLM_ENABLED", true);
-}
-
-function hostLlmEnabled(): boolean {
-	return envBool("MNEMOPI_HOST_LLM_ENABLED", false);
-}
-
-function llmMaxTokens(): number {
-	return envInt("MNEMOPI_LLM_MAX_TOKENS", 2048);
-}
-
 export const EXTRACTION_PROMPT_TEMPLATE =
-	envString("MNEMOPI_EXTRACTION_PROMPT") ||
+	extractionPromptOverride() ||
 	`You are an expert structured memory extractor for Mnemopi v3.0+ MEMORIA tables.
 The user message below may be in English, German, Russian, or another language.
 First detect the language, then extract ONLY high-signal, long-term relevant items.
@@ -314,15 +308,15 @@ export function heuristicExtractFacts(text: string): string[] {
 }
 
 async function tryHostExtraction(prompt: string): Promise<[boolean, string | null]> {
-	if (!llmEnabled() || !hostLlmEnabled() || getHostLlmBackend() === null) {
+	if (!hostBackendWillHandleCall()) {
 		return [false, null];
 	}
 	const raw = await callHostLlm(prompt, {
 		maxTokens: llmMaxTokens(),
 		temperature: 0,
 		timeout: 15,
-		provider: envString("MNEMOPI_HOST_LLM_PROVIDER").trim() || null,
-		model: envString("MNEMOPI_HOST_LLM_MODEL").trim() || null,
+		provider: hostLlmProvider() ?? null,
+		model: hostLlmModel() ?? null,
 	});
 	const text = typeof raw === "string" ? raw.trim() : "";
 	return [true, text === "" ? null : text];
@@ -346,7 +340,11 @@ async function tryHostExtraction(prompt: string): Promise<[boolean, string | nul
  * `llm_unavailable_at_call_site`. Both paths ran their own copy of this bookkeeping before, which is
  * how they came to disagree about `recordCall`.
  */
-function patternFallback(sourceText: string, diag = getDiagnostics(), emptyReason?: string): ExtractedFactCategories {
+function patternFallback(
+	sourceText: string,
+	diag = extractionDiagnostics(),
+	emptyReason?: string,
+): ExtractedFactCategories {
 	diag.recordAttempt("local");
 	const heuristic = heuristicExtractFacts(sourceText);
 	if (heuristic.length > 0) {
@@ -368,7 +366,7 @@ export async function extractFactCategories(
 	text: string | null | undefined,
 	options: RemoteLlmOptions = {},
 ): Promise<ExtractedFactCategories> {
-	const diag = getDiagnostics();
+	const diag = extractionDiagnostics();
 	if (typeof text !== "string" || text.trim() === "") {
 		return emptyFactCategories();
 	}
@@ -461,7 +459,7 @@ export async function extractFactCategoriesSafe(text: string | null | undefined)
 	try {
 		return await extractFactCategories(text);
 	} catch (exc) {
-		const diag = getDiagnostics();
+		const diag = extractionDiagnostics();
 		diag.recordFailure("wrapper", exc, "outer_wrapper_caught");
 		diag.recordCall({ succeeded: false });
 		console.warn(`extractFactsSafe: extractFacts() raised: ${safeForLog(exc)}`);
