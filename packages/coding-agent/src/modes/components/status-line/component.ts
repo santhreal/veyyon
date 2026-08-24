@@ -94,7 +94,7 @@ const RIGHT_PART_SHED_RANK: Record<string, number> = {
 const ELLIPSIS = "…";
 
 /**
- * Clip `text` to `maxWidth` by dropping cells off the FRONT, reporting how many went.
+ * Clip `text` to `maxWidth` by dropping cells off the FRONT.
  *
  * The location zone reads from its right end: the directory the session is in, the branch
  * checked out. Cutting the tail to fit a narrow row threw exactly that away and left the
@@ -102,16 +102,13 @@ const ELLIPSIS = "…";
  * identifying end, and keeps it in the same direction `clampPathLength` cuts, so the two of
  * them cannot put an ellipsis on both ends of one path.
  *
- * `dropped` is what a caller needs to keep click targets honest: recorded slot columns are
- * measured on the untruncated join, and a front cut shifts every survivor left by it. `mark`
- * is 1 when this call added an ellipsis and 0 when it inherited one already in the text.
  * `sliceWithWidth` replays the SGR state in force at the cut, so the visible tail keeps the
  * color the dropped opening set.
  */
-function clipStartToWidth(text: string, maxWidth: number): { text: string; dropped: number; mark: number } {
+function clipStartToWidth(text: string, maxWidth: number): string {
 	const total = visibleWidth(text);
-	if (total <= maxWidth) return { text, dropped: 0, mark: 0 };
-	if (maxWidth <= 0) return { text: "", dropped: total, mark: 0 };
+	if (total <= maxWidth) return text;
+	if (maxWidth <= 0) return "";
 	// One cell pays for the mark, unless the cut lands ON a mark already in the text: the
 	// preset's `clampPathLength` ran at its own budget before the row was consulted, so the
 	// head this cut eats is often that clamp's ellipsis with the segment icon in front of it.
@@ -124,12 +121,79 @@ function clipStartToWidth(text: string, maxWidth: number): { text: string; dropp
 	//
 	// At a budget of one cell the mark is all there is room for, and a bare `…` is the honest
 	// answer: the alternative is a fragment of a directory name that reads as a real one.
-	const keep = maxWidth - 1;
-	const tail = sliceWithWidth(text, total - keep, keep, true);
-	if (stripAnsi(tail.text).startsWith(ELLIPSIS)) {
-		return { text: tail.text, dropped: total - visibleWidth(tail.text), mark: 0 };
+	const tail = sliceWithWidth(text, total - (maxWidth - 1), maxWidth - 1, true);
+	if (stripAnsi(tail.text).startsWith(ELLIPSIS)) return tail.text;
+	return `${ELLIPSIS}${tail.text}`;
+}
+
+/**
+ * The fewest cells a clipped location HEAD is worth keeping. Below about a dozen, a path
+ * tail is a fragment of one directory name and names nothing a reader can place, so the
+ * room comes out of a later part instead.
+ */
+const MIN_LOCATION_HEAD = 12;
+
+/**
+ * Fit the location parts into `budget` cells, keeping the RIGHT end of the leading part.
+ *
+ * The leading part is the working directory, and the directory the session is in is the
+ * whole point of showing it, so it is the last thing on the row to go. Cutting the joined
+ * location from the front instead ate the path first and left the branch alone on the row --
+ * the tail of the JOIN is the branch, not the directory. So the later parts (the branch, the
+ * pull request) are shed WHOLE, right to left, and only the leading part is clipped, from
+ * its front, down to `MIN_LOCATION_HEAD` before anything else is given up.
+ *
+ * The slots are the painted extents of what survived, in columns of the returned text, so a
+ * click resolves against the row on the screen rather than the join it was cut from.
+ */
+function fitLocation(
+	parts: readonly QuietPart[],
+	sep: string,
+	budget: number,
+): { text: string; slots: QuietSegmentBounds[] } {
+	const sepWidth = visibleWidth(sep);
+	const kept = [...parts];
+	while (kept.length > 0) {
+		const head = kept[0];
+		if (head === undefined) break;
+		const headWidth = visibleWidth(head.content);
+		let total = headWidth;
+		for (let i = 1; i < kept.length; i++) total += sepWidth + visibleWidth(kept[i]?.content ?? "");
+		if (total <= budget)
+			return assembleLocation(
+				kept,
+				kept.map(part => part.content),
+				sep,
+			);
+		const roomForHead = budget - (total - headWidth);
+		if (roomForHead >= Math.min(headWidth, MIN_LOCATION_HEAD) || kept.length === 1) {
+			// Clipping to nothing is reachable only for the last part standing -- above that
+			// the floor pops a part instead -- and it renders no location at all rather than
+			// a bare mark, so nothing is left to strand a separator in front of.
+			const clipped = clipStartToWidth(head.content, Math.max(0, roomForHead));
+			const contents = kept.map((part, index) => (index === 0 ? clipped : part.content));
+			return assembleLocation(kept, contents, sep);
+		}
+		kept.pop();
 	}
-	return { text: `${ELLIPSIS}${tail.text}`, dropped: total - visibleWidth(tail.text), mark: 1 };
+	return { text: "", slots: [] };
+}
+
+/** Join `contents` and record the painted extent of each part, in columns of the join. */
+function assembleLocation(
+	parts: readonly QuietPart[],
+	contents: readonly string[],
+	sep: string,
+): { text: string; slots: QuietSegmentBounds[] } {
+	const sepWidth = visibleWidth(sep);
+	const slots: QuietSegmentBounds[] = [];
+	let col = 0;
+	for (const [index, part] of parts.entries()) {
+		const partWidth = visibleWidth(contents[index] ?? "");
+		slots.push({ id: part.id, start: col, end: col + partWidth });
+		col += partWidth + sepWidth;
+	}
+	return { text: contents.join(sep), slots };
 }
 /** One segment's slot on the rendered quiet footline (0-based columns, end exclusive). */
 export interface QuietSegmentBounds {
@@ -1645,10 +1709,9 @@ export class StatusLineComponent implements Component {
 		// drops entirely — so it can never squeeze a segment off the line.
 		let clockStage = 0;
 		let locationShortened = false;
-		// Cells the location lost off its front, so recorded click slots can follow it left.
-		let locationDropped = 0;
-		// 1 when the clip added its own mark, 0 when it inherited the clamp's.
-		let locationMark = 0;
+		// Painted extents of the location parts once the fitter has had them, or null while
+		// the location is still whole and its parts sit where the join put them.
+		let locationSlots: QuietSegmentBounds[] | null = null;
 		while (rightParts.length > 0 && visibleWidth(left) + visibleWidth(right) + (left && right ? 2 : 0) > budget) {
 			if (clockStage === 0) {
 				clockStage = 1;
@@ -1682,10 +1745,9 @@ export class StatusLineComponent implements Component {
 			if (!locationShortened) {
 				locationShortened = true;
 				const leftBudget = Math.max(0, budget - visibleWidth(right) - (right ? 2 : 0));
-				const clipped = clipStartToWidth(locationContents.join(sep), leftBudget);
-				left = clipped.text;
-				locationDropped = clipped.dropped;
-				locationMark = clipped.mark;
+				const fitted = fitLocation(location, sep, leftBudget);
+				left = fitted.text;
+				locationSlots = fitted.slots;
 				continue;
 			}
 			// The location is gone too and the ranked parts still do not fit, so the
@@ -1714,31 +1776,20 @@ export class StatusLineComponent implements Component {
 		const sepWidth = visibleWidth(sep);
 		const bounds: QuietSegmentBounds[] = [];
 		if (left) {
-			// A front cut moved every surviving part left by `locationDropped` and put the
-			// mark in the cell it vacated, so a slot is where it RENDERED, not where it sat
-			// in the join. Without this shift a click on the visible path resolved to
-			// whatever segment used to own that column.
-			//
-			// The mark itself belongs to the first part still on the line: it is that part's
-			// own clipped front, so a click on it addresses that part. Left unowned it was a
-			// dead cell at column 0 of the zone, and the path slot did not contain the
-			// ellipsis that is the path's.
-			const mark = locationMark;
-			let col = 0;
-			let first = true;
-			const leftWidth = visibleWidth(left);
-			for (const part of location) {
-				const partWidth = visibleWidth(part.content);
-				const partStart = col;
-				col += partWidth + sepWidth;
-				// Cut away entirely: it is ahead of the first visible cell.
-				if (partStart + partWidth <= locationDropped) continue;
-				const start = first ? 0 : Math.max(mark, partStart - locationDropped + mark);
-				if (start >= leftWidth) break;
-				const end = Math.min(partStart + partWidth - locationDropped + mark, leftWidth);
-				if (end > start) {
-					bounds.push({ id: part.id, start, end });
-					first = false;
+			// Once the fitter has run it is the authority on where the parts landed: it is
+			// what dropped a part and what clipped the head, so it knows the painted columns
+			// and this loop would only be guessing at them. Otherwise the location is whole
+			// and each part sits where the join put it.
+			if (locationSlots !== null) {
+				bounds.push(...locationSlots);
+			} else {
+				let col = 0;
+				const leftWidth = visibleWidth(left);
+				for (const part of location) {
+					const partWidth = visibleWidth(part.content);
+					if (col >= leftWidth) break;
+					bounds.push({ id: part.id, start: col, end: Math.min(col + partWidth, leftWidth) });
+					col += partWidth + sepWidth;
 				}
 			}
 		}
@@ -1824,8 +1875,12 @@ export class StatusLineComponent implements Component {
 			const right = extras?.locationRight ?? null;
 			if (right && visibleWidth(left) + visibleWidth(right) + 2 <= budget) {
 				locationLine = left + padding(budget - visibleWidth(left) - visibleWidth(right)) + right;
+			} else if (visibleWidth(left) <= budget) {
+				locationLine = left;
 			} else {
-				locationLine = clipStartToWidth(left, budget).text;
+				// Same fitter as the one-line row: the branch goes before the directory does.
+				// The run clock is dropped with it, since it is chrome and this row is full.
+				locationLine = fitLocation(gathered.location, sep, budget).text;
 			}
 		}
 		let capabilityLine: string | null = null;
