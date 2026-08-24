@@ -9,9 +9,9 @@
  * file that was read.
  *
  * WHAT THIS DOES NOT COVER. Boundary-repair and block ops change the authored
- * span. Patcher CRLF restore lives in `patcher-crlf-unicode-bom-matrix`. This
- * file does not clone those seed walks; it only names inverse identities
- * `applyEdits` itself must keep.
+ * span. Patcher write-back of CRLF lives in `patcher-crlf-unicode-bom-matrix`.
+ * Direct `applyEdits` on a CRLF body is a different boundary: it must not mix
+ * endings. The CRLF inverse case below is expected red until that is true.
  */
 import { describe, expect, it } from "bun:test";
 import { applyEdits, parsePatch } from "@veyyon/hashline";
@@ -59,13 +59,18 @@ describe("apply then inverse restores the original bytes", () => {
 		restore(original, "SWAP 2.=2:\n+e", `SWAP 2.=2:\n+${marked}`);
 	});
 
-	it("payload CR is stripped: inverse restores the edited line as LF and keeps CR on unedited lines", () => {
+	it("SWAP then inverse on a CRLF file restores those original bytes", () => {
+		// applyEdits splits on LF only, so a SWAP today rewrites the edited line
+		// as LF and leaves CR on its neighbors. The advertised inverse contract
+		// is the file that was read, not a mixed-ending cousin. This stays red
+		// until the applier refuses CRLF or preserves it on every line.
 		const original = "one\r\ntwo\r\nthree";
 		const forward = apply(original, "SWAP 2.=2:\n+TWO");
-		expect(JSON.stringify(forward.text)).toBe(JSON.stringify("one\r\nTWO\nthree"));
-		const back = apply(forward.text, "SWAP 2.=2:\n+two\r");
-		expect(JSON.stringify(back.text)).toBe(JSON.stringify("one\r\ntwo\nthree"));
-		expect(back.text).not.toBe(original);
+		expect(forward.warnings).toEqual([]);
+		expect(JSON.stringify(forward.text)).toBe(JSON.stringify("one\r\nTWO\r\nthree"));
+		const back = apply(forward.text, "SWAP 2.=2:\n+two");
+		expect(back.warnings).toEqual([]);
+		expect(JSON.stringify(back.text)).toBe(JSON.stringify(original));
 	});
 
 	it("a range DEL inverts by inserting the deleted span at the same position", () => {
