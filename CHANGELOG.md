@@ -6,6 +6,7 @@
 
 ### Added
 
+- Exporting a session to HTML no longer builds the whole document in memory. The export held the snapshot graph plus its full JSON string, a Buffer copy, the base64 string and the assembled HTML simultaneously: an 80MiB transcript peaked at 1007MiB of resident memory, 12.6x its size. The template is now split at the session-data marker and the snapshot streams through an incremental serializer into a byte-aligned base64 sink written straight to the output file (temp file plus rename), peaking at 532MiB for the same session with byte-identical output — verified against JSON.stringify for surrogate pairs, non-finite numbers, array holes, dropped undefined/function/symbol members and key order, and by the existing redaction round-trip test.
 - A tool result that carries an image now states whether the picture reached the screen, so a model reading a file describes what it shows instead of reporting that it displayed it.
 - A picture the block gives up on after the fact, because the session's image budget demoted it or a Kitty session could not convert it, is stated to the model as undrawn instead of being reported as displayed.
 - `read` accepts a semicolon-delimited list of internal resources (`skill://demo/one.md;skill://demo/two.md`), the same list form `grep` and `glob` take, and returns one section per entry.
