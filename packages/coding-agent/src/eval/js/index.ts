@@ -35,6 +35,7 @@ export default {
 			onStatus: opts.onStatus,
 			session: opts.session,
 			localRoots: resolveEvalUrlRoots(opts.session),
+			artifactsDir: opts.session.getArtifactsDir?.() ?? null,
 		});
 		return toExecutorBackendResult(result);
 	},

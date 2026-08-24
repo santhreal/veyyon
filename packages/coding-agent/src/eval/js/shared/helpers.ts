@@ -1,6 +1,7 @@
 import * as path from "node:path";
 
 import { ToolError } from "../../../tools/tool-errors";
+import { type KernelStore, openKernelStore } from "../../kernel-store";
 import type { JsStatusEvent } from "./types";
 
 export interface HelperOptions {
@@ -22,6 +23,11 @@ export interface HelperContext {
 	 * to `<root>/x.md` before any filesystem op; unknown schemes are rejected.
 	 */
 	localRoots(): Record<string, string>;
+	/**
+	 * The session's artifacts directory and eval-session id, when the host knows them.
+	 * Powers `kv`: the store lives under that directory so it outlives the kernel itself.
+	 */
+	session(): { artifactsDir: string | null; sessionId: string };
 	emitStatus(event: JsStatusEvent): void;
 }
 
@@ -34,11 +40,27 @@ export interface HelperBundle {
 	read(rawPath: string, options?: HelperOptions): Promise<string>;
 	writeFile(rawPath: string, data: unknown): Promise<string>;
 	env(key?: string, value?: string): string | Record<string, string> | undefined;
+	kvGet(key: string): Promise<unknown>;
+	kvSet(key: string, value: unknown): Promise<void>;
+	kvDelete(key: string): Promise<boolean>;
+	kvList(): Promise<string[]>;
 }
 
 const utf8Encoder = new TextEncoder();
 
 export function createHelpers(ctx: HelperContext): HelperBundle {
+	let store: KernelStore | undefined;
+	const kvStore = (): KernelStore => {
+		if (store) return store;
+		const { artifactsDir, sessionId } = ctx.session();
+		if (!artifactsDir) {
+			throw new ToolError(
+				"kv needs a session artifacts directory and this session has none; the store lives next to the session's artifacts so it outlives the kernel",
+			);
+		}
+		store = openKernelStore(artifactsDir, sessionId);
+		return store;
+	};
 	return {
 		read: async (rawPath, options = {}) => {
 			const { filePath, file, size } = await resolveRegularFile(ctx, rawPath);
@@ -66,6 +88,27 @@ export function createHelpers(ctx: HelperContext): HelperBundle {
 			}
 			ctx.emitStatus({ op: "write", path: filePath, bytes: getDataSize(data) });
 			return filePath;
+		},
+		kvGet: async key => {
+			const value = await kvStore().get(key);
+			// Status reports the key and whether it existed, never the value: the store's
+			// whole point is that a secret moves between kernels without entering a transcript.
+			ctx.emitStatus({ op: "kv", key, action: "get", found: value !== undefined });
+			return value;
+		},
+		kvSet: async (key, value) => {
+			await kvStore().set(key, value);
+			ctx.emitStatus({ op: "kv", key, action: "set" });
+		},
+		kvDelete: async key => {
+			const removed = await kvStore().delete(key);
+			ctx.emitStatus({ op: "kv", key, action: "delete", found: removed });
+			return removed;
+		},
+		kvList: async () => {
+			const keys = await kvStore().list();
+			ctx.emitStatus({ op: "kv", action: "list", count: keys.length });
+			return keys;
 		},
 		env: (key, value) => {
 			if (!key) {

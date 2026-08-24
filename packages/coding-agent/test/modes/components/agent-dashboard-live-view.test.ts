@@ -11,6 +11,7 @@
  * Enter now hands the main view to that agent's live session.
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { IrcBus } from "@veyyon/coding-agent/irc/bus";
 import { AgentDashboard } from "@veyyon/coding-agent/modes/components/agent-dashboard";
 import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import { AgentRegistry, MAIN_AGENT_ID } from "@veyyon/coding-agent/registry/agent-registry";
@@ -35,11 +36,13 @@ let geo: StubbedStdoutGeometry;
 beforeEach(async () => {
 	await initTheme(false);
 	AgentRegistry.resetGlobalForTests();
+	IrcBus.resetGlobalForTests();
 	geo = stubStdoutGeometry({ columns: 120, rows: 40 });
 });
 
 afterEach(() => {
 	AgentRegistry.resetGlobalForTests();
+	IrcBus.resetGlobalForTests();
 	geo.restore();
 });
 
