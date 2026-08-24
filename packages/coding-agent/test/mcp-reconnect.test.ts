@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import type { MCPReconnect } from "@veyyon/coding-agent/mcp/tool-bridge";
-import { DeferredMCPTool, isRetriableConnectionError, MCPTool } from "@veyyon/coding-agent/mcp/tool-bridge";
+import { DeferredMCPTool, MCPTool, mcpFailureWarrantsReconnect } from "@veyyon/coding-agent/mcp/tool-bridge";
 import type { MCPServerConnection, MCPToolCallResult, MCPTransport } from "@veyyon/coding-agent/mcp/types";
 import { ToolAbortError } from "@veyyon/coding-agent/tools/tool-errors";
 
@@ -53,10 +53,10 @@ function modelFacingFailure(detail: string, server = "test-server", tool = TOOL_
 }
 
 // ---------------------------------------------------------------------------
-// isRetriableConnectionError
+// mcpFailureWarrantsReconnect
 // ---------------------------------------------------------------------------
 
-describe("isRetriableConnectionError", () => {
+describe("mcpFailureWarrantsReconnect", () => {
 	const retriable = [
 		"ECONNREFUSED",
 		"ECONNRESET",
@@ -74,7 +74,7 @@ describe("isRetriableConnectionError", () => {
 
 	for (const msg of retriable) {
 		it(`matches: ${msg}`, () => {
-			expect(isRetriableConnectionError(new Error(msg))).toBe(true);
+			expect(mcpFailureWarrantsReconnect(new Error(msg))).toBe(true);
 		});
 	}
 
@@ -90,15 +90,15 @@ describe("isRetriableConnectionError", () => {
 
 	for (const msg of nonRetriable) {
 		it(`does not match: ${msg}`, () => {
-			expect(isRetriableConnectionError(new Error(msg))).toBe(false);
+			expect(mcpFailureWarrantsReconnect(new Error(msg))).toBe(false);
 		});
 	}
 
 	it("returns false for non-Error values", () => {
-		expect(isRetriableConnectionError("ECONNREFUSED")).toBe(false);
-		expect(isRetriableConnectionError(null)).toBe(false);
-		expect(isRetriableConnectionError(undefined)).toBe(false);
-		expect(isRetriableConnectionError({ message: "ECONNREFUSED" })).toBe(false);
+		expect(mcpFailureWarrantsReconnect("ECONNREFUSED")).toBe(false);
+		expect(mcpFailureWarrantsReconnect(null)).toBe(false);
+		expect(mcpFailureWarrantsReconnect(undefined)).toBe(false);
+		expect(mcpFailureWarrantsReconnect({ message: "ECONNREFUSED" })).toBe(false);
 	});
 });
 
