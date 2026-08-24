@@ -98,6 +98,7 @@ Each provider has one or more environment variables that supply a key when no st
 | Provider ID | Environment variable(s) |
 |---|---|
 | `cerebras` | `CEREBRAS_API_KEY` |
+| `command-code` | `CMD_API_KEY`, then `COMMAND_CODE_API_KEY` |
 | `deepseek` | `DEEPSEEK_API_KEY` |
 | `fireworks` | `FIREWORKS_API_KEY` |
 | `together` | `TOGETHER_API_KEY` |
@@ -124,6 +125,7 @@ Each provider has one or more environment variables that supply a key when no st
 | `baseten` | `BASETEN_API_KEY` |
 | `coreweave` | `COREWEAVE_API_KEY`, then `WANDB_API_KEY` |
 | `devin` | `DEVIN_API_KEY` |
+| `nous-research` | `NOUS_API_KEY` (headless fallback; prefer `/login nous-research`) |
 | `gitlab-duo-agent` | `GITLAB_TOKEN` |
 | `sakana` | `SAKANA_API_KEY`, then `FUGU_API_KEY` |
 | `xiaomi-token-plan-ams` | `XIAOMI_TOKEN_PLAN_AMS_API_KEY` |
@@ -142,7 +144,9 @@ Each provider has one or more environment variables that supply a key when no st
 | `lm-studio` | `LM_STUDIO_API_KEY` (optional; keyless by default) |
 | `llama.cpp` | `LLAMA_CPP_API_KEY` (only when the server requires auth) |
 
-OAuth-backed providers such as `anthropic`, `github-copilot`, `cursor`, `ollama-cloud`, `qwen-portal`, `kimi-code`, `xai-oauth`, `wafer-serverless`, `google-gemini-cli`, and `google-antigravity` are normally reached through `/login` rather than an environment variable. See [Environment variables](./environment-complete.md) for search-tool and configuration variables not listed here.
+OAuth-backed providers such as `anthropic`, `github-copilot`, `cursor`, `ollama-cloud`, `qwen-portal`, `kimi-code`, `nous-research`, `xai-oauth`, `wafer-serverless`, `google-gemini-cli`, and `google-antigravity` are normally reached through `/login` rather than an environment variable. Nous Portal stores a durable refresh token and mints short-lived inference access tokens for requests and model discovery; `NOUS_API_KEY` remains available for explicit headless use.
+
+Command Code uses `https://api.commandcode.ai/provider/v1`, defaults to `moonshotai/Kimi-K2.7-Code`, and issues keys at [Command Code Provider](https://commandcode.ai/studio/provider). Nous Research uses `https://inference-api.nousresearch.com/v1` and defaults to the tool-capable `anthropic/claude-sonnet-4.6`; authenticated discovery adds the current tool-capable chat catalog and excludes embedding, media-generation, and non-tool rows.
 
 ### `.env` discovery and precedence
 

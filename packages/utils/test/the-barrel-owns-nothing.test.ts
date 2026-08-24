@@ -21,6 +21,8 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { moduleSpecifiersIn } from "@veyyon/utils/module-reach";
+import { exportedDeclarationsIn } from "@veyyon/utils/source-declarations";
 
 const INDEX = path.join(import.meta.dir, "..", "src", "index.ts");
 const source = fs.readFileSync(INDEX, "utf-8");
@@ -36,29 +38,24 @@ function codeLines(): string[] {
 describe("the utils barrel", () => {
 	/**
 	 * Anti-vacuity. Every rule below is an absence over this file, so a path that
-	 * stopped resolving, or a comment stripper that ate everything, would pass them
-	 * all. The barrel is large and the count is stable; this asserts it is still the
-	 * file it claims to be.
+	 * stopped resolving, or a parse that read nothing, would pass them all. The
+	 * barrel is large and the count is stable; this asserts it is still the file it
+	 * claims to be, counted as re-export edges rather than as lines.
 	 */
 	it("is the re-export file it claims to be", () => {
-		const lines = codeLines().filter(line => line.trim().length > 0);
+		const specifiers = moduleSpecifiersIn(source);
 
-		expect(lines.length).toBeGreaterThan(60);
-		expect(lines.every(line => line.startsWith("export"))).toBe(true);
-		expect(source).toContain('export * from "./type-guards";');
+		expect(specifiers.length).toBeGreaterThan(60);
+		expect(specifiers).toContain("./type-guards");
 	});
 
 	/**
-	 * THE RULE. Every statement is a re-export, so no name can be reached ONLY
-	 * through the barrel. Reported with the offending lines, because on failure the
-	 * useful information is what got defined, not that something did.
+	 * THE RULE, asked of the declarations the file makes rather than of the shape of
+	 * its lines: a re-export declares nothing, so the answer for a barrel is empty,
+	 * and a definition arrives in the failure by name.
 	 */
 	it("defines nothing of its own", () => {
-		const definitions = codeLines().filter(line =>
-			/^(export )?(async )?(function|const|let|var|class|interface|type|enum)\b/.test(line),
-		);
-
-		expect(definitions).toEqual([]);
+		expect(exportedDeclarationsIn(source)).toEqual([]);
 	});
 
 	/**
@@ -84,7 +81,7 @@ describe("the utils barrel", () => {
 
 		expect(copy).toEqual(original);
 		expect(copy.b).not.toBe(original.b);
-		expect(source).not.toContain("structuredCloneJSON");
+		expect(exportedDeclarationsIn(source)).not.toContain("structuredCloneJSON");
 	});
 
 	/**
