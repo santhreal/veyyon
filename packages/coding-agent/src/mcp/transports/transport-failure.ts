@@ -118,18 +118,24 @@ export function mcpStreamClosedMessage(target: MCPTransportTarget, detail?: stri
 /**
  * Phrases this module guarantees its transport-state messages contain.
  *
- * `isRetriableConnectionError` in `tool-bridge.ts` decides whether a failed MCP
+ * `mcpFailureWarrantsReconnect` in `tool-bridge.ts` decides whether a failed MCP
  * tool call is worth a reconnect-and-retry, and it decides it by reading the
  * message. That coupling is real whether or not it is written down, and it used
- * to be written down in the wrong place: `tool-bridge.ts` matched the literals
- * `"transport not connected"` and `"transport closed"`, which are the sentences
- * these builders replaced. Rewording a message would then have silently disabled
- * the reconnect, turning a recoverable stale connection into a failed tool call.
+ * to be written down in the wrong place: `tool-bridge.ts` matched the phrases as
+ * literals of its own. Rewording a message would then have silently disabled the
+ * reconnect, turning a recoverable stale connection into a failed tool call.
  *
  * So the phrases live next to the strings that must contain them, and the
  * predicate is exported rather than the list: a caller cannot half-implement it.
  */
 const TRANSPORT_STATE_PHRASES = ["is not connected", "closed its connection", "was disconnected by this client"];
+
+/**
+ * The same fact in the MCP SDK's own words, for a failure raised inside the SDK
+ * before any message here wraps it. They are wording this package does not
+ * control, which is why they are a separate list rather than more of the above.
+ */
+const SDK_TRANSPORT_STATE_PHRASES = ["transport not connected", "transport closed"];
 
 /**
  * True when `message` reports that the CONNECTION failed rather than the request.
@@ -138,5 +144,8 @@ const TRANSPORT_STATE_PHRASES = ["is not connected", "closed its connection", "w
  */
 export function isMCPTransportStateMessage(message: string): boolean {
 	const lowercase = message.toLowerCase();
-	return TRANSPORT_STATE_PHRASES.some(phrase => lowercase.includes(phrase));
+	return (
+		TRANSPORT_STATE_PHRASES.some(phrase => lowercase.includes(phrase)) ||
+		SDK_TRANSPORT_STATE_PHRASES.some(phrase => lowercase.includes(phrase))
+	);
 }
