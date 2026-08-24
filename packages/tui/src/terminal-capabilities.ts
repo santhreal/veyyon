@@ -1122,12 +1122,36 @@ export function renderImage(
 	return null;
 }
 
-export function imageFallback(mimeType: string, dimensions?: ImageDimensions, filename?: string): string {
+/** Why a picture was replaced by a row of text. */
+export type ImageFallbackReason = "no-protocol" | "images-off" | "over-budget" | "unsupported-format";
+
+/** What the placeholder row states about the image it stands in for. */
+export interface ImageFallbackText {
+	readonly mimeType: string;
+	readonly dimensions?: ImageDimensions;
+	readonly filename?: string;
+	readonly reason?: ImageFallbackReason;
+}
+
+const IMAGE_FALLBACK_CAUSE: Record<ImageFallbackReason, string> = {
+	"no-protocol": "no image protocol",
+	"images-off": "images off",
+	"over-budget": "over the image budget",
+	"unsupported-format": "unsupported format",
+};
+
+/**
+ * The row a terminal that cannot draw the picture shows instead. It names the
+ * file and the reason, because "[Image: image/png]" states neither which image
+ * it stands for nor that anything is missing.
+ */
+export function imageFallback(text: ImageFallbackText): string {
 	const parts: string[] = [];
-	if (filename) parts.push(filename);
-	parts.push(`[${mimeType}]`);
-	if (dimensions) parts.push(`${dimensions.widthPx}x${dimensions.heightPx}`);
-	return `[Image: ${parts.join(" ")}]`;
+	if (text.filename) parts.push(text.filename);
+	parts.push(text.mimeType);
+	if (text.dimensions) parts.push(`${text.dimensions.widthPx}x${text.dimensions.heightPx}`);
+	const cause = IMAGE_FALLBACK_CAUSE[text.reason ?? "no-protocol"];
+	return `[image not shown, ${cause}] ${parts.join(" · ")}`;
 }
 
 /**
