@@ -208,24 +208,28 @@ describe("every builtin tool's argument contract", () => {
 			// tool rather than as NaN reaching the tool and being used as an offset, a
 			// line number, or a timeout.
 			//
-			// The call is otherwise well formed (every required string filled), so the
-			// only thing that can reject it is the number field itself. An earlier
-			// version of this test scanned for a REQUIRED numeric field, found none,
-			// and asserted nothing at all.
+			// The call is otherwise well formed (every required field filled with a value
+			// its own declaration accepts — a plain string, or the first member of an
+			// enum), so the only thing that can reject it is the number field itself. An
+			// earlier version of this test scanned for a REQUIRED numeric field, found
+			// none, and asserted nothing at all; a later one filled required fields with
+			// `"x"` alone, which skipped every tool whose discriminator is an enum, and
+			// `search` — whose `limit` and `skip` are pagination arithmetic — is one.
 			const cases = tools.flatMap(tool => {
 				const schema = schemaOf(tool);
 				const required = schema.required ?? [];
-				const allStrings = required.every(field => {
+				const args: Record<string, unknown> = {};
+				for (const field of required) {
 					const property = schema.properties?.[field] as { type?: string; enum?: unknown[] } | undefined;
-					return property?.type === "string" && property.enum === undefined;
-				});
-				if (!allStrings) return [];
+					if (property?.type !== "string") return [];
+					const value = property.enum?.[0] ?? "x";
+					if (typeof value !== "string") return [];
+					args[field] = value;
+				}
 				const numeric = Object.entries(schema.properties ?? {}).find(
 					([, property]) => property?.type === "number" || property?.type === "integer",
 				);
 				if (!numeric) return [];
-				const args: Record<string, unknown> = {};
-				for (const field of required) args[field] = "x";
 				args[numeric[0]] = "not-a-number";
 				return [{ name: tool.name, field: numeric[0], error: validationError(tool, args) }];
 			});
@@ -234,7 +238,7 @@ describe("every builtin tool's argument contract", () => {
 			// are always built, so their absence means the sweep found nothing.
 			const covered = cases.map(c => c.name);
 			expect(covered).toContain("bash");
-			expect(covered).toContain("read");
+			expect(covered).toContain("search");
 
 			const accepted = cases.filter(c => c.error === undefined).map(c => `${c.name}.${c.field}`);
 			expect(accepted).toEqual([]);
