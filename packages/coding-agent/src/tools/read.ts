@@ -103,8 +103,10 @@ import {
 	stripOutputNotice,
 } from "./output-meta";
 import {
+	type DelimitedPathSplitOptions,
 	expandPath,
 	formatPathRelativeToCwd,
+	isInternalUrlPath,
 	isReadableUrlPath,
 	type LineRange,
 	parseLineRanges,
@@ -1103,12 +1105,22 @@ type SuffixMatchCache = Map<string, { absolutePath: string; displayPath: string 
 
 /**
  * Filesystem path(s) a read call targets, for the cwd boundary (cwd-boundary.ts).
- * Just the `path` arg — a selector suffix is left attached (it cannot introduce
- * `../` traversal), and URL/ssh/internal targets are filtered by the boundary.
+ * A selector suffix stays attached (it cannot introduce `../` traversal), and
+ * URL/ssh/internal targets are filtered by the boundary.
+ *
+ * A semicolon-delimited argument reads every entry it names, so every entry is
+ * measured, the way the search tools measure theirs. Measuring the joint string
+ * instead resolves `a.md;/etc/passwd` to one path inside the working directory
+ * that no read ever opens, and the entry outside it is never gated.
  */
 export function readFilesystemTargets(args: unknown): string[] {
-	const path = (args as { path?: unknown }).path;
-	return typeof path === "string" ? [path] : [];
+	if (!args || typeof args !== "object" || !("path" in args)) return [];
+	const rawPath = args.path;
+	if (typeof rawPath !== "string") return [];
+	return rawPath
+		.split(";")
+		.map(entry => entry.trim())
+		.filter(entry => entry.length > 0);
 }
 
 /**
@@ -1154,9 +1166,11 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 	async #tryReadDelimitedPaths(
 		readPath: string,
 		signal?: AbortSignal,
+		options: DelimitedPathSplitOptions = {},
 	): Promise<AgentToolResult<ReadToolDetails> | null> {
-		const parts = await splitDelimitedPathEntry(readPath, this.session.cwd);
+		const parts = await splitDelimitedPathEntry(readPath, this.session.cwd, options);
 		if (!parts) return null;
+		const listHasInternalUrl = parts.some(part => isInternalUrlPath(part));
 
 		const notice = `Note: interpreted as ${parts.length} paths: ${parts.join(", ")}`;
 		const notes = [notice];
@@ -1187,7 +1201,15 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 			} catch (error) {
 				if (error instanceof ToolAbortError || signal?.aborted) throw error;
 				const message = errorMessage(error);
-				const errorNote = `Could not read ${part}: ${message}`;
+				// A list written as `skill://a/one.md;two.md` names one internal
+				// resource and one cwd-relative path. Each entry is a complete
+				// target, so state that on the entry that missed instead of
+				// resolving it inside the resource the previous entry named.
+				const hint =
+					listHasInternalUrl && !isInternalUrlPath(part)
+						? " (every entry in a semicolon-delimited list is a complete target: give this one its own scheme)"
+						: "";
+				const errorNote = `Could not read ${part}: ${message}${hint}`;
 				notes.push(errorNote);
 				displayReadTargets.push(part);
 				appendText(`[${errorNote}]`);
@@ -1196,6 +1218,32 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 		flushText();
 
 		return toolResult<ReadToolDetails>({ notes, displayReadTargets }).content(content).done();
+	}
+
+	/**
+	 * One internal URL, or a semicolon-delimited list of them.
+	 *
+	 * An internal resource cannot be probed on disk the way a file can, so the
+	 * literal URL is resolved first and the list only after it fails: a resource
+	 * whose own name contains a semicolon still resolves, and
+	 * `skill://a/one.md;two.md` fans out into one read per entry.
+	 */
+	async #readInternalUrlOrList(
+		rawPath: string,
+		urlPath: string,
+		parsedSel: ParsedSelector,
+		signal?: AbortSignal,
+	): Promise<AgentToolResult<ReadToolDetails>> {
+		try {
+			return await this.#handleInternalUrl(urlPath, parsedSel, signal);
+		} catch (error) {
+			if (error instanceof ToolAbortError || signal?.aborted) throw error;
+			const delimited = await this.#tryReadDelimitedPaths(rawPath, signal, {
+				internalUrls: "split-on-semicolon",
+			});
+			if (delimited) return delimited;
+			throw error;
+		}
 	}
 
 	/**
@@ -2462,10 +2510,10 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 					// cannot shadow the URL's selector semantics during filesystem routing.
 					promotedSelector = internalTarget.sel;
 				} else {
-					return this.#handleInternalUrl(internalTarget.path, parsed, signal);
+					return this.#readInternalUrlOrList(readPath, internalTarget.path, parsed, signal);
 				}
 			} else {
-				return this.#handleInternalUrl(internalTarget.path, parsed, signal);
+				return this.#readInternalUrlOrList(readPath, internalTarget.path, parsed, signal);
 			}
 		}
 

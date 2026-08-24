@@ -971,6 +971,21 @@ async function tryDelimitedPathSplit(
 	return parts;
 }
 
+/** How one path-like entry is allowed to fan out into several targets. */
+export interface DelimitedPathSplitOptions {
+	splitter?: PathEntrySplitter;
+	/**
+	 * What happens to an entry that is an internal URL (`skill://`, `memory://`, …).
+	 * `keep`, the default, leaves it whole: a search scope resolves a base path on
+	 * disk and an internal resource has none to probe, so a delimiter inside a
+	 * resource name would fan out into targets that cannot be checked.
+	 * `split-on-semicolon` serves a caller that resolves each target separately and
+	 * reports each failure separately (the read tool). Only the documented `;`
+	 * splits there, so a comma or a space inside a resource name stays in the name.
+	 */
+	internalUrls?: "keep" | "split-on-semicolon";
+}
+
 /**
  * Split one path-like entry whose multiple targets were flattened into one
  * string. Existing paths are kept intact, so real filenames containing spaces,
@@ -979,11 +994,14 @@ async function tryDelimitedPathSplit(
 export async function splitDelimitedPathEntry(
 	entry: string,
 	cwd: string,
-	options: { splitter?: PathEntrySplitter } = {},
+	options: DelimitedPathSplitOptions = {},
 ): Promise<string[] | null> {
 	const normalizedEntry = normalizePathLikeInput(entry);
 	if (!hasTopLevelPathDelimiter(normalizedEntry)) return null;
-	if (isInternalUrlPath(normalizedEntry)) return null;
+	if (isInternalUrlPath(normalizedEntry)) {
+		if (options.internalUrls !== "split-on-semicolon") return null;
+		return tryDelimitedPathSplit(normalizedEntry, cwd, options.splitter ?? parseSearchPath, "semicolon", "none");
+	}
 	// A real POSIX file may contain the delimiter and a selector-shaped tail
 	// (`a;b:1-2`, `a b:1-2`). Preserve the raw entry whenever the full literal
 	// resolves — or is only ambiguous — so downstream literal-preferring
@@ -1008,7 +1026,7 @@ export async function splitDelimitedPathEntry(
 export async function expandDelimitedPathEntries(
 	entries: readonly string[],
 	cwd: string,
-	options: { splitter?: PathEntrySplitter } = {},
+	options: DelimitedPathSplitOptions = {},
 ): Promise<string[]> {
 	const expanded: string[] = [];
 	for (const entry of entries) {
