@@ -78,6 +78,8 @@ case "${SCENE}" in
 demo-hd)
 	ASSET=assets/demo-hd.webp
 	ZOOM_ARGS=(--magnify 2.0)
+	SCENE_FPS=60
+	CADENCE_MS=17
 	# The hero also ships whole. The task runs for many minutes and the landing
 	# page gets a dense cut, so both are published and the cut can be checked
 	# against the complete autonomous goal session.
@@ -111,6 +113,8 @@ demo-hd)
 		--still-keep 4
 		--still-min 4
 		--speed-badge
+		--fps 60
+		--webp-fps 60
 	)
 	;;
 todo-marathon)
@@ -329,6 +333,16 @@ else
 	exit 2
 fi
 
+# The coding agent imports a gitignored html bundle at parse time. A worktree
+# without it opens the terminal, then the CLI dies, and the recorder reports
+# that no window ever appeared.
+if [[ ! -f packages/coding-agent/src/export/html/tool-views.generated.js ]]; then
+	"${BUN}" --cwd=packages/collab-web run gen:tool-views
+fi
+if [[ ! -f packages/natives/native/veyyon_natives.linux-x64-modern.node && ! -f packages/natives/native/veyyon_natives.linux-x64-baseline.node ]]; then
+	"${BUN}" --cwd=packages/natives run ensure
+fi
+
 # WHAT A MARKS FILE IS FOR HERE. The scene appends one row per frame that landed, so it is an
 # independent record of what the take captured. Both publish paths below copy the PNGs that
 # exist and nothing else, which means a shot that never landed does not fail a run: it leaves
@@ -428,6 +442,7 @@ PROOF_LLM_BASE_URL="${PROOF_LLM_BASE_URL}" \
 	SCENE_COMMAND="${SCENE_CMD}" \
 	SCENE_THEME=night \
 	SCENE_WIDTH=2560 \
+	SCENE_FPS="${SCENE_FPS:-30}" \
 	SCENE_HEIGHT=1440 \
 	SCENE_MARGIN=128 \
 	SCENE_FONT_SIZE=21 \
@@ -536,12 +551,15 @@ if [[ ${#ZOOM_ARGS[@]} -gt 0 ]]; then
 	if [[ -f "${MARKS}" && ! " ${ZOOM_ARGS[*]} " =~ " --marks " ]]; then
 		ZOOM_ARGS+=(--marks "${MARKS}")
 	fi
+	if [[ ! " ${ZOOM_ARGS[*]} " =~ " --fps " ]]; then
+		ZOOM_ARGS+=(--fps "${SCENE_FPS:-30}")
+	fi
 	python3 proof/zoom.py "${CUT_SOURCE}" "${ZOOM_SOURCE}" "${ZOOM_ARGS[@]}" || {
 		echo "record-hd-demo.sh: the zoom stage found no region to hold; publishing nothing" >&2
 		exit 1
 	}
 	if [[ -f "${CUES}" ]]; then
-		python3 proof/glyph-height.py "${CUT_SOURCE}" --cues "${CUES}" || {
+		python3 proof/glyph-height.py "${CUT_SOURCE}" --cues "${CUES}" --fps "${SCENE_FPS:-30}" || {
 			echo "record-hd-demo.sh: the secret hold is not 2x the wide shot; publishing nothing" >&2
 			exit 1
 		}
@@ -558,8 +576,8 @@ python3 proof/hero-cut.py "${CUT_SOURCE}" \
 	--width "${CUT_WIDTH:-2560}" --webp-width "${WEBP_WIDTH:-1920}" "${CUT_ARGS[@]}"
 
 # THE CADENCE IS PART OF THE PUBLISH CONTRACT, not a thing to notice afterwards. Both
-# display servers record at 30 fps, so the typical frame of anything published from a take
-# holds 33ms. The hero shipped at a 7.7 fps average because the path resampled it twice and
+# display servers record at SCENE_FPS (30, 60 for the hero), so the typical frame of anything
+# published from a take holds that interval (33ms or 17ms). The hero shipped at a 7.7 fps average because the path resampled it twice and
 # nothing here was looking: it read as a laggy product rather than as a resampled file.
 #
 # The gate then passed a take that averaged 14.2 fps, because it read only the most common
@@ -567,7 +585,7 @@ python3 proof/hero-cut.py "${CUT_SOURCE}" \
 # intervals. It now also gates the MOVING portion of the clip against the capture rate, with
 # held still screens named and set aside, so a file that is mostly slower than its most
 # common frame cannot pass. `--expect-ms` supplies both criteria.
-python3 proof/webp-cadence.py "${CUT_WEBP}" --expect-ms 33 || {
+python3 proof/webp-cadence.py "${CUT_WEBP}" --expect-ms "${CADENCE_MS:-33}" || {
 	echo "record-hd-demo.sh: refusing to publish a clip that is not the cadence the recorder captured" >&2
 	exit 1
 }

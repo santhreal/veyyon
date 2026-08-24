@@ -37,8 +37,8 @@ The recorder refuses to publish a clip whose cadence is not the one it captured.
 criteria, both from `--expect-ms`:
 
 ```text
-typical frame    33 ms, +/-1 (34 ms alternates at 30 fps)
-moving average   within 10% of 30 fps, held stills set aside
+typical frame    capture interval +/-1 ms (17 ms at 60 fps, 33/34 ms at 30 fps)
+moving average   within 10% of the capture rate, held stills set aside
 ```
 
 The first catches a resample, where every frame was rewritten. The second catches a
@@ -53,14 +53,14 @@ python3 proof/webp-cadence.py assets/demo-hd.webp --expect-ms 33
 
 ### Real interactive sessions
 
-The HD recorder starts Xvfb, picom, and kitty inside the recorder container. It drives the shipped CLI with real keyboard and pointer events and records the private display at 30 frames per second.
+The HD recorder starts Xvfb, picom, and kitty inside the recorder container. It drives the shipped CLI with real keyboard and pointer events and records the private display at the scene rate (60 fps for the hero take, 30 fps for the rest).
 
 The landing-page terminal uses:
 
 ```text
 terminal       kitty
 font           JetBrains Mono 21
-canvas         2560x1440 at 30 fps
+canvas         2560x1440 at 60 fps (hero) or 30 fps
 window inset   128 px
 background     #171b22
 foreground     #d3dae6
@@ -189,7 +189,7 @@ holds the bounding box of what changed there, padded and clamped inside the fram
 the source aspect ratio. A moment with nothing moving in it produces no file.
 
 The hero take drives the same stage from a cue file the scene writes next to its
-marks (`zoom-in FRAME [x,y,w,h]`, `zoom-out FRAME`). The hold between those cues
+marks (`zoom-in FRAME [x,y,w,h]`, `pan FRAME x,y,w,h`, `zoom-out FRAME`). The hold between those cues
 is at least two seconds of real time, with no time compression on that span, so
 the stored secret is readable. Magnification is relative to the published wide
 shot and is at least 2x: `proof/glyph-height.py` measures `capture_width /

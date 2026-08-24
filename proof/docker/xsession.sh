@@ -19,6 +19,19 @@ FPS="${SCENE_FPS:-30}"
 OUT="/out"
 mkdir -p "${OUT}"
 
+# kitty/glfw refuse to open a window without a machine-id. Some recorder images
+# ship without /etc/machine-id, and the first thing the operator sees is
+# "no terminal window with a geometry appeared" plus a dbus error in the log.
+if [ ! -s /etc/machine-id ]; then
+	if command -v dbus-uuidgen >/dev/null 2>&1; then
+		dbus-uuidgen --ensure
+	else
+		head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n' >/etc/machine-id
+		mkdir -p /var/lib/dbus
+		cp /etc/machine-id /var/lib/dbus/machine-id
+	fi
+fi
+
 # COMPOSITE and RENDER are what a compositor needs; Xvfb offers them only when
 # they are asked for, and picom without them starts, stays alive, and never
 # claims the manager selection, which reads exactly like a theme that did not
@@ -32,6 +45,18 @@ for _ in $(seq 1 50); do
 	sleep 0.2
 done
 xdpyinfo -display "${DISPLAY}" >/dev/null
+
+# Session bus after the display exists. dbus-launch (which kitty/glfw will
+# spawn if this is missing) dies without $DISPLAY, and the window never appears.
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp/xdg-runtime}"
+mkdir -p "${XDG_RUNTIME_DIR}"
+chmod 700 "${XDG_RUNTIME_DIR}" || true
+if [ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ] && command -v dbus-daemon >/dev/null 2>&1; then
+	bus="${XDG_RUNTIME_DIR}/bus"
+	rm -f "${bus}"
+	dbus-daemon --session --address="unix:path=${bus}" --fork
+	export DBUS_SESSION_BUS_ADDRESS="unix:path=${bus}"
+fi
 
 # AUTOREPEAT IS WHY TYPED COMMANDS DOUBLED THEIR CHARACTERS. xdotool synthesises a
 # press and a release per character; when the client is repainting hard -- the composer
