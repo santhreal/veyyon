@@ -186,7 +186,7 @@ export class ExtractionDiagnostics {
 
 let singleton: ExtractionDiagnostics | null = null;
 
-export function getDiagnostics(): ExtractionDiagnostics {
+export function extractionDiagnostics(): ExtractionDiagnostics {
 	if (singleton === null) {
 		singleton = new ExtractionDiagnostics();
 	}
@@ -194,9 +194,9 @@ export function getDiagnostics(): ExtractionDiagnostics {
 }
 
 export function getExtractionStats(): ExtractionStatsSnapshot {
-	return getDiagnostics().snapshot();
+	return extractionDiagnostics().snapshot();
 }
 
 export function resetExtractionStats(): void {
-	getDiagnostics().reset();
+	extractionDiagnostics().reset();
 }

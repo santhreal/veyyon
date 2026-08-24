@@ -282,6 +282,6 @@ describe("AssistantMessageComponent tool images", () => {
 		const rendered = component.render(80).join("\n");
 
 		expect(rendered).toContain("\x1b_G");
-		expect(rendered).not.toContain("[Image: image/webp]");
+		expect(rendered).not.toContain("[image not shown");
 	});
 });
