@@ -210,6 +210,49 @@ describe("OmfgController", () => {
 		expect(controller.hasActiveRequest()).toBe(false);
 	});
 
+	it("saves generated rules that carry the extended TTSR fields", async () => {
+		const reply = JSON.stringify({
+			name: "ts-no-casts",
+			description: "No silent any casts",
+			condition: ": any|as any",
+			astCondition: ["$VALUE as any"],
+			scope: "tool:edit(*.ts)",
+			interruptMode: "tool-only",
+			repeatMode: "after-gap",
+			repeatGap: 5,
+			warmupMatches: 2,
+			body: "Narrow with a type guard.",
+		});
+		const runEphemeralTurn = vi.fn<RunEphemeralTurn>(async args => {
+			args.onTextDelta?.(reply);
+			return { replyText: reply, assistantMessage: createAssistantMessage([{ type: "text", text: reply }]) };
+		});
+		const harness = await createHarness({ runEphemeralTurn, messages: createMatchingMessages() });
+		const controller = new OmfgController(harness.ctx);
+
+		await controller.start("Stop casting to any");
+		await waitFor(() => harness.ttsrAddRule.mock.calls.length === 1);
+
+		const savedPath = path.join(harness.projectDir, ".veyyon", "rules", "ts-no-casts.md");
+		const saved = await Bun.file(savedPath).text();
+		expect(saved).toContain('astCondition: ["$VALUE as any"]');
+		expect(saved).toContain("interruptMode: tool-only");
+		expect(saved).toContain("repeatMode: after-gap");
+		expect(saved).toContain("repeatGap: 5");
+		expect(saved).toContain("warmupMatches: 2");
+		expect(saved).not.toContain("pathScope:");
+
+		const registered = harness.ttsrAddRule.mock.calls[0]?.[0];
+		expect(registered?.astCondition).toEqual(["$VALUE as any"]);
+		expect(registered?.interruptMode).toBe("tool-only");
+		expect(registered?.repeatMode).toBe("after-gap");
+		expect(registered?.repeatGap).toBe(5);
+		expect(registered?.warmupMatches).toBe(2);
+
+		expect(controller.hasActiveRequest()).toBe(true);
+		controller.handleEscape();
+	});
+
 	it("reiterates when the first valid rule does not match history", async () => {
 		const firstReply = createRule("wrong-pattern", "never-happened", "text");
 		const secondReply = createRule("ts-no-any", ": any|as any", "tool:edit(*.ts)");

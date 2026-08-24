@@ -191,7 +191,7 @@ export class OmfgController {
 
 			request.component.setRule(parsed.fileContent);
 			request.component.setStatus("validating", `Attempt ${attempt}/${MAX_ATTEMPTS} · validating…`);
-			const validated = validateParsedRuleAgainstAssistantHistory(parsed, this.ctx.session.messages);
+			const validated = await validateParsedRuleAgainstAssistantHistory(parsed, this.ctx.session.messages);
 			if (validated.repairedCondition) {
 				request.component.setRule(validated.candidate.fileContent);
 			}
