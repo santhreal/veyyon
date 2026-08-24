@@ -25,6 +25,8 @@ import {
 	shouldSendServiceTier,
 } from "../src/provider-models/service-tier";
 import {
+	declaredCapabilityNames,
+	declaredProviders,
 	providersDeclaring,
 	providerWireCapabilities,
 	SERVICE_TIERS,
@@ -144,19 +146,73 @@ describe("the provider table decides what a provider realizes on the wire", () =
 		expect([...providersDeclaring("forwardsUpstream")].sort()).toEqual(["litellm"]);
 	});
 
+	it("declares how each provider serves the anthropic-messages wire", () => {
+		expect([...providersDeclaring("anthropicMessages")].sort()).toEqual([
+			"anthropic",
+			"cloudflare-ai-gateway",
+			"github-copilot",
+			"google-vertex",
+			"opencode-go",
+			"opencode-zen",
+			"umans",
+		]);
+	});
+
+	it("names one credential placement per provider, and Anthropic's own endpoint only once", () => {
+		const byCredential = new Map<string, string[]>();
+		let direct: string[] = [];
+		for (const id of providersDeclaring("anthropicMessages")) {
+			const wire = providerWireCapabilities(id)?.anthropicMessages;
+			if (!wire) throw new Error(`${id} declares anthropicMessages and then reads back undefined`);
+			if (wire.credential) byCredential.set(wire.credential, [...(byCredential.get(wire.credential) ?? []), id]);
+			if (wire.directEndpoint) direct = [...direct, id];
+			// A provider is reached either at Anthropic's own endpoint or with a
+			// credential of its own; declaring both states two different endpoints.
+			expect(wire.directEndpoint === true && wire.credential !== undefined).toBe(false);
+		}
+		expect(direct).toEqual(["anthropic"]);
+		expect([...(byCredential.get("copilot-bearer") ?? [])]).toEqual(["github-copilot"]);
+		expect([...(byCredential.get("gateway-managed") ?? [])]).toEqual(["cloudflare-ai-gateway"]);
+		expect([...(byCredential.get("api-key-header") ?? [])].sort()).toEqual(["opencode-go", "umans"]);
+		expect([...(byCredential.get("bearer-only") ?? [])]).toEqual(["opencode-zen"]);
+	});
+
+	it("names the endpoints that reject a request feature", () => {
+		const rejecting = (feature: "rejectsBetas" | "rejectsContextManagement"): string[] =>
+			providersDeclaring("anthropicMessages")
+				.filter(id => providerWireCapabilities(id)?.anthropicMessages?.[feature] === true)
+				.sort();
+		expect(rejecting("rejectsBetas")).toEqual(["github-copilot"]);
+		expect(rejecting("rejectsContextManagement")).toEqual(["github-copilot", "google-vertex"]);
+		// An endpoint that strips betas cannot honour the beta-gated edit either.
+		for (const id of rejecting("rejectsBetas")) {
+			expect(providerWireCapabilities(id)?.anthropicMessages?.rejectsContextManagement).toBe(true);
+		}
+	});
+
 	/**
 	 * A key that is not a catalog provider is either a local server a user points
 	 * at by hand or a typo. The first set is pinned; a typo is in neither and reds.
 	 */
 	it("keys every entry by a catalog provider, or by a declared local server", () => {
-		const keys = new Set<string>([
-			...providersDeclaring("serviceTier"),
-			...providersDeclaring("strictTools"),
-			...providersDeclaring("localInference"),
-			...providersDeclaring("forwardsUpstream"),
-		]);
-		const outsideCatalog = [...keys].filter(id => !catalogProviderIds.includes(id)).sort();
+		const outsideCatalog = declaredProviders()
+			.filter(id => !catalogProviderIds.includes(id))
+			.sort();
 		expect(outsideCatalog).toEqual(["llama.cpp"]);
+	});
+
+	/**
+	 * The capability names come from the table, not from a list here, so adding a
+	 * capability reds this arm until its own pin above is written.
+	 */
+	it("declares exactly the capabilities this suite pins", () => {
+		expect([...declaredCapabilityNames()]).toEqual([
+			"anthropicMessages",
+			"forwardsUpstream",
+			"localInference",
+			"serviceTier",
+			"strictTools",
+		]);
 	});
 
 	it("declares only tiers that exist, and premium billing only where priority is realized", () => {

@@ -42,11 +42,25 @@ const REASON_TEXT: Record<ImageFallbackReason, string> = {
 };
 
 /**
+ * Fixed phrase every notice carries. The scrub that strips images from an
+ * outbound request ({@link replaceLlmImagesWithText}) removes the notice with
+ * it, so a request whose pictures are gone does not also carry a sentence about
+ * where they are. Building and detecting the notice from one constant keeps the
+ * two from drifting apart.
+ */
+const NOTICE_MARKER = "in your context only:";
+
+/**
  * The sentence appended to a tool result that carries images, or `undefined`
  * when the user is looking at the picture and nothing needs saying.
  */
 export function imageVisibilityNotice(state: ImageDisplayState, imageCount: number): string | undefined {
 	if (state.shown || imageCount < 1 || !state.reason) return undefined;
 	const subject = imageCount === 1 ? "This image is" : `These ${imageCount} images are`;
-	return `${subject} in your context only: ${REASON_TEXT[state.reason]}, so the user sees a placeholder row instead of the picture. Describe what it shows; do not tell the user you displayed it.`;
+	return `${subject} ${NOTICE_MARKER} ${REASON_TEXT[state.reason]}, so the user sees a placeholder row instead of the picture. Describe what it shows; do not tell the user you displayed it.`;
+}
+
+/** True for a text block {@link imageVisibilityNotice} produced. */
+export function isImageVisibilityNotice(text: string): boolean {
+	return text.includes(NOTICE_MARKER);
 }
