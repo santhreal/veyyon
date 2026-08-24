@@ -36,6 +36,7 @@ import {
 } from "@veyyon/tui";
 import { logger } from "@veyyon/utils";
 import { settings } from "../config/settings-instance";
+import { StaticComposerFrame } from "./components/composer-chrome";
 import { WelcomeComponent } from "./components/welcome";
 import { HomeAnchorLayout } from "./controllers/home-anchor-layout";
 import { applyGroundPaint, setDetectedTerminalGround } from "./theme/ground-tints";
@@ -48,10 +49,10 @@ import { flushPendingTtyInput } from "./tty-input-flush";
  * and the bottom margin. The zone does not exist yet, and the centring is a
  * share of the slack below the card ({@link HomeAnchorLayout}), so a stand-in
  * of the right height is what puts the card where the mounted home screen puts
- * it. An estimate off by a row moves the card by at most one row when the real
- * composer mounts, and `HomeAnchorLayout.sync` corrects it on that frame.
+ * it. The stand-in is the composer itself — {@link StaticComposerFrame} paints
+ * the resting zone's exact row count with its real chrome, so the prompt is on
+ * screen from the first paint and the mounted zone swaps text, not position.
  */
-const COMPOSER_RESERVE_ROWS = 8;
 
 /** Inputs used to decide whether the launch card may be painted this early. */
 export interface FirstFrameDecisionOptions {
@@ -116,7 +117,10 @@ export function paintFirstFrame(version: string): FirstFrame {
 		hero,
 		new Spacer(1),
 		layout.bottomFill,
-		new Spacer(COMPOSER_RESERVE_ROWS),
+		// The composer at rest, painted NOW: the prompt is on screen from the
+		// first paint, and the real zone mounts into the same rows when init
+		// finishes — a text handover, not a slide.
+		new StaticComposerFrame(),
 	];
 	for (const child of children) ui.addChild(child);
 	// No frame has been composed, so this measures the children directly.
