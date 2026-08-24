@@ -186,14 +186,14 @@ screen_has() {
 approve_while_asked() {
 	local rounds="${1:-6}" approved=0
 	while [ "${rounds}" -gt 0 ]; do
-		screen_has "Permission required" || screen_has "Permission required" || break
+		screen_has "Permission required" || break
 		k Return
 		approved=$((approved + 1))
 		settle_idle 200 6 2 20
 		rounds=$((rounds - 1))
 	done
 	echo "scene: approved ${approved} permission dialog(s)" >&2
-	if screen_has "Permission required" || screen_has "Permission required"; then
+	if screen_has "Permission required"; then
 		echo "scene: a permission dialog is STILL open after ${approved} approvals" >&2
 		return 1
 	fi
@@ -243,6 +243,11 @@ wheel_down() { key_repeat_button 5 "${1:-3}"; }
 
 # Wait for a string to APPEAR while the turn is still running, and return as soon as it does.
 #
+# Returns:
+#   0 - needle appeared on screen
+#   1 - ceiling elapsed without the needle appearing
+#   2 - goal finished early before the needle appeared
+#
 # WHY THIS EXISTS AND WHY IT IS NOT `scroll_to`. Some surfaces are only on screen while the
 # work is happening: the subagent lane list is live state, and the tool block of a search is
 # followed by whatever the model writes about it. `scroll_to` was the answer to that and it
@@ -256,17 +261,24 @@ wheel_down() { key_repeat_button 5 "${1:-3}"; }
 # genuinely on screen. Bounded like everything else here: returns non-zero when the string
 # never arrived, and the scene decides what that means.
 wait_for_screen() {
-	local needle="$1" ceiling="${2:-300}" waited=0 scale="${SCENE_SETTLE_SCALE:-1}"
+	local needle="$1" ceiling="${2:-300}" waited_half=0 max_half scale="${SCENE_SETTLE_SCALE:-1}"
 	[ "${scale}" = "1" ] || ceiling="$(awk -v w="${ceiling}" -v s="${scale}" 'BEGIN { printf "%.0f", w * s }')"
-	while [ "${waited}" -lt "${ceiling}" ]; do
+	max_half=$((ceiling * 2))
+	while [ "${waited_half}" -lt "${max_half}" ]; do
 		if screen_has "${needle}"; then
-			echo "scene: '${needle}' appeared after ${waited}s" >&2
+			local waited_s
+			if [ $((waited_half % 2)) -eq 0 ]; then
+				waited_s="$((waited_half / 2))"
+			else
+				waited_s="$((waited_half / 2)).5"
+			fi
+			echo "scene: '${needle}' appeared after ${waited_s}s" >&2
 			return 0
 		fi
 		# Fast models can complete the goal before intermediate scrollback checks.
 		if screen_has "NEBULA DRIFT READY" || screen_has "Goal: complete" || screen_has "Goal mode completed"; then
 			echo "scene: goal already finished while waiting for '${needle}'" >&2
-			return 0
+			return 2
 		fi
 		if screen_has "Permission required"; then
 			echo "scene: approving permission dialog while waiting for '${needle}'" >&2
@@ -274,7 +286,7 @@ wait_for_screen() {
 			settle_idle 200 6 2 20 || true
 		fi
 		sleep 0.5
-		waited=$((waited + 1))
+		waited_half=$((waited_half + 1))
 	done
 	echo "scene: '${needle}' never appeared in ${ceiling}s" >&2
 	return 1
@@ -376,7 +388,7 @@ shot() {
 	fi
 	if [ -n "${SCENE_LAST_SHOT_PNG:-}" ] && [ -f "${SCENE_LAST_SHOT_PNG}" ]; then
 		if cmp -s "${png}" "${SCENE_LAST_SHOT_PNG}"; then
-			echo "scene: notice: shot '$1' is byte-identical to previous shot '$(basename "${SCENE_LAST_SHOT_PNG}" .png)'" >&2
+			abandon_take "$1" "shot '$1' is byte-identical to previous shot '$(basename "${SCENE_LAST_SHOT_PNG}" .png)'"
 		fi
 	fi
 	SCENE_LAST_SHOT_PNG="${png}"
