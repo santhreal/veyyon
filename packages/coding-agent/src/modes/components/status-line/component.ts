@@ -749,14 +749,24 @@ export class StatusLineComponent implements Component {
 		if (this.#defaultBranch === undefined) {
 			this.#defaultBranch = "main";
 			const lookupCwd = effectiveGitCwd;
+			// Wrapped like the status and PR lookups beside it: `git()` REJECTS when the
+			// binary is missing rather than returning a non-zero result, and this is the
+			// one unawaited lookup here that used to let that escape. A directory holding
+			// a `.git` on a host with no git on PATH -- a copied tree, a slim container --
+			// then raised an unhandled rejection out of a render. The `"main"` fallback
+			// assigned above is what a failed lookup is supposed to leave behind.
 			(async () => {
-				const resolved = await git.branch.default(lookupCwd);
-				if (this.#disposed || this.#defaultBranchCwd !== lookupCwd) return;
-				if (resolved) {
-					this.#defaultBranch = resolved;
-					if (this.#onBranchChange) {
-						this.#onBranchChange();
+				try {
+					const resolved = await git.branch.default(lookupCwd);
+					if (this.#disposed || this.#defaultBranchCwd !== lookupCwd) return;
+					if (resolved) {
+						this.#defaultBranch = resolved;
+						if (this.#onBranchChange) {
+							this.#onBranchChange();
+						}
 					}
+				} catch {
+					// Keep the `"main"` fallback; a decoration cannot fail a render.
 				}
 			})();
 		}
