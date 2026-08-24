@@ -6,6 +6,10 @@
 
 - The Anthropic provider reads its endpoint, credential placement, rejected betas and retry policy from the catalog's wire-capability table instead of comparing provider ids at seventeen call sites.
 
+### Fixed
+
+- Anthropic strict-tool planning now recognizes the unified `search` tool instead of the retired `find` identity, so canonical workspace search receives strict schema enforcement without reviving a legacy tool name.
+
 ## [1.2.0] - 2026-08-23
 
 ### Breaking Changes
@@ -41,7 +45,6 @@
 - One owner for the usage report wire shape, and a rejection recognised without loading the validator. The report schemas were declared at module scope in `usage.ts` and a second time in `auth-broker/wire-schemas.ts`, so a launch paid to build validators for a request most sessions never make and the broker could drift from the reader it answers. They live in `@veyyon/ai/usage/report-wire` behind one memoized accessor, and the broker composes that owner's schema rather than restating it. `isArkErrors` in `@veyyon/ai/utils/schema` answers "did validation reject this" structurally, beside the existing `isArkSchema`, so a caller no longer imports a schema library to reach `instanceof`. The Codex failure-event payloads are read by declared field readers, which removed three branches no response could take.
 
 ### Fixed
-- Anthropic strict-tool planning now recognizes the unified `search` tool instead of the retired `find` identity, so canonical workspace search receives strict schema enforcement without reviving a legacy tool name.
 
 - A Codex request no longer carries the Responses Lite marker without the `reasoning.context: "all_turns"` the lite transport requires, which the backend refused with `X-OpenAI-Internal-Codex-Responses-Lite requires reasoning.context to be all_turns` for every turn of a session on a lite-marked model whose id states no wire generation.
 - One suite's provider stub can no longer answer another suite's request. The twelve test-only provider overrides were twelve module-level variables, twelve setters and twelve `if (override)` branches, so nothing could answer "is any override installed" and nothing could clear them. `bun test` runs a bucket in one process, so a suite that installed one and never restored it replaced that provider for every file after it, and the failure landed on the innocent file: a Bedrock deadline test terminated in 3ms and reported that it never named a deadline, because it was talking to another suite's stub instead of a credential process. The overrides are one map keyed by api, readable through `providerModuleOverrideSnapshot()`, and a preloaded tripwire snapshots that map before each test and fails the test that ends with an override it did not inherit, putting the inherited value back first so one leak costs one failure instead of a cascade. It reports what a test added or replaced rather than whatever is installed, because `packages/simulations` replaces all twelve apis at module scope on purpose and holds them for the life of the process. Three suites were leaking: two Bedrock and one Cursor.

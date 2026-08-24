@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- The `prompt-variables` documentation examples name the `search` tool, which is the workspace-search tool that now exists, instead of the retired `grep` tool. No behavior change.
+
 ## [1.2.0] - 2026-08-23
 
 ### Breaking Changes

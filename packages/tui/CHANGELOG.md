@@ -9,6 +9,7 @@
 ### Changed
 
 - `imageFallback` takes the file name, media type, pixel size and cause of an undrawn image and returns a row naming all four; `ImageFallbackReason` states the cause.
+- The fuzzy-match benchmark fixture now names the canonical text-search source path instead of the retired grep-tool path. No benchmark behavior changed.
 
 ## [1.2.0] - 2026-08-23
 
@@ -20,8 +21,6 @@
 
 - A streamed markdown frame reads, scans and copies only what arrived. The renderer re-read the settled transcript on every token: two whole-text regex scans for reference definitions and over-nesting, a whole-text normalization pass, a rescan of the frozen token range for a new freeze boundary, three whole-prefix string comparisons, and three copies of every settled row. All of it is now bounded by the arrived tail or answered by string identity, and the settled rows are held as one immutable array copied once, into the array the frame returns — that array is what the render contract hands to callers, so that one copy stays. Streaming 10,000 prose tokens through one component falls from 624ms to 216ms, and the marginal frame at the end of that stream from 0.082ms to 0.010ms. Rendered bytes are unchanged: every frame still byte-matches a cold full render, reference definitions and CR input still fall back to a full lex, and settled-row exposure still resets on a rewritten lineage. `packages/tui/bench/markdown-stream.bench.ts` fails if a frame starts scanning or normalizing the settled prefix again.
 - `sweepSurface`, `SweepSpec` and the sweep entry in `MOTION` are gone: a surface no longer carries a travelling specular highlight, and `fillSurface` is the one material treatment left.
-
-- The fuzzy-match benchmark fixture now names the canonical text-search source path instead of the retired grep-tool path. No benchmark behavior changed.
 
 ### Fixed
 
