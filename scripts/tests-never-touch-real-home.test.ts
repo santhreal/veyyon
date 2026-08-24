@@ -165,17 +165,11 @@ export const ALLOWLIST: ReadonlyArray<AllowlistEntry> = [
 		reason:
 			"It is the gate's own suite, and half its subject is the tripwire, which cannot be probed without naming the variable that tells the tripwire what to forbid. What it names is NOT the real config root: every occurrence sets `VEYYON_TEST_REAL_CONFIG_ROOT` to a freshly `mkdtemp`ed directory in the child it spawns, precisely so a door that turns out to be UNGUARDED writes there instead of into the operator's home — which is what makes the red proofs of the six write doors safe to run at all. Each probe removes its own root in a `finally`, and each asserts the root is empty afterwards, so an unguarded door is reported by the absence of the file rather than by damage. The real `~/.veyyon` is never resolved, opened, or written by this file.",
 	},
-	// The eight below are all `unresolved-spawn-target`: a spawn whose command argument is a
+	// The six below are all `unresolved-spawn-target`: a spawn whose command argument is a
 	// variable, a parameter or a property, so no reader of the source alone can say what it
 	// runs. Each reason therefore has to answer the one question the analyzer could not, which
 	// is what the target actually holds at runtime. Two of them genuinely execute a file NAMED
 	// `veyyon`, which is exactly why the rule stops here and asks rather than guessing.
-	{
-		file: "packages/ai/test/image-limits.test.ts",
-		rule: "unresolved-spawn-target",
-		reason:
-			'`MAGICK_BIN` is the result of `$which("magick") ?? $which("convert")` and the test throws when neither is available. It generates PNG images in `TEMP_DIR` with isolated `MAGICK_ENV` (`MAGICK_TMPDIR` and `MAGICK_TEMPORARY_PATH`), which is cleaned up in `afterAll`.',
-	},
 	{
 		file: "packages/coding-agent/test/update-while-running.test.ts",
 		rule: "unresolved-spawn-target",
