@@ -33,7 +33,7 @@ import { isRecord } from "@veyyon/utils/type-guards";
 import { formatExitCodeNotice } from "../exec/exit-notice";
 import { ToolAbortError } from "../tools/tool-errors";
 import { isBlobRef, isTextBlobRef } from "./blob-store";
-import { currentImageDisplayState, imageVisibilityNotice, isImageVisibilityNotice } from "./image-visibility";
+import { imageDisplayStateForCall, imageVisibilityNotice, isImageVisibilityNotice } from "./image-visibility";
 
 export {
 	type BranchSummaryMessage,
@@ -893,11 +893,15 @@ function isAnsweredBatchLedgerNotice(messages: AgentMessage[], index: number, me
  * State, on the tool result that carries them, whether the images reached the
  * user's screen. A model holding a picture in its own context otherwise reports
  * having shown it, while the user is looking at a placeholder row.
+ *
+ * The terminal decides most of this before the result is converted; a budget
+ * demotion and a failed format conversion are decided later, by the block that
+ * drew them, and reach the sentence through the record that block keeps.
  */
 function statePlacedImageVisibility(message: ToolResultMessage): ToolResultMessage {
 	const images = message.content.filter(block => block.type === "image").length;
 	if (images === 0) return message;
-	const notice = imageVisibilityNotice(currentImageDisplayState(), images);
+	const notice = imageVisibilityNotice(imageDisplayStateForCall(message.toolCallId, images), images);
 	if (!notice) return message;
 	return { ...message, content: [...message.content, { type: "text", text: notice }] };
 }

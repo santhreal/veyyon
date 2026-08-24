@@ -33,9 +33,10 @@ import type { AgentMessage, AgentTool } from "@veyyon/agent-core";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/tool-execution";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { forgetImageDisplays } from "@veyyon/coding-agent/session/image-visibility";
 import { convertToLlm, replaceLlmImagesWithText } from "@veyyon/coding-agent/session/messages";
 import { toolRenderers } from "@veyyon/coding-agent/tools/renderers";
-import { ImageProtocol, setTerminalImageProtocol, TERMINAL, type TUI } from "@veyyon/tui";
+import { ImageBudget, ImageProtocol, setTerminalImageProtocol, TERMINAL, type TUI } from "@veyyon/tui";
 import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "./helpers/settings-test-state";
 import { createToolExecution } from "./helpers/tool-execution";
 
@@ -45,14 +46,14 @@ const TINY_PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8
 /** The placeholder row's opening, whatever cause it names. */
 const PLACEHOLDER = /\[image not shown, [^\]]+\]/u;
 
-function imageToolResult(toolName: string, images = 1): AgentMessage {
+function imageToolResult(toolName: string, images = 1, toolCallId = "call_1"): AgentMessage {
 	const content: Array<{ type: string; text?: string; data?: string; mimeType?: string }> = [
 		{ type: "text", text: "Read image file [image/png]" },
 	];
 	for (let i = 0; i < images; i++) content.push({ type: "image", data: TINY_PNG, mimeType: "image/png" });
 	return {
 		role: "toolResult",
-		toolCallId: "call_1",
+		toolCallId,
 		toolName,
 		content,
 		timestamp: 1,
@@ -76,11 +77,19 @@ interface BlockCase {
 	details?: unknown;
 	/** Called when the block asks for a repaint — the signal an async image step landed. */
 	onRender?: () => void;
+	/** The call this block belongs to, which is what a late decision is recorded against. */
+	toolCallId?: string;
+	/** A real budget, so a demotion is decided the way a session decides one. */
+	budget?: ImageBudget;
 }
 
 function blockComponent(toolName: string, blockCase: BlockCase = {}): ToolExecutionComponent {
 	const onRender = blockCase.onRender ?? ((): void => {});
-	const ui = { requestRender: onRender, requestComponentRender: onRender } as unknown as TUI;
+	const ui = {
+		requestRender: onRender,
+		requestComponentRender: onRender,
+		imageBudget: blockCase.budget,
+	} as unknown as TUI;
 	const component = createToolExecution(
 		toolName,
 		blockCase.args ?? { path: "shots/board.png" },
@@ -88,6 +97,7 @@ function blockComponent(toolName: string, blockCase: BlockCase = {}): ToolExecut
 		blockCase.tool,
 		ui,
 		process.cwd(),
+		blockCase.toolCallId,
 	);
 	component.setArgsComplete();
 	component.updateResult(
@@ -133,6 +143,7 @@ beforeAll(async () => {
 afterEach(() => {
 	setTerminalImageProtocol(originalProtocol);
 	Settings.instance.set("terminal.showImages", true);
+	forgetImageDisplays();
 });
 
 afterAll(() => {
@@ -322,5 +333,104 @@ describe("a picture the terminal cannot draw leaves a row that says so", () => {
 		const rows = await renderBlock("read");
 
 		expect(rows.filter(row => PLACEHOLDER.test(row))).toHaveLength(1);
+	});
+});
+
+// Two causes are settled after the sentence was first written, per image, inside
+// the block: the session's image budget demotes an older picture when a newer
+// one arrives, and a Kitty session cannot convert a payload it does not draw. In
+// both cases the user is looking at a placeholder row, so the model must stop
+// being told the picture is on screen.
+describe("a picture the block gave up on stops being reported as displayed", () => {
+	it("states a budget demotion, and stops once the picture draws again", async () => {
+		setTerminalImageProtocol(ImageProtocol.Kitty);
+		const budget = new ImageBudget(1, () => {});
+		const component = blockComponent("read", {
+			toolCallId: "call_budget",
+			budget,
+			content: [
+				{ type: "text", text: "Read image file [image/png]" },
+				{ type: "image", data: TINY_PNG, mimeType: "image/png" },
+				{ type: "image", data: TINY_PNG, mimeType: "image/png" },
+			],
+		});
+		await component.whenPreviewSettled();
+
+		// The budget plans a demotion from what the first pass observed and applies
+		// it on the next one, which is how a session reaches the same state.
+		budget.beginPass();
+		component.render(100);
+		budget.endPass();
+		budget.beginPass();
+		const rows = component.render(100).map(line => Bun.stripANSI(line));
+		budget.endPass();
+
+		expect(rows.some(row => row.includes("[image not shown, over the image budget]"))).toBe(true);
+		const blocks = textBlocks(imageToolResult("read", 2, "call_budget"));
+		expect(blocks).toHaveLength(2);
+		expect(blocks[1]).toContain("1 of these 2 images is in your context only");
+		expect(blocks[1]).toContain("the session's image budget is full");
+
+		// Room again: the picture draws, and the sentence goes with the demotion.
+		budget.setCap(0);
+		budget.beginPass();
+		component.render(100);
+		budget.endPass();
+
+		expect(textBlocks(imageToolResult("read", 2, "call_budget"))).toEqual(["Read image file [image/png]"]);
+	});
+
+	it("states a failed Kitty conversion", async () => {
+		setTerminalImageProtocol(ImageProtocol.Kitty);
+		const repainted = Promise.withResolvers<void>();
+		const component = blockComponent("read", {
+			toolCallId: "call_convert",
+			content: [
+				{ type: "text", text: "Read image file [image/jpeg]" },
+				{ type: "image", data: Buffer.from("not an image").toString("base64"), mimeType: "image/jpeg" },
+			],
+			onRender: () => repainted.resolve(),
+		});
+
+		await repainted.promise;
+		rowsOf(component);
+		const blocks = textBlocks(imageToolResult("read", 1, "call_convert"));
+
+		expect(blocks).toHaveLength(2);
+		expect(blocks[1]).toContain("this terminal cannot draw this image format");
+	});
+
+	it("says nothing about another call's pictures", async () => {
+		setTerminalImageProtocol(ImageProtocol.Kitty);
+		const repainted = Promise.withResolvers<void>();
+		const component = blockComponent("read", {
+			toolCallId: "call_convert",
+			content: [
+				{ type: "text", text: "Read image file [image/jpeg]" },
+				{ type: "image", data: Buffer.from("not an image").toString("base64"), mimeType: "image/jpeg" },
+			],
+			onRender: () => repainted.resolve(),
+		});
+		await repainted.promise;
+		rowsOf(component);
+
+		expect(textBlocks(imageToolResult("read", 1, "another_call"))).toEqual(["Read image file [image/png]"]);
+	});
+
+	// A block that recorded a decision and then gets a protocol builds a NEW image
+	// component, which reports only a CHANGE and so reports nothing when it draws
+	// on its first pass. The rebuild has to drop the old decision itself.
+	it("drops a recorded decision when the rebuild draws the picture", async () => {
+		setTerminalImageProtocol(null);
+		const component = blockComponent("read", { toolCallId: "call_returns" });
+		await component.whenPreviewSettled();
+		rowsOf(component);
+		expect(textBlocks(imageToolResult("read", 1, "call_returns"))).toHaveLength(2);
+
+		setTerminalImageProtocol(ImageProtocol.Kitty);
+		component.setExpanded(true);
+		rowsOf(component);
+
+		expect(textBlocks(imageToolResult("read", 1, "call_returns"))).toEqual(["Read image file [image/png]"]);
 	});
 });
