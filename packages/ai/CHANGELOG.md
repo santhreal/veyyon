@@ -15,6 +15,7 @@
 ### Fixed
 
 - API option mapping preserves side-request conversation IDs, preventing Cursor and Devin requests from falling back to the live session ID.
+- Cursor turns fail immediately when an asynchronous exec-server handler fails, and malformed grep line or count values no longer stall the stream during protobuf serialization.
 
 ## [1.2.0] - 2026-08-23
 
