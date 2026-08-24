@@ -14,6 +14,8 @@
 
 ### Fixed
 
+- Fixed OpenAI server-side compaction requests omitting the `Authorization` header when constructing headers from request setup.
+- Supported server-side compaction on the ChatGPT Codex backend with OAuth credential and turn identity headers.
 - API option mapping preserves side-request conversation IDs, preventing Cursor and Devin requests from falling back to the live session ID.
 - Cursor turns fail immediately when an asynchronous exec-server handler fails; malformed grep line or count values and oversized Connect frames fail before protobuf or buffer exhaustion; and success waits for queued handlers and gRPC trailers so quota and availability statuses are preserved.
 
