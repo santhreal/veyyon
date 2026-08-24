@@ -1,4 +1,6 @@
 import { errorMessage, isCancellation, logger, postmortem, Snowflake, workerHostEntry } from "@veyyon/utils";
+// The owner, not the barrel: this module reaches the two discard contracts and nothing else.
+import { bestEffort, optionalResult } from "@veyyon/utils/discarded-fault";
 import { callSessionTool } from "../../eval/js/tool-bridge";
 import { registerOwnedResourceDisposer } from "../../session/owned-resources";
 import { logWorkerMessage } from "../../subprocess/worker-log";
@@ -192,7 +194,9 @@ async function acquireTabImpl(
 		// The caller acquired (and published) the browser handle before queueing this
 		// open, so an abort at dequeue must drop it too — otherwise a live Chromium
 		// sits in `browsers` at refCount 0 with no tab pointing at it.
-		if (browser.refCount === 0) await releaseBrowser(browser, { kill: false }).catch(() => undefined);
+		if (browser.refCount === 0) {
+			await bestEffort(releaseBrowser(browser, { kill: false }), "the abort is what the caller gets, not this");
+		}
 		throw new ToolAbortError("Browser tab open aborted");
 	}
 	killedTabs.delete(name);
@@ -314,7 +318,9 @@ async function acquireTabImpl(
 		// `|| browser.refCount === 0` matches every sibling error path above (:257, :269,
 		// :281, :292). Without it, an abort here strands the handle `acquireBrowser`
 		// already published at refCount 0 — and nothing walks `browsers`, only `tabs`.
-		if (tempHold || browser.refCount === 0) await releaseBrowser(browser, { kill: false }).catch(() => undefined);
+		if (tempHold || browser.refCount === 0) {
+			await bestEffort(releaseBrowser(browser, { kill: false }), "the abort is what the caller gets, not this");
+		}
 		throw new ToolAbortError("Browser tab open aborted");
 	}
 
@@ -410,7 +416,10 @@ async function acquireCmuxTab(
 		if (ownsSurface && surfaceId) {
 			// Rolling back the surface we created while the open error is already propagating; that error is what
 			// the caller needs, and a close that fails means the surface is already gone with the browser.
-			await browser.client.request("surface.close", { surface_id: surfaceId }).catch(() => undefined);
+			await bestEffort(
+				browser.client.request("surface.close", { surface_id: surfaceId }),
+				"a close that fails means the surface is already gone with the browser",
+			);
 		}
 		throw error;
 	}
@@ -838,9 +847,10 @@ async function closeOrphanTarget(tab: WorkerTabSession): Promise<void> {
 		// which is the common case: an id that cannot be read cannot match, a target that will not hand over a
 		// page has nothing to close, and a close that fails means it closed itself first. Nothing depends on the
 		// outcome -- the tab is already out of the registry.
-		if ((await targetIdForTarget(target).catch(() => "")) !== tab.targetId) continue;
-		const page = await target.page().catch(() => null);
-		await page?.close().catch(() => undefined);
+		const id = await optionalResult(targetIdForTarget(target), "an id that cannot be read cannot match");
+		if (id !== tab.targetId) continue;
+		const page = await optionalResult(target.page(), "a target that hands over no page has nothing to close");
+		if (page) await bestEffort(page.close(), "a close that fails means the target closed itself first");
 		return;
 	}
 }

@@ -26,7 +26,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { getDefaultPasteImageKeys, KEYBINDINGS } from "@veyyon/coding-agent/config/keybinding-defs";
 import { KEYBINDINGS as VIA_LOADER } from "@veyyon/coding-agent/config/keybindings";
-import { moduleSpecifiersIn } from "@veyyon/utils/module-reach";
+import { moduleSpecifiersIn, namedImportsFrom, typeOnlyModuleSpecifiersIn } from "@veyyon/utils/module-reach";
 
 const SRC = path.resolve(import.meta.dir, "../../src");
 const EDITOR = path.join(SRC, "modes", "components", "custom-editor.ts");
@@ -54,7 +54,7 @@ describe("the keybinding defaults have one owner", () => {
 	 * silently, since everything would still compile and pass.
 	 */
 	it("imports nothing but the TUI from the leaf", () => {
-		const imported = [...DEFS_SOURCE.matchAll(/^import .*?from "([^"]+)";$/gm)].map(match => match[1] as string);
+		const imported = [...moduleSpecifiersIn(DEFS_SOURCE), ...typeOnlyModuleSpecifiersIn(DEFS_SOURCE)];
 
 		expect(
 			imported.sort(),
@@ -81,10 +81,14 @@ describe("the keybinding defaults have one owner", () => {
 	 * The editor reads the leaf, stated positively so that deleting the table AND
 	 * the import would not pass the rule above by leaving the editor with no
 	 * defaults at all.
+	 *
+	 * The binding is pinned by exact equality, which is what the byte match this
+	 * replaced could not do: it searched the whole editor for the words
+	 * `CONFIGURABLE_EDITOR_ACTIONS` and found the editor's OWN list of action ids,
+	 * so it would have stayed green with the import deleted.
 	 */
 	it("reads the shared table in the editor", () => {
-		expect(moduleSpecifiersIn(EDITOR_SOURCE)).toContain("../../config/keybinding-defs");
-		expect(EDITOR_SOURCE).toContain("CONFIGURABLE_EDITOR_ACTIONS");
+		expect(namedImportsFrom(EDITOR_SOURCE, "../../config/keybinding-defs")).toEqual(["KEYBINDINGS"]);
 	});
 });
 
