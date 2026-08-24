@@ -24,6 +24,7 @@
 
 - An indented row inside a tool block keeps its indent when it wraps at a narrow width, instead of continuing at the block's left edge.
 - A colour or title escape sequence a command writes in two pieces no longer leaves part of itself in tool output: the sink holds a sequence its chunk ended inside until the piece that finishes it arrives, and drops one the stream never completes.
+- Fixed the `launch` tool renderer displaying empty or duplicate ellipses when `args.op` is undefined during streaming, and added text content fallbacks when daemon or structured details are absent.
 
 ## [1.2.0] - 2026-08-23
 
