@@ -63,6 +63,34 @@ export interface InstrumentedChatSpanOptions {
 }
 
 /**
+ * Conversation identity for one oneshot, derived from the live session id and
+ * the kind of side request this is.
+ *
+ * A oneshot READS the conversation and is not a turn in it. Two provider APIs
+ * are stateful about that distinction — `cursor-agent` and `devin-agent` thread
+ * turns by conversation id and cache per-conversation state under it, falling
+ * back to `sessionId` — so a summarization request that carried the live
+ * `sessionId` arrived as a one-message conversation under the live
+ * conversation's own identity, and replaced the cached state the next live turn
+ * would have resumed from. A split-turn compaction is worse: its history and
+ * turn-prefix summaries run concurrently, so both landed on that one id at
+ * once, and a Cursor session answered the second with
+ * `Connect error invalid_argument`, failing every compaction attempt while the
+ * context stayed full.
+ *
+ * The kind is part of the id rather than a random suffix so a retry of the same
+ * side request reuses its own conversation instead of minting a new one, while
+ * two different kinds never share. An explicit `conversationId` from the caller
+ * wins, and a request with no session id is already a fresh conversation
+ * wherever the provider mints one.
+ */
+function sideConversationId(options: SimpleStreamOptions, oneshotKind: string | undefined): string | undefined {
+	if (options.conversationId !== undefined) return options.conversationId;
+	if (options.sessionId === undefined) return undefined;
+	return `${options.sessionId}#${oneshotKind ?? "oneshot"}`;
+}
+
+/**
  * Wrap a {@link completeSimple} round-trip with the same chat-span lifecycle
  * the agent loop uses for streamed turns: `startChatSpan` → run inside the
  * active span → `finishChatSpan` on success, `failChatSpan` on throw.
@@ -122,6 +150,7 @@ export async function instrumentedCompleteSimple<TApi extends Api>(
 			const complete = span.completeImpl ?? completeSimple;
 			const message = await complete(model, ctx, {
 				...options,
+				conversationId: sideConversationId(options, oneshotKind),
 				onResponse: captureOnResponse,
 			});
 			await finishChatSpan(telemetry, chatSpan, message, {

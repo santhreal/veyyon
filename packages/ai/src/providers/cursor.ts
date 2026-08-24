@@ -239,7 +239,6 @@ function cursorRulesFingerprint(rules: readonly CursorRule[]): string {
 
 export interface CursorOptions extends StreamOptions {
 	customSystemPrompt?: string;
-	conversationId?: string;
 	execHandlers?: CursorExecHandlers;
 	onToolResult?: CursorToolResultHandler;
 	/** Operator-owned instruction files for the `requestContext.rules` channel (see {@link CursorRuleInput}). */
