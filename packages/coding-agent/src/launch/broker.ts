@@ -29,6 +29,7 @@ import {
 } from "./paths";
 import { hasLiveDaemonProjectPresence } from "./presence";
 import {
+	DAEMON_CLEANUP_WAIT_ENV,
 	DAEMON_IDLE_GRACE_ENV,
 	DAEMON_PROJECT_DIR_ENV,
 	DAEMON_PTY_COLUMNS,
@@ -40,6 +41,7 @@ import {
 	type DaemonSignal,
 	type DaemonSnapshot,
 	type DaemonSpec,
+	DEFAULT_CLEANUP_WAIT_MS,
 	parseDaemonSnapshot,
 	parseDaemonSpec,
 	parseDaemonWireRequest,
@@ -299,6 +301,8 @@ class DaemonBroker {
 	readonly #endpoint: string;
 	readonly #token: string;
 	readonly #idleGraceMs: number;
+	readonly #cleanupWaitMs: number;
+	readonly #cleanupTimers = new Map<string, NodeJS.Timeout>();
 	readonly #records = new Map<string, ManagedDaemon>();
 	readonly #clients = new Set<net.Socket>();
 	readonly #finished = Promise.withResolvers<void>();
@@ -307,12 +311,19 @@ class DaemonBroker {
 	#idleTimer: NodeJS.Timeout | undefined;
 	#shuttingDown = false;
 
-	constructor(projectDir: string, runtimeDir: string, token: string, idleGraceMs: number) {
+	constructor(
+		projectDir: string,
+		runtimeDir: string,
+		token: string,
+		idleGraceMs: number,
+		cleanupWaitMs = DEFAULT_CLEANUP_WAIT_MS,
+	) {
 		this.#projectDir = projectDir;
 		this.#runtimeDir = runtimeDir;
 		this.#endpoint = daemonBrokerEndpoint(projectDir, runtimeDir);
 		this.#token = token;
 		this.#idleGraceMs = idleGraceMs;
+		this.#cleanupWaitMs = cleanupWaitMs;
 	}
 
 	async run(): Promise<void> {
@@ -335,6 +346,8 @@ class DaemonBroker {
 		this.#shuttingDown = true;
 		clearTimeout(this.#idleTimer);
 		this.#idleTimer = undefined;
+		for (const timer of this.#cleanupTimers.values()) clearTimeout(timer);
+		this.#cleanupTimers.clear();
 		for (const record of this.#records.values()) {
 			const detached = record.spec.detached && !record.stopRequested && record.snapshot.pid !== undefined;
 			if (!detached && !terminalState(record.snapshot.state)) await this.#stopRecord(record, 2_000);
@@ -461,6 +474,11 @@ class DaemonBroker {
 			throw new Error('Windows batch files require application "cmd.exe" with the batch path after "/c"');
 		}
 		const existing = this.#records.get(spec.name);
+		const existingTimer = this.#cleanupTimers.get(spec.name);
+		if (existingTimer) {
+			clearTimeout(existingTimer);
+			this.#cleanupTimers.delete(spec.name);
+		}
 		if (existing) await this.#refreshDetached(existing);
 		if (existing && !terminalState(existing.snapshot.state)) {
 			throw new Error(`Daemon ${spec.name} is already ${existing.snapshot.state}`);
@@ -789,6 +807,42 @@ class DaemonBroker {
 		this.#persist(record);
 		await record.log?.close();
 		record.log = undefined;
+		this.#scheduleCleanup(record);
+	}
+
+	#scheduleCleanup(record: ManagedDaemon): void {
+		if (this.#cleanupWaitMs <= 0) return;
+		const name = record.snapshot.name;
+		const existing = this.#cleanupTimers.get(name);
+		if (existing) {
+			clearTimeout(existing);
+			this.#cleanupTimers.delete(name);
+		}
+		const exitedAt = record.snapshot.exitedAt ?? Date.now();
+		const delayMs = Math.max(0, exitedAt + this.#cleanupWaitMs - Date.now());
+		const timer = setTimeout(() => {
+			this.#cleanupTimers.delete(name);
+			void this.#purgeRecord(name);
+		}, delayMs);
+		this.#cleanupTimers.set(name, timer);
+	}
+
+	async #purgeRecord(name: string): Promise<void> {
+		const record = this.#records.get(name);
+		if (!record || !terminalState(record.snapshot.state)) return;
+		const timer = this.#cleanupTimers.get(name);
+		if (timer) {
+			clearTimeout(timer);
+			this.#cleanupTimers.delete(name);
+		}
+		clearTimeout(record.restartTimer);
+		await record.log?.close();
+		record.log = undefined;
+		await record.persistQueue;
+		await fs.rm(record.dir, { recursive: true, force: true }).catch(error => {
+			logger.warn("Failed to remove purged daemon directory", { name, error: errorMessage(error) });
+		});
+		this.#records.delete(name);
 	}
 
 	async #logs(operation: Extract<DaemonOperation, { op: "logs" }>): Promise<DaemonRpcResult> {
@@ -892,6 +946,7 @@ class DaemonBroker {
 			this.#persist(record);
 			await record.log?.close();
 			record.log = undefined;
+			this.#scheduleCleanup(record);
 			return;
 		}
 		record.snapshot.state = "stopping";
@@ -905,6 +960,11 @@ class DaemonBroker {
 
 	async #restart(name: string): Promise<DaemonRpcResult> {
 		const record = this.#record(name);
+		const existingTimer = this.#cleanupTimers.get(name);
+		if (existingTimer) {
+			clearTimeout(existingTimer);
+			this.#cleanupTimers.delete(name);
+		}
 		await this.#stopRecord(record, 2_000);
 		await record.log?.close();
 		record.log = await DaemonLog.open(record.dir);
@@ -970,14 +1030,23 @@ class DaemonBroker {
 				if (!detached) {
 					if (processRef) await processRef.terminate({ group: true, gracefulMs: 500, timeoutMs: 2_000 });
 					snapshot.pid = undefined;
-					snapshot.state = "exited";
-					snapshot.exitedAt = Date.now();
-					snapshot.exitReason = "previous broker exited";
+					if (!terminalState(snapshot.state)) {
+						snapshot.state = "exited";
+						snapshot.exitedAt = Date.now();
+						snapshot.exitReason = "previous broker exited";
+					}
 				} else if (snapshot.state === "restarting") {
 					snapshot.state = spec.ready ? "starting" : "running";
 				}
 				snapshot.persist = spec.persist;
 				snapshot.detached = spec.detached;
+				if (this.#cleanupWaitMs > 0 && terminalState(snapshot.state)) {
+					const exitedAt = snapshot.exitedAt ?? Date.now();
+					if (Date.now() - exitedAt >= this.#cleanupWaitMs) {
+						await fs.rm(dir, { recursive: true, force: true }).catch(() => {});
+						continue;
+					}
+				}
 				const record: ManagedDaemon = {
 					spec,
 					snapshot,
@@ -996,6 +1065,9 @@ class DaemonBroker {
 				this.#records.set(snapshot.name, record);
 				if (detached && spec.ready?.port !== undefined && snapshot.state !== "ready") {
 					void this.#pollPort(record, record.generation, spec.ready);
+				}
+				if (terminalState(snapshot.state)) {
+					this.#scheduleCleanup(record);
 				}
 				this.#persist(record);
 			} catch (error) {
@@ -1038,13 +1110,17 @@ export async function startDaemonBrokerFromEnvironment(): Promise<void> {
 	delete process.env[DAEMON_IDLE_GRACE_ENV];
 	const parsedGrace = rawGrace === undefined ? DEFAULT_IDLE_GRACE_MS : Number.parseInt(rawGrace, 10);
 	const idleGraceMs = Number.isFinite(parsedGrace) && parsedGrace >= 0 ? parsedGrace : DEFAULT_IDLE_GRACE_MS;
+	const rawCleanup = process.env[DAEMON_CLEANUP_WAIT_ENV];
+	delete process.env[DAEMON_CLEANUP_WAIT_ENV];
+	const parsedCleanup = rawCleanup === undefined ? DEFAULT_CLEANUP_WAIT_MS : Number.parseInt(rawCleanup, 10);
+	const cleanupWaitMs = Number.isFinite(parsedCleanup) && parsedCleanup >= 0 ? parsedCleanup : DEFAULT_CLEANUP_WAIT_MS;
 	await fs.mkdir(runtimeDir, { recursive: true, mode: 0o700 });
 	const lease = await acquireBrokerLease(runtimeDir);
 	if (!lease) return;
 	process.title = "veyyon daemon broker";
 	const token = (await Bun.file(daemonBrokerTokenPath(runtimeDir)).text()).trim();
 	if (!token) throw new Error("Daemon broker token is empty");
-	const broker = new DaemonBroker(projectDir, runtimeDir, token, idleGraceMs);
+	const broker = new DaemonBroker(projectDir, runtimeDir, token, idleGraceMs, cleanupWaitMs);
 	const cancelCleanup = postmortem.register("daemon-broker", () => broker.shutdown());
 	try {
 		await broker.run();
