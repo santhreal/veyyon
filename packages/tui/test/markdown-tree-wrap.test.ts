@@ -116,7 +116,7 @@ describe("Markdown tree-guide hanging wrap", () => {
 		expect(plain).toEqual(["├── alpha", "│   └── beta", "└── gamma"]);
 	});
 
-	it("keeps the old column-0 wrap for '├── ' lines inside fenced code blocks", () => {
+	it("wraps a '├── ' line inside a fenced code block at the fence's own column", () => {
 		const codeLine = "├── alpha bravo charlie delta echo foxtrot golf hotel india";
 		const raw = renderRaw(`\`\`\`\n${codeLine}\n\`\`\``);
 		const plain = raw.map(line => stripVTControlCharacters(line).trimEnd());
@@ -126,13 +126,18 @@ describe("Markdown tree-guide hanging wrap", () => {
 
 		const treeRow = plain.findIndex(line => line.includes("├──"));
 		expect(treeRow).toBeGreaterThan(0);
-		// The code line overflows, so a continuation row exists before the
-		// closing fence — and it starts flush at column 0, no hanging prefix.
+		// The code line overflows, so a continuation row exists before the closing
+		// fence. Inside a fence the tree feature is off: the continuation carries
+		// no rail and no tree-column hang, and opens at the code block's own left
+		// edge rather than escaping into the surrounding margin.
+		const code = plain[treeRow]!;
 		const continuation = plain[treeRow + 1]!;
+		const gutter = code.length - code.trimStart().length;
 		expect(treeRow + 1).toBeLessThan(plain.length - 1);
 		expect(continuation.length).toBeGreaterThan(0);
-		expect(continuation[0]).not.toBe(" ");
-		expect(continuation[0]).not.toBe("│");
+		expect(continuation.length - continuation.trimStart().length).toBe(gutter);
+		expect(continuation).not.toContain("│");
+		expect(continuation.trimStart().startsWith("foxtrot")).toBeTruthy();
 
 		for (const line of raw) {
 			expect(visibleWidth(line)).toBeLessThanOrEqual(WIDTH);
