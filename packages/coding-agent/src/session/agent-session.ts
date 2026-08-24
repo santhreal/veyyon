@@ -7297,12 +7297,13 @@ export class AgentSession {
 		}
 
 		const threshold = this.settings.get("model.toolCallLoopGuard.threshold");
+		const readSubsumptionThreshold = this.settings.get("model.toolCallLoopGuard.readSubsumptionThreshold");
 		const exemptTools = this.settings
 			.get("model.toolCallLoopGuard.exemptTools")
 			.filter((tool): tool is string => typeof tool === "string" && tool.length > 0);
-		const settingsKey = `${threshold}:${JSON.stringify(exemptTools)}`;
+		const settingsKey = `${threshold}:${readSubsumptionThreshold}:${JSON.stringify(exemptTools)}`;
 		if (!this.#toolCallLoopGuard || this.#toolCallLoopGuardSettingsKey !== settingsKey) {
-			this.#toolCallLoopGuard = new ToolCallLoopGuard({ threshold, exemptTools });
+			this.#toolCallLoopGuard = new ToolCallLoopGuard({ threshold, exemptTools, readSubsumptionThreshold });
 			this.#toolCallLoopGuardSettingsKey = settingsKey;
 		}
 		return this.#toolCallLoopGuard;
