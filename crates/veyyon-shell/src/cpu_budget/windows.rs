@@ -23,8 +23,11 @@ use windows_sys::Win32::{
 			JobObjectBasicAndIoAccountingInformation, JobObjectBasicProcessIdList,
 			JobObjectCpuRateControlInformation, QueryInformationJobObject, SetInformationJobObject,
 		},
-		SystemInformation::{ALL_PROCESSOR_GROUPS, GetActiveProcessorCount},
-		Threading::{OpenProcess, PROCESS_SET_QUOTA, PROCESS_TERMINATE},
+		// windows-sys 0.61 moved these off SystemInformation onto Threading.
+		Threading::{
+			ALL_PROCESSOR_GROUPS, GetActiveProcessorCount, OpenProcess, PROCESS_SET_QUOTA,
+			PROCESS_TERMINATE,
+		},
 	},
 };
 
