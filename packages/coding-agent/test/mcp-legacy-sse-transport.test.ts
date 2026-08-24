@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import type { CustomToolContext } from "@veyyon/coding-agent/extensibility/custom-tools";
 import { connectToServer, listTools } from "@veyyon/coding-agent/mcp/client";
-import { isRetriableConnectionError, MCPTool } from "@veyyon/coding-agent/mcp/tool-bridge";
+import { MCPTool, mcpFailureWarrantsReconnect } from "@veyyon/coding-agent/mcp/tool-bridge";
 import { LegacySseTransport } from "@veyyon/coding-agent/mcp/transports/sse";
 import type { JsonRpcMessage, MCPServerConnection } from "@veyyon/coding-agent/mcp/types";
 
@@ -187,7 +187,7 @@ describe("legacy MCP HTTP+SSE transport", () => {
 				);
 				// The reconnect decision keys off this wording, so the wording change
 				// and the predicate that reads it are one contract.
-				expect(isRetriableConnectionError(error)).toBe(true);
+				expect(mcpFailureWarrantsReconnect(error)).toBe(true);
 			}
 		} finally {
 			await connection.transport.close();
