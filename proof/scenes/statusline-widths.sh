@@ -18,6 +18,10 @@
 # Auto, Yolo). Twelve frames cover it: five rungs, three base modes plus a paused goal, the
 # bypass over the widest base label, and a composer draft for `location_right`.
 #
+# A thirteenth frame is not a mode. The path clamp is a budget rather than a width, so no
+# terminal is wide enough to show a long path; a click on the location text drops the model
+# chip and spends its columns on the path instead.
+#
 # WHAT THIS TAKE DOES NOT CATCH, and why neither is reachable from a slash command:
 #
 #   `subagents`, rank 5 in `RIGHT_PART_SHED_RANK`. Its text is empty until a subagent is
@@ -51,7 +55,7 @@
 #       proof/docker/record-x11.sh proof/scenes/statusline-widths.sh
 #   done
 #
-# SCENE_MOTION_GATE=0 because the take is twelve stills of a status line. The motion floor
+# SCENE_MOTION_GATE=0 because the take is thirteen stills of a status line. The motion floor
 # is there to stop a published clip from encoding as a slideshow; this scene IS a
 # slideshow, and the frames are the artifact.
 set -euo pipefail
@@ -62,12 +66,17 @@ settle 12
 # scene knows SCENE_CWD arrived: without it the session opened somewhere else and every
 # frame below would photograph a short location under no pressure at all.
 #
-# The needle is a FRAGMENT of the first path segment, because it has to match in both arms
-# of the pair. At eighty columns the location is clipped at both ends, and it is clipped
-# HARDER once the model chip keeps its columns -- `ingest-pipeline` is on screen in the arm
-# that drops the model and gone in the arm that keeps it. A needle that only one arm can
-# satisfy would fail the take for the very difference it is recording.
-expect_screen "orm-services" 60 "seeded-cwd"
+# EACH ARM LOOKS AT THE END OF THE PATH THAT ARM KEEPS, and that is not fussiness. At
+# seventy-eight columns the two arms share almost no path text: main clips the location
+# from the LEFT, so the tail (`…orm-services/ingest-pipeline/normalize…`) is what is on
+# screen, while the branch clips from the RIGHT and keeps the head, and it keeps less of it
+# because the model chip it no longer sheds is holding twenty columns. One needle for both
+# failed the after arm for exactly the difference it is recording.
+if [ "${SCENE_ARM:-after}" = "before" ]; then
+	expect_screen "orm-services" 60 "seeded-cwd"
+else
+	expect_screen "platform" 60 "seeded-cwd"
+fi
 
 # ---------------------------------------------------------------------------
 # THE RUNGS. `AUTONOMY_LABEL` in tools/approval-modes.ts is the whole set, and
@@ -76,6 +85,65 @@ expect_screen "orm-services" 60 "seeded-cwd"
 # `joinStates` call and a base label would put two variables in the frame at once.
 # ---------------------------------------------------------------------------
 shot idle
+
+# ---------------------------------------------------------------------------
+# THE PATH EXPANDED BY A CLICK, the one frame here that is not a mode. The clamp is a
+# budget rather than a width, so no terminal is wide enough to show a long path; a click on
+# the location text drops the model chip and gives its columns to the path.
+#
+# On main this click lands on a status line with no handler for it, so the before arm of
+# this frame is the collapsed path. That is the differential.
+#
+# SHOT FIRST, AND THAT POSITION IS A FINDING. Once any confirmation dialog has opened and
+# closed in a session -- `/goal drop` and `/yolo` both raise one -- the footline answers no
+# click at all: three attempts on the row the text is on changed nothing, while the same
+# click lands in idle, under a rung, under `/loop` and under `/plan` before any dialog has
+# been shown. It takes the gauge and the secrets chip down with it, so it is the footline's
+# routing rather than this expansion, and it is not this branch's to fix. The frame is
+# taken where the click demonstrably works, which is before the first dialog.
+#
+# The click also needs the mouse: reports only arrive while the engine holds it, so this
+# arm runs with `tui.scrollIsolation: true`. That is the operator's own opt-in and it is
+# what the gauge has always needed too.
+# ---------------------------------------------------------------------------
+collapsed="$(row_with "Auto")"
+click_row_with "Auto" 6
+settle 2
+expanded="$(row_with "Auto")"
+echo "scene: footline before the click:${collapsed}" >&2
+echo "scene: footline after the click: ${expanded}" >&2
+
+# EACH ARM GUARDED ON WHAT THAT ARM MUST DO WITH THE CLICK, which is the only property both
+# can be held to. The obvious assertion -- the before arm still shows the model chip -- is
+# WRONG here: main sheds that chip at every width in this fixture, which is the defect this
+# whole branch is about, so demanding it fails the arm for being the bug. What main must do
+# is nothing at all, and what the branch must do is something.
+if [ "${SCENE_ARM}" = "before" ]; then
+	[ "${collapsed}" = "${expanded}" ] ||
+		abandon_take "path-expanded" "main answered the click, so this arm is not photographing main"
+else
+	[ "${collapsed}" != "${expanded}" ] ||
+		abandon_take "path-expanded" "the click changed nothing on the footline"
+	case "${expanded}" in
+	*Qwen2.5*) abandon_take "path-expanded" "the model chip is still on the footline after the click" ;;
+	esac
+fi
+# NO FRAME FOR THE BEFORE ARM, because there is no state for it to photograph: main has no
+# handler for the click, so the line after it is the line before it, and `shot` rejects a
+# frame byte-identical to the one ahead of it. The pair for this row is the before arm's
+# idle frame, which is the same driver, width and settings -- an unchanged footline is
+# precisely what main does with the click.
+if [ "${SCENE_ARM:-after}" != "before" ]; then
+	shot path-expanded
+fi
+
+# Collapse it again, so every frame below photographs the ordinary footline rather than an
+# expansion left switched on. The after arm needs the click; the before arm has no handler
+# and nothing to undo.
+if [ "${SCENE_ARM:-after}" != "before" ]; then
+	click_row_with "Auto" 6
+	settle 2
+fi
 
 slash "/permissions ask"
 expect_screen "Ask all" 30 "rung-ask"

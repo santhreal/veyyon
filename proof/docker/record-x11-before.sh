@@ -58,7 +58,11 @@ print(f"holding {len(held)} modified files at main, restoring {len(deleted_by_br
 
 out = os.environ.get("OUT_DIR") or os.path.join("proof", "captures", "x11", "before")
 os.makedirs(out, exist_ok=True)
-env = dict(os.environ, OUT_DIR=os.path.abspath(out))
+# SCENE_ARM lets a scene guard each arm in the direction that arm is true in. A frame that
+# photographs NEW behavior has no assertion that holds on both sides: the after arm must
+# see the new state, and the before arm must see the old one. Without this a scene can only
+# guard the half it was written against, and the other arm records whatever it lands on.
+env = dict(os.environ, OUT_DIR=os.path.abspath(out), SCENE_ARM="before")
 
 try:
     for p in held + deleted_by_branch:
