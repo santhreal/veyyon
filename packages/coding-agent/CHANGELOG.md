@@ -4,6 +4,8 @@
 
 ### Added
 
+- `bench/session-memory.bench.ts` measures what loading a large session actually holds: synthetic transcript in, real SessionManager load, heap after a forced GC per phase plus the process high-water RSS. Memory claims about session retention now have one committed instrument instead of an ad-hoc script per investigation.
+
 - A tool result that carries an image now states whether the picture reached the screen, so a model reading a file describes what it shows instead of reporting that it displayed it.
 - A picture the block gives up on after the fact, because the session's image budget demoted it or a Kitty session could not convert it, is stated to the model as undrawn instead of being reported as displayed.
 - `read` accepts a semicolon-delimited list of internal resources (`skill://demo/one.md;skill://demo/two.md`), the same list form `grep` and `glob` take, and returns one section per entry.
