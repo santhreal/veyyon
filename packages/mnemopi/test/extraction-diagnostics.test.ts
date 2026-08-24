@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import {
 	ExtractionDiagnostics,
-	getDiagnostics,
+	extractionDiagnostics,
 	resetExtractionStats,
 	safeForLog,
 } from "@veyyon/mnemopi/core/extraction/diagnostics";
@@ -153,11 +153,11 @@ describe("ExtractionDiagnostics totals and snapshot", () => {
 
 describe("diagnostics singleton", () => {
 	it("returns the same instance and resetExtractionStats clears it in place", () => {
-		const diag = getDiagnostics();
+		const diag = extractionDiagnostics();
 		diag.recordCall({ succeeded: true });
-		expect(getDiagnostics()).toBe(diag);
+		expect(extractionDiagnostics()).toBe(diag);
 		resetExtractionStats();
-		expect(getDiagnostics()).toBe(diag);
+		expect(extractionDiagnostics()).toBe(diag);
 		expect(diag.snapshot().totals.calls).toBe(0);
 	});
 });
