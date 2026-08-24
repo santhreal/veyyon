@@ -53,25 +53,25 @@ type QuietPart = { id: string; content: string };
  * the one the oldest contract here says must be the last thing standing. The ranking makes the
  * degradation ordered instead: the weakest ranked part goes, then the next, and the persistent
  * count is alone on the line before anything clips it.
+ * Why each of the five outranks a badge:
  *
- * Why each of the four outranks a badge:
- *
- * `subagents` (4) is the persistent running count. It is the last thing standing by an older
+ * `subagents` (5) is the persistent running count. It is the last thing standing by an older
  * contract than any of the rest: `status-line-running-subagents.test.ts` narrows the footline
  * to exactly the chip's width and requires the number to be what survives.
  *
- * `location_right` (3) is the owner-supplied zone holding the composer's draft token readout.
+ * `location_right` (4) is the owner-supplied zone holding the composer's draft token readout.
  * It is pushed LAST and the shed walks from the end, so without a rank it is always the FIRST
  * casualty however important it is. That is how the always-visible approval rung silently
  * evicted the draft counter at 100 columns: nothing removed the counter, the rung widened the
  * right group by one label and the counter fell off the end. Losing the count while the
  * operator is actively typing is a worse trade than dropping a badge they can re-read.
  *
- * `mode` (2) carries the approval rung — the one place that says whether the next command will
- * ask before it runs. The rule protecting it survived only in dead code: the deleted
- * `#buildStatusLine` refused to shed it ahead of the model name or the profile chip on exactly
- * that ground ("safety state outranks identity"), and that method had no production callers,
- * so the footline, which is what renders, shed `mode` first of the three.
+ * `mode` (3) carries the approval rung — the one place that says whether the next command will
+ * ask before it runs ("safety state outranks identity").
+ *
+ * `model` (2) is the active session model identity. Ranking it ensures the model name is preserved
+ * against wide location strings (long working directories and git branches) by shortening the location
+ * before shedding the model name.
  *
  * `context_pct` (1) is how much room is left before compaction fires — the footline's one live
  * value. `#gatherQuietSegments` appends it AFTER the right group on purpose, so it reads as the
@@ -79,16 +79,16 @@ type QuietPart = { id: string; content: string };
  * thing dropped at every width that did not fit, while `session_name`, a fixed string, was kept
  * ahead of it. On the DEFAULT preset at 80 columns that meant no gauge at all, and on `full` at
  * 160 it meant a cache-hit percentage on screen while the number that says when the session
- * ends was gone. It ranks lowest of the four because it is the only one that still reads as a
+ * ends was gone. It ranks lowest of the five because it is the only one that still reads as a
  * whole thought after the others are gone.
  */
 const RIGHT_PART_SHED_RANK: Record<string, number> = {
 	context_pct: 1,
-	mode: 2,
-	location_right: 3,
-	subagents: 4,
+	model: 2,
+	mode: 3,
+	location_right: 4,
+	subagents: 5,
 };
-
 /** One segment's slot on the rendered quiet footline (0-based columns, end exclusive). */
 export interface QuietSegmentBounds {
 	id: string;
@@ -1640,9 +1640,14 @@ export class StatusLineComponent implements Component {
 		const bounds: QuietSegmentBounds[] = [];
 		if (left) {
 			let col = 0;
+			const leftWidth = visibleWidth(left);
 			for (const part of location) {
+				if (col >= leftWidth) break;
 				const partWidth = visibleWidth(part.content);
-				bounds.push({ id: part.id, start: col, end: col + partWidth });
+				const end = Math.min(col + partWidth, leftWidth);
+				if (end > col) {
+					bounds.push({ id: part.id, start: col, end });
+				}
 				col += partWidth + sepWidth;
 			}
 		}
