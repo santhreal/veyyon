@@ -24,11 +24,12 @@
 //! `mutation::CriticalPath` names the six production paths where one surviving
 //! mutant is one shipped defect, and the campaign gate sweeps that array rather
 //! than a written list, so a seventh path makes every campaign red until it is
-//! covered. Three are uncovered today: `credentials`, `path-traversal` and
-//! `checksum-verification`. Covering one means a mutant the corpus can execute
-//! against a real entry point on that path, and a killed verdict recorded for
-//! it. Until then the gate reports `covered=false` for each, which is a hole
-//! and not a pass.
+//! covered. Five are uncovered today: `credentials`, `path-traversal`,
+//! `checksum-verification`, `authorization` and `tool-completeness`, because no
+//! Rust entry point owns them yet. Covering one means a mutant the corpus can
+//! execute against a real entry point on that path, and a killed verdict
+//! recorded for it. Until then the gate reports `covered=false` for each, which
+//! is a hole and not a pass.
 
 pub mod corpus;
 pub mod fuzz;
