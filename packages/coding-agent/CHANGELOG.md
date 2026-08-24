@@ -23,6 +23,7 @@
 ### Fixed
 
 - A completed background job now fills its still-pending originating tool call instead of starting an unrelated recap turn after an interruption.
+- `launch list` retains the last 100 daemon completions for 24 hours across broker restarts and reports which lifecycle path ended each process and why.
 - An indented row inside a tool block keeps its indent when it wraps at a narrow width, instead of continuing at the block's left edge.
 - A colour or title escape sequence a command writes in two pieces no longer leaves part of itself in tool output: the sink holds a sequence its chunk ended inside until the piece that finishes it arrives, and drops one the stream never completes.
 

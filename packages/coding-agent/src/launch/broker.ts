@@ -856,6 +856,7 @@ class DaemonBroker {
 			!record.stopRequested &&
 			(record.spec.restart === "always" || (record.spec.restart === "on-failure" && failed));
 		if (shouldRestart && !this.#shuttingDown) {
+			this.#queueCompletion(record);
 			const uptime = Date.now() - record.snapshot.startedAt;
 			record.consecutiveFailures = uptime >= 30_000 ? 0 : record.consecutiveFailures + 1;
 			record.snapshot.restartCount++;

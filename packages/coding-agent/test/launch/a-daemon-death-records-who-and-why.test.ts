@@ -24,10 +24,10 @@
  * the pending attribution — that window is one synchronous block, but a kill inside it
  * leaves the death to the replacement broker's recovery path.
  */
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
-import * as os from "node:os";
 import * as path from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { Process } from "@veyyon/natives";
 import { enterIsolatedConfigRoot, type IsolatedConfigRoot } from "../../../utils/test/helpers/isolated-config-root";
 import { createDaemonBrokerClient, type DaemonBrokerClient } from "../../src/launch/client";
@@ -56,13 +56,20 @@ import { toolContent } from "../../src/tools/launch";
 // test/tools/launch.test.ts does.
 let isolatedConfigRoot: IsolatedConfigRoot | undefined;
 
-beforeAll(() => {
+const TEST_PARENT = path.resolve(import.meta.dirname, "../../../../.internal/launch-lifecycle");
+let testRoot = "";
+
+beforeAll(async () => {
+	await fs.mkdir(TEST_PARENT, { recursive: true });
+	testRoot = await fs.mkdtemp(path.join(TEST_PARENT, "run-"));
+});
+
+beforeEach(() => {
 	isolatedConfigRoot = enterIsolatedConfigRoot("launch-termination");
 });
 
-afterAll(() => {
-	isolatedConfigRoot?.restore();
-	isolatedConfigRoot = undefined;
+afterAll(async () => {
+	await fs.rm(testRoot, { recursive: true, force: true });
 });
 
 const cleanupDirs: string[] = [];
@@ -74,10 +81,12 @@ afterEach(async () => {
 		const dir = cleanupDirs.pop();
 		if (dir) await fs.rm(dir, { recursive: true, force: true });
 	}
+	isolatedConfigRoot?.restore();
+	isolatedConfigRoot = undefined;
 });
 
 async function tempDir(prefix: string): Promise<string> {
-	const dir = await fs.mkdtemp(path.join(os.tmpdir(), prefix));
+	const dir = await fs.mkdtemp(path.join(testRoot, prefix));
 	cleanupDirs.push(dir);
 	return dir;
 }
@@ -89,7 +98,7 @@ async function waitUntil(condition: () => boolean | Promise<boolean>, timeoutMs:
 	const deadline = Date.now() + timeoutMs;
 	while (Date.now() < deadline) {
 		if (await condition()) return true;
-		await Bun.sleep(50);
+		await delay(50);
 	}
 	return condition();
 }
@@ -118,7 +127,7 @@ function idleSpec(name: string, overrides?: Partial<DaemonSpec>): DaemonSpec {
 		application: process.execPath,
 		args: ["-e", "setInterval(() => {}, 1000);"],
 		env: {},
-		cwd: os.tmpdir(),
+		cwd: process.cwd(),
 		pty: false,
 		restart: "no",
 		persist: false,
@@ -144,6 +153,7 @@ async function completionFor(
 	client: DaemonBrokerClient,
 	name: string,
 	terminatedBy: DaemonTerminationOwner,
+	timeoutMs = 10_000,
 ): Promise<DaemonCompletionRecord | undefined> {
 	let found: DaemonCompletionRecord | undefined;
 	const seen = await waitUntil(async () => {
@@ -151,7 +161,7 @@ async function completionFor(
 			record => record.name === name && record.terminatedBy === terminatedBy,
 		);
 		return found !== undefined;
-	}, 10_000);
+	}, timeoutMs);
 	return seen ? found : undefined;
 }
 
@@ -283,7 +293,7 @@ describe("every termination path records who and why", () => {
 		const runtimeDir = await tempDir("veyyon-term-sig-runtime-");
 		const client = await connect(projectDir, runtimeDir);
 		await client.request({ op: "start", spec: idleSpec("orphaned") });
-		const lease: unknown = await Bun.file(daemonBrokerLeasePath(runtimeDir)).json();
+		const lease: unknown = JSON.parse(await fs.readFile(daemonBrokerLeasePath(runtimeDir), "utf8"));
 		if (typeof lease !== "object" || lease === null || !("pid" in lease) || typeof lease.pid !== "number") {
 			throw new Error("broker lease did not name a pid");
 		}
@@ -303,7 +313,7 @@ describe("every termination path records who and why", () => {
 		const started = await client.request({ op: "start", spec: idleSpec("leftover") });
 		if (started.op !== "start" || started.daemon.pid === undefined) throw new Error("leftover did not start");
 		const daemonPid = started.daemon.pid;
-		const lease: unknown = await Bun.file(daemonBrokerLeasePath(runtimeDir)).json();
+		const lease: unknown = JSON.parse(await fs.readFile(daemonBrokerLeasePath(runtimeDir), "utf8"));
 		if (typeof lease !== "object" || lease === null || !("pid" in lease) || typeof lease.pid !== "number") {
 			throw new Error("broker lease did not name a pid");
 		}
@@ -394,6 +404,27 @@ describe("a completed finite job stays queryable", () => {
 			await shutdown(recovered);
 		}
 	}, 30_000);
+
+	it("retains a failed generation before restart policy replaces it", async () => {
+		const projectDir = await tempDir("veyyon-term-restart-project-");
+		const runtimeDir = await tempDir("veyyon-term-restart-runtime-");
+		const client = await connect(projectDir, runtimeDir);
+		try {
+			await client.request({
+				op: "start",
+				spec: idleSpec("flapping", {
+					args: ["-e", 'process.stderr.write("FAILED GENERATION\\n"); process.exit(1);'],
+					restart: "on-failure",
+				}),
+			});
+			const failedGeneration = await completionFor(client, "flapping", "process-exit", 2_000);
+			expect(failedGeneration?.exitCode).toBe(1);
+			expect(failedGeneration?.outputTail).toContain("FAILED GENERATION");
+			await client.request({ op: "stop", name: "flapping", timeoutMs: 2_000 });
+		} finally {
+			await shutdown(client);
+		}
+	}, 15_000);
 });
 
 describe("a stale completion store is rejected, not served", () => {
@@ -427,7 +458,7 @@ describe("a stale completion store is rejected, not served", () => {
 		const projectDir = await tempDir("veyyon-term-stale-project-");
 		const runtimeDir = await tempDir("veyyon-term-stale-runtime-");
 		const staleRecord = fakeRecord("from-the-future", Date.now());
-		await Bun.write(
+		await fs.writeFile(
 			daemonCompletionsPath(runtimeDir),
 			JSON.stringify({ version: DAEMON_COMPLETIONS_SCHEMA_VERSION + 1, records: [staleRecord] }),
 		);
@@ -470,6 +501,17 @@ describe("a stale completion store is rejected, not served", () => {
 		await appendDaemonCompletion(agedDir, fakeRecord("ancient", now - DAEMON_COMPLETIONS_MAX_AGE_MS - 1));
 		await appendDaemonCompletion(agedDir, fakeRecord("recent", now));
 		expect((await readDaemonCompletions(agedDir)).map(record => record.name)).toEqual(["recent"]);
+
+		// Age is enforced when reading too, not only when another completion happens to append.
+		const expiredDir = await tempDir("veyyon-term-expired-runtime-");
+		await fs.writeFile(
+			daemonCompletionsPath(expiredDir),
+			JSON.stringify({
+				version: DAEMON_COMPLETIONS_SCHEMA_VERSION,
+				records: [fakeRecord("expired-without-an-append", now - DAEMON_COMPLETIONS_MAX_AGE_MS - 1)],
+			}),
+		);
+		expect(await readDaemonCompletions(expiredDir, now)).toEqual([]);
 	}, 30_000);
 });
 
