@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Streaming `message_update` snapshots share tool-call arguments by reference instead of deep-cloning them on every delta; a large structured tool call that previously spent ~0.5 s of per-delta snapshot cloning while streaming now spends ~8 ms. Terminal messages, and the authoritative tool call a `toolcall_end` carries, keep the sanitizing deep clone.
+
 ## [1.2.0] - 2026-08-23
 
 ### Breaking Changes
@@ -12,10 +16,6 @@
 
 - The remote-summarizer cap comment names the profile-scoped log directory it writes to (`~/.veyyon/profiles/<name>/logs`) instead of the pre-migration `~/.veyyon/logs`. Comment only; the cap and the write path are unchanged.
 - A cancelled turn carries `Flag.Abort` whatever reason it was aborted with, instead of only when its text matched the generic `Request was aborted` sentinel.
-
-### Changed
-
-- Streaming `message_update` snapshots now share tool-call arguments by reference instead of deep-cloning them on every delta; a large structured tool call that previously spent ~0.5 s of per-delta snapshot cloning while streaming now spends ~8 ms. Terminal messages keep the sanitizing deep clone.
 
 ## [16.5.2] - 2026-07-14
 
