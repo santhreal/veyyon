@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- `source-declarations.ts`: `exportedDeclarationsIn` and `declarersOfName` report which modules declare a name, so a one-owner gate no longer matches the declaration's own bytes; a reflowed signature, a signature quoted in a comment and a second module declaring the same name are now all answered correctly.
+
 ## [1.2.0] - 2026-08-23
 
 ### Breaking Changes

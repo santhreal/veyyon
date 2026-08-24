@@ -1,5 +1,11 @@
 import { describe, expect, it } from "bun:test";
-import { declarersOfStringValue, stringConstantsIn, stringConstantValue } from "../src/source-declarations";
+import {
+	declarersOfName,
+	declarersOfStringValue,
+	exportedDeclarationsIn,
+	stringConstantsIn,
+	stringConstantValue,
+} from "../src/source-declarations";
 
 /**
  * WHY: one-owner gates across this repo proved "the value is declared here and nowhere else" by searching
@@ -116,5 +122,98 @@ describe("the census of who declares a value", () => {
 	it("reads a module-private constant by name for a gate that cannot import it", () => {
 		expect(stringConstantValue('const CALLBACK_PATH = "/auth/callback";', "CALLBACK_PATH")).toBe("/auth/callback");
 		expect(stringConstantValue('const OTHER = "x";', "CALLBACK_PATH")).toBeUndefined();
+	});
+});
+
+describe("a declared name is read from its declaration", () => {
+	it("reads every declaration form, and the local export clause", () => {
+		const source = [
+			"export function parseEnvFile(text: string): Record<string, string> {",
+			"\treturn {};",
+			"}",
+			"export const LIMIT = 10;",
+			"export class Manager {}",
+			"export interface Options {",
+			"\tmode: string;",
+			"}",
+			"export type Mode = 'read' | 'write';",
+			"export enum Level {",
+			"\tOne = 1,",
+			"}",
+			"export async function load(): Promise<void> {}",
+			"function helper(): void {}",
+			"const internal = 1;",
+			"export { helper, internal as exposed };",
+		].join("\n");
+
+		expect(exportedDeclarationsIn(source)).toEqual([
+			"parseEnvFile",
+			"LIMIT",
+			"Manager",
+			"Options",
+			"Mode",
+			"Level",
+			"load",
+			"helper",
+			"exposed",
+		]);
+	});
+
+	/**
+	 * The failure a byte match cannot tell apart: the module that re-exports a name is the module that
+	 * does not own it, so a re-export must not read as a second declaration.
+	 */
+	it("does not count a re-export as a declaration", () => {
+		const source = [
+			'export { parseEnvFile } from "./dotenv-parse";',
+			'export type { Mode } from "./modes";',
+			'export * from "./everything";',
+		].join("\n");
+
+		expect(exportedDeclarationsIn(source)).toEqual([]);
+	});
+
+	/**
+	 * A signature quoted in prose is not a declaration, which is what the byte match counted. The block
+	 * spanning whole lines is the arm that decides the case: a declaration commented OUT keeps its own
+	 * indentation, so it reads as code to anything that has not removed the comment first.
+	 */
+	it("does not count a declaration shown in a comment", () => {
+		const source = [
+			"/**",
+			" * Callers do: export function parseEnvFile(text: string): Record<string, string>",
+			" */",
+			"// export const LIMIT = 10;",
+			"/*",
+			"export function retired(): void {}",
+			"export const RETIRED_LIMIT = 10;",
+			"*/",
+			"export const REAL = true;",
+		].join("\n");
+
+		expect(exportedDeclarationsIn(source)).toEqual(["REAL"]);
+	});
+
+	/** A reflow that moves the parameter list to the next line changes no answer here. */
+	it("reads a declaration whose signature spans lines", () => {
+		const source = [
+			"export function parseEnvFile(",
+			"\ttext: string,",
+			"): Record<string, string> {",
+			"\treturn {};",
+			"}",
+		].join("\n");
+
+		expect(exportedDeclarationsIn(source)).toEqual(["parseEnvFile"]);
+	});
+
+	it("names every module that declares one name, so two owners are one failure", () => {
+		const owner = { file: "owner.ts", source: "export function parseEnvFile(): void {}" };
+		const copy = { file: "copy.ts", source: "export function parseEnvFile(): void {}" };
+		const consumer = { file: "consumer.ts", source: 'export { parseEnvFile } from "./owner";' };
+
+		expect(declarersOfName([owner, consumer], "parseEnvFile")).toEqual(["owner.ts"]);
+		expect(declarersOfName([owner, copy, consumer], "parseEnvFile")).toEqual(["owner.ts", "copy.ts"]);
+		expect(declarersOfName([owner, copy, consumer], "missing")).toEqual([]);
 	});
 });
