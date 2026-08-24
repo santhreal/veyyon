@@ -2,15 +2,15 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Compaction's directory-list documentation now uses canonical `search` `files` terminology instead of the retired `find` tool name. No runtime behavior changed.
+
 ## [1.2.0] - 2026-08-23
 
 ### Breaking Changes
 
 - The minimum supported Bun runtime is now 1.4.0.
-
-### Changed
-
-- Compaction's directory-list documentation now uses canonical `search` `files` terminology instead of the retired `find` tool name. No runtime behavior changed.
 
 ### Fixed
 
