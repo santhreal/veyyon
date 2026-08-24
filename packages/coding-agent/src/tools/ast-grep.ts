@@ -98,23 +98,31 @@ async function runMultiTargetAstGrep(
 	let filesWithMatches = 0;
 	let filesSearched = 0;
 	let limitReached = false;
-	for (const target of targets) {
-		// Do not enter the native again once the operator has cancelled. The
-		// natives fail closed on an already-fired signal, so this is not what keeps
-		// a cancelled search from returning results; it is what keeps a cancelled
-		// search from paying to find that out once per remaining target. The
-		// equivalent gap in the grep tool's per-chunk loop bought a full scan for
-		// every chunk after the cancellation, and this loop has the same shape.
-		throwIfAborted(options.signal, "ast_grep");
-		const targetResult = await astGrep({
-			patterns: options.patterns,
-			path: target.basePath,
-			glob: target.glob,
-			offset: 0,
-			limit: options.skip + options.limit + 1,
-			includeMeta: true,
-			signal: options.signal,
-		});
+	throwIfAborted(options.signal, "ast_grep");
+	// Each target is an independent native scan on libuv's blocking pool, so
+	// they run concurrently instead of serializing behind one another. Every
+	// scan still carries the tool's own signal, so a cancellation fails each
+	// of them closed just as the sequential loop did. Aggregation below walks
+	// `settled` in target order, so match retention, totals and the surfaced
+	// error (first failure in target order) are byte-identical to the
+	// sequential version.
+	const settled = await Promise.allSettled(
+		targets.map(target =>
+			astGrep({
+				patterns: options.patterns,
+				path: target.basePath,
+				glob: target.glob,
+				offset: 0,
+				limit: options.skip + options.limit + 1,
+				includeMeta: true,
+				signal: options.signal,
+			}),
+		),
+	);
+	for (const [targetIndex, outcome] of settled.entries()) {
+		if (outcome.status === "rejected") throw outcome.reason;
+		const target = targets[targetIndex]!;
+		const targetResult = outcome.value;
 		totalMatches += targetResult.totalMatches;
 		filesWithMatches += targetResult.filesWithMatches;
 		filesSearched += targetResult.filesSearched;

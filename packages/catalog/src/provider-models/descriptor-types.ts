@@ -69,6 +69,12 @@ export interface ProviderCatalogEntry {
 	readonly allowUnauthenticated?: boolean;
 	/** When true, successful runtime discovery replaces bundled provider models. */
 	readonly dynamicModelsAuthoritative?: boolean;
+	/**
+	 * When true, the provider's own endpoint is the sole authority for context
+	 * windows and output caps: generation leaves an unpublished limit null
+	 * instead of backfilling it from another host's same-family model.
+	 */
+	readonly publishesOwnModelLimits?: boolean;
 	/** Catalog discovery configuration for generate-models.ts. */
 	readonly catalogDiscovery?: CatalogDiscoveryConfig;
 	/**
