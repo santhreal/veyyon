@@ -31,23 +31,18 @@ describe("supportsServerCompaction capability data", () => {
 		).toBe(false);
 	});
 
-	// Contract change: codex used to be held off on the theory that its session
-	// transport owned history state. codex-rs itself posts the span to
-	// `chatgpt.com/backend-api/codex/responses/compact` and stores the window it
-	// gets back, so the host does serve the route and the flag says so. An
-	// unset baseUrl is the normal shape of a bundled codex row.
-	test("the ChatGPT Codex backend supports it, including an unset baseUrl", () => {
+	test("codex stays off: its session transport owns history state", () => {
 		expect(
 			buildOpenAIResponsesCompat({ provider: "openai-codex", name: "GPT-5.1 Codex", baseUrl: "" })
 				.supportsServerCompaction,
-		).toBe(true);
+		).toBe(false);
 		expect(
 			buildOpenAIResponsesCompat({
 				provider: "openai-codex",
 				name: "GPT-5.1 Codex",
 				baseUrl: "https://chatgpt.com/backend-api/codex",
 			}).supportsServerCompaction,
-		).toBe(true);
+		).toBe(false);
 	});
 
 	test("routers and unrelated hosts stay off", () => {

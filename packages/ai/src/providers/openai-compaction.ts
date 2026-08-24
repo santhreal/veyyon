@@ -34,8 +34,6 @@ import { $env, logger, scopedTimeoutSignal, stringifyJson } from "@veyyon/utils"
 import { trimTrailingSlashes } from "@veyyon/utils/url";
 import { boundProviderErrorDetail, ProviderHttpError, readProviderErrorDetail } from "../error";
 import type { Api, CodexCompactionRequestContext, FetchImpl, Message, Model, ProviderSessionState } from "../types";
-import { applyCodexResponsesLiteShape, resolveCodexResponsesLite } from "./openai-codex/request-transformer";
-import { createOpenAICodexDirectRequest } from "./openai-codex-responses";
 import type { ResponseInput } from "./openai-responses-wire";
 import { buildResponsesInput, parseAzureDeploymentNameMap, resolveOpenAIRequestSetup } from "./openai-shared";
 
@@ -96,7 +94,6 @@ export interface ServerCompactionResult {
 const SERVER_COMPACTION_WIRE_APIS: Record<string, true> = {
 	"openai-responses": true,
 	"azure-openai-responses": true,
-	"openai-codex-responses": true,
 };
 
 /**
@@ -133,7 +130,7 @@ function resolveOpenAiCompactRequest(
 		{ apiKey, messages },
 	);
 	const baseUrl = trimTrailingSlashes(setup.baseUrl ?? "https://api.openai.com/v1");
-	return { url: `${baseUrl}/responses/compact`, headers: setup.requestHeaders };
+	return { url: `${baseUrl}/responses/compact`, headers: setup.headers };
 }
 
 /**
@@ -203,40 +200,14 @@ function buildCompactInputItems(model: Model<Api>, messages: Message[]): Respons
 	});
 }
 
-/**
- * Resolve the compact endpoint and headers for the ChatGPT Codex backend. The
- * route is the codex responses path plus `/compact`
- * (`chatgpt.com/backend-api/codex/responses/compact`), reached with the
- * ChatGPT OAuth access token and the same request identity a turn carries.
- */
-function resolveCodexCompactRequest(
-	model: Model<Api>,
-	apiKey: string,
-	request: ServerCompactionRequest,
-): { url: string; headers: Record<string, string>; clientMetadata: Record<string, string> } {
-	return createOpenAICodexDirectRequest({
-		model: model as Model<"openai-codex-responses">,
-		accessToken: apiKey,
-		pathSuffix: "/compact",
-		requestKind: "compaction",
-		sessionId: request.sessionId,
-		providerSessionState: request.providerSessionState,
-		compaction: request.codexCompaction,
-		responsesLite: resolveCodexResponsesLite(model, undefined),
-	});
-}
-
-/** The OpenAI Responses server-side compaction transport (official, Azure, and ChatGPT Codex hosts). */
+/** The OpenAI Responses server-side compaction transport (official and Azure hosts). */
 export const openAIResponsesServerCompaction: ServerCompactionTransport = {
 	async compact(request: ServerCompactionRequest): Promise<ServerCompactionResult> {
 		const { model, apiKey } = request;
-		const isCodex = model.api === "openai-codex-responses";
 		const resolved =
 			model.api === "azure-openai-responses"
 				? resolveAzureCompactRequest(model, apiKey)
-				: isCodex
-					? resolveCodexCompactRequest(model, apiKey, request)
-					: resolveOpenAiCompactRequest(model, apiKey, request.messages);
+				: resolveOpenAiCompactRequest(model, apiKey, request.messages);
 		const { url, headers } = resolved;
 
 		const input: Array<Record<string, unknown>> = [
@@ -253,17 +224,6 @@ export const openAIResponsesServerCompaction: ServerCompactionTransport = {
 		if (request.instructions && request.instructions.trim().length > 0) {
 			body.instructions = request.instructions;
 		}
-		if (isCodex) {
-			// Codex turns carry the canonical metadata blob in the body, and a
-			// lite model moves instructions into a leading developer item —
-			// codex-rs routes the compact call through the same builder, so the
-			// compact body is shaped exactly as a turn body is.
-			const clientMetadata = "clientMetadata" in resolved ? resolved.clientMetadata : undefined;
-			if (clientMetadata) body.client_metadata = clientMetadata;
-			body.store = false;
-			if (resolveCodexResponsesLite(model, undefined)) applyCodexResponsesLiteShape(body);
-		}
-
 		const applyCallerSanitizer = (text: string): string => {
 			if (!request.sanitizeErrorText) return text;
 			try {

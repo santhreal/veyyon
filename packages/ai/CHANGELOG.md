@@ -12,6 +12,10 @@
 - The Anthropic provider reads its endpoint, credential placement, rejected betas and retry policy from the catalog's wire-capability table instead of comparing provider ids at seventeen call sites.
 - A message that names a dead socket reads the same everywhere: `namesDeadSocket` in `@veyyon/ai/error/flags` is the one list of errnos and phrases, and `ENETUNREACH`, `EHOSTUNREACH` and `EAI_AGAIN` now count as transient transport failures like the rest of them.
 
+### Fixed
+
+- Fixed OpenAI server-side compaction requests omitting the `Authorization` header when constructing headers from request setup.
+
 ## [1.2.0] - 2026-08-23
 
 ### Breaking Changes

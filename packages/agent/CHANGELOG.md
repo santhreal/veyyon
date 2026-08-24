@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed ChatGPT Codex sessions resolving a server-side compaction transport, ensuring Codex sessions compact locally instead of failing with 404 transport errors.
+
 ## [1.2.0] - 2026-08-23
 
 ### Breaking Changes
