@@ -3163,7 +3163,7 @@ describe("agentLoop streaming snapshots", () => {
 				stream.push({ type: "start", partial });
 				stream.push({ type: "toolcall_start", contentIndex: 0, partial });
 				stream.push({ type: "toolcall_delta", contentIndex: 0, delta: "{}", partial });
-				stream.push({ type: "toolcall_end", contentIndex: 0, toolCall: toolCall, partial });
+				stream.push({ type: "toolcall_end", contentIndex: 0, toolCall, partial });
 				stream.push({ type: "done", reason: "toolUse", message: partial });
 			} else {
 				const partial = createAssistantMessage([{ type: "text", text: "done" }], "stop");
