@@ -561,9 +561,9 @@ describe("each prompt directory owns its rows and registry.ts aggregates every o
 		// accept any string, a typo would compile, and `PROMPTS[typo]` would render as `undefined`. The
 		// compile-time half of this lives in the row modules' `satisfies` clause; this is the runtime
 		// half, which fails if a row module ever stops contributing its ids.
-		// 170 since `session/session-state`, which carries the date and working
-		// directory as a turn message so a re-root does not rewrite the cached prefix.
-		expect(PROMPT_IDS.length).toBe(170);
+		// 168 since `tools/ast-grep`, `tools/glob` and `tools/grep` collapsed into the single
+		// `tools/search` row, so the workspace-search prompts contribute one id where they held three.
+		expect(PROMPT_IDS.length).toBe(168);
 		expect(PROMPT_IDS).toContain("tools/read");
 		expect(new Set(PROMPT_IDS).size).toBe(PROMPT_IDS.length);
 	});
