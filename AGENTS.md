@@ -60,6 +60,16 @@ proof/docker/record-x11-before.sh proof/scenes/<name>.sh # writes Before to proo
 # Settings change: record Off and On differential
 OUT_DIR=proof/captures/x11/off proof/docker/record-x11.sh proof/scenes/<name>.sh
 OUT_DIR=proof/captures/x11/on SCENE_SETTINGS='<setting>: <val>' proof/docker/record-x11.sh proof/scenes/<name>.sh
+
+# Degradation change: one pair per terminal width. OUT_DIR is a docker bind mount, so it
+# has to be absolute, and both arms take it, since one directory cannot hold two arms
+# whose frames share the scene's mark names. About 12 pixels per column.
+for px in 960 1200 1440; do
+	SCENE_WIDTH=${px} OUT_DIR="${PWD}/proof/captures/x11/w${px}" \
+		proof/docker/record-x11.sh proof/scenes/<name>.sh
+	SCENE_WIDTH=${px} OUT_DIR="${PWD}/proof/captures/x11/before/w${px}" \
+		proof/docker/record-x11-before.sh proof/scenes/<name>.sh
+done
 ```
 
 ### What is NOT evidence
