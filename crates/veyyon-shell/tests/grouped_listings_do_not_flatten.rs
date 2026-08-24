@@ -191,7 +191,7 @@ mod filters_that_trim_check_before_they_trim {
 		let config = enabled();
 		let ctx = context("golangci-lint", Some("apply"), "", &config);
 		let (first, second) = two_passes(&ctx, "x:0\n\n\n\n\n\n", 101);
-		assert_eq!(first, "x:\n  0\n", "the first pass groups: {first:?}");
+		assert_eq!(first, "[errors] golangci-lint\nx:\n  0\n", "the first pass groups: {first:?}");
 		assert_eq!(second, first, "the second pass must not un-indent it");
 	}
 
