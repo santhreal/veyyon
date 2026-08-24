@@ -50,17 +50,11 @@ const EXEMPT = new Set(["config.ts", path.join("util", "env.ts"), "diagnose.ts"]
  * Modules that still parse their own `MNEMOPI_*` names, with the debt each carries. This
  * list may only ever SHRINK. Adding to it is how a ratchet turns into a rubber stamp, and
  * the test below fails if an entry is removed from the code without being removed here.
+ *
+ * It is empty: `core/local-llm-config.ts`, `core/extraction.ts` and `core/local-llm.ts`
+ * ask `config.ts` for every value they used to parse.
  */
-const KNOWN_BYPASSES = new Set([
-	// Duplicates MNEMOPI_LLM_ENABLED with core/extraction.ts, and the MNEMOPI_LLM_* family
-	// with config.ts's llmThreads/llmContext/llmRepo/llmFile/llmModel accessors.
-	path.join("core", "local-llm-config.ts"),
-	// Duplicates MNEMOPI_LLM_ENABLED with core/local-llm-config.ts and
-	// MNEMOPI_HOST_LLM_PROVIDER/MODEL with core/local-llm.ts.
-	path.join("core", "extraction.ts"),
-	// Duplicates MNEMOPI_HOST_LLM_PROVIDER/MODEL with core/extraction.ts.
-	path.join("core", "local-llm.ts"),
-]);
+const KNOWN_BYPASSES = new Set<string>([]);
 
 /** Every `.ts` file under `packages/mnemopi/src`. */
 async function sourceFiles(dir: string = SRC): Promise<string[]> {

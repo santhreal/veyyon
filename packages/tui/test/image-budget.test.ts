@@ -357,7 +357,7 @@ describe("Image budget integration", () => {
 		const last = lines.at(-1) ?? "";
 		expect(last).toContain("\x1b_G");
 		expect(last).toContain(`i=${id}`);
-		expect(last).not.toContain("[Image:");
+		expect(last).not.toContain("[image not shown");
 	});
 
 	it("transmits the base64 once via the budget and renders only a placement line", () => {
@@ -471,7 +471,7 @@ describe("Image budget integration", () => {
 			budget.endPass();
 		}
 
-		expect(olderLines.join("")).toContain("[Image:");
+		expect(olderLines.join("")).toContain("[image not shown, over the image budget]");
 		expect(olderLines.join("")).not.toContain("\x1b_G");
 		expect(newerLines.at(-1) ?? "").toContain("\x1b_G");
 	});
@@ -666,7 +666,7 @@ describe("TUI inline-image budget", () => {
 			expect(writes.join("")).toContain(encodeKittyDeleteImage(oldId));
 			// ...and the oldest image is now shown as text, with one image still live.
 			const viewport = term.getViewport().map(l => l.trimEnd());
-			const fallbackCount = viewport.filter(l => l.includes("[Image:")).length;
+			const fallbackCount = viewport.filter(l => l.includes("[image not shown")).length;
 			expect(fallbackCount).toBe(1);
 		} finally {
 			tui.stop();
