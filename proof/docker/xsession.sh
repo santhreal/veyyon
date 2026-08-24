@@ -13,9 +13,14 @@ set -euo pipefail
 SCENE="${1:?usage: xsession.sh <scene.sh>}"
 NAME="$(basename "${SCENE}" .sh)"
 export DISPLAY="${DISPLAY:-:99}"
-W="${SCENE_WIDTH:-1600}"
-H="${SCENE_HEIGHT:-1000}"
-FPS="${SCENE_FPS:-30}"
+# Every SCENE_* knob has one definition, in scene-config.sh. This file reads it
+# rather than restating a default, because a default written down in two files is
+# two defaults and the one a run gets depends on which file it entered through.
+# shellcheck source=proof/docker/scene-config.sh
+source /repo/proof/docker/scene-config.sh
+W="${SCENE_WIDTH}"
+H="${SCENE_HEIGHT}"
+FPS="${SCENE_FPS}"
 OUT="/out"
 mkdir -p "${OUT}"
 
@@ -92,9 +97,9 @@ export COLORTERM=truecolor
 # here rather than typed in the session, which is the point: a credential that reaches the
 # vault through the environment never appears in the transcript at all, so what the
 # recording shows spending is a placeholder and nothing else.
-export RELEASE_SIGNATURE="${SCENE_SIGNING_NUMBER:-}"
+export RELEASE_SIGNATURE="${SCENE_SIGNING_NUMBER}"
 printf 'stty=%s\n' "$(stty size </dev/tty)" >/tmp/geom
-cd "${SCENE_CWD:-/sandbox/home/demo}"
+cd "${SCENE_CWD}"
 exec ${SCENE_COMMAND:?}
 BOOT
 chmod +x /tmp/bootstrap.sh
@@ -114,29 +119,14 @@ chmod +x /tmp/bootstrap.sh
 # colour effect: the window edge has to catch a WHITE highlight, and everything the blur
 # picks up behind it has to be near-neutral, or the frost tints and the illusion dies.
 MARGIN=0
-if [ "${SCENE_THEME:-plain}" != "plain" ]; then
-	MARGIN="${SCENE_MARGIN:-96}"
-	# The field is neutral but NOT featureless, and that distinction is the whole frost. An
-	# earlier version blurred the backdrop to 0x70, which is past the point where anything is
-	# left to blur: a window blur that samples a smooth gradient returns the same smooth
-	# gradient, so the glass had nothing to refract and the treatment cost real work to look
-	# like flat opacity. Structure survives now -- two broad lights and one wide diagonal sheen
-	# at 0x26 -- while saturation stays under a tenth, so the edge catches a WHITE highlight
-	# rather than the violet-and-cyan rim that made an earlier take look like decoration
-	# competing with the terminal.
-	magick -size "${W}x${H}" xc:"${SCENE_BACKDROP_BASE:-#1a1e26}" \
-		\( -size "${W}x${H}" radial-gradient:"${SCENE_BACKDROP_WARM:-#f8fafc}"-"#000000" \
-		-resize 165% -gravity northwest -crop "${W}x${H}+0+0" -evaluate multiply 0.44 \) \
-		-compose screen -composite \
-		\( -size "${W}x${H}" radial-gradient:"${SCENE_BACKDROP_COOL:-#a5c8ff}"-"#000000" \
-		-resize 190% -gravity southeast -crop "${W}x${H}+0+0" -evaluate multiply 0.20 \) \
-		-compose screen -composite \
-		\( -size "${W}x${H}" gradient:"#ffffff"-"#000000" -rotate -28 \
-		-gravity center -crop "${W}x${H}+0+0" -evaluate multiply 0.13 \) \
-		-compose screen -composite \
-		\( -size "${W}x${H}" gradient:"#00000000"-"#000000" -evaluate multiply 0.22 \) \
-		-compose over -composite \
-		-blur "0x${SCENE_BACKDROP_BLUR:-26}" -modulate 100,55,100 /tmp/backdrop.png
+if [ "${SCENE_THEME}" != "plain" ]; then
+	MARGIN="${SCENE_MARGIN}"
+	# The recipe and the reasoning behind it live in scene-config.sh, which both
+	# display servers read, so the X take and the Wayland take cannot drift into two
+	# different pictures. xwallpaper sets a root pixmap, which is drawn once and
+	# costs nothing per frame, so the backdrop is in the capture even when no
+	# compositor is running.
+	scene_backdrop "${W}" "${H}" /tmp/backdrop.png
 	xwallpaper --stretch /tmp/backdrop.png >/tmp/wallpaper.log 2>&1 || true
 
 	# `xprop -root _NET_WM_CM_S0` cannot answer whether this worked: the compositing manager
@@ -172,11 +162,11 @@ if [ "${SCENE_THEME:-plain}" != "plain" ]; then
 	# blend into. picom's window opacity needs nothing from the client, and neither do the
 	# rounding, the frost and the shadow.
 	CHROME=(--no-fading-openclose --config /dev/null
-		--corner-radius "${SCENE_RADIUS:-26}"
-		--active-opacity "${SCENE_OPACITY:-0.72}"
-		--inactive-opacity "${SCENE_OPACITY:-0.72}"
-		--shadow --shadow-radius 44 --shadow-opacity 0.55
-		--shadow-offset-x -22 --shadow-offset-y -12)
+		--corner-radius "${SCENE_RADIUS}"
+		--active-opacity "${SCENE_OPACITY}"
+		--inactive-opacity "${SCENE_OPACITY}"
+		--shadow --shadow-radius "${SCENE_SHADOW_RADIUS}" --shadow-opacity "${SCENE_SHADOW_OPACITY}"
+		--shadow-offset-x "${SCENE_SHADOW_OFFSET_X}" --shadow-offset-y "${SCENE_SHADOW_OFFSET_Y}")
 
 	# --blur-background IS THE REASON A TAKE COMES OUT AT THREE FRAMES A SECOND, and it
 	# stays off unless something can actually accelerate it.
@@ -215,7 +205,7 @@ if [ "${SCENE_THEME:-plain}" != "plain" ]; then
 	#
 	# SCENE_CHROME_BLUR=1 exists only so the claim above stays falsifiable -- set it,
 	# capture the pair, and look. It is not a quality knob.
-	if [ "${SCENE_CHROME_BLUR:-0}" = "1" ]; then
+	if [ "${SCENE_CHROME_BLUR}" = "1" ]; then
 		CHROME+=(--blur-background)
 		echo "chrome: blur-background forced on; expect ~2 fps of real motion" >&2
 	fi
@@ -240,18 +230,33 @@ if [ "${SCENE_THEME:-plain}" != "plain" ]; then
 	# glx stays reachable rather than deleted, because passing a real GPU to this container is the
 	# obvious next thing to try and the pin is how the next arm gets recorded. Anyone who sets it
 	# must look at the frame: a blank window is the expected failure, and it is invisible in a log.
-	if [ "${SCENE_CHROME_BACKEND:-xrender}" = "glx" ]; then
-		start_compositor "glx dual_kawase strength ${SCENE_BLUR_STRENGTH:-10}" \
-			--backend glx --blur-method dual_kawase --blur-strength "${SCENE_BLUR_STRENGTH:-10}" \
-			"${CHROME[@]}" && GLASS=1
+	# WHERE THE CHROME IS DRAWN. `post` is the default and runs no compositor at
+	# all: the rounding, the shadow and the opacity are applied to the recorded
+	# frames by proof/compose-chrome.sh once the take is over. The backdrop is
+	# already in the capture, because xwallpaper set it as a root pixmap above.
+	#
+	# Compositing live is what starved the capture. With the blur on, ffmpeg could
+	# GRAB only 69 of 360 frames; with opacity alone it lost a third of them. The
+	# backdrop never moves, so blending it under the window thirty times a second
+	# recomputes one static picture for the length of the take. `live` stays
+	# reachable so the comparison can be re-run, and because the Wayland twin still
+	# composites in its compositor.
+	if [ "${SCENE_CHROME}" != "live" ]; then
+		echo "chrome: none at capture time; composited after the take" >&2
+	else
+		if [ "${SCENE_CHROME_BACKEND}" = "glx" ]; then
+			start_compositor "glx dual_kawase strength ${SCENE_BLUR_STRENGTH}" \
+				--backend glx --blur-method dual_kawase --blur-strength "${SCENE_BLUR_STRENGTH}" \
+				"${CHROME[@]}" && GLASS=1
+		fi
+		[ "${GLASS:-0}" = "1" ] ||
+			start_compositor "xrender kernel ${SCENE_BLUR_KERN}" \
+				--backend xrender --blur-method kernel --blur-kern "${SCENE_BLUR_KERN}" \
+				"${CHROME[@]}" || {
+				echo "picom never redirected the screen; the capture would be unthemed" >&2
+				exit 1
+			}
 	fi
-	[ "${GLASS:-0}" = "1" ] ||
-		start_compositor "xrender kernel ${SCENE_BLUR_KERN:-5x5gaussian}" \
-			--backend xrender --blur-method kernel --blur-kern "${SCENE_BLUR_KERN:-5x5gaussian}" \
-			"${CHROME[@]}" || {
-			echo "picom never redirected the screen; the capture would be unthemed" >&2
-			exit 1
-		}
 fi
 
 # The terminal is sized to the inset once and never resized, because the grid the
@@ -259,15 +264,15 @@ fi
 TW=$((W - 2 * MARGIN))
 TH=$((H - 2 * MARGIN))
 
-case "${SCENE_TERMINAL:-kitty}" in
+case "${SCENE_TERMINAL}" in
 xterm)
 	# xterm answers XTEST motion with SGR 1006 reports without a window manager,
 	# which is the whole point of this path. directColor keeps 24-bit colour.
 	xterm \
 		-geometry "$((TW / 12))x$((TH / 27))+${MARGIN}+${MARGIN}" \
-		-fa "JetBrains Mono" -fs "${SCENE_FONT_SIZE:-15}" \
-		-bg "#1e2127" -fg "#d7dae0" \
-		-b "${SCENE_PADDING:-8}" \
+		-fa "JetBrains Mono" -fs "${SCENE_FONT_SIZE}" \
+		-bg "${SCENE_BG}" -fg "${SCENE_FG}" \
+		-b "${SCENE_PADDING}" \
 		-u8 \
 		-xrm "XTerm*locale: true" \
 		-xrm "XTerm*utf8: 2" \
@@ -278,14 +283,14 @@ xterm)
 *)
 	kitty \
 		--override "font_family=JetBrains Mono" \
-		--override "font_size=${SCENE_FONT_SIZE:-15}" \
+		--override "font_size=${SCENE_FONT_SIZE}" \
 		--override "sync_to_monitor=no" \
 		--override "repaint_delay=8" \
 		--override "input_delay=1" \
-		--override "background=${SCENE_BG:-#1e2127}" \
-		--override "foreground=${SCENE_FG:-#d7dae0}" \
+		--override "background=${SCENE_BG}" \
+		--override "foreground=${SCENE_FG}" \
 		--override "cursor_blink_interval=0" \
-		--override "window_padding_width=${SCENE_PADDING:-8}" \
+		--override "window_padding_width=${SCENE_PADDING}" \
 		--override "remember_window_size=no" \
 		--override "initial_window_width=${TW}" \
 		--override "initial_window_height=${TH}" \
@@ -404,12 +409,34 @@ sleep 1
 cleanup
 trap - EXIT
 
+# The chrome the capture deliberately did not draw. Applied to the video and to
+# every still the scene took, so a frame published beside the clip is the same
+# picture. The gate runs after this, on the file that actually ships.
+if [ "${SCENE_CHROME}" != "live" ] && [ "${SCENE_THEME}" != "plain" ]; then
+	# A composite that fails must not leave the take looking finished. The bare
+	# capture is a real recording of a square-cornered terminal, so it plays, and a
+	# silent skip would publish it as the themed one.
+	bash /repo/proof/compose-chrome.sh "${OUT}/${NAME}.mp4" "${OUT}/${NAME}-chrome.mp4" || {
+		echo "xsession.sh: the chrome pass failed; refusing to publish the bare capture as a themed take" >&2
+		exit 1
+	}
+	mv -f "${OUT}/${NAME}-chrome.mp4" "${OUT}/${NAME}.mp4"
+	for still in "${OUT}/${NAME}"-*.png; do
+		[ -e "${still}" ] || continue
+		bash /repo/proof/compose-chrome.sh "${still}" "${still%.png}-chrome.png" || {
+			echo "xsession.sh: the chrome pass failed on ${still##*/}" >&2
+			exit 1
+		}
+		mv -f "${still%.png}-chrome.png" "${still}"
+	done
+fi
+
 # The capture is judged on motion, not on settings: a true 60 fps CFR file that
 # encodes without dropping anything can still be three frames a second of actual
 # movement, and ffprobe cannot tell the difference. proof/motion-gate.sh owns the
 # measurement and the floor.
-if [ "${SCENE_MOTION_GATE:-1}" = "1" ]; then
-	bash "${SCENE_MOTION_GATE_BIN:-/repo/proof/motion-gate.sh}" "${OUT}/${NAME}.mp4" >&2
+if [ "${SCENE_MOTION_GATE}" = "1" ]; then
+	bash "${SCENE_MOTION_GATE_BIN}" "${OUT}/${NAME}.mp4" >&2
 fi
 
 # A GIF of the same recording, for a page that has to open in a browser without a
@@ -421,9 +448,9 @@ fi
 # whole container down with it after the recording had already succeeded: the take
 # was on disk and the run still reported failure. A caller that publishes a WebP
 # and an mp4 does not need it.
-if [ "${SCENE_GIF:-1}" = "1" ]; then
+if [ "${SCENE_GIF}" = "1" ]; then
 	ffmpeg -loglevel error -y -i "${OUT}/${NAME}.mp4" \
-		-vf "fps=${SCENE_GIF_FPS:-20},scale=${SCENE_GIF_WIDTH:-1200}:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=192[p];[b][p]paletteuse=dither=bayer:bayer_scale=3" \
+		-vf "fps=${SCENE_GIF_FPS},scale=${SCENE_GIF_WIDTH}:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=192[p];[b][p]paletteuse=dither=bayer:bayer_scale=3" \
 		"${OUT}/${NAME}.gif"
 fi
 ls -la "${OUT}/${NAME}.mp4"

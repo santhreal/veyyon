@@ -24,6 +24,14 @@ mkdir -p "${OUT}"
 source "${REPO_ROOT}/proof/docker/host-endpoint.sh"
 CONTAINER_LLM_BASE_URL="$(container_endpoint "${PROOF_LLM_BASE_URL:-}")"
 
+# Every SCENE_* knob has one definition, in scene-config.sh, and this forwards the
+# set. SCENE_RENDER_NODE and SCENE_RENDER_GID stay spelled out below: they are
+# computed from this host's /dev/dri on every run, so they are not defaults and
+# have nothing to centralize.
+# shellcheck source=proof/docker/scene-config.sh
+source "${REPO_ROOT}/proof/docker/scene-config.sh"
+scene_docker_env_args
+
 # wlroots will not start its gles2 renderer without a DRM render node, and the
 # blur shader is the whole reason this path exists, so a missing node is a hard
 # stop rather than a silent fall back to a software renderer that cannot blur.
@@ -61,39 +69,9 @@ docker run --rm \
 	-e LOCAL_LLM_KEY=none \
 	-e "PROOF_LLM_BASE_URL=${CONTAINER_LLM_BASE_URL}" \
 	-e "VEYYON_DEMO_SECRET=${VEYYON_DEMO_SECRET:-veyyon-demo-value-not-a-real-credential}" \
-	-e "SCENE_HIDE_THINKING=${SCENE_HIDE_THINKING:-}" \
 	-e "SCENE_RENDER_NODE=${RENDER_NODE}" \
 	-e "SCENE_RENDER_GID=${RENDER_GID}" \
-	-e "SCENE_COMMAND=${SCENE_COMMAND:-bun /repo/packages/coding-agent/src/cli.ts --model local/qwen2.5-1.5b}" \
-	-e "SCENE_WIDTH=${SCENE_WIDTH:-2560}" \
-	-e "SCENE_HEIGHT=${SCENE_HEIGHT:-1440}" \
-	-e "SCENE_FONT_SIZE=${SCENE_FONT_SIZE:-21}" \
-	-e "SCENE_FPS=${SCENE_FPS:-30}" \
-	-e "SCENE_THEME=${SCENE_THEME:-plain}" \
-	-e "SCENE_CHROME_BLUR" \
-	-e "SCENE_MOTION_GATE" \
-	-e "SCENE_MOTION_FLOOR" \
-	-e "SCENE_MOTION_GATE_BIN" \
-	-e "SCENE_MARGIN" \
-	-e "SCENE_RADIUS" \
-	-e "SCENE_OPACITY" \
-	-e "SCENE_PADDING" \
-	-e "SCENE_BLUR_PASSES" \
-	-e "SCENE_BLUR_RADIUS" \
-	-e "SCENE_BLUR_NOISE" \
-	-e "SCENE_BLUR_BRIGHTNESS" \
-	-e "SCENE_SHADOW_BLUR" \
-	-e "SCENE_SHADOW_COLOR" \
-	-e "SCENE_BACKDROP_BLUR" \
-	-e "SCENE_BACKDROP_BASE" \
-	-e "SCENE_BACKDROP_WARM" \
-	-e "SCENE_BACKDROP_COOL" \
-	-e "SCENE_BG=${SCENE_BG:-#1e2127}" \
-	-e "SCENE_FG=${SCENE_FG:-#d7dae0}" \
-	-e "SCENE_CWD=${SCENE_CWD:-/sandbox/home/demo}" \
-	-e "SCENE_SETTLE_SCALE=${SCENE_SETTLE_SCALE:-1}" \
-	-e "SCENE_SETTINGS=${SCENE_SETTINGS:-}" \
-	-e "SCENE_SIGNING_NUMBER=${SCENE_SIGNING_NUMBER:-}" \
+	"${SCENE_DOCKER_ENV[@]}" \
 	-w /repo \
 	"${RECORDER_IMAGE}" \
 	bash -lc '
