@@ -25,16 +25,27 @@ import { buildModel } from "../src/build";
 // Relative imports, not `@veyyon/catalog/...`: the workspace `node_modules`
 // link resolves to the primary checkout rather than to this worktree, so the
 // package specifier would test someone else's source.
-import {
-	getBundledModels,
-	getBundledProviders,
-	readEnrichedRegistrySnapshot,
-	writeEnrichedRegistrySnapshot,
-} from "../src/models";
+import { enrichedRegistryFingerprint, getBundledModels, getBundledProviders } from "../src/models";
+import { createEnrichedRegistrySnapshotStore } from "../src/registry-snapshot";
 import type { Api, Model } from "../src/types";
 
 /** Pinned so an unrecorded format change cannot silently reuse old snapshots. */
 const FORMAT_VERSION_PREFIX = "v2:";
+
+function writeEnrichedRegistrySnapshot(
+	registry: Map<string, Map<string, Model<Api>>>,
+	fingerprint: string,
+	dbPath: string,
+): void {
+	createEnrichedRegistrySnapshotStore(dbPath).write(registry, fingerprint);
+}
+
+function readEnrichedRegistrySnapshot(
+	fingerprint: string,
+	dbPath: string,
+): Map<string, Map<string, Model<Api>>> | null {
+	return createEnrichedRegistrySnapshotStore(dbPath).read(fingerprint);
+}
 
 describe("the enriched catalog snapshot is exact or ignored", () => {
 	let tempDir = "";
@@ -134,5 +145,12 @@ describe("the enriched catalog snapshot is exact or ignored", () => {
 		writeEnrichedRegistrySnapshot(registry, `${FORMAT_VERSION_PREFIX}fidelity`, dbPath);
 		const restored = readEnrichedRegistrySnapshot(`${FORMAT_VERSION_PREFIX}fidelity`, dbPath);
 		expect(restored?.get("anthropic")?.get(built.id)).toEqual(built);
+	});
+
+	it("stamps every snapshot with the recorded format version", () => {
+		// The prefix the refusal cases above rely on is the one the product writes,
+		// so a format bump that skips the version fails here rather than serving
+		// records built under retired rules.
+		expect(enrichedRegistryFingerprint().startsWith(FORMAT_VERSION_PREFIX)).toBe(true);
 	});
 });

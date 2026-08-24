@@ -1,11 +1,7 @@
 import { createHash } from "node:crypto";
-import * as fs from "node:fs";
-import * as path from "node:path";
-import { atomicWriteFileSync, errorMessage, getModelDbPath, isBunTestRuntime, logger } from "@veyyon/utils";
 import { buildModel } from "./build";
 import modelsSourceJson from "./models.json" with { type: "text" };
 import type { Api, Model, ModelSpec, Usage } from "./types";
-import { isRecord } from "./utils";
 
 /**
  * Static bundled model registry loaded from `models.json`.
@@ -44,15 +40,20 @@ let modelRegistry: Map<string, Map<string, Model<Api>>> | undefined;
 let parsedModels: BundledModelsJson | undefined;
 let catalogDigest: string | undefined;
 /**
- * Where the enriched-registry snapshot is read and written when a caller does
- * not pass an explicit db path. A relocated registry (SDK hosts, tests) passes
- * its own `models.db` location; without the pin the snapshot silently lands
- * beside the default profile's database where nothing reads it back.
+ * Persistence for the enriched registry, installed by whoever owns a profile
+ * directory. This module stays a leaf on purpose: every consumer of the
+ * bundled catalog imports it, so a filesystem and logging dependency here
+ * lands in every one of those module graphs.
  */
-let registryCacheDbPathOverride: string | undefined;
+export interface EnrichedRegistrySnapshotStore {
+	read(fingerprint: string): Map<string, Map<string, Model<Api>>> | null;
+	write(registry: Map<string, Map<string, Model<Api>>>, fingerprint: string): void;
+}
 
-export function setBundledRegistryCacheDbPath(dbPath: string | undefined): void {
-	registryCacheDbPathOverride = dbPath;
+let snapshotStore: EnrichedRegistrySnapshotStore | undefined;
+
+export function setEnrichedRegistrySnapshotStore(store: EnrichedRegistrySnapshotStore | undefined): void {
+	snapshotStore = store;
 }
 
 /**
@@ -66,12 +67,8 @@ export function bundledCatalogDigest(): string {
 }
 
 /** Content hash of the bundled catalog plus the snapshot format version. */
-function registryFingerprint(): string {
+export function enrichedRegistryFingerprint(): string {
 	return `v${ENRICHED_REGISTRY_FORMAT_VERSION}:${bundledCatalogDigest()}`;
-}
-
-function bundledRegistryCachePath(dbPath?: string): string {
-	return path.join(path.dirname(dbPath ?? registryCacheDbPathOverride ?? getModelDbPath()), "bundled-models.json");
 }
 
 function buildRegistry(source: BundledModelsJson): Map<string, Map<string, Model<Api>>> {
@@ -86,79 +83,18 @@ function buildRegistry(source: BundledModelsJson): Map<string, Map<string, Model
 	return registry;
 }
 
-/**
- * Restore the enriched registry from its on-disk snapshot, or null when the
- * snapshot is absent, stale (fingerprint mismatch), or unreadable. A cache is
- * allowed to miss: the caller falls back to the build path, which produces the
- * same records.
- */
-export function readEnrichedRegistrySnapshot(
-	fingerprint: string,
-	dbPath?: string,
-): Map<string, Map<string, Model<Api>>> | null {
-	try {
-		const parsed: unknown = JSON.parse(fs.readFileSync(bundledRegistryCachePath(dbPath), "utf8"));
-		if (
-			!isRecord(parsed) ||
-			parsed.fingerprint !== fingerprint ||
-			typeof parsed.registryDigest !== "string" ||
-			!isRecord(parsed.registry)
-		) {
-			return null;
-		}
-		const registryDigest = createHash("sha256").update(JSON.stringify(parsed.registry)).digest("hex");
-		if (registryDigest !== parsed.registryDigest) return null;
-		const registry = new Map<string, Map<string, Model<Api>>>();
-		for (const [provider, models] of Object.entries(parsed.registry)) {
-			if (!isRecord(models)) return null;
-			registry.set(provider, new Map(Object.entries(models) as Array<[string, Model<Api>]>));
-		}
-		return registry;
-	} catch {
-		return null;
-	}
-}
-
-/**
- * Write the enriched registry next to `models.db`, following the
- * `models-dev.json` payload-cache precedent. Failures are debug-level: the
- * snapshot is an optimization across restarts, and the next launch rebuilds.
- */
-export function writeEnrichedRegistrySnapshot(
-	registry: Map<string, Map<string, Model<Api>>>,
-	fingerprint: string,
-	dbPath?: string,
-): void {
-	try {
-		const persistedRegistry = Object.fromEntries(
-			Array.from(registry, ([provider, models]) => [provider, Object.fromEntries(models)]),
-		);
-		const payload = {
-			fingerprint,
-			registryDigest: createHash("sha256").update(JSON.stringify(persistedRegistry)).digest("hex"),
-			registry: persistedRegistry,
-		};
-		atomicWriteFileSync(bundledRegistryCachePath(dbPath), JSON.stringify(payload));
-	} catch (error) {
-		logger.debug("Bundled model registry snapshot not written", { error: errorMessage(error) });
-	}
-}
-
 /** Build (once) and return the enriched bundled-model registry. */
 function getModelRegistry(): Map<string, Map<string, Model<Api>>> {
 	if (modelRegistry !== undefined) return modelRegistry;
-	const fingerprint = registryFingerprint();
-	// A test process shares the operator's real agent dir; never read or write
-	// the snapshot there (the same reason model-cache tests pass explicit paths).
-	if (!isBunTestRuntime()) {
-		const restored = readEnrichedRegistrySnapshot(fingerprint);
-		if (restored) modelRegistry = restored;
+	const fingerprint = enrichedRegistryFingerprint();
+	const restored = snapshotStore?.read(fingerprint) ?? null;
+	if (restored) {
+		modelRegistry = restored;
+		return modelRegistry;
 	}
-	if (modelRegistry === undefined) {
-		parsedModels ??= JSON.parse(modelsSource) as BundledModelsJson;
-		modelRegistry = buildRegistry(parsedModels);
-		if (!isBunTestRuntime()) writeEnrichedRegistrySnapshot(modelRegistry, fingerprint);
-	}
+	parsedModels ??= JSON.parse(modelsSource) as BundledModelsJson;
+	modelRegistry = buildRegistry(parsedModels);
+	snapshotStore?.write(modelRegistry, fingerprint);
 	return modelRegistry;
 }
 
