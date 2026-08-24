@@ -592,8 +592,11 @@ describe("line selector slicing on directory listings", () => {
 	beforeEach(() => {
 		testDir = path.join(os.tmpdir(), `read-dir-slice-${Snowflake.next()}`);
 		fs.mkdirSync(testDir, { recursive: true });
+		const fixedDate = new Date(1700000000000);
 		for (let i = 1; i <= 20; i++) {
-			fs.writeFileSync(path.join(testDir, `item-${String(i).padStart(2, "0")}.txt`), "");
+			const filePath = path.join(testDir, `item-${String(i).padStart(2, "0")}.txt`);
+			fs.writeFileSync(filePath, "");
+			fs.utimesSync(filePath, fixedDate, fixedDate);
 		}
 		tool = new ReadTool(makeSession(testDir));
 	});

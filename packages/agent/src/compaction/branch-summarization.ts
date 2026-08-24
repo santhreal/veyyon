@@ -602,9 +602,19 @@ export async function generateBranchSummary(
 ): Promise<BranchSummaryResult> {
 	const { model, apiKey, signal, reserveTokens = 16384, metadata } = options;
 
-	// Token budget = context window minus reserved space for prompt + response
+	// Token budget = context window minus reserved space for prompt + response.
+	//
+	// A reserve at or above the window leaves a non-positive budget, and a
+	// non-positive budget means "no limit" to prepareBranchEntriesForProvider,
+	// which enforces a budget only when it is `> 0`. An over-large reserve would
+	// therefore send the WHOLE branch — the exact opposite of what the knob asks
+	// for, and an overflow on the small-window models that need the reserve most.
+	// Such a reserve is unsatisfiable, so it falls back to the same 15%
+	// proportional reserve the rest of the compaction code uses for a reserve the
+	// window cannot hold, leaving 85% of the window as the budget.
 	const contextWindow = model.contextWindow || 128000;
-	const tokenBudget = contextWindow - reserveTokens;
+	const configuredBudget = contextWindow - reserveTokens;
+	const tokenBudget = configuredBudget > 0 ? configuredBudget : Math.max(1, Math.floor(contextWindow * 0.85));
 
 	// Preserve the existing empty-branch fast path without retaining this raw,
 	// potentially lossy projection for a provider attempt. Every actual attempt

@@ -12,6 +12,7 @@
 - `read` accepts a semicolon-delimited list of internal resources (`skill://demo/one.md;skill://demo/two.md`), the same list form `grep` and `glob` take, and returns one section per entry.
 - Eval kernels gain `kv`, a bounded JSON store under the session's artifacts directory that survives kernel resets and is shared between JavaScript and Python without cross-session filename collisions or lost concurrent updates, and `defs()`, which lists the names user code has defined in the kernel.
 - Every supervised process termination records which component ended it and why, with distinct attribution for each path (operator stop, signal, restart, broker shutdown, idle reaper, OS signal, broker recovery, launch failure, external signal, and natural exit); `launch list` output shows the lifetime owning condition and retained completion records with exit codes, reasons, and output tails, queryable after the name is reused and across broker restarts.
+- A ChatGPT OAuth (Codex) session compacts server-side via the Responses compaction endpoint, preserving encrypted reasoning state.
 - Added Command Code API-key login through the Studio Provider page, with validation against its Provider API, and Nous Research Portal OAuth device login with rotating refresh tokens and short-lived inference JWTs.
 - `explain(error)` in `@veyyon/ai/error/flags` returns the classification id together with the names of the rules that produced it, and every classification rule states a name.
 - Added the Command Code provider catalog, with its documented coding flagships as the offline seed and credentialed discovery for the wider Provider API list.
@@ -19,6 +20,7 @@
 - Added the `publishesOwnModelLimits` provider flag, which stops generation from backfilling a context window or output cap from another host's same-family model.
 - `ProviderWireCapabilities.anthropicMessages` declares how a provider serves the Anthropic Messages API — its endpoint, credential placement, rejected request features and retryable model errors — and `declaredProviders()` and `declaredCapabilityNames()` derive the declaring sets from the table.
 - Bundled model resolution persists a content-verified enriched snapshot, and a registry cache stamp moves on every row-content write, and on a row crossing the freshness window it is read under, without treating SQLite sidecar churn or a provider re-verifying models it already had as a change.
+- Added `supportsServerCompaction` capability data for ChatGPT Codex backend models on the Responses API.
 - `Image` accepts an `onDisplayed` callback and reports the cause each time an image starts or stops falling back to a placeholder.
 - `source-declarations.ts`: `exportedDeclarationsIn` and `declarersOfName` report which modules declare a name, so a one-owner gate no longer matches the declaration's own bytes; a reflowed signature, a signature quoted in a comment and a second module declaring the same name are now all answered correctly.
 
@@ -33,6 +35,7 @@
 - The debug log records which classification rules decided a failed turn's retry, next to the classified kind, so a retry nobody expected is diagnosed from the log instead of by re-reading the provider's sentence.
 - The browser tab worker and supervisor state why each teardown step and each optional probe discards its failure; behavior is unchanged.
 - The browser tab worker and supervisor reach `bestEffort` and `optionalResult` through `@veyyon/utils/discarded-fault` rather than the package barrel; behavior is unchanged.
+- Daemon completion parsing and eval-store serialization errors use shared type guards; behavior is unchanged.
 - Superseded and useless tool results are now pruned as a batch whose combined size pays for the prompt-cache rewrite it forces, instead of only when a single result sits within 8,000 tokens of the end of the conversation.
 - The Anthropic provider reads its endpoint, credential placement, rejected betas and retry policy from the catalog's wire-capability table instead of comparing provider ids at seventeen call sites.
 - A message that names a dead socket reads the same everywhere: `namesDeadSocket` in `@veyyon/ai/error/flags` is the one list of errnos and phrases, and `ENETUNREACH`, `EHOSTUNREACH` and `EAI_AGAIN` now count as transient transport failures like the rest of them.
@@ -53,8 +56,13 @@
 - ImageMagick pixel caches used by proof capture and HD demo scripts stay inside an owned scoped directory that the parent removes after child failure without deleting concurrent or inherited unrelated directories.
 - An indented row inside a tool block keeps its indent when it wraps at a narrow width, instead of continuing at the block's left edge.
 - A colour or title escape sequence a command writes in two pieces no longer leaves part of itself in tool output: the sink holds a sequence its chunk ended inside until the piece that finishes it arrives, and drops one the stream never completes.
+- The `compaction.remote` setting description documents that server-side compaction applies to supported OpenAI, Azure OpenAI, and ChatGPT Codex Responses models.
+- `branchSummary.reserveTokens` now reaches the branch summarizer. It was declared in the settings schema but read by nothing, so every branch summary used the built-in 16384 reserve whatever the setting said.
 - Side requests derive a stable conversation ID per oneshot kind, preventing compaction, handoff, and branch summaries from overwriting live Cursor and Devin conversation state.
 - Aborting while paused rejects the pause wait and prevents the agent loop from starting another provider turn or paused tool.
+- A branch-summary reserve at or above the model's context window now falls back to the proportional 15% reserve instead of leaving a non-positive budget, which the entry preparation read as "no limit" and which sent the whole branch.
+- Fixed OpenAI server-side compaction requests omitting the `Authorization` header when constructing headers from request setup.
+- Supported server-side compaction on the ChatGPT Codex backend with OAuth credential and turn identity headers.
 - API option mapping preserves side-request conversation IDs, preventing Cursor and Devin requests from falling back to the live session ID.
 - Cursor turns fail immediately when an asynchronous exec-server handler fails; malformed grep line or count values and oversized Connect frames fail before protobuf or buffer exhaustion; and success waits for queued handlers and gRPC trailers so quota and availability statuses are preserved.
 - `splitTrailingPartialEscape` lets a streaming reader hold back an escape sequence a chunk ended inside, so a sequence divided across two reads is stripped whole instead of losing its head and leaking its tail as text.

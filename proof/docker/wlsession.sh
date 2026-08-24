@@ -11,9 +11,9 @@
 # WHY A SECOND SESSION SCRIPT RATHER THAN A BRANCH IN THE FIRST. Almost nothing is
 # shared: there is no X server, no window manager to work around, no window id to
 # chase, no xdotool, and the capture and the encoder are different programs. The
-# parts that ARE shared -- the backdrop recipe, the terminal's options, the scene
-# handoff -- are short, and the X11 path is what every published frame was recorded
-# through, so it is left untouched rather than rebuilt around a conditional.
+# parts that ARE shared -- the backdrop recipe, the knob defaults, the scene
+# handoff -- are in proof/docker/scene-config.sh, which both sessions source, so
+# neither file owns a second copy of a colour, a rate or an ImageMagick pipeline.
 #
 # What this stack cost to find, kept here because each one is a container:
 #   * swayfx will not run as root and exits at main.cpp:59, so the session runs as
@@ -29,9 +29,11 @@ set -euo pipefail
 SCENE="${1:?usage: wlsession.sh <scene.sh>}"
 NAME="$(basename "${SCENE}" .sh)"
 OUT="${SCENE_OUT_DIR:-/out}"
-W="${SCENE_WIDTH:-2560}"
-H="${SCENE_HEIGHT:-1440}"
-FPS="${SCENE_FPS:-30}"
+# shellcheck source=proof/docker/scene-config.sh
+source /repo/proof/docker/scene-config.sh
+W="${SCENE_WIDTH}"
+H="${SCENE_HEIGHT}"
+FPS="${SCENE_FPS}"
 MARGIN=0
 mkdir -p "${OUT}"
 # magick (backdrop) and any later convert leave magick-* in /tmp when killed.
@@ -40,26 +42,9 @@ source "$(cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)/magick-tmpdir.sh"
 magick_tmpdir_scope /tmp
 trap magick_tmpdir_release EXIT
 
-if [ "${SCENE_THEME:-plain}" != "plain" ]; then
-	MARGIN="${SCENE_MARGIN:-96}"
-	# The same field xsession.sh builds, for the same reason: neutral but NOT
-	# featureless. An earlier version lit it violet in one corner and cyan in the
-	# other, which put a saturated rim on every window edge, and it was blurred to
-	# 0x70, which is past the point where anything is left to blur -- a window blur
-	# that samples a smooth gradient returns the same smooth gradient.
-	magick -size "${W}x${H}" xc:"${SCENE_BACKDROP_BASE:-#1a1e26}" \
-		\( -size "${W}x${H}" radial-gradient:"${SCENE_BACKDROP_WARM:-#f8fafc}"-"#000000" \
-		-resize 165% -gravity northwest -crop "${W}x${H}+0+0" -evaluate multiply 0.44 \) \
-		-compose screen -composite \
-		\( -size "${W}x${H}" radial-gradient:"${SCENE_BACKDROP_COOL:-#a5c8ff}"-"#000000" \
-		-resize 190% -gravity southeast -crop "${W}x${H}+0+0" -evaluate multiply 0.20 \) \
-		-compose screen -composite \
-		\( -size "${W}x${H}" gradient:"#ffffff"-"#000000" -rotate -28 \
-		-gravity center -crop "${W}x${H}+0+0" -evaluate multiply 0.13 \) \
-		-compose screen -composite \
-		\( -size "${W}x${H}" gradient:"#00000000"-"#000000" -evaluate multiply 0.22 \) \
-		-compose over -composite \
-		-blur "0x${SCENE_BACKDROP_BLUR:-26}" -modulate 100,55,100 /tmp/backdrop.png
+if [ "${SCENE_THEME}" != "plain" ]; then
+	MARGIN="${SCENE_MARGIN}"
+	scene_backdrop "${W}" "${H}" /tmp/backdrop.png
 fi
 
 TW=$((W - 2 * MARGIN))
@@ -79,13 +64,13 @@ SESSION_HOME="${HOME:-/sandbox/home}"
 mkdir -p "${SESSION_HOME}/.config/kitty"
 cat >"${SESSION_HOME}/.config/kitty/kitty.conf" <<KITTY
 font_family JetBrains Mono
-font_size ${SCENE_FONT_SIZE:-15}
-background ${SCENE_BG:-#1e2127}
-foreground ${SCENE_FG:-#d7dae0}
-background_opacity ${SCENE_OPACITY:-0.72}
+font_size ${SCENE_FONT_SIZE}
+background ${SCENE_BG}
+foreground ${SCENE_FG}
+background_opacity ${SCENE_OPACITY}
 dynamic_background_opacity yes
 cursor_blink_interval 0
-window_padding_width ${SCENE_PADDING:-8}
+window_padding_width ${SCENE_PADDING}
 remember_window_size no
 initial_window_width ${TW}
 initial_window_height ${TH}
@@ -103,31 +88,31 @@ KITTY
 # backdrop nowhere on screen. Here the compositor is told the rectangle before the
 # client exists, and the scene library is told the same numbers.
 cat >/tmp/sway.conf <<CONF
-output ${SCENE_OUTPUT:-HEADLESS-1} resolution ${W}x${H}
+output ${SCENE_OUTPUT} resolution ${W}x${H}
 default_border none
 default_floating_border none
 gaps inner 0
 focus_follows_mouse no
 
-corner_radius ${SCENE_RADIUS:-26}
+corner_radius ${SCENE_RADIUS}
 blur enable
-blur_passes ${SCENE_BLUR_PASSES:-3}
-blur_radius ${SCENE_BLUR_RADIUS:-5}
-blur_noise ${SCENE_BLUR_NOISE:-0.02}
-blur_brightness ${SCENE_BLUR_BRIGHTNESS:-1.02}
+blur_passes ${SCENE_BLUR_PASSES}
+blur_radius ${SCENE_BLUR_RADIUS}
+blur_noise ${SCENE_BLUR_NOISE}
+blur_brightness ${SCENE_BLUR_BRIGHTNESS}
 shadows enable
 shadows_on_csd enable
-shadow_blur_radius ${SCENE_SHADOW_BLUR:-44}
-shadow_color ${SCENE_SHADOW_COLOR:-#00000099}
+shadow_blur_radius ${SCENE_SHADOW_BLUR}
+shadow_color ${SCENE_SHADOW_COLOR}
 shadow_offset 0 6
 layer_effects "swaybg" blur disable
 
 for_window [app_id="kitty"] floating enable, resize set ${TW} ${TH}, move position ${MARGIN} ${MARGIN}
 CONF
-if [ "${SCENE_THEME:-plain}" != "plain" ]; then
+if [ "${SCENE_THEME}" != "plain" ]; then
 	printf 'exec swaybg -i /tmp/backdrop.png -m fill\n' >>/tmp/sway.conf
 else
-	printf 'output %s background %s solid_color\n' "${SCENE_OUTPUT:-HEADLESS-1}" "${SCENE_BG:-#1e2127}" >>/tmp/sway.conf
+	printf 'output %s background %s solid_color\n' "${SCENE_OUTPUT}" "${SCENE_BG}" >>/tmp/sway.conf
 fi
 
 # The scene's own command, run in the terminal, exactly as the X11 path does it:
@@ -155,9 +140,9 @@ cat >/tmp/bootstrap.sh <<'BOOT'
 # being spent is a placeholder. xsession.sh has always done this and this file did not,
 # which cost a full rehearsal: every turn ran, and the one the take exists for reported
 # "the environment variable RELEASE_SIGNATURE is not set in this process".
-export RELEASE_SIGNATURE="${SCENE_SIGNING_NUMBER:-}"
+export RELEASE_SIGNATURE="${SCENE_SIGNING_NUMBER}"
 printf 'stty=%s\n' "$(stty size)" >/tmp/geom
-cd "${SCENE_CWD:-/sandbox/home/demo}" || cd /
+cd "${SCENE_CWD}" || cd /
 exec script -q -f -c "${SCENE_COMMAND}" /tmp/app-out.raw 2>/tmp/app-stderr.log
 BOOT
 chmod +x /tmp/bootstrap.sh
@@ -179,6 +164,8 @@ PGID="$(id -g "${PUSER}")"
 getent group "${SCENE_RENDER_GID:-993}" >/dev/null 2>&1 ||
 	groupadd -g "${SCENE_RENDER_GID:-993}" rendernode
 usermod -aG "${SCENE_RENDER_GID:-993}" "${PUSER}"
+usermod -aG video "${PUSER}" 2>/dev/null || true
+chmod 666 /dev/dri/* 2>/dev/null || true
 mkdir -p /tmp/xdg
 chmod 700 /tmp/xdg
 chown -R "${PUID}:${PGID}" /tmp/xdg "${OUT}"
@@ -210,7 +197,7 @@ export SWAYSOCK="${XDG_RUNTIME_DIR}/sway-ipc.$(id -u).${SWAY_PID}.sock"
 ready=0
 for _ in $(seq 1 120); do
 	kill -0 "${SWAY_PID}" 2>/dev/null || break
-	if grim -o "${SCENE_OUTPUT:-HEADLESS-1}" /tmp/ready.png >/dev/null 2>&1; then
+	if grim -o "${SCENE_OUTPUT}" /tmp/ready.png >/dev/null 2>&1; then
 		ready=1
 		break
 	fi
@@ -221,7 +208,7 @@ if [ "${ready}" != 1 ]; then
 	tail -25 /tmp/sway.log >&2
 	exit 1
 fi
-echo "chrome: swayfx radius ${SCENE_RADIUS:-26} blur ${SCENE_BLUR_PASSES:-3}x${SCENE_BLUR_RADIUS:-5} shadow ${SCENE_SHADOW_BLUR:-44} composited the output" >&2
+echo "chrome: swayfx radius ${SCENE_RADIUS} blur ${SCENE_BLUR_PASSES}x${SCENE_BLUR_RADIUS} shadow ${SCENE_SHADOW_BLUR} composited the output" >&2
 
 kitty --hold --listen-on unix:/tmp/kitty.sock /tmp/bootstrap.sh >/tmp/term.log 2>&1 &
 KITTY_PID=$!
@@ -239,7 +226,7 @@ done
 
 # wf-recorder takes its frames through wlr-screencopy, the same protocol grim
 # uses, so a still and the video frame at that second are the same pixels.
-wf-recorder -o "${SCENE_OUTPUT:-HEADLESS-1}" -f "${SCENE_VIDEO}" -r "${SCENE_FPS:-30}" \
+wf-recorder -o "${SCENE_OUTPUT}" -f "${SCENE_VIDEO}" -r "${SCENE_FPS}" \
 	-c libx264 -p preset=veryfast -p crf=20 --no-damage >/tmp/wf.log 2>&1 &
 WF_PID=$!
 sleep 1
@@ -257,6 +244,16 @@ cleanup() {
 	# leaves an mp4 with no moov atom, which plays nowhere.
 	kill -INT "${WF_PID}" 2>/dev/null || true
 	wait "${WF_PID}" 2>/dev/null || true
+	# Judge the take on motion, not on the header it was written with. wf-recorder
+	# reports the rate it was asked for whatever the compositor actually handed it,
+	# so an mp4 that plays as three frames a second is indistinguishable from a
+	# smooth one until the unique frames are counted. The X path has been gated
+	# since the blur was found; a Wayland take that is never measured is the same
+	# defect waiting on a different display server.
+	local motion_failed=0
+	if [ "${SCENE_MOTION_GATE}" = "1" ]; then
+		bash "${SCENE_MOTION_GATE_BIN}" "${SCENE_VIDEO}" >&2 || motion_failed=1
+	fi
 	kill "${KITTY_PID}" 2>/dev/null || true
 	swaymsg exit >/dev/null 2>&1 || kill "${SWAY_PID}" 2>/dev/null || true
 	# The container is gone the moment this returns, and with it every reason a
@@ -267,6 +264,11 @@ cleanup() {
 		[ -s "${log}" ] && cp -f "${log}" "${SCENE_OUT}/${SCENE_NAME}-$(basename "${log}")" 2>/dev/null
 	done
 	type magick_tmpdir_release >/dev/null 2>&1 && magick_tmpdir_release || true
+	# The verdict is taken after the artifacts are out, so a failed take is still a
+	# take somebody can look at, and `exit` here rather than `return` because an
+	# EXIT trap that only returns leaves the status the run already had -- which is
+	# success, which is how an unwatchable take reports as a good one.
+	if [ "${motion_failed}" = "1" ]; then exit 1; fi
 	return 0
 }
 trap cleanup EXIT
@@ -282,7 +284,7 @@ export SCENE_WIN_Y="${SCENE_MARGIN_PX}"
 _WL_PTR_X=$((SCENE_MARGIN_PX + SCENE_TW / 2))
 _WL_PTR_Y=$((SCENE_MARGIN_PX + SCENE_TH / 2))
 export _WL_PTR_X _WL_PTR_Y
-swaymsg -- seat "${SCENE_SEAT:-seat0}" cursor set "${_WL_PTR_X}" "${_WL_PTR_Y}" >/dev/null 2>&1 || true
+swaymsg -- seat "${SCENE_SEAT}" cursor set "${_WL_PTR_X}" "${_WL_PTR_Y}" >/dev/null 2>&1 || true
 
 # shellcheck disable=SC1090
 source "${SCENE_LIB:-/repo/proof/scenes/lib.sh}"
@@ -295,30 +297,18 @@ trap - EXIT
 SESSION
 chown "${PUID}:${PGID}" /tmp/session.sh
 
+scene_env_pairs
 setpriv --reuid "${PUID}" --regid "${PGID}" --init-groups --inh-caps=-all \
 	env "HOME=${SESSION_HOME}" PATH=/opt/glass/bin:/usr/local/bin:/usr/bin:/bin \
 	"SCENE_FILE=${SCENE}" "SCENE_NAME=${NAME}" "SCENE_OUT=${OUT}" \
 	"SCENE_VIDEO=${OUT}/${NAME}.mp4" "SCENE_TW=${TW}" "SCENE_TH=${TH}" \
 	"SCENE_MARGIN_PX=${MARGIN}" "SCENE_FPS=${FPS}" \
-	"SCENE_OUTPUT=${SCENE_OUTPUT:-HEADLESS-1}" \
 	"SCENE_RENDER_NODE=${SCENE_RENDER_NODE:-/dev/dri/renderD128}" \
-	"SCENE_RADIUS=${SCENE_RADIUS:-26}" \
-	"SCENE_BLUR_PASSES=${SCENE_BLUR_PASSES:-3}" \
-	"SCENE_BLUR_RADIUS=${SCENE_BLUR_RADIUS:-5}" \
-	"SCENE_SHADOW_BLUR=${SCENE_SHADOW_BLUR:-44}" \
-	"SCENE_COMMAND=${SCENE_COMMAND:-bun /repo/packages/coding-agent/src/cli.ts}" \
-	"SCENE_CWD=${SCENE_CWD:-/sandbox/home/demo}" \
-	"SCENE_PADDING=${SCENE_PADDING:-8}" \
-	"SCENE_SETTLE_SCALE=${SCENE_SETTLE_SCALE:-1}" \
-	"SCENE_SIGNING_NUMBER=${SCENE_SIGNING_NUMBER:-}" \
-	"SCENE_LIB=${SCENE_LIB:-/repo/proof/scenes/lib.sh}" \
+	"${SCENE_ENV_PAIRS[@]}" \
 	"LOCAL_LLM_KEY=${LOCAL_LLM_KEY:-none}" \
 	"PROOF_LLM_BASE_URL=${PROOF_LLM_BASE_URL:-}" \
 	"VEYYON_DEMO_SECRET=${VEYYON_DEMO_SECRET:-}" \
-	"SCENE_HIDE_THINKING=${SCENE_HIDE_THINKING:-}" \
-	"SCENE_SETTINGS=${SCENE_SETTINGS:-}" \
-	"SCENE_THEME=${SCENE_THEME:-plain}" \
-	"SCENE_BG=${SCENE_BG:-#1e2127}" "SCENE_FG=${SCENE_FG:-#d7dae0}" \
+	"SCENE_LIB=${SCENE_LIB:-/repo/proof/scenes/lib.sh}" \
 	"TYPE_DELAY=${TYPE_DELAY:-}" \
 	"SCENE_TYPING_REPEAT=${SCENE_TYPING_REPEAT:-}" \
 	"TERM=xterm-kitty" "COLORTERM=truecolor" "LANG=C.UTF-8" "LC_ALL=C.UTF-8" \

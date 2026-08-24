@@ -154,7 +154,7 @@ function verifyMissedIsFatal(scene: string, findings: Finding[], name: string): 
  */
 function typedByScene(scene: string): string {
 	const typed: string[] = [];
-	for (const match of scene.matchAll(/(?:submit|slash|type|type_line)\s+"([^"]*)"/g)) {
+	for (const match of scene.matchAll(/(?:submit|slash|type|type_line|type_visible|type_human)\s+"([^"]*)"/g)) {
 		typed.push(match[1]);
 	}
 	return typed.join("\n");

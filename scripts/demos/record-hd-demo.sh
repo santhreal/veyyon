@@ -20,13 +20,20 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "${REPO_ROOT}"
 
-: "${PROOF_LLM_BASE_URL:?set PROOF_LLM_BASE_URL to an OpenAI-compatible endpoint}"
-# Qwen3.8 27B, served locally through the distinct 96k model row. The window is
-# part of the proof: one goal carries the plan, parallel implementation, tests,
-# compiled binary, protected signing, and final simulator presentation without
-# an operator prompt restarting the task.
+# Local takes need an OpenAI-compatible loopback. A cloud model (Gemini, …) talks
+# to its own endpoint and does not.
 DEMO_MODEL="${DEMO_MODEL:-local/demo-qwen38-27b-96k}"
 SCENE="${1:-demo-hd}"
+CLOUD_MODEL=0
+case "${DEMO_MODEL}" in
+local/*) CLOUD_MODEL=0 ;;
+*) CLOUD_MODEL=1 ;;
+esac
+if [[ ${CLOUD_MODEL} -eq 0 ]]; then
+	: "${PROOF_LLM_BASE_URL:?set PROOF_LLM_BASE_URL to an OpenAI-compatible endpoint}"
+else
+	PROOF_LLM_BASE_URL="${PROOF_LLM_BASE_URL:-}"
+fi
 
 # WHICH DISPLAY SERVER RECORDS THE TAKE. `x11` is picom's frosted backdrop behind an
 # opaque window, which is every frame published so far; `wayland` is swayfx, where the
@@ -52,6 +59,11 @@ CAPTURES="proof/captures/${DEMO_SERVER}"
 # The terminal runs the app unless a scene needs a shell, which one of them does.
 SCENE_WORKDIR="${SCENE_CWD:-/sandbox/home/demo}"
 SCENE_CMD="bun /repo/packages/coding-agent/src/cli.ts --model ${DEMO_MODEL}"
+# Cloud rows can drop thinking effort so the take is a session, not a thinking
+# stream. Gemini 3.7 Flash honours `low`.
+if [[ -n "${DEMO_THINKING:-}" ]]; then
+	SCENE_CMD="${SCENE_CMD} --thinking ${DEMO_THINKING}"
+fi
 # A row shows the block, the card or the diff, and this model reasons in pages, so
 # every scene records with `Hide Thinking Blocks` on -- the hero included, which is
 # a reversal. The hero ran once with thinking shown, on the theory that a session
@@ -77,6 +89,23 @@ ZOOM_ARGS=()
 case "${SCENE}" in
 demo-hd)
 	ASSET=assets/demo-hd.webp
+	ZOOM_ARGS=()
+	# 30, because 30 is what the pipeline delivers whole and 60 is not. Measured in
+	# the recorder image at 2560x1440 with the hero's own chrome, a payload
+	# repainting every cell of the 134x31 grid as fast as the terminal accepts it,
+	# unique frames counted with mpdecimate:
+	#
+	#   capture 30, themed, idle          240 unique / 240 grabbed   30 fps
+	#   capture 30, themed, 12 cores busy 223 unique / 240 grabbed   27 fps
+	#   capture 30, no compositor, idle   240 unique / 240 grabbed   30 fps
+	#
+	# Every frame distinct at 30. Capturing at 60 does not add motion the session
+	# never had: it doubles the encoder's core count and the file, and it writes a
+	# 60 fps header over content that changes far slower, which is what made an
+	# earlier take read as "60 fps but stuttering" when ffprobe was believed over
+	# the pixels. Judge a take with proof/motion-gate.sh, never with the header.
+	SCENE_FPS=30
+	CADENCE_MS=33
 	# The hero also ships whole. The task runs for many minutes and the landing
 	# page gets a dense cut, so both are published and the cut can be checked
 	# against the complete autonomous goal session.
@@ -100,7 +129,7 @@ demo-hd)
 	CUT_WIDTH=1920
 	WEBP_WIDTH=1920
 	CUT_ARGS=(
-		--speed 1.25
+		--speed 6
 		--edge-speed 1.0
 		--real-through-mark agent-lanes
 		--real-from-mark build-verified
@@ -109,6 +138,9 @@ demo-hd)
 		--crf 26
 		--still-keep 4
 		--still-min 4
+		--speed-badge
+		--fps "${SCENE_FPS}"
+		--webp-fps "${SCENE_FPS}"
 	)
 	;;
 todo-marathon)
@@ -343,6 +375,16 @@ else
 	exit 2
 fi
 
+# The coding agent imports a gitignored html bundle at parse time. A worktree
+# without it opens the terminal, then the CLI dies, and the recorder reports
+# that no window ever appeared.
+if [[ ! -f packages/coding-agent/src/export/html/tool-views.generated.js ]]; then
+	"${BUN}" --cwd=packages/collab-web run gen:tool-views
+fi
+if [[ ! -f packages/natives/native/veyyon_natives.linux-x64-modern.node && ! -f packages/natives/native/veyyon_natives.linux-x64-baseline.node ]]; then
+	"${BUN}" --cwd=packages/natives run ensure
+fi
+
 # WHAT A MARKS FILE IS FOR HERE. The scene appends one row per frame that landed, so it is an
 # independent record of what the take captured. Both publish paths below copy the PNGs that
 # exist and nothing else, which means a shot that never landed does not fail a run: it leaves
@@ -385,6 +427,7 @@ require_every_mark_has_a_frame() {
 # panel), which is minutes of a take spent proving nothing.
 "${BUN}" scripts/verify-scene.ts "${SCENE}" >&2
 
+if [[ ${CLOUD_MODEL} -eq 0 ]]; then
 # WHICH MODEL, AND WHERE IT IS. The take is recorded on the host serving the weights, so the
 # endpoint is a loopback address; a base URL pointing at another machine means the session's
 # every token crosses a network the recording then blames for its pauses. Naming it here is
@@ -408,12 +451,6 @@ if [[ -n "${SERVED_MODELS}" ]] && ! printf '%s' "${SERVED_MODELS}" | grep -qF "$
 	exit 1
 fi
 
-# The number the session signs with, generated per run so a published frame pins one
-# specific digest and the check is reproducible rather than decorative. It is passed into
-# the container as an environment variable and stored there with `/secret from-env`, so it
-# is typed nowhere and reaches the transcript never.
-SIGNING_NUMBER="${SIGNING_NUMBER:-$(printf '%04d-%04d-%04d' $((RANDOM % 10000)) $((RANDOM % 10000)) $((RANDOM % 10000)))}"
-
 # Warm the server before anything is recorded. The first request against a freshly
 # loaded model pays for prompt evaluation, and a scene that pays for it on screen opens
 # on a spinner -- which every row used to do, by spending its first turn asking the model
@@ -423,6 +460,20 @@ curl -s --max-time 180 "${PROOF_LLM_BASE_URL%/}/chat/completions" \
 	-H 'content-type: application/json' \
 	-d "{\"model\":\"${DEMO_MODEL#local/}\",\"messages\":[{\"role\":\"user\",\"content\":\"warm\"}],\"max_tokens\":4}" \
 	>/dev/null || echo "record-hd-demo.sh: warm-up request failed; the row may open on a spinner" >&2
+
+else
+	echo "record-hd-demo.sh: cloud model ${DEMO_MODEL}${DEMO_THINKING:+ thinking ${DEMO_THINKING}}" >&2
+	MODEL_IS_LOCAL=0
+	if [[ -d "${HOME}/.veyyon/shared-auth" ]]; then
+		export PROOF_AUTH_DIR="${PROOF_AUTH_DIR:-${HOME}/.veyyon/shared-auth}"
+	fi
+fi
+
+# The number the session signs with, generated per run so a published frame pins one
+# specific digest and the check is reproducible rather than decorative. It is passed into
+# the container as an environment variable and stored there with `/secret from-env`, so it
+# is typed nowhere and reaches the transcript never.
+SIGNING_NUMBER="${SIGNING_NUMBER:-$(printf '%04d-%04d-%04d' $((RANDOM % 10000)) $((RANDOM % 10000)) $((RANDOM % 10000)))}"
 
 # WHAT DROVE THE TAKE, written beside it. A published frame is a claim about a model, and the
 # only record of which row and which endpoint produced it used to be whatever the operator
@@ -442,9 +493,10 @@ PROOF_LLM_BASE_URL="${PROOF_LLM_BASE_URL}" \
 	SCENE_COMMAND="${SCENE_CMD}" \
 	SCENE_THEME=night \
 	SCENE_WIDTH=2560 \
+	SCENE_FPS="${SCENE_FPS:-30}" \
 	SCENE_HEIGHT=1440 \
-	SCENE_MARGIN=128 \
-	SCENE_FONT_SIZE=21 \
+	SCENE_MARGIN="${SCENE_MARGIN:-128}" \
+	SCENE_FONT_SIZE="${SCENE_FONT_SIZE:-15}" \
 	SCENE_BG="#171b22" \
 	SCENE_FG="#d3dae6" \
 	SCENE_CWD="${SCENE_WORKDIR}" \
@@ -541,15 +593,28 @@ fi
 # every frame and the recorded rate, so the gate below still reads the capture's own cadence,
 # and the archived whole take stays as it was recorded.
 CUT_SOURCE="${WORK}/${SCENE}.mp4"
+CUES="${WORK}/${SCENE}-cues.txt"
+if [[ -f "${CUES}" ]]; then
+	ZOOM_ARGS+=(--cues "${CUES}")
+fi
 if [[ ${#ZOOM_ARGS[@]} -gt 0 ]]; then
 	ZOOM_SOURCE="${WORK}/${SCENE}-zoomed.mp4"
 	if [[ -f "${MARKS}" && ! " ${ZOOM_ARGS[*]} " =~ " --marks " ]]; then
 		ZOOM_ARGS+=(--marks "${MARKS}")
 	fi
+	if [[ ! " ${ZOOM_ARGS[*]} " =~ " --fps " ]]; then
+		ZOOM_ARGS+=(--fps "${SCENE_FPS:-30}")
+	fi
 	python3 proof/zoom.py "${CUT_SOURCE}" "${ZOOM_SOURCE}" "${ZOOM_ARGS[@]}" || {
 		echo "record-hd-demo.sh: the zoom stage found no region to hold; publishing nothing" >&2
 		exit 1
 	}
+	if [[ -f "${CUES}" ]]; then
+		python3 proof/glyph-height.py "${CUT_SOURCE}" --cues "${CUES}" --fps "${SCENE_FPS:-30}" || {
+			echo "record-hd-demo.sh: the secret hold is not 2x the wide shot; publishing nothing" >&2
+			exit 1
+		}
+	fi
 	CUT_SOURCE="${ZOOM_SOURCE}"
 fi
 # EVERY run cuts into the work directory, and a real one copies out of it afterwards. The
@@ -562,16 +627,17 @@ python3 proof/hero-cut.py "${CUT_SOURCE}" \
 	--width "${CUT_WIDTH:-2560}" --webp-width "${WEBP_WIDTH:-1920}" "${CUT_ARGS[@]}"
 
 # THE CADENCE IS PART OF THE PUBLISH CONTRACT, not a thing to notice afterwards. Both
-# display servers record at 30 fps, so the typical frame of anything published from a take
-# holds 33ms. The hero shipped at a 7.7 fps average because the path resampled it twice and
-# nothing here was looking: it read as a laggy product rather than as a resampled file.
+# display servers record at SCENE_FPS, which proof/docker/scene-config.sh defines once
+# as 30, so the typical frame of anything published from a take holds 33ms. The hero
+# shipped at a 7.7 fps average because the path resampled it twice and nothing here was
+# looking: it read as a laggy product rather than as a resampled file.
 #
-# The gate then passed a take that averaged 14.2 fps, because it read only the most common
-# frame and 33ms was the most common frame at 44% while the other 56% held for two or three
-# intervals. It now also gates the MOVING portion of the clip against the capture rate, with
-# held still screens named and set aside, so a file that is mostly slower than its most
-# common frame cannot pass. `--expect-ms` supplies both criteria.
-python3 proof/webp-cadence.py "${CUT_WEBP}" --expect-ms 33 || {
+# The gate then passed a take that averaged 14.2 fps, because it read only the most
+# common frame: 44% held 33ms while the rest held for two or more intervals. The gate
+# now requires both an average within 20% of capture and 85% of moving frames at the
+# capture interval. Normal keyboard, spinner and token pauses fit both; a clip whose
+# fast mode hides frequent short holds does not. `--expect-ms` supplies all criteria.
+python3 proof/webp-cadence.py "${CUT_WEBP}" --expect-ms "${CADENCE_MS:-33}" || {
 	echo "record-hd-demo.sh: refusing to publish a clip that is not the cadence the recorder captured" >&2
 	exit 1
 }
