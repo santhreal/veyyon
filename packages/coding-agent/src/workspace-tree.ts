@@ -82,6 +82,92 @@ export async function buildDirectoryTree(cwd: string, options: BuildDirectoryTre
 	});
 }
 
+export interface TopLevelDirectoryListing extends DirectoryTree {
+	/** Top-level entries omitted by `entryLimit`. */
+	omittedTopLevel: number;
+}
+
+export interface BuildTopLevelDirectoryListingOptions {
+	/** Top-level entry cap. `null` disables the cap. Default: `null`. */
+	entryLimit?: number | null;
+}
+
+/**
+ * Build a concise, depth-1 listing of a directory: every top-level entry on
+ * one line, each subdirectory annotated with its direct-child count. The scan
+ * still walks two levels so the counts come from the same native pass; nothing
+ * below the top level is rendered. Used by the read tool's default listing of
+ * the session working directory root, where the model usually needs the
+ * top-level convention rather than a recursive tree.
+ */
+export async function buildTopLevelDirectoryListing(
+	cwd: string,
+	options: BuildTopLevelDirectoryListingOptions = {},
+): Promise<TopLevelDirectoryListing> {
+	const rootPath = path.resolve(cwd);
+	const entryLimit = options.entryLimit === undefined ? null : options.entryLimit;
+
+	let entries: readonly GlobMatch[];
+	let nativeTruncated: boolean;
+	try {
+		const result = await listWorkspace({
+			path: rootPath,
+			maxDepth: 2,
+			hidden: true,
+			gitignore: false,
+		});
+		entries = result.entries;
+		nativeTruncated = result.truncated;
+	} catch {
+		return { ...emptyTree(rootPath), omittedTopLevel: 0 };
+	}
+
+	// Direct-child count per top-level directory, from the same depth-2 scan.
+	const childCounts = new Map<string, number>();
+	const topLevel: Array<{ name: string; isDir: boolean; mtimeMs: number; size: number }> = [];
+	for (const entry of entries) {
+		const slash = entry.path.lastIndexOf("/");
+		const parentPath = slash === -1 ? "" : entry.path.slice(0, slash);
+		if (parentPath === "") {
+			topLevel.push({
+				name: entry.path,
+				isDir: entry.fileType === FileType.Dir,
+				mtimeMs: entry.mtime ?? 0,
+				size: entry.size ?? 0,
+			});
+		} else if (!parentPath.includes("/")) {
+			childCounts.set(parentPath, (childCounts.get(parentPath) ?? 0) + 1);
+		}
+	}
+	topLevel.sort((a, b) => b.mtimeMs - a.mtimeMs || a.name.localeCompare(b.name));
+
+	const capped = entryLimit !== null && topLevel.length > entryLimit;
+	const shown = capped && entryLimit !== null ? topLevel.slice(0, entryLimit) : topLevel;
+	const omitted = topLevel.length - shown.length;
+
+	const formatNodeAge = makeAgeFormatter("relative");
+	const lines: RenderedLine[] = [{ label: ".", depth: 0, isRoot: true }];
+	for (const node of shown) {
+		const count = childCounts.get(node.name) ?? 0;
+		const countText = node.isDir ? `  (${count} ${count === 1 ? "entry" : "entries"})` : "";
+		lines.push({
+			label: `  - ${node.name}${node.isDir ? "/" : ""}${countText}`,
+			depth: 1,
+			isRoot: false,
+			size: node.isDir ? undefined : formatBytes(node.size),
+			age: formatNodeAge(node.mtimeMs),
+		});
+	}
+
+	return {
+		rootPath,
+		rendered: formatLines(lines),
+		truncated: nativeTruncated || capped,
+		totalLines: lines.length,
+		omittedTopLevel: omitted,
+	};
+}
+
 /**
  * Build the workspace tree shown in the system prompt. Returns the rendered
  * tree plus the AGENTS.md files surfaced by the same native walk so callers
