@@ -42,7 +42,14 @@ mod the_regression {
 			let once = condense_lint_output(program, "0\n0\n", 1);
 			let twice = condense_lint_output(program, &once, 1);
 
-			assert_eq!(once, "0 (×2)\n", "{program} should collapse two identical lines with a count");
+			assert!(
+				once.ends_with("0 (×2)\n"),
+				"{program} should collapse two identical lines with a count, got {once:?}"
+			);
+			assert!(
+				once.starts_with("[errors] "),
+				"{program} classified output should open with the result contract, got {once:?}"
+			);
 			assert_eq!(twice, once, "{program} changed its own output on a second pass");
 		}
 	}

@@ -36,7 +36,7 @@ import {
 	formatAdvisorContextPrompt,
 } from "./advisor";
 import { armArgotAfterStartup } from "./argot-cache";
-import { type AsyncJob, AsyncJobManager, type AsyncJobType } from "./async";
+import { AsyncJobManager, type AsyncJobType } from "./async";
 import { AutoLearnController, buildAutoLearnInstructions } from "./autolearn/controller";
 import { type CapabilityResult, loadCapability } from "./capability";
 import { type Rule, ruleCapability, setActiveRules } from "./capability/rule";
@@ -64,6 +64,7 @@ import { loadPromptTemplates as loadPromptTemplatesInternal, type PromptTemplate
 import { buildServiceTierByFamily } from "./config/service-tier";
 import { Settings, type SkillsSettings } from "./config/settings";
 import { CursorExecHandlers, cursorContextFileRules, usesCursorRuleDelivery } from "./cursor";
+import { TtsrManager } from "./export/ttsr";
 import { DEFAULT_PLAN_FILE_URL } from "./plan-mode/plan-file-url";
 import { resolveGateInputs, resolveIntentField } from "./system-prompt-builder/gate-inputs";
 import "./discovery";
@@ -156,6 +157,7 @@ import { resolveVaultLocations, type ScopedVaultEntry, SecretVault, vaultPathFor
 import { loadOrCreateVaultKey, vaultKeyPath } from "./secrets/vault-crypto";
 import {
 	AgentSession,
+	type AsyncResultEntry,
 	obfuscateProviderPayload,
 	type PlanYolo,
 	type Prewalk,
@@ -246,13 +248,6 @@ import {
 	setPreferredSearchProvider,
 } from "./web/search";
 import { buildWorkspaceTree, type WorkspaceTree } from "./workspace-tree";
-
-type AsyncResultEntry = {
-	jobId: string;
-	result: string;
-	job: AsyncJob | undefined;
-	durationMs: number | undefined;
-};
 
 type AsyncResultJobDetails = {
 	jobId: string;
@@ -1646,6 +1641,16 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 					vaultRevision: undefined,
 				};
 			}
+			// The key read depends only on `globalConfigRoot`, so start it before the
+			// secrets/env/vault entry loads below. Capture either outcome immediately:
+			// the independent reads can span multiple event-loop turns, and a raw
+			// rejection before the later await would otherwise be reported as unhandled.
+			const placeholderKeyResultPromise = logger
+				.time("loadSecretPlaceholderKey", () => loadOrCreateVaultKey(globalConfigRoot))
+				.then(
+					value => ({ ok: true as const, value }),
+					error => ({ ok: false as const, error }),
+				);
 
 			const fileEntries = await logger.time("loadSecrets", loadSecrets, runtimeCwd, agentDir);
 			const envKeywords = await logger.time("loadEnvSecretKeywords", () =>
@@ -1710,14 +1715,13 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				}
 			}
 
-			let placeholderKey: Buffer;
-			try {
-				placeholderKey = await logger.time("loadSecretPlaceholderKey", () =>
-					loadOrCreateVaultKey(globalConfigRoot),
-				);
-			} catch (error) {
-				throw new Error(secretProtectionUnavailableMessage(globalConfigRoot), { cause: error });
+			const placeholderKeyResult = await placeholderKeyResultPromise;
+			if (!placeholderKeyResult.ok) {
+				throw new Error(secretProtectionUnavailableMessage(globalConfigRoot), {
+					cause: placeholderKeyResult.error,
+				});
 			}
+			const placeholderKey = placeholderKeyResult.value;
 			const vaultRevision = vault.revision();
 			const nextObfuscator = new SecretObfuscator([...envEntries, ...fileEntries, ...vaultEntries], {
 				placeholderKey,
@@ -2075,6 +2079,35 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			existingBranch = logger.time("getRecoveredSessionBranch", () => sessionManager.getBranch());
 		}
 		let existingSession = logger.time("loadSessionContext", () => sessionManager.buildSessionContext());
+		// Rules discovery shares no inputs with model resolution and prompt assembly between
+		// here and its consumer below, so start it now and let the scan overlap that work
+		// instead of trailing the skills await serially. Capture rejection immediately:
+		// model resolution below can span event-loop turns before this result is consumed.
+		const ttsrRulesResultPromise = logger
+			.time("discoverTtsrRules", async () => {
+				const ttsrSettings = settings.getGroup("ttsr");
+				// `getCwd` is a live getter, not `cwd`: a rule with a `pathScope` compares the match
+				// against the CURRENT working directory, and `set_cwd` moves it mid-session.
+				const ttsrManager = new TtsrManager(ttsrSettings, { getCwd: () => sessionManager.getCwd() });
+				const rulesResult =
+					options.rules !== undefined
+						? { items: options.rules, warnings: undefined }
+						: await discoverRules(cwd, agentDir);
+				const { rulebookRules, alwaysApplyRules } = bucketRules(rulesResult.items, ttsrManager, {
+					builtinRules: ttsrSettings.builtinRules,
+					disabledRules: ttsrSettings.disabledRules,
+					experimentalRules: ttsrSettings.experimentalRules,
+				});
+				if (existingSession.injectedTtsrRules.length > 0) {
+					ttsrManager.restoreInjected(existingSession.injectedTtsrRules);
+				}
+				return { ttsrManager, rulebookRules, alwaysApplyRules, allRules: rulesResult.items };
+			})
+			.then(
+				value => ({ ok: true as const, value }),
+				error => ({ ok: false as const, error }),
+			);
+
 		// Decode-only re-arm on resume. Persisted history keeps cheap handles (the
 		// token win), so a resumed branch can hold `§handle` tokens from argot_load
 		// calls in earlier sessions; the display/export seams can only expand them
@@ -2231,29 +2264,10 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		}
 
 		// Discover rules and bucket them in one pass to avoid repeated scans over large rule sets.
-		const { ttsrManager, rulebookRules, alwaysApplyRules, allRules } = await logger.time(
-			"discoverTtsrRules",
-			async () => {
-				const { TtsrManager } = await import("./export/ttsr");
-				const ttsrSettings = settings.getGroup("ttsr");
-				// `getCwd` is a live getter, not `cwd`: a rule with a `pathScope` compares the match
-				// against the CURRENT working directory, and `set_cwd` moves it mid-session.
-				const ttsrManager = new TtsrManager(ttsrSettings, { getCwd: () => sessionManager.getCwd() });
-				const rulesResult =
-					options.rules !== undefined
-						? { items: options.rules, warnings: undefined }
-						: await discoverRules(cwd, agentDir);
-				const { rulebookRules, alwaysApplyRules } = bucketRules(rulesResult.items, ttsrManager, {
-					builtinRules: ttsrSettings.builtinRules,
-					disabledRules: ttsrSettings.disabledRules,
-					experimentalRules: ttsrSettings.experimentalRules,
-				});
-				if (existingSession.injectedTtsrRules.length > 0) {
-					ttsrManager.restoreInjected(existingSession.injectedTtsrRules);
-				}
-				return { ttsrManager, rulebookRules, alwaysApplyRules, allRules: rulesResult.items };
-			},
-		);
+		// Started above so the scan overlaps model resolution and prompt assembly.
+		const ttsrRulesResult = await ttsrRulesResultPromise;
+		if (!ttsrRulesResult.ok) throw ttsrRulesResult.error;
+		const { ttsrManager, rulebookRules, alwaysApplyRules, allRules } = ttsrRulesResult.value;
 
 		// Resolve contextFiles up-front (it's needed before tool creation). The
 		// workspace tree scan is slow on large repos and we MUST NOT block startup on
@@ -2422,13 +2436,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 							const formattedResult = await formatAsyncResultForFollowUp(result);
 							if (asyncJobManager!.isDeliverySuppressed(jobId)) return;
 
-							const durationMs = job ? Math.max(0, Date.now() - job.startTime) : undefined;
-							session.yieldQueue.enqueue<AsyncResultEntry>("async-result", {
-								jobId,
-								result: formattedResult,
-								job,
-								durationMs,
-							});
+							session.deliverAsyncJobResult(jobId, formattedResult, job);
 						},
 					})
 				: undefined;

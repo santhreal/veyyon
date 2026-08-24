@@ -43,7 +43,7 @@ const KNOWN_HOSTS: Record<string, (pathname: string, hash: string) => { user: st
  * their canonical host. `PluginManager.install` normalizes non-GitHub prefixes
  * before invoking bun because bun only treats `github:` as a hosted shorthand.
  */
-const SHORTHAND_PREFIXES: Record<string, string> = {
+export const SHORTHAND_PREFIXES: Record<string, string> = {
 	github: "github.com",
 	gitlab: "gitlab.com",
 	bitbucket: "bitbucket.org",

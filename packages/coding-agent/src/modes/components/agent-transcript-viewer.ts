@@ -34,7 +34,7 @@ import { errorMessage, formatDuration, formatNumber, logger } from "@veyyon/util
 import type { KeyId } from "../../config/keybindings";
 import type { MessageRenderer } from "../../extensibility/extensions/types";
 import type { AgentLifecycleManager } from "../../registry/agent-lifecycle";
-import type { AgentRegistry, AgentStatus } from "../../registry/agent-registry";
+import type { AgentRegistry } from "../../registry/agent-registry";
 import type { FileEntry, SessionMessageEntry } from "../../session/session-entries";
 import { parseSessionEntries } from "../../session/session-loader";
 import { replaceTabs, shortenPath, truncateToWidth } from "../../tools/render-utils";
@@ -48,7 +48,7 @@ import { COMPOSER_INSET_COLS } from "./composer-chrome";
 // footer share one gutter.
 const RAIL_PAD = " ".repeat(COMPOSER_INSET_COLS);
 
-import { agentStatusWord } from "./agent-status-display";
+import { type AgentDisplayState, agentDisplayState, agentStatusWord } from "./agent-status-display";
 import { ChatTranscriptBuilder } from "./chat-transcript-builder";
 import {
 	computeModalDims,
@@ -641,7 +641,14 @@ export class AgentTranscriptViewer implements Component {
 		const innerWidth = Math.max(20, contentWidth - COMPOSER_INSET_COLS);
 		const ref = this.deps.registry.get(this.deps.agentId);
 
-		const headerLines = this.#headerLines(ref?.status, ref?.kind, ref?.parentId);
+		const state = ref
+			? agentDisplayState({
+					status: ref.status,
+					waitingOnPeer: ref.waitingOnPeer,
+					blockedOnApproval: ref.pendingApproval !== undefined,
+				})
+			: undefined;
+		const headerLines = this.#headerLines(state, ref?.kind, ref?.parentId);
 		const noticeLine = this.#notice
 			? theme.fg("error", sanitizeErrorLine(this.#notice, innerWidth))
 			: this.#remoteError && !this.#builder.isEmpty
@@ -705,7 +712,11 @@ export class AgentTranscriptViewer implements Component {
 		return chips;
 	}
 
-	#headerLines(status: AgentStatus | undefined, kind: string | undefined, parentId: string | undefined): string[] {
+	#headerLines(
+		status: AgentDisplayState | undefined,
+		kind: string | undefined,
+		parentId: string | undefined,
+	): string[] {
 		// "Transcript", not the name of the screen that opened it. This viewer is
 		// reached from the Agent Control Center, and titling it with the surface it
 		// came from told the reader where they had been rather than what they were

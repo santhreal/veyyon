@@ -4,7 +4,7 @@
 
 ### Fixed
 
-- A wrapped line now continues under the indent its first row opened at, so an indented row no longer reads as a new top-level row at a narrow width.
+- An indented row inside a tool block keeps its indent when it wraps at a narrow width, instead of continuing at the block's left edge.
 
 ## [1.2.0] - 2026-08-23
 

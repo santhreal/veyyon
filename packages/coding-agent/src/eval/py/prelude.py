@@ -4,7 +4,7 @@ from __future__ import annotations
 if "__veyyon_prelude_loaded__" not in globals():
     __veyyon_prelude_loaded__ = True
     from pathlib import Path
-    import os, json, math, re
+    import os, json, math, re, time, uuid, hashlib
     from urllib.parse import unquote
 
     INTENT_FIELD = "i"
@@ -55,6 +55,330 @@ if "__veyyon_prelude_loaded__" not in globals():
         val = os.environ.get(key)
         _emit_status("env", key=key, value=val, action="get")
         return val
+
+    _KV_VALUE_SIZE_LIMIT = 256 * 1024
+    _KV_STORE_SIZE_LIMIT = 4 * 1024 * 1024
+    _KV_STORE_VERSION = 1
+
+    def _kv_store_path() -> Path:
+        """The file every kernel of this session shares: `<artifacts>/kernel-store/<session>.json`."""
+        artifacts = os.environ.get("VEYYON_ARTIFACTS_DIR")
+        session = (
+            os.environ.get("VEYYON_EVAL_SESSION_ID")
+            or os.environ.get("VEYYON_TOOL_BRIDGE_SESSION")
+            or "session"
+        )
+        if not artifacts:
+            raise RuntimeError(
+                "kv needs a session artifacts directory and this session has none; "
+                "the store lives next to the session's artifacts so it outlives the kernel"
+            )
+        prefix = re.sub(r"[^A-Za-z0-9._-]", "_", session)[:32]
+        hash_hex = hashlib.sha256(session.encode("utf-8")).hexdigest()
+        file_name = f"{prefix}_{hash_hex}.json" if prefix else f"{hash_hex}.json"
+        return Path(artifacts) / "kernel-store" / file_name
+
+    def _kv_check_key(key):
+        if not isinstance(key, str) or not 1 <= len(key) <= 256 or re.search(r"[\\/\x00]", key):
+            raise ValueError("kv keys are 1-256 characters and contain no path separators or NUL bytes")
+
+    def _kv_read_file(path: Path) -> dict:
+        try:
+            parsed = json.loads(path.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            return {}
+        except json.JSONDecodeError:
+            raise RuntimeError(
+                f"{path} is not valid JSON; move it aside and the next write starts a fresh store"
+            ) from None
+        if not isinstance(parsed, dict) or parsed.get("version") != _KV_STORE_VERSION or not isinstance(parsed.get("values"), dict):
+            raise RuntimeError(
+                f"{path} is a kernel store of an unrecognized shape or version; "
+                "move it aside and the next write starts a fresh store"
+            )
+        return parsed["values"]
+
+    def _kv_write_file(path: Path, values: dict) -> None:
+        body = json.dumps({"version": _KV_STORE_VERSION, "values": values})
+        if len(body) > _KV_STORE_SIZE_LIMIT:
+            raise ValueError(
+                f"the kernel store would grow to {len(body)} bytes, over the "
+                f"{_KV_STORE_SIZE_LIMIT}-byte limit. Delete keys you no longer need."
+            )
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+        tmp.write_text(body, encoding="utf-8")
+        os.replace(tmp, path)
+
+    class _KvLock:
+        """File-lock implementation matching @veyyon/utils/file-lock protocol.
+
+        Uses candidate-staging for atomic owner publication (no ownerless race window),
+        process liveness (not wall age) for stale detection, and .transition atomic claim
+        for safe release and stale retirement.
+        """
+
+        def __init__(self, lock_path: Path, retries: int = 50, retry_delay: float = 0.1):
+            self.lock_path = lock_path
+            self.transition_path = lock_path.with_name(f"{lock_path.name}.transition")
+            self.retries = retries
+            self.retry_delay = retry_delay
+            self.token = str(uuid.uuid4())
+            self.acquired = False
+
+        @staticmethod
+        def _is_pid_alive(pid: int) -> bool:
+            if not isinstance(pid, int) or pid <= 0:
+                return False
+            try:
+                os.kill(pid, 0)
+                return True
+            except ProcessLookupError:
+                return False
+            except PermissionError:
+                return True
+            except OSError:
+                return False
+
+        @staticmethod
+        def _read_info(dir_path: Path) -> dict | None:
+            info_file = dir_path / "info"
+            try:
+                data = json.loads(info_file.read_text(encoding="utf-8"))
+                if (
+                    isinstance(data, dict)
+                    and data.get("version") == 1
+                    and isinstance(data.get("pid"), int)
+                    and isinstance(data.get("token"), str)
+                ):
+                    return data
+            except Exception:
+                pass
+            return None
+
+        def _settle_transition(self) -> None:
+            if not self.transition_path.exists():
+                return
+            try:
+                mtime = self.transition_path.stat().st_mtime
+                if (time.time() - mtime) <= 1.0:
+                    return
+                if not self.lock_path.exists():
+                    info = self._read_info(self.transition_path)
+                    if info is None or not self._is_pid_alive(info.get("pid", 0)):
+                        info_file = self.transition_path / "info"
+                        if info_file.exists():
+                            info_file.unlink()
+                        self.transition_path.rmdir()
+                    else:
+                        try:
+                            os.rename(self.transition_path, self.lock_path)
+                        except OSError:
+                            pass
+            except Exception:
+                pass
+
+        def _try_acquire(self) -> bool:
+            if self.transition_path.exists() or self.lock_path.exists():
+                return False
+            candidate = self.lock_path.with_name(f"{self.lock_path.name}.candidate-{os.getpid()}-{uuid.uuid4()}")
+            try:
+                candidate.mkdir(mode=0o700, exist_ok=False)
+                info = {
+                    "version": 1,
+                    "pid": os.getpid(),
+                    "timestamp": int(time.time() * 1000),
+                    "token": self.token,
+                    "processIdentity": None,
+                }
+                (candidate / "info").write_text(json.dumps(info), encoding="utf-8")
+                if self.transition_path.exists() or self.lock_path.exists():
+                    try:
+                        (candidate / "info").unlink()
+                        candidate.rmdir()
+                    except Exception:
+                        pass
+                    return False
+                try:
+                    os.rename(candidate, self.lock_path)
+                except OSError:
+                    try:
+                        (candidate / "info").unlink()
+                        candidate.rmdir()
+                    except Exception:
+                        pass
+                    return False
+
+                current_info = self._read_info(self.lock_path)
+                if current_info and current_info.get("token") == self.token:
+                    if self.transition_path.exists():
+                        # A transition claim became active concurrently. Withdraw our published lock back to candidate.
+                        try:
+                            os.rename(self.lock_path, candidate)
+                            info_file = candidate / "info"
+                            if info_file.exists():
+                                info_file.unlink()
+                            candidate.rmdir()
+                        except Exception:
+                            pass
+                        return False
+                    self.acquired = True
+                    return True
+                return False
+            except Exception:
+                try:
+                    info_file = candidate / "info"
+                    if info_file.exists():
+                        info_file.unlink()
+                    if candidate.exists():
+                        candidate.rmdir()
+                except Exception:
+                    pass
+                return False
+
+        def _reap_stale(self) -> bool:
+            if not self.lock_path.exists():
+                return False
+            info = self._read_info(self.lock_path)
+            is_stale = False
+            if info is not None:
+                is_stale = not self._is_pid_alive(info.get("pid", 0))
+            else:
+                try:
+                    mtime = self.lock_path.stat().st_mtime
+                    is_stale = (time.time() - mtime) > 1.0
+                except Exception:
+                    is_stale = False
+
+            if not is_stale:
+                return False
+
+            try:
+                os.rename(self.lock_path, self.transition_path)
+            except OSError:
+                return False
+
+            claimed_info = self._read_info(self.transition_path)
+            if claimed_info is not None and self._is_pid_alive(claimed_info.get("pid", 0)):
+                try:
+                    os.rename(self.transition_path, self.lock_path)
+                except OSError:
+                    pass
+                return False
+
+            try:
+                info_file = self.transition_path / "info"
+                if info_file.exists():
+                    info_file.unlink()
+                self.transition_path.rmdir()
+                return True
+            except Exception:
+                return False
+
+        def __enter__(self):
+            for _ in range(self.retries):
+                self._settle_transition()
+                if self._try_acquire():
+                    return self
+                if self._reap_stale():
+                    if self._try_acquire():
+                        return self
+                time.sleep(self.retry_delay)
+            raise RuntimeError(f"Failed to acquire lock for {self.lock_path} after {self.retries} attempts")
+
+        def __exit__(self, exc_type, exc_val, exc_tb):
+            if self.acquired:
+                try:
+                    info = self._read_info(self.lock_path)
+                    if info and info.get("token") == self.token:
+                        try:
+                            os.rename(self.lock_path, self.transition_path)
+                            trans_info = self._read_info(self.transition_path)
+                            if trans_info and trans_info.get("token") == self.token:
+                                info_file = self.transition_path / "info"
+                                if info_file.exists():
+                                    info_file.unlink()
+                                self.transition_path.rmdir()
+                            else:
+                                os.rename(self.transition_path, self.lock_path)
+                        except OSError:
+                            pass
+                except Exception:
+                    pass
+                self.acquired = False
+
+    class _Kv:
+        """Session-scoped store that outlives this kernel: values move by NAME between
+        cells, kernels and continuations, so a handle never has to appear in a transcript."""
+
+        def get(self, key, default=None):
+            _kv_check_key(key)
+            values = _kv_read_file(_kv_store_path())
+            value = values.get(key, default)
+            _emit_status("kv", key=key, action="get", found=key in values)
+            return value
+
+        def set(self, key, value):
+            _kv_check_key(key)
+            try:
+                encoded = json.dumps(value)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(
+                    f"kv values must be JSON-serializable; this one is not ({exc}). "
+                    "Store the handle or token, not the live object."
+                ) from None
+            if len(encoded) > _KV_VALUE_SIZE_LIMIT:
+                raise ValueError(
+                    f"kv value is {len(encoded)} bytes, over the {_KV_VALUE_SIZE_LIMIT}-byte limit. "
+                    "Write payloads to a file and store the path."
+                )
+            path = _kv_store_path()
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with _KvLock(Path(f"{path}.lock")):
+                values = _kv_read_file(path)
+                values[key] = value
+                _kv_write_file(path, values)
+            _emit_status("kv", key=key, action="set")
+
+        def delete(self, key) -> bool:
+            _kv_check_key(key)
+            path = _kv_store_path()
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with _KvLock(Path(f"{path}.lock")):
+                values = _kv_read_file(path)
+                removed = key in values
+                if removed:
+                    del values[key]
+                    _kv_write_file(path, values)
+            _emit_status("kv", key=key, action="delete", found=removed)
+            return removed
+
+        def list(self) -> list:
+            keys = sorted(_kv_read_file(_kv_store_path()).keys())
+            _emit_status("kv", action="list", count=len(keys))
+            return keys
+
+    kv = _Kv()
+
+    def _format_def(value) -> str:
+        try:
+            if callable(value):
+                name = getattr(value, "__qualname__", None) or type(value).__name__
+                return f"function {name}"
+            text = repr(value)
+            return f"{type(value).__name__} {text[:57] + '...' if len(text) > 60 else text}"
+        except Exception:
+            return type(value).__name__
+
+    def defs() -> list:
+        """What this kernel already defines, so a cell can check before re-sending a definition."""
+        baseline = globals().get("__veyyon_prelude_baseline__", set())
+        entries = []
+        for key, value in globals().items():
+            if key in baseline or key.startswith("__veyyon") or key.startswith("_veyyon"):
+                continue
+            entries.append(f"{key}: {_format_def(value)}")
+        return sorted(entries)[:200]
 
     _VEYYON_INTERNAL_URL_RE = re.compile(r"^([a-z][a-z0-9+.-]*)://(.*)$", re.IGNORECASE)
 
@@ -699,3 +1023,6 @@ if "__veyyon_prelude_loaded__" not in globals():
                 return "<budget unavailable>"
 
     budget = _Budget()
+
+    # Captured after every prelude name exists: defs() reports anything newer than this.
+    __veyyon_prelude_baseline__ = set(globals())
