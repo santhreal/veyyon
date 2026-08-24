@@ -95,7 +95,8 @@ const SPAWN_SITES: Record<string, SpawnSiteEntry> = {
 	},
 	"exec/exec.ts": {
 		wired: true,
-		reason: "ExecOptions.adoptPid reaches onSpawnPid; custom tools, commands and extensions pass the session's",
+		reason:
+			"beforeSpawn runs the session gate, then adoptPid joins the child; custom tools, commands and extensions pass both",
 	},
 	"eval/py/kernel.ts": { wired: true, reason: "kernel subprocess adopted via KernelStartOptions.adoptPid" },
 	"eval/rb/kernel.ts": { wired: true, reason: "kernel subprocess adopted via KernelStartOptions.adoptPid" },
@@ -263,6 +264,36 @@ describe("every spawn site in src is wired into the session CPU budget or exempt
 			if (ensure >= 0 && gate >= 0) {
 				expect(ensure, `${file} limiter ensureGroup before assertMaySpawn`).toBeLessThan(gate);
 			}
+		}
+	});
+
+	it("custom tool, command, and extension exec wrappers gate before spawn", async () => {
+		// These files call ptree only through execCommand. Adopting after spawn
+		// still lets a saturated session start the process. The wrappers must
+		// pass gateSpawn into withSessionCpuExec so beforeSpawn can refuse.
+		const files = [
+			"exec/exec.ts",
+			"extensibility/custom-tools/loader.ts",
+			"extensibility/custom-commands/loader.ts",
+			"extensibility/extensions/loader.ts",
+			"sdk.ts",
+		];
+		for (const file of files) {
+			const text = await fs.readFile(path.join(SRC_ROOT, file), "utf8");
+			if (file === "exec/exec.ts") {
+				expect(text.includes("beforeSpawn"), `${file} must expose beforeSpawn`).toBe(true);
+				expect(text.includes("await options?.beforeSpawn"), `${file} must await the gate before ptree.exec`).toBe(
+					true,
+				);
+				continue;
+			}
+			if (file === "sdk.ts") {
+				expect(text.includes("sessionCpuExecHooks("), `${file} must build exec hooks`).toBe(true);
+				expect(text.includes("gateSpawn"), `${file} must pass gateSpawn into loaders`).toBe(true);
+				continue;
+			}
+			expect(text.includes("withSessionCpuExec("), `${file} must wrap exec with the CPU gate`).toBe(true);
+			expect(text.includes("gateSpawn"), `${file} must take a spawn gate`).toBe(true);
 		}
 	});
 

@@ -17,7 +17,8 @@ session:
 
 Every process a session spawns to do its work joins the budget. That covers bash commands (plain
 and PTY), MCP stdio servers, the `exec` calls that custom tools, custom commands, and extensions
-make, background processes from the `launch` tool, the eval kernels (Python, Ruby, Julia) — a new
+make — those `exec` calls are refused while the budget is saturated or the group could not be
+created, the same as bash — background processes from the `launch` tool, the eval kernels (Python, Ruby, Julia) — a new
 eval cell is refused while the budget is saturated or the group could not be created, the same as
 a new bash command — language servers, debug adapters, the managed browser, `git` and `jj`, `ssh`,
 and the installs that plugins run. A capped process passes the budget to its own children (cgroup / Job Object inheritance on

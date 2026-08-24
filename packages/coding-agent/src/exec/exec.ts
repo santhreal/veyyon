@@ -15,6 +15,12 @@ export interface ExecOptions {
 	cwd?: string;
 	/** Session CPU budget hook: the spawned process joins the session's budget group. */
 	adoptPid?: (pid: number) => void;
+	/**
+	 * Called before the process is created. Spawn sites that join a session CPU
+	 * budget pass the session gate here so a saturated or uncreated group
+	 * refuses the command instead of launching it and adopting afterwards.
+	 */
+	beforeSpawn?: () => Promise<void>;
 }
 
 /**
@@ -37,6 +43,7 @@ export async function execCommand(
 	cwd: string,
 	options?: ExecOptions,
 ): Promise<ExecResult> {
+	await options?.beforeSpawn?.();
 	const result = await ptree.exec([command, ...args], {
 		cwd,
 		signal: options?.signal,
@@ -52,5 +59,24 @@ export async function execCommand(
 		stderr: result.stderr,
 		code: result.exitCode ?? 0,
 		killed: Boolean(result.exitError?.aborted),
+	};
+}
+
+/**
+ * Merge session CPU budget hooks onto an `exec` options object. `gate` runs
+ * as `beforeSpawn` so a saturated group refuses the command before the
+ * process exists; `adoptPid` then joins the child if the spawn proceeds.
+ */
+export function withSessionCpuExec(
+	options: ExecOptions | undefined,
+	adoptPid: ((pid: number) => void) | undefined,
+	gate: ((what: string) => Promise<void>) | undefined,
+	what: string,
+): ExecOptions | undefined {
+	if (!adoptPid && !gate) return options;
+	return {
+		...options,
+		...(adoptPid ? { adoptPid } : {}),
+		...(gate ? { beforeSpawn: () => gate(what) } : {}),
 	};
 }

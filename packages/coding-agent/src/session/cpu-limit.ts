@@ -1439,6 +1439,22 @@ export async function gateSessionCpuSpawn(sessionId: string | null | undefined, 
 }
 
 /**
+ * Spawn hooks for `exec` wrappers (custom tools, commands, extensions).
+ * `adoptPid` joins the child to the session group; `gate` refuses the spawn
+ * when the group is saturated or could not be created. Call `gate` before
+ * the process exists — adopting afterwards cannot un-run an uncapped child.
+ */
+export function sessionCpuExecHooks(getSessionId: () => string | null): {
+	adoptPid: (pid: number) => void;
+	gate: (what: string) => Promise<void>;
+} {
+	return {
+		adoptPid: sessionCpuAdoption(getSessionId),
+		gate: what => gateSessionCpuSpawn(getSessionId(), what),
+	};
+}
+
+/**
  * Adopt one pid into the root session's budget. Used by spawns that belong to
  * the process as a whole rather than to one session: shared service workers,
  * language servers, debug adapters, the managed browser, speech, and plugin
