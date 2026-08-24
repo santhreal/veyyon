@@ -11,7 +11,9 @@
 # byte-identical.
 #
 # Output goes to proof/captures/x11/before, beside the after arm of the same
-# name, so the two are directly comparable.
+# name, so the two are directly comparable. A caller that records a matrix --
+# one arm per terminal width -- sets OUT_DIR per run, since a single directory
+# cannot hold two arms whose frames share the scene's mark names.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -54,7 +56,7 @@ for p in deleted_by_branch:
 
 print(f"holding {len(held)} modified files at main, restoring {len(deleted_by_branch)} deleted ones")
 
-out = os.path.join("proof", "captures", "x11", "before")
+out = os.environ.get("OUT_DIR") or os.path.join("proof", "captures", "x11", "before")
 os.makedirs(out, exist_ok=True)
 env = dict(os.environ, OUT_DIR=os.path.abspath(out))
 
