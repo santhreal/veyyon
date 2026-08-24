@@ -286,15 +286,15 @@ describe("InteractiveMode todo HUD anchor", () => {
 		expect(lines.some(line => line.includes("II. Verification") && line.includes("0/1"))).toBe(true);
 		// One square vocabulary down the glyph column: in-progress breathes, the
 		// finished task stays on the board rather than being sliced away, pending is
-		// the shadowed mark. Phase rows keep the hollow checkbox; task rows do not.
-		// The mark is the cell immediately left of the task text, so this reads it
-		// there rather than assuming what precedes it.
+		// the hollow box. The mark is the cell immediately left of the task text, so
+		// this reads it there rather than assuming what precedes it: a task row hangs
+		// from the rail and then from the connectors of the stage above it.
 		const glyphOf = (needle: string): string => {
 			const row = lines.find(line => line.includes(needle)) ?? "";
 			return row.slice(0, row.indexOf(needle)).trimEnd().slice(-1);
 		};
 		expect([theme.symbol("status.done"), theme.symbol("status.shadowed")]).toContain(glyphOf("second task"));
-		expect(glyphOf("third task")).toBe(theme.symbol("status.shadowed"));
+		expect(glyphOf("third task")).toBe(theme.checkbox.unchecked);
 		expect(glyphOf("first task")).toBe(theme.checkbox.checked);
 		// The stage ahead is one row and a tally. Its tasks belong to the expanded
 		// board: listing them here is what made the block a wall of pending work.
