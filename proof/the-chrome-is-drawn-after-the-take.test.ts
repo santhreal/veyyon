@@ -255,4 +255,35 @@ describe("the chrome is drawn after the take, and drawing it never alters the ta
 			await rm(dir, { recursive: true, force: true });
 		}
 	}, 120_000);
+	it("centralizes all scene configuration knobs and generates docker environment arguments", async () => {
+		const script =
+			`source ${JSON.stringify(CONFIG)}\n` +
+			"scene_docker_env_args\n" +
+			'echo "COUNT=${#SCENE_DOCKER_ENV[@]}"\n' +
+			'echo "VARS=${SCENE_ENV_VARS}"\n';
+		const { stdout } = await run(BASH, ["-c", script]);
+		const countMatch = stdout.match(/COUNT=(\d+)/);
+		const varsMatch = stdout.match(/VARS=([\s\S]*)/);
+		expect(countMatch).not.toBeNull();
+		expect(varsMatch).not.toBeNull();
+		const count = Number(countMatch?.[1]);
+		const vars = (varsMatch?.[1] ?? "").trim().split(/\s+/).filter(Boolean);
+
+		// No duplicate variables
+		const uniqueVars = new Set(vars);
+		expect(uniqueVars.size).toBe(vars.length);
+
+		// All docker args generated as -e pairs
+		expect(count).toBe(vars.length * 2);
+
+		// Key knobs present
+		expect(uniqueVars.has("SCENE_WIDTH")).toBe(true);
+		expect(uniqueVars.has("SCENE_HEIGHT")).toBe(true);
+		expect(uniqueVars.has("SCENE_FPS")).toBe(true);
+		expect(uniqueVars.has("SCENE_CHROME")).toBe(true);
+		expect(uniqueVars.has("SCENE_HOLD")).toBe(true);
+		expect(uniqueVars.has("SCENE_TYPING_REPEAT")).toBe(true);
+		expect(uniqueVars.has("SCENE_MARK_LEAD_MIN_MS")).toBe(true);
+		expect(uniqueVars.has("SCENE_MOTION_FLOOR")).toBe(true);
+	});
 });

@@ -71,7 +71,6 @@ docker run --rm \
 	-e DISPLAY=:99 \
 	"${SCENE_DOCKER_ENV[@]}" \
 	-e "TYPE_DELAY" \
-	-e "SCENE_TYPING_REPEAT" \
 	-w /repo \
 	"${RECORDER_IMAGE}" \
 	bash -lc '
