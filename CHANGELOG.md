@@ -10,10 +10,13 @@
 - Added the Command Code provider catalog, with its documented coding flagships as the offline seed and credentialed discovery for the wider Provider API list.
 - Added the Nous Research provider catalog, whose credentialed discovery keeps tool-capable chat models and excludes embedding, media-generation and non-tool rows.
 - Added the `publishesOwnModelLimits` provider flag, which stops generation from backfilling a context window or output cap from another host's same-family model.
+- A tool result that carries an image now states whether the picture reached the screen, so a model reading a file describes what it shows instead of reporting that it displayed it.
 
 ### Changed
 
 - The vibe screens, the image-inspection call and an LSP hover code block draw no border of their own inside a tool block, so a block keeps one left edge; a tree connector remains only where a row belongs to the row above it, in the eval value tree, the grep line gutter, the job tree and the LSP reference tree.
+- A picture a terminal will not draw now leaves a row naming the file, the media type, the pixel size and the cause, in place of `[Image: image/png]`, including when a Kitty session cannot convert it to PNG.
+- `imageFallback` takes the file name, media type, pixel size and cause of an undrawn image and returns a row naming all four; `ImageFallbackReason` states the cause.
 
 ## [1.2.0] - 2026-08-23
 
