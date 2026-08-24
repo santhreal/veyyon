@@ -12,14 +12,18 @@
  * ROWS. Overflow and a `length` stop, each with compaction available and with
  * compaction off, plus an overflow stamped with a model the user switched away
  * from mid-failure (which must recover nothing and must not compact the new
- * model's history), plus a plain 400 as the control: it never enters the ladder,
- * so it is what "an error the user can see" looks like when nothing intervenes.
+ * model's history), two summarizer-failure rows covering both branches of the
+ * recovery decision (context fits -> retry answers; context genuinely overflows
+ * without reduction -> parks with error), plus a plain 400 as the control: it
+ * never enters the ladder, so it is what "an error the user can see" looks like
+ * when nothing intervenes.
  *
  * WHAT IS ASSERTED. Whether a summarization request was made at all (a request
  * carrying no tools is the summarizer, which is how the loop identifies it),
- * whether the turn was retried, that the retried turn answers, and that a dead
- * end leaves the failure visible in context with its stop reason intact. Store
- * and wire pairing are checked on every row, because a recovery rewrites both.
+ * whether the turn was retried, that a retried turn answers normally, and that
+ * a dead end leaves the failure visible in context with its stop reason intact.
+ * Store and wire pairing are checked on every row, because a recovery rewrites
+ * both.
  *
  * DEFECT THIS SUITE FIXES. With compaction disabled, an overflow was removed
  * from active context and never restored: `prompt` resolved, no assistant
@@ -34,9 +38,10 @@
  * `#restoreFailedAssistantTurnToActiveContext`) reds that rung's row with
  * `overflow, compaction off surfaced=user stop=none` instead of
  * `surfaced=assistant stop=error`, and the `length` row the same way, leaving the
- * other five green. Dropping the rollback restore inside
- * `#runRecoveryCompactionWithRollback` reds only the failing-summarizer row, so
- * that row covers the rollback rather than restating the dead ends.
+ * other six green. Dropping the rollback restore inside
+ * `#runRecoveryCompactionWithRollback` reds the genuinely overflowing
+ * failed-summarizer row, so that row covers the rollback rather than
+ * restating the dead ends.
  *
  * NOT asserted: promotion to a larger model, which is the rung above compaction
  * here. It is reachable in a simulation, but only by overriding real catalog
@@ -45,9 +50,8 @@
  * against a threshold crossing and against this file's overflow error.
  */
 import { afterEach, describe, expect, it } from "bun:test";
-import { bulkTool, createSimulation, type Simulation, simulatedModel } from "./harness";
+import { bulkProse, bulkTool, createSimulation, type Simulation, simulatedModel, simTool } from "./harness";
 import { describeViolations, pairingViolations, turnViolations } from "./invariants";
-
 /** Bedrock's wording. The classifier flags it as a context overflow. */
 const OVERFLOW_MESSAGE = "input is too long for requested model";
 interface Call {
@@ -313,7 +317,7 @@ describe("a turn the provider refuses for size", () => {
 		expect(describeViolations("foreign overflow after", pairingViolations(sim.session.messages))).toEqual([]);
 	});
 
-	it("keeps the refusal visible when the summarizer itself fails", async () => {
+	it("retries and answers when the summarizer fails but the context fits the window", async () => {
 		const calls: Call[] = [];
 		sim = await createSimulation({
 			settings: { "retry.enabled": false, "compaction.enabled": true },
@@ -326,9 +330,7 @@ describe("a turn the provider refuses for size", () => {
 					model: turn.model.id,
 					tokens: estimatedTokens(turn.context.messages),
 				});
-				// The recovery's own request is the one that dies here, which is the
-				// case the rollback exists for: history was never rewritten, so the
-				// refusal has to come back rather than leaving an empty turn behind.
+				// The recovery's summarizer request fails.
 				if (tools === 0) {
 					turn.fail("500 Internal Server Error: summarizer unavailable");
 					return;
@@ -354,8 +356,86 @@ describe("a turn the provider refuses for size", () => {
 		// The summarizer was asked and refused, so no summary exists.
 		expect(calls.some(call => call.tools === 0)).toBe(true);
 		expect(sim.session.messages.some(message => message.role === "compactionSummary")).toBe(false);
-		expect(`summarizer failed ${surfaced(sim)}`).toBe("summarizer failed surfaced=assistant stop=error");
-		expect(describeViolations("summarizer failed store", pairingViolations(sim.session.messages))).toEqual([]);
+
+		// WHY: The scripted overflow was a transient refusal on a history that comfortably fits
+		// the 200k window. `#compactionCreatedRetryFit` is satisfied without rescue, so the session
+		// schedules a retry continuation and answers normally rather than stranding the user.
+		expect(surfaced(sim)).toBe("surfaced=assistant stop=stop");
+		const lastMessage = sim.session.messages.at(-1) as {
+			role?: string;
+			content?: Array<{ type?: string; text?: string }>;
+		};
+		expect(lastMessage?.role).toBe("assistant");
+		const answerText = lastMessage?.content?.find(block => block.type === "text")?.text ?? "";
+		expect(answerText).toBe(`answer ${calls.at(-1)?.index}`);
+		expect(describeViolations("summarizer failed retry store", pairingViolations(sim.session.messages))).toEqual([]);
+		expect(sim.session.isStreaming).toBe(false);
+	});
+
+	it("keeps the refusal visible when the summarizer fails and the context genuinely overflows", async () => {
+		const calls: Call[] = [];
+		const contextWindow = 12_000;
+		// A defaulted reserve on a 12k window falls back to 15% (1,800 tokens), leaving an 85% fit budget (10,200 tokens).
+		// Size 4 rounds of plain conversation plus prompt 5 to exceed the fit budget (~10,800 tokens total, ~1,200 per part)
+		// without exceeding the window during the first 4 rounds.
+		const targetTotalTokens = Math.floor(contextWindow * 0.9);
+		const tokensPerMessage = Math.ceil(targetTotalTokens / 9);
+		const userText = bulkProse(tokensPerMessage, "prompt");
+		const assistantText = bulkProse(tokensPerMessage, "answer");
+
+		let conversationCalls = 0;
+		sim = await createSimulation({
+			model: { contextWindow },
+			tools: [simTool("noop", async () => "")],
+			settings: {
+				"retry.enabled": false,
+				"compaction.enabled": true,
+				"compaction.keepRecentTokens": Math.floor(contextWindow * 0.2),
+			},
+			script: async turn => {
+				const tools = turn.context.tools?.length ?? 0;
+				calls.push({
+					index: turn.call,
+					tools,
+					model: turn.model.id,
+					tokens: estimatedTokens(turn.context.messages),
+				});
+				if (tools === 0) {
+					turn.fail("500 Internal Server Error: summarizer unavailable");
+					return;
+				}
+				conversationCalls += 1;
+				if (conversationCalls === 5) {
+					turn.fail(OVERFLOW_MESSAGE);
+					return;
+				}
+				turn.text(assistantText);
+				turn.finish();
+			},
+		});
+
+		for (let i = 1; i <= 4; i++) {
+			await sim.session.prompt(`prompt ${i}: ${userText}`);
+		}
+		await sim.session.prompt(`prompt 5: ${userText}`);
+		// The session actually settles: quiet returning rather than timing out defends the termination bound.
+		await quiet(sim);
+
+		// Summarizer was attempted and failed.
+		expect(calls.some(call => call.tools === 0)).toBe(true);
+		expect(sim.session.messages.some(message => message.role === "compactionSummary")).toBe(false);
+
+		// Neither rescue tier (shake elision or image dropping) could reduce plain text context,
+		// so residual tokens remain over the fit budget and the refusal is restored to active context.
+		const reserveTokens = Math.floor(contextWindow * 0.15);
+		const fitBudget = contextWindow - reserveTokens;
+		const finalTokens = estimatedTokens(sim.session.messages);
+		expect(`residual ${finalTokens} exceeds fit budget ${fitBudget}: ${finalTokens > fitBudget}`).toBe(
+			`residual ${finalTokens} exceeds fit budget ${fitBudget}: true`,
+		);
+
+		expect(surfaced(sim)).toBe("surfaced=assistant stop=error");
+		expect(describeViolations("summarizer failed overflow store", pairingViolations(sim.session.messages))).toEqual([]);
 		expect(sim.session.isStreaming).toBe(false);
 	});
 
