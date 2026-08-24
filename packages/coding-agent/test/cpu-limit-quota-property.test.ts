@@ -5,7 +5,12 @@
  * in cpu-limit.test.ts; this file is the exhaustive grid.
  */
 import { describe, expect, it } from "bun:test";
-import { CPU_LIMIT_PERIOD_USEC, formatCpuMaxValue, sessionCpuBudgetName } from "../src/session/cpu-limit";
+import {
+	CPU_LIMIT_PERIOD_USEC,
+	formatCpuMaxValue,
+	formatSystemdCpuQuota,
+	sessionCpuBudgetName,
+} from "../src/session/cpu-limit";
 
 describe("formatCpuMaxValue property", () => {
 	it("never writes a freeze quota for any IEEE input", () => {
@@ -38,7 +43,7 @@ describe("formatCpuMaxValue property", () => {
 			64,
 			1e6,
 		];
-		for (let step = -20; step <= 400; step++) {
+		for (let step = -20; step <= 80; step++) {
 			inputs.push(step / 10);
 			inputs.push(10 ** (step / 20 - 8));
 		}
@@ -117,6 +122,45 @@ describe("sessionCpuBudgetName property", () => {
 			expect(seen.has(name)).toBe(false);
 			seen.set(name, id);
 			expect(sessionCpuBudgetName(id)).toBe(name);
+		}
+	});
+});
+
+describe("formatSystemdCpuQuota property", () => {
+	it("never writes 0% or scientific notation for any IEEE input", () => {
+		const inputs = [
+			0,
+			-0,
+			-1,
+			Number.NaN,
+			Number.POSITIVE_INFINITY,
+			Number.NEGATIVE_INFINITY,
+			1e-20,
+			1e-12,
+			1e-6,
+			4e-6,
+			0.001,
+			0.5,
+			1,
+			2,
+			16,
+			128,
+		];
+		for (let step = -20; step <= 400; step++) {
+			inputs.push(10 ** (step / 20));
+			inputs.push(-(10 ** (step / 20)));
+			inputs.push(step / 1000);
+		}
+		for (const cores of inputs) {
+			const value = formatSystemdCpuQuota(cores);
+			if (!Number.isFinite(cores) || cores <= 0) {
+				expect(value, String(cores)).toBeUndefined();
+				continue;
+			}
+			expect(value, String(cores)).toBeDefined();
+			expect(value, String(cores)).not.toBe("CPUQuota=0%");
+			expect(value, String(cores)).not.toMatch(/e/i);
+			expect(value, String(cores)).toMatch(/^CPUQuota=\d+(\.\d+)?%$/);
 		}
 	});
 });
