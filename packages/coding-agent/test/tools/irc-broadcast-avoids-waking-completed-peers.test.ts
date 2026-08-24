@@ -21,7 +21,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { IrcBus, type IrcMessage } from "@veyyon/coding-agent/irc/bus";
 import { AgentLifecycleManager } from "@veyyon/coding-agent/registry/agent-lifecycle";
-import { type AgentStatus, AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
+import { AgentRegistry, type AgentStatus } from "@veyyon/coding-agent/registry/agent-registry";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { IrcTool } from "@veyyon/coding-agent/tools/irc";
@@ -109,10 +109,20 @@ describe("IRC broadcast vs direct message wake lifecycle", () => {
 	describe("Direct messages (op: 'send' with specific 'to')", () => {
 		it("delivers to running peer as injected aside", async () => {
 			const runningPeer = makeFakeSession("injected");
-			registry.register({ id: "Worker-Running", displayName: "worker", kind: "sub", session: runningPeer.session, status: "running" });
+			registry.register({
+				id: "Worker-Running",
+				displayName: "worker",
+				kind: "sub",
+				session: runningPeer.session,
+				status: "running",
+			});
 
 			const tool = new IrcTool(makeToolSession(registry, "Main"));
-			const result = await tool.execute("call-1", { op: "send", to: "Worker-Running", message: "direct to running" });
+			const result = await tool.execute("call-1", {
+				op: "send",
+				to: "Worker-Running",
+				message: "direct to running",
+			});
 
 			expect(result.isError).toBeFalsy();
 			expect(result.details?.receipts).toEqual([{ to: "Worker-Running", outcome: "injected" }]);
@@ -121,7 +131,13 @@ describe("IRC broadcast vs direct message wake lifecycle", () => {
 
 		it("delivers to waiting peer and satisfies the waiter", async () => {
 			const waitingPeer = makeFakeSession("injected");
-			registry.register({ id: "Worker-Waiting", displayName: "worker", kind: "sub", session: waitingPeer.session, status: "running" });
+			registry.register({
+				id: "Worker-Waiting",
+				displayName: "worker",
+				kind: "sub",
+				session: waitingPeer.session,
+				status: "running",
+			});
 
 			const waitPromise = bus.wait("Worker-Waiting", { from: "Main" }, 1000);
 			const tool = new IrcTool(makeToolSession(registry, "Main"));
@@ -136,7 +152,13 @@ describe("IRC broadcast vs direct message wake lifecycle", () => {
 
 		it("wakes an idle (completed) peer on direct send", async () => {
 			const idlePeer = makeFakeSession("woken");
-			registry.register({ id: "Worker-Idle", displayName: "worker", kind: "sub", session: idlePeer.session, status: "idle" });
+			registry.register({
+				id: "Worker-Idle",
+				displayName: "worker",
+				kind: "sub",
+				session: idlePeer.session,
+				status: "idle",
+			});
 
 			const tool = new IrcTool(makeToolSession(registry, "Main"));
 			const result = await tool.execute("call-1", { op: "send", to: "Worker-Idle", message: "wake up and assist" });
@@ -149,7 +171,13 @@ describe("IRC broadcast vs direct message wake lifecycle", () => {
 
 		it("revives a parked peer on direct send", async () => {
 			const parkedPeer = makeFakeSession("woken");
-			registry.register({ id: "Worker-Parked", displayName: "worker", kind: "sub", session: null, status: "parked" });
+			registry.register({
+				id: "Worker-Parked",
+				displayName: "worker",
+				kind: "sub",
+				session: null,
+				status: "parked",
+			});
 			AgentLifecycleManager.global().adopt("Worker-Parked", {
 				idleTtlMs: 0,
 				revive: async () => parkedPeer.session,
@@ -164,7 +192,13 @@ describe("IRC broadcast vs direct message wake lifecycle", () => {
 		});
 
 		it("refuses to message an aborted peer", async () => {
-			registry.register({ id: "Worker-Aborted", displayName: "worker", kind: "sub", session: null, status: "aborted" });
+			registry.register({
+				id: "Worker-Aborted",
+				displayName: "worker",
+				kind: "sub",
+				session: null,
+				status: "aborted",
+			});
 
 			const tool = new IrcTool(makeToolSession(registry, "Main"));
 			const result = await tool.execute("call-1", { op: "send", to: "Worker-Aborted", message: "hello" });
@@ -176,7 +210,13 @@ describe("IRC broadcast vs direct message wake lifecycle", () => {
 
 		it("refuses to message caller/self", async () => {
 			const mainSession = makeFakeSession("injected");
-			registry.register({ id: "Main", displayName: "main", kind: "main", session: mainSession.session, status: "running" });
+			registry.register({
+				id: "Main",
+				displayName: "main",
+				kind: "main",
+				session: mainSession.session,
+				status: "running",
+			});
 
 			const tool = new IrcTool(makeToolSession(registry, "Main"));
 			const result = await tool.execute("call-1", { op: "send", to: "Main", message: "hello to self" });
@@ -200,26 +240,62 @@ describe("IRC broadcast vs direct message wake lifecycle", () => {
 	describe("Broadcast messages (op: 'send' with to: 'all')", () => {
 		it("broadcasts ONLY to running and waiting peers, completely ignoring idle, parked, and aborted peers", async () => {
 			const runningPeer = makeFakeSession("injected");
-			registry.register({ id: "Worker-Running", displayName: "worker", kind: "sub", session: runningPeer.session, status: "running" });
+			registry.register({
+				id: "Worker-Running",
+				displayName: "worker",
+				kind: "sub",
+				session: runningPeer.session,
+				status: "running",
+			});
 
 			const waitingPeer = makeFakeSession("injected");
-			registry.register({ id: "Worker-Waiting", displayName: "worker", kind: "sub", session: waitingPeer.session, status: "running" });
+			registry.register({
+				id: "Worker-Waiting",
+				displayName: "worker",
+				kind: "sub",
+				session: waitingPeer.session,
+				status: "running",
+			});
 			const waitPromise = bus.wait("Worker-Waiting", { from: "Main" }, 1000);
 
 			const idlePeer = makeFakeSession("woken");
-			registry.register({ id: "Worker-IdleCompleted", displayName: "worker", kind: "sub", session: idlePeer.session, status: "idle" });
+			registry.register({
+				id: "Worker-IdleCompleted",
+				displayName: "worker",
+				kind: "sub",
+				session: idlePeer.session,
+				status: "idle",
+			});
 
 			const parkedPeer = makeFakeSession("woken");
-			registry.register({ id: "Worker-Parked", displayName: "worker", kind: "sub", session: null, status: "parked" });
+			registry.register({
+				id: "Worker-Parked",
+				displayName: "worker",
+				kind: "sub",
+				session: null,
+				status: "parked",
+			});
 			AgentLifecycleManager.global().adopt("Worker-Parked", {
 				idleTtlMs: 0,
 				revive: async () => parkedPeer.session,
 			});
 
-			registry.register({ id: "Worker-Aborted", displayName: "worker", kind: "sub", session: null, status: "aborted" });
+			registry.register({
+				id: "Worker-Aborted",
+				displayName: "worker",
+				kind: "sub",
+				session: null,
+				status: "aborted",
+			});
 
 			const callerSession = makeFakeSession("injected");
-			registry.register({ id: "Main", displayName: "main", kind: "main", session: callerSession.session, status: "running" });
+			registry.register({
+				id: "Main",
+				displayName: "main",
+				kind: "main",
+				session: callerSession.session,
+				status: "running",
+			});
 
 			const tool = new IrcTool(makeToolSession(registry, "Main"));
 			const result = await tool.execute("call-1", { op: "send", to: "all", message: "broadcast announcement" });
@@ -275,9 +351,27 @@ describe("IRC broadcast vs direct message wake lifecycle", () => {
 
 		it("returns 'No live peers to broadcast to' when only idle, parked, or aborted peers exist", async () => {
 			const idlePeer = makeFakeSession("woken");
-			registry.register({ id: "Worker-Idle", displayName: "worker", kind: "sub", session: idlePeer.session, status: "idle" });
-			registry.register({ id: "Worker-Parked", displayName: "worker", kind: "sub", session: null, status: "parked" });
-			registry.register({ id: "Worker-Aborted", displayName: "worker", kind: "sub", session: null, status: "aborted" });
+			registry.register({
+				id: "Worker-Idle",
+				displayName: "worker",
+				kind: "sub",
+				session: idlePeer.session,
+				status: "idle",
+			});
+			registry.register({
+				id: "Worker-Parked",
+				displayName: "worker",
+				kind: "sub",
+				session: null,
+				status: "parked",
+			});
+			registry.register({
+				id: "Worker-Aborted",
+				displayName: "worker",
+				kind: "sub",
+				session: null,
+				status: "aborted",
+			});
 
 			const tool = new IrcTool(makeToolSession(registry, "Main"));
 			const result = await tool.execute("call-1", { op: "send", to: "all", message: "anyone?" });

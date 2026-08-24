@@ -32,33 +32,30 @@ describe("Cursor session error classification and recovery", () => {
 			"upstream server error: Stream closed with error code NGHTTP2_INTERNAL_ERROR",
 		];
 
-		it.each(HTTP2_RESET_VARIANTS)(
-			"classifies %s as transient and enforces replay safety",
-			message => {
-				const error = new Error(message);
-				const id = AIError.classify(error);
+		it.each(HTTP2_RESET_VARIANTS)("classifies %s as transient and enforces replay safety", message => {
+			const error = new Error(message);
+			const id = AIError.classify(error);
 
-				// 1. Classification
-				expect(AIError.is(id, AIError.Flag.Transient)).toBe(true);
-				expect(AIError.is(id, AIError.Flag.UsageLimit)).toBe(false);
-				expect(AIError.is(id, AIError.Flag.AuthFailed)).toBe(false);
+			// 1. Classification
+			expect(AIError.is(id, AIError.Flag.Transient)).toBe(true);
+			expect(AIError.is(id, AIError.Flag.UsageLimit)).toBe(false);
+			expect(AIError.is(id, AIError.Flag.AuthFailed)).toBe(false);
 
-				// 2. Transport & Provider Retry
-				expect(AIError.recover(id, "transport")).toEqual({ action: "retry" });
-				expect(AIError.isProviderRetryableError(error)).toBe(true);
+			// 2. Transport & Provider Retry
+			expect(AIError.recover(id, "transport")).toEqual({ action: "retry" });
+			expect(AIError.isProviderRetryableError(error)).toBe(true);
 
-				// 3. Credential stage (stays on current credential, does not rotate account)
-				expect(AIError.recover(id, "credential")).toEqual({ action: "retry" });
-				expect(AIError.isUsageLimit(error)).toBe(false);
+			// 3. Credential stage (stays on current credential, does not rotate account)
+			expect(AIError.recover(id, "credential")).toEqual({ action: "retry" });
+			expect(AIError.isUsageLimit(error)).toBe(false);
 
-				// 4. Turn stage: safe when no tool calls were emitted
-				expect(AIError.recover(id, "turn")).toEqual({ action: "retry" });
-				expect(AIError.retriable(id, { replayUnsafe: false })).toBe(true);
+			// 4. Turn stage: safe when no tool calls were emitted
+			expect(AIError.recover(id, "turn")).toEqual({ action: "retry" });
+			expect(AIError.retriable(id, { replayUnsafe: false })).toBe(true);
 
-				// 5. Turn stage: TERMINAL when replayUnsafe=true (never duplicate tool effects)
-				expect(AIError.retriable(id, { replayUnsafe: true })).toBe(false);
-			},
-		);
+			// 5. Turn stage: TERMINAL when replayUnsafe=true (never duplicate tool effects)
+			expect(AIError.retriable(id, { replayUnsafe: true })).toBe(false);
+		});
 	});
 
 	describe("HTTP 429 Connect error resource_exhausted", () => {
@@ -81,27 +78,24 @@ describe("Cursor session error classification and recovery", () => {
 			},
 		];
 
-		it.each(RESOURCE_EXHAUSTED_CASES)(
-			"routes $name to credential rotation and turn retry",
-			({ error }) => {
-				const id = AIError.classify(error);
+		it.each(RESOURCE_EXHAUSTED_CASES)("routes $name to credential rotation and turn retry", ({ error }) => {
+			const id = AIError.classify(error);
 
-				// 1. Classification
-				expect(AIError.is(id, AIError.Flag.UsageLimit)).toBe(true);
+			// 1. Classification
+			expect(AIError.is(id, AIError.Flag.UsageLimit)).toBe(true);
 
-				// 2. Transport: surface immediately (do not hammer same credential)
-				expect(AIError.recover(id, "transport")).toEqual({ action: "surface" });
-				expect(AIError.isProviderRetryableError(error)).toBe(false);
+			// 2. Transport: surface immediately (do not hammer same credential)
+			expect(AIError.recover(id, "transport")).toEqual({ action: "surface" });
+			expect(AIError.isProviderRetryableError(error)).toBe(false);
 
-				// 3. Credential: rotate to a sibling account
-				expect(AIError.recover(id, "credential")).toEqual({ action: "rotate-credential" });
-				expect(AIError.isUsageLimit(error)).toBe(true);
+			// 3. Credential: rotate to a sibling account
+			expect(AIError.recover(id, "credential")).toEqual({ action: "rotate-credential" });
+			expect(AIError.isUsageLimit(error)).toBe(true);
 
-				// 4. Turn: retriable once new credential is in hand
-				expect(AIError.recover(id, "turn")).toEqual({ action: "retry" });
-				expect(AIError.retriable(id)).toBe(true);
-			},
-		);
+			// 4. Turn: retriable once new credential is in hand
+			expect(AIError.recover(id, "turn")).toEqual({ action: "retry" });
+			expect(AIError.retriable(id)).toBe(true);
+		});
 	});
 
 	describe("Quota 403 vs Auth 403", () => {
@@ -124,26 +118,23 @@ describe("Cursor session error classification and recovery", () => {
 			},
 		];
 
-		it.each(QUOTA_403_CASES)(
-			"routes quota 403 ($name) to account rotation over auth failure",
-			({ error }) => {
-				const id = AIError.classify(error);
+		it.each(QUOTA_403_CASES)("routes quota 403 ($name) to account rotation over auth failure", ({ error }) => {
+			const id = AIError.classify(error);
 
-				// 1. Classification carries UsageLimit
-				expect(AIError.is(id, AIError.Flag.UsageLimit)).toBe(true);
+			// 1. Classification carries UsageLimit
+			expect(AIError.is(id, AIError.Flag.UsageLimit)).toBe(true);
 
-				// 2. Credential recovery: quotaDomain precedes authDomain -> rotate-credential
-				expect(AIError.recover(id, "credential")).toEqual({ action: "rotate-credential" });
-				expect(AIError.isUsageLimit(error)).toBe(true);
+			// 2. Credential recovery: quotaDomain precedes authDomain -> rotate-credential
+			expect(AIError.recover(id, "credential")).toEqual({ action: "rotate-credential" });
+			expect(AIError.isUsageLimit(error)).toBe(true);
 
-				// 3. Provider retry is refused
-				expect(AIError.isProviderRetryableError(error)).toBe(false);
+			// 3. Provider retry is refused
+			expect(AIError.isProviderRetryableError(error)).toBe(false);
 
-				// 4. Turn is retriable after rotation
-				expect(AIError.recover(id, "turn")).toEqual({ action: "retry" });
-				expect(AIError.retriable(id)).toBe(true);
-			},
-		);
+			// 4. Turn is retriable after rotation
+			expect(AIError.recover(id, "turn")).toEqual({ action: "retry" });
+			expect(AIError.retriable(id)).toBe(true);
+		});
 
 		const AUTH_403_CASES = [
 			{
@@ -156,26 +147,23 @@ describe("Cursor session error classification and recovery", () => {
 			},
 		];
 
-		it.each(AUTH_403_CASES)(
-			"routes non-quota auth 403 ($name) to reauth without account rotation",
-			({ error }) => {
-				const id = AIError.classify(error);
+		it.each(AUTH_403_CASES)("routes non-quota auth 403 ($name) to reauth without account rotation", ({ error }) => {
+			const id = AIError.classify(error);
 
-				// 1. Classification
-				expect(AIError.is(id, AIError.Flag.AuthFailed)).toBe(true);
-				expect(AIError.is(id, AIError.Flag.UsageLimit)).toBe(false);
+			// 1. Classification
+			expect(AIError.is(id, AIError.Flag.AuthFailed)).toBe(true);
+			expect(AIError.is(id, AIError.Flag.UsageLimit)).toBe(false);
 
-				// 2. Credential recovery: reauth, not rotation
-				expect(AIError.recover(id, "credential")).toEqual({ action: "reauth" });
-				expect(AIError.isUsageLimit(error)).toBe(false);
+			// 2. Credential recovery: reauth, not rotation
+			expect(AIError.recover(id, "credential")).toEqual({ action: "reauth" });
+			expect(AIError.isUsageLimit(error)).toBe(false);
 
-				// 3. Provider and turn recovery surface
-				expect(AIError.recover(id, "transport")).toEqual({ action: "surface" });
-				expect(AIError.recover(id, "turn")).toEqual({ action: "surface" });
-				expect(AIError.isProviderRetryableError(error)).toBe(false);
-				expect(AIError.retriable(id)).toBe(false);
-			},
-		);
+			// 3. Provider and turn recovery surface
+			expect(AIError.recover(id, "transport")).toEqual({ action: "surface" });
+			expect(AIError.recover(id, "turn")).toEqual({ action: "surface" });
+			expect(AIError.isProviderRetryableError(error)).toBe(false);
+			expect(AIError.retriable(id)).toBe(false);
+		});
 	});
 
 	describe("invalid_argument (protocol and request errors)", () => {

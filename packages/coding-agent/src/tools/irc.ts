@@ -264,7 +264,10 @@ export class IrcTool implements AgentTool<typeof ircSchema, IrcDetails> {
 				);
 			}
 			const targets = isBroadcast
-				? registry.listVisibleTo(senderId).filter(ref => ref.status === "running").map(ref => ref.id)
+				? registry
+						.listVisibleTo(senderId)
+						.filter(ref => ref.status === "running")
+						.map(ref => ref.id)
 				: [to];
 			// A broadcast that also reaches the main agent delivers the body to it
 			// directly (its own incoming card); relaying the sibling legs to the

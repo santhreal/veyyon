@@ -28,7 +28,6 @@ import { useFullColor } from "../../helpers/theme-assertions";
 
 const ANSI_PATTERN = /\x1b\[[0-?]*[ -/]*[@-~]/g;
 
-
 let geo: StubbedStdoutGeometry;
 
 beforeAll(async () => {
@@ -54,9 +53,7 @@ function rowsOf(dashboard: AgentDashboard, callSign: string): string[] {
 }
 
 function rawRowsOf(dashboard: AgentDashboard, callSign: string): string[] {
-	return dashboard
-		.render(120)
-		.filter(line => line.includes(callSign));
+	return dashboard.render(120).filter(line => line.includes(callSign));
 }
 
 describe("an interrupted or terminal subagent settles to terminal display state", () => {

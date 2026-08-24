@@ -15,7 +15,7 @@
  */
 import { describe, expect, it } from "bun:test";
 import { instrumentedCompleteSimple } from "@veyyon/agent-core";
-import { compact, DEFAULT_COMPACTION_SETTINGS, type CompactionPreparation } from "@veyyon/agent-core/compaction";
+import { type CompactionPreparation, compact, DEFAULT_COMPACTION_SETTINGS } from "@veyyon/agent-core/compaction";
 import type {
 	AssistantMessage,
 	Message,
@@ -97,11 +97,11 @@ function capturedAssistant(): AssistantMessage {
 }
 
 describe("a side request never joins the live conversation", () => {
-	it("derives `${sessionId}#${kind}` for a compaction summary", async () => {
+	it("derives a sessionId#kind conversation ID for a compaction summary", async () => {
 		let seen: SimpleStreamOptions | undefined;
 		await instrumentedCompleteSimple(
 			anthropicModel(),
-			{ systemPrompt: "s", messages: [], tools: [] },
+			{ systemPrompt: ["s"], messages: [], tools: [] },
 			{ sessionId: SESSION_ID },
 			{
 				telemetry: undefined,
@@ -120,7 +120,7 @@ describe("a side request never joins the live conversation", () => {
 		let seen: SimpleStreamOptions | undefined;
 		await instrumentedCompleteSimple(
 			anthropicModel(),
-			{ systemPrompt: "s", messages: [], tools: [] },
+			{ systemPrompt: ["s"], messages: [], tools: [] },
 			{ sessionId: SESSION_ID, conversationId: "explicit-side" },
 			{
 				telemetry: undefined,
@@ -138,7 +138,7 @@ describe("a side request never joins the live conversation", () => {
 		let seen: SimpleStreamOptions | undefined;
 		await instrumentedCompleteSimple(
 			anthropicModel(),
-			{ systemPrompt: "s", messages: [], tools: [] },
+			{ systemPrompt: ["s"], messages: [], tools: [] },
 			{},
 			{
 				telemetry: undefined,
@@ -158,7 +158,7 @@ describe("a side request never joins the live conversation", () => {
 		const run = () =>
 			instrumentedCompleteSimple(
 				anthropicModel(),
-				{ systemPrompt: "s", messages: [], tools: [] },
+				{ systemPrompt: ["s"], messages: [], tools: [] },
 				{ sessionId: SESSION_ID },
 				{
 					telemetry: undefined,
@@ -179,7 +179,11 @@ describe("compact() gives each summarization arm its own conversation", () => {
 	function basePreparation(overrides: Partial<CompactionPreparation> = {}): CompactionPreparation {
 		return {
 			firstKeptEntryId: "kept-entry",
-			messagesToSummarize: [user("first question"), assistantToolCall("call-1"), toolResult("call-1", "T".repeat(200))],
+			messagesToSummarize: [
+				user("first question"),
+				assistantToolCall("call-1"),
+				toolResult("call-1", "T".repeat(200)),
+			],
 			turnPrefixMessages: [],
 			recentMessages: [assistantText("here is the answer")],
 			isSplitTurn: false,
@@ -194,7 +198,7 @@ describe("compact() gives each summarization arm its own conversation", () => {
 
 	const sessionMessages: Message[] = [user("first question")];
 
-	it("tags a non-split history summary as `${sessionId}#compaction_summary`", async () => {
+	it("tags a non-split history summary with the compaction-summary side ID", async () => {
 		const ids: Array<string | undefined> = [];
 		await compact(basePreparation(), anthropicModel(), "test-key", undefined, undefined, {
 			tools: TOOLS,

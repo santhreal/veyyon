@@ -26,10 +26,7 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import * as http2 from "node:http2";
 import { create, toBinary } from "@bufbuild/protobuf";
-import {
-	buildGrepResultFromToolResult,
-	streamCursor,
-} from "@veyyon/ai/providers/cursor";
+import { buildGrepResultFromToolResult, streamCursor } from "@veyyon/ai/providers/cursor";
 import { setCursorProviderModule } from "@veyyon/ai/providers/register-builtins";
 import type {
 	AssistantMessage,
@@ -93,9 +90,7 @@ interface MockServer {
 	close: () => Promise<void>;
 }
 
-function startMockCursorH2Server(
-	onStream: (stream: http2.ServerHttp2Stream) => void,
-): Promise<MockServer> {
+function startMockCursorH2Server(onStream: (stream: http2.ServerHttp2Stream) => void): Promise<MockServer> {
 	const server = http2.createServer();
 	server.on("stream", onStream);
 
@@ -157,10 +152,7 @@ describe("Cursor Grep line number validation at tool-result boundary", () => {
 			"src/d.ts:invalid",
 		].join("\n");
 
-		const result = buildGrepResultFromToolResult(
-			{ pattern: "test", outputMode: "count" },
-			grepToolResult(rawOutput),
-		);
+		const result = buildGrepResultFromToolResult({ pattern: "test", outputMode: "count" }, grepToolResult(rawOutput));
 
 		expect(result.result.case).toBe("success");
 		if (result.result.case !== "success") return;
@@ -204,7 +196,7 @@ describe("Cursor exec server message handler failure closes turn immediately", (
 		try {
 			const execHandlers: CursorExecHandlers = {
 				grep: async () => ({
-					execResult: create(GrepResultSchema, {
+					result: create(GrepResultSchema, {
 						result: {
 							case: "success",
 							value: create(GrepSuccessSchema, {
@@ -309,22 +301,20 @@ describe("Cursor exec server message handler failure closes turn immediately", (
 		try {
 			const execHandlers: CursorExecHandlers = {
 				grep: async () => ({
-					toolResult: {
-						role: "toolResult",
-						toolCallId: "call-grep-2",
-						toolName: "grep",
-						content: [
-							{
-								type: "text",
-								text: [
-									"log.txt:1753660800000: [INFO] Timestamp match that previously caused overflow",
-									"src/app.ts:10: const active = true;",
-								].join("\n"),
-							},
-						],
-						isError: false,
-						timestamp: 1,
-					},
+					role: "toolResult",
+					toolCallId: "call-grep-2",
+					toolName: "grep",
+					content: [
+						{
+							type: "text",
+							text: [
+								"log.txt:1753660800000: [INFO] Timestamp match that previously caused overflow",
+								"src/app.ts:10: const active = true;",
+							].join("\n"),
+						},
+					],
+					isError: false,
+					timestamp: 1,
 				}),
 			};
 
@@ -345,4 +335,3 @@ describe("Cursor exec server message handler failure closes turn immediately", (
 		}
 	});
 });
-
