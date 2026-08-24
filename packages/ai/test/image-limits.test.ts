@@ -80,6 +80,7 @@ import { e2eApiKey } from "./oauth";
 const TEMP_ROOT = path.resolve(import.meta.dirname, "../../../.internal/image-limits");
 fs.mkdirSync(TEMP_ROOT, { recursive: true });
 const TEMP_DIR = fs.mkdtempSync(path.join(TEMP_ROOT, "run-"));
+const MAGICK_BIN = $which("magick") ?? $which("convert");
 const MAGICK_ENV = {
 	...process.env,
 	MAGICK_TMPDIR: TEMP_DIR,
@@ -90,8 +91,11 @@ const MAGICK_ENV = {
  * Generate a valid PNG image of specified dimensions using ImageMagick
  */
 async function generateImage(width: number, height: number, filename: string): Promise<string> {
+	if (!MAGICK_BIN) {
+		throw new Error("Neither magick nor convert is available on PATH");
+	}
 	const filepath = path.join(TEMP_DIR, filename);
-	execFileSync("magick", ["-size", `${width}x${height}`, "xc:red", filepath], {
+	execFileSync(MAGICK_BIN, ["-size", `${width}x${height}`, "xc:red", filepath], {
 		env: MAGICK_ENV,
 		stdio: "ignore",
 	});
@@ -109,10 +113,14 @@ async function generateImageWithSize(targetBytes: number, filename: string): Pro
 	// For a square image: side = sqrt(targetBytes / 3)
 	const side = Math.ceil(Math.sqrt(targetBytes / 3));
 	// Use noise pattern to prevent compression from shrinking the file
-	execFileSync("magick", ["-size", `${side}x${side}`, "xc:", "+noise", "Random", "-depth", "8", `PNG24:${filepath}`], {
-		env: MAGICK_ENV,
-		stdio: "ignore",
-	});
+	execFileSync(
+		MAGICK_BIN!,
+		["-size", `${side}x${side}`, "xc:", "+noise", "Random", "-depth", "8", `PNG24:${filepath}`],
+		{
+			env: MAGICK_ENV,
+			stdio: "ignore",
+		},
+	);
 
 	// Check actual size and adjust if needed
 	const { size } = await fs.promises.stat(filepath);
@@ -120,7 +128,7 @@ async function generateImageWithSize(targetBytes: number, filename: string): Pro
 		// If too small, increase dimensions
 		const newSide = Math.ceil(side * Math.sqrt(targetBytes / size));
 		execFileSync(
-			"magick",
+			MAGICK_BIN!,
 			["-size", `${newSide}x${newSide}`, "xc:", "+noise", "Random", "-depth", "8", `PNG24:${filepath}`],
 			{ env: MAGICK_ENV, stdio: "ignore" },
 		);
@@ -245,7 +253,7 @@ describe("Image Limits E2E Tests", () => {
 	let smallImage: string; // 100x100 for count tests
 
 	beforeAll(async () => {
-		if (!$which("magick")) return;
+		if (!MAGICK_BIN) return;
 
 		// Generate small test image for count tests
 		smallImage = await generateImage(100, 100, "small.png");
@@ -254,6 +262,30 @@ describe("Image Limits E2E Tests", () => {
 	afterAll(() => {
 		// Clean up temp directory
 		removeSyncWithRetries(TEMP_DIR);
+	});
+
+	describe("Image Generation & Scoped Tempdir", () => {
+		it("generates valid PNG images within the scoped temporary directory", async () => {
+			if (!MAGICK_BIN) return;
+			const imgBase64 = await generateImage(50, 50, "probe-50x50.png");
+			expect(imgBase64.length).toBeGreaterThan(0);
+			const buffer = Buffer.from(imgBase64, "base64");
+			// Verify PNG magic header bytes (0x89, 0x50, 0x4E, 0x47)
+			expect(buffer[0]).toBe(0x89);
+			expect(buffer[1]).toBe(0x50);
+			expect(buffer[2]).toBe(0x4e);
+			expect(buffer[3]).toBe(0x47);
+			expect(fs.existsSync(path.join(TEMP_DIR, "probe-50x50.png"))).toBe(true);
+		});
+
+		it("generates sized PNG images with predictable byte footprint", async () => {
+			if (!MAGICK_BIN) return;
+			const imgBase64 = await generateImageWithSize(10_000, "probe-10k.png");
+			expect(imgBase64.length).toBeGreaterThan(0);
+			const buffer = Buffer.from(imgBase64, "base64");
+			expect(buffer.length).toBeGreaterThanOrEqual(8_000);
+			expect(fs.existsSync(path.join(TEMP_DIR, "probe-10k.png"))).toBe(true);
+		});
 	});
 
 	// -------------------------------------------------------------------------

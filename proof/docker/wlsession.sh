@@ -181,7 +181,8 @@ getent group "${SCENE_RENDER_GID:-993}" >/dev/null 2>&1 ||
 usermod -aG "${SCENE_RENDER_GID:-993}" "${PUSER}"
 mkdir -p /tmp/xdg
 chmod 700 /tmp/xdg
-chown -R "${PUID}:${PGID}" /tmp/xdg "${OUT}" "${MAGICK_SCOPED_TMPDIR}"
+chown -R "${PUID}:${PGID}" /tmp/xdg "${OUT}"
+[ -n "${MAGICK_SCOPED_TMPDIR:-}" ] && chown -R "${PUID}:${PGID}" "${MAGICK_SCOPED_TMPDIR}" 2>/dev/null || true
 chown "${PUID}:${PGID}" /tmp/sway.conf /tmp/bootstrap.sh /tmp/backdrop.png 2>/dev/null || true
 # The seeded HOME is handed over rather than copied: it already holds the profile
 # record-wl.sh wrote, including the models file whose base URL was rewritten for
@@ -321,6 +322,7 @@ setpriv --reuid "${PUID}" --regid "${PGID}" --init-groups --inh-caps=-all \
 	"TYPE_DELAY=${TYPE_DELAY:-}" \
 	"SCENE_TYPING_REPEAT=${SCENE_TYPING_REPEAT:-}" \
 	"TERM=xterm-kitty" "COLORTERM=truecolor" "LANG=C.UTF-8" "LC_ALL=C.UTF-8" \
+	"MAGICK_SCOPED_TMPDIR=${MAGICK_SCOPED_TMPDIR:-}" "MAGICK_SCOPED_TMPDIR_TOKEN=${MAGICK_SCOPED_TMPDIR_TOKEN:-}" \
 	"MAGICK_TMPDIR=${MAGICK_TMPDIR:-}" "MAGICK_TEMPORARY_PATH=${MAGICK_TEMPORARY_PATH:-}" \
 	bash /tmp/session.sh
 
