@@ -117,6 +117,12 @@ export interface GenerateBranchSummaryOptions {
 	 * model's provider family (same contract as {@link SummaryOptions.serviceTier}).
 	 */
 	serviceTier?: ServiceTier;
+	/** Session routing key for remote transports and side-request conversation derivation. */
+	sessionId?: string;
+	/** Explicit conversation ID override for the side completion. */
+	conversationId?: string;
+	/** Prompt-cache key for transports that support provider prefix caching. */
+	promptCacheKey?: string;
 }
 
 // ============================================================================
@@ -660,7 +666,17 @@ export async function generateBranchSummary(
 	const response = await instrumentedCompleteSimple(
 		model,
 		context,
-		{ apiKey: attemptApiKey, signal, maxTokens: 2048, metadata, onPayload, serviceTier: options.serviceTier },
+		{
+			apiKey: attemptApiKey,
+			signal,
+			maxTokens: 2048,
+			metadata,
+			serviceTier: options.serviceTier,
+			sessionId: options.sessionId,
+			conversationId: options.conversationId,
+			promptCacheKey: options.promptCacheKey,
+			onPayload,
+		},
 		{ telemetry: options.telemetry, oneshotKind: "branch_summary", completeImpl: options.completeImpl },
 	);
 

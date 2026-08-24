@@ -31,6 +31,26 @@ import {
 import { EventLoopKeepalive } from "./utils/yield";
 
 /**
+ * Enumeration of canonical oneshot kinds across the agent and its tools.
+ * Exported as an array so suites and variant sweeps can enumerate the union
+ * at run time instead of hardcoding a list that drifts in silence.
+ *
+ * `OneshotKind` accepts `string & {}` so extensions and external callers can
+ * introduce ad-hoc kinds without compiler barriers.
+ */
+export const ONESHOT_KINDS = [
+	"compaction_summary",
+	"compaction_turn_prefix",
+	"handoff",
+	"branch_summary",
+	"inspect_image",
+	"eval_completion",
+	"guided_goal_setup",
+] as const;
+
+export type OneshotKind = (typeof ONESHOT_KINDS)[number] | (string & {});
+
+/**
  * Options accepted by {@link instrumentedCompleteSimple}. Mirrors the
  * `streamAssistantResponse` chat-span lifecycle for oneshot LLM calls
  * (compaction summaries, handoff document, branch summary, inspect_image).
@@ -47,7 +67,7 @@ export interface InstrumentedChatSpanOptions {
 	 * `handoff`, `branch_summary`, `inspect_image`. Free-form to allow callers
 	 * outside this package to add new kinds without bumping the helper.
 	 */
-	readonly oneshotKind?: string;
+	readonly oneshotKind?: OneshotKind;
 	/** Extra span attributes applied verbatim. */
 	readonly attributes?: Attributes;
 	/**
@@ -87,7 +107,8 @@ export interface InstrumentedChatSpanOptions {
 function sideConversationId(options: SimpleStreamOptions, oneshotKind: string | undefined): string | undefined {
 	if (options.conversationId !== undefined) return options.conversationId;
 	if (options.sessionId === undefined) return undefined;
-	return `${options.sessionId}#${oneshotKind ?? "oneshot"}`;
+	const kind = oneshotKind && oneshotKind.length > 0 ? oneshotKind : "oneshot";
+	return `${options.sessionId}#${kind}`;
 }
 
 /**

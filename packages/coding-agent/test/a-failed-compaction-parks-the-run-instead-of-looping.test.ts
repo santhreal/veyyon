@@ -401,4 +401,115 @@ describe("a failed compaction parks the run instead of looping", () => {
 		expect(promptSpy).not.toHaveBeenCalled();
 		expect(continueSpy).not.toHaveBeenCalled();
 	});
+
+	it("retries clean turn without restoring failed assistant message when rescue succeeds after overflow summarizer failure", async () => {
+		const continueSpy = vi.spyOn(session.agent, "continue").mockResolvedValue();
+		let shaken = false;
+		vi.spyOn(session, "getContextUsage").mockImplementation(() =>
+			shaken
+				? { tokens: 1000, contextWindow: 200000, percent: 0.5 }
+				: { tokens: 205000, contextWindow: 200000, percent: 102.5 },
+		);
+		const shakeSpy = vi.spyOn(session, "shake").mockImplementation(async () => {
+			shaken = true;
+			return {
+				mode: "elide",
+				toolResultsDropped: 1,
+				blocksDropped: 0,
+				tokensFreed: 160000,
+				artifactId: "art-overflow-rescue",
+			};
+		});
+		refuseSummarizer();
+
+		const notices = collectNotices();
+		const endWait = waitForCompactionEnd();
+
+		const assistantMsg = overflowAssistant();
+		session.agent.emitExternalEvent({ type: "message_end", message: assistantMsg });
+		session.agent.emitExternalEvent({ type: "agent_end", messages: [assistantMsg] });
+		await endWait;
+		await session.waitForIdle();
+
+		expect(shakeSpy).toHaveBeenCalledWith("elide", expect.anything());
+		expect(continueSpy).toHaveBeenCalledTimes(1);
+		// The failed assistant turn was dropped for retry and must NOT be restored to active context
+		const activeAssistant = session.agent.state.messages.find(
+			m => m.role === "assistant" && m.stopReason === "error",
+		);
+		expect(activeAssistant).toBeUndefined();
+
+		const noProgress = notices.filter(n => n.source === NOTICE_SOURCE && n.message.includes(NO_PROGRESS_FRAGMENT));
+		expect(noProgress).toEqual([]);
+		const recovery = notices.filter(n => n.source === NOTICE_SOURCE && n.message.includes("dead-end recovery"));
+		expect(recovery.length).toBe(1);
+	});
+
+	it("retries clean turn without restoring truncated assistant message when rescue succeeds after incomplete response summarizer failure", async () => {
+		const continueSpy = vi.spyOn(session.agent, "continue").mockResolvedValue();
+		let shaken = false;
+		vi.spyOn(session, "getContextUsage").mockImplementation(() =>
+			shaken
+				? { tokens: 1000, contextWindow: 200000, percent: 0.5 }
+				: { tokens: 190000, contextWindow: 200000, percent: 95 },
+		);
+		const shakeSpy = vi.spyOn(session, "shake").mockImplementation(async () => {
+			shaken = true;
+			return {
+				mode: "elide",
+				toolResultsDropped: 1,
+				blocksDropped: 0,
+				tokensFreed: 100000,
+				artifactId: "art-length-rescue",
+			};
+		});
+		refuseSummarizer();
+
+		const notices = collectNotices();
+		const endWait = waitForCompactionEnd();
+
+		const assistantMsg = incompleteAssistant();
+		session.agent.emitExternalEvent({ type: "message_end", message: assistantMsg });
+		session.agent.emitExternalEvent({ type: "agent_end", messages: [assistantMsg] });
+		await endWait;
+		await session.waitForIdle();
+
+		expect(shakeSpy).toHaveBeenCalledWith("elide", expect.anything());
+		expect(continueSpy).toHaveBeenCalledTimes(1);
+		const activeTruncated = session.agent.state.messages.find(
+			m => m.role === "assistant" && m.stopReason === "length",
+		);
+		expect(activeTruncated).toBeUndefined();
+
+		const noProgress = notices.filter(n => n.source === NOTICE_SOURCE && n.message.includes(NO_PROGRESS_FRAGMENT));
+		expect(noProgress).toEqual([]);
+		const recovery = notices.filter(n => n.source === NOTICE_SOURCE && n.message.includes("dead-end recovery"));
+		expect(recovery.length).toBe(1);
+	});
+
+	it("restores failed assistant message to active context when both summarizer and rescue fail on overflow", async () => {
+		const continueSpy = vi.spyOn(session.agent, "continue").mockResolvedValue();
+		vi.spyOn(session, "getContextUsage").mockReturnValue({ tokens: 205000, contextWindow: 200000, percent: 102.5 });
+		nothingToElide();
+		refuseSummarizer();
+
+		const notices = collectNotices();
+		const endWait = waitForCompactionEnd();
+
+		const assistantMsg = overflowAssistant();
+		session.agent.emitExternalEvent({ type: "message_end", message: assistantMsg });
+		session.agent.emitExternalEvent({ type: "agent_end", messages: [assistantMsg] });
+		await endWait;
+		await session.waitForIdle();
+
+		expect(continueSpy).not.toHaveBeenCalled();
+		// Dead end: failed assistant turn MUST be restored so transcript explains the error
+		const restoredAssistant = session.agent.state.messages.find(
+			m => m.role === "assistant" && m.stopReason === "error",
+		);
+		expect(restoredAssistant).toBeDefined();
+
+		const noProgress = notices.filter(n => n.source === NOTICE_SOURCE && n.message.includes(NO_PROGRESS_FRAGMENT));
+		expect(noProgress.length).toBe(1);
+	});
 });

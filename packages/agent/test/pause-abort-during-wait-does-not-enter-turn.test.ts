@@ -6,14 +6,17 @@
  * before synthesizing an aborted assistant message.
  *
  * This suite verifies:
- * 1. An abort during or before waitUntilResumed rejects with the established abort error.
- * 2. An aborted pause in agentLoop terminates boundedly without emitting turn_start or dispatching the provider.
- * 3. Event listeners on the AbortSignal are cleanly removed across all settlement paths (no listener leaks).
- * 4. Concurrent / near-simultaneous resume and abort settle exactly once.
+ * 1. An abort before wait (paused or unpaused) or during waitUntilResumed rejects with the established abort error.
+ * 2. An aborted pause in agentLoop terminates boundedly without emitting turn_start or dispatching the provider across turn 1 and turn N.
+ * 3. Event listeners on the AbortSignal are cleanly removed across all settlement paths (no listener leaks across cycles).
+ * 4. Concurrent / near-simultaneous resume and abort settle exactly once, and re-engaged pause + abort in the same tick re-parks surviving waiters.
  * 5. Other waiters and the pause gate itself remain engaged after one waiter aborts.
+ * 6. Paused tool batches with mixed signals correctly skip interrupted tools while preserving and executing un-aborted tools upon resume.
+ *
+ * Gap: Does not cover out-of-process OS signal handlers (SIGINT/SIGTERM) or lower-level transport socket connection aborts.
  */
 
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it, vi } from "bun:test";
 import { AgentPauseGate, agentLoop } from "@veyyon/agent-core";
 import type { AgentContext, AgentEvent, AgentLoopConfig, AgentMessage, AgentTool } from "@veyyon/agent-core/types";
 import type { Message } from "@veyyon/ai";
@@ -63,6 +66,7 @@ describe("pause abort during wait does not enter turn", () => {
 			const gate = new AgentPauseGate();
 			gate.pause();
 			const ac = new AbortController();
+			const removeSpy = vi.spyOn(ac.signal, "removeEventListener");
 			const customReason = new Error("aborted mid-wait");
 
 			let caught: unknown;
@@ -78,12 +82,14 @@ describe("pause abort during wait does not enter turn", () => {
 
 			expect(caught).toBe(customReason);
 			expect(gate.paused).toBe(true);
+			expect(removeSpy).toHaveBeenCalledWith("abort", expect.any(Function));
 		});
 
 		it("cleans up signal abort listener on successful resume", async () => {
 			const gate = new AgentPauseGate();
 			gate.pause();
 			const ac = new AbortController();
+			const removeSpy = vi.spyOn(ac.signal, "removeEventListener");
 
 			let resolved = false;
 			const waitPromise = gate.waitUntilResumed(ac.signal).then(() => {
@@ -96,6 +102,7 @@ describe("pause abort during wait does not enter turn", () => {
 			gate.resume();
 			await waitPromise;
 			expect(resolved).toBe(true);
+			expect(removeSpy).toHaveBeenCalledWith("abort", expect.any(Function));
 		});
 
 		it("settles exactly once under concurrent resume and abort", async () => {
@@ -148,6 +155,75 @@ describe("pause abort during wait does not enter turn", () => {
 			await p1;
 
 			expect(waiter1Error).toBe("cancel 1");
+			expect(waiter2Resolved).toBe(false);
+			expect(gate.paused).toBe(true);
+
+			gate.resume();
+			await p2;
+			expect(waiter2Resolved).toBe(true);
+		});
+
+		it("rejects with abort error when signal is already aborted before wait on an unpaused gate", async () => {
+			const gate = new AgentPauseGate();
+			expect(gate.paused).toBe(false);
+			const ac = new AbortController();
+			const customReason = new Error("already aborted unpaused");
+			ac.abort(customReason);
+
+			let caught: unknown;
+			try {
+				await gate.waitUntilResumed(ac.signal);
+			} catch (err) {
+				caught = err;
+			}
+			expect(caught).toBe(customReason);
+		});
+
+		it("does not leak abort listeners across sequential pause-wait-resume cycles on a shared signal", async () => {
+			const gate = new AgentPauseGate();
+			const ac = new AbortController();
+
+			for (let i = 0; i < 50; i++) {
+				gate.pause();
+				const p = gate.waitUntilResumed(ac.signal);
+				gate.resume();
+				await p;
+			}
+
+			ac.abort("post-cycle abort");
+			let caught: unknown;
+			try {
+				await gate.waitUntilResumed(ac.signal);
+			} catch (err) {
+				caught = err;
+			}
+			expect(caught).toBe("post-cycle abort");
+		});
+
+		it("settles correctly when gate is resumed, immediately re-engaged, and aborted in the same tick", async () => {
+			const gate = new AgentPauseGate();
+			gate.pause();
+			const ac1 = new AbortController();
+			const ac2 = new AbortController();
+
+			let waiter1Error: unknown;
+			let waiter2Resolved = false;
+
+			const p1 = gate.waitUntilResumed(ac1.signal).catch(err => {
+				waiter1Error = err;
+			});
+			const p2 = gate.waitUntilResumed(ac2.signal).then(() => {
+				waiter2Resolved = true;
+			});
+
+			await Promise.resolve();
+
+			gate.resume();
+			gate.pause();
+			ac1.abort("aborted during re-engage");
+
+			await p1;
+			expect(waiter1Error).toBe("aborted during re-engage");
 			expect(waiter2Resolved).toBe(false);
 			expect(gate.paused).toBe(true);
 
@@ -331,6 +407,121 @@ describe("pause abort during wait does not enter turn", () => {
 			}
 
 			expect(pauseGate.paused).toBe(true);
+		});
+
+		it("handles paused tool batch with mixed signals (interruptible skipped on mid-pause interrupt, foreground executes on resume)", async () => {
+			const pauseGate = new AgentPauseGate();
+			const executed: string[] = [];
+			const { promise: assistantMessageEnded, resolve: resolveAssistant } = Promise.withResolvers<void>();
+
+			const toolSchema = type({ msg: "string" });
+			const foregroundTool: AgentTool<typeof toolSchema, { msg: string }> = {
+				name: "foreground",
+				label: "Foreground",
+				description: "Foreground non-interruptible tool",
+				parameters: toolSchema,
+				async execute(_toolCallId, params) {
+					executed.push(`foreground:${params.msg}`);
+					return { content: [{ type: "text", text: `fg_ok:${params.msg}` }], details: params };
+				},
+			};
+
+			const interruptibleTool: AgentTool<typeof toolSchema, { msg: string }> = {
+				name: "interruptible",
+				label: "Interruptible",
+				description: "Interruptible tool",
+				parameters: toolSchema,
+				interruptible: true,
+				async execute(_toolCallId, params) {
+					executed.push(`interruptible:${params.msg}`);
+					return { content: [{ type: "text", text: `int_ok:${params.msg}` }], details: params };
+				},
+			};
+
+			const mock = createMockModel({
+				responses: [
+					() => {
+						// Pause gate engages during response generation
+						pauseGate.pause();
+						return {
+							content: [
+								{ type: "toolCall" as const, name: "interruptible", arguments: { msg: "int-call" } },
+								{ type: "toolCall" as const, name: "foreground", arguments: { msg: "fg-call" } },
+							],
+						};
+					},
+					{ content: ["turn 2 done"] },
+				],
+			});
+
+			const { promise: ircChecked, resolve: resolveIrcChecked } = Promise.withResolvers<void>();
+			let ircInterruptQueued = false;
+			const context: AgentContext = {
+				systemPrompt: ["Test"],
+				messages: [],
+				tools: [interruptibleTool, foregroundTool],
+			};
+			const config: AgentLoopConfig = {
+				model: mock.model,
+				convertToLlm: identityConverter,
+				pauseGate,
+				hasIrcInterrupts: async () => {
+					if (ircInterruptQueued) {
+						resolveIrcChecked();
+						return true;
+					}
+					return false;
+				},
+			};
+
+			const stream = agentLoop([createUserMessage("run batch")], context, config, undefined, mock.stream);
+
+			const readPromise = (async () => {
+				for await (const event of stream) {
+					if (event.type === "message_end" && event.message.role === "assistant" && mock.calls.length === 1) {
+						resolveAssistant();
+					}
+				}
+			})();
+
+			// Wait until assistant message finishes and both tools are parked at pause gate
+			await assistantMessageEnded;
+			// Allow tools to reach the pause gate
+			await Promise.resolve();
+			await Promise.resolve();
+			expect(mock.calls.length).toBe(1);
+			expect(executed).toEqual([]);
+
+			// Trigger IRC interrupt mid-pause — this aborts the interruptible tool signal but leaves foreground tool parked
+			ircInterruptQueued = true;
+			// Await the steering watch timer polling hasIrcInterrupts and aborting ircAbortController
+			await ircChecked;
+			// Allow microtasks to propagate the abort rejection to the interruptible tool's waitUntilResumed catch block
+			await Promise.resolve();
+			await Promise.resolve();
+
+			// Resume pause gate: foreground tool should execute, interruptible tool was skipped
+			pauseGate.resume();
+			await readPromise;
+			// Foreground tool ran to completion upon resume; interruptible tool was skipped
+			expect(executed).toEqual(["foreground:fg-call"]);
+			expect(mock.calls.length).toBe(2);
+
+			const messages = await stream.result();
+			const toolResults = messages.filter(m => m.role === "toolResult");
+			expect(toolResults.length).toBe(2);
+
+			// Find each result
+			const intResult = toolResults.find(m => m.role === "toolResult" && m.toolName === "interruptible");
+			const fgResult = toolResults.find(m => m.role === "toolResult" && m.toolName === "foreground");
+			expect(intResult).toBeDefined();
+			expect(fgResult).toBeDefined();
+			if (intResult && intResult.role === "toolResult") {
+				expect(intResult.isError).toBe(true);
+			}
+			if (fgResult && fgResult.role === "toolResult") {
+				expect(fgResult.isError).toBe(false);
+			}
 		});
 	});
 });
