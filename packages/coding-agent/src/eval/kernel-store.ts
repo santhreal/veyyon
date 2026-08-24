@@ -18,10 +18,13 @@
  * served: a stale shape after an upgrade must fail loud rather than hand back half-parsed values.
  */
 
+import { createHash } from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
 import { atomicWriteFile } from "@veyyon/utils/atomic-write";
+import { withFileLock } from "@veyyon/utils/file-lock";
+import { isEnoent } from "@veyyon/utils/fs-error";
 
 const STORE_VERSION = 1;
 /** A single value above this is refused: the store is for handles and small state, not payloads. */
@@ -49,6 +52,11 @@ export class KernelStoreError extends Error {
 		super(message);
 		this.name = "KernelStoreError";
 	}
+}
+export function sessionStoreFileName(sessionId: string): string {
+	const prefix = sessionId.replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 32);
+	const hash = createHash("sha256").update(sessionId, "utf8").digest("hex");
+	return prefix.length > 0 ? `${prefix}_${hash}.json` : `${hash}.json`;
 }
 
 function assertKey(key: string): void {
@@ -84,8 +92,11 @@ async function readFile(filePath: string): Promise<StoreFile> {
 	let raw: string;
 	try {
 		raw = await fs.readFile(filePath, "utf-8");
-	} catch {
-		return { version: STORE_VERSION, values: {} };
+	} catch (error) {
+		if (isEnoent(error)) {
+			return { version: STORE_VERSION, values: Object.create(null) as Record<string, unknown> };
+		}
+		throw error;
 	}
 	let parsed: unknown;
 	try {
@@ -96,12 +107,21 @@ async function readFile(filePath: string): Promise<StoreFile> {
 		);
 	}
 	const file = parsed as Partial<StoreFile>;
-	if (file?.version !== STORE_VERSION || typeof file.values !== "object" || file.values === null) {
+	if (
+		file?.version !== STORE_VERSION ||
+		typeof file.values !== "object" ||
+		file.values === null ||
+		Array.isArray(file.values)
+	) {
 		throw new KernelStoreError(
 			`${filePath} is a kernel store of an unrecognized shape or version; move it aside and the next write starts a fresh store`,
 		);
 	}
-	return file as StoreFile;
+	const values = Object.create(null) as Record<string, unknown>;
+	for (const key of Object.keys(file.values)) {
+		values[key] = (file.values as Record<string, unknown>)[key];
+	}
+	return { version: STORE_VERSION, values };
 }
 
 async function writeFile(filePath: string, values: Record<string, unknown>): Promise<void> {
@@ -126,29 +146,35 @@ export function openKernelStore(root: string, sessionId: string): KernelStore {
 			"the kernel store needs a session artifacts directory and a session id; this session has neither",
 		);
 	}
-	const safeId = sessionId.replace(/[^A-Za-z0-9._-]/g, "_");
-	const filePath = path.join(root, "kernel-store", `${safeId}.json`);
+	const fileName = sessionStoreFileName(sessionId);
+	const filePath = path.join(root, "kernel-store", fileName);
 	return {
 		filePath,
 		get: async key => {
 			assertKey(key);
 			const file = await readFile(filePath);
-			return file.values[key];
+			return Object.hasOwn(file.values, key) ? file.values[key] : undefined;
 		},
 		set: async (key, value) => {
 			assertKey(key);
 			assertSerializable(value);
-			const file = await readFile(filePath);
-			file.values[key] = value;
-			await writeFile(filePath, file.values);
+			await fs.mkdir(path.dirname(filePath), { recursive: true });
+			await withFileLock(filePath, async () => {
+				const file = await readFile(filePath);
+				file.values[key] = value;
+				await writeFile(filePath, file.values);
+			});
 		},
 		delete: async key => {
 			assertKey(key);
-			const file = await readFile(filePath);
-			if (!(key in file.values)) return false;
-			delete file.values[key];
-			await writeFile(filePath, file.values);
-			return true;
+			await fs.mkdir(path.dirname(filePath), { recursive: true });
+			return await withFileLock(filePath, async () => {
+				const file = await readFile(filePath);
+				if (!Object.hasOwn(file.values, key)) return false;
+				delete file.values[key];
+				await writeFile(filePath, file.values);
+				return true;
+			});
 		},
 		list: async () => {
 			const file = await readFile(filePath);
