@@ -6,6 +6,7 @@
 
 import type { AgentToolUpdateCallback } from "@veyyon/agent-core";
 import type { TSchema } from "@veyyon/ai";
+import { namesDeadSocket } from "@veyyon/ai/error/flags";
 import { normalizeSchemaForMCP } from "@veyyon/ai/utils/schema";
 import { errorMessage, isAbortError, isRecord, untilAborted } from "@veyyon/utils";
 import { INTENT_FIELD } from "@veyyon/wire";
@@ -32,23 +33,16 @@ import type { MCPContent, MCPServerConnection, MCPToolCallParams, MCPToolCallRes
 export type MCPReconnect = () => Promise<MCPServerConnection | null>;
 
 /**
- * Network-level and stale-session errors that warrant a reconnect + single retry.
- * Conservative: only catches errors where the server is likely alive but the
- * connection object is stale (dead SSE, expired session, refused after restart).
+ * Whether a failed MCP call is worth tearing the connection down and sending once more.
+ *
+ * Two kinds of fault qualify, and they belong to different layers. The socket vocabulary is the
+ * error registry's — a refused, reset or unreachable peer reads the same in every package — and this
+ * module used to keep nine literals of its own beside it. What is local is the SHAPE of a stale MCP
+ * session: a server that restarted answers the old session id with 404, and a proxy in front of it
+ * with 502 or 503, so those three statuses mean "reconnect" here and mean "the peer is alive and
+ * failing" to a provider call. A live server returning 500 stays a failed tool call.
  */
-const RETRIABLE_PATTERNS = [
-	"econnrefused",
-	"econnreset",
-	"epipe",
-	"enetunreach",
-	"ehostunreach",
-	"fetch failed",
-	"transport not connected",
-	"transport closed",
-	"network error",
-];
-
-export function isRetriableConnectionError(error: unknown): boolean {
+export function mcpFailureWarrantsReconnect(error: unknown): boolean {
 	if (!(error instanceof Error)) return false;
 	const msg = error.message.toLowerCase();
 	// Stale session (server restarted, old session ID is gone). Unanchored on
@@ -60,7 +54,7 @@ export function isRetriableConnectionError(error: unknown): boolean {
 	// The transports' own wording for a dead connection, owned next to the
 	// strings rather than duplicated as literals here.
 	if (isMCPTransportStateMessage(msg)) return true;
-	return RETRIABLE_PATTERNS.some(p => msg.includes(p));
+	return namesDeadSocket(msg);
 }
 
 type MCPToolArgs = NonNullable<MCPToolCallParams["arguments"]>;
@@ -496,7 +490,7 @@ export class MCPTool implements CustomTool<TSchema, MCPToolDetails> {
 			return buildResult(result, this.connection.name, this.tool.name, provider, providerName, rawParams);
 		} catch (error) {
 			rethrowIfAborted(error, signal);
-			if (this.reconnect && isRetriableConnectionError(error)) {
+			if (this.reconnect && mcpFailureWarrantsReconnect(error)) {
 				const newConn = await reconnectWithAbort(this.reconnect, signal);
 				if (newConn) {
 					// Rebind so subsequent calls on this instance use the fresh connection
@@ -612,7 +606,7 @@ export class DeferredMCPTool implements CustomTool<TSchema, MCPToolDetails> {
 				);
 			} catch (callError) {
 				rethrowIfAborted(callError, signal);
-				if (this.reconnect && isRetriableConnectionError(callError)) {
+				if (this.reconnect && mcpFailureWarrantsReconnect(callError)) {
 					const newConn = await reconnectWithAbort(this.reconnect, signal);
 					if (newConn) {
 						const retryProvider = newConn._source?.provider ?? provider;
