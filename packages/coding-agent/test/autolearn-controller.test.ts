@@ -59,30 +59,13 @@ class FakeSession {
 	}
 }
 
-function install(
-	session: FakeSession,
-	overrides: Record<string, unknown> = {},
-	memoryStartup: Promise<unknown> = Promise.resolve(),
-): Settings {
+function install(session: FakeSession, overrides: Record<string, unknown> = {}): Settings {
 	const settings = Settings.isolated({ "autolearn.enabled": true, ...overrides });
-	new AutoLearnController({
-		session: session as unknown as AgentSession,
-		settings,
-		memoryStartup,
-	});
+	new AutoLearnController({ session: session as unknown as AgentSession, settings });
 	return settings;
 }
 
 describe("AutoLearnController", () => {
-	/**
-	 * The capture dispatch is deferred behind the backgrounded memory startup
-	 * and its own send confirmation — every hop is a promise continuation, no
-	 * timers involved, so draining microtasks settles it deterministically.
-	 */
-	const settleNudge = async (): Promise<void> => {
-		for (let i = 0; i < 10; i++) await Promise.resolve();
-	};
-
 	it("does not inject a passive nudge into the conversation prefix", () => {
 		const session = new FakeSession();
 		install(session);
@@ -92,7 +75,7 @@ describe("AutoLearnController", () => {
 		expect(session.sent).toHaveLength(0);
 	});
 
-	it("the auto-continue nudge is terminal — capture then stop, never assume approval (#3504)", async () => {
+	it("the auto-continue nudge is terminal — capture then stop, never assume approval (#3504)", () => {
 		// Regression: with autoContinue on, the synthetic capture turn carries
 		// the nudge as its only user-role payload. Without an explicit "stop /
 		// not a user reply / do not assume approval" contract, the agent reads
@@ -102,7 +85,6 @@ describe("AutoLearnController", () => {
 		install(session, { "autolearn.autoContinue": true });
 		session.toolCalls(5);
 		session.agentEnd();
-		await settleNudge();
 		const body = String(session.sent[0]?.message.content);
 		// Frames the prompt as automated, not as the user's response.
 		expect(body).toMatch(/not a user reply|not from the user/i);
@@ -153,53 +135,44 @@ describe("AutoLearnController", () => {
 		expect(session.sent).toHaveLength(0);
 	});
 
-	it("stops auto-continuing when autolearn is disabled mid-session", async () => {
+	it("stops auto-continuing when autolearn is disabled mid-session", () => {
 		const session = new FakeSession();
 		// Enable via the global layer (not an isolated override) so the live flag
 		// can be flipped and the controller's fire-time re-check is exercised.
 		const settings = Settings.isolated({ "autolearn.autoContinue": true });
 		settings.set("autolearn.enabled", true);
-		new AutoLearnController({
-			session: session as unknown as AgentSession,
-			settings,
-			memoryStartup: Promise.resolve(),
-		});
+		new AutoLearnController({ session: session as unknown as AgentSession, settings });
 		session.toolCalls(5);
 		session.agentEnd();
-		await settleNudge();
 		expect(session.sent).toHaveLength(1); // fires while enabled
 		settings.set("autolearn.enabled", false);
 		session.toolCalls(5);
 		session.agentEnd();
-		await settleNudge();
 		expect(session.sent).toHaveLength(1); // no new nudge after disable
 		// The disabled stop must NOT leave its tool calls queued: re-enabling and
 		// doing a sub-threshold turn must not fire from leaked counts.
 		settings.set("autolearn.enabled", true);
 		session.toolCalls(1);
 		session.agentEnd();
-		await settleNudge();
 		expect(session.sent).toHaveLength(1);
 	});
 
-	it("does not nudge during goal mode and leaks no suppression latch", async () => {
+	it("does not nudge during goal mode and leaks no suppression latch", () => {
 		const session = new FakeSession();
 		session.goalEnabled = true;
 		install(session, { "autolearn.autoContinue": true });
 		session.toolCalls(5);
 		session.agentEnd();
-		await settleNudge();
 		// Goal mode owns the continuation; auto-learn stays out of the loop.
 		expect(session.sent).toHaveLength(0);
 		// The skipped stop must not arm suppression for the next non-goal stop.
 		session.goalEnabled = false;
 		session.toolCalls(5);
 		session.agentEnd();
-		await settleNudge();
 		expect(session.sent).toHaveLength(1);
 	});
 
-	it("never nudges a turn that started in goal mode even if the goal ended mid-turn", async () => {
+	it("never nudges a turn that started in goal mode even if the goal ended mid-turn", () => {
 		const session = new FakeSession();
 		session.goalEnabled = true;
 		install(session, { "autolearn.autoContinue": true });
@@ -210,7 +183,6 @@ describe("AutoLearnController", () => {
 		// off by the time the turn stops, but this turn must still never be nudged.
 		session.goalEnabled = false;
 		session.agentEnd();
-		await settleNudge();
 		expect(session.sent).toHaveLength(0);
 
 		// The capture is per-turn: a fresh turn that did not start in goal mode
@@ -218,30 +190,26 @@ describe("AutoLearnController", () => {
 		session.agentStart();
 		session.toolCalls(5);
 		session.agentEnd();
-		await settleNudge();
 		expect(session.sent).toHaveLength(1);
 	});
 
-	it("auto-runs a capture turn and suppresses exactly one follow-up agent_end", async () => {
+	it("auto-runs a capture turn and suppresses exactly one follow-up agent_end", () => {
 		const session = new FakeSession();
 		install(session, { "autolearn.autoContinue": true });
 
 		session.toolCalls(5);
 		session.agentEnd();
-		await settleNudge();
 		expect(session.sent).toHaveLength(1);
 		expect(session.sent[0]?.options?.triggerTurn).toBe(true);
 
 		// The synthetic capture turn's agent_end is swallowed.
 		session.toolCalls(5);
 		session.agentEnd();
-		await settleNudge();
 		expect(session.sent).toHaveLength(1);
 
 		// Suppression is one-shot: the next qualifying stop fires again.
 		session.toolCalls(5);
 		session.agentEnd();
-		await settleNudge();
 		expect(session.sent).toHaveLength(2);
 	});
 
@@ -252,13 +220,12 @@ describe("AutoLearnController", () => {
 		install(session, { "autolearn.autoContinue": true });
 		session.toolCalls(5);
 		session.agentEnd();
-		await settleNudge();
 		expect(session.sent).toHaveLength(1);
 		expect(session.sent[0]?.options?.triggerTurn).toBe(true);
+		await Bun.sleep(1); // flush the async disarm
 		// No turn ran, so the next real stop must still nudge.
 		session.toolCalls(5);
 		session.agentEnd();
-		await settleNudge();
 		expect(session.sent).toHaveLength(2);
 	});
 
@@ -268,21 +235,19 @@ describe("AutoLearnController", () => {
 		install(session, { "autolearn.autoContinue": true });
 		session.toolCalls(5);
 		session.agentEnd(); // dispatch rejects: armed, then disarmed in .catch
-		await settleNudge();
 		expect(session.sent).toHaveLength(0);
+		await Bun.sleep(1); // flush the async disarm
 		session.failSend = false;
 		session.toolCalls(5);
 		session.agentEnd();
-		await settleNudge();
 		expect(session.sent).toHaveLength(1);
 	});
 
-	it("respects a custom minToolCalls threshold", async () => {
+	it("respects a custom minToolCalls threshold", () => {
 		const session = new FakeSession();
 		install(session, { "autolearn.autoContinue": true, "autolearn.minToolCalls": 2 });
 		session.toolCalls(2);
 		session.agentEnd();
-		await settleNudge();
 		expect(session.sent).toHaveLength(1);
 	});
 
