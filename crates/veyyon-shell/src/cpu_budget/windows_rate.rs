@@ -8,7 +8,16 @@
 //! `GetActiveProcessorCount` for the host count, then these helpers for the
 //! rate.
 
-/// Whether rate control is on, and if so the `CpuRate` in 1..=10_000.
+#![cfg_attr(
+	not(windows),
+	allow(
+		dead_code,
+		reason = "the Windows backend is cfg'd out; this module exists so Linux CI tests the \
+		          conversion"
+	)
+)]
+
+/// Whether rate control is on, and if so the `CpuRate` in `1..=10_000`.
 ///
 /// Zero, negative, or non-finite cores must DISABLE the cap (`ControlFlags =
 /// 0`). Flooring those inputs to `CpuRate` 1 with `HARD_CAP` left `/cpu-limit
@@ -23,13 +32,15 @@ pub(super) struct CpuRateControl {
 /// The `CpuRate` value for a **positive** budget of `cores` cores on a machine
 /// with `cpus` logical processors.
 ///
-/// `CpuRate` is cycles per 10_000 cycles of TOTAL machine capacity, so a core
+/// `CpuRate` is cycles per `10_000` cycles of TOTAL machine capacity, so a core
 /// count has to be expressed as a fraction of the whole machine first: 4 cores
-/// on 16 processors is 2_500, not 40_000. The three edges each have a reason:
+/// on 16 processors is `2_500`, not `40_000`. The three edges each have a
+/// reason:
 ///
 /// - Clamped at the top, because a budget at or past the machine's core count
-///   means the whole machine and a `CpuRate` above 10_000 is rejected outright
-///   by `SetInformationJobObject`, which would leave the job with NO cap.
+///   means the whole machine and a `CpuRate` above `10_000` is rejected
+///   outright by `SetInformationJobObject`, which would leave the job with NO
+///   cap.
 /// - Clamped at the bottom against negative or NaN input.
 /// - Floored at 1, because `CpuRate` 0 with `HARD_CAP` set is also rejected,
 ///   and a tiny-but-nonzero budget must round to the smallest cap the API can
@@ -60,8 +71,8 @@ mod tests {
 
 	/// Using the affinity/container slice as the denominator grants the host.
 	///
-	/// A 2-core budget inside a 2-of-16 slice is 1_250 (12.5% of the machine),
-	/// not 10_000. `apply_rate` has to ask `GetActiveProcessorCount`, not
+	/// A 2-core budget inside a 2-of-16 slice is `1_250` (12.5% of the machine),
+	/// not `10_000`. `apply_rate` has to ask `GetActiveProcessorCount`, not
 	/// `available_parallelism`, for this reason.
 	#[test]
 	fn a_budget_equal_to_an_affinity_slice_is_still_a_fraction_of_the_host() {
@@ -79,11 +90,11 @@ mod tests {
 	/// place it differs in kind from the Linux backend, where `cpu.max` is
 	/// expressed against a fixed period and the machine size never enters.
 	/// Forgetting to divide by the processor count is the natural mistake, and
-	/// its result is not a visible error: `CpuRate` 40_000 is out of range, the
-	/// call is rejected, and the job runs with no cap while the settings row
-	/// still says four cores. The exact expected values are computed by hand
-	/// from the API contract (cycles per 10_000 of total capacity), not read
-	/// back from the implementation.
+	/// its result is not a visible error: `CpuRate` `40_000` is out of range,
+	/// the call is rejected, and the job runs with no cap while the settings
+	/// row still says four cores. The exact expected values are computed by
+	/// hand from the API contract (cycles per `10_000` of total capacity), not
+	/// read back from the implementation.
 	#[test]
 	fn a_core_budget_becomes_a_fraction_of_total_machine_capacity() {
 		assert_eq!(
