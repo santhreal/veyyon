@@ -23,11 +23,13 @@ export const quotaDomain: ErrorDomain = {
 	rules: [
 		{
 			flags: Flag.UsageLimit,
+			name: "usage-limit-vocabulary",
 			why: "The quota vocabulary is the provider's own (usage_limit_reached, insufficient_quota, account rate limit), and it rotates a credential rather than retrying it.",
 			text: matchesUsageLimitText,
 		},
 		{
 			flags: Flag.UsageLimit,
+			name: "opaque-or-exhausted-429",
 			why: "A 429 whose body is opaque or names an exhausted quota is a wall, not a throttle: the structure decides and the prose only says which.",
 			structural: signal => signal.status === 429,
 			text: text => isOpaqueStatusBody(text) || parseRateLimitReason(text) === "QUOTA_EXHAUSTED",
@@ -127,6 +129,7 @@ export const authDomain: ErrorDomain = {
 	},
 	classes: [
 		{
+			name: "aws-credential-chain",
 			why: "AWS states a missing or unusable credential chain in its type, before any request is even signed.",
 			matches: link => link instanceof AwsCredentialsError,
 			flags: () => Flag.AuthFailed,
@@ -135,6 +138,7 @@ export const authDomain: ErrorDomain = {
 	rules: [
 		{
 			flags: Flag.AuthFailed,
+			name: "auth-failure-prose",
 			why: "401/403 arrive as prose inside a wrapper as often as they arrive as a status, and 'no api key' has no status at all.",
 			text: text => AUTH_FAILURE_PATTERN.test(text),
 		},

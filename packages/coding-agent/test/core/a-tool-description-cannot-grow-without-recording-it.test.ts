@@ -51,13 +51,13 @@ const RECORDED_TOKENS: Record<string, number> = {
 	"tools/eval": 1693,
 	"tools/github": 410,
 	"tools/goal": 162,
-	"tools/search": 573,
+	"tools/search": 680,
 	"tools/image-attachment-describe": 142,
 	"tools/image-attachment-describe-system": 196,
 	"tools/image-gen": 110,
 	"tools/inspect-image": 255,
 	"tools/inspect-image-system": 192,
-	"tools/irc": 679,
+	"tools/irc": 680,
 	"tools/job": 411,
 	"tools/launch": 519,
 	"tools/learn": 198,
@@ -66,7 +66,7 @@ const RECORDED_TOKENS: Record<string, number> = {
 	"tools/manage-skill": 217,
 	"tools/memory-edit": 243,
 	"tools/patch": 692,
-	"tools/read": 1123,
+	"tools/read": 1179,
 	"tools/recall": 164,
 	"tools/reflect": 98,
 	"tools/replace": 318,
@@ -91,7 +91,7 @@ const RECORDED_TOKENS: Record<string, number> = {
 };
 
 /** The sum the recorded table claims, so the total is in the diff of any trim. */
-const RECORDED_TOTAL = 18723;
+const RECORDED_TOTAL = 18887;
 
 const measured = new Map(Object.entries(toolsPrompts).map(([id, entry]) => [id, estimateTokensFromText(entry.text)]));
 
