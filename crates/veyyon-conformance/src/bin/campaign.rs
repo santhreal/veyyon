@@ -33,10 +33,11 @@
 //! Inline `#[cfg(test)]` modules are excluded from planning. A mutant inside a
 //! test mutates the oracle, and a suite that kills it has proved nothing.
 
+#[cfg(unix)]
+use std::os::unix::process::CommandExt;
 use std::{
 	collections::BTreeSet,
 	env, fs,
-	os::unix::process::CommandExt,
 	path::{Path, PathBuf},
 	process::{Child, Command, ExitStatus, Stdio},
 	thread,
@@ -325,16 +326,19 @@ fn verdict(root: &Path, package: &str, cap: Duration) -> Outcome {
 	let Ok(errors) = sink.try_clone() else {
 		return Outcome::NotViable;
 	};
-	let spawned = Command::new("cargo")
+	let mut command = Command::new("cargo");
+	command
 		.args(["test", "-p", package, "--lib", "-q"])
 		.env("CARGO_INCREMENTAL", "1")
 		.current_dir(root)
 		.stdout(Stdio::from(sink))
-		.stderr(Stdio::from(errors))
-		// Its own process group, so the kill below reaches the test binary and
-		// not only the cargo that spawned it.
-		.process_group(0)
-		.spawn();
+		.stderr(Stdio::from(errors));
+	// Its own process group, so the kill below reaches the test binary and not
+	// only the cargo that spawned it. Windows has no process group to ask for;
+	// `kill_tree` walks parent ids there instead.
+	#[cfg(unix)]
+	command.process_group(0);
+	let spawned = command.spawn();
 	let Ok(mut child) = spawned else {
 		return Outcome::NotViable;
 	};
@@ -368,17 +372,7 @@ fn wait_bounded(child: &mut Child, cap: Duration) -> Option<ExitStatus> {
 			Err(_) => return None,
 		}
 		if started.elapsed() >= cap {
-			// Negative pid: the whole group, cargo and the test binary under it.
-			// Through `sh` on purpose: util-linux `kill(1)` reads `-<pid>` as an
-			// unknown option and refuses it, so the group survived the cap and
-			// the wait below became the child's own lifetime instead of the
-			// bound. The shell builtin takes a group id.
-			let _ = Command::new("sh")
-				.arg("-c")
-				.arg(format!("kill -9 -{}", child.id()))
-				.stdout(Stdio::null())
-				.stderr(Stdio::null())
-				.status();
+			kill_tree(child);
 			// The direct child too: if the group kill was refused for any other
 			// reason, this still ends the wait rather than inheriting the
 			// child's lifetime.
@@ -389,6 +383,42 @@ fn wait_bounded(child: &mut Child, cap: Duration) -> Option<ExitStatus> {
 		thread::sleep(Duration::from_millis(100));
 	}
 }
+
+/// Kill `child` and everything it spawned.
+///
+/// The test binary is a grandchild: `cargo` spawns it, so ending cargo alone
+/// leaves the suite running and the wait becomes the child's own lifetime
+/// instead of the bound.
+#[cfg(unix)]
+fn kill_tree(child: &Child) {
+	// Negative pid: the whole group, cargo and the test binary under it.
+	// Through `sh` on purpose: util-linux `kill(1)` reads `-<pid>` as an
+	// unknown option and refuses it, so the group survived the cap. The shell
+	// builtin takes a group id.
+	let _ = Command::new("sh")
+		.arg("-c")
+		.arg(format!("kill -9 -{}", child.id()))
+		.stdout(Stdio::null())
+		.stderr(Stdio::null())
+		.status();
+}
+
+/// Kill `child` and everything it spawned.
+///
+/// Windows has no process group the spawn can ask for, so the tree is walked by
+/// parent id: `taskkill /T` ends the test binary cargo started.
+#[cfg(windows)]
+fn kill_tree(child: &Child) {
+	let _ = Command::new("taskkill")
+		.args(["/T", "/F", "/PID", &child.id().to_string()])
+		.stdout(Stdio::null())
+		.stderr(Stdio::null())
+		.status();
+}
+
+/// Kill `child` alone, on a target with neither a process group nor `taskkill`.
+#[cfg(not(any(unix, windows)))]
+fn kill_tree(_child: &Child) {}
 
 /// Read the ledger, refusing a row this shape cannot read.
 fn read_ledger(path: &Path) -> Vec<Row> {
@@ -658,18 +688,57 @@ fn main() {
 // written first, so the surviving state is a record whose file is already
 // original, which the second case below proves is dropped without a write. It
 // also cannot see two runners mutating at once; the ledger is single-writer by
-// construction and nothing here makes it safe to share.
+// construction and nothing here makes it safe to share. The Windows arm of
+// `kill_tree` is unexercised: these cases need a process group and a POSIX
+// shell, so they are unix-only and no Windows host runs this campaign yet.
 #[cfg(test)]
 mod tests {
+	#[cfg(unix)]
+	use std::os::unix::process::CommandExt;
 	use std::{
-		os::unix::process::CommandExt,
 		process::{Command, Stdio},
+		thread,
 		time::{Duration, Instant},
 	};
 
 	use veyyon_test_scratch::scratch_dir;
 
 	use super::{Pending, Restore, recover_pending, wait_bounded};
+
+	/// The pid the child recorded, once it has written the file.
+	#[cfg(unix)]
+	fn spawned_pid(path: &std::path::Path) -> u32 {
+		let deadline = Instant::now() + Duration::from_secs(5);
+		while Instant::now() < deadline {
+			if let Ok(text) = std::fs::read_to_string(path) {
+				if let Ok(pid) = text.trim().parse::<u32>() {
+					return pid;
+				}
+			}
+			thread::sleep(Duration::from_millis(20));
+		}
+		panic!("the child never recorded a pid at {}", path.display());
+	}
+
+	/// Whether `pid` is gone, waiting for the reparented process to be reaped.
+	#[cfg(unix)]
+	fn pid_gone(pid: u32) -> bool {
+		let deadline = Instant::now() + Duration::from_secs(5);
+		while Instant::now() < deadline {
+			let alive = Command::new("sh")
+				.arg("-c")
+				.arg(format!("kill -0 {pid}"))
+				.stdout(Stdio::null())
+				.stderr(Stdio::null())
+				.status()
+				.is_ok_and(|status| status.success());
+			if !alive {
+				return true;
+			}
+			thread::sleep(Duration::from_millis(50));
+		}
+		false
+	}
 
 	#[test]
 	fn an_interrupted_mutant_is_restored_on_the_next_start() {
@@ -732,9 +801,10 @@ mod tests {
 	}
 
 	// A hang is the failure mode an assertion on values cannot see: the suite
-	// neither passes nor fails, it never answers. These two cases pin that the
-	// wait ends and that it ends at the cap rather than whenever the machine
-	// feels like it.
+	// neither passes nor fails, it never answers. These cases pin that the wait
+	// ends, that it ends at the cap rather than whenever the machine feels like
+	// it, and that the kill reaches the process the child spawned.
+	#[cfg(unix)]
 	#[test]
 	fn a_child_that_never_exits_is_killed_at_the_cap() {
 		let mut child = Command::new("sleep")
@@ -756,6 +826,31 @@ mod tests {
 		);
 	}
 
+	#[cfg(unix)]
+	#[test]
+	fn the_cap_reaches_the_process_the_child_spawned() {
+		// `cargo test` spawns the suite binary, so ending the direct child alone
+		// leaves the run holding the machine while the campaign moves on.
+		let scratch = scratch_dir("veyyon-conformance-campaign-grandchild");
+		let pid_file = scratch.join("grandchild.pid");
+		let script = format!("sleep 300 & echo $! > {}; wait", pid_file.display());
+		let mut child = Command::new("sh")
+			.arg("-c")
+			.arg(script)
+			.stdout(Stdio::null())
+			.stderr(Stdio::null())
+			.process_group(0)
+			.spawn()
+			.expect("sh spawns");
+		let grandchild = spawned_pid(&pid_file);
+
+		let status = wait_bounded(&mut child, Duration::from_millis(300));
+
+		assert!(status.is_none(), "a killed group reports no status");
+		assert!(pid_gone(grandchild), "pid {grandchild} outlived the cap that killed its parent");
+	}
+
+	#[cfg(unix)]
 	#[test]
 	fn a_child_that_exits_is_reported_with_its_own_status() {
 		let mut child = Command::new("false")
