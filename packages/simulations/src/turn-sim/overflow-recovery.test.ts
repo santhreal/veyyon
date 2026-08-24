@@ -50,8 +50,9 @@
  * against a threshold crossing and against this file's overflow error.
  */
 import { afterEach, describe, expect, it } from "bun:test";
-import { bulkProse, bulkTool, createSimulation, type Simulation, simulatedModel, simTool } from "./harness";
+import { bulkProse, bulkTool, createSimulation, type Simulation, simTool, simulatedModel } from "./harness";
 import { describeViolations, pairingViolations, turnViolations } from "./invariants";
+
 /** Bedrock's wording. The classifier flags it as a context overflow. */
 const OVERFLOW_MESSAGE = "input is too long for requested model";
 interface Call {
@@ -361,6 +362,11 @@ describe("a turn the provider refuses for size", () => {
 		// the 200k window. `#compactionCreatedRetryFit` is satisfied without rescue, so the session
 		// schedules a retry continuation and answers normally rather than stranding the user.
 		expect(surfaced(sim)).toBe("surfaced=assistant stop=stop");
+		// The retry is what separates this row from the parking row below: a tool-carrying
+		// request ran AFTER the summarizer refused, so the answer below came from a re-sent
+		// turn rather than from a call that predates the overflow.
+		const summarizerCall = calls.find(call => call.tools === 0)?.index ?? -1;
+		expect(calls.some(call => call.tools > 0 && call.index > summarizerCall)).toBe(true);
 		const lastMessage = sim.session.messages.at(-1) as {
 			role?: string;
 			content?: Array<{ type?: string; text?: string }>;
@@ -435,7 +441,9 @@ describe("a turn the provider refuses for size", () => {
 		);
 
 		expect(surfaced(sim)).toBe("surfaced=assistant stop=error");
-		expect(describeViolations("summarizer failed overflow store", pairingViolations(sim.session.messages))).toEqual([]);
+		expect(describeViolations("summarizer failed overflow store", pairingViolations(sim.session.messages))).toEqual(
+			[],
+		);
 		expect(sim.session.isStreaming).toBe(false);
 	});
 
