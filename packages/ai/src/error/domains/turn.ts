@@ -41,6 +41,7 @@ export const toolCallDomain: ErrorDomain = {
 	rules: [
 		{
 			flags: Flag.MalformedFunctionCall,
+			name: "malformed-function-call",
 			why: "Google returns MALFORMED_FUNCTION_CALL as a finish reason wrapped into prose; the call never parsed, so there is nothing to duplicate and the turn is safe to retry.",
 			text: text => MALFORMED_FUNCTION_CALL_PATTERN.test(text),
 		},
@@ -59,11 +60,13 @@ export const streamDomain: ErrorDomain = {
 	rules: [
 		{
 			flags: Flag.ProviderFinishError,
+			name: "provider-finish-error",
 			why: "A stream that finished with reason 'error' and no status: the provider ended the turn without saying what failed.",
 			text: text => PROVIDER_FINISH_ERROR_PATTERN.test(text),
 		},
 		{
 			flags: Flag.StaleResponsesItem,
+			name: "stale-responses-item",
 			why: "Only the Responses APIs carry server-side conversation items, so only they can be told an item is gone; the same sentence from another api means something else.",
 			structural: signal => signal.api === "openai-responses" || signal.api === "openai-codex-responses",
 			text: isStaleResponsesText,
@@ -97,6 +100,7 @@ export const contentDomain: ErrorDomain = {
 	rules: [
 		{
 			flags: Flag.ContentBlocked,
+			name: "content-filter",
 			why: "A content filter is a verdict on the request, not a fault: it is the one kind that must never be retried.",
 			text: text => CONTENT_FILTER_PATTERN.test(text),
 		},
@@ -115,6 +119,7 @@ export const interruptDomain: ErrorDomain = {
 	},
 	classes: [
 		{
+			name: "abort-by-error-name",
 			why: "A cancellation states itself in its name, and the name is the only thing every layer that mints one agrees on: a DOM `AbortError` from a fetch, `RequestAbortError` from a provider, `ToolAbortError` from the tool loop. Without this rule the flag reached the id only from the classes that attach it themselves, so a cancellation that arrived from the platform carried no flag and was read as an unclassified failure — and the provider ladder retried it, because the only thing left to read was the word `aborted` in its own sentence.",
 			matches: link => isAbortError(link),
 			flags: () => Flag.Abort,

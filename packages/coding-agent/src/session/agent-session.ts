@@ -17027,16 +17027,23 @@ export class AgentSession {
 	 */
 	#classifyRetryMessage(message: AssistantMessage): number {
 		const activeModel = this.model;
-		if (!activeModel || message.api === activeModel.api) {
-			return AIError.classifyMessage(message);
-		}
-
-		const id = AIError.classifyMessage({
-			api: activeModel.api,
-			errorId: message.errorId,
-			errorMessage: message.errorMessage,
-			errorStatus: message.errorStatus,
-		});
+		const trace: string[] = [];
+		const sameApi = !activeModel || message.api === activeModel.api;
+		const id = sameApi
+			? AIError.classifyMessage(message, trace)
+			: AIError.classifyMessage(
+					{
+						api: activeModel.api,
+						errorId: message.errorId,
+						errorMessage: message.errorMessage,
+						errorStatus: message.errorStatus,
+					},
+					trace,
+				);
+		// The rules that decided it, not only what it decided: a retry nobody expected, or a failure
+		// that surfaced when a retry was due, is diagnosed from this line instead of by re-running the
+		// classifier's conditions by hand against the provider's sentence.
+		logger.debug("retry classification", { errorId: id, kind: AIError.stringify(id), rules: [...new Set(trace)] });
 		message.errorId = id;
 		return id;
 	}
