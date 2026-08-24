@@ -20,6 +20,7 @@ import { EDIT_MODE_STRATEGIES, type EditMode, type PerFileDiffPreview } from "..
 import { transitionsEnabled } from "../../modes/theme/shimmer";
 import type { Theme } from "../../modes/theme/theme";
 import { getThemeEpoch, theme } from "../../modes/theme/theme";
+import { recordImageDisplay } from "../../session/image-visibility";
 import { BASH_DEFAULT_PREVIEW_LINES } from "../../tools/bash";
 // From the renderer that owns the number, not from `tools/eval`, which is the tool that RUNS a cell: reading
 // a preview height should not instantiate the Python kernel machinery.
@@ -437,6 +438,10 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 	// session draws only PNG, so a block in here can never be drawn and gets a
 	// placeholder rather than silence.
 	#imageConversionFailures: Set<number> = new Set();
+	// The call this block belongs to, so what the screen did with its pictures can
+	// be recorded against the tool result the model reads. Absent in a gallery
+	// render, which has no call.
+	#toolCallId?: string;
 	// Spinner animation for partial task results
 	#spinnerFrame?: number;
 	#spinnerInterval?: NodeJS.Timeout;
@@ -501,7 +506,7 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 		tool: AnyAgentTool | undefined,
 		ui: TUI,
 		cwd: string = getProjectDir(),
-		_toolCallId?: string,
+		toolCallId?: string,
 	) {
 		super();
 		this.#toolName = toolName;
@@ -515,6 +520,7 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 		this.#ui = ui;
 		this.#cwd = cwd;
 		this.#args = args;
+		this.#toolCallId = toolCallId;
 		this.#editMode = resolveEditModeForTool(toolName, tool);
 
 		// Always create both - contentBox for custom tools/bash/tools with renderers, contentText for other built-ins.
@@ -549,7 +555,8 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 		this.#schedulePreviewDiff();
 	}
 
-	updateArgs(args: unknown, _toolCallId?: string): void {
+	updateArgs(args: unknown, toolCallId?: string): void {
+		if (toolCallId) this.#toolCallId = toolCallId;
 		// Reference-equality short-circuit before any further work. Callers
 		// always allocate a new arg object on each streamed delta (see
 		// event-controller.ts and ui-helpers.ts), so a same-reference assignment
@@ -566,7 +573,8 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 	 * Signal that args are complete (tool is about to execute).
 	 * This triggers an immediate final diff computation for edit-like tools.
 	 */
-	setArgsComplete(_toolCallId?: string): void {
+	setArgsComplete(toolCallId?: string): void {
+		if (toolCallId) this.#toolCallId = toolCallId;
 		this.#argsComplete = true;
 		this.#updateSpinnerAnimation();
 		this.#schedulePreviewDiff();
@@ -684,8 +692,9 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 			isError?: boolean;
 		},
 		isPartial = false,
-		_toolCallId?: string,
+		toolCallId?: string,
 	): void {
+		if (toolCallId) this.#toolCallId = toolCallId;
 		// A detached task spawn keeps streaming progress snapshots after the
 		// block froze (left the transcript live region). Drop them: the rows are
 		// static gray history now, and repainting would rewrite rows the engine
@@ -763,6 +772,16 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 				return imageFallback({ mimeType, dimensions, filename, reason });
 			})
 			.join("\n");
+	}
+
+	/**
+	 * Tell the session what the screen did with one of this call's pictures, so
+	 * the tool result the model reads says the same thing the user is looking at.
+	 * A block with no call id — a gallery render, a probe — states nothing.
+	 */
+	#reportImageDisplay(index: number, fallback: ImageFallbackReason | undefined): void {
+		if (!this.#toolCallId) return;
+		recordImageDisplay(this.#toolCallId, index, fallback);
 	}
 
 	/**
@@ -1556,7 +1575,9 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 			for (let i = 0; i < imageBlocks.length; i++) {
 				const img = imageBlocks[i];
 				if (!canDraw) {
-					undrawable.push({ block: img, reason: TERMINAL.imageProtocol ? "images-off" : "no-protocol" });
+					const reason = TERMINAL.imageProtocol ? "images-off" : "no-protocol";
+					undrawable.push({ block: img, reason });
+					this.#reportImageDisplay(i, reason);
 					continue;
 				}
 				if (!img.data || !img.mimeType) continue;
@@ -1572,6 +1593,7 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 				if (TERMINAL.imageProtocol === ImageProtocol.Kitty && imageMimeType !== "image/png") {
 					if (this.#imageConversionFailures.has(i)) {
 						undrawable.push({ block: img, reason: "unsupported-format" });
+						this.#reportImageDisplay(i, "unsupported-format");
 					}
 					continue;
 				}
@@ -1579,11 +1601,20 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 				const spacer = new Spacer(1);
 				this.addChild(spacer);
 				this.#imageSpacers.push(spacer);
+				// This picture is about to be drawn, so an earlier decision against it
+				// no longer holds; the component reports its own cause if the budget or
+				// the format stops it during the paint.
+				this.#reportImageDisplay(i, undefined);
 				const imageComponent = new Image(
 					imageData,
 					imageMimeType,
 					{ fallbackColor: (s: string) => theme.fg("toolOutput", s) },
-					{ ...resolveImageOptions(), budget: this.#ui.imageBudget, imageKey: `te${this.#instanceId}:${i}` },
+					{
+						...resolveImageOptions(),
+						budget: this.#ui.imageBudget,
+						imageKey: `te${this.#instanceId}:${i}`,
+						onDisplayed: fallback => this.#reportImageDisplay(i, fallback),
+					},
 				);
 				this.#imageComponents.push(imageComponent);
 				this.addChild(imageComponent);

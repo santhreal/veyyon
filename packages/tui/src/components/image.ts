@@ -27,6 +27,13 @@ export interface ImageOptions {
 	 * repaint replaces the placement instead of stacking a duplicate.
 	 */
 	imageKey?: string;
+	/**
+	 * Called when the picture's on-screen state changes: the cause it fell back
+	 * to text, or `undefined` once it draws as a graphic. The budget and the
+	 * terminal decide this inside {@link Image.render}, so a caller that has to
+	 * state whether the picture reached the screen learns it here.
+	 */
+	onDisplayed?: (fallback: ImageFallbackReason | undefined) => void;
 }
 
 const EMPTY_IDS: readonly number[] = [];
@@ -337,6 +344,9 @@ export class Image implements Component {
 	// pads itself to this height so a budget demotion never shrinks the block
 	// (its rows may already be committed to native scrollback).
 	#renderedGraphicRows = 0;
+	// The fallback cause this image last told its caller about, so a repaint that
+	// changes nothing reports nothing.
+	#reportedFallback: ImageFallbackReason | undefined;
 
 	constructor(
 		base64Data: string,
@@ -386,6 +396,7 @@ export class Image implements Component {
 		const maxWidth = cap != null && cap > 0 ? Math.min(width - 2, cap) : width - 2;
 
 		let lines: string[];
+		let fallback: ImageFallbackReason | undefined;
 
 		if (hasProtocol && !suppressed) {
 			// Transmit the data once (keyed by id); thereafter renderImage returns
@@ -422,11 +433,20 @@ export class Image implements Component {
 				const placement = moveUp + (result.sequence ?? "");
 				lines.push(cursorRows > 0 ? SAVE_CURSOR + placement + RESTORE_CURSOR : placement);
 			} else {
-				lines = this.#fallbackLines("unsupported-format");
+				fallback = "unsupported-format";
+				lines = this.#fallbackLines(fallback);
 			}
 			this.#renderedGraphicRows = Math.max(this.#renderedGraphicRows, lines.length);
 		} else {
-			lines = this.#fallbackLines(suppressed ? "over-budget" : "no-protocol");
+			fallback = suppressed ? "over-budget" : "no-protocol";
+			lines = this.#fallbackLines(fallback);
+		}
+
+		// Only a change is reported: the same cause every frame would ask a caller
+		// to decide over and over whether anything moved.
+		if (fallback !== this.#reportedFallback) {
+			this.#reportedFallback = fallback;
+			this.#options.onDisplayed?.(fallback);
 		}
 
 		this.#cachedLines = lines;
