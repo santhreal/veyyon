@@ -29,6 +29,7 @@ import {
 } from "@veyyon/coding-agent/tools/search";
 import { executeStructureSearch, type StructureSearchDetails } from "@veyyon/coding-agent/tools/structure-search";
 import { executeTextSearch, type TextSearchDetails } from "@veyyon/coding-agent/tools/text-search";
+import { errorMessage } from "@veyyon/utils";
 
 export interface SearchBenchmarkCase {
 	id: string;
@@ -845,7 +846,7 @@ if (import.meta.main) {
 			process.exit(1);
 		}
 	} catch (err) {
-		process.stderr.write(`Unified search benchmark error: ${err instanceof Error ? err.message : String(err)}\n`);
+		process.stderr.write(`Unified search benchmark error: ${errorMessage(err)}\n`);
 		process.exit(1);
 	}
 }

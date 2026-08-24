@@ -5,6 +5,7 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import type { SearchToolDetails } from "@veyyon/coding-agent/tools/search";
 import { SearchTool } from "@veyyon/coding-agent/tools/search";
+import { errorMessage } from "@veyyon/utils";
 
 const FILE_COUNT = 20;
 const MATCHES_PER_FILE = 8;
@@ -95,9 +96,7 @@ export async function runSearchDisclosureBenchmark(baseDir?: string): Promise<Se
 		try {
 			artifactText = await fs.readFile(corpus.artifactPath, "utf8");
 		} catch (err) {
-			throw new Error(
-				`Failed to read disclosure artifact at ${corpus.artifactPath}: ${err instanceof Error ? err.message : String(err)}`,
-			);
+			throw new Error(`Failed to read disclosure artifact at ${corpus.artifactPath}: ${errorMessage(err)}`);
 		}
 		const fullInlineBytes = Buffer.byteLength(fullText, "utf8");
 		const compactInlineBytes = Buffer.byteLength(compactText, "utf8");
