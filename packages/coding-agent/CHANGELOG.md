@@ -5,6 +5,7 @@
 ### Added
 
 - A tool result that carries an image now states whether the picture reached the screen, so a model reading a file describes what it shows instead of reporting that it displayed it.
+- A picture the block gives up on after the fact, because the session's image budget demoted it or a Kitty session could not convert it, is stated to the model as undrawn instead of being reported as displayed.
 
 ### Changed
 
@@ -12,6 +13,10 @@
 - A picture a terminal will not draw now leaves a row naming the file, the media type, the pixel size and the cause, in place of `[Image: image/png]`, including when a Kitty session cannot convert it to PNG.
 - Session creation overlaps two serial file reads with neighboring startup work instead of paying them back to back. Rules discovery starts as soon as the session context loads rather than after the skills await, so its directory scan runs under model resolution and prompt assembly; and inside the secrets runtime the vault key read starts before the secrets/env/vault entry loads instead of after all three.
 - `ModelRegistry` persists its static bundled, cached-standard, and cached-discovery layers to a content-verified `resolved-models.json`, so a warm launch restores resolved records and provider discovery state instead of rebuilding them. Catalog, cache-row and custom-model content changes invalidate it, as does a cached row crossing its 24 h freshness window; SQLite sidecar churn and a provider re-verifying models it already had do not.
+
+### Fixed
+
+- An indented row inside a tool block keeps its indent when it wraps at a narrow width, instead of continuing at the block's left edge.
 
 ## [1.2.0] - 2026-08-23
 

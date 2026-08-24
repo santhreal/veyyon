@@ -14,9 +14,11 @@
  * — so the sweeps below derive their variant space at run time: every image
  * protocol the TUI knows, and every renderer in the registry plus the two
  * branches that are not the registry (a tool with its own renderer, and a tool
- * with none). The sibling found while closing it is covered too: a Kitty
+ * with none). Two siblings found while closing it are covered too: a Kitty
  * session draws only PNG, and a conversion that failed used to leave the block
- * with neither a picture nor a word about one.
+ * with neither a picture nor a word about one; and a request whose images are
+ * scrubbed for a text-only model loses the sentence describing them, since the
+ * pictures it describes are no longer in the request.
  *
  * What it does not catch: an image a USER attaches (`@shot.png`, a paste) — the
  * user put it there and knows what it is, so `fileMention` states nothing; a
@@ -29,12 +31,14 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test";
 import type { AgentMessage, AgentTool } from "@veyyon/agent-core";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/tool-execution";
+import type { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/tool-execution";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
-import { convertToLlm } from "@veyyon/coding-agent/session/messages";
+import { forgetImageDisplays } from "@veyyon/coding-agent/session/image-visibility";
+import { convertToLlm, replaceLlmImagesWithText } from "@veyyon/coding-agent/session/messages";
 import { toolRenderers } from "@veyyon/coding-agent/tools/renderers";
-import { ImageProtocol, setTerminalImageProtocol, TERMINAL, type TUI } from "@veyyon/tui";
+import { ImageBudget, ImageProtocol, setTerminalImageProtocol, TERMINAL, type TUI } from "@veyyon/tui";
 import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "./helpers/settings-test-state";
+import { createToolExecution } from "./helpers/tool-execution";
 
 /** 1x1 PNG: the smallest payload `getImageDimensions` can measure. */
 const TINY_PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==";
@@ -42,14 +46,14 @@ const TINY_PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8
 /** The placeholder row's opening, whatever cause it names. */
 const PLACEHOLDER = /\[image not shown, [^\]]+\]/u;
 
-function imageToolResult(toolName: string, images = 1): AgentMessage {
+function imageToolResult(toolName: string, images = 1, toolCallId = "call_1"): AgentMessage {
 	const content: Array<{ type: string; text?: string; data?: string; mimeType?: string }> = [
 		{ type: "text", text: "Read image file [image/png]" },
 	];
 	for (let i = 0; i < images; i++) content.push({ type: "image", data: TINY_PNG, mimeType: "image/png" });
 	return {
 		role: "toolResult",
-		toolCallId: "call_1",
+		toolCallId,
 		toolName,
 		content,
 		timestamp: 1,
@@ -73,18 +77,27 @@ interface BlockCase {
 	details?: unknown;
 	/** Called when the block asks for a repaint — the signal an async image step landed. */
 	onRender?: () => void;
+	/** The call this block belongs to, which is what a late decision is recorded against. */
+	toolCallId?: string;
+	/** A real budget, so a demotion is decided the way a session decides one. */
+	budget?: ImageBudget;
 }
 
 function blockComponent(toolName: string, blockCase: BlockCase = {}): ToolExecutionComponent {
 	const onRender = blockCase.onRender ?? ((): void => {});
-	const ui = { requestRender: onRender, requestComponentRender: onRender } as unknown as TUI;
-	const component = new ToolExecutionComponent(
+	const ui = {
+		requestRender: onRender,
+		requestComponentRender: onRender,
+		imageBudget: blockCase.budget,
+	} as unknown as TUI;
+	const component = createToolExecution(
 		toolName,
 		blockCase.args ?? { path: "shots/board.png" },
 		{ showImages: blockCase.showImages ?? true },
 		blockCase.tool,
 		ui,
 		process.cwd(),
+		blockCase.toolCallId,
 	);
 	component.setArgsComplete();
 	component.updateResult(
@@ -130,6 +143,7 @@ beforeAll(async () => {
 afterEach(() => {
 	setTerminalImageProtocol(originalProtocol);
 	Settings.instance.set("terminal.showImages", true);
+	forgetImageDisplays();
 });
 
 afterAll(() => {
@@ -207,6 +221,27 @@ describe("a model is told when the user cannot see the image", () => {
 		} as AgentMessage);
 
 		expect(blocks).toEqual(["plain text output"]);
+	});
+
+	// A request served by a text-only model, or one an operator blocked images
+	// on, carries no picture at all. The sentence describing where the picture is
+	// goes with it, so the model is not told about an image the request does not
+	// contain.
+	it("drops the statement when the images themselves are scrubbed from the request", () => {
+		setTerminalImageProtocol(null);
+		const converted = convertToLlm([imageToolResult("read", 2)]);
+		const beforeScrub = converted[0];
+		if (!beforeScrub || typeof beforeScrub.content === "string") throw new Error("expected content blocks");
+		expect(beforeScrub.content.map(block => block.type)).toEqual(["text", "image", "image", "text"]);
+
+		const scrubbed = replaceLlmImagesWithText(converted, "[image omitted]");
+		const result = scrubbed[0];
+		if (!result || typeof result.content === "string") throw new Error("expected content blocks");
+
+		expect(result.content).toEqual([
+			{ type: "text", text: "Read image file [image/png]" },
+			{ type: "text", text: "[image omitted]" },
+		]);
 	});
 });
 
@@ -298,5 +333,104 @@ describe("a picture the terminal cannot draw leaves a row that says so", () => {
 		const rows = await renderBlock("read");
 
 		expect(rows.filter(row => PLACEHOLDER.test(row))).toHaveLength(1);
+	});
+});
+
+// Two causes are settled after the sentence was first written, per image, inside
+// the block: the session's image budget demotes an older picture when a newer
+// one arrives, and a Kitty session cannot convert a payload it does not draw. In
+// both cases the user is looking at a placeholder row, so the model must stop
+// being told the picture is on screen.
+describe("a picture the block gave up on stops being reported as displayed", () => {
+	it("states a budget demotion, and stops once the picture draws again", async () => {
+		setTerminalImageProtocol(ImageProtocol.Kitty);
+		const budget = new ImageBudget(1, () => {});
+		const component = blockComponent("read", {
+			toolCallId: "call_budget",
+			budget,
+			content: [
+				{ type: "text", text: "Read image file [image/png]" },
+				{ type: "image", data: TINY_PNG, mimeType: "image/png" },
+				{ type: "image", data: TINY_PNG, mimeType: "image/png" },
+			],
+		});
+		await component.whenPreviewSettled();
+
+		// The budget plans a demotion from what the first pass observed and applies
+		// it on the next one, which is how a session reaches the same state.
+		budget.beginPass();
+		component.render(100);
+		budget.endPass();
+		budget.beginPass();
+		const rows = component.render(100).map(line => Bun.stripANSI(line));
+		budget.endPass();
+
+		expect(rows.some(row => row.includes("[image not shown, over the image budget]"))).toBe(true);
+		const blocks = textBlocks(imageToolResult("read", 2, "call_budget"));
+		expect(blocks).toHaveLength(2);
+		expect(blocks[1]).toContain("1 of these 2 images is in your context only");
+		expect(blocks[1]).toContain("the session's image budget is full");
+
+		// Room again: the picture draws, and the sentence goes with the demotion.
+		budget.setCap(0);
+		budget.beginPass();
+		component.render(100);
+		budget.endPass();
+
+		expect(textBlocks(imageToolResult("read", 2, "call_budget"))).toEqual(["Read image file [image/png]"]);
+	});
+
+	it("states a failed Kitty conversion", async () => {
+		setTerminalImageProtocol(ImageProtocol.Kitty);
+		const repainted = Promise.withResolvers<void>();
+		const component = blockComponent("read", {
+			toolCallId: "call_convert",
+			content: [
+				{ type: "text", text: "Read image file [image/jpeg]" },
+				{ type: "image", data: Buffer.from("not an image").toString("base64"), mimeType: "image/jpeg" },
+			],
+			onRender: () => repainted.resolve(),
+		});
+
+		await repainted.promise;
+		rowsOf(component);
+		const blocks = textBlocks(imageToolResult("read", 1, "call_convert"));
+
+		expect(blocks).toHaveLength(2);
+		expect(blocks[1]).toContain("this terminal cannot draw this image format");
+	});
+
+	it("says nothing about another call's pictures", async () => {
+		setTerminalImageProtocol(ImageProtocol.Kitty);
+		const repainted = Promise.withResolvers<void>();
+		const component = blockComponent("read", {
+			toolCallId: "call_convert",
+			content: [
+				{ type: "text", text: "Read image file [image/jpeg]" },
+				{ type: "image", data: Buffer.from("not an image").toString("base64"), mimeType: "image/jpeg" },
+			],
+			onRender: () => repainted.resolve(),
+		});
+		await repainted.promise;
+		rowsOf(component);
+
+		expect(textBlocks(imageToolResult("read", 1, "another_call"))).toEqual(["Read image file [image/png]"]);
+	});
+
+	// A block that recorded a decision and then gets a protocol builds a NEW image
+	// component, which reports only a CHANGE and so reports nothing when it draws
+	// on its first pass. The rebuild has to drop the old decision itself.
+	it("drops a recorded decision when the rebuild draws the picture", async () => {
+		setTerminalImageProtocol(null);
+		const component = blockComponent("read", { toolCallId: "call_returns" });
+		await component.whenPreviewSettled();
+		rowsOf(component);
+		expect(textBlocks(imageToolResult("read", 1, "call_returns"))).toHaveLength(2);
+
+		setTerminalImageProtocol(ImageProtocol.Kitty);
+		component.setExpanded(true);
+		rowsOf(component);
+
+		expect(textBlocks(imageToolResult("read", 1, "call_returns"))).toEqual(["Read image file [image/png]"]);
 	});
 });

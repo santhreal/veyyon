@@ -7,8 +7,10 @@
 ### Added
 
 - A tool result that carries an image now states whether the picture reached the screen, so a model reading a file describes what it shows instead of reporting that it displayed it.
+- A picture the block gives up on after the fact, because the session's image budget demoted it or a Kitty session could not convert it, is stated to the model as undrawn instead of being reported as displayed.
 - `ProviderWireCapabilities.anthropicMessages` declares how a provider serves the Anthropic Messages API — its endpoint, credential placement, rejected request features and retryable model errors — and `declaredProviders()` and `declaredCapabilityNames()` derive the declaring sets from the table.
 - Bundled model resolution persists a content-verified enriched snapshot, and a registry cache stamp moves on every row-content write, and on a row crossing the freshness window it is read under, without treating SQLite sidecar churn or a provider re-verifying models it already had as a change.
+- `Image` accepts an `onDisplayed` callback and reports the cause each time an image starts or stops falling back to a placeholder.
 
 ### Changed
 
@@ -19,7 +21,15 @@
 - The Anthropic provider reads its endpoint, credential placement, rejected betas and retry policy from the catalog's wire-capability table instead of comparing provider ids at seventeen call sites.
 - `compat/markup-leaks.ts` owns which endpoints leak model markup into visible content. The provider list for DeepSeek's DSML envelope and the Kimi-K2 rule existed twice, byte for byte — once here as a `Set` and once in `@veyyon/ai` as an or-chain — so a newly-leaking host could be added to one and not the other. `isOfficialOpenAIEndpoint` is exported for the same reason: the streaming engine carried a third copy of the `api.openai.com` hostname check.
 - The five provider discovery readers share one set of payload readers. `codex`, `gemini`, `cursor`, `openai-compatible` and `antigravity` each declared schemas at module scope to answer questions of the form "is this field a string", so importing the descriptor table to list models built a validator graph for every provider before any request was made, and `codex.ts` also carried its own copies of three field readers. `utils.ts` — already the shared reader for cross-package callers — gained `toFields`, `toStringValue`, `toNonEmptyString`, `toFiniteNumber`, `toArray` and `toStringArray`, and the readers use those. `toFields` accepts an array, keeping the previous behavior where a bare array envelope reads as an empty model list rather than a failed response.
+- `MNEMOPI_NO_EMBEDDINGS=0`, `false`, `no` or `off` now leaves embeddings on everywhere instead of disabling them on the API path.
+- Every `MNEMOPI_*` value is read by `config.ts` alone; the local-model, extraction and embedding modules ask it instead of parsing the variable again.
+- `getDiagnostics` is now `extractionDiagnostics` in `core/extraction/diagnostics` and `recallDiagnostics` in `core/recall-diagnostics`, so the two registries are no longer reached by one name.
 - `imageFallback` takes the file name, media type, pixel size and cause of an undrawn image and returns a row naming all four; `ImageFallbackReason` states the cause.
+
+### Fixed
+
+- An indented row inside a tool block keeps its indent when it wraps at a narrow width, instead of continuing at the block's left edge.
+- A wrapped line now continues under the indent its first row opened at, so an indented row no longer reads as a new top-level row at a narrow width.
 
 ## [1.2.0] - 2026-08-23
 
