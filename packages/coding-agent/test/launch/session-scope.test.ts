@@ -3,10 +3,10 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { enterIsolatedConfigRoot, type IsolatedConfigRoot } from "../../../utils/test/helpers/isolated-config-root";
-import type { ToolSession } from "../../src";
 import { createDaemonBrokerClient } from "../../src/launch/client";
 import { daemonRuntimeDir, daemonSessionRuntimeDir } from "../../src/launch/paths";
 import { LaunchTool } from "../../src/tools/launch";
+import { makeToolSession } from "../helpers/tool-session";
 
 /**
  * WHY THIS SUITE EXISTS.
@@ -60,11 +60,13 @@ function session(cwd: string, sessionId: string, sharedCrossSession: boolean): L
 		["launch.sharedCrossSession", sharedCrossSession],
 		["session.cpuLimitCores", 0],
 	]);
-	return new LaunchTool({
-		cwd,
-		settings: { get: (key: string) => settings.get(key) },
-		getSessionId: () => sessionId,
-	} as unknown as ToolSession);
+	return new LaunchTool(
+		makeToolSession({
+			cwd,
+			getSessionId: () => sessionId,
+			settings: { get: (key: string) => settings.get(key) },
+		}),
+	);
 }
 
 async function listNames(tool: LaunchTool): Promise<string[]> {
@@ -154,24 +156,22 @@ describe("launch scope follows the session by default", () => {
 		expect(details.daemon?.state).toBe("ready");
 
 		const projectScope = await createDaemonBrokerClient(project);
+		// The historical scope is back: a plain project client (what another
+		// session and the CLI both join) lists the process while it runs.
+		const sharedList = await projectScope.request({ op: "list" });
+		if (sharedList.op !== "list") throw new Error("unexpected list result");
+		expect(sharedList.daemons.map(daemon => daemon.name)).toEqual(["shared-server"]);
+
 		try {
-			// The historical scope is back: a plain project client (what another
-			// session and the CLI both join) lists the process while it runs.
-			const sharedList = await projectScope.request({ op: "list" });
-			if (sharedList.op !== "list") throw new Error("unexpected list result");
-			expect(sharedList.daemons.map(daemon => daemon.name)).toEqual(["shared-server"]);
-		} finally {
-			// Stop through the sharer BEFORE shutting the shared broker down: both
-			// ride the same broker.
-			try {
-				await sharer.execute("id", { op: "stop", name: "shared-server" });
-			} catch (error) {
-				if (!(error instanceof Error) || !error.message.includes("connection closed")) throw error;
-			}
-			try {
-				await projectScope.request({ op: "shutdown" });
-			} catch {}
-			projectScope.close();
+			await sharer.execute("id", { op: "stop", name: "shared-server" });
+		} catch (error) {
+			// A last-client shutdown racing the stop may have closed the socket
+			// first; the process tree is gone either way.
+			if (!(error instanceof Error) || !error.message.includes("connection closed")) throw error;
 		}
+		try {
+			await projectScope.request({ op: "shutdown" });
+		} catch {}
+		projectScope.close();
 	}, 30_000);
 });
