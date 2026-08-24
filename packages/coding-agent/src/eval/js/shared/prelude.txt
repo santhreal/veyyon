@@ -78,18 +78,22 @@ if (!globalThis.__veyyon_js_prelude_loaded__) {
 	// The baseline is captured after the prelude installs its own globals: anything newer
 	// than this list came from user code.
 	const formatDefValue = value => {
-		if (typeof value === "function") {
-			const head = String(value).split("\n", 1)[0];
-			return head.length <= 80 ? head : `${head.slice(0, 77)}...`;
+		try {
+			if (typeof value === "function") {
+				const head = String(value).split("\n", 1)[0];
+				return head.length <= 80 ? head : `${head.slice(0, 77)}...`;
+			}
+			if (value === null) return "null";
+			if (Array.isArray(value)) return `Array(${value.length})`;
+			if (typeof value === "object") {
+				const kind = value.constructor && value.constructor.name !== "Object" ? value.constructor.name : "object";
+				return `${kind}(${Object.keys(value).length} keys)`;
+			}
+			const text = String(value);
+			return `${typeof value} ${text.length <= 60 ? text : `${text.slice(0, 57)}...`}`;
+		} catch {
+			return typeof value;
 		}
-		if (value === null) return "null";
-		if (Array.isArray(value)) return `Array(${value.length})`;
-		if (typeof value === "object") {
-			const kind = value.constructor && value.constructor.name !== "Object" ? value.constructor.name : "object";
-			return `${kind}(${Object.keys(value).length} keys)`;
-		}
-		const text = String(value);
-		return `${typeof value} ${text.length <= 60 ? text : `${text.slice(0, 57)}...`}`;
 	};
 	const defs = () => {
 		const baseline = new Set(globalThis.__veyyon_prelude_baseline__ ?? []);
