@@ -1237,12 +1237,20 @@ export function lazyNativeClass(name) {
  * the binary in front of us, and quietly loading a different one is how "my rebuild had no effect"
  * happens with nothing in the log to explain it.
  *
+ * A GLIBC or GLIBCXX version mismatch is classified `"incompatible"` rather than `"broken"`: the
+ * binary is intact, the host's C library is too old. This is an environment limitation (common in
+ * DeepSWE containers that ship older GLIBC), not a stale rebuild, so the "stale binary" warning is
+ * both misleading and noise. The error is still collected in the errors list so the aggregate throw
+ * names it if every candidate fails; only the per-candidate warning is suppressed.
+ *
  * @param {unknown} error
- * @returns {"absent" | "broken"}
+ * @returns {"absent" | "incompatible" | "broken"}
  */
 export function classifyCandidateFailure(error) {
 	const code = /** @type {{ code?: unknown }} */ (error)?.code;
 	if (code === "MODULE_NOT_FOUND" || code === "ENOENT") return "absent";
+	const message = error instanceof Error ? error.message : String(error ?? "");
+	if (/GLIBC[A-Z]*_\d+\.\d+.*not found/.test(message)) return "incompatible";
 	return "broken";
 }
 
