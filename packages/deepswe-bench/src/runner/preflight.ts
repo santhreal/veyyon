@@ -9,13 +9,15 @@ import { AuthStorage, SqliteAuthCredentialStore } from "@veyyon/ai";
 import {
 	type CredentialProbe,
 	decideAuthPreflight,
+	decideAuthSeed,
 	describeAuthPreflightFailure,
 	describeExhaustedPool,
 	exhaustedPoolFor,
 	modelVendor,
+	probeCredentialStore,
+	snapshotCredentialStore,
 	spentQuotaShouldAbort,
-} from "../../auth-preflight";
-import { decideAuthSeed, probeCredentialStore, snapshotCredentialStore } from "../../auth-seed";
+} from "../shared";
 
 export function getBenchDir(): string {
 	return path.resolve(import.meta.dirname, "../..");

@@ -7,20 +7,24 @@ import * as path from "node:path";
 import { getEnumValues, getType, isSettingPath } from "@veyyon/coding-agent/config/settings-schema";
 import { isRecord } from "@veyyon/utils";
 import YAML from "yaml";
+import { effectiveTemperature, PINNED_TEMPERATURE } from "../aggregate";
 import {
 	ARM_ATTACHMENT_KINDS,
 	type ArmAttachmentManifestEntry,
 	type ArmAttachmentValues,
+	computeArmFingerprint,
+	encodeArmModelMismatch,
+	findZeroIvCollisions,
 	isArmAttachmentError,
+	isEncodeArm,
 	mappingOf,
+	mistypedArmSettings,
+	promptOverrideIdError,
 	readArmAttachment,
 	stageArmAttachment,
+	unknownArmSettings,
 	writeArmAttachmentManifest,
-} from "../../arm-attachments";
-import { computeArmFingerprint, findZeroIvCollisions } from "../../arm-fingerprint";
-import { promptOverrideIdError } from "../../arm-prompts";
-import { encodeArmModelMismatch, isEncodeArm, mistypedArmSettings, unknownArmSettings } from "../../treatment-guard";
-import { effectiveTemperature, PINNED_TEMPERATURE } from "../aggregate";
+} from "../shared";
 
 export interface StagedArmsResult {
 	armTemperature: Map<string, number>;
