@@ -18,6 +18,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
 import { Agent } from "@veyyon/agent-core";
 import * as compactionModule from "@veyyon/agent-core/compaction";
+import type { Model } from "@veyyon/ai";
 import { getBundledModel } from "@veyyon/catalog/models";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
@@ -77,6 +78,7 @@ describe("compaction model chain", () => {
 	async function createSession(
 		overrides: Record<string, unknown>,
 		usable: (model: { id: string; provider: string }) => boolean,
+		sessionModel: Model = mainModel,
 	) {
 		const settings = Settings.isolated({
 			"compaction.keepRecentTokens": 1,
@@ -86,6 +88,7 @@ describe("compaction model chain", () => {
 
 		authStorage = await AuthStorage.create(path.join(tempDir.path(), "testauth.db"));
 		for (const provider of new Set([
+			sessionModel.provider,
 			mainModel.provider,
 			firstChoice.provider,
 			secondChoice.provider,
@@ -99,7 +102,7 @@ describe("compaction model chain", () => {
 		);
 
 		session = new AgentSession({
-			agent: new Agent({ initialState: { model: mainModel, systemPrompt: ["Test"], tools: [], messages: [] } }),
+			agent: new Agent({ initialState: { model: sessionModel, systemPrompt: ["Test"], tools: [], messages: [] } }),
 			sessionManager: SessionManager.inMemory(),
 			settings,
 			modelRegistry,
@@ -244,9 +247,12 @@ describe("compaction model chain", () => {
 	 * reaches no network either, which is what the rest of the suite gets by turning the setting off.
 	 */
 	it("falls through to the configured chain when the remote pass refuses, and announces both", async () => {
+		const remoteModel = getBundledModel("openai", "gpt-5.1");
+		if (!remoteModel) throw new Error("Expected bundled openai/gpt-5.1 to exist");
 		await createSession(
 			{ "compaction.model": `${selector(firstChoice)},${selector(secondChoice)}`, "compaction.remote": true },
 			model => model.id === secondChoice.id,
+			remoteModel,
 		);
 		const compactSpy = spyOnCompact();
 
@@ -255,7 +261,7 @@ describe("compaction model chain", () => {
 		expect(result.summary).toStartWith(`summary from ${selector(secondChoice)}`);
 		expect(compactSpy.mock.calls.map(([, model]) => selector(model))).toEqual([selector(secondChoice)]);
 		expect(notices.map(notice => notice.message)).toEqual([
-			`Server-side compaction unavailable (no API key for ${selector(mainModel)}); falling back to local compaction.`,
+			`Server-side compaction unavailable (no API key for ${selector(remoteModel)}); falling back to local compaction.`,
 			`Compacted with ${selector(secondChoice)}. ${selector(firstChoice)} was skipped: it is not authenticated.`,
 		]);
 	});
