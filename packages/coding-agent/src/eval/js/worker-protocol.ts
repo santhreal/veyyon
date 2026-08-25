@@ -11,6 +11,8 @@ export interface SessionSnapshot {
 	 * accept `local://…` paths instead of writing a literal `local:/` directory.
 	 */
 	localRoots?: Record<string, string>;
+	/** Session artifacts directory for the `kv` store; null when the host has none. */
+	artifactsDir?: string | null;
 }
 
 export interface EvalRunErrorPayload {

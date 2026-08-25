@@ -171,6 +171,41 @@ describe("a revive racing a close leaks no session", () => {
 	});
 
 	/**
+	 * Reusing an id while its previous generation revives must not attach the old
+	 * session to the replacement ref. Registry identity, not the id string alone,
+	 * distinguishes the two generations.
+	 */
+	it("rejects and disposes a revived session when the id was re-registered mid-revive", async () => {
+		const gate = deferred();
+		const revived = makeSessionStub();
+		const runs = { n: 0 };
+		parkAdopted("Reused", gate.promise, revived, runs);
+
+		const waking = lifecycle.ensureLive("Reused");
+		await flushAsync();
+		expect(runs.n).toBe(1);
+
+		registry.unregister("Reused");
+		const replacement = registry.register({
+			id: "Reused",
+			displayName: "replacement",
+			kind: "sub",
+			session: null,
+			sessionFile: "/tmp/replacement.jsonl",
+			scope: "another-conversation",
+			status: "parked",
+		});
+		gate.resolve();
+		await expect(waking).rejects.toThrow(
+			'Agent "Reused" was replaced while it was being revived. Its transcript remains readable at history://Reused.',
+		);
+		expect(revived.disposeCalls()).toBe(1);
+		expect(registry.get("Reused")).toBe(replacement);
+		expect(replacement.session).toBeNull();
+		expect(replacement.status).toBe("parked");
+	});
+
+	/**
 	 * The same race one step later: the revive completed and attached, and only THEN
 	 * does the close deadline fire. Now there is nothing in flight and the agent is
 	 * `idle`, so the close must decline on status and leave the live session alone.
