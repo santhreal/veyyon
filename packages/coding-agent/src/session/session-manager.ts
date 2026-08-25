@@ -470,6 +470,7 @@ export class SessionManager {
 	readonly #persist: boolean;
 	readonly #storage: SessionStorage;
 	readonly #blobs: BlobStore;
+	#lostBlobRefs = false;
 	#operatorNotices: OperatorNotices | undefined;
 
 	#sessionId = "";
@@ -1287,6 +1288,7 @@ export class SessionManager {
 		this.#rewriteRequired = false;
 		this.#forceFileCreation = false;
 		this.#draftOnlySessionCleanupArmed = false;
+		this.#lostBlobRefs = false;
 		this.#turnBudgetTotal = null;
 		this.#turnBudgetHard = false;
 		this.#turnOutputBaseline = 0;
@@ -1558,10 +1560,11 @@ export class SessionManager {
 		let adoptedCwd: string | undefined;
 		if (fileEntries.length > 0) {
 			migrated = migrateToCurrentVersion(fileEntries);
-			await resolveBlobRefsInEntries(fileEntries, this.#blobs, {
+			const lostCount = await resolveBlobRefsInEntries(fileEntries, this.#blobs, {
 				source: resolvedSessionFile,
 				operatorNotices: this.#operatorNotices,
 			});
+			this.#lostBlobRefs = lostCount > 0;
 			// loadEntriesFromFile guarantees entries[0] is a valid session header.
 			header = fileEntries[0] as SessionHeader;
 			const headerCwd = header.cwd ? path.resolve(header.cwd) : undefined;
@@ -2119,6 +2122,10 @@ export class SessionManager {
 
 	getSessionId(): string {
 		return this.#sessionId;
+	}
+	/** True when the loaded session has blob refs the blob store could not restore. */
+	get hasLostBlobRefs(): boolean {
+		return this.#lostBlobRefs;
 	}
 
 	/**
@@ -2869,10 +2876,11 @@ export class SessionManager {
 			await loadEntriesFromFile(sourcePath, storage, { operatorNotices: options?.operatorNotices }),
 		) as FileEntry[];
 		migrateToCurrentVersion(sourceEntries);
-		await resolveBlobRefsInEntries(sourceEntries, manager.#blobs, {
+		const lostCount = await resolveBlobRefsInEntries(sourceEntries, manager.#blobs, {
 			source: sourcePath,
 			operatorNotices: options?.operatorNotices,
 		});
+		manager.#lostBlobRefs = lostCount > 0;
 
 		const sourceHeader = sourceEntries.find(entry => entry.type === "session") as SessionHeader | undefined;
 		const history = sourceEntries.filter((entry): entry is SessionEntry => {

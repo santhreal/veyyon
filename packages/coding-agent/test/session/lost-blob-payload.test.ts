@@ -378,3 +378,99 @@ describe("a payload the blob store no longer has", () => {
 		expect(textsOf(scrubbed)).toEqual(["look at this", LOST_IMAGE_SENTENCE, "sure"]);
 	});
 });
+
+describe("hasLostBlobRefs flag gates replaceLostBlobPayloads", () => {
+	let dirOverrides: DirOverridesSnapshot | undefined;
+	let agentRoot: TempDir | undefined;
+
+	beforeEach(() => {
+		dirOverrides = captureDirOverrides();
+		agentRoot = TempDir.createSync("@pi-lost-blob-agent-");
+		setAgentDir(agentRoot.path());
+	});
+
+	afterEach(async () => {
+		if (dirOverrides !== undefined) restoreDirOverrides(dirOverrides);
+		dirOverrides = undefined;
+		await agentRoot?.remove();
+		agentRoot = undefined;
+	});
+
+	it("is false for a session with no blob refs", async () => {
+		const dir = agentRoot!.path();
+		const file = sessionFile(dir, [
+			userEntry("e1", HEADER_ID, [{ type: "text", text: "hello" }]) as unknown as Record<string, unknown>,
+		]);
+		const manager = await SessionManager.open(file);
+		expect(manager.hasLostBlobRefs).toBe(false);
+	});
+
+	it("is false for a session whose blobs were all restored", async () => {
+		const dir = agentRoot!.path();
+		const store = new BlobStore(getBlobsDir());
+		// Externalize a text block so the JSONL carries a blobtext: ref, then
+		// put the bytes back so the load restores it — lost count is 0.
+		const ref = externalizeTextSync(store, "large content that fits in the blob store");
+		const file = sessionFile(dir, [
+			assistantEntry("e1", HEADER_ID, [{ type: "text", text: ref }]) as unknown as Record<string, unknown>,
+		]);
+		const manager = await SessionManager.open(file);
+		expect(manager.hasLostBlobRefs).toBe(false);
+		// The message content was restored from the blob store.
+		const msg = manager.getBranch().find(e => e.type === "message");
+		expect(firstText(msg as FileEntry | undefined)).toBe("large content that fits in the blob store");
+	});
+
+	it("is true for a session with lost blob refs", async () => {
+		const dir = agentRoot!.path();
+		// Write a session file that references a blob hash that was never stored.
+		const file = sessionFile(dir, [
+			assistantEntry("e1", HEADER_ID, [
+				{ type: "text", text: `blobtext:sha256:${MISSING_HASH}` },
+			]) as unknown as Record<string, unknown>,
+		]);
+		const manager = await SessionManager.open(file);
+		expect(manager.hasLostBlobRefs).toBe(true);
+	});
+
+	it("replaceLostBlobPayloads returns the same array when no blob refs exist", () => {
+		const messages: Message[] = [
+			{ role: "user", content: "hello", attribution: "user", timestamp: Date.now() } as Message,
+			{
+				role: "assistant",
+				content: [{ type: "text", text: "hi" }],
+				attribution: "agent",
+				timestamp: Date.now(),
+			} as unknown as Message,
+		];
+		const result = replaceLostBlobPayloads(messages);
+		expect(result).toBe(messages);
+	});
+
+	it("replaceLostBlobPayloads returns a new array when blob refs exist", () => {
+		const messages: Message[] = [
+			{
+				role: "user",
+				content: [{ type: "text", text: `blobtext:sha256:${MISSING_HASH}` }],
+				attribution: "user",
+				timestamp: Date.now(),
+			} as Message,
+		];
+		const result = replaceLostBlobPayloads(messages);
+		expect(result).not.toBe(messages);
+		expect((result[0].content as Array<{ type: string; text: string }>)[0].text).toBe(LOST_TEXT_SENTENCE);
+	});
+
+	it("is reset to false when a new session is created", async () => {
+		const dir = agentRoot!.path();
+		const file = sessionFile(dir, [
+			assistantEntry("e1", HEADER_ID, [
+				{ type: "text", text: `blobtext:sha256:${MISSING_HASH}` },
+			]) as unknown as Record<string, unknown>,
+		]);
+		const manager = await SessionManager.open(file);
+		expect(manager.hasLostBlobRefs).toBe(true);
+		await manager.newSession();
+		expect(manager.hasLostBlobRefs).toBe(false);
+	});
+});

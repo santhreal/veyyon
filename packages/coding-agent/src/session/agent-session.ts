@@ -3254,7 +3254,11 @@ export class AgentSession {
 			// the request and every later turn of the session refuses the same way.
 			// The transcript keeps the reference, so restoring the blobs directory
 			// restores the payload; the request carries the loss instead of the hash.
-			const recovered = replaceLostBlobPayloads(next.messages);
+			// Skip the per-message blob-ref scan when the session loaded with no
+			// lost blobs: a live session never mints blob refs into message content
+			// (externalization happens only in the persistence layer, on the JSONL
+			// copy), so the scan is pure overhead on every turn until a reload.
+			const recovered = this.sessionManager.hasLostBlobRefs ? replaceLostBlobPayloads(next.messages) : next.messages;
 			const carried = recovered === next.messages ? next : { ...next, messages: recovered };
 			// The model serving THIS request decides which images it can read. The
 			// main turn, a side request, compaction and an advisor each dispatch
