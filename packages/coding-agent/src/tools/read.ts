@@ -86,7 +86,6 @@ import {
 	scanConflictLines,
 	scanFileForConflicts,
 } from "./conflict-detect";
-import { expandDelimitedPathEntriesSync } from "./cwd-boundary";
 import {
 	executeReadUrl,
 	loadReadUrlCacheEntry,
