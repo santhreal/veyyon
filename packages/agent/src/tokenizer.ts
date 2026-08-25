@@ -7,7 +7,9 @@ export function countTokens(text: string | string[]): number {
 	if (accurate) {
 		return countTokensNat(text);
 	} else if (Array.isArray(text)) {
-		return text.reduce((sum, t) => sum + estimateTokensFromText(t), 0);
+		let total = 0;
+		for (const t of text) total += estimateTokensFromText(t);
+		return total;
 	} else {
 		return estimateTokensFromText(text);
 	}
