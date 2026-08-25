@@ -59,9 +59,12 @@
  * WHAT IT DOES NOT CATCH. Nothing here drives a real mouse press: `capabilityLine.onClick`
  * maps a column to a segment id through `quietSegmentAt`, which `quiet-bounds.test.ts` owns,
  * and this suite starts one call later at `togglePathExpanded`. The two together cover the
- * path from a click to a repaint; neither alone does. Colour is not read, and the icon only as
- * the pinned cells the clip must not eat. The first surviving part is checked only for opening
- * no LATER than its text, since it owns the clip mark and any separator the cut stranded in
+ * path from a click to a repaint; neither alone does. Colour is read at one place only, the
+ * cell the mark sits in, and by handing the fitter pre-coloured parts: a theme that painted the
+ * whole zone in one colour would satisfy that assertion without the mark inheriting anything.
+ * The icon is read only as the pinned cells the clip must not eat. The first surviving part is
+ * checked only for opening no LATER than its text, since it owns the clip mark and any
+ * separator the cut stranded in
  * front of it, so a mark handed to it by mistake at a width where it should be the second part
  * would not be seen. Nothing here reads the real motion clock: a curve whose duration was set
  * to an hour would land on the same frames under a hand-ticked one.
@@ -623,6 +626,120 @@ describe("the location fitter decides who pays", () => {
 		// Whatever the fitter can afford down here, it is never the branch on its own.
 		expect(survivors.filter(row => row === "git")).toEqual([]);
 		expect(survivors).toContain("path");
+	});
+});
+
+/**
+ * A clip mark is part of the name it cut, not part of the gap in front of it.
+ *
+ * THE DEFECT. The mark was written ahead of the escape run `sliceWithWidth` replays at the cut,
+ * so it painted in whatever colour the row was in BEFORE the part: the separator's grey in
+ * front of a green branch, the icon's colour in front of a path. One glyph, in the wrong
+ * colour, is enough to read as belonging to the gap rather than to the name -- which is the
+ * opposite of what it is there to say.
+ *
+ * THE SECOND DEFECT. A cut placed by arithmetic alone lands wherever the budget runs out:
+ * `…-model-retention-long-path` opens on punctuation belonging to a word the row no longer
+ * shows, and `…eline/normalizer` opens on the tail of a name that reads as a name in its own
+ * right. The cut is allowed to walk forward a few cells to the next boundary, keeping a `/`
+ * (a mark in front of a slash is how a shortened path has always read) and dropping a word
+ * separator, which has nothing left to join.
+ *
+ * WHY THE FITTER AND NOT A ROW. Both are properties of one clipped part, and the fitter is
+ * where a part is clipped. A row reaches these budgets only through its shed ladder, which
+ * drops the whole zone before the tightest of them, and a row's parts come coloured by the
+ * theme, which the sandbox renders colourless -- so the colour contract is unobservable there.
+ *
+ * WHAT IT DOES NOT CATCH. Nothing here proves the theme gives the two location parts different
+ * colours in the first place; if it painted both in the separator's grey the defect would be
+ * invisible and these assertions would still pass. The snap is asserted on narrow cells only,
+ * which is the only case the source attempts.
+ */
+describe("a clip mark belongs to the name it cut", () => {
+	const SEP = "  ·  ";
+	const BRANCH_COLOUR = "\u001b[38;5;72m";
+	const ICON_COLOUR = "\u001b[38;5;250m";
+	const PATH_COLOUR = "\u001b[38;5;254m";
+	const OFF = "\u001b[39m";
+	const BRANCH_NAME = "feature/statusline-model-retention-long-path";
+	const PATH_NAME = "platform-services/ingest-pipeline/normalizer";
+
+	/** The escape run immediately in front of the first mark: what the mark is painted in. */
+	function runBeforeMark(text: string): string {
+		const at = text.indexOf(ELLIPSIS);
+		return at < 0 ? "" : (/(?:\u001b\[[0-9;:]*m)+$/u.exec(text.slice(0, at))?.[0] ?? "");
+	}
+
+	it("paints the mark in the colour of the name it kept, not the colour of the gap in front of it", () => {
+		const branch: QuietPart = { id: "git", content: `${BRANCH_COLOUR}${BRANCH_NAME}${OFF}` };
+		const offenders: { budget: number; run: string }[] = [];
+		let sawMark = false;
+
+		for (let budget = 4; budget < visibleWidth(BRANCH_NAME); budget++) {
+			const { text } = fitLocation([branch], SEP, budget);
+			if (!stripAnsi(text).includes(ELLIPSIS)) continue;
+			sawMark = true;
+			// Adjacent escapes run together, so the state may be several sequences long; what
+			// matters is that the LAST thing set before the mark is the branch's own colour.
+			const run = runBeforeMark(text);
+			if (!run.endsWith(BRANCH_COLOUR)) offenders.push({ budget, run: JSON.stringify(run) });
+		}
+
+		expect(offenders).toEqual([]);
+		expect(sawMark).toBe(true);
+	});
+
+	it("takes the colour of the cell the mark stands in front of, not one an earlier run set", () => {
+		// The shape the defect had, and the general case of it: a part painted in more than one
+		// colour, with the cut landing inside the LAST of them. A theme highlighting the leaf
+		// directory paints exactly this, and the icon is one more run in front of it. Both the
+		// escapes the pin steps over and the ones the dropped head opened end on a colour that
+		// is not the one at the cut, so a mark taking its colour from either is visibly wrong.
+		const LEAF_COLOUR = "\u001b[38;5;117m";
+		const parent = "platform-services/ingest-pipeline/";
+		const leaf = "normalizer-service";
+		const withIcon: QuietPart = {
+			id: "path",
+			content: `${ICON_COLOUR}▫ ${OFF}${PATH_COLOUR}${parent}${LEAF_COLOUR}${leaf}${OFF}`,
+			pin: 2,
+		};
+
+		// 20 cells: the pin, the mark, and seventeen of the leaf, so the cut is inside the leaf
+		// and no boundary is within reach of it.
+		const { text } = fitLocation([withIcon], SEP, 20);
+
+		expect(stripAnsi(text)).toBe(`▫ ${ELLIPSIS}ormalizer-service`);
+		expect(runBeforeMark(text).endsWith(LEAF_COLOUR)).toBe(true);
+	});
+
+	it("opens a clipped name on a boundary, keeping a slash and dropping a word separator", () => {
+		// Pinned here rather than imported from the source: a test that reads the source's own
+		// allowance moves with it, and an allowance widened until it ate whole names is exactly
+		// the regression this bound exists to catch.
+		const MOST_CELLS_A_TIDY_CUT_MAY_COST = 4;
+		const SEPARATORS = "-_.@:";
+		const name: QuietPart = { id: "path", content: PATH_NAME };
+		const offenders: { budget: number; why: string }[] = [];
+		let sawSlashKept = false;
+		let sawClip = false;
+
+		for (let budget = 4; budget < visibleWidth(PATH_NAME); budget++) {
+			const plain = stripAnsi(fitLocation([name], SEP, budget).text);
+			if (!plain.startsWith(ELLIPSIS)) continue;
+			sawClip = true;
+			const tail = plain.slice(ELLIPSIS.length);
+			const opens = tail[0] ?? "";
+			if (SEPARATORS.includes(opens)) offenders.push({ budget, why: `opens on ${opens}: ${plain}` });
+			if (opens === "/") sawSlashKept = true;
+			if (!PATH_NAME.endsWith(tail)) offenders.push({ budget, why: `${JSON.stringify(tail)} is not a suffix` });
+			const givenUp = budget - visibleWidth(plain);
+			if (givenUp > MOST_CELLS_A_TIDY_CUT_MAY_COST) offenders.push({ budget, why: `gave up ${givenUp} cells` });
+		}
+
+		expect(offenders).toEqual([]);
+		expect(sawClip).toBe(true);
+		// Vacuous unless the sweep passed a cut that landed on a slash and kept it.
+		expect(sawSlashKept).toBe(true);
 	});
 });
 
