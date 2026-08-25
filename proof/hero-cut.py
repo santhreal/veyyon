@@ -339,14 +339,23 @@ def cut(
 	width: int,
 	fps: int,
 	crf: int = 22,
+	speed_badge: bool = False,
 ) -> None:
 	inputs: list[str] = []
 	chains: list[str] = []
 	labels = ""
 	for i, (lo, hi, speed) in enumerate(spans):
 		inputs += ["-ss", f"{lo:.3f}", "-t", f"{hi - lo:.3f}", "-i", str(path)]
+		badge = ""
+		if speed_badge and speed >= 1.5:
+			label = f"{speed:g}×"
+			badge = (
+				f",drawtext=text='{label}'"
+				":x=w-th-80:y=48:fontsize=42:fontcolor=white"
+				":borderw=3:bordercolor=black@0.7"
+			)
 		chains.append(
-			f"[{i}:v]setpts=PTS/{speed},scale={width}:-2:flags=lanczos,fps={fps},setpts=N/{fps}/TB[v{i}]"
+			f"[{i}:v]setpts=PTS/{speed},scale={width}:-2:flags=lanczos,fps={fps}{badge},setpts=N/{fps}/TB[v{i}]"
 		)
 		labels += f"[v{i}]"
 	graph = ";".join(chains) + f";{labels}concat=n={len(spans)}:v=1:a=0[v]"
@@ -482,6 +491,7 @@ def main() -> int:
 	parser.add_argument("--webp-fps", type=int, default=30)
 	parser.add_argument("--webp-quality", type=int, default=62)
 	parser.add_argument("--dry-run", action="store_true", help="print the windows, write nothing")
+	parser.add_argument("--speed-badge", action="store_true", help="draw the time-compression factor on sped-up spans")
 	args = parser.parse_args()
 
 	if (args.real_through_mark or args.real_from_mark) and not args.marks:
@@ -554,7 +564,7 @@ def main() -> int:
 	if args.dry_run:
 		return 0
 
-	cut(args.take, args.mp4, rated_spans, width=args.width, fps=args.fps, crf=args.crf)
+	cut(args.take, args.mp4, rated_spans, width=args.width, fps=args.fps, crf=args.crf, speed_badge=args.speed_badge)
 	print(f"wrote {args.mp4} ({args.mp4.stat().st_size} bytes, {duration(args.mp4):.1f}s)")
 	if args.webp:
 		webp(args.mp4, args.webp, width=args.webp_width, fps=args.webp_fps, quality=args.webp_quality)
