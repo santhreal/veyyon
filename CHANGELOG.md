@@ -6,6 +6,8 @@
 
 ### Added
 
+- `prewalk.cheapModel` and `prewalk.strongModel` configure the cheap model prewalk switches into at the first edit and the strong model it starts on.
+- `/prewalk` accepts an optional model argument to arm a per-session target model override.
 - `edit.critiqueCodeMutations` prompts a bounded self-review before finalization after one turn modifies at least two distinct code files.
 - Configurable `launch.cleanupWaitMs` setting (default 15 minutes) purges exited launch daemon records from memory and disk after a retention TTL.
 - Exporting a session to HTML streams the snapshot into the output file instead of assembling the whole document in memory, taking an 80MiB transcript from 1007MiB of peak resident memory to 532MiB with byte-identical output.
@@ -59,6 +61,7 @@
 - Daemon completion parsing and eval-store serialization errors use shared type guards; behavior is unchanged.
 - Streaming `message_update` snapshots share tool-call arguments by reference instead of deep-cloning them on every delta, cutting a large structured tool call's per-delta snapshot cost from ~0.5 s to ~8 ms, while terminal messages and the authoritative tool call a `toolcall_end` carries keep the sanitizing deep clone.
 - Superseded and useless tool results are now pruned as a batch whose combined size pays for the prompt-cache rewrite it forces, instead of only when a single result sits within 8,000 tokens of the end of the conversation.
+- Formatted tool-call loop guard whitespace; behavior is unchanged.
 - The Anthropic provider reads its endpoint, credential placement, rejected betas and retry policy from the catalog's wire-capability table instead of comparing provider ids at seventeen call sites.
 - `ToolCall.arguments` is a `Readonly<Record<string, unknown>>`, so a producer replaces the object instead of writing into one a streaming snapshot already shares.
 - A streaming request no longer pins a parsed clone of its wire payload for the life of the stream: every provider's diagnostic dump retains only the exact sent bytes and materializes a body when a 400/413 dump is built.
@@ -77,6 +80,7 @@
 - Quitting no longer hangs when a background session never settles.
 - `/new` typed while the agent is answering starts the new session without interrupting the answer: the running turn finishes in the background and is flushed to its own transcript, while the composer attaches to a fresh session immediately.
 - `/resume` onto a session that is still answering re-attaches the running session instead of replaying its transcript as finished text, so its answer keeps streaming into the view and the session being left takes its place in the background.
+- `veyyon bench --model @role` and `veyyon dry-balance --model @role` resolve a configured model role instead of failing to find a model named after the alias.
 - The model name segment on the composer status line is preserved against wide working directories and git branch names by ranking it above location shortening in footline degradation.
 - A clipped working directory on the composer status line now carries one ellipsis at the front instead of one at each end, so the directory the session is in stays visible and the visible text reads as a suffix of the real path.
 - The composer status line clips the working directory and the git branch from their own fronts together instead of dropping the branch, never clips a branch short enough to read whole, keeps the path's icon in front of the clip mark, and gives up the context gauge before letting either part fall under its floor.
@@ -153,6 +157,7 @@
 - Persisted AVX2 verdicts are schema-versioned and keyed by platform, architecture, and CPU model, so copied or stale caches cannot select a native variant for different hardware.
 - The AVX2 trial load answers from the addon loader's first import and exits, so a compiled host, whose `process.execPath` is the product binary rather than a JavaScript runtime, reports a verdict instead of booting the whole CLI and spawning a trial child of its own at every level.
 - A wrapped line now continues under the indent its first row opened at, so an indented row no longer reads as a new top-level row at a narrow width.
+- Nested optional-argument LaTeX constructs parse in linear time without character-by-character concatenation allocations.
 - Exclude pinned footer rows from the scroll-isolation snapshot and scroll space so the composer does not duplicate inside scrolled-back history.
 - Extract LaTeX argument text by slicing the source rather than appending one character at a time, so a deeply nested optional-argument chain degrades linearly instead of quadratically.
 - `splitTrailingPartialEscape` lets a streaming reader hold back an escape sequence a chunk ended inside, so a sequence divided across two reads is stripped whole instead of losing its head and leaking its tail as text.
