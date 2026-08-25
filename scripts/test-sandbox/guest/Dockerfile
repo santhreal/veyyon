@@ -34,6 +34,15 @@
 #                          bite, and it cost a lane a misattributed failure.
 #   ripgrep                64 test files reference it.
 #   openssh-client         20 test files reference the ssh tool.
+#   openssh-server         sshd, spawned by the ssh integration suite. The client
+#                          alone can only be pointed at a host that is not there,
+#                          so every property that matters -- that OpenSSH accepts
+#                          the control path veyyon computes, that the master comes
+#                          up, that commands multiplex over it, that an unusable
+#                          control directory degrades to a direct connection --
+#                          was untestable until the guest could be its own remote.
+#                          A control path one byte too long broke every ssh call
+#                          on a real host while the whole suite stayed green.
 #   python3                8 test files reference it.
 #   util-linux             setpriv, used by the guest init to drop from PID 1 root
 #                          to the synthetic account.
@@ -82,13 +91,14 @@ RUN set -eux; \
     apt-get update; \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         git ca-certificates util-linux kmod procps xz-utils cpio iproute2 \
-        ripgrep openssh-client python3 curl ffmpeg imagemagick; \
+        ripgrep openssh-client openssh-server python3 curl ffmpeg imagemagick; \
     apt-get clean; \
     rm -rf /var/lib/apt/lists/*; \
     git --version; \
     bun --version; \
     rg --version; \
     python3 --version; \
+    test -x /usr/sbin/sshd; \
     ffmpeg -version >/dev/null; \
     ffprobe -version >/dev/null; \
     magick -version >/dev/null; \

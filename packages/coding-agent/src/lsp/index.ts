@@ -1594,7 +1594,10 @@ export class LspTool implements AgentTool<typeof lspSchema, LspToolDetails, Them
 	}
 
 	static createIf(session: ToolSession): LspTool | null {
-		return session.enableLsp === false ? null : new LspTool(session);
+		if (session.enableLsp === false) return null;
+		if (!session.settings.get("lsp.enabled")) return null;
+		if (!session.settings.get("lsp.tool")) return null;
+		return new LspTool(session);
 	}
 
 	async execute(

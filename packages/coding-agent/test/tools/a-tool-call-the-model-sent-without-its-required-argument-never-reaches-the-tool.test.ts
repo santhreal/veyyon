@@ -175,6 +175,10 @@ const SWEEP_SETTINGS: Record<string, unknown> = {
 	"debug.enabled": true,
 	"memory.backend": "mnemopi",
 	"tools.discoveryMode": "all",
+	// Off by default: starting servers is expensive. The sweep still has to
+	// construct `lsp`, so it turns the gate on rather than dropping the tool.
+	"lsp.enabled": true,
+	"lsp.tool": true,
 };
 
 const argotSession = new ArgotSession();

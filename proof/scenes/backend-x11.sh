@@ -10,6 +10,11 @@
 # Sourced by lib.sh when SCENE_SERVER is x11 (the default). DISPLAY and
 # SCENE_WINDOW are already exported by xsession.sh.
 
+# Text fallback used when kitty's remote-control socket is unavailable. Keep
+# the XTEST spelling behind the backend boundary so shared scenes remain
+# display-server independent.
+_xdo() { xdotool "$@"; }
+
 # The window's pixel size and its origin on the root window. A themed capture
 # insets the window, so the origin is not 0,0 and every pointer target has to add
 # it back.

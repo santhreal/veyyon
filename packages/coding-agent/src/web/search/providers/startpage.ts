@@ -46,16 +46,23 @@ interface ParsedResult {
 }
 
 /**
- * `true` when Startpage answered with its CAPTCHA/error shell instead of
- * results. Rejected requests 302 to `/en/errors/` (legacy: `/sp/captcha`), a
- * Gatsby SPA whose chunk map names the captcha page components; the body
+ * `true` when Startpage answered with a bot challenge instead of results.
+ *
+ * Two shapes exist. The older one 302s to `/en/errors/` (legacy: `/sp/captcha`),
+ * a Gatsby SPA whose chunk map names the captcha page components; the body
  * marker matters because mocked fetch responses carry no final URL. A bare
  * "captcha" substring is deliberately not used — result snippets for
  * captcha-related queries would false-positive.
+ *
+ * The newer one is an Anubis proof-of-work interstitial, served at the search
+ * URL itself with HTTP 200 and no redirect, so the body is the only evidence
+ * there is. Left undetected it parses to zero results and reports success,
+ * which reads downstream as "this engine searched and the web is empty".
  */
 function isChallengeResponse(page: LoadedHtmlPage): boolean {
 	if (/\/(?:errors|captcha)\//.test(page.url) || page.url.includes("/sp/captcha")) return true;
-	return page.html.includes("component---src-pages-captcha") || page.html.includes("/sp/captcha");
+	if (page.html.includes("component---src-pages-captcha") || page.html.includes("/sp/captcha")) return true;
+	return page.html.includes('id="anubis_challenge"') || page.html.includes('id="anubis_version"');
 }
 
 /**

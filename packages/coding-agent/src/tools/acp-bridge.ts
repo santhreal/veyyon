@@ -72,7 +72,7 @@ export async function routeWriteThroughBridge(
 	} catch (error) {
 		throw toolFailure(error);
 	}
-	if (session.enableLsp ?? true) {
+	if ((session.enableLsp ?? true) && session.settings.get("lsp.enabled")) {
 		await notifyWorkspaceWatchedFiles(session.cwd, [{ filePath: absolutePath, type: changeType }], signal);
 	}
 	invalidateFsScanAfterWrite(absolutePath);

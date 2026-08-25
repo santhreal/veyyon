@@ -34,6 +34,36 @@ import { embeddedAddon } from "./embedded-addon.js";
 const SUPPORTED_PLATFORMS = ["linux-x64", "linux-arm64", "darwin-x64", "darwin-arm64", "win32-x64"];
 
 /**
+ * Answer a trial-load request and exit, before this module does anything else.
+ *
+ * {@link trialLoadModernAddon} spawns `process.execPath` to `require()` one
+ * addon under a real process, because an illegal instruction cannot be caught
+ * in-process. In a compiled distribution `process.execPath` is the product
+ * binary, which ignores `-e` and boots the whole CLI; the CLI loads natives,
+ * reaches the same detector, and spawns a child of its own, one level per
+ * launch. Answering here ends the child at its first import instead.
+ *
+ * A JavaScript-runtime host never reaches this branch: `-e` evaluates
+ * {@link TRIAL_LOAD_SCRIPT}, which answers without importing this module.
+ */
+function answerTrialLoadRequest() {
+	const addonPath = process.env.VEYYON_TRIAL_ADDON_PATH;
+	if (!addonPath) return;
+	let verdict = "TRIAL_INCOMPATIBLE";
+	try {
+		const addon = createRequire(import.meta.url)(addonPath);
+		if (addon && typeof addon === "object") verdict = "TRIAL_OK";
+	} catch {
+		// A catchable load failure is not proof that the CPU lacks AVX2, and the
+		// parent classifies TRIAL_INCOMPATIBLE as inconclusive.
+	}
+	process.stdout.write(`${verdict}\n`);
+	process.exit(0);
+}
+
+answerTrialLoadRequest();
+
+/**
  * Streaming startup marker, enabled by `VEYYON_DEBUG_STARTUP`. Local copy of the
  * pi-utils helper (this loader cannot depend on pi-utils). Synchronous on
  * purpose: extraction/dlopen hangs must still leave the `:start` marker.
@@ -443,6 +473,7 @@ function getVariantOverride() {
  *   arch: string;
  *   readCpuInfo: () => string | null;
  *   runCommand: (command: string, args: string[]) => string | null;
+ *   trialLoad?: () => "supported" | "unsupported" | "unknown";
  * }} probes
  * @returns {"supported" | "unsupported" | "unknown"}
  */
@@ -477,26 +508,149 @@ export function classifyAvx2Support(probes) {
 	}
 
 	if (probes.platform === "win32") {
-		const output = probes.runCommand("powershell.exe", [
-			"-NoProfile",
-			"-NonInteractive",
-			"-Command",
-			"[System.Runtime.Intrinsics.X86.Avx2]::IsSupported",
-		]);
-		if (output === null) return "unknown"; // powershell could not run
-		return output.toLowerCase() === "true" ? "supported" : "unsupported";
+		// Stock Windows ships PowerShell 5.1 (`powershell.exe`), which runs
+		// .NET Framework — and .NET Framework has NO
+		// System.Runtime.Intrinsics.X86.Avx2 type, so the old single probe
+		// threw TypeNotFound on EVERY stock Windows box and the loader fell
+		// back to "unknown" → baseline forever. PowerShell 7 installs as
+		// `pwsh` on a newer .NET and does carry the type, so try it first;
+		// backed by a newer runtime. Anything but an explicit True/False leaves
+		// the tri-state at "unknown" — never a guessed downgrade.
+		for (const shell of ["pwsh.exe", "powershell.exe"]) {
+			const output = probes.runCommand(shell, [
+				"-NoProfile",
+				"-NonInteractive",
+				"-Command",
+				"[System.Runtime.Intrinsics.X86.Avx2]::IsSupported",
+			]);
+			if (output === null) continue; // shell could not run at all
+			const normalized = output.toLowerCase();
+			if (normalized === "true") return "supported";
+			if (normalized === "false") return "unsupported";
+		}
+		// Last resort, ground truth: trial-load the modern addon in a child
+		// process. If the CPU lacks AVX2 the child dies on an illegal
+		// instruction — a crash the parent survives and reads as a genuine
+		// "unsupported", not a guess. A JS-level failure (file missing,
+		// antivirus block) is catchable inside the child, which reports it as
+		// inconclusive instead.
+		return probes.trialLoad ? probes.trialLoad() : "unknown";
 	}
 
 	return "unknown";
 }
 
+/** The persisted AVX2 verdict file: one versioned JSON object, hardware-keyed. */
+const HOST_VARIANT_FILE = "host-variant.json";
+const HOST_VARIANT_SCHEMA_VERSION = 1;
+
 /**
- * Detect AVX2 support on the real host, as a tri-state. Thin wrapper over
- * {@link classifyAvx2Support} that supplies the real filesystem/spawn probes.
+ * Return a stable CPU-model identity without spawning a probe. Platform and
+ * architecture alone are not a hardware identity: a roaming home directory,
+ * restored VM disk, or CPU replacement can otherwise replay a persisted
+ * "supported" verdict on a machine where loading the modern addon would SIGILL.
+ *
+ * @param {Array<{ model?: string }> | undefined} cpus
+ * @returns {string | null}
+ */
+export function hostCpuIdentity(cpus = os.cpus()) {
+	if (!Array.isArray(cpus)) return null;
+	const models = [
+		...new Set(
+			cpus
+				.map((cpu) => (typeof cpu?.model === "string" ? cpu.model.trim() : ""))
+				.filter((model) => model.length > 0 && model.toLowerCase() !== "unknown"),
+		),
+	].sort();
+	return models.length > 0 ? models.join("\u0000") : null;
+}
+
+/**
+ * Parse a persisted verdict. Returns null for anything that is not a genuine
+ * verdict for this schema, platform, architecture, and CPU identity. Legacy
+ * platform/arch-only rows are rejected because they can cross a hardware
+ * replacement and turn a stale performance cache into an illegal instruction.
+ */
+export function parseHostVariantVerdict(text, { platform, arch, cpuIdentity }) {
+	if (typeof text !== "string" || typeof cpuIdentity !== "string" || cpuIdentity.length === 0) return null;
+	let data;
+	try {
+		data = JSON.parse(text);
+	} catch {
+		return null;
+	}
+	if (data === null || typeof data !== "object") return null;
+	if (data.version !== HOST_VARIANT_SCHEMA_VERSION) return null;
+	if (data.platform !== platform || data.arch !== arch || data.cpuIdentity !== cpuIdentity) return null;
+	if (data.verdict !== "supported" && data.verdict !== "unsupported") return null;
+	return data.verdict;
+}
+
+/**
+ * Persist a genuine verdict next to the versioned addon caches. Unknown
+ * answers and hosts without a stable CPU identity are never written.
+ */
+export function writeHostVariantVerdict(nativesDir, verdict, { platform, arch, cpuIdentity }) {
+	if (
+		(verdict !== "supported" && verdict !== "unsupported") ||
+		typeof cpuIdentity !== "string" ||
+		cpuIdentity.length === 0
+	) {
+		return;
+	}
+	try {
+		fs.mkdirSync(nativesDir, { recursive: true });
+		const file = path.join(nativesDir, HOST_VARIANT_FILE);
+		const tmp = `${file}.${process.pid}.tmp`;
+		fs.writeFileSync(
+			tmp,
+			`${JSON.stringify({
+				version: HOST_VARIANT_SCHEMA_VERSION,
+				platform,
+				arch,
+				cpuIdentity,
+				verdict,
+			})}\n`,
+		);
+		fs.renameSync(tmp, file);
+	} catch {
+		// An unwritable cache costs one re-probe on the next launch; it must
+		// never break loading.
+	}
+}
+
+/**
+ * Detect AVX2 support on the real host, as a tri-state.
+ *
+ * A genuine verdict from an earlier run is read back from
+ * `<nativesDir>/host-variant.json` so later launches skip the expensive probe.
+ * The row is versioned and CPU-keyed; an unidentifiable host or stale row is
+ * probed again. "unknown" is never persisted.
+ *
  * @returns {"supported" | "unsupported" | "unknown"}
  */
 function detectAvx2Support() {
-	return classifyAvx2Support({
+	const cacheFile = path.join(getNativesDir(), HOST_VARIANT_FILE);
+	const cpuIdentity = hostCpuIdentity();
+	let cached = null;
+	if (cpuIdentity !== null) {
+		try {
+			cached = parseHostVariantVerdict(fs.readFileSync(cacheFile, "utf8"), {
+				platform: process.platform,
+				arch: process.arch,
+				cpuIdentity,
+			});
+		} catch {
+			cached = null;
+		}
+	}
+	if (cached !== null) {
+		startupMarker(`native:avx2:persisted:${cached}`);
+		return cached;
+	}
+
+	startupMarker("native:avx2:probe:start");
+	const verdict = classifyAvx2Support({
 		platform: process.platform,
 		arch: process.arch,
 		readCpuInfo: () => {
@@ -507,8 +661,83 @@ function detectAvx2Support() {
 			}
 		},
 		runCommand,
+		trialLoad: process.platform === "win32" ? trialLoadModernAddon : undefined,
 	});
+	startupMarker("native:avx2:probe:done");
+	if (cpuIdentity !== null && (verdict === "supported" || verdict === "unsupported")) {
+		writeHostVariantVerdict(getNativesDir(), verdict, {
+			platform: process.platform,
+			arch: process.arch,
+			cpuIdentity,
+		});
+	}
+	return verdict;
 }
+
+/**
+ * Classify the child-process trial without mistaking an arbitrary addon crash
+ * for proof that the CPU lacks AVX2. Only SIGILL (POSIX) or Windows
+ * STATUS_ILLEGAL_INSTRUCTION is an unsupported verdict; access violations,
+ * timeouts, launch failures, and unexplained exits remain unknown.
+ *
+ * @param {{ stdout?: unknown; status?: number | null; signal?: string | null; error?: unknown }} result
+ * @returns {"supported" | "unsupported" | "unknown"}
+ */
+export function classifyTrialLoadResult(result) {
+	if (result.error) return "unknown";
+	const markers = String(result.stdout || "").split(/\r?\n/);
+	if (result.status === 0 && markers.includes("TRIAL_OK")) return "supported";
+	if (markers.includes("TRIAL_INCOMPATIBLE")) return "unknown";
+	if (result.signal === "SIGILL") return "unsupported";
+	if (typeof result.status === "number" && (result.status >>> 0) === 0xc000001d) return "unsupported";
+	return "unknown";
+}
+
+/**
+ * Trial-load the `modern` addon in a child process. A genuine illegal
+ * instruction proves the CPU is unsupported; every catchable load failure or
+ * other process failure is inconclusive.
+ *
+ * The addon path travels by environment variable, not argv: `-e` argv indexing
+ * differs between Node and Bun eval modes, and a compiled host ignores `-e`
+ * altogether. The variable is also what selects the child's mode, so both hosts
+ * answer: a JavaScript runtime through {@link TRIAL_LOAD_SCRIPT}, the product
+ * binary through {@link answerTrialLoadRequest} at its first natives import.
+ *
+ * @returns {"supported" | "unsupported" | "unknown"}
+ */
+function trialLoadModernAddon() {
+	const tag = `${process.platform}-${process.arch}`;
+	const modernFilename = `veyyon_natives.${tag}-modern.node`;
+	const dirs = [path.join(import.meta.dir, "..", "native"), versionedNativeCacheDir(packageJson.version)];
+	const addonPath = dirs.map((dir) => path.join(dir, modernFilename)).find((candidate) => fs.existsSync(candidate));
+	if (!addonPath) return "unknown";
+	startupMarker(`native:avx2:trial:${addonPath}`);
+	let result;
+	try {
+		result = childProcess.spawnSync(process.execPath, ["-e", TRIAL_LOAD_SCRIPT], {
+			env: { ...process.env, VEYYON_TRIAL_ADDON_PATH: addonPath },
+			encoding: "utf-8",
+			timeout: 30_000,
+		});
+	} catch {
+		return "unknown";
+	}
+	return classifyTrialLoadResult(result);
+}
+
+const TRIAL_LOAD_SCRIPT = [
+	"const path = process.env.VEYYON_TRIAL_ADDON_PATH;",
+	"try {",
+	"	const m = require(path);",
+	'	if (m && typeof m === "object") { console.log("TRIAL_OK"); process.exit(0); }',
+	'	console.log("TRIAL_INCOMPATIBLE");',
+	"	process.exit(0);",
+	"} catch {",
+	'	console.log("TRIAL_INCOMPATIBLE");',
+	"	process.exit(0);",
+	"}",
+].join("\n");
 
 /**
  * Pure variant-selection helper, exposed for unit tests. Resolution order:

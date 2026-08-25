@@ -206,7 +206,10 @@ describe("the stale addon cache is reclaimed off the launch path", () => {
 						`import * as fs from "node:fs";` +
 						`const languages = getSupportedLanguages();` +
 						`if (!Array.isArray(languages) || languages.length === 0) throw new Error("addon did not load");` +
-						`process.stdout.write(JSON.stringify(fs.readdirSync(${JSON.stringify(root)}).sort()));`,
+						// Directories only: the loader also persists its AVX2 verdict as a
+						// sibling file in this root, and the caches are what must survive.
+						`process.stdout.write(JSON.stringify(fs.readdirSync(${JSON.stringify(root)}, { withFileTypes: true })` +
+						`.filter(e => e.isDirectory()).map(e => e.name).sort()));`,
 				],
 				{
 					cwd: REPO_ROOT,

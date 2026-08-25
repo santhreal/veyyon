@@ -256,6 +256,8 @@ export interface BuiltinToolPermissionInputs {
 	enableLsp: boolean;
 	/** `lsp.enabled`. */
 	lspEnabled: boolean;
+	/** `lsp.tool`. The agent-facing lsp tool; independent of injected diagnostics. */
+	lspTool: boolean;
 	/** `bash.enabled`. */
 	bashEnabled: boolean;
 	/** `launch.enabled`. */
@@ -323,7 +325,7 @@ export function learnToolBackendEnabled(memoryBackend: string): boolean {
  */
 export function isBuiltinToolAllowed(name: string, inputs: BuiltinToolPermissionInputs): boolean {
 	if (name === TOOL.goal) return inputs.goalEnabled;
-	if (name === TOOL.lsp) return inputs.enableLsp && inputs.lspEnabled;
+	if (name === TOOL.lsp) return inputs.enableLsp && inputs.lspEnabled && inputs.lspTool;
 	if (name === TOOL.bash) return inputs.bashEnabled;
 	if (name === TOOL.launch) return inputs.launchEnabled;
 	if (name === TOOL.eval) return inputs.evalAllowed;
