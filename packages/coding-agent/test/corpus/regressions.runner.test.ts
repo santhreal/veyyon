@@ -464,9 +464,9 @@ function runGlobSearchBase(c: CorpusCase): void {
 }
 
 function runNormalizeRoots(c: CorpusCase): void {
-	const input = c.input as { roots: string[] };
+	const input = c.input as { root: string };
 	const exp = c.expect as { roots: string[] };
-	expect(normalizeRoots(input.roots)).toEqual(exp.roots);
+	expect(normalizeRoots(input.root)).toEqual(exp.roots);
 }
 
 function runCwdBoundaryReason(c: CorpusCase): void {
