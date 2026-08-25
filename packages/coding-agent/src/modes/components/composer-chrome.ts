@@ -9,7 +9,7 @@
 
 import type { ThinkingLevel } from "@veyyon/agent-core";
 import type { Component, MouseRoutable, SgrMouseEvent } from "@veyyon/tui";
-import { Spacer, TERMINAL } from "@veyyon/tui";
+import { Spacer, TERMINAL, truncateToWidth } from "@veyyon/tui";
 import { groundHairlineHex, groundTintFgAnsi } from "../theme/ground-tints";
 import { theme } from "../theme/theme";
 import { EMBER } from "./sun";
@@ -251,6 +251,46 @@ export class ComposerHairline implements Component {
 		const derived = groundTintFgAnsi(groundHairlineHex(), TERMINAL.trueColor);
 		const rule = theme.boxSharp.horizontal.repeat(w);
 		return [derived !== undefined ? `${derived}${rule}\x1b[39m` : theme.fg("borderMuted", rule)];
+	}
+
+	invalidate(): void {}
+}
+
+/** Rows the home screen reserves for the composer zone while the mode's init
+ * finishes (the real zone mounts into exactly this height). */
+export const COMPOSER_RESTING_ROWS = 8;
+
+/** The ghost prompt the real composer shows when its draft is empty. Owned
+ * here so the first frame's static composer and the live editor show the same
+ * sentence — the swap between them must be invisible. */
+export const COMPOSER_PLACEHOLDER = "ask anything · / for commands";
+
+/**
+ * The composer at rest, painted by the FIRST frame so the prompt is on screen
+ * from the first paint instead of arriving when the mode's init finishes.
+ * It mirrors mountComposerZone's resting shape with static bytes — empty
+ * status row, hairline, pad, one ghost input row, pad, footline row,
+ * shortcuts row — no state, no animation, nothing to settle. The real zone
+ * mounts into the same rows, so the handover changes text, not position:
+ * nothing slides.
+ */
+export class StaticComposerFrame implements Component {
+	render(width: number): string[] {
+		const w = Math.max(1, width);
+		const clip = (row: string): string => truncateToWidth(row, w);
+		const hairline = new ComposerHairline().render(w)[0] ?? "";
+		const inset = " ".repeat(COMPOSER_INSET_COLS);
+		const gutter = `${theme.getFgAnsi("borderAccent")}›\x1b[39m`;
+		return [
+			"",
+			clip(hairline),
+			"",
+			clip(`${inset}${gutter} ${theme.fg("dim", COMPOSER_PLACEHOLDER)}`),
+			"",
+			"",
+			"",
+			"",
+		];
 	}
 
 	invalidate(): void {}

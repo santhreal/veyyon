@@ -1,6 +1,6 @@
 <div align="center">
   <img src="assets/sun.svg" width="260" alt="Veyyon sun">
-  <p><strong>Veyyon</strong> — a terminal coding agent.</p>
+  <p><strong>Veyyon</strong> — the terminal coding agent to end human slop.</p>
   <p>
     <a href="https://github.com/santhreal/veyyon/releases/latest"><img src="https://img.shields.io/github/v/release/santhreal/veyyon?style=flat&colorA=222222&colorB=E05735&label=release" alt="Latest release"></a>
     <a href="https://github.com/santhreal/veyyon/actions"><img src="https://img.shields.io/github/actions/workflow/status/santhreal/veyyon/checks.yml?style=flat&colorA=222222&colorB=3FB950&label=checks" alt="Checks"></a>
@@ -27,4 +27,4 @@ The installer verifies the release checksum and binary before replacing an exist
 
 ## License
 
-Veyyon is a source fork of [oh-my-pi](https://github.com/can1357/oh-my-pi) and is licensed under MIT. See [LICENSE](LICENSE). [UPSTREAM.md](UPSTREAM.md) states the fork and lists where every upstream and third-party notice lives; dependency licenses are in [`THIRD_PARTY_LICENSES.txt`](THIRD_PARTY_LICENSES.txt).
+Veyyon is a fork of [oh-my-pi](https://github.com/can1357/oh-my-pi) and is licensed under MIT [LICENSE](LICENSE). See [UPSTREAM.md](UPSTREAM.md) for more details. Dependency licenses are in [`THIRD_PARTY_LICENSES.txt`](THIRD_PARTY_LICENSES.txt).
