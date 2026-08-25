@@ -6,17 +6,26 @@
 
 - The model-facing workspace search surface is now one mandatory `search` tool taking ordered required `type` (`"files" | "text" | "structure"`) and `input`, replacing the separate `glob`, `grep`, and `ast_grep` tool IDs. Retired per-engine and `search.enabled` values are discarded while text-context values and persisted tool inventories migrate.
 
+### Changed
+
+- Classified runner output (cargo, bun, Go, ctest, dotnet, clippy, golangci-lint, Gradle lint, pytest, and tsc/eslint-family) now opens with a result-contract header: `[clean] <command>` or `[errors]` / `[errors N] <command>`. The header is the verdict and the body contains retained diagnostics.
 ### Added
 
+- `VEYYON_DEBUG_STARTUP=1` writes one line per phase of a prompt submission (compaction check, plan arm, context build, memory context), so a slow submit names the phase that spent the time.
+- `read` takes `depth` and `limit` arguments for directory listings, and a read of the session working directory root with neither now returns a concise top-level listing with per-subdirectory entry counts instead of the recursive tree.
 - A tool result that carries an image now states whether the picture reached the screen, so a model reading a file describes what it shows instead of reporting that it displayed it.
 - A picture the block gives up on after the fact, because the session's image budget demoted it or a Kitty session could not convert it, is stated to the model as undrawn instead of being reported as displayed.
 - `read` accepts a semicolon-delimited list of internal resources (`skill://demo/one.md;skill://demo/two.md`), the same list form `grep` and `glob` take, and returns one section per entry.
+- Eval kernels gain `kv`, a bounded JSON store under the session's artifacts directory that survives kernel resets and is shared between JavaScript and Python without cross-session filename collisions or lost concurrent updates, and `defs()`, which lists the names user code has defined in the kernel.
+- Every supervised process termination records which component ended it and why, with distinct attribution for each path (operator stop, signal, restart, broker shutdown, idle reaper, OS signal, broker recovery, launch failure, external signal, and natural exit); `launch list` output shows the lifetime owning condition and retained completion records with exit codes, reasons, and output tails, queryable after the name is reused and across broker restarts.
 
 ### Changed
 
 - The vibe screens, the image-inspection call and an LSP hover code block draw no border of their own inside a tool block, so a block keeps one left edge; a tree connector remains only where a row belongs to the row above it, in the eval value tree, the search line gutter, the job tree and the LSP reference tree.
 - A picture a terminal will not draw now leaves a row naming the file, the media type, the pixel size and the cause, in place of `[Image: image/png]`, including when a Kitty session cannot convert it to PNG.
 - Broad multi-file text searches now keep only deterministic representative matches inline and save the complete formatted result behind an `artifact://` reference. The preview budget follows the turn-aware output curve from an 8 KiB search ceiling (~2 KiB early at turn 0), emitting up to two representative matches per file while preserving counts and warnings; explicit single-file and line-range searches retain their full output, and only visible representative lines are recorded as seen for anchored edits.
+- Startup paints the composer itself instead of an empty reservation. The first frame used to reserve eight blank rows where the prompt would live and left them empty until the mode finished initializing — slash-command discovery, recent-session reads — so on a cold launch the composer arrived seconds late and read as it sliding up into place. The first frame now paints the resting composer (real hairline, ghost prompt, exact row count) from one static component shared with the mounted zone: the prompt is on screen from the first paint, and the handover swaps text, never position.
+
 - Multi-target `ast_grep` searches now execute concurrently while preserving globally ordered paging, totals, parse errors, cancellation, and target-order failures.
 - The vibe screens, the image-inspection call and an LSP hover code block draw no border of their own inside a tool block, so a block keeps one left edge; a tree connector remains only where a row belongs to the row above it, in the eval value tree, the grep line gutter, the job tree and the LSP reference tree.
 - A picture a terminal will not draw now leaves a row naming the file, the media type, the pixel size and the cause, in place of `[Image: image/png]`, including when a Kitty session cannot convert it to PNG.
@@ -26,9 +35,23 @@
 - The debug log records which classification rules decided a failed turn's retry, next to the classified kind, so a retry nobody expected is diagnosed from the log instead of by re-reading the provider's sentence.
 - The browser tab worker and supervisor state why each teardown step and each optional probe discards its failure; behavior is unchanged.
 - The browser tab worker and supervisor reach `bestEffort` and `optionalResult` through `@veyyon/utils/discarded-fault` rather than the package barrel; behavior is unchanged.
+- Daemon completion parsing and eval-store serialization errors use shared type guards; behavior is unchanged.
+- The vibe screens, the image-inspection call and an LSP hover code block draw no border of their own inside a tool block, so a block keeps one left edge; a tree connector remains only where a row belongs to the row above it, in the eval value tree, the search line gutter, the job tree and the LSP reference tree.
+- A picture a terminal will not draw now leaves a row naming the file, the media type, the pixel size and the cause, in place of `[Image: image/png]`, including when a Kitty session cannot convert it to PNG.
 
 ### Fixed
 
+- An explicit `--model` pointing at a dynamically-discovered model (a provider`s `/v1/models` entry or models.dev overlay absent from the bundled catalog) no longer fails with "not found among N models" when the background discovery refresh has not completed before model resolution. The deferred pattern path does a synchronous cache-aware discovery pass when none of the patterns resolve against the static catalog, mirroring the fallback already present for default-role models.
+- `veyyon plugin install --dry-run` now resolves the target and fails when it cannot be installed, instead of exiting 0 with "Would install" for an unpublished npm name or a missing git repository, and reports the name and version the target resolves to rather than a `0.0.0-dryrun` placeholder ([#911](https://github.com/santhreal/veyyon/issues/911)).
+- `veyyon plugin uninstall` now removes a plugin installed from a local path, which was permanently unremovable because uninstall read only `plugins/package.json` dependencies while linking registers the plugin in the runtime config and `node_modules`; the linked directory itself is left untouched.
+- `veyyon plugin doctor` no longer reports "no plugins installed" in a profile whose plugins were all linked, and names how many linked plugins it found.
+- `veyyon plugin config <plugin>` now names the missing subcommand instead of reporting "Plugin name required" for a plugin name that was supplied.
+- A completed background job now fills its still-pending originating tool call instead of starting an unrelated recap turn after an interruption, including when zero retention is configured or foreground completion races background delivery.
+- When every summarizer candidate refuses, automatic compaction now parks the run (or drains already-queued input once) instead of reporting that nothing happened and looping. A successful local rescue retries without restoring the failed overflow or truncated assistant turn; idle compaction stays silent.
+- Agent transcript headers and roster rows share terminal, approval-blocked, and peer-waiting status precedence, so interrupted agents settle red and untyped agents render without a dangling separator.
+- `/agents` keeps a parked subagent focused, preserves its reconstructed assistant messages, tool calls, and results, reattaches a revived session, and rejects stale revival, removal, scope, and rapid-focus races instead of switching to the wrong transcript.
+- IRC broadcasts no longer wake completed idle peers; direct messages still wake the addressed peer.
+- ImageMagick pixel caches used by proof capture and HD demo scripts stay inside an owned scoped directory that the parent removes after child failure without deleting concurrent or inherited unrelated directories.
 - An indented row inside a tool block keeps its indent when it wraps at a narrow width, instead of continuing at the block's left edge.
 - Unified search approval preflight now covers every multi-target syntax execution accepts; search also excludes byte-truncated context from editable seen lines, unions ranged and unrestricted text scopes, orders equal-mtime file results by path, suppresses pattern errors from unrelated structure languages, and distinguishes exhausted structure pages from a search with no matches.
 - Unified search now keeps warning-heavy text results within the inline byte budget, preserves semicolon path lists longer than one filename component, excludes matches hidden by generic truncation from editable seen lines, classifies every SSH path-list encoding at the execution approval tier, matches native Unicode tie ordering, and reports exhausted text pages with their totals.
@@ -36,6 +59,8 @@
 - The plan-mode extension example now keeps canonical `search` available both while planning and after restoring normal tools. It previously advertised retired `grep`/`find` identities, requested a nonexistent `find` tool, and dropped search when plan mode ended.
 - Memory summarization now retains canonical `search` results from session rollouts. It previously allowlisted the retired `grep` tool name but discarded every result emitted by unified search before Stage 1 summarization.
 - A colour or title escape sequence a command writes in two pieces no longer leaves part of itself in tool output: the sink holds a sequence its chunk ended inside until the piece that finishes it arrives, and drops one the stream never completes.
+- The `compaction.remote` setting description documents that server-side compaction applies to supported OpenAI, Azure OpenAI, and ChatGPT Codex Responses models.
+- `branchSummary.reserveTokens` now reaches the branch summarizer. It was declared in the settings schema but read by nothing, so every branch summary used the built-in 16384 reserve whatever the setting said.
 
 ## [1.2.0] - 2026-08-23
 
@@ -47,6 +72,7 @@
 - The hook event `session.compacting` is now `session_compacting`. Its old spelling collided with the `session` settings root, so a hook subscribing to it was read as configuration under `session` and dropped. A hook file naming the old event is rejected with the new name in the error rather than silently never firing.
 - `prompts/all-registries.ts` no longer exports `assertEvalPromptOverridesClaimed`. The refusal it performed is `assertEvalPromptOverrideIdsExist` in `prompts/eval-overrides.ts`, which reads the generated id space instead of the loaded registries.
 - The welcome hero no longer animates in, so `InteractiveMode.playWelcomeIntro`, the `suppressWelcomeIntro` init option, the `InteractiveModeInitOptions` type and the setup wizard's `playWelcomeIntro` option are gone, and `gradientLogo` and `gradientEscape` take no shine argument.
+- The model-facing workspace search surface is now one mandatory `search` tool taking ordered required `type` (`"files" | "text" | "structure"`) and `input`, replacing the separate `glob`, `grep`, and `ast_grep` tool IDs. Retired per-engine and `search.enabled` values are discarded while text-context values and persisted tool inventories migrate.
 
 ### Added
 
@@ -103,6 +129,7 @@
 - The rail's travelling light advances at four rows a second instead of eight.
 - A streaming edit or write block carries the rail light on its newest row rather than at a position taken from the clock.
 - An overlay's first frame is its settled frame: a card no longer unfolds row by row and no highlight sweeps across it as it opens.
+- Broad multi-file text searches now keep only deterministic representative matches inline and save the complete formatted result behind an `artifact://` reference. The preview budget follows the turn-aware output curve from an 8 KiB search ceiling (~2 KiB early at turn 0), emitting up to two representative matches per file while preserving counts and warnings; explicit single-file and line-range searches retain their full output, and only visible representative lines are recorded as seen for anchored edits.
 
 ### Fixed
 
@@ -115,6 +142,13 @@
 - An MCP server whose config still holds an unresolved `${VAR}` in `command`, `args`, `cwd`, `url` or `envPassthrough` is no longer started. An unset variable with no default used to stay in the value as literal text, so it reached the spawn as a program name or an argument, or a URL as a hostname, and the failure that followed named the variable's text rather than the field. The connection is refused first, with the field and the variable named and no value quoted.
 - A project-trust decision is written through the shared atomic-write helper, so a store cannot be left half-written by a crash or a full disk. It used to write in place, which is the one file whose corruption withholds every extension, hook and MCP server a project supplies.
 - The HD recorder resolves its own working directory and proves it can write there before it records. A container that could not write the output directory failed at the publish step, an hour into a take, with the frames already discarded. `WORK_DIR` selects the directory and a write probe runs in the container during preflight.
+- Unified search approval preflight now covers every multi-target syntax execution accepts; search also excludes byte-truncated context from editable seen lines, unions ranged and unrestricted text scopes, orders equal-mtime file results by path, suppresses pattern errors from unrelated structure languages, and distinguishes exhausted structure pages from a search with no matches.
+- Unified search now keeps warning-heavy text results within the inline byte budget, preserves semicolon path lists longer than one filename component, excludes matches hidden by generic truncation from editable seen lines, classifies every SSH path-list encoding at the execution approval tier, matches native Unicode tie ordering, and reports exhausted text pages with their totals.
+
+- Unified search no longer broadens or misroutes malformed calls: files-mode rejects a `path` owned by other modes while retaining the historical `/`-means-workspace alias, structure search rejects unsupported `ssh://` scopes without an approval prompt for work it cannot execute, immutable internal or fetched sources never receive editable hashline anchors, and the Bash interceptor no longer redirects mutating or otherwise non-equivalent `find` commands to a read-only file search.
+- The plan-mode extension example now keeps canonical `search` available both while planning and after restoring normal tools. It previously advertised retired `grep`/`find` identities, requested a nonexistent `find` tool, and dropped search when plan mode ended.
+- Memory summarization now retains canonical `search` results from session rollouts. It previously allowlisted the retired `grep` tool name but discarded every result emitted by unified search before Stage 1 summarization.
+
 - A config value that names an environment variable is no longer replaced by the variable's own name when the variable is unset. `apiKey: GITHUB_TOKN` or a CI secret that never reached the job used to resolve to the string `GITHUB_TOKN`, which veyyon then sent as the credential and the far end answered with its opinion of a bad token, mentioning neither the variable nor the typo. The value now resolves to nothing: a provider key is not installed, an MCP connection is refused before any request is made, and a warning names the variable and the setting it belongs to without quoting any value.
 - Stopping an MCP stdio server now ends every process it started. A server run through a wrapper (`npx`, `uvx`, `docker run`, a repository script) was left behind when the wrapper was killed, so each reload and each failed handshake leaked one server process. Teardown now signals the whole tree, escalates once if the tree ignores the polite signal, and is bounded so a reload cannot hang on it.
 - An MCP credential that cannot be presented refuses the connection instead of connecting without it. A revoked credential, a refresh token the auth broker holds and redacts locally, and a credential store that could not be read all ended at one log line, after which the connect went ahead with no `Authorization` header at all — so the operator saw the server's answer to an anonymous request (an HTTP 401, a provider error page, a lockout after enough of them) and nothing about the credential or the command that fixes it. Each state now names itself and the action: `/mcp reauth <name>` for a rejected credential, the same through the broker for a broker-held refresh token, `/mcp reconnect <name>` for a store that failed. Nothing is sent, so the far side gets no failed-auth attempt to count. A refresh that fails while the access token is still valid keeps connecting, and a server with no stored credential still connects as configured.

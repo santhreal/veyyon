@@ -10,11 +10,18 @@
 ### Changed
 
 - The Anthropic provider reads its endpoint, credential placement, rejected betas and retry policy from the catalog's wire-capability table instead of comparing provider ids at seventeen call sites.
+- A streaming request no longer pins a parsed clone of its wire payload for the life of the stream: every provider's diagnostic dump retains only the exact sent bytes and materializes a body when a 400/413 dump is built.
+- The OpenAI-family, pi-native and Codex request builders serialize the request body once instead of deep-cloning the request graph, which took attempt preparation on a 32MiB context from 82ms to 9ms.
 - A message that names a dead socket reads the same everywhere: `namesDeadSocket` in `@veyyon/ai/error/flags` is the one list of errnos and phrases, and `ENETUNREACH`, `EHOSTUNREACH` and `EAI_AGAIN` now count as transient transport failures like the rest of them.
 
 ### Fixed
 
 - Anthropic strict-tool planning now recognizes the unified `search` tool instead of the retired `find` identity, so canonical workspace search receives strict schema enforcement without reviving a legacy tool name.
+- Fixed OpenAI server-side compaction requests omitting the `Authorization` header when constructing headers from request setup.
+- Supported server-side compaction on the ChatGPT Codex backend with OAuth credential and turn identity headers.
+- API option mapping preserves side-request conversation IDs, preventing Cursor and Devin requests from falling back to the live session ID.
+- Cursor turns fail immediately when an asynchronous exec-server handler fails; malformed grep line or count values and oversized Connect frames fail before protobuf or buffer exhaustion; and success waits for queued handlers and gRPC trailers so quota and availability statuses are preserved.
+
 
 ## [1.2.0] - 2026-08-23
 
@@ -59,6 +66,7 @@
 - Ollama no longer drops the last bytes of an answer when a connection ends mid-marker. The chat path builds its healer behind a branch that could not be taken (`getStreamMarkupHealingPattern` answers `"thinking"` as its floor and never abstains), so four downstream guards were unreachable and the healing path had no test. A stream that ends without a `done` chunk while the scanner is holding a partial marker now keeps those bytes: `answer<thi` reached the session as `answer`.
 - A `VEYYON_REQ_DEBUG` dump is never written into a file the recording did not create. Both dump files are opened through one helper that creates them owner-only (0600) with `wx`, so a name left world-readable by an earlier run or planted by another account is refused rather than reused with its permissions inherited. The unreachable overwrite path that made reuse possible is gone.
 - An AWS credential cache reset now drops the resolution still in flight, not only the cached value. `clearAwsCredentialCache()` cleared `cache` and left `inflight` populated, so the next caller received the promise the reset was meant to discard, and `invalidateAwsCredentialCache()` — called on a `401`/`403` so stale credentials are re-resolved — could not reach a resolution already running with the credentials the provider had just rejected. Both seams now drop the in-flight entry, `invalidateAwsCredentialCache()` only for the profile and region it names, so a concurrent resolution for another key keeps its single flight.
+- Anthropic strict-tool planning now recognizes the unified `search` tool instead of the retired `find` identity, so canonical workspace search receives strict schema enforcement without reviving a legacy tool name.
 - A cancelled provider stream is no longer recorded as a provider failure. Devin's terminal record was written before the outcome was known and always at `error`, so four of twenty-two recorded `devin: stream failed` lines in a local corpus were the operator pressing stop — noise sitting on top of the eighteen that were real. `AIError.finalize` now returns `logLevel` beside `stopReason`, derived from the same `aborted` fact, so a record can never say "aborted" at `error` or the reverse, and the Devin catch block finalizes before it writes and files a cancellation at `debug`.
 - A framing violation from a provider stream is now terminal: it is never classified transient and never retried, whatever sentence the provider wrapped it in. Retrying reaches the same peer that would not delimit its frame.
 - `VEYYON_REQ_DEBUG=1` can no longer fill the disk or double a request's memory. The response log wrote every byte a provider sent, so a server that keeps a response flowing turned a debug flag into a local outage, and the request snapshot read a whole `Request` or `Blob` body into memory beside the copy the real request was already carrying. Each capture now stops at 32 MiB (`VEYYON_REQ_DEBUG_MAX_BYTES`), states in the file how much it recorded and how much it omitted, and warns once naming the file. The recorded request and the response the caller receives are unchanged.

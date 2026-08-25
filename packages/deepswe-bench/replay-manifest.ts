@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { COMPARISON_MODEL } from "./system-comparison";
+import { COMPARISON_MODEL } from "./src/systems";
 
 export interface ReplayUserTurn {
 	id: string;

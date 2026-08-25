@@ -177,6 +177,7 @@ import statementToolPolicyParallelMeansSubagents from "./statements/tool-policy/
 	type: "text",
 };
 import statementToolPolicyReportToolIssue from "./statements/tool-policy/report-tool-issue.md" with { type: "text" };
+import statementToolPolicyResultContract from "./statements/tool-policy/result-contract.md" with { type: "text" };
 import statementToolPolicySearch from "./statements/tool-policy/search.md" with { type: "text" };
 import statementToolPolicySecretsRedaction from "./statements/tool-policy/secrets-redaction.md" with { type: "text" };
 import statementToolPolicySpecializedBash from "./statements/tool-policy/specialized-bash.md" with { type: "text" };
@@ -561,6 +562,14 @@ export const PROMPT_STATEMENTS = [
 		text: statementToolPolicyReportToolIssue,
 		purpose:
 			"the critical block asking the model to report inconsistent tool output, which is pointless without the tool that receives it",
+	},
+	{
+		id: "tool-policy/result-contract",
+		section: "tool-policy",
+		condition: contains("tools", "bash"),
+		text: statementToolPolicyResultContract,
+		purpose:
+			"instructs the model to treat [clean] and [errors] result headers as authoritative and not to search the command result",
 	},
 	{
 		id: "tool-policy/exploration",

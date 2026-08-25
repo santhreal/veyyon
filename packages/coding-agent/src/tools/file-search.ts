@@ -567,8 +567,8 @@ export const fileSearchRenderer = {
 				const maxItems = options.expanded ? lines.length : Math.min(lines.length, COLLAPSED_LIST_LIMIT);
 				const contentWidth = outputBlockContentWidth(width);
 				const bodyLines: string[] = [];
-				for (let index = 0; index < maxItems; index++) {
-					bodyLines.push(truncateToWidth(`  ${uiTheme.fg("accent", lines[index]!)}`, contentWidth, Ellipsis.Omit));
+				for (let i = 0; i < maxItems; i++) {
+					bodyLines.push(truncateToWidth(`  ${uiTheme.fg("accent", lines[i]!)}`, contentWidth, Ellipsis.Omit));
 				}
 				const remaining = lines.length - maxItems;
 				if (!options.expanded && remaining > 0) {

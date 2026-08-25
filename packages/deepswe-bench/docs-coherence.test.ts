@@ -33,12 +33,12 @@ import YAML from "yaml";
 import { ARM_ATTACHMENT_KINDS, type ArmAttachmentKind, attachmentKindOf } from "./arm-attachments";
 import { armNamesIn } from "./arm-fingerprint";
 import { promptOverrideIdError } from "./arm-prompts";
-import { DEFAULT_MODEL } from "./system-comparison";
+import { DEFAULT_MODEL, getAllRegisteredSystemNames } from "./src/systems";
 
 const BENCH_DIR = import.meta.dir;
 const REPO_ROOT = path.join(BENCH_DIR, "..", "..");
 const README = fs.readFileSync(path.join(BENCH_DIR, "README.md"), "utf8");
-const RUN_TS = fs.readFileSync(path.join(BENCH_DIR, "run.ts"), "utf8");
+const CLI_ARGS_TS = fs.readFileSync(path.join(BENCH_DIR, "src", "runner", "cli-args.ts"), "utf8");
 const SKILL_PATH = path.join(REPO_ROOT, ".veyyon", "skills", "evals", "SKILL.md");
 const SKILL = fs.existsSync(SKILL_PATH) ? fs.readFileSync(SKILL_PATH, "utf8") : "";
 
@@ -47,6 +47,7 @@ const armFiles = fs.readdirSync(path.join(BENCH_DIR, "arms"));
  * `*.yml`, which made `candidate-delivery-terse.sections.yml` a phantom arm named
  * `candidate-delivery-terse.sections` and quantified every check below over an arm nobody can run. */
 const ARMS = armNamesIn(armFiles);
+const SYSTEM_NAMES = getAllRegisteredSystemNames();
 const TASK_SETS = fs.readdirSync(path.join(BENCH_DIR, "tasks")).filter(f => f.endsWith(".txt"));
 
 /** Arm names a document references, found by the `--arms a,b` and backtick
@@ -81,7 +82,7 @@ describe("every arm the docs name exists on disk", () => {
 	 */
 	it("README names no arm that is missing from arms/", () => {
 		const missing = referencedArms(README).filter(
-			name => !ARMS.includes(name) && !ARMS.some(arm => arm.startsWith(name)),
+			name => !ARMS.includes(name) && !ARMS.some(arm => arm.startsWith(name)) && !SYSTEM_NAMES.includes(name),
 		);
 		expect(missing).toEqual([]);
 	});
@@ -91,7 +92,7 @@ describe("every arm the docs name exists on disk", () => {
 	it("the evals SKILL names no arm that is missing from arms/", () => {
 		if (!SKILL) return;
 		const missing = referencedArms(SKILL).filter(
-			name => !ARMS.includes(name) && !ARMS.some(arm => arm.startsWith(name)),
+			name => !ARMS.includes(name) && !ARMS.some(arm => arm.startsWith(name)) && !SYSTEM_NAMES.includes(name),
 		);
 		expect(missing).toEqual([]);
 	});
@@ -185,18 +186,19 @@ describe("every flag the runner accepts is documented", () => {
 	 * is worthless if the operator never learns it exists, and the two places they
 	 * look are the README's flag list and the evals SKILL.
 	 *
-	 * The flag set is read out of `run.ts` rather than listed here, so adding a
-	 * flag fails this test until it is documented, which is the point. A hardcoded
-	 * list would just be a third place to forget.
+	 * The flag set is read out of `src/runner/cli-args.ts` (the sole flag parser)
+	 * rather than listed here, so adding a flag fails this test until it is
+	 * documented, which is the point. A hardcoded list would just be a third
+	 * place to forget.
 	 */
 	// Two access forms, because a hyphenated flag cannot be a dot property:
-	// `args.model` and `args["trial-timeout"]`. Matching both is what makes the set
+	// `raw.model` and `raw["trial-timeout"]`. Matching both is what makes the set
 	// complete; an earlier single combined pattern silently found only 2 of 11,
 	// which is why the count floor below exists.
 	const flags = [
 		...new Set([
-			...[...RUN_TS.matchAll(/args\.([a-z]+)/g)].map(m => m[1] as string),
-			...[...RUN_TS.matchAll(/args\["([a-z-]+)"\]/g)].map(m => m[1] as string),
+			...[...CLI_ARGS_TS.matchAll(/raw\.([a-z]+)/g)].map(m => m[1] as string),
+			...[...CLI_ARGS_TS.matchAll(/raw\["([a-z-]+)"\]/g)].map(m => m[1] as string),
 		]),
 	];
 
@@ -281,7 +283,7 @@ describe("the documented model agrees with the code and the arms", () => {
 	 */
 	it.each([
 		["README", () => README],
-		["run.ts", () => RUN_TS],
+		["executor.ts", () => fs.readFileSync(path.join(BENCH_DIR, "src", "runner", "executor.ts"), "utf8")],
 		["evals SKILL", () => SKILL],
 		["arms/full.yml", () => fs.readFileSync(path.join(BENCH_DIR, "arms", "full.yml"), "utf8")],
 		["arms/full-budget16k.yml", () => fs.readFileSync(path.join(BENCH_DIR, "arms", "full-budget16k.yml"), "utf8")],
@@ -292,12 +294,13 @@ describe("the documented model agrees with the code and the arms", () => {
 		const found = claims.filter(re => re.test(doc)).map(re => re.source);
 		if (found.length === 0) return;
 
-		// A file may STATE the claim in order to refute it, and `run.ts` deliberately
-		// does: the false conclusion is recorded there with the two runs that refute
-		// it, rather than deleted, because deleting it is what let it be rediscovered
-		// and re-propagated three times. So the rule is not "never say the words", it
-		// is "never leave the words standing unrefuted". A file carrying the claim
-		// must also carry an explicit refutation nearby.
+		// A file may STATE the claim in order to refute it, and `executor.ts`
+		// deliberately does: the false conclusion is recorded there with the two
+		// runs that refute it, rather than deleted, because deleting it is what
+		// let it be rediscovered and re-propagated three times. So the rule is
+		// not "never say the words", it is "never leave the words standing
+		// unrefuted". A file carrying the claim must also carry an explicit
+		// refutation nearby.
 		//
 		// Written as a requirement rather than an allowlist of files so a NEW file
 		// that repeats the claim fails, which is the case that actually recurs.
