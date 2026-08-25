@@ -193,14 +193,18 @@ export function staleAddonMessage(stale: StaleAddon, version: string): string;
 export function repoSlugFromRepositoryUrl(raw: string | null | undefined): string;
 
 /**
- * Whether a candidate failed because it is not there or because it is broken.
+ * Whether a candidate failed because it is not there, because the host
+ * environment cannot load it, or because it is broken.
  *
- * `absent` is an ordinary probe result and the loop moves on quietly; `broken`
- * means a file exists where the addon should be and cannot be loaded, which is
- * announced. The two used to be indistinguishable, which is how a corrupt binary
- * read as "not installed".
+ * `absent` is an ordinary probe result and the loop moves on quietly;
+ * `incompatible` means the file exists but the host's C library is too old
+ * (GLIBC/GLIBCXX version mismatch), which is an environment limitation, not
+ * a stale rebuild — the warning is suppressed; `broken` means a file exists
+ * where the addon should be and cannot be loaded for any other reason, which
+ * is announced. The three used to be indistinguishable, which is how a
+ * corrupt binary read as "not installed".
  */
-export function classifyCandidateFailure(error: unknown): "absent" | "broken";
+export function classifyCandidateFailure(error: unknown): "absent" | "incompatible" | "broken";
 
 /** The warning printed when a present addon is skipped, kept beside the classification. */
 export function brokenAddonSkippedMessage(skipped: { candidate: string; reason: string }): string;
