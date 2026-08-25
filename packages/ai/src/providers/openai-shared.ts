@@ -2021,20 +2021,6 @@ export function finalizeMessageText(item: ResponseOutputMessage, streamedText: s
 	return item.content.map(part => (part.type === "output_text" ? (part.text ?? "") : (part.refusal ?? ""))).join("");
 }
 
-/**
- * Merge one Responses function-argument event into the live buffer.
- *
- * The wire contract calls the payload a delta, but gateways may replay the
- * complete prefix. Treat a value that extends the current buffer as an
- * authoritative cumulative snapshot; otherwise preserve true delta semantics.
- */
-function mergeToolCallArgumentsDelta(current: string, delta: string): { buffer: string; appended: string } {
-	if (!delta.startsWith(current)) {
-		return { buffer: current + delta, appended: delta };
-	}
-	return { buffer: delta, appended: delta.slice(current.length) };
-}
-
 export function accumulateToolCallArgumentsDelta(
 	block: ResponsesToolCallBlock,
 	delta: string,
@@ -2042,15 +2028,14 @@ export function accumulateToolCallArgumentsDelta(
 	output: AssistantMessage,
 	contentIndex: number,
 ): void {
-	const merged = mergeToolCallArgumentsDelta(block[kStreamingPartialJson], delta);
-	block[kStreamingPartialJson] = merged.buffer;
+	block[kStreamingPartialJson] = (block[kStreamingPartialJson] ?? "") + delta;
 	const throttled = parseStreamingJsonThrottled(block[kStreamingPartialJson], block[kStreamingLastParseLen] ?? 0);
 	if (throttled) {
 		block.arguments = throttled.value;
 		block[kStreamingLastParseLen] = throttled.parsedLen;
 	}
-	if (merged.appended) {
-		stream.push({ type: "toolcall_delta", contentIndex, delta: merged.appended, partial: output });
+	if (delta) {
+		stream.push({ type: "toolcall_delta", contentIndex, delta, partial: output });
 	}
 }
 
