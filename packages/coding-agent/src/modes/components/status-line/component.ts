@@ -352,11 +352,12 @@ export function fitLocation(
 	parts: readonly QuietPart[],
 	sep: string,
 	budget: number,
+	favour?: string,
 ): { text: string; slots: QuietSegmentBounds[]; cramped: boolean } {
 	const sepWidth = visibleWidth(sep);
 	for (let count = parts.length; count > 1; count--) {
 		const kept = parts.slice(0, count);
-		const fitted = fillLocation(kept, sepWidth, budget);
+		const fitted = fillLocation(kept, sepWidth, budget, favour);
 		if (fitted === null) continue;
 		const assembled = assembleLocation(kept, fitted.contents, sep);
 		return { ...assembled, cramped: fitted.cramped || count < parts.length };
@@ -397,6 +398,7 @@ function fillLocation(
 	parts: readonly QuietPart[],
 	sepWidth: number,
 	budget: number,
+	favour?: string,
 ): { contents: string[]; cramped: boolean } | null {
 	const full = parts.map(part => visibleWidth(part.content));
 	const allotted = [...full];
@@ -404,18 +406,31 @@ function fillLocation(
 	// Two passes: every clippable part down to the width a name still reads at, and only then
 	// down to the fewest cells the part is worth painting at all -- which counts its pinned
 	// icon, since the clipper spends the icon before the name.
+	//
+	// A FAVOURED part is the half a click named, and a click means "show me this one". It is
+	// therefore asked last: it gives up nothing while any other part is still above the floor
+	// of the pass, which is what makes the clicked half whole on a row that can hold it whole
+	// at all. Without this the water-fill converged the two halves on a shared width and the
+	// click widened a path that was still clipped -- the row had the cells, and spent them
+	// keeping the OTHER half long.
 	for (const stage of ["preferred", "readable"] as const) {
 		while (over > 0) {
 			let widest = -1;
+			let widestFavoured = -1;
 			for (const [index, width] of allotted.entries()) {
 				const part = parts[index];
 				if (part === undefined) continue;
 				if ((full[index] ?? 0) <= MIN_LOCATION_PART) continue;
 				if (width <= (stage === "preferred" ? MIN_LOCATION_PART : readableFloor(part))) continue;
+				if (favour !== undefined && part.id === favour) {
+					widestFavoured = index;
+					continue;
+				}
 				// Ties go to the LATER part: the directory is the head a reader places the row
 				// by, so when two parts are equally wide the branch gives up the cell.
 				if (widest < 0 || width >= (allotted[widest] ?? 0)) widest = index;
 			}
+			if (widest < 0) widest = widestFavoured;
 			if (widest < 0) break;
 			allotted[widest] = (allotted[widest] ?? 0) - 1;
 			over--;
@@ -809,7 +824,7 @@ export class StatusLineComponent implements Component {
 			this.#expansion = new SettleValue({
 				requestRender: motion.requestRender,
 				clock: motion.clock,
-				curve: MOTION.expand,
+				curve: MOTION.reflow,
 			});
 			// Seed the resting state so the FIRST click travels. SettleValue lands its first
 			// value without motion -- a gauge that sweeps up from zero on its first paint is
@@ -1874,10 +1889,18 @@ export class StatusLineComponent implements Component {
 	// matches the line currently on screen; empty when no footline rendered.
 	#quietLineBounds: QuietSegmentBounds[] = [];
 
-	// Set by a click on the path segment (togglePathExpanded). While true the location zone
-	// is clamped to the row rather than the preset budget and the model chip is dropped,
-	// which is the room it spends. Not persisted: a new session opens unexpanded.
+	// Set by a click on the location (togglePathExpanded). While true the location zone is
+	// clamped to the row rather than the preset budget and spends the right group for the room,
+	// weakest first. Not persisted: a new session opens unexpanded.
 	#pathExpanded = false;
+
+	/**
+	 * Which half the click named, and therefore which one is shown whole while the other pays.
+	 * Both halves are clickable and a click on either expands the row; this is only the order
+	 * the cells are handed out in, so clicking the branch on a row too narrow for both reads
+	 * the branch rather than re-reading the directory the reader did not ask about.
+	 */
+	#expandedHalf: StatusLineSegmentId = "path";
 
 	/**
 	 * How far the row is through the trade: 0 is the collapsed row, 1 the expanded one, and
@@ -2025,8 +2048,9 @@ export class StatusLineComponent implements Component {
 		// left by a right group that still held the session name and the context gauge -- a
 		// budget of ZERO -- and when those two left a moment later nothing asked the fitter
 		// again, so the row rendered the directory and the branch as nothing at all.
+		const favour = this.#expansionProgress() > 0 ? this.#expandedHalf : undefined;
 		const fitToTheRoomLeft = () =>
-			fitLocation(location, sep, Math.max(0, budget - visibleWidth(right) - (right ? 2 : 0)));
+			fitLocation(location, sep, Math.max(0, budget - visibleWidth(right) - (right ? 2 : 0)), favour);
 		while (rightParts.length > 0 && visibleWidth(left) + visibleWidth(right) + (left && right ? 2 : 0) > budget) {
 			if (clockStage === 0) {
 				clockStage = 1;
@@ -2097,28 +2121,96 @@ export class StatusLineComponent implements Component {
 			locationSlots = fitted.slots;
 			locationCramped = fitted.cramped;
 		}
-		// THE CLICK'S TRADE, settled last. The chip retracts here rather than before the ladders
-		// above, and that ordering is the whole trade: the ladders decide what the row holds while
-		// the chip is still standing at full width, so they reach the same decisions the collapsed
-		// row reached, and the cells the chip then gives up have nowhere to go but the location.
+		// THE CLICK'S TRADE, settled last.
 		//
-		// Retracting first is what shipped, and at 78 columns it moved the zone by ONE cell: the
-		// collapsed row had shed the context gauge under pressure, the narrower chip took that
-		// pressure off, and the gauge came back and ate all twenty cells. On screen the click
-		// flashed a gauge in and a chip out and left the directory exactly where it was. A part
-		// the collapsed row had already given up must not return because the chip stepped aside --
-		// the rungs and the gauge stay put, and the chip is the only thing an expanded path spends.
+		// A click says "show me this half". So the row shows it WHOLE, and it may spend the rest
+		// of the bar to do it: the model chip first, then whatever is weakest, until the clicked
+		// half is whole or the bar has nothing left to give. Only a half longer than the entire
+		// row is still clipped. The second click returns every cell and every part.
+		//
+		// Settled AFTER the ladders above, and that ordering is the trade. The ladders decide
+		// what the row holds while the right group is still standing at full width, so they
+		// reach the same decisions the collapsed row reached, and the cells freed here have
+		// nowhere to go but the location. Retracting first is what shipped, and at 78 columns it
+		// moved the zone by ONE cell: the collapsed row had shed the context gauge under
+		// pressure, the narrower chip took that pressure off, and the gauge came back and ate
+		// all twenty cells. On screen the click flashed a gauge in and a chip out and left the
+		// directory exactly where it was. Nothing the collapsed row gave up may return because
+		// the click freed room -- the room is the location's.
+		//
+		// The spend TRAVELS with the progress value instead of switching on it. Whole parts
+		// leaving the row the instant a click lands is the other way this reads as a flash: the
+		// cells have to slide out of the group and into the zone across the same frames, so each
+		// part in turn narrows and only then goes.
 		const expansion = this.#expansionProgress();
-		if (expansion > 0) {
+		if (expansion > 0 && rightParts.length > 0) {
+			// What the row is short of showing the CLICKED half whole, with the other half at the
+			// width a name still reads at. Targeting both halves whole is the greedier answer and
+			// the wrong one: it spent the mode rungs to lengthen a branch nobody pointed at. The
+			// fitter hands any cells left over back to the other half afterwards, so this is a
+			// floor on what it keeps, not a cap.
+			const sepWidth = visibleWidth(sep);
+			const wanted =
+				location.reduce(
+					(sum, part) =>
+						sum +
+						(part.id === favour
+							? visibleWidth(part.content)
+							: Math.min(visibleWidth(part.content), MIN_LOCATION_PART)),
+					0,
+				) +
+				sepWidth * Math.max(0, location.length - 1);
+			const held = budget - visibleWidth(right) - (right ? 2 : 0);
+			// The chip goes first: it is the biggest single readout and the one the reader is
+			// trading away knowingly. After that the row gives up its weakest, which is the same
+			// order it uses under width pressure.
+			const order: number[] = [];
 			const chip = rightParts.findIndex(part => part.id === "model");
-			if (chip >= 0) {
-				const content = rightParts[chip]?.content ?? "";
-				// One progress value drives both ends, so the room leaves the chip exactly as fast
-				// as it arrives at the directory: at 1 the chip is off the row, which is the byte
-				// a hard-cut caller sees.
-				const room = Math.round(visibleWidth(content) * (1 - expansion));
-				if (room <= 0) rightParts.splice(chip, 1);
-				else rightParts[chip] = { id: "model", content: truncateToWidth(content, room) };
+			if (chip >= 0) order.push(chip);
+			const remaining = rightParts.map((_, index) => index).filter(index => index !== chip);
+			remaining.sort((a, b) => {
+				const rankA = RIGHT_PART_SHED_RANK[rightParts[a]?.id ?? ""] ?? 0;
+				const rankB = RIGHT_PART_SHED_RANK[rightParts[b]?.id ?? ""] ?? 0;
+				return rankA === rankB ? b - a : rankA - rankB;
+			});
+			order.push(...remaining);
+			const onOffer = order.reduce(
+				(sum, index) => sum + visibleWidth(rightParts[index]?.content ?? "") + sepWidth,
+				0,
+			);
+			// NOT scaled by the progress a second time. `wanted` is measured from the location's
+			// CURRENT text, and that text is already on the curve -- the path's own clamp travels
+			// from the preset budget out to the row. Scaling here as well put two interpolations
+			// of one progress value in a race, and the text won it: the clamp lengthened the path
+			// four cells before any room had been freed for it, so the ladders clipped the zone
+			// and its right edge stepped BACKWARD at the start of every expansion. The room now
+			// covers exactly what the text is asking for, frame by frame, which is one motion.
+			const spend = Math.min(Math.max(0, wanted - held), onOffer);
+			if (spend > 0) {
+				let owed = spend;
+				const spent: number[] = [];
+				for (const index of order) {
+					if (owed <= 0) break;
+					const part = rightParts[index];
+					if (part === undefined) continue;
+					const width = visibleWidth(part.content);
+					// A part is narrowed cell by cell while the row is travelling, because that is
+					// the motion: the readout is visibly standing down. Where it lands is a
+					// different question -- `clau…` is not a model name, and a row that RESTS on a
+					// fragment has not stood the readout down, it has broken it. So at rest a part
+					// that cannot keep the width a name reads at goes instead, and every cell it
+					// was holding goes to the location.
+					const floor = expansion >= 1 ? MIN_LOCATION_PART : MIN_READABLE_PART;
+					if (owed >= width - floor) {
+						spent.push(index);
+						owed -= width + sepWidth;
+						continue;
+					}
+					rightParts[index] = { ...part, content: truncateToWidth(part.content, width - owed) };
+					owed = 0;
+				}
+				// Descending, so an earlier removal cannot shift a later index.
+				for (const index of spent.sort((a, b) => b - a)) rightParts.splice(index, 1);
 				right = rightParts.map(part => part.content).join(sep);
 				const widened = fitToTheRoomLeft();
 				left = widened.text;
@@ -2184,12 +2276,15 @@ export class StatusLineComponent implements Component {
 		if (left && right) {
 			return badge + left + padding(budget - visibleWidth(left) - visibleWidth(right)) + right;
 		}
-		// The only single group that reaches here is a RIGHT one: the subagent badge is
-		// appended to `capRight` unconditionally, so `right` is never empty and a location
-		// alone on the row cannot occur. It also means the shed loop above always runs when
-		// the row overflows, which is where the location's front cut is taken. A lone right
-		// group has no head worth keeping, so it loses its tail -- and it keeps the right
-		// edge, so the state it carries sits where the eye already looks for it.
+		// A location alone on the row is what a click on a name longer than the whole bar comes
+		// to: the reader asked for that name, and the row spent every readout it had to show as
+		// much of it as fits. Before the click could spend the last part this was unreachable --
+		// the subagent badge is appended to `capRight` unconditionally, so `right` was never
+		// empty -- and the lone-group return below dropped the location on the floor, painting
+		// an empty row on the one click that most needed to answer.
+		if (left) return badge + truncateToWidth(left, budget);
+		// A lone right group has no head worth keeping, so it loses its tail -- and it keeps the
+		// right edge, so the state it carries sits where the eye already looks for it.
 		return badge + padding(rightStart) + truncateToWidth(right, budget);
 	}
 
@@ -2209,9 +2304,15 @@ export class StatusLineComponent implements Component {
 	}
 
 	/**
-	 * Toggle the expanded path. Clicking the path, the branch or the pull request widens the
-	 * location zone to the row and retracts the model chip; clicking again restores both.
-	 * Returns the new state so the caller can request a render without reading it back.
+	 * Toggle the expanded location. Clicking the directory, the branch or the pull request
+	 * widens the zone to the row and spends the right group for the room, weakest first;
+	 * clicking the same half again restores every part and every cell. Returns the new state so
+	 * the caller can request a render without reading it back.
+	 *
+	 * `half` is the segment the click landed on. It is shown whole while the other pays, so the
+	 * reader gets the name they pointed at. Clicking the OTHER half while the row is already
+	 * expanded hands the room over rather than collapsing: the row is already wide, and
+	 * collapsing it to answer a click on a second name would take the name away.
 	 *
 	 * The state lives here rather than in the caller because `renderQuietLine` is the only
 	 * place that knows the row's budget, and the expansion is a property of the line, not
@@ -2222,7 +2323,10 @@ export class StatusLineComponent implements Component {
 	 * `display.transitions: off` lands it on the same frame as the click, which is the hard
 	 * cut this replaced, byte for byte.
 	 */
-	togglePathExpanded(): boolean {
+	togglePathExpanded(half: StatusLineSegmentId = "path"): boolean {
+		const handOver = this.#pathExpanded && half !== this.#expandedHalf;
+		this.#expandedHalf = half;
+		if (handOver) return true;
 		this.#pathExpanded = !this.#pathExpanded;
 		if (this.#expansion) {
 			this.#expansion.set(this.#pathExpanded ? 1 : 0);
