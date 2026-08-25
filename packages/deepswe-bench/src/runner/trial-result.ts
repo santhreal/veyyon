@@ -4,7 +4,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { isRecord } from "@veyyon/utils";
-import type { LoadedReplayManifest } from "../../replay-manifest";
 import {
 	emptyArmResult,
 	finishedWithoutPatch,
@@ -14,6 +13,7 @@ import {
 	providerQuotaStop,
 	quotaStopMarker,
 } from "../aggregate";
+import type { LoadedReplayManifest } from "../shared";
 import type { ComparisonArmResult, ComparisonExecution, ComparisonSystem, NativeCompactionEvidence } from "../systems";
 import { parseSessionsUsage } from "./session-transcript";
 

@@ -7,18 +7,6 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { clampLow, errorMessage, readPipeText } from "@veyyon/utils";
 import YAML from "yaml";
-import { formatArmPrediction, predictArmSaving } from "../../arm-prediction";
-import { resolveBinaryPin } from "../../binary-pin";
-import { MINIMUM_DEEPSWE_PIER_VERSION, pierSupportsSeparateVerifierCollect } from "../../pier-version";
-import { conversationCollapsed, measureRunPrefix, PREFIX_CATEGORIES, prefixShares } from "../../prefix-composition";
-import { type LoadedReplayManifest, loadReplayManifest } from "../../replay-manifest";
-import {
-	parseTaskTimeBudget,
-	parseTrialTimeoutFlag,
-	type ResolvedTrialTimeout,
-	resolveTrialTimeout,
-	truncationWarning,
-} from "../../trial-timeout";
 import {
 	type ArmResult,
 	armCanaryFailure,
@@ -41,6 +29,24 @@ import {
 	type TaskSetProvenance,
 	trialQueue,
 } from "../aggregate";
+import {
+	conversationCollapsed,
+	formatArmPrediction,
+	type LoadedReplayManifest,
+	loadReplayManifest,
+	MINIMUM_DEEPSWE_PIER_VERSION,
+	measureRunPrefix,
+	PREFIX_CATEGORIES,
+	parseTaskTimeBudget,
+	parseTrialTimeoutFlag,
+	pierSupportsSeparateVerifierCollect,
+	predictArmSaving,
+	prefixShares,
+	type ResolvedTrialTimeout,
+	resolveBinaryPin,
+	resolveTrialTimeout,
+	truncationWarning,
+} from "../shared";
 import {
 	aggregateSystemComparison,
 	COMPARISON_MODEL,

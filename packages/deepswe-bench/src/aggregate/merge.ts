@@ -1,7 +1,7 @@
 /**
  * Merging, task selection, task list provenance parsing, and trial queue ordering.
  */
-import { priceTokens, type RateCard, REFERENCE_RATE_CARD, type TokenMix } from "../../cost-model";
+import { priceTokens, type RateCard, REFERENCE_RATE_CARD, type TokenMix } from "../shared";
 import type { ArmResult } from "./types";
 
 export const PINNED_TEMPERATURE = 0;

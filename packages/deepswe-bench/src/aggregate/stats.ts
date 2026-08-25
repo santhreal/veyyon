@@ -1,7 +1,7 @@
 /**
  * Statistical analysis and hypothesis testing for DeepSWE benchmark evaluations.
  */
-import { priceTokens } from "../../cost-model";
+import { priceTokens } from "../shared";
 import { isAgentTimeout } from "./error-classification";
 import type { ArmResult, CellSummary } from "./types";
 

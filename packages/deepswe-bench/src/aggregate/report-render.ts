@@ -1,7 +1,7 @@
 /**
  * Markdown report rendering, cost tables, cache invalidation, and timeout attribution.
  */
-import { costShares, priceTokens, REFERENCE_RATE_CARD } from "../../cost-model";
+import { costShares, priceTokens, REFERENCE_RATE_CARD } from "../shared";
 import { interpretEncodeArm } from "./encode-probe";
 import { classifyError, providerQuotaStop } from "./error-classification";
 import type { TaskSetProvenance } from "./merge";
