@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-3b23e5aa.js";
+            window.path_to_searchindex_js = "../searchindex-31eb4f3b.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-a2abefc1.js"></script>
@@ -207,11 +207,16 @@ cores each may use 4 between them. There is no cross-session cap, by design.</p>
 </code></pre>
 <h2 id="what-is-capped"><a class="header" href="#what-is-capped">What is capped</a></h2>
 <p>Every process a session spawns to do its work joins the budget. That covers bash commands (plain
-and PTY), MCP stdio servers, the <code>exec</code> calls that custom tools, custom commands, and extensions
-make, background processes from the <code>launch</code> tool, the eval kernels (Python, Ruby, Julia),
+and PTY), MCP stdio servers, the <code>exec</code> calls that custom tools, custom commands, extensions, and
+hooks make, background processes from the <code>launch</code> tool, the eval kernels (Python, Ruby, Julia),
 language servers, debug adapters, the managed browser, <code>git</code> and <code>jj</code>, <code>ssh</code>, and the installs
-that plugins run. A capped process passes the budget to its own children, so a build that spawns
-a compiler fleet is still one budget.</p>
+that plugins run. A capped process passes the budget to its own children, by cgroup and Job
+Object inheritance on Linux and Windows and by a process-tree walk on macOS, so a build that
+spawns a compiler fleet is still one budget.</p>
+<p>A spawn is refused while the budget is saturated or the group could not be created. That applies
+to a bash command, a new MCP stdio server, an <code>exec</code> call from a custom tool, custom command,
+extension, or hook, and a new eval cell. An extension module the CLI loads before a session
+exists resolves the root session’s gate when it spawns.</p>
 <p>Some processes belong to no single session and join the root session’s budget instead. Those are
 the shared harness workers, such as the tiny title model and embeddings, and the speech capture
 and playback helpers.</p>
@@ -234,23 +239,33 @@ nothing, because the session does not own that process.</li>
 <h2 id="how-it-is-enforced"><a class="header" href="#how-it-is-enforced">How it is enforced</a></h2>
 <p>Where the operating system offers a per-group CPU quota, the kernel does the capping:</p>
 <ul>
-<li><strong>Linux</strong> uses a cgroup v2 directory per session with <code>cpu.max</code> set to the core count. If the
-harness’s own cgroup is not writable, veyyon requests a scope from the systemd user manager with
-<code>CPUQuota</code> instead.</li>
-<li><strong>Windows</strong> uses a Job Object with a hard CPU rate cap.</li>
+<li><strong>Linux</strong> uses a cgroup v2 directory per session with <code>cpu.max</code> set to the core count. A
+positive budget smaller than one microsecond of the 100ms period writes <code>1 100000</code>, not a freeze
+quota of <code>0</code>. If the harness’s own cgroup is not writable, veyyon starts a delegated transient
+<strong>service</strong> in the systemd user manager (<code>Delegate=yes</code>, <code>CPUQuota</code>) and adopts children into that
+cgroup. It is not a <code>--scope</code> unit: a scope would block on the placeholder and leave setup failed.
+A positive <code>CPUQuota</code> too small for systemd to express floors at <code>0.001%</code> rather than <code>0%</code>.</li>
+<li><strong>Windows</strong> uses an unnamed Job Object with a hard CPU rate cap. <code>CpuRate</code> is a fraction of
+<strong>host</strong> logical processors (4 cores on a 16-processor machine is 2500, not 40000), counted with
+<code>GetActiveProcessorCount</code> rather than this process’s affinity mask, so a 2-core budget inside a
+2-of-16 slice is 12.5% of the machine rather than 100%. Setting the limit to 0, or
+<code>/cpu-limit remove</code>, turns rate control off rather than flooring to 0.01% of the machine.</li>
 </ul>
 <p>A once-per-second watcher reads the group’s usage on top of the kernel cap. When usage stays
 pinned at the budget for about three seconds, new commands are rejected with an error that names
 the budget, the measured usage, and the fix (raise <code>session.cpuLimitCores</code> or wait), until usage
 drops. The kernel cap is the enforcement of last resort: if the watcher lags, commands throttle,
 they never run free.</p>
-<p>With <code>session.cpuLimitKill: true</code>, a sustained breach also sends SIGTERM to the group’s
-processes. The kill is reported as a budget action: the notice and the killed command’s result
-both state the command was stopped by the CPU budget, not that it crashed.</p>
+<p>With <code>session.cpuLimitKill: true</code>, a sustained breach sends SIGTERM to the group’s processes,
+then SIGKILL on the next watcher tick if they are still over budget. The kill is reported as a
+budget action: the notice and the killed command’s result both state the command was stopped by
+the CPU budget, not that it crashed.</p>
 <p><strong>macOS has no per-group CPU quota.</strong> There the budget is policy only: new commands are rejected
-while the group is saturated, running members are reniced, and <code>session.cpuLimitKill</code> still
+while the group is saturated, running members (including descendants of the adopted child, so a
+<code>make -j</code> compiler fleet is in the same set) are reniced, and <code>session.cpuLimitKill</code> still
 kills. Nothing throttles. The settings row and the startup warning state this, and the same
-warning appears on any platform where no backend works. A configured limit never fails silently.</p>
+warning appears on any platform where no backend works. A configured limit never fails silently:
+if the group cannot be created, new commands are refused rather than run uncapped.</p>
 <p>Changing <code>session.cpuLimitCores</code> mid-session takes effect on the next command: the live quota is
 rewritten, and setting it back to 0 lifts it.</p>
 <h2 id="example"><a class="header" href="#example">Example</a></h2>

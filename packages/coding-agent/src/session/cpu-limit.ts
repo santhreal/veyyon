@@ -117,9 +117,33 @@ const SATURATION_RATIO = 0.95;
 /** Nice level applied to budget members on sustained saturation where no kernel quota exists. */
 export const CPU_LIMIT_SATURATION_NICE = 10;
 
-/** The `cpu.max` value for `cores` cores: quota over the fixed period. */
+/** The `cpu.max` value for `cores` cores: quota over the fixed period, or `max` when lifted. */
 export function formatCpuMaxValue(cores: number): string {
-	return `${Math.round(cores * CPU_LIMIT_PERIOD_USEC)} ${CPU_LIMIT_PERIOD_USEC}`;
+	if (!Number.isFinite(cores) || cores <= 0) return `max ${CPU_LIMIT_PERIOD_USEC}`;
+	// A positive budget that rounds to 0 µs is a freeze (`0 100000`), the same
+	// trap as writing a zero quota at cores=0. Floor at 1 µs: the smallest cap
+	// cpu.max can express, matching Windows CpuRate 1 for a tiny-but-nonzero budget.
+	const quota = Math.max(1, Math.round(cores * CPU_LIMIT_PERIOD_USEC));
+	return `${quota} ${CPU_LIMIT_PERIOD_USEC}`;
+}
+
+/**
+ * systemd `CPUQuota=` for `cores` cores. systemd rejects `CPUQuota=0%` and
+ * scientific notation (`1e-10%`); a positive budget that would print as either
+ * floors at 0.001% — one microsecond of a 100ms period, the same 1 µs floor as
+ * {@link formatCpuMaxValue}.
+ */
+export function formatSystemdCpuQuota(cores: number): string | undefined {
+	if (!Number.isFinite(cores) || cores <= 0) return undefined;
+	// JS Number.toString uses scientific notation at 1e21. systemd rejects that.
+	const percent = Math.min(1e18, Math.max(0.001, cores * 100));
+	const rendered = Number.isInteger(percent)
+		? String(percent)
+		: percent
+				.toFixed(6)
+				.replace(/\.0+$/, "")
+				.replace(/(\.\d*?)0+$/, "$1");
+	return `CPUQuota=${rendered}%`;
 }
 
 /** Result of running a helper binary (systemd-run, systemctl) during probe or setup. */
@@ -142,7 +166,7 @@ export interface CpuLimitEnvironment {
 	/** The harness's own cgroup path relative to the root ("" when unknown). */
 	ownCgroupPath: string;
 	run(cmd: string[]): Promise<CpuLimitCommandResult>;
-	kill(pid: number, signal: "SIGTERM"): void;
+	kill(pid: number, signal: "SIGTERM" | "SIGKILL"): void;
 	now(): number;
 	/**
 	 * procfs mount, `/proc` in production and a tmpdir in tests. Read for the
@@ -471,7 +495,8 @@ export class SessionCpuLimit {
 	#lastSample: WatcherSample | undefined;
 	#window: boolean[] = [];
 	#denied = false;
-	#killedThisEpisode = false;
+	/** 0 idle, 1 SIGTERM sent this episode, 2 SIGKILL sent. */
+	#killWave = 0;
 	#reniced = false;
 	#lastCoresUsed = 0;
 	#lastKillReport: string | undefined;
@@ -693,6 +718,17 @@ export class SessionCpuLimit {
 	}
 
 	/**
+	 * Create the group if needed, then refuse the spawn when any budget says so.
+	 * Spawn sites call this instead of `ensureGroup` then `assertMaySpawn`: the
+	 * gate is sync and cannot see a setup failure until the group has been asked
+	 * for, so the order is part of the contract, not a local habit.
+	 */
+	async gateSpawn(what: string): Promise<void> {
+		await this.ensureGroup();
+		this.assertMaySpawn(what);
+	}
+
+	/**
 	 * Move a spawned child into the session group. Fire-and-forget at spawn
 	 * sites: membership is inherited across fork (and job-object children
 	 * inherit the job), so adopting the direct child caps its whole tree.
@@ -718,6 +754,13 @@ export class SessionCpuLimit {
 	 * accountant's running total, and the group's live member list).
 	 */
 	assertMaySpawn(what: string): void {
+		if (this.#setupFailed && this.#anyLimitActive) {
+			throw new CpuLimitDeniedError(
+				`Refused to start ${what}: this session's resource budget group could not be created, ` +
+					`so a configured limit cannot be enforced. New commands are refused rather than run uncapped. ` +
+					`Fix: wait until the host can create the group, or set the limit to 0.`,
+			);
+		}
 		if (this.#denied) {
 			throw new CpuLimitDeniedError(
 				`Refused to start ${what}: this session's CPU budget of ${this.#cores} core(s) is saturated ` +
@@ -848,7 +891,7 @@ export class SessionCpuLimit {
 		if (sustained && !this.#denied) {
 			this.#denied = true;
 			if (this.#killEnabled) {
-				this.#killOverBudget();
+				this.#killOverBudget("SIGTERM");
 			} else {
 				if (!group.throttles) {
 					group.renice(CPU_LIMIT_SATURATION_NICE);
@@ -861,9 +904,11 @@ export class SessionCpuLimit {
 						`Fix: raise session.cpuLimitCores, or set session.cpuLimitKill to terminate over-budget commands instead.`,
 				);
 			}
+		} else if (sustained && this.#denied && this.#killEnabled && this.#killWave === 1) {
+			this.#killOverBudget("SIGKILL");
 		} else if (!sustained && this.#denied) {
 			this.#denied = false;
-			this.#killedThisEpisode = false;
+			this.#killWave = 0;
 			if (this.#reniced) {
 				group.renice(0);
 				this.#reniced = false;
@@ -1002,7 +1047,12 @@ export class SessionCpuLimit {
 
 	async #createGroup(): Promise<CpuBudgetGroupHandle | undefined> {
 		const probe = await this.#probe;
-		if (!probe.supported || !probe.backend) return undefined;
+		if (!probe.supported || !probe.backend) {
+			// Same fail-closed contract as a thrown create: a configured limit
+			// must not silently let the first command run unbounded.
+			if (this.#anyLimitActive) this.#setupFailed = true;
+			return undefined;
+		}
 		const create = this.#options.createGroup ?? createNativeBudgetGroup;
 		try {
 			if (probe.backend.kind === "systemd-run") {
@@ -1013,19 +1063,32 @@ export class SessionCpuLimit {
 				// deadline killed it, setup was marked failed for the whole session, and the budget
 				// silently did nothing on every host that reached this backend. A service forks, so
 				// systemd-run returns as soon as the unit is registered and the quota is in place.
+				const cpuQuota = formatSystemdCpuQuota(this.#cores);
 				const launched = await this.#options.env.run([
 					"systemd-run",
 					"--user",
 					"--quiet",
 					"--collect",
 					`--unit=${unitBase}`,
+					// Without Delegate=yes, systemd owns the unit cgroup and rejects
+					// native writes to cgroup.procs, so adopt was a silent no-op.
+					"-p",
+					"Delegate=yes",
+					// A oneshot that has already exited leaves an empty delegated
+					// cgroup (RemainAfterExit keeps the unit). `sleep infinity` as a
+					// service would occupy pids.max and never return under --scope;
+					// the service form returns, but the sleeper still sat in the
+					// group as a live member.
+					"-p",
+					"Type=oneshot",
+					"-p",
+					"RemainAfterExit=yes",
 					// A group can exist for the write, process or memory limit with
 					// no CPU limit at all, and `CPUQuota=0%` is a quota of no CPU
 					// rather than an absent one.
-					...(this.#cores > 0 ? ["-p", `CPUQuota=${this.#cores * 100}%`] : []),
+					...(cpuQuota ? ["-p", cpuQuota] : []),
 					"--",
-					"sleep",
-					"infinity",
+					"true",
 				]);
 				if (launched.code !== 0) {
 					throw new Error(`systemd-run failed: ${launched.stderr.trim() || `exit ${launched.code}`}`);
@@ -1079,7 +1142,7 @@ export class SessionCpuLimit {
 			this.#setupFailed = true;
 			this.#emitNotice(
 				`session.cpuLimitCores is set to ${this.#cores} but the session CPU budget group could not be created: ` +
-					`${errorMessage(error)}. Spawned commands will run uncapped.`,
+					`${errorMessage(error)}. New commands are refused rather than run uncapped.`,
 			);
 			return undefined;
 		}
@@ -1154,7 +1217,7 @@ export class SessionCpuLimit {
 	async #setQuota(cores: number): Promise<void> {
 		try {
 			if (this.#systemdUnit) {
-				const quota = cores > 0 ? `CPUQuota=${cores * 100}%` : "CPUQuota=";
+				const quota = formatSystemdCpuQuota(cores) ?? "CPUQuota=";
 				await this.#options.env.run(["systemctl", "--user", "set-property", this.#systemdUnit, quota]);
 			} else {
 				this.#group?.setCores(cores);
@@ -1173,13 +1236,15 @@ export class SessionCpuLimit {
 		this.#timer.unref();
 	}
 
-	#killOverBudget(): void {
-		if (this.#killedThisEpisode || !this.#group) return;
-		this.#killedThisEpisode = true;
+	#killOverBudget(signal: "SIGTERM" | "SIGKILL"): void {
+		if (!this.#group) return;
+		if (signal === "SIGTERM" && this.#killWave !== 0) return;
+		if (signal === "SIGKILL" && this.#killWave !== 1) return;
+		this.#killWave = signal === "SIGTERM" ? 1 : 2;
 		let killed = 0;
 		for (const pid of this.#group.members()) {
 			try {
-				this.#options.env.kill(pid, "SIGTERM");
+				this.#options.env.kill(pid, signal);
 				killed++;
 			} catch {
 				// The process exited between listing and signal; nothing to report.
@@ -1187,7 +1252,7 @@ export class SessionCpuLimit {
 		}
 		const report =
 			`Session CPU budget exceeded: limit ${this.#cores} core(s), spawned commands used ` +
-			`~${this.#lastCoresUsed.toFixed(2)} cores for ${this.#windowSeconds()}s. Sent SIGTERM to ${killed} process(es) ` +
+			`~${this.#lastCoresUsed.toFixed(2)} cores for ${this.#windowSeconds()}s. Sent ${signal} to ${killed} process(es) ` +
 			`because session.cpuLimitKill is on. A command that just stopped was killed by the CPU budget, not a crash.`;
 		this.#lastKillReport = report;
 		this.#emitNotice(report);
@@ -1198,7 +1263,7 @@ export class SessionCpuLimit {
 function unsupportedText(cores: number, probe: CpuLimitProbe): string {
 	return (
 		`session.cpuLimitCores is set to ${cores} but a CPU limit cannot be enforced here: ${probe.detail}. ` +
-		`Spawned commands will run uncapped.`
+		`New commands are refused rather than run uncapped.`
 	);
 }
 
@@ -1359,6 +1424,33 @@ export function sessionCpuAdoption(getSessionId: () => string | null): (pid: num
 		void limiter
 			.adoptPid(pid)
 			.catch(error => logger.debug("CPU limit: adoption failed", { error: errorMessage(error) }));
+	};
+}
+
+/**
+ * Refuse a new eval kernel cell (or any other caller that has a session id
+ * but not the limiter object) when the session budget is saturated or setup
+ * failed. No-op when the session has no limiter.
+ */
+export async function gateSessionCpuSpawn(sessionId: string | null | undefined, what: string): Promise<void> {
+	const limiter = sessionCpuLimit(sessionId);
+	if (!limiter) return;
+	await limiter.gateSpawn(what);
+}
+
+/**
+ * Spawn hooks for `exec` wrappers (custom tools, commands, extensions, hooks).
+ * `adoptPid` joins the child to the session group; `gate` refuses the spawn
+ * when the group is saturated or could not be created. Call `gate` before
+ * the process exists — adopting afterwards cannot un-run an uncapped child.
+ */
+export function sessionCpuExecHooks(getSessionId: () => string | null): {
+	adoptPid: (pid: number) => void;
+	gate: (what: string) => Promise<void>;
+} {
+	return {
+		adoptPid: sessionCpuAdoption(getSessionId),
+		gate: what => gateSessionCpuSpawn(getSessionId(), what),
 	};
 }
 
