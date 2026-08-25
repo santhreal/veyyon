@@ -690,8 +690,11 @@ export const launchToolRenderer = {
 					} else {
 						description = "no processes";
 					}
+					// `daemons` is absent on the fallback path above, which is the case
+					// this branch exists to render: treat it as no live processes so the
+					// completion rows below still print.
 					const settled = new Set(
-						daemons.filter(item => item.exitedAt !== undefined).map(item => `${item.id}${item.exitedAt}`),
+						(daemons ?? []).filter(item => item.exitedAt !== undefined).map(item => `${item.id}${item.exitedAt}`),
 					);
 					for (const record of (details?.completions ?? []).filter(
 						item => !settled.has(`${item.id}${item.exitedAt}`),
