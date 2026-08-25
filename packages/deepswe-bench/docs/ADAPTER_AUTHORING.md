@@ -5,6 +5,7 @@ This guide specifies how to author and register a new agent system adapter in th
 ## Architecture
 
 A system adapter bridges two layers:
+
 1. **TypeScript Runner Layer (`src/systems/`)**: Handles CLI dispatch, preflight verification, asset staging, and Pier configuration generation.
 2. **Python Container Layer (`pier_agent/`)**: Runs inside the Docker container spawned by Pier, translates task instructions into agent executions, and collects metadata.
 
@@ -26,6 +27,15 @@ A system adapter bridges two layers:
 |    - populate_context_post_run() -> records session metrics |
 +-------------------------------------------------------------+
 ```
+
+## Existing adapters
+
+| Adapter | Binary | Pier agent | Replay | Compaction | Arm attachments |
+|---|---|---|---|---|---|
+| veyyon | `vey` | `veyyon_agent:VeyyonAgent` | yes | yes | yes |
+| omp | `cli.js` | `omp_agent:OmpAgent` | no | no | no |
+| factory | `droid` | `factory_agent:FactoryAgent` | yes | yes | no |
+| hermes | (native) | `hermes_agent:HermesAgent` | yes | yes | no |
 
 ## Step 1: Implement the TypeScript Adapter
 
@@ -81,6 +91,30 @@ export class MySystemAdapter implements SystemAdapter {
 
 export const mySystemAdapter = new MySystemAdapter();
 ```
+
+### SystemAdapter interface fields
+
+| Field | Type | Purpose |
+|---|---|---|
+| `name` | `string` | Unique identifier used in `--arms` |
+| `displayName` | `string` | Human-readable name for reports |
+| `pierAgentImport` | `string` | Python import path (`module:Class`) |
+| `description` | `string` | One-line description |
+| `supportsReplay` | `boolean` | Whether the adapter supports replay manifests |
+| `supportsCompaction` | `boolean` | Whether the adapter supports compaction replay |
+| `supportsArmAttachments` | `boolean` | Whether the adapter accepts arm attachment files |
+| `defaultModel` | `string` | Default model if `--model` is not specified |
+| `containerAssetsDir` | `string` | Path inside the container where assets are mounted |
+
+### SystemStageContext fields
+
+| Field | Type | Purpose |
+|---|---|---|
+| `assetsDir` | `string` | Host directory for staged assets |
+| `outRoot` | `string` | Run output root directory |
+| `binarySha` | `string \| null` | SHA256 of the pinned binary |
+| `args` | `Record<string, unknown>` | CLI arguments |
+| `model` | `string` | Model selector (e.g. `opencode-go/deepseek-v4-flash`) |
 
 ## Step 2: Implement the Python Pier Agent
 
@@ -140,6 +174,19 @@ class MySystemAgent(BaseInstalledAgent):
         pass
 ```
 
+### Network allowlists
+
+Agents run inside Docker containers with egress proxies. The `network_allowlist()` method returns a list of allowed domains. Common patterns:
+
+- `.opencode.ai` — OpenCode API and models.dev metadata
+- `.models.dev` — Model metadata overlay
+- `.github.com` — Git operations (clone, fetch)
+- `public.ecr.aws` — Docker image pulls for task environments
+
+### Model resolution
+
+For dynamically-discovered models not in the agent's bundled catalog, the adapter's `stageAssets()` method can generate a static model definition file. The omp adapter demonstrates this pattern: it uses the veyvon binary's `models refresh --json` output (which includes the models.dev overlay) to generate a `models.yml` with full metadata (contextWindow, maxTokens, reasoning), then stages it into the container. See `src/systems/adapters/omp.ts` `buildModelsYml()` for the implementation.
+
 ## Step 3: Register the Adapter
 
 Register in `src/systems/registry.ts`:
@@ -150,8 +197,15 @@ import { mySystemAdapter } from "./adapters/mysystem";
 REGISTRY.set(mySystemAdapter.name, mySystemAdapter);
 ```
 
+Also export it from `src/systems/index.ts`:
+
+```typescript
+export * from "./adapters/mysystem";
+```
+
 ## Step 4: Verification
 
-1. Run unit tests: `bash scripts/test-sandbox/run.sh bun test packages/deepswe-bench`
-2. Run Python unit tests: `python3 -m unittest discover -s packages/deepswe-bench/pier_agent -p "*test.py"`
+1. Run TypeScript unit tests: `bash scripts/test-sandbox/run.sh bun test packages/deepswe-bench`
+2. Run Python unit tests: `python3 -m unittest discover -s packages/deepswe-bench/pier_agent -p "*_test.py"`
 3. Execute dry run: `bun run.ts --arms veyyon,mysystem --dry-run`
+4. Run a smoke test: `bun run.ts --arms mysystem --tasks tasks/smoke.txt --jobs 1`
