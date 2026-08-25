@@ -13,6 +13,7 @@
 - `SettingsList` computes the label-column width with a single `for` loop instead of `.filter().map()`, avoiding two throwaway arrays on every settings render.
 - `SelectList.#getPrimaryColumnWidth` uses a `for` loop instead of `.reduce()`, avoiding a callback allocation on every select-list render.
 - Markdown table column-width layout replaces 6 `reduce` calls with `for` loops, avoiding 6 callback allocations per table render.
+- `TabBar` total-width calculation uses a `for` loop instead of `.reduce()`, avoiding a callback allocation per tab-bar render.
 
 ## [1.2.0] - 2026-08-23
 

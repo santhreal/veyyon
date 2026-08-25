@@ -220,8 +220,11 @@ export class TabBar implements Component {
 			}
 			return chunks;
 		};
-		const totalWidth = (chunks: TabChunk[]): number =>
-			chunks.reduce((sum, chunk) => sum + visibleWidth(chunk.text), 0);
+		const totalWidth = (chunks: TabChunk[]): number => {
+			let sum = 0;
+			for (const chunk of chunks) sum += visibleWidth(chunk.text);
+			return sum;
+		};
 
 		const labels = this.#tabs.map(tab => tab.label);
 		let chunks = buildChunks(labels);
