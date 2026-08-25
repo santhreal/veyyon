@@ -16,16 +16,17 @@ session:
 ## What is capped
 
 Every process a session spawns to do its work joins the budget. That covers bash commands (plain
-and PTY), MCP stdio servers — a new stdio server is refused while the budget is saturated or the
-group could not be created, the same as bash — the `exec` calls that custom tools, custom commands,
-extensions, and hooks make — those `exec` calls are refused while the budget is saturated or the
-group could not be created, including extension modules the CLI loads before a session exists
-(they resolve the root session's gate lazily) — background processes from the `launch` tool, the
-eval kernels (Python, Ruby, Julia) — a new eval cell is refused while the budget is saturated or
-the group could not be created, the same as a new bash command — language servers, debug adapters,
-the managed browser, `git` and `jj`, `ssh`, and the installs that plugins run. A capped process passes the budget to its own children (cgroup / Job Object inheritance on
-Linux and Windows; a process-tree walk on macOS), so a build that spawns a compiler fleet is
-still one budget.
+and PTY), MCP stdio servers, the `exec` calls that custom tools, custom commands, extensions, and
+hooks make, background processes from the `launch` tool, the eval kernels (Python, Ruby, Julia),
+language servers, debug adapters, the managed browser, `git` and `jj`, `ssh`, and the installs
+that plugins run. A capped process passes the budget to its own children, by cgroup and Job
+Object inheritance on Linux and Windows and by a process-tree walk on macOS, so a build that
+spawns a compiler fleet is still one budget.
+
+A spawn is refused while the budget is saturated or the group could not be created. That applies
+to a bash command, a new MCP stdio server, an `exec` call from a custom tool, custom command,
+extension, or hook, and a new eval cell. An extension module the CLI loads before a session
+exists resolves the root session's gate when it spawns.
 
 Some processes belong to no single session and join the root session's budget instead. Those are
 the shared harness workers, such as the tiny title model and embeddings, and the speech capture
