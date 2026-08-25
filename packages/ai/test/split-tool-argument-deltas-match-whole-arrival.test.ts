@@ -1,19 +1,25 @@
 /**
  * WHY:
- * OpenAI Responses and OpenAI Codex Responses streams deliver incremental
- * function-argument string fragments on `response.function_call_arguments.delta`.
- * A previous commit introduced a heuristic (`mergeToolCallArgumentsDelta`) that
- * tested whether an arriving delta started with the accumulated buffer prefix
- * (`delta.startsWith(current)`), mistaking coincidental prefix matches for
- * cumulative gateway resends. That heuristic silently truncated repetitive
- * content (runs of spaces, quotes, braces, identical keys/tokens, or a chunk
- * whose text happened to begin with the prefix already buffered).
+ * Tool-call argument streams differ by wire provider:
+ * - OpenAI Responses delivers true incremental string fragments on
+ *   `response.function_call_arguments.delta`.
+ * - OpenAI Codex Responses delivers cumulative snapshots on the same event.
  *
- * This test closes the class: any tool-call argument value streamed across
- * arbitrary chunk boundaries (including adversarial split points where a later
- * chunk begins with or equals an earlier chunk or the entire current buffer)
- * must produce the exact same accumulated arguments and stream deltas as when
- * the value arrives as a single whole chunk.
+ * The accumulator drives behavior from an explicitly declared wire shape per provider
+ * (`resolveResponsesToolCallDeltaShape`) rather than guessing from bytes. Prefix heuristics
+ * (`delta.startsWith(current)`) on an incremental stream silently corrupt valid arguments
+ * when a later chunk happens to begin with earlier buffer contents (e.g. repeated keys,
+ * indentation, or nested braces), while unconditional appending on a cumulative stream
+ * doubles argument text.
+ *
+ * This test closes the class:
+ * 1. For incremental providers, any tool-call argument value streamed across arbitrary
+ *    chunk boundaries (including adversarial split points where a later chunk begins with
+ *    or equals an earlier chunk or the entire current buffer) produces the exact same
+ *    accumulated arguments and stream deltas as when arriving as a single whole chunk.
+ * 2. For cumulative providers, snapshots are normalized without doubling.
+ * 3. Every provider routing into the Responses accumulator has an explicitly declared shape
+ *    and fails by default if undeclared.
  *
  * WHAT IT DOES NOT CATCH:
  * This suite verifies the in-process stream accumulator and Responses event
@@ -23,7 +29,11 @@
 import { describe, expect, it } from "bun:test";
 import { BUILTIN_API_IDS } from "@veyyon/ai/api-registry";
 import type { ResponseStreamEvent } from "@veyyon/ai/providers/openai-responses-wire";
-import { processResponsesStream } from "@veyyon/ai/providers/openai-shared";
+import {
+	processResponsesStream,
+	RESPONSES_PROVIDER_TOOL_CALL_DELTA_SHAPES,
+	resolveResponsesToolCallDeltaShape,
+} from "@veyyon/ai/providers/openai-shared";
 import type {
 	AssistantMessage,
 	AssistantMessageEvent,
@@ -318,12 +328,12 @@ describe("OpenAI Responses function argument streaming accumulator", () => {
 		expect(toolCall.arguments).toEqual({ a: 1, b: 2 });
 	});
 
-	describe("Responses provider caller enumeration sweep", () => {
+	describe("Responses provider caller enumeration sweep and declared wire shapes", () => {
 		/**
-		 * Wire APIs that route into the Responses true-delta accumulator:
+		 * Wire APIs that route into the Responses accumulator:
 		 * - openai-responses (streamOpenAIResponses -> processResponsesStream)
 		 * - azure-openai-responses (streamAzureOpenAIResponses -> processResponsesStream)
-		 * - openai-codex-responses (streamOpenAICodexResponses -> handleResponsesStreamEvent)
+		 * - openai-codex-responses (streamOpenAICodexResponses -> CodexStreamRuntime)
 		 * - openrouter (streamOpenAIResponses when Responses enabled -> processResponsesStream)
 		 */
 		const RESPONSES_WIRE_APIS: Record<string, true> = {
@@ -331,29 +341,6 @@ describe("OpenAI Responses function argument streaming accumulator", () => {
 			"azure-openai-responses": true,
 			"openai-codex-responses": true,
 			openrouter: true,
-		};
-
-		/**
-		 * Providers verified to implement true incremental string fragments on
-		 * `response.function_call_arguments.delta` and cumulative snapshots only on `.done`.
-		 *
-		 * Adding a new provider to this path requires auditing its wire stream contract
-		 * before adding it to this set. Any unlisted provider that resolves to a Responses API
-		 * will fail the sweep by default.
-		 */
-		const AUDITED_TRUE_DELTA_RESPONSES_PROVIDERS: Record<string, true> = {
-			azure: true,
-			"github-copilot": true,
-			"gitlab-duo": true,
-			ollama: true,
-			openai: true,
-			"openai-codex": true,
-			opencode: true,
-			"opencode-go": true,
-			"opencode-zen": true,
-			openrouter: true,
-			sakana: true,
-			"xai-oauth": true,
 		};
 
 		it("covers all built-in APIs and partitions Responses vs non-Responses paths", () => {
@@ -374,7 +361,7 @@ describe("OpenAI Responses function argument streaming accumulator", () => {
 			]);
 		});
 
-		it("programmatically sweeps bundled models to ensure every Responses provider is audited", () => {
+		it("programmatically sweeps bundled models to ensure every Responses provider has a declared wire shape", () => {
 			const bundledProviders = getBundledProviders();
 			const responsesProvidersFound = new Set<string>();
 
@@ -383,10 +370,8 @@ describe("OpenAI Responses function argument streaming accumulator", () => {
 				for (const m of models) {
 					if (RESPONSES_WIRE_APIS[m.api]) {
 						responsesProvidersFound.add(provider);
-						expect(
-							Boolean(AUDITED_TRUE_DELTA_RESPONSES_PROVIDERS[provider]),
-							`Bundled provider '${provider}' uses Responses API '${m.api}' for model '${m.id}', but is not in AUDITED_TRUE_DELTA_RESPONSES_PROVIDERS. Audit its delta streaming contract before adding it.`,
-						).toBe(true);
+						const shape = resolveResponsesToolCallDeltaShape(provider, m.api);
+						expect(shape === "incremental" || shape === "cumulative").toBe(true);
 					}
 				}
 			}
@@ -408,7 +393,7 @@ describe("OpenAI Responses function argument streaming accumulator", () => {
 			]);
 		});
 
-		it("programmatically sweeps CATALOG_PROVIDERS descriptors to ensure dynamic providers are audited", () => {
+		it("programmatically sweeps CATALOG_PROVIDERS descriptors to ensure dynamic providers declare wire shapes", () => {
 			const responsesDynamicProviders = new Set<string>();
 
 			for (const entry of CATALOG_PROVIDERS as readonly ProviderCatalogEntry[]) {
@@ -432,11 +417,94 @@ describe("OpenAI Responses function argument streaming accumulator", () => {
 			}
 
 			for (const provider of responsesDynamicProviders) {
-				expect(
-					Boolean(AUDITED_TRUE_DELTA_RESPONSES_PROVIDERS[provider]),
-					`Catalog provider '${provider}' generates models on Responses API, but is not in AUDITED_TRUE_DELTA_RESPONSES_PROVIDERS. Audit its delta streaming contract before adding it.`,
-				).toBe(true);
+				const shape = resolveResponsesToolCallDeltaShape(provider);
+				expect(shape === "incremental" || shape === "cumulative").toBe(true);
 			}
+		});
+
+		it("maps openai-codex to cumulative and standard Responses providers to incremental", () => {
+			expect(resolveResponsesToolCallDeltaShape("openai-codex", "openai-codex-responses")).toBe("cumulative");
+			expect(RESPONSES_PROVIDER_TOOL_CALL_DELTA_SHAPES["openai-codex"]).toBe("cumulative");
+
+			const incrementalProviders = [
+				"openai",
+				"azure",
+				"github-copilot",
+				"gitlab-duo",
+				"ollama",
+				"opencode",
+				"opencode-go",
+				"opencode-zen",
+				"openrouter",
+				"sakana",
+				"xai-oauth",
+			];
+
+			for (const p of incrementalProviders) {
+				expect(resolveResponsesToolCallDeltaShape(p)).toBe("incremental");
+				expect(RESPONSES_PROVIDER_TOOL_CALL_DELTA_SHAPES[p]).toBe("incremental");
+			}
+		});
+
+		it("fails by default on undeclared providers rather than silently defaulting", () => {
+			expect(() => resolveResponsesToolCallDeltaShape("undeclared-provider-xyz")).toThrow(
+				/Undeclared tool-call argument delta wire shape for provider "undeclared-provider-xyz"/,
+			);
+		});
+
+		it("exercises cumulative wire shape processing in processResponsesStream", async () => {
+			const codexModel = buildModel({
+				api: "openai-responses",
+				name: "Codex Model",
+				id: "codex-test-model",
+				provider: "openai-codex",
+				baseUrl: "https://api.openai.com/v1",
+				contextWindow: 128000,
+				maxTokens: 4096,
+				input: ["text"],
+				reasoning: false,
+				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+			});
+
+			const output = createEmptyOutput();
+			output.provider = "openai-codex";
+			const emittedDeltas: string[] = [];
+			const stream: AssistantMessageEventStream = {
+				push: (event: AssistantMessageEvent) => {
+					if (event.type === "toolcall_delta") {
+						emittedDeltas.push(event.delta);
+					}
+				},
+				end: () => {},
+			} as unknown as AssistantMessageEventStream;
+
+			const prefix = '{"query":"SELECT ';
+			const complete = '{"query":"SELECT * FROM users"}';
+			const events: unknown[] = [
+				{ type: "response.created", response: { id: "resp_cum" } },
+				{
+					type: "response.output_item.added",
+					output_index: 0,
+					item: { type: "function_call", id: "fc_c1", call_id: "call_c1", name: "sql", arguments: "" },
+				},
+				{ type: "response.function_call_arguments.delta", output_index: 0, item_id: "fc_c1", delta: prefix },
+				{ type: "response.function_call_arguments.delta", output_index: 0, item_id: "fc_c1", delta: complete },
+				{ type: "response.function_call_arguments.delta", output_index: 0, item_id: "fc_c1", delta: complete },
+				{ type: "response.function_call_arguments.done", output_index: 0, item_id: "fc_c1", arguments: complete },
+				{
+					type: "response.output_item.done",
+					output_index: 0,
+					item: { type: "function_call", id: "fc_c1", call_id: "call_c1", name: "sql", arguments: complete },
+				},
+				{ type: "response.completed", response: { id: "resp_cum", status: "completed" } },
+			];
+
+			await processResponsesStream(createEventStream(events), output, stream, codexModel);
+
+			expect(emittedDeltas).toEqual([prefix, complete.slice(prefix.length)]);
+			expect(emittedDeltas.join("")).toBe(complete);
+			const toolCall = output.content.find(b => b.type === "toolCall") as ToolCall;
+			expect(toolCall.arguments).toEqual({ query: "SELECT * FROM users" });
 		});
 
 		it("verifies cumulative/snapshot stream providers do not route through Responses true-delta accumulator", () => {
