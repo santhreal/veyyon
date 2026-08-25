@@ -14,6 +14,9 @@
 // 3. Paging with skip and limit across overlapping targets produces the exact same
 //    sequence of matches as the single non-overlapping target query without dropped hits.
 // 4. Overlap deduplication works in both target orderings (directory; file and file; directory).
+// 5. Deduplication and path resolution behave correctly when a directory contains a file
+//    sharing its exact name (avoiding false string suffix containment).
+// 6. Three-way overlapping targets covering the same file with multiple matches count uniques.
 //
 // Gaps left:
 // Deduplication operates on matching files and AST nodes; semantic duplicates
@@ -122,6 +125,94 @@ describe("ast_grep overlapping target deduplication", () => {
 			expect(alphaMatches?.length).toBe(1);
 			expect(betaMatches?.length).toBe(1);
 			expect(details?.matchCount).toBe(2);
+			expect(details?.fileCount).toBe(2);
+		} finally {
+			await removeWithRetries(tempDir);
+		}
+	});
+
+	it("correctly resolves and deduplicates a directory containing a same-named file", async () => {
+		const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "ast-grep-same-name-"));
+		try {
+			const dirB = path.join(tempDir, "repo", "a", "b");
+			const dirOther = path.join(tempDir, "repo", "other");
+			await fs.mkdir(dirB, { recursive: true });
+			await fs.mkdir(dirOther, { recursive: true });
+
+			// File named 'b.ts' inside directory '.../b'
+			const fileB = path.join(dirB, "b.ts");
+			const fileOther = path.join(dirOther, "other.ts");
+			await Bun.write(fileB, 'const sameName = sameNamedCall("inside-b");\n');
+			await Bun.write(fileOther, 'const otherVal = sameNamedCall("inside-other");\n');
+
+			const tools = await createTools(createTestSession(tempDir));
+			const tool = tools.find(entry => entry.name === "ast_grep");
+			expect(tool).toBeDefined();
+
+			// Overlapping targets: directory `.../a/b`, explicit file `.../a/b/b.ts`, and sibling `.../other`
+			const result = await tool!.execute("ast-grep-same-name", {
+				pat: "sameNamedCall($A)",
+				path: `${dirB}; ${fileB}; ${dirOther}`,
+			});
+
+			const text = result.content.find(content => content.type === "text")?.text ?? "";
+			const details = result.details as
+				| { matchCount?: number; fileCount?: number }
+				| undefined;
+
+			const bMatches = text.match(/sameNamedCall\("inside-b"\)/g);
+			const otherMatches = text.match(/sameNamedCall\("inside-other"\)/g);
+
+			expect(bMatches?.length).toBe(1);
+			expect(otherMatches?.length).toBe(1);
+			expect(details?.matchCount).toBe(2);
+			expect(details?.fileCount).toBe(2);
+		} finally {
+			await removeWithRetries(tempDir);
+		}
+	});
+
+	it("deduplicates three-way overlapping targets covering the same file with multiple matches", async () => {
+		const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "ast-grep-three-way-"));
+		try {
+			const dirRoot = path.join(tempDir, "tree");
+			const dirMid = path.join(dirRoot, "mid");
+			const dirLeaf = path.join(dirMid, "leaf");
+			const dirOther = path.join(tempDir, "other");
+			await fs.mkdir(dirLeaf, { recursive: true });
+			await fs.mkdir(dirOther, { recursive: true });
+
+			const targetFile = path.join(dirLeaf, "target.ts");
+			await Bun.write(
+				targetFile,
+				'const first = threeWayCall("match-1");\nconst second = threeWayCall("match-2");\n',
+			);
+			await Bun.write(path.join(dirOther, "other.ts"), 'const third = threeWayCall("match-3");\n');
+
+			const tools = await createTools(createTestSession(tempDir));
+			const tool = tools.find(entry => entry.name === "ast_grep");
+			expect(tool).toBeDefined();
+
+			// Three targets all covering targetFile: tree/mid, tree/mid/leaf, and target.ts, plus sibling 'other'
+			const result = await tool!.execute("ast-grep-three-way", {
+				pat: "threeWayCall($A)",
+				path: `${dirMid}; ${dirLeaf}; ${targetFile}; ${dirOther}`,
+			});
+
+			const text = result.content.find(content => content.type === "text")?.text ?? "";
+			const details = result.details as
+				| { matchCount?: number; fileCount?: number }
+				| undefined;
+
+			const match1 = text.match(/threeWayCall\("match-1"\)/g);
+			const match2 = text.match(/threeWayCall\("match-2"\)/g);
+			const match3 = text.match(/threeWayCall\("match-3"\)/g);
+
+			expect(match1?.length).toBe(1);
+			expect(match2?.length).toBe(1);
+			expect(match3?.length).toBe(1);
+			// 2 matches in target.ts + 1 match in other.ts = 3 unique matches across 2 unique files
+			expect(details?.matchCount).toBe(3);
 			expect(details?.fileCount).toBe(2);
 		} finally {
 			await removeWithRetries(tempDir);
