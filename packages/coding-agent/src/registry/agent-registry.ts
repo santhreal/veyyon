@@ -248,6 +248,23 @@ export class AgentRegistry {
 	}
 
 	/**
+	 * Record that this agent did something, without changing its status.
+	 *
+	 * {@link setActivity} is the subagent heartbeat and carries a gist; the
+	 * driving session has no gist to report and must not acquire one, but its
+	 * `lastActivity` still has to move or the roster prints the age of the
+	 * process. Nothing wired the main agent to the registry at all, so its row
+	 * read "1d ago" while it was mid-turn. Emits nothing: this is a timestamp,
+	 * not a state change, and a per-turn event on the listener path would repaint
+	 * every roster for no visible difference.
+	 */
+	noteTurn(id: string): void {
+		const ref = this.#refs.get(id);
+		if (!ref) return;
+		ref.lastActivity = Date.now();
+	}
+
+	/**
 	 * Record whether the agent's last message said it was waiting on another agent.
 	 *
 	 * Emits nothing and does not touch `lastActivity`: this is a property OF the
@@ -359,6 +376,14 @@ export class AgentRegistry {
 		const ref = this.#refs.get(id);
 		if (!ref || ref.scope === scope) return;
 		ref.scope = scope;
+		// The clock belongs to the conversation that just ended. Carrying it over
+		// is the cross-session leak in its quietest form: `/new` after a day of
+		// work opened the roster on a `Main` that had just begun and was labelled
+		// "1d ago". Both stamps move, because `createdAt` orders the roster and
+		// `lastActivity` is what prints in it.
+		const now = Date.now();
+		ref.createdAt = now;
+		ref.lastActivity = now;
 		this.#emit({ type: "status_changed", ref });
 	}
 

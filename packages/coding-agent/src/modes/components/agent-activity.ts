@@ -133,6 +133,22 @@ function rosterOrder(a: AgentRef, b: AgentRef): number {
 }
 
 /**
+ * The model the agent is running RIGHT NOW, taken from its live session.
+ *
+ * {@link AgentRef.model} is written once, at registration, and never again. A
+ * roster that reads it reports the model the agent booted with however many
+ * times the operator has switched since, and the driving session is the worst
+ * case because it outlives every model change made in it: a day-old `Main` row
+ * named the model the process started on while the status line named the one
+ * actually answering. A parked agent has no session, and the recorded value is
+ * then the only answer there is.
+ */
+function liveModelOf(ref: AgentRef): string | undefined {
+	const model = ref.session?.model;
+	return model ? `${model.provider}/${model.id}` : undefined;
+}
+
+/**
  * Turn the registry's refs into roster rows, assigning call signs.
  *
  * Advisors are included and named as advisors rather than dropped. They are
@@ -164,7 +180,7 @@ export function collectLiveAgents(refs: readonly AgentRef[]): LiveAgent[] {
 			parentId: ref.parentId,
 			callSign,
 			displayName: ref.displayName,
-			model: ref.model,
+			model: liveModelOf(ref) ?? ref.model,
 			activity: ref.activity,
 			sessionFile: ref.sessionFile,
 			createdAt: ref.createdAt,
