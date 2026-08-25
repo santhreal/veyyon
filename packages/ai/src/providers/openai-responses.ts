@@ -29,7 +29,7 @@ import {
 import { createAbortSourceTracker } from "../utils/abort";
 import { withEmptyCompletionRetry } from "../utils/empty-completion-retry";
 import { AssistantMessageEventStream } from "../utils/event-stream";
-import type { RawHttpRequestDump } from "../utils/http-inspector";
+import { materializeDumpBody, type RawHttpRequestDump } from "../utils/http-inspector";
 import {
 	getOpenAIStreamFirstEventTimeoutMs,
 	getOpenAIStreamIdleTimeoutMs,
@@ -381,6 +381,9 @@ const streamOpenAIResponsesOnce = (
 
 		const output: AssistantMessage = createInitialResponsesAssistantMessage(model.api, model.provider, model.id);
 		let rawRequestDump: RawHttpRequestDump | undefined;
+		/** Exact bytes of the last sent request body; materialized into a dump only on the 400/413 path. */
+		let wireBodyJson: string | undefined;
+
 		let chainState: OpenAIResponsesChainState | undefined;
 		let sentPreviousResponseId: string | undefined;
 		const abortTracker = createAbortSourceTracker(options?.signal);
@@ -454,13 +457,32 @@ const streamOpenAIResponsesOnce = (
 			const requestTimeoutMs =
 				firstEventTimeoutMs !== undefined && firstEventTimeoutMs > 0 ? firstEventTimeoutMs : undefined;
 			const requestUrl = `${resolvedBaseUrl}/responses`;
-			const applyPayloadReplacement = async (requestParams: OpenAIResponsesSamplingParams) => {
-				const attemptParams = structuredCloneJSON(requestParams);
-				const replacementPayload = await options?.onPayload?.(attemptParams, model);
-				const payload =
-					replacementPayload !== undefined ? (replacementPayload as OpenAIResponsesSamplingParams) : attemptParams;
-				applyReasoningEffortFallbackForRequest(payload);
-				return payload;
+			const applyPayloadReplacement = async (
+				requestParams: OpenAIResponsesSamplingParams,
+			): Promise<{ wireParams: OpenAIResponsesSamplingParams; bodyJson: string }> => {
+				// Serialize once; the hook gets an isolated parse of exactly those
+				// bytes, and when no extension handles the event the caller reuses
+				// `bodyJson` instead of re-serializing. The reasoning-effort
+				// fallback may still mutate the parsed object afterwards, which is
+				// what `reused` guards.
+				const bodyJson = JSON.stringify(requestParams);
+				let attemptParams = requestParams;
+				if (options?.onPayload) {
+					const hookView = JSON.parse(bodyJson) as OpenAIResponsesSamplingParams;
+					const replacementPayload = await options.onPayload(hookView, model);
+					attemptParams =
+						replacementPayload !== undefined && replacementPayload !== hookView
+							? (replacementPayload as OpenAIResponsesSamplingParams)
+							: hookView;
+				}
+				const fallbackKey = applyReasoningEffortFallbackForRequest(attemptParams);
+				const fallbackApplied =
+					requestReasoningEffortFallbacks.has(fallbackKey) ||
+					getOpenAIReasoningEffortFallback(providerSessionState, fallbackKey) !== undefined;
+				return {
+					wireParams: attemptParams,
+					bodyJson: fallbackApplied || attemptParams !== requestParams ? JSON.stringify(attemptParams) : bodyJson,
+				};
 			};
 			rawRequestDump = {
 				provider: model.provider,
@@ -468,19 +490,18 @@ const streamOpenAIResponsesOnce = (
 				model: model.id,
 				method: "POST",
 				url: requestUrl,
-				body: chained.params,
 			};
 			const openResponsesStream = async (requestParams: OpenAIResponsesSamplingParams, captureOnly = false) => {
 				const prepareRequest = async (): Promise<RequestInit> => {
-					const wireParams = await applyPayloadReplacement(requestParams);
+					const { wireParams, bodyJson } = await applyPayloadReplacement(requestParams);
 					activeReasoningEffortFallbackKey = createOpenAIReasoningEffortFallbackKey(
 						"responses",
 						resolvedBaseUrl,
 						typeof wireParams.model === "string" ? wireParams.model : model.id,
 					);
 					activeRequestParams = wireParams;
-					if (rawRequestDump) rawRequestDump.body = wireParams;
-					return { body: JSON.stringify(wireParams) };
+					wireBodyJson = bodyJson;
+					return { body: bodyJson };
 				};
 				if (captureOnly) {
 					await prepareRequest();
@@ -561,7 +582,6 @@ const streamOpenAIResponsesOnce = (
 						requestReasoningEffortFallbacks.set(activeReasoningEffortFallbackKey, reasoningEffortFallback);
 						applyOpenAIReasoningEffortFallback(chained.params, reasoningEffortFallback);
 						applyOpenAIReasoningEffortFallback(activeParams, reasoningEffortFallback);
-						rawRequestDump.body = chained.params;
 						pendingReasoningEffortFallback = {
 							key: activeReasoningEffortFallbackKey,
 							fallback: reasoningEffortFallback,
@@ -601,7 +621,6 @@ const streamOpenAIResponsesOnce = (
 								: { params: fallbackParams };
 						sentPreviousResponseId = fallbackChained.previousResponseId;
 						chained = fallbackChained;
-						rawRequestDump.body = chained.params;
 						activeParams = fallbackParams;
 						activeStrictToolsApplied = fallbackBuilt.strictToolsApplied;
 						continue;
@@ -642,7 +661,6 @@ const streamOpenAIResponsesOnce = (
 					// breaker only trips when each retry stores and the next turn re-chains.
 					currentParams.store = !zdrRejection;
 					chained = { params: currentParams };
-					rawRequestDump.body = currentParams;
 					activeParams = currentParams;
 					activeStrictToolsApplied = currentBuilt.strictToolsApplied;
 				}
@@ -747,7 +765,7 @@ const streamOpenAIResponsesOnce = (
 				api: model.api,
 				provider: model.provider,
 				abortTracker,
-				rawRequestDump,
+				rawRequestDump: materializeDumpBody(rawRequestDump, wireBodyJson),
 				capturedErrorResponse,
 			});
 			output.stopReason = result.stopReason;
