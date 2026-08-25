@@ -2224,12 +2224,38 @@ async function executeToolCalls(
 		const tool =
 			tools?.find(t => t.name === toolCall.name) ??
 			tools?.find(t => t.customWireName !== undefined && t.customWireName === toolCall.name);
+		// `interruptible` may be declared per call: a tool where only some
+		// operations block (an `irc` wait, a `job` poll) is not interruptible for
+		// the rest of them. Resolving it per call matters beyond latency, because
+		// a call whose signal aborted before it started is answered below with a
+		// "skipped" placeholder instead of its own result. Under a blanket flag an
+		// unrelated interrupt therefore swallowed a non-blocking call's real
+		// result, including the validation error a malformed call was reporting.
+		const declaredInterruptible = tool?.interruptible;
+		let interruptible: boolean;
+		if (typeof declaredInterruptible === "function") {
+			// Resolved from raw pre-validation args; a throwing resolver must not
+			// take down the whole batch, so fall back to the conservative side —
+			// an uninterruptible call always keeps its own result.
+			try {
+				interruptible = declaredInterruptible(toolCall.arguments as Record<string, unknown>) === true;
+			} catch (error) {
+				interruptible = false;
+				logger.warn("tool interruptible resolver threw; treating the call as uninterruptible", {
+					tool: tool?.name,
+					error: errorMessage(error),
+				});
+			}
+		} else {
+			interruptible = declaredInterruptible === true;
+		}
 		return {
 			toolCall,
 			tool,
 			batchIndex,
 			args: toolCall.arguments as Record<string, unknown>,
-			signal: tool?.interruptible ? interruptibleSignal : nonInterruptibleSignal,
+			interruptible,
+			signal: interruptible ? interruptibleSignal : nonInterruptibleSignal,
 			started: false,
 			// `started` means the UI was told the call is running, which includes the
 			// time it spends in `beforeToolCall` (permission prompts). `entered` means
@@ -2341,7 +2367,7 @@ async function executeToolCalls(
 						batchIndex: record.batchIndex,
 						batchSize: toolCalls.length,
 						status,
-						interruptible: record.tool?.interruptible === true,
+						interruptible: record.interruptible,
 						signalAborted: record.signal.aborted,
 						resultContent: cappedContent,
 						useless: result.useless === true,
@@ -2806,7 +2832,7 @@ async function executeToolCalls(
 	const watchSteeringWhileRunning =
 		shouldInterruptImmediately &&
 		(hasSteeringMessages !== undefined || hasIrcInterrupts !== undefined) &&
-		records.some(r => r.tool?.interruptible === true);
+		records.some(r => r.interruptible);
 	const steeringWatchTimer = watchSteeringWhileRunning
 		? setInterval(() => void checkSteering(), STEERING_INTERRUPT_POLL_MS)
 		: undefined;
