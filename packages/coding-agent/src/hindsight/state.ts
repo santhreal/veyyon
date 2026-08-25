@@ -413,7 +413,8 @@ export class HindsightSessionState {
 		if (!this.config.autoRetain) return;
 		const messages = extractMessages(this.session.sessionManager);
 		if (messages.length === 0) return;
-		const userTurns = messages.filter(m => m.role === "user").length;
+		let userTurns = 0;
+		for (const m of messages) if (m.role === "user") userTurns++;
 		if (userTurns - this.lastRetainedTurn < this.config.retainEveryNTurns) return;
 
 		try {
@@ -441,7 +442,9 @@ export class HindsightSessionState {
 		if (messages.length === 0) return;
 		try {
 			await this.retainSession(messages);
-			this.lastRetainedTurn = messages.filter(m => m.role === "user").length;
+			let userTurns = 0;
+			for (const m of messages) if (m.role === "user") userTurns++;
+			this.lastRetainedTurn = userTurns;
 		} catch (err) {
 			logger.warn("Hindsight: forced retain failed", {
 				sessionId: this.sessionId,

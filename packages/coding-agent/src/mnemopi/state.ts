@@ -491,7 +491,8 @@ export class MnemopiSessionState {
 	async maybeRetainOnAgentEnd(_messages: AgentMessage[]): Promise<void> {
 		if (!this.config.autoRetain || this.aliasOf) return;
 		const flat = extractMessages(this.session.sessionManager);
-		const userTurns = flat.filter(message => message.role === "user").length;
+		let userTurns = 0;
+		for (const message of flat) if (message.role === "user") userTurns++;
 		if (userTurns - this.lastRetainedTurn < this.config.retainEveryNTurns) return;
 		await this.retainMessages(
 			sliceUnretainedMessages(flat, this.lastRetainedTurn),
@@ -503,8 +504,9 @@ export class MnemopiSessionState {
 	async forceRetainCurrentSession(): Promise<void> {
 		if (this.aliasOf) return;
 		const flat = extractMessages(this.session.sessionManager);
-		await this.retainMessages(flat, this.sessionId);
-		this.lastRetainedTurn = flat.filter(message => message.role === "user").length;
+		let userTurns = 0;
+		for (const message of flat) if (message.role === "user") userTurns++;
+		this.lastRetainedTurn = userTurns;
 	}
 
 	async retainMessages(messages: Array<{ role: string; content: string }>, sourceId: string): Promise<void> {
