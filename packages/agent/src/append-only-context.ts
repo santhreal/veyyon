@@ -66,11 +66,21 @@ export class StablePrefix {
 	 * Returns `true` if the prefix actually changed (cache miss imminent).
 	 */
 	build(context: AgentContext, options: BuildOptions): boolean {
-		const snapshot = takeSnapshot(context, options);
-		if (this.#snapshot && this.#snapshot.fingerprint === snapshot.fingerprint) {
+		// Compute the fingerprint first — when it matches the cached snapshot,
+		// the systemPrompt spread and tools normalization result are reused
+		// from the cached snapshot, avoiding per-turn allocations.
+		const tools =
+			normalizeTools(context.tools, options.intentTracing, options.exampleDialect, options.pruneToolDescriptions) ??
+			[];
+		const fingerprint = computeFingerprint(context.systemPrompt, tools, options);
+		if (this.#snapshot && this.#snapshot.fingerprint === fingerprint) {
 			return false;
 		}
-		this.#snapshot = snapshot;
+		this.#snapshot = {
+			systemPrompt: [...context.systemPrompt],
+			tools,
+			fingerprint,
+		};
 		this.#version++;
 		return true;
 	}
@@ -332,17 +342,6 @@ export class AppendOnlyContextManager {
 // ---------------------------------------------------------------------------
 // Snapshot helpers
 // ---------------------------------------------------------------------------
-
-function takeSnapshot(context: AgentContext, options: BuildOptions): StablePrefixSnapshot {
-	const systemPrompt = [...context.systemPrompt];
-	const tools =
-		normalizeTools(context.tools, options.intentTracing, options.exampleDialect, options.pruneToolDescriptions) ?? [];
-	return {
-		systemPrompt,
-		tools,
-		fingerprint: computeFingerprint(systemPrompt, tools, options),
-	};
-}
 
 function computeFingerprint(systemPrompt: string[], tools: Tool[], options: BuildOptions): string {
 	const payload = JSON.stringify({
