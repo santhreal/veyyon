@@ -44,7 +44,7 @@ MODEL_CATALOG_REFRESH_TIMEOUT_SECONDS = 120
 class VeyyonAgent(BaseInstalledAgent):
     """Run veyyon (compiled `vey` binary) headlessly against a Harbor task."""
 
-    SUPPORTS_ATIF: bool = False
+    SUPPORTS_ATIF: ClassVar[bool] = False
 
     # Extra kwargs (arrive via the job config's agent.kwargs):
     #   arm_name   - config arm label; picks <assets_dir>/arms/<name>.yml and
@@ -87,7 +87,8 @@ class VeyyonAgent(BaseInstalledAgent):
         return allowlist_from_urls(
             [], default_domains=[
                 ".googleapis.com", ".google.com",
-                ".anthropic.com", ".openai.com", ".openrouter.ai"
+                ".anthropic.com", ".openai.com", ".openrouter.ai",
+                ".opencode.ai",
             ]
         )
     async def run(

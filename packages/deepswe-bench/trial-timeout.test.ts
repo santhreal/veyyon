@@ -329,30 +329,30 @@ describe("truncationWarning", () => {
 	});
 });
 
-describe("run.ts wiring", () => {
-	const runSourcePath = new URL("./run.ts", import.meta.url).pathname;
+describe("runner wiring", () => {
+	const executorPath = new URL("./src/runner/executor.ts", import.meta.url).pathname;
 
 	/**
 	 * The lock: the flat literal must not come back. It survived for months
 	 * because it looked like a reasonable default, so the guard is on the source
 	 * rather than on behaviour, which would only catch it on a real bench run.
 	 */
-	test("run.ts no longer contains a flat 900-second trial timeout default", async () => {
-		const source = await Bun.file(runSourcePath).text();
+	test("the runner no longer contains a flat 900-second trial timeout default", async () => {
+		const source = await Bun.file(executorPath).text();
 		expect(source).not.toContain(`args["trial-timeout"] ?? "900"`);
 		expect(source).not.toMatch(/trialTimeoutSec\s*=\s*[^;]*:\s*900/);
 	});
 
-	/** The resolver must actually be the thing run.ts uses, not a parallel copy. */
-	test("run.ts resolves each trial's timeout through this module", async () => {
-		const source = await Bun.file(runSourcePath).text();
-		expect(moduleSpecifiersIn(source)).toContain("./trial-timeout");
+	/** The resolver must actually be the thing the runner uses, not a parallel copy. */
+	test("the runner resolves each trial's timeout through this module", async () => {
+		const source = await Bun.file(executorPath).text();
+		expect(moduleSpecifiersIn(source)).toContain("../../trial-timeout");
 		expect(source).toContain("resolveTrialTimeout(budget, trialTimeoutOverrideSec)");
 	});
 
 	/** A truncating run must announce itself before it burns hours of containers. */
-	test("run.ts prints the truncation warning at preflight", async () => {
-		const source = await Bun.file(runSourcePath).text();
+	test("the runner prints the truncation warning at preflight", async () => {
+		const source = await Bun.file(executorPath).text();
 		expect(source).toContain("truncationWarning(trialTimeouts)");
 	});
 });
