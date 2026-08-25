@@ -62,17 +62,20 @@ class OmpAgent(BaseInstalledAgent):
             raise ValueError("OmpAgent requires --model (provider/model-id)")
         instruction = self.render_instruction(instruction)
         host_assets = Path(self._assets_dir)
-        for rel in ("bun", "cli.js", "opencode-key"):
+        for rel in ("bun", "cli.js", "opencode-key", "omp-node-modules.tar.gz"):
             if not (host_assets / rel).is_file():
                 raise ValueError(f"omp asset missing on host: {host_assets / rel}")
         await environment.exec(command=f"mkdir -p {CONTAINER_ASSETS_DIR}", user="root")
         await environment.upload_file(host_assets / "bun", f"{CONTAINER_ASSETS_DIR}/bun")
         await environment.upload_file(host_assets / "cli.js", f"{CONTAINER_ASSETS_DIR}/cli.js")
         await environment.upload_file(host_assets / "opencode-key", f"{CONTAINER_ASSETS_DIR}/opencode-key")
+        await environment.upload_file(host_assets / "omp-node-modules.tar.gz", f"{CONTAINER_ASSETS_DIR}/omp-node-modules.tar.gz")
         await environment.exec(
             command=(
                 f"chmod +x {CONTAINER_ASSETS_DIR}/bun {CONTAINER_ASSETS_DIR}/cli.js && "
-                f"chmod 600 {CONTAINER_ASSETS_DIR}/opencode-key"
+                f"chmod 600 {CONTAINER_ASSETS_DIR}/opencode-key && "
+                f"mkdir -p {CONTAINER_ASSETS_DIR}/node_modules && "
+                f"tar -xzf {CONTAINER_ASSETS_DIR}/omp-node-modules.tar.gz -C {CONTAINER_ASSETS_DIR}/node_modules"
             ),
             user="root",
         )
