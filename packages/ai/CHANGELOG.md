@@ -26,6 +26,7 @@
 - The Google provider message converter merges three passes over tool-result content (`.filter()` for text, `.filter()` for images, `.some()` for omitted images) into a single `for` loop.
 - `partitionVisionContent` in `vision-guard.ts` merges two `.filter()` passes and a `.some()` check into a single `for` loop, avoiding two throwaway arrays per message conversion call.
 - The OpenAI completions assistant message converter merges two separate loops over `msg.content` (text block collection and thinking block collection) into a single `for` loop.
+- The Codex responses request transformer merges `.filter().map()` in `filterInput` into a single `for` loop that skips `item_reference` entries and strips `id` fields in one pass.
 
 ### Fixed
 
