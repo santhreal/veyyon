@@ -116,6 +116,7 @@ export async function executeInVmContext(options: {
 	cwd: string;
 	session: ToolSession;
 	localRoots?: Record<string, string>;
+	artifactsDir?: string | null;
 	reset?: boolean;
 	code: string;
 	filename: string;
@@ -160,7 +161,12 @@ export async function executeInVmContext(options: {
 	}
 	const session = await acquireSession(
 		options.sessionKey,
-		{ cwd: options.cwd, sessionId: options.sessionId, localRoots: options.localRoots },
+		{
+			cwd: options.cwd,
+			sessionId: options.sessionId,
+			localRoots: options.localRoots,
+			artifactsDir: options.artifactsDir,
+		},
 		options.timeoutMs,
 	);
 	// Record which agent session owns this context so it can be reaped on that
@@ -272,6 +278,7 @@ async function runOnce(
 		cwd: string;
 		session: ToolSession;
 		localRoots?: Record<string, string>;
+		artifactsDir?: string | null;
 		code: string;
 		filename: string;
 		runState: VmRunState;
@@ -311,7 +318,12 @@ async function runOnce(
 			runId,
 			code: options.code,
 			filename: options.filename,
-			snapshot: { cwd: options.cwd, sessionId: options.sessionId, localRoots: options.localRoots },
+			snapshot: {
+				cwd: options.cwd,
+				sessionId: options.sessionId,
+				localRoots: options.localRoots,
+				artifactsDir: options.artifactsDir,
+			},
 		});
 		return await promise;
 	} finally {
