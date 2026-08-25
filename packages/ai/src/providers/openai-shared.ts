@@ -1750,11 +1750,16 @@ export function appendResponsesToolResultMessages<TApi extends Api>(
 	supportsCustomToolCalls = true,
 ): void {
 	const supportsImages = model.input.includes("image");
-	const textResult = toolResult.content
-		.filter((block): block is TextContent => block.type === "text")
-		.map(block => block.text)
-		.join("\n");
-	const hasImages = toolResult.content.some((block): block is ImageContent => block.type === "image");
+	const textParts: string[] = [];
+	let hasImages = false;
+	for (const block of toolResult.content) {
+		if (block.type === "text") {
+			textParts.push(block.text);
+		} else if (block.type === "image") {
+			hasImages = true;
+		}
+	}
+	const textResult = textParts.join("\n");
 	const omittedImages = hasImages && !supportsImages;
 	const normalized = normalizeResponsesToolCallId(toolResult.toolCallId);
 	// "(see attached image)" is only truthful when the result actually carries
