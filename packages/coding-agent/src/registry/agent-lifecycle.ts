@@ -373,7 +373,7 @@ export class AgentLifecycleManager {
 					`Agent "${id}" is ${ref.status} and cannot be revived${revive ? "" : " (no reviver registered)"}. Its transcript remains readable at history://${id}.`,
 				);
 			}
-			return await this.#revive(id, revive, ref.sessionFile);
+			return await this.#revive(id, revive, ref);
 		} catch (error) {
 			// A failed cold revive (stale ctx, missing cwd, bad MCP) must not leave a
 			// poisoned reviver stuck in #adopted — drop it so a later ensureLive
@@ -538,10 +538,10 @@ export class AgentLifecycleManager {
 	 * costs one condition and the wake is refused the same way {@link ensureLive}
 	 * refuses one that arrives a moment later.
 	 */
-	async #revive(id: string, revive: AgentReviver, sessionFile: string | null): Promise<AgentSession> {
+	async #revive(id: string, revive: AgentReviver, expectedRef: AgentRef): Promise<AgentSession> {
 		const session = await revive();
 		const current = this.#registry.get(id);
-		if (!current || current.status === "aborted") {
+		if (!current || (current !== expectedRef && current.session !== session) || current.status === "aborted") {
 			try {
 				await session.dispose();
 			} catch (error) {
@@ -551,12 +551,14 @@ export class AgentLifecycleManager {
 				});
 			}
 			throw new Error(
-				current
+				current?.status === "aborted"
 					? `Agent "${id}" was terminated while it was being revived. Its transcript remains readable at history://${id}.`
-					: `Agent "${id}" was released while it was being revived. Its transcript remains readable at history://${id}.`,
+					: current
+						? `Agent "${id}" was replaced while it was being revived. Its transcript remains readable at history://${id}.`
+						: `Agent "${id}" was released while it was being revived. Its transcript remains readable at history://${id}.`,
 			);
 		}
-		this.#registry.attachSession(id, session, sessionFile);
+		this.#registry.attachSession(id, session, expectedRef.sessionFile);
 		// Emits status_changed → "idle", which re-arms the TTL timer below.
 		this.#registry.setStatus(id, "idle");
 		return session;

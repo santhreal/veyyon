@@ -27,7 +27,8 @@ export const MAIN_AGENT_ID = "Main";
  * - `parked`: session disposed; AgentRef + sessionFile retained, revivable.
  * - `aborted`: hard-killed, terminal.
  */
-export type AgentStatus = "running" | "idle" | "parked" | "aborted";
+export const AGENT_STATUSES = ["running", "idle", "parked", "aborted"] as const;
+export type AgentStatus = (typeof AGENT_STATUSES)[number];
 /**
  * - `main`/`sub`: the user-facing agent tree (driving agent + task subagents).
  * - `advisor`: a passive review transcript persisted like a subagent for usage
