@@ -168,11 +168,13 @@ jobs:
           # history checked out above, so no extra fetch is needed.
           CHANGELOG_BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
         run: bun run changelog:check
-      - name: Require the repo-root CHANGELOG to match the canonical source
-        # The root CHANGELOG.md is generated from packages/coding-agent/CHANGELOG.md
-        # (same rebrand the website uses). Fail if it drifted; the fix is to run
-        # `bun run changelog:root`.
-        run: bun run changelog:root:check
+      # The repo-root CHANGELOG.md is NOT gated here. It is generated from every
+      # package changelog, so the bullet the step above requires is precisely
+      # what desynchronizes it, and a contributor who did the documented thing
+      # failed this job for a file AGENTS.md tells them never to edit by hand.
+      # `.github/workflows/changelog-sync.yml` renders and commits it after the
+      # push instead, and the pre-push hook still refuses a stale root from
+      # anyone pushing to main directly.
 
   test-leaks:
     name: Global-state leaks (changed suites)

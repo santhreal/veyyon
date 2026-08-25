@@ -14,12 +14,10 @@ everyone; please read this before opening a PR.
 
 1. Fork the repo (or branch, if you have write access) and make your change.
 2. Put a changelog entry under the affected package's `## [Unreleased]`
-   section, then run `bun run changelog:root` and commit the regenerated
-   repo-root `CHANGELOG.md` alongside it. The root file is assembled from every
-   package changelog, and CI checks that it matches; adding a package entry
-   without regenerating it fails the `Changelog entry` check.
+   section. Leave the repo-root `CHANGELOG.md` alone: it is assembled from every
+   package changelog and resynced automatically after your PR merges.
 3. Keep the PR description short (what broke, the fix), and make sure
-   `bun run check`, `bun run changelog:root:check` and the tests pass locally.
+   `bun run check` and the tests pass locally.
 4. Open the PR against `main`.
 
 ## UI changes
