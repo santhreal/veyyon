@@ -33,7 +33,7 @@ function harness(): { controller: SessionFocusController; registry: AgentRegistr
 	const ctx = {
 		session: main,
 		unsubscribe: () => {},
-		eventController: { handleEvent: async () => {}, resetTranscriptAnchors: () => {} },
+		eventController: { handleEvent: async () => {}, attachTo: () => {}, resetTranscriptAnchors: () => {} },
 		statusLine: { setSession: () => {}, invalidate() {} },
 		clearTransientSessionUi: () => {},
 		renderInitialMessages: () => {},

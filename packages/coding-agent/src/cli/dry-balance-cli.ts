@@ -539,6 +539,7 @@ async function resolveDryBalanceModel(
 			cliModel: modelSelector,
 			modelRegistry,
 			preferences,
+			settings,
 		});
 		if (resolved.error) throw new Error(resolved.error);
 		if (!resolved.model) throw new Error(modelResolutionFailureMessage([modelSelector], modelRegistry));

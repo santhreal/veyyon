@@ -54,6 +54,7 @@ import type { SubagentAgentSettings, SubagentLaneSettings } from "../../config/s
 import type { SettingTab, StatusLinePreset, StatusLineSegmentId, SubmenuOption } from "../../config/settings-schema";
 import { getUi, isUnsetNumberPath, SETTING_TABS, TAB_METADATA } from "../../config/settings-schema";
 import { loadCapability } from "../../discovery";
+import { PROVIDER_ID as NATIVE_RULES_PROVIDER_ID } from "../../discovery/builtin";
 import { BUILTIN_RULE_SECTIONS, type BuiltinRuleSection } from "../../discovery/builtin-rules";
 import { withIcon } from "../../modes/theme/icon-label";
 import { getCurrentThemeName, getSelectListTheme, getSettingsListTheme, theme } from "../../modes/theme/theme";
@@ -979,15 +980,21 @@ const RULE_LIST_MAX_ROWS = 12;
 const BUNDLED_SECTION_ORDER: readonly BuiltinRuleSection[] = Object.keys(BUILTIN_RULE_SECTIONS) as BuiltinRuleSection[];
 
 function ruleSectionRank(rule: Rule): number {
+	// The operator's own rules lead the list: they are the ones this screen
+	// exists to manage, and every forged `/omfg` rule lands among them.
+	if (rule._source?.provider === NATIVE_RULES_PROVIDER_ID) return -2;
 	if (rule._source?.provider !== BUILTIN_DEFAULTS_PROVIDER_ID) return -1;
 	const index = BUNDLED_SECTION_ORDER.indexOf(rule.section as BuiltinRuleSection);
 	// A bundled rule whose section is not one we know sorts after every known
-	// one rather than silently joining the project group at the top.
+	// one rather than silently joining the user group at the top.
 	return index < 0 ? BUNDLED_SECTION_ORDER.length : index;
 }
 
 /** The heading a rule renders under. */
 function ruleSectionLabel(rule: Rule): string {
+	if (rule._source?.provider === NATIVE_RULES_PROVIDER_ID) {
+		return "User created";
+	}
 	if (rule._source?.provider !== BUILTIN_DEFAULTS_PROVIDER_ID) {
 		return rule._source?.provider ? `From ${rule._source.provider}` : "From this project";
 	}

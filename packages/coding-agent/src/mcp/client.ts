@@ -153,6 +153,8 @@ export async function connectToServer(
 		onRequest?: (method: string, params: unknown) => Promise<unknown>;
 		/** Session CPU budget hook: a spawned stdio server's pid is handed here so it joins the session's budget group. */
 		onSpawnPid?: (pid: number) => void;
+		/** Session CPU budget gate: refuse the stdio spawn while the group is saturated or uncreated. */
+		beforeSpawn?: () => Promise<void>;
 	},
 ): Promise<MCPServerConnection> {
 	const timeoutMs = resolveMCPTimeoutMs(config.timeout);
@@ -163,8 +165,13 @@ export async function connectToServer(
 		if (options?.onNotification) {
 			transport.onNotification = options.onNotification;
 		}
-		if (options?.onSpawnPid && transport instanceof StdioTransport) {
-			transport.onSpawnPid = options.onSpawnPid;
+		if (transport instanceof StdioTransport) {
+			if (options?.onSpawnPid) {
+				transport.onSpawnPid = options.onSpawnPid;
+			}
+			if (options?.beforeSpawn) {
+				transport.beforeSpawn = options.beforeSpawn;
+			}
 		}
 
 		// Always handle standard MCP server-to-client requests (ping, roots/list).
