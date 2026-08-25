@@ -4,8 +4,12 @@
 
 ### Changed
 
+- `veyyon --help` renders its command list from registry summaries verified against command statics and loads only the hidden default command for its flag table, reducing a measured warm Windows invocation from 1.2 seconds to 0.13 seconds.
+- The default launch command imports the session runtime and ACP terminal authentication only when it runs, so loading its flag table no longer imports the runtime graph.
 - Classified runner output (cargo, bun, Go, ctest, dotnet, clippy, golangci-lint, Gradle lint, pytest, and tsc/eslint-family) now opens with a result-contract header: `[clean] <command>` or `[errors]` / `[errors N] <command>`. The header is the verdict and the body contains retained diagnostics.
 ### Added
+
+- `bench/session-memory.bench.ts` reports heap after a forced GC, current RSS and high-water RSS at each of three phases (module baseline, `SessionManager.open`, `buildSessionContext`) over a synthetic transcript sized by `SESSION_MB`.
 
 - Added `model.toolCallLoopGuard.readSubsumptionThreshold` (default `2`) to steer models that re-read unchanged code lines back-to-back before consuming full context.
 - `VEYYON_DEBUG_STARTUP=1` writes one line per phase of a prompt submission (compaction check, plan arm, context build, memory context), so a slow submit names the phase that spent the time.
@@ -20,6 +24,7 @@
 
 ### Changed
 
+- Files → LSP is one enterable row whose nested page independently controls language servers, the agent tool, diagnostics after write or edit, format after write, lazy startup, and diagnostics deduplication; `--no-lsp` still disables the full stack.
 - Startup paints the composer itself instead of an empty reservation. The first frame used to reserve eight blank rows where the prompt would live and left them empty until the mode finished initializing — slash-command discovery, recent-session reads — so on a cold launch the composer arrived seconds late and read as it sliding up into place. The first frame now paints the resting composer (real hairline, ghost prompt, exact row count) from one static component shared with the mounted zone: the prompt is on screen from the first paint, and the handover swaps text, never position.
 
 - Multi-target `ast_grep` searches now execute concurrently while preserving globally ordered paging, totals, parse errors, cancellation, and target-order failures.
@@ -51,6 +56,7 @@
 - The composer footline's click targets — the context gauge, the secrets chip, the goal readout and the path expansion — answer a click in a session whose transcript has not yet overflowed the viewport, instead of staying inert until it does.
 - A stripped working directory keeps the case it has on disk on Windows, instead of being lowercased by the case-insensitive comparison that decided it was under the root.
 - The status line's default-branch lookup no longer raises an unhandled rejection in a directory holding a `.git` on a host with no `git` on PATH; the lookup fails to the `main` fallback instead.
+- With Language Servers off, which is the default, the write and edit tools no longer start a language server to inject diagnostics, format the file, or notify the workspace that a file changed, including on the ACP client-bridge write path.
 - `veyyon plugin install --dry-run` now resolves the target and fails when it cannot be installed, instead of exiting 0 with "Would install" for an unpublished npm name or a missing git repository, and reports the name and version the target resolves to rather than a `0.0.0-dryrun` placeholder ([#911](https://github.com/santhreal/veyyon/issues/911)).
 - `veyyon plugin uninstall` now removes a plugin installed from a local path, which was permanently unremovable because uninstall read only `plugins/package.json` dependencies while linking registers the plugin in the runtime config and `node_modules`; the linked directory itself is left untouched.
 - `veyyon plugin doctor` no longer reports "no plugins installed" in a profile whose plugins were all linked, and names how many linked plugins it found.
