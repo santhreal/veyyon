@@ -77,6 +77,7 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import { settings } from "@veyyon/coding-agent/config/settings-instance";
 import type { QuietPart, QuietSegmentBounds } from "@veyyon/coding-agent/modes/components/status-line/component";
 import {
+	CLIP_BOUNDARIES,
 	fitLocation,
 	MIN_LOCATION_PART,
 	StatusLineComponent,
@@ -118,6 +119,8 @@ function pathBody(text: string): string {
 let wideCwd = "";
 /** The same deep path on a branch short enough that clipping it is never the right trade. */
 let shortBranchCwd = "";
+/** The same shape spelled in characters that occupy two cells each, plus one astral glyph. */
+let wideCharCwd = "";
 
 /**
  * Every spelling the path segment may choose before clamping, since which it picks is the
@@ -205,6 +208,10 @@ beforeAll(async () => {
 	shortBranchCwd = path.join(makeTempDir(), "platform-services", "ingest-pipeline", "normalizer");
 	mkdirSync(path.join(shortBranchCwd, ".git"), { recursive: true });
 	writeFileSync(path.join(shortBranchCwd, ".git", "HEAD"), `ref: refs/heads/${SHORT_BRANCH}\n`);
+
+	wideCharCwd = path.join(makeTempDir(), "データ処理基盤", "📦packages", "正規化");
+	mkdirSync(path.join(wideCharCwd, ".git"), { recursive: true });
+	writeFileSync(path.join(wideCharCwd, ".git", "HEAD"), `ref: refs/heads/${SHORT_BRANCH}\n`);
 });
 
 describe("the footline path is clipped from one end", () => {
@@ -759,6 +766,116 @@ describe("a clip mark belongs to the name it cut", () => {
 		// Vacuous unless the sweep passed a cut that landed on a slash and kept it.
 		expect(sawSlashKept).toBe(true);
 	});
+
+	// WHY THIS SWEEPS THE TABLE INSTEAD OF NAMING A SEPARATOR. The defect it closes was one
+	// missing row: `\` was not in the table, so on Windows -- where `shortenPath` normalizes
+	// the separator only for a path under the home directory, and `C:\work\…` is not one --
+	// no character in a path was a boundary at all, the walk always found nothing, and every
+	// clipped path on that platform opened mid-name. A test naming `/` and `\` would close
+	// that incident and leave the next one open, so the variant space is read out of the
+	// source at run time: a row added to the table is exercised by this the moment it exists,
+	// and a row the walk does not honour turns it red.
+	//
+	// WHAT IT DOES NOT CATCH: whether the platform's separator reaches the table at all. That
+	// is `shortenPath`'s and `pathSegment`'s question, and the sibling case below is where a
+	// whole Windows path is put through the fitter.
+	it("opens a clipped name on every boundary the table declares, keeping or dropping it as declared", () => {
+		// Pinned rather than imported, for the same reason the case above pins it: a test that
+		// reads the source's own allowance moves with it.
+		const MOST_CELLS_A_TIDY_CUT_MAY_COST = 4;
+		// Two names with no boundary character of their own, so the cell a tail opens on says
+		// which side of the boundary the cut landed, with nothing else to confuse it.
+		const HEAD = "platformservices";
+		const LEAF = "normalizerservice";
+		const boundaries = Object.entries(CLIP_BOUNDARIES);
+		const unexercised: string[] = [];
+		const offenders: { boundary: string; budget: number; why: string }[] = [];
+
+		expect(boundaries.length).toBeGreaterThan(0);
+
+		for (const [char, verdict] of boundaries) {
+			const content = `${HEAD}${char}${LEAF}`;
+			const opensOnTheBoundary = verdict === "keep" ? `${char}${LEAF}` : LEAF;
+			let landedOnIt = false;
+
+			for (let budget = 4; budget < visibleWidth(content); budget++) {
+				const plain = stripAnsi(fitLocation([{ id: "path", content }], SEP, budget).text);
+				if (!plain.startsWith(ELLIPSIS)) continue;
+				const tail = plain.slice(ELLIPSIS.length);
+				if (!content.endsWith(tail)) {
+					offenders.push({ boundary: char, budget, why: `${JSON.stringify(tail)} is not a suffix` });
+					continue;
+				}
+				if (tail === opensOnTheBoundary) landedOnIt = true;
+				if (verdict === "drop" && tail.startsWith(char)) {
+					offenders.push({ boundary: char, budget, why: `opens on a dropped boundary: ${plain}` });
+				}
+				// The cut walked past a boundary it had the room to reach. Only asserted where
+				// the reach is the full allowance -- below that the walk is capped by the room
+				// and by the floor, and a cut that stopped short of a boundary is correct.
+				if (budget >= MIN_LOCATION_PART + MOST_CELLS_A_TIDY_CUT_MAY_COST + 2) {
+					const missed = tail.slice(1, MOST_CELLS_A_TIDY_CUT_MAY_COST).indexOf(char);
+					if (missed >= 0) offenders.push({ boundary: char, budget, why: `walked past a boundary: ${plain}` });
+				}
+				const givenUp = budget - visibleWidth(plain);
+				if (givenUp > MOST_CELLS_A_TIDY_CUT_MAY_COST) {
+					offenders.push({ boundary: char, budget, why: `gave up ${givenUp} cells` });
+				}
+			}
+
+			if (!landedOnIt) unexercised.push(char);
+		}
+
+		expect(offenders).toEqual([]);
+		// Vacuity, per boundary rather than once for the sweep: a table row whose boundary no
+		// cut ever opened on was never actually tested by the loop above.
+		expect(unexercised).toEqual([]);
+	});
+
+	it("clips a Windows path on a directory boundary, the separator it arrives with", () => {
+		// The platform case the table rows exist for, put through the fitter as the row would
+		// receive it: `shortenPath` leaves a path outside the home directory exactly as the OS
+		// spelled it, so this is the literal content of the path part on that platform.
+		//
+		// WHY THIS ASSERTS A WALK AND NOT A SIGHTING. "Some budget opened on a separator" is
+		// true without any boundary table at all: the cut is a subtraction, and across forty
+		// budgets it lands on a separator by arithmetic several times. The property only the
+		// table can buy is that a cut NEVER stops a cell or two short of a separator it could
+		// have reached, so that is what is asserted, at every budget.
+		const MOST_CELLS_A_TIDY_CUT_MAY_COST = 4;
+		const WINDOWS_CWD = "C:\\work\\platform-services\\ingest-pipeline\\normalizer";
+		const SEPARATORS: readonly string[] = [path.win32.sep, path.posix.sep];
+		const offenders: { budget: number; text: string; why: string }[] = [];
+		let sawADirectoryBoundary = false;
+		const floor = MIN_LOCATION_PART + MOST_CELLS_A_TIDY_CUT_MAY_COST + 2;
+
+		for (let budget = floor; budget < visibleWidth(WINDOWS_CWD); budget++) {
+			const plain = stripAnsi(fitLocation([{ id: "path", content: WINDOWS_CWD }], SEP, budget).text);
+			if (!plain.startsWith(ELLIPSIS)) continue;
+			const tail = plain.slice(ELLIPSIS.length);
+			if (!WINDOWS_CWD.endsWith(tail)) {
+				offenders.push({ budget, text: plain, why: "not a suffix" });
+				continue;
+			}
+			const missed = tail.slice(1, MOST_CELLS_A_TIDY_CUT_MAY_COST).indexOf(path.win32.sep);
+			if (missed >= 0) offenders.push({ budget, text: plain, why: "stopped short of a separator" });
+			if (SEPARATORS.includes(tail[0] ?? "")) sawADirectoryBoundary = true;
+		}
+
+		expect(offenders).toEqual([]);
+		expect(sawADirectoryBoundary).toBe(true);
+	});
+
+	// FAIL BY DEFAULT ON A REMOVAL, which the sweep above cannot do: it reads its variant
+	// space out of the table, so a row taken OUT of the table is a variant it no longer knows
+	// to try -- and a row taken out is exactly the defect that shipped. Both platforms'
+	// separators are read from `node:path` rather than typed here, so this states the product
+	// decision (a directory separator is a name boundary, on either OS) rather than restating
+	// the table's own bytes back at it.
+	it("declares both platforms' directory separators as kept boundaries", () => {
+		expect(CLIP_BOUNDARIES[path.posix.sep]).toBe("keep");
+		expect(CLIP_BOUNDARIES[path.win32.sep]).toBe("keep");
+	});
 });
 
 describe("a click on the path trades the model chip for room", () => {
@@ -1095,5 +1212,65 @@ describe("the trade travels instead of switching", () => {
 		expect(line.renderQuietLine(WIDTH)).toBe(target);
 		clock.tick(16);
 		expect(frames()).toBe(0);
+	});
+});
+/**
+ * WHY THIS EXISTS. `maxLength` is a promise about columns: it is the budget the preset gives
+ * the path, and every other measurement in the row -- the fit, the clip, the slot bounds --
+ * is in cells. The clamp measured `String.prototype.length` instead, so a path of wide
+ * characters was clamped at roughly half the width it then painted (a CJK directory name is
+ * one code unit and two cells), and `slice` on code units could cut a surrogate pair or a
+ * grapheme cluster in half and hand the row a lone code unit to render.
+ *
+ * The row's own fitter hid it at a narrow width, because it re-clips whatever the clamp
+ * produced down to the columns actually available. It is observable where the row has room to
+ * spare, which is where the clamp is the only thing deciding the width.
+ *
+ * WHAT IT DOES NOT CATCH: the terminal's own idea of how wide a glyph is. `visibleWidth` is
+ * this product's answer everywhere, so a row that agrees with it is consistent with the rest
+ * of the paint whether or not a given emulator draws that glyph in two cells.
+ */
+describe("a path budget is counted in cells, not in code units", () => {
+	/** Wide enough that the clamp is the only thing deciding the path's width. */
+	const ROOM_TO_SPARE = 400;
+
+	it("keeps a wide-character path inside its column budget, and keeps it a whole-character suffix", () => {
+		const statusLine = new StatusLineComponent(makeSession(() => wideCharCwd));
+		const offenders: { budget: number; why: string; body: string }[] = [];
+		let sawClamped = false;
+
+		// Swept rather than taken at the default, so a budget landing INSIDE the astral glyph
+		// is reached: at one of these widths the cut falls between the two code units of 📦.
+		for (let budget = 20; budget <= 60; budget++) {
+			// The knob a preset and an operator both set, and the one `renderQuietLine` reads:
+			// a bare `{ path: … }` is not it, and the row then answers at the default budget.
+			statusLine.updateSettings({
+				preset: "custom",
+				leftSegments: ["path"],
+				rightSegments: [],
+				segmentOptions: { path: { maxLength: budget } },
+			} as never);
+			const line = statusLine.renderQuietLine(ROOM_TO_SPARE);
+			expect(line).not.toBeNull();
+			const slot = slotText(line ?? "", statusLine.getQuietSegmentBounds(), "path");
+			expect(slot).not.toBeNull();
+			const body = pathBody(slot ?? "").trimEnd();
+			if (!body.startsWith(ELLIPSIS)) continue;
+			sawClamped = true;
+
+			const width = visibleWidth(body);
+			if (width > budget) offenders.push({ budget, why: `${width} cells for a ${budget}-cell budget`, body });
+			// A lone surrogate is a code point in the surrogate range; a well-formed pair is
+			// one code point outside it. So this fires exactly when a pair was cut in half.
+			if (/[\uD800-\uDFFF]/u.test(body)) offenders.push({ budget, why: "a surrogate was cut in half", body });
+			const tail = body.slice(ELLIPSIS.length);
+			const spellings = [wideCharCwd, path.relative(os.tmpdir(), wideCharCwd)];
+			if (!spellings.some(full => full.endsWith(tail))) {
+				offenders.push({ budget, why: "not a suffix of the real path", body });
+			}
+		}
+
+		expect(offenders).toEqual([]);
+		expect(sawClamped).toBe(true);
 	});
 });
