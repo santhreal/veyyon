@@ -75,7 +75,6 @@ import { getLanguageFromPath } from "../utils/lang-from-path";
 import { convertFileWithMarkit } from "../utils/markit";
 import { type ArchiveReader, formatArchiveEntryLines, openArchive, parseArchivePathCandidates } from "../utils/zip";
 import { buildDirectoryTree, buildTopLevelDirectoryListing, type DirectoryTree } from "../workspace-tree";
-import { expandDelimitedPathEntriesSync } from "./cwd-boundary";
 import {
 	type ConflictEntry,
 	type ConflictScope,
@@ -105,6 +104,7 @@ import {
 } from "./output-meta";
 import {
 	type DelimitedPathSplitOptions,
+	expandDelimitedPathEntriesSync,
 	expandPath,
 	formatPathRelativeToCwd,
 	isInternalUrlPath,
@@ -1120,21 +1120,13 @@ type SuffixMatchCache = Map<string, { absolutePath: string; displayPath: string 
  * instead resolves `a.md;/etc/passwd` to one path inside the working directory
  * that no read ever opens, and the entry outside it is never gated.
  */
-export function readFilesystemTargets(args: unknown, cwd?: string): string[] {
+export function readFilesystemTargets(args: unknown, cwd = process.cwd()): string[] {
 	if (!args || typeof args !== "object" || !("path" in args)) return [];
 	const rawPath = args.path;
 	if (typeof rawPath !== "string") return [];
-	const effectiveCwd = cwd ?? process.cwd();
-	const expanded = expandDelimitedPathEntriesSync([rawPath], effectiveCwd, { internalUrls: "split-on-semicolon" });
+	const expanded = expandDelimitedPathEntriesSync([rawPath], cwd, { internalUrls: "split-on-semicolon" });
 	return expanded.filter(entry => entry.length > 0);
 }
-
-/**
- * Read tool implementation.
- *
- * Reads files with support for images, converted documents (via markit), and text.
- * Directories return a formatted listing with modification times.
- */
 export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 	readonly name = "read";
 	readonly approval = (args: unknown): ToolTier =>
@@ -3848,8 +3840,7 @@ export const readToolRenderer = {
 		// echo next to the styled warning line below.
 		const contentText = details?.displayContent?.text ?? stripOutputNotice(rawText, details?.meta);
 		const imageContent = result.content?.find(c => c.type === "image");
-		const rawPath =
-			typeof args?.file_path === "string" ? args.file_path : typeof args?.path === "string" ? args.path : "";
+		const rawPath = typeof args.path === "string" ? args.path : "";
 		const renderPath = splitReadRenderPath(rawPath);
 		const lang = getLanguageFromPath(renderPath.path);
 

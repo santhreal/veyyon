@@ -128,7 +128,7 @@ export class GlobTool implements AgentTool<typeof findSchema, GlobToolDetails> {
 	// out-of-cwd base must prompt in non-yolo modes like a point read does. Reduce
 	// the `path` (semicolon-delimited patterns) to each fixed search base. See
 	// cwd-boundary.ts.
-	readonly filesystemTargets = (args: unknown): string[] => searchPathFilesystemTargets(args);
+	readonly filesystemTargets = (args: unknown, cwd = this.session.cwd): string[] => searchPathFilesystemTargets(args, cwd);
 
 	readonly #customOps?: GlobOperations;
 	readonly #rootPathAlias: boolean;
