@@ -22,6 +22,7 @@
 - `pruneToolOutputs` skips the `collectPruneCandidates` backward walk when no supersede key is configured (the production default), checking the useless-result flag inline in its existing backward scan instead. This eliminates one O(n) pass per turn.
 - `pruneSupersededToolResults` merges the eligible-candidate and tail-candidate filter passes into a single forward loop, avoiding one throwaway array allocation per non-idle pruning turn.
 - `disambiguateToolCallIds` returns the message by reference when it contains no tool-call blocks, avoiding a `new Set` allocation and full content scan on pure-text turns.
+- `defaultConvertToLlm` returns the input array by reference when no messages would be filtered out (no refusals, no custom messages), avoiding a full-array `.filter()` allocation per turn in the common case.
 - `countTokens` replaces its array-branch `reduce` with a `for` loop, avoiding a callback allocation per token count call on string arrays.
 - `createBranchSummaryMessage`, `createCompactionSummaryMessage`, and `createCustomMessage` use `Date.parse` instead of `new Date(...).getTime()`, avoiding a Date object allocation per compaction message creation.
 

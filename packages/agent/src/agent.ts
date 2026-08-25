@@ -64,6 +64,23 @@ import { EventLoopKeepalive } from "./utils/yield";
  * Default convertToLlm: Keep only LLM-compatible replay messages.
  */
 function defaultConvertToLlm(messages: AgentMessage[]): Message[] {
+	// Fast path: scan for any message that would be filtered out. If none,
+	// return the input array by reference, avoiding a 33K-element array
+	// allocation per turn in the common case (no refusals, no custom messages).
+	let needsFilter = false;
+	for (let i = 0; i < messages.length; i++) {
+		const m = messages[i]!;
+		if (m.role === "assistant") {
+			if (isProviderRefusalMessage(m)) {
+				needsFilter = true;
+				break;
+			}
+		} else if (m.role !== "user" && m.role !== "toolResult") {
+			needsFilter = true;
+			break;
+		}
+	}
+	if (!needsFilter) return messages as Message[];
 	return messages.filter((m): m is Message => {
 		if (m.role === "assistant") return !isProviderRefusalMessage(m);
 		return m.role === "user" || m.role === "toolResult";
