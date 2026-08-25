@@ -6,6 +6,7 @@
 
 - Streaming `message_update` snapshots share tool-call arguments by reference instead of deep-cloning them on every delta, cutting a large structured tool call's per-delta snapshot cost from ~0.5 s to ~8 ms, while terminal messages and the authoritative tool call a `toolcall_end` carries keep the sanitizing deep clone.
 - `AppendOnlyContextManager` computes per-message digests with `Bun.hash` (native Wyhash) instead of a JavaScript char-by-char hash, cutting ~5 ms per turn from the stable-prefix scan on long conversations.
+- `AppendOnlyContextManager.#longestStablePrefix` skips the JSON.stringify digest when the incoming message is the same object or shares the same `content` array reference plus matching scalar fields, cutting the per-turn stable-prefix scan from ~13 ms to <1 ms on a 33K-message conversation.
 
 ### Added
 
