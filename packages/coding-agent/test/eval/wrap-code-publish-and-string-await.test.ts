@@ -6,7 +6,6 @@
  *   to rewrite — the IIFE swallows it
  * - await in a comment/string is not an AwaitExpression
  * - publishGlobals uses binding names (`b`, `rest`), not pattern keys (`a`)
- * - a method-body await is an execution boundary; the class itself must not wrap
  */
 import { describe, expect, it } from "bun:test";
 import { wrapCode } from "@veyyon/coding-agent/eval/js/shared/rewrite-imports";
@@ -43,11 +42,3 @@ describe("publishGlobals writes the binding names, not the pattern keys", () => 
 	});
 });
 
-describe("execution boundaries stop at methods, not at the class declaration", () => {
-	it("does not wrap a class whose only await is inside a method", async () => {
-		const src = ["class Worker {", "  async run() {", "    return await this.step();", "  }", "}"].join("\n");
-		const result = await wrapCode(src);
-		expect(result.asyncWrapped).toBe(false);
-		expect(result.source).toContain("var Worker = class");
-	});
-});

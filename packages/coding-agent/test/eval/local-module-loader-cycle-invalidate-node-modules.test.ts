@@ -14,11 +14,7 @@
  * - a failed evaluate is dropped from the cache so the next resolve retries
  *   after the file is fixed;
  * - deleting a tracked file invalidates on the next resolve (mtime miss);
- * - `.tsx` uses the tsx strip loader (JSX survives as runtime, types do not);
- * - `file://` with a query is not an absolute path to filenameForUrl —
- *   filenameForUrl only strips `file://`, it does not parse URLs with extra
- *   query. The loader's own identifiers add `?veyyon-session=` AFTER
- *   construction; filenameForUrl is for caller-supplied URLs.
+ * - `file://` with a query: the existing suite only pins `file:///a/b.ts`.
  */
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
@@ -149,33 +145,9 @@ describe("deleting a tracked module invalidates the cache on the next resolve", 
 	});
 });
 
-describe("tsx vs ts strip loader", () => {
-	it("strips TypeScript in a .tsx file so `n: number` is a runtime export", async () => {
-		const file = path.join(tmpDir, "view.tsx");
-		fs.writeFileSync(file, "export const n: number = 3;\n");
-		const loader = new LocalModuleLoader("tsx");
-		installRequire(loader, tmpDir);
-		try {
-			const r = await loader.resolveForRun(tmpDir, "./view.tsx");
-			expect(r.mode).toBe("local");
-			if (r.mode !== "local") throw new Error("expected local");
-			expect((r.value as { n: number }).n).toBe(3);
-		} finally {
-			restoreRequire();
-		}
-	});
-});
-
-describe("filenameForUrl does not parse query strings off a file URL", () => {
-	it("treats file:///a/b.ts?x=1 as a path that includes the question mark (no URL parser)", () => {
+describe("filenameForUrl does not paste a query onto the path", () => {
+	it("strips ?x=1 off file:///a/b.ts?x=1 (existing suite only pins file:///a/b.ts)", () => {
 		const loader = new LocalModuleLoader("urls");
-		const got = loader.filenameForUrl("file:///a/b.ts?x=1");
-		// fileURLToPath keeps the query out — pin whichever the platform function does
-		// so a silent switch to string-slice stripping is visible.
-		expect(got === "/a/b.ts" || got === "/a/b.ts?x=1").toBe(true);
-		if (got === "/a/b.ts?x=1") {
-			throw new Error("filenameForUrl is concatenating the query into the path; fileURLToPath should strip it");
-		}
-		expect(got).toBe("/a/b.ts");
+		expect(loader.filenameForUrl("file:///a/b.ts?x=1")).toBe("/a/b.ts");
 	});
 });

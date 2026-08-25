@@ -1,7 +1,8 @@
 /**
- * sqlite.test.ts drives ReadTool through INTEGER / TEXT PK and notes:rowid.
- * It never opens a WITHOUT ROWID table, never looks up a REAL PK from a path
- * key, never inserts DEFAULT VALUES from `{}`, and never runs q= with a `?`.
+ * sqlite.test.ts drives ReadTool through INTEGER / TEXT PK, notes:rowid, and
+ * composite PK. It never opens a WITHOUT ROWID table, never looks up a REAL
+ * PK from a path key, never inserts DEFAULT VALUES from `{}`, and never runs
+ * q= with a `?`.
  */
 import { Database } from "bun:sqlite";
 import { describe, expect, it } from "bun:test";
@@ -24,16 +25,6 @@ describe("WITHOUT ROWID has no rowid fallback", () => {
 			db.close();
 		}
 	});
-
-	it("throws on a composite PK rather than inventing a rowid", () => {
-		const db = new Database(":memory:");
-		try {
-			db.run("CREATE TABLE kv (a TEXT NOT NULL, b TEXT NOT NULL, PRIMARY KEY (a, b)) WITHOUT ROWID");
-			expect(() => resolveTableRowLookup(db, "kv")).toThrow(/composite primary key; use '\?where='/i);
-		} finally {
-			db.close();
-		}
-	});
 });
 
 describe("path-key coercion follows the declared type string, not JS typeof", () => {
@@ -46,19 +37,6 @@ describe("path-key coercion follows the declared type string, not JS typeof", ()
 				x: 1.5,
 				label: "mid",
 			});
-		} finally {
-			db.close();
-		}
-	});
-
-	it("does not coerce a TEXT PK even when the value looks like an integer", () => {
-		const db = new Database(":memory:");
-		try {
-			db.run("CREATE TABLE slugs (slug TEXT PRIMARY KEY, title TEXT)");
-			db.run("INSERT INTO slugs (slug, title) VALUES ('42', 'fortytwo')");
-			db.run("INSERT INTO slugs (slug, title) VALUES ('042', 'padded')");
-			expect(getRowByKey(db, "slugs", { column: "slug", type: "TEXT" }, "42")?.title).toBe("fortytwo");
-			expect(getRowByKey(db, "slugs", { column: "slug", type: "TEXT" }, "042")?.title).toBe("padded");
 		} finally {
 			db.close();
 		}

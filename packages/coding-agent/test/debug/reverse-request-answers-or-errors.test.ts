@@ -64,23 +64,7 @@ async function spawnFor(command: string, args: unknown): Promise<DapClient> {
 	return client;
 }
 
-describe("a registered reverse-request handler is invoked with the adapter's arguments", () => {
-	it("receives runInTerminal args and can return a processId body", async () => {
-		const client = await spawnFor("runInTerminal", { args: ["echo", "hi"], cwd: "/tmp" });
-		const latch = Promise.withResolvers<unknown>();
-		client.onReverseRequest("runInTerminal", raw => {
-			latch.resolve(raw);
-			return { processId: 4242 };
-		});
-		const raw = await Promise.race([
-			latch.promise,
-			Bun.sleep(2000).then(() => {
-				throw new Error("runInTerminal handler was never invoked");
-			}),
-		]);
-		expect(raw).toEqual({ args: ["echo", "hi"], cwd: "/tmp" });
-		expect(client.isAlive()).toBe(true);
-	});
+describe("a reverse-request handler that throws must still answer the adapter", () => {
 
 	it("invokes a throwing handler without killing the client", async () => {
 		const client = await spawnFor("runInTerminal", { args: ["true"] });

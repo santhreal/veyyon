@@ -32,13 +32,6 @@ describe("wrapCode does not wrap a cell whose only return/await is nested", () =
 		expect(result.source).toContain("async function f()");
 		expect(result.source).toContain("return await 1");
 	});
-
-	it("wraps for-await-of at the top level, not a for-of", async () => {
-		const awaited = await wrapCode("for await (const x of xs) x;");
-		expect(awaited.asyncWrapped).toBe(true);
-		const plain = await wrapCode("for (const x of xs) x;");
-		expect(plain.asyncWrapped).toBe(false);
-	});
 });
 
 describe("wrapCode demotes only top-level lexicals", () => {

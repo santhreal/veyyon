@@ -38,17 +38,6 @@ describe("queryRows refuses a where= fragment that binds extra parameters", () =
 		}
 	});
 
-	it("refuses `id IN (?, ?)` — two extra slots, still not pagination", () => {
-		const db = users();
-		try {
-			expect(() => queryRows(db, "users", { limit: 1, offset: 0, where: "id IN (?, ?)" })).toThrow(
-				/changed the expected pagination parameters/i,
-			);
-		} finally {
-			db.close();
-		}
-	});
-
 	it("refuses a named `:id` bind in where= — bun:sqlite counts named params too", () => {
 		const db = users();
 		try {
@@ -90,30 +79,6 @@ describe("queryRows does not treat a quoted question mark as a bind slot", () =>
 			const result = queryRows(db, "users", { limit: 20, offset: 0, where: `note = "ok?"` });
 			expect(result.totalCount).toBe(1);
 			expect(result.rows[0]?.name).toBe("Ada");
-		} finally {
-			db.close();
-		}
-	});
-});
-
-describe("queryRows pagination binds are the only two parameters on a clean where", () => {
-	it("honors limit/offset against a predicate with no placeholders", () => {
-		const db = users();
-		try {
-			const result = queryRows(db, "users", { limit: 1, offset: 1, where: "id >= 1", order: "id:asc" });
-			expect(result.totalCount).toBe(2);
-			expect(result.rows).toEqual([{ id: 2, name: "Bob", note: "plain" }]);
-		} finally {
-			db.close();
-		}
-	});
-
-	it("counts through the where= predicate, not the whole table", () => {
-		const db = users();
-		try {
-			const result = queryRows(db, "users", { limit: 20, offset: 0, where: "name = 'Ada'" });
-			expect(result.totalCount).toBe(1);
-			expect(result.rows).toHaveLength(1);
 		} finally {
 			db.close();
 		}

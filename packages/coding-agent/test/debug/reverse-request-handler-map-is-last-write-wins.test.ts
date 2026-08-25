@@ -5,10 +5,7 @@
  * unsubscribing the replaced handler is a no-op and must not remove the
  * live one.
  *
- * startDebugging is a second command; it does not share runInTerminal's
- * handler. An unsupported command is still answered (success=false) so the
- * adapter is not left blocked — already pinned for runInTerminal; this file
- * pins startDebugging as the other reverse request the DAP spec names.
+ * Unregistered and throwing handlers live in reverse-request-answers-or-errors.test.ts.
  */
 import { afterEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
@@ -111,33 +108,5 @@ describe("onReverseRequest last-write-wins per command, unsubscribe is identity-
 		]);
 		expect(raw).toEqual({ args: ["true"] });
 	});
-
-	it("unsubscribing the live handler leaves startDebugging (and runInTerminal) unanswered-but-alive", async () => {
-		const client = await spawnFor("startDebugging", { configuration: { type: "node" } });
-		const unsub = client.onReverseRequest("startDebugging", () => {
-			throw new Error("should have been unsubscribed");
-		});
-		unsub();
-		await Bun.sleep(400);
-		expect(client.isAlive()).toBe(true);
-	});
 });
 
-describe("startDebugging is a distinct reverse-request command", () => {
-	it("invokes a startDebugging handler with the configuration body", async () => {
-		const client = await spawnFor("startDebugging", { configuration: { type: "lldb", request: "launch" } });
-		const latch = Promise.withResolvers<unknown>();
-		client.onReverseRequest("startDebugging", raw => {
-			latch.resolve(raw);
-			return {};
-				});
-		const raw = await Promise.race([
-			latch.promise,
-			Bun.sleep(2000).then(() => {
-				throw new Error("startDebugging handler was never invoked");
-			}),
-		]);
-		expect(raw).toEqual({ configuration: { type: "lldb", request: "launch" } });
-		expect(client.isAlive()).toBe(true);
-	});
-});

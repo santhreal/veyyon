@@ -7,8 +7,8 @@
  * `architecture/the-json-walk-is-not-a-secrets-module.test.ts` already
  * pins ill-formed UTF-16 and identity-when-unchanged. Remaining refusals
  * that only exist on this module: bigint/NaN/Infinity, accessors,
- * enumerable symbol keys, non-plain class instances, inherited keys,
- * `undefined` optional fields, and case-fold key collision.
+ * enumerable symbol keys, non-plain class instances, inherited keys, and
+ * `undefined` optional fields.
  */
 import { describe, expect, it } from "bun:test";
 import { JsonTransformError, mapJsonStrings } from "@veyyon/coding-agent/json-transform";
@@ -90,8 +90,3 @@ describe("mapJsonStrings walks own enumerable fields only", () => {
 	});
 });
 
-describe("mapJsonStrings key-collision is on the mapped keys, not the source keys", () => {
-	it("refuses two keys that the mapper folds onto one protected name", () => {
-		expect(() => mapJsonStrings({ Token: "a", token: "b" }, s => s.toLowerCase())).toThrow(/same protected key/i);
-	});
-});

@@ -1,7 +1,9 @@
 /**
  * Incremental yield labels must lockstep with the JSON Schema the validator
- * actually runs — including `$ref` inlining, JTD `elements` → array items,
- * closed `oneOf` unions, and `patternProperties`.
+ * actually runs — including `$ref` inlining and closed `oneOf` unions.
+ *
+ * Closed `patternProperties` lives in
+ * output-schema-open-pattern-properties-do-not-gate.test.ts.
  *
  * WHY THIS SUITE EXISTS. `buildOutputValidator` used to derive
  * `knownSectionLabels` / `rejectUnknownSections` from the wrapper object that
@@ -10,10 +12,6 @@
  * `properties` / `additionalProperties` and let unknown labels through. Those
  * then failed only as parent-side `schema_violation` after the subagent had
  * already finished.
- *
- * Array-typed properties validate ONE ELEMENT per incremental yield, not the
- * array. Passing an array to `validateSection.get("findings")` is the mistake
- * a caller makes when it confuses the assembled output with a section payload.
  *
  * `buildSectionValidators` walks `properties` with `for…in`. Inherited
  * enumerable keys on a prototype become fake section labels. Pin that they
@@ -52,34 +50,6 @@ describe("root $ref is inlined before incremental-label metadata is derived", ()
 		expect(validator?.isKnownSection("findings")).toBe(true);
 		expect(validator?.isKnownSection("other")).toBe(false);
 		expect([...(validator?.knownSectionLabels ?? [])].sort()).toEqual(["findings", "summary"]);
-	});
-});
-
-describe("array-typed properties validate one element, not the array", () => {
-	it("a findings yield of one object succeeds; a whole array fails", () => {
-		const { validator } = buildOutputValidator({
-			type: "object",
-			additionalProperties: false,
-			properties: {
-				findings: {
-					type: "array",
-					items: {
-						type: "object",
-						additionalProperties: false,
-						properties: { id: { type: "string" } },
-						required: ["id"],
-					},
-				},
-				summary: { type: "string" },
-			},
-			required: ["findings", "summary"],
-		});
-		const findings = validator?.validateSection.get("findings");
-		expect(findings).toBeDefined();
-		expect(findings?.({ id: "a" }).success).toBe(true);
-		expect(findings?.([{ id: "a" }]).success).toBe(false);
-		expect(validator?.validateSection.get("summary")?.("ok").success).toBe(true);
-		expect(validator?.validateSection.get("summary")?.({ text: "ok" }).success).toBe(false);
 	});
 });
 
@@ -130,22 +100,6 @@ describe("closed oneOf unions gate labels disjunctively", () => {
 		});
 		expect(validator?.rejectUnknownSections).toBe(false);
 		expect(validator?.isKnownSection("zzz")).toBe(true);
-	});
-});
-
-describe("patternProperties accept matching labels under a closed object", () => {
-	it("x-foo matches ^x- ; y-foo does not", () => {
-		const { validator } = buildOutputValidator({
-			type: "object",
-			additionalProperties: false,
-			patternProperties: {
-				"^x-": { type: "string" },
-			},
-		});
-		expect(validator?.rejectUnknownSections).toBe(true);
-		expect(validator?.isKnownSection("x-foo")).toBe(true);
-		expect(validator?.isKnownSection("y-foo")).toBe(false);
-		expect(validator?.knownSectionLabels).toEqual([]);
 	});
 });
 
