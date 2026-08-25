@@ -244,10 +244,22 @@ export class ChildProcess<In extends InMask = InMask> {
 
 	kill(reason?: Exception) {
 		if (reason && !this.#exitReasonPending) this.#exitReasonPending = reason;
-		if (!this.proc.killed)
+		if (this.proc.killed) return;
+		// Prefer the native Process class for tree-aware termination, but fall
+		// back to Bun's built-in proc.kill() (SIGTERM) when the native addon
+		// cannot load (e.g. GLIBC mismatch in older containers). Without this
+		// fallback, kill() throws an uncaught exception that crashes the host.
+		try {
 			void Process.fromPid(this.proc.pid)
 				?.terminate()
 				?.catch(e => void e);
+		} catch {
+			try {
+				this.proc.kill();
+			} catch {
+				// Process already exited.
+			}
+		}
 	}
 
 	// ── Output helpers ───────────────────────────────────────────────────
