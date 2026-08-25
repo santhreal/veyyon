@@ -400,6 +400,12 @@ export class StdioTransport implements MCPTransport {
 	onRequest?: (method: string, params: unknown) => Promise<unknown>;
 	/** Session CPU budget hook: the freshly spawned server pid is handed here so it joins the session's budget group. */
 	onSpawnPid?: (pid: number) => void;
+	/**
+	 * Called before the stdio subprocess is created. A session CPU budget
+	 * passes the spawn gate here so a saturated or uncreated group refuses
+	 * the server instead of launching it and adopting afterwards.
+	 */
+	beforeSpawn?: () => Promise<void>;
 
 	constructor(private config: MCPStdioServerConfig) {}
 
@@ -443,6 +449,7 @@ export class StdioTransport implements MCPTransport {
 		// triggers macOS Apple Events TCC prompts uses the same shape; the
 		// one-object `{ cmd }` overload timed out before prompting for `mcpbridge`
 		// even with `detached: false` (#5085).
+		await this.beforeSpawn?.();
 		this.#process = Bun.spawn(spawnCommand.cmd, {
 			cwd,
 			env,
