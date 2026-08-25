@@ -543,8 +543,15 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 				h2Client = http2.connect(baseUrl);
 			}
 
-			h2Request = h2Client.request(requestHeaders);
+			const { promise: h2Promise, resolve: resolveH2, reject: rejectH2 } = Promise.withResolvers<void>();
+			h2Client.on("error", (error: Error) => {
+				terminateStream(() => rejectH2(error));
+			});
+			h2Client.on("close", () => {
+				terminateStream();
+			});
 
+			h2Request = h2Client.request(requestHeaders);
 			stream.push({ type: "start", partial: output });
 
 			let pendingBuffer = Buffer.alloc(0);
@@ -598,8 +605,6 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 				conversationStateCache.set(conversationId, checkpoint);
 			};
 
-			let resolveH2: (() => void) | undefined;
-			let rejectH2: ((err: unknown) => void) | undefined;
 			let streamTerminated = false;
 			// `turnEnded` is the only thing that says the server finished this turn.
 			// The h2 stream also ends when the connection simply stops, and those two
@@ -636,10 +641,6 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 			const terminateStream = (reason?: () => void) => {
 				if (streamTerminated) return;
 				streamTerminated = true;
-				const resolve = resolveH2;
-				const reject = rejectH2;
-				resolveH2 = undefined;
-				rejectH2 = undefined;
 				void (async () => {
 					if (pendingMessagePromises.size > 0) {
 						await Promise.allSettled(Array.from(pendingMessagePromises));
@@ -650,7 +651,7 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 						// wait, 404 is the route. `CursorApiError` carries it, so
 						// the shared classifier reads the same retry decision it
 						// reads for every other provider's HTTP refusal.
-						reject?.(
+						rejectH2(
 							new AIError.CursorApiError(
 								`Cursor API error ${refusedStatus}: ${AIError.boundProviderErrorDetail(refusalBody)}`,
 								refusedStatus,
@@ -659,7 +660,7 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 						return;
 					}
 					if (endStreamError) {
-						reject?.(endStreamError);
+						rejectH2(endStreamError);
 						return;
 					}
 					if (reason) {
@@ -667,16 +668,16 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 						return;
 					}
 					if (turnCompleted) {
-						resolve?.();
+						resolveH2();
 						return;
 					}
-					reject?.(
+					rejectH2(
 						new AIError.ProviderResponseError(
 							"Cursor stream ended without a turn_ended update (connection dropped or response truncated)",
 							{ provider: model.provider, kind: "incomplete-stream" },
 						),
 					);
-				})().catch(err => reject?.(err));
+				})().catch(err => rejectH2(err));
 			};
 
 			h2Request.on("response", headers => {
@@ -813,53 +814,57 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 
 			heartbeatTimer = setInterval(sendHeartbeat, 5000);
 
-			await new Promise<void>((resolve, reject) => {
-				resolveH2 = resolve;
-				rejectH2 = reject;
-
-				h2Request!.on("trailers", trailers => {
-					const status = trailers["grpc-status"];
-					const rawMsg = String(trailers["grpc-message"] || "");
-					let msg = rawMsg;
-					try {
-						msg = decodeURIComponent(rawMsg);
-					} catch {
-						// Malformed percent-encoding in grpc-message should not crash event handler
-					}
-					if (status && status !== "0") {
-						failTurn(cursorStreamFailure(String(status), msg, "gRPC error"));
-					}
-				});
-
-				h2Request!.on("end", () => {
-					terminateStream();
-				});
-
-				h2Request!.on("close", () => {
-					terminateStream();
-				});
-
-				h2Request!.on("error", error => {
-					terminateStream(() => reject(error));
-				});
-
-				if (abortSignal) {
-					abortHandler = () => {
-						try {
-							h2Request?.close();
-						} catch {
-							// Ignore close errors
-						}
-						terminateStream(() => reject(new AIError.RequestAbortError()));
-					};
-					// Already aborted before we attached: the event will never fire, so
-					// run the handler once synchronously instead of hanging the round.
-					if (abortSignal.aborted) abortHandler();
-					// { once: true } auto-detaches if it fires; the finally detaches it
-					// on every normal completion so it never outlives this one round.
-					else abortSignal.addEventListener("abort", abortHandler, { once: true });
+			h2Request.on("trailers", trailers => {
+				const status = trailers["grpc-status"];
+				const rawMsg = String(trailers["grpc-message"] || "");
+				let msg = rawMsg;
+				try {
+					msg = decodeURIComponent(rawMsg);
+				} catch {
+					// Malformed percent-encoding in grpc-message should not crash event handler
+				}
+				if (status && status !== "0") {
+					failTurn(cursorStreamFailure(String(status), msg, "gRPC error"));
 				}
 			});
+
+			h2Request.on("end", () => {
+				terminateStream();
+			});
+
+			h2Request.on("close", () => {
+				terminateStream();
+			});
+
+			h2Request.on("error", (error: Error) => {
+				terminateStream(() => rejectH2(error));
+			});
+
+			if (abortSignal) {
+				abortHandler = () => {
+					try {
+						h2Request?.close();
+					} catch {
+						// Ignore close errors
+					}
+					try {
+						if (h2Client && !h2Client.closed && !h2Client.destroyed) {
+							h2Client.close();
+						}
+					} catch {
+						// Ignore close errors
+					}
+					terminateStream(() => rejectH2(new AIError.RequestAbortError()));
+				};
+				// Already aborted before we attached: the event will never fire, so
+				// run the handler once synchronously instead of hanging the round.
+				if (abortSignal.aborted) abortHandler();
+				// { once: true } auto-detaches if it fires; the finally detaches it
+				// on every normal completion so it never outlives this one round.
+				else abortSignal.addEventListener("abort", abortHandler, { once: true });
+			}
+
+			await h2Promise;
 
 			// The stream is over. Whether the TURN is over is a different question,
 			// and only `turnEnded` answers it: a dropped connection that happens to
