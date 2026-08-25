@@ -71,12 +71,12 @@ describe("AgentPauseGate unit adversarial", () => {
 		expect(released).toBe(true);
 	});
 
-	it("waitUntilResumed with aborted signal returns without resuming the gate", async () => {
+	it("waitUntilResumed with aborted signal rejects without resuming the gate", async () => {
 		gate = new AgentPauseGate();
 		gate.pause();
 		const ac = new AbortController();
 		ac.abort();
-		await gate.waitUntilResumed(ac.signal);
+		await expect(gate.waitUntilResumed(ac.signal)).rejects.toThrow();
 		// Gate remains engaged for other waiters.
 		expect(gate.paused).toBe(true);
 		gate.resume();

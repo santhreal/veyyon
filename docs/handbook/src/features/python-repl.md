@@ -155,6 +155,21 @@ If Python preflight fails and `eval.js` is enabled, `eval` remains available for
 
 Python prelude helpers include `agent(prompt, *, agent="deep", model=None, label=None, schema=None, handle=False, isolated=None, apply=None, merge=None)`. It synchronously calls the host bridge, runs one subagent through the task executor, and returns the final text. When `schema` is supplied, the helper parses the subagent's JSON output and returns the object. When `handle=True`, it instead returns a DAG node dict (`{"text", "output", "handle", "id", "agent"}`) whose `handle` is the spawned agent's recoverable `agent://<id>` URI (the parsed object lands under `"data"` when `schema` is also set), so a downstream `pipeline`/`parallel` stage can reference the transcript by handle instead of re-inlining it.
 
+### Persisted helper state
+
+JavaScript and Python cells expose `kv` for JSON values that must survive a kernel reset or session continuation. The store is scoped to the session under its artifacts directory and is shared across both runtimes:
+
+```python
+kv.set("cursor_handle", {"id": "callback-17"})
+saved = kv.get("cursor_handle")
+keys = kv.list()
+kv.delete("cursor_handle")
+```
+
+`kv.get(name, default=None)` accepts a Python default value. JavaScript returns `undefined` for a missing key. Keys contain 1–256 characters without `/`, `\`, or NUL. One encoded value is limited to 256 KiB and the store is limited to 4 MiB. Concurrent JavaScript and Python writes preserve updates to different keys.
+
+`defs()` returns up to 200 sorted names defined by user cells with a short value shape. Prelude and runtime names are omitted. Use it to check retained kernel state before redefining a helper.
+
 ## Execution flow and cancellation/timeout
 
 ### Cell timeout

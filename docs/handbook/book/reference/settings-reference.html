@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-846b30a5.js";
+            window.path_to_searchindex_js = "../searchindex-f8325d10.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-a2abefc1.js"></script>
@@ -271,7 +271,7 @@ veyyon config get compaction.threshold
 </thead>
 <tbody>
 <tr><td><code>display.collapseCompacted</code></td><td>Collapse Compacted History</td><td>boolean</td><td><code>true</code></td><td>Collapse pre-compaction history behind the summary divider on the live transcript; disable to keep the full transcript inline with dividers at each compaction point.</td></tr>
-<tr><td><code>compaction.remote</code></td><td>Remote Compaction</td><td>boolean</td><td><code>true</code></td><td>Applies only when the session model is a supported OpenAI Responses model, which includes Azure OpenAI Responses deployments and a ChatGPT Codex session; every other model ignores this setting and compacts locally. On, veyyon calls the OpenAI compaction endpoint and keeps the window it returns, which preserves reasoning state across the cut. That window is the whole compacted context, so the entry stores no summary text and the compaction model chain does not apply. There is no second local summary on purpose: it would pay a model to re-summarize a span the provider already compacted and leave two versions of one range that can disagree. Off, compaction runs locally on the usual summary path and stores readable summary text.</td></tr>
+<tr><td><code>compaction.remote</code></td><td>Remote Compaction</td><td>boolean</td><td><code>true</code></td><td>Applies only when the session model is a supported OpenAI Responses model, which includes Azure OpenAI Responses deployments and ChatGPT Codex sessions; every other model ignores this setting and compacts locally. On, veyyon calls the OpenAI compaction endpoint and keeps the window it returns, which preserves reasoning state across the cut. That window is the whole compacted context, so the entry stores no summary text and the compaction model chain does not apply. There is no second local summary on purpose: it would pay a model to re-summarize a span the provider already compacted and leave two versions of one range that can disagree. Off, compaction runs locally on the usual summary path and stores readable summary text.</td></tr>
 <tr><td><code>compaction.strategy</code></td><td>Compaction Type</td><td>enum</td><td><code>summary</code></td><td>Summary condenses history in place and continues the same session. Values: <code>summary</code>.</td></tr>
 <tr><td><code>compaction.threshold</code></td><td>Auto-Compaction Threshold</td><td>string</td><td><code>auto</code></td><td>When auto-compaction triggers. Auto uses the model’s window minus the reserve; a percent scales with each model’s window; a token amount is the same trigger on every model that can reach it, and a smaller model compacts at its own maximum.</td></tr>
 <tr><td><code>compaction.model</code></td><td>Compaction Model</td><td>modelChain</td><td><em>(unset)</em></td><td>Models used for in-place summary compaction, tried in order. Default: inherit — follows the main model live. Add fallbacks for when the first is unauthenticated or its window is too small.</td></tr>
