@@ -192,6 +192,26 @@ fn already_classified_as(text: &str, verdict: &Verdict) -> bool {
 /// header-shaped program line cannot turn a failed process into `[clean]` (or
 /// a successful process into `[errors]`), while a genuine replay retains
 /// summary details that no longer exist in the compact body.
+///
+/// # Subject-Agnostic Replay Condition
+///
+/// This check is intentionally subject-agnostic (subject-blind): it validates
+/// that the first non-empty line parses as a syntactically valid result header
+/// (`[clean] <subject>` or `[errors ...] <subject>`) whose [`Status`] agrees
+/// with `exit_code` (`Status::Clean` for `exit_code == 0`, `Status::Errors` for
+/// non-zero exit codes).
+///
+/// The check intentionally does not inspect or constrain the `<subject>`
+/// string beyond verifying that it is non-empty. The top-level dispatcher
+/// handles heterogeneous CLI tools whose subjects vary (e.g. `cargo test`,
+/// `cargo check`, `pytest`, `eslint`, `go test`), so any previously classified
+/// result header matching the process exit code is recognized as an
+/// already-minimized replay and passed through.
+///
+/// Conversely, inputs with mismatched status (e.g. `[clean]` with non-zero exit
+/// or `[errors]` with zero exit), missing or empty subjects, malformed header
+/// syntax, or ordinary unclassified program output do NOT take this bypass and
+/// return `false`.
 #[must_use]
 pub fn replay_matches_exit(text: &str, exit_code: i32) -> bool {
 	let expected = if exit_code == 0 {
@@ -348,6 +368,30 @@ mod tests {
 		assert!(!replay_matches_exit("[clean] cargo test\n", 101));
 		assert!(!replay_matches_exit("[errors] cargo test\n", 0));
 		assert!(!replay_matches_exit("program output\n", 0));
+	}
+
+	#[test]
+	fn replay_bypass_is_subject_agnostic_for_matching_status() {
+		// Valid headers with matching exit code take the bypass regardless of subject.
+		assert!(replay_matches_exit("[clean] arbitrary-tool\n", 0));
+		assert!(replay_matches_exit("[clean] custom tool: 5 passed\n", 0));
+		assert!(replay_matches_exit("[errors] unknown-binary\n", 1));
+		assert!(replay_matches_exit("[errors 4] third-party: failed\n", 2));
+
+		// Status mismatch never takes the bypass, even for known subjects.
+		assert!(!replay_matches_exit("[clean] cargo test\n", 1));
+		assert!(!replay_matches_exit("[clean] arbitrary-tool\n", 1));
+		assert!(!replay_matches_exit("[errors] cargo test\n", 0));
+		assert!(!replay_matches_exit("[errors 2] cargo test\n", 0));
+
+		// Missing/empty subjects and malformed headers never take the bypass.
+		assert!(!replay_matches_exit("[clean]", 0));
+		assert!(!replay_matches_exit("[clean]   ", 0));
+		assert!(!replay_matches_exit("[errors]", 1));
+		assert!(!replay_matches_exit("[errors   ]", 1));
+		assert!(!replay_matches_exit("[errors x] cargo test", 1));
+		assert!(!replay_matches_exit("", 0));
+		assert!(!replay_matches_exit("\n  \n", 0));
 	}
 
 	#[test]
