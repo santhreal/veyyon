@@ -9,7 +9,7 @@
 - Added the `publishesOwnModelLimits` provider flag, which stops generation from backfilling a context window or output cap from another host's same-family model.
 - `ProviderWireCapabilities.anthropicMessages` declares how a provider serves the Anthropic Messages API — its endpoint, credential placement, rejected request features and retryable model errors — and `declaredProviders()` and `declaredCapabilityNames()` derive the declaring sets from the table.
 - Bundled model resolution persists a content-verified enriched snapshot, and a registry cache stamp moves on every row-content write, and on a row crossing the freshness window it is read under, without treating SQLite sidecar churn or a provider re-verifying models it already had as a change.
-
+- Added `supportsServerCompaction` capability data for ChatGPT Codex backend models on the Responses API.
 ## [1.2.0] - 2026-08-23
 
 ### Breaking Changes

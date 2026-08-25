@@ -22,6 +22,8 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # owns it, and a bump makes a stale image a missing one.
 # shellcheck source=proof/docker/recorder-image.sh
 source "${REPO_ROOT}/proof/docker/recorder-image.sh"
+# shellcheck source=proof/docker/scene-config.sh
+source "${REPO_ROOT}/proof/docker/scene-config.sh"
 # `--fresh` records the same scene, same model, same terminal, on an empty
 # session. It is the LOAD floor the resumed arm is measured against, not a
 # main-vs-branch control: both arms run whatever tree is mounted at /repo.
@@ -39,6 +41,10 @@ else
 	RESUME_ARG='--resume ${RESUMED}'
 fi
 mkdir -p "${OUT}"
+
+SCENE_COMMAND="bash /sandbox/home/cmd.sh"
+SCENE_HOLD="${SCENE_HOLD:-600}"
+scene_docker_env_args
 
 cat >"${OUT}/cmd.sh" <<EOF
 cd /sandbox/home/demo
@@ -69,17 +75,9 @@ docker run --rm \
 	-e LOCAL_LLM_KEY=none \
 	-e DISPLAY=:99 \
 	-e SCENE_LIB=/repo/proof/scenes/lib.sh \
-	-e "SCENE_COMMAND=bash /sandbox/home/cmd.sh" \
-	-e "SCENE_WIDTH=${SCENE_WIDTH:-1400}" \
-	-e "SCENE_HEIGHT=${SCENE_HEIGHT:-860}" \
-	-e "SCENE_FONT_SIZE=${SCENE_FONT_SIZE:-14}" \
-	-e "SCENE_FPS=${SCENE_FPS:-20}" \
-	-e "SCENE_GIF_FPS=${SCENE_GIF_FPS:-8}" \
-	-e "SCENE_HOLD=${SCENE_HOLD:-600}" \
 	-e "LOAD_SETTLE=${LOAD_SETTLE:-30}" \
 	-e "STREAM_SETTLE=${STREAM_SETTLE:-300}" \
-	-e SCENE_TERMINAL=kitty \
-	-e SCENE_CWD=/sandbox/home/demo \
+	"${SCENE_DOCKER_ENV[@]}" \
 	-w /repo \
 	"${RECORDER_IMAGE}" \
 	bash -lc '

@@ -1292,13 +1292,16 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 			autoBgManager.acknowledgeDeliveries([job.jobId]);
 			const waitResult = await this.#waitForManagedBashJob(job, { thresholdMs: wallThresholdMs, stallMs, signal });
 			if (waitResult.kind === "completed") {
+				autoBgManager.acknowledgeDeliveries([job.jobId]);
 				return waitResult.result;
 			}
 			if (waitResult.kind === "failed") {
+				autoBgManager.acknowledgeDeliveries([job.jobId]);
 				throw waitResult.error;
 			}
 			if (waitResult.kind === "aborted") {
 				autoBgManager.cancel(job.jobId);
+				autoBgManager.resumeDeliveries([job.jobId]);
 				throw new ToolAbortError(job.getLatestText() || "Command aborted");
 			}
 			job.stopUpdates();
