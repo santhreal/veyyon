@@ -180,6 +180,7 @@ veyyon-iso = { path = "crates/veyyon-iso" }
 veyyon-diff-kernel = { path = "crates/veyyon-diff-kernel" }
 veyyon-glob = { path = "crates/veyyon-glob" }
 veyyon-grep-kernel = { path = "crates/veyyon-grep-kernel" }
+veyyon-highlight = { path = "crates/veyyon-highlight" }
 veyyon-keys = { path = "crates/veyyon-keys" }
 veyyon-shell = { path = "crates/veyyon-shell" }
 veyyon-test-scratch = { path = "crates/veyyon-test-scratch" }

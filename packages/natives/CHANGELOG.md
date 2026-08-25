@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Syntax highlighting moved from the native addon into the `veyyon-highlight` crate, with no change to highlighting output.
+
 ### Fixed
 
 - Fixed stock Windows AVX2 detection by trying PowerShell 7 before an isolated modern-addon trial; only explicit shell answers or illegal-instruction exits become verdicts, while missing, incompatible, timed-out, and unexpectedly crashing addons remain unknown.

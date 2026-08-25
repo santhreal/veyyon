@@ -5969,6 +5969,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "veyyon-highlight"
+version = "1.2.0"
+dependencies = [
+ "libc",
+ "syntect",
+]
+
+[[package]]
 name = "veyyon-iso"
 version = "1.2.0"
 dependencies = [
@@ -6023,7 +6031,6 @@ dependencies = [
  "serde_json",
  "similar 3.2.0",
  "smallvec",
- "syntect",
  "tiktoken-rs",
  "tokio",
  "tokio-util",
@@ -6033,6 +6040,7 @@ dependencies = [
  "veyyon-ast",
  "veyyon-glob",
  "veyyon-grep-kernel",
+ "veyyon-highlight",
  "veyyon-iso",
  "veyyon-keys",
  "veyyon-shell",
