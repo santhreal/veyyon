@@ -309,8 +309,11 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 	{
 		name: "prewalk",
 		textMode: true,
-		description: "Switch to a fast/cheap model at the next action (works even without --prewalk)",
+		description:
+			"Switch to the cheap model at the next action; /prewalk <model> or prewalk.cheapModel picks it (works even without --prewalk)",
+		inlineHint: "[model]",
 		acpDescription: "Prewalk at the next action",
+		allowArgs: true,
 	},
 
 	{

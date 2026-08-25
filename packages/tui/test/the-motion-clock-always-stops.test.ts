@@ -69,6 +69,7 @@ const RENDERS_PER_SETTLE: Record<string, number> = {
 	enter: 16,
 	hover: 6,
 	expand: 11,
+	reflow: 20,
 	move: 28,
 	settle: 39,
 };
