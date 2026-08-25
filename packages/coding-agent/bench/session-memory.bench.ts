@@ -2,11 +2,12 @@
  * Benchmark: resident memory of loading a large session through the real
  * pipeline.
  *
- * Measures, per phase, the heap AFTER a forced synchronous GC plus the
- * process high-water RSS, so steady-state retention and transient peaks are
- * reported separately:
+ * Reports three numbers per phase: the heap AFTER a forced synchronous GC,
+ * which is steady-state retention; the current RSS; and the process high-water
+ * RSS, which is monotonic, so the rise between two phases is the transient peak
+ * that phase reached.
  *
- *   1. module baseline      — heap before any session work
+ *   1. module baseline      — before any session work
  *   2. entries loaded       — retention of the parsed entry graph
  *   3. context build        — buildSessionContext over the loaded branch
  *
@@ -18,7 +19,6 @@
  */
 
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 import { SessionManager } from "../src/session/session-manager";
 
@@ -88,13 +88,26 @@ function peakRssMiB(): number {
 }
 
 function gcAndReport(label: string): void {
+	// Bun.gc(true) has no portable equivalent: node's global.gc exists only under
+	// --expose-gc, which this script cannot set for its own process. Without a
+	// forced collection the heap number is whatever the collector last felt like
+	// doing, which is not retention.
 	Bun.gc(true);
 	const heap = process.memoryUsage().heapUsed / 1048576;
 	const rss = process.memoryUsage().rss / 1048576;
-	console.log(`${label.padEnd(24)} heap ${heap.toFixed(0).padStart(5)} MiB   rss ${rss.toFixed(0).padStart(5)} MiB`);
+	const peak = peakRssMiB();
+	console.log(
+		`${label.padEnd(28)} heap ${heap.toFixed(0).padStart(5)} MiB   rss ${rss.toFixed(0).padStart(5)} MiB   peak ${peak.toFixed(0).padStart(5)} MiB`,
+	);
 }
 
-const dir = fs.mkdtempSync(path.join(os.tmpdir(), "session-memory-"));
+// The transcript is written under the repo's gitignored scratch root rather than
+// the system temp dir: at SESSION_MB=500 this is half a gigabyte, and on a host
+// whose /tmp is a tmpfs that is half a gigabyte of RAM charged against the
+// measurement the bench exists to take.
+const scratchRoot = path.join(import.meta.dirname, "..", "..", "..", ".scratch");
+fs.mkdirSync(scratchRoot, { recursive: true });
+const dir = fs.mkdtempSync(path.join(scratchRoot, "session-memory-"));
 const { file, bytes, count } = writeSyntheticSession(dir);
 console.log(`synthetic session: ${(bytes / 1048576).toFixed(1)} MiB, ${count} entries (${TARGET_MB} MiB target)`);
 gcAndReport("module baseline");
@@ -104,17 +117,12 @@ const sm = await SessionManager.open(file, undefined, undefined, { suppressBread
 const loadMs = performance.now() - t0;
 gcAndReport(`entries loaded (${loadMs.toFixed(0)}ms)`);
 
-const entries = sm.getEntries();
-let contextChars = 0;
-for (const entry of entries) {
-	if (entry.type === "message") {
-		const content = entry.message.content;
-		if (typeof content === "string") contextChars += content.length;
-		else if (Array.isArray(content))
-			for (const block of content) if (block.type === "text") contextChars += block.text.length;
-	}
-}
-console.log(`context text volume  ${((contextChars * 2) / 1048576).toFixed(1)} MiB (UTF-16)`);
-console.log(`peak RSS             ${peakRssMiB().toFixed(0)} MiB`);
+const t1 = performance.now();
+// The manager's own accessor, not the free function: it passes the live entry
+// array, leaf and id index, which is the shape the production build sees.
+const context = sm.buildSessionContext();
+const buildMs = performance.now() - t1;
+gcAndReport(`context build (${buildMs.toFixed(0)}ms)`);
+console.log(`context messages             ${context.messages.length}`);
 
 fs.rmSync(dir, { recursive: true, force: true });
