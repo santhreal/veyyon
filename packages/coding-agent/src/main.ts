@@ -1144,7 +1144,9 @@ export async function buildSessionOptions(
 		// stopped resolving to a model (#980 fail-closed), so a target the
 		// operator did not name fails loud and points at the setting that fixes
 		// it, instead of dying inside role expansion with no corrective action.
-		const cheapPattern = parsed.prewalkInto || normalizeModelPatternList(activeSettings.get("prewalk.cheapModel"))[0];
+		const cheapPattern =
+			normalizeModelPatternList(parsed.prewalkInto)[0] ||
+			normalizeModelPatternList(activeSettings.get("prewalk.cheapModel"))[0];
 		if (!cheapPattern) {
 			throw new Error(
 				'Prewalk needs a cheap target model: set "prewalk.cheapModel" in settings or pass --prewalk-into <model>.',

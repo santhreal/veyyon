@@ -162,6 +162,29 @@ describe("/prewalk resolves its cheap target", () => {
 		const target = options.prewalk?.target;
 		expect(target && `${target.provider}/${target.id}`).toBe(CHEAP);
 	});
+	it("resolves the first entry of a comma list passed to --prewalk-into and matches /prewalk", async () => {
+		const registry = makeRegistry();
+		const settings = Settings.isolated({});
+		const commaList = `${CHEAP}, ${STRONG}`;
+
+		// Slash command: /prewalk <comma-list> resolves first entry (CHEAP)
+		const h = makeRuntime(registry, settings);
+		await executeAcpBuiltinSlashCommand(`/prewalk ${commaList}`, h.runtime);
+		expect(h.armPrewalk).toHaveBeenCalledTimes(1);
+		const [slashTarget] = h.armPrewalk.mock.calls[0] as unknown as [Model<Api>];
+		expect(`${slashTarget.provider}/${slashTarget.id}`).toBe(CHEAP);
+
+		// CLI flag: --prewalk-into <comma-list> resolves first entry (CHEAP)
+		const parsed = parseArgs(["--prewalk-into", commaList]);
+		const options = await buildSessionOptions(parsed, [], undefined, registry, settings);
+		const cliTarget = options.prewalk?.target;
+		expect(cliTarget && `${cliTarget.provider}/${cliTarget.id}`).toBe(CHEAP);
+
+		// Both resolve the exact same target model
+		expect(cliTarget && `${cliTarget.provider}/${cliTarget.id}`).toBe(
+			`${slashTarget.provider}/${slashTarget.id}`,
+		);
+	});
 
 	it("resolves a role alias in prewalk.strongModel as the start model", async () => {
 		const registry = makeRegistry();
