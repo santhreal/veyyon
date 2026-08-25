@@ -15,6 +15,7 @@
 - `storedToolCallIds` is skipped when the assistant message has no tool-call blocks, avoiding a 1.45 ms full-history scan on pure-text turns.
 - The done, recovered, and abort paths share one snapshot between `message_start` and `message_end` events instead of copying the assistant message twice, avoiding a redundant deep-clone of content and tool-call arguments per finalized turn.
 - `AppendOnlyContextManager` tracks whether any synced message contains an image block, letting the provider image policy skip an O(n) per-turn scan of all message content blocks when the conversation has no images.
+- `pruneSupersededToolResults` merges the superseded-results backward walk and the useless-results forward walk into a single backward pass, cutting the per-turn pruning scan from 3 O(n) passes to 2 on the full branch entry list.
 
 ### Added
 

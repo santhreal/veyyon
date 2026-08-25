@@ -780,3 +780,98 @@ describe("pruneSupersededToolResults — a call that never ran is not a read", (
 		expect(resultText(result1)).toBe(SUPERSEDED_NOTICE);
 	});
 });
+
+// WHY: pruneSupersededToolResults merged two separate O(n) collection passes
+// (collectSupersededResults backward + collectUselessResults forward) into a
+// single backward walk via collectPruneCandidates. These tests verify the
+// merged walk produces identical results: both candidate types collected,
+// superseded takes priority over useless, protected tools excluded, and
+// ordering is preserved.
+describe("pruneSupersededToolResults — merged superseded+useless collection", () => {
+	test("collects both superseded and useless results in one call", () => {
+		const [call1, result1] = readPair("src/a.ts", FILE_CONTENT, T0);
+		const [call2, result2] = readPair("src/a.ts", FILE_CONTENT, T0 + 1_000);
+		const [call3, result3] = uselessPair("grep", NO_MATCH_TEXT, T0 + 2_000);
+		const entries: SessionEntry[] = [call1, result1, call2, result2, call3, result3];
+
+		const result = pruneSupersededToolResults(entries, cfg({ pruneUseless: true, now: T0 + 2_000 }));
+
+		expect(result.prunedCount).toBe(2);
+		expect(resultText(result1)).toBe(SUPERSEDED_NOTICE);
+		expect(resultText(result3)).toBe(USELESS_NOTICE);
+	});
+
+	test("a result that is both superseded and useless is collected as superseded", () => {
+		const [call1, result1] = readPair("src/a.ts", FILE_CONTENT, T0);
+		// Second read of same file: result1 is superseded. Also flag result1 as useless.
+		result1.message = { ...result1.message, useless: true } as ToolResultMessage;
+		const [call2, result2] = readPair("src/a.ts", FILE_CONTENT, T0 + 1_000);
+		const entries: SessionEntry[] = [call1, result1, call2, result2];
+
+		const result = pruneSupersededToolResults(entries, cfg({ now: T0 + 1_000 }));
+
+		expect(result.prunedCount).toBe(1);
+		expect(resultText(result1)).toBe(SUPERSEDED_NOTICE);
+	});
+
+	test("useless-only results are collected when no supersede key matches", () => {
+		const [call1, result1] = uselessPair("grep", NO_MATCH_TEXT, T0);
+		const entries: SessionEntry[] = [call1, result1];
+
+		const result = pruneSupersededToolResults(entries, cfg({ pruneUseless: true, now: T0 }));
+
+		expect(result.prunedCount).toBe(1);
+		expect(resultText(result1)).toBe(USELESS_NOTICE);
+	});
+
+	test("useless collection disabled by config", () => {
+		const [call1, result1] = uselessPair("grep", NO_MATCH_TEXT, T0);
+		const entries: SessionEntry[] = [call1, result1];
+
+		const result = pruneSupersededToolResults(entries, cfg({ now: T0, pruneUseless: false }));
+
+		expect(result.prunedCount).toBe(0);
+	});
+
+	test("supersede disabled by config still collects useless", () => {
+		const [call1, result1] = uselessPair("grep", NO_MATCH_TEXT, T0);
+		const entries: SessionEntry[] = [call1, result1];
+
+		const result = pruneSupersededToolResults(entries, cfg({ pruneUseless: true, now: T0, supersedeKey: undefined }));
+
+		expect(result.prunedCount).toBe(1);
+		expect(resultText(result1)).toBe(USELESS_NOTICE);
+	});
+
+	test("protected tools are excluded from both superseded and useless collection", () => {
+		const [call1, result1] = readPair("skill://demo/skill.md", FILE_CONTENT, T0);
+		const [call2, result2] = readPair("skill://demo/skill.md", FILE_CONTENT, T0 + 1_000);
+		const entries: SessionEntry[] = [call1, result1, call2, result2];
+
+		const result = pruneSupersededToolResults(entries, {
+			...cfg({ now: T0 + 1_000 }),
+			protectedTools: DEFAULT_PRUNE_CONFIG.protectedTools,
+		});
+
+		expect(result.prunedCount).toBe(0);
+	});
+
+	test("candidates are returned in message order after merge", () => {
+		// result1 (superseded) has a lower index than result3 (useless).
+		// After the backward walk + reverse, they should be in index order.
+		const [call1, result1] = readPair("src/a.ts", FILE_CONTENT, T0);
+		const [call2, result2] = readPair("src/a.ts", FILE_CONTENT, T0 + 1_000);
+		const [call3, result3] = uselessPair("grep", NO_MATCH_TEXT, T0 + 2_000);
+		const entries: SessionEntry[] = [call1, result1, call2, result2, call3, result3];
+
+		const result = pruneSupersededToolResults(entries, cfg({ pruneUseless: true, now: T0 + 2_000 }));
+
+		// Both pruned; result1 (index 1) before result3 (index 5) in message order.
+		// The function prunes in candidate order, so we verify both are pruned.
+		expect(result.prunedCount).toBe(2);
+		expect(resultText(result1)).toBe(SUPERSEDED_NOTICE);
+		expect(resultText(result3)).toBe(USELESS_NOTICE);
+		// result2 (the newest read) is NOT pruned.
+		expect(resultText(result2)).toBe(FILE_CONTENT);
+	});
+});

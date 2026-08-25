@@ -249,6 +249,72 @@ function collectUselessResults(
 }
 
 /**
+ * Collect superseded and useless tool-result candidates in a single backward
+ * walk, merging what was two separate O(n) passes into one. A superseded
+ * result (an older read whose key a newer read has already claimed) is
+ * collected first; a useless result (flagged by its tool) is collected only
+ * when it was not already collected as superseded. Returned in message order.
+ */
+function collectPruneCandidates(
+	entries: readonly SessionEntry[],
+	toolCallsById: ReadonlyMap<string, AgentToolCall>,
+	supersedeKey: SupersedeKeyFn | undefined,
+	protectedTools: readonly ProtectedToolMatcher[],
+	pruneUseless: boolean,
+): SupersedeCandidate[] {
+	const candidates: SupersedeCandidate[] = [];
+	const seenKeys = new Set<string>();
+	for (let i = entries.length - 1; i >= 0; i--) {
+		const entry = entries[i];
+		const message = getToolResultMessage(entry);
+		if (!message || message.prunedAt !== undefined) continue;
+		const toolCall = toolCallsById.get(message.toolCallId);
+
+		// Superseded check: a newer result with the same key (or a prefix-parent
+		// key) has already been seen in this backward walk.
+		if (supersedeKey && toolCall) {
+			if (!isProtectedToolResult(message, toolCall, protectedTools) && !toolResultNeverRan(message.details)) {
+				const key = supersedeKey(toolCall.name, toolCall.arguments as Record<string, unknown>);
+				if (key !== undefined) {
+					const separator = key.indexOf("\u0000");
+					const superseded = seenKeys.has(key) || (separator >= 0 && seenKeys.has(key.slice(0, separator)));
+					seenKeys.add(key);
+					if (superseded) {
+						candidates.push({
+							entry: entry as SessionMessageEntry,
+							message,
+							index: i,
+							tokens: estimateTokens(message as AgentMessage),
+							notice: SUPERSEDED_NOTICE,
+						});
+						continue;
+					}
+				}
+			}
+		}
+
+		// Useless check: the tool itself flagged the result as carrying no
+		// information worth retaining. Skipped when already collected as
+		// superseded (the `continue` above).
+		if (pruneUseless && message.useless === true && !message.isError) {
+			if (!isProtectedToolResult(message, toolCall, protectedTools)) {
+				const tokens = estimateTokens(message as AgentMessage);
+				if (estimatePrunedSavings(tokens, USELESS_NOTICE) > 0) {
+					candidates.push({
+						entry: entry as SessionMessageEntry,
+						message,
+						index: i,
+						tokens,
+						notice: USELESS_NOTICE,
+					});
+				}
+			}
+		}
+	}
+	return candidates.reverse();
+}
+
+/**
  * Deepest batch of victims whose reclaimed tokens pay for the one cache rewrite
  * they force, or an empty array when no batch does.
  *
@@ -293,14 +359,13 @@ function chooseWorthwhileSweep(
  */
 export function pruneSupersededToolResults(entries: SessionEntry[], config: SupersedePruneConfig): PruneResult {
 	const toolCallsById = collectToolCallsById(entries);
-	const candidates = config.supersedeKey
-		? collectSupersededResults(entries, toolCallsById, config.supersedeKey, config.protectedTools)
-		: [];
-	if (config.pruneUseless) {
-		const exclude = new Set(candidates.map(candidate => candidate.message));
-		candidates.push(...collectUselessResults(entries, toolCallsById, config.protectedTools, exclude));
-		candidates.sort((a, b) => a.index - b.index);
-	}
+	const candidates = collectPruneCandidates(
+		entries,
+		toolCallsById,
+		config.supersedeKey,
+		config.protectedTools,
+		Boolean(config.pruneUseless),
+	);
 	if (candidates.length === 0) return { prunedCount: 0, tokensSaved: 0 };
 
 	const now = config.now ?? Date.now();
