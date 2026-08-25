@@ -502,13 +502,13 @@ function getConfiguredAdapters(cwd: string): string {
 }
 
 const ADAPTER_UNAVAILABLE_MESSAGES: Readonly<Record<string, string>> = {
-	debugpy: "adapter 'debugpy' is not available: python not found in PATH",
+	debugpy: "adapter 'debugpy' is not available: neither python3 nor python was found in PATH",
 	dlv: "adapter 'dlv' is not available: install with 'go install github.com/go-delve/delve/cmd/dlv@latest'",
 	rdbg: "adapter 'rdbg' is not available: install with 'gem install debug'",
 };
 
 const ADAPTER_CANONICAL_COMMANDS: Readonly<Record<string, string>> = {
-	debugpy: "python",
+	debugpy: "python3",
 	dlv: "dlv",
 	rdbg: "rdbg",
 };

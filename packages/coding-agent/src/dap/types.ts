@@ -477,6 +477,13 @@ export interface DapClientState {
 
 export interface DapAdapterConfig {
 	command: string;
+	/** Spellings tried, in order, when `command` does not resolve on PATH. For
+	 *  an interpreter whose name differs across platforms (`python3` on current
+	 *  Linux and macOS, `python` on Windows and older distributions) this is the
+	 *  difference between an available adapter and none. A config that names its
+	 *  own `command` drops the inherited list, so an explicit choice is never
+	 *  swapped for another binary. */
+	commandFallbacks?: string[];
 	args?: string[];
 	languages?: string[];
 	fileTypes?: string[];

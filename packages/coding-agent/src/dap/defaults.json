@@ -43,7 +43,8 @@
 		}
 	},
 	"debugpy": {
-		"command": "python",
+		"command": "python3",
+		"commandFallbacks": ["python"],
 		"args": ["-m", "debugpy.adapter"],
 		"languages": ["python"],
 		"fileTypes": [".py"],
