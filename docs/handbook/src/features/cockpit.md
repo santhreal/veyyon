@@ -42,6 +42,33 @@ The `pr` segment is skipped while any of these operations is in progress. A bran
 
 The `profile` segment shows the active profile name (`work`, `rec`, a client sandbox), so you always know which profile's config, sessions, and keys are live. It hides itself on the built-in `default` profile, so an unconfigured status line stays clean. Every built-in preset places it, so switching profiles is visible without any configuration.
 
+The `path` segment shows the working directory, shortened in three steps: a workspace root is
+stripped off the front, the home directory collapses to `~`, and what is left is clipped to a
+column budget from its front, so the directory you are in stays readable. Each step is a
+`statusLine.segmentOptions.path` key:
+
+```yaml
+statusLine:
+  preset: custom
+  segmentOptions:
+    path:
+      displayRoots: ["~/code", "/srv/workspaces"]  # workspace roots, most specific first
+      maxLength: 40                                 # columns the path may spend
+      abbreviate: true                              # collapse the home directory to ~
+      stripWorkPrefix: true                         # strip a workspace root at all
+```
+
+`displayRoots` lists the directories your projects live under, and `~` stands for the home
+directory. A working directory under one of them is shown relative to it, so
+`/srv/workspaces/platform-services/normalizer` reads `platform-services/normalizer`. The first
+entry that matches wins, which is how a nested root is named ahead of the one above it. The list
+replaces the defaults rather than adding to them; without it the defaults are `~/Projects` and
+`/work`. An entry that is not an absolute path cannot contain a directory, so it is dropped and
+named in the log once. `stripWorkPrefix: false` turns the whole step off.
+
+A project inside a temporary directory is shown relative to that temporary directory instead,
+with its own icon, whatever `displayRoots` says.
+
 The `secrets` segment shows that a stored credential is live where you are working: `2 secrets`. It counts
 what would actually expand at the tool boundary in this directory, not what is in the vault file, so
 a credential scoped elsewhere or already expired is not counted. It hides itself when nothing is

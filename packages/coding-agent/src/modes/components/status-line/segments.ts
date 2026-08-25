@@ -10,6 +10,7 @@ import {
 	formatNumber,
 	getActiveProfileOrDefault,
 	getProjectDir,
+	logger,
 	pathIsWithin,
 	relativePathWithinRoot,
 } from "@veyyon/utils";
@@ -83,12 +84,71 @@ function thinkingGlyph(display: string): string {
 	return space === -1 ? display : display.slice(0, space);
 }
 
-function stripDisplayRoot(pwd: string): string {
-	for (const root of [path.join(os.homedir(), "Projects"), "/work"]) {
-		const relative = relativePathWithinRoot(root, pwd);
-		if (relative) return relative;
+/**
+ * Workspace roots the path segment shows a project RELATIVE to, when no root is configured.
+ *
+ * Two conventions, and that is all they are: a `Projects` directory in the home directory, and
+ * a `/work` mount. They are the default because they are what this segment has always
+ * stripped, not because they are anyone's layout -- `path.displayRoots` is how a session names
+ * its own, and `/work` on Windows resolves against whichever drive the process is on, which is
+ * an accident of `path.resolve` rather than a place anything lives.
+ */
+export const DEFAULT_DISPLAY_ROOTS: readonly string[] = [path.join(os.homedir(), "Projects"), "/work"];
+
+/** Display roots already reported as unusable, so a bad entry is named once and not per frame. */
+const warnedDisplayRoots = new Set<string>();
+
+/**
+ * Expand `~` and reject a root that cannot contain anything.
+ *
+ * A relative or empty entry never matches a working directory, so left alone it would be a
+ * setting that reads as applied and does nothing. It is dropped and named instead. Named to the
+ * log rather than thrown: this runs inside a render, and a status line that raises takes the
+ * composer down over a typo in a display preference.
+ *
+ * Both separators are accepted after the tilde. A Windows config is written with the separator
+ * that platform uses, and `~\code` silently falling through as a relative entry would be the
+ * same setting-that-does-nothing this rejects loudly.
+ */
+export function resolveDisplayRoots(roots: readonly string[]): string[] {
+	const resolved: string[] = [];
+	for (const root of roots) {
+		const trimmed = typeof root === "string" ? root.trim() : "";
+		const afterTilde = trimmed.startsWith("~/") || trimmed.startsWith("~\\") ? trimmed.slice(2) : null;
+		const expanded =
+			trimmed === "~" ? os.homedir() : afterTilde === null ? trimmed : path.join(os.homedir(), afterTilde);
+		if (expanded !== "" && path.isAbsolute(expanded)) {
+			resolved.push(expanded);
+			continue;
+		}
+		if (warnedDisplayRoots.has(trimmed)) continue;
+		warnedDisplayRoots.add(trimmed);
+		logger.warn("Status line path display root ignored: not an absolute path", { root });
 	}
-	return pwd;
+	return resolved;
+}
+
+/**
+ * One slot, because the row re-renders on every keystroke and every animation frame while the
+ * working directory changes a handful of times a session. Each root costs a `realpath` inside
+ * `relativePathWithinRoot`, so an uncached list of four roots is four syscalls a frame.
+ */
+let displayRootCache: { pwd: string; key: string; result: string } | null = null;
+
+function stripDisplayRoot(pwd: string, roots: readonly string[] | undefined): string {
+	const declared = roots ?? DEFAULT_DISPLAY_ROOTS;
+	const key = declared.join("\u0000");
+	if (displayRootCache?.pwd === pwd && displayRootCache.key === key) return displayRootCache.result;
+	let result = pwd;
+	for (const root of resolveDisplayRoots(declared)) {
+		const relative = relativePathWithinRoot(root, pwd);
+		if (relative) {
+			result = relative;
+			break;
+		}
+	}
+	displayRootCache = { pwd, key, result };
+	return result;
 }
 
 const SCRATCH_ROOTS: readonly string[] = (() => {
@@ -538,7 +598,7 @@ const pathSegment: StatusLineSegment = {
 			if (scratch) {
 				if (relative) pwd = relative;
 			} else {
-				pwd = stripDisplayRoot(pwd);
+				pwd = stripDisplayRoot(pwd, opts.displayRoots);
 			}
 		}
 		const repoSuffix = ctx.activeRepo ? ` ↳ ${ctx.activeRepo.relativeRepoRoot}` : "";
