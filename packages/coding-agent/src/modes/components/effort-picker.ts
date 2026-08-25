@@ -63,7 +63,13 @@ export function renderEffortStep(
 ): SelectList {
 	container.clear();
 	const items = effortStepItems(model, scope);
-	const list = new SelectList(items, Math.max(1, items.length), getSelectListTheme());
+	// Descriptions wrap rather than clip: `auto`'s list of levels is the
+	// information the row exists to give, and at picker width it lost the last
+	// level to an ellipsis. The budget doubles so the wrapped rows cannot push
+	// real items off the bottom of the list.
+	const list = new SelectList(items, Math.max(1, items.length * 2), getSelectListTheme(), {
+		wrapDescription: true,
+	});
 	list.onSelect = item => {
 		const level = item.value ? parseConfiguredThinkingLevel(item.value) : undefined;
 		onPersist(formatModelSelectorValue(selector, level));

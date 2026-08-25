@@ -50,3 +50,14 @@ settle 2
 shot search-auth
 k Escape
 settle 1
+
+# The default-model picker's detail block rides the selection.
+t "default model"
+settle 2
+k Return
+settle 2
+shot model-picker
+k Escape
+settle 1
+k Escape
+settle 1

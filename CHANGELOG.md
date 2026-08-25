@@ -29,6 +29,8 @@
 
 - Classified runner output (cargo, bun, Go, ctest, dotnet, clippy, golangci-lint, Gradle lint, pytest, and tsc/eslint-family) now opens with a result-contract header: `[clean] <command>` or `[errors]` / `[errors N] <command>`. The header is the verdict and the body contains retained diagnostics.
 - A `/settings` drill-down takes the full settings card while it is open instead of rendering beside the category sidebar.
+- The model picker's detail block renders directly under the model rows instead of a window of blanks away on a short or filtered list.
+- The effort picker's `auto` row wraps its level list instead of clipping the last level behind an ellipsis.
 - An unset text, list or record setting in `/settings` renders `—` instead of a blank value cell.
 - The Exa search delay setting offers named durations instead of a raw millisecond count.
 - Nine `/settings` labels that overflowed the label column or broke casing read consistently ("Enable TTSR", "Gemini Web Search Model", "Anthropic Server-Side Fallback" and six more).
