@@ -8,6 +8,7 @@
 - `AppendOnlyContextManager` computes per-message digests with `Bun.hash` (native Wyhash) instead of a JavaScript char-by-char hash, cutting ~5 ms per turn from the stable-prefix scan on long conversations.
 - `AppendOnlyContextManager.#longestStablePrefix` skips the JSON.stringify digest when the incoming message is the same object or shares the same `content` array reference plus matching scalar fields, cutting the per-turn stable-prefix scan from ~13 ms to <1 ms on a 33K-message conversation.
 - `normalizeTools` checks its cache before running the validity filter, avoiding a throwaway array allocation on every cached turn.
+- `StablePrefix.build` computes the fingerprint before allocating the snapshot, avoiding a `systemPrompt` array spread on every turn where the prefix has not changed.
 
 ### Added
 
