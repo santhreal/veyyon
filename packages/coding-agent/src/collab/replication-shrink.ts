@@ -86,7 +86,9 @@ function shrinkWalk(value: unknown, stringCap: number, arrayLimit: number): unkn
 	if (value && typeof value === "object") {
 		const src = value as Record<string, unknown>;
 		const out: Record<string, unknown> = {};
-		for (const k in src) out[k] = shrinkWalk(src[k], stringCap, arrayLimit);
+		// Own keys only. A `for...in` walks the prototype chain, so an inherited enumerable key
+		// would be materialized onto the clone and shipped to a guest as though the frame carried it.
+		for (const k of Object.keys(src)) out[k] = shrinkWalk(src[k], stringCap, arrayLimit);
 		return out;
 	}
 	return value;

@@ -52,6 +52,8 @@
 
 ### Fixed
 
+- A collab guest drops undeclared keys a peer stuffed onto a received frame instead of writing them into its replica session file.
+- Shrinking an oversized replication frame copies own keys only, so an inherited enumerable key is no longer materialized onto the clone a guest receives.
 - `applyQuery` reads own keys only, so an internal URL fragment of `.__proto__`, `.constructor` or `.toString` returns nothing instead of a prototype object.
 - `validateRelativePath` refuses a path only when its normalized form leaves the root, so `..foo`, `foo/..bar` and `foo/.../bar` resolve as the filenames they are.
 - `validateRelativePath` refuses a backslash-separated `..` hop and a drive-prefixed path, which POSIX `node:path` read as ordinary filename bytes.
