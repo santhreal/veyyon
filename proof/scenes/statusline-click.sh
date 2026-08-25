@@ -22,15 +22,18 @@
 # Nothing here opens one.
 #
 # Run the pair at one width -- the clip is about the travel, not about the widths, which the
-# statusline-widths.sh arms cover:
+# statusline-widths.sh arms cover. SCENE_MOTION_FLOOR=1 is not a waiver: the floor exists to
+# stop a published clip encoding as a slideshow, and thirty-six seconds of a status line IS
+# two frames a second of change however smooth the four transitions in it are. The gate's own
+# escape, and it is measured in the log either way.
 #
-#   SCENE_WIDTH=1440 \
+#   SCENE_WIDTH=1440 SCENE_MOTION_FLOOR=1 SCENE_GIF_FPS=15 SCENE_GIF_WIDTH=1100 \
 #   SCENE_SETTINGS='tui.scrollIsolation: true' \
 #   SCENE_CWD=/sandbox/home/platform-services/ingest-pipeline/normalizer \
 #   OUT_DIR="${PWD}/proof/captures/x11/click" \
 #     proof/docker/record-x11.sh proof/scenes/statusline-click.sh
 #
-#   OUT_DIR="${PWD}/proof/captures/x11/before/click" \
+#   ... same knobs, OUT_DIR="${PWD}/proof/captures/x11/before/click" \
 #     proof/docker/record-x11-before.sh proof/scenes/statusline-click.sh
 #
 # WHAT THIS TAKE DOES NOT CATCH. It photographs one width and one theme, and it cannot say
