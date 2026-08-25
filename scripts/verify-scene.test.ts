@@ -71,6 +71,14 @@ describe("a scene guard has to resolve to something that produces it", () => {
 		).toEqual([]);
 	});
 
+	it("accepts a needle typed visibly, character by character", () => {
+		expect(
+			problems({
+				scene: 'type_visible "from-env RELEASE_SIGNATURE release-signature"\nscreen_has "release-signature"\n',
+			}),
+		).toEqual([]);
+	});
+
 	it("refuses a needle that only exists in the guard that waits for it", () => {
 		// The scene file is not a source for itself, or every stale guard would prove itself by
 		// being written down. This is the shape both hero-scene defects had.

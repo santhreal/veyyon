@@ -7,8 +7,8 @@ another one. "Agent" in a request means that CLI, not the assistant answering.
 
 Maps and indexes: [`packages/coding-agent/DEVELOPMENT.md`](packages/coding-agent/DEVELOPMENT.md) maps
 the source tree to its owning documents; [`docs/internal/README.md`](docs/internal/README.md) indexes
-contributor docs ([onboarding](docs/internal/onboarding.md), [testing](docs/internal/testing.md));
-[`docs/handbook/`](docs/handbook/) is the operator manual.
+contributor docs ([onboarding](docs/internal/onboarding.md), [testing](docs/internal/testing.md),
+[review](docs/internal/review.md)); [`docs/handbook/`](docs/handbook/) is the operator manual.
 
 |Package|Description|
 |---|---|
@@ -75,6 +75,23 @@ The regeneration command belongs in the handbook page that owns the surface.
 
 Never comment on GitHub (issues, PRs, discussions) and never create issues, unless the request says
 exactly what to write.
+
+Never write a closing keyword into a commit message, a pull request title, or a pull request body.
+`Closes`, `Fixes`, `Resolves` and their variants (`close`, `closed`, `fix`, `fixed`, `resolve`,
+`resolved`) are not annotations: GitHub closes the referenced issue the moment the commit reaches the
+default branch, or the pull request merges. That is a state change on someone else's report, it needs
+the same approval as closing the issue by hand, and a push to `main` grants no such approval.
+
+Reference an issue with `Refs #911` or a bare `#911`. Both link the commit to the issue and close
+nothing. An issue closes when the reporter has confirmed the fix in a release, and only when the
+request says to close it.
+
+A closing keyword that already landed cannot be undone by editing the commit message: reopen the
+issue and say it autoclosed.
+
+Reviewing a pull request follows [`docs/internal/review.md`](docs/internal/review.md): its section
+order, its reject-on-sight list, and its rule that a finding names the file, the line and the input
+that breaks it. Do not report a review as clean from the GitHub summary alone.
 
 ## Proving a feature (the 10-minute rule)
 

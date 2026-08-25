@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::minimizer::{MinimizerCtx, MinimizerOutput, primitives};
+use crate::minimizer::{MinimizerCtx, MinimizerOutput, contract, primitives};
 
 #[must_use]
 pub fn supports(subcommand: Option<&str>) -> bool {
@@ -69,7 +69,14 @@ pub fn condense_lint_output(program: &str, input: &str, exit_code: i32) -> Strin
 	// header and stopping is the only reliable guard. See
 	// `primitives::is_diagnostic_count_header`.
 	if input.lines().any(primitives::is_diagnostic_count_header) {
-		return input.to_string();
+		let verdict = if exit_code == 0 {
+			contract::clean(program)
+		} else if let Some(count) = lint_diagnostic_count(input) {
+			contract::errors(program, count)
+		} else {
+			contract::errors_unknown(program)
+		};
+		return contract::apply(&verdict, input);
 	}
 	let cleaned = primitives::strip_ansi(input);
 	let stripped = strip_lint_noise(program, &cleaned, exit_code);
@@ -82,11 +89,52 @@ pub fn condense_lint_output(program: &str, input: &str, exit_code: i32) -> Strin
 		// summary from the trailing rule-id column (rtk's idea, re-derived from
 		// DEFAULT text output, not JSON).
 		if let Some(rendered) = render_eslint_stylish(&stripped) {
-			return primitives::head_tail_lines(&rendered, 180, 100);
+			return classify_lint(
+				program,
+				primitives::head_tail_lines(&rendered, 180, 100),
+				exit_code,
+			);
 		}
 	}
 	let grouped = group_diagnostics(&stripped);
-	primitives::head_tail_lines(&grouped, 180, 100)
+	classify_lint(program, primitives::head_tail_lines(&grouped, 180, 100), exit_code)
+}
+
+fn classify_lint(program: &str, body: String, exit_code: i32) -> String {
+	if body.trim().is_empty() {
+		let verdict = if exit_code == 0 {
+			contract::clean(program)
+		} else {
+			contract::errors_unknown(program)
+		};
+		return contract::apply(&verdict, "");
+	}
+	let verdict = if exit_code == 0 {
+		contract::clean(program)
+	} else if let Some(count) = lint_diagnostic_count(&body) {
+		contract::errors(program, count)
+	} else {
+		contract::errors_unknown(program)
+	};
+	contract::apply(&verdict, &body)
+}
+
+fn lint_diagnostic_count(body: &str) -> Option<u64> {
+	for line in body.lines() {
+		let trimmed = line.trim();
+		if let Some(rest) = trimmed.strip_suffix(" diagnostics")
+			&& let Ok(n) = rest.parse::<u64>()
+		{
+			return Some(n);
+		}
+		if let Some((count, _)) = trimmed.split_once(" diagnostics in ") {
+			return count.parse().ok();
+		}
+		if trimmed == "1 diagnostic" {
+			return Some(1);
+		}
+	}
+	None
 }
 
 fn strip_lint_noise(program: &str, input: &str, exit_code: i32) -> String {
@@ -838,7 +886,17 @@ mod tests {
 	fn direct_basedpyright_success_noise_is_stripped() {
 		assert!(supports_program("basedpyright", None));
 		let out = condense_lint_output("basedpyright", "0 errors, 0 warnings, 0 notes\n", 0);
-		assert_eq!(out, "");
+		assert_eq!(out, "[clean] basedpyright\n");
+	}
+
+	#[test]
+	fn already_grouped_untrusted_input_still_gets_a_verdict() {
+		let input = "1 diagnostics in 1 files\nsrc/app.ts (1 diagnostics)\n  4:7 error TS2322\n";
+		let out = condense_lint_output("tsc", input, 1);
+		assert!(
+			out.starts_with("[errors 1] tsc\n"),
+			"grouped-looking command output cannot bypass classification: {out:?}"
+		);
 	}
 
 	#[test]
@@ -934,7 +992,7 @@ mod tests {
 	fn tsc_empty_input_condenses_to_clean() {
 		// snip emits "ok (no type errors)"; the minimizer renders empty input as
 		// empty (its own clean-build signal), so assert that behavior.
-		assert_eq!(condense_lint_output("tsc", "", 0), "");
+		assert_eq!(condense_lint_output("tsc", "", 0), "[clean] tsc\n");
 	}
 
 	// -----------------------------------------------------------------
@@ -1001,7 +1059,7 @@ mod tests {
 		// snip's "no errors produces ok": empty eslint output renders as empty
 		// (the minimizer's clean signal). Reshape finds no rows and falls back to
 		// the empty grouped output.
-		assert_eq!(condense_lint_output("eslint", "", 0), "");
+		assert_eq!(condense_lint_output("eslint", "", 0), "[clean] eslint\n");
 	}
 
 	// -----------------------------------------------------------------
@@ -1038,7 +1096,7 @@ mod tests {
 	fn biome_strips_fixed_files_success() {
 		// `Fixed N files` post-fix summary is chatter; stripped at success.
 		let out = condense_lint_output("biome", "Fixed 3 files in 0.1s\n", 0);
-		assert_eq!(out, "");
+		assert_eq!(out, "[clean] biome\n");
 	}
 
 	#[test]
@@ -1073,7 +1131,7 @@ mod tests {
 	fn oxlint_clean_run_condenses_to_clean() {
 		// Only progress chatter, no diagnostics -> empty.
 		let out = condense_lint_output("oxlint", "Finished in 5ms on 100 files.\n", 0);
-		assert_eq!(out, "");
+		assert_eq!(out, "[clean] oxlint\n");
 	}
 
 	#[test]

@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Classified runner output (cargo, bun, Go, ctest, dotnet, clippy, golangci-lint, Gradle lint, pytest, and tsc/eslint-family) now opens with a result-contract header: `[clean] <command>` or `[errors]` / `[errors N] <command>`. The header is the verdict and the body contains retained diagnostics.
 ### Added
 
 - Launched processes are private to the session that started them. The launch tool supervised every process through one broker per project directory, so any session in a checkout could list, read, stop or restart another session's processes, and a second session's `list` leaked another run's output into its context. Each session now supervises its own launches under a session-scoped broker that ends with the session; the new `launch.sharedCrossSession` setting (default off) restores the shared project scope, and `persist: true` / `detached: true` starts always land in the shared scope so they stay reachable.
@@ -27,6 +30,10 @@
 
 ### Fixed
 
+- `veyyon plugin install --dry-run` now resolves the target and fails when it cannot be installed, instead of exiting 0 with "Would install" for an unpublished npm name or a missing git repository, and reports the name and version the target resolves to rather than a `0.0.0-dryrun` placeholder ([#911](https://github.com/santhreal/veyyon/issues/911)).
+- `veyyon plugin uninstall` now removes a plugin installed from a local path, which was permanently unremovable because uninstall read only `plugins/package.json` dependencies while linking registers the plugin in the runtime config and `node_modules`; the linked directory itself is left untouched.
+- `veyyon plugin doctor` no longer reports "no plugins installed" in a profile whose plugins were all linked, and names how many linked plugins it found.
+- `veyyon plugin config <plugin>` now names the missing subcommand instead of reporting "Plugin name required" for a plugin name that was supplied.
 - A completed background job now fills its still-pending originating tool call instead of starting an unrelated recap turn after an interruption, including when zero retention is configured or foreground completion races background delivery.
 - When every summarizer candidate refuses, automatic compaction now parks the run (or drains already-queued input once) instead of reporting that nothing happened and looping. A successful local rescue retries without restoring the failed overflow or truncated assistant turn; idle compaction stays silent.
 - Agent transcript headers and roster rows share terminal, approval-blocked, and peer-waiting status precedence, so interrupted agents settle red and untyped agents render without a dangling separator.
@@ -35,6 +42,7 @@
 - ImageMagick pixel caches used by proof capture and HD demo scripts stay inside an owned scoped directory that the parent removes after child failure without deleting concurrent or inherited unrelated directories.
 - An indented row inside a tool block keeps its indent when it wraps at a narrow width, instead of continuing at the block's left edge.
 - A colour or title escape sequence a command writes in two pieces no longer leaves part of itself in tool output: the sink holds a sequence its chunk ended inside until the piece that finishes it arrives, and drops one the stream never completes.
+- The `compaction.remote` setting description documents that server-side compaction applies to supported OpenAI, Azure OpenAI, and ChatGPT Codex Responses models.
 - `branchSummary.reserveTokens` now reaches the branch summarizer. It was declared in the settings schema but read by nothing, so every branch summary used the built-in 16384 reserve whatever the setting said.
 
 ## [1.2.0] - 2026-08-23
