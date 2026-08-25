@@ -16,11 +16,17 @@ session:
 ## What is capped
 
 Every process a session spawns to do its work joins the budget. That covers bash commands (plain
-and PTY), MCP stdio servers, the `exec` calls that custom tools, custom commands, and extensions
-make, background processes from the `launch` tool, the eval kernels (Python, Ruby, Julia),
+and PTY), MCP stdio servers, the `exec` calls that custom tools, custom commands, extensions, and
+hooks make, background processes from the `launch` tool, the eval kernels (Python, Ruby, Julia),
 language servers, debug adapters, the managed browser, `git` and `jj`, `ssh`, and the installs
-that plugins run. A capped process passes the budget to its own children, so a build that spawns
-a compiler fleet is still one budget.
+that plugins run. A capped process passes the budget to its own children, by cgroup and Job
+Object inheritance on Linux and Windows and by a process-tree walk on macOS, so a build that
+spawns a compiler fleet is still one budget.
+
+A spawn is refused while the budget is saturated or the group could not be created. That applies
+to a bash command, a new MCP stdio server, an `exec` call from a custom tool, custom command,
+extension, or hook, and a new eval cell. An extension module the CLI loads before a session
+exists resolves the root session's gate when it spawns.
 
 Some processes belong to no single session and join the root session's budget instead. Those are
 the shared harness workers, such as the tiny title model and embeddings, and the speech capture
@@ -47,10 +53,17 @@ If you cap a session at 1 core, veyyon stays responsive while the build under it
 
 Where the operating system offers a per-group CPU quota, the kernel does the capping:
 
-- **Linux** uses a cgroup v2 directory per session with `cpu.max` set to the core count. If the
-  harness's own cgroup is not writable, veyyon requests a scope from the systemd user manager with
-  `CPUQuota` instead.
-- **Windows** uses a Job Object with a hard CPU rate cap.
+- **Linux** uses a cgroup v2 directory per session with `cpu.max` set to the core count. A
+  positive budget smaller than one microsecond of the 100ms period writes `1 100000`, not a freeze
+  quota of `0`. If the harness's own cgroup is not writable, veyyon starts a delegated transient
+  **service** in the systemd user manager (`Delegate=yes`, `CPUQuota`) and adopts children into that
+  cgroup. It is not a `--scope` unit: a scope would block on the placeholder and leave setup failed.
+  A positive `CPUQuota` too small for systemd to express floors at `0.001%` rather than `0%`.
+- **Windows** uses an unnamed Job Object with a hard CPU rate cap. `CpuRate` is a fraction of
+  **host** logical processors (4 cores on a 16-processor machine is 2500, not 40000), counted with
+  `GetActiveProcessorCount` rather than this process's affinity mask, so a 2-core budget inside a
+  2-of-16 slice is 12.5% of the machine rather than 100%. Setting the limit to 0, or
+  `/cpu-limit remove`, turns rate control off rather than flooring to 0.01% of the machine.
 
 A once-per-second watcher reads the group's usage on top of the kernel cap. When usage stays
 pinned at the budget for about three seconds, new commands are rejected with an error that names
@@ -58,14 +71,17 @@ the budget, the measured usage, and the fix (raise `session.cpuLimitCores` or wa
 drops. The kernel cap is the enforcement of last resort: if the watcher lags, commands throttle,
 they never run free.
 
-With `session.cpuLimitKill: true`, a sustained breach also sends SIGTERM to the group's
-processes. The kill is reported as a budget action: the notice and the killed command's result
-both state the command was stopped by the CPU budget, not that it crashed.
+With `session.cpuLimitKill: true`, a sustained breach sends SIGTERM to the group's processes,
+then SIGKILL on the next watcher tick if they are still over budget. The kill is reported as a
+budget action: the notice and the killed command's result both state the command was stopped by
+the CPU budget, not that it crashed.
 
 **macOS has no per-group CPU quota.** There the budget is policy only: new commands are rejected
-while the group is saturated, running members are reniced, and `session.cpuLimitKill` still
+while the group is saturated, running members (including descendants of the adopted child, so a
+`make -j` compiler fleet is in the same set) are reniced, and `session.cpuLimitKill` still
 kills. Nothing throttles. The settings row and the startup warning state this, and the same
-warning appears on any platform where no backend works. A configured limit never fails silently.
+warning appears on any platform where no backend works. A configured limit never fails silently:
+if the group cannot be created, new commands are refused rather than run uncapped.
 
 Changing `session.cpuLimitCores` mid-session takes effect on the next command: the live quota is
 rewritten, and setting it back to 0 lifts it.

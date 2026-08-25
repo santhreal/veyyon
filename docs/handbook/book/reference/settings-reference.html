@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-3b23e5aa.js";
+            window.path_to_searchindex_js = "../searchindex-050fd420.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-a2abefc1.js"></script>
@@ -387,7 +387,9 @@ veyyon config get compaction.threshold
 <tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
 </thead>
 <tbody>
-<tr><td><code>prewalk.enabled</code></td><td>Enable Prewalk</td><td>boolean</td><td><code>false</code></td><td>Start on the active model, then switch to a fast/cheap model (default the ‘smol’ role) at the first edit/write after the plan nudge’s todo list exists — the strong model plans, commits the todos, and starts the implementation before handing off. Overridable per session with –prewalk / –no-prewalk.</td></tr>
+<tr><td><code>prewalk.enabled</code></td><td>Enable Prewalk</td><td>boolean</td><td><code>false</code></td><td>Plan on the strong model, then switch to the cheap model at the first edit/write after the plan nudge’s todo list exists — the strong model commits the todos and starts the implementation before handing off. The cheap model comes from Prewalk Cheap Model; Prewalk Strong Model overrides the start model. Overridable per session with –prewalk / –no-prewalk.</td></tr>
+<tr><td><code>prewalk.cheapModel</code></td><td>Prewalk Cheap Model</td><td>modelChain</td><td><em>(unset)</em></td><td>Model prewalk hands off to at the first edit/write. Required once prewalk is on: /prewalk and –prewalk fail with a message naming this setting when it is unset. –prewalk-into overrides it per session; only the first entry is used.</td></tr>
+<tr><td><code>prewalk.strongModel</code></td><td>Prewalk Strong Model</td><td>modelChain</td><td><em>(unset)</em></td><td>Model a prewalk session starts on — the strong model that plans before the handoff. Unset: inherit the normal start model (–model or the remembered default). Only the first entry is used.</td></tr>
 </tbody>
 </table>
 </div>
@@ -1418,7 +1420,7 @@ veyyon config get compaction.threshold
 </tbody>
 </table>
 </div>
-<p>349 settings in /settings, 119 configuration-file keys, 468 in all.</p>
+<p>351 settings in /settings, 119 configuration-file keys, 470 in all.</p>
 
                     </main>
 
