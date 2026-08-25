@@ -7,6 +7,7 @@ import {
 	type AgentTool,
 	AppendOnlyContextManager,
 	filterProviderReplayMessages,
+	isProviderRefusalMessage,
 	type ThinkingLevel,
 } from "@veyyon/agent-core";
 import type { Context, CredentialDisabledEvent, Message, Model, SimpleStreamOptions } from "@veyyon/ai";
@@ -3974,14 +3975,38 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			return transformed;
 		};
 
+		// Incremental refusal scan: provider refusals (stopReason "error" +
+		// refusal/sensitive stop type) are extremely rare. Tracking whether
+		// any exist lets filterProviderReplayMessages skip an O(n) scan of
+		// all messages every turn. The scan is incremental — only new
+		// messages are checked when the array is the same reference and has
+		// only grown. A different array triggers a full scan.
+		let refusalScanRef: AgentMessage[] | undefined;
+		let refusalScanLength = 0;
+		let hasRefusalMessages = false;
+
 		const convertToLlmFinal = (messages: AgentMessage[]): Message[] => {
 			const runtime = secretRuntimeByObject.get(messages) ?? activeMainRequestRuntime;
 			// No image policy here. Conversion sees one model per session, while the
 			// main turn, a side request, compaction and an advisor each dispatch
 			// their own; the policy resolves in AgentSession's provider-context hook,
 			// which knows the model the request is actually going to.
-			const converted = filterProviderReplayMessages(convertToLlm(messages));
-			const redacted = runtime.obfuscateMessages(converted);
+			if (messages === refusalScanRef && messages.length >= refusalScanLength) {
+				for (let i = refusalScanLength; i < messages.length; i++) {
+					const m = messages[i];
+					if (m?.role === "assistant" && isProviderRefusalMessage(m)) hasRefusalMessages = true;
+				}
+			} else {
+				hasRefusalMessages = false;
+				for (const m of messages) {
+					if (m?.role === "assistant" && isProviderRefusalMessage(m)) hasRefusalMessages = true;
+				}
+			}
+			refusalScanRef = messages;
+			refusalScanLength = messages.length;
+			const converted = convertToLlm(messages);
+			const filtered = hasRefusalMessages ? filterProviderReplayMessages(converted) : converted;
+			const redacted = runtime.obfuscateMessages(filtered);
 			bindSecretRuntime(converted, runtime);
 			bindSecretRuntime(redacted, runtime);
 			return redacted;
