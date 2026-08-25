@@ -78,6 +78,7 @@
 ### Fixed
 
 - The write tool rejects content carrying hashline patch markers, unified diff hunks, or read-output display prefixes with an error naming the detection and stating corrective action instead of silently stripping prefixes before writing.
+- Converted LLM message wrappers preserve reference identity across turns so the provider context canonicalizer re-renders only newly appended messages.
 - Quitting no longer hangs when a background session never settles.
 - `/new` typed while the agent is answering starts the new session without interrupting the answer: the running turn finishes in the background and is flushed to its own transcript, while the composer attaches to a fresh session immediately.
 - `/resume` onto a session that is still answering re-attaches the running session instead of replaying its transcript as finished text, so its answer keeps streaming into the view and the session being left takes its place in the background.
@@ -142,6 +143,7 @@
 - `debug` reaches the Python debugger on a host that installs `python3` and no unsuffixed `python`, which is every current Linux and macOS. The bundled `debugpy` adapter named `python`, so launching answered `adapter 'debugpy' is not available` on a machine that had Python; an adapter may now declare alternate spellings, and a command written in `dap.json` is still used exactly as written.
 - A subagent that calls `yield` with unusable data now fails the run instead of returning success with the system warning as its result, matching how a subagent that never yields at all is already reported.
 - A subagent result that cannot be serialized now fails the run and reports the serialization error, instead of returning success with an unparseable error envelope as its payload.
+- Converted message wrappers preserve reference identity across turns when inputs are unchanged, avoiding unnecessary allocations and memo invalidations.
 - Fixed tool-result supersede pruning to parse multi-target `read` calls into target sets with per-target URL scheme exemption, retiring an earlier read result when all of its targets are covered by newer reads while preserving results with partial coverage.
 - Side requests derive a stable conversation ID per oneshot kind, preventing compaction, handoff, and branch summaries from overwriting live Cursor and Devin conversation state.
 - Aborting while paused rejects the pause wait and prevents the agent loop from starting another provider turn or paused tool.

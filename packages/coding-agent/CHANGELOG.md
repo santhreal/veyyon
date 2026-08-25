@@ -45,6 +45,7 @@
 ### Fixed
 
 - The write tool rejects content carrying hashline patch markers, unified diff hunks, or read-output display prefixes with an error naming the detection and stating corrective action instead of silently stripping prefixes before writing.
+- Converted LLM message wrappers preserve reference identity across turns so the provider context canonicalizer re-renders only newly appended messages.
 - Quitting no longer hangs when a background session never settles.
 - `/new` typed while the agent is answering starts the new session without interrupting the answer: the running turn finishes in the background and is flushed to its own transcript, while the composer attaches to a fresh session immediately.
 - `/resume` onto a session that is still answering re-attaches the running session instead of replaying its transcript as finished text, so its answer keeps streaming into the view and the session being left takes its place in the background.
