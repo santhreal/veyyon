@@ -1,4 +1,4 @@
-import { logger } from "@veyyon/utils";
+import { errorMessage, logger } from "@veyyon/utils";
 import type { Settings } from "../config/settings";
 import type { AgentSession } from "../session/agent-session";
 import type { MemoryBackend } from "./types";
@@ -37,9 +37,9 @@ export async function buildMemoryPayloadForDisplay(
 			// with no explanation is the failure this function exists to prevent.
 			logger.warn("Memory view: the backend's volatile context could not be read", {
 				backend: backend.id,
-				error: String(error),
+				error: errorMessage(error),
 			});
-			parts.push(`_The recalled-memory block could not be read: ${String(error)}_`);
+			parts.push(`_The recalled-memory block could not be read: ${errorMessage(error)}_`);
 		}
 	}
 	if (parts.length === 0) return undefined;

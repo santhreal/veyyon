@@ -8,6 +8,7 @@ import { clampThinkingLevelForModel } from "@veyyon/catalog/model-thinking";
 import { emptyCost } from "@veyyon/catalog/models";
 import {
 	clampLow,
+	errorMessage,
 	getAgentDbPath,
 	isEnoent,
 	isRecord,
@@ -605,7 +606,7 @@ async function runPhase2(options: {
 			markPhase2FailureWithFallback(db, {
 				claim,
 				retryDelaySeconds: config.phase2RetryDelaySeconds,
-				reason: String(error),
+				reason: errorMessage(error),
 				memoryRoot,
 				cwd,
 				error,
@@ -847,7 +848,7 @@ async function runStage1Job(options: {
 			usage: response.usage,
 		};
 	} catch (error) {
-		return { kind: "failed", reason: sanitize(String(error)) };
+		return { kind: "failed", reason: sanitize(errorMessage(error)) };
 	}
 }
 

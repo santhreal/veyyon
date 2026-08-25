@@ -1426,14 +1426,14 @@ export class Settings {
 			throw new Error(
 				isEnoent(error)
 					? `Config overlay not found: ${filePath}`
-					: `Failed to read config overlay ${filePath}: ${String(error)}`,
+					: `Failed to read config overlay ${filePath}: ${errorMessage(error)}`,
 			);
 		}
 		let parsed: unknown;
 		try {
 			parsed = YAML.parse(content);
 		} catch (error) {
-			throw new Error(`Failed to parse config overlay ${filePath}: ${String(error)}`);
+			throw new Error(`Failed to parse config overlay ${filePath}: ${errorMessage(error)}`);
 		}
 		if (parsed === null || parsed === undefined) return {};
 		if (typeof parsed !== "object" || Array.isArray(parsed)) {
