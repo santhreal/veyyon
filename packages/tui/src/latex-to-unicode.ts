@@ -1620,12 +1620,11 @@ class LatexParser {
 			return c;
 		}
 		this.#i++; // past {
+		const start = this.#i;
 		let depth = 1;
-		let out = "";
 		while (this.#i < this.#s.length && depth > 0) {
 			const c = this.#s[this.#i];
 			if (c === "\\") {
-				out += c + (this.#s[this.#i + 1] ?? "");
 				this.#i += 2;
 				continue;
 			}
@@ -1633,14 +1632,14 @@ class LatexParser {
 			else if (c === "}") {
 				depth--;
 				if (depth === 0) {
+					const end = this.#i;
 					this.#i++;
-					break;
+					return this.#s.slice(start, end);
 				}
 			}
-			out += c;
 			this.#i++;
 		}
-		return out;
+		return this.#s.slice(start, this.#i);
 	}
 
 	#script(style: FontStyle | null, sup: boolean): string {
@@ -1724,6 +1723,9 @@ class LatexParser {
 	#optionalArgument(style: FontStyle | null): Argument | null {
 		const source = this.#optionalRawArgument();
 		if (source === null) return null;
+		if (this.#depth >= LatexParser.#MAX_DEPTH) {
+			return { text: source, group: true };
+		}
 		return { text: new LatexParser(source, this.#depth).parse(style, false), group: true };
 	}
 
@@ -1731,13 +1733,12 @@ class LatexParser {
 		while (this.#s[this.#i] === " ") this.#i++;
 		if (this.#s[this.#i] !== "[") return null;
 		this.#i++;
+		const start = this.#i;
 		let bracketDepth = 1;
 		let braceDepth = 0;
-		let out = "";
 		while (this.#i < this.#s.length && bracketDepth > 0) {
 			const c = this.#s[this.#i];
 			if (c === "\\") {
-				out += c + (this.#s[this.#i + 1] ?? "");
 				this.#i += 2;
 				continue;
 			}
@@ -1747,14 +1748,14 @@ class LatexParser {
 			else if (braceDepth === 0 && c === "]") {
 				bracketDepth--;
 				if (bracketDepth === 0) {
+					const end = this.#i;
 					this.#i++;
-					break;
+					return this.#s.slice(start, end);
 				}
 			}
-			out += c;
 			this.#i++;
 		}
-		return out;
+		return this.#s.slice(start, this.#i);
 	}
 
 	#sqrt(style: FontStyle | null): string {
