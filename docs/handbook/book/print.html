@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-2c0008ea.js";
+            window.path_to_searchindex_js = "searchindex-3b23e5aa.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-a2abefc1.js"></script>
@@ -4130,7 +4130,7 @@ subdirectory path), a URL, or an npm package.</p>
 <tr><td><code>~/.veyyon/profiles/&lt;profile&gt;/plugins/installed_plugins.json</code></td><td>User-scope marketplace install registry</td></tr>
 <tr><td><code>~/.veyyon/profiles/&lt;profile&gt;/plugins/node_modules/</code></td><td>npm/git/link plugin packages</td></tr>
 <tr><td><code>~/.veyyon/profiles/&lt;profile&gt;/plugins/cache/</code></td><td>Cached marketplace catalogs and plugin trees</td></tr>
-<tr><td><code>~/.veyyon/profiles/&lt;profile&gt;/plugins/veyyon-plugins.lock.json</code></td><td>Lockfile for npm plugin installs</td></tr>
+<tr><td><code>~/.veyyon/profiles/&lt;profile&gt;/plugins/veyyon-plugins.lock.json</code></td><td>Enabled state, selected features and stored settings for every npm, git and linked plugin</td></tr>
 <tr><td>Project <code>.veyyon/plugins/installed_plugins.json</code></td><td>Project-scope marketplace installs</td></tr>
 </tbody>
 </table>
@@ -4139,13 +4139,42 @@ subdirectory path), a URL, or an npm package.</p>
 <p>You can manage plugins and marketplaces using the <code>veyyon plugin</code> and <code>veyyon plugin marketplace</code> command groups.</p>
 <h3 id="managing-plugins"><a class="header" href="#managing-plugins">Managing Plugins</a></h3>
 <h4 id="install-a-plugin"><a class="header" href="#install-a-plugin">Install a Plugin</a></h4>
-<p>Install a plugin from a configured marketplace. Specify the plugin as <code>plugin_name@marketplace_name</code>.</p>
+<p><code>veyyon plugin install</code> accepts four kinds of target:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Target</th><th>Form</th><th>Example</th></tr>
+</thead>
+<tbody>
+<tr><td>Marketplace</td><td><code>name@marketplace</code></td><td><code>sample@debug</code></td></tr>
+<tr><td>npm</td><td><code>name</code>, <code>@scope/name</code>, either with <code>@version</code></td><td><code>@veyyon/exa@1.2.0</code></td></tr>
+<tr><td>Git</td><td><code>github:user/repo</code>, <code>gitlab:</code>, <code>bitbucket:</code>, <code>codeberg:</code>, <code>sourcehut:</code>/<code>srht:</code>, or a full git URL, each with an optional <code>#ref</code></td><td><code>github:user/repo#v1.0</code></td></tr>
+<tr><td>Local path</td><td>a path to the plugin’s own directory</td><td><code>./path/to/plugin</code></td></tr>
+</tbody>
+</table>
+</div>
 <pre><code class="language-console">$ veyyon plugin install sample@debug
-$ veyyon plugin install --force --scope project sample@debug
+$ veyyon plugin install @veyyon/exa
+$ veyyon plugin install github:user/repo#v1.0
+$ veyyon plugin install ./path/to/plugin
 </code></pre>
+<p>A local path is linked rather than copied: veyyon symlinks the directory into the profile’s
+<code>node_modules</code>, so edits to the source appear without a reinstall. <code>veyyon plugin link &lt;path&gt;</code> does
+the same thing, and either verb works.</p>
 <p>Use <code>--force</code> to reinstall over an existing install and <code>--scope user|project</code> to choose the install
-scope. <code>--json</code> prints the installation result as JSON for npm and link installs; marketplace
-installs ignore it.</p>
+scope. <code>--scope</code> applies to marketplace installs only; npm, git and local installs warn and ignore it.
+<code>--json</code> prints the installation result as JSON for npm, git and link installs; marketplace installs
+ignore it.</p>
+<p><code>--dry-run</code> resolves the target and reports the name and version it resolves to, without writing a
+dependency, a lockfile entry or a <code>node_modules</code> entry:</p>
+<pre><code class="language-console">$ veyyon plugin install github:sindresorhus/slugify --dry-run
+[dry-run] Would install @sindresorhus/slugify@github:sindresorhus/slugify#7c318bd
+</code></pre>
+<p>A git target’s package name comes from the repository, not the spec, so a dry run is how you learn
+the name a git plugin will install under. A target that cannot be resolved — an unpublished npm name,
+a version that does not exist, a private or missing repository — fails with the resolver’s output and
+exits 1. A dry run proves the target resolves; it does not prove the package is a veyyon plugin,
+because nothing is unpacked and no manifest is read.</p>
 <h4 id="list-plugins"><a class="header" href="#list-plugins">List Plugins</a></h4>
 <p>List installed plugins and their statuses.</p>
 <pre><code class="language-console">$ veyyon plugin list
@@ -4155,11 +4184,19 @@ installs ignore it.</p>
 <li><code>--json</code>: Print the output as JSON.</li>
 </ul>
 <h4 id="uninstall-a-plugin"><a class="header" href="#uninstall-a-plugin">Uninstall a Plugin</a></h4>
-<p>Uninstall a plugin from local cache and config.</p>
+<p>Uninstall a plugin from local cache and config. Pass the name <code>veyyon plugin list</code> shows, which for a
+git or local plugin is the package’s own name rather than the spec you installed it with.</p>
 <pre><code class="language-console">$ veyyon plugin uninstall sample@debug
+$ veyyon plugin uninstall @veyyon/exa
+$ veyyon plugin uninstall linked-plugin
 </code></pre>
+<p>Every install route is removable by the same command. Uninstalling a linked plugin removes the
+symlink and the plugin’s stored settings, and leaves the directory it pointed at untouched: that is
+your working copy, not veyyon’s.</p>
 <p>Use the <code>--json</code> flag to return the removal result as JSON for npm plugins; marketplace uninstalls
 ignore it.</p>
+<p>To keep a plugin installed but inert, use <code>veyyon plugin disable &lt;name&gt;</code>, which leaves it listed and
+reversible with <code>enable</code>.</p>
 <h4 id="check-plugin-health"><a class="header" href="#check-plugin-health">Check Plugin Health</a></h4>
 <p>Report what is wrong with your plugin installation, and optionally repair it.</p>
 <pre><code class="language-console">$ veyyon plugin doctor
@@ -4178,7 +4215,8 @@ ever installed. That is the state a fresh install is in, and <code>doctor</code>
 Each one distinguishes “not created yet” from “there but unreadable”. The first is normal and
 reports <code>ok</code>; the second is an error stating the path, because a plugins directory whose permissions
 have been mangled looks identical to an empty one from the outside and the fix is <code>chmod</code>, not a
-reinstall.</li>
+reinstall. A profile holding only linked plugins has no <code>package.json</code>, because linking writes no
+dependency; <code>package_manifest</code> reports <code>ok</code> and states how many linked plugins are present.</li>
 <li><code>plugin:&lt;name&gt;</code>: one per installed plugin. An error means the package is missing from
 <code>node_modules</code> or has no <code>package.json</code>. A warning means it loaded but contains no plugin manifest,
 so veyyon can see the package and cannot use it.</li>
@@ -8730,7 +8768,7 @@ code paths in:</p>
 <tr><td><code>BASETEN_API_KEY</code></td><td>Baseten auth</td><td>Using <code>baseten</code> provider</td><td></td></tr>
 <tr><td><code>CMD_API_KEY</code></td><td>Command Code auth</td><td>Using <code>command-code</code> provider</td><td>Preferred key alias; endpoint <code>https://api.commandcode.ai/provider/v1</code>, default <code>moonshotai/Kimi-K2.7-Code</code></td></tr>
 <tr><td><code>COMMAND_CODE_API_KEY</code></td><td>Command Code auth</td><td>Using <code>command-code</code> provider without <code>CMD_API_KEY</code></td><td>Fallback after <code>CMD_API_KEY</code>; keys are issued at <code>https://commandcode.ai/studio/provider</code></td></tr>
-<tr><td><code>NOUS_API_KEY</code></td><td>Nous Research explicit/headless auth</td><td>Using <code>nous-research</code> without <code>/login nous-research</code></td><td>OAuth is preferred; endpoint <code>https://inference-api.nousresearch.com/v1</code>, default <code>anthropic/claude-sonnet-4.6</code></td></tr>
+<tr><td><code>NOUS_API_KEY</code></td><td>Nous Research explicit/headless auth</td><td>Using <code>nous-research</code> without a <code>/login</code></td><td>Either login is preferred: <code>nous-research</code> (device flow) or <code>nous-research-api-key</code> (pasted key); endpoint <code>https://inference-api.nousresearch.com/v1</code>, default <code>anthropic/claude-sonnet-4.6</code></td></tr>
 <tr><td><code>COREWEAVE_API_KEY</code></td><td>CoreWeave auth</td><td>Using <code>coreweave</code> provider</td><td>Takes precedence over <code>WANDB_API_KEY</code></td></tr>
 <tr><td><code>WANDB_API_KEY</code></td><td>CoreWeave auth</td><td>Using <code>coreweave</code> provider</td><td>Fallback after <code>COREWEAVE_API_KEY</code></td></tr>
 <tr><td><code>DEVIN_API_KEY</code></td><td>Devin auth</td><td>Using <code>devin</code> provider</td><td></td></tr>
@@ -10025,6 +10063,7 @@ julia:
 
 lsp:
   enabled: true
+  tool: true
   lazy: true
   diagnosticsOnWrite: true
   diagnosticsOnEdit: false
@@ -10048,10 +10087,11 @@ lsp:
 <tr><td><code>ruby.kernelMode</code></td><td>enum</td><td><code>session</code></td><td>Same choice for Ruby cells: keep one kernel per session, or start and shut down a kernel for each cell.</td></tr>
 <tr><td><code>julia.kernelMode</code></td><td>enum</td><td><code>session</code></td><td>Same choice for Julia cells. A fresh Julia kernel recompiles, so <code>per-call</code> trades startup time for a clean slate.</td></tr>
 <tr><td><code>python.interpreter</code></td><td>string</td><td><code>""</code></td><td>Path to a Python interpreter; empty = auto-detect.</td></tr>
-<tr><td><code>lsp.enabled</code></td><td>boolean</td><td><code>false</code></td><td>Language-server integration. Opt in; <code>--no-lsp</code> disables it for a run where config turned it on.</td></tr>
+<tr><td><code>lsp.enabled</code></td><td>boolean</td><td><code>false</code></td><td>Start language servers. Opt in; Files → LSP enters the nested switches. <code>--no-lsp</code> disables the whole stack for a run.</td></tr>
+<tr><td><code>lsp.tool</code></td><td>boolean</td><td><code>true</code></td><td>Expose the <code>lsp</code> tool to the agent. Independent of injected diagnostics.</td></tr>
 <tr><td><code>lsp.lazy</code></td><td>boolean</td><td><code>true</code></td><td>Start servers on demand.</td></tr>
-<tr><td><code>lsp.diagnosticsOnWrite</code></td><td>boolean</td><td><code>true</code></td><td>Run diagnostics after a write.</td></tr>
-<tr><td><code>lsp.diagnosticsOnEdit</code></td><td>boolean</td><td><code>false</code></td><td>Run diagnostics after an edit.</td></tr>
+<tr><td><code>lsp.diagnosticsOnWrite</code></td><td>boolean</td><td><code>true</code></td><td>Inject diagnostics after a write. Independent of the agent tool.</td></tr>
+<tr><td><code>lsp.diagnosticsOnEdit</code></td><td>boolean</td><td><code>false</code></td><td>Inject diagnostics after an edit. Independent of the agent tool.</td></tr>
 <tr><td><code>lsp.formatOnWrite</code></td><td>boolean</td><td><code>false</code></td><td>Format files on write.</td></tr>
 <tr><td><code>lsp.diagnosticsDeduplicate</code></td><td>boolean</td><td><code>true</code></td><td>Collapse duplicate diagnostics.</td></tr>
 <tr><td><code>shellPath</code></td><td>string</td><td><em>(unset)</em></td><td>Override the shell binary used by bash.</td></tr>
@@ -10064,6 +10104,7 @@ lsp:
   fuzzyMatch: true
   fuzzyThreshold: 0.95
   blockAutoGenerated: true
+  critiqueCodeMutations: false
 
 read:
   defaultLimit: 300
@@ -10083,6 +10124,7 @@ read:
 <tr><td><code>edit.fuzzyThreshold</code></td><td>number</td><td><code>0.95</code></td><td>Similarity threshold for fuzzy matching.</td></tr>
 <tr><td><code>edit.blockAutoGenerated</code></td><td>boolean</td><td><code>true</code></td><td>Refuse to edit generated/lockfile-like files.</td></tr>
 <tr><td><code>edit.streamingAbort</code></td><td>boolean</td><td><code>false</code></td><td>Abort on streaming edit mismatch.</td></tr>
+<tr><td><code>edit.critiqueCodeMutations</code></td><td>boolean</td><td><code>false</code></td><td>Prompt a bounded self-review after one turn modifies at least two distinct code files.</td></tr>
 <tr><td><code>read.defaultLimit</code></td><td>number</td><td><code>300</code></td><td>Default line count for <code>read</code> without a selector.</td></tr>
 <tr><td><code>read.summarize.enabled</code></td><td>boolean</td><td><code>true</code></td><td>Structural summaries for code reads.</td></tr>
 <tr><td><code>read.summarize.prose</code></td><td>boolean</td><td><code>false</code></td><td>Summarize prose files too.</td></tr>
@@ -10091,6 +10133,7 @@ read:
 </tbody>
 </table>
 </div>
+<p><code>edit.critiqueCodeMutations</code> applies to the main agent. Documentation, lockfiles, binary files, media, archives, and databases do not count toward the two-file threshold. Repeated tool calls for the same normalized path count once. If the assistant ends with a question, delivery occurs after the answer instead of replacing the question. Subagents remain exempt.</p>
 <h3 id="automatic-tool-issue-reports"><a class="header" href="#automatic-tool-issue-reports">Automatic tool issue reports</a></h3>
 <p>Auto QA records a model’s report when a built-in tool behaves differently from its contract. Recording
 is local to the active profile. Automatic upload is a separate setting and is off by default.</p>
@@ -10454,6 +10497,7 @@ veyyon config get compaction.threshold
 <tr><td><code>model.loopGuard.toolCallReminder</code></td><td>Loop Guard Tool-Call Reminder</td><td>boolean</td><td><code>true</code></td><td>When a Gemini reasoning stream emits many consecutive planning headers without calling a tool, interrupt it and inject a reminder to issue a tool call (requires Loop Guard).</td></tr>
 <tr><td><code>model.toolCallLoopGuard.enabled</code></td><td>Tool-Call Loop Guard</td><td>boolean</td><td><code>true</code></td><td>Detect consecutive identical tool calls across turns and inject a corrective steer.</td></tr>
 <tr><td><code>model.toolCallLoopGuard.threshold</code></td><td>Tool-Call Loop Threshold</td><td>number</td><td><code>5</code></td><td>Consecutive identical tool calls required before the corrective steer is injected.</td></tr>
+<tr><td><code>model.toolCallLoopGuard.readSubsumptionThreshold</code></td><td>Read Subsumption Loop Threshold</td><td>number</td><td><code>2</code></td><td>Consecutive fully-subsumed or redundant read calls on unchanged files before the corrective steer is injected.</td></tr>
 <tr><td><code>model.toolCallLoopGuard.exemptTools</code></td><td>Tool-Call Loop Exempt Tools</td><td>array</td><td><code>["job","irc"]</code></td><td>Tool names that may repeat consecutively without triggering the cross-turn loop guard.</td></tr>
 <tr><td><code>providers.autoThinkingModel</code></td><td>Auto Thinking Model</td><td>enum</td><td><code>online</code></td><td>Difficulty classifier for the <code>auto</code> thinking level: online (the TINY role from /models, else smol) by default, or a local on-device model. Values: <code>online</code>, <code>qwen3-1.7b</code>, <code>llama3.2:3b</code>, <code>gemma-3-1b</code>, <code>qwen2.5-1.5b</code>, <code>lfm2-1.2b</code>.</td></tr>
 </tbody>
@@ -10889,6 +10933,7 @@ veyyon config get compaction.threshold
 <tr><td><code>edit.fuzzyThreshold</code></td><td>Fuzzy Match Threshold</td><td>number</td><td><code>0.95</code></td><td>Similarity threshold (0-1) for accepting fuzzy matches.</td></tr>
 <tr><td><code>edit.streamingAbort</code></td><td>Abort on Failed Preview</td><td>boolean</td><td><code>false</code></td><td>Abort streaming edit tool calls when patch preview fails.</td></tr>
 <tr><td><code>edit.blockAutoGenerated</code></td><td>Block Auto-Generated Files</td><td>boolean</td><td><code>true</code></td><td>Prevent editing of files that appear to be auto-generated (protoc, sqlc, swagger, etc.).</td></tr>
+<tr><td><code>edit.critiqueCodeMutations</code></td><td>Post-Edit Code Review</td><td>boolean</td><td><code>false</code></td><td>Prompt the model to review multi-file code changes for correctness, maintainability, and idioms before finalizing.</td></tr>
 </tbody>
 </table>
 </div>
@@ -10929,11 +10974,12 @@ veyyon config get compaction.threshold
 <tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
 </thead>
 <tbody>
-<tr><td><code>lsp.enabled</code></td><td>Enable LSP</td><td>boolean</td><td><code>false</code></td><td>Enable the lsp tool for code intelligence (definitions, references, diagnostics, rename).</td></tr>
-<tr><td><code>lsp.lazy</code></td><td>Lazy LSP Startup</td><td>boolean</td><td><code>true</code></td><td>Start language servers on first use (lsp tool or editing a matching file type) instead of at session startup.</td></tr>
-<tr><td><code>lsp.formatOnWrite</code></td><td>Format on Write</td><td>boolean</td><td><code>false</code></td><td>Automatically format code files using LSP after writing.</td></tr>
-<tr><td><code>lsp.diagnosticsOnWrite</code></td><td>Diagnostics on Write</td><td>boolean</td><td><code>true</code></td><td>Return LSP diagnostics after writing code files.</td></tr>
-<tr><td><code>lsp.diagnosticsOnEdit</code></td><td>Diagnostics on Edit</td><td>boolean</td><td><code>false</code></td><td>Return LSP diagnostics after editing code files.</td></tr>
+<tr><td><code>lsp.enabled</code></td><td>Language Servers</td><td>boolean</td><td><code>false</code></td><td>Start language servers. Files → LSP is the row you enter; this switch and the others on that page (agent tool, diagnostics after write, diagnostics after edit, format after write) are independent once servers are running.</td></tr>
+<tr><td><code>lsp.tool</code></td><td>Agent Tool</td><td>boolean</td><td><code>true</code></td><td>Give the agent the lsp tool (definitions, references, rename, query diagnostics). Off keeps servers for format and injected diagnostics only.</td></tr>
+<tr><td><code>lsp.lazy</code></td><td>Lazy Startup</td><td>boolean</td><td><code>true</code></td><td>Start language servers on first use (lsp tool or editing a matching file type) instead of at session startup.</td></tr>
+<tr><td><code>lsp.formatOnWrite</code></td><td>Format after Write</td><td>boolean</td><td><code>false</code></td><td>Format the file with the language server after the write tool saves it. Independent of the agent tool and of diagnostics.</td></tr>
+<tr><td><code>lsp.diagnosticsOnWrite</code></td><td>Diagnostics after Write</td><td>boolean</td><td><code>true</code></td><td>After the write tool saves a file, inject language-server diagnostics into the session. Independent of the agent tool.</td></tr>
+<tr><td><code>lsp.diagnosticsOnEdit</code></td><td>Diagnostics after Edit</td><td>boolean</td><td><code>false</code></td><td>After the edit tool saves a file, inject language-server diagnostics into the session. Independent of the agent tool.</td></tr>
 <tr><td><code>lsp.diagnosticsDeduplicate</code></td><td>Deduplicate Diagnostics</td><td>boolean</td><td><code>true</code></td><td>Suppress post-edit LSP diagnostics already shown for a file; only surface new or changed ones.</td></tr>
 </tbody>
 </table>
@@ -11016,6 +11062,17 @@ veyyon config get compaction.threshold
 <tr><td><code>todo.reminders.max</code></td><td>Todo Reminder Limit</td><td>number</td><td><code>3</code></td><td>Maximum distinct todo-state reminders before reminders stay silent.</td></tr>
 <tr><td><code>todo.eager</code></td><td>Create Todos Automatically</td><td>enum</td><td><code>default</code></td><td>How strongly to push automatic todo-list creation after the first message. Values: <code>default</code>, <code>preferred</code>, <code>always</code>.</td></tr>
 <tr><td><code>tasks.todoClearDelay</code></td><td>Todo Auto-Clear Delay</td><td>number</td><td><code>-1</code></td><td>Delay before completed or abandoned todos are removed from the todo widget.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="launch"><a class="header" href="#launch">Launch</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>launch.cleanupWaitMs</code></td><td>Launch Cleanup Wait</td><td>number</td><td><code>900000</code></td><td>How long an exited process record is retained before being purged from memory and disk (0 = never clean up).</td></tr>
 </tbody>
 </table>
 </div>
@@ -11551,7 +11608,7 @@ veyyon config get compaction.threshold
 </tbody>
 </table>
 </div>
-<p>345 settings in /settings, 119 configuration-file keys, 464 in all.</p>
+<p>349 settings in /settings, 119 configuration-file keys, 468 in all.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="model-and-provider-configuration-modelsyml--modelsyaml"><a class="header" href="#model-and-provider-configuration-modelsyml--modelsyaml">Model and Provider Configuration (<code>models.yml</code> / <code>models.yaml</code>)</a></h1>
 <p>How the coding agent loads models, applies overrides, resolves credentials, and chooses models at runtime.</p>
@@ -12352,7 +12409,7 @@ providers:
 </table>
 </div>
 <p>OAuth-backed providers such as <code>anthropic</code>, <code>github-copilot</code>, <code>cursor</code>, <code>ollama-cloud</code>, <code>qwen-portal</code>, <code>kimi-code</code>, <code>nous-research</code>, <code>xai-oauth</code>, <code>wafer-serverless</code>, <code>google-gemini-cli</code>, and <code>google-antigravity</code> are normally reached through <code>/login</code> rather than an environment variable. Nous Portal stores a durable refresh token and mints short-lived inference access tokens for requests and model discovery; <code>NOUS_API_KEY</code> remains available for explicit headless use.</p>
-<p>Command Code uses <code>https://api.commandcode.ai/provider/v1</code>, defaults to <code>moonshotai/Kimi-K2.7-Code</code>, and issues keys at <a href="https://commandcode.ai/studio/provider">Command Code Provider</a>. Nous Research uses <code>https://inference-api.nousresearch.com/v1</code> and defaults to the tool-capable <code>anthropic/claude-sonnet-4.6</code>; authenticated discovery adds the current tool-capable chat catalog and excludes embedding, media-generation, and non-tool rows.</p>
+<p>Command Code uses <code>https://api.commandcode.ai/provider/v1</code>, defaults to <code>moonshotai/Kimi-K2.7-Code</code>, and issues keys at <a href="https://commandcode.ai/studio/provider">Command Code Provider</a>. Nous Research uses <code>https://inference-api.nousresearch.com/v1</code> and defaults to the tool-capable <code>anthropic/claude-sonnet-4.6</code>; authenticated discovery adds the current tool-capable chat catalog and excludes embedding, media-generation, and non-tool rows. Nous accepts either sign-in: <code>/login nous-research</code> runs the Portal device flow, and <code>/login nous-research-api-key</code> takes a key pasted from the Portal. Both store one credential under <code>nous-research</code>, so the model list and the account card show a single Nous account either way.</p>
 <h3 id="env-discovery-and-precedence"><a class="header" href="#env-discovery-and-precedence"><code>.env</code> discovery and precedence</a></h3>
 <p><code>veyyon</code> eagerly loads <code>.env</code> files into the process environment before any provider lookup. It reads four files and, for each variable, the <strong>highest-priority</strong> source that defines it wins. Effective precedence, high to low:</p>
 <ol>

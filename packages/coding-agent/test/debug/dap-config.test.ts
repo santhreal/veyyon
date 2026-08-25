@@ -120,7 +120,8 @@ describe("DAP adapter configuration", () => {
 		);
 
 		const config = getAdapterConfigs(cwd).debugpy;
-		expect(config.command).toBe("python");
+		expect(config.command).toBe("python3");
+		expect(config.commandFallbacks).toEqual(["python"]);
 		expect(config.args).toEqual(["-m", "debugpy.adapter", "--log-dir", ".debugpy-logs"]);
 		expect(config.fileTypes).toContain(".py");
 		expect(config.launchDefaults).toMatchObject({ request: "launch", justMyCode: false });

@@ -146,6 +146,16 @@ interface AccountProbeCache {
 	usage: UsageReport[] | null;
 }
 
+/**
+ * How a login ended, for callers that reopen a surface afterwards.
+ *
+ * `cancelled` and `failed` are both "no credential stored", but they are not
+ * interchangeable: cancelling is a decision and unwinding to the surface that
+ * offered the login is correct, while failing leaves an error that a reopened
+ * fullscreen surface would cover up.
+ */
+type LoginOutcome = "stored" | "cancelled" | "failed";
+
 export class SelectorController {
 	constructor(private ctx: SelectorControllerContext) {}
 
@@ -1019,8 +1029,9 @@ export class SelectorController {
 
 	/** /login round-trip for a locked provider; reopen the hub on that provider only after a successful login. */
 	async #loginThenReopenModelHub(providerId: string): Promise<void> {
-		const succeeded = await this.#handleOAuthLogin(providerId);
-		if (succeeded) {
+		// The hub replaces the screen, so it opens only on a login that has
+		// something new to show. A failure leaves its error readable instead.
+		if ((await this.#handleOAuthLogin(providerId)) === "stored") {
 			this.#showModelHub({ initialProviderId: providerId });
 		}
 	}
@@ -1399,10 +1410,17 @@ export class SelectorController {
 	 * Run the OAuth login flow for `providerId` inside a cancellable
 	 * {@link LoginDialogComponent} that replaces the editor slot. Esc aborts:
 	 * the dialog's abort signal reaches the provider flow, any pending prompt
-	 * rejects, and the editor is restored immediately. Returns true when
-	 * credentials were stored.
+	 * rejects, and the editor is restored immediately.
+	 *
+	 * Cancelled and failed are separate outcomes because the caller must treat
+	 * them differently. Cancelling is a decision, and unwinding one level back to
+	 * the surface that offered the login is what the operator asked for. Failing
+	 * leaves an error in the transcript, and a caller that reopens a FULLSCREEN
+	 * surface on top of it hides the only explanation there is — which is how a
+	 * rejected API key came to read as the account manager blinking and adding
+	 * nothing.
 	 */
-	async #handleOAuthLogin(providerId: string): Promise<boolean> {
+	async #handleOAuthLogin(providerId: string): Promise<LoginOutcome> {
 		// `formatProviderName`, not the raw slug: the account card, the model hub and the footline all
 		// name this provider the same way, and a login is where the operator meets it first.
 		const providerLabel = formatProviderName(providerId);
@@ -1491,15 +1509,15 @@ export class SelectorController {
 				block.addChild(new Text(theme.fg("dim", named), 1, 0));
 			}
 			this.ctx.present(block);
-			return true;
+			return "stored";
 		} catch (error: unknown) {
 			if (dialog.signal.aborted) {
 				// User-cancelled: the dialog already restored the editor and
 				// surfaced "Login cancelled".
-				return false;
+				return "cancelled";
 			}
 			this.ctx.showError(`Login failed: ${errorMessage(error)}`);
-			return false;
+			return "failed";
 		} finally {
 			if (useManualInput) {
 				manualInput.clear(`Manual OAuth input cleared for ${providerId}`);
@@ -1591,7 +1609,7 @@ export class SelectorController {
 	 */
 	async showLogin(providerId?: string): Promise<void> {
 		if (providerId) {
-			if (await this.#handleOAuthLogin(providerId)) await this.showAccountManager(providerId);
+			if ((await this.#handleOAuthLogin(providerId)) === "stored") await this.showAccountManager(providerId);
 			return;
 		}
 		await this.showAccountManager();
@@ -1812,8 +1830,12 @@ export class SelectorController {
 	 * session's traffic; the card shows the new row and `enter` moves traffic when the user says so.
 	 */
 	async #loginThenReopenAccountManager(providerId: string): Promise<void> {
-		await this.#handleOAuthLogin(providerId);
-		await this.showAccountManager(providerId);
+		// Cancelling unwinds one level: the card offered the login, so the card is
+		// where escape belongs. A FAILURE does not, because the card is a
+		// fullscreen overlay and reopening it draws straight over the error
+		// `#handleOAuthLogin` just printed — which is how a rejected API key read
+		// as "Validating…" and then the same card, with no account and no reason.
+		if ((await this.#handleOAuthLogin(providerId)) !== "failed") await this.showAccountManager(providerId);
 	}
 
 	/**

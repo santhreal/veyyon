@@ -151,6 +151,7 @@ import type { BashExecutionComponent } from "./components/bash-execution";
 import { ChatBlock, type ChatBlockHost } from "./components/chat-block";
 import {
 	COMPOSER_INSET_COLS,
+	COMPOSER_PLACEHOLDER,
 	ComposerHairline,
 	mountComposerZone,
 	QuietZoneLine,
@@ -312,9 +313,6 @@ const EDITOR_RESERVED_ROWS = 12;
 const EDITOR_FALLBACK_ROWS = 24;
 const EDITOR_MIN_CHROME_ROWS = 4; // rows reserved for transcript + status on small terms
 const EDITOR_MIN_RENDERED_ROWS = 3; // bordered editor floor: top+bottom border + 1 content row
-/** The idle composer's ghost text. Single spaces around the interpunct — the
- * double-spaced version read as uneven gaps. */
-const COMPOSER_PLACEHOLDER = "ask anything · / for commands";
 
 /**
  * Consecutive provider-killed goal turns tolerated before goal mode stops
@@ -1208,7 +1206,9 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.ui.setPinnedFooterChildCount(composerZoneChildren);
 		this.ui.setFocus(this.editor);
 		// Anchor the composer to the viewport bottom on the launch/home screen.
-		this.#layout.sync();
+		// Seeded, not synced: a launch card already on screen leaves a composed
+		// frame this layout did not produce.
+		this.#layout.seedAfterMount();
 
 		this.#inputController.setupKeyHandlers();
 		this.#inputController.setupEditorSubmitHandler();

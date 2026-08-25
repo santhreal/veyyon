@@ -9,10 +9,17 @@
  * These tests lock the invariants: every recorded slot maps back to its own
  * id, slots never overlap, right-group slots sit where the right group is
  * actually painted, and the inter-group gap reports null.
+ *
+ * The git segment is off here. It reads the branch of whatever checkout runs
+ * the suite, so the line's width, and therefore which segments survive the
+ * 120-column budget, moved with the branch name: a 35-character branch pushed
+ * the model segment off the line and failed the hit-test below in CI while the
+ * same commit passed on a short-named checkout.
  */
 import { beforeAll, describe, expect, it } from "bun:test";
 import { visibleWidth } from "@veyyon/tui";
 import { Settings } from "../../../config/settings";
+import { settings } from "../../../config/settings-instance";
 import type { AgentSession } from "../../../session/agent-session";
 import { getThemeByName, setThemeInstance } from "../../theme/theme";
 import { StatusLineComponent } from "./component";
@@ -56,6 +63,7 @@ function makeSession() {
 
 beforeAll(async () => {
 	await Settings.init({ inMemory: true });
+	settings.set("git.enabled", false);
 	const loaded = await getThemeByName("dark");
 	if (!loaded) throw new Error("theme unavailable");
 	setThemeInstance(loaded);
