@@ -41,6 +41,11 @@
 - `hasVisibleContentAfter` in `AssistantMessageComponent` uses a direct `for` loop instead of `.slice(i + 1).some()`, avoiding a temporary array allocation per visible thinking block during render.
 - `#insertAfterTranscriptComponent` in `EventController` uses a direct `for` loop instead of `.slice(anchorIndex + 1).some()`, avoiding a temporary array allocation on each post-anchor insertion check.
 - `getUserMessageText` and `userMessageText` extract text with a single `for` loop instead of `.filter().map().join()`, avoiding two throwaway arrays per user message on the chat transcript and render paths.
+- `#getTextOutput` in `ToolExecutionComponent` joins text blocks with a single `for` loop instead of `.filter().map().join()`, avoiding two throwaway arrays per tool result render.
+- `#getAllImageBlocks` in `ToolExecutionComponent` collects image blocks with a single `for` loop instead of `.filter()` + spread, avoiding a throwaway array per image extraction.
+- The agent-dashboard comms summary, advisor-message blocker count, account-manager unhealthy count, and settings-selector per-model and blocked-agent counts use counting loops instead of `.filter().length`, avoiding a throwaway array per render.
+- The agent-dashboard roster column-width `reduce` is replaced with a `for` loop, avoiding a callback allocation per column measure.
+- The input-controller queued-message restore merges two `.filter().map()` passes into a single `for` loop, avoiding four throwaway arrays when restoring compaction-queued messages.
 
 ### Added
 
