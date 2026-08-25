@@ -230,22 +230,38 @@ export const EDITING_SETTINGS = {
 		ui: {
 			tab: "files",
 			group: "LSP",
-			label: "Enable LSP",
-			description: "Enable the lsp tool for code intelligence (definitions, references, diagnostics, rename)",
+			label: "Language Servers",
+			keywords: ["lsp", "tool", "diagnostics", "inject", "format", "enter"],
+			description:
+				"Start language servers. Files → LSP is the row you enter; this switch and the others on that page (agent tool, diagnostics after write, diagnostics after edit, format after write) are independent once servers are running.",
 		},
 	},
 
-	// The five knobs below only mean something while a language server runs, so
-	// each is conditioned on the master above. `lsp.enabled` ships off, and the
-	// five rendered anyway: a Files tab offering "Format on Write" and three
-	// diagnostics rules to a session with no server at all.
+	// Every row below only means something while a language server runs, so each
+	// is conditioned on the master above. `lsp.enabled` ships off; without that
+	// condition these would still render: a Files tab offering format-on-write
+	// and diagnostics injection to a session with no server at all.
+	"lsp.tool": {
+		type: "boolean",
+		default: true,
+		ui: {
+			tab: "files",
+			group: "LSP",
+			label: "Agent Tool",
+			condition: "lspEnabled",
+			keywords: ["lsp tool", "definitions", "rename"],
+			description:
+				"Give the agent the lsp tool (definitions, references, rename, query diagnostics). Off keeps servers for format and injected diagnostics only.",
+		},
+	},
+
 	"lsp.lazy": {
 		type: "boolean",
 		default: true,
 		ui: {
 			tab: "files",
 			group: "LSP",
-			label: "Lazy LSP Startup",
+			label: "Lazy Startup",
 			condition: "lspEnabled",
 			description:
 				"Start language servers on first use (lsp tool or editing a matching file type) instead of at session startup",
@@ -258,9 +274,10 @@ export const EDITING_SETTINGS = {
 		ui: {
 			tab: "files",
 			group: "LSP",
-			label: "Format on Write",
+			label: "Format after Write",
 			condition: "lspEnabled",
-			description: "Automatically format code files using LSP after writing",
+			description:
+				"Format the file with the language server after the write tool saves it. Independent of the agent tool and of diagnostics.",
 		},
 	},
 
@@ -270,9 +287,11 @@ export const EDITING_SETTINGS = {
 		ui: {
 			tab: "files",
 			group: "LSP",
-			label: "Diagnostics on Write",
+			label: "Diagnostics after Write",
 			condition: "lspEnabled",
-			description: "Return LSP diagnostics after writing code files",
+			keywords: ["inject", "late diagnostics"],
+			description:
+				"After the write tool saves a file, inject language-server diagnostics into the session. Independent of the agent tool.",
 		},
 	},
 
@@ -282,9 +301,11 @@ export const EDITING_SETTINGS = {
 		ui: {
 			tab: "files",
 			group: "LSP",
-			label: "Diagnostics on Edit",
+			label: "Diagnostics after Edit",
 			condition: "lspEnabled",
-			description: "Return LSP diagnostics after editing code files",
+			keywords: ["inject", "late diagnostics"],
+			description:
+				"After the edit tool saves a file, inject language-server diagnostics into the session. Independent of the agent tool.",
 		},
 	},
 

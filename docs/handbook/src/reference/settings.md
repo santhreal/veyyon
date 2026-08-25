@@ -782,6 +782,7 @@ julia:
 
 lsp:
   enabled: true
+  tool: true
   lazy: true
   diagnosticsOnWrite: true
   diagnosticsOnEdit: false
@@ -802,10 +803,11 @@ lsp:
 | `ruby.kernelMode` | enum | `session` | Same choice for Ruby cells: keep one kernel per session, or start and shut down a kernel for each cell. |
 | `julia.kernelMode` | enum | `session` | Same choice for Julia cells. A fresh Julia kernel recompiles, so `per-call` trades startup time for a clean slate. |
 | `python.interpreter` | string | `""` | Path to a Python interpreter; empty = auto-detect. |
-| `lsp.enabled` | boolean | `false` | Language-server integration. Opt in; `--no-lsp` disables it for a run where config turned it on. |
+| `lsp.enabled` | boolean | `false` | Start language servers. Opt in; Files → LSP enters the nested switches. `--no-lsp` disables the whole stack for a run. |
+| `lsp.tool` | boolean | `true` | Expose the `lsp` tool to the agent. Independent of injected diagnostics. |
 | `lsp.lazy` | boolean | `true` | Start servers on demand. |
-| `lsp.diagnosticsOnWrite` | boolean | `true` | Run diagnostics after a write. |
-| `lsp.diagnosticsOnEdit` | boolean | `false` | Run diagnostics after an edit. |
+| `lsp.diagnosticsOnWrite` | boolean | `true` | Inject diagnostics after a write. Independent of the agent tool. |
+| `lsp.diagnosticsOnEdit` | boolean | `false` | Inject diagnostics after an edit. Independent of the agent tool. |
 | `lsp.formatOnWrite` | boolean | `false` | Format files on write. |
 | `lsp.diagnosticsDeduplicate` | boolean | `true` | Collapse duplicate diagnostics. |
 | `shellPath` | string | _(unset)_ | Override the shell binary used by bash. |
