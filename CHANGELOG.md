@@ -68,7 +68,7 @@
 ### Fixed
 
 - Outbound wire path canonicalization only relativizes paths matching the active session working directory instead of accumulating prior working directory roots, preventing distinct absolute paths in command output from collapsing to the same relative representation.
-- A working-directory change no longer re-renders the messages already sent to the provider, so the cached prompt prefix survives a `set_cwd`; only messages appended after the move render against the new directory.
+- A working-directory change in a live session no longer re-renders earlier messages already sent to the provider, so only messages appended after a `set_cwd` render against the new directory.
 - With Language Servers off, which is the default, the write and edit tools no longer start a language server to inject diagnostics, format the file, or notify the workspace that a file changed, including on the ACP client-bridge write path.
 - A malformed `irc` send reports its own validation error instead of being reported as an interrupted wait when a peer message arrives in the same batch.
 - A `job` list snapshot or cancel-only call keeps its own result when an interrupt lands beside it.
