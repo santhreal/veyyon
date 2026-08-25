@@ -956,8 +956,12 @@ export function convertToLlm(messages: AgentMessage[]): Message[] {
 					const inner = file.content ? `\n${file.content}\n` : "\n";
 					return `<file path="${file.path}">${inner}</file>`;
 				};
-				const textFiles = m.files.filter(file => !file.image);
-				const imageFiles = m.files.filter(file => file.image);
+				const textFiles: typeof m.files = [];
+				const imageFiles: typeof m.files = [];
+				for (const file of m.files) {
+					if (file.image) imageFiles.push(file);
+					else textFiles.push(file);
+				}
 				if (textFiles.length > 0) {
 					out[w++] = {
 						role: "developer",
