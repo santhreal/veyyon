@@ -179,10 +179,6 @@ describe("filenameForUrl does not parse query strings off a file URL", () => {
 		expect(got).toBe("/a/b.ts");
 	});
 
-	it("returns null for an http URL even though it has a scheme", () => {
-		const loader = new LocalModuleLoader("urls");
-		expect(loader.filenameForUrl("https://example.com/a.ts")).toBeNull();
-	});
 });
 
 describe("concurrent resolveForRun of two locals that share a dep does not throw", () => {

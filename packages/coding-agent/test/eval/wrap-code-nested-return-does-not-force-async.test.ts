@@ -7,9 +7,8 @@
  * would then publish every top-level binding onto globalThis (publishGlobals)
  * and rewrite the cell's trailing expression through a different path.
  *
- * Top-level `return 7;` is the opposite mistake: without a rewrite it is
- * swallowed by the wrapper (the IIFE's return is discarded). returnFinalExpression
- * turns it into __veyyon_set_final_expr__((7)).
+ * js-static-import-rewrite already pins top-level `return 42` after a type
+ * import. Nested return/await and top-level class demote remain here.
  *
  * Class declarations at the top level are demoted to `var Name = class ...`
  * so the next cell can see them. A class inside a function is left alone.
@@ -32,13 +31,6 @@ describe("wrapCode does not wrap a cell whose only return/await is nested", () =
 		expect(result.asyncWrapped).toBe(false);
 		expect(result.source).toContain("async function f()");
 		expect(result.source).toContain("return await 1");
-	});
-
-	it("rewrites a top-level return into the final-expression setter rather than swallowing it", async () => {
-		const result = await wrapCode("return 7;");
-		expect(result.finalExpressionReturned).toBe(true);
-		expect(result.source).toContain("__veyyon_set_final_expr__((7))");
-		expect(result.source).not.toContain("return 7");
 	});
 
 	it("wraps for-await-of at the top level, not a for-of", async () => {
