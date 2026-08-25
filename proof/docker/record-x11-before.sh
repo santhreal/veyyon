@@ -26,8 +26,13 @@ scenes = sys.argv[1:]
 if not scenes:
     raise SystemExit("usage: record-x11-before.sh <scene.sh> [<scene.sh>...]")
 
+# The hold point defaults to main, which assumes the branch workflow. A change
+# already committed on local main names its parent here instead, so the before
+# arm still records the tree without the change.
+base = os.environ.get("PROOF_BASE_REF", "main")
+
 changed = subprocess.run(
-    ["git", "diff", "--name-status", "main..HEAD", "--", "packages/*/src/*"],
+    ["git", "diff", "--name-status", f"{base}..HEAD", "--", "packages/*/src/*"],
     capture_output=True, text=True, check=True,
 ).stdout.split("\n")
 
@@ -54,7 +59,7 @@ for p in deleted_by_branch:
     if os.path.exists(p):
         raise SystemExit("file the branch deleted is present again: " + p)
 
-print(f"holding {len(held)} modified files at main, restoring {len(deleted_by_branch)} deleted ones")
+print(f"holding {len(held)} modified files at {base}, restoring {len(deleted_by_branch)} deleted ones")
 
 out = os.environ.get("OUT_DIR") or os.path.join("proof", "captures", "x11", "before")
 os.makedirs(out, exist_ok=True)
@@ -66,7 +71,7 @@ env = dict(os.environ, OUT_DIR=os.path.abspath(out), SCENE_ARM="before")
 
 try:
     for p in held + deleted_by_branch:
-        old = subprocess.run(["git", "show", "main:" + p], capture_output=True)
+        old = subprocess.run(["git", "show", f"{base}:{p}"], capture_output=True)
         if old.returncode != 0:
             raise SystemExit("no main copy of " + p)
         with open(p, "wb") as fh:
