@@ -569,3 +569,83 @@ describe("convertToLlm for-loop conversion", () => {
 		expect(result[3]!.role).toBe("user");
 	});
 });
+
+describe("convertToLlm reference preservation", () => {
+	// WHY: convertMessageToLlm returns user/developer/toolResult messages by
+	// reference when no transformation is needed (attribution already set,
+	// content unpruned). This avoids ~33K shallow spreads per turn on long
+	// conversations. These tests prove the reference is preserved and that
+	// transformations still produce new objects when needed.
+	it("returns user messages by reference when attribution is already set", () => {
+		const msg: Message = {
+			role: "user",
+			content: [{ type: "text", text: "hello" }],
+			attribution: "user",
+			timestamp: 1,
+		};
+		const [converted] = convertToLlm([msg]);
+		expect(converted).toBe(msg);
+	});
+
+	it("returns developer messages by reference when attribution is already set", () => {
+		const msg: Message = {
+			role: "developer",
+			content: [{ type: "text", text: "instruction" }],
+			attribution: "agent",
+			timestamp: 1,
+		};
+		const [converted] = convertToLlm([msg]);
+		expect(converted).toBe(msg);
+	});
+
+	it("returns assistant messages by reference", () => {
+		const msg = {
+			role: "assistant",
+			content: [{ type: "text", text: "response" }],
+			stopReason: "end",
+			timestamp: 1,
+		} as unknown as Message;
+		const [converted] = convertToLlm([msg]);
+		expect(converted).toBe(msg);
+	});
+
+	it("returns toolResult messages by reference when unpruned and attribution is set", () => {
+		const msg = {
+			role: "toolResult",
+			content: [{ type: "text", text: "result" }],
+			toolCallId: "tc1",
+			toolName: "read",
+			attribution: "agent",
+			timestamp: 1,
+		} as unknown as Message;
+		const [converted] = convertToLlm([msg]);
+		expect(converted).toBe(msg);
+	});
+
+	it("creates a new object for user messages when attribution is missing", () => {
+		const msg = {
+			role: "user",
+			content: [{ type: "text", text: "hello" }],
+			timestamp: 1,
+		} as unknown as Message;
+		const [converted] = convertToLlm([msg]);
+		expect(converted).not.toBe(msg);
+		if (converted && converted.role !== "assistant") {
+			expect(converted.attribution).toBe("user");
+		}
+	});
+
+	it("creates a new object for toolResult messages when pruned", () => {
+		const msg = {
+			role: "toolResult",
+			content: [{ type: "text", text: "result" }],
+			toolCallId: "tc1",
+			toolName: "read",
+			attribution: "agent",
+			prunedAt: 1000,
+			timestamp: 1,
+		} as unknown as Message;
+		const [converted] = convertToLlm([msg]);
+		expect(converted).not.toBe(msg);
+	});
+});
