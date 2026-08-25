@@ -2288,14 +2288,16 @@ export class Markdown implements Component {
 		}
 
 		let minColumnWidths = minWordWidths;
-		let minCellsWidth = minColumnWidths.reduce((a, b) => a + b, 0);
+		let minCellsWidth = 0;
+		for (let i = 0; i < minColumnWidths.length; i++) minCellsWidth += minColumnWidths[i];
 
 		if (minCellsWidth > availableForCells) {
 			minColumnWidths = new Array(numCols).fill(1);
 			const remaining = availableForCells - numCols;
 
 			if (remaining > 0) {
-				const totalWeight = minWordWidths.reduce((total, width) => total + Math.max(0, width - 1), 0);
+				let totalWeight = 0;
+				for (let i = 0; i < minWordWidths.length; i++) totalWeight += Math.max(0, minWordWidths[i] - 1);
 				const growth = minWordWidths.map(width => {
 					const weight = Math.max(0, width - 1);
 					return totalWeight > 0 ? Math.floor((weight / totalWeight) * remaining) : 0;
@@ -2305,7 +2307,8 @@ export class Markdown implements Component {
 					minColumnWidths[i] += growth[i] ?? 0;
 				}
 
-				const allocated = growth.reduce((total, width) => total + width, 0);
+				let allocated = 0;
+				for (let i = 0; i < growth.length; i++) allocated += growth[i];
 				let leftover = remaining - allocated;
 				for (let i = 0; leftover > 0 && i < numCols; i++) {
 					minColumnWidths[i]++;
@@ -2313,11 +2316,14 @@ export class Markdown implements Component {
 				}
 			}
 
-			minCellsWidth = minColumnWidths.reduce((a, b) => a + b, 0);
+			minCellsWidth = 0;
+			for (let i = 0; i < minColumnWidths.length; i++) minCellsWidth += minColumnWidths[i];
 		}
 
 		// Calculate column widths that fit within available width
-		const totalNaturalWidth = naturalWidths.reduce((a, b) => a + b, 0) + borderOverhead;
+		let naturalSum = 0;
+		for (let i = 0; i < naturalWidths.length; i++) naturalSum += naturalWidths[i];
+		const totalNaturalWidth = naturalSum + borderOverhead;
 		let columnWidths: number[];
 
 		if (totalNaturalWidth <= availableWidth) {
@@ -2325,9 +2331,10 @@ export class Markdown implements Component {
 			columnWidths = naturalWidths.map((width, index) => Math.max(width, minColumnWidths[index]));
 		} else {
 			// Need to shrink columns to fit
-			const totalGrowPotential = naturalWidths.reduce((total, width, index) => {
-				return total + Math.max(0, width - minColumnWidths[index]);
-			}, 0);
+			let totalGrowPotential = 0;
+			for (let i = 0; i < naturalWidths.length; i++) {
+				totalGrowPotential += Math.max(0, naturalWidths[i] - minColumnWidths[i]);
+			}
 			const extraWidth = Math.max(0, availableForCells - minCellsWidth);
 			columnWidths = minColumnWidths.map((minWidth, index) => {
 				const naturalWidth = naturalWidths[index];
@@ -2340,7 +2347,8 @@ export class Markdown implements Component {
 			});
 
 			// Adjust for rounding errors - distribute remaining space
-			const allocated = columnWidths.reduce((a, b) => a + b, 0);
+			let allocated = 0;
+			for (let i = 0; i < columnWidths.length; i++) allocated += columnWidths[i];
 			let remaining = availableForCells - allocated;
 			while (remaining > 0) {
 				let grew = false;
