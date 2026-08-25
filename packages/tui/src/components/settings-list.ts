@@ -198,6 +198,11 @@ export class SettingsList implements Component {
 		return true;
 	}
 
+	/** Open the selected row's submenu or cycle its values, same as Enter. */
+	activateSelected(): void {
+		this.#activateItem();
+	}
+
 	/** True while keyboard focus is on the section headings instead of the setting rows. */
 	get sectionFocused(): boolean {
 		return this.#sectionFocus;
