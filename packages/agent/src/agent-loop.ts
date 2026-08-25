@@ -742,16 +742,16 @@ export function normalizeTools(
 	pruneDescriptions = false,
 ): Context["tools"] {
 	if (!tools) return tools;
+	injectIntent = injectIntent && Bun.env.VEYYON_NO_INTENT !== "1";
+	const cacheKey = `${injectIntent}|${exampleDialect ?? ""}|${pruneDescriptions}`;
+	const cached = normalizedToolsCache.get(tools);
+	if (cached && cached.key === cacheKey) return cached.result;
 	// Drop null/undefined/non-object slots so a bad registry entry cannot
 	// TypeError mid-map (adversarial / partial tool lists).
 	const valid = tools.filter(
 		(t): t is NonNullable<(typeof tools)[number]> =>
 			t !== null && t !== undefined && typeof t === "object" && typeof (t as { name?: unknown }).name === "string",
 	);
-	injectIntent = injectIntent && Bun.env.VEYYON_NO_INTENT !== "1";
-	const cacheKey = `${injectIntent}|${exampleDialect ?? ""}|${pruneDescriptions}`;
-	const cached = normalizedToolsCache.get(tools);
-	if (cached && cached.key === cacheKey) return cached.result;
 	const result = valid.map(t => {
 		const intentMode = resolveIntentMode(t.intent);
 		const doInjectIntent = injectIntent && intentMode !== "omit";
