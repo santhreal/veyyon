@@ -24,7 +24,7 @@ import { describe, expect, it } from "bun:test";
 import type { AuthStorage, FetchImpl } from "@veyyon/ai";
 import { getSearchProvider } from "@veyyon/coding-agent/web/search/provider";
 import { PUBLIC_ENGINE_IDS } from "@veyyon/coding-agent/web/search/providers/public";
-import type { SearchProviderId } from "@veyyon/coding-agent/web/search/types";
+import { SearchProviderError, type SearchProviderId } from "@veyyon/coding-agent/web/search/types";
 
 const fakeAuthStorage = {
 	async getApiKey() {
@@ -56,7 +56,7 @@ function respondWith(html: string): FetchImpl {
 	return () => Promise.resolve(new Response(html, { status: 200 }));
 }
 
-async function searchAgainst(id: SearchProviderId, html: string): Promise<{ raised: boolean; sources: number }> {
+async function searchAgainst(id: SearchProviderId, html: string): Promise<string> {
 	const provider = await getSearchProvider(id);
 	try {
 		const response = await provider.search({
@@ -65,9 +65,14 @@ async function searchAgainst(id: SearchProviderId, html: string): Promise<{ rais
 			systemPrompt: "bot wall test prompt",
 			fetch: respondWith(html),
 		} as never);
-		return { raised: false, sources: response.sources.length };
-	} catch {
-		return { raised: true, sources: 0 };
+		return `returned sources=${response.sources.length}`;
+	} catch (error) {
+		// Not a bare "something threw": a TypeError from a broken fixture would
+		// otherwise read as a refusal and keep this suite green while the wall
+		// check did nothing. The refusal must be this provider's own error.
+		if (!(error instanceof SearchProviderError)) return `threw ${(error as Error).constructor.name}`;
+		if (error.provider !== id) return `refused as "${error.provider}"`;
+		return "refused";
 	}
 }
 
@@ -79,10 +84,9 @@ describe("a bot wall is refused, not reported as an empty web", () => {
 	});
 
 	for (const id of PUBLIC_ENGINE_IDS) {
-		it(`${id} raises on its bot wall instead of returning zero results`, async () => {
-			const outcome = await searchAgainst(id, BOT_WALLS[id]);
+		it(`${id} refuses its bot wall instead of returning zero results`, async () => {
 			// Asserted as one string so a failure names the engine and what it did.
-			expect(`${id}: raised=${outcome.raised} sources=${outcome.sources}`).toBe(`${id}: raised=true sources=0`);
+			expect(`${id}: ${await searchAgainst(id, BOT_WALLS[id])}`).toBe(`${id}: refused`);
 		});
 	}
 
@@ -98,6 +102,9 @@ describe("a bot wall is refused, not reported as an empty web", () => {
 			systemPrompt: "bot wall test prompt",
 			fetch: respondWith(page),
 		} as never);
-		expect(response.provider).toBe("startpage");
+		// Assert a source actually parsed, not merely that the call returned: a
+		// parser that silently yields nothing is the same outage this fix exists
+		// to prevent, and `provider === "startpage"` holds either way.
+		expect(response.sources.map(source => source.url)).toEqual(["https://example.com/a"]);
 	});
 });
