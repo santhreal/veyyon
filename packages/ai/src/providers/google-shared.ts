@@ -197,6 +197,8 @@ export function elidedSignatureBytes(
 	policy: SignaturePolicy,
 	sameProviderAndModel: (message: AssistantMessage) => boolean,
 ): number {
+	// No rule is active: every signature is sent, so nothing is elided.
+	if (policy.retainFrom === 0 && policy.maxLength === undefined) return 0;
 	let elided = 0;
 	for (let index = 0; index < messages.length; index++) {
 		const message = messages[index];

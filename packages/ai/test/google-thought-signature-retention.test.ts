@@ -337,6 +337,28 @@ describe("elidedSignatureBytes", () => {
 		];
 		expect(elided(messages, { thoughtSignatureRetention: 1 })).toBe(0);
 	});
+
+	/**
+	 * The default (no retention, no length cap) must short-circuit to zero
+	 * without scanning messages. This is the common case on every provider
+	 * request: the function is called on the full conversation every turn,
+	 * and walking all messages and content blocks to return 0 is pure
+	 * overhead. The early return must produce the same result as a full scan.
+	 */
+	it("returns zero without scanning when no elision rule is active", () => {
+		// A transcript with valid signatures that would be scanned and tested
+		// if the early return were absent.
+		const big: Message[] = [
+			{ role: "user", content: "go" } as Message,
+			...turn(gemini3, "a", sig),
+			...turn(gemini3, "b", sig),
+		];
+		// No rules active: retainFrom=0, maxLength=undefined.
+		expect(elidedSignatureBytes(big, { retainFrom: 0, maxLength: undefined }, sameModel)).toBe(0);
+		// Also verify the policy produced by signaturePolicy with no settings
+		// hits the same path.
+		expect(elided(big, {})).toBe(0);
+	});
 });
 
 /**
