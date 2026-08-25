@@ -31,13 +31,13 @@
  *      which is the direction that overflows: the native leaves a line whole
  *      because it measured 2, and the compositor then pads it as if it were 5.
  *
- * WHAT IS STILL OPEN, deliberately, and asserted as open at the bottom of this
- * file: an ESCAPE inside an OSC 66 payload. There the native over-counts, charging
- * the escape bytes as cells, and the JS is closer to what a terminal draws (an ESC
- * aborts an OSC payload, so the terminal renders the rest as ordinary output). It
- * cannot overflow, since the JS number is the smaller one, and fixing it means
- * changing the Rust side. It is pinned here so the day the native changes, this
- * file says so rather than silently passing.
+ * WHAT WAS OPEN AND IS NOW CLOSED: an ESCAPE inside an OSC 66 payload, and a span
+ * with no terminator. The native charged the raw bytes as cells; a terminal draws
+ * none of them, because an ESC aborts the payload and an unterminated span
+ * consumes it. It could not overflow, since the native's number was the larger
+ * one, but it clipped a span short. `skip_unparsed_escape_u16` in
+ * `crates/veyyon-text` closes it, and the bottom of this file pins the drawn cell
+ * counts for both shapes.
  */
 
 import { describe, expect, it } from "bun:test";
@@ -310,51 +310,46 @@ describe("the width bound holds over OSC 66 content", () => {
 	});
 });
 
-/** The malformed spans on which the two oracles still differ. See the describe below. */
-const MALFORMED_SPANS = [
-	"\x1b]66;;\x1b[31ma\x1b\\",
-	"\x1b]66;;\x1b[31m\x1b\\",
-	"\x1b]66;;a\x1bZb\x1b\\",
-	"\x1b]66;s=2;\x1b[31ma\x07",
-	"\x1b]66;s=2;Hi",
-	"\x1b]66;;ab",
+/**
+ * A malformed span and the cells a terminal draws for it.
+ *
+ * Two shapes reach this. An ESC inside an OSC 66 payload aborts the OSC at the
+ * escape, and what follows is ordinary output. An UNTERMINATED span never
+ * reaches a terminator, so the terminal consumes the payload to end of input
+ * and draws none of it.
+ */
+const ABORTED_SPANS: ReadonlyArray<readonly [string, number]> = [
+	// The SGR and the ST draw nothing, so the `a` is all that is left.
+	["\x1b]66;;\x1b[31ma\x1b\\", 1],
+	// The same abort with no graphic character after it.
+	["\x1b]66;;\x1b[31m\x1b\\", 0],
+	// The abort lands mid-payload: `a` is inside the consumed span, `b` is not,
+	// and `ESC Z` is a complete two-byte sequence of no width.
+	["\x1b]66;;a\x1bZb\x1b\\", 1],
+	// BEL terminates an OSC, but the ESC ahead of it already aborted this one.
+	["\x1b]66;s=2;\x1b[31ma\x07", 1],
+	// No terminator at all.
+	["\x1b]66;s=2;Hi", 0],
+	["\x1b]66;;ab", 0],
 ];
 
-describe("the malformed-span class is still the native's to fix", () => {
+describe("a malformed OSC 66 span measures the cells a terminal draws", () => {
 	/**
-	 * The one remaining disagreement, asserted as a disagreement so it is recorded
-	 * rather than forgotten. Two shapes reach it. An ESC inside an OSC 66 payload is
-	 * malformed: a real terminal aborts the OSC at the escape and renders what
-	 * follows as ordinary output, one cell for the `a`. An UNTERMINATED span is
-	 * malformed the other way: the terminal keeps consuming bytes looking for a
-	 * terminator and draws nothing at all. In both the JS gives the number a
-	 * terminal would draw and the native charges the raw bytes as cells.
+	 * This class used to be the native's alone: it charged the raw payload bytes as
+	 * cells while the JS gave the drawn number, so `ESC ] 6 6 ; s = 2 ; H i`
+	 * measured ten against zero. `skip_unparsed_escape_u16` in `crates/veyyon-text`
+	 * now consumes an aborted or unterminated string sequence without drawing it,
+	 * and `ABORTED_STRING_SEQUENCE_REGEX` in `packages/tui/src/utils.ts` is the same
+	 * rule on the JS side, which under-measured the mid-payload abort.
 	 *
-	 * It stays open because it is the SAFE direction. The native's number is the
-	 * larger one, so it cuts earlier than it needs to and nothing overflows; the
-	 * cost is a span clipped short, not a broken line. Closing it means changing
-	 * `crates/veyyon-text` to treat an escape and an end-of-input as aborting the
-	 * span, and shipping a rebuilt native. When that lands this test fails, which is
-	 * the point: the fix has to come here and delete this block, it cannot land and
-	 * leave the class undocumented.
+	 * Pinned as exact cell counts rather than as "the two agree", because agreeing
+	 * on a wrong number is the failure this whole file exists to catch. Equality
+	 * also subsumes the direction check that stood here: neither oracle can be the
+	 * wider one on this class now.
 	 */
-	it("has the native charging bytes as cells where the JS does not", () => {
-		for (const text of MALFORMED_SPANS) {
-			const { js, native } = widths(text);
-			expect({ text, wider: native > js }).toEqual({ text, wider: true });
-		}
-	});
-
-	/**
-	 * And the direction is what makes it safe, stated as its own assertion so a
-	 * future change that flips it (JS wider than native) fails here instead of
-	 * silently reintroducing overflow. This is the assertion that would have caught
-	 * the `w=+5` bug on its own.
-	 */
-	it("never has the JS wider than the native on that class", () => {
-		for (const text of MALFORMED_SPANS) {
-			const { js, native } = widths(text);
-			expect(js).toBeLessThanOrEqual(native);
+	it("draws what the terminal draws, in both oracles", () => {
+		for (const [text, cells] of ABORTED_SPANS) {
+			expectWidth(text, cells);
 		}
 	});
 });

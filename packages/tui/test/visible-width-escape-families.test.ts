@@ -126,23 +126,57 @@ describe("string sequences", () => {
 	});
 });
 
+describe("an unterminated string sequence draws nothing in either oracle", () => {
+	/**
+	 * Half of the escape-class disagreement, and the half that ran the wrong way for
+	 * the native: Bun answered zero, which is what a terminal does with a sequence it
+	 * is still assembling, and the native charged the payload bytes as cells.
+	 *
+	 * `string_sequence_consumed_len_u16` in `crates/veyyon-text` closes it. The
+	 * scanner used to skip the `ESC` alone and hand the rest to the text pass, which
+	 * is where the old counts came from: four cells for `ESC ] 8 ; ;`.
+	 *
+	 * Both numbers are asserted, not just their equality: agreeing on a wrong number
+	 * is the failure this file exists to catch.
+	 */
+	it("measures zero on both sides", () => {
+		for (const sequence of ["\x1b]", "\x1b]8;;", "\x1b]66;s=2;Hi", "\x1bPq", "\x1b_data"]) {
+			expect(visibleWidth(sequence)).toBe(0);
+			expect(nativeWidth(sequence)).toBe(0);
+		}
+	});
+
+	/**
+	 * And the consumed payload stops where the terminal stops it, rather than eating
+	 * the output that follows. An `ESC` inside the payload aborts the string, and
+	 * what comes after is ordinary text: here a two-byte `ESC Z` of no width, then a
+	 * `b` that draws.
+	 */
+	it("stops at the escape that aborts the payload", () => {
+		expect(nativeWidth("\x1b]66;;a\x1bZb\x1b\\")).toBe(1);
+		expect(visibleWidth("\x1b]66;;a\x1bZb\x1b\\")).toBe(1);
+	});
+});
+
 describe("what is deliberately still divergent", () => {
 	/**
-	 * An UNTERMINATED introducer, where the two oracles disagree and the native is wrong.
+	 * An unterminated CSI, where the two oracles disagree and neither is obviously
+	 * wrong. Bun answers zero. The native drops the unclassifiable `ESC` and draws
+	 * the `[` and any parameter bytes as ordinary text, which is the contract
+	 * `a_stray_csi_introducer_does_not_swallow_the_line` pins in
+	 * `crates/veyyon-text`: a stray introducer must not consume the line, and the
+	 * grammar walk stops at the first byte it does not allow.
 	 *
-	 * Bun answers zero, which is what a terminal does with a sequence it is still
-	 * waiting to finish, and the native counts the bytes after the `ESC`. Adopting
-	 * the native's answer here would mean teaching this side to draw characters the
-	 * terminal does not, so the gap is recorded instead. These are the last five
-	 * escape-class disagreements and they need the native side changed.
+	 * It stays open because it is the SAFE direction. The native's number is the
+	 * larger one, so a cut lands early and nothing overflows. Closing it means
+	 * deciding whether `ESC [` itself draws, which changes that contract rather than
+	 * extending it, so it does not ride along with the string-sequence fix above.
 	 */
-	it("still measures an unterminated introducer as zero while the native counts its bytes", () => {
+	it("still measures an unterminated CSI as zero while the native counts its bytes", () => {
 		const cases: [string, number][] = [
 			["\x1b[", 1],
 			["\x1b[3", 2],
 			["\x1b[31", 3],
-			["\x1b]", 1],
-			["\x1b]8;;", 4],
 		];
 		for (const [sequence, native] of cases) {
 			expect(visibleWidth(sequence)).toBe(0);

@@ -409,6 +409,25 @@ const OSC_SEQUENCE_REGEX = /\x1b\][0-9]+;[^\x07\x1b]*(?:\x07|\x1b\\)/g;
 const OSC_STRIP_MARKER = "\x1b\\";
 
 /**
+ * A string sequence the terminal never closes, and the payload it consumes.
+ *
+ * An OSC, DCS, SOS, PM or APC introducer whose sequence has no terminator still
+ * eats its payload: an ESC inside it aborts the string at that ESC, and one that
+ * runs to end of input consumes the rest. A terminal draws none of those bytes.
+ * `Bun.stringWidth` instead swallows the aborted case through to the end of the
+ * string, so `ESC ] 6 6 ; ; a ESC Z b ESC \` measured zero where a terminal draws
+ * the `b`. That is the UNDER-measuring direction, the one that overflows a row.
+ *
+ * Removing the run rather than marking it is safe here, unlike the well-formed
+ * strip above: the lookahead only matches at an ESC or at end of string, so the
+ * text before the run is never joined to a combining character.
+ *
+ * `string_sequence_consumed_len_u16` in `crates/veyyon-text` is the same rule on
+ * the native side; the two are the oracles this file keeps in agreement.
+ */
+const ABORTED_STRING_SEQUENCE_REGEX = /\x1b[\]P^X_][^\x07\x1b]*(?=\x1b(?!\\)|$)/g;
+
+/**
  * The escape sequences `Bun.stringWidth` does NOT recognise, which the native
  * engine strips and every terminal consumes.
  *
@@ -714,15 +733,18 @@ export function visibleWidth(str: string): number {
 	// hyperlink measured at its escape length rather than its label length is
 	// what pushed Markdown table columns out of place (upstream #6282).
 	const strippedStr = str.includes(OSC) ? str.replace(OSC_SEQUENCE_REGEX, OSC_STRIP_MARKER) : str;
-	let width = correctedBunWidth(strippedStr);
+	const measuredStr = strippedStr.includes(ESC)
+		? strippedStr.replace(ABORTED_STRING_SEQUENCE_REGEX, "")
+		: strippedStr;
+	let width = correctedBunWidth(measuredStr);
 
 	// Tabs were counted over the RAW string, and the width above came from the
-	// stripped one, so every tab that lived INSIDE an OSC sequence was charged a
+	// measured one, so every tab that lived INSIDE an OSC sequence was charged a
 	// tab stop for text the terminal never draws. A hyperlink whose URL contains a
 	// tab, or a window-title OSC, measured three cells wider here than natively.
-	// Recount over the text actually measured; only OSC-bearing input pays for it,
-	// and that input already paid for the `replace` on the line above.
-	if (strippedStr !== str) tabCount = countTabs(strippedStr);
+	// Recount over the text actually measured; only escape-bearing input pays for
+	// it, and that input already paid for the `replace` on the line above.
+	if (measuredStr !== str) tabCount = countTabs(measuredStr);
 
 	if (tabCount > 0) width += tabCount * DEFAULT_TAB_WIDTH;
 

@@ -782,7 +782,7 @@ fn visible_width_u16_up_to(data: &[u16], limit: usize, tab_width: usize) -> (usi
 				i += seq_len;
 				continue;
 			}
-			i = skip_unrecognized_escape(i);
+			i = skip_unparsed_escape_u16(data, i);
 			continue;
 		}
 
@@ -1116,7 +1116,7 @@ fn break_long_word(
 			// dangling introducer at the end of the row, and the very next thing
 			// written is the carried-over SGR prefix of the following row, which the
 			// introducer would then swallow. See skip_unrecognized_escape.
-			i = skip_unrecognized_escape(i);
+			i = skip_unparsed_escape_u16(word, i);
 			continue;
 		}
 		let start = i;
@@ -1514,7 +1514,7 @@ pub fn truncate_to_width(
 				i += seq_len;
 				continue;
 			}
-			i = skip_unrecognized_escape(i);
+			i = skip_unparsed_escape_u16(text, i);
 			continue;
 		}
 
@@ -1635,7 +1635,7 @@ fn slice_with_width_impl(
 				i += seq_len;
 				continue;
 			}
-			i = skip_unrecognized_escape(i);
+			i = skip_unparsed_escape_u16(line, i);
 			continue;
 		}
 
@@ -1758,6 +1758,51 @@ const fn skip_unrecognized_escape(i: usize) -> usize {
 	i + 1
 }
 
+/// The bytes an unterminated or aborted string sequence consumes, drawing none.
+///
+/// A terminal reads the payload of an OSC, DCS, SOS, PM or APC as string data,
+/// not as output, and that stays true when the sequence never reaches its
+/// terminator: it draws nothing. An ESC inside the payload aborts the string at
+/// that ESC, so the count stops there and the scan resumes on the inner
+/// sequence.
+///
+/// Always at least two, so a scanner cannot spin on the introducer.
+fn string_sequence_consumed_len_u16(data: &[u16], pos: usize) -> usize {
+	let mut i = pos + 2;
+	while i < data.len() {
+		if data[i] == ESC {
+			return i - pos;
+		}
+		i += 1;
+	}
+	data.len() - pos
+}
+
+/// How far a scanner advances past an ESC that `ansi_seq_len_u16` refused.
+///
+/// A string introducer whose sequence did not parse still consumes its payload.
+/// Advancing one byte hands that payload to the text scanner, which charges it
+/// as cells and copies it: `ESC ] 6 6 ; s = 2 ; H i` measured ten cells that
+/// way, against the zero a terminal draws.
+///
+/// An unterminated CSI is deliberately NOT here. `ESC [` followed by a byte the
+/// grammar rejects aborts the sequence, and
+/// `a_stray_csi_introducer_does_not_swallow_the_line` fixes the `[` as a drawn
+/// cell in that case; consuming the introducer would change that contract, and
+/// the JS oracle does not agree with it either. That class stays as the
+/// over-measuring one, which cuts early rather than overflowing.
+///
+/// Every other unclassifiable ESC keeps the one-byte skip that
+/// `skip_unrecognized_escape` documents.
+fn skip_unparsed_escape_u16(data: &[u16], pos: usize) -> usize {
+	match data.get(pos + 1) {
+		// ']' OSC, 'P' DCS, 'X' SOS, '^' PM, '_' APC -- the set `ansi_seq_len_u16`
+		// routes to `string_sequence_len_u16`.
+		Some(0x50 | 0x58 | 0x5d | 0x5e | 0x5f) => pos + string_sequence_consumed_len_u16(data, pos),
+		_ => skip_unrecognized_escape(pos),
+	}
+}
+
 /// Remove every ESC that begins no classifiable sequence, once, before anything
 /// else runs.
 ///
@@ -1801,7 +1846,7 @@ fn strip_unrecognized_escapes(data: &[u16]) -> Cow<'_, [u16]> {
 
 	let mut cleaned = Vec::with_capacity(data.len() - 1);
 	cleaned.extend_from_slice(&data[..first_dangling]);
-	let mut i = skip_unrecognized_escape(first_dangling);
+	let mut i = skip_unparsed_escape_u16(data, first_dangling);
 	while i < data.len() {
 		if data[i] == ESC {
 			match ansi_seq_len_u16(data, i) {
@@ -1809,7 +1854,7 @@ fn strip_unrecognized_escapes(data: &[u16]) -> Cow<'_, [u16]> {
 					cleaned.extend_from_slice(&data[i..i + seq_len]);
 					i += seq_len;
 				},
-				None => i = skip_unrecognized_escape(i),
+				None => i = skip_unparsed_escape_u16(data, i),
 			}
 			continue;
 		}
@@ -1957,7 +2002,7 @@ fn extract_segments_impl(
 				continue;
 			}
 
-			i = skip_unrecognized_escape(i);
+			i = skip_unparsed_escape_u16(line, i);
 			continue;
 		}
 
