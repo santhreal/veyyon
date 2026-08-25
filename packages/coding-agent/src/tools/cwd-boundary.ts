@@ -133,7 +133,6 @@ const TOP_LEVEL_WHITESPACE_RE = /\s/;
 
 type DelimitedPathSplitMode = "comma" | "semicolon" | "whitespace" | "mixed";
 
-
 function hasTopLevelPathDelimiter(entry: string): boolean {
 	let braceDepth = 0;
 	for (let i = 0; i < entry.length; i++) {
@@ -309,7 +308,6 @@ export function searchPathFilesystemTargets(args: unknown, cwd?: string): string
 	}
 	return targets;
 }
-
 
 /**
  * Resolved absolute paths this tool call would read or write that lie OUTSIDE

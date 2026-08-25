@@ -75,7 +75,6 @@ import { getLanguageFromPath } from "../utils/lang-from-path";
 import { convertFileWithMarkit } from "../utils/markit";
 import { type ArchiveReader, formatArchiveEntryLines, openArchive, parseArchivePathCandidates } from "../utils/zip";
 import { buildDirectoryTree, buildTopLevelDirectoryListing, type DirectoryTree } from "../workspace-tree";
-import { expandDelimitedPathEntriesSync } from "./cwd-boundary";
 import {
 	type ConflictEntry,
 	type ConflictScope,
@@ -87,6 +86,7 @@ import {
 	scanConflictLines,
 	scanFileForConflicts,
 } from "./conflict-detect";
+import { expandDelimitedPathEntriesSync } from "./cwd-boundary";
 import {
 	executeReadUrl,
 	loadReadUrlCacheEntry,
@@ -3857,7 +3857,9 @@ export const readToolRenderer = {
 		const truncation = details?.meta?.truncation;
 		const fallback = details?.truncation;
 		if (details?.resolvedPath) {
-			warningLines.push(uiTheme.fg("dim", wrapBrackets(`Resolved path: ${shortenPath(details.resolvedPath)}`, uiTheme)));
+			warningLines.push(
+				uiTheme.fg("dim", wrapBrackets(`Resolved path: ${shortenPath(details.resolvedPath)}`, uiTheme)),
+			);
 		}
 		if (truncation) {
 			if (fallback?.firstLineExceedsLimit) {
