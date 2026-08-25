@@ -86,7 +86,7 @@ export async function validateOpenAICompatibleApiKey(options: OpenAICompatibleVa
 		// under the shared ceiling and redacted before it can reach a message or a log.
 		const body = await AIError.readProviderErrorBody(response);
 		const message = body.text.trim()
-			? `${options.provider} API key validation failed (${response.status}): ${body.detail}`
+			? `${options.provider} API key validation failed (${response.status}): ${AIError.providerErrorMessage(body)}`
 			: `${options.provider} API key validation failed (${response.status})`;
 		throw new AIError.ApiKeyRequiredError(message);
 	} finally {
@@ -127,7 +127,7 @@ export async function validateAnthropicCompatibleApiKey(options: AnthropicCompat
 
 		const body = await AIError.readProviderErrorBody(response);
 		const message = body.text.trim()
-			? `${options.provider} API key validation failed (${response.status}): ${body.detail}`
+			? `${options.provider} API key validation failed (${response.status}): ${AIError.providerErrorMessage(body)}`
 			: `${options.provider} API key validation failed (${response.status})`;
 		throw new AIError.ApiKeyRequiredError(message);
 	} finally {
@@ -164,7 +164,7 @@ export async function validateApiKeyAgainstModelsEndpoint(options: ModelListVali
 
 		const body = await AIError.readProviderErrorBody(response);
 		const message = body.text.trim()
-			? `${options.provider} API key validation failed (${response.status}): ${body.detail}`
+			? `${options.provider} API key validation failed (${response.status}): ${AIError.providerErrorMessage(body)}`
 			: `${options.provider} API key validation failed (${response.status})`;
 		throw new AIError.ApiKeyRequiredError(message);
 	} finally {
