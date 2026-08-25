@@ -195,7 +195,8 @@ export class AstEditTool implements AgentTool<typeof astEditSchema, AstEditToolD
 	};
 	// The cwd boundary gates out-of-cwd AST edits in non-yolo modes; internal
 	// schemes are filtered by the boundary. See cwd-boundary.ts.
-	readonly filesystemTargets = (args: unknown, cwd = this.session.cwd): string[] => astEditFilesystemTargets(args, cwd);
+	readonly filesystemTargets = (args: unknown, cwd = this.session.cwd): string[] =>
+		astEditFilesystemTargets(args, cwd);
 	readonly formatApprovalDetails = (args: unknown): string[] => {
 		const params = args as Partial<AstEditSchemaInfer>;
 		const lines: string[] = [];
