@@ -18,6 +18,9 @@
 import { describe, expect, it } from "bun:test";
 import { AnsiStripper, stripAnsi } from "@veyyon/utils/strip-ansi";
 
+/** Arrivals timed per measurement; the cheapest one is the strip without the scheduler. */
+const SPEED_SAMPLES = 7;
+
 interface Corpus {
 	cases: { name: string; why: string; input: string; expected: string }[];
 }
@@ -135,17 +138,34 @@ describe("a chunked strip", () => {
 		const chunk = `\x1b[32mrow\x1b[0m\t${"y".repeat(4000)}\n`;
 		const stripper = new AnsiStripper();
 		let accumulated = "";
-		const first = performance.now();
-		accumulated += stripper.push(chunk);
-		const firstCost = performance.now() - first;
+
+		// One arrival, timed. A single sample on a shared runner measures the
+		// scheduler as much as the strip, so each cost below is the cheapest of
+		// several arrivals: noise only ever adds time, never removes it.
+		const pushCost = (target: AnsiStripper): number => {
+			const started = performance.now();
+			accumulated += target.push(chunk);
+			return performance.now() - started;
+		};
+		const cheapest = (samples: number, take: () => number): number => {
+			let best = Number.POSITIVE_INFINITY;
+			for (let index = 0; index < samples; index++) best = Math.min(best, take());
+			return best;
+		};
+
+		// A fresh stripper each time: this is the cost of an arrival with nothing
+		// behind it.
+		const firstCost = cheapest(SPEED_SAMPLES, () => pushCost(new AnsiStripper()));
 		for (let index = 0; index < 200; index++) accumulated += stripper.push(chunk);
-		const last = performance.now();
-		accumulated += stripper.push(chunk);
-		const lastCost = performance.now() - last;
+		// The same arrival with 200 chunks behind it.
+		const deepCost = cheapest(SPEED_SAMPLES, () => pushCost(stripper));
+
 		expect(accumulated.length).toBeGreaterThan(800_000);
-		// A whole-string re-strip at this depth costs several times the first
-		// arrival. Chunked, the last arrival is the same work as the first, so
-		// the bound is generous and still fails a return to re-stripping.
-		expect(lastCost).toBeLessThan(Math.max(firstCost, 0.05) * 8);
+		// Chunked, the deep arrival is the same work as the first: measured, the
+		// two are within 2x. A re-strip of everything seen so far runs 150x the
+		// first arrival, so 20x separates them with two orders of margin either
+		// way. The floor keeps a first arrival too cheap to time from collapsing
+		// the budget to nothing, and stays far below a re-strip at this depth.
+		expect(deepCost).toBeLessThan(Math.max(firstCost, 0.005) * 20);
 	});
 });
