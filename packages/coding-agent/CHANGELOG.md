@@ -70,6 +70,8 @@
 - The command-controller usage limit max-suffix-width calculation replaces `reduce` with a `for` loop, avoiding a callback allocation per status line render.
 - The public web-search fan-out failure count uses a `for…of` loop instead of `failures.reduce(count => count + 1, 0)`, making the sparse-array hole-skipping explicit and avoiding a callback allocation per search fan-out.
 - `isRecursiveDelete` in the bash guard replaces two `argv.slice(1).some(...)` calls with `for` loops starting at index 1, avoiding a temporary array allocation on every recursive-delete check.
+- The output-block line flattening replaces `.flatMap(l => l.split("\n"))` with a `for` loop, avoiding a callback allocation per output block render.
+- `renderStatusLine` replaces `.map().filter()` on the meta array with a single `for` loop, avoiding two throwaway arrays per status line render.
 
 ### Added
 

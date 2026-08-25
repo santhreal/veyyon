@@ -47,7 +47,13 @@ export function renderStatusLine(options: StatusLineOptions, theme: Theme): stri
 		line += ` ${theme.fg(color, `${theme.format.bracketLeft}${flattenForHeader(label)}${theme.format.bracketRight}`)}`;
 	}
 
-	const meta = options.meta?.map(flattenForHeader).filter(value => value.trim().length > 0) ?? [];
+	const meta: string[] = [];
+	if (options.meta) {
+		for (const value of options.meta) {
+			const flattened = flattenForHeader(value);
+			if (flattened.trim().length > 0) meta.push(flattened);
+		}
+	}
 	if (meta.length > 0) {
 		line += ` ${theme.fg("dim", meta.join(theme.sep.dot))}`;
 	}

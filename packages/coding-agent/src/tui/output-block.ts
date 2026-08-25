@@ -164,7 +164,11 @@ export function renderOutputBlock(options: OutputBlockOptions, theme: Theme): st
 		} else if (section.separator && sectionIndex > 0) {
 			rows.push({ kind: "rule" });
 		}
-		const allLines = section.lines.flatMap(l => l.split("\n"));
+		const allLines: string[] = [];
+		for (const l of section.lines) {
+			const parts = l.split("\n");
+			for (const p of parts) allLines.push(p);
+		}
 		const sixelLineMask = TERMINAL.imageProtocol === ImageProtocol.Sixel ? getSixelLineMask(allLines) : undefined;
 		for (let lineIndex = 0; lineIndex < allLines.length; lineIndex++) {
 			const line = allLines[lineIndex]!;
