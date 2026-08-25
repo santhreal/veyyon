@@ -232,7 +232,7 @@ describe("OmfgController", () => {
 
 		const savedPath = path.join(harness.agentDir, "rules", "ts-no-casts.md");
 		const saved = await Bun.file(savedPath).text();
-		expect(saved).toContain('astCondition: ["$VALUE as any"]');
+		expect(saved).toContain('astCondition: "$VALUE as any"');
 		expect(saved).toContain("interruptMode: tool-only");
 		expect(saved).toContain("repeatMode: after-gap");
 		expect(saved).toContain("repeatGap: 5");
