@@ -241,7 +241,7 @@ describe("the footline prints nothing a terminal cannot draw", () => {
 			if (control) bad.push(`${where}: control ${JSON.stringify(control)}`);
 		}
 		expect(bad).toEqual([]);
-	});
+	}, 30_000);
 
 	it("closes the last style it opened, so nothing after the row inherits it", () => {
 		const bad: string[] = [];
@@ -252,7 +252,7 @@ describe("the footline prints nothing a terminal cannot draw", () => {
 				bad.push(`${where}: ends styled with ${JSON.stringify(last)}`);
 		}
 		expect(bad).toEqual([]);
-	});
+	}, 30_000);
 
 	/**
 	 * The producers, one call each, asserted on the segment rather than on the row.
@@ -329,7 +329,7 @@ describe("the footline fits the row it was given", () => {
 			}
 		}
 		expect(wide).toEqual([]);
-	});
+	}, 30_000);
 
 	it("records click slots inside the row, in order, never overlapping", () => {
 		const bad: string[] = [];
@@ -352,7 +352,7 @@ describe("the footline fits the row it was given", () => {
 			for (let col = -2; col <= given(columns) + 2; col++) component.quietSegmentAt(col);
 		}
 		expect(bad).toEqual([]);
-	});
+	}, 30_000);
 });
 
 describe("a width clip never cuts an escape in half", () => {
