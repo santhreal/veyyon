@@ -36,23 +36,113 @@ const MUTATING_TOOLS: Record<string, true> = {
 	patch: true,
 };
 
+const RANGE_CHUNK_RE = /^L?(\d+)(?:(\.\.|[-+])L?(\d+)?)?$/i;
+const WINDOWS_DRIVE_RE = /^[A-Za-z]:[\\/]/;
+const URI_SCHEME_PREFIX_RE = /^[A-Za-z][A-Za-z0-9+.-]*:\/\//;
+
+function parseRangeChunk(chunk: string): { startLine: number; endLine: number } | null {
+	const trimmed = chunk.trim();
+	const match = trimmed.match(RANGE_CHUNK_RE);
+	if (!match) return null;
+	const startLine = Number.parseInt(match[1]!, 10);
+	if (startLine < 1) return null;
+	const sep = match[2] === ".." ? "-" : match[2];
+	const rhs = match[3] ? Number.parseInt(match[3], 10) : undefined;
+	let endLine: number;
+	if (sep === "+") {
+		endLine = rhs !== undefined && rhs >= 1 ? startLine + rhs - 1 : startLine;
+	} else if (sep === "-") {
+		endLine = rhs !== undefined ? rhs : Number.POSITIVE_INFINITY;
+	} else {
+		endLine = startLine;
+	}
+	return { startLine, endLine };
+}
+
+function parseRangeSelector(sel: string): { startLine: number; endLine: number } | null {
+	const chunks = sel.split(",");
+	if (chunks.length === 0) return null;
+	const first = parseRangeChunk(chunks[0]!);
+	if (!first) return null;
+	for (let i = 1; i < chunks.length; i++) {
+		if (!parseRangeChunk(chunks[i]!)) return null;
+	}
+	return first;
+}
+
+
 function parseReadTarget(target: string): ReadTargetSpec {
 	const trimmed = target.trim();
-	const colonIdx = trimmed.indexOf(":");
-	if (colonIdx === -1) {
+	if (trimmed.length === 0) {
+		return { basePath: "", isRange: false };
+	}
+
+	const lastColon = trimmed.lastIndexOf(":");
+	if (lastColon <= 0) {
 		return { basePath: trimmed, isRange: false };
 	}
-	const basePath = trimmed.slice(0, colonIdx);
-	const sel = trimmed.slice(colonIdx + 1).toLowerCase();
-	if (sel === "raw" || sel === "conflicts" || sel.length === 0) {
-		return { basePath, isRange: false };
+
+	// If the only colon is part of a Windows drive prefix (e.g. C:\path or C:/path)
+	// or a URI scheme prefix with no other colon (e.g. skill://alpha), there is no selector.
+	if (lastColon === 1 && WINDOWS_DRIVE_RE.test(trimmed)) {
+		return { basePath: trimmed, isRange: false };
 	}
-	const rangeMatch = sel.match(/^(\d+)(?:-(\d+))?/);
-	if (rangeMatch) {
-		const startLine = Number.parseInt(rangeMatch[1]!, 10);
-		const endLine = rangeMatch[2] ? Number.parseInt(rangeMatch[2]!, 10) : startLine;
-		return { basePath, isRange: true, startLine, endLine };
+	if (URI_SCHEME_PREFIX_RE.test(trimmed) && trimmed.indexOf(":") === lastColon) {
+		return { basePath: trimmed, isRange: false };
 	}
+
+	const outerCandidate = trimmed.slice(lastColon + 1);
+	if (outerCandidate.length === 0) {
+		return { basePath: trimmed.slice(0, lastColon), isRange: false };
+	}
+
+	const outerTrimmedLower = outerCandidate.trim().toLowerCase();
+	const outerIsRaw = outerTrimmedLower === "raw";
+	const outerIsConflicts = outerTrimmedLower === "conflicts";
+	const outerRange = parseRangeSelector(outerCandidate);
+
+	if (!outerIsRaw && !outerIsConflicts && !outerRange) {
+		return { basePath: trimmed, isRange: false };
+	}
+
+	let basePath = trimmed.slice(0, lastColon);
+
+	// Check for compound selector (e.g. `path:raw:2-4` or `path:2-4:raw`)
+	const innerColon = basePath.lastIndexOf(":");
+	if (innerColon > 0) {
+		const innerCandidate = basePath.slice(innerColon + 1);
+		const innerIsRaw = innerCandidate.trim().toLowerCase() === "raw";
+		const innerRange = parseRangeSelector(innerCandidate);
+
+		if (innerIsRaw && outerRange) {
+			basePath = basePath.slice(0, innerColon);
+			return {
+				basePath,
+				isRange: true,
+				startLine: outerRange.startLine,
+				endLine: outerRange.endLine,
+			};
+		}
+		if (innerRange && outerIsRaw) {
+			basePath = basePath.slice(0, innerColon);
+			return {
+				basePath,
+				isRange: true,
+				startLine: innerRange.startLine,
+				endLine: innerRange.endLine,
+			};
+		}
+	}
+
+	if (outerRange) {
+		return {
+			basePath,
+			isRange: true,
+			startLine: outerRange.startLine,
+			endLine: outerRange.endLine,
+		};
+	}
+
 	return { basePath, isRange: false };
 }
 

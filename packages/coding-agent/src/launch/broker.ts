@@ -1061,7 +1061,6 @@ class DaemonBroker {
 			record.restartTimer = undefined;
 			record.snapshot.terminatedBy = termination.owner;
 			record.snapshot.exitReason = `${termination.reason}; the pending restart is cancelled`;
-			this.#queueCompletion(record);
 			record.snapshot.state = "exited";
 			record.snapshot.exitedAt = Date.now();
 			this.#persist(record);
@@ -1193,6 +1192,7 @@ class DaemonBroker {
 	 * never a stale one.
 	 */
 	async #completionRecords(): Promise<DaemonCompletionRecord[]> {
+		await this.#completionsQueue;
 		try {
 			return await readDaemonCompletions(this.#runtimeDir);
 		} catch (error) {
@@ -1232,8 +1232,6 @@ class DaemonBroker {
 					snapshot.exitReason = "the previous broker exited; its replacement terminated this non-detached daemon";
 				} else if (wasTerminal) {
 					snapshot.pid = undefined;
-				} else if (snapshot.state === "restarting") {
-					snapshot.state = spec.ready ? "starting" : "running";
 				}
 				snapshot.persist = spec.persist;
 				snapshot.detached = spec.detached;

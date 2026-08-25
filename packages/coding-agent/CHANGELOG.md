@@ -46,6 +46,12 @@
 - Quitting no longer hangs when a background session never settles.
 - `/new` typed while the agent is answering starts the new session without interrupting the answer: the running turn finishes in the background and is flushed to its own transcript, while the composer attaches to a fresh session immediately.
 - `/resume` onto a session that is still answering re-attaches the running session instead of replaying its transcript as finished text, so its answer keeps streaming into the view and the session being left takes its place in the background.
+- Filesystem cwd boundary checks expand comma- and whitespace-delimited path arguments matching execution, preventing multi-target reads or searches from bypassing working-directory approval prompts in non-yolo modes.
+- The read tool renderer sanitizes resolved directory paths with shortenPath to avoid displaying unshortened home-directory paths.
+- Stopping a daemon during restart backoff cancels the timer and attributes operator stop without recording a duplicate completion entry, and broker recovery terminates daemons left in restarting state without dead recovery branches.
+- Multi-target `ast_grep` searches across overlapping paths deduplicate matches so totals, file counts, and paged results are not duplicated or truncated.
+- Acknowledging a completed background job before lifting its watch no longer delivers a duplicate completion notification when retention is zero.
+- A generic tool card with an undrawable image result no longer accumulates duplicate image placeholder rows on rebuild.
 - With Language Servers off, which is the default, the write and edit tools no longer start a language server to inject diagnostics, format the file, or notify the workspace that a file changed, including on the ACP client-bridge write path.
 - A malformed `irc` send reports its own validation error instead of being reported as an interrupted wait when a peer message arrives in the same batch.
 - A `job` list snapshot or cancel-only call keeps its own result when an interrupt lands beside it.
