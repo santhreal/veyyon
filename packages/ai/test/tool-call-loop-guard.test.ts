@@ -884,4 +884,67 @@ describe("ToolCallLoopGuard", () => {
 			}),
 		).toBeNull();
 	});
+
+	test("detects exact repeat of identical ranged read via generic argument hash detector", () => {
+		const guard = new ToolCallLoopGuard({ threshold: 2, exemptTools: [] });
+
+		// 1. Initial ranged read of lines 50-200
+		expect(
+			guard.recordTurn({
+				message: {
+					role: "assistant",
+					content: [{ type: "toolCall", id: "r1", name: "read", arguments: { path: "src/foo.ts:50-200" } }],
+					api: "openai-responses",
+					provider: "openai",
+					model: "test-model",
+					usage: zeroUsage,
+					stopReason: "toolUse",
+					timestamp: Date.now(),
+				},
+				toolResults: [
+					{
+						role: "toolResult",
+						toolCallId: "r1",
+						toolName: "read",
+						content: [{ type: "text", text: "[src/foo.ts#1A2B]\n50: line 50\n200: line 200\n" }],
+						isError: false,
+						timestamp: Date.now(),
+					},
+				],
+			}),
+		).toBeNull();
+
+		// 2. Exact same ranged read in the next turn -> caught by generic argument hash detector
+		const detection = guard.recordTurn({
+			message: {
+				role: "assistant",
+				content: [{ type: "toolCall", id: "r2", name: "read", arguments: { path: "src/foo.ts:50-200" } }],
+				api: "openai-responses",
+				provider: "openai",
+				model: "test-model",
+				usage: zeroUsage,
+				stopReason: "toolUse",
+				timestamp: Date.now(),
+			},
+			toolResults: [
+				{
+					role: "toolResult",
+					toolCallId: "r2",
+					toolName: "read",
+					content: [{ type: "text", text: "[src/foo.ts#1A2B]\n50: line 50\n200: line 200\n" }],
+					isError: false,
+					timestamp: Date.now(),
+				},
+			],
+		});
+
+		expect(detection).not.toBeNull();
+		expect(detection).toEqual({
+			kind: "repeated_tool_call",
+			toolName: "read",
+			count: 2,
+			resultSummary: "[src/foo.ts#1A2B] 50: line 50 200: line 200",
+			argumentsSummary: '{"path":"src/foo.ts:50-200"}',
+		});
+	});
 });
