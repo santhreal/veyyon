@@ -87,6 +87,9 @@
 - A stripped working directory keeps the case it has on disk on Windows, instead of being lowercased by the case-insensitive comparison that decided it was under the root.
 - The status line's default-branch lookup no longer raises an unhandled rejection in a directory holding a `.git` on a host with no `git` on PATH; the lookup fails to the `main` fallback instead.
 - The composer status line no longer prints a control character or an escape sequence a name carries: a working directory, git branch, worktree label, multi-repo suffix or provider model name holding a tab, carriage return, bell, newline or escape is sanitized before it reaches the row, where it previously opened a hole in the width arithmetic, overwrote the row's own start, rang the terminal on every repaint, or handed the terminal a sequence of its own.
+- Session CPU limits fail closed on unsupported or failed budget groups, lift rate control on removal, refuse a process-creating command before the process exists while leaving `launch stop` and `launch list` reachable, escalate over-budget termination from SIGTERM to SIGKILL, and track descendant processes on macOS.
+- Saturated session CPU limits now refuse spawns for MCP servers, extensions, hooks, and custom tools before the process is created.
+- Windows session CPU limits disable Job Object rate control on non-positive or non-finite core counts rather than throttling the process to the minimum rate.
 - A bash command carrying a leading `cd`, or a relative `cwd`, is now judged for approval against the directory it will actually run in.
 - Patch failure error rendering shortens absolute paths to avoid displaying home-directory paths and bounds large unmatched hunks with an omitted line count.
 - Filesystem cwd boundary checks expand comma- and whitespace-delimited path arguments matching execution, preventing multi-target reads or searches from bypassing working-directory approval prompts in non-yolo modes.
