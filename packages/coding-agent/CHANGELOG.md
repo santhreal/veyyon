@@ -44,6 +44,14 @@
 - Daemon completion parsing and eval-store serialization errors use shared type guards; behavior is unchanged.
 ### Fixed
 
+- A JSON-RPC header field whose name merely ends in `Content-Length`, or a server log line that mentions it, no longer sets the frame length and parks the language-server connection on a byte count the stream never reaches.
+- A grep over an archive member removes its extracted scratch directory when extraction fails partway, instead of leaving it behind for the life of the host.
+- Waiting for a language server's project load removes its abort listener, instead of leaving one on the turn's signal for every feature request made during that turn.
+- A path list naming an entry the process is not permitted to stat resolves that entry as present, instead of failing the whole tool call with a permission error.
+- The working-directory boundary selects its targets by value, so a `path` argument carrying no usable value can no longer suppress the `paths` it also inspects.
+- An auto-compaction failure names its actual cause when the rejection is not an `Error`, instead of reporting the literal text `compaction failed`.
+- A liveness probe of the lspmux server cancels its timeout once the process answers, instead of leaving a timer pending for the rest of the window on every probe.
+- SQLite path detection restarts its scan at the beginning of the string, so a scan that ended abnormally cannot make the next one miss candidates.
 - The write tool rejects content carrying hashline patch markers, unified diff hunks, or read-output display prefixes with an error naming the detection and stating corrective action instead of silently stripping prefixes before writing.
 - Converted LLM message wrappers preserve reference identity across turns so the provider context canonicalizer re-renders only newly appended messages.
 - Memory pipeline SQLite storage (`storage.sqlite`) manages schema migrations via `PRAGMA user_version` and dynamically backfills missing columns on legacy databases.

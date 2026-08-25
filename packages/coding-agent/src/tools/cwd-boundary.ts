@@ -130,7 +130,14 @@ export function searchPathFilesystemTargets(args: unknown, cwd = process.cwd()):
 	// `grep` documents `path` but its approval also accepts a legacy `paths`
 	// (string or array); mirror that breadth so a search cannot under-report.
 	if (!args || typeof args !== "object") return [];
-	const raw = "path" in args ? args.path : "paths" in args ? args.paths : undefined;
+	// Selected by VALUE, not by key presence. `"path" in args` is true for a key
+	// carrying null (or any non-path value), and keying off presence let such a
+	// key suppress `paths` entirely — the under-report this breadth exists to
+	// prevent. No shipped tool reads `paths` in its execute path today, so this
+	// is the boundary keeping its stated contract rather than a live hole.
+	const direct = "path" in args ? args.path : undefined;
+	const legacy = "paths" in args ? args.paths : undefined;
+	const raw = typeof direct === "string" || Array.isArray(direct) ? direct : legacy;
 	const entries: string[] = [];
 	if (typeof raw === "string") entries.push(raw);
 	else if (Array.isArray(raw)) {

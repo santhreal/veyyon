@@ -983,7 +983,13 @@ function probePartResolvesSync(entry: string, cwd: string, splitter: PathEntrySp
 		return true;
 	} catch (err) {
 		if (isMissingPath(err)) return false;
-		throw err;
+		// Anything that is not "missing" answers the question this probe asks:
+		// the part IS on disk, it just cannot be stat'd from here. EACCES is the
+		// ordinary case — statting `/root/secret` needs execute on a parent this
+		// user does not have — and rethrowing turned a delimiter guess about a
+		// readable-or-not path into a crash out of the whole tool call. The
+		// `probeLiteralExists*` pair above already answers it this way.
+		return true;
 	}
 }
 
@@ -996,7 +1002,9 @@ async function probePartResolvesAsync(entry: string, cwd: string, splitter: Path
 		return true;
 	} catch (err) {
 		if (isEnoent(err) || isMissingPath(err)) return false;
-		throw err;
+		// See `probePartResolvesSync`: not-missing means it exists but is not
+		// stat-able from here, which is an answer, not a failure.
+		return true;
 	}
 }
 

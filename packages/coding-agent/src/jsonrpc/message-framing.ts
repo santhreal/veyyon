@@ -71,6 +71,36 @@ function dropChunkFront(chunks: Buffer[], count: number): void {
 }
 
 /**
+ * The `Content-Length` of a header block, or `undefined` when the block states
+ * none, states a malformed one, or states two that disagree.
+ *
+ * Matched per line and anchored at the field name. An unanchored search also
+ * matches a longer field ending in the same word (`X-Content-Length: 99999`)
+ * and any stdout line that merely mentions the header — which is precisely the
+ * non-protocol noise {@link MessageFramer.drain}'s resync path exists to
+ * survive. Reading such a match as the frame length parks the reader on a byte
+ * count the stream never reaches, so the server goes silent instead of
+ * resynchronizing.
+ */
+function parseContentLength(headerText: string): number | undefined {
+	let found: number | undefined;
+	for (const line of headerText.split(/\r?\n/)) {
+		const separator = line.indexOf(":");
+		if (separator === -1) continue;
+		if (line.slice(0, separator).trim().toLowerCase() !== "content-length") continue;
+		const value = line.slice(separator + 1).trim();
+		if (!/^\d+$/.test(value)) return undefined;
+		const parsed = Number.parseInt(value, 10);
+		if (!Number.isSafeInteger(parsed)) return undefined;
+		// Two lengths that disagree leave the frame boundary ambiguous, and
+		// picking either one mis-frames every message after it. Resync instead.
+		if (found !== undefined && found !== parsed) return undefined;
+		found = parsed;
+	}
+	return found;
+}
+
+/**
  * Incremental Content-Length frame decoder for a JSON message byte stream.
  *
  * Incoming bytes are buffered as a list of chunks and only joined when a full
@@ -100,10 +130,11 @@ export class MessageFramer {
 
 	/**
 	 * Yield the JSON text of every complete message currently buffered. A header
-	 * block without a `Content-Length` is non-protocol noise (e.g. a server
-	 * printing to stdout); `onResync` is invoked with the offending header text
-	 * and the framer drops past the bogus terminator to recover instead of
-	 * stalling on the same junk header forever.
+	 * block that states no usable `Content-Length` is non-protocol noise (e.g. a
+	 * server printing to stdout) — see {@link parseContentLength} for what counts
+	 * as usable; `onResync` is invoked with the offending header text and the
+	 * framer drops past the bogus terminator to recover instead of stalling on
+	 * the same junk header forever.
 	 */
 	*drain(onResync: (headerText: string) => void): Generator<string> {
 		while (true) {
@@ -111,15 +142,14 @@ export class MessageFramer {
 			if (headerEnd === -1) break;
 
 			const headerText = MESSAGE_DECODER.decode(copyChunkRange(this.#pendingChunks, 0, headerEnd));
-			const contentLengthMatch = headerText.match(/Content-Length: (\d+)/i);
-			if (!contentLengthMatch) {
+			const contentLength = parseContentLength(headerText);
+			if (contentLength === undefined) {
 				onResync(headerText);
 				dropChunkFront(this.#pendingChunks, headerEnd + 4);
 				this.#pendingLen -= headerEnd + 4;
 				continue;
 			}
 
-			const contentLength = Number.parseInt(contentLengthMatch[1], 10);
 			const messageStart = headerEnd + 4; // Skip \r\n\r\n
 			const messageEnd = messageStart + contentLength;
 			if (this.#pendingLen < messageEnd) break;

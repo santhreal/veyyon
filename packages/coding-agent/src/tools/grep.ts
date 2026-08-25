@@ -253,59 +253,6 @@ async function resolveArchiveSearchPaths(
 	let tempDir: string | undefined;
 	const archiveCache = new Map<string, ArchiveReader>();
 
-	for (let idx = 0; idx < pathSpecs.length; idx++) {
-		const spec = pathSpecs[idx];
-		if (!spec || spec.literalFilesystemMatch) continue;
-		const entry = spec.clean;
-		const candidates = parseArchivePathCandidates(entry);
-		const member = candidates.find(c => c.subPath !== "" && c.archivePath !== entry);
-		if (!member) continue;
-
-		const archiveAbs = resolveReadPath(member.archivePath, cwd);
-		let archive = archiveCache.get(archiveAbs);
-		if (!archive) {
-			try {
-				archive = await openArchive(archiveAbs);
-			} catch (err) {
-				unreadable.push(`${entry} (cannot open archive: ${(err as Error).message})`);
-				continue;
-			}
-			archiveCache.set(archiveAbs, archive);
-		}
-
-		let extracted: ExtractedArchiveFile;
-		try {
-			extracted = await archive.readFile(member.subPath);
-		} catch (err) {
-			unreadable.push(`${entry} (${(err as Error).message})`);
-			continue;
-		}
-		// UTF-8 only — binary members would just produce noise through ripgrep.
-		if (extracted.bytes.some(byte => byte === 0)) {
-			unreadable.push(`${entry} (binary archive entry)`);
-			continue;
-		}
-		let text: string;
-		try {
-			text = new TextDecoder("utf-8", { fatal: true }).decode(extracted.bytes);
-		} catch {
-			unreadable.push(`${entry} (non-UTF-8 archive entry)`);
-			continue;
-		}
-
-		if (!tempDir) {
-			tempDir = await mkdtemp(path.join(tmpdir(), "veyyon-search-archive-"));
-		}
-		// Per-entry filename keeps the scratch path unique even when two selectors
-		// resolve to members with the same basename.
-		const safeBase = path.basename(member.subPath).replace(/[^\w.-]+/g, "_") || "entry";
-		const tempPath = path.join(tempDir, `${idx}-${safeBase}`);
-		await writeFile(tempPath, text);
-		resolvedPaths[idx] = tempPath;
-		displayMap.set(tempPath, entry);
-		displaySet.add(entry);
-	}
-
 	const cleanup = async () => {
 		if (tempDir) {
 			// A failed cleanup must not fail the grep the caller asked for, but it leaves a temp directory
@@ -315,6 +262,69 @@ async function resolveArchiveSearchPaths(
 			});
 		}
 	};
+
+	try {
+		for (let idx = 0; idx < pathSpecs.length; idx++) {
+			const spec = pathSpecs[idx];
+			if (!spec || spec.literalFilesystemMatch) continue;
+			const entry = spec.clean;
+			const candidates = parseArchivePathCandidates(entry);
+			const member = candidates.find(c => c.subPath !== "" && c.archivePath !== entry);
+			if (!member) continue;
+
+			const archiveAbs = resolveReadPath(member.archivePath, cwd);
+			let archive = archiveCache.get(archiveAbs);
+			if (!archive) {
+				try {
+					archive = await openArchive(archiveAbs);
+				} catch (err) {
+					unreadable.push(`${entry} (cannot open archive: ${(err as Error).message})`);
+					continue;
+				}
+				archiveCache.set(archiveAbs, archive);
+			}
+
+			let extracted: ExtractedArchiveFile;
+			try {
+				extracted = await archive.readFile(member.subPath);
+			} catch (err) {
+				unreadable.push(`${entry} (${(err as Error).message})`);
+				continue;
+			}
+			// UTF-8 only — binary members would just produce noise through ripgrep.
+			if (extracted.bytes.some(byte => byte === 0)) {
+				unreadable.push(`${entry} (binary archive entry)`);
+				continue;
+			}
+			let text: string;
+			try {
+				text = new TextDecoder("utf-8", { fatal: true }).decode(extracted.bytes);
+			} catch {
+				unreadable.push(`${entry} (non-UTF-8 archive entry)`);
+				continue;
+			}
+
+			if (!tempDir) {
+				tempDir = await mkdtemp(path.join(tmpdir(), "veyyon-search-archive-"));
+			}
+			// Per-entry filename keeps the scratch path unique even when two selectors
+			// resolve to members with the same basename.
+			const safeBase = path.basename(member.subPath).replace(/[^\w.-]+/g, "_") || "entry";
+			const tempPath = path.join(tempDir, `${idx}-${safeBase}`);
+			await writeFile(tempPath, text);
+			resolvedPaths[idx] = tempPath;
+			displayMap.set(tempPath, entry);
+			displaySet.add(entry);
+		}
+	} catch (error) {
+		// The caller receives `cleanup` only on the success path, so a throw once the
+		// scratch directory exists would strand it for the life of the host. Later
+		// entries can throw after an earlier one already created it, so this covers
+		// the whole loop rather than the write that happens to be nearest.
+		await cleanup();
+		throw error;
+	}
+
 	return { resolvedPaths, displayMap, displaySet, unreadable, cleanup };
 }
 
