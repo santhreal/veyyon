@@ -190,9 +190,9 @@ function verifyNeedles(sources: SceneSources, findings: Finding[]): void {
 	];
 	const needles = new Set<string>();
 	for (const match of scene.matchAll(
-		/(?:expect_screen|expect_model_screen|wait_for_screen|screen_has)\s+"([^"]*)"/g,
+		/(?:expect_screen|expect_model_screen|wait_for_screen|screen_has)\s+(?:"([^"]*)"|'([^']*)')/g,
 	)) {
-		const needle = match[1];
+		const needle = match[1] ?? match[2] ?? "";
 		// A needle built from a shell variable is checked at run time, not here.
 		if (needle === "" || needle.includes("$")) continue;
 		needles.add(needle);
