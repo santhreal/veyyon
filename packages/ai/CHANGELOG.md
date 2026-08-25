@@ -19,6 +19,7 @@
 - `elidedSignatureBytes` returns zero without scanning messages when no retention window or length cap is active, avoiding an O(n) walk of the full conversation on every provider request in the common case.
 - The OpenAI completions message converter merges its double `.filter()` for text blocks (by type, then by non-empty) and the same for thinking blocks into single `for` loops, avoiding two throwaway arrays per assistant message per turn.
 - The GitHub Copilot usage parser merges its double `reduce` for `totalUsed` and `totalLimit` into a single `for` loop, avoiding a callback allocation per usage fetch.
+- `normalizeSystemPrompts` merges `.map().filter()` into a single `for` loop, avoiding two throwaway arrays per system prompt normalization call.
 
 ### Fixed
 
