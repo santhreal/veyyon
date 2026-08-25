@@ -174,4 +174,135 @@ mod tests {
 		assert_eq!(cpu_rate_per_10k(1.5, 32.0), 469);
 		assert_eq!(cpu_rate_per_10k(2.0, 32.0), 625);
 	}
+
+	/// WHY: Rate calculation must handle degenerate denominators (zero,
+	/// negative, or non-finite cpus) safely by defaulting to 1.0 logical
+	/// processor, and must disable rate control when the core budget is zero.
+	#[test]
+	fn rate_calculation_boundaries_zero_and_degenerate_cpus() {
+		// When cpus is 0.0 or negative, cpu_rate_per_10k defaults to 1.0 cpu
+		assert_eq!(cpu_rate_per_10k(1.0, 0.0), 10_000);
+		assert_eq!(cpu_rate_per_10k(0.5, 0.0), 5_000);
+		assert_eq!(cpu_rate_per_10k(1.0, -0.0), 10_000);
+		assert_eq!(cpu_rate_per_10k(1.0, -8.0), 10_000);
+		assert_eq!(cpu_rate_per_10k(1.0, f64::NAN), 10_000);
+		assert_eq!(cpu_rate_per_10k(1.0, f64::INFINITY), 10_000);
+
+		// Zero core budget disables rate control for any host size
+		for host in [0.0, 1.0, 4.0, 16.0, 128.0, f64::INFINITY] {
+			assert_eq!(
+				cpu_rate_control(0.0, host),
+				CpuRateControl { enabled: false, rate: 0 },
+				"0 cores on host {host} must disable rate control"
+			);
+			assert_eq!(
+				cpu_rate_control(-0.0, host),
+				CpuRateControl { enabled: false, rate: 0 },
+				"-0.0 cores on host {host} must disable rate control"
+			);
+		}
+	}
+
+	/// WHY: Overflow and extreme inputs must saturate at the whole machine cap
+	/// (`10_000`) without integer overflow, and negative/NaN inputs must
+	/// disable rate control.
+	#[test]
+	fn rate_calculation_boundaries_saturating_and_overflow_inputs() {
+		// Extreme positive core counts saturate at 10_000
+		for extreme in [f64::MAX, 1e308, 1e20, 10_000.0] {
+			assert_eq!(
+				cpu_rate_control(extreme, 16.0),
+				CpuRateControl { enabled: true, rate: 10_000 },
+				"extreme core count {extreme} must saturate at 10_000"
+			);
+		}
+
+		// Extreme negative core counts disable rate control
+		for neg in [f64::MIN, -1e308, -1e20, f64::NEG_INFINITY] {
+			assert_eq!(
+				cpu_rate_control(neg, 16.0),
+				CpuRateControl { enabled: false, rate: 0 },
+				"negative core count {neg} must disable rate control"
+			);
+		}
+
+		// Tiny positive subnormal cores floor at rate 1
+		assert_eq!(cpu_rate_control(f64::MIN_POSITIVE, 16.0), CpuRateControl {
+			enabled: true,
+			rate:    1,
+		});
+
+		// Massive host sizes result in rate 1
+		assert_eq!(cpu_rate_control(1.0, f64::MAX), CpuRateControl { enabled: true, rate: 1 });
+	}
+
+	/// WHY: When a budget is set exactly equal to the host core count, the rate
+	/// must be exactly `10_000` (100% of host capacity), neither under-allocated
+	/// nor clamped to a wrong limit.
+	#[test]
+	fn rate_calculation_boundaries_budget_exactly_at_limit() {
+		for host in [0.5, 1.0, 2.0, 3.0, 4.0, 8.0, 16.0, 32.0, 64.0, 128.0, 256.0, 1024.0] {
+			assert_eq!(
+				cpu_rate_per_10k(host, host),
+				10_000,
+				"budget matching host size {host} must produce exactly 10_000 rate"
+			);
+			assert_eq!(
+				cpu_rate_control(host, host),
+				CpuRateControl { enabled: true, rate: 10_000 },
+				"budget matching host size {host} must enable rate control at 10_000"
+			);
+		}
+	}
+
+	/// WHY: Rate arithmetic must terminate for all IEEE 754 float inputs and
+	/// strictly satisfy the rate invariants: rate in `1..=10_000` when enabled,
+	/// rate == 0 when disabled.
+	#[test]
+	fn rate_accounting_terminates_and_satisfies_bounds() {
+		let test_floats = [
+			f64::NEG_INFINITY,
+			f64::MIN,
+			-1e100,
+			-100.0,
+			-1.0,
+			-0.001,
+			-0.0,
+			0.0,
+			f64::MIN_POSITIVE,
+			1e-15,
+			0.001,
+			0.5,
+			1.0,
+			2.0,
+			4.0,
+			8.0,
+			16.0,
+			64.0,
+			128.0,
+			1e6,
+			1e100,
+			f64::MAX,
+			f64::INFINITY,
+			f64::NAN,
+		];
+
+		for &cores in &test_floats {
+			for &cpus in &test_floats {
+				let control = cpu_rate_control(cores, cpus);
+				if control.enabled {
+					assert!(
+						control.rate >= 1 && control.rate <= 10_000,
+						"enabled rate for cores={cores}, cpus={cpus} must be in 1..=10_000, got \
+						 {control:?}"
+					);
+				} else {
+					assert_eq!(
+						control.rate, 0,
+						"disabled rate for cores={cores}, cpus={cpus} must be 0, got {control:?}"
+					);
+				}
+			}
+		}
+	}
 }
