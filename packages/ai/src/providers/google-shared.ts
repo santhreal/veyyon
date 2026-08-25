@@ -445,12 +445,19 @@ export function convertMessages<T extends GoogleApiType>(model: Model<T>, contex
 				parts,
 			});
 		} else if (msg.role === "toolResult") {
-			// Extract text and image content
+			// Extract text and image content in a single pass
 			const supportsImages = model.input.includes("image");
-			const textContent = msg.content.filter((c): c is TextContent => c.type === "text");
-			const textResult = textContent.map(c => c.text).join("\n");
-			const imageContent = supportsImages ? msg.content.filter((c): c is ImageContent => c.type === "image") : [];
-			const omittedImages = !supportsImages && msg.content.some((c): c is ImageContent => c.type === "image");
+			const textParts: string[] = [];
+			const imageContent: ImageContent[] = [];
+			let omittedImages = false;
+			for (const c of msg.content) {
+				if (c.type === "text") textParts.push(c.text);
+				else if (c.type === "image") {
+					if (supportsImages) imageContent.push(c);
+					else omittedImages = true;
+				}
+			}
+			const textResult = textParts.join("\n");
 
 			const hasText = textResult.length > 0;
 			const hasImages = imageContent.length > 0;
