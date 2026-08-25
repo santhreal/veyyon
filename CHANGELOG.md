@@ -23,6 +23,7 @@
 - `ToolCallLoopGuard` detects consecutive redundant reads of unchanged files whose requested line ranges are already fully present in recent context, steering runaway exploration loops while preserving prompt cache prefixes.
 - Added Command Code API-key login through the Studio Provider page, with validation against its Provider API, and Nous Research Portal OAuth device login with rotating refresh tokens and short-lived inference JWTs.
 - `explain(error)` in `@veyyon/ai/error/flags` returns the classification id together with the names of the rules that produced it, and every classification rule states a name.
+- Added `nous-research-api-key`, a second way into Nous Research that takes a key pasted from the Portal instead of running the device flow, validated against the inference API and stored as the same `nous-research` credential.
 - Added the Command Code provider catalog, with its documented coding flagships as the offline seed and credentialed discovery for the wider Provider API list.
 - Added the Nous Research provider catalog, whose credentialed discovery keeps tool-capable chat models and excludes embedding, media-generation and non-tool rows.
 - Added the `publishesOwnModelLimits` provider flag, which stops generation from backfilling a context window or output cap from another host's same-family model.
@@ -68,6 +69,14 @@
 
 - Session CPU limits fail closed on unsupported or failed budget groups, lift rate control on removal, refuse a process-creating command before the process exists while leaving `launch stop` and `launch list` reachable, escalate over-budget termination from SIGTERM to SIGKILL, and track descendant processes on macOS.
 - With Language Servers off, which is the default, the write and edit tools no longer start a language server to inject diagnostics, format the file, or notify the workspace that a file changed, including on the ACP client-bridge write path.
+- A malformed `irc` send reports its own validation error instead of being reported as an interrupted wait when a peer message arrives in the same batch.
+- A `job` list snapshot or cancel-only call keeps its own result when an interrupt lands beside it.
+- The composer sits on the viewport bottom on the frame it mounts instead of appearing mid-screen for a moment after the launch card is adopted.
+- The Agent Control Center reports the model an agent is running now instead of the one recorded when it registered.
+- `/new` and `/resume` restart the driving session's roster clock, so the Agent Control Center no longer ages the main agent from the conversation that ended.
+- The main agent's roster age advances with its turns instead of freezing at process start.
+- Web search no longer reports "Public Web returned no renderable search content" when one engine serves a bot wall: Startpage's proof-of-work interstitial served at HTTP 200 is now refused as a challenge, and an engine answering with zero results no longer ends the aggregate's wait for a slower engine that has results.
+- Adding an account with a key the provider rejects now leaves the error on screen, instead of remounting the account manager over it so the attempt looked like it silently did nothing; cancelling still returns to the account card.
 - `veyyon plugin install --dry-run` now resolves the target and fails when it cannot be installed, instead of exiting 0 with "Would install" for an unpublished npm name or a missing git repository, and reports the name and version the target resolves to rather than a `0.0.0-dryrun` placeholder ([#911](https://github.com/santhreal/veyyon/issues/911)).
 - `veyyon plugin uninstall` now removes a plugin installed from a local path, which was permanently unremovable because uninstall read only `plugins/package.json` dependencies while linking registers the plugin in the runtime config and `node_modules`; the linked directory itself is left untouched.
 - `veyyon plugin doctor` no longer reports "no plugins installed" in a profile whose plugins were all linked, and names how many linked plugins it found.
@@ -85,13 +94,18 @@
 - A `launch` tool block no longer renders as a bare title with no rows: the header drops the placeholder ellipsis while `op` is still streaming, and every operation falls back to the result text when the structured detail it renders from is absent.
 - The `compaction.remote` setting description documents that server-side compaction applies to supported OpenAI, Azure OpenAI, and ChatGPT Codex Responses models.
 - `branchSummary.reserveTokens` now reaches the branch summarizer. It was declared in the settings schema but read by nothing, so every branch summary used the built-in 16384 reserve whatever the setting said.
+- The `ssh` tool works again on a profile whose directory nests more than a few levels deep. Its connection multiplexing socket used a 64-character hash, and OpenSSH binds that path plus a 17-character suffix before renaming it, which exceeded the 108-byte Unix socket limit and failed every command with `unix_listener: path too long for Unix domain socket`; the name is now a 16-character digest, and a path that still cannot fit drops multiplexing with one warning instead of failing the connection.
+- `debug` reaches the Python debugger on a host that installs `python3` and no unsuffixed `python`, which is every current Linux and macOS. The bundled `debugpy` adapter named `python`, so launching answered `adapter 'debugpy' is not available` on a machine that had Python; an adapter may now declare alternate spellings, and a command written in `dap.json` is still used exactly as written.
 - Side requests derive a stable conversation ID per oneshot kind, preventing compaction, handoff, and branch summaries from overwriting live Cursor and Devin conversation state.
 - Aborting while paused rejects the pause wait and prevents the agent loop from starting another provider turn or paused tool.
 - A branch-summary reserve at or above the model's context window now falls back to the proportional 15% reserve instead of leaving a non-positive budget, which the entry preparation read as "no limit" and which sent the whole branch.
+- A tool that blocks on only some of its operations declares interruptibility per call, so an interrupt arriving beside a non-blocking or malformed call no longer replaces that call's own result with a skipped placeholder.
 - Fixed OpenAI server-side compaction requests omitting the `Authorization` header when constructing headers from request setup.
 - Supported server-side compaction on the ChatGPT Codex backend with OAuth credential and turn identity headers.
 - API option mapping preserves side-request conversation IDs, preventing Cursor and Devin requests from falling back to the live session ID.
 - Cursor turns fail immediately when an asynchronous exec-server handler fails; malformed grep line or count values and oversized Connect frames fail before protobuf or buffer exhaustion; and success waits for queued handlers and gRPC trailers so quota and availability statuses are preserved.
+- A rejected API key reports the provider's own sentence from its JSON error envelope, so Command Code's plan-limit refusal reads as "Your Go plan doesn't include API access. Upgrade to Provider or higher at https://commandcode.ai/billing to use these endpoints." instead of the raw body.
+- An API-key login for a provider that declares `storeCredentialsAs` now stores the credential under that provider id, as an OAuth login already did, instead of filing it under the login mechanism's id where nothing reads it.
 - Fixed stock Windows AVX2 detection by trying PowerShell 7 before an isolated modern-addon trial; only explicit shell answers or illegal-instruction exits become verdicts, while missing, incompatible, timed-out, and unexpectedly crashing addons remain unknown.
 - Persisted AVX2 verdicts are schema-versioned and keyed by platform, architecture, and CPU model, so copied or stale caches cannot select a native variant for different hardware.
 - The AVX2 trial load answers from the addon loader's first import and exits, so a compiled host, whose `process.execPath` is the product binary rather than a JavaScript runtime, reports a verdict instead of booting the whole CLI and spawning a trial child of its own at every level.
