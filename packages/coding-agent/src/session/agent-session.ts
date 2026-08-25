@@ -2201,6 +2201,7 @@ export class AgentSession {
 	#goalTurnCounter = 0;
 	#planReferenceSent = false;
 	#planReferencePath: string = DEFAULT_PLAN_FILE_URL;
+	#planReadMatcher = createPlanReadMatcher(() => this.#planReferencePath);
 	#clientBridge: ClientBridge | undefined;
 	#allowAcpAgentInitiatedTurns = false;
 	/** Per-session memory of allow_always / reject_always decisions for gated tools. */
@@ -13119,8 +13120,7 @@ export class AgentSession {
 	 * reference path at match time, so retitled plans are covered.
 	 */
 	#withPlanProtection<T extends { protectedTools: ProtectedToolMatcher[] }>(config: T): T {
-		const planMatcher = createPlanReadMatcher(() => this.#planReferencePath);
-		return { ...config, protectedTools: [...config.protectedTools, planMatcher] };
+		return { ...config, protectedTools: [...config.protectedTools, this.#planReadMatcher] };
 	}
 
 	/**
@@ -13210,7 +13210,7 @@ export class AgentSession {
 			this.#withPlanProtection({
 				supersedeKey: supersedeReads ? readToolSupersedeKey : undefined,
 				pruneUseless: dropUseless,
-				protectedTools: [...DEFAULT_PRUNE_CONFIG.protectedTools],
+				protectedTools: DEFAULT_PRUNE_CONFIG.protectedTools,
 				// Never re-write summarized-away entries; only flush the whole sent
 				// region once the cache is genuinely cold (idle exceeds the 1h TTL).
 				keepBoundaryId,
