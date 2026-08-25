@@ -11216,6 +11216,11 @@ export class AgentSession {
 
 			startupMarker("prompt:before-agent-start:done");
 
+			// Bail out if a newer abort/prompt cycle has started since we began setup
+			if (this.#promptGeneration !== generation) {
+				return;
+			}
+
 			// Auto thinking: classify this real user turn and set the effective level
 			// before the model request. Synthetic/tool-continuation turns (developer/
 			// custom roles) and non-auto sessions are skipped. Never blocks the turn —
