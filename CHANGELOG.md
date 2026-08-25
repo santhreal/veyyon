@@ -87,6 +87,7 @@
 - A stripped working directory keeps the case it has on disk on Windows, instead of being lowercased by the case-insensitive comparison that decided it was under the root.
 - The status line's default-branch lookup no longer raises an unhandled rejection in a directory holding a `.git` on a host with no `git` on PATH; the lookup fails to the `main` fallback instead.
 - The composer status line no longer prints a control character or an escape sequence a name carries: a working directory, git branch, worktree label, multi-repo suffix or provider model name holding a tab, carriage return, bell, newline or escape is sanitized before it reaches the row, where it previously opened a hole in the width arithmetic, overwrote the row's own start, rang the terminal on every repaint, or handed the terminal a sequence of its own.
+- A bash command carrying a leading `cd`, or a relative `cwd`, is now judged for approval against the directory it will actually run in.
 - Patch failure error rendering shortens absolute paths to avoid displaying home-directory paths and bounds large unmatched hunks with an omitted line count.
 - Filesystem cwd boundary checks expand comma- and whitespace-delimited path arguments matching execution, preventing multi-target reads or searches from bypassing working-directory approval prompts in non-yolo modes.
 - The read tool renderer sanitizes resolved directory paths with shortenPath to avoid displaying unshortened home-directory paths.
@@ -124,6 +125,7 @@
 - `debug` reaches the Python debugger on a host that installs `python3` and no unsuffixed `python`, which is every current Linux and macOS. The bundled `debugpy` adapter named `python`, so launching answered `adapter 'debugpy' is not available` on a machine that had Python; an adapter may now declare alternate spellings, and a command written in `dap.json` is still used exactly as written.
 - A subagent that calls `yield` with unusable data now fails the run instead of returning success with the system warning as its result, matching how a subagent that never yields at all is already reported.
 - A subagent result that cannot be serialized now fails the run and reports the serialization error, instead of returning success with an unparseable error envelope as its payload.
+- Fixed tool-result supersede pruning to parse multi-target `read` calls into target sets with per-target URL scheme exemption, retiring an earlier read result when all of its targets are covered by newer reads while preserving results with partial coverage.
 - Side requests derive a stable conversation ID per oneshot kind, preventing compaction, handoff, and branch summaries from overwriting live Cursor and Devin conversation state.
 - Aborting while paused rejects the pause wait and prevents the agent loop from starting another provider turn or paused tool.
 - A branch-summary reserve at or above the model's context window now falls back to the proportional 15% reserve instead of leaving a non-positive budget, which the entry preparation read as "no limit" and which sent the whole branch.
