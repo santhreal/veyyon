@@ -7,8 +7,8 @@ import { getThemeByName } from "@veyyon/coding-agent/modes/theme/theme";
 import { createTools, type ToolSession } from "@veyyon/coding-agent/tools";
 import { structureSearchRenderer } from "@veyyon/coding-agent/tools/structure-search";
 import { visibleWidth } from "@veyyon/tui";
-import { useFullColor } from "../helpers/theme-assertions";
 import { removeWithRetries, sanitizeText } from "@veyyon/utils";
+import { useFullColor } from "../helpers/theme-assertions";
 
 function createTestSession(cwd = "/tmp/test", overrides: Partial<ToolSession> = {}): ToolSession {
 	return {
@@ -561,10 +561,7 @@ describe("structureSearchRenderer", () => {
 			`## file${i}.ts`,
 			`  *${i + 1}│const x${i} = true;`,
 		]);
-		const displayContent = groups.map(g => g.join("
-")).join("
-
-");
+		const displayContent = groups.map(g => g.join("\n")).join("\n\n");
 
 		const result = {
 			content: [{ type: "text", text: "" }],
