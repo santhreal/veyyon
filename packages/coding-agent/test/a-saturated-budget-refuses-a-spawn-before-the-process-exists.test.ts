@@ -58,13 +58,16 @@ describe("a spawn that cannot join the session budget", () => {
 		const dir = TempDir.createSync("@pi-cpu-gate-extension-");
 		try {
 			const marker = path.join(dir.path(), "the-child-ran");
+			// A script file, not an `-e` one-liner: `ExecOptions` carries no env, so a probe that
+			// resolves veyyon's directories against the inherited environment could write into the
+			// developer's real tree on the day the gate regresses and the child does run. This one
+			// touches nothing but the marker inside the temp directory.
+			const probe = path.join(dir.path(), "probe.js");
+			await fs.writeFile(probe, `require("fs").writeFileSync(${JSON.stringify(marker)}, "ran")\n`);
 			let execResult: Promise<unknown> | undefined;
 			await loadExtensionFromFactory(
 				api => {
-					execResult = api.exec(process.execPath, [
-						"-e",
-						`require("fs").writeFileSync(${JSON.stringify(marker)}, "ran")`,
-					]);
+					execResult = api.exec(process.execPath, [probe]);
 				},
 				dir.path(),
 				new EventBus(),
