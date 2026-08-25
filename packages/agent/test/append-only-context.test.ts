@@ -139,6 +139,42 @@ describe("StablePrefix", () => {
 		expect(fp1).toBe(fp2);
 	});
 
+	it("fingerprint cache hit on same references returns false from build", () => {
+		// WHY: StablePrefix caches the fingerprint by reference equality of
+		// systemPrompt, tools, and options. When all references match, the
+		// cache returns the same fingerprint without calling computeFingerprint.
+		// build() must return false (no change) on the second call.
+		const p = new StablePrefix();
+		const ctx = makeContext({ systemPrompt: ["Stable"], tools: [makeTool("foo")] });
+		const first = p.build(ctx, BUILD_OPTS);
+		expect(first).toBe(true);
+		const second = p.build(ctx, BUILD_OPTS);
+		expect(second).toBe(false);
+	});
+
+	it("fingerprint cache miss on different systemPrompt reference rebuilds", () => {
+		const p = new StablePrefix();
+		const ctx1 = makeContext({ systemPrompt: ["A"] });
+		p.build(ctx1, BUILD_OPTS);
+		const fp1 = p.fingerprint;
+		const ctx2 = makeContext({ systemPrompt: ["A"] });
+		p.build(ctx2, BUILD_OPTS);
+		const fp2 = p.fingerprint;
+		// Same content → same fingerprint even though different array reference
+		expect(fp1).toBe(fp2);
+	});
+
+	it("invalidate clears fingerprint cache", () => {
+		// WHY: invalidate() must clear the fingerprint cache so the next build()
+		// recomputes from scratch, not from stale cached references.
+		const p = new StablePrefix();
+		const ctx = makeContext({ systemPrompt: ["Stable"] });
+		p.build(ctx, BUILD_OPTS);
+		p.invalidate();
+		const rebuilt = p.build(ctx, BUILD_OPTS);
+		expect(rebuilt).toBe(true);
+	});
+
 	it("version increases on each rebuild", () => {
 		const p = new StablePrefix();
 		expect(p.version).toBe(0);

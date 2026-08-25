@@ -50,6 +50,16 @@ export interface BuildOptions {
 export class StablePrefix {
 	#snapshot: StablePrefixSnapshot | null = null;
 	#version = 0;
+	// Fingerprint cache: when the inputs are the same references as last time,
+	// the fingerprint is reused without calling computeFingerprint at all.
+	#fpCache: {
+		systemPrompt: unknown;
+		tools: unknown;
+		intentTracing: boolean;
+		exampleDialect: string | undefined;
+		pruneToolDescriptions: boolean | undefined;
+		fingerprint: string;
+	} | null = null;
 
 	get fingerprint(): string {
 		return this.#snapshot?.fingerprint ?? "<unbuilt>";
@@ -72,7 +82,7 @@ export class StablePrefix {
 		const tools =
 			normalizeTools(context.tools, options.intentTracing, options.exampleDialect, options.pruneToolDescriptions) ??
 			[];
-		const fingerprint = computeFingerprint(context.systemPrompt, tools, options);
+		const fingerprint = this.#computeFingerprintCached(context.systemPrompt, tools, options);
 		if (this.#snapshot && this.#snapshot.fingerprint === fingerprint) {
 			return false;
 		}
@@ -85,9 +95,34 @@ export class StablePrefix {
 		return true;
 	}
 
+	#computeFingerprintCached(systemPrompt: string[], tools: Tool[], options: BuildOptions): string {
+		const c = this.#fpCache;
+		if (
+			c &&
+			c.systemPrompt === systemPrompt &&
+			c.tools === tools &&
+			c.intentTracing === options.intentTracing &&
+			c.exampleDialect === options.exampleDialect &&
+			c.pruneToolDescriptions === options.pruneToolDescriptions
+		) {
+			return c.fingerprint;
+		}
+		const fingerprint = computeFingerprint(systemPrompt, tools, options);
+		this.#fpCache = {
+			systemPrompt,
+			tools,
+			intentTracing: options.intentTracing,
+			exampleDialect: options.exampleDialect,
+			pruneToolDescriptions: options.pruneToolDescriptions,
+			fingerprint,
+		};
+		return fingerprint;
+	}
+
 	/** Force rebuild on the next `build()` call. */
 	invalidate(): void {
 		this.#snapshot = null;
+		this.#fpCache = null;
 	}
 
 	/**
