@@ -36,12 +36,12 @@ import { getBundledModels } from "../src/models";
 import type { Api, Model } from "../src/types";
 
 /**
- * The version the current writer stamps on a row. Bumping `CACHE_SCHEMA_VERSION` is how this repo retires
- * cached rows whose values were produced by a rule that no longer holds, and it has been used for exactly
- * that five times (the retired 222222/8888 limit sentinels were v6). The gateway limit fix needs its own
- * bump, which is what this number records.
+ * The version the current writer stamps on a row. Bumping
+ * `CACHE_SCHEMA_VERSION` retires cached records whose persisted contract has
+ * changed. v11 adds the row-content fingerprint consumed by static-registry
+ * snapshots; v10 retired gateway rows with assumed limits.
  */
-const EXPECTED_CACHE_VERSION = 10;
+const EXPECTED_CACHE_VERSION = 11;
 
 const TTL_MS = 24 * 60 * 60 * 1000;
 

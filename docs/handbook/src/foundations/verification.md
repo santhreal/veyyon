@@ -33,18 +33,21 @@ animation as WebP at 33 ms per frame; a GIF is the same clip in an older contain
 proves the same thing. Both arms of a pair are the same class, produced by one driver
 run, and attached to the pull request body.
 
-The recorder refuses to publish a clip whose cadence is not the one it captured. Two
-criteria, both from `--expect-ms`:
+The recorder refuses to publish a clip whose cadence is not the one it captured. Three
+criteria come from `--expect-ms`:
 
 ```text
-typical frame    33 ms, +/-1 (34 ms alternates at 30 fps)
-moving average   within 10% of 30 fps, held stills set aside
+typical frame     capture interval +/-1 ms (33/34 ms at 30 fps)
+moving average    at least 80% of the capture rate, held stills set aside
+cadence share     at least 85% of moving frames at the capture interval
 ```
 
-The first catches a resample, where every frame was rewritten. The second catches a
-clip whose most common frame is correct and whose wall clock is mostly slower than it —
-frames held for two or three intervals in the middle of a scroll. A hold at or past ten
-intervals is a still screen, is reported, and does not count against the average.
+The typical frame catches a resample, where every frame was rewritten. The moving
+average catches a clip whose wall clock is mostly slower than its most common frame.
+The cadence share catches frequent short holds that an acceptable average can hide.
+Byte-identical frames from normal terminal input and model output are coalesced by the
+WebP encoder, so the average allows 20% while the share limits how often that occurs.
+A hold at or past ten intervals is a still screen, is reported, and does not count.
 Measure a published file with:
 
 ```sh
@@ -53,19 +56,33 @@ python3 proof/webp-cadence.py assets/demo-hd.webp --expect-ms 33
 
 ### Real interactive sessions
 
-The HD recorder starts Xvfb, picom, and kitty inside the recorder container. It drives the shipped CLI with real keyboard and pointer events and records the private display at 30 frames per second.
+The HD recorder starts Xvfb and kitty inside the recorder container. It drives the shipped CLI with real keyboard and pointer events and records the private display at 30 frames per second.
+
+30 is the rate the pipeline delivers whole. Measured at 2560x1440 with the hero's chrome and a payload repainting every cell as fast as the terminal accepts it, a 30 fps capture returns 240 unique frames of 240 grabbed. Capturing at 60 adds no motion the session had: it doubles the encoder's cores and the file, and writes a 60 fps header over slower content, which is how a stuttering take once read as smooth to `ffprobe`.
+
+A take is judged on whether the picture moved, never on the rate the container declares. `proof/motion-gate.sh` counts unique frames with mpdecimate and fails a take below `SCENE_MOTION_FLOOR`; both session scripts run it before the take is published.
 
 The landing-page terminal uses:
 
 ```text
 terminal       kitty
-font           JetBrains Mono 21
+font           JetBrains Mono 15
 canvas         2560x1440 at 30 fps
 window inset   128 px
 background     #171b22
 foreground     #d3dae6
 publish        Lanczos downsample to 1920x1080
 ```
+
+### Where the settings live, and where the chrome is drawn
+
+`proof/docker/scene-config.sh` is the single definition of every `SCENE_*` knob. The two session scripts and the two host recorders source it; none of them restates a default. Override a knob by exporting it, never by editing one of those four files, because a default written down twice is two defaults and the one a run gets depends on which file it entered through.
+
+The chrome — rounded corners, the shadow, the translucent window over the backdrop — is drawn after the take by `proof/compose-chrome.sh`, not by a compositor during it. The backdrop does not move, so blending it under the window every frame recomputes one static picture thousands of times, and it cost the capture: with picom's blur on, `ffmpeg` could grab only 69 of 360 frames, and opacity alone still cost a third. `xwallpaper` puts the backdrop in the capture for free as a root pixmap; the pass replaces the square-cornered inset with the same pixels rounded, blended and shadowed.
+
+`SCENE_CHROME=live` runs a compositor during the capture instead, for comparison. It is not the default and a take recorded that way is slower.
+
+The pass is cosmetic. It cannot recover a frame the capture never drew, so a take that stuttered while it was recorded still stutters after it, and the motion gate runs on the composited file that ships.
 
 Preview a scene without replacing tracked proof assets:
 
@@ -188,10 +205,19 @@ The region is measured, not typed in: the stage diffs the frames around the mome
 holds the bounding box of what changed there, padded and clamped inside the frame at
 the source aspect ratio. A moment with nothing moving in it produces no file.
 
-The zoom ceiling defaults to the capture width over the published width, so a held
-frame is a crop rather than an upscale. The stage runs on the take, before the cut,
-and keeps every frame and the recorded rate, so the cadence gate still measures the
-capture's own cadence. A scene asks for one by setting `ZOOM_ARGS` in
+The hero take drives the same stage from a cue file the scene writes next to its
+marks (`zoom-in FRAME [x,y,w,h]`, `pan FRAME x,y,w,h`, `zoom-out FRAME`). The hold between those cues
+is at least two seconds of real time, with no time compression on that span, so
+the stored secret is readable. Magnification is relative to the published wide
+shot and is at least 2x: `proof/glyph-height.py` measures `capture_width /
+crop_width` on the hold. A missing rect on `zoom-in` means "measure it".
+
+The zoom ceiling still defaults to the capture width over the published width so a
+1.33x hold is a crop. The hero's 2x secret hold is a tighter crop scaled back to
+1920x1080 — a camera move of the one capture path, not a second recorder. The
+stage runs on the take, before the cut, and keeps every frame and the recorded
+rate, so the cadence gate still measures the capture's own cadence. A scene asks
+for one by writing the cue file, or by setting `ZOOM_ARGS` in
 `scripts/demos/record-hd-demo.sh`.
 
 `--self-check` records a synthetic clip whose moving region is known and asserts the

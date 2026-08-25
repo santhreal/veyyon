@@ -48,6 +48,8 @@ const NAMES = {
 	managedRoot: "daemons",
 	/** In a project runtime directory: one entry per live veyyon process holding the project open. */
 	presenceRoot: "clients",
+	/** In a project runtime directory: the retained records of completed daemons. */
+	completions: "completions.json",
 	/** In a managed daemon directory: its persisted snapshot and spec. */
 	managedMeta: "meta.json",
 	/** In a managed daemon directory: its captured output. */
@@ -120,6 +122,19 @@ export function daemonPresenceEntryPath(presenceDir: string, id: string): string
 /** The directory holding one entry per supervised process in a project. */
 export function managedDaemonsRoot(runtimeDir: string): string {
 	return path.join(runtimeDir, NAMES.managedRoot);
+}
+
+/**
+ * The retained completion records of a project's supervised processes.
+ *
+ * Lives beside the per-daemon directories rather than inside one: a record
+ * outlives the daemon it describes, including the daemon's name being reused
+ * and its directory rewritten by a later start. The file is versioned (see
+ * `completions.ts`), and a store from another version is rejected rather than
+ * served.
+ */
+export function daemonCompletionsPath(runtimeDir: string): string {
+	return path.join(runtimeDir, NAMES.completions);
 }
 
 /** The directory one supervised process keeps its log and metadata in. */

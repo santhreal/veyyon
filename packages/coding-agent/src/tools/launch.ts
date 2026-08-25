@@ -12,7 +12,15 @@ import { clampLow, prompt, sanitizeText } from "@veyyon/utils";
 import { type } from "arktype";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import { daemonClientForProject } from "../launch/client";
-import type { DaemonOperation, DaemonRpcResult, DaemonSnapshot, DaemonSpec, DaemonState } from "../launch/protocol";
+import { DAEMON_COMPLETIONS_LIMIT } from "../launch/completions";
+import type {
+	DaemonCompletionRecord,
+	DaemonOperation,
+	DaemonRpcResult,
+	DaemonSnapshot,
+	DaemonSpec,
+	DaemonState,
+} from "../launch/protocol";
 import { renderTerminalOutput } from "../launch/terminal-output";
 import type { Theme, ThemeColor } from "../modes/theme/theme";
 import { toolsPrompts } from "../prompts/tools/rows";
@@ -94,6 +102,8 @@ export interface LaunchToolDetails {
 	op: LaunchParams["op"];
 	daemon?: DaemonSnapshot;
 	daemons?: DaemonSnapshot[];
+	/** list: retained completion records alongside the active daemons. */
+	completions?: DaemonCompletionRecord[];
 	cursor?: number;
 	timedOut?: boolean;
 	/** logs: daemon lifecycle state at read time. */
@@ -208,9 +218,41 @@ export function daemonLabel(daemon: DaemonSnapshot): string {
 		: daemon.exitCode === undefined
 			? ""
 			: ` exit=${daemon.exitCode}`;
+	// Who ended it and why, so a killed process is never an unexplained death.
+	const termination =
+		daemon.terminatedBy === undefined
+			? ""
+			: ` terminated-by=${daemon.terminatedBy}${daemon.exitReason ? ` — ${daemon.exitReason}` : ""}`;
 	return `${daemon.name}: ${daemon.state}${pid}${exit} uptime=${formatDuration(
 		(daemon.exitedAt ?? Date.now()) - daemon.startedAt,
-	)} restarts=${daemon.restartCount}${daemon.detached ? " detached" : daemon.persist ? " persistent" : ""}`;
+	)} restarts=${daemon.restartCount} lifetime=${daemonLifetime(daemon)}${termination}`;
+}
+
+/**
+ * The owning condition that ends a daemon: `last-client-exit` (the default —
+ * the broker stops it once the last veyyon in this directory exits),
+ * `broker-shutdown` (`persist`: outlives the last client, dies with the
+ * broker), or `detached` (survives every veyyon and broker exit).
+ */
+export function daemonLifetime(daemon: DaemonSnapshot): "detached" | "broker-shutdown" | "last-client-exit" {
+	if (daemon.detached) return "detached";
+	if (daemon.persist) return "broker-shutdown";
+	return "last-client-exit";
+}
+
+/** One retained completion record as a list line, with a bounded tail snippet. */
+function completionLabel(record: DaemonCompletionRecord): string {
+	const outcome = record.signal
+		? `signal=${record.signal}`
+		: record.exitCode === undefined
+			? "ended"
+			: `exit=${record.exitCode}`;
+	const reason = record.exitReason ? ` — ${record.exitReason}` : "";
+	const tailLine = record.outputTail.trimEnd().split("\n").pop()?.trim() ?? "";
+	const tail = tailLine ? ` · tail: ${previewLine(tailLine, TRUNCATE_LENGTHS.SHORT)}` : "";
+	return `${record.name}: ${outcome} terminated-by=${record.terminatedBy} after ${formatDuration(
+		record.exitedAt - record.startedAt,
+	)}${reason}${tail}`;
 }
 
 /**
@@ -254,7 +296,7 @@ export function toolContent(result: DaemonRpcResult, params: LaunchParams): stri
 			return lines.join("\n");
 		}
 		case "list": {
-			if (!result.daemons.length) return "No daemons.";
+			if (!result.daemons.length && !result.completions.length) return "No daemons.";
 			// Show every live daemon, but cap the terminal (exited/failed) tail so
 			// the list does not grow unbounded and waste tokens on every call when
 			// old jobs pile up (DOG-1). The most recently exited are the useful ones.
@@ -271,6 +313,28 @@ export function toolContent(result: DaemonRpcResult, params: LaunchParams): stri
 				lines.push(
 					`… and ${hidden} more exited daemon${hidden === 1 ? "" : "s"} not shown (showing the ${TERMINAL_SHOWN} most recent).`,
 				);
+			}
+			// Retained completion records whose terminal event is NOT already a row
+			// above: a daemon replaced by a same-name start, or one a dead broker
+			// never settled. Keyed by id+exitedAt so a restarted daemon's earlier
+			// generation still shows while its live row does not duplicate.
+			const settled = new Set(
+				result.daemons
+					.filter(daemon => daemon.exitedAt !== undefined)
+					.map(daemon => `${daemon.id}${daemon.exitedAt}`),
+			);
+			const completions = result.completions.filter(record => !settled.has(`${record.id}${record.exitedAt}`));
+			if (completions.length > 0) {
+				const COMPLETIONS_SHOWN = 10;
+				const shown = completions.slice(-COMPLETIONS_SHOWN).reverse();
+				lines.push(
+					"",
+					`Recently completed (records retained: last ${DAEMON_COMPLETIONS_LIMIT} or 24h, across broker restarts):`,
+					...shown.map(record => `- ${completionLabel(record)}`),
+				);
+				if (completions.length > shown.length) {
+					lines.push(`… and ${completions.length - shown.length} older retained record(s).`);
+				}
 			}
 			return lines.join("\n");
 		}
@@ -308,7 +372,7 @@ async function toolDetails(result: DaemonRpcResult, params: LaunchParams): Promi
 		case "start":
 			return { op: "start", daemon: result.daemon, timedOut: result.readyTimedOut };
 		case "list":
-			return { op: "list", daemons: result.daemons };
+			return { op: "list", daemons: result.daemons, completions: result.completions };
 		case "logs": {
 			const terminalRows =
 				result.terminalText === undefined
@@ -456,8 +520,13 @@ function daemonMeta(daemon: DaemonSnapshot, theme: Theme): string[] {
 	const lifespan = formatDuration((daemon.exitedAt ?? Date.now()) - daemon.startedAt);
 	meta.push(daemon.exitedAt === undefined ? `up ${lifespan}` : `ran ${lifespan}`);
 	if (daemon.restartCount > 0) meta.push(`restarts ${daemon.restartCount}`);
+	// The owning condition that ends this daemon, visible BEFORE it bites:
+	// the default dies with the last client, persist dies with the broker,
+	// detached survives both.
 	if (daemon.detached) meta.push("detached");
-	else if (daemon.persist) meta.push("persistent");
+	else if (daemon.persist) meta.push("dies with broker");
+	else meta.push("dies with last client");
+	if (daemon.terminatedBy) meta.push(theme.fg("muted", `by ${daemon.terminatedBy}`));
 	return meta;
 }
 
@@ -581,6 +650,16 @@ export const launchToolRenderer = {
 					for (const item of daemons) {
 						body.push(
 							`${theme.fg("accent", replaceTabs(item.name))} ${theme.fg("dim", daemonMeta(item, theme).join(theme.sep.dot))}`,
+						);
+					}
+					const settled = new Set(
+						daemons.filter(item => item.exitedAt !== undefined).map(item => `${item.id}${item.exitedAt}`),
+					);
+					for (const record of (details?.completions ?? []).filter(
+						item => !settled.has(`${item.id}${item.exitedAt}`),
+					)) {
+						body.push(
+							`${theme.fg("muted", replaceTabs(record.name))} ${theme.fg("dim", `completed${theme.sep.dot}by ${record.terminatedBy}`)}`,
 						);
 					}
 					break;
