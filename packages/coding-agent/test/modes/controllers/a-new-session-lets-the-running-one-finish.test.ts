@@ -273,6 +273,80 @@ describe("a handed-off session", () => {
 		expect(keeper.size).toBe(0);
 	});
 
+	it("first settle resolving after re-handoff does not delete the second entry", async () => {
+		const turn1 = Promise.withResolvers<void>();
+		const turn2 = Promise.withResolvers<void>();
+		let idleCall = 0;
+		const session = makeSession("session-a", true);
+		session.waitForIdle = () => {
+			idleCall++;
+			return idleCall === 1 ? turn1.promise : turn2.promise;
+		};
+
+		const keeper = BackgroundSessions.global();
+
+		const entry1 = keeper.keep(session as unknown as AgentSession);
+		expect(keeper.size).toBe(1);
+
+		const taken = keeper.take(session.sessionManager.getSessionFile());
+		expect(taken).toBe(session as unknown as AgentSession);
+		expect(keeper.size).toBe(0);
+
+		const entry2 = keeper.keep(session as unknown as AgentSession);
+		expect(keeper.size).toBe(1);
+		expect(entry2.handoff).toBeGreaterThan(entry1.handoff);
+
+		turn1.resolve();
+		await entry1.settled;
+
+		expect(keeper.size).toBe(1);
+		expect(keeper.kept[0]).toBe(entry2);
+
+		let drainDone = false;
+		const drainPromise = keeper.drain(500).then(() => {
+			drainDone = true;
+		});
+
+		await Promise.resolve();
+		expect(drainDone).toBe(false);
+
+		turn2.resolve();
+		await drainPromise;
+		expect(drainDone).toBe(true);
+		expect(keeper.size).toBe(0);
+	});
+
+	it("drain timeout on an earlier handoff does not delete a subsequent handoff", async () => {
+		const turn1 = Promise.withResolvers<void>();
+		const turn2 = Promise.withResolvers<void>();
+		let idleCall = 0;
+		const session = makeSession("session-a", true);
+		session.waitForIdle = () => {
+			idleCall++;
+			return idleCall === 1 ? turn1.promise : turn2.promise;
+		};
+
+		const keeper = BackgroundSessions.global();
+
+		keeper.keep(session as unknown as AgentSession);
+		const drainPromise = keeper.drain(30);
+
+		const taken = keeper.take(session.sessionManager.getSessionFile());
+		expect(taken).toBe(session as unknown as AgentSession);
+		const entry2 = keeper.keep(session as unknown as AgentSession);
+		expect(keeper.size).toBe(1);
+
+		await drainPromise;
+
+		expect(keeper.size).toBe(1);
+		expect(keeper.kept[0]).toBe(entry2);
+
+		turn1.resolve();
+		turn2.resolve();
+		await entry2.settled;
+		expect(keeper.size).toBe(0);
+	});
+
 	it("bounds shutdown drain to the standard shutdown timeout", () => {
 		expect(SHUTDOWN_DRAIN_TIMEOUT_MS).toBe(5_000);
 	});
