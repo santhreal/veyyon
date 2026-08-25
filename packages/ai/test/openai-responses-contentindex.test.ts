@@ -104,7 +104,12 @@ describe("processResponsesStream: contentIndex correctness", () => {
 				},
 				{
 					type: "response.completed",
-					response: { id: "resp-1", status: "completed", output: [], usage: { input_tokens: 1, output_tokens: 2 } },
+					response: {
+						id: "resp-1",
+						status: "completed",
+						output: [],
+						usage: { input_tokens: 1, output_tokens: 2 },
+					},
 				},
 			]),
 			output,
@@ -143,7 +148,12 @@ describe("processResponsesStream: contentIndex correctness", () => {
 				},
 				{
 					type: "response.completed",
-					response: { id: "resp-1", status: "completed", output: [], usage: { input_tokens: 1, output_tokens: 2 } },
+					response: {
+						id: "resp-1",
+						status: "completed",
+						output: [],
+						usage: { input_tokens: 1, output_tokens: 2 },
+					},
 				},
 			]),
 			output,
@@ -199,7 +209,12 @@ describe("processResponsesStream: contentIndex correctness", () => {
 				},
 				{
 					type: "response.completed",
-					response: { id: "resp-1", status: "completed", output: [], usage: { input_tokens: 1, output_tokens: 2 } },
+					response: {
+						id: "resp-1",
+						status: "completed",
+						output: [],
+						usage: { input_tokens: 1, output_tokens: 2 },
+					},
 				},
 			]),
 			output,
@@ -273,7 +288,12 @@ describe("processResponsesStream: contentIndex correctness", () => {
 				},
 				{
 					type: "response.completed",
-					response: { id: "resp-1", status: "completed", output: [], usage: { input_tokens: 1, output_tokens: 2 } },
+					response: {
+						id: "resp-1",
+						status: "completed",
+						output: [],
+						usage: { input_tokens: 1, output_tokens: 2 },
+					},
 				},
 			]),
 			output,
@@ -354,7 +374,12 @@ describe("processResponsesStream: contentIndex correctness", () => {
 				},
 				{
 					type: "response.completed",
-					response: { id: "resp-1", status: "completed", output: [], usage: { input_tokens: 1, output_tokens: 2 } },
+					response: {
+						id: "resp-1",
+						status: "completed",
+						output: [],
+						usage: { input_tokens: 1, output_tokens: 2 },
+					},
 				},
 			]),
 			output,

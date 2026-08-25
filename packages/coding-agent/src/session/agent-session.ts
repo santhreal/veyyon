@@ -5026,7 +5026,12 @@ export class AgentSession {
 	async #emitSessionEvent(event: AgentSessionEvent): Promise<void> {
 		if (event.type === "message_update") {
 			this.#emit(event);
-			void this.#queueExtensionEvent(event);
+			// Skip the promise chain when no extension handlers are registered for
+			// message_update (the common case), avoiding a closure + two promise
+			// allocations per streamed token.
+			if (this.#extensionRunner?.hasHandlers(event.type)) {
+				void this.#queueExtensionEvent(event);
+			}
 			return;
 		}
 		await this.#emitExtensionEvent(event);
