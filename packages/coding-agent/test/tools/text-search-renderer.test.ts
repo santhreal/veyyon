@@ -6,7 +6,7 @@ import { getThemeByName } from "@veyyon/coding-agent/modes/theme/theme";
 import { sanitizeText } from "@veyyon/utils";
 import { searchToolRenderer } from "../../src/tools/search-renderer";
 import { textSearchRenderer } from "../../src/tools/text-search";
-import { expectNotAccented } from "../helpers/theme-assertions";
+import { expectNotAccented, useFullColor } from "../helpers/theme-assertions";
 
 function extractLinkUris(text: string): string[] {
 	return [...text.matchAll(/\x1b\]8;[^;]*;([^\x1b]+)\x1b\\/g)].map(match => match[1]!);
@@ -26,6 +26,7 @@ afterAll(() => {
 });
 
 describe("textSearchRenderer and searchToolRenderer (text)", () => {
+	useFullColor();
 	it("indents inline grep output and avoids accent-colored success headers", async () => {
 		const theme = await getThemeByName("dark");
 		expect(theme).toBeDefined();
@@ -54,10 +55,11 @@ describe("textSearchRenderer and searchToolRenderer (text)", () => {
 			.render(240);
 		const unifiedPlainLines = sanitizeText(unifiedRenderedLines.join("\n")).split("\n");
 
-		expect(plainLines.every(line => line.startsWith(" "))).toBe(true);
-		expect(unifiedPlainLines.every(line => line.startsWith(" "))).toBe(true);
-		expectNotAccented(uiTheme, renderedLines[0]!, [uiTheme.symbol("icon.search"), "Search"]);
-		expectNotAccented(uiTheme, unifiedRenderedLines[0]!, [uiTheme.symbol("icon.search"), "Search"]);
+		const rail = uiTheme.symbol("block.rail");
+		expect(plainLines.every(line => line.startsWith(`${rail} `))).toBe(true);
+		expect(unifiedPlainLines.every(line => line.startsWith(`${rail} `))).toBe(true);
+		expectNotAccented(uiTheme, renderedLines[0]!, [uiTheme.symbol("icon.search"), "Search text"]);
+		expectNotAccented(uiTheme, unifiedRenderedLines[0]!, [uiTheme.symbol("icon.search"), "Search text"]);
 	});
 
 	it("keeps truncation status in the header without a bottom notice", async () => {
@@ -140,13 +142,14 @@ describe("textSearchRenderer and searchToolRenderer (text)", () => {
 		// file heading, that the files keep their input order, or that the
 		// truncation notice is the LAST line rather than somewhere in the middle.
 		// A renderer that emitted the two matches before either heading passed.
-		expect(bodyLines).toEqual([
-			" ├─ # src/ ",
-			" │  ## first.ts#aaaa ",
-			" │  *2│const firstFlag = true; ",
-			" │  ## second.ts#bbbb ",
-			" │  *4│const secondFlag = true; ",
-			" └─ … 1 more match ",
+		const rail = uiTheme.symbol("block.rail");
+		expect(bodyLines.map(line => line.trimEnd())).toEqual([
+			`${rail}  # src/`,
+			`${rail}    ## first.ts#aaaa`,
+			`${rail}    *2│const firstFlag = true;`,
+			`${rail}    ## second.ts#bbbb`,
+			`${rail}    *4│const secondFlag = true;`,
+			`${rail}  … 1 more match`,
 		]);
 		// Kept as negatives: context lines and the budgeted-out third file must be
 		// absent from ANY line, which an equality check states only for this exact

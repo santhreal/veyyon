@@ -3,9 +3,10 @@ import { getThemeByName } from "@veyyon/coding-agent/modes/theme/theme";
 import { sanitizeText } from "@veyyon/utils";
 import { fileSearchRenderer } from "../../src/tools/file-search";
 import { searchToolRenderer } from "../../src/tools/search-renderer";
-import { expectNotAccented } from "../helpers/theme-assertions";
+import { expectNotAccented, useFullColor } from "../helpers/theme-assertions";
 
 describe("fileSearchRenderer and searchToolRenderer (files)", () => {
+	useFullColor();
 	it("indents inline glob output and avoids accent-colored success headers", async () => {
 		const theme = await getThemeByName("dark");
 		expect(theme).toBeDefined();
@@ -33,10 +34,11 @@ describe("fileSearchRenderer and searchToolRenderer (files)", () => {
 			.render(240);
 		const unifiedPlainLines = sanitizeText(unifiedRenderedLines.join("\n")).split("\n");
 
-		expect(plainLines.every(line => line.startsWith(" "))).toBe(true);
-		expect(unifiedPlainLines.every(line => line.startsWith(" "))).toBe(true);
-		expectNotAccented(uiTheme, renderedLines[0]!, [uiTheme.symbol("icon.search"), "Find"]);
-		expectNotAccented(uiTheme, unifiedRenderedLines[0]!, [uiTheme.symbol("icon.search"), "Find"]);
+		const rail = uiTheme.symbol("block.rail");
+		expect(plainLines.every(line => line.startsWith(`${rail} `))).toBe(true);
+		expect(unifiedPlainLines.every(line => line.startsWith(`${rail} `))).toBe(true);
+		expectNotAccented(uiTheme, renderedLines[0]!, [uiTheme.symbol("icon.search"), "Search files"]);
+		expectNotAccented(uiTheme, unifiedRenderedLines[0]!, [uiTheme.symbol("icon.search"), "Search files"]);
 	});
 
 	it("renders a timed-out empty scan as incomplete instead of a definitive no-files claim", async () => {
