@@ -12,6 +12,7 @@
 - `statePlacedImageVisibility` counts image blocks with a loop instead of `.filter()`, avoiding a throwaway array allocation on every tool-result message.
 - `truncateForPersistence` only allocates a result array when an element is externalized or truncated, avoiding a throwaway array per content array per message append.
 - `replaceLostBlobPayloads` is skipped on every turn when the session loaded with no lost blob refs, eliminating an O(n) per-message scan that ran on every `transformProviderContext` call regardless of whether any blob refs existed.
+- `bindSecretRuntime` skips the per-element WeakMap binding loop when the array is already bound to the same runtime, eliminating redundant 33K-element iterations that occurred several times per turn when `emitContext`, `wrapSteeringForModel`, and `obfuscateMessages` returned their input array by reference.
 
 ### Added
 

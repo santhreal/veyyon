@@ -3912,6 +3912,13 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		const secretRuntimeByObject = new WeakMap<object, SecretRuntimeLease>();
 		const bindSecretRuntime = (value: unknown, runtime: SecretRuntimeLease): void => {
 			if (typeof value !== "object" || value === null) return;
+			// Skip the per-element iteration when the array is already bound to the
+			// same runtime: transformContext, convertToLlmFinal and
+			// transformProviderContext each re-bind the same array reference multiple
+			// times per turn (emitContext, wrapSteeringForModel and obfuscateMessages
+			// return their input by reference in the common case), so without this
+			// guard the loop below runs 33K WeakMap.set calls redundantly per call.
+			if (secretRuntimeByObject.get(value) === runtime) return;
 			secretRuntimeByObject.set(value, runtime);
 			if (Array.isArray(value)) {
 				for (const item of value) {
