@@ -813,19 +813,70 @@ describe("a click on the path trades the model chip for room", () => {
 		expect(expanded.endsWith(collapsed.slice(ELLIPSIS.length))).toBe(true);
 	});
 
-	it("pays for the room with the model chip only, so the state beside it survives the click", () => {
+	// A tidy cut gives up cells to land on a name boundary, so the zone can arrive a few cells
+	// short of the room it was handed.
+	const CELLS_A_TIDY_CUT_MAY_ROUND_AWAY = 4;
+
+	it("pays for the room with the model chip only, and hands that room to the directory", () => {
+		// The old form of this asserted only what LEFT the row on a click, and that is how the
+		// trade shipped broken: at 78 columns the collapsed row had shed the context gauge under
+		// pressure, the retracting chip took that pressure off, and the gauge came BACK and took
+		// all twenty of the chip's cells. The directory moved one cell. On screen the click read
+		// as a flash -- a gauge in, a chip out -- and the path stayed where it was. So both
+		// directions are checked here, over a sweep rather than at one width, and the cells are
+		// followed to where they were supposed to land.
 		const statusLine = new StatusLineComponent(makeSession());
-		const width = 100;
 
-		expect(statusLine.renderQuietLine(width)).not.toBeNull();
-		const before = renderedIds(statusLine.getQuietSegmentBounds());
+		// What the row holds when nothing is under pressure, so a part missing at a narrower
+		// width is known to have been shed rather than never rendered.
+		expect(statusLine.renderQuietLine(220)).not.toBeNull();
+		const unpressured = renderedIds(statusLine.getQuietSegmentBounds());
 
-		statusLine.togglePathExpanded();
-		expect(statusLine.renderQuietLine(width)).not.toBeNull();
-		const after = renderedIds(statusLine.getQuietSegmentBounds());
+		const offenders: { width: number; why: string }[] = [];
+		let sawARowUnderPressure = false;
+		let sawTheZoneTakeTheRoom = false;
 
-		const dropped = [...before].filter(id => !after.has(id)).sort();
-		expect(dropped).toEqual(["model"]);
+		for (let width = 160; width >= 60; width--) {
+			const collapsedLine = statusLine.renderQuietLine(width);
+			expect(collapsedLine).not.toBeNull();
+			const collapsedBounds = statusLine.getQuietSegmentBounds();
+			const collapsedIds = renderedIds(collapsedBounds);
+			const collapsedEnd = locationEnd(collapsedBounds);
+			const chip = collapsedBounds.find(slot => slot.id === "model" && slot.end > slot.start);
+			if ([...unpressured].some(id => !collapsedIds.has(id))) sawARowUnderPressure = true;
+
+			statusLine.togglePathExpanded();
+			const expandedLine = statusLine.renderQuietLine(width);
+			expect(expandedLine).not.toBeNull();
+			const expandedBounds = statusLine.getQuietSegmentBounds();
+			const expandedIds = renderedIds(expandedBounds);
+			const expandedEnd = locationEnd(expandedBounds);
+			statusLine.togglePathExpanded();
+
+			const appeared = [...expandedIds].filter(id => !collapsedIds.has(id)).sort();
+			if (appeared.length > 0) offenders.push({ width, why: `${appeared.join(",")} came back` });
+			const paid = [...collapsedIds].filter(id => !expandedIds.has(id)).sort();
+			if (paid.length > 0 && paid.join(",") !== "model") offenders.push({ width, why: `${paid.join(",")} paid` });
+
+			if (chip === undefined) continue;
+			const room = chip.end - chip.start;
+			const zone = slotText(expandedLine ?? "", expandedBounds, "path") ?? "";
+			// A zone showing the whole directory has nothing left to widen into; one still
+			// carrying a mark does, and it has to have taken what the chip gave up.
+			if (!zone.includes(ELLIPSIS)) continue;
+			sawTheZoneTakeTheRoom = true;
+			const gained = expandedEnd - collapsedEnd;
+			if (gained < room - CELLS_A_TIDY_CUT_MAY_ROUND_AWAY) {
+				offenders.push({ width, why: `zone gained ${gained} of the chip's ${room}` });
+			}
+		}
+
+		expect(offenders).toEqual([]);
+		// Both clauses need a row they bite on: one where the collapsed row had already given
+		// something up (so "nothing comes back" is doing work), and one where the zone was still
+		// clipped after the click (so the room was measurably handed over).
+		expect(sawARowUnderPressure).toBe(true);
+		expect(sawTheZoneTakeTheRoom).toBe(true);
 	});
 
 	it("re-truncates to the new width while expanded, rather than holding the width it expanded at", () => {
