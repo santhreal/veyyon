@@ -52,7 +52,7 @@ Plugin install state is **profile-scoped** under `~/.veyyon/profiles/<profile>/p
 | `~/.veyyon/profiles/<profile>/plugins/installed_plugins.json` | User-scope marketplace install registry |
 | `~/.veyyon/profiles/<profile>/plugins/node_modules/` | npm/git/link plugin packages |
 | `~/.veyyon/profiles/<profile>/plugins/cache/` | Cached marketplace catalogs and plugin trees |
-| `~/.veyyon/profiles/<profile>/plugins/veyyon-plugins.lock.json` | Lockfile for npm plugin installs |
+| `~/.veyyon/profiles/<profile>/plugins/veyyon-plugins.lock.json` | Enabled state, selected features and stored settings for every npm, git and linked plugin |
 | Project `.veyyon/plugins/installed_plugins.json` | Project-scope marketplace installs |
 
 ## Command Line Interface
@@ -63,16 +63,44 @@ You can manage plugins and marketplaces using the `veyyon plugin` and `veyyon pl
 
 #### Install a Plugin
 
-Install a plugin from a configured marketplace. Specify the plugin as `plugin_name@marketplace_name`.
+`veyyon plugin install` accepts four kinds of target:
+
+| Target | Form | Example |
+| --- | --- | --- |
+| Marketplace | `name@marketplace` | `sample@debug` |
+| npm | `name`, `@scope/name`, either with `@version` | `@veyyon/exa@1.2.0` |
+| Git | `github:user/repo`, `gitlab:`, `bitbucket:`, `codeberg:`, `sourcehut:`/`srht:`, or a full git URL, each with an optional `#ref` | `github:user/repo#v1.0` |
+| Local path | a path to the plugin's own directory | `./path/to/plugin` |
 
 ```console
 $ veyyon plugin install sample@debug
-$ veyyon plugin install --force --scope project sample@debug
+$ veyyon plugin install @veyyon/exa
+$ veyyon plugin install github:user/repo#v1.0
+$ veyyon plugin install ./path/to/plugin
 ```
 
+A local path is linked rather than copied: veyyon symlinks the directory into the profile's
+`node_modules`, so edits to the source appear without a reinstall. `veyyon plugin link <path>` does
+the same thing, and either verb works.
+
 Use `--force` to reinstall over an existing install and `--scope user|project` to choose the install
-scope. `--json` prints the installation result as JSON for npm and link installs; marketplace
-installs ignore it.
+scope. `--scope` applies to marketplace installs only; npm, git and local installs warn and ignore it.
+`--json` prints the installation result as JSON for npm, git and link installs; marketplace installs
+ignore it.
+
+`--dry-run` resolves the target and reports the name and version it resolves to, without writing a
+dependency, a lockfile entry or a `node_modules` entry:
+
+```console
+$ veyyon plugin install github:sindresorhus/slugify --dry-run
+[dry-run] Would install @sindresorhus/slugify@github:sindresorhus/slugify#7c318bd
+```
+
+A git target's package name comes from the repository, not the spec, so a dry run is how you learn
+the name a git plugin will install under. A target that cannot be resolved — an unpublished npm name,
+a version that does not exist, a private or missing repository — fails with the resolver's output and
+exits 1. A dry run proves the target resolves; it does not prove the package is a veyyon plugin,
+because nothing is unpacked and no manifest is read.
 
 #### List Plugins
 
@@ -87,14 +115,24 @@ Options:
 
 #### Uninstall a Plugin
 
-Uninstall a plugin from local cache and config.
+Uninstall a plugin from local cache and config. Pass the name `veyyon plugin list` shows, which for a
+git or local plugin is the package's own name rather than the spec you installed it with.
 
 ```console
 $ veyyon plugin uninstall sample@debug
+$ veyyon plugin uninstall @veyyon/exa
+$ veyyon plugin uninstall linked-plugin
 ```
+
+Every install route is removable by the same command. Uninstalling a linked plugin removes the
+symlink and the plugin's stored settings, and leaves the directory it pointed at untouched: that is
+your working copy, not veyyon's.
 
 Use the `--json` flag to return the removal result as JSON for npm plugins; marketplace uninstalls
 ignore it.
+
+To keep a plugin installed but inert, use `veyyon plugin disable <name>`, which leaves it listed and
+reversible with `enable`.
 
 #### Check Plugin Health
 
@@ -120,7 +158,8 @@ The checks are:
   Each one distinguishes "not created yet" from "there but unreadable". The first is normal and
   reports `ok`; the second is an error stating the path, because a plugins directory whose permissions
   have been mangled looks identical to an empty one from the outside and the fix is `chmod`, not a
-  reinstall.
+  reinstall. A profile holding only linked plugins has no `package.json`, because linking writes no
+  dependency; `package_manifest` reports `ok` and states how many linked plugins are present.
 * `plugin:<name>`: one per installed plugin. An error means the package is missing from
   `node_modules` or has no `package.json`. A warning means it loaded but contains no plugin manifest,
   so veyyon can see the package and cannot use it.
