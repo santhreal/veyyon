@@ -125,18 +125,43 @@ describe("latex fuzz invariants", () => {
 		}
 	}, 30_000);
 
-	// 30s timeouts on these fuzz loops: on a saturated gate machine (parallel=4
-	// full run) wall-clock triples vs isolated and races bun's 5s default.
-	it("optional-argument nesting stays bounded and shallow math is unaffected", () => {
-		// The depth guard degrades a deep optional-arg chain to literal text without
-		// crashing; a huge payload must complete in roughly linear time (the old
-		// fresh-parser laundering was quadratic — 5k-deep took ~750ms and 10k-deep
-		// blew the stack). 100k-deep here is ~1.4MB of input and must return.
-		const attack = `${"\\sqrt[".repeat(100_000)}2${"]{x}".repeat(100_000)}`;
-		expect(typeof latexToUnicode(attack)).toBe("string");
-		// Real (shallow) optional-argument math is untouched by the fix.
+	// WHY: the old fresh-parser laundering re-scanned the optional-argument source
+	// at every level, so a nested `\sqrt[…]` chain cost O(n^2) — 5k-deep took
+	// ~750ms and 10k-deep blew the stack. A wall-clock ceiling cannot defend that
+	// shape. A quadratic parser sits well inside any generous ceiling at a depth
+	// small enough to finish, and the depth that does trip the ceiling costs
+	// seconds of every gate run: 100k-deep is ~6.6s isolated here and timed out at
+	// 97s on a `--parallel=4 --smol` runner, where the guard was linear the whole
+	// time. What separates linear from quadratic is the ratio between D and 2D,
+	// and a ratio is invariant to how loaded the machine is.
+	//
+	// Not caught here: a constant-factor blowup that stays linear, and stack
+	// exhaustion past 16k depth, which the sibling test above covers at 20k.
+	it("degrades a nested optional-argument chain in linear time", () => {
+		const cost = (depth: number): number => {
+			const attack = `${"\\sqrt[".repeat(depth)}2${"]{x}".repeat(depth)}`;
+			let best = Number.POSITIVE_INFINITY;
+			for (let sample = 0; sample < 3; sample++) {
+				const started = performance.now();
+				expect(typeof latexToUnicode(attack)).toBe("string");
+				best = Math.min(best, performance.now() - started);
+			}
+			return best;
+		};
+		// Doubling the depth doubles linear work and quadruples quadratic work; 3
+		// separates the two shapes with room for scheduler noise.
+		// Measured smallest-first and in this order: the first call at any depth pays
+		// JIT tier-up the next does not, and `cost(8_000) / cost(4_000)` evaluates the
+		// large arm first, which charges the warmup to the numerator and hides a
+		// quadratic parser behind a ratio under 2.
+		const small = cost(4_000);
+		const large = cost(8_000);
+		expect(large / small).toBeLessThan(3);
+	}, 30_000);
+
+	it("leaves shallow optional-argument math alone", () => {
 		expect(latexToUnicode("\\sqrt[3]{x}")).toBe("∛x");
 		expect(latexToUnicode("\\sqrt[3]{abc}")).toBe("∛(abc)");
 		expect(latexToUnicode("\\xrightarrow[n\\to\\infty]{f}")).toBe("→ᶠ_(n→∞)");
-	}, 30_000);
+	});
 });

@@ -20,6 +20,7 @@
 
 import { definePromptRows, type PromptEntry } from "@veyyon/utils/prompt-registry";
 
+import sessionCodeReviewReminder from "./code-review-reminder.md" with { type: "text" };
 import sessionContextFileAuthority from "./context-file-authority.md" with { type: "text" };
 import sessionCustomSystemPrompt from "./custom-system-prompt.md" with { type: "text" };
 import sessionPersonalitiesDefault from "./personalities/default.md" with { type: "text" };
@@ -35,6 +36,10 @@ import sessionVibeModeActive from "./vibe-mode-active.md" with { type: "text" };
 
 /** Every prompt under `src/prompts/session/`, keyed by its id (the path under `src/prompts/`). */
 export const sessionPrompts = definePromptRows({
+	"session/code-review-reminder": {
+		text: sessionCodeReviewReminder,
+		purpose: "the one-turn reminder to review multi-file code changes before finalizing",
+	},
 	"session/context-file-authority": {
 		text: sessionContextFileAuthority,
 		purpose:
