@@ -409,11 +409,12 @@ veyyon config get compaction.threshold
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `lsp.enabled` | Enable LSP | boolean | `false` | Enable the lsp tool for code intelligence (definitions, references, diagnostics, rename). |
-| `lsp.lazy` | Lazy LSP Startup | boolean | `true` | Start language servers on first use (lsp tool or editing a matching file type) instead of at session startup. |
-| `lsp.formatOnWrite` | Format on Write | boolean | `false` | Automatically format code files using LSP after writing. |
-| `lsp.diagnosticsOnWrite` | Diagnostics on Write | boolean | `true` | Return LSP diagnostics after writing code files. |
-| `lsp.diagnosticsOnEdit` | Diagnostics on Edit | boolean | `false` | Return LSP diagnostics after editing code files. |
+| `lsp.enabled` | Language Servers | boolean | `false` | Start language servers. Files → LSP is the row you enter; this switch and the others on that page (agent tool, diagnostics after write, diagnostics after edit, format after write) are independent once servers are running. |
+| `lsp.tool` | Agent Tool | boolean | `true` | Give the agent the lsp tool (definitions, references, rename, query diagnostics). Off keeps servers for format and injected diagnostics only. |
+| `lsp.lazy` | Lazy Startup | boolean | `true` | Start language servers on first use (lsp tool or editing a matching file type) instead of at session startup. |
+| `lsp.formatOnWrite` | Format after Write | boolean | `false` | Format the file with the language server after the write tool saves it. Independent of the agent tool and of diagnostics. |
+| `lsp.diagnosticsOnWrite` | Diagnostics after Write | boolean | `true` | After the write tool saves a file, inject language-server diagnostics into the session. Independent of the agent tool. |
+| `lsp.diagnosticsOnEdit` | Diagnostics after Edit | boolean | `false` | After the edit tool saves a file, inject language-server diagnostics into the session. Independent of the agent tool. |
 | `lsp.diagnosticsDeduplicate` | Deduplicate Diagnostics | boolean | `true` | Suppress post-edit LSP diagnostics already shown for a file; only surface new or changed ones. |
 
 ## Shell
@@ -872,4 +873,4 @@ These keys are not in `/settings`. Some are state veyyon writes for itself (a sc
 | `tui.maxInlineImageRows` | number | `20` |  |
 | `tui.maxInlineImages` | number | `8` |  |
 
-347 settings in /settings, 119 configuration-file keys, 466 in all.
+348 settings in /settings, 119 configuration-file keys, 467 in all.

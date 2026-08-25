@@ -1761,7 +1761,7 @@ class LspFileSystem implements FileSystem {
 
 	async delete(path: string): Promise<void> {
 		await this.#getFile(path).unlink();
-		if (this.session.enableLsp ?? true) {
+		if ((this.session.enableLsp ?? true) && this.session.settings.get("lsp.enabled")) {
 			await notifyWorkspaceWatchedFiles(
 				this.session.cwd,
 				[{ filePath: path, type: FileChangeType.Deleted }],
