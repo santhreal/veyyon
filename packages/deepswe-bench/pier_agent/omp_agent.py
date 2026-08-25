@@ -17,6 +17,8 @@ from pier.models.agent.context import AgentContext
 from pier.models.agent.install import AgentInstallSpec, InstallStep
 
 
+CONTAINER_ASSETS_DIR = "/opt/omp-assets"
+
 class OmpAgent(BaseInstalledAgent):
     """Run Oh My Pi (omp) CLI headlessly against a DeepSWE benchmark task."""
 
