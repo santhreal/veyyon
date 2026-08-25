@@ -15472,10 +15472,13 @@ export class AgentSession {
 		// confirm is outstanding. Same honesty rule as the stop-time reminder.
 		if (this.#lastTodoFailureText !== undefined) return null;
 
-		const incomplete = this.getTodoPhases()
-			.flatMap(phase => phase.tasks)
-			.filter(task => task.status === "pending" || task.status === "in_progress");
-		if (incomplete.length === 0) return null;
+		let incompleteCount = 0;
+		for (const phase of this.getTodoPhases()) {
+			for (const task of phase.tasks) {
+				if (task.status === "pending" || task.status === "in_progress") incompleteCount++;
+			}
+		}
+		if (incompleteCount === 0) return null;
 
 		// Reset the mutation counter so the nudge has another full runway before
 		// the next fire; #midRunNudgeCount caps total nudges per prompt cycle.
@@ -15485,12 +15488,12 @@ export class AgentSession {
 		const { toolRefs } = this.#buildEagerPreludeContext();
 		const reminder = prompt.render(turnControlPrompts["turn-control/mid-run-todo-nudge"].text, {
 			toolRefs,
-			incompleteCount: incomplete.length,
-			plural: incomplete.length !== 1,
+			incompleteCount,
+			plural: incompleteCount !== 1,
 		});
 
 		logger.debug("Mid-run todo nudge fired", {
-			incomplete: incomplete.length,
+			incomplete: incompleteCount,
 			nudge: this.#midRunNudgeCount,
 		});
 

@@ -28,6 +28,8 @@
 - The `/todo` autocomplete description counts pending, in-progress, and completed tasks in a single loop instead of three `.filter().length` passes, avoiding three throwaway arrays per keystroke.
 - Hindsight and mnemopi auto-retain count user turns with a loop instead of `.filter().length`, avoiding a throwaway array of the full message list on every `agent_end`.
 - HTML export counts tool calls with a loop instead of `.filter().length`, avoiding a throwaway array per assistant message during export.
+- `#takeMidRunTodoNudge` counts incomplete tasks with a loop instead of `.flatMap().filter()`, avoiding two throwaway arrays per nudge check.
+- `renderTodoStatePreview` counts total tasks with a loop instead of `.reduce()`, avoiding a callback allocation per prompt.
 
 ### Added
 

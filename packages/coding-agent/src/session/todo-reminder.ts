@@ -33,7 +33,8 @@ export function todoReminderFingerprint(items: readonly IncompleteTodoItem[]): s
 /** Render a bounded model-facing projection while the full phases remain machine-owned. */
 export function renderTodoStatePreview(phases: readonly TodoPhase[]): string {
 	const items = prioritizeTodoItems(incompleteTodoItems(phases));
-	const total = phases.reduce((sum, phase) => sum + phase.tasks.length, 0);
+	let total = 0;
+	for (const phase of phases) total += phase.tasks.length;
 	const closed = total - items.length;
 	const lines = [`Overall: ${closed}/${total} done, ${items.length} open.`];
 	const item = items[0];
