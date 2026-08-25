@@ -63,7 +63,7 @@ directory. A working directory under one of them is shown relative to it, so
 `/srv/workspaces/platform-services/normalizer` reads `platform-services/normalizer`. The first
 entry that matches wins, which is how a nested root is named ahead of the one above it. The list
 replaces the defaults rather than adding to them; without it the defaults are `~/Projects` and
-`/work`. An entry that is not an absolute path cannot contain a directory, so it is dropped and
+`/work/`. An entry that is not an absolute path cannot contain a directory, so it is dropped and
 named in the log once. `stripWorkPrefix: false` turns the whole step off.
 
 A project inside a temporary directory is shown relative to that temporary directory instead,
