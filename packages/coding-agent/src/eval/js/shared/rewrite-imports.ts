@@ -481,7 +481,8 @@ function containsAsyncWrapperSyntax(value: unknown): boolean {
 
 	const node = value as Record<string, unknown>;
 	const type = node.type;
-	if (type === "ReturnStatement" || type === "AwaitExpression") return true;
+	// A bare return statement has no return value and does not require an async wrapper.
+	if ((type === "ReturnStatement" && Boolean(node.argument)) || type === "AwaitExpression") return true;
 	if (type === "ForOfStatement" && node.await === true) return true;
 	if (typeof type === "string" && isExecutionBoundary(type)) return false;
 
@@ -517,8 +518,13 @@ type TypeScriptStripLoader = "ts" | "tsx";
 const TS_TRANSPILER = new Bun.Transpiler({ loader: "ts" });
 const TSX_TRANSPILER = new Bun.Transpiler({ loader: "tsx" });
 
+function stripCommentsAndStrings(code: string): string {
+	return code.replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\/|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`/g, "");
+}
+
 function stripTypeScript(code: string, options: { force?: boolean; loader?: TypeScriptStripLoader } = {}): string {
-	if (!options.force && !LOOKS_LIKE_TS.test(code)) return code;
+	// Comments and string literals are stripped before running the heuristic so type keywords inside prose do not trigger transpilation.
+	if (!options.force && !LOOKS_LIKE_TS.test(stripCommentsAndStrings(code))) return code;
 	try {
 		const transpiler = options.loader === "tsx" ? TSX_TRANSPILER : TS_TRANSPILER;
 		return transpiler.transformSync(code);

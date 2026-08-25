@@ -81,7 +81,9 @@ const ABSOLUTE_PATH_IN_TEXT = /\/(?:[\w.@+-]+\/)*[\w.@+-]+/g;
 /** True when `candidate` resolves inside `root`, compared on paths rather than string prefixes. */
 function isInsideRoot(root: string, candidate: string): boolean {
 	const relative = path.relative(root, path.resolve(candidate));
-	return relative !== "" && !relative.startsWith("..") && !path.isAbsolute(relative);
+	// `..foo` and `...hidden` are filenames that begin with dots, not parent hops, so only a
+	// relative path that IS `..` or descends from it leaves the root.
+	return relative !== "" && !path.isAbsolute(relative) && relative !== ".." && !relative.startsWith(`..${path.sep}`);
 }
 
 const DEFAULT_SCOPE: TtsrScope = {

@@ -22,15 +22,15 @@ export interface NotebookDocument {
 	[key: string]: unknown;
 }
 
-const CELL_MARKER_RE = /^# %% \[(code|markdown|raw)\](?: cell:(\d+))?$/;
+const CELL_MARKER_RE = /^# %% \[(code|markdown|raw)\](?: cell:(\d+))?\r?$/;
 /**
  * Cell source lines that would themselves parse as (possibly already-escaped)
  * cell markers gain one extra `%` on render and lose it on parse, so a
  * notebook that *contains* the literal text `# %% [markdown] cell:3` survives
  * the editable-text round trip instead of being split into extra cells.
  */
-const ESCAPABLE_MARKER_RE = /^# %%+ \[(?:code|markdown|raw)\](?: cell:\d+)?$/;
-const ESCAPED_MARKER_RE = /^# %%%+ \[(?:code|markdown|raw)\](?: cell:\d+)?$/;
+const ESCAPABLE_MARKER_RE = /^# %%+ \[(?:code|markdown|raw)\](?: cell:\d+)?\r?$/;
+const ESCAPED_MARKER_RE = /^# %%%+ \[(?:code|markdown|raw)\](?: cell:\d+)?\r?$/;
 
 function escapeMarkerLikeSourceLines(source: string): string {
 	if (!source.includes("# %%")) return source;
@@ -149,7 +149,8 @@ function linesToSourceText(lines: string[]): string {
 }
 
 function parseNotebookEditableText(text: string, displayPath: string): ParsedVirtualCell[] {
-	const lines = text.length === 0 ? [] : text.split("\n");
+	// Editable text may use CRLF line endings when round-tripped through filesystems or editors.
+	const lines = text.length === 0 ? [] : text.split(/\r?\n/);
 	const cells: ParsedVirtualCell[] = [];
 	let current: { cellType: NotebookCellType; cellIndex?: number; lines: string[] } | undefined;
 

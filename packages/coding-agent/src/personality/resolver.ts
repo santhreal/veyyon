@@ -130,16 +130,13 @@ function availableNames(tiers: PersonalityTiers): string[] {
 }
 
 /**
- * Matches a literal `<personality>` or `</personality>` tag (any whitespace
- * inside the brackets), case-insensitively. A Tier-B data file is untrusted
- * content; without this guard a stray closing tag in the file body would
- * prematurely end the wrapper the system-prompt template renders around it,
- * letting the rest of the file (or a spoofed `<personality>`/other tag that
- * follows) escape the fixed section and read as top-level prompt content.
+ * Matches literal `<personality>` tags in all forms (openers, closers, self-closing,
+ * and attributed), case-insensitively. A Tier-B data file is untrusted content; without
+ * this guard an injected tag could escape the section or open a second wrapper.
  */
-const PERSONALITY_TAG_RE = /<\s*\/?\s*personality\s*>/gi;
+const PERSONALITY_TAG_RE = /<\s*\/?\s*personality(?:[\s/][^>]*)?>/gi;
 
-/** Neutralize literal `<personality>`/`</personality>` tags inside untrusted spec text. */
+/** Neutralize literal `<personality>` tags inside untrusted spec text. */
 function escapePersonalityTags(text: string): string {
 	return text.replace(PERSONALITY_TAG_RE, tag => tag.replace(/</g, "&lt;").replace(/>/g, "&gt;"));
 }

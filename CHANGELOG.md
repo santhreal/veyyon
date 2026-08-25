@@ -52,6 +52,15 @@
 
 ### Fixed
 
+- A thinking level or difficulty bucket is read as a whole token, so `maxhigh` no longer selects xhigh and `hard-coded` no longer selects the hard bucket.
+- `/cpu-limit` accepts a positive decimal integer only, rejecting `0x10`, `2e1`, `2.5` and `+4` as core counts.
+- A bare `/login` or `/join` with trailing whitespace is no longer classified as carrying a secret.
+- Idle text-to-speech no longer speaks a trailing abbreviation such as `Dr.` as a finished sentence.
+- A read-aloud path scope treats `..foo` and `...hidden` as filenames rather than parent hops, so they are no longer reported as outside the working directory.
+- A personality spec neutralizes a self-closing `<personality/>` and an attributed `<personality foo>` tag, which could previously open a second wrapper or escape the section.
+- TypeScript stripping in the eval tool ignores a type declaration inside a line comment, and a bare `return;` is no longer wrapped.
+- Web search results render when a cost object carries no total, and a zero search time is reported instead of dropped.
+- A notebook edit applies to a CRLF-encoded editable form instead of throwing.
 - The JSON-RPC frame decoder accepts an LF-only header terminator, so an adapter that writes `Content-Length: N` followed by two newlines no longer stalls until the initialize timeout.
 - Duplicate `Content-Length` headers take the last value, so a proxy that prepends its own no longer frames a zero-length body and reads the real payload as junk.
 - A non-decimal `Content-Length` such as `-1` or `0x5` no longer frames a body, and the decoder resynchronizes on the next header instead of consuming the frame behind it.
