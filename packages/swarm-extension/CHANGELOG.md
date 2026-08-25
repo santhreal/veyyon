@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- `renderSwarmProgress` merges three `.filter().length` calls into a single counting loop, avoiding three throwaway arrays per swarm status render.
+
 ## [1.2.0] - 2026-08-23
 
 ### Breaking Changes

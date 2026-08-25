@@ -36,9 +36,14 @@ export function renderSwarmProgress(state: SwarmState): string[] {
 	}
 
 	// Summary line
-	const completed = agents.filter(a => a.status === "completed").length;
-	const failed = agents.filter(a => a.status === "failed").length;
-	const running = agents.filter(a => a.status === "running").length;
+	let completed = 0;
+	let failed = 0;
+	let running = 0;
+	for (const a of agents) {
+		if (a.status === "completed") completed++;
+		else if (a.status === "failed") failed++;
+		else if (a.status === "running") running++;
+	}
 
 	lines.push("");
 	const parts = [`${completed}/${agents.length} done`];
