@@ -14,4 +14,4 @@
 
 - [ ] `bun check` passes
 - [ ] Tested locally
-- [ ] CHANGELOG updated (if user-facing)
+- [ ] CHANGELOG updated (if user-facing): a bullet under the affected package's `## [Unreleased]`, plus `bun run changelog:root` committed
