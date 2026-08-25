@@ -5,10 +5,11 @@
 ### Changed
 
 - Classified runner output (cargo, bun, Go, ctest, dotnet, clippy, golangci-lint, Gradle lint, pytest, and tsc/eslint-family) now opens with a result-contract header: `[clean] <command>` or `[errors]` / `[errors N] <command>`. The header is the verdict and the body contains retained diagnostics.
+
 ### Added
+
 - Exporting a session to HTML streams the snapshot into the output file instead of assembling the whole document in memory, taking an 80MiB transcript from 1007MiB of peak resident memory to 532MiB with byte-identical output.
 - A session snapshot that contains a reference cycle fails the HTML export with an error instead of writing until the disk fills.
-
 - Added `model.toolCallLoopGuard.readSubsumptionThreshold` (default `2`) to steer models that re-read unchanged code lines back-to-back before consuming full context.
 - `VEYYON_DEBUG_STARTUP=1` writes one line per phase of a prompt submission (compaction check, plan arm, context build, memory context), so a slow submit names the phase that spent the time.
 - `read` takes `depth` and `limit` arguments for directory listings, and a read of the session working directory root with neither now returns a concise top-level listing with per-subdirectory entry counts instead of the recursive tree.

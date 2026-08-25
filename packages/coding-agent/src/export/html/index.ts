@@ -1,5 +1,6 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { setImmediate } from "node:timers/promises";
 import type { AgentState } from "@veyyon/agent-core";
 import { APP_NAME, isEnoent, logger } from "@veyyon/utils";
 import { atomicWriteFileWith } from "@veyyon/utils/atomic-write";
@@ -281,6 +282,18 @@ function splitTemplateAtSessionMarker(template: string): { head: string; tail: s
 }
 
 /**
+ * The builtin's `toJSON` step: a holder replaces a value with `value.toJSON(key)`
+ * before serializing it, once, and never re-applies it to the result. `key` is
+ * the property name, an array index as a string, or `""` at the root.
+ */
+function applyToJSON(value: unknown, key: string): unknown {
+	if (value !== null && typeof value === "object" && "toJSON" in value && typeof value.toJSON === "function") {
+		return value.toJSON(key);
+	}
+	return value;
+}
+
+/**
  * Incremental JSON serializer. Emits the same bytes `JSON.stringify(value)`
  * emits — leaf strings/numbers/booleans go through `JSON.stringify` itself,
  * object keys are visited in insertion order, and `undefined` property values
@@ -289,7 +302,8 @@ function splitTemplateAtSessionMarker(template: string): { head: string; tail: s
  *
  * Same failures too: a cycle raises a `TypeError` before anything unbounded is
  * emitted, and a BigInt raises rather than serializing to something a reader
- * would have to guess at.
+ * would have to guess at. A root that serializes to nothing, which the builtin
+ * answers with `undefined`, raises as well: there is no such document.
  */
 export function* jsonPieces(value: unknown): Generator<string> {
 	// The objects on the path from the root to the value being emitted. The builtin throws on a
@@ -297,7 +311,15 @@ export function* jsonPieces(value: unknown): Generator<string> {
 	// to a file gets an unbounded write instead of an error.
 	const ancestors = new Set<object>();
 
-	yield* emitValue(value);
+	const root = applyToJSON(value, "");
+	if (root === undefined || typeof root === "function" || typeof root === "symbol") {
+		// `JSON.stringify` answers `undefined` here, which is not JSON and cannot
+		// be written to a file. A session snapshot that serializes to nothing is
+		// a defect upstream, so say so rather than emitting `null` and shipping a
+		// document whose payload silently became a literal null.
+		throw new TypeError("A session snapshot serializes to nothing");
+	}
+	yield* emitValue(root);
 
 	function* emitValue(v: unknown): Generator<string> {
 		if (v === null) {
@@ -326,13 +348,11 @@ export function* jsonPieces(value: unknown): Generator<string> {
 				yield "null";
 				return;
 		}
-		if ("toJSON" in v && typeof v.toJSON === "function") {
-			// Rare holder of a custom protocol (the builtin would have called it).
-			// Delegate wholesale so its contract stays intact; the result is small
-			// by construction or the session had no business carrying it.
-			yield JSON.stringify(v);
-			return;
-		}
+		// No `toJSON` branch here. The builtin applies `toJSON` once, at the
+		// holder that owns the value, and serializes the result as-is; applying
+		// it again on the way down turns a transform returning another holder
+		// (`{ toJSON: () => ({ toJSON: () => 5 }) }`) into `5` where the builtin
+		// emits `{}`. `applyToJSON` is called by each holder instead.
 		// A boxed primitive serializes as the primitive it wraps. Falling through to the object
 		// branch would emit a String box as its index map and a Number box as `{}`.
 		if (v instanceof String || v instanceof Number || v instanceof Boolean) {
@@ -344,10 +364,11 @@ export function* jsonPieces(value: unknown): Generator<string> {
 		try {
 			if (Array.isArray(v)) {
 				yield "[";
-				let first = true;
-				for (const item of v) {
-					if (!first) yield ",";
-					first = false;
+				for (let index = 0; index < v.length; index++) {
+					if (index > 0) yield ",";
+					// The builtin passes the index as the key, so an element's
+					// `toJSON(key)` sees "0", "1", … and not `undefined`.
+					const item = applyToJSON(v[index], String(index));
 					if (item === undefined || typeof item === "function" || typeof item === "symbol") yield "null";
 					else yield* emitValue(item);
 				}
@@ -359,7 +380,8 @@ export function* jsonPieces(value: unknown): Generator<string> {
 			const source = v as Record<string, unknown>;
 			yield "{";
 			let first = true;
-			for (const [key, item] of Object.entries(source)) {
+			for (const [key, raw] of Object.entries(source)) {
+				const item = applyToJSON(raw, key);
 				// The builtin omits undefined-, function- and symbol-valued properties.
 				if (item === undefined || typeof item === "function" || typeof item === "symbol") continue;
 				if (!first) yield ",";
@@ -489,7 +511,7 @@ async function writeExportFile(
 				if (bytesSinceYield >= YIELD_BYTE_BUDGET) {
 					bytesSinceYield = 0;
 					await flushPending();
-					await new Promise<void>(resolve => setImmediate(resolve));
+					await setImmediate();
 				}
 			}
 			b64.end();
