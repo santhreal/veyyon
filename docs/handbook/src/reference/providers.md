@@ -146,7 +146,7 @@ Each provider has one or more environment variables that supply a key when no st
 
 OAuth-backed providers such as `anthropic`, `github-copilot`, `cursor`, `ollama-cloud`, `qwen-portal`, `kimi-code`, `nous-research`, `xai-oauth`, `wafer-serverless`, `google-gemini-cli`, and `google-antigravity` are normally reached through `/login` rather than an environment variable. Nous Portal stores a durable refresh token and mints short-lived inference access tokens for requests and model discovery; `NOUS_API_KEY` remains available for explicit headless use.
 
-Command Code uses `https://api.commandcode.ai/provider/v1`, defaults to `moonshotai/Kimi-K2.7-Code`, and issues keys at [Command Code Provider](https://commandcode.ai/studio/provider). Nous Research uses `https://inference-api.nousresearch.com/v1` and defaults to the tool-capable `anthropic/claude-sonnet-4.6`; authenticated discovery adds the current tool-capable chat catalog and excludes embedding, media-generation, and non-tool rows.
+Command Code uses `https://api.commandcode.ai/provider/v1`, defaults to `moonshotai/Kimi-K2.7-Code`, and issues keys at [Command Code Provider](https://commandcode.ai/studio/provider). Nous Research uses `https://inference-api.nousresearch.com/v1` and defaults to the tool-capable `anthropic/claude-sonnet-4.6`; authenticated discovery adds the current tool-capable chat catalog and excludes embedding, media-generation, and non-tool rows. Nous accepts either sign-in: `/login nous-research` runs the Portal device flow, and `/login nous-research-api-key` takes a key pasted from the Portal. Both store one credential under `nous-research`, so the model list and the account card show a single Nous account either way.
 
 ### `.env` discovery and precedence
 
