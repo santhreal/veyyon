@@ -26,6 +26,12 @@ export class ProviderContextCanonicalizer {
 	#savedPrefix: number[] = [0];
 	#changedPrefix: number[] = [0];
 	#roots: readonly string[] | undefined;
+	#lastTransformedCount = 0;
+
+	/** Number of messages transformed during the most recent call to transform(). */
+	get lastTransformedCount(): number {
+		return this.#lastTransformedCount;
+	}
 	constructor(map: ToolCallIdMap, allocate: () => string) {
 		this.#map = map;
 		this.#allocate = allocate;
@@ -42,6 +48,7 @@ export class ProviderContextCanonicalizer {
 		while (common < commonLimit && messages[common] === this.#source[common]) common += 1;
 
 		if (common === messages.length && common === this.#source.length) {
+			this.#lastTransformedCount = 0;
 			return {
 				messages: this.#changedPrefix[common] === 0 ? messages : this.#output,
 				bytesSaved: this.#savedPrefix[common] ?? 0,
@@ -63,6 +70,7 @@ export class ProviderContextCanonicalizer {
 			changedPrefix.push((changedPrefix.at(-1) ?? 0) + (relativized.message === source ? 0 : 1));
 		}
 
+		this.#lastTransformedCount = messages.length - common;
 		this.#source = messages;
 		this.#output = output;
 		this.#savedPrefix = savedPrefix;
