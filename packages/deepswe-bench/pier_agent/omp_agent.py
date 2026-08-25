@@ -53,6 +53,7 @@ class OmpAgent(BaseInstalledAgent):
                 ".openai.com",
                 ".openrouter.ai",
                 ".opencode.ai",
+                ".models.dev",
             ],
         )
 
