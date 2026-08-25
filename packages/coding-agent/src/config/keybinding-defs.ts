@@ -14,8 +14,7 @@
  * One table, two importers, no drift. `config/keybindings.ts` re-exports
  * everything here, so nothing that already imported from there has to change.
  */
-import type { KeybindingDefinitions, KeyId } from "@veyyon/tui";
-import { TUI_KEYBINDINGS } from "@veyyon/tui";
+import { type KeybindingDefinitions, type KeyId, TUI_KEYBINDINGS } from "@veyyon/tui/keybindings";
 
 /**
  * Application-level keybindings (coding agent specific).

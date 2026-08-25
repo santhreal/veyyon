@@ -4,21 +4,19 @@
  * Uses Claude's built-in web_search_20250305 tool to search the web.
  * Returns synthesized answers with citations and source metadata.
  */
+import type { AnthropicAuthConfig, AnthropicSystemBlock, ApiKey, AuthStorage, FetchImpl } from "@veyyon/ai";
+import { withAuth } from "@veyyon/ai/auth-retry";
 import {
-	type AnthropicAuthConfig,
-	type AnthropicSystemBlock,
-	type ApiKey,
-	type AuthStorage,
-	buildAnthropicAuthConfig,
-	buildAnthropicSearchHeaders,
 	buildAnthropicSystemBlocks,
-	buildAnthropicUrl,
-	type FetchImpl,
 	resolveAnthropicMetadataUserId,
 	stripClaudeToolPrefix,
-	withAuth,
 	wrapFetchForCch,
-} from "@veyyon/ai";
+} from "@veyyon/ai/providers/anthropic";
+import {
+	buildAnthropicAuthConfig,
+	buildAnthropicSearchHeaders,
+	buildAnthropicUrl,
+} from "@veyyon/ai/utils/anthropic-auth";
 import { ANTHROPIC_WEB_SEARCH_TOOL } from "@veyyon/catalog/wire/anthropic";
 import { $env } from "@veyyon/utils";
 import {

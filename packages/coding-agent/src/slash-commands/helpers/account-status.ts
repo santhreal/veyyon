@@ -18,7 +18,7 @@
  * reports divergence the block says what was pinned, what is serving instead and why, because a
  * silent swap is the failure this whole surface exists to make visible.
  */
-import { replaceTabs, truncateToWidth } from "@veyyon/tui";
+import { replaceTabs, truncateToWidth } from "@veyyon/tui/utils";
 import { sanitizeText } from "@veyyon/utils";
 import {
 	type AccountInventory,

@@ -5,7 +5,8 @@
  */
 
 import type { Component } from "@veyyon/tui";
-import { Markdown, Text } from "@veyyon/tui";
+import { Markdown } from "@veyyon/tui/components/markdown";
+import { Text } from "@veyyon/tui/components/text";
 import type { RenderResultOptions } from "../../extensibility/custom-tools/types";
 import { getMarkdownTheme } from "../../modes/theme/markdown-theme";
 import type { Theme } from "../../modes/theme/theme";

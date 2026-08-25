@@ -7,7 +7,7 @@
 import * as fs from "node:fs/promises";
 import path from "node:path";
 import type { AgentEvent, AgentIdentity, AgentTelemetryConfig } from "@veyyon/agent-core";
-import { recordHandoff, resolveTelemetry } from "@veyyon/agent-core";
+import { recordHandoff, resolveTelemetry } from "@veyyon/agent-core/telemetry";
 import { ThinkingLevel } from "@veyyon/agent-core/thinking";
 import type { Api, Model, ServiceTierByFamily, Usage } from "@veyyon/ai";
 import { emptyUsage } from "@veyyon/catalog/models";

@@ -1,4 +1,5 @@
-import { getKeybindings, type Keybinding, type KeyId, matchesKey } from "@veyyon/tui";
+import { getKeybindings, type Keybinding, type KeyId } from "@veyyon/tui/keybindings";
+import { matchesKey } from "@veyyon/tui/keys";
 import { KEYBINDINGS } from "../../config/keybinding-defs";
 
 /**

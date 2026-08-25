@@ -9,7 +9,7 @@
  * every runtime import below is type-only and erased at compile time.
  */
 import type { Component } from "@veyyon/tui";
-import { Text } from "@veyyon/tui";
+import { Text } from "@veyyon/tui/components/text";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import { shimmerEnabled, shimmerText } from "../modes/theme/shimmer";
 import type { Theme } from "../modes/theme/theme";

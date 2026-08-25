@@ -4,8 +4,8 @@ import { structuredCloneJSON } from "@veyyon/utils/json";
 import * as logger from "@veyyon/utils/logger";
 import { errorMessage } from "@veyyon/utils/type-guards";
 import { trimTrailingSlashes } from "@veyyon/utils/url";
+import { getEnvApiKey } from "../env-api-key";
 import * as AIError from "../error";
-import { getEnvApiKey } from "../stream";
 import type {
 	AssistantMessage,
 	CacheRetention,

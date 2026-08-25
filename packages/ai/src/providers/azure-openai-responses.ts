@@ -1,7 +1,7 @@
 import { $env } from "@veyyon/utils/env";
 import { trimTrailingSlashes } from "@veyyon/utils/url";
+import { getEnvApiKey } from "../env-api-key";
 import * as AIError from "../error";
-import { getEnvApiKey } from "../stream";
 import type {
 	AssistantMessage,
 	Context,

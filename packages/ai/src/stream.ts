@@ -76,6 +76,7 @@ import {
 	GOOGLE_THINKING_BUDGETS,
 	resolveThinkingBudget,
 } from "./reasoning-budget";
+import { mapAnthropicToolChoice } from "./tool-choice-mapping";
 import type {
 	Api,
 	AssistantMessage,
@@ -1321,22 +1322,7 @@ function maxTokensWithThinkingBudget(
 export const OUTPUT_FALLBACK_BUFFER = 4000;
 const ANTHROPIC_USE_INTERLEAVED_THINKING = Bun.env.VEYYON_NO_INTERLEAVED_THINKING !== "1";
 
-export function mapAnthropicToolChoice(choice?: ToolChoice): AnthropicOptions["toolChoice"] {
-	if (!choice) return undefined;
-	if (typeof choice === "string") {
-		if (choice === "required") return "any";
-		if (choice === "auto" || choice === "none" || choice === "any") return choice;
-		return undefined;
-	}
-	if (choice.type === "tool") {
-		return choice.name ? { type: "tool", name: choice.name } : undefined;
-	}
-	if (choice.type === "function") {
-		const name = "function" in choice ? choice.function?.name : choice.name;
-		return name ? { type: "tool", name } : undefined;
-	}
-	return undefined;
-}
+export { mapAnthropicToolChoice } from "./tool-choice-mapping";
 
 export function mapGoogleToolChoice(
 	choice?: ToolChoice,

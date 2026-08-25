@@ -123,17 +123,8 @@ import type {
 	Usage,
 	UsageReport,
 } from "@veyyon/ai";
-import {
-	calculateRateLimitBackoffMs,
-	clearAnthropicFastModeFallback,
-	deriveClaudeDeviceId,
-	parseRateLimitReason,
-	realizesPriorityServiceTier,
-	resolveModelServiceTier,
-	serviceTierFamily,
-	streamSimple,
-} from "@veyyon/ai";
 import * as AIError from "@veyyon/ai/error";
+import { calculateRateLimitBackoffMs, parseRateLimitReason } from "@veyyon/ai/error/rate-limit";
 import {
 	assistantTurnMetricsForPersistence,
 	assistantTurnRequestForPersistence,
@@ -142,8 +133,10 @@ import {
 	sessionTelemetryDetail,
 	toolCallMetricsForPersistence,
 } from "@veyyon/ai/instrumentation";
+import { clearAnthropicFastModeFallback, deriveClaudeDeviceId } from "@veyyon/ai/providers/anthropic";
 import { elidedSignatureBytes, signaturePolicy } from "@veyyon/ai/providers/google-shared";
 import { resetOpenAICodexHistoryAfterCompaction } from "@veyyon/ai/providers/openai-codex-responses";
+import { streamSimple } from "@veyyon/ai/stream";
 import { type CursorExecResolvedCarrier, kCursorExecResolved } from "@veyyon/ai/utils/block-symbols";
 import { assistantText } from "@veyyon/ai/utils/message-text";
 import { toolWireSchema } from "@veyyon/ai/utils/schema";
@@ -154,6 +147,11 @@ import { isFireworksFastModelId, toFireworksBaseModelId } from "@veyyon/catalog/
 import { getSupportedEfforts } from "@veyyon/catalog/model-thinking";
 import { modelsAreEqual } from "@veyyon/catalog/models";
 import { ANTIGRAVITY_PRIMARY_ENDPOINT, ANTIGRAVITY_SANDBOX_ENDPOINT } from "@veyyon/catalog/provider-endpoints";
+import {
+	realizesPriorityServiceTier,
+	resolveModelServiceTier,
+	serviceTierFamily,
+} from "@veyyon/catalog/provider-models/service-tier";
 import type { InMemorySnapshotStore } from "@veyyon/hashline";
 import { Patch } from "@veyyon/hashline";
 import { MacOSPowerAssertion } from "@veyyon/natives";

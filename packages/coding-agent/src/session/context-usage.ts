@@ -12,9 +12,10 @@
  * numbers without inheriting the grid's palette.
  */
 
-import { type AgentMessage, countTokens } from "@veyyon/agent-core";
 import type { CompactionSettings } from "@veyyon/agent-core/compaction";
 import { estimateTokens } from "@veyyon/agent-core/compaction";
+import { countTokens } from "@veyyon/agent-core/tokenizer";
+import type { AgentMessage } from "@veyyon/agent-core/types";
 import type { Tool as AiTool, ContextSnapshot, Model } from "@veyyon/ai";
 import type { SessionTelemetryDetail } from "@veyyon/ai/instrumentation";
 import { stripSchemaDescriptions, toolWireSchema } from "@veyyon/ai/utils/schema";

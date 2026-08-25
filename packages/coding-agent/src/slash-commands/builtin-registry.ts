@@ -4,7 +4,8 @@ import * as path from "node:path";
 import { getOAuthProviders, type OAuthProviderInfo } from "@veyyon/ai/oauth";
 import { PROVIDER_REGISTRY } from "@veyyon/ai/registry";
 import { stripEffortTierSuffix } from "@veyyon/catalog/variant-collapse";
-import { type AutocompleteItem, Spacer } from "@veyyon/tui";
+import type { AutocompleteItem } from "@veyyon/tui/autocomplete";
+import { Spacer } from "@veyyon/tui/components/spacer";
 import {
 	APP_NAME,
 	CHANGELOG_URL,

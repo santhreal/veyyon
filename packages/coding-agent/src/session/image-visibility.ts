@@ -11,8 +11,7 @@
  * to the model, so a tool that starts returning images inherits the sentence
  * instead of inventing one.
  */
-import type { ImageFallbackReason } from "@veyyon/tui";
-import { TERMINAL } from "@veyyon/tui";
+import { type ImageFallbackReason, TERMINAL } from "@veyyon/tui/terminal-capabilities";
 import { settingsOrNull } from "../config/settings-instance";
 
 /** What the user's terminal does with an image right now. */

@@ -1,4 +1,6 @@
-import { type Component, getPaddingX, Text } from "@veyyon/tui";
+import type { Component } from "@veyyon/tui";
+import { Text } from "@veyyon/tui/components/text";
+import { getPaddingX } from "@veyyon/tui/utils";
 
 /**
  * Text whose content is (re)formatted against the actual render width.

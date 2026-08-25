@@ -15,7 +15,8 @@
  *   mechanical {@link SpeakableStream} cleanup — speech never blocks on the
  *   model.
  */
-import { type ApiKeyResolver, type AssistantMessage, type Context, completeSimple } from "@veyyon/ai";
+import type { ApiKeyResolver, AssistantMessage, Context } from "@veyyon/ai";
+import { completeSimple } from "@veyyon/ai/stream";
 import { assistantText } from "@veyyon/ai/utils/message-text";
 import { logger, prompt } from "@veyyon/utils";
 import type { ModelRegistry } from "../config/model-registry";

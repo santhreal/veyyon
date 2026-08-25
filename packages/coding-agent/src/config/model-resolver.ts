@@ -25,7 +25,7 @@ import { stripThinkingVariantToken } from "@veyyon/catalog/identity/family";
 import { modelsAreEqual } from "@veyyon/catalog/models";
 import { DEFAULT_MODEL_PER_PROVIDER } from "@veyyon/catalog/provider-models";
 import { resolveBareVariantAlias, resolveVariantAlias } from "@veyyon/catalog/variant-collapse";
-import { fuzzyMatch } from "@veyyon/tui";
+import { fuzzyMatch } from "@veyyon/tui/fuzzy";
 import { logger } from "@veyyon/utils";
 import MODEL_PRIO from "../priority.json" with { type: "json" };
 import {

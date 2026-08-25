@@ -6,7 +6,7 @@ import type {
 	CustomMessage,
 } from "@veyyon/agent-core";
 import type { Component } from "@veyyon/tui";
-import { Text } from "@veyyon/tui";
+import { Text } from "@veyyon/tui/components/text";
 import { errorMessage, prompt, untilAborted } from "@veyyon/utils";
 import { type } from "arktype";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";

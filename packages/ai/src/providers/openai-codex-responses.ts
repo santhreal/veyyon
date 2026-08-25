@@ -30,13 +30,13 @@ import {
 	resolveCacheEnforcement,
 	takePendingCacheFailure,
 } from "../cache";
+import { getEnvApiKey } from "../env-api-key";
 import * as AIError from "../error";
 import {
 	CodexProviderStreamError,
 	CodexWebSocketTransportError,
 	CodexWhitespaceToolCallLoopError,
 } from "../error/classes";
-import { getEnvApiKey } from "../stream";
 import type {
 	Api,
 	AssistantMessage,

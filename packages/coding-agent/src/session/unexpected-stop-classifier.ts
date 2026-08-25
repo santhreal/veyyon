@@ -1,5 +1,7 @@
-import { type AssistantMessage, completeSimple, type Model, seedApiKeyResolver, withAuth } from "@veyyon/ai";
+import type { AssistantMessage, Model } from "@veyyon/ai";
+import { seedApiKeyResolver, withAuth } from "@veyyon/ai/auth-retry";
 import { ProviderHttpError } from "@veyyon/ai/error";
+import { completeSimple } from "@veyyon/ai/stream";
 import { assistantText } from "@veyyon/ai/utils/message-text";
 import { errorMessage, logger, prompt } from "@veyyon/utils";
 

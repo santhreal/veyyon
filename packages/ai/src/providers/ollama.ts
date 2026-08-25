@@ -1,8 +1,8 @@
 import { emptyUsage } from "@veyyon/catalog/models";
 import { normalizeOllamaCloudBaseUrl } from "@veyyon/catalog/provider-models/ollama";
 import { parseStreamingJson } from "@veyyon/utils/json-parse";
+import { getEnvApiKey } from "../env-api-key";
 import * as AIError from "../error";
-import { getEnvApiKey } from "../stream";
 import type {
 	Api,
 	AssistantMessage,

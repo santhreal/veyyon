@@ -9,7 +9,7 @@
  * for a credential without showing it, and that difference is one injected function
  * ({@link SecretCommandPort.promptForValue}) rather than a second copy of the logic.
  */
-import { DEFAULT_MASK_CHAR } from "@veyyon/tui";
+import { DEFAULT_MASK_CHAR } from "@veyyon/tui/components/input";
 import { errorMessage, getAgentDir, getGlobalConfigRootDir, logger } from "@veyyon/utils";
 import type { Settings } from "../../config/settings";
 import type { InteractiveModeContext } from "../../modes/types";

@@ -1,6 +1,6 @@
 import { GEMINI_DEVELOPER_API_ENDPOINT } from "@veyyon/catalog/provider-endpoints";
+import { getEnvApiKey } from "../env-api-key";
 import * as AIError from "../error";
-import { getEnvApiKey } from "../stream";
 import type { Context, Model, StreamFunction } from "../types";
 import type { AssistantMessageEventStream } from "../utils/event-stream";
 import {

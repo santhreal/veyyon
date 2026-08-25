@@ -1,11 +1,11 @@
 /**
  * Shared helpers for tool-rendered UI components.
  */
-import { padding, visibleWidth } from "@veyyon/tui";
+import { padding, visibleWidth } from "@veyyon/tui/utils";
 import type { Theme, ThemeBg } from "../modes/theme/theme";
 import type { State } from "./types";
 
-export { Ellipsis, truncateToWidth } from "@veyyon/tui";
+export { Ellipsis, truncateToWidth } from "@veyyon/tui/utils";
 
 /** Cached typed-array scratch space for hashing non-string primitives. */
 const hashBuf = new ArrayBuffer(8);

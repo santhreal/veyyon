@@ -1,7 +1,8 @@
 import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
 import { instrumentedCompleteSimple, resolveTelemetry } from "@veyyon/agent-core";
-import { type Api, completeSimple, type ImageContent, type Model, type ToolExample } from "@veyyon/ai";
+import type { Api, ImageContent, Model, ToolExample } from "@veyyon/ai";
 import { withAuth } from "@veyyon/ai/auth-retry";
+import { completeSimple } from "@veyyon/ai/stream";
 import { prompt } from "@veyyon/utils";
 import { type } from "arktype";
 import { extractTextContent } from "../commit/utils";

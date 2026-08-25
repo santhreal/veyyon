@@ -1,6 +1,7 @@
 import { rm } from "node:fs/promises";
 import * as path from "node:path";
-import { type ApiKeyResolver, completeSimple, type FetchImpl } from "@veyyon/ai";
+import type { ApiKeyResolver, FetchImpl } from "@veyyon/ai";
+import { completeSimple } from "@veyyon/ai/stream";
 import { hostMatchesUrl } from "@veyyon/catalog/hosts";
 import type { Mnemopi } from "@veyyon/mnemopi";
 import type { MnemopiLlmCompleteOptions, MnemopiLlmPayloadHook } from "@veyyon/mnemopi/core/runtime-options";

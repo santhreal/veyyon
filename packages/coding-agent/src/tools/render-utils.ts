@@ -10,7 +10,8 @@ import * as path from "node:path";
 import type { ToolCallContext } from "@veyyon/agent-core";
 import type { Ellipsis } from "@veyyon/natives";
 import type { Component } from "@veyyon/tui";
-import { getKeybindings, replaceTabs, truncateToWidth } from "@veyyon/tui";
+import { getKeybindings } from "@veyyon/tui/keybindings";
+import { replaceTabs, truncateToWidth } from "@veyyon/tui/utils";
 // Owners, not the `@veyyon/utils` barrel: 3 modules against 74.
 import { collapseWhitespace } from "@veyyon/utils/collapse-whitespace";
 import { formatCount, pluralize } from "@veyyon/utils/format";
@@ -23,7 +24,7 @@ import { Hasher } from "../tui/utils";
 import { formatDimensionNote, type ResizedImage } from "../utils/image-resize";
 
 export { Ellipsis } from "@veyyon/natives";
-export { replaceTabs, truncateToWidth, wrapTextWithAnsi } from "@veyyon/tui";
+export { replaceTabs, truncateToWidth, wrapTextWithAnsi } from "@veyyon/tui/utils";
 
 // =============================================================================
 // Standardized Display Constants

@@ -35,8 +35,9 @@ import {
 } from "../cache";
 import { renderDemotedThinking } from "../dialect/demotion";
 import { XML_THINKING_CLOSE, XML_THINKING_OPEN } from "../dialect/wire-tags";
+import { getEnvApiKey } from "../env-api-key";
 import * as AIError from "../error";
-import { getEnvApiKey, OUTPUT_FALLBACK_BUFFER } from "../stream";
+import { OUTPUT_FALLBACK_BUFFER } from "../stream";
 import type {
 	AnthropicFallbackContent,
 	Api,

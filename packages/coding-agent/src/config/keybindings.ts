@@ -6,7 +6,7 @@ import {
 	type KeyId,
 	setKeybindings,
 	KeybindingsManager as TuiKeybindingsManager,
-} from "@veyyon/tui";
+} from "@veyyon/tui/keybindings";
 import { atomicWriteFileSync } from "@veyyon/utils/atomic-write";
 import { getActiveProfile, getAgentDir, getProfileRootDir } from "@veyyon/utils/dirs";
 import { isEnoent } from "@veyyon/utils/fs-error";

@@ -10,9 +10,9 @@ import * as logger from "@veyyon/utils/logger";
 import { isRecord } from "@veyyon/utils/type-guards";
 import { trimTrailingSlashes } from "@veyyon/utils/url";
 import { renderDemotedThinking } from "../dialect/demotion";
+import { getEnvApiKey } from "../env-api-key";
 import * as AIError from "../error";
 import { getKimiCommonHeaders } from "../registry/oauth/kimi";
-import { getEnvApiKey } from "../stream";
 import type {
 	AssistantMessage,
 	CacheRetention,

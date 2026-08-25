@@ -3,7 +3,7 @@ import { resolveReasoningSelection } from "@veyyon/catalog/model-thinking";
 import { GITLAB_SAAS_URL } from "@veyyon/catalog/provider-endpoints";
 import * as AIError from "../error";
 import { ANTHROPIC_THINKING_BUDGETS, resolveThinkingBudget } from "../reasoning-budget";
-import { mapAnthropicToolChoice } from "../stream";
+import { mapAnthropicToolChoice } from "../tool-choice-mapping";
 import type { Api, Context, FetchImpl, Model, ModelSpec, SimpleStreamOptions } from "../types";
 import { AssistantMessageEventStream } from "../utils/event-stream";
 import { createProviderErrorMessage } from "./error-message";

@@ -11,7 +11,7 @@
  * Use case: freeze a busy session, hand-edit the repo, resume, then explain
  * the change via a normal steering message.
  */
-import { agentPauseGate } from "@veyyon/agent-core";
+import { agentPauseGate } from "@veyyon/agent-core/pause";
 import {
 	type Component,
 	centerLine,

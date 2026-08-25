@@ -1,4 +1,5 @@
-import { SUB_CELL_BAR_RAMP, subCellBar, truncateToWidth, visibleWidth } from "@veyyon/tui";
+import { SUB_CELL_BAR_RAMP, subCellBar } from "@veyyon/tui/sub-cell-bar";
+import { truncateToWidth, visibleWidth } from "@veyyon/tui/utils";
 import { clamp01 } from "@veyyon/utils";
 import { shimmerText } from "../../modes/theme/shimmer";
 import { theme as currentTheme, type Theme } from "../../modes/theme/theme";

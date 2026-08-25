@@ -8,7 +8,7 @@
 import * as fsSync from "node:fs";
 import * as os from "node:os";
 import { createInterface } from "node:readline/promises";
-import { EventLoopKeepalive } from "@veyyon/agent-core";
+import { EventLoopKeepalive } from "@veyyon/agent-core/utils/yield";
 import type { ImageContent } from "@veyyon/ai";
 import {
 	$env,

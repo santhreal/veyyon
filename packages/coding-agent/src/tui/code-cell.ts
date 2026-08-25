@@ -2,7 +2,7 @@
  * Render a code or markdown cell with optional output section.
  */
 
-import { Markdown } from "@veyyon/tui";
+import { Markdown } from "@veyyon/tui/components/markdown";
 // Owners, not the `@veyyon/utils` barrel: 1 module against 74.
 import { formatCount } from "@veyyon/utils/format";
 import { highlightCode } from "../modes/theme/highlight";
