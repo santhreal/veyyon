@@ -92,8 +92,16 @@ function thinkingGlyph(display: string): string {
  * stripped, not because they are anyone's layout -- `path.displayRoots` is how a session names
  * its own, and `/work` on Windows resolves against whichever drive the process is on, which is
  * an accident of `path.resolve` rather than a place anything lives.
+ *
+ * READ WHEN USED, NOT AT IMPORT. As a module const this joined the home directory once, at the
+ * moment the module loaded, and a home resolved after that -- a different `HOME` in a worker, a
+ * test that answers `os.homedir()` for a fixture -- never matched a default root again, so the
+ * whole default silently stopped stripping. `os.homedir()` reads an environment variable; a
+ * render can afford it.
  */
-export const DEFAULT_DISPLAY_ROOTS: readonly string[] = [path.join(os.homedir(), "Projects"), "/work"];
+export function defaultDisplayRoots(): readonly string[] {
+	return [path.join(os.homedir(), "Projects"), "/work"];
+}
 
 /** Display roots already reported as unusable, so a bad entry is named once and not per frame. */
 const warnedDisplayRoots = new Set<string>();
@@ -136,7 +144,7 @@ export function resolveDisplayRoots(roots: readonly string[]): string[] {
 let displayRootCache: { pwd: string; key: string; result: string } | null = null;
 
 function stripDisplayRoot(pwd: string, roots: readonly string[] | undefined): string {
-	const declared = roots ?? DEFAULT_DISPLAY_ROOTS;
+	const declared = roots ?? defaultDisplayRoots();
 	const key = declared.join("\u0000");
 	if (displayRootCache?.pwd === pwd && displayRootCache.key === key) return displayRootCache.result;
 	let result = pwd;
@@ -151,7 +159,14 @@ function stripDisplayRoot(pwd: string, roots: readonly string[] | undefined): st
 	return result;
 }
 
-const SCRATCH_ROOTS: readonly string[] = (() => {
+/**
+ * Directories a project is shown relative to with the scratch icon instead of a display root.
+ *
+ * Read when used, for the reason {@link defaultDisplayRoots} states: `os.tmpdir()` and the home
+ * directory both come from the environment, and a list built at import time answers for the
+ * environment the process started in rather than the one it is rendering.
+ */
+function scratchRoots(): readonly string[] {
 	const roots = new Set<string>([os.tmpdir(), path.join(os.homedir(), "tmp")]);
 	if (process.platform === "win32") {
 		const { TEMP, TMP, SystemRoot } = process.env;
@@ -167,10 +182,10 @@ const SCRATCH_ROOTS: readonly string[] = (() => {
 		}
 	}
 	return [...roots];
-})();
+}
 
 function classifyProjectDir(pwd: string): { scratch: boolean; relative: string | null } {
-	for (const root of SCRATCH_ROOTS) {
+	for (const root of scratchRoots()) {
 		if (pathIsWithin(root, pwd)) {
 			return { scratch: true, relative: relativePathWithinRoot(root, pwd) };
 		}

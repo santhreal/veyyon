@@ -20,7 +20,7 @@ import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { QuietSegmentBounds } from "@veyyon/coding-agent/modes/components/status-line/component";
 import { StatusLineComponent } from "@veyyon/coding-agent/modes/components/status-line/component";
-import { DEFAULT_DISPLAY_ROOTS, resolveDisplayRoots } from "@veyyon/coding-agent/modes/components/status-line/segments";
+import { defaultDisplayRoots, resolveDisplayRoots } from "@veyyon/coding-agent/modes/components/status-line/segments";
 import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { logger, pathIsWithin, stripAnsi } from "@veyyon/utils";
@@ -108,11 +108,11 @@ describe("the footline shows a project under the root you name", () => {
 	it("strips every root the defaults declare, when nothing is configured", () => {
 		// Swept out of the source: a third default root is covered here on the commit that adds
 		// it, and a default that stopped working turns this red without anyone naming it.
-		expect(DEFAULT_DISPLAY_ROOTS.length).toBeGreaterThan(0);
+		expect(defaultDisplayRoots().length).toBeGreaterThan(0);
 		const offenders: { root: string; painted: string }[] = [];
 		const shadowed: string[] = [];
 
-		for (const root of DEFAULT_DISPLAY_ROOTS) {
+		for (const root of defaultDisplayRoots()) {
 			// A scratch directory is classified before any display root is consulted, and a test
 			// host can put the home directory inside one (the sandbox HOME is under the OS temp
 			// dir). Such a root is unreachable here rather than broken; the ordering itself is
@@ -126,7 +126,24 @@ describe("the footline shows a project under the root you name", () => {
 		}
 
 		expect(offenders).toEqual([]);
-		expect(shadowed.length).toBeLessThan(DEFAULT_DISPLAY_ROOTS.length);
+		expect(shadowed.length).toBeLessThan(defaultDisplayRoots().length);
+	});
+
+	it("reads the home directory when it strips, so a home resolved after startup still matches", () => {
+		// The defaults were a module const once, joined at import time. A home directory that
+		// resolves later -- a worker with its own `HOME`, a session whose home is a symlink the
+		// process resolves after loading, a test answering for a fixture -- then matched no
+		// default root ever again, and the whole default stopped stripping in silence. It cost a
+		// pre-existing suite: the symlink-alias case in test/status-line-path.test.ts went red.
+		const home = path.join(path.sep, "srv", "another-home");
+		const restore = os.homedir;
+		const spy = spyOn(os, "homedir").mockReturnValue(home);
+		try {
+			expect(paintedPath(path.join(home, "Projects", PROJECT), {})).toBe(PROJECT);
+		} finally {
+			spy.mockRestore();
+			expect(os.homedir).toBe(restore);
+		}
 	});
 
 	it("classifies a scratch directory before it consults a display root", () => {
@@ -152,7 +169,7 @@ describe("the footline shows a project under the root you name", () => {
 		// A list REPLACES the defaults rather than extending them: a session that says where its
 		// projects are has said it, and a leftover `/work` shortening an unrelated path would be
 		// the setting half-applied.
-		const underADefault = path.join(DEFAULT_DISPLAY_ROOTS[0] ?? "", PROJECT);
+		const underADefault = path.join(defaultDisplayRoots()[0] ?? "", PROJECT);
 		expect(paintedPath(underADefault, { displayRoots: [named] })).not.toBe(PROJECT);
 	});
 
