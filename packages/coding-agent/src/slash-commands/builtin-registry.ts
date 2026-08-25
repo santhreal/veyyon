@@ -1364,6 +1364,7 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 				cliModel: cheapPattern,
 				modelRegistry: runtime.session.modelRegistry,
 				preferences: getModelMatchPreferences(runtime.settings),
+				settings: runtime.settings,
 			});
 			if (resolved.error || !resolved.model) {
 				return usage(
