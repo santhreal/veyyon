@@ -903,7 +903,11 @@ export class InteractiveMode implements InteractiveModeContext {
 		};
 		this.#refreshComposerShortcuts();
 		this.#bashForegroundUnsubscribe = onForegroundBashWaitChange(() => this.#refreshComposerShortcuts());
-		this.statusLine = new StatusLineComponent(session);
+		// The repaint hook is what makes the path expansion a travel rather than a jump: the
+		// component owns the progress, the shared motion clock owns the frames, and this asks
+		// for each one. A caller that only renders (the two-line selector, tests) passes none
+		// and gets the hard cut.
+		this.statusLine = new StatusLineComponent(session, { requestRender: () => this.ui.requestRender() });
 		this.statusLine.setAutoCompactEnabled(session.autoCompactionEnabled);
 		// The borderless composer, per the agreed design mockups: a static
 		// near-invisible hairline, the content inset off the terminal edge, and
@@ -935,6 +939,17 @@ export class InteractiveMode implements InteractiveModeContext {
 			// reader who notices the chip should not have to remember a command name to act on it.
 			if (segmentId === "secrets") {
 				this.showSecretList();
+				return;
+			}
+			// A click on either half of the location widens the row and spends the readouts on the
+			// right for the room; the next click on the same half puts every one of them back. A
+			// long path or branch is the one thing on this line that cannot be read any other way
+			// without leaving the screen, and the footline is where the reader already is. The
+			// half that was clicked is the one shown whole, so a click on the branch reads the
+			// branch rather than re-reading the directory.
+			if (segmentId === "path" || segmentId === "git" || segmentId === "pr") {
+				this.statusLine.togglePathExpanded(segmentId);
+				this.ui.requestRender();
 				return;
 			}
 			if (segmentId === "context_pct" || segmentId === "context_total") {

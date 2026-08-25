@@ -72,6 +72,19 @@ describe("persistent running-subagent footline count", () => {
 		return stripVTControlCharacters(rendered);
 	}
 
+	/**
+	 * The count asserted whole on a comfortable row. It is the only part configured here, so it
+	 * is the entire right group -- and a right group is anchored to the row's right edge whether
+	 * or not a location zone shares the row. A lone group placed at column zero was the defect
+	 * behind the 78-column frame in this PR: the state chips sat in the far left corner of a wide
+	 * row with the location zone empty beside them. So the exact chip is pinned at the last
+	 * usable column, with its leading padding spelled out, rather than as the whole string.
+	 */
+	function expectTheCount(count: number, columns = 120): void {
+		const chip = expected(count);
+		expect(render(columns)).toBe(" ".repeat(columns - 1 - Bun.stringWidth(chip)) + chip);
+	}
+
 	/** Zero is standing state: the first frame contains the exact compact zero chip. */
 	it("renders zero on the first frame with its exact cell width", () => {
 		const text = expected(0);
@@ -120,20 +133,19 @@ describe("persistent running-subagent footline count", () => {
 		registry.register({ id: "advisor", displayName: "Advisor", kind: "advisor", session: null, status: "running" });
 		registry.register({ id: "done", displayName: "Done", kind: "sub", session: null, status: "idle" });
 		registry.register({ id: "closed", displayName: "Closed", kind: "sub", session: null, status: "parked" });
-		expect(render()).toBe(expected(0));
+		expectTheCount(0);
 
 		registry.register({ id: "one", displayName: "One", kind: "sub", session: null, status: "running" });
-		expect(render()).toBe(expected(1));
+		expectTheCount(1);
 		registry.register({ id: "two", displayName: "Two", kind: "sub", session: null, status: "running" });
 		registry.register({ id: "three", displayName: "Three", kind: "sub", session: null, status: "running" });
-		expect(render()).toBe(expected(3));
+		expectTheCount(3);
 
 		registry.setStatus("one", "idle");
 		registry.setStatus("two", "parked");
 		registry.setStatus("three", "idle");
-		const completed = render();
-		expect(completed).toBe(expected(0));
-		expect(completed).not.toContain("3");
+		expectTheCount(0);
+		expect(render()).not.toContain("3");
 		unsubscribe();
 	});
 });
