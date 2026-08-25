@@ -212,3 +212,63 @@ pub static AWAITING_AST: [(&str, &str); 4] = [
 	("tool-execution-before-validation", "reorders two statements"),
 	("sanitizer-removal", "deletes a call and rebinds its argument"),
 ];
+
+
+#[cfg(test)]
+mod rewrite_pin_tests {
+	use super::*;
+
+	/// WHY: the mutation operator definitions are the campaign's source of
+	/// truth. A mutation to any rewrite array (e.g. flipping `<` to `<=` in
+	/// COMPARISON_BOUNDARY) changes what mutants are generated, silently
+	/// weakening the gate. Pinning every array's exact contents catches any
+	/// such drift.
+	#[test]
+	fn comparison_boundary_rewrites_are_pinned() {
+		assert_eq!(COMPARISON_BOUNDARY.len(), 4);
+		assert_eq!(COMPARISON_BOUNDARY[0], Rewrite::plain("<=", "<"));
+		assert_eq!(COMPARISON_BOUNDARY[1], Rewrite::plain(">=", ">"));
+		assert_eq!(COMPARISON_BOUNDARY[2], Rewrite::bounded("<", "<=", &["<"], &["=", "<"]));
+		assert_eq!(COMPARISON_BOUNDARY[3], Rewrite::bounded(">", ">=", &[">", "-"], &["=", ">"]));
+	}
+
+	#[test]
+	fn conditional_inversion_rewrites_are_pinned() {
+		assert_eq!(CONDITIONAL_INVERSION.len(), 5);
+		assert_eq!(CONDITIONAL_INVERSION[0], Rewrite::plain("==", "!="));
+		assert_eq!(CONDITIONAL_INVERSION[1], Rewrite::plain("!=", "=="));
+		assert_eq!(CONDITIONAL_INVERSION[2], Rewrite::plain("if !", "if "));
+		assert_eq!(CONDITIONAL_INVERSION[3], Rewrite::bounded("&&", "||", &["&"], &["&"]));
+		assert_eq!(CONDITIONAL_INVERSION[4], Rewrite::bounded("||", "&&", &["|"], &["|"]));
+	}
+
+	#[test]
+	fn terminal_state_deletion_rewrites_are_pinned() {
+		assert_eq!(TERMINAL_STATE_DELETION.len(), 2);
+		assert_eq!(TERMINAL_STATE_DELETION[0], Rewrite::plain("break;", "continue;"));
+		assert_eq!(TERMINAL_STATE_DELETION[1], Rewrite::plain("return None", "return Some(())"));
+	}
+
+	#[test]
+	fn validation_deletion_rewrites_are_pinned() {
+		assert_eq!(VALIDATION_DELETION.len(), 3);
+		assert_eq!(VALIDATION_DELETION[0], Rewrite::plain("?;", ".ok();"));
+		assert_eq!(VALIDATION_DELETION[1], Rewrite::plain("unwrap_or(false)", "unwrap_or(true)"));
+		assert_eq!(VALIDATION_DELETION[2], Rewrite::plain("is_err()", "is_ok()"));
+	}
+
+	#[test]
+	fn timeout_relaxation_rewrites_are_pinned() {
+		assert_eq!(TIMEOUT_RELAXATION.len(), 2);
+		assert_eq!(TIMEOUT_RELAXATION[0], Rewrite::plain("from_millis(", "from_secs("));
+		assert_eq!(TIMEOUT_RELAXATION[1], Rewrite::plain("from_secs(", "from_secs(1000 * "));
+	}
+
+	#[test]
+	fn parser_acceptance_broadening_rewrites_are_pinned() {
+		assert_eq!(PARSER_ACCEPTANCE_BROADENING.len(), 3);
+		assert_eq!(PARSER_ACCEPTANCE_BROADENING[0], Rewrite::plain("starts_with(", "contains("));
+		assert_eq!(PARSER_ACCEPTANCE_BROADENING[1], Rewrite::plain("ends_with(", "contains("));
+		assert_eq!(PARSER_ACCEPTANCE_BROADENING[2], Rewrite::plain("is_char_boundary(", "is_ascii().eq(&"));
+	}
+}
