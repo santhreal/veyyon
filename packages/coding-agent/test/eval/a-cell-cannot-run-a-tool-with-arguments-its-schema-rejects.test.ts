@@ -342,6 +342,10 @@ const SWEEP_SETTINGS: Record<string, unknown> = {
 	"autolearn.enabled": true,
 	"debug.enabled": true,
 	"memory.backend": "mnemopi",
+	// Off by default: starting servers is expensive. The sweep still has to
+	// construct `lsp`, so it turns the gate on rather than dropping the tool.
+	"lsp.enabled": true,
+	"lsp.tool": true,
 	// "auto" resolves to "off" below the tool-count threshold, which would drop
 	// `search_tool_bm25` out of the sweep.
 	"tools.discoveryMode": "all",
