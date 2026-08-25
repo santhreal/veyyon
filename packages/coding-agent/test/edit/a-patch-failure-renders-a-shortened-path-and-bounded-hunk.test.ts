@@ -53,7 +53,6 @@ describe("patch failure error rendering", () => {
 					diff: "",
 					op: "update",
 					path: absolutePath,
-					errorText,
 				},
 				isError: true,
 			},
@@ -85,7 +84,6 @@ describe("patch failure error rendering", () => {
 					diff: "",
 					op: "update",
 					path: absolutePath,
-					errorText,
 				},
 				isError: true,
 			},
@@ -119,7 +117,6 @@ describe("patch failure error rendering", () => {
 					diff: "",
 					op: "update",
 					path: absolutePath,
-					errorText,
 				},
 				isError: true,
 			},
@@ -158,7 +155,7 @@ describe("patch failure error rendering", () => {
 			const component = editToolRenderer.renderResult(
 				{
 					content: [{ type: "text", text: errorText }],
-					details: { diff: "", op: "update", path: targetFile, errorText },
+					details: { diff: "", op: "update", path: targetFile },
 					isError: true,
 				},
 				{ expanded: false, isPartial: false },
