@@ -4,6 +4,8 @@
 
 ### Added
 
+- `prewalk.cheapModel` and `prewalk.strongModel` configure the cheap model prewalk switches into at the first edit and the strong model it starts on.
+- `/prewalk` accepts an optional model argument to arm a per-session target model override.
 - `edit.critiqueCodeMutations` prompts a bounded self-review before finalization after one turn modifies at least two distinct code files.
 - Configurable `launch.cleanupWaitMs` setting (default 15 minutes) purges exited launch daemon records from memory and disk after a retention TTL.
 - Exporting a session to HTML streams the snapshot into the output file instead of assembling the whole document in memory, taking an 80MiB transcript from 1007MiB of peak resident memory to 532MiB with byte-identical output.
@@ -45,6 +47,7 @@
 - Quitting no longer hangs when a background session never settles.
 - `/new` typed while the agent is answering starts the new session without interrupting the answer: the running turn finishes in the background and is flushed to its own transcript, while the composer attaches to a fresh session immediately.
 - `/resume` onto a session that is still answering re-attaches the running session instead of replaying its transcript as finished text, so its answer keeps streaming into the view and the session being left takes its place in the background.
+- `veyyon bench --model @role` and `veyyon dry-balance --model @role` resolve a configured model role instead of failing to find a model named after the alias.
 - The model name segment on the composer status line is preserved against wide working directories and git branch names by ranking it above location shortening in footline degradation.
 - A clipped working directory on the composer status line now carries one ellipsis at the front instead of one at each end, so the directory the session is in stays visible and the visible text reads as a suffix of the real path.
 - The composer status line clips the working directory and the git branch from their own fronts together instead of dropping the branch, never clips a branch short enough to read whole, keeps the path's icon in front of the clip mark, and gives up the context gauge before letting either part fall under its floor.
