@@ -4,10 +4,6 @@
 
 ## [Unreleased]
 
-### Breaking Changes
-
-- The model-facing workspace search surface is now one mandatory `search` tool taking ordered required `type` (`"files" | "text" | "structure"`) and `input`, replacing the separate `glob`, `grep`, and `ast_grep` tool IDs. Retired per-engine and `search.enabled` values are discarded while text-context values and persisted tool inventories migrate.
-
 ### Added
 
 - `VEYYON_DEBUG_STARTUP=1` writes one line per phase of a prompt submission (compaction check, plan arm, context build, memory context), so a slow submit names the phase that spent the time.
@@ -44,7 +40,6 @@
 - The browser tab worker and supervisor reach `bestEffort` and `optionalResult` through `@veyyon/utils/discarded-fault` rather than the package barrel; behavior is unchanged.
 - Daemon completion parsing and eval-store serialization errors use shared type guards; behavior is unchanged.
 - The vibe screens, the image-inspection call and an LSP hover code block draw no border of their own inside a tool block, so a block keeps one left edge; a tree connector remains only where a row belongs to the row above it, in the eval value tree, the search line gutter, the job tree and the LSP reference tree.
-- Broad multi-file text searches now keep only deterministic representative matches inline and save the complete formatted result behind an `artifact://` reference. The preview budget follows the turn-aware output curve from an 8 KiB search ceiling (~2 KiB early at turn 0), emitting up to two representative matches per file while preserving counts and warnings; explicit single-file and line-range searches retain their full output, and only visible representative lines are recorded as seen for anchored edits.
 - Superseded and useless tool results are now pruned as a batch whose combined size pays for the prompt-cache rewrite it forces, instead of only when a single result sits within 8,000 tokens of the end of the conversation.
 - Compaction's directory-list documentation now uses canonical `search` `files` terminology instead of the retired `find` tool name. No runtime behavior changed.
 - The Anthropic provider reads its endpoint, credential placement, rejected betas and retry policy from the catalog's wire-capability table instead of comparing provider ids at seventeen call sites.
@@ -77,11 +72,6 @@
 - A colour or title escape sequence a command writes in two pieces no longer leaves part of itself in tool output: the sink holds a sequence its chunk ended inside until the piece that finishes it arrives, and drops one the stream never completes.
 - The `compaction.remote` setting description documents that server-side compaction applies to supported OpenAI, Azure OpenAI, and ChatGPT Codex Responses models.
 - `branchSummary.reserveTokens` now reaches the branch summarizer. It was declared in the settings schema but read by nothing, so every branch summary used the built-in 16384 reserve whatever the setting said.
-- Unified search approval preflight now covers every multi-target syntax execution accepts; search also excludes byte-truncated context from editable seen lines, unions ranged and unrestricted text scopes, orders equal-mtime file results by path, suppresses pattern errors from unrelated structure languages, and distinguishes exhausted structure pages from a search with no matches.
-- Unified search now keeps warning-heavy text results within the inline byte budget, preserves semicolon path lists longer than one filename component, excludes matches hidden by generic truncation from editable seen lines, classifies every SSH path-list encoding at the execution approval tier, matches native Unicode tie ordering, and reports exhausted text pages with their totals.
-- Unified search no longer broadens or misroutes malformed calls: files-mode rejects a `path` owned by other modes while retaining the historical `/`-means-workspace alias, structure search rejects unsupported `ssh://` scopes without an approval prompt for work it cannot execute, immutable internal or fetched sources never receive editable hashline anchors, and the Bash interceptor no longer redirects mutating or otherwise non-equivalent `find` commands to a read-only file search.
-- The plan-mode extension example now keeps canonical `search` available both while planning and after restoring normal tools. It previously advertised retired `grep`/`find` identities, requested a nonexistent `find` tool, and dropped search when plan mode ended.
-- Memory summarization now retains canonical `search` results from session rollouts. It previously allowlisted the retired `grep` tool name but discarded every result emitted by unified search before Stage 1 summarization.
 - Side requests derive a stable conversation ID per oneshot kind, preventing compaction, handoff, and branch summaries from overwriting live Cursor and Devin conversation state.
 - Aborting while paused rejects the pause wait and prevents the agent loop from starting another provider turn or paused tool.
 - A branch-summary reserve at or above the model's context window now falls back to the proportional 15% reserve instead of leaving a non-positive budget, which the entry preparation read as "no limit" and which sent the whole branch.
@@ -89,7 +79,6 @@
 - Supported server-side compaction on the ChatGPT Codex backend with OAuth credential and turn identity headers.
 - API option mapping preserves side-request conversation IDs, preventing Cursor and Devin requests from falling back to the live session ID.
 - Cursor turns fail immediately when an asynchronous exec-server handler fails; malformed grep line or count values and oversized Connect frames fail before protobuf or buffer exhaustion; and success waits for queued handlers and gRPC trailers so quota and availability statuses are preserved.
-- Anthropic strict-tool planning now recognizes the unified `search` tool instead of the retired `find` identity, so canonical workspace search receives strict schema enforcement without reviving a legacy tool name.
 - A wrapped line now continues under the indent its first row opened at, so an indented row no longer reads as a new top-level row at a narrow width.
 - Native text context rows now report truncation explicitly, and mixed-language structure searches suppress pattern-compilation diagnostics from unrelated languages when another candidate language accepts the pattern.
 - `splitTrailingPartialEscape` lets a streaming reader hold back an escape sequence a chunk ended inside, so a sequence divided across two reads is stripped whole instead of losing its head and leaking its tail as text.
