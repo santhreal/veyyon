@@ -29,6 +29,7 @@
 - The Codex responses request transformer merges `.filter().map()` in `filterInput` into a single `for` loop that skips `item_reference` entries and strips `id` fields in one pass.
 - `hasCopilotVisionInput` in `github-copilot-headers.ts` replaces nested `.some()` callbacks with direct `for` loops, avoiding callback allocations per message on the per-turn Copilot vision scan.
 - `hasToolHistory` in `openai-completions.ts` replaces `.some()` callback with a direct `for` loop, avoiding callback allocation per assistant message on the per-turn tool history scan.
+- `appendResponsesToolResultMessages` in `openai-shared.ts` merges `.filter().map().join()` and `.some()` (4 passes) into a single `for` loop that collects text parts and tracks image presence simultaneously.
 
 ### Fixed
 
