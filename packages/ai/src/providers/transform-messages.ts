@@ -625,8 +625,15 @@ export function transformMessages<TApi extends Api>(
 	// the id. `takeRealToolResult` pulls the earliest unconsumed result positioned
 	// AFTER the call's assistant turn, so an orphaned earlier result is never
 	// pulled forward onto a later call (which would surface a prior turn's output).
+	//
+	// Anthropic rejects `tool_result` blocks whose `tool_use_id` does not appear in a prior
+	// `tool_use` block. After handoff/compaction folds an assistant turn into a summary
+	// string, the user-side `toolResult` for that turn can survive while the originating
+	// `tool_use` disappears — leaving an orphan that triggers HTTP 400. Track the set of
+	// `tool_use` ids that survive transformation so the second pass can drop orphans cleanly.
 	type IndexedToolResult = { index: number; msg: ToolResultMessage; consumed: boolean };
 	const realToolResultsById = new Map<string, IndexedToolResult[]>();
+	const validToolUseIds = new Set<string>();
 	for (let index = 0; index < transformed.length; index++) {
 		const msg = transformed[index];
 		if (msg.role === "toolResult") {
@@ -634,6 +641,10 @@ export function transformMessages<TApi extends Api>(
 			const entries = realToolResultsById.get(msg.toolCallId);
 			if (entries) entries.push(entry);
 			else realToolResultsById.set(msg.toolCallId, [entry]);
+		} else if (msg.role === "assistant") {
+			for (const block of msg.content) {
+				if (block.type === "toolCall") validToolUseIds.add(block.id);
+			}
 		}
 	}
 	const takeRealToolResult = (id: string, afterIndex: number): ToolResultMessage | undefined => {
@@ -646,19 +657,6 @@ export function transformMessages<TApi extends Api>(
 		}
 		return undefined;
 	};
-
-	// Anthropic rejects `tool_result` blocks whose `tool_use_id` does not appear in a prior
-	// `tool_use` block. After handoff/compaction folds an assistant turn into a summary
-	// string, the user-side `toolResult` for that turn can survive while the originating
-	// `tool_use` disappears — leaving an orphan that triggers HTTP 400. Track the set of
-	// `tool_use` ids that survive transformation so the second pass can drop orphans cleanly.
-	const validToolUseIds = new Set<string>();
-	for (const msg of transformed) {
-		if (msg.role !== "assistant") continue;
-		for (const block of msg.content) {
-			if (block.type === "toolCall") validToolUseIds.add(block.id);
-		}
-	}
 
 	// Second pass: ensure each surviving assistant tool call is immediately
 	// followed by exactly one corresponding tool result.
@@ -748,7 +746,10 @@ export function transformMessages<TApi extends Api>(
 				continue;
 			}
 
-			const toolCalls = assistantMsg.content.filter(b => b.type === "toolCall") as ToolCall[];
+			const toolCalls: ToolCall[] = [];
+			for (const block of assistantMsg.content) {
+				if (block.type === "toolCall") toolCalls.push(block as ToolCall);
+			}
 
 			if (assistantMsg.stopReason === "error" || assistantMsg.stopReason === "aborted") {
 				// Keep the assistant message with tool calls intact. Real tool results are

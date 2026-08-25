@@ -1096,11 +1096,11 @@ function convertContentBlocks(
 	}
 
 	if (!supportsImages) {
-		return blocks
-			.filter((block): block is { type: "text"; text: string } => block.type === "text")
-			.map(block => block.text)
-			.join("\n")
-			.toWellFormed();
+		const parts: string[] = [];
+		for (const block of blocks) {
+			if (block.type === "text") parts.push(block.text);
+		}
+		return parts.join("\n").toWellFormed();
 	}
 
 	if (sawImage && !sawText) {
@@ -3729,11 +3729,18 @@ function buildToolResultBlock(
 	// Anthropic rejects images inside error tool results ("all content must be
 	// type `text` if `is_error` is true") — keep the text in the block and
 	// hoist the images after the message's tool_result run.
-	if (msg.isError && typeof content !== "string" && content.some(block => block.type === "image")) {
+	if (msg.isError && typeof content !== "string") {
+		const textBlocks: typeof content = [];
+		let hasImage = false;
 		for (const block of content) {
-			if (block.type === "image") hoistedImages.push(block);
+			if (block.type === "image") {
+				hasImage = true;
+				hoistedImages.push(block);
+			} else {
+				textBlocks.push(block);
+			}
 		}
-		content = content.filter(block => block.type === "text");
+		if (hasImage) content = textBlocks;
 	}
 	content = ensureErrorToolResultWireContent(content, msg.isError);
 	const block: ContentBlockParam = {
