@@ -3849,7 +3849,9 @@ export const readToolRenderer = {
 		const truncation = details?.meta?.truncation;
 		const fallback = details?.truncation;
 		if (details?.resolvedPath) {
-			warningLines.push(uiTheme.fg("dim", wrapBrackets(`Resolved path: ${shortenPath(details.resolvedPath)}`, uiTheme)));
+			warningLines.push(
+				uiTheme.fg("dim", wrapBrackets(`Resolved path: ${shortenPath(details.resolvedPath)}`, uiTheme)),
+			);
 		}
 		if (truncation) {
 			if (fallback?.firstLineExceedsLimit) {
