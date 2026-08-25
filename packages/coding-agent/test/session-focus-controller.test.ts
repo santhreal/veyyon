@@ -71,6 +71,18 @@ function makeHarness(): Harness {
 			handleEvent: async (event: unknown) => {
 				handledEvents.push(event);
 			},
+			attachTo: (target: AgentSession) => {
+				let assistantStreamSynced = false;
+				ctx.unsubscribe = target.subscribe(async (event: AgentSessionEvent) => {
+					if (event.type === "message_start" && event.message.role === "assistant") {
+						assistantStreamSynced = true;
+					} else if (event.type === "message_update" && event.message.role === "assistant" && !assistantStreamSynced) {
+						assistantStreamSynced = true;
+						await ctx.eventController.handleEvent({ type: "message_start", message: event.message });
+					}
+					await ctx.eventController.handleEvent(event);
+				});
+			},
 			resetTranscriptAnchors: () => {
 				resetTranscriptAnchors++;
 			},
