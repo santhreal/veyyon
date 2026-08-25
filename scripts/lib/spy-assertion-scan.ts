@@ -29,7 +29,7 @@ const MOCK_MODULE = /\bmock\.module\s*\(/;
  * Spy-call assertions, assembled from fragments so this module does not match
  * its own pattern when the gate reads the repository.
  */
-const SPY_ASSERTION = new RegExp(["toHaveBeen", "(?:Called|LastCalledWith|NthCalledWith)", "\\w*"].join(""), "g");
+const SPY_ASSERTION = new RegExp(["(?:toHaveBeen|toBe)", "(?:Called|LastCalledWith|NthCalledWith)", "\\w*"].join(""), "g");
 
 /**
  * Replace comment and string bodies with spaces, preserving length and line
@@ -41,12 +41,36 @@ const SPY_ASSERTION = new RegExp(["toHaveBeen", "(?:Called|LastCalledWith|NthCal
  * A template literal's `${...}` interpolation is left as code, because a real
  * call written inside one is a real call.
  */
+const REGEX_PRECEDING: Readonly<Record<string, true>> = {
+	"(": true,
+	",": true,
+	"=": true,
+	":": true,
+	"[": true,
+	"!": true,
+	"&": true,
+	"|": true,
+	"?": true,
+	"{": true,
+	";": true,
+	"~": true,
+	"^": true,
+	"+": true,
+	"-": true,
+	"*": true,
+	"%": true,
+	"<": true,
+	">": true,
+	"\n": true,
+};
+
 export function stripCommentsAndStrings(source: string): string {
 	const out: string[] = [];
 	let index = 0;
 	// Depth of `${...}` nesting, so the closing brace returns to template text.
 	const templateStack: number[] = [];
-	let state: "code" | "line" | "block" | "single" | "double" | "template" = "code";
+	let state: "code" | "line" | "block" | "single" | "double" | "template" | "regex" = "code";
+	let lastNonWhitespace = "";
 
 	const blank = (character: string): string => (character === "\n" ? "\n" : " ");
 
@@ -67,6 +91,12 @@ export function stripCommentsAndStrings(source: string): string {
 				index += 2;
 				continue;
 			}
+			if (character === "/" && (lastNonWhitespace === "" || REGEX_PRECEDING[lastNonWhitespace])) {
+				state = "regex";
+				out.push("/");
+				index += 1;
+				continue;
+			}
 			if (character === "'") {
 				state = "single";
 				out.push("'");
@@ -85,12 +115,30 @@ export function stripCommentsAndStrings(source: string): string {
 				index += 1;
 				continue;
 			}
-			if (character === "}" && templateStack.length > 0) {
-				templateStack.pop();
-				state = "template";
-				out.push("}");
+			if (character === "{") {
+				if (templateStack.length > 0) {
+					templateStack[templateStack.length - 1] += 1;
+				}
+				out.push("{");
+				lastNonWhitespace = "{";
 				index += 1;
 				continue;
+			}
+			if (character === "}") {
+				if (templateStack.length > 0) {
+					templateStack[templateStack.length - 1] -= 1;
+					if (templateStack[templateStack.length - 1] === 0) {
+						templateStack.pop();
+						state = "template";
+					}
+				}
+				out.push("}");
+				lastNonWhitespace = "}";
+				index += 1;
+				continue;
+			}
+			if (!/\s/.test(character)) {
+				lastNonWhitespace = character;
 			}
 			out.push(character);
 			index += 1;
@@ -98,7 +146,10 @@ export function stripCommentsAndStrings(source: string): string {
 		}
 
 		if (state === "line") {
-			if (character === "\n") state = "code";
+			if (character === "\n") {
+				state = "code";
+				lastNonWhitespace = "\n";
+			}
 			out.push(blank(character));
 			index += 1;
 			continue;
@@ -107,8 +158,27 @@ export function stripCommentsAndStrings(source: string): string {
 		if (state === "block") {
 			if (character === "*" && next === "/") {
 				state = "code";
+				lastNonWhitespace = " ";
 				out.push("  ");
 				index += 2;
+				continue;
+			}
+			out.push(blank(character));
+			index += 1;
+			continue;
+		}
+
+		if (state === "regex") {
+			if (character === "\\") {
+				out.push("  ".slice(0, Math.min(2, source.length - index)));
+				index += 2;
+				continue;
+			}
+			if (character === "/") {
+				state = "code";
+				lastNonWhitespace = "/";
+				out.push("/");
+				index += 1;
 				continue;
 			}
 			out.push(blank(character));
@@ -125,6 +195,7 @@ export function stripCommentsAndStrings(source: string): string {
 		if (state === "template" && character === "$" && next === "{") {
 			templateStack.push(1);
 			state = "code";
+			lastNonWhitespace = "{";
 			out.push("${");
 			index += 2;
 			continue;
@@ -135,6 +206,7 @@ export function stripCommentsAndStrings(source: string): string {
 			(state === "template" && character === "`")
 		) {
 			state = "code";
+			lastNonWhitespace = character;
 			out.push(character);
 			index += 1;
 			continue;
@@ -165,7 +237,12 @@ export function testFiles(repoRoot: string, exclude: string): string[] {
 				if (!SKIPPED_DIRS.has(entry.name)) walk(path.join(dir, entry.name));
 				continue;
 			}
-			if (entry.name.endsWith(".test.ts") && entry.name !== exclude) found.push(path.join(dir, entry.name));
+			if (
+				(entry.name.endsWith(".test.ts") || entry.name.endsWith(".test.tsx")) &&
+				entry.name !== exclude
+			) {
+				found.push(path.join(dir, entry.name));
+			}
 		}
 	};
 	for (const base of ["packages", "scripts"]) {
