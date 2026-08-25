@@ -1,3 +1,7 @@
+function abortErrorFromSignal(signal: AbortSignal): unknown {
+	return signal.reason !== undefined ? signal.reason : new DOMException("The operation was aborted.", "AbortError");
+}
+
 /**
  * Process-global pause gate for agent loops.
  *
@@ -71,27 +75,32 @@ export class AgentPauseGate {
 
 	/**
 	 * Park until the gate is released. Resolves immediately when not paused.
-	 * An abort on `signal` releases only this wait — the gate stays engaged —
+	 * An abort on `signal` rejects with the abort error — the gate stays engaged —
 	 * so a cancelled run unwinds while the rest of the process stays frozen.
 	 */
 	async waitUntilResumed(signal?: AbortSignal): Promise<void> {
 		// Loop: resume() swaps the gate promise, so a pause re-engaged while a
 		// waiter is between awaits must re-park instead of slipping through.
 		while (this.#gate) {
-			if (signal?.aborted) return;
+			if (signal?.aborted) {
+				throw abortErrorFromSignal(signal);
+			}
 			const gate = this.#gate.promise;
 			if (!signal) {
 				await gate;
 				continue;
 			}
-			const abort = Promise.withResolvers<void>();
-			const onAbort = () => abort.resolve();
+			const abort = Promise.withResolvers<never>();
+			const onAbort = () => abort.reject(abortErrorFromSignal(signal));
 			signal.addEventListener("abort", onAbort, { once: true });
 			try {
 				await Promise.race([gate, abort.promise]);
 			} finally {
 				signal.removeEventListener("abort", onAbort);
 			}
+		}
+		if (signal?.aborted) {
+			throw abortErrorFromSignal(signal);
 		}
 	}
 

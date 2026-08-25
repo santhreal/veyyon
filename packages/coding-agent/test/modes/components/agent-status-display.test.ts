@@ -9,6 +9,7 @@
  */
 import { beforeAll, describe, expect, it } from "bun:test";
 import {
+	AGENT_DISPLAY_STATES,
 	type AgentDisplayState,
 	agentDisplayState,
 	agentStatusColor,
@@ -16,15 +17,17 @@ import {
 	agentStatusWord,
 } from "@veyyon/coding-agent/modes/components/agent-status-display";
 import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
+import { AGENT_STATUSES } from "@veyyon/coding-agent/registry/agent-registry";
 import { useFullColor } from "../../helpers/theme-assertions";
 
 /**
- * Every state a surface may draw, which is finer than `AgentStatus`: `blocked`
- * and `waiting` are derived, and they exist precisely because the raw status
- * cannot tell a stopped-on-a-person or stopped-on-a-peer agent from a busy or a
- * finished one.
+ * The variant space derived from the visual language owner at run time.
+ * Fails by default if a new display state is added without full coverage.
  */
-const ALL_STATUSES: AgentDisplayState[] = ["running", "blocked", "idle", "waiting", "parked", "aborted"];
+const ALL_STATUSES: readonly AgentDisplayState[] = AGENT_DISPLAY_STATES;
+
+/** All members of the underlying AgentStatus union, derived from its runtime owner. */
+const ALL_AGENT_STATUSES = AGENT_STATUSES;
 
 describe("agent status display (ONE-PLACE)", () => {
 	useFullColor();
@@ -51,14 +54,71 @@ describe("agent status display (ONE-PLACE)", () => {
 	 * reading it on a `running` row would report the reason it stopped LAST time
 	 * as the reason it is stopped now.
 	 */
-	it("derives blocked and waiting from the ref, with the approval winning", () => {
+	it("pins the exact source-derived display state set", () => {
+		const expected = ["aborted", "blocked", "idle", "parked", "running", "waiting"] satisfies AgentDisplayState[];
+		expect([...AGENT_DISPLAY_STATES].sort()).toEqual(expected.sort());
+	});
+
+	/**
+	 * The derivation itself, which every surface goes through so none of them can
+	 * disagree about when an agent counts as blocked or waiting.
+	 *
+	 * Precedence hierarchy under test:
+	 * 1. `running` + `blockedOnApproval` -> `blocked` (open approval outranks busy)
+	 * 2. `running` without approval -> `running` (stale `waitingOnPeer` ignored)
+	 * 3. `aborted` -> `aborted` (terminal error beats open approval and peer wait)
+	 * 4. `idle` / `parked` + `waitingOnPeer` -> `waiting` (stopped on peer)
+	 * 5. `idle` / `parked` without peer wait -> `idle` / `parked` (stale approval ignored)
+	 */
+	it("derives blocked and waiting from the ref, with approval winning while running", () => {
 		expect(agentDisplayState({ status: "running" })).toBe("running");
 		expect(agentDisplayState({ status: "running", blockedOnApproval: true })).toBe("blocked");
 		expect(agentDisplayState({ status: "parked", waitingOnPeer: true })).toBe("waiting");
 		expect(agentDisplayState({ status: "idle", waitingOnPeer: true })).toBe("waiting");
 		expect(agentDisplayState({ status: "parked", waitingOnPeer: false })).toBe("parked");
 		expect(agentDisplayState({ status: "running", waitingOnPeer: true })).toBe("running");
-		expect(agentDisplayState({ status: "parked", waitingOnPeer: true, blockedOnApproval: true })).toBe("blocked");
+		expect(agentDisplayState({ status: "parked", waitingOnPeer: true, blockedOnApproval: true })).toBe("waiting");
+		expect(agentDisplayState({ status: "aborted", blockedOnApproval: true })).toBe("aborted");
+		expect(agentDisplayState({ status: "idle", blockedOnApproval: true })).toBe("idle");
+		expect(agentDisplayState({ status: "parked", blockedOnApproval: true })).toBe("parked");
+	});
+
+	/**
+	 * Exhaustive matrix across every member of AgentStatus x boolean combinations.
+	 * Mutation-gates every branch in `agentDisplayState`.
+	 */
+	it("evaluates the complete precedence matrix across all AgentStatus variants", () => {
+		for (const status of ALL_AGENT_STATUSES) {
+			// Case 1: no modifiers
+			const plain = agentDisplayState({ status });
+			expect(plain).toBe(status);
+
+			// Case 2: blockedOnApproval = true
+			const blocked = agentDisplayState({ status, blockedOnApproval: true });
+			if (status === "running") {
+				expect(blocked).toBe("blocked");
+			} else {
+				expect(blocked).toBe(status); // Terminal/stopped statuses ignore blockedOnApproval
+			}
+
+			// Case 3: waitingOnPeer = true
+			const waiting = agentDisplayState({ status, waitingOnPeer: true });
+			if (status === "idle" || status === "parked") {
+				expect(waiting).toBe("waiting");
+			} else {
+				expect(waiting).toBe(status); // Running and aborted ignore waitingOnPeer
+			}
+
+			// Case 4: both blockedOnApproval = true AND waitingOnPeer = true
+			const both = agentDisplayState({ status, blockedOnApproval: true, waitingOnPeer: true });
+			if (status === "running") {
+				expect(both).toBe("blocked");
+			} else if (status === "idle" || status === "parked") {
+				expect(both).toBe("waiting");
+			} else {
+				expect(both).toBe("aborted"); // Aborted ignores both
+			}
+		}
 	});
 
 	it("renders the glyph and word of a status in the same color", () => {

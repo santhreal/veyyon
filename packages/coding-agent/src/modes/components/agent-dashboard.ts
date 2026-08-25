@@ -536,7 +536,9 @@ class AgentTerminationDialog implements Component {
 			return Array.from({ length: height }, () => padding(width));
 		}
 
-		const kindAndStatus = `${agentType(this.agent)} · ${agentStatusWord(agentDisplayState(this.agent))}`;
+		const type = agentType(this.agent);
+		const statusWord = agentStatusWord(agentDisplayState(this.agent));
+		const kindAndStatus = type ? `${type} · ${statusWord}` : statusWord;
 		const warning =
 			"This stops the current turn and removes the agent from the roster. Its transcript stays on disk.";
 		const body = [

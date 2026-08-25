@@ -31,6 +31,10 @@ write(path, content) → str
     Write file (creates parents) → resolved path. `local://…` persists across turns/subagents.
 env(key?=None, value?=None) → str | None | dict
     No args → full env dict; one → value of `key`; two → set `key=value`, return value.
+kv.get(key, default?=None) / kv.set(key, value) / kv.delete(key) / kv.list()
+    Session store on disk that OUTLIVES the kernel: values survive `reset`, crashes, and continuations, shared across languages. Values move by name only (never echoed to status/output) and must be JSON-serializable; store handles and tokens here, payloads in files.
+defs() → list[str]
+    Names this kernel already defines (user code only, with shapes). Check before re-sending a definition.
 output(*ids, format?="raw", query?=None, offset?=None, limit?=None) → str | dict | list[dict]
     Task/agent output by id; one → text/dict, multiple → list.
 tool.<name>(args) → unknown

@@ -1,6 +1,11 @@
 import { describe, expect, it } from "bun:test";
 import {
+	DAEMON_RESTART_POLICIES,
+	DAEMON_SIGNALS,
+	DAEMON_STATES,
+	DAEMON_TERMINATION_OWNERS,
 	type DaemonOperation,
+	parseDaemonCompletionRecord,
 	parseDaemonRpcResult,
 	parseDaemonSnapshot,
 	parseDaemonSpec,
@@ -79,6 +84,14 @@ describe("parseDaemonSpec", () => {
 		expect(() => parseDaemonSpec({ ...baseSpec, name: "" })).toThrow("spec.name must be a non-empty string");
 		expect(() => parseDaemonSpec({ ...baseSpec, args: [1] })).toThrow("spec.args item must be a string");
 	});
+
+	it("parses every restart policy in DAEMON_RESTART_POLICIES and fails on additions", () => {
+		for (const policy of DAEMON_RESTART_POLICIES) {
+			const parsed = parseDaemonSpec({ ...baseSpec, restart: policy });
+			expect(parsed.restart).toBe(policy);
+		}
+		expect(DAEMON_RESTART_POLICIES).toEqual(["no", "on-failure", "always"]);
+	});
 });
 
 describe("parseDaemonSnapshot", () => {
@@ -95,6 +108,14 @@ describe("parseDaemonSnapshot", () => {
 			"log",
 			"port",
 		]);
+	});
+
+	it("parses every daemon state in DAEMON_STATES and fails on additions", () => {
+		for (const state of DAEMON_STATES) {
+			const parsed = parseDaemonSnapshot({ ...baseSnapshot, state });
+			expect(parsed.state).toBe(state);
+		}
+		expect(DAEMON_STATES).toEqual(["starting", "running", "ready", "restarting", "stopping", "exited", "failed"]);
 	});
 
 	it("rejects an unknown state, an unknown readiness condition, and a non-finite timestamp", () => {
@@ -121,6 +142,18 @@ describe("parseDaemonWireRequest", () => {
 		expect(() => parseDaemonWireRequest({ id: "1", token: "", operation: { op: "ping" } })).toThrow(
 			"request.token must be a non-empty string",
 		);
+	});
+
+	it("parses every daemon signal in DAEMON_SIGNALS and fails on additions", () => {
+		for (const signal of DAEMON_SIGNALS) {
+			const parsed = parseDaemonWireRequest({
+				id: "1",
+				token: "t",
+				operation: { op: "send", name: "w", signal },
+			});
+			expect(parsed.operation.op === "send" && parsed.operation.signal).toBe(signal);
+		}
+		expect(DAEMON_SIGNALS).toEqual(["SIGINT", "SIGTERM", "SIGHUP", "SIGQUIT", "SIGKILL"]);
 	});
 
 	it("validates the embedded operation: bad wait target, unknown op, unknown signal", () => {
@@ -188,5 +221,64 @@ describe("parseDaemonRpcResult", () => {
 		expect(result.op).toBe("list");
 		expect(result.op === "list" && result.daemons.length).toBe(1);
 		expect(result.op === "list" && result.daemons[0]?.name).toBe("web");
+	});
+});
+describe("parseDaemonCompletionRecord", () => {
+	const baseCompletion = {
+		name: "job",
+		id: "uuid-1",
+		terminatedBy: "process-exit",
+		createdAt: 100,
+		startedAt: 101,
+		exitedAt: 200,
+		restartCount: 0,
+		outputBytes: 42,
+		outputTail: "all done",
+	};
+
+	it("parses every termination owner in DAEMON_TERMINATION_OWNERS and fails on additions", () => {
+		for (const owner of DAEMON_TERMINATION_OWNERS) {
+			const record = parseDaemonCompletionRecord({ ...baseCompletion, terminatedBy: owner });
+			expect(record.terminatedBy).toBe(owner);
+		}
+		expect(DAEMON_TERMINATION_OWNERS).toEqual([
+			"process-exit",
+			"external-signal",
+			"operator-stop",
+			"operator-restart",
+			"operator-signal",
+			"broker-shutdown",
+			"idle-reaper",
+			"os-signal",
+			"broker-recovery",
+			"launch-failure",
+		]);
+	});
+
+	it("decodes optional fields: owner, exitReason, exitCode, signal", () => {
+		const record = parseDaemonCompletionRecord({
+			...baseCompletion,
+			owner: "session-1",
+			exitReason: "killed by SIGTERM",
+			exitCode: 143,
+			signal: "SIGTERM",
+		});
+		expect(record.owner).toBe("session-1");
+		expect(record.exitReason).toBe("killed by SIGTERM");
+		expect(record.exitCode).toBe(143);
+		expect(record.signal).toBe("SIGTERM");
+	});
+
+	it("rejects an unknown termination owner, missing fields, or invalid types", () => {
+		expect(() => parseDaemonCompletionRecord({ ...baseCompletion, terminatedBy: "assassin" })).toThrow(
+			"Unknown daemon termination owner: assassin",
+		);
+		expect(() => parseDaemonCompletionRecord({ ...baseCompletion, createdAt: "yesterday" })).toThrow(
+			"completion.createdAt must be a finite number",
+		);
+		expect(() => parseDaemonCompletionRecord({ ...baseCompletion, name: "" })).toThrow(
+			"completion.name must be a non-empty string",
+		);
+		expect(() => parseDaemonCompletionRecord(null)).toThrow("daemon completion must be an object");
 	});
 });
