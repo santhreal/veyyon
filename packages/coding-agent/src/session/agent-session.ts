@@ -19916,10 +19916,10 @@ export class AgentSession {
 		const state = this.state;
 		const summarizedAway = this.#messagesSummarizedAway();
 		const messages = summarizedAway.length > 0 ? [...summarizedAway, ...state.messages] : state.messages;
-		const userMessages = messages.filter(m => m.role === "user").length;
-		const assistantMessages = messages.filter(m => m.role === "assistant").length;
-		const toolResults = messages.filter(m => m.role === "toolResult").length;
 
+		let userMessages = 0;
+		let assistantMessages = 0;
+		let toolResults = 0;
 		let toolCalls = 0;
 		let totalInput = 0;
 		let totalOutput = 0;
@@ -19939,7 +19939,10 @@ export class AgentSession {
 		};
 
 		for (const message of messages) {
-			if (message.role === "assistant") {
+			if (message.role === "user") {
+				userMessages++;
+			} else if (message.role === "assistant") {
+				assistantMessages++;
 				const assistantMsg = message as AssistantMessage;
 				toolCalls += assistantMsg.content.filter(c => c.type === "toolCall").length;
 				totalInput += assistantMsg.usage.input;
@@ -19950,19 +19953,20 @@ export class AgentSession {
 				totalTokens += assistantMsg.usage.totalTokens;
 				totalPremiumRequests += assistantMsg.usage.premiumRequests ?? 0;
 				totalCost += assistantMsg.usage.cost.total;
-			}
-
-			if (message.role === "toolResult" && message.toolName === TOOL.task) {
-				const usage = getTaskToolUsage(message.details);
-				if (usage) {
-					totalInput += usage.input;
-					totalOutput += usage.output;
-					totalReasoning += usage.reasoningTokens ?? 0;
-					totalCacheRead += usage.cacheRead;
-					totalCacheWrite += usage.cacheWrite;
-					totalTokens += usage.totalTokens;
-					totalPremiumRequests += usage.premiumRequests ?? 0;
-					totalCost += usage.cost.total;
+			} else if (message.role === "toolResult") {
+				toolResults++;
+				if (message.toolName === TOOL.task) {
+					const usage = getTaskToolUsage(message.details);
+					if (usage) {
+						totalInput += usage.input;
+						totalOutput += usage.output;
+						totalReasoning += usage.reasoningTokens ?? 0;
+						totalCacheRead += usage.cacheRead;
+						totalCacheWrite += usage.cacheWrite;
+						totalTokens += usage.totalTokens;
+						totalPremiumRequests += usage.premiumRequests ?? 0;
+						totalCost += usage.cost.total;
+					}
 				}
 			}
 		}

@@ -17,6 +17,7 @@
 - `wrapSteeringForModel` is skipped when an incremental scan finds no steering messages, eliminating an O(n) per-turn iteration over all messages on conversations that never use steering interjections.
 - `filterProviderReplayMessages` is skipped when an incremental scan finds no provider refusal messages, eliminating an O(n) per-turn scan of all messages on conversations that never hit a refusal or sensitive stop.
 - `SessionEntryIndex.pathTo` caches the branch array and extends it in-place on the common append path, turning repeated `getBranch()` calls within a turn from O(n) Set-allocated walks into O(1) reference returns.
+- `getSessionStats` merges three `.filter().length` passes and the usage-summing loop into a single `for` loop, cutting the per-call work from 4×O(n) to 1×O(n) on the full message list.
 
 ### Added
 
