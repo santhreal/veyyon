@@ -1732,23 +1732,27 @@ export class TUI extends Container {
 
 	/**
 	 * Rows in the scroll space: the tape, then the part of the composed frame
-	 * that is not already on it. The frame's first #committedRows rows are the
-	 * tape's last #committedRows rows (both came from the same paint), so only
-	 * the remainder is new.
+	 * that is not already on it (excluding the pinned footer). The frame's first
+	 * #committedRows rows are the tape's last #committedRows rows (both came
+	 * from the same paint), so only the uncommitted remainder above the pinned
+	 * footer is new.
 	 */
 	#scrollSpaceRows(frameRows = this.#previousFrameLength): number {
-		return this.#scrollTape.length + Math.max(0, frameRows - this.#committedRows);
+		const uncommittedEnd = Math.max(this.#committedRows, frameRows - this.#pinnedFooterRows);
+		return this.#scrollTape.length + (uncommittedEnd - this.#committedRows);
 	}
 
 	/**
 	 * Scroll-space row the live tail's view starts at — the bottom-most view,
 	 * which is what "following" shows. Derived from the space's own length and
-	 * never from `#windowTopRow`: that counter is a frame coordinate, and a
-	 * virtualized root dropping rows leaves it describing a frame that no longer
-	 * exists (it read 41 against a 12-row frame in the case this fixes).
+	 * the scrollable transcript region height (viewport height minus pinned
+	 * footer rows).
 	 */
 	#scrollSpaceLiveTop(frameRows = this.#previousFrameLength): number {
-		return Math.max(0, this.#scrollSpaceRows(frameRows) - this.terminal.rows);
+		const height = Math.max(1, this.terminal.rows);
+		const footerRows = Math.min(this.#pinnedFooterRows, height - 1);
+		const regionRows = height - footerRows;
+		return Math.max(0, this.#scrollSpaceRows(frameRows) - regionRows);
 	}
 
 	/**
@@ -4155,7 +4159,8 @@ export class TUI extends Container {
 			// under it can shift a row the reader is looking at. The footer is
 			// always the live frame's last rows, so the composer keeps typing,
 			// spinning, and updating while the history above it holds still.
-			this.#scrollSnapshot ??= [...this.#scrollTape, ...frame.slice(this.#committedRows)];
+			const uncommittedEnd = Math.max(this.#committedRows, frameLength - this.#pinnedFooterRows);
+			this.#scrollSnapshot ??= [...this.#scrollTape, ...frame.slice(this.#committedRows, uncommittedEnd)];
 			const snapshot = this.#scrollSnapshot;
 			const footerRows = Math.min(this.#pinnedFooterRows, height - 1);
 			const regionRows = height - footerRows;
