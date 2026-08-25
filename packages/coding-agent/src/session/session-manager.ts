@@ -238,7 +238,7 @@ function isSessionIncarnationTelemetry(entry: SessionEntry): boolean {
 }
 
 function orderedByTimestamp(a: SessionTreeNode, b: SessionTreeNode): number {
-	return new Date(a.entry.timestamp).getTime() - new Date(b.entry.timestamp).getTime();
+	return Date.parse(a.entry.timestamp) - Date.parse(b.entry.timestamp);
 }
 
 /**

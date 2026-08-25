@@ -14131,7 +14131,7 @@ export class AgentSession {
 		// is still in context but shouldn't trigger compaction again.
 		const compactionEntry = getLatestCompactionEntry(this.sessionManager.getBranch());
 		const errorIsFromBeforeCompaction =
-			compactionEntry !== null && assistantMessage.timestamp < new Date(compactionEntry.timestamp).getTime();
+			compactionEntry !== null && assistantMessage.timestamp < Date.parse(compactionEntry.timestamp);
 		if (sameModel && !errorIsFromBeforeCompaction && AIError.isContextOverflow(assistantMessage, contextWindow)) {
 			// Clear the failed turn from active context so the retry (or the next
 			// user prompt) does not replay it. The persisted branch entry stays

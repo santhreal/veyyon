@@ -125,7 +125,7 @@ export function createBranchSummaryMessage(summary: string, fromId: string, time
 		role: "branchSummary",
 		summary,
 		fromId,
-		timestamp: new Date(timestamp).getTime(),
+		timestamp: Date.parse(timestamp),
 	};
 }
 
@@ -153,7 +153,7 @@ export function createCompactionSummaryMessage(
 		images: imageBlocks && imageBlocks.length > 0 ? imageBlocks : undefined,
 		warning,
 		compactedBy,
-		timestamp: new Date(timestamp).getTime(),
+		timestamp: Date.parse(timestamp),
 	};
 }
 
@@ -172,7 +172,7 @@ export function createCustomMessage(
 		display,
 		details,
 		attribution,
-		timestamp: new Date(timestamp).getTime(),
+		timestamp: Date.parse(timestamp),
 	};
 }
 
