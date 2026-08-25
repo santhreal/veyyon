@@ -186,13 +186,13 @@ describe("ToolCallLoopGuard read path parsing and subsumption", () => {
 	it("positive control: still detects repeated reads of identical targets and genuine subsumed reads", () => {
 		const guard = new ToolCallLoopGuard({ threshold: 5, exemptTools: [], readSubsumptionThreshold: 2 });
 
-		// Read full file verbatim
-		expect(guard.recordTurn(makeReadTurn("full-1", "src/foo.ts", "line 1\nline 2\n"))).toBeNull();
+		// Read range 1-100
+		expect(guard.recordTurn(makeReadTurn("full-1", "src/foo.ts:1-100", "line 1\nline 2\n"))).toBeNull();
 
-		// Subsumed read #1: range 1-10 on a fully-read verbatim file -> count 1
+		// Subsumed read #1: range 1-10 within 1-100 -> count 1
 		expect(guard.recordTurn(makeReadTurn("full-2", "src/foo.ts:1-10", "line 1\n"))).toBeNull();
 
-		// Subsumed read #2: range 20-30 on a fully-read verbatim file -> count 2 -> triggers!
+		// Subsumed read #2: range 20-30 within 1-100 -> count 2 -> triggers!
 		const detection = guard.recordTurn(makeReadTurn("full-3", "src/foo.ts:20-30", "line 20\n"));
 		expect(detection).not.toBeNull();
 		expect(detection).toMatchObject({
