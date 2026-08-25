@@ -76,10 +76,62 @@ export function daemonRuntimeDir(projectDir: string, configRoot: string = getCon
 	return path.join(configRoot, NAMES.brokerRoot, projectKey(projectDir));
 }
 
-/** Resolve the Unix socket or Windows named pipe used by one project broker. */
+/**
+ * The retained completion records of a project's supervised processes.
+ *
+ * Lives beside the per-daemon directories rather than inside one: a record
+ * outlives the daemon it describes, including the daemon's name being reused
+ * and its directory rewritten by a later start. The file is versioned (see
+ * `completions.ts`), and a store from another version is rejected rather than
+ * served.
+ */
+export function daemonCompletionsPath(runtimeDir: string): string {
+	return path.join(runtimeDir, NAMES.completions);
+}
+
+/**
+ * Resolve the private runtime directory ONE SESSION's launches use.
+ *
+ * A sibling of the project layout (never inside it), prefixed so it cannot collide with any
+ * project key: without the prefix a hostile or hex-shaped session id could land a session
+ * broker on another project's socket. Two sessions in one project therefore get two brokers,
+ * two token files, and two supervised-process sets, which is the whole point of the scope.
+ *
+ * The name is a fixed 24 characters because the Unix socket goes inside it and `sun_path` is
+ * 108 bytes on Linux and 104 on macOS, counting the whole absolute path. A readable session
+ * segment cost up to 48 more and pushed a realistic socket past both limits, at which point
+ * `bind` fails with ENAMETOOLONG and the scope cannot start a broker at all. The project
+ * layout next door is a bare hash for the same reason.
+ */
+export function daemonSessionRuntimeDir(
+	projectDir: string,
+	sessionId: string,
+	configRoot: string = getConfigRootDir(),
+): string {
+	// Hashed together, not concatenated: one 16-hex tag separates two sessions in one project
+	// AND one session id reached from two projects, in the width of a single key.
+	const tag = Bun.hash
+		.wyhash(`${projectKey(projectDir)}\0${sessionId}`)
+		.toString(16)
+		.padStart(16, "0");
+	return path.join(configRoot, NAMES.brokerRoot, `session-${tag}`);
+}
+
+/**
+ * Resolve the Unix socket or Windows named pipe used by one broker.
+ *
+ * The Windows pipe cannot key off the project alone any more: a session-scoped broker and its
+ * project's broker would otherwise fight over one name. The canonical project layout keeps its
+ * historical pipe (basename equals the project key), so an upgrade neither orphans a running
+ * project broker nor changes the name existing clients compute; every other runtime directory
+ * — session scopes today — hashes its own pipe under a distinct prefix.
+ */
 export function daemonBrokerEndpoint(projectDir: string, runtimeDir: string): string {
 	if (process.platform === "win32") {
-		return `\\\\.\\pipe\\veyyon-daemon-${projectKey(projectDir)}`;
+		const base = path.basename(path.resolve(runtimeDir));
+		if (base === projectKey(projectDir)) return `\\\\.\\pipe\\veyyon-daemon-${base}`;
+		const scoped = Bun.hash.wyhash(path.resolve(runtimeDir)).toString(16).padStart(16, "0");
+		return `\\\\.\\pipe\\veyyon-daemon-session-${scoped}`;
 	}
 	return path.join(runtimeDir, NAMES.brokerSocket);
 }
@@ -122,19 +174,6 @@ export function daemonPresenceEntryPath(presenceDir: string, id: string): string
 /** The directory holding one entry per supervised process in a project. */
 export function managedDaemonsRoot(runtimeDir: string): string {
 	return path.join(runtimeDir, NAMES.managedRoot);
-}
-
-/**
- * The retained completion records of a project's supervised processes.
- *
- * Lives beside the per-daemon directories rather than inside one: a record
- * outlives the daemon it describes, including the daemon's name being reused
- * and its directory rewritten by a later start. The file is versioned (see
- * `completions.ts`), and a store from another version is rejected rather than
- * served.
- */
-export function daemonCompletionsPath(runtimeDir: string): string {
-	return path.join(runtimeDir, NAMES.completions);
 }
 
 /** The directory one supervised process keeps its log and metadata in. */

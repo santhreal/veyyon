@@ -792,7 +792,8 @@ lsp:
 | Key | Type | Default | Notes |
 |---|---|---|---|
 | `bash.enabled` | boolean | `true` | Enable the bash tool. |
-| `launch.enabled` | boolean | `true` | Enable the launch tool for shared long-running project processes. |
+| `launch.enabled` | boolean | `true` | Enable the launch tool for long-running processes. |
+| `launch.sharedCrossSession` | boolean | `false` | Share launched processes across every session in this project. Off, a launch is supervised by a session-private broker, ends when the session does, and no other session can see or stop it. `persist: true` and `detached: true` starts land in the shared scope either way, and `list` shows both scopes. |
 | `bash.autoBackground.enabled` | boolean | `true` | Auto-background long-running commands. You can also background the running command yourself with the composer's background key, whatever this is set to. |
 | `bash.autoBackground.thresholdMs` | number | `300000` | Max wall-clock time a bash call runs in the foreground before it is moved to a background job. Frees the model and protects the prompt cache. Fires on elapsed time even while output streams. `0` backgrounds immediately. |
 | `bash.stallDetection.enabled` | boolean | `false` | Watch for a bash call that stops producing output; background it and tell the model it may be stuck so it can cancel a truly hung command. Recommends, never force-kills. |

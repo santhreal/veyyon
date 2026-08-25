@@ -292,7 +292,20 @@ export const TOOLS_SETTINGS = {
 			tab: "tools",
 			group: "Available Tools",
 			label: "Launch",
-			description: "Enable the launch tool for supervising shared long-running project processes",
+			description: "Enable the launch tool for supervising long-running processes",
+		},
+	},
+
+	"launch.sharedCrossSession": {
+		type: "boolean",
+		default: false,
+		ui: {
+			tab: "tools",
+			group: "Available Tools",
+			label: "Launch Shared Cross-Session",
+			description:
+				"Let launched processes be visible and controllable from every veyyon session in this project instead of only the session that started them",
+			condition: "launchEnabled",
 		},
 	},
 	"launch.cleanupWaitMs": {

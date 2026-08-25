@@ -18,10 +18,18 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 import { enterIsolatedConfigRoot, type IsolatedConfigRoot } from "../../../utils/test/helpers/isolated-config-root";
 import { resetSettingsForTest, Settings } from "../../src/config/settings";
 import { SETTINGS_SCHEMA } from "../../src/config/settings-schema";
-import { createDaemonBrokerClient, type DaemonBrokerClient } from "../../src/launch/client";
+import * as clientModule from "../../src/launch/client";
+import {
+	closeDaemonClients,
+	createDaemonBrokerClient,
+	type DaemonBrokerClient,
+	daemonClientForProject,
+	daemonClientForSession,
+} from "../../src/launch/client";
 import { managedDaemonDir, managedDaemonMetaPath } from "../../src/launch/paths";
 import type { DaemonSpec } from "../../src/launch/protocol";
 import { getSettingDef } from "../../src/modes/components/settings-defs";
@@ -453,4 +461,109 @@ describe("an exited launch process is purged after the configured cleanup wait",
 
 		resetSettingsForTest();
 	});
+});
+
+/**
+ * Every entry point that hands out a broker resolves `launch.cleanupWaitMs`
+ * from settings when the caller passes none.
+ *
+ * WHY: the setting was resolved at one call site (`daemonClientForProject`).
+ * The session-private scope added a second entry point that only forwarded
+ * options, so a session-scoped launch ignored the setting and retained corpses
+ * forever while the settings screen showed the knob working. Every test above
+ * pins the wait explicitly, so none of them can see it.
+ *
+ * WHAT CLASS THIS CLOSES: a broker scope that never reads the setting. The
+ * export sweep turns red when a new entry point appears, so a third scope
+ * cannot be added without a decision.
+ *
+ * WHAT IT DOES NOT CATCH: a wrong value that is still non-default, and the
+ * broker-side purge itself, which the suite above owns.
+ */
+describe("every broker scope reads the configured cleanup wait", () => {
+	const quickExit = `console.log("READY"); setTimeout(() => process.exit(0), 50);\n`;
+
+	/** Start a process that ends on its own and return once the broker reports it exited. */
+	async function startAndAwaitExit(client: DaemonBrokerClient, name: string): Promise<void> {
+		const scriptPath = path.join(client.projectDir, `${name}.ts`);
+		await fs.writeFile(scriptPath, quickExit);
+		const spec: DaemonSpec = {
+			name,
+			application: process.execPath,
+			args: [scriptPath],
+			env: {},
+			cwd: client.projectDir,
+			pty: false,
+			ready: { log: "READY", timeoutMs: 5_000 },
+			restart: "no",
+			persist: false,
+			detached: false,
+		};
+		const started = await client.request({ op: "start", spec });
+		if (started.op !== "start") throw new Error("Unexpected start result");
+		const exited = await waitUntil(async () => {
+			const list = await client.request({ op: "list" });
+			if (list.op !== "list") return false;
+			return list.daemons.find(d => d.name === name)?.state === "exited";
+		}, 5_000);
+		expect(exited).toBeTrue();
+	}
+
+	async function isListed(client: DaemonBrokerClient, name: string): Promise<boolean> {
+		const list = await client.request({ op: "list" });
+		if (list.op !== "list") throw new Error("Unexpected list result");
+		return list.daemons.some(d => d.name === name);
+	}
+
+	it("pins the module's broker entry points, so a new scope must record a decision", () => {
+		const exported = Object.entries(clientModule)
+			.filter(([, value]) => typeof value === "function")
+			.map(([name]) => name)
+			.sort();
+		expect(exported).toEqual([
+			"closeDaemonClients",
+			"createDaemonBrokerClient",
+			"daemonClientForProject",
+			"daemonClientForSession",
+			"smokeTestDaemonBroker",
+		]);
+	});
+
+	it("purges through every scope when the setting is short and through none when it is zero", async () => {
+		const scopes: Record<string, (projectDir: string) => Promise<DaemonBrokerClient>> = {
+			create: projectDir => createDaemonBrokerClient(projectDir, { idleGraceMs: 10_000 }),
+			project: projectDir => daemonClientForProject(projectDir, { idleGraceMs: 10_000 }),
+			session: projectDir => daemonClientForSession(projectDir, "scope-probe", { idleGraceMs: 10_000 }),
+		};
+
+		for (const [wait, purges] of [
+			[300, true],
+			[0, false],
+		] as const) {
+			resetSettingsForTest();
+			await Settings.init({ inMemory: true, overrides: { "launch.cleanupWaitMs": wait } });
+			for (const [scope, open] of Object.entries(scopes)) {
+				const projectDir = await tempDir(`launch-scope-${scope}-${wait}-`);
+				const client = await open(projectDir);
+				const name = `scope-${scope}`;
+				try {
+					await startAndAwaitExit(client, name);
+					// The exit is already observed, so absence now means purged and presence
+					// after a wait several times the TTL means the setting never arrived.
+					let gone: boolean;
+					if (purges) {
+						gone = await waitUntil(async () => !(await isListed(client, name)), 5_000);
+					} else {
+						await sleep(900);
+						gone = !(await isListed(client, name));
+					}
+					expect(`${scope}@${wait}ms purged=${gone}`).toBe(`${scope}@${wait}ms purged=${purges}`);
+				} finally {
+					await shutdown(client);
+				}
+			}
+			await closeDaemonClients();
+		}
+		resetSettingsForTest();
+	}, 60_000);
 });

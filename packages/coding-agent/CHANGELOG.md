@@ -10,6 +10,8 @@
 
 ### Added
 
+- Launched processes are private to the session that started them, except `persist: true` and `detached: true` starts, which stay in the project-wide scope.
+- Added `launch.sharedCrossSession` (default off), which returns every launch to the project-wide scope that all sessions share.
 - `edit.critiqueCodeMutations` prompts a bounded self-review before finalization after one turn modifies at least two distinct code files.
 - Configurable `launch.cleanupWaitMs` setting (default 15 minutes) purges exited launch daemon records from memory and disk after a retention TTL.
 - Exporting a session to HTML streams the snapshot into the output file instead of assembling the whole document in memory, taking an 80MiB transcript from 1007MiB of peak resident memory to 532MiB with byte-identical output.
@@ -43,6 +45,7 @@
 
 ### Fixed
 
+- A daemon broker client whose creation failed is dropped from the per-process cache, so the next `launch` op in that project opens a new connection instead of replaying the original error for the life of the session, and process exit closes every client that did open even when one is still failing to open.
 - With Language Servers off, which is the default, the write and edit tools no longer start a language server to inject diagnostics, format the file, or notify the workspace that a file changed, including on the ACP client-bridge write path.
 - `veyyon plugin install --dry-run` now resolves the target and fails when it cannot be installed, instead of exiting 0 with "Would install" for an unpublished npm name or a missing git repository, and reports the name and version the target resolves to rather than a `0.0.0-dryrun` placeholder ([#911](https://github.com/santhreal/veyyon/issues/911)).
 - `veyyon plugin uninstall` now removes a plugin installed from a local path, which was permanently unremovable because uninstall read only `plugins/package.json` dependencies while linking registers the plugin in the runtime config and `node_modules`; the linked directory itself is left untouched.

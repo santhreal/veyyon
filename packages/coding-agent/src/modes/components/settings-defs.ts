@@ -233,6 +233,9 @@ function whenSettingsSay(read: () => boolean): boolean {
 
 const CONDITIONS: Record<string, () => boolean> = {
 	hasImageProtocol: () => !!TERMINAL.imageProtocol,
+	// Sharing launched processes across sessions only means something while the
+	// launch tool exists at all; hidden entirely while it is off.
+	launchEnabled: () => whenSettingsSay(() => Settings.instance.get("launch.enabled") === true),
 	advisorEnabled: () => whenSettingsSay(() => Settings.instance.get("advisor.enabled") === true),
 	argotEnabled: () => whenSettingsSay(() => Settings.instance.get("argot.enabled") === true),
 	autoQaEnabled: () => whenSettingsSay(() => Settings.instance.get("dev.autoqa") === true),
@@ -300,7 +303,6 @@ const CONDITIONS: Record<string, () => boolean> = {
 	lspEnabled: () => whenSettingsSay(() => Settings.instance.get("lsp.enabled") === true),
 	browserEnabled: () => whenSettingsSay(() => Settings.instance.get("browser.enabled") === true),
 	githubEnabled: () => whenSettingsSay(() => Settings.instance.get("github.enabled") === true),
-	launchEnabled: () => whenSettingsSay(() => Settings.instance.get("launch.enabled") === true),
 	// The two TTLs read both toggles: a window on a cache nothing writes to is as
 	// empty a knob as one on a tool nothing runs.
 	githubCacheEnabled: () =>

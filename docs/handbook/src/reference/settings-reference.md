@@ -459,7 +459,8 @@ veyyon config get compaction.threshold
 | `astGrep.enabled` | AST Grep | boolean | `true` | Enable the ast_grep tool for structural AST search. |
 | `astEdit.enabled` | AST Edit | boolean | `true` | Enable the ast_edit tool for structural AST rewrites. |
 | `debug.enabled` | Debug | boolean | `true` | Enable the debug tool for DAP-based debugging. |
-| `launch.enabled` | Launch | boolean | `true` | Enable the launch tool for supervising shared long-running project processes. |
+| `launch.enabled` | Launch | boolean | `true` | Enable the launch tool for supervising long-running processes. |
+| `launch.sharedCrossSession` | Launch Shared Cross-Session | boolean | `false` | Let launched processes be visible and controllable from every veyyon session in this project instead of only the session that started them. |
 | `speechgen.enabled` | Speech Generation | boolean | `false` | Enable the tts tool for on-device (Kokoro) or xAI Grok Voice speech-file synthesis. |
 | `generate_image.enabled` | Generate Image | boolean | `false` | Enable the generate_image tool for text-to-image generation and editing. |
 | `inspect_image.enabled` | Inspect Image | boolean | `false` | Enable the inspect_image tool, delegating image understanding to a vision-capable model. |
@@ -879,4 +880,4 @@ These keys are not in `/settings`. Some are state veyyon writes for itself (a sc
 | `tui.maxInlineImageRows` | number | `20` |  |
 | `tui.maxInlineImages` | number | `8` |  |
 
-349 settings in /settings, 119 configuration-file keys, 468 in all.
+350 settings in /settings, 119 configuration-file keys, 469 in all.
