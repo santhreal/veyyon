@@ -19,7 +19,7 @@ import { CommandController } from "@veyyon/coding-agent/modes/controllers/comman
 import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { BackgroundSessions } from "@veyyon/coding-agent/session/background-sessions";
+import { BackgroundSessions, SHUTDOWN_DRAIN_TIMEOUT_MS } from "@veyyon/coding-agent/session/background-sessions";
 
 function createContainer() {
 	return {
@@ -239,7 +239,7 @@ describe("a handed-off session", () => {
 		await first.settled;
 	});
 
-	it("drain resolves even when a turn fails to settle cleanly", async () => {
+	it("drain resolves when a turn throws during settle", async () => {
 		const session = makeSession("session-a", true);
 		const broken = {
 			...session,
@@ -253,6 +253,28 @@ describe("a handed-off session", () => {
 		await keeper.drain();
 
 		expect(keeper.size).toBe(0);
+	});
+
+	it("drain terminates and abandons a session whose turn never settles", async () => {
+		const session = makeSession("session-a", true);
+		const hung = {
+			...session,
+			waitForIdle: () => new Promise<void>(() => {}),
+		};
+		const keeper = BackgroundSessions.global();
+
+		keeper.keep(hung as unknown as AgentSession);
+		const start = Date.now();
+		await keeper.drain(50);
+		const elapsed = Date.now() - start;
+
+		expect(elapsed).toBeGreaterThanOrEqual(40);
+		expect(elapsed).toBeLessThan(1_000);
+		expect(keeper.size).toBe(0);
+	});
+
+	it("bounds shutdown drain to the standard shutdown timeout", () => {
+		expect(SHUTDOWN_DRAIN_TIMEOUT_MS).toBe(5_000);
 	});
 });
 

@@ -20,6 +20,14 @@ import { logger } from "@veyyon/utils";
 import type { AgentSession } from "./agent-session";
 
 /**
+ * How long shutdown waits for handed-off background sessions to settle and flush
+ * their transcripts before abandoning them. Matches SHUTDOWN_DISPOSE_TIMEOUT_MS:
+ * long enough for an in-flight turn to flush, short enough that a wedged turn
+ * cannot strand quit forever.
+ */
+export const SHUTDOWN_DRAIN_TIMEOUT_MS = 5_000;
+
+/**
  * Creates the session the UI moves to when the displayed one is handed off.
  * Built once from the options the process launched with, so a session started
  * this way carries the same model, prompts, tools and extensions.
@@ -98,14 +106,23 @@ export class BackgroundSessions {
 	}
 
 	/**
-	 * Wait for the turns handed off before this call. Terminates by
-	 * construction: it awaits one snapshot, and a `settled` promise never
-	 * rejects. A handoff that lands during the drain is deliberately not waited
-	 * on — a shutdown that re-armed itself on newly kept work would never
-	 * finish, and nothing can be submitted to a kept session anyway.
+	 * Wait for the turns handed off before this call, bounded by `timeoutMs`.
+	 * A session that has not settled within the bound is abandoned so shutdown
+	 * can proceed.
 	 */
-	async drain(): Promise<void> {
-		await Promise.all([...this.#kept.values()].map(entry => entry.settled));
+	async drain(timeoutMs: number = SHUTDOWN_DRAIN_TIMEOUT_MS): Promise<void> {
+		if (this.#kept.size === 0) return;
+		const settled = Promise.all([...this.#kept.values()].map(entry => entry.settled));
+		let timer: NodeJS.Timeout | undefined;
+		const timeout = new Promise<void>(resolve => {
+			timer = setTimeout(resolve, timeoutMs);
+		});
+		try {
+			await Promise.race([settled, timeout]);
+		} finally {
+			clearTimeout(timer);
+			this.#kept.clear();
+		}
 	}
 
 	async #settle(session: AgentSession, sessionId: string): Promise<void> {
