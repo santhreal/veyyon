@@ -284,9 +284,11 @@ describe("a picture the terminal cannot draw leaves a row that says so", () => {
 		// A block whose own body never prints the path, so the file name in the
 		// row can only have come from the placeholder itself.
 		const rows = await renderBlock("a_tool_with_no_renderer", { args: {} });
-		// The row wraps on a narrow block, so the facts are read off the block
-		// text rather than off one line of it.
-		const row = rows.join(" ").replace(/\s+/gu, " ");
+		// The row wraps on a narrow block, and an unbroken path without spaces can
+		// break at any column, so the facts are read off the continuous block text
+		// with rail and wrap artifacts stripped rather than assuming the file name
+		// fits unbroken on a single line.
+		const row = rows.map(r => r.replace(/^\s*\S\s?/u, "").trimEnd()).join("");
 
 		expect(row).toContain("[image not shown, no image protocol]");
 		expect(row).toContain("board.png");
