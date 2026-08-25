@@ -439,51 +439,52 @@ export function pruneToolOutputs(entries: SessionEntry[], config: PruneConfig = 
 
 	const boundaryIndex = resolveCompactionBoundaryIndex(entries, config.keepBoundaryId);
 	const cacheWarmSuffixTokens = config.cacheWarmSuffixTokens;
-	// All-message suffix per index, only when the cache guard is armed.
-	const messageSuffix = cacheWarmSuffixTokens === undefined ? undefined : computeMessageSuffixTokens(entries);
+	const trackSuffix = cacheWarmSuffixTokens !== undefined;
+	let suffixSum = 0;
 
 	for (let i = entries.length - 1; i >= 0; i--) {
 		const entry = entries[i];
 		const message = getToolResultMessage(entry);
-		if (!message) continue;
+		const inWarmPrefix = trackSuffix && suffixSum > (cacheWarmSuffixTokens as number);
 
-		const tokens = estimateTokens(message as AgentMessage);
-		const isProtected = isProtectedToolResult(message, toolCallsById.get(message.toolCallId), config.protectedTools);
+		if (message) {
+			const tokens = estimateTokens(message as AgentMessage);
+			const isProtected = isProtectedToolResult(
+				message,
+				toolCallsById.get(message.toolCallId),
+				config.protectedTools,
+			);
 
-		if (message.prunedAt !== undefined) {
-			accumulatedTokens += tokens;
-			continue;
+			if (message.prunedAt !== undefined) {
+				accumulatedTokens += tokens;
+			} else if (inWarmPrefix || i < boundaryIndex) {
+				accumulatedTokens += tokens;
+			} else {
+				// Superseded and useless results bypass the age-based protect window
+				// (a stale re-read copy, or a result the tool flagged as uninformative,
+				// is dead weight at any age) — but only within the cache-warm tail: the
+				// guard above already excluded deeper, still-cached copies.
+				const superseded = supersededMessages?.has(message) ?? false;
+				const useless = uselessMessages?.has(message) ?? false;
+				const tooSmall = tokens < MIN_PRUNE_TOKENS;
+				if (!superseded && !useless && (accumulatedTokens < config.protectTokens || isProtected || tooSmall)) {
+					accumulatedTokens += tokens;
+				} else {
+					candidates.push({ entry: entry as SessionMessageEntry, tokens, superseded, useless });
+					// Dead weight being pruned away (superseded/useless) must not consume
+					// the protectTokens window of the real results retained behind it.
+					if (!superseded && !useless) accumulatedTokens += tokens;
+				}
+			}
 		}
 
-		// Prompt-cache guard: a result whose all-message suffix exceeds the
-		// warm-cache window sits in the already-sent cached prefix — mutating it
-		// re-writes the whole suffix (cacheWrite premium). Entries before the
-		// compaction boundary are summarized away (never sent). Both are skipped
-		// before any prune decision, so superseded/useless cannot reach a deep,
-		// still-cached copy; compaction/shake reclaim those when they rebuild.
-		const inWarmPrefix =
-			messageSuffix !== undefined && cacheWarmSuffixTokens !== undefined && messageSuffix[i] > cacheWarmSuffixTokens;
-		if (inWarmPrefix || i < boundaryIndex) {
-			accumulatedTokens += tokens;
-			continue;
+		// Update suffixSum for ALL message entries (not just tool results) so the
+		// next iteration's inWarmPrefix check sees the true suffix at its index.
+		// estimateTokens is WeakMap-cached, so the second call for tool-result
+		// entries (already called above) is O(1).
+		if (trackSuffix && entry.type === "message") {
+			suffixSum += estimateTokens(entry.message as AgentMessage);
 		}
-
-		// Superseded and useless results bypass the age-based protect window
-		// (a stale re-read copy, or a result the tool flagged as uninformative,
-		// is dead weight at any age) — but only within the cache-warm tail: the
-		// guard above already excluded deeper, still-cached copies.
-		const superseded = supersededMessages?.has(message) ?? false;
-		const useless = uselessMessages?.has(message) ?? false;
-		const tooSmall = tokens < MIN_PRUNE_TOKENS;
-		if (!superseded && !useless && (accumulatedTokens < config.protectTokens || isProtected || tooSmall)) {
-			accumulatedTokens += tokens;
-			continue;
-		}
-
-		candidates.push({ entry: entry as SessionMessageEntry, tokens, superseded, useless });
-		// Dead weight being pruned away (superseded/useless) must not consume
-		// the protectTokens window of the real results retained behind it.
-		if (!superseded && !useless) accumulatedTokens += tokens;
 	}
 
 	for (const candidate of candidates) {
