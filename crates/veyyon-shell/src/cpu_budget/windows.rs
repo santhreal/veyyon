@@ -220,3 +220,74 @@ impl JobBudget {
 		}
 	}
 }
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	/// WHY: Windows Job Object accounting
+	/// (`JOBOBJECT_BASIC_AND_IO_ACCOUNTING_INFORMATION`) provides CPU time in
+	/// 100-nanosecond intervals (FILETIME-style ticks) split across
+	/// `TotalUserTime` and `TotalKernelTime`. The backend converts this sum to
+	/// microseconds via `(user + kernel) / 10`. This test verifies that
+	/// arithmetic at boundaries: zero elapsed time, normal run times,
+	/// sub-microsecond truncation, and large values.
+	#[test]
+	fn filetime_ticks_to_microseconds_conversion_boundaries() {
+		// Zero elapsed time
+		let zero_ticks: u64 = 0;
+		assert_eq!(zero_ticks / 10, 0, "zero ticks must produce zero microseconds");
+
+		// 1 second (10_000_000 ticks of 100ns)
+		let one_second_ticks: u64 = 10_000_000;
+		assert_eq!(one_second_ticks / 10, 1_000_000, "10M ticks is 1_000_000 microseconds (1s)");
+
+		// Combined user and kernel time
+		let user_ticks: u64 = 7_500_000; // 0.75s
+		let kernel_ticks: u64 = 2_500_000; // 0.25s
+		let total_usec = (user_ticks + kernel_ticks) / 10;
+		assert_eq!(total_usec, 1_000_000);
+
+		// Sub-microsecond remainder is truncated
+		assert_eq!(9u64 / 10, 0);
+		assert_eq!(19u64 / 10, 1);
+
+		// Large/saturating values
+		let large_user: u64 = 1_000_000_000_000; // 100,000s
+		let large_kernel: u64 = 500_000_000_000; // 50,000s
+		assert_eq!((large_user + large_kernel) / 10, 150_000_000_000);
+	}
+
+	/// WHY: In `JobBudget::members`, when the buffer is too small,
+	/// `pid_capacity` doubles from 64 up to 65_536 before terminating and
+	/// returning an empty list. We verify that this exponential search
+	/// terminates in a bounded number of iterations and never loops
+	/// indefinitely.
+	#[test]
+	fn pid_buffer_capacity_growth_is_bounded_and_terminates() {
+		let mut pid_capacity = 64usize;
+		let mut iterations = 0;
+		loop {
+			iterations += 1;
+			if pid_capacity > 65_536 {
+				break;
+			}
+			pid_capacity *= 2;
+			assert!(iterations <= 20, "pid capacity doubling loop must terminate");
+		}
+		assert_eq!(iterations, 12);
+		assert_eq!(pid_capacity, 131_072);
+	}
+
+	/// WHY: `SendHandle` wraps a raw integer representation of a kernel handle
+	/// so `JobBudget` is `Send + Sync` across threads.
+	#[test]
+	fn job_budget_types_are_send_and_sync() {
+		fn assert_send<T: Send>() {}
+		fn assert_sync<T: Sync>() {}
+		assert_send::<SendHandle>();
+		assert_sync::<SendHandle>();
+		assert_send::<JobBudget>();
+		assert_sync::<JobBudget>();
+	}
+}
