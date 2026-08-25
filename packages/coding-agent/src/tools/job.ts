@@ -495,10 +495,18 @@ export class JobTool implements AgentTool<typeof jobSchema, JobToolDetails> {
 		});
 		const jobResults = this.#snapshotJobs(uniqueJobs);
 
-		manager.acknowledgeDeliveries(jobResults.filter(j => j.status !== "running").map(j => j.id));
-
-		const completed = jobResults.filter(j => j.status !== "running");
-		const running = jobResults.filter(j => j.status === "running");
+		const completed: typeof jobResults = [];
+		const running: typeof jobResults = [];
+		const ackIds: string[] = [];
+		for (const j of jobResults) {
+			if (j.status !== "running") {
+				completed.push(j);
+				ackIds.push(j.id);
+			} else {
+				running.push(j);
+			}
+		}
+		manager.acknowledgeDeliveries(ackIds);
 
 		const lines: string[] = [];
 

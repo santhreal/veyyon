@@ -188,9 +188,14 @@ function renderCollapsedLine(runtime: AutoresearchRuntime, state: ExperimentStat
 		return parts.join("");
 	}
 	const current = currentResults(state.results, state.currentSegment);
-	const kept = current.filter(result => result.status === "keep").length;
-	const crashed = current.filter(result => result.status === "crash").length;
-	const checksFailed = current.filter(result => result.status === "checks_failed").length;
+	let kept = 0;
+	let crashed = 0;
+	let checksFailed = 0;
+	for (const result of current) {
+		if (result.status === "keep") kept++;
+		else if (result.status === "crash") crashed++;
+		else if (result.status === "checks_failed") checksFailed++;
+	}
 	const best = findBestResult(state);
 	const archivedRuns = Math.max(0, state.results.length - current.length);
 	const parts = [

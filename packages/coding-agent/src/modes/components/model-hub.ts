@@ -627,11 +627,13 @@ export class ModelHubComponent implements Component {
 		for (const item of matches) {
 			counts.set(item.provider, (counts.get(item.provider) ?? 0) + 1);
 		}
-		const recentSelectors = new Set(this.#recentItems.map(item => item.selector));
-		this.#recentSearchCount = matches.reduce(
-			(total, item) => total + (recentSelectors.has(item.selector) ? 1 : 0),
-			0,
-		);
+		const recentSelectors = new Set<string>();
+		for (const ri of this.#recentItems) recentSelectors.add(ri.selector);
+		let recentSearchCount = 0;
+		for (const item of matches) {
+			if (recentSelectors.has(item.selector)) recentSearchCount++;
+		}
+		this.#recentSearchCount = recentSearchCount;
 		this.#searchTotal = matches.length;
 		this.#searchCounts = counts;
 		this.#composeEntries();
