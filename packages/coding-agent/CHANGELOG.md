@@ -73,6 +73,7 @@
 - The output-block line flattening replaces `.flatMap(l => l.split("\n"))` with a `for` loop, avoiding a callback allocation per output block render.
 - `renderStatusLine` replaces `.map().filter()` on the meta array with a single `for` loop, avoiding two throwaway arrays per status line render.
 - The `convertToLlm` file-mention partitioning merges two `.filter()` calls (text files, image files) into a single `for` loop, avoiding a throwaway array per file-mention message during per-turn conversion.
+- `convertImageBearingCustomMessage` merges two `.filter()` calls (text blocks, image blocks) into a single `for` loop, avoiding a throwaway array per image-bearing custom message during conversion.
 
 ### Added
 

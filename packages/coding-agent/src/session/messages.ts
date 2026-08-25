@@ -797,8 +797,12 @@ function isUserInvokedSkillPrompt(message: CustomMessage): boolean {
 function convertImageBearingCustomMessage(message: CustomMessage | HookMessage): Message[] | undefined {
 	if (!isCustomMessageContent(message.content)) return undefined;
 	if (typeof message.content === "string") return undefined;
-	const textBlocks = message.content.filter((content): content is TextContent => content.type === "text");
-	const imageBlocks = message.content.filter((content): content is ImageContent => content.type === "image");
+	const textBlocks: TextContent[] = [];
+	const imageBlocks: ImageContent[] = [];
+	for (const content of message.content) {
+		if (content.type === "text") textBlocks.push(content);
+		else if (content.type === "image") imageBlocks.push(content);
+	}
 	if (imageBlocks.length === 0) return undefined;
 
 	const converted: Message[] = [];
