@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as tls from "node:tls";
-import { Effort } from "@veyyon/ai";
+import { Effort } from "@veyyon/catalog/effort";
 import {
 	applyClaudeToolPrefix,
 	buildAnthropicClientOptions,

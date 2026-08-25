@@ -252,7 +252,9 @@ export class AsyncJobManager {
 				job.status = "completed";
 				job.resultText = text;
 				this.#enqueueDelivery(id, text);
-				this.#scheduleEviction(id);
+				if (!this.isDeliverySuppressed(id) || this.#retentionMs > 0) {
+					this.#scheduleEviction(id);
+				}
 			} catch (error) {
 				if (job.status === "cancelled") {
 					job.errorText = errorMessage(error);
@@ -263,7 +265,9 @@ export class AsyncJobManager {
 				job.status = "failed";
 				job.errorText = errorText;
 				this.#enqueueDelivery(id, errorText);
-				this.#scheduleEviction(id);
+				if (!this.isDeliverySuppressed(id) || this.#retentionMs > 0) {
+					this.#scheduleEviction(id);
+				}
 			}
 		})();
 
@@ -428,11 +432,9 @@ export class AsyncJobManager {
 		if (this.#retentionMs <= 0) {
 			for (const jobId of uniqueJobIds) {
 				const job = this.#jobs.get(jobId);
-				const deliveryInFlight = this.#inFlightDeliveries.some(delivery => delivery.jobId === jobId);
-				if (job && job.status !== "running" && !deliveryInFlight) {
-					this.#suppressedDeliveries.delete(jobId);
+				if (job && job.status !== "running" && !this.#watchedJobs.has(jobId)) {
+					this.#scheduleEviction(jobId);
 				}
-				this.#scheduleEviction(jobId);
 			}
 		}
 		return before - this.#deliveries.length;
@@ -580,33 +582,31 @@ export class AsyncJobManager {
 		return candidate;
 	}
 
+	#purgeJob(jobId: string): void {
+		this.#jobs.delete(jobId);
+		this.#suppressedDeliveries.delete(jobId);
+		this.#watchedJobs.delete(jobId);
+	}
+
 	#scheduleEviction(jobId: string): void {
 		if (this.#disposed) return;
 		const job = this.#jobs.get(jobId);
 		if (job?.status === "running") return;
 		if (this.#retentionMs <= 0) {
 			if (
-				this.#suppressedDeliveries.has(jobId) ||
 				this.#watchedJobs.has(jobId) ||
 				this.#deliveries.some(delivery => delivery.jobId === jobId) ||
 				this.#inFlightDeliveries.some(delivery => delivery.jobId === jobId)
 			) {
 				return;
 			}
-			this.#jobs.delete(jobId);
-			this.#suppressedDeliveries.delete(jobId);
-			this.#watchedJobs.delete(jobId);
+			this.#purgeJob(jobId);
 			return;
 		}
-		const existing = this.#evictionTimers.get(jobId);
-		if (existing) {
-			clearTimeout(existing);
-		}
+		clearTimeout(this.#evictionTimers.get(jobId));
 		const timer = setTimeout(() => {
 			this.#evictionTimers.delete(jobId);
-			this.#jobs.delete(jobId);
-			this.#suppressedDeliveries.delete(jobId);
-			this.#watchedJobs.delete(jobId);
+			this.#purgeJob(jobId);
 		}, this.#retentionMs);
 		timer.unref();
 		this.#evictionTimers.set(jobId, timer);
@@ -749,13 +749,6 @@ export class AsyncJobManager {
 			} finally {
 				const index = this.#inFlightDeliveries.indexOf(delivery);
 				if (index !== -1) this.#inFlightDeliveries.splice(index, 1);
-				if (
-					this.#retentionMs <= 0 &&
-					this.#suppressedDeliveries.has(delivery.jobId) &&
-					this.#jobs.get(delivery.jobId)?.status !== "running"
-				) {
-					this.#suppressedDeliveries.delete(delivery.jobId);
-				}
 				if (this.#retentionMs <= 0) {
 					this.#scheduleEviction(delivery.jobId);
 				}

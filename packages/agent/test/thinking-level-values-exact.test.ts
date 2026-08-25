@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from "bun:test";
 import { ThinkingLevel } from "@veyyon/agent-core/thinking";
-import { Effort } from "@veyyon/ai";
+import { Effort } from "@veyyon/catalog/effort";
 
 describe("ThinkingLevel values exact", () => {
 	it("control plane strings", () => {
