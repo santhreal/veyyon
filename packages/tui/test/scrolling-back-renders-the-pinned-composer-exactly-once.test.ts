@@ -37,9 +37,9 @@ class Transcript implements Component {
 
 class PinnedComposer implements Component, Focusable {
 	focused = true;
-	lines: string[];
+	lines: readonly string[];
 
-	constructor(lines: string[] = ["> [PINNED_COMPOSER_INPUT]" + CURSOR_MARKER]) {
+	constructor(lines: readonly string[] = ["> [PINNED_COMPOSER_INPUT]" + CURSOR_MARKER]) {
 		this.lines = lines;
 	}
 
