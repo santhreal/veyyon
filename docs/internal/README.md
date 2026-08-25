@@ -31,6 +31,7 @@ New here? Read [onboarding](onboarding.md) and [testing](testing.md) first.
 | [releasing.md](releasing.md) | The only release page: cut, what runs, what it produces, verify, recover, roll back. |
 | [deployment.md](deployment.md) | Website (Cloudflare Pages) and install-script deployment. |
 | [agent-workflow.md](agent-workflow.md) | How an autonomous agent works this repo and ships updates. |
+| [review.md](review.md) | How to review a pull request: provenance, security, correctness, complexity, maintainability. |
 | [startup-budget.md](startup-budget.md) | What runs before the first frame, the measured baseline, and how to measure it again. |
 | [repo-gates.md](repo-gates.md) | Which gate runs in which workflow, and the cost measurements behind that split. |
 | [bun-surface.md](bun-surface.md) | The frozen Bun surface: node/fs/stream/spawn conventions, and worker hosting. |
@@ -155,4 +156,4 @@ Per-model tool-call wire-format notes live in [toolconv/](toolconv/) (Anthropic,
 
 Step-by-step runbooks for when something breaks live in [runbooks/](runbooks/).
 
-*Verified against `7732a382f` on 2026-08-23.*
+*Verified against `2402701c9` on 2026-08-24.*

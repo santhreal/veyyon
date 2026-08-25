@@ -90,6 +90,10 @@ fn elision_line_count(line: &str) -> Option<usize> {
 #[must_use]
 pub fn is_minimizer_annotation(line: &str) -> bool {
 	let trimmed = line.trim();
+	// `contract::is_result_header`, contract.rs.
+	if crate::minimizer::contract::is_result_header(trimmed) {
+		return true;
+	}
 	// `flush_repeated`, this file.
 	if trimmed.ends_with(')') && trimmed.contains(REPEAT_OPEN) {
 		return true;

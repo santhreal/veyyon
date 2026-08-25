@@ -1,20 +1,72 @@
 //! Jest, Vitest, and Playwright output filters.
 
-use crate::minimizer::{MinimizerCtx, MinimizerOutput, primitives};
+use crate::minimizer::{MinimizerCtx, MinimizerOutput, contract, primitives};
 
 #[must_use]
-pub fn filter(_ctx: &MinimizerCtx<'_>, input: &str, exit_code: i32) -> MinimizerOutput {
+pub fn filter(ctx: &MinimizerCtx<'_>, input: &str, exit_code: i32) -> MinimizerOutput {
 	let cleaned = primitives::strip_ansi(input);
-	let text = if exit_code == 0 {
-		drop_passed_lines(&cleaned)
+	let subject = test_subject(ctx);
+	let (verdict, text) = if exit_code == 0 {
+		let dropped = drop_passed_lines(&cleaned);
+		(contract::clean(subject), dropped)
 	} else {
-		failures_only(&cleaned)
+		let failures = failures_only(&cleaned);
+		let v = if let Some(n) = parse_failed_count(&failures) {
+			contract::errors(subject, n)
+		} else {
+			contract::errors_unknown(subject)
+		};
+		(v, failures)
 	};
-	if text == input {
+	let applied = contract::apply(&verdict, &text);
+	if applied == input {
 		MinimizerOutput::passthrough(input)
 	} else {
-		MinimizerOutput::transformed(text, input.len())
+		MinimizerOutput::transformed(applied, input.len())
 	}
+}
+
+fn test_subject<'a>(ctx: &'a MinimizerCtx<'_>) -> &'a str {
+	if ctx.program == "bun" {
+		"bun test"
+	} else if matches!(ctx.subcommand, Some("jest" | "vitest" | "playwright")) {
+		ctx.subcommand.unwrap()
+	} else if matches!(ctx.program, "jest" | "vitest" | "playwright") {
+		ctx.program
+	} else if let Some(sub) = ctx.subcommand {
+		sub
+	} else {
+		ctx.program
+	}
+}
+
+fn parse_failed_count(text: &str) -> Option<u64> {
+	for line in text.lines() {
+		let trimmed = line.trim();
+		for prefix in &["Tests:", "Tests", "Test Suites:", "Test Suites", "Test Files:", "Test Files"]
+		{
+			if let Some(rest) = trimmed.strip_prefix(prefix) {
+				let rest = rest.trim();
+				let mut parts = rest.split_whitespace();
+				if let Some(num_str) = parts.next()
+					&& let Ok(num) = num_str.parse::<u64>()
+					&& let Some(marker) = parts.next()
+					&& marker.starts_with("fail")
+				{
+					return Some(num);
+				}
+			}
+		}
+		if let Some((first, rest)) = trimmed.split_once(' ')
+			&& let Ok(num) = first.parse::<u64>()
+		{
+			let marker = rest.trim();
+			if marker.starts_with("fail") {
+				return Some(num);
+			}
+		}
+	}
+	None
 }
 
 fn drop_passed_lines(input: &str) -> String {
@@ -221,7 +273,26 @@ fn is_playwright_numbered_failure(trimmed: &str) -> bool {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::minimizer::MinimizerConfig;
 
+	fn ctx<'a>(program: &'a str, config: &'a MinimizerConfig) -> MinimizerCtx<'a> {
+		MinimizerCtx { program, subcommand: None, command: program, config }
+	}
+
+	#[test]
+	fn already_compact_runner_output_still_gets_a_verdict() {
+		let config = MinimizerConfig::default();
+		let clean = filter(&ctx("vitest", &config), "Tests  1 passed (1)\n", 0).text;
+		assert_eq!(clean, "[clean] vitest\nTests  1 passed (1)\n");
+
+		let failed =
+			filter(&ctx("jest", &config), "FAIL src/a.test.ts\nError: expected 1 to be 2\n", 1).text;
+		assert!(
+			failed.starts_with("[errors] jest\n"),
+			"failed compact output must still be classified: {failed:?}"
+		);
+		assert!(failed.contains("expected 1 to be 2"));
+	}
 	#[test]
 	fn drops_passed_lines() {
 		assert_eq!(drop_passed_lines("PASS a.test.ts\n✓ ok\nTests 1 passed\n"), "Tests 1 passed\n");
