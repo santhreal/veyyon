@@ -16,7 +16,7 @@
  */
 
 import * as path from "node:path";
-import { logger } from "@veyyon/utils";
+import { errorMessage, logger } from "@veyyon/utils";
 import type { AgentSession } from "./agent-session";
 
 /**
@@ -112,16 +112,17 @@ export class BackgroundSessions {
 	 */
 	async drain(timeoutMs: number = SHUTDOWN_DRAIN_TIMEOUT_MS): Promise<void> {
 		if (this.#kept.size === 0) return;
-		const settled = Promise.all([...this.#kept.values()].map(entry => entry.settled));
-		let timer: NodeJS.Timeout | undefined;
-		const timeout = new Promise<void>(resolve => {
-			timer = setTimeout(resolve, timeoutMs);
-		});
+		const snapshot = [...this.#kept.values()];
+		const settled = Promise.all(snapshot.map(entry => entry.settled));
+		const timeout = Promise.withResolvers<void>();
+		const timer = setTimeout(timeout.resolve, timeoutMs);
 		try {
-			await Promise.race([settled, timeout]);
+			await Promise.race([settled, timeout.promise]);
 		} finally {
 			clearTimeout(timer);
-			this.#kept.clear();
+			for (const entry of snapshot) {
+				this.#kept.delete(entry.session);
+			}
 		}
 	}
 
@@ -130,7 +131,7 @@ export class BackgroundSessions {
 			await session.waitForIdle();
 			await session.sessionManager.flush();
 		} catch (error) {
-			logger.warn("Handed-off session failed to settle", { sessionId, error: String(error) });
+			logger.warn("Handed-off session failed to settle", { sessionId, error: errorMessage(error) });
 		} finally {
 			this.#kept.delete(session);
 		}
