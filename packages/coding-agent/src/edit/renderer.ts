@@ -716,6 +716,49 @@ function renderDiffSection(
 		return text;
 	});
 }
+function renderErrorSection(
+	errorText: string,
+	rawPath: string,
+	expanded: boolean,
+	uiTheme: Theme,
+	linkPath?: string,
+): string {
+	let sanitized = errorText;
+	for (const candidate of [rawPath, linkPath]) {
+		if (candidate && typeof candidate === "string" && candidate.length > 0) {
+			const shortened = shortenPath(candidate);
+			if (shortened !== candidate) {
+				sanitized = sanitized.replaceAll(candidate, shortened);
+			}
+		}
+	}
+	sanitized = sanitized
+		.split("\n")
+		.map(line =>
+			line
+				.split(" ")
+				.map(segment => {
+					const leading = segment.match(/^[("'`[]*/)?.[0] ?? "";
+					const trailing = segment.match(/[)"'`,.;:\]]*$/)?.[0] ?? "";
+					const end = segment.length - trailing.length;
+					if (leading.length >= end) return segment;
+					return `${leading}${shortenPath(segment.slice(leading.length, end))}${trailing}`;
+				})
+				.join(" "),
+		)
+		.join("\n");
+
+	const lines = sanitized.split("\n");
+	if (expanded || lines.length <= PREVIEW_LIMITS.DIFF_COLLAPSED_LINES) {
+		return lines.map(line => uiTheme.fg("error", replaceTabs(line))).join("\n");
+	}
+	const visible = lines.slice(0, PREVIEW_LIMITS.DIFF_COLLAPSED_LINES);
+	const hiddenLines = lines.length - visible.length;
+	const renderedLines = visible.map(line => uiTheme.fg("error", replaceTabs(line)));
+	const hint = formatExpandHint(uiTheme, expanded, true);
+	renderedLines.push(uiTheme.fg("dim", `… ${formatMoreLines(hiddenLines)}${hint ? ` ${hint}` : ""}`));
+	return renderedLines.join("\n");
+}
 
 /**
  * Split a diff row into the prefix it keeps on its first visual row and the
@@ -966,7 +1009,7 @@ function renderSingleFileResult(
 
 		let body = "";
 		if (isError) {
-			if (errorText) body = uiTheme.fg("error", replaceTabs(errorText));
+			if (errorText) body = renderErrorSection(errorText, rawPath, expanded, uiTheme, linkPath);
 		} else if (details?.diff) {
 			body = renderDiffSection(details.diff, rawPath, expanded, uiTheme, renderDiffFn, diffSectionCache);
 		} else if (details) {
@@ -979,7 +1022,7 @@ function renderSingleFileResult(
 				body = uiTheme.fg("dim", `No changes were made${noChangePath ? ` to ${noChangePath}` : ""}.`);
 			}
 		} else if (editDiffPreview) {
-			if ("error" in editDiffPreview) body = uiTheme.fg("error", replaceTabs(editDiffPreview.error));
+			if ("error" in editDiffPreview) body = renderErrorSection(editDiffPreview.error, rawPath, expanded, uiTheme, linkPath);
 			else if (editDiffPreview.diff)
 				body = renderDiffSection(editDiffPreview.diff, rawPath, expanded, uiTheme, renderDiffFn, diffSectionCache);
 		}
