@@ -223,7 +223,7 @@ function classifyProjectDir(pwd: string): { scratch: boolean; relative: string |
  * through `actionKeyHint`.
  */
 export function focusExitBadge(focusedAgentId: string): string {
-	const who = theme.fg("warning", withIcon(theme.icon.ghost, focusedAgentId));
+	const who = theme.fg("warning", withIcon(theme.icon.ghost, sanitizeStatusText(focusedAgentId)));
 	// "esc to go back" in full, not "esc back". This is the one hint a reader has never seen before
 	// and cannot guess from context -- Esc means "clear the line" everywhere else in this composer --
 	// so it is spelled as the sentence it is rather than compressed into a chip. The bar has room:
