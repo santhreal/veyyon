@@ -255,7 +255,9 @@ const modelSegment: StatusLineSegment = {
 		const state = ctx.session.state;
 		const opts = ctx.options.model ?? {};
 
-		let modelName = state.model?.name || state.model?.id || "no-model";
+		// A model name is provider text: it arrives from a `/models` listing or from a custom
+		// endpoint's config, so it is no more trusted than a directory name.
+		let modelName = sanitizeStatusText(state.model?.name || state.model?.id || "") || "no-model";
 		if (modelName.startsWith("Claude ")) {
 			modelName = modelName.slice(7);
 		}
@@ -601,7 +603,10 @@ const pathSegment: StatusLineSegment = {
 		if (stripPrefix && ctx.worktree) {
 			const { projectName, worktreeName } = ctx.worktree;
 			const label = ctx.git.branch === worktreeName ? projectName : `${projectName}/${worktreeName}`;
-			const content = withIcon(theme.icon.worktree, clampPathLength(label, opts.maxLength ?? 40));
+			const content = withIcon(
+				theme.icon.worktree,
+				clampPathLength(sanitizeStatusText(label), opts.maxLength ?? 40),
+			);
 			return { content: theme.fg("statusLinePath", content), visible: true, pin: iconPin(theme.icon.worktree) };
 		}
 
@@ -616,12 +621,18 @@ const pathSegment: StatusLineSegment = {
 				pwd = stripDisplayRoot(pwd, opts.displayRoots);
 			}
 		}
-		const repoSuffix = ctx.activeRepo ? ` ↳ ${ctx.activeRepo.relativeRepoRoot}` : "";
+		const repoSuffix = ctx.activeRepo ? ` ↳ ${sanitizeStatusText(ctx.activeRepo.relativeRepoRoot)}` : "";
 		if (opts.abbreviate !== false) {
 			pwd = shortenPath(pwd);
 		}
 
-		pwd = clampPathLength(pwd, opts.maxLength ?? 40);
+		// A directory name is arbitrary bytes on every platform veyyon runs on except Windows: a
+		// tab opens a hole the width arithmetic cannot see, a CR rewinds the row over itself, a
+		// BEL rings on every repaint, and an ESC in a directory name is an escape sequence this
+		// row would hand the terminal. Sanitized BEFORE the clamp, so the budget is measured on
+		// the cells that reach the screen. The same treatment the PR title and the account label
+		// already get; the path and the branch were reading straight from the filesystem.
+		pwd = clampPathLength(sanitizeStatusText(pwd), opts.maxLength ?? 40);
 		if (repoSuffix) {
 			pwd = `${pwd}${repoSuffix}`;
 		}
@@ -646,7 +657,9 @@ const gitSegment: StatusLineSegment = {
 		const showBranch = opts.showBranch !== false;
 		let content = "";
 		if (showBranch && branch) {
-			content = withIcon(theme.icon.branch, branch);
+			// `.git/HEAD` is read as a file rather than through `git check-ref-format`, so the
+			// refname on the row is whatever a checkout put there.
+			content = withIcon(theme.icon.branch, sanitizeStatusText(branch));
 		}
 
 		// Branch plus one bare dirty marker. There used to be a second mode here
