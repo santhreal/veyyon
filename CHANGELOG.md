@@ -81,8 +81,10 @@
 - Cursor turns fail immediately when an asynchronous exec-server handler fails; malformed grep line or count values and oversized Connect frames fail before protobuf or buffer exhaustion; and success waits for queued handlers and gRPC trailers so quota and availability statuses are preserved.
 - A wrapped line now continues under the indent its first row opened at, so an indented row no longer reads as a new top-level row at a narrow width.
 - Native text context rows now report truncation explicitly, and mixed-language structure searches suppress pattern-compilation diagnostics from unrelated languages when another candidate language accepts the pattern.
+- The native addon loader memoizes a load failure. A failed `loadNative()` re-throws the cached error on subsequent calls instead of re-running the full candidate scan and printing every GLIBC/version warning again on each native access, which produced ~1000 lines of warning spam in containers with older glibc ([#917](https://github.com/santhreal/veyyon/issues/917)).
 - `splitTrailingPartialEscape` lets a streaming reader hold back an escape sequence a chunk ended inside, so a sequence divided across two reads is stripped whole instead of losing its head and leaking its tail as text.
 - `discarded-fault.ts`: `bestEffort` and `optionalResult` state which contract discarded a promise's failure, one for a step nobody waits on and one for a probe whose failure is the answer, each taking a mandatory reason.
+- `ChildProcess.kill()` falls back to Bun's built-in `proc.kill()` (SIGTERM) when the native `Process` class cannot load, instead of throwing an uncaught exception that crashes the host. This fixes a crash in containers with older glibc where the native addon fails to load ([#917](https://github.com/santhreal/veyyon/issues/917)).
 
 ## [1.2.0] - 2026-08-23
 
