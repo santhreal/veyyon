@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-1ad891ad.js";
+            window.path_to_searchindex_js = "searchindex-93868616.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-a2abefc1.js"></script>
@@ -4145,7 +4145,7 @@ subdirectory path), a URL, or an npm package.</p>
 <tr><td><code>~/.veyyon/profiles/&lt;profile&gt;/plugins/installed_plugins.json</code></td><td>User-scope marketplace install registry</td></tr>
 <tr><td><code>~/.veyyon/profiles/&lt;profile&gt;/plugins/node_modules/</code></td><td>npm/git/link plugin packages</td></tr>
 <tr><td><code>~/.veyyon/profiles/&lt;profile&gt;/plugins/cache/</code></td><td>Cached marketplace catalogs and plugin trees</td></tr>
-<tr><td><code>~/.veyyon/profiles/&lt;profile&gt;/plugins/veyyon-plugins.lock.json</code></td><td>Lockfile for npm plugin installs</td></tr>
+<tr><td><code>~/.veyyon/profiles/&lt;profile&gt;/plugins/veyyon-plugins.lock.json</code></td><td>Enabled state, selected features and stored settings for every npm, git and linked plugin</td></tr>
 <tr><td>Project <code>.veyyon/plugins/installed_plugins.json</code></td><td>Project-scope marketplace installs</td></tr>
 </tbody>
 </table>
@@ -4154,13 +4154,42 @@ subdirectory path), a URL, or an npm package.</p>
 <p>You can manage plugins and marketplaces using the <code>veyyon plugin</code> and <code>veyyon plugin marketplace</code> command groups.</p>
 <h3 id="managing-plugins"><a class="header" href="#managing-plugins">Managing Plugins</a></h3>
 <h4 id="install-a-plugin"><a class="header" href="#install-a-plugin">Install a Plugin</a></h4>
-<p>Install a plugin from a configured marketplace. Specify the plugin as <code>plugin_name@marketplace_name</code>.</p>
+<p><code>veyyon plugin install</code> accepts four kinds of target:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Target</th><th>Form</th><th>Example</th></tr>
+</thead>
+<tbody>
+<tr><td>Marketplace</td><td><code>name@marketplace</code></td><td><code>sample@debug</code></td></tr>
+<tr><td>npm</td><td><code>name</code>, <code>@scope/name</code>, either with <code>@version</code></td><td><code>@veyyon/exa@1.2.0</code></td></tr>
+<tr><td>Git</td><td><code>github:user/repo</code>, <code>gitlab:</code>, <code>bitbucket:</code>, <code>codeberg:</code>, <code>sourcehut:</code>/<code>srht:</code>, or a full git URL, each with an optional <code>#ref</code></td><td><code>github:user/repo#v1.0</code></td></tr>
+<tr><td>Local path</td><td>a path to the plugin’s own directory</td><td><code>./path/to/plugin</code></td></tr>
+</tbody>
+</table>
+</div>
 <pre><code class="language-console">$ veyyon plugin install sample@debug
-$ veyyon plugin install --force --scope project sample@debug
+$ veyyon plugin install @veyyon/exa
+$ veyyon plugin install github:user/repo#v1.0
+$ veyyon plugin install ./path/to/plugin
 </code></pre>
+<p>A local path is linked rather than copied: veyyon symlinks the directory into the profile’s
+<code>node_modules</code>, so edits to the source appear without a reinstall. <code>veyyon plugin link &lt;path&gt;</code> does
+the same thing, and either verb works.</p>
 <p>Use <code>--force</code> to reinstall over an existing install and <code>--scope user|project</code> to choose the install
-scope. <code>--json</code> prints the installation result as JSON for npm and link installs; marketplace
-installs ignore it.</p>
+scope. <code>--scope</code> applies to marketplace installs only; npm, git and local installs warn and ignore it.
+<code>--json</code> prints the installation result as JSON for npm, git and link installs; marketplace installs
+ignore it.</p>
+<p><code>--dry-run</code> resolves the target and reports the name and version it resolves to, without writing a
+dependency, a lockfile entry or a <code>node_modules</code> entry:</p>
+<pre><code class="language-console">$ veyyon plugin install github:sindresorhus/slugify --dry-run
+[dry-run] Would install @sindresorhus/slugify@github:sindresorhus/slugify#7c318bd
+</code></pre>
+<p>A git target’s package name comes from the repository, not the spec, so a dry run is how you learn
+the name a git plugin will install under. A target that cannot be resolved — an unpublished npm name,
+a version that does not exist, a private or missing repository — fails with the resolver’s output and
+exits 1. A dry run proves the target resolves; it does not prove the package is a veyyon plugin,
+because nothing is unpacked and no manifest is read.</p>
 <h4 id="list-plugins"><a class="header" href="#list-plugins">List Plugins</a></h4>
 <p>List installed plugins and their statuses.</p>
 <pre><code class="language-console">$ veyyon plugin list
@@ -4170,11 +4199,19 @@ installs ignore it.</p>
 <li><code>--json</code>: Print the output as JSON.</li>
 </ul>
 <h4 id="uninstall-a-plugin"><a class="header" href="#uninstall-a-plugin">Uninstall a Plugin</a></h4>
-<p>Uninstall a plugin from local cache and config.</p>
+<p>Uninstall a plugin from local cache and config. Pass the name <code>veyyon plugin list</code> shows, which for a
+git or local plugin is the package’s own name rather than the spec you installed it with.</p>
 <pre><code class="language-console">$ veyyon plugin uninstall sample@debug
+$ veyyon plugin uninstall @veyyon/exa
+$ veyyon plugin uninstall linked-plugin
 </code></pre>
+<p>Every install route is removable by the same command. Uninstalling a linked plugin removes the
+symlink and the plugin’s stored settings, and leaves the directory it pointed at untouched: that is
+your working copy, not veyyon’s.</p>
 <p>Use the <code>--json</code> flag to return the removal result as JSON for npm plugins; marketplace uninstalls
 ignore it.</p>
+<p>To keep a plugin installed but inert, use <code>veyyon plugin disable &lt;name&gt;</code>, which leaves it listed and
+reversible with <code>enable</code>.</p>
 <h4 id="check-plugin-health"><a class="header" href="#check-plugin-health">Check Plugin Health</a></h4>
 <p>Report what is wrong with your plugin installation, and optionally repair it.</p>
 <pre><code class="language-console">$ veyyon plugin doctor
@@ -4193,7 +4230,8 @@ ever installed. That is the state a fresh install is in, and <code>doctor</code>
 Each one distinguishes “not created yet” from “there but unreadable”. The first is normal and
 reports <code>ok</code>; the second is an error stating the path, because a plugins directory whose permissions
 have been mangled looks identical to an empty one from the outside and the fix is <code>chmod</code>, not a
-reinstall.</li>
+reinstall. A profile holding only linked plugins has no <code>package.json</code>, because linking writes no
+dependency; <code>package_manifest</code> reports <code>ok</code> and states how many linked plugins are present.</li>
 <li><code>plugin:&lt;name&gt;</code>: one per installed plugin. An error means the package is missing from
 <code>node_modules</code> or has no <code>package.json</code>. A warning means it loaded but contains no plugin manifest,
 so veyyon can see the package and cannot use it.</li>
