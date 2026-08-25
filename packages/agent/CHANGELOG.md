@@ -11,6 +11,7 @@
 - `StablePrefix.build` computes the fingerprint before allocating the snapshot, avoiding a `systemPrompt` array spread on every turn where the prefix has not changed.
 - `StablePrefix` caches the fingerprint by reference equality of `systemPrompt`, `tools`, and `BuildOptions`, skipping the `JSON.stringify` + `Bun.hash` call on every turn where the inputs are the same references.
 - `convertMessageToLlm` returns user, developer, and toolResult messages by reference when no transformation is needed, avoiding a shallow-spread allocation per message per turn on long conversations.
+- `filterProviderReplayMessages` returns the original array when no provider refusals are present, avoiding a full-array `.filter()` allocation per turn.
 
 ### Added
 

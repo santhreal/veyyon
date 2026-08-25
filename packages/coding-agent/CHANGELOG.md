@@ -9,6 +9,7 @@
 - Classified runner output (cargo, bun, Go, ctest, dotnet, clippy, golangci-lint, Gradle lint, pytest, and tsc/eslint-family) now opens with a result-contract header: `[clean] <command>` or `[errors]` / `[errors N] <command>`. The header is the verdict and the body contains retained diagnostics.
 - Import paths for `@veyyon/ai`, `@veyyon/agent-core`, and `@veyyon/tui` now target specific sub-modules instead of package barrels, shrinking the resolved module graph without changing any runtime behavior.
 - `convertToLlm` replaces `flatMap` with a pre-allocated `for` loop, cutting the per-turn message conversion from ~5 ms to ~1.5 ms on a 33K-message conversation by avoiding the intermediate arrays `flatMap` allocates per element.
+- `statePlacedImageVisibility` counts image blocks with a loop instead of `.filter()`, avoiding a throwaway array allocation on every tool-result message.
 
 ### Added
 
