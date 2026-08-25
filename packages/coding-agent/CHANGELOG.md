@@ -62,6 +62,13 @@
 - A stripped working directory keeps the case it has on disk on Windows, instead of being lowercased by the case-insensitive comparison that decided it was under the root.
 - The status line's default-branch lookup no longer raises an unhandled rejection in a directory holding a `.git` on a host with no `git` on PATH; the lookup fails to the `main` fallback instead.
 - The composer status line no longer prints a control character or an escape sequence a name carries: a working directory, git branch, worktree label, multi-repo suffix or provider model name holding a tab, carriage return, bell, newline or escape is sanitized before it reaches the row, where it previously opened a hole in the width arithmetic, overwrote the row's own start, rang the terminal on every repaint, or handed the terminal a sequence of its own.
+- Patch failure error rendering shortens absolute paths to avoid displaying home-directory paths and bounds large unmatched hunks with an omitted line count.
+- Filesystem cwd boundary checks expand comma- and whitespace-delimited path arguments matching execution, preventing multi-target reads or searches from bypassing working-directory approval prompts in non-yolo modes.
+- The read tool renderer sanitizes resolved directory paths with shortenPath to avoid displaying unshortened home-directory paths.
+- Stopping a daemon during restart backoff cancels the timer and attributes operator stop without recording a duplicate completion entry, and broker recovery terminates daemons left in restarting state without dead recovery branches.
+- Multi-target `ast_grep` searches across overlapping paths deduplicate matches so totals, file counts, and paged results are not duplicated or truncated.
+- Acknowledging a completed background job before lifting its watch no longer delivers a duplicate completion notification when retention is zero.
+- A generic tool card with an undrawable image result no longer accumulates duplicate image placeholder rows on rebuild.
 - With Language Servers off, which is the default, the write and edit tools no longer start a language server to inject diagnostics, format the file, or notify the workspace that a file changed, including on the ACP client-bridge write path.
 - A malformed `irc` send reports its own validation error instead of being reported as an interrupted wait when a peer message arrives in the same batch.
 - A `job` list snapshot or cancel-only call keeps its own result when an interrupt lands beside it.
@@ -91,6 +98,7 @@
 - The `ssh` tool works again on a profile whose directory nests more than a few levels deep. Its connection multiplexing socket used a 64-character hash, and OpenSSH binds that path plus a 17-character suffix before renaming it, which exceeded the 108-byte Unix socket limit and failed every command with `unix_listener: path too long for Unix domain socket`; the name is now a 16-character digest, and a path that still cannot fit drops multiplexing with one warning instead of failing the connection.
 - `debug` reaches the Python debugger on a host that installs `python3` and no unsuffixed `python`, which is every current Linux and macOS. The bundled `debugpy` adapter named `python`, so launching answered `adapter 'debugpy' is not available` on a machine that had Python; an adapter may now declare alternate spellings, and a command written in `dap.json` is still used exactly as written.
 - A subagent that calls `yield` with unusable data now fails the run instead of returning success with the system warning as its result, matching how a subagent that never yields at all is already reported.
+- A subagent result that cannot be serialized now fails the run and reports the serialization error, instead of returning success with an unparseable error envelope as its payload.
 
 ## [1.2.0] - 2026-08-23
 

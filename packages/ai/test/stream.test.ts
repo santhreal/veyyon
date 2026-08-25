@@ -3,7 +3,7 @@ import { type ChildProcess, execSync, spawn } from "node:child_process";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { Effort } from "@veyyon/ai";
+import { Effort } from "@veyyon/catalog/effort";
 import { __resetVertexTokenCache } from "@veyyon/ai/providers/google-auth";
 import { complete, getEnvApiKey, stream } from "@veyyon/ai/stream";
 import type { Api, Context, ImageContent, Model, OptionsForApi, Tool, ToolResultMessage } from "@veyyon/ai/types";

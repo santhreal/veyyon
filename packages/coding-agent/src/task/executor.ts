@@ -733,16 +733,23 @@ export function finalizeSubprocessOutput(args: FinalizeSubprocessOutputArgs): Fi
 					stderr = outcome.stderr;
 					exitCode = outcome.exitCode;
 				} else {
+					let serializationError: string | undefined;
 					try {
 						rawOutput =
 							assembled.rawText && typeof completeData === "string"
 								? completeData
 								: (JSON.stringify(completeData, null, 2) ?? "null");
 					} catch (err) {
-						const errorText = errorMessage(err);
-						rawOutput = `{"error":"Failed to serialize yield data: ${errorText}"}`;
+						// Built through JSON.stringify, never interpolation: a circular-structure
+						// message carries quotes and newlines that would make the envelope unparseable.
+						serializationError = `Failed to serialize yield data: ${errorMessage(err)}`;
+						rawOutput = JSON.stringify({ error: serializationError });
 					}
-					if (!hadFailureBeforeYield) {
+					if (serializationError !== undefined) {
+						// A payload that could not be serialized was never delivered, whatever the turn did.
+						exitCode = 1;
+						if (!stderr.trim()) stderr = serializationError;
+					} else if (!hadFailureBeforeYield) {
 						exitCode = 0;
 						stderr = schemaError ? `invalid output schema: ${schemaError}` : "";
 					} else if (!stderr) {
@@ -767,12 +774,14 @@ export function finalizeSubprocessOutput(args: FinalizeSubprocessOutputArgs): Fi
 			} else {
 				try {
 					rawOutput = JSON.stringify(completeData, null, 2) ?? "null";
+					exitCode = 0;
+					stderr = "";
 				} catch (err) {
-					const errorText = errorMessage(err);
-					rawOutput = `{"error":"Failed to serialize fallback completion: ${errorText}"}`;
+					const failure = `Failed to serialize fallback completion: ${errorMessage(err)}`;
+					rawOutput = JSON.stringify({ error: failure });
+					exitCode = 1;
+					stderr = failure;
 				}
-				exitCode = 0;
-				stderr = "";
 			}
 		} else if (!hasOutputSchema && allowFallback && rawOutput.trim().length > 0) {
 			exitCode = 0;

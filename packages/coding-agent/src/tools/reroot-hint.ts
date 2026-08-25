@@ -836,7 +836,7 @@ export function wrapToolWithRerootHint<T extends AgentTool<any, any, any>>(
 		// call that already succeeded. A hint is never worth that.
 		let hint: RerootHint | undefined;
 		try {
-			const targets = hasFilesystemTargets(tool) ? tool.filesystemTargets(args[1]) : [];
+			const targets = hasFilesystemTargets(tool) ? tool.filesystemTargets(args[1], session.cwd) : [];
 			hint = detector.observe(targets, session.cwd, workingDirectoryArg(args[1]));
 		} catch {
 			return result;
