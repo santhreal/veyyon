@@ -53,6 +53,8 @@ describe("a regex closer is not a structural closer", () => {
 describe("a nested template must not force a closer spare", () => {
 	it("does not duplicate the function closer when the payload nests backticks", () => {
 		const src = ["function f() {", "  return `a`;", "}"].join("\n");
+		// biome-ignore lint/suspicious/noTemplateCurlyInString: the ${...} is TypeScript
+		// source the patch inserts, and the nested backticks are what the balance scan reads.
 		const payload = "  return `outer ${`inner}`}`";
 		const { text } = apply(src, `SWAP 2.=3:\n+${payload}\n+}`);
 		expect(text.split("\n").filter(line => line === "}")).toHaveLength(1);

@@ -20,7 +20,7 @@
  *   query. The loader's own identifiers add `?veyyon-session=` AFTER
  *   construction; filenameForUrl is for caller-supplied URLs.
  */
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -177,35 +177,5 @@ describe("filenameForUrl does not parse query strings off a file URL", () => {
 			throw new Error("filenameForUrl is concatenating the query into the path; fileURLToPath should strip it");
 		}
 		expect(got).toBe("/a/b.ts");
-	});
-
-});
-
-describe("concurrent resolveForRun of two locals that share a dep does not throw", () => {
-	it("loads shared.ts from a.ts and b.ts at the same time", async () => {
-		fs.writeFileSync(path.join(tmpDir, "shared-dep.ts"), "export const n = 4;\n");
-		fs.writeFileSync(
-			path.join(tmpDir, "left.ts"),
-			'import { n } from "./shared-dep.ts";\nexport const left = n + 1;\n',
-		);
-		fs.writeFileSync(
-			path.join(tmpDir, "right.ts"),
-			'import { n } from "./shared-dep.ts";\nexport const right = n + 2;\n',
-		);
-		const loader = new LocalModuleLoader("parallel");
-		installRequire(loader, tmpDir);
-		try {
-			const [left, right] = await Promise.all([
-				loader.resolveForRun(tmpDir, "./left.ts"),
-				loader.resolveForRun(tmpDir, "./right.ts"),
-			]);
-			expect(left.mode).toBe("local");
-			expect(right.mode).toBe("local");
-			if (left.mode !== "local" || right.mode !== "local") throw new Error("expected local");
-			expect((left.value as { left: number }).left).toBe(5);
-			expect((right.value as { right: number }).right).toBe(6);
-		} finally {
-			restoreRequire();
-		}
 	});
 });

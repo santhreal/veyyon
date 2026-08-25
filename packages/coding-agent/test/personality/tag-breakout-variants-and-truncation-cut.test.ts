@@ -18,15 +18,13 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import {
-	MAX_PERSONALITY_CHARS,
-	resolvePersonality,
-} from "@veyyon/coding-agent/personality/resolver";
+import { MAX_PERSONALITY_CHARS, resolvePersonality } from "@veyyon/coding-agent/personality/resolver";
 import { useTempHome } from "../helpers/temp-home";
 import { useTrackedTempDirs } from "../helpers/tracked-temp-dir";
 
 const makeProject = useTrackedTempDirs("pi-personality-breakout-");
-const tempHome = useTempHome("test");
+// Registers the isolated HOME for the file; the handle itself is never read.
+useTempHome("test");
 
 function writeSpec(cwd: string, name: string, body: string): void {
 	const dir = path.join(cwd, ".veyyon", "personalities");

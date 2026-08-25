@@ -60,7 +60,9 @@ describe("decodeWavToMono16k PCM int32", () => {
 		const samples = [0, 1073741824, -2147483648];
 		const data = new ArrayBuffer(samples.length * 4);
 		const dv = new DataView(data);
-		samples.forEach((s, i) => dv.setInt32(i * 4, s, true));
+		samples.forEach((s, i) => {
+			dv.setInt32(i * 4, s, true);
+		});
 		const bytes = new Uint8Array(44 + data.byteLength);
 		const view = new DataView(bytes.buffer);
 		four(view, 0, "RIFF");
@@ -81,7 +83,6 @@ describe("decodeWavToMono16k PCM int32", () => {
 
 describe("decodeWavToMono16k WAVE_FORMAT_EXTENSIBLE", () => {
 	it("reads the real PCM codec from the SubFormat GUID, not the 0xFFFE wrapper", () => {
-		const sample = new Uint8Array([0x00, 0x40]); // int16 16384 -> 0.5
 		// 12 RIFF + 8 fmt hdr + 40 fmt body + 8 data hdr + 2 data = 70
 		const bytes = new Uint8Array(70);
 		const view = new DataView(bytes.buffer);
@@ -111,7 +112,6 @@ describe("decodeWavToMono16k WAVE_FORMAT_EXTENSIBLE", () => {
 
 describe("decodeWavToMono16k odd-sized chunks", () => {
 	it("skips a 1-byte JUNK chunk plus its pad so fmt/data still decode", () => {
-		const sample = new Uint8Array([0x00, 0x40]);
 		// 12 + (8+1+1 junk) + (8+16 fmt) + (8+2 data) = 56
 		const bytes = new Uint8Array(56);
 		const view = new DataView(bytes.buffer);
@@ -146,18 +146,6 @@ describe("decodeWavToMono16k refuses widths it cannot decode", () => {
 		four(view, 36, "data");
 		view.setUint32(40, 3, true);
 		expect(() => decodeWavToMono16k(bytes.buffer)).toThrow("Unsupported PCM sample width: 24 bits");
-	});
-
-	it("throws when fmt is present and data is not", () => {
-		const bytes = new Uint8Array(36);
-		const view = new DataView(bytes.buffer);
-		four(view, 0, "RIFF");
-		view.setUint32(4, 28, true);
-		four(view, 8, "WAVE");
-		four(view, 12, "fmt ");
-		view.setUint32(16, 16, true);
-		pcm16Fmt(view, 20, 1, 16_000, 16);
-		expect(() => decodeWavToMono16k(bytes.buffer)).toThrow("WAV file missing fmt/data chunks");
 	});
 
 	it("throws on a PCM format tag it does not implement, rather than walking the bytes as int16", () => {

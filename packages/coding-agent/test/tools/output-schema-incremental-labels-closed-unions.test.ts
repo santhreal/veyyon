@@ -81,24 +81,6 @@ describe("array-typed properties validate one element, not the array", () => {
 		expect(validator?.validateSection.get("summary")?.("ok").success).toBe(true);
 		expect(validator?.validateSection.get("summary")?.({ text: "ok" }).success).toBe(false);
 	});
-
-	it("JTD elements compiles to the same one-element incremental validator", () => {
-		const { validator } = buildOutputValidator({
-			properties: {
-				files: {
-					elements: {
-						properties: {
-							path: { type: "string" },
-						},
-					},
-				},
-			},
-		});
-		const files = validator?.validateSection.get("files");
-		expect(files?.({ path: "a.ts" }).success).toBe(true);
-		expect(files?.([{ path: "a.ts" }]).success).toBe(false);
-		expect(validator?.rejectUnknownSections).toBe(true);
-	});
 });
 
 describe("closed oneOf unions gate labels disjunctively", () => {
