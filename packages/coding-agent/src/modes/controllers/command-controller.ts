@@ -1112,7 +1112,8 @@ export class CommandController {
 		internalGuidance?: string,
 	): Promise<CompactionOutcome> {
 		const entries = this.ctx.sessionManager.getEntries();
-		const messageCount = entries.filter(e => e.type === "message").length;
+		let messageCount = 0;
+		for (const entry of entries) if (entry.type === "message") messageCount++;
 
 		if (messageCount < 2) {
 			this.ctx.showWarning("Nothing to compact (no messages yet)");
@@ -1234,7 +1235,8 @@ export class CommandController {
 		}
 
 		const entries = this.ctx.sessionManager.getEntries();
-		const messageCount = entries.filter(e => e.type === "message").length;
+		let messageCount = 0;
+		for (const entry of entries) if (entry.type === "message") messageCount++;
 
 		if (messageCount < 2) {
 			this.ctx.showWarning("Nothing to hand off (no messages yet)");

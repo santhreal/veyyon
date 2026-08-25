@@ -13715,7 +13715,8 @@ export class AgentSession {
 	 */
 	async handoff(customInstructions?: string, options?: SessionHandoffOptions): Promise<HandoffResult | undefined> {
 		const entries = this.sessionManager.getBranch();
-		const messageCount = entries.filter(e => e.type === "message").length;
+		let messageCount = 0;
+		for (const entry of entries) if (entry.type === "message") messageCount++;
 
 		if (messageCount < 2) {
 			throw new Error("Nothing to hand off (no messages yet)");
