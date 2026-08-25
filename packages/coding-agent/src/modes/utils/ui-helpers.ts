@@ -109,7 +109,6 @@ export type UiHelpersContext = Pick<
 	| "withLocalSubmission"
 >;
 
-type TextBlock = { type: "text"; text: string };
 interface RenderInitialMessagesOptions {
 	preserveExistingChat?: boolean;
 	clearTerminalHistory?: boolean;
@@ -138,11 +137,12 @@ export class UiHelpers {
 	/** Extract text content from a user message */
 	getUserMessageText(message: Message): string {
 		if (message.role !== "user") return "";
-		const textBlocks =
-			typeof message.content === "string"
-				? [{ type: "text", text: message.content }]
-				: message.content.filter((content): content is TextBlock => content.type === "text");
-		return textBlocks.map(block => block.text).join("");
+		if (typeof message.content === "string") return message.content;
+		let text = "";
+		for (const content of message.content) {
+			if (content.type === "text") text += content.text;
+		}
+		return text;
 	}
 
 	/**

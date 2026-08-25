@@ -359,8 +359,8 @@ export class EventController {
 		const children = this.ctx.chatContainer.children;
 		const anchorIndex = anchor ? children.indexOf(anchor) : -1;
 		if (anchorIndex < 0) return false;
-		if (children.slice(anchorIndex + 1).some(child => !this.ctx.chatContainer.isBlockUncommitted(child))) {
-			return false;
+		for (let i = anchorIndex + 1; i < children.length; i++) {
+			if (!this.ctx.chatContainer.isBlockUncommitted(children[i]!)) return false;
 		}
 		this.ctx.chatContainer.addChild(component);
 		children.splice(children.length - 1, 1);

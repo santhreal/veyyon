@@ -37,6 +37,10 @@
 - `#takeMidRunTodoNudge` counts incomplete tasks with a loop instead of `.flatMap().filter()`, avoiding two throwaway arrays per nudge check.
 - `renderTodoStatePreview` counts total tasks with a loop instead of `.reduce()`, avoiding a callback allocation per prompt.
 - `#buildGoalTodoContext` merges `phases.filter`, `phases.flatMap`, and task counting into a single loop, avoiding two throwaway arrays and one intermediate task list per prompt in goal mode.
+- The `agent_end` display-event handler skips the `.map()` + `.some()` over the turn's messages entirely when neither secret expansion nor argot is active, avoiding two array allocations per turn end on the common no-secrets, no-argot path.
+- `hasVisibleContentAfter` in `AssistantMessageComponent` uses a direct `for` loop instead of `.slice(i + 1).some()`, avoiding a temporary array allocation per visible thinking block during render.
+- `#insertAfterTranscriptComponent` in `EventController` uses a direct `for` loop instead of `.slice(anchorIndex + 1).some()`, avoiding a temporary array allocation on each post-anchor insertion check.
+- `getUserMessageText` and `userMessageText` extract text with a single `for` loop instead of `.filter().map().join()`, avoiding two throwaway arrays per user message on the chat transcript and render paths.
 
 ### Added
 

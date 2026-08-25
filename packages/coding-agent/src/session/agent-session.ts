@@ -5813,16 +5813,24 @@ export class AgentSession {
 		if (event.type === "agent_end") {
 			// The closing event repeats the turn's messages, so it repeats every
 			// handle in them unless it is expanded like the events it summarises.
-			const messages = event.messages.map(message =>
-				message.role === "assistant"
-					? (() => {
-							const content = this.displayAssistantContent(message.content);
-							return content === message.content ? message : { ...message, content };
-						})()
-					: message,
-			);
-			if (messages.some((message, index) => message !== event.messages[index])) {
-				displayEvent = { ...(displayEvent as typeof event), messages };
+			// Fast path: when neither secret expansion nor argot is active,
+			// displayAssistantContent returns content unchanged, so no message
+			// in the array would change — skip the map+some allocation entirely.
+			const expand = this.#displaySecretExpander();
+			const argotActive = this.#argot?.loaded === true;
+			if (expand !== undefined || argotActive) {
+				const eventMessages = event.messages;
+				let changed = false;
+				const messages = eventMessages.map(message => {
+					if (message.role !== "assistant") return message;
+					const content = this.displayAssistantContent(message.content);
+					if (content === message.content) return message;
+					changed = true;
+					return { ...message, content };
+				});
+				if (changed) {
+					displayEvent = { ...(displayEvent as typeof event), messages };
+				}
 			}
 		}
 		// The intent rides on the execution events rather than in the message
