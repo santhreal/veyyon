@@ -47,8 +47,9 @@
 # floor of 12, and the floor has to be lowered for it rather than the take sped
 # up. The motion gate is doing its job; this is the case it does not describe.
 #
+#   MODELS_DIR is wherever the gguf sits on the machine doing the recording.
 #   docker run -d --rm --name veyyon-proof-llm --network veyyon-proof \
-#     -v /mnt/FlareTraining/.golemn/models:/models:ro \
+#     -v "${MODELS_DIR:?}":/models:ro \
 #     ghcr.io/ggml-org/llama.cpp:server \
 #     -m /models/qwen2.5-1.5b-instruct-q4_k_m.gguf --host 0.0.0.0 --port 8080 \
 #     -c 65536 --cache-reuse 256 -t 12
