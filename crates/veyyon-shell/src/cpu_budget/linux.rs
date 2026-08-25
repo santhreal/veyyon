@@ -59,7 +59,16 @@ impl LinuxBudget {
 	pub fn adopt(&self, pid: i32) {
 		// ESRCH (child already exited) and ENOENT (session disposed mid-spawn)
 		// are both benign; neither may fail the command the pid belongs to.
-		let _ = std::fs::write(self.dir.join("cgroup.procs"), pid.to_string());
+		// EACCES/EPERM/EINVAL (undelegated cgroup, sleeper filling pids.max)
+		// used to be swallowed the same way, so adopt was a silent no-op.
+		if let Err(error) = std::fs::write(self.dir.join("cgroup.procs"), pid.to_string())
+			&& !is_benign_adopt_error(&error)
+		{
+			eprintln!(
+				"veyyon-shell: write cgroup.procs for pid {pid} in {} failed: {error}",
+				self.dir.display()
+			);
+		}
 	}
 
 	#[must_use]
@@ -108,8 +117,17 @@ impl LinuxBudget {
 	/// reparent is what makes removal possible mid-command.
 	pub fn teardown(&self) {
 		if let Some(parent) = &self.parent_dir {
-			for pid in self.members() {
-				let _ = std::fs::write(parent.join("cgroup.procs"), pid.to_string());
+			// One pid per write (kernel contract). Retry: a child that lands
+			// in the group between the first scan and rmdir would otherwise
+			// leave the directory populated and teardown would leak the cgroup.
+			for _ in 0..8 {
+				let pids = self.members();
+				if pids.is_empty() {
+					break;
+				}
+				for pid in pids {
+					let _ = std::fs::write(parent.join("cgroup.procs"), pid.to_string());
+				}
 			}
 			remove_cgroup_dir(&self.dir);
 		}
@@ -127,6 +145,12 @@ fn remove_cgroup_dir(dir: &Path) {
 	let _ = std::fs::remove_dir_all(dir);
 }
 
+/// Adopt write failures that mean "the child is already gone or the group
+/// was torn down", not "the write was ignored and the child is uncapped".
+fn is_benign_adopt_error(error: &std::io::Error) -> bool {
+	matches!(error.kind(), std::io::ErrorKind::NotFound) || error.raw_os_error() == Some(libc::ESRCH)
+}
+
 /// The `cpu.max` line for `cores`: a quota over the fixed period, or `max`
 /// (no cap) at or below zero.
 ///
@@ -135,8 +159,9 @@ fn remove_cgroup_dir(dir: &Path) {
 /// cap": creating a group at zero cores wrote a literal `0 100000`, which is
 /// a quota of no CPU at all rather than an absent one.
 fn quota_value(cores: f64) -> String {
-	if cores > 0.0 {
-		format!("{} {PERIOD_USEC}", (cores * PERIOD_USEC as f64).round() as u64)
+	if cores.is_finite() && cores > 0.0 {
+		let quota = (cores * PERIOD_USEC as f64).round().max(1.0) as u64;
+		format!("{quota} {PERIOD_USEC}")
 	} else {
 		format!("max {PERIOD_USEC}")
 	}
@@ -244,5 +269,83 @@ mod tests {
 		assert!(!scope.join("cpu.max").exists(), "a managed scope's quota is systemd's to write");
 		budget.teardown();
 		assert!(scope.exists(), "teardown leaves a managed scope in place");
+	}
+
+	#[test]
+	fn non_finite_and_non_positive_cores_spell_max_not_a_zero_quota() {
+		for cores in [0.0, -1.0, f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+			assert_eq!(quota_value(cores), "max 100000", "cores={cores:?} must lift, never freeze");
+		}
+	}
+
+	#[test]
+	fn quota_value_matches_period_times_cores_across_a_grid() {
+		for step in 1..=200 {
+			let cores = step as f64 / 10.0;
+			let want = format!("{} 100000", (cores * 100_000.0).round() as u64);
+			assert_eq!(quota_value(cores), want);
+		}
+		assert_eq!(quota_value(2.0), "200000 100000");
+	}
+
+	#[test]
+	fn a_positive_budget_too_small_to_express_floors_at_one_microsecond_not_a_freeze() {
+		assert_eq!(quota_value(1e-12), "1 100000");
+		assert_eq!(quota_value(1e-10), "1 100000");
+		assert_eq!(quota_value(4e-6), "1 100000");
+		for step in 1..=20 {
+			let cores = 10f64.powi(-step);
+			assert!(cores > 0.0, "grid must stay a positive finite budget");
+			let line = quota_value(cores);
+			assert!(!line.starts_with("0 "), "positive cores={cores:?} must not freeze, got {line}");
+			assert_ne!(line, "max 100000");
+			let quota: u64 = line.split_whitespace().next().unwrap().parse().unwrap();
+			assert!(quota >= 1);
+		}
+	}
+	#[test]
+	fn teardown_reparents_members_then_removes_the_owned_cgroup() {
+		let parent_tree = fake_delegated_parent();
+		let parent = parent_tree.path();
+		let budget =
+			LinuxBudget::create(parent.to_str().expect("utf8"), "veyyon-cpu-teardown-test", 1.0)
+				.expect("create budget");
+		let dir = parent.join("veyyon-cpu-teardown-test");
+		std::fs::write(dir.join("cgroup.procs"), "111\n222\n").expect("procs");
+		budget.teardown();
+		assert!(!dir.exists(), "owned cgroup must not leak after teardown");
+		let parent_procs =
+			std::fs::read_to_string(parent.join("cgroup.procs")).expect("parent procs");
+		assert!(
+			parent_procs.contains("222"),
+			"the last reparented pid must land in the parent (fake cgroup.procs overwrites), got \
+			 {parent_procs:?}"
+		);
+	}
+
+	#[test]
+	fn dead_or_missing_adopt_targets_are_benign_and_permission_errors_are_not() {
+		assert!(is_benign_adopt_error(&std::io::Error::from_raw_os_error(libc::ESRCH)));
+		assert!(is_benign_adopt_error(&std::io::Error::new(std::io::ErrorKind::NotFound, "gone")));
+		assert!(!is_benign_adopt_error(&std::io::Error::from_raw_os_error(libc::EACCES)));
+		assert!(!is_benign_adopt_error(&std::io::Error::from_raw_os_error(libc::EPERM)));
+		assert!(!is_benign_adopt_error(&std::io::Error::from_raw_os_error(libc::EINVAL)));
+	}
+
+	#[test]
+	fn a_directory_standing_in_for_cgroup_procs_does_not_panic_on_adopt() {
+		let parent_tree = fake_delegated_parent();
+		let parent = parent_tree.path();
+		let budget =
+			LinuxBudget::create(parent.to_str().expect("utf8"), "veyyon-cpu-adopt-fail-test", 1.0)
+				.expect("create budget");
+		let procs = parent
+			.join("veyyon-cpu-adopt-fail-test")
+			.join("cgroup.procs");
+		// create() does not materialize cgroup.procs; a directory here makes the adopt
+		// write fail.
+		std::fs::create_dir(&procs).expect("directory makes write fail");
+		budget.adopt(4242); // must not panic; failure is traced
+		budget.teardown();
 	}
 }
