@@ -231,15 +231,23 @@ export class MCPManager {
 		this.#gateSpawn = gate;
 	}
 
+	/**
+	 * Read both hooks once. A connection attempt outlives the read, and
+	 * `setSpawnGate(undefined)` between the two would leave a closure calling a
+	 * field that is no longer a function.
+	 */
 	#stdioSpawnHooks(): {
 		onSpawnPid?: (pid: number) => void;
 		beforeSpawn?: () => Promise<void>;
 	} {
+		const adopt = this.#adoptSpawnedPid;
+		const gate = this.#gateSpawn;
 		return {
-			...(this.#adoptSpawnedPid ? { onSpawnPid: this.#adoptSpawnedPid } : {}),
-			...(this.#gateSpawn ? { beforeSpawn: () => this.#gateSpawn!("an MCP stdio server") } : {}),
+			...(adopt ? { onSpawnPid: adopt } : {}),
+			...(gate ? { beforeSpawn: () => gate("an MCP stdio server") } : {}),
 		};
 	}
+
 	#tools: CustomTool<TSchema, MCPToolDetails>[] = [];
 	#pendingConnections = new Map<string, Promise<MCPServerConnection>>();
 	#pendingToolLoads = new Map<string, Promise<ToolLoadResult>>();
