@@ -68,8 +68,6 @@ function hasDedicatedTest(toolName: string): boolean {
  * file whose name matches. Each entry names the suite that covers it so the
  * assertion is auditable. */
 const TESTED_VIA_CROSS_TOOL: Record<string, string> = {
-	memory_edit: "memory-tools.test.ts exercises MemoryEditTool createIf, update, forget, invalidate",
-	reflect: "memory-tools.test.ts exercises MemoryReflectTool",
 	argot_unload: "argot-gate.test.ts and argot-subagent suites exercise both load and unload",
 };
 describe("every tool has dedicated test coverage", () => {
