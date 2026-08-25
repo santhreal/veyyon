@@ -556,7 +556,7 @@ export async function runBench(argv: string[]): Promise<void> {
 	const binarySha = sha256File(effectiveBinary);
 	fs.copyFileSync(effectiveBinary, path.join(assetsDir, "vey"));
 	fs.chmodSync(path.join(assetsDir, "vey"), 0o755);
-	fs.copyFileSync(getAuthDbPath(), path.join(assetsDir, "agent.db"));
+	fs.copyFileSync(getAuthDbPath(), path.join(assetsDir, "auth-agent.db"));
 
 	for (const sys of systemArms) {
 		const adapter = getSystemAdapter(sys);
