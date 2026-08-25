@@ -24,11 +24,15 @@ import * as path from "node:path";
 import { isMissingPath } from "@veyyon/utils";
 import {
 	globSearchBase,
+	hasGlobPathChars,
 	isInternalUrlPath,
 	isPathWithinCwd,
 	isReadableUrlPath,
+	normalizePathLikeInput,
+	parseSearchPath,
 	pathTargetsSsh,
 	resolveToCwd,
+	splitPathAndSel,
 } from "./path-utils";
 
 /**
@@ -95,7 +99,7 @@ export interface CwdBoundedTool {
 	 * the boundary. Non-filesystem destinations (URLs, ssh, internal schemes) may
 	 * be included; the boundary skips them.
 	 */
-	filesystemTargets(args: unknown): string[];
+	filesystemTargets(args: unknown, cwd?: string): string[];
 }
 
 /** True when `tool` declares filesystem targets, so the cwd boundary applies. */
@@ -125,24 +129,187 @@ function isNonFilesystemTarget(rawPath: string): boolean {
  * verbatim so the boundary skips it. A bare `*.ts` bases at cwd (in-bounds).
  * Shared by all three tools so the split-and-base rule lives in ONE place.
  */
-export function searchPathFilesystemTargets(args: unknown): string[] {
-	// `grep` documents `path` but its approval also accepts a legacy `paths`
-	// (string or array); mirror that breadth so a search cannot under-report.
-	const a = args as { path?: unknown; paths?: unknown } | null;
-	const raw = a?.path ?? a?.paths;
-	const entries: string[] = [];
-	if (typeof raw === "string") entries.push(...raw.split(";"));
-	else if (Array.isArray(raw)) {
-		for (const item of raw) if (typeof item === "string") entries.push(...item.split(";"));
+const TOP_LEVEL_WHITESPACE_RE = /\s/;
+
+type DelimitedPathSplitMode = "comma" | "semicolon" | "whitespace" | "mixed";
+
+
+function hasTopLevelPathDelimiter(entry: string): boolean {
+	let braceDepth = 0;
+	for (let i = 0; i < entry.length; i++) {
+		const ch = entry[i];
+		if (ch === "\\" && i + 1 < entry.length) {
+			i++;
+			continue;
+		}
+		if (ch === "{") {
+			braceDepth++;
+			continue;
+		}
+		if (ch === "}") {
+			if (braceDepth > 0) braceDepth--;
+			continue;
+		}
+		if (braceDepth === 0 && (ch === "," || ch === ";" || TOP_LEVEL_WHITESPACE_RE.test(ch))) {
+			return true;
+		}
 	}
-	const targets: string[] = [];
+	return false;
+}
+
+function splitTopLevelDelimitedPath(entry: string, mode: DelimitedPathSplitMode): string[] {
+	const parts: string[] = [];
+	let braceDepth = 0;
+	let start = 0;
+	for (let i = 0; i < entry.length; i++) {
+		const ch = entry[i];
+		if (ch === "\\" && i + 1 < entry.length) {
+			i++;
+			continue;
+		}
+		if (ch === "{") {
+			braceDepth++;
+			continue;
+		}
+		if (ch === "}") {
+			if (braceDepth > 0) braceDepth--;
+			continue;
+		}
+		const isSep =
+			mode === "comma"
+				? ch === ","
+				: mode === "semicolon"
+					? ch === ";"
+					: mode === "whitespace"
+						? TOP_LEVEL_WHITESPACE_RE.test(ch)
+						: ch === "," || ch === ";" || TOP_LEVEL_WHITESPACE_RE.test(ch);
+		if (braceDepth !== 0 || !isSep) continue;
+		parts.push(entry.slice(start, i));
+		start = i + 1;
+	}
+	parts.push(entry.slice(start));
+	return parts;
+}
+
+function delimitedPathPartResolvesSync(
+	entry: string,
+	cwd: string,
+	splitter: (item: string) => { basePath: string },
+): boolean {
+	if (isInternalUrlPath(entry)) return true;
+	const peeled = splitPathAndSel(entry).path;
+	const { basePath } = splitter(peeled);
+	const absoluteBasePath = resolveToCwd(basePath, cwd);
+	try {
+		fs.statSync(absoluteBasePath);
+		return true;
+	} catch (err) {
+		if (isMissingPath(err)) return false;
+		throw err;
+	}
+}
+
+function probeLiteralPathExistsSync(filePath: string, cwd: string): "exists" | "missing" | "unknown" {
+	const resolved = resolveToCwd(filePath, cwd);
+	try {
+		fs.lstatSync(resolved);
+		return "exists";
+	} catch (err) {
+		if (isMissingPath(err)) return "missing";
+		return "unknown";
+	}
+}
+
+function tryDelimitedPathSplitSync(
+	entry: string,
+	cwd: string,
+	splitter: (item: string) => { basePath: string },
+	mode: DelimitedPathSplitMode,
+	requirement: "all" | "some" | "none",
+): string[] | null {
+	const rawParts = splitTopLevelDelimitedPath(entry, mode);
+	if (rawParts.length < 2) return null;
+
+	const parts = rawParts.map(normalizePathLikeInput).filter(part => part.length > 0);
+	if (parts.length === 0) return null;
+	if (parts.length < 2 && rawParts.length === parts.length) return null;
+
+	if (requirement !== "none") {
+		const resolved = parts.map(part => delimitedPathPartResolvesSync(part, cwd, splitter));
+		const valid = requirement === "all" ? resolved.every(Boolean) : resolved.some(Boolean);
+		if (!valid) return null;
+	}
+	return parts;
+}
+
+export interface DelimitedPathSplitSyncOptions {
+	splitter?: (item: string) => { basePath: string };
+	internalUrls?: "keep" | "split-on-semicolon";
+}
+
+export function splitDelimitedPathEntrySync(
+	entry: string,
+	cwd: string,
+	options: DelimitedPathSplitSyncOptions = {},
+): string[] | null {
+	const normalizedEntry = normalizePathLikeInput(entry);
+	if (!hasTopLevelPathDelimiter(normalizedEntry)) return null;
+	if (isInternalUrlPath(normalizedEntry)) {
+		if (options.internalUrls !== "split-on-semicolon") return null;
+		return tryDelimitedPathSplitSync(normalizedEntry, cwd, options.splitter ?? parseSearchPath, "semicolon", "none");
+	}
+	if (probeLiteralPathExistsSync(normalizedEntry, cwd) !== "missing") return null;
+	const splitter = options.splitter ?? parseSearchPath;
+	const peeledEntry = splitPathAndSel(normalizedEntry).path;
+	if (!hasGlobPathChars(peeledEntry) && delimitedPathPartResolvesSync(normalizedEntry, cwd, splitter)) {
+		return null;
+	}
+
+	return (
+		tryDelimitedPathSplitSync(normalizedEntry, cwd, splitter, "semicolon", "none") ??
+		tryDelimitedPathSplitSync(normalizedEntry, cwd, splitter, "comma", "some") ??
+		tryDelimitedPathSplitSync(normalizedEntry, cwd, splitter, "whitespace", "all") ??
+		tryDelimitedPathSplitSync(normalizedEntry, cwd, splitter, "mixed", "all")
+	);
+}
+
+export function expandDelimitedPathEntriesSync(
+	entries: readonly string[],
+	cwd: string,
+	options: DelimitedPathSplitSyncOptions = {},
+): string[] {
+	const expanded: string[] = [];
 	for (const entry of entries) {
+		const normalizedEntry = normalizePathLikeInput(entry);
+		const split = splitDelimitedPathEntrySync(normalizedEntry, cwd, options);
+		if (split) expanded.push(...split);
+		else expanded.push(normalizedEntry);
+	}
+	return expanded;
+}
+
+let currentBoundaryCwd: string | undefined;
+
+export function searchPathFilesystemTargets(args: unknown, cwd?: string): string[] {
+	if (!args || typeof args !== "object") return [];
+	const raw = "path" in args ? args.path : "paths" in args ? args.paths : undefined;
+	const entries: string[] = [];
+	if (typeof raw === "string") entries.push(raw);
+	else if (Array.isArray(raw)) {
+		for (const item of raw) if (typeof item === "string") entries.push(item);
+	}
+	if (entries.length === 0) return [];
+	const effectiveCwd = cwd ?? currentBoundaryCwd ?? process.cwd();
+	const expanded = expandDelimitedPathEntriesSync(entries, effectiveCwd);
+	const targets: string[] = [];
+	for (const entry of expanded) {
 		const trimmed = entry.trim();
 		if (trimmed.length === 0) continue;
 		targets.push(isNonFilesystemTarget(trimmed) ? trimmed : globSearchBase(trimmed));
 	}
 	return targets;
 }
+
 
 /**
  * Resolved absolute paths this tool call would read or write that lie OUTSIDE
@@ -159,22 +326,28 @@ export function cwdEscapingTargets(tool: unknown, args: unknown, cwd: string): s
 	const physicalCwd = physicalPath(cwd);
 	const cwdBase = physicalCwd === UNRESOLVABLE ? cwd : physicalCwd;
 	const escaping: string[] = [];
-	for (const rawPath of tool.filesystemTargets(args)) {
-		if (typeof rawPath !== "string" || rawPath.trim().length === 0) continue;
-		if (isNonFilesystemTarget(rawPath)) continue;
-		const resolved = resolveToCwd(rawPath, cwd);
-		// Lexically outside cwd already prompts; no filesystem probe needed.
-		if (!isPathWithinCwd(resolved, cwd)) {
-			escaping.push(resolved);
-			continue;
+	const prevBoundaryCwd = currentBoundaryCwd;
+	currentBoundaryCwd = cwd;
+	try {
+		for (const rawPath of tool.filesystemTargets(args, cwd)) {
+			if (typeof rawPath !== "string" || rawPath.trim().length === 0) continue;
+			if (isNonFilesystemTarget(rawPath)) continue;
+			const resolved = resolveToCwd(rawPath, cwd);
+			// Lexically outside cwd already prompts; no filesystem probe needed.
+			if (!isPathWithinCwd(resolved, cwd)) {
+				escaping.push(resolved);
+				continue;
+			}
+			// Lexically inside: verify a symlink does not physically escape cwd. Only
+			// this (auto-approve) branch pays the realpath cost, and only in non-yolo
+			// modes, where cwdEscapingTargets is called at all (yolo bypasses it).
+			const physical = physicalPath(resolved);
+			if (physical === UNRESOLVABLE || !isPathWithinCwd(physical, cwdBase)) {
+				escaping.push(resolved);
+			}
 		}
-		// Lexically inside: verify a symlink does not physically escape cwd. Only
-		// this (auto-approve) branch pays the realpath cost, and only in non-yolo
-		// modes, where cwdEscapingTargets is called at all (yolo bypasses it).
-		const physical = physicalPath(resolved);
-		if (physical === UNRESOLVABLE || !isPathWithinCwd(physical, cwdBase)) {
-			escaping.push(resolved);
-		}
+	} finally {
+		currentBoundaryCwd = prevBoundaryCwd;
 	}
 	return escaping;
 }
