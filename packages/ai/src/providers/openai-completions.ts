@@ -840,8 +840,10 @@ const streamOpenAICompletionsOnce = (
 				}
 			};
 			let currentBlock: OpenAIStreamBlock | undefined;
+			let currentBlockIndex = -1;
 			const blockIndex = (block: OpenAIStreamBlock | undefined): number => {
 				if (!block) return Math.max(0, output.content.length - 1);
+				if (block === currentBlock && currentBlockIndex >= 0) return currentBlockIndex;
 				return output.content.indexOf(block);
 			};
 			const hasCompleteToolCallBatch = (): boolean => {
@@ -927,7 +929,7 @@ const streamOpenAICompletionsOnce = (
 					// resume. The stream-end sweep finalizes pending calls.
 					if (currentBlock?.type !== "toolCall") finishCurrentBlock(currentBlock);
 					currentBlock = { type: "text", text: "" };
-					message.content.push(currentBlock);
+					currentBlockIndex = message.content.push(currentBlock) - 1;
 					eventStream.push({ type: "text_start", contentIndex: blockIndex(currentBlock), partial: message });
 				}
 				currentBlock.text += text;
@@ -952,7 +954,7 @@ const streamOpenAICompletionsOnce = (
 					// continuation deltas can still find them.
 					if (currentBlock?.type !== "toolCall") finishCurrentBlock(currentBlock);
 					currentBlock = { type: "thinking", thinking: "", thinkingSignature: signature };
-					message.content.push(currentBlock);
+					currentBlockIndex = message.content.push(currentBlock) - 1;
 					eventStream.push({
 						type: "thinking_start",
 						contentIndex: blockIndex(currentBlock),
@@ -1046,7 +1048,7 @@ const streamOpenAICompletionsOnce = (
 				};
 				block.arguments = parseStreamingJson(call.arguments);
 				currentBlock = block;
-				output.content.push(block);
+				currentBlockIndex = output.content.push(block) - 1;
 				stream.push({ type: "toolcall_start", contentIndex: blockIndex(block), partial: output });
 				stream.push({
 					type: "toolcall_delta",
@@ -1056,6 +1058,7 @@ const streamOpenAICompletionsOnce = (
 				});
 				finishCurrentBlock(block);
 				currentBlock = undefined;
+				currentBlockIndex = -1;
 				healedToolCallEmitted = true;
 			};
 			const emitHealingEvent = (event: StreamMarkupHealingEvent, suppressThinking: boolean): void => {
@@ -1248,7 +1251,7 @@ const streamOpenAICompletionsOnce = (
 								if (streamIndex !== undefined) toolCallBlockByIndex.set(streamIndex, block);
 								pendingToolCallBlocks.push(block);
 								currentBlock = block;
-								output.content.push(block);
+								currentBlockIndex = output.content.push(block) - 1;
 								stream.push({
 									type: "toolcall_start",
 									contentIndex: blockIndex(block),
@@ -1262,6 +1265,7 @@ const streamOpenAICompletionsOnce = (
 									finishCurrentBlock(currentBlock);
 								}
 								currentBlock = block;
+								currentBlockIndex = output.content.indexOf(block);
 								if (streamIndex !== undefined && block.streamIndex === undefined) {
 									block.streamIndex = streamIndex;
 									toolCallBlockByIndex.set(streamIndex, block);
