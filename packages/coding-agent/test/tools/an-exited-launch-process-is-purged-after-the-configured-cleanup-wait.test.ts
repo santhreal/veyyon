@@ -297,7 +297,137 @@ describe("an exited launch process is purged after the configured cleanup wait",
 		}
 	}, 15_000);
 
-	it("declares launch.cleanupWaitMs in settings schema with 15-minute default and hides it when launch is disabled", async () => {
+	it("ensures an exited record is queryable via list, describe, and logs during wait and absent after purge", async () => {
+		const projectDir = await tempDir("launch-cleanup-query-project-");
+		const runtimeDir = await tempDir("launch-cleanup-query-runtime-");
+		const scriptPath = path.join(projectDir, "log-exit.ts");
+		await fs.writeFile(scriptPath, `console.log("HELLO_WORLD"); setTimeout(() => process.exit(0), 50);\n`);
+
+		// The broker runs in its own process, so a fake clock in this one cannot
+		// reach its cleanup timer. The TTL is real and short, and every wait below
+		// polls for the state it needs rather than sleeping for a guessed duration.
+		const client = await createDaemonBrokerClient(projectDir, {
+			runtimeDir,
+			idleGraceMs: 10_000,
+			cleanupWaitMs: 400,
+		});
+
+		try {
+			const spec: DaemonSpec = {
+				name: "queryable-daemon",
+				application: process.execPath,
+				args: [scriptPath],
+				env: {},
+				cwd: projectDir,
+				pty: false,
+				ready: { log: "HELLO_WORLD", timeoutMs: 5_000 },
+				restart: "no",
+				persist: false,
+				detached: false,
+			};
+
+			await client.request({ op: "start", spec });
+
+			const exited = await waitUntil(async () => {
+				const list = await client.request({ op: "list" });
+				if (list.op !== "list") return false;
+				const daemon = list.daemons.find(d => d.name === "queryable-daemon");
+				return daemon?.state === "exited";
+			}, 3_000);
+			expect(exited).toBeTrue();
+
+			// Queryable via list, describe, and logs during the retention wait.
+			const listBefore = await client.request({ op: "list" });
+			if (listBefore.op !== "list") throw new Error("Unexpected list result");
+			expect(listBefore.daemons.some(d => d.name === "queryable-daemon")).toBeTrue();
+
+			const describeBefore = await client.request({ op: "describe", name: "queryable-daemon" });
+			expect(describeBefore.op).toBe("describe");
+			if (describeBefore.op === "describe") {
+				expect(describeBefore.daemon.state).toBe("exited");
+				expect(describeBefore.spec.name).toBe("queryable-daemon");
+			}
+
+			const logsBefore = await client.request({
+				op: "logs",
+				name: "queryable-daemon",
+				lines: 10,
+				head: false,
+				follow: false,
+				timeoutMs: 5_000,
+			});
+			expect(logsBefore.op).toBe("logs");
+			if (logsBefore.op === "logs") {
+				expect(logsBefore.text).toContain("HELLO_WORLD");
+			}
+
+			// Wait for the purge TTL to elapse.
+			const purged = await waitUntil(async () => {
+				const list = await client.request({ op: "list" });
+				if (list.op !== "list") return false;
+				return !list.daemons.some(d => d.name === "queryable-daemon");
+			}, 3_000);
+			expect(purged).toBeTrue();
+
+			// After purge, describe and logs fail with unknown daemon error.
+			await expect(client.request({ op: "describe", name: "queryable-daemon" })).rejects.toThrow(/Unknown daemon/);
+			await expect(
+				client.request({
+					op: "logs",
+					name: "queryable-daemon",
+					lines: 10,
+					head: false,
+					follow: false,
+					timeoutMs: 5_000,
+				}),
+			).rejects.toThrow(/Unknown daemon/);
+		} finally {
+			await shutdown(client);
+		}
+	}, 15_000);
+
+	it("clears cleanup timers on broker shutdown without holding the event loop open", async () => {
+		const projectDir = await tempDir("launch-cleanup-shutdown-project-");
+		const runtimeDir = await tempDir("launch-cleanup-shutdown-runtime-");
+		const scriptPath = path.join(projectDir, "quick-exit-shutdown.ts");
+		await fs.writeFile(scriptPath, `console.log("READY"); setTimeout(() => process.exit(0), 50);\n`);
+
+		const client = await createDaemonBrokerClient(projectDir, {
+			runtimeDir,
+			idleGraceMs: 10_000,
+			cleanupWaitMs: 60_000, // 1 minute retention
+		});
+
+		const spec: DaemonSpec = {
+			name: "shutdown-daemon",
+			application: process.execPath,
+			args: [scriptPath],
+			env: {},
+			cwd: projectDir,
+			pty: false,
+			ready: { log: "READY", timeoutMs: 5_000 },
+			restart: "no",
+			persist: false,
+			detached: false,
+		};
+
+		await client.request({ op: "start", spec });
+		const exited = await waitUntil(async () => {
+			const list = await client.request({ op: "list" });
+			if (list.op !== "list") return false;
+			const daemon = list.daemons.find(d => d.name === "shutdown-daemon");
+			return daemon?.state === "exited";
+		}, 3_000);
+		expect(exited).toBeTrue();
+
+		const shutdownStart = Date.now();
+		await shutdown(client);
+		const shutdownElapsed = Date.now() - shutdownStart;
+		// Shutdown should complete promptly and not wait for the 60s cleanup timer.
+		expect(shutdownElapsed).toBeLessThan(3_000);
+	}, 15_000);
+
+	it("declares launch.cleanupWaitMs in settings schema with 15-minute default, min 0, and hides it when launch is disabled", async () => {
 		const setting = SETTINGS_SCHEMA["launch.cleanupWaitMs"];
 		expect(setting).toBeDefined();
 		expect(setting.type).toBe("number");
@@ -305,6 +435,7 @@ describe("an exited launch process is purged after the configured cleanup wait",
 		expect(setting.ui?.tab).toBe("tools");
 		expect(setting.ui?.group).toBe("Launch");
 		expect(setting.ui?.label).toBe("Launch Cleanup Wait");
+		expect(setting.ui?.min).toBe(0);
 		expect(setting.ui?.condition).toBe("launchEnabled");
 		expect(setting.ui?.options).toBeArray();
 

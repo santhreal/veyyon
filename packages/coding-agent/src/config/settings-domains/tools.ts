@@ -302,6 +302,7 @@ export const TOOLS_SETTINGS = {
 			tab: "tools",
 			group: "Launch",
 			label: "Launch Cleanup Wait",
+			min: 0, // Wait TTL cannot be negative (0 = never clean up)
 			condition: "launchEnabled",
 			description:
 				"How long an exited process record is retained before being purged from memory and disk (0 = never clean up)",

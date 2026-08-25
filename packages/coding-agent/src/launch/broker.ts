@@ -62,6 +62,7 @@ const RESTART_MAX_DELAY_MS = 30_000;
 /** Output carried in a retained completion record, in lines and in bytes. */
 const COMPLETION_TAIL_LINES = 40;
 const COMPLETION_TAIL_BYTES = 4_000;
+const MAX_TIMER_DELAY_MS = 2_147_483_647;
 
 /**
  * Attribution for a termination a broker component is about to cause: which
@@ -357,8 +358,9 @@ class DaemonBroker {
 		this.#runtimeDir = runtimeDir;
 		this.#endpoint = daemonBrokerEndpoint(projectDir, runtimeDir);
 		this.#token = token;
-		this.#idleGraceMs = idleGraceMs;
-		this.#cleanupWaitMs = cleanupWaitMs;
+		this.#idleGraceMs = Number.isFinite(idleGraceMs) && idleGraceMs >= 0 ? idleGraceMs : DEFAULT_IDLE_GRACE_MS;
+		this.#cleanupWaitMs =
+			Number.isFinite(cleanupWaitMs) && cleanupWaitMs >= 0 ? cleanupWaitMs : DEFAULT_CLEANUP_WAIT_MS;
 	}
 
 	async run(): Promise<void> {
@@ -396,6 +398,8 @@ class DaemonBroker {
 			await record.log?.close();
 			await record.persistQueue;
 		}
+		for (const timer of this.#cleanupTimers.values()) clearTimeout(timer);
+		this.#cleanupTimers.clear();
 		// Settles queue completion records asynchronously; the store write must
 		// land before the socket closes or a shutdown loses the deaths it caused.
 		await this.#completionsQueue;
@@ -907,15 +911,17 @@ class DaemonBroker {
 	}
 
 	#scheduleCleanup(record: ManagedDaemon): void {
-		if (this.#cleanupWaitMs <= 0) return;
+		if (this.#shuttingDown || this.#cleanupWaitMs <= 0) return;
 		const name = record.snapshot.name;
 		this.#cancelCleanup(name);
 		const exitedAt = record.snapshot.exitedAt ?? Date.now();
-		const delayMs = Math.max(0, exitedAt + this.#cleanupWaitMs - Date.now());
+		const delayMs = Math.min(Math.max(0, exitedAt + this.#cleanupWaitMs - Date.now()), MAX_TIMER_DELAY_MS);
 		const timer = setTimeout(() => {
 			this.#cleanupTimers.delete(name);
 			void this.#purgeRecord(name);
 		}, delayMs);
+		// A retained record is not a reason to keep the broker alive; the socket is.
+		timer.unref();
 		this.#cleanupTimers.set(name, timer);
 	}
 
@@ -923,14 +929,19 @@ class DaemonBroker {
 		const record = this.#records.get(name);
 		if (!record || !terminalState(record.snapshot.state)) return;
 		this.#cancelCleanup(name);
+		// Nothing is torn down until the purge is committed. `persistQueue` yields,
+		// and a start under the same name during that yield replaces the record: an
+		// early `log.close()` left the new generation live in `#records` with no log
+		// handle, and the later `fs.rm` wiped its directory.
+		await record.persistQueue;
+		if (this.#records.get(name) !== record || !terminalState(record.snapshot.state)) return;
+		this.#records.delete(name);
 		clearTimeout(record.restartTimer);
 		await record.log?.close();
 		record.log = undefined;
-		await record.persistQueue;
 		await fs.rm(record.dir, { recursive: true, force: true }).catch(error => {
 			logger.warn("Failed to remove purged daemon directory", { name, error: errorMessage(error) });
 		});
-		this.#records.delete(name);
 	}
 
 	async #logs(operation: Extract<DaemonOperation, { op: "logs" }>): Promise<DaemonRpcResult> {
