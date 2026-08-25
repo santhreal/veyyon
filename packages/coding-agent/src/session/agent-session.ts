@@ -4401,7 +4401,7 @@ export class AgentSession {
 	 * calls exactly the forced tool once and then cannot call another.
 	 */
 	setForcedToolChoice(toolName: string): void {
-		if (!this.getActiveToolNames().includes(toolName)) {
+		if (!this.#hasActiveTool(toolName)) {
 			throw new Error(`Tool "${toolName}" is not currently active.`);
 		}
 
@@ -8907,6 +8907,11 @@ export class AgentSession {
 		return this.agent.state.tools.map(t => t.name);
 	}
 
+	/** Whether a tool with `name` is currently active (avoids the array allocation of `getActiveToolNames`). */
+	#hasActiveTool(name: string): boolean {
+		return this.agent.state.tools.some(t => t.name === name);
+	}
+
 	/** Whether the edit tool is registered in this session. */
 	get hasEditTool(): boolean {
 		return this.#toolRegistry.has(TOOL.edit);
@@ -9019,7 +9024,7 @@ export class AgentSession {
 	 */
 	async #syncAfterModelChange(previousEditMode: EditMode): Promise<void> {
 		const currentEditMode = this.#resolveActiveEditMode();
-		const editModeChanged = previousEditMode !== currentEditMode && this.getActiveToolNames().includes(TOOL.edit);
+		const editModeChanged = previousEditMode !== currentEditMode && this.#hasActiveTool(TOOL.edit);
 		// The system prompt selects model-specific policy even when it does not display the model id.
 		const modelChanged = this.#currentPromptModelKey() !== this.#promptModelKey;
 		if (!editModeChanged && !modelChanged) return;
@@ -10788,11 +10793,7 @@ export class AgentSession {
 				timestamp,
 			});
 		}
-		if (
-			this.#magicKeywordEnabled("workflow") &&
-			containsWorkflow(text) &&
-			this.getActiveToolNames().includes(TOOL.task)
-		) {
+		if (this.#magicKeywordEnabled("workflow") && containsWorkflow(text) && this.#hasActiveTool(TOOL.task)) {
 			keywordNotices.push({
 				role: "custom",
 				customType: "workflow-notice",
@@ -15249,7 +15250,7 @@ export class AgentSession {
 			const trimmed = promptText.trimEnd();
 			if (trimmed.endsWith("?") || trimmed.endsWith("!")) return undefined;
 		}
-		if (!this.getActiveToolNames().includes(TOOL.task)) return undefined;
+		if (!this.#hasActiveTool(TOOL.task)) return undefined;
 		return {
 			role: "custom",
 			customType: "eager-task-prelude",
@@ -15467,7 +15468,7 @@ export class AgentSession {
 		// restricting the slate). Mirror {@link #createEagerTodoPrelude}'s
 		// guard so we never ask the model to call a tool that is not in its
 		// schema — the request would fabricate an unknown tool call.
-		if (!this.getActiveToolNames().includes(TOOL.todo)) return null;
+		if (!this.#hasActiveTool(TOOL.todo)) return null;
 		// A failed `todo` write leaves the recorded board unverified, so counting
 		// "incomplete items" off it would nudge about work the session cannot
 		// confirm is outstanding. Same honesty rule as the stop-time reminder.
