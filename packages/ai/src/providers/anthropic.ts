@@ -75,7 +75,7 @@ import { withEmptyCompletionRetry } from "../utils/empty-completion-retry";
 import { AssistantMessageEventStream } from "../utils/event-stream";
 import { isPreResponseStall, openStallLadderBudget } from "../utils/first-event-budget";
 import { isFoundryEnabled } from "../utils/foundry";
-import { finalizeErrorMessage, type RawHttpRequestDump } from "../utils/http-inspector";
+import { finalizeErrorMessage, materializeDumpBody, type RawHttpRequestDump } from "../utils/http-inspector";
 import { getStreamFirstEventTimeoutMs, getStreamIdleTimeoutMs, iterateWithIdleTimeout } from "../utils/idle-iterator";
 import { notifyProviderResponse } from "../utils/provider-response";
 import { COMBINATOR_KEYS, NO_STRICT, toolWireSchema } from "../utils/schema";
@@ -1879,6 +1879,8 @@ const streamAnthropicOnce = (
 			timestamp: Date.now(),
 		};
 		let rawRequestDump: RawHttpRequestDump | undefined;
+		/** Exact bytes of the last sent request body; materialized into a dump only on the 400/413 path. */
+		let anthropicWireBodyJson: string | undefined;
 		let activeAbortTracker = createAbortSourceTracker(options?.signal);
 
 		const onSseEvent = options?.onSseEvent;
@@ -2035,14 +2037,17 @@ const streamAnthropicOnce = (
 					nextParams = replacementPayload as typeof nextParams;
 				}
 				nextParams = toWellFormedDeep(nextParams) as typeof nextParams;
+				// Retain the exact sent BYTES, not the parsed object: a dump body is
+				// read only on the 400/413 path, and holding the graph here pinned a
+				// full context-sized object for the whole stream.
 				rawRequestDump = {
 					provider: model.provider,
 					api: output.api,
 					model: model.id,
 					method: "POST",
 					url: `${baseUrl}/v1/messages${isOAuthToken ? "?beta=true" : ""}`,
-					body: nextParams,
 				};
+				anthropicWireBodyJson = JSON.stringify(nextParams);
 				return nextParams;
 			};
 			let params = await prepareParams();
@@ -2698,7 +2703,10 @@ const streamAnthropicOnce = (
 						// success (consumers treat its presence as failure).
 						logger.warn("anthropic: strict tools rejected, retrying without strict tools", {
 							model: model.id,
-							error: await finalizeErrorMessage(streamFailure, rawRequestDump),
+							error: await finalizeErrorMessage(
+								streamFailure,
+								materializeDumpBody(rawRequestDump, anthropicWireBodyJson),
+							),
 						});
 						if (providerSessionState) {
 							providerSessionState.strictToolsDisabled = true;
@@ -2843,10 +2851,11 @@ const streamAnthropicOnce = (
 				api: model.api,
 				provider: model.provider,
 				abortTracker: activeAbortTracker,
-				rawRequestDump,
+				rawRequestDump: materializeDumpBody(rawRequestDump, anthropicWireBodyJson),
 			});
 			output.stopReason = result.stopReason;
 			output.errorStatus = result.status;
+
 			output.errorId = result.id;
 			output.errorMessage = maybeAddReplayUnsignedThinkingHint(model, result.message);
 			output.duration = performance.now() - startTime;
