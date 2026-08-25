@@ -242,17 +242,33 @@ export const KEEP_NOTHING_ENTRY_ID = "compaction:keep-nothing";
  * what it means. It resolves to just past the compaction entry, because a
  * compaction that kept nothing left everything before itself summarized away.
  */
+const boundaryIndexCache = new WeakMap<
+	readonly SessionEntry[],
+	{ boundaryId: string | undefined; length: number; index: number }
+>();
+
 export function resolveCompactionBoundaryIndex(
 	entries: readonly SessionEntry[],
 	keepBoundaryId: string | undefined,
 ): number {
 	if (keepBoundaryId === undefined) return 0;
-	if (keepBoundaryId === KEEP_NOTHING_ENTRY_ID) {
-		for (let i = entries.length - 1; i >= 0; i--) {
-			if (entries[i].type === "compaction") return i + 1;
-		}
-		return 0;
+	const cached = boundaryIndexCache.get(entries);
+	if (cached !== undefined && cached.boundaryId === keepBoundaryId && cached.length === entries.length) {
+		return cached.index;
 	}
-	const index = entries.findIndex(entry => entry.id === keepBoundaryId);
-	return index < 0 ? 0 : index;
+	let index: number;
+	if (keepBoundaryId === KEEP_NOTHING_ENTRY_ID) {
+		index = 0;
+		for (let i = entries.length - 1; i >= 0; i--) {
+			if (entries[i].type === "compaction") {
+				index = i + 1;
+				break;
+			}
+		}
+	} else {
+		const found = entries.findIndex(entry => entry.id === keepBoundaryId);
+		index = found < 0 ? 0 : found;
+	}
+	boundaryIndexCache.set(entries, { boundaryId: keepBoundaryId, length: entries.length, index });
+	return index;
 }
