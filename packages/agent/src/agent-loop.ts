@@ -1982,6 +1982,18 @@ function retainCompletedToolCalls(
  * result, so nothing pairs against it.
  */
 function disambiguateToolCallIds(message: AssistantMessage, takenIds: ReadonlySet<string>): AssistantMessage {
+	// Fast path: if there are no tool calls, or no taken IDs and no duplicate
+	// IDs in the message, return by reference. Avoids allocating a Set and
+	// scanning every block in the common case (unique IDs, no history).
+	let hasToolCall = false;
+	for (const block of message.content) {
+		if (block.type === "toolCall") {
+			hasToolCall = true;
+			break;
+		}
+	}
+	if (!hasToolCall) return message;
+
 	const seen = new Set<string>();
 	let content: AssistantMessage["content"] | undefined;
 	for (const [index, block] of message.content.entries()) {

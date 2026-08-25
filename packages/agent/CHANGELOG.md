@@ -21,6 +21,7 @@
 - `pruneSupersededToolResults` computes the cache-warm suffix during `collectPruneCandidates`'s backward scan instead of calling `computeMessageSuffixTokens` separately, eliminating another O(n) array allocation and O(n) pass per turn. The suffix is stored per-candidate and read directly by `chooseWorthwhileSweep`.
 - `pruneToolOutputs` skips the `collectPruneCandidates` backward walk when no supersede key is configured (the production default), checking the useless-result flag inline in its existing backward scan instead. This eliminates one O(n) pass per turn.
 - `pruneSupersededToolResults` merges the eligible-candidate and tail-candidate filter passes into a single forward loop, avoiding one throwaway array allocation per non-idle pruning turn.
+- `disambiguateToolCallIds` returns the message by reference when it contains no tool-call blocks, avoiding a `new Set` allocation and full content scan on pure-text turns.
 - `countTokens` replaces its array-branch `reduce` with a `for` loop, avoiding a callback allocation per token count call on string arrays.
 - `createBranchSummaryMessage`, `createCompactionSummaryMessage`, and `createCustomMessage` use `Date.parse` instead of `new Date(...).getTime()`, avoiding a Date object allocation per compaction message creation.
 
