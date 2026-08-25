@@ -336,9 +336,5 @@ function computeFingerprint(systemPrompt: string[], tools: Tool[], options: Buil
 		ex: options.exampleDialect,
 		pd: options.pruneToolDescriptions,
 	});
-	let hash = 0;
-	for (let i = 0; i < payload.length; i++) {
-		hash = ((hash << 5) - hash + payload.charCodeAt(i)) | 0;
-	}
-	return (hash >>> 0).toString(36);
+	return (Number(Bun.hash(payload)) >>> 0).toString(36);
 }
