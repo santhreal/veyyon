@@ -10,7 +10,7 @@
 - `read` accepts a semicolon-delimited list of internal resources (`skill://demo/one.md;skill://demo/two.md`), the same list form `grep` and `glob` take, and returns one section per entry.
 - Eval kernels gain `kv`, a bounded JSON store under the session's artifacts directory that survives kernel resets and is shared between JavaScript and Python without cross-session filename collisions or lost concurrent updates, and `defs()`, which lists the names user code has defined in the kernel.
 - Every supervised process termination records which component ended it and why, with distinct attribution for each path (operator stop, signal, restart, broker shutdown, idle reaper, OS signal, broker recovery, launch failure, external signal, and natural exit); `launch list` output shows the lifetime owning condition and retained completion records with exit codes, reasons, and output tails, queryable after the name is reused and across broker restarts.
-- A click on the working directory, git branch or pull-request text in the composer status line widens the path to the row and hides the model chip to pay for it; a second click restores both.
+- A click on the working directory, git branch or pull-request text in the composer status line widens the location to the row and retracts the model chip to pay for it, animated over the shared expand curve, and a second click reverses it; `display.transitions: off` lands on the click frame.
 
 ### Changed
 
@@ -29,7 +29,7 @@
 
 - The model name segment on the composer status line is preserved against wide working directories and git branch names by ranking it above location shortening in footline degradation.
 - A clipped working directory on the composer status line now carries one ellipsis at the front instead of one at each end, so the directory the session is in stays visible and the visible text reads as a suffix of the real path.
-- The composer status line sheds the git branch and pull-request text before clipping into the working directory, so the directory the session is in stays on the row down to the narrowest terminal.
+- The composer status line clips the working directory and the git branch from their own fronts together instead of dropping the branch, never clips a branch short enough to read whole, keeps the path's icon in front of the clip mark, and gives up the context gauge before letting either part fall under its floor.
 - The composer footline's click targets — the context gauge, the secrets chip, the goal readout and the path expansion — answer a click in a session whose transcript has not yet overflowed the viewport, instead of staying inert until it does.
 - The status line's default-branch lookup no longer raises an unhandled rejection in a directory holding a `.git` on a host with no `git` on PATH; the lookup fails to the `main` fallback instead.
 - A completed background job now fills its still-pending originating tool call instead of starting an unrelated recap turn after an interruption, including when zero retention is configured or foreground completion races background delivery.
