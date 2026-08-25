@@ -3,7 +3,10 @@ import * as path from "node:path";
 import type { Api, Model } from "@veyyon/ai";
 import { parseArgs } from "@veyyon/coding-agent/cli/args";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
-import { Settings } from "@veyyon/coding-agent/config/settings";
+import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
+import { SettingsSelectorComponent } from "@veyyon/coding-agent/modes/components/settings-selector";
+import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { stubStdoutGeometry } from "../helpers/stdout-geometry";
 import { buildSessionOptions } from "@veyyon/coding-agent/main";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { executeAcpBuiltinSlashCommand } from "@veyyon/coding-agent/slash-commands/acp-builtins";
@@ -169,5 +172,166 @@ describe("/prewalk resolves its cheap target", () => {
 		const options = await buildSessionOptions(parsed, [], undefined, registry, settings);
 
 		expect(options.model && `${options.model.provider}/${options.model.id}`).toBe(STRONG);
+	});
+	it("honors prewalk.cheapModel and prewalk.strongModel defaults at launch", async () => {
+		const registry = makeRegistry();
+		const parsed = parseArgs(["--prewalk"]);
+
+		// When prewalk.cheapModel is unset (default), --prewalk launch fails loud
+		await expect(buildSessionOptions(parsed, [], undefined, registry, Settings.isolated({}))).rejects.toThrow(
+			'Prewalk needs a cheap target model: set "prewalk.cheapModel" in settings or pass --prewalk-into <model>.',
+		);
+
+		// When prewalk.strongModel is unset (default), options.model is not overridden
+		const options = await buildSessionOptions(
+			parsed,
+			[],
+			undefined,
+			registry,
+			Settings.isolated({ "prewalk.cheapModel": CHEAP }),
+		);
+		expect(options.model).toBeUndefined();
+		expect(options.prewalk?.target && `${options.prewalk.target.provider}/${options.prewalk.target.id}`).toBe(CHEAP);
+	});
+
+	it("changes resolved models when non-default values are configured", async () => {
+		const registry = makeRegistry();
+		const parsed = parseArgs(["--prewalk"]);
+
+		// Non-default cheapModel changes resolved prewalk target
+		const optionsCheap1 = await buildSessionOptions(
+			parsed,
+			[],
+			undefined,
+			registry,
+			Settings.isolated({ "prewalk.cheapModel": CHEAP }),
+		);
+		expect(
+			optionsCheap1.prewalk?.target &&
+				`${optionsCheap1.prewalk.target.provider}/${optionsCheap1.prewalk.target.id}`,
+		).toBe(CHEAP);
+
+		const optionsCheap2 = await buildSessionOptions(
+			parsed,
+			[],
+			undefined,
+			registry,
+			Settings.isolated({ "prewalk.cheapModel": STRONG }),
+		);
+		expect(
+			optionsCheap2.prewalk?.target &&
+				`${optionsCheap2.prewalk.target.provider}/${optionsCheap2.prewalk.target.id}`,
+		).toBe(STRONG);
+
+		// Non-default strongModel changes resolved start model
+		const optionsStrong1 = await buildSessionOptions(
+			parsed,
+			[],
+			undefined,
+			registry,
+			Settings.isolated({ "prewalk.cheapModel": CHEAP, "prewalk.strongModel": STRONG }),
+		);
+		expect(optionsStrong1.model && `${optionsStrong1.model.provider}/${optionsStrong1.model.id}`).toBe(STRONG);
+
+		const optionsStrong2 = await buildSessionOptions(
+			parsed,
+			[],
+			undefined,
+			registry,
+			Settings.isolated({ "prewalk.cheapModel": CHEAP, "prewalk.strongModel": CHEAP }),
+		);
+		expect(optionsStrong2.model && `${optionsStrong2.model.provider}/${optionsStrong2.model.id}`).toBe(CHEAP);
+	});
+
+	it("fails loud on invalid prewalk.cheapModel or prewalk.strongModel values", async () => {
+		const registry = makeRegistry();
+		const parsed = parseArgs(["--prewalk"]);
+
+		// Unknown model for cheapModel throws
+		await expect(
+			buildSessionOptions(
+				parsed,
+				[],
+				undefined,
+				registry,
+				Settings.isolated({ "prewalk.cheapModel": "nonexistent/invalid-model" }),
+			),
+		).rejects.toThrow();
+
+		// Missing credentials for cheapModel throws
+		await expect(
+			buildSessionOptions(
+				parsed,
+				[],
+				undefined,
+				registry,
+				Settings.isolated({ "prewalk.cheapModel": "openai/gpt-5-mini" }),
+			),
+		).rejects.toThrow(/api key/i);
+
+		// Unknown model for strongModel throws
+		await expect(
+			buildSessionOptions(
+				parsed,
+				[],
+				undefined,
+				registry,
+				Settings.isolated({ "prewalk.cheapModel": CHEAP, "prewalk.strongModel": "nonexistent/invalid-model" }),
+			),
+		).rejects.toThrow();
+
+		// Missing credentials for strongModel throws
+		await expect(
+			buildSessionOptions(
+				parsed,
+				[],
+				undefined,
+				registry,
+				Settings.isolated({ "prewalk.cheapModel": CHEAP, "prewalk.strongModel": "openai/gpt-5-mini" }),
+			),
+		).rejects.toThrow(/api key/i);
+	});
+
+	it("hides prewalk.cheapModel and prewalk.strongModel from the settings selector while prewalk is off", async () => {
+		await initTheme();
+		const stub = stubStdoutGeometry({ columns: 160, rows: 40 });
+		try {
+			resetSettingsForTest();
+			await Settings.init({ inMemory: true });
+
+			const createSelector = () =>
+				new SettingsSelectorComponent(
+					{
+						availableThinkingLevels: [],
+						thinkingLevel: undefined,
+						availableThemes: ["dark"],
+						availablePersonalities: ["default"],
+						providers: [],
+						cwd: process.cwd(),
+					},
+					{
+						onChange: () => {},
+						onCancel: () => {},
+					},
+				);
+
+			// Master toggle off (default) -> both knobs are hidden
+			expect(Settings.instance.get("prewalk.enabled")).toBe(false);
+			const selectorOff = createSelector();
+			selectorOff.openTab("model");
+			expect(selectorOff.selectSetting("prewalk.cheapModel")).toBe(false);
+			expect(selectorOff.selectSetting("prewalk.strongModel")).toBe(false);
+
+			// Master toggle on -> both knobs appear
+			Settings.instance.set("prewalk.enabled", true);
+			expect(Settings.instance.get("prewalk.enabled")).toBe(true);
+			const selectorOn = createSelector();
+			selectorOn.openTab("model");
+			expect(selectorOn.selectSetting("prewalk.cheapModel")).toBe(true);
+			expect(selectorOn.selectSetting("prewalk.strongModel")).toBe(true);
+		} finally {
+			stub.restore();
+			resetSettingsForTest();
+		}
 	});
 });
