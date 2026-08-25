@@ -69,6 +69,12 @@
 
 - Outbound wire path canonicalization only relativizes paths matching the active session working directory instead of accumulating prior working directory roots, preventing distinct absolute paths in command output from collapsing to the same relative representation.
 - A working-directory change in a live session no longer re-renders earlier messages already sent to the provider, so only messages appended after a `set_cwd` render against the new directory.
+- Filesystem cwd boundary checks expand comma- and whitespace-delimited path arguments matching execution, preventing multi-target reads or searches from bypassing working-directory approval prompts in non-yolo modes.
+- The read tool renderer sanitizes resolved directory paths with shortenPath to avoid displaying unshortened home-directory paths.
+- Stopping a daemon during restart backoff cancels the timer and attributes operator stop without recording a duplicate completion entry, and broker recovery terminates daemons left in restarting state without dead recovery branches.
+- Multi-target `ast_grep` searches across overlapping paths deduplicate matches so totals, file counts, and paged results are not duplicated or truncated.
+- Acknowledging a completed background job before lifting its watch no longer delivers a duplicate completion notification when retention is zero.
+- A generic tool card with an undrawable image result no longer accumulates duplicate image placeholder rows on rebuild.
 - With Language Servers off, which is the default, the write and edit tools no longer start a language server to inject diagnostics, format the file, or notify the workspace that a file changed, including on the ACP client-bridge write path.
 - A malformed `irc` send reports its own validation error instead of being reported as an interrupted wait when a peer message arrives in the same batch.
 - A `job` list snapshot or cancel-only call keeps its own result when an interrupt lands beside it.
@@ -97,10 +103,13 @@
 - `branchSummary.reserveTokens` now reaches the branch summarizer. It was declared in the settings schema but read by nothing, so every branch summary used the built-in 16384 reserve whatever the setting said.
 - The `ssh` tool works again on a profile whose directory nests more than a few levels deep. Its connection multiplexing socket used a 64-character hash, and OpenSSH binds that path plus a 17-character suffix before renaming it, which exceeded the 108-byte Unix socket limit and failed every command with `unix_listener: path too long for Unix domain socket`; the name is now a 16-character digest, and a path that still cannot fit drops multiplexing with one warning instead of failing the connection.
 - `debug` reaches the Python debugger on a host that installs `python3` and no unsuffixed `python`, which is every current Linux and macOS. The bundled `debugpy` adapter named `python`, so launching answered `adapter 'debugpy' is not available` on a machine that had Python; an adapter may now declare alternate spellings, and a command written in `dap.json` is still used exactly as written.
+- A subagent that calls `yield` with unusable data now fails the run instead of returning success with the system warning as its result, matching how a subagent that never yields at all is already reported.
+- A subagent result that cannot be serialized now fails the run and reports the serialization error, instead of returning success with an unparseable error envelope as its payload.
 - Side requests derive a stable conversation ID per oneshot kind, preventing compaction, handoff, and branch summaries from overwriting live Cursor and Devin conversation state.
 - Aborting while paused rejects the pause wait and prevents the agent loop from starting another provider turn or paused tool.
 - A branch-summary reserve at or above the model's context window now falls back to the proportional 15% reserve instead of leaving a non-positive budget, which the entry preparation read as "no limit" and which sent the whole branch.
 - A tool that blocks on only some of its operations declares interruptibility per call, so an interrupt arriving beside a non-blocking or malformed call no longer replaces that call's own result with a skipped placeholder.
+- Fixed read tool target parsing in `ToolCallLoopGuard` to correctly handle URI schemes, Windows drive prefixes, compound raw-range selectors, and open-ended ranges without falsely subsuming distinct reads.
 - Fixed OpenAI server-side compaction requests omitting the `Authorization` header when constructing headers from request setup.
 - Supported server-side compaction on the ChatGPT Codex backend with OAuth credential and turn identity headers.
 - API option mapping preserves side-request conversation IDs, preventing Cursor and Devin requests from falling back to the live session ID.
@@ -111,6 +120,7 @@
 - Persisted AVX2 verdicts are schema-versioned and keyed by platform, architecture, and CPU model, so copied or stale caches cannot select a native variant for different hardware.
 - The AVX2 trial load answers from the addon loader's first import and exits, so a compiled host, whose `process.execPath` is the product binary rather than a JavaScript runtime, reports a verdict instead of booting the whole CLI and spawning a trial child of its own at every level.
 - A wrapped line now continues under the indent its first row opened at, so an indented row no longer reads as a new top-level row at a narrow width.
+- Exclude pinned footer rows from the scroll-isolation snapshot and scroll space so the composer does not duplicate inside scrolled-back history.
 - `splitTrailingPartialEscape` lets a streaming reader hold back an escape sequence a chunk ended inside, so a sequence divided across two reads is stripped whole instead of losing its head and leaking its tail as text.
 - `discarded-fault.ts`: `bestEffort` and `optionalResult` state which contract discarded a promise's failure, one for a step nobody waits on and one for a probe whose failure is the answer, each taking a mandatory reason.
 

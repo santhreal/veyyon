@@ -75,6 +75,7 @@ import { getLanguageFromPath } from "../utils/lang-from-path";
 import { convertFileWithMarkit } from "../utils/markit";
 import { type ArchiveReader, formatArchiveEntryLines, openArchive, parseArchivePathCandidates } from "../utils/zip";
 import { buildDirectoryTree, buildTopLevelDirectoryListing, type DirectoryTree } from "../workspace-tree";
+import { expandDelimitedPathEntriesSync } from "./cwd-boundary";
 import {
 	type ConflictEntry,
 	type ConflictScope,
@@ -1119,14 +1120,13 @@ type SuffixMatchCache = Map<string, { absolutePath: string; displayPath: string 
  * instead resolves `a.md;/etc/passwd` to one path inside the working directory
  * that no read ever opens, and the entry outside it is never gated.
  */
-export function readFilesystemTargets(args: unknown): string[] {
+export function readFilesystemTargets(args: unknown, cwd?: string): string[] {
 	if (!args || typeof args !== "object" || !("path" in args)) return [];
 	const rawPath = args.path;
 	if (typeof rawPath !== "string") return [];
-	return rawPath
-		.split(";")
-		.map(entry => entry.trim())
-		.filter(entry => entry.length > 0);
+	const effectiveCwd = cwd ?? process.cwd();
+	const expanded = expandDelimitedPathEntriesSync([rawPath], effectiveCwd, { internalUrls: "split-on-semicolon" });
+	return expanded.filter(entry => entry.length > 0);
 }
 
 /**
@@ -1142,7 +1142,7 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 	// The cwd boundary reads this to gate out-of-cwd reads in non-yolo modes. A
 	// `:selector` suffix is left attached (it cannot traverse); URLs/ssh/internal
 	// schemes are filtered by the boundary itself. See cwd-boundary.ts.
-	readonly filesystemTargets = (args: unknown): string[] => readFilesystemTargets(args);
+	readonly filesystemTargets = (args: unknown, cwd = this.session.cwd): string[] => readFilesystemTargets(args, cwd);
 	readonly label = "Read";
 	readonly loadMode = "essential";
 	readonly description: string;
@@ -3857,7 +3857,7 @@ export const readToolRenderer = {
 		const truncation = details?.meta?.truncation;
 		const fallback = details?.truncation;
 		if (details?.resolvedPath) {
-			warningLines.push(uiTheme.fg("dim", wrapBrackets(`Resolved path: ${details.resolvedPath}`, uiTheme)));
+			warningLines.push(uiTheme.fg("dim", wrapBrackets(`Resolved path: ${shortenPath(details.resolvedPath)}`, uiTheme)));
 		}
 		if (truncation) {
 			if (fallback?.firstLineExceedsLimit) {

@@ -122,12 +122,15 @@ RUN set -eux; \
     mkdir -p /dev; \
     [ -e /dev/console ] || mknod -m 0600 /dev/console c 5 1; \
     [ -e /dev/null ] || mknod -m 0666 /dev/null c 1 3
-# The one and only account inside the guest. Its home is created on a tmpfs at boot
-# by /init; this entry exists so getpwuid(1000) resolves and tools that read the
-# passwd database see a home that is not the operator's.
+# Accounts inside the guest for synthetic users (1000..1010). Their homes are created
+# on a tmpfs at boot by /init or by the sandbox docker runner; these entries exist so
+# getpwuid resolves for the host runner's UID (e.g. 1000 on desktop, 1001 on GitHub
+# Actions) and tools that query the passwd database see a valid account.
 RUN set -eux; \
-    if ! getent group 1000 >/dev/null; then groupadd -g 1000 veyyon; fi; \
-    if ! getent passwd 1000 >/dev/null; then useradd -u 1000 -g 1000 -d /home/veyyon -s /bin/bash veyyon; fi; \
+    for uid in $(seq 1000 1010); do \
+        if ! getent group "$uid" >/dev/null; then groupadd -g "$uid" "veyyon$uid"; fi; \
+        if ! getent passwd "$uid" >/dev/null; then useradd -u "$uid" -g "$uid" -d /home/veyyon -s /bin/bash "veyyon$uid"; fi; \
+    done; \
     usermod -d /home/veyyon "$(getent passwd 1000 | cut -d: -f1)"
 
 COPY guest-init.sh /init
