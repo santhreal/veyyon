@@ -115,7 +115,7 @@ function resolveFuzzyThreshold(session: ToolSession, rawValue: string): number {
  * so an edit is invisible to `io.stat` and to `/proc/<pid>/io`.
  */
 function createEditWritethrough(session: ToolSession): WritethroughCallback {
-	const enableLsp = session.enableLsp ?? true;
+	const enableLsp = (session.enableLsp ?? true) && session.settings.get("lsp.enabled");
 	const enableDiagnostics = enableLsp && session.settings.get("lsp.diagnosticsOnEdit");
 	const enableFormat = enableLsp && session.settings.get("lsp.formatOnWrite");
 	const dedup = enableDiagnostics && session.settings.get("lsp.diagnosticsDeduplicate");
@@ -534,6 +534,7 @@ export class EditTool implements AgentTool<TInput> {
 		this.#fuzzyThreshold = resolveFuzzyThreshold(session, editFuzzyThreshold);
 		const deduplicateDiagnostics =
 			(session.enableLsp ?? true) &&
+			session.settings.get("lsp.enabled") &&
 			session.settings.get("lsp.diagnosticsOnEdit") &&
 			session.settings.get("lsp.diagnosticsDeduplicate");
 		this.#deferredDiagnostics = new DeferredDiagnostics(session, deduplicateDiagnostics);

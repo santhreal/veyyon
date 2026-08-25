@@ -385,6 +385,7 @@ describe("LSP diagnostics freshness", () => {
 			getSessionFile: () => null,
 			getSessionSpawns: () => "*",
 			settings: Settings.isolated({
+				"lsp.enabled": true,
 				"lsp.formatOnWrite": false,
 				"lsp.diagnosticsOnWrite": true,
 				"lsp.diagnosticsDeduplicate": true,
