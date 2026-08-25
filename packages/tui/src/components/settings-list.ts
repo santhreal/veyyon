@@ -611,8 +611,9 @@ export class SettingsList implements Component {
 		const labelPadded = labelClipped + padding(Math.max(0, maxLabelWidth - visibleWidth(labelClipped)));
 		const separator = "  ";
 		const valueMaxWidth = rowWidth - prefixWidth - maxLabelWidth - visibleWidth(separator) - 2;
-		// The selected boolean/enum row shows ‹ value › so the Left/Right
-		// cycling gesture is discoverable, not a hidden power feature.
+		// The selected boolean/enum row shows ‹ value › so it reads as a value that
+		// steps rather than a fixed one. handleInput cycles it on confirm or space;
+		// Left and Right belong to the sidebar and never change a value.
 		const cyclable =
 			isSelected && !item.readOnly && !item.submenu && item.values !== undefined && item.values.length > 0;
 		// A row whose value is machine-readable (a millisecond count, a byte size) renders

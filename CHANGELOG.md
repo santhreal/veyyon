@@ -53,7 +53,7 @@
 - Every `MNEMOPI_*` value is read by `config.ts` alone; the local-model, extraction and embedding modules ask it instead of parsing the variable again.
 - `getDiagnostics` is now `extractionDiagnostics` in `core/extraction/diagnostics` and `recallDiagnostics` in `core/recall-diagnostics`, so the two registries are no longer reached by one name.
 - Settings search ranks a label that contains the whole multi-word query above settings whose fields only split the words.
-- `SettingsList` expand-mode descriptions render for the selected row without an expand keypress, and the `expandedIds` option is gone.
+- `SettingsList` expand-mode descriptions render for the selected row without an expand keypress.
 - A settings row clips an over-long label or value with an ellipsis instead of breaking the value column's alignment or cutting the value silently.
 - `imageFallback` takes the file name, media type, pixel size and cause of an undrawn image and returns a row naming all four; `ImageFallbackReason` states the cause.
 - `bestEffort` and `optionalResult` are imported from `@veyyon/utils/discarded-fault`. The barrel does not re-export them, so a consumer reaching them through `@veyyon/utils` names the module instead.
@@ -83,6 +83,10 @@
 - Cursor turns fail immediately when an asynchronous exec-server handler fails; malformed grep line or count values and oversized Connect frames fail before protobuf or buffer exhaustion; and success waits for queued handlers and gRPC trailers so quota and availability statuses are preserved.
 - `splitTrailingPartialEscape` lets a streaming reader hold back an escape sequence a chunk ended inside, so a sequence divided across two reads is stripped whole instead of losing its head and leaking its tail as text.
 - `discarded-fault.ts`: `bestEffort` and `optionalResult` state which contract discarded a promise's failure, one for a step nobody waits on and one for a probe whose failure is the answer, each taking a mandatory reason.
+
+### Breaking Changes
+
+- `SettingsListOptions.expandedIds` is gone. Expand-mode descriptions paint for the selected row, so there is no set of expanded ids to pass.
 
 ## [1.2.0] - 2026-08-23
 
