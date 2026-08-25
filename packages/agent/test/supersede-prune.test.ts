@@ -113,29 +113,31 @@ describe("readToolSupersedeKey", () => {
 		expect(readToolSupersedeKey("read", {})).toBeUndefined();
 	});
 
-	test("URL/internal schemes are keyed correctly as targets", () => {
-		expect(readToolSupersedeKey("read", { path: "skill://react" })).toEqual(["skill://react"]);
-		expect(readToolSupersedeKey("read", { path: "https://example.com/page" })).toEqual(["https://example.com/page"]);
+	test("URL/internal schemes are exempt", () => {
+		expect(readToolSupersedeKey("read", { path: "skill://react" })).toBeUndefined();
+		expect(readToolSupersedeKey("read", { path: "https://example.com/page" })).toBeUndefined();
 	});
 
-	test("strips trailing selectors into base target keys", () => {
-		expect(readToolSupersedeKey("read", { path: "src/foo.ts:50-200" })).toEqual(["src/foo.ts"]);
-		expect(readToolSupersedeKey("read", { path: "src/foo.ts:raw" })).toEqual(["src/foo.ts"]);
-		expect(readToolSupersedeKey("read", { path: "src/foo.ts:conflicts" })).toEqual(["src/foo.ts"]);
-		expect(readToolSupersedeKey("read", { path: "src/foo.ts:2-4:raw" })).toEqual(["src/foo.ts"]);
-		expect(readToolSupersedeKey("read", { path: "src/foo.ts:5-16,960-973" })).toEqual(["src/foo.ts"]);
-		expect(readToolSupersedeKey("read", { path: "src/foo.ts:50+150" })).toEqual(["src/foo.ts"]);
+	test("strips trailing selectors into a \\u0000-separated key", () => {
+		expect(readToolSupersedeKey("read", { path: "src/foo.ts:50-200" })).toEqual(["src/foo.ts\u000050-200"]);
+		expect(readToolSupersedeKey("read", { path: "src/foo.ts:raw" })).toEqual(["src/foo.ts\u0000raw"]);
+		expect(readToolSupersedeKey("read", { path: "src/foo.ts:conflicts" })).toEqual(["src/foo.ts\u0000conflicts"]);
+		expect(readToolSupersedeKey("read", { path: "src/foo.ts:2-4:raw" })).toEqual(["src/foo.ts\u00002-4:raw"]);
+		expect(readToolSupersedeKey("read", { path: "src/foo.ts:5-16,960-973" })).toEqual([
+			"src/foo.ts\u00005-16,960-973",
+		]);
+		expect(readToolSupersedeKey("read", { path: "src/foo.ts:50+150" })).toEqual(["src/foo.ts\u000050+150"]);
 	});
 
-	test("splits multi-target paths and normalizes targets", () => {
+	test("splits multi-target paths and exempts URL schemes per target", () => {
 		expect(
 			readToolSupersedeKey("read", { path: "src/foo.ts:50-200; skill://beta:raw; C:\\src\\main.ts:1-5" }),
-		).toEqual(["src/foo.ts", "skill://beta", "C:\\src\\main.ts"]);
+		).toEqual(["src/foo.ts\u000050-200", "C:\\src\\main.ts\u00001-5"]);
 	});
 
 	test("does not strip non-selector colon segments", () => {
 		expect(readToolSupersedeKey("read", { path: "db.sqlite:users" })).toEqual(["db.sqlite:users"]);
-		expect(readToolSupersedeKey("read", { path: "db.sqlite:users:42" })).toEqual(["db.sqlite:users"]);
+		expect(readToolSupersedeKey("read", { path: "db.sqlite:users:42" })).toEqual(["db.sqlite:users\u000042"]);
 	});
 });
 
@@ -211,46 +213,45 @@ describe("pruneSupersededToolResults — tail case", () => {
 });
 
 describe("pruneSupersededToolResults — selectors", () => {
-	test("(d) earlier range reads are superseded by later reads of the same file", () => {
+	test("(d) different range selectors do not supersede each other; a later selector-free read supersedes them", () => {
 		const [callA, resultA] = readPair("src/foo.ts:50-200", FILE_CONTENT, T0);
 		const [callB, resultB] = readPair("src/foo.ts:10-20", FILE_CONTENT, T0 + 1_000);
 		let entries: SessionEntry[] = [callA, resultA, callB, resultB];
 
-		// Both reads are of src/foo.ts, so the later read supersedes the earlier one.
+		// Different selectors: no candidates.
 		let result = pruneSupersededToolResults(entries, cfg({ now: T0 + 1_000 }));
-		expect(result.prunedCount).toBe(1);
-		expect(resultText(resultA)).toBe(SUPERSEDED_NOTICE);
+		expect(result.prunedCount).toBe(0);
+		expect(resultText(resultA)).toBe(FILE_CONTENT);
 		expect(resultText(resultB)).toBe(FILE_CONTENT);
 
-		// A newer read prunes the previously active read.
+		// Identical selector strings DO supersede.
 		const [callA2, resultA2] = readPair("src/foo.ts:50-200", FILE_CONTENT, T0 + 2_000);
 		entries = [...entries, callA2, resultA2];
 		result = pruneSupersededToolResults(entries, cfg({ now: T0 + 2_000 }));
 		expect(result.prunedCount).toBe(1);
 		expect(resultText(resultA)).toBe(SUPERSEDED_NOTICE);
-		expect(resultText(resultB)).toBe(SUPERSEDED_NOTICE);
+		expect(resultText(resultB)).toBe(FILE_CONTENT);
 		expect(resultText(resultA2)).toBe(FILE_CONTENT);
 
-		// A later selector-free read supersedes the remaining unpruned read.
+		// A later selector-free read supersedes every selector-carrying read of the base path.
 		const [callFull, resultFull] = readPair("src/foo.ts", FILE_CONTENT, T0 + 3_000);
 		entries = [...entries, callFull, resultFull];
 		result = pruneSupersededToolResults(entries, cfg({ now: T0 + 3_000 }));
-		expect(result.prunedCount).toBe(1);
-		expect(resultText(resultA)).toBe(SUPERSEDED_NOTICE);
+		expect(result.prunedCount).toBe(2);
 		expect(resultText(resultB)).toBe(SUPERSEDED_NOTICE);
 		expect(resultText(resultA2)).toBe(SUPERSEDED_NOTICE);
 		expect(resultText(resultFull)).toBe(FILE_CONTENT);
 	});
 
-	test("a selector-carrying read supersedes an earlier selector-free read of the same file", () => {
+	test("a selector-carrying read does NOT supersede an earlier selector-free read", () => {
 		const [callFull, resultFull] = readPair("src/foo.ts", FILE_CONTENT, T0);
 		const [callRange, resultRange] = readPair("src/foo.ts:50-200", FILE_CONTENT, T0 + 1_000);
 		const entries: SessionEntry[] = [callFull, resultFull, callRange, resultRange];
 
 		const result = pruneSupersededToolResults(entries, cfg({ now: T0 + 1_000 }));
 
-		expect(result.prunedCount).toBe(1);
-		expect(resultText(resultFull)).toBe(SUPERSEDED_NOTICE);
+		expect(result.prunedCount).toBe(0);
+		expect(resultText(resultFull)).toBe(FILE_CONTENT);
 		expect(resultText(resultRange)).toBe(FILE_CONTENT);
 	});
 });
