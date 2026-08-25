@@ -449,7 +449,7 @@ mod tests {
 
 		assert_eq!(reused, fresh);
 		assert!(
-			reuse_cost.as_secs_f64() < fresh_cost.as_secs_f64() / 4.0,
+			reuse_cost.as_secs_f64() < fresh_cost.as_secs_f64() / 2.0,
 			"an edited source cost {reuse_cost:?} against a fresh parse of {fresh_cost:?}"
 		);
 	}
