@@ -505,10 +505,10 @@ sections: `### Breaking Changes` (first if present), `### Added`, `### Changed`,
   `bun run changelog:root` from every package changelog, so an entry written there is deleted by the
   next render. The write path refuses when the root holds an unreleased entry the render does not
   produce, and states each one.
-- Adding a package entry does obligate you to regenerate the root in the same change: run
-  `bun run changelog:root` and commit the result. `changelog:root:check` compares the committed root
-  byte for byte against a fresh render, and it runs in the same CI job as the entry requirement, so a
-  package bullet committed on its own fails that job.
+- Pushing to `main` directly is the one path that still regenerates the root by hand: the pre-push
+  hook renders it and refuses a commit whose root is stale, so run `bun run changelog:root` and
+  commit the result alongside the package bullet. A pull request does not, and CI no longer gates
+  one on it — `.github/workflows/changelog-sync.yml` renders and commits the root after the merge.
 - Never modify a released section (`## [0.12.2]`). Released sections are immutable.
 - Do not flag changelog section order or formatting in reviews; the Release workflow runs
   `fix-changelogs`.
