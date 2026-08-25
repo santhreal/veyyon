@@ -17,6 +17,7 @@
 
 - `splitTrailingPartialEscape` lets a streaming reader hold back an escape sequence a chunk ended inside, so a sequence divided across two reads is stripped whole instead of losing its head and leaking its tail as text.
 - `discarded-fault.ts`: `bestEffort` and `optionalResult` state which contract discarded a promise's failure, one for a step nobody waits on and one for a probe whose failure is the answer, each taking a mandatory reason.
+- `relativePathWithinRoot` returns the candidate's own spelling instead of the case-folded copy the containment check used, so on Windows a path under `C:\Users\dev\Projects` no longer comes back lowercased, and a root configured in a different case than the directory on disk resolves to the tail rather than to a `..` walk.
 
 ## [1.2.0] - 2026-08-23
 

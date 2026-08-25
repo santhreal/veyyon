@@ -75,16 +75,17 @@ describe("incremental provider context canonicalization", () => {
 		expect(second.bytesSaved).toBe(first.bytesSaved);
 	});
 
-	/** Adding a cwd root can change old path rendering, so a roots-version change must invalidate the reusable prefix. */
-	it("invalidates cached path rendering when roots change", () => {
+	/** A roots change leaves the already-canonicalized prefix alone and relativizes appended messages under the new root. */
+	it("preserves cached prefix across roots change and relativizes appended messages", () => {
 		const source: Message[] = [{ role: "user", content: "read /other/src/a.ts", timestamp: 1 }];
 		const canonicalizer = createCanonicalizer();
 		const first = canonicalizer.transform(source, ["/workspace"]);
-		const second = canonicalizer.transform(source, ["/workspace", "/other"]);
+		const appended: Message[] = [...source, { role: "user", content: "read /other/src/b.ts", timestamp: 2 }];
+		const second = canonicalizer.transform(appended, ["/other"]);
 
 		expect(first.messages).toBe(source);
-		expect(second.messages).not.toBe(source);
-		expect(second.messages[0]).toMatchObject({ content: "read src/a.ts" });
+		expect(second.messages[0]).toBe(source[0]);
+		expect(second.messages[1]).toMatchObject({ content: "read src/b.ts" });
 	});
 
 	/** Path-savings telemetry is per outbound request, including reused prefix bytes, not merely newly transformed tail bytes. */
