@@ -209,6 +209,7 @@ const CONTROLLER_ENTRY_POINTS = {
 	// Wires `session.subscribe` straight to `handleEvent`; it reaches no mount
 	// site of its own, and driving it would only re-test `handleEvent`.
 	subscribeToAgent: "inert",
+	attachTo: "inert",
 	dispose: "inert",
 	resetTranscriptAnchors: "inert",
 	inheritDisplaceableTodo: "inert",
