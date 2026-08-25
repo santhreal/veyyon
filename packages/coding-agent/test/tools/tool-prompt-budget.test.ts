@@ -61,7 +61,11 @@ const TOOL_PROMPT_CEILINGS: Record<string, number> = {
 	bash: 3910,
 	todo: 2640,
 	irc: 3450,
-	launch: 3040,
+	// 3561 to 3760: session scoping is the first thing a caller has to know about a launch, and
+	// it cannot be inferred from the schema. One line states the scope, where `persist` and
+	// `detached` go instead, and that `list` shows both. Cut out of the same row: the standalone
+	// "names are unique" bullet folded into it, and the description's shared-directory clause.
+	launch: 3760,
 	task: 2720,
 	debug: 2350,
 	ast_grep: 2140,
@@ -85,9 +89,11 @@ const TOOL_PROMPT_CEILINGS: Record<string, number> = {
  * boot moved it from 46,800 to 47,000 — 645 bytes of new prose against 200 bytes of headroom,
  * which is the trade being recorded here rather than absorbed. The `read` list form moved it from
  * 47,000 to 47,200: one sentence stating that a semicolon-delimited argument reads every entry,
- * without which the list is unreachable prose in a changelog.
+ * without which the list is unreachable prose in a changelog. Launch scoping moved it from
+ * 48,500 to 49,100: `launch` had no slack to absorb the scope line out of, and a caller that
+ * cannot tell whose process it is reaching cannot use the tool safely.
  */
-const TOTAL_PROMPT_CEILING = 48_500;
+const TOTAL_PROMPT_CEILING = 49_100;
 
 /**
  * How far under its ceiling a tool may sit before the row is stale.

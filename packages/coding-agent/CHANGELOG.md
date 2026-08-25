@@ -7,7 +7,8 @@
 - Classified runner output (cargo, bun, Go, ctest, dotnet, clippy, golangci-lint, Gradle lint, pytest, and tsc/eslint-family) now opens with a result-contract header: `[clean] <command>` or `[errors]` / `[errors N] <command>`. The header is the verdict and the body contains retained diagnostics.
 ### Added
 
-- Launched processes are private to the session that started them. The launch tool supervised every process through one broker per project directory, so any session in a checkout could list, read, stop or restart another session's processes, and a second session's `list` leaked another run's output into its context. Each session now supervises its own launches under a session-scoped broker that ends with the session; the new `launch.sharedCrossSession` setting (default off) restores the shared project scope, and `persist: true` / `detached: true` starts always land in the shared scope so they stay reachable.
+- Launched processes are private to the session that started them, except `persist: true` and `detached: true` starts, which stay in the project-wide scope.
+- Added `launch.sharedCrossSession` (default off), which returns every launch to the project-wide scope that all sessions share.
 - `read` takes `depth` and `limit` arguments for directory listings, and a read of the session working directory root with neither now returns a concise top-level listing with per-subdirectory entry counts instead of the recursive tree.
 - A tool result that carries an image now states whether the picture reached the screen, so a model reading a file describes what it shows instead of reporting that it displayed it.
 - A picture the block gives up on after the fact, because the session's image budget demoted it or a Kitty session could not convert it, is stated to the model as undrawn instead of being reported as displayed.

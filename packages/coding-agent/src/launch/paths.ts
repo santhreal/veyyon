@@ -96,18 +96,25 @@ export function daemonCompletionsPath(runtimeDir: string): string {
  * project key: without the prefix a hostile or hex-shaped session id could land a session
  * broker on another project's socket. Two sessions in one project therefore get two brokers,
  * two token files, and two supervised-process sets, which is the whole point of the scope.
+ *
+ * The name is a fixed 24 characters because the Unix socket goes inside it and `sun_path` is
+ * 108 bytes on Linux and 104 on macOS, counting the whole absolute path. A readable session
+ * segment cost up to 48 more and pushed a realistic socket past both limits, at which point
+ * `bind` fails with ENAMETOOLONG and the scope cannot start a broker at all. The project
+ * layout next door is a bare hash for the same reason.
  */
 export function daemonSessionRuntimeDir(
 	projectDir: string,
 	sessionId: string,
 	configRoot: string = getConfigRootDir(),
 ): string {
-	// The sanitized prefix keeps the directory readable; the full-id hash suffix keeps two ids
-	// that share a long sanitized prefix (e.g. a session id and its `${id}-advisor` derivation
-	// truncated at the cap) from landing on one broker.
-	const safe = sessionId.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 48);
-	const tag = Bun.hash.wyhash(sessionId).toString(16).padStart(16, "0");
-	return path.join(configRoot, NAMES.brokerRoot, `session-${projectKey(projectDir)}-${safe}-${tag}`);
+	// Hashed together, not concatenated: one 16-hex tag separates two sessions in one project
+	// AND one session id reached from two projects, in the width of a single key.
+	const tag = Bun.hash
+		.wyhash(`${projectKey(projectDir)}\0${sessionId}`)
+		.toString(16)
+		.padStart(16, "0");
+	return path.join(configRoot, NAMES.brokerRoot, `session-${tag}`);
 }
 
 /**

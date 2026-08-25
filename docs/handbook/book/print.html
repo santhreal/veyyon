@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-4be78ead.js";
+            window.path_to_searchindex_js = "searchindex-222c5afc.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-a2abefc1.js"></script>
@@ -10075,8 +10075,8 @@ lsp:
 </thead>
 <tbody>
 <tr><td><code>bash.enabled</code></td><td>boolean</td><td><code>true</code></td><td>Enable the bash tool.</td></tr>
-<tr><td><code>launch.enabled</code></td><td>boolean</td><td><code>true</code></td><td>Enable the launch tool for shared long-running project processes.</td></tr>
-<tr><td><code>launch.sharedCrossSession</code></td><td>boolean</td><td><code>false</code></td><td>Share launched processes across every session in this project. Default off: a launch is supervised by a session-private broker and ends when the session does, and no other session can see or stop it — except <code>persist: true</code> / <code>detached: true</code> starts, which always land in the shared scope so they stay reachable, and every <code>list</code> merges both scopes.</td></tr>
+<tr><td><code>launch.enabled</code></td><td>boolean</td><td><code>true</code></td><td>Enable the launch tool for long-running processes.</td></tr>
+<tr><td><code>launch.sharedCrossSession</code></td><td>boolean</td><td><code>false</code></td><td>Share launched processes across every session in this project. Off, a launch is supervised by a session-private broker, ends when the session does, and no other session can see or stop it. <code>persist: true</code> and <code>detached: true</code> starts land in the shared scope either way, and <code>list</code> shows both scopes.</td></tr>
 <tr><td><code>bash.autoBackground.enabled</code></td><td>boolean</td><td><code>true</code></td><td>Auto-background long-running commands. You can also background the running command yourself with the composer’s background key, whatever this is set to.</td></tr>
 <tr><td><code>bash.autoBackground.thresholdMs</code></td><td>number</td><td><code>300000</code></td><td>Max wall-clock time a bash call runs in the foreground before it is moved to a background job. Frees the model and protects the prompt cache. Fires on elapsed time even while output streams. <code>0</code> backgrounds immediately.</td></tr>
 <tr><td><code>bash.stallDetection.enabled</code></td><td>boolean</td><td><code>false</code></td><td>Watch for a bash call that stops producing output; background it and tell the model it may be stuck so it can cancel a truly hung command. Recommends, never force-kills.</td></tr>

@@ -495,9 +495,11 @@ export class LaunchTool implements AgentTool<typeof launchSchema, LaunchToolDeta
 		const isUnknownDaemon = (error: unknown): boolean =>
 			error instanceof Error && error.message.startsWith("Unknown daemon");
 		const requestWithFallback = async (operation: DaemonOperation): Promise<DaemonRpcResult> => {
-			if (sharedScope || client.runtimeDir === (await projectClient()).runtimeDir) {
-				return client.request(operation, signal);
-			}
+			// Only a private-scope op can fall back, and `client` is the shared broker itself
+			// whenever `sharedScope` is on. Asking for the project client just to compare
+			// runtime directories created its token file and its runtime directory on every
+			// request, in the one scope whose point is not to touch them.
+			if (sharedScope) return client.request(operation, signal);
 			try {
 				return await client.request(operation, signal);
 			} catch (error) {
