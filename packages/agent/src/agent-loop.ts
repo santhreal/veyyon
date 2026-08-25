@@ -1673,12 +1673,15 @@ async function streamAssistantResponse(
 
 					const event = next.value;
 					if (event.type === "done" || event.type === "error") {
-						let finalMessage = disambiguateToolCallIds(
-							recoverTransientErrorToolTurn(
-								retainCompletedToolCalls(await response.result(), completedToolCallIds),
-								context.tools ?? [],
-							),
-							storedToolCallIds(context.messages, addedPartial),
+						let finalMessage = recoverTransientErrorToolTurn(
+							retainCompletedToolCalls(await response.result(), completedToolCallIds),
+							context.tools ?? [],
+						);
+						finalMessage = disambiguateToolCallIds(
+							finalMessage,
+							finalMessage.content.some(b => b.type === "toolCall")
+								? storedToolCallIds(context.messages, addedPartial)
+								: EMPTY_STRING_SET,
 						);
 						if (harmonyMitigationEnabled) {
 							const detection = detectHarmonyLeakInAssistantMessage(finalMessage);
@@ -2142,9 +2145,12 @@ function emitAbortedAssistantMessage(
 	// Only tool calls that reached `toolcall_end` survive abort/error replay. A
 	// labeled user interrupt still surfaces through `errorMessage`, but partial
 	// tool arguments are unsafe to keep and can carry incomplete provider IDs.
+	const retainedBase = retainCompletedToolCalls(base, completedToolCallIds);
 	const retained = disambiguateToolCallIds(
-		retainCompletedToolCalls(base, completedToolCallIds),
-		storedToolCallIds(context.messages, addedPartial),
+		retainedBase,
+		retainedBase.content.some(b => b.type === "toolCall")
+			? storedToolCallIds(context.messages, addedPartial)
+			: EMPTY_STRING_SET,
 	);
 	const scopedAbort = toolScopedAbortReason(requestSignal);
 	const toolCallAbortMessages = scopedAbort ? buildToolCallAbortMessages(retained, scopedAbort) : undefined;
