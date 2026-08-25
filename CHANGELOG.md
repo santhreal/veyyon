@@ -64,6 +64,7 @@
 - A streaming request no longer pins a parsed clone of its wire payload for the life of the stream: every provider's diagnostic dump retains only the exact sent bytes and materializes a body when a 400/413 dump is built.
 - The OpenAI-family, pi-native and Codex request builders serialize the request body once instead of deep-cloning the request graph, which took attempt preparation on a 32MiB context from 82ms to 9ms.
 - A message that names a dead socket reads the same everywhere: `namesDeadSocket` in `@veyyon/ai/error/flags` is the one list of errnos and phrases, and `ENETUNREACH`, `EHOSTUNREACH` and `EAI_AGAIN` now count as transient transport failures like the rest of them.
+- Formatted source files for Biome compliance.
 - `MNEMOPI_NO_EMBEDDINGS=0`, `false`, `no` or `off` now leaves embeddings on everywhere instead of disabling them on the API path.
 - Every `MNEMOPI_*` value is read by `config.ts` alone; the local-model, extraction and embedding modules ask it instead of parsing the variable again.
 - `getDiagnostics` is now `extractionDiagnostics` in `core/extraction/diagnostics` and `recallDiagnostics` in `core/recall-diagnostics`, so the two registries are no longer reached by one name.
@@ -74,6 +75,8 @@
 ### Fixed
 
 - `veyyon bench --model @role` and `veyyon dry-balance --model @role` resolve a configured model role instead of failing to find a model named after the alias.
+- Outbound wire path canonicalization only relativizes paths matching the active session working directory instead of accumulating prior working directory roots, preventing distinct absolute paths in command output from collapsing to the same relative representation.
+- A working-directory change in a live session no longer re-renders earlier messages already sent to the provider, so only messages appended after a `set_cwd` render against the new directory.
 - Session CPU limits fail closed on unsupported or failed budget groups, lift rate control on removal, refuse a process-creating command before the process exists while leaving `launch stop` and `launch list` reachable, escalate over-budget termination from SIGTERM to SIGKILL, and track descendant processes on macOS.
 - Saturated session CPU limits now refuse spawns for MCP servers, extensions, hooks, and custom tools before the process is created.
 - Windows session CPU limits disable Job Object rate control on non-positive or non-finite core counts rather than throttling the process to the minimum rate.
