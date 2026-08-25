@@ -67,6 +67,8 @@
 
 ### Fixed
 
+- Filesystem cwd boundary checks expand comma- and whitespace-delimited path arguments matching execution, preventing multi-target reads or searches from bypassing working-directory approval prompts in non-yolo modes.
+- The read tool renderer sanitizes resolved directory paths with shortenPath to avoid displaying unshortened home-directory paths.
 - Stopping a daemon during restart backoff cancels the timer and attributes operator stop without recording a duplicate completion entry, and broker recovery terminates daemons left in restarting state without dead recovery branches.
 - Multi-target `ast_grep` searches across overlapping paths deduplicate matches so totals, file counts, and paged results are not duplicated or truncated.
 - Acknowledging a completed background job before lifting its watch no longer delivers a duplicate completion notification when retention is zero.
