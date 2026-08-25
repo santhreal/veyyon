@@ -222,6 +222,13 @@ export interface CliConfig {
 	version: string;
 	/** All registered commands keyed by their canonical name. */
 	commands: Map<string, CommandCtor>;
+	/**
+	 * Listing metadata for the FULL registry, present when root help was
+	 * rendered from the command table without loading every module. The
+	 * `commands` map may then hold only the default command. Absent when the
+	 * config was built by loading everything.
+	 */
+	summaries?: Map<string, CommandSummary>;
 }
 
 /** Minimal Command base matching the oclif surface we use. */
@@ -588,7 +595,7 @@ export function renderHelpParagraph(text: string, options: { indent?: string } =
 
 /** Render full root help: header, default command details, subcommand list. */
 export function renderRootHelp(config: CliConfig): void {
-	const { bin, version, commands } = config;
+	const { bin, version, commands, summaries } = config;
 	const lines: string[] = [];
 	lines.push(`${bin} v${version}\n`);
 	lines.push("USAGE");
@@ -602,22 +609,31 @@ export function renderRootHelp(config: CliConfig): void {
 	}
 
 	// List visible subcommands; diagnostic/dev tools get their own section so the
-	// main list reads as the product surface.
-	const visible = [...commands.entries()].filter(([, C]) => !C.hidden);
-	const sections: Array<[string, typeof visible]> = [
-		["COMMANDS", visible.filter(([, C]) => !C.devTool)],
-		["DIAGNOSTIC COMMANDS", visible.filter(([, C]) => C.devTool)],
+	// main list reads as the product surface. Rows come from the registry
+	// summaries when the config was built without loading every module, and
+	// from the loaded statics otherwise — both describe the same classes.
+	type ListingRow = { name: string; description?: string; devTool?: boolean };
+	const listing: ListingRow[] = summaries
+		? [...summaries.entries()]
+				.filter(([, s]) => !s.hidden)
+				.map(([name, s]) => ({ name, description: s.description, devTool: s.devTool }))
+		: [...commands.entries()]
+				.filter(([, C]) => !C.hidden)
+				.map(([name, C]) => ({ name, description: C.description, devTool: C.devTool }));
+	const sections: Array<[string, ListingRow[]]> = [
+		["COMMANDS", listing.filter(r => !r.devTool)],
+		["DIAGNOSTIC COMMANDS", listing.filter(r => r.devTool)],
 	];
 	const width = helpWidth();
 	const column = gutter(
-		visible.map(([name]) => `  ${name}`),
+		listing.map(r => `  ${r.name}`),
 		width,
 	);
 	for (const [title, entries] of sections) {
 		if (entries.length === 0) continue;
 		lines.push(title);
-		for (const [name, C] of entries.sort((a, b) => a[0].localeCompare(b[0]))) {
-			pushWrapped(lines, `  ${name}`, C.description ?? "", column, width);
+		for (const row of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+			pushWrapped(lines, `  ${row.name}`, row.description ?? "", column, width);
 		}
 		lines.push("");
 	}
@@ -726,11 +742,27 @@ function renderCommandBody(lines: string[], Cmd: CommandCtor): void {
 // CLI entry point
 // ---------------------------------------------------------------------------
 
+/** Root-help listing metadata for a command, mirrored from the class statics. */
+export interface CommandSummary {
+	description?: string;
+	hidden?: boolean;
+	/** Diagnostic/dev tooling: listed under a separate DIAGNOSTIC COMMANDS help section. */
+	devTool?: boolean;
+}
+
 /** A lazily-loaded command: canonical name, loader, and optional aliases. */
 export interface CommandEntry {
 	name: string;
 	load: () => Promise<CommandCtor>;
 	aliases?: string[];
+	/**
+	 * Listing metadata copied from the loaded class's statics. When EVERY entry
+	 * in the registry carries one, root help renders from the table and loads
+	 * only the default (hidden) command — on a large registry this removes most
+	 * of `veyyon --help`'s module-load cost. A parity test in each product pins
+	 * the copy against the real statics so it cannot drift.
+	 */
+	summary?: CommandSummary;
 }
 
 export interface RunOptions {
@@ -766,7 +798,7 @@ export async function run(opts: RunOptions): Promise<void> {
 
 	// Top-level help
 	if (commandId === "--help" || commandId === "-h" || commandId === "help" || commandId === "") {
-		const config = await loadAllCommands(opts);
+		const config = await loadRootHelpConfig(opts);
 		if (opts.help) {
 			await opts.help(config);
 		} else {
@@ -842,6 +874,32 @@ async function loadEntry(entry: CommandEntry): Promise<CommandCtor> {
 	const Cmd = await entry.load();
 	startupMarker(`cli:load:${entry.name}:done`);
 	return Cmd;
+}
+
+/**
+ * Build the config for ROOT help. Root help lists every command's name and
+ * one-line description, plus the default (hidden) command's full flag table.
+ * When every registry entry carries a `summary`, the listing renders from the
+ * table and ONLY the default command's module loads — on a large registry
+ * this is most of `veyyon --help`'s cost. Any entry without a summary falls
+ * back to loading everything, so an unsummarized command degrades the help
+ * path instead of misrendering it.
+ */
+async function loadRootHelpConfig(opts: RunOptions): Promise<CliConfig> {
+	const summaries = new Map<string, CommandSummary>();
+	for (const entry of opts.commands) {
+		// One unsummarized command degrades the help path to loading everything
+		// rather than rendering a listing that is missing a row.
+		if (!entry.summary) return loadAllCommands(opts);
+		summaries.set(entry.name, entry.summary);
+	}
+
+	const commands = new Map<string, CommandCtor>();
+	const defaultEntry = opts.commands.find(e => e.summary?.hidden === true);
+	if (defaultEntry) {
+		commands.set(defaultEntry.name, await loadEntry(defaultEntry));
+	}
+	return { bin: opts.bin, version: opts.version, commands, summaries };
 }
 
 /** Resolve all command loaders for help/alias display. */

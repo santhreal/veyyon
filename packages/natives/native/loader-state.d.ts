@@ -130,10 +130,40 @@ export interface Avx2Probes {
 	arch: string;
 	readCpuInfo: () => string | null;
 	runCommand: (command: string, args: string[]) => string | null;
+	/** Ground-truth fallback: trial-load the modern addon in a child process. Win32 only. */
+	trialLoad?: () => Avx2Support;
 }
 
 /** Pure, side-effect-free AVX2 classification from injected probes (the runtime twin of scripts/host-detect's classifier). */
 export function classifyAvx2Support(probes: Avx2Probes): Avx2Support;
+
+export interface HostCpuDescriptor {
+	model?: string;
+}
+
+/** Stable CPU-model identity used to reject a persisted verdict after hardware changes. */
+export function hostCpuIdentity(cpus?: HostCpuDescriptor[]): string | null;
+
+/** Parse a versioned, hardware-keyed host-variant.json body, or null when stale, foreign, or corrupt. */
+export function parseHostVariantVerdict(
+	text: string | undefined | null,
+	host: { platform: NodeJS.Platform; arch: string; cpuIdentity: string | null },
+): Avx2Support | null;
+
+/** Persist a genuine hardware-keyed verdict; best-effort, never throws. */
+export function writeHostVariantVerdict(
+	nativesDir: string,
+	verdict: "supported" | "unsupported",
+	host: { platform: NodeJS.Platform; arch: string; cpuIdentity: string | null },
+): void;
+
+/** Classify a modern-addon child trial; only an illegal-instruction exit proves unsupported. */
+export function classifyTrialLoadResult(result: {
+	stdout?: unknown;
+	status?: number | null;
+	signal?: string | null;
+	error?: unknown;
+}): Avx2Support;
 
 export interface SelectCpuVariantInput {
 	arch: string;
