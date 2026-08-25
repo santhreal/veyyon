@@ -192,7 +192,10 @@ export class ToolCallLoopGuard {
 			this.#count = 1;
 		}
 
-		if (this.#count >= this.#threshold) {
+		// Exactly the threshold turn, not every turn past it: the redirect is
+		// steering, and a steer repeated on every subsequent call is noise the
+		// model pays for on each request.
+		if (this.#count === this.#threshold) {
 			return {
 				kind: "repeated_tool_call",
 				toolName: toolCall.name,
@@ -245,7 +248,7 @@ export class ToolCallLoopGuard {
 				}
 			}
 
-			if (this.#subsumedReadCount >= this.#readSubsumptionThreshold) {
+			if (this.#subsumedReadCount === this.#readSubsumptionThreshold) {
 				return {
 					kind: "repeated_tool_call",
 					toolName: "read",

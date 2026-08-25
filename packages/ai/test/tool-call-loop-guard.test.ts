@@ -393,6 +393,35 @@ describe("ToolCallLoopGuard", () => {
 			count: 2,
 			resultSummary: "Requested lines are already present in previous turn context",
 		});
+
+		// 4. Still subsumed, but the steer already went out. A redirect repeated on
+		// every further read is noise the model pays for on each request.
+		expect(
+			guard.recordTurn({
+				message: {
+					role: "assistant",
+					content: [
+						{ type: "toolCall", id: "read-4", name: "read", arguments: { path: "src/segments.ts:85-115" } },
+					],
+					api: "openai-responses",
+					provider: "openai",
+					model: "test-model",
+					usage: zeroUsage,
+					stopReason: "toolUse",
+					timestamp: Date.now(),
+				},
+				toolResults: [
+					{
+						role: "toolResult",
+						toolCallId: "read-4",
+						toolName: "read",
+						content: [{ type: "text", text: "[src/segments.ts#1A2B]\n85: line 85\n115: line 115\n" }],
+						isError: false,
+						timestamp: Date.now(),
+					},
+				],
+			}),
+		).toBeNull();
 	});
 
 	test("allows legitimate overlapping context expansion without triggering loop guard", () => {
