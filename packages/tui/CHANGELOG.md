@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- `visibleWidth` measures an aborted or unterminated OSC 66 span as the cells a terminal draws rather than charging its payload bytes, matching the native oracle so a compositor cut and its re-measurement agree.
+
 ### Added
 
 - `Image` accepts an `onDisplayed` callback and reports the cause each time an image starts or stops falling back to a placeholder.

@@ -239,7 +239,8 @@ export function isSensitiveSlashCommand(text: string): boolean {
 	const parsed = parseSlashCommand(text.trimStart());
 	if (!parsed) return false;
 	if (parsed.name === "secret") return true;
-	if (parsed.name === "login" || parsed.name === "join") return parsed.text.length > parsed.name.length + 1;
+	// Bare login or join commands with trailing whitespace carry no argument tail.
+	if (parsed.name === "login" || parsed.name === "join") return parsed.args.length > 0;
 	const { args } = parsed;
 	if (!args) return false;
 	if (

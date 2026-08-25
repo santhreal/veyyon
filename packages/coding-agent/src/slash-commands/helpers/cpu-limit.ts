@@ -98,11 +98,10 @@ export async function applyCpuLimitCommand(
 				: "Over-budget commands will be refused rather than killed for this session.",
 		};
 	}
+	// A core count is a positive decimal integer. Non-decimal, exponential,
+	// fractional and signed forms are rejected.
+	if (!/^[1-9]\d*$/.test(arg)) return { ok: false, message: CPU_LIMIT_USAGE };
 	const cores = Number(arg);
-	// `Number("")` is 0 and `Number("2cores")` is NaN; the empty string is
-	// already handled above, so this rejects exactly the unparseable words
-	// rather than silently reading them as "off".
-	if (!Number.isFinite(cores) || cores < 0) return { ok: false, message: CPU_LIMIT_USAGE };
 	from.override("session.cpuLimitCores", cores);
 	return {
 		ok: true,

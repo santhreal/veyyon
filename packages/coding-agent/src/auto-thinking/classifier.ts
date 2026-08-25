@@ -200,15 +200,15 @@ async function classifyLocal(input: string, modelKey: string, deps: ClassifyDiff
 export function parseDifficultyLevel(text: string): Effort | undefined {
 	const lower = text.toLowerCase();
 	const candidates: Array<[number, Effort]> = [];
-	// `xhigh` must be probed as its own token: `\bhigh\b` cannot match the "high"
-	// inside "xhigh" (no word boundary between `x` and `h`), so the two never collide.
-	const xhigh = lower.search(/x[\s_-]?high/);
+	// Token boundaries require non-word non-hyphen neighbors so compound tokens such as
+	// maxhigh or effort_high_watermark do not match embedded level names.
+	const xhigh = lower.search(/(?<![\w-])x[\s_-]?high(?![\w-])/);
 	if (xhigh >= 0) candidates.push([xhigh, Effort.XHigh]);
-	const high = lower.search(/\bhigh\b/);
+	const high = lower.search(/(?<![\w-])high(?![\w-])/);
 	if (high >= 0) candidates.push([high, Effort.High]);
-	const medium = lower.search(/\bmed(?:ium)?\b/);
+	const medium = lower.search(/(?<![\w-])med(?:ium)?(?![\w-])/);
 	if (medium >= 0) candidates.push([medium, Effort.Medium]);
-	const low = lower.search(/\blow\b/);
+	const low = lower.search(/(?<![\w-])low(?![\w-])/);
 	if (low >= 0) candidates.push([low, Effort.Low]);
 	return earliest(candidates);
 }
@@ -217,11 +217,12 @@ export function parseDifficultyLevel(text: string): Effort | undefined {
 export function parseDifficultyBucket(text: string): Effort | undefined {
 	const lower = text.toLowerCase();
 	const candidates: Array<[number, Effort]> = [];
-	const trivial = lower.search(/\btrivial\b/);
+	// Boundary checks prevent matching hyphenated words such as hard-coded or prefixes like nontrivial.
+	const trivial = lower.search(/(?<![\w-])trivial(?![\w-])/);
 	if (trivial >= 0) candidates.push([trivial, Effort.Low]);
-	const moderate = lower.search(/\bmoderate\b/);
+	const moderate = lower.search(/(?<![\w-])moderate(?![\w-])/);
 	if (moderate >= 0) candidates.push([moderate, Effort.High]);
-	const hard = lower.search(/\bhard\b/);
+	const hard = lower.search(/(?<![\w-])hard(?![\w-])/);
 	if (hard >= 0) candidates.push([hard, Effort.XHigh]);
 	return earliest(candidates);
 }

@@ -417,10 +417,15 @@ export class DapClient {
 	 */
 	async #writeMessage(message: DapRequestMessage | DapResponseMessage): Promise<void> {
 		const content = JSON.stringify(message);
-		this.#writeSink.write(`Content-Length: ${Buffer.byteLength(content, "utf-8")}\r\n\r\n`);
-		this.#writeSink.write(content);
+		const header = this.#writeSink.write(`Content-Length: ${Buffer.byteLength(content, "utf-8")}\r\n\r\n`);
+		const body = this.#writeSink.write(content);
 		const flushResult = this.#writeSink.flush();
-		if (!(flushResult instanceof Promise)) return;
+		// A sink under backpressure returns a promise from `write` as well as `flush`, and both
+		// Bun.FileSink and Bun.Socket do. Awaiting flush alone let sendResponse resolve while the
+		// header was still queued, and left a wedged write outside the timeout and exit guard that
+		// exists for that exact hang.
+		const inFlight: Promise<unknown>[] = [header, body, flushResult].filter(result => result instanceof Promise);
+		if (inFlight.length === 0) return;
 
 		if (this.#adapterExited) {
 			throw new Error(`DAP adapter ${this.adapter.name} exited before write completed`);
@@ -440,7 +445,7 @@ export class DapClient {
 		this.#pendingWriteExitRejectors.add(rejectOnExit);
 
 		try {
-			await Promise.race([flushResult, guardPromise]);
+			await Promise.race([Promise.all(inFlight), guardPromise]);
 		} catch (error) {
 			// The client is now known-broken. Kick off dispose in the background;
 			// callers will see subsequent sendRequest calls fail fast.

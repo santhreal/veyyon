@@ -378,7 +378,111 @@ export function toWireAgentEvent(event: AgentSessionEvent): WireAgentEvent | und
  * value would put a wrong answer in a replica that other tooling reads. `provider` is NOT invented,
  * because the wire contract declares it: a replica that cannot say what answered is not faithful.
  */
-export function fromWireSessionEntry(entry: WireSessionEntry): SessionEntry {
+/**
+ * The declared own-key set of every wire shape a guest receives, checked by the compiler.
+ *
+ * `toWire*` projects field by field, so a host sends exactly these keys. `fromWire*` spread the
+ * received object, so a peer or a relay that stuffs a key onto a frame had it written into the
+ * guest's replica session file and re-rendered from there. Both directions now name the same
+ * fields, and `satisfies Record<keyof T, 1>` makes a new wire field a compile error here rather
+ * than a silent hole.
+ */
+const WIRE_MESSAGE_KEYS = {
+	user: { role: 1, content: 1, synthetic: 1, timestamp: 1 },
+	developer: { role: 1, content: 1, timestamp: 1 },
+	assistant: {
+		role: 1,
+		content: 1,
+		model: 1,
+		provider: 1,
+		usage: 1,
+		stopReason: 1,
+		errorMessage: 1,
+		timestamp: 1,
+	},
+	toolResult: { role: 1, toolCallId: 1, toolName: 1, content: 1, details: 1, isError: 1, timestamp: 1 },
+	bashExecution: {
+		role: 1,
+		command: 1,
+		output: 1,
+		exitCode: 1,
+		signal: 1,
+		cancelled: 1,
+		truncated: 1,
+		meta: 1,
+		excludeFromContext: 1,
+		timestamp: 1,
+	},
+	pythonExecution: {
+		role: 1,
+		code: 1,
+		output: 1,
+		exitCode: 1,
+		cancelled: 1,
+		truncated: 1,
+		meta: 1,
+		excludeFromContext: 1,
+		timestamp: 1,
+	},
+	custom: { role: 1, customType: 1, content: 1, display: 1, details: 1, timestamp: 1 },
+	hookMessage: { role: 1, customType: 1, content: 1, display: 1, details: 1, timestamp: 1 },
+	branchSummary: { role: 1, summary: 1, fromId: 1, timestamp: 1 },
+	compactionSummary: { role: 1, summary: 1, shortSummary: 1, tokensBefore: 1, warning: 1, timestamp: 1 },
+	fileMention: { role: 1, files: 1, timestamp: 1 },
+} satisfies { [R in WireMessage["role"]]: Record<keyof Extract<WireMessage, { role: R }>, 1> };
+
+const WIRE_ENTRY_KEYS = {
+	message: { type: 1, id: 1, parentId: 1, timestamp: 1, message: 1 },
+	custom_message: { type: 1, id: 1, parentId: 1, timestamp: 1, customType: 1, content: 1, details: 1, display: 1 },
+	compaction: {
+		type: 1,
+		id: 1,
+		parentId: 1,
+		timestamp: 1,
+		summary: 1,
+		shortSummary: 1,
+		firstKeptEntryId: 1,
+		tokensBefore: 1,
+	},
+	branch_summary: { type: 1, id: 1, parentId: 1, timestamp: 1, fromId: 1, summary: 1 },
+	model_change: { type: 1, id: 1, parentId: 1, timestamp: 1, model: 1, role: 1 },
+	thinking_level_change: { type: 1, id: 1, parentId: 1, timestamp: 1, thinkingLevel: 1 },
+} satisfies { [T in WireSessionEntry["type"]]: Record<keyof Extract<WireSessionEntry, { type: T }>, 1> };
+
+/**
+ * `source` with its undeclared own keys removed, or `source` itself when it carries none.
+ *
+ * Returning the original on the common path keeps `message_update`, which fires once per streaming
+ * delta, allocation-free.
+ */
+function pickDeclared<T extends object>(source: T, declared: Record<string, 1>): T {
+	const own = Object.keys(source);
+	if (own.every(key => Object.hasOwn(declared, key))) return source;
+	const picked: Record<string, unknown> = {};
+	for (const key of own) {
+		if (Object.hasOwn(declared, key)) picked[key] = (source as Record<string, unknown>)[key];
+	}
+	return picked as T;
+}
+
+function narrowWireMessage(message: WireMessage): WireMessage {
+	const declared: Record<string, 1> | undefined = WIRE_MESSAGE_KEYS[message.role];
+	// An unknown role is a frame this build does not declare; nothing renders it, so it travels no
+	// further and there is no key set to narrow it against.
+	return declared ? pickDeclared(message, declared) : message;
+}
+
+function narrowWireEntry(entry: WireSessionEntry): WireSessionEntry {
+	const declared: Record<string, 1> | undefined = WIRE_ENTRY_KEYS[entry.type];
+	if (!declared) return entry;
+	const narrowed = pickDeclared(entry, declared);
+	if (narrowed.type !== "message") return narrowed;
+	const message = narrowWireMessage(narrowed.message);
+	return message === narrowed.message ? narrowed : { ...narrowed, message };
+}
+
+export function fromWireSessionEntry(received: WireSessionEntry): SessionEntry {
+	const entry = narrowWireEntry(received);
 	if (entry.type === "message" && entry.message.role === "fileMention") {
 		// The host sends `hasContent` and not the body. The replica's own type wants a `content`
 		// string, so it gets an empty one plus a flag saying it was never sent -- an empty string on
@@ -424,10 +528,13 @@ export function fromWireAgentEvent(event: WireAgentEvent): AgentSessionEvent {
 	if (event.type !== "message_start" && event.type !== "message_update" && event.type !== "message_end") {
 		return event as AgentSessionEvent;
 	}
-	if (event.message.role !== "assistant") return event as AgentSessionEvent;
+	const message = narrowWireMessage(event.message);
+	if (message.role !== "assistant") {
+		return (message === event.message ? event : { ...event, message }) as AgentSessionEvent;
+	}
 	return {
 		...event,
-		message: { ...event.message, api: WIRE_API_UNREPORTED },
+		message: { ...message, api: WIRE_API_UNREPORTED },
 	} as unknown as AgentSessionEvent;
 }
 

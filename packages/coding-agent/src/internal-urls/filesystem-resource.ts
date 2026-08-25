@@ -6,11 +6,13 @@ import type { InternalResource } from "./types";
  * True when `targetPath` is `rootPath` itself or a descendant of it. This is the
  * single owner of the internal-URL root-containment predicate, shared by the
  * `local://`, `vault://`, `memory://`, and `skill://` handlers so their escape
- * checks cannot drift apart. Paths are compared verbatim: resolve them with
+ * checks cannot drift apart. Paths are compared verbatim apart from a trailing
+ * separator on the root, which names the same directory: resolve them with
  * `path.resolve` first if they may be relative or contain `..` segments.
  */
 export function isWithinRoot(targetPath: string, rootPath: string): boolean {
-	return targetPath === rootPath || targetPath.startsWith(`${rootPath}${path.sep}`);
+	const root = rootPath.length > 1 && rootPath.endsWith(path.sep) ? rootPath.slice(0, -1) : rootPath;
+	return targetPath === root || targetPath.startsWith(`${root}${path.sep}`);
 }
 
 /**

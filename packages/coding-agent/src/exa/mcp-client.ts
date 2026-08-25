@@ -173,10 +173,11 @@ export function formatSearchResults(data: ExaSearchResponse): string {
 		output += "\n";
 	}
 
-	if (data.costDollars) {
+	// Cost and search time are formatted when present as numbers, including zero.
+	if (typeof data.costDollars?.total === "number") {
 		output += `\n**Cost:** $${data.costDollars.total.toFixed(4)}`;
 	}
-	if (data.searchTime) {
+	if (typeof data.searchTime === "number") {
 		output += `\n**Search Time:** ${data.searchTime.toFixed(2)}s`;
 	}
 

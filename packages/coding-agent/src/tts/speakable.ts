@@ -231,7 +231,8 @@ export class SpeakableStream {
 	flushIdle(): string[] {
 		const out: string[] = [];
 		const pending = this.#buf.trimEnd();
-		const completeThought = /[.!?…][)\]"'»”’]*$/.test(pending);
+		// An abbreviation-final period is not a sentence boundary.
+		const completeThought = /[.!?…][)\]"'»”’]*$/.test(pending) && !ABBREVIATION_RE.test(pending);
 		if (!completeThought && pending.length < MIN_SEGMENT) return out;
 		this.#drain(out);
 		return out;

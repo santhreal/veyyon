@@ -109,7 +109,9 @@ export function flattenWorkspaceTextEdits(edit: WorkspaceEdit): Map<string, Text
 	};
 	if (edit.changes) {
 		const changes = edit.changes;
-		for (const uri in changes) push(uri, changes[uri]);
+		// Own keys only: a `for...in` would apply edits for a URI that lives on the prototype of
+		// the `changes` object a server sent, which is a write to a file the response never named.
+		for (const uri of Object.keys(changes)) push(uri, changes[uri]);
 	}
 	if (edit.documentChanges) {
 		for (const change of edit.documentChanges) {
@@ -252,10 +254,10 @@ export async function applyWorkspaceEdit(edit: WorkspaceEdit, cwd: string): Prom
 	} else if (edit.changes) {
 		// Legacy changes-map path: validate every file's edits before writing any.
 		const changes = edit.changes;
-		for (const uri in changes) {
+		for (const uri of Object.keys(changes)) {
 			sortAndValidateTextEdits(changes[uri]);
 		}
-		for (const uri in changes) {
+		for (const uri of Object.keys(changes)) {
 			const textEdits = changes[uri];
 			if (textEdits.length === 0) continue;
 			const filePath = uriToFile(uri);
