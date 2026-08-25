@@ -10,16 +10,19 @@
  * for boundary containment. The execution path (`splitDelimitedPathEntry` and
  * `expandDelimitedPathEntries`), however, additionally splits on commas and whitespace.
  *
- * Consequently, a call such as `read({ path: "package.json, /etc/passwd" })` or
- * `grep({ path: "src, /etc" })` was measured by the boundary check as a single lexical
- * string inside cwd, auto-approving in `ask-command`, `plan`, or `auto-edit` modes.
- * At execution time, the tool then split on the comma and accessed the out-of-cwd path
- * without prompt.
+ * Consequently, a call such as `read({ path: "package.json, /etc/passwd" })`,
+ * `grep({ path: "src, /etc" })`, or `ast_edit({ paths: ["src, /etc"] })` was measured
+ * by the boundary check as a single lexical string inside cwd, auto-approving in
+ * `ask-command`, `plan`, or `auto-edit` modes. At execution time, the tool then split
+ * on the comma and accessed the out-of-cwd path without prompt.
  *
- * This suite defends the invariant:
- * In every non-yolo approval mode, ANY delimited argument (comma, comma with spaces,
- * whitespace, or semicolon) that includes at least one target escaping cwd MUST require
- * permission and be blocked by the cwd boundary.
+ * This suite defends the invariants:
+ * 1. In every non-yolo approval mode, ANY delimited argument (comma, comma with spaces,
+ *    whitespace, or semicolon) that includes at least one target escaping cwd MUST require
+ *    permission and be blocked by the cwd boundary across read, grep, and ast_edit.
+ * 2. The boundary path (`expandDelimitedPathEntriesSync`) and execution path
+ *    (`expandDelimitedPathEntries`) share identical expansion behavior across all delimiter
+ *    types, brace groups, escaped separators, glob characters, selector suffixes, and internal URLs.
  */
 
 import * as fs from "node:fs";
@@ -34,6 +37,12 @@ import { getThemeByName } from "@veyyon/coding-agent/modes/theme/theme";
 import { createAgentSession } from "@veyyon/coding-agent/sdk";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import {
+	expandDelimitedPathEntries,
+	expandDelimitedPathEntriesSync,
+	splitDelimitedPathEntry,
+	splitDelimitedPathEntrySync,
+} from "@veyyon/coding-agent/tools/path-utils";
 import { readToolRenderer } from "@veyyon/coding-agent/tools/read";
 import { shortenPath } from "@veyyon/coding-agent/tools/render-utils";
 import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
@@ -82,7 +91,7 @@ describe("a delimited path escaping cwd requires approval", () => {
 			slashCommands: [],
 			enableMCP: false,
 			enableLsp: false,
-			toolNames: ["read", "grep", "glob"],
+			toolNames: ["read", "grep", "glob", "ast_edit"],
 		});
 		session = created.session;
 	});
@@ -110,7 +119,7 @@ describe("a delimited path escaping cwd requires approval", () => {
 		} as unknown as AgentToolContext;
 	}
 
-	function tool(name: "read" | "grep" | "glob") {
+	function tool(name: "read" | "grep" | "glob" | "ast_edit") {
 		const t = session.getToolByName(name);
 		if (!t) throw new Error(`expected ${name} tool`);
 		return t;
@@ -284,6 +293,94 @@ describe("a delimited path escaping cwd requires approval", () => {
 		).rejects.toThrow(/outside the session working directory/);
 	});
 
+	it("blocks delimited paths escaping cwd in ast_edit", async () => {
+		await expect(
+			tool("ast_edit").execute(
+				"ast-edit-out-comma",
+				{
+					ops: [{ pat: "foo", out: "bar" }],
+					paths: [`inside1.txt, ${outsideFile}`],
+				},
+				undefined,
+				undefined,
+				ctx({ "tools.approvalMode": "ask-command" }),
+			),
+		).rejects.toThrow(/outside the session working directory/);
+
+		await expect(
+			tool("ast_edit").execute(
+				"ast-edit-out-ws",
+				{
+					ops: [{ pat: "foo", out: "bar" }],
+					paths: [`inside1.txt ${outsideFile}`],
+				},
+				undefined,
+				undefined,
+				ctx({ "tools.approvalMode": "ask-command" }),
+			),
+		).rejects.toThrow(/outside the session working directory/);
+
+		await expect(
+			tool("ast_edit").execute(
+				"ast-edit-out-semi",
+				{
+					ops: [{ pat: "foo", out: "bar" }],
+					paths: [`inside1.txt;${outsideFile}`],
+				},
+				undefined,
+				undefined,
+				ctx({ "tools.approvalMode": "ask-command" }),
+			),
+		).rejects.toThrow(/outside the session working directory/);
+	});
+
+	it("proves sync and async path splitters produce identical expansions across all variants", async () => {
+		const testCases: Array<{ input: string; options?: { internalUrls?: "keep" | "split-on-semicolon" } }> = [
+			// Semicolons
+			{ input: "inside1.txt;inside2.txt" },
+			{ input: "inside1.txt; outside2.txt" },
+			{ input: "missing1.txt;missing2.txt" },
+			// Commas
+			{ input: "inside1.txt, inside2.txt" },
+			{ input: "inside1.txt, missing2.txt" },
+			{ input: "missing1.txt, missing2.txt" },
+			// Whitespace
+			{ input: "inside1.txt inside2.txt" },
+			{ input: "inside1.txt missing2.txt" },
+			{ input: "missing1.txt missing2.txt" },
+			// Mixed
+			{ input: "inside1.txt, inside2.txt;inside1.txt" },
+			// Brace groups (commas inside braces must not split)
+			{ input: "src/{a,b}.ts" },
+			{ input: "src/{a,b}.ts, inside1.txt" },
+			// Escaped separators (escaped spaces / commas must not split)
+			{ input: "folder\\ with\\ spaces/file.txt inside1.txt" },
+			{ input: "file\\,comma.txt, inside1.txt" },
+			// Selector suffixes
+			{ input: "inside1.txt:1-10, inside2.txt:20-30" },
+			{ input: "inside1.txt:raw, inside2.txt:conflicts" },
+			// Internal URLs
+			{ input: "skill://demo/one.md;skill://demo/two.md" },
+			{ input: "skill://demo/one.md;skill://demo/two.md", options: { internalUrls: "split-on-semicolon" } },
+			{ input: "skill://demo/one.md, skill://demo/two.md" },
+			{ input: "skill://demo/one.md, skill://demo/two.md", options: { internalUrls: "split-on-semicolon" } },
+			// Single paths
+			{ input: "inside1.txt" },
+			{ input: "missing.txt" },
+			{ input: "" },
+		];
+
+		for (const { input, options } of testCases) {
+			const syncSplit = splitDelimitedPathEntrySync(input, cwd, options);
+			const asyncSplit = await splitDelimitedPathEntry(input, cwd, options);
+			expect(syncSplit).toEqual(asyncSplit);
+
+			const syncExpanded = expandDelimitedPathEntriesSync([input], cwd, options);
+			const asyncExpanded = await expandDelimitedPathEntries([input], cwd, options);
+			expect(syncExpanded).toEqual(asyncExpanded);
+		}
+	});
+
 	it("sanitizes resolvedPath in readToolRenderer using shortenPath", async () => {
 		const uiTheme = await getThemeByName("dark");
 		expect(uiTheme).toBeDefined();
@@ -301,6 +398,7 @@ describe("a delimited path escaping cwd requires approval", () => {
 			uiTheme!,
 			{ path: "." },
 		);
+
 		const renderedLines = rendered.render(120);
 		const fullText = renderedLines.join("\n");
 		// Must not contain un-shortened homeDir if homeDir has length > 1
