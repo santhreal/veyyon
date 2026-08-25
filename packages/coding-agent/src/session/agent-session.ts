@@ -3205,7 +3205,7 @@ export class AgentSession {
 		// session cwd relative to that root. Only the active cwd is a root; accumulating
 		// prior cwds would strip paths from previous directories to "." as well, making
 		// distinct absolute paths indistinguishable.
-		this.#wirePathRoots = normalizeRoots([this.sessionManager.getCwd()]);
+		this.#wirePathRoots = normalizeRoots(this.sessionManager.getCwd());
 		const providerContextCanonicalizer = new ProviderContextCanonicalizer(this.#toolCallIdMap, () => {
 			this.#toolCallIdCounter += 1;
 			return `tc_${this.#toolCallIdCounter}`;
@@ -8211,7 +8211,7 @@ export class AgentSession {
 	}
 
 	#recordCwdChange(previous: string, cwd: string): void {
-		this.#wirePathRoots = normalizeRoots([cwd]);
+		this.#wirePathRoots = normalizeRoots(cwd);
 		const note = `Session working directory changed: ${previous} → ${cwd}`;
 		const details = { previous, cwd };
 		this.agent.appendMessage({
@@ -19245,7 +19245,7 @@ export class AgentSession {
 			if (path.resolve(targetCwd) !== path.resolve(previousSessionState.cwd)) {
 				scopeTransitionAttempted = true;
 				await this.#rescopeToCwd(targetCwd);
-				this.#wirePathRoots = normalizeRoots([targetCwd]);
+				this.#wirePathRoots = normalizeRoots(targetCwd);
 			}
 
 			if (switchingToDifferentSession) {
