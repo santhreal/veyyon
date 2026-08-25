@@ -185,15 +185,17 @@ function getReasoningConfig(
 function filterInput(input: InputItem[] | undefined): InputItem[] | undefined {
 	if (!Array.isArray(input)) return input;
 
-	return input
-		.filter(item => item.type !== "item_reference")
-		.map(item => {
-			if (item.id != null) {
-				const { id: _id, ...rest } = item;
-				return rest as InputItem;
-			}
-			return item;
-		});
+	const result: InputItem[] = [];
+	for (const item of input) {
+		if (item.type === "item_reference") continue;
+		if (item.id != null) {
+			const { id: _id, ...rest } = item;
+			result.push(rest as InputItem);
+		} else {
+			result.push(item);
+		}
+	}
+	return result;
 }
 
 const CODEX_ORPHAN_OUTPUT_LIMIT = 16_000;
