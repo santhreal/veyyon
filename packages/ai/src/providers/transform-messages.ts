@@ -347,6 +347,22 @@ export function transformMessages<TApi extends Api>(
 				assistantMsg.model === model.id;
 
 			const isAnthropicTarget = isAnthropicMessagesModel(model);
+			// Fast path: same-model replay to a non-Anthropic target with no
+			// thinking or fallback blocks. Every content block type passes
+			// through the flatMap by reference (text, toolCall,
+			// redactedThinking all return unchanged for same-model
+			// non-Anthropic), so skip the allocation and return the message
+			// by reference.
+			if (isSameModel && !isAnthropicTarget) {
+				let needsTransform = false;
+				for (const block of assistantMsg.content) {
+					if (block.type === "thinking" || block.type === "fallback") {
+						needsTransform = true;
+						break;
+					}
+				}
+				if (!needsTransform) return msg;
+			}
 			// Anthropic's all-or-none contract on prior-turn thinking blocks
 			// applies to every `anthropic-messages → anthropic-messages` replay,
 			// not just the latest assistant turn. The legacy
