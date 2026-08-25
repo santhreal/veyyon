@@ -83,7 +83,7 @@ const launchSchema = type({
 	"timeout?": type("number > 0").describe("logs/wait/stop: max seconds; default 30 (stop: 5)"),
 });
 
-type LaunchParams = typeof launchSchema.infer;
+export type LaunchParams = typeof launchSchema.infer;
 
 const KEY_INPUT: Record<string, string> = {
 	ENTER: "\r",
@@ -453,8 +453,10 @@ export class LaunchTool implements AgentTool<typeof launchSchema, LaunchToolDeta
 		_onUpdate?: AgentToolUpdateCallback<LaunchToolDetails, typeof launchSchema>,
 		_context?: AgentToolContext,
 	): Promise<AgentToolResult<LaunchToolDetails>> {
-		// Session CPU budget: refuse while saturated. The broker (spawned lazily
-		// by the client) joins the budget group, which covers every daemon it
+		// Session CPU budget: keep the group in sync on every op, but refuse only
+		// the ops that create a process. A saturated budget that also refused
+		// `stop` left no way to end the work saturating it. The broker (spawned
+		// lazily by the client) joins the group, which covers every daemon it
 		// launches by inheritance.
 		const getSessionId = () => this.session.getSessionId?.() ?? null;
 		const cpuLimit = sessionCpuLimit(getSessionId());
@@ -464,7 +466,9 @@ export class LaunchTool implements AgentTool<typeof launchSchema, LaunchToolDeta
 				this.session.settings.get("session.cpuLimitKill"),
 				sessionBudgetLimits(this.session.settings),
 			);
-			await cpuLimit.gateSpawn("a background process");
+			if (params.op === "start" || params.op === "restart") {
+				await cpuLimit.gateSpawn("a background process");
+			}
 		}
 		const client = await daemonClientForProject(this.session.cwd, {
 			adoptSpawnedPid: sessionCpuAdoption(getSessionId),
