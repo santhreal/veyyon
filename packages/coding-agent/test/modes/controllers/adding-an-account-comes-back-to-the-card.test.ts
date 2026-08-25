@@ -80,6 +80,11 @@ function credential(email: string, accountId: string) {
 	};
 }
 
+/** The slice of the login dialog a cancellation test drives. */
+interface FocusableDialog {
+	handleInput: (key: string) => void;
+}
+
 interface Harness {
 	/** Every card the controller mounted, oldest first. The second one is the reopen. */
 	readonly cards: AccountManagerComponent[];
@@ -88,16 +93,30 @@ interface Harness {
 	readonly text: (card?: AccountManagerComponent) => string;
 	readonly login: ReturnType<typeof vi.fn>;
 	readonly showError: ReturnType<typeof vi.fn>;
+	/**
+	 * The login dialog the controller focused, so a test can cancel it the way Esc
+	 * does. Cancelling has to run the real dialog path: its abort signal is what
+	 * tells the controller a decision was made rather than a failure.
+	 */
+	readonly focused: () => FocusableDialog | undefined;
+	/** The controller under test, so a test can reach an entry point the card does not offer. */
+	readonly controller: SelectorController;
+	/** Every fullscreen overlay the controller mounted, in order, by constructor name. */
+	readonly fullscreen: string[];
 }
 
 /**
- * Open the card on anthropic with one stored account, with `login` answering `outcome`.
+ * Build the controller with one stored anthropic account and `login` answering `outcome`.
  *
  * `outcome` is what the provider does when the browser round trip finishes: `"stores"` writes a
  * second credential the way a real login does, `"fails"` rejects the way an unreachable provider
- * or a refused consent screen does.
+ * or a refused consent screen does, and `"hangs"` settles only when the dialog aborts.
+ *
+ * `entry` selects which surface starts the login. `"card"` opens the account manager first, the
+ * way `/account` does. `"none"` leaves the controller unmounted so a test can call another entry
+ * point directly — the failure contract belongs to all of them, not to the card.
  */
-async function openCard(outcome: "stores" | "fails"): Promise<Harness> {
+async function openCard(outcome: "stores" | "fails" | "hangs", entry: "card" | "none" = "card"): Promise<Harness> {
 	const storage = authStorage;
 	if (!storage) throw new Error("no auth storage");
 	vi.restoreAllMocks();
@@ -105,8 +124,17 @@ async function openCard(outcome: "stores" | "fails"): Promise<Harness> {
 	vi.spyOn(storage, "checkCredentials").mockResolvedValue([]);
 	await storage.set("anthropic", [credential("first@example.com", "acct-first")]);
 
-	const login = vi.fn(async (provider: OAuthProvider) => {
+	const login = vi.fn(async (provider: OAuthProvider, options?: { signal?: AbortSignal }) => {
 		if (outcome === "fails") throw new Error("provider refused");
+		if (outcome === "hangs") {
+			// A real browser round trip does not finish on its own. Resolve only when
+			// the dialog aborts, which is what Esc does, so the cancellation test
+			// exercises the same path a user takes.
+			await new Promise<void>(resolve =>
+				options?.signal?.addEventListener("abort", () => resolve(), { once: true }),
+			);
+			throw new Error("login cancelled");
+		}
 		await storage.set("anthropic", [
 			credential("first@example.com", "acct-first"),
 			credential("second@example.com", "acct-second"),
@@ -116,6 +144,8 @@ async function openCard(outcome: "stores" | "fails"): Promise<Harness> {
 	vi.spyOn(storage, "login").mockImplementation(login as unknown as AuthStorage["login"]);
 
 	const cards: AccountManagerComponent[] = [];
+	const fullscreen: string[] = [];
+	let focused: FocusableDialog | undefined;
 	const showError = vi.fn();
 	const ctx = {
 		editorContainer: { children: [], clear: () => {}, addChild: () => {} },
@@ -123,12 +153,26 @@ async function openCard(outcome: "stores" | "fails"): Promise<Harness> {
 		oauthManualInput: { waitForInput: async () => "", clear: () => {} },
 		present: vi.fn(),
 		ui: {
-			setFocus: vi.fn(),
+			setFocus: vi.fn((component: unknown) => {
+				if (component && component !== cards[cards.length - 1]) focused = component as FocusableDialog;
+			}),
 			requestRender: vi.fn(),
 			requestComponentRender: vi.fn(),
-			showOverlay: vi.fn((component: unknown) => {
+			showOverlay: vi.fn((component: unknown, options?: { fullscreen?: boolean }) => {
 				if (component instanceof AccountManagerComponent) cards.push(component);
-				return { hide: vi.fn() };
+				// What hides a written error is a fullscreen overlay that is still up,
+				// so this tracks live ones: mounted here, dropped again on `hide()`.
+				// The login dialog is fullscreen too and tears itself down in the
+				// `finally`, which is why the set has to shrink and not only grow.
+				if (!options?.fullscreen) return { hide: vi.fn() };
+				const name = (component as object).constructor.name;
+				fullscreen.push(name);
+				return {
+					hide: vi.fn(() => {
+						const at = fullscreen.lastIndexOf(name);
+						if (at >= 0) fullscreen.splice(at, 1);
+					}),
+				};
 			}),
 		},
 		session: {
@@ -148,8 +192,11 @@ async function openCard(outcome: "stores" | "fails"): Promise<Harness> {
 		dismissWelcome: vi.fn(),
 	} as unknown as InteractiveModeContext;
 
-	await new SelectorController(ctx).showAccountManager("anthropic");
-	if (cards.length !== 1) throw new Error(`expected one mounted card, got ${cards.length}`);
+	const controller = new SelectorController(ctx);
+	if (entry === "card") {
+		await controller.showAccountManager("anthropic");
+		if (cards.length !== 1) throw new Error(`expected one mounted card, got ${cards.length}`);
+	}
 	return {
 		cards,
 		card: () => cards[cards.length - 1]!,
@@ -160,6 +207,9 @@ async function openCard(outcome: "stores" | "fails"): Promise<Harness> {
 				.join("\n"),
 		login,
 		showError,
+		focused: () => focused,
+		controller,
+		fullscreen,
 	};
 }
 
@@ -228,19 +278,76 @@ describe("adding an account from the card", () => {
 	});
 
 	/**
-	 * A login that does not land still returns you to the card. The error is reported, and the
-	 * surface you were on is the surface you are on: dropping to the composer on failure would
-	 * leave the operator with an error message and no way back to what they were doing.
+	 * A login that FAILED leaves the operator looking at the reason.
+	 *
+	 * This suite used to assert the opposite, on the reasoning that dropping to the composer strands
+	 * the operator with an error and no way back. That reasoning missed what the card is: a
+	 * FULLSCREEN overlay. Reopening it painted straight over the error that had just been written to
+	 * the transcript, so a rejected API key showed as "Validating…", then the same card, no new
+	 * account, and nothing said why. The old test passed throughout, because it asserted that a
+	 * `showError` SPY had been called rather than that a human could read anything.
+	 *
+	 * `showLogin` already stayed put on failure, so this is also the two surfaces agreeing.
 	 */
-	it("comes back after a login that failed", async () => {
+	it("stays on the error after a login that failed, instead of covering it with the card", async () => {
 		const harness = await openCard("fails");
 
 		harness.card().handleInput("a");
-		await until(() => harness.cards.length > 1, "the card to reopen after a failed login");
+		await until(() => harness.showError.mock.calls.length > 0, "the failure to be reported");
+		// Settle every microtask the reopen would have used, so this asserts the
+		// card never comes back rather than merely that it had not yet.
+		for (let tick = 0; tick < 50; tick++) await Promise.resolve();
 
-		expect(harness.showError).toHaveBeenCalled();
+		expect(harness.cards.length).toBe(1);
+		// Nothing fullscreen is standing on top of the error either. Stated over
+		// every fullscreen overlay rather than the card, because any of them hides
+		// it just as completely; the login dialog's own overlay is torn down in the
+		// `finally` before the outcome is returned.
+		expect(harness.fullscreen).toEqual([]);
+		// The message itself, not that a spy fired: the point of the fix is that a
+		// person can read the reason.
+		expect(String(harness.showError.mock.calls[0]?.[0])).toContain("provider refused");
+	});
+
+	/**
+	 * The same contract from `/login <provider>`, which reaches `#handleOAuthLogin` through its own
+	 * call site with its own guard. A fix applied at one call site and not the other leaves the
+	 * operator staring at a fresh account card on one route and the reason on the other, which is
+	 * the disagreement between two surfaces reporting the same state that review.md rejects.
+	 *
+	 * NOT CAUGHT: a fourth entry point added later. The three that exist today are the account
+	 * card, this, and the model hub row; the first two are reachable from this harness and the
+	 * third shares their guard. A new one is only covered when it is added here.
+	 */
+	it("stays on the error when the login came from /login rather than the card", async () => {
+		const harness = await openCard("fails", "none");
+
+		await harness.controller.showLogin("anthropic");
+		for (let tick = 0; tick < 50; tick++) await Promise.resolve();
+
+		expect(String(harness.showError.mock.calls[0]?.[0])).toContain("provider refused");
+		expect(harness.cards.length).toBe(0);
+		expect(harness.fullscreen).toEqual([]);
+	});
+
+	/**
+	 * Cancelling is a decision, not a failure, and it still unwinds one level to the card.
+	 *
+	 * Driven through the real dialog: Esc reaches `LoginDialogComponent`, which aborts the signal the
+	 * provider flow is holding. That abort is the only thing distinguishing this from the case above,
+	 * so a fix that keyed the reopen off "did it store" rather than "did it fail" would strand the
+	 * operator in the composer every time they changed their mind, and this is what catches it.
+	 */
+	it("comes back to the card when the login is cancelled rather than failed", async () => {
+		const harness = await openCard("hangs");
+
+		harness.card().handleInput("a");
+		await until(() => harness.focused() !== undefined, "the login dialog to take focus");
+		harness.focused()?.handleInput("\x1b");
+		await until(() => harness.cards.length > 1, "the card to reopen after cancelling");
+
+		expect(harness.showError).not.toHaveBeenCalled();
 		expect(harness.text()).toContain("first@example.com");
-		expect(harness.text()).not.toContain("second@example.com");
 	});
 
 	/**
