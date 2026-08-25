@@ -170,7 +170,8 @@ export async function searchPublicWeb(
 
 	try {
 		await Promise.race([all, Bun.sleep(softMs), callerAbort.promise]);
-		const failureCount = failures.length;
+		let failureCount = 0;
+		for (const _ of failures) failureCount++;
 		// Wait past the soft deadline on "nothing to merge yet", not on "nobody
 		// replied yet". A fast engine serving a bot wall parses to zero results and
 		// returns 200, and counting that as a reply ended the fan-out early and
