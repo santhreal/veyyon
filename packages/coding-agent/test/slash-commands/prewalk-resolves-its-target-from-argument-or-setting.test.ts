@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
 import type { Api, Model } from "@veyyon/ai";
+import { parseArgs } from "@veyyon/coding-agent/cli/args";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
+import { buildSessionOptions } from "@veyyon/coding-agent/main";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { executeAcpBuiltinSlashCommand } from "@veyyon/coding-agent/slash-commands/acp-builtins";
 import type { SlashCommandRuntime } from "@veyyon/coding-agent/slash-commands/types";
@@ -21,9 +23,10 @@ import { TempDir } from "@veyyon/utils";
  * names a model. Any sibling that reverts to an alias-only default fails the
  * first two cases here.
  *
- * Not caught: the `--prewalk` launch path in main.ts, which mirrors this
- * resolution but needs a full CLI launch to drive; plan-yolo still defaults to
- * `@smol` and is untouched by this change.
+ * Also caught: the `--prewalk` launch path in main.ts, which mirrors this
+ * resolution through `buildSessionOptions` and read the same settings past the
+ * resolver without handing them over. Plan-yolo expands its alias itself before
+ * resolving and is untouched by this change.
  */
 describe("/prewalk resolves its cheap target", () => {
 	let tempDir: TempDir;
@@ -108,5 +111,63 @@ describe("/prewalk resolves its cheap target", () => {
 		expect(h.armPrewalk).not.toHaveBeenCalled();
 		const said = h.output.mock.calls.map(call => String(call[0])).join("\n");
 		expect(said.toLowerCase()).toContain("api key");
+	});
+	it("resolves a configured role alias passed via prewalk.cheapModel setting", async () => {
+		const registry = makeRegistry();
+		const settings = Settings.isolated({ "prewalk.cheapModel": "@smol" });
+		settings.setModelRole("smol", CHEAP);
+		const h = makeRuntime(registry, settings);
+		await executeAcpBuiltinSlashCommand("/prewalk", h.runtime);
+
+		expect(h.armPrewalk).toHaveBeenCalledTimes(1);
+		const [target] = h.armPrewalk.mock.calls[0] as unknown as [Model<Api>];
+		expect(`${target.provider}/${target.id}`).toBe(CHEAP);
+	});
+
+	it("resolves a configured role alias passed as slash command argument", async () => {
+		const registry = makeRegistry();
+		const settings = Settings.isolated({});
+		settings.setModelRole("smol", CHEAP);
+		const h = makeRuntime(registry, settings);
+		await executeAcpBuiltinSlashCommand("/prewalk @smol", h.runtime);
+
+		expect(h.armPrewalk).toHaveBeenCalledTimes(1);
+		const [target] = h.armPrewalk.mock.calls[0] as unknown as [Model<Api>];
+		expect(`${target.provider}/${target.id}`).toBe(CHEAP);
+	});
+
+	it("resolves a role alias in prewalk.cheapModel at launch", async () => {
+		const registry = makeRegistry();
+		const settings = Settings.isolated({ "prewalk.cheapModel": "@smol" });
+		settings.setModelRole("smol", CHEAP);
+		const parsed = parseArgs(["--prewalk"]);
+
+		const options = await buildSessionOptions(parsed, [], undefined, registry, settings);
+
+		const target = options.prewalk?.target;
+		expect(target && `${target.provider}/${target.id}`).toBe(CHEAP);
+	});
+
+	it("resolves a role alias passed to --prewalk-into", async () => {
+		const registry = makeRegistry();
+		const settings = Settings.isolated({});
+		settings.setModelRole("smol", CHEAP);
+		const parsed = parseArgs(["--prewalk-into", "@smol"]);
+
+		const options = await buildSessionOptions(parsed, [], undefined, registry, settings);
+
+		const target = options.prewalk?.target;
+		expect(target && `${target.provider}/${target.id}`).toBe(CHEAP);
+	});
+
+	it("resolves a role alias in prewalk.strongModel as the start model", async () => {
+		const registry = makeRegistry();
+		const settings = Settings.isolated({ "prewalk.cheapModel": CHEAP, "prewalk.strongModel": "@big" });
+		settings.setModelRole("big", STRONG);
+		const parsed = parseArgs(["--prewalk"]);
+
+		const options = await buildSessionOptions(parsed, [], undefined, registry, settings);
+
+		expect(options.model && `${options.model.provider}/${options.model.id}`).toBe(STRONG);
 	});
 });

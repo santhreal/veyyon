@@ -59,6 +59,7 @@
 
 ### Fixed
 
+- `veyyon bench --model @role` and `veyyon dry-balance --model @role` resolve a configured model role instead of failing to find a model named after the alias.
 - `veyyon plugin install --dry-run` now resolves the target and fails when it cannot be installed, instead of exiting 0 with "Would install" for an unpublished npm name or a missing git repository, and reports the name and version the target resolves to rather than a `0.0.0-dryrun` placeholder ([#911](https://github.com/santhreal/veyyon/issues/911)).
 - `veyyon plugin uninstall` now removes a plugin installed from a local path, which was permanently unremovable because uninstall read only `plugins/package.json` dependencies while linking registers the plugin in the runtime config and `node_modules`; the linked directory itself is left untouched.
 - `veyyon plugin doctor` no longer reports "no plugins installed" in a profile whose plugins were all linked, and names how many linked plugins it found.

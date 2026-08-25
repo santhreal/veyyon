@@ -1119,6 +1119,7 @@ export async function buildSessionOptions(
 				cliModel: strongPattern,
 				modelRegistry,
 				preferences: modelMatchPreferences,
+				settings: activeSettings,
 			});
 			if (resolved.warning) {
 				process.stderr.write(`${chalk.yellow(`Warning: ${resolved.warning}`)}\n`);
@@ -1149,7 +1150,12 @@ export async function buildSessionOptions(
 				'Prewalk needs a cheap target model: set "prewalk.cheapModel" in settings or pass --prewalk-into <model>.',
 			);
 		}
-		const resolved = resolveCliModel({ cliModel: cheapPattern, modelRegistry, preferences: modelMatchPreferences });
+		const resolved = resolveCliModel({
+			cliModel: cheapPattern,
+			modelRegistry,
+			preferences: modelMatchPreferences,
+			settings: activeSettings,
+		});
 		if (resolved.warning) {
 			process.stderr.write(`${chalk.yellow(`Warning: ${resolved.warning}`)}\n`);
 		}
