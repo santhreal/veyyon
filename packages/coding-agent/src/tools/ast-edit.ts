@@ -20,7 +20,7 @@ import { parseReadUrlTarget } from "./fetch";
 import { createFileRecorder, formatResultPath } from "./file-recorder";
 import { classifyGroupedLines, formatGroupedFiles, groupLineIndicesByBlank } from "./grouped-file-output";
 import type { OutputMeta } from "./output-meta";
-import { isInternalUrlPath } from "./path-utils";
+import { expandDelimitedPathEntriesSync, isInternalUrlPath } from "./path-utils";
 import { enforcePlanModeWrite } from "./plan-mode-guard";
 import {
 	appendParseErrorsBulletList,
@@ -176,11 +176,15 @@ type AstEditSchemaInfer = typeof astEditSchema.infer;
  * (cwd-boundary.ts). The `paths` arg lists the files edited; internal-scheme
  * entries are filtered by the boundary.
  */
-export function astEditFilesystemTargets(args: unknown): string[] {
-	const paths = (args as Partial<AstEditSchemaInfer>).paths;
-	return Array.isArray(paths) ? paths.filter((path): path is string => typeof path === "string") : [];
+export function astEditFilesystemTargets(args: unknown, cwd = process.cwd()): string[] {
+	if (!args || typeof args !== "object" || !("paths" in args)) return [];
+	const paths = args.paths;
+	if (!Array.isArray(paths)) return [];
+	const rawEntries = paths.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0);
+	if (rawEntries.length === 0) return [];
+	const expanded = expandDelimitedPathEntriesSync(rawEntries, cwd);
+	return expanded.filter(entry => entry.trim().length > 0);
 }
-
 export class AstEditTool implements AgentTool<typeof astEditSchema, AstEditToolDetails> {
 	readonly name = "ast_edit";
 	readonly approval = (args: unknown) => {
@@ -191,7 +195,8 @@ export class AstEditTool implements AgentTool<typeof astEditSchema, AstEditToolD
 	};
 	// The cwd boundary gates out-of-cwd AST edits in non-yolo modes; internal
 	// schemes are filtered by the boundary. See cwd-boundary.ts.
-	readonly filesystemTargets = (args: unknown): string[] => astEditFilesystemTargets(args);
+	readonly filesystemTargets = (args: unknown, cwd = this.session.cwd): string[] =>
+		astEditFilesystemTargets(args, cwd);
 	readonly formatApprovalDetails = (args: unknown): string[] => {
 		const params = args as Partial<AstEditSchemaInfer>;
 		const lines: string[] = [];

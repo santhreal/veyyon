@@ -11,14 +11,20 @@
 
 ### Changed
 
+- Formatted tool-call loop guard whitespace; behavior is unchanged.
 - The Anthropic provider reads its endpoint, credential placement, rejected betas and retry policy from the catalog's wire-capability table instead of comparing provider ids at seventeen call sites.
 - `ToolCall.arguments` is a `Readonly<Record<string, unknown>>`, so a producer replaces the object instead of writing into one a streaming snapshot already shares.
 - A streaming request no longer pins a parsed clone of its wire payload for the life of the stream: every provider's diagnostic dump retains only the exact sent bytes and materializes a body when a 400/413 dump is built.
 - The OpenAI-family, pi-native and Codex request builders serialize the request body once instead of deep-cloning the request graph, which took attempt preparation on a 32MiB context from 82ms to 9ms.
 - A message that names a dead socket reads the same everywhere: `namesDeadSocket` in `@veyyon/ai/error/flags` is the one list of errnos and phrases, and `ENETUNREACH`, `EHOSTUNREACH` and `EAI_AGAIN` now count as transient transport failures like the rest of them.
+- Formatted source files for Biome compliance.
 
 ### Fixed
 
+- The Cursor HTTP/2 client session handles error and close events directly so connection drops, DNS resolution failures and socket resets reject the turn with a classified error instead of raising an unhandled exception.
+- Streamed tool-call argument deltas in OpenAI Responses streams append incrementally rather than truncating on coincidental prefix matches.
+- Fixed `ToolCallLoopGuard` deciding read subsumption from rendered result text and summary phrases, preventing follow-up range reads of summarized files from being falsely blocked.
+- Fixed read tool target parsing in `ToolCallLoopGuard` to correctly handle URI schemes, Windows drive prefixes, compound raw-range selectors, and open-ended ranges without falsely subsuming distinct reads.
 - Fixed OpenAI server-side compaction requests omitting the `Authorization` header when constructing headers from request setup.
 - Supported server-side compaction on the ChatGPT Codex backend with OAuth credential and turn identity headers.
 - API option mapping preserves side-request conversation IDs, preventing Cursor and Devin requests from falling back to the live session ID.

@@ -171,6 +171,72 @@ screen_has() {
 	esac
 }
 
+# What the terminal shows on the VISIBLE screen, as text.
+#
+# Distinct from `screen_text`, which asks for the scrollback too. A row counted in a
+# buffer that scrolled maps to no pixel on the glass, and `point` needs a screen row.
+visible_text() {
+	kitty @ --to "${KITTY_SOCKET}" get-text --extent=screen 2>/dev/null || true
+}
+
+# 1-based screen row of the LAST visible line carrying a string; empty when absent.
+#
+# Last, not first, because the caller is aiming at a live surface and the transcript
+# above it may hold a scrolled echo of the same text. The status line is the bottom-most
+# thing on the glass that can carry its own value, so the bottom-most match is it.
+row_of() {
+	visible_text | grep -n -F -- "$1" | tail -1 | cut -d: -f1
+}
+
+# The visible line that carries a string, as text; empty when absent. Bottom-most, for the
+# same reason as row_of.
+#
+# WHY A ROW AND NOT THE SCREEN. `screen_has` asks for the scrollback, so it answers yes to
+# a string the transcript printed an hour ago. An assertion that a status line STOPPED
+# showing something cannot be written against the whole screen: the model name appears in
+# the banner, in `/model` output and in any turn that mentions it, and every one of those
+# reads as the chip still being there.
+row_with() {
+	visible_text | grep -F -- "$1" | tail -1
+}
+
+# Click a string where it sits inside a visible row.
+#
+# THE COLUMN IS AS COUNTABLE AS THE ROW, AND AS WRONG WHEN COUNTED. A status line's
+# segments move with the terminal width, so a column that is inside the path at 120
+# columns is inside the model chip at 80, and the frame proves the click landed
+# somewhere rather than that the feature did nothing. Both coordinates are read off the
+# glass here: `row-needle` finds the line, and the click goes to the middle of `text`
+# within it.
+click_text_in_row() { # <row-needle> <text>
+	local row line prefix col
+	row="$(row_of "$1")"
+	line="$(row_with "$1")"
+	[ -n "${row}" ] || abandon_take "click target" "no visible row carries '$1'"
+	case "${line}" in
+	*"$2"*) ;;
+	*) abandon_take "click target" "row ${row} does not carry '$2': ${line}" ;;
+	esac
+	prefix="${line%%"$2"*}"
+	col=$((${#prefix} + ${#2} / 2 + 1))
+	echo "scene: clicking '$2' at row ${row} column ${col}" >&2
+	click_at "${row}" "${col}"
+}
+
+# Click the row carrying a string, at a column.
+#
+# A COUNTED ROW IS HOW TAKES ARE WASTED. subagent-lanes.sh lost three to a list that
+# drifted one row, and the frame it produced looked like a feature that did nothing
+# rather than like a click into empty space. A row read off the glass cannot drift,
+# and a needle that is not there ends the take instead of clicking somewhere else.
+click_row_with() { # <needle> <col>
+	local row
+	row="$(row_of "$1")"
+	[ -n "${row}" ] || abandon_take "click target" "no visible row carries '$1'"
+	echo "scene: clicking row ${row} column ${2} for '$1'" >&2
+	click_at "${row}" "$2"
+}
+
 # Answer every permission dialog the last turn raised, and say how many there were.
 #
 # WHY A LOOP AND NOT ONE Return. A tool call whose arguments carry a real credential needs

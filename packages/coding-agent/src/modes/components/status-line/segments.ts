@@ -2,7 +2,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { ThinkingLevel } from "@veyyon/agent-core";
 import { normalizePremiumRequests } from "@veyyon/stats/format";
-import { TERMINAL } from "@veyyon/tui";
+import { sliceWithWidth, TERMINAL, visibleWidth } from "@veyyon/tui";
 import {
 	clamp01,
 	DEFAULT_PROFILE_DIR_NAME,
@@ -10,6 +10,7 @@ import {
 	formatNumber,
 	getActiveProfileOrDefault,
 	getProjectDir,
+	logger,
 	pathIsWithin,
 	relativePathWithinRoot,
 } from "@veyyon/utils";
@@ -47,11 +48,30 @@ export type { SegmentContext } from "./types";
  */
 const SECRET_EXPIRY_CHIP_WINDOW_MS = 60 * 60 * 1000;
 
-/** Left-truncate a path/label to `maxLen`, prefixing an ellipsis when clipped. */
+/**
+ * Clamp a path/label to `maxLen` CELLS, prepending an ellipsis when clipped.
+ *
+ * CLIPPED FROM ONE END, AND IT IS THE HEAD. A path's identifying end is its last
+ * segment -- the directory the session is actually in -- so that is the end that
+ * survives. The width-driven shortening in the component clips the joined location
+ * the same direction, which is what stops the two of them putting an ellipsis on
+ * BOTH ends of one path: `…orm-services/ingest-pipeline/norm…` named neither the
+ * project it sits under nor the directory it is in. A clipped path now carries
+ * exactly one ellipsis, at the front, and reads as a suffix of the real path.
+ *
+ * CELLS, not UTF-16 units. `maxLen` is compared against the columns the row will
+ * spend, so a path holding wide characters -- a CJK directory name, an emoji in a
+ * project folder -- was clamped at roughly half the width it then painted, and
+ * `String.prototype.slice` could cut a surrogate pair or a grapheme cluster in
+ * half and hand the row a lone code unit to render.
+ */
 function clampPathLength(pwd: string, maxLen: number): string {
-	if (pwd.length <= maxLen) return pwd;
+	const total = visibleWidth(pwd);
+	if (total <= maxLen) return pwd;
 	const ellipsis = "…";
-	return `${ellipsis}${pwd.slice(-Math.max(0, maxLen - ellipsis.length))}`;
+	const room = Math.max(0, maxLen - visibleWidth(ellipsis));
+	if (room === 0) return ellipsis;
+	return `${ellipsis}${sliceWithWidth(pwd, total - room, room, true).text}`;
 }
 
 /**
@@ -64,15 +84,89 @@ function thinkingGlyph(display: string): string {
 	return space === -1 ? display : display.slice(0, space);
 }
 
-function stripDisplayRoot(pwd: string): string {
-	for (const root of [path.join(os.homedir(), "Projects"), "/work"]) {
-		const relative = relativePathWithinRoot(root, pwd);
-		if (relative) return relative;
-	}
-	return pwd;
+/**
+ * Workspace roots the path segment shows a project RELATIVE to, when no root is configured.
+ *
+ * Two conventions, and that is all they are: a `Projects` directory in the home directory, and
+ * a `/work` mount. They are the default because they are what this segment has always
+ * stripped, not because they are anyone's layout -- `path.displayRoots` is how a session names
+ * its own, and `/work` on Windows resolves against whichever drive the process is on, which is
+ * an accident of `path.resolve` rather than a place anything lives.
+ *
+ * READ WHEN USED, NOT AT IMPORT. As a module const this joined the home directory once, at the
+ * moment the module loaded, and a home resolved after that -- a different `HOME` in a worker, a
+ * test that answers `os.homedir()` for a fixture -- never matched a default root again, so the
+ * whole default silently stopped stripping. `os.homedir()` reads an environment variable; a
+ * render can afford it.
+ */
+export function defaultDisplayRoots(): readonly string[] {
+	return [path.join(os.homedir(), "Projects"), "/work"];
 }
 
-const SCRATCH_ROOTS: readonly string[] = (() => {
+/** Display roots already reported as unusable, so a bad entry is named once and not per frame. */
+const warnedDisplayRoots = new Set<string>();
+
+/**
+ * Expand `~` and reject a root that cannot contain anything.
+ *
+ * A relative or empty entry never matches a working directory, so left alone it would be a
+ * setting that reads as applied and does nothing. It is dropped and named instead. Named to the
+ * log rather than thrown: this runs inside a render, and a status line that raises takes the
+ * composer down over a typo in a display preference.
+ *
+ * Both separators are accepted after the tilde. A Windows config is written with the separator
+ * that platform uses, and `~\code` silently falling through as a relative entry would be the
+ * same setting-that-does-nothing this rejects loudly.
+ */
+export function resolveDisplayRoots(roots: readonly string[]): string[] {
+	const resolved: string[] = [];
+	for (const root of roots) {
+		const trimmed = typeof root === "string" ? root.trim() : "";
+		const afterTilde = trimmed.startsWith("~/") || trimmed.startsWith("~\\") ? trimmed.slice(2) : null;
+		const expanded =
+			trimmed === "~" ? os.homedir() : afterTilde === null ? trimmed : path.join(os.homedir(), afterTilde);
+		if (expanded !== "" && path.isAbsolute(expanded)) {
+			resolved.push(expanded);
+			continue;
+		}
+		if (warnedDisplayRoots.has(trimmed)) continue;
+		warnedDisplayRoots.add(trimmed);
+		logger.warn("Status line path display root ignored: not an absolute path", { root });
+	}
+	return resolved;
+}
+
+/**
+ * One slot, because the row re-renders on every keystroke and every animation frame while the
+ * working directory changes a handful of times a session. Each root costs a `realpath` inside
+ * `relativePathWithinRoot`, so an uncached list of four roots is four syscalls a frame.
+ */
+let displayRootCache: { pwd: string; key: string; result: string } | null = null;
+
+function stripDisplayRoot(pwd: string, roots: readonly string[] | undefined): string {
+	const declared = roots ?? defaultDisplayRoots();
+	const key = declared.join("\u0000");
+	if (displayRootCache?.pwd === pwd && displayRootCache.key === key) return displayRootCache.result;
+	let result = pwd;
+	for (const root of resolveDisplayRoots(declared)) {
+		const relative = relativePathWithinRoot(root, pwd);
+		if (relative) {
+			result = relative;
+			break;
+		}
+	}
+	displayRootCache = { pwd, key, result };
+	return result;
+}
+
+/**
+ * Directories a project is shown relative to with the scratch icon instead of a display root.
+ *
+ * Read when used, for the reason {@link defaultDisplayRoots} states: `os.tmpdir()` and the home
+ * directory both come from the environment, and a list built at import time answers for the
+ * environment the process started in rather than the one it is rendering.
+ */
+function scratchRoots(): readonly string[] {
 	const roots = new Set<string>([os.tmpdir(), path.join(os.homedir(), "tmp")]);
 	if (process.platform === "win32") {
 		const { TEMP, TMP, SystemRoot } = process.env;
@@ -88,10 +182,10 @@ const SCRATCH_ROOTS: readonly string[] = (() => {
 		}
 	}
 	return [...roots];
-})();
+}
 
 function classifyProjectDir(pwd: string): { scratch: boolean; relative: string | null } {
-	for (const root of SCRATCH_ROOTS) {
+	for (const root of scratchRoots()) {
 		if (pathIsWithin(root, pwd)) {
 			return { scratch: true, relative: relativePathWithinRoot(root, pwd) };
 		}
@@ -129,7 +223,7 @@ function classifyProjectDir(pwd: string): { scratch: boolean; relative: string |
  * through `actionKeyHint`.
  */
 export function focusExitBadge(focusedAgentId: string): string {
-	const who = theme.fg("warning", withIcon(theme.icon.ghost, focusedAgentId));
+	const who = theme.fg("warning", withIcon(theme.icon.ghost, sanitizeStatusText(focusedAgentId)));
 	// "esc to go back" in full, not "esc back". This is the one hint a reader has never seen before
 	// and cannot guess from context -- Esc means "clear the line" everywhere else in this composer --
 	// so it is spelled as the sentence it is rather than compressed into a chip. The bar has room:
@@ -161,7 +255,9 @@ const modelSegment: StatusLineSegment = {
 		const state = ctx.session.state;
 		const opts = ctx.options.model ?? {};
 
-		let modelName = state.model?.name || state.model?.id || "no-model";
+		// A model name is provider text: it arrives from a `/models` listing or from a custom
+		// endpoint's config, so it is no more trusted than a directory name.
+		let modelName = sanitizeStatusText(state.model?.name || state.model?.id || "") || "no-model";
 		if (modelName.startsWith("Claude ")) {
 			modelName = modelName.slice(7);
 		}
@@ -485,6 +581,15 @@ const modeSegment: StatusLineSegment = {
 	},
 };
 
+/**
+ * The cells `withIcon` spends on the glyph and the space after it, which is what a front clip
+ * has to step over to keep the icon. Zero for the symbol presets whose icons are empty --
+ * there is nothing to keep and nothing to step over.
+ */
+function iconPin(icon: string): number {
+	return icon ? visibleWidth(icon) + 1 : 0;
+}
+
 const pathSegment: StatusLineSegment = {
 	id: "path",
 	render(ctx) {
@@ -498,8 +603,11 @@ const pathSegment: StatusLineSegment = {
 		if (stripPrefix && ctx.worktree) {
 			const { projectName, worktreeName } = ctx.worktree;
 			const label = ctx.git.branch === worktreeName ? projectName : `${projectName}/${worktreeName}`;
-			const content = withIcon(theme.icon.worktree, clampPathLength(label, opts.maxLength ?? 40));
-			return { content: theme.fg("statusLinePath", content), visible: true };
+			const content = withIcon(
+				theme.icon.worktree,
+				clampPathLength(sanitizeStatusText(label), opts.maxLength ?? 40),
+			);
+			return { content: theme.fg("statusLinePath", content), visible: true, pin: iconPin(theme.icon.worktree) };
 		}
 
 		const projectDir = ctx.session.sessionManager?.getCwd?.() ?? ctx.activeRepo?.cwd ?? getProjectDir();
@@ -510,15 +618,21 @@ const pathSegment: StatusLineSegment = {
 			if (scratch) {
 				if (relative) pwd = relative;
 			} else {
-				pwd = stripDisplayRoot(pwd);
+				pwd = stripDisplayRoot(pwd, opts.displayRoots);
 			}
 		}
-		const repoSuffix = ctx.activeRepo ? ` ↳ ${ctx.activeRepo.relativeRepoRoot}` : "";
+		const repoSuffix = ctx.activeRepo ? ` ↳ ${sanitizeStatusText(ctx.activeRepo.relativeRepoRoot)}` : "";
 		if (opts.abbreviate !== false) {
 			pwd = shortenPath(pwd);
 		}
 
-		pwd = clampPathLength(pwd, opts.maxLength ?? 40);
+		// A directory name is arbitrary bytes on every platform veyyon runs on except Windows: a
+		// tab opens a hole the width arithmetic cannot see, a CR rewinds the row over itself, a
+		// BEL rings on every repaint, and an ESC in a directory name is an escape sequence this
+		// row would hand the terminal. Sanitized BEFORE the clamp, so the budget is measured on
+		// the cells that reach the screen. The same treatment the PR title and the account label
+		// already get; the path and the branch were reading straight from the filesystem.
+		pwd = clampPathLength(sanitizeStatusText(pwd), opts.maxLength ?? 40);
 		if (repoSuffix) {
 			pwd = `${pwd}${repoSuffix}`;
 		}
@@ -526,7 +640,7 @@ const pathSegment: StatusLineSegment = {
 		const showScratchIcon = scratch && stripPrefix;
 		const icon = showScratchIcon ? theme.icon.scratchFolder : theme.icon.folder;
 		const content = withIcon(icon, pwd);
-		return { content: theme.fg("statusLinePath", content), visible: true };
+		return { content: theme.fg("statusLinePath", content), visible: true, pin: iconPin(icon) };
 	},
 };
 
@@ -543,7 +657,9 @@ const gitSegment: StatusLineSegment = {
 		const showBranch = opts.showBranch !== false;
 		let content = "";
 		if (showBranch && branch) {
-			content = withIcon(theme.icon.branch, branch);
+			// `.git/HEAD` is read as a file rather than through `git check-ref-format`, so the
+			// refname on the row is whatever a checkout put there.
+			content = withIcon(theme.icon.branch, sanitizeStatusText(branch));
 		}
 
 		// Branch plus one bare dirty marker. There used to be a second mode here

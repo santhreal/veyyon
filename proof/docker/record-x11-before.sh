@@ -11,7 +11,9 @@
 # byte-identical.
 #
 # Output goes to proof/captures/x11/before, beside the after arm of the same
-# name, so the two are directly comparable.
+# name, so the two are directly comparable. A caller that records a matrix --
+# one arm per terminal width -- sets OUT_DIR per run, since a single directory
+# cannot hold two arms whose frames share the scene's mark names.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -24,8 +26,13 @@ scenes = sys.argv[1:]
 if not scenes:
     raise SystemExit("usage: record-x11-before.sh <scene.sh> [<scene.sh>...]")
 
+# The hold point defaults to main, which assumes the branch workflow. A change
+# already committed on local main names its parent here instead, so the before
+# arm still records the tree without the change.
+base = os.environ.get("PROOF_BASE_REF", "main")
+
 changed = subprocess.run(
-    ["git", "diff", "--name-status", "main..HEAD", "--", "packages/*/src/*"],
+    ["git", "diff", "--name-status", f"{base}..HEAD", "--", "packages/*/src/*"],
     capture_output=True, text=True, check=True,
 ).stdout.split("\n")
 
@@ -52,15 +59,19 @@ for p in deleted_by_branch:
     if os.path.exists(p):
         raise SystemExit("file the branch deleted is present again: " + p)
 
-print(f"holding {len(held)} modified files at main, restoring {len(deleted_by_branch)} deleted ones")
+print(f"holding {len(held)} modified files at {base}, restoring {len(deleted_by_branch)} deleted ones")
 
-out = os.path.join("proof", "captures", "x11", "before")
+out = os.environ.get("OUT_DIR") or os.path.join("proof", "captures", "x11", "before")
 os.makedirs(out, exist_ok=True)
-env = dict(os.environ, OUT_DIR=os.path.abspath(out))
+# SCENE_ARM lets a scene guard each arm in the direction that arm is true in. A frame that
+# photographs NEW behavior has no assertion that holds on both sides: the after arm must
+# see the new state, and the before arm must see the old one. Without this a scene can only
+# guard the half it was written against, and the other arm records whatever it lands on.
+env = dict(os.environ, OUT_DIR=os.path.abspath(out), SCENE_ARM="before")
 
 try:
     for p in held + deleted_by_branch:
-        old = subprocess.run(["git", "show", "main:" + p], capture_output=True)
+        old = subprocess.run(["git", "show", f"{base}:{p}"], capture_output=True)
         if old.returncode != 0:
             raise SystemExit("no main copy of " + p)
         with open(p, "wb") as fh:

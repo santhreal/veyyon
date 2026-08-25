@@ -494,3 +494,23 @@ git -C "${DEMO}" config user.name "demo"
 git -C "${DEMO}" config user.email "demo@example.invalid"
 git -C "${DEMO}" add -A
 git -C "${DEMO}" -c commit.gpgsign=false commit -q -m "seed the demo projects"
+
+# A SECOND PROJECT THAT EXISTS ONLY TO BE WIDE. The footline's `location` zone holds the
+# working directory and the git branch, and the two together are what squeezes the right
+# group at 80 and 100 columns. Every fixture above sits directly in ${DEMO} on `main`,
+# which is eleven columns of location and never reaches the width where the shed order
+# decides anything -- so a scene about the footline photographed a line under no pressure.
+# Kept outside ${DEMO} rather than beneath it, because a repository nested inside another
+# is added to the outer one as a gitlink by the `git add -A` above.
+WIDE="$(dirname "${DEMO}")/platform-services/ingest-pipeline/normalizer"
+mkdir -p "${WIDE}/src"
+cat >"${WIDE}/src/normalize.ts" <<'TS'
+export function normalize(record: { id: string; value: number }): string {
+	return `${record.id}:${record.value.toFixed(2)}`;
+}
+TS
+git -C "${WIDE}" init -q -b feature/statusline-model-retention-long-path
+git -C "${WIDE}" config user.name "demo"
+git -C "${WIDE}" config user.email "demo@example.invalid"
+git -C "${WIDE}" add -A
+git -C "${WIDE}" -c commit.gpgsign=false commit -q -m "seed the normalizer"

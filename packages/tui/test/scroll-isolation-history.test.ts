@@ -321,10 +321,10 @@ describe("scroll isolation over dropped history", () => {
 			term.sendInput(WHEEL_UP);
 			await scheduler.drain(term);
 			column = trackColumn(term);
-			// Three rows back out of a 68-row space across 8 rows of travel: the
-			// thumb is one row short of the bottom, and the groove fills the rest.
+			// Three rows back out of a 67-row space across 8 rows of travel: the
+			// thumb sits at the bottom, and the groove fills the rest.
 			expect(tui.virtualScrollNewRows).toBe(3);
-			expect(column.slice(0, 9).join("")).toBe("│││││││█│");
+			expect(column.slice(0, 9).join("")).toBe("││││││││█");
 		} finally {
 			tui.stop();
 			await term.flush();

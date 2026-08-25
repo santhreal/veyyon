@@ -32,6 +32,8 @@ export function getConn(dbPath?: string): Database {
 	return new Database(path, { create: true, readwrite: true, strict: true });
 }
 
+export const COST_LOG_SCHEMA_VERSION = 1;
+
 export function initCostLog(dbPath?: string): void {
 	const conn = getConn(dbPath);
 	try {
@@ -46,6 +48,17 @@ export function initCostLog(dbPath?: string): void {
 				timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 			)
 		`);
+
+		const cols = conn.query("PRAGMA table_info(cost_entries)").all() as Array<{ name: string }>;
+		if (!cols.some(c => c.name === "model")) {
+			conn.run("ALTER TABLE cost_entries ADD COLUMN model TEXT DEFAULT 'default'");
+		}
+
+		const versionRow = conn.query("PRAGMA user_version").get() as { user_version: number } | null;
+		const currentVersion = versionRow?.user_version ?? 0;
+		if (currentVersion < COST_LOG_SCHEMA_VERSION) {
+			conn.run(`PRAGMA user_version = ${COST_LOG_SCHEMA_VERSION}`);
+		}
 	} finally {
 		conn.close();
 	}

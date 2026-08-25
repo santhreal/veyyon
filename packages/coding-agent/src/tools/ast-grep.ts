@@ -1,3 +1,4 @@
+import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
 import type { ToolExample } from "@veyyon/ai";
@@ -92,6 +93,8 @@ async function runMultiTargetAstGrep(
 	parseErrors?: string[];
 }> {
 	const retainedMatches: AstFindMatch[] = [];
+	const seenMatchKeys = new Set<string>();
+	const seenFilesWithMatches = new Set<string>();
 	const retainedCapacity = options.skip + options.limit + 1;
 	const parseErrors: string[] = [];
 	let totalMatches = 0;
@@ -99,6 +102,18 @@ async function runMultiTargetAstGrep(
 	let filesSearched = 0;
 	let limitReached = false;
 	throwIfAborted(options.signal, "ast_grep");
+	// Resolve target kind once outside the per-match loop so file vs directory
+	// path resolution is deterministic and does not rely on string suffix matching.
+	const targetStats = await Promise.all(
+		targets.map(async target => {
+			const resolvedBase = path.resolve(target.basePath);
+			const isFile = await fs
+				.stat(resolvedBase)
+				.then(stat => stat.isFile())
+				.catch(() => false);
+			return { basePath: resolvedBase, isFile };
+		}),
+	);
 	// Each target is an independent native scan on libuv's blocking pool, so
 	// they run concurrently instead of serializing behind one another. Every
 	// scan still carries the tool's own signal, so a cancellation fails each
@@ -121,15 +136,33 @@ async function runMultiTargetAstGrep(
 	);
 	for (const [targetIndex, outcome] of settled.entries()) {
 		if (outcome.status === "rejected") throw outcome.reason;
-		const target = targets[targetIndex]!;
+		const targetInfo = targetStats[targetIndex]!;
 		const targetResult = outcome.value;
+		const targetSeenFiles = new Set<string>();
 		totalMatches += targetResult.totalMatches;
 		filesWithMatches += targetResult.filesWithMatches;
 		filesSearched += targetResult.filesSearched;
 		limitReached = limitReached || targetResult.limitReached;
 		if (targetResult.parseErrors) parseErrors.push(...targetResult.parseErrors);
 		for (const match of targetResult.matches) {
-			const absolute = path.resolve(target.basePath, match.path);
+			const absolute = targetInfo.isFile ? targetInfo.basePath : path.resolve(targetInfo.basePath, match.path);
+			// Overlapping targets (a directory plus a file nested
+			// inside it) surface the same match twice; keep the
+			// first occurrence.
+			const matchKey = `${absolute}\0${match.startLine}\0${match.startColumn}`;
+			if (seenMatchKeys.has(matchKey)) {
+				totalMatches = Math.max(0, totalMatches - 1);
+				if (seenFilesWithMatches.has(absolute) && !targetSeenFiles.has(absolute)) {
+					filesWithMatches = Math.max(0, filesWithMatches - 1);
+					targetSeenFiles.add(absolute);
+				}
+				continue;
+			}
+			seenMatchKeys.add(matchKey);
+			if (!seenFilesWithMatches.has(absolute)) {
+				seenFilesWithMatches.add(absolute);
+				targetSeenFiles.add(absolute);
+			}
 			const rebased = path.relative(options.commonBasePath, absolute).replace(/\\/g, "/");
 			retainAstFindMatch(retainedMatches, retainedCapacity, { ...match, path: rebased });
 		}
@@ -175,7 +208,8 @@ export class AstGrepTool implements AgentTool<typeof astGrepSchema, AstGrepToolD
 	readonly approval = "read" as const;
 	// ast_grep reads file contents under its search path, so an out-of-cwd search
 	// prompts in non-yolo modes like a point read does. See cwd-boundary.ts.
-	readonly filesystemTargets = (args: unknown): string[] => searchPathFilesystemTargets(args);
+	readonly filesystemTargets = (args: unknown, cwd = this.session.cwd): string[] =>
+		searchPathFilesystemTargets(args, cwd);
 	readonly label = "AST Grep";
 	readonly summary = "Search code with AST patterns (structural grep)";
 	readonly description: string;

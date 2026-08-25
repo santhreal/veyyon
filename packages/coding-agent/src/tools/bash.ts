@@ -152,19 +152,51 @@ function bashJudgementEnv(args: unknown): NodeJS.ProcessEnv {
 	return merged;
 }
 
+/**
+ * Extract leading `cd <path> && ...` into cwd when no explicit `cwd` was supplied.
+ * Constrained to a single line so a `&&` that sits on a later line of a multiline
+ * script cannot pull the entire script into the "cwd" capture. Skips extraction when
+ * the path needs shell expansion ($VAR, $(...), backticks).
+ */
+export function extractEffectiveBashCommand(rawCommand: string, rawCwd?: string): { command: string; cwd?: string } {
+	let command = rawCommand;
+	let cwd = rawCwd;
+	if (!cwd) {
+		const cdMatch = command.match(/^cd[ \t]+((?:[^&\\\n\r]|\\.)+?)[ \t]*&&[ \t]*/);
+		// Skip extraction when the path needs shell expansion ($VAR, $(...),
+		// backticks) — resolveToCwd only expands `~`, so routing those through
+		// cwd would reject commands the shell itself handles fine.
+		if (cdMatch && !/[$`(]/.test(cdMatch[1])) {
+			cwd = cdMatch[1].trim().replace(/^["']|["']$/g, "");
+			command = command.slice(cdMatch[0].length);
+		}
+	}
+	return { command, cwd };
+}
+
 export function bashApprovalDecision(
 	args: unknown,
 	extraProtectedPaths: readonly string[] = [],
 	sessionCwd = "",
 ): ToolApprovalDecision {
 	const rawCommand = (args as Partial<BashToolInput>).command;
-	const command = typeof rawCommand === "string" ? rawCommand : "";
-	// A relative delete resolves against the directory the command will run in:
-	// the call's own `cwd` when it names one, else the session's. Without it
-	// `rm -rf ../../../../../..` was judged as "relative, therefore fine" and
-	// reached the root from any depth of six or less.
+	const initialCommand = typeof rawCommand === "string" ? rawCommand : "";
 	const argCwd = (args as Partial<BashToolInput>).cwd;
-	const cwd = typeof argCwd === "string" && argCwd.startsWith("/") ? argCwd : sessionCwd;
+	const initialCwd = typeof argCwd === "string" ? argCwd : undefined;
+	const { command, cwd: effectiveCwd } = extractEffectiveBashCommand(initialCommand, initialCwd);
+	// A relative delete resolves against the directory the command will run in:
+	// the call's own `cwd` (including one extracted from a leading `cd`) when it
+	// names one, else the session's. Without it `rm -rf ../../../../../..` was
+	// judged as "relative, therefore fine" and reached the root from any depth
+	// of six or less.
+	let cwd = sessionCwd;
+	if (effectiveCwd) {
+		try {
+			cwd = resolveToCwd(effectiveCwd, sessionCwd);
+		} catch {
+			cwd = sessionCwd;
+		}
+	}
 	const judgementEnv = bashJudgementEnv(args);
 	const risk =
 		command === "" ? undefined : findCriticalBashRisk(command, undefined, extraProtectedPaths, judgementEnv, cwd);
@@ -1079,22 +1111,10 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 		onUpdate?: AgentToolUpdateCallback<BashToolDetails>,
 		ctx?: AgentToolContext,
 	): Promise<AgentToolResult<BashToolDetails>> {
-		let command = rawCommand;
+		const extracted = extractEffectiveBashCommand(rawCommand, cwd);
+		let command = extracted.command;
+		cwd = extracted.cwd;
 		const env = normalizeBashEnv(rawEnv);
-
-		// Extract leading `cd <path> && ...` into cwd when the model ignores the cwd parameter.
-		// Constrained to a single line so a `&&` that sits on a later line of a multiline
-		// script can't pull the entire script into the "cwd" capture.
-		if (!cwd) {
-			const cdMatch = command.match(/^cd[ \t]+((?:[^&\\\n\r]|\\.)+?)[ \t]*&&[ \t]*/);
-			// Skip extraction when the path needs shell expansion ($VAR, $(...),
-			// backticks) — resolveToCwd only expands `~`, so routing those through
-			// cwd would reject commands the shell itself handles fine.
-			if (cdMatch && !/[$`(]/.test(cdMatch[1])) {
-				cwd = cdMatch[1].trim().replace(/^["']|["']$/g, "");
-				command = command.slice(cdMatch[0].length);
-			}
-		}
 		if (asyncRequested && !this.#asyncEnabled) {
 			throw new ToolError("Async bash execution is disabled. Enable async.enabled to use async mode.");
 		}
@@ -1198,7 +1218,7 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 				this.session.settings.get("session.cpuLimitKill"),
 				sessionBudgetLimits(this.session.settings),
 			);
-			cpuLimit.assertMaySpawn("a bash command");
+			await cpuLimit.gateSpawn("a bash command");
 		}
 		if (timeoutSec !== undefined) {
 			const timeoutClampNotice = formatTimeoutClampNotice("bash", requestedTimeoutSec, timeoutSec);

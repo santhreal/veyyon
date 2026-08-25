@@ -1732,23 +1732,27 @@ export class TUI extends Container {
 
 	/**
 	 * Rows in the scroll space: the tape, then the part of the composed frame
-	 * that is not already on it. The frame's first #committedRows rows are the
-	 * tape's last #committedRows rows (both came from the same paint), so only
-	 * the remainder is new.
+	 * that is not already on it (excluding the pinned footer). The frame's first
+	 * #committedRows rows are the tape's last #committedRows rows (both came
+	 * from the same paint), so only the uncommitted remainder above the pinned
+	 * footer is new.
 	 */
 	#scrollSpaceRows(frameRows = this.#previousFrameLength): number {
-		return this.#scrollTape.length + Math.max(0, frameRows - this.#committedRows);
+		const uncommittedEnd = Math.max(this.#committedRows, frameRows - this.#pinnedFooterRows);
+		return this.#scrollTape.length + (uncommittedEnd - this.#committedRows);
 	}
 
 	/**
 	 * Scroll-space row the live tail's view starts at — the bottom-most view,
 	 * which is what "following" shows. Derived from the space's own length and
-	 * never from `#windowTopRow`: that counter is a frame coordinate, and a
-	 * virtualized root dropping rows leaves it describing a frame that no longer
-	 * exists (it read 41 against a 12-row frame in the case this fixes).
+	 * the scrollable transcript region height (viewport height minus pinned
+	 * footer rows).
 	 */
 	#scrollSpaceLiveTop(frameRows = this.#previousFrameLength): number {
-		return Math.max(0, this.#scrollSpaceRows(frameRows) - this.terminal.rows);
+		const height = Math.max(1, this.terminal.rows);
+		const footerRows = Math.min(this.#pinnedFooterRows, height - 1);
+		const regionRows = height - footerRows;
+		return Math.max(0, this.#scrollSpaceRows(frameRows) - regionRows);
 	}
 
 	/**
@@ -3092,6 +3096,35 @@ export class TUI extends Container {
 	/** Wheel step for scroll isolation: freeze/walk the transcript region.
 	 * Anchored to the live window top so the first wheel-up starts from the
 	 * currently visible tail; walking down to the tail resumes following. */
+	#pinnedFooterScreenBounds(): {
+		footerTop: number;
+		footerBottom: number;
+		footerRowOffset: number;
+		contentBottom: number;
+	} {
+		if (this.#virtualScrollTop !== null) {
+			const height = Math.max(1, this.terminal.rows);
+			const footerRows = Math.min(this.#pinnedFooterRows, height - 1);
+			const footerTop = height - footerRows;
+			return {
+				footerTop,
+				footerBottom: height - 1,
+				contentBottom: height - 1,
+				footerRowOffset: height - this.#pinnedFooterRows,
+			};
+		}
+		const frameLength = this.#composedFrame.length;
+		const windowTop = this.#windowTopRow;
+		const footerTop = frameLength - this.#pinnedFooterRows - windowTop;
+		const footerBottom = frameLength - 1 - windowTop;
+		return {
+			footerTop,
+			footerBottom,
+			contentBottom: footerBottom,
+			footerRowOffset: footerTop,
+		};
+	}
+
 	/**
 	 * Route a pinned-footer click to the root child under it. `footerRow` is
 	 * 0-based from the footer's top screen row. The footer always shows the
@@ -3111,10 +3144,12 @@ export class TUI extends Container {
 		const firstFooterIndex = Math.max(0, segments.length - this.#pinnedFooterChildCount);
 		for (let i = firstFooterIndex; i < segments.length; i++) {
 			const segment = segments[i]!;
+			if (segment.rowCount <= 0) continue;
 			if (frameRow < segment.start || frameRow >= segment.start + segment.rowCount) continue;
 			const component = segment.component as Component & Partial<MouseRoutable>;
 			if (typeof component.routeMouse === "function") {
-				component.routeMouse(event, frameRow - segment.start, event.col);
+				const localRow = Math.max(0, Math.min(segment.rowCount - 1, frameRow - segment.start));
+				component.routeMouse(event, localRow, event.col);
 				this.requestRender();
 			}
 			return;
@@ -3232,14 +3267,17 @@ export class TUI extends Container {
 					this.#handleIsolationWheel(event.wheel);
 					return;
 				}
-				const footerTop = this.terminal.rows - this.#pinnedFooterRows;
+				const { footerTop, footerBottom, footerRowOffset, contentBottom } = this.#pinnedFooterScreenBounds();
 				// A press-then-release in a different cell is a drag, and with the
 				// mouse held by the engine that drag selected nothing. Report it so
 				// the host can name Shift+drag and the copy picker. Tracking mode is
 				// 1000h (press/release only, no motion reports), so the release is
 				// the first and only chance to see the gesture.
 				if (event.leftClick) {
-					this.#pressCell = event.row < footerTop ? { row: event.row, col: event.col } : null;
+					this.#pressCell =
+						event.row >= 0 && event.row < footerTop && event.row <= contentBottom
+							? { row: event.row, col: event.col }
+							: null;
 				} else if (event.release) {
 					const press = this.#pressCell;
 					this.#pressCell = null;
@@ -3247,11 +3285,18 @@ export class TUI extends Container {
 						this.onSelectionAttempt?.();
 					}
 				}
-				if (event.leftClick && this.#pinnedFooterRows > 0 && event.row >= footerTop) {
+				if (
+					event.leftClick &&
+					this.#pinnedFooterRows > 0 &&
+					event.row >= footerTop &&
+					event.row <= footerBottom &&
+					event.row >= 0 &&
+					event.row < this.terminal.rows
+				) {
 					// A click in the pinned footer is routed to the child under it
 					// (MouseRoutable components get frame-local coordinates), so
 					// footer chrome like the status footline can own click targets.
-					this.#routeFooterMouse(event, event.row - footerTop);
+					this.#routeFooterMouse(event, event.row - footerRowOffset);
 					if (this.#virtualScrollTop !== null) {
 						// Chat idiom: engaging the composer returns to the present.
 						this.scrollToLiveTail();
@@ -4155,7 +4200,8 @@ export class TUI extends Container {
 			// under it can shift a row the reader is looking at. The footer is
 			// always the live frame's last rows, so the composer keeps typing,
 			// spinning, and updating while the history above it holds still.
-			this.#scrollSnapshot ??= [...this.#scrollTape, ...frame.slice(this.#committedRows)];
+			const uncommittedEnd = Math.max(this.#committedRows, frameLength - this.#pinnedFooterRows);
+			this.#scrollSnapshot ??= [...this.#scrollTape, ...frame.slice(this.#committedRows, uncommittedEnd)];
 			const snapshot = this.#scrollSnapshot;
 			const footerRows = Math.min(this.#pinnedFooterRows, height - 1);
 			const regionRows = height - footerRows;

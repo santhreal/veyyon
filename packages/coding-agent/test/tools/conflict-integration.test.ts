@@ -652,7 +652,7 @@ describe("write resolves conflicts via conflict://N", () => {
 		expect(await Bun.file(filePath).text()).toBe("line 1\nresolved by hand\nline N\n");
 	});
 
-	it("strips hashline display prefixes from replacement content when hashline mode is active", async () => {
+	it("refuses replacement content carrying hashline display prefixes when hashline mode is active", async () => {
 		const filePath = path.join(tempDir, "hashed.ts");
 		await Bun.write(filePath, TWO_WAY);
 		const session = createTestSession(tempDir);
@@ -660,13 +660,14 @@ describe("write resolves conflicts via conflict://N", () => {
 		const write = await getTool(session, "write");
 
 		await read.execute("read-hashed", { path: "hashed.ts" });
-		const result = await write.execute("write-hashed", {
+		const promise = write.execute("write-hashed", {
 			path: "conflict://1",
 			content: "[hashed.ts#1a2b]\n42:cleanline\n",
 		});
-		expect(getText(result)).toContain("auto-stripped hashline display prefixes");
+		await expect(promise).rejects.toThrow(/detected hashline section header/);
+		// File untouched by the rejected write.
 		const after = await Bun.file(filePath).text();
-		expect(after).toBe("line 1\ncleanline\nline N\n");
+		expect(after).toBe(TWO_WAY);
 	});
 
 	it("`write conflict://*` bulk-resolves every registered conflict, per-entry token expansion", async () => {
