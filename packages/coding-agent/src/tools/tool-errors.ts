@@ -152,8 +152,5 @@ export function renderError(e: unknown): string {
 	if (e instanceof ToolError) {
 		return e.render();
 	}
-	if (e instanceof Error) {
-		return e.message;
-	}
-	return String(e);
+	return errorMessage(e);
 }

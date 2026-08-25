@@ -220,7 +220,7 @@ async function renderGallerySections(
 			try {
 				for (const line of await renderGalleryState(name, fixture, state, width, expanded)) lines.push(line);
 			} catch (err) {
-				lines.push(theme.fg("error", `  render failed: ${String(err)}`));
+				lines.push(theme.fg("error", `  render failed: ${errorMessage(err)}`));
 			}
 		}
 		sections.push({ heading, lines });

@@ -40,6 +40,7 @@ import * as path from "node:path";
 import {
 	applyOwnerOnlyWindowsAcl,
 	clamp,
+	errorMessage,
 	escapeTerminalText,
 	isEnoent,
 	isRecord,
@@ -1095,7 +1096,7 @@ export class SecretAuditLog {
 				this.#notices?.error(
 					"secrets",
 					`The secret audit log at ${escapeTerminalText(this.#logPath)} could not be appended to ` +
-						`(${escapeTerminalText(String(error))}). ${batch.length} bounded queued ` +
+						`(${escapeTerminalText(errorMessage(error))}). ${batch.length} bounded queued ` +
 						`record${batch.length === 1 ? " was" : "s were"} not written. Credentials remain protected; ` +
 						`credential use is no longer being recorded until the next append recovers.`,
 				);
@@ -1238,7 +1239,7 @@ export class SecretAuditLog {
 			if (isEnoent(error)) return { records: [], malformed: 0 };
 			throw new Error(
 				`The secret audit log at ${escapeTerminalText(filePath)} could not be read safely ` +
-					`(${escapeTerminalText(String(error))}).`,
+					`(${escapeTerminalText(errorMessage(error))}).`,
 			);
 		}
 	}

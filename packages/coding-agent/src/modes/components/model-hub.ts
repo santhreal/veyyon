@@ -354,7 +354,7 @@ export class ModelHubComponent implements Component {
 			this.#configError = undefined;
 		} else {
 			const loadError = this.#registry.getError();
-			this.#configError = loadError ? String(loadError) : undefined;
+			this.#configError = loadError ? errorMessage(loadError) : undefined;
 			allModels = this.#registry.getAll();
 			try {
 				availableModels = this.#registry.getAvailable();

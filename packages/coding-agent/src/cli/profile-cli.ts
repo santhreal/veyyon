@@ -299,7 +299,7 @@ async function clearCopiedDisplayName(agentDir: string): Promise<void> {
 		try {
 			parsed = YAML.parse(text);
 		} catch (error) {
-			throw new Error(`Copied settings file ${filePath} is not valid YAML: ${String(error)}`);
+			throw new Error(`Copied settings file ${filePath} is not valid YAML: ${errorMessage(error)}`);
 		}
 		if (!isRecord(parsed)) continue;
 		const root = parsed as Record<string, unknown>;

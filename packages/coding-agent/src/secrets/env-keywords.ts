@@ -131,7 +131,7 @@ export async function loadEnvSecretKeywords(options: { cwd: string; agentDir: st
 		} catch (error) {
 			if (isEnoent(error)) continue;
 			throw new Error(
-				`Refusing to start: ${filePath} exists but could not be read (${String(error)}). ` +
+				`Refusing to start: ${filePath} exists but could not be read (${errorMessage(error)}). ` +
 					`Fix the file's permissions or remove it. Continuing without it would leave every variable ` +
 					`its keywords cover undetected.`,
 			);

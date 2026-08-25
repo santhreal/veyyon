@@ -454,7 +454,12 @@ async function handleApplyEditRequest(client: LspClient, message: LspJsonRpcRequ
 		await applyWorkspaceEdit(params.edit, client.cwd);
 		await sendResponse(client, message.id, { applied: true }, "workspace/applyEdit");
 	} catch (err) {
-		await sendResponse(client, message.id, { applied: false, failureReason: String(err) }, "workspace/applyEdit");
+		await sendResponse(
+			client,
+			message.id,
+			{ applied: false, failureReason: errorMessage(err) },
+			"workspace/applyEdit",
+		);
 	}
 }
 
@@ -533,7 +538,7 @@ async function sendResponse(
 	try {
 		await queueWriteMessage(client, response);
 	} catch (err) {
-		logger.error("LSP failed to respond.", { method, error: String(err) });
+		logger.error("LSP failed to respond.", { method, error: errorMessage(err) });
 	}
 }
 

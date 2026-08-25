@@ -1,4 +1,4 @@
-import { isCancellation, isTimeoutError } from "@veyyon/utils";
+import { errorMessage, isCancellation, isTimeoutError } from "@veyyon/utils";
 import { OutputSink } from "../../session/streaming-output";
 import type { ToolSession } from "../../tools";
 import { inlineBudgetFor } from "../../tools/output-artifact";
@@ -150,7 +150,7 @@ export async function executeJs(code: string, options: JsExecutorOptions): Promi
 				displayOutputs,
 			};
 		}
-		const message = error instanceof Error ? (error.stack ?? error.message) : String(error);
+		const message = error instanceof Error ? (error.stack ?? error.message) : errorMessage(error);
 		outputSink.push(message);
 		const summary = await outputSink.dump();
 		return {
