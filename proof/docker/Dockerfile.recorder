@@ -170,3 +170,19 @@ RUN set -eux; \
 	ldconfig; \
 	PATH=/opt/glass/bin:"${PATH}" sway --version
 ENV PATH=/opt/glass/bin:$PATH
+
+# tmux, because a status line whose segments are CLICKED has to be checked inside a
+# multiplexer and not only argued about. tmux translates a terminal mouse report into
+# pane-local coordinates before the pane's application reads it, so the column the
+# click handler resolves is tmux's arithmetic and not the emulator's, and a pane that
+# is one row shorter than the window moves the footline the pointer is aimed at.
+#
+# Its own layer, at the end: adding the package to the terminal layer above
+# invalidates the language-server and Wayland layers behind it, which is twenty
+# minutes of rebuild for one apt package.
+RUN set -eux; \
+	apt-get update; \
+	DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends tmux; \
+	apt-get clean; \
+	rm -rf /var/lib/apt/lists/*; \
+	tmux -V

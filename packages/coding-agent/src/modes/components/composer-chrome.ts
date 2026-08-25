@@ -200,6 +200,24 @@ export class QuietZoneLine implements Component, MouseRoutable {
 		if (inner >= 0) this.onClick?.(inner);
 	}
 
+	/**
+	 * Take the mouse grab whenever this line has a click handler.
+	 *
+	 * WITHOUT THIS THE FOOTLINE'S CLICK TARGETS ARE INERT. Button reports only arrive
+	 * while the engine holds the mouse, and it takes the grab when the frame overflows
+	 * the viewport OR a pinned footer child asks for it (`TUI.#syncWheelTracking`). A
+	 * session that has not scrolled yet satisfies neither, so the gauge, the secrets chip
+	 * and the path expansion all did nothing until the transcript happened to grow past
+	 * one screen -- a click that works later in the session and not at the start of it.
+	 * `ComposerShortcutsBar` declares the same grab for the same reason.
+	 *
+	 * Scoped to a line that can act on a click: a provider that only prints has no
+	 * business costing the operator drag-select.
+	 */
+	wantsPointer(): boolean {
+		return this.onClick !== undefined;
+	}
+
 	invalidate(): void {}
 }
 
