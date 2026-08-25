@@ -1,9 +1,9 @@
 import { describe, expect, it } from "bun:test";
 import type { FetchImpl } from "@veyyon/ai";
-import { Effort } from "@veyyon/catalog/effort";
 import { streamSimple } from "@veyyon/ai/stream";
 import type { Context, Model } from "@veyyon/ai/types";
 import { buildModel } from "@veyyon/catalog/build";
+import { Effort } from "@veyyon/catalog/effort";
 import type { ModelSpec } from "@veyyon/catalog/types";
 
 interface CapturedRequestBody {
