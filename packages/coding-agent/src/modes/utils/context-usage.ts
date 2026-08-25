@@ -70,7 +70,8 @@ function planCells(breakdown: ContextBreakdown): CellSpec[] {
 
 	let bufferCount = ratioCells(breakdown.autoCompactBufferTokens);
 
-	let usedCount = categoryCounts.reduce((sum, c) => sum + c.count, 0);
+	let usedCount = 0;
+	for (const c of categoryCounts) usedCount += c.count;
 
 	// Prevent the visualization from over-running the grid.
 	const maxUsable = GRID_CELLS - bufferCount;
@@ -83,9 +84,9 @@ function planCells(breakdown: ContextBreakdown): CellSpec[] {
 			while (overflow > 0 && entry.count > 1) {
 				entry.count -= 1;
 				overflow -= 1;
+				usedCount -= 1;
 			}
 		}
-		usedCount = categoryCounts.reduce((sum, c) => sum + c.count, 0);
 		if (usedCount + bufferCount > GRID_CELLS) {
 			bufferCount = Math.max(0, GRID_CELLS - usedCount);
 		}

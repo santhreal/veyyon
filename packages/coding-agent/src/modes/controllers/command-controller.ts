@@ -1509,9 +1509,11 @@ function formatAggregateAmount(limits: UsageLimit[]): string {
 	}
 
 	// Count unique accounts from limit scopes — not limits.length.
-	const uniqueAccountIds = new Set(
-		limits.map(limit => limit.scope.accountId).filter((id): id is string => typeof id === "string" && id.length > 0),
-	);
+	const uniqueAccountIds = new Set<string>();
+	for (const limit of limits) {
+		const id = limit.scope.accountId;
+		if (typeof id === "string" && id.length > 0) uniqueAccountIds.add(id);
+	}
 	if (uniqueAccountIds.size > 0) return `${uniqueAccountIds.size} ${uniqueAccountIds.size === 1 ? "acct" : "accts"}`;
 	// No account IDs available — keep the pre-existing fallback so providers
 	// that don't populate scope.accountId still show a summary.
