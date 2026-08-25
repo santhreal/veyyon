@@ -3,7 +3,7 @@
  *
  * The `launch` tool TUI renderer displayed `| … Launch …` when streaming tool
  * arguments had not yet populated `args.op`, or when `renderCall` received an empty
- * object or intent-only arguments (`{ i: "Starting dev server" }`). The double ellipsis
+ * object or intent-only arguments. The double ellipsis
  * (`… Launch …`) and missing description appeared as an empty or broken block to
  * the user.
  *
@@ -18,8 +18,8 @@
  * 1. Every operation in the `LaunchParams["op"]` union produces non-empty, well-formed
  *    renders across both full-details and missing-details paths.
  * 2. `renderCall` with empty args, intent-only args, partial streaming args, or missing
- *    `op` renders a clean "Launch" title and surfaces available intent/target metadata,
- *    never emitting the `Launch …` placeholder title.
+ *    `op` renders a clean "Launch" title and surfaces the target it has, never emitting
+ *    the `Launch …` placeholder title and never printing the command line twice.
  * 3. `renderResult` falls back to `result.content` text when `details` or `daemon` is
  *    absent, preventing blank cards across all operations.
  * 4. `STREAMING_STRING_KEYS_BY_TOOL` covers `launch` so streaming reveals update smoothly.
@@ -37,6 +37,7 @@ import { streamingStringKeysForTool } from "@veyyon/coding-agent/modes/controlle
 import { getThemeByName } from "@veyyon/coding-agent/modes/theme/theme";
 import { type LaunchToolDetails, launchToolRenderer } from "@veyyon/coding-agent/tools/launch";
 import { sanitizeText } from "@veyyon/utils";
+import { INTENT_FIELD } from "@veyyon/wire";
 
 async function theme() {
 	const t = await getThemeByName("dark");
@@ -73,13 +74,41 @@ describe("launch-tool-renders-non-empty-on-all-operations-and-missing-details", 
 			expect(rendered[0]).not.toContain("Launch undefined");
 		});
 
-		it("surfaces intent in description when target is not yet parsed", async () => {
+		it("keeps the harness intent out of the block, because the working message already carries it", async () => {
 			const uiTheme = await theme();
 			const rendered = lines(
-				launchToolRenderer.renderCall({ i: "Starting dev server" }, { expanded: false, isPartial: true }, uiTheme),
+				launchToolRenderer.renderCall(
+					{ [INTENT_FIELD]: "Starting dev server" } as never,
+					{ expanded: false, isPartial: true },
+					uiTheme,
+				),
 			);
 			expect(rendered[0]).toContain("Launch");
-			expect(rendered[0]).toContain("Starting dev server");
+			expect(rendered[0]).not.toContain("Starting dev server");
+		});
+
+		it("prints the command once when a name is also present, at both truncation lengths", async () => {
+			const uiTheme = await theme();
+			const short = lines(
+				launchToolRenderer.renderCall(
+					{ op: "start", application: "bun", args: ["run", "dev"] },
+					{ expanded: false, isPartial: true },
+					uiTheme,
+				),
+			).join("");
+			expect(short.split("bun run dev")).toHaveLength(2);
+
+			// A command past TRUNCATE_LENGTHS.SHORT is truncated in the meta slot and
+			// not in the description, so a renderer that de-duplicated the two by
+			// string equality printed both copies here.
+			const long = lines(
+				launchToolRenderer.renderCall(
+					{ op: "start", application: "bun", args: ["run", "dev", "--", "--flag", "x".repeat(120)] },
+					{ expanded: false, isPartial: true },
+					uiTheme,
+				),
+			).join("");
+			expect(long.split("bun run dev")).toHaveLength(2);
 		});
 
 		it("surfaces application and args when op is start or streaming", async () => {
@@ -263,6 +292,9 @@ describe("launch-tool-renders-non-empty-on-all-operations-and-missing-details", 
 			expect(keys).toContain("text");
 			expect(keys).toContain("pattern");
 			expect(keys).toContain("signal");
+			// The harness intent is not a launch argument. No tool streams it, and
+			// `event-controller` reads it off the raw args for the working message.
+			expect(keys).not.toContain(INTENT_FIELD);
 		});
 	});
 });

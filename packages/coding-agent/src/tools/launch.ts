@@ -490,7 +490,7 @@ export class LaunchTool implements AgentTool<typeof launchSchema, LaunchToolDeta
 }
 
 /** Args shape visible to the renderer, possibly mid-stream (every field optional). */
-type LaunchRenderArgs = Partial<LaunchParams> & { i?: string };
+type LaunchRenderArgs = Partial<LaunchParams>;
 
 function stateColor(state: DaemonState): ThemeColor {
 	switch (state) {
@@ -530,12 +530,20 @@ function daemonMeta(daemon: DaemonSnapshot, theme: Theme): string[] {
 	return meta;
 }
 
-/** Op-specific call context (command line, log filters, wait condition, send payload). */
+/**
+ * The command line a start names, before or after `op` decodes. A streamed call
+ * carries `application` several deltas before `op`, so a renderer keyed on
+ * `op === "start"` alone shows nothing for that window.
+ */
+function startCommand(args: LaunchRenderArgs): string | undefined {
+	if (!args.application) return undefined;
+	if (args.op !== undefined && args.op !== "start") return undefined;
+	return [args.application, ...(args.args ?? [])].join(" ");
+}
+
+/** Op-specific call context (log filters, wait condition, send payload). */
 function callMeta(args: LaunchRenderArgs): string[] {
 	const meta: string[] = [];
-	if (args.application && (args.op === undefined || args.op === "start")) {
-		meta.push([args.application, ...(args.args ?? [])].join(" "));
-	}
 	switch (args.op) {
 		case "logs":
 			if (args.follow) meta.push("follow");
@@ -553,31 +561,47 @@ function callMeta(args: LaunchRenderArgs): string[] {
 	return meta.map(entry => previewLine(replaceTabs(entry), TRUNCATE_LENGTHS.SHORT));
 }
 
+/**
+ * Append a result's plain text as body lines. Every op reaches this when the
+ * structured detail it renders from is absent: an error the broker answered
+ * before it had a snapshot leaves the text as the only thing to show, and a
+ * block with a header and no rows reads as a tool that did nothing.
+ */
+function pushTextLines(body: string[], text: string, theme: Theme): void {
+	if (!text.trim()) return;
+	for (const line of replaceTabs(text.trimEnd()).split("\n")) body.push(theme.fg("toolOutput", line));
+}
+
 /** TUI renderer: one status header per op, meta from structured details, capped body lines. */
 export const launchToolRenderer = {
 	inline: true,
 	mergeCallAndResult: true,
 	animatedPendingPreview: true,
-	animatedPartialResult: true,
+	// Only an op that can sit produces a partial result worth animating. list,
+	// describe, stop, restart and send answer in one round trip, and a spinner
+	// over those is motion with nothing behind it.
+	animatedPartialResult: (args: unknown) => {
+		const op = (args as LaunchRenderArgs).op;
+		return op === "start" || op === "logs" || op === "wait";
+	},
 
 	renderCall(args: LaunchRenderArgs, options: RenderResultOptions, theme: Theme): Component {
 		const op = args.op;
-		const target = args.name ?? (args.application ? [args.application, ...(args.args ?? [])].join(" ") : undefined);
+		const command = startCommand(args);
+		// The command line is the description when nothing named the process, and
+		// context beside the name when something did. Placing it here rather than
+		// filtering it back out of the meta keeps the two from disagreeing once
+		// `previewLine` truncates one copy and not the other.
+		const target = args.name ?? command;
 		const meta = callMeta(args);
-		const filteredMeta = args.name ? meta : meta.filter(m => m !== target);
-		const title = op ? `Launch ${op}` : "Launch";
-		const description = target
-			? replaceTabs(target)
-			: typeof args.i === "string" && args.i.trim().length > 0
-				? replaceTabs(args.i.trim())
-				: undefined;
+		if (args.name && command) meta.unshift(previewLine(replaceTabs(command), TRUNCATE_LENGTHS.SHORT));
 		const header = renderStatusLine(
 			{
 				icon: options.spinnerFrame !== undefined ? "running" : "pending",
 				spinnerFrame: options.spinnerFrame,
-				title,
-				description,
-				meta: filteredMeta,
+				title: op ? `Launch ${op}` : "Launch",
+				description: target ? replaceTabs(target) : undefined,
+				meta,
 			},
 			theme,
 		);
@@ -627,30 +651,18 @@ export const launchToolRenderer = {
 							),
 						);
 					}
-					if (!daemon && text.trim()) {
-						for (const line of replaceTabs(text.trimEnd()).split("\n")) {
-							body.push(theme.fg("toolOutput", line));
-						}
-					}
+					if (!daemon) pushTextLines(body, text, theme);
 					break;
 				}
 				case "send":
 					meta.push(...callMeta(params));
 					if (daemon) meta.push(...daemonMeta(daemon, theme));
-					if (!daemon && text.trim()) {
-						for (const line of replaceTabs(text.trimEnd()).split("\n")) {
-							body.push(theme.fg("toolOutput", line));
-						}
-					}
+					if (!daemon) pushTextLines(body, text, theme);
 					break;
 				case "stop":
 				case "restart":
 					if (daemon) meta.push(...daemonMeta(daemon, theme));
-					if (!daemon && text.trim()) {
-						for (const line of replaceTabs(text.trimEnd()).split("\n")) {
-							body.push(theme.fg("toolOutput", line));
-						}
-					}
+					if (!daemon) pushTextLines(body, text, theme);
 					break;
 				case "wait": {
 					meta.push(...callMeta(params));
@@ -667,11 +679,7 @@ export const launchToolRenderer = {
 							),
 						);
 					}
-					if (!daemon && text.trim()) {
-						for (const line of replaceTabs(text.trimEnd()).split("\n")) {
-							body.push(theme.fg("toolOutput", line));
-						}
-					}
+					if (!daemon) pushTextLines(body, text, theme);
 					break;
 				}
 				case "list": {
@@ -684,9 +692,7 @@ export const launchToolRenderer = {
 							);
 						}
 					} else if (text.trim()) {
-						for (const line of replaceTabs(text.trimEnd()).split("\n")) {
-							body.push(theme.fg("toolOutput", line));
-						}
+						pushTextLines(body, text, theme);
 					} else {
 						description = "no processes";
 					}
@@ -729,17 +735,13 @@ export const launchToolRenderer = {
 						if (spec.detached) flags.push("detached");
 						else if (spec.persist) flags.push("persistent");
 						body.push(theme.fg("dim", flags.join(theme.sep.dot)));
-					} else if (text.trim()) {
-						for (const line of replaceTabs(text.trimEnd()).split("\n")) {
-							body.push(theme.fg("toolOutput", line));
-						}
+					} else {
+						pushTextLines(body, text, theme);
 					}
 					break;
 				}
 				default:
-					if (text.trim()) {
-						for (const line of replaceTabs(text.trimEnd()).split("\n")) body.push(theme.fg("toolOutput", line));
-					}
+					pushTextLines(body, text, theme);
 			}
 		}
 
