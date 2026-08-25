@@ -325,6 +325,9 @@ function rememberClient(
 	pending: Promise<DaemonBrokerClient>,
 ): void {
 	map.set(key, pending);
+	pending.catch(() => {
+		if (map.get(key) === pending) map.delete(key);
+	});
 	if (!cancelExitCleanup) {
 		cancelExitCleanup = postmortem.register("daemon-broker-clients", () => closeDaemonClients());
 	}
@@ -375,7 +378,10 @@ export async function closeDaemonClients(): Promise<void> {
 	const pending = [...sharedClients.values(), ...sessionClients.values()];
 	sharedClients.clear();
 	sessionClients.clear();
-	for (const client of await Promise.all(pending)) client.close();
+	const results = await Promise.allSettled(pending);
+	for (const result of results) {
+		if (result.status === "fulfilled") result.value.close();
+	}
 	cancelExitCleanup?.();
 	cancelExitCleanup = undefined;
 }

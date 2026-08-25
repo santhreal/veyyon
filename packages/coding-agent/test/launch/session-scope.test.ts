@@ -2,10 +2,12 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { enterIsolatedConfigRoot, type IsolatedConfigRoot } from "../../../utils/test/helpers/isolated-config-root";
-import { createDaemonBrokerClient } from "../../src/launch/client";
+import { closeDaemonClients, createDaemonBrokerClient, daemonClientForProject } from "../../src/launch/client";
 import { daemonRuntimeDir, daemonSessionRuntimeDir } from "../../src/launch/paths";
 import { LaunchTool } from "../../src/tools/launch";
+import { releaseLaunchExitWatch, watchLaunchedProcessExit } from "../../src/tools/launch-exit-watch";
 import { makeToolSession } from "../helpers/tool-session";
 
 /**
@@ -73,6 +75,17 @@ async function listNames(tool: LaunchTool): Promise<string[]> {
 	const result = await tool.execute("id", { op: "list" }, undefined, undefined);
 	const details = result.details as { daemons?: Array<{ name: string }> };
 	return (details.daemons ?? []).map(daemon => daemon.name);
+}
+
+// Cross-process integration: the broker, its daemons and OS sockets live outside
+// this process, so progress is observed by polling.
+async function waitUntil(condition: () => boolean | Promise<boolean>, timeoutMs: number): Promise<boolean> {
+	const deadline = Date.now() + timeoutMs;
+	while (Date.now() < deadline) {
+		if (await condition()) return true;
+		await delay(50);
+	}
+	return false;
 }
 
 describe("daemonSessionRuntimeDir", () => {
@@ -227,12 +240,66 @@ describe("launch scope follows the session by default", () => {
 			throw error;
 		}
 	}, 30_000);
+
+	it("lands completed persist daemons in shared completions, visible to later sessions", async () => {
+		const project = await tempDir("veyyon-launch-project-");
+		const scriptPath = path.join(project, "finite.ts");
+		await fs.writeFile(scriptPath, 'process.stdout.write("DONE\\n");\nprocess.exit(0);\n');
+
+		const owner = session(project, "session-owner", false);
+		await owner.execute("id", {
+			op: "start",
+			name: "finite-persist",
+			application: process.execPath,
+			args: [scriptPath],
+			env: {},
+			pty: false,
+			restart: "no",
+			persist: true,
+		});
+
+		// Wait for process to exit and record completion in shared broker
+		const projectScope = await createDaemonBrokerClient(project);
+		const completed = await waitUntil(async () => {
+			const list = await projectScope.request({ op: "list" });
+			return list.op === "list" && list.completions.some(c => c.name === "finite-persist");
+		}, 10_000);
+		expect(completed).toBe(true);
+
+		// When a new persist start replaces the name, the previous generation appears under Recently completed
+		const script2 = path.join(project, "service2.ts");
+		await fs.writeFile(script2, 'process.stdout.write("READY\\n");\nsetInterval(() => {}, 1000);\n');
+		await owner.execute("id", {
+			op: "start",
+			name: "finite-persist",
+			application: process.execPath,
+			args: [script2],
+			env: {},
+			pty: false,
+			ready: { log: "READY", timeout: 10 },
+			restart: "no",
+			persist: true,
+		});
+
+		// Another session listing with default-off sharing must see the completed record in list completions
+		const later = session(project, "session-later", false);
+		const listResult = await later.execute("id", { op: "list" });
+		const details = listResult.details as { completions?: Array<{ name: string }> };
+		expect((details.completions ?? []).map(c => c.name)).toContain("finite-persist");
+		const text = listResult.content.find(c => c.type === "text")?.text ?? "";
+		expect(text).toContain("finite-persist");
+		expect(text).toContain("Recently completed");
+
+		await later.execute("id", { op: "stop", name: "finite-persist" });
+		try {
+			await projectScope.request({ op: "shutdown" });
+		} catch {}
+		projectScope.close();
+	}, 30_000);
 });
 
 describe("exit watches are scoped per broker", () => {
 	it("two scopes may each watch the same name and releasing one keeps the other", () => {
-		const { watchLaunchedProcessExit, releaseLaunchExitWatch } =
-			require("../../src/tools/launch-exit-watch") as typeof import("../../src/tools/launch-exit-watch");
 		const jobs: string[] = [];
 		const manager = {
 			register: () => {
@@ -271,4 +338,40 @@ describe("exit watches are scoped per broker", () => {
 		releaseLaunchExitWatch(watching(), clientFor("rt-a"), "web");
 		expect(jobs.length).toBe(1);
 	});
+});
+
+/**
+ * WHY: a broker client is cached as the in-flight promise, so a creation that
+ * failed used to poison its key for the life of the process. Every later
+ * request for that project awaited the same rejected promise and got the
+ * original error, with no attempt to reconnect.
+ *
+ * What this does not catch: `closeDaemonClients` sweeping a cache entry that is
+ * registered but has not rejected yet. Registration happens after an internal
+ * await and eviction one microtask after the rejection, so the window is real
+ * for a signal arriving mid-creation but cannot be entered from the public API
+ * — a caller cannot observe the moment the entry lands. `Promise.allSettled`
+ * there keeps the sweep total; no test in this file gates it.
+ */
+describe("a broker client that failed to open", () => {
+	it("leaves its key free for the next attempt", async () => {
+		const project = await tempDir("veyyon-launch-client-retry-");
+		// A runtime directory under a regular file. Creation begins by creating
+		// that directory, and ENOTDIR does not depend on who is running the
+		// suite; a read-only parent would still be writable as root.
+		const blocker = path.join(project, "not-a-directory");
+		await fs.writeFile(blocker, "");
+
+		await expect(daemonClientForProject(project, { runtimeDir: path.join(blocker, "run") })).rejects.toThrow();
+
+		const validDir = path.join(project, "valid-run");
+		const client = await daemonClientForProject(project, { runtimeDir: validDir, idleGraceMs: 5_000 });
+		expect(client.projectDir).toBe(await fs.realpath(project));
+
+		// The retry is a live client, not a cached husk: it answers a real ping.
+		const ping = await client.request({ op: "ping" });
+		expect(ping.op === "ping" && ping.projectDir).toBe(client.projectDir);
+		await client.request({ op: "shutdown" }).catch(() => {});
+		await closeDaemonClients();
+	}, 30_000);
 });

@@ -529,7 +529,11 @@ export class LaunchTool implements AgentTool<typeof launchSchema, LaunchToolDeta
 			// op resolves them through the same fallback order.
 			const sharedRows = await (await projectClient()).request({ op: "list" }, signal);
 			if (sharedRows.op === "list" && result.op === "list") {
-				result = { ...result, daemons: [...result.daemons, ...sharedRows.daemons] };
+				result = {
+					...result,
+					daemons: [...result.daemons, ...sharedRows.daemons],
+					completions: [...result.completions, ...sharedRows.completions],
+				};
 			}
 		}
 		if (result.op === "start" || result.op === "restart") {
