@@ -475,6 +475,8 @@ export class LaunchTool implements AgentTool<typeof launchSchema, LaunchToolDeta
 		// process fall back from the private broker to the shared one when the name is unknown
 		// there.
 		const sharedScope = this.session.settings.get("launch.sharedCrossSession") === true;
+		// `launch.cleanupWaitMs` is not threaded here: createDaemonBrokerClient resolves it for
+		// every scope, so the private broker honors it too.
 		const adopt = { adoptSpawnedPid: sessionCpuAdoption(getSessionId) };
 		const projectClient = () => daemonClientForProject(this.session.cwd, adopt);
 		const privateClient = () =>

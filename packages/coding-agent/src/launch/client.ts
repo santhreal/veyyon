@@ -3,6 +3,7 @@ import * as net from "node:net";
 import * as os from "node:os";
 import * as path from "node:path";
 import { isEexist, isEnoent, postmortem } from "@veyyon/utils";
+import { isSettingsInitialized, Settings } from "../config/settings";
 import { resolveWorkerSpawnCmd, workerEnvFromParent } from "../subprocess/worker-client";
 import {
 	canonicalProjectDir,
@@ -13,6 +14,7 @@ import {
 } from "./paths";
 import {
 	DAEMON_BROKER_WORKER_ARG,
+	DAEMON_CLEANUP_WAIT_ENV,
 	DAEMON_IDLE_GRACE_ENV,
 	DAEMON_PROJECT_DIR_ENV,
 	DAEMON_RUNTIME_DIR_ENV,
@@ -43,6 +45,8 @@ export interface DaemonBrokerClientOptions {
 	runtimeDir?: string;
 	/** Last-client shutdown grace override in milliseconds. */
 	idleGraceMs?: number;
+	/** Exited process retention TTL before purge in milliseconds (0 = never clean up). */
+	cleanupWaitMs?: number;
 	/**
 	 * Session CPU budget hook for the broker spawn. The broker is shared per
 	 * project and spawns every managed daemon, so adopting the broker joins
@@ -139,6 +143,7 @@ class SocketDaemonClient implements DaemonBrokerClient {
 	readonly #endpoint: string;
 	readonly #token: string;
 	readonly #idleGraceMs: number | undefined;
+	readonly #cleanupWaitMs: number | undefined;
 	readonly #adoptSpawnedPid: ((pid: number) => void) | undefined;
 	readonly #pending = new Map<string, PendingRequest>();
 	#socket: net.Socket | undefined;
@@ -153,6 +158,7 @@ class SocketDaemonClient implements DaemonBrokerClient {
 		this.#token = token;
 		this.#idleGraceMs = options.idleGraceMs;
 		this.#adoptSpawnedPid = options.adoptSpawnedPid;
+		this.#cleanupWaitMs = options.cleanupWaitMs;
 	}
 
 	async request(operation: DaemonOperation, signal?: AbortSignal): Promise<DaemonRpcResult> {
@@ -235,6 +241,7 @@ class SocketDaemonClient implements DaemonBrokerClient {
 			[DAEMON_RUNTIME_DIR_ENV]: this.runtimeDir,
 		};
 		if (this.#idleGraceMs !== undefined) overlay[DAEMON_IDLE_GRACE_ENV] = String(this.#idleGraceMs);
+		if (this.#cleanupWaitMs !== undefined) overlay[DAEMON_CLEANUP_WAIT_ENV] = String(this.#cleanupWaitMs);
 		const child = Bun.spawn(spawn.cmd, {
 			cwd: spawn.cwd,
 			env: workerEnvFromParent(overlay),
@@ -308,7 +315,14 @@ const sharedClients = new Map<string, Promise<DaemonBrokerClient>>();
 const sessionClients = new Map<string, Promise<DaemonBrokerClient>>();
 let cancelExitCleanup: (() => void) | undefined;
 
-/** Create an independent socket connection to one project's shared daemon broker. */
+/**
+ * Create an independent socket connection to one project's daemon broker.
+ *
+ * `launch.cleanupWaitMs` is resolved here rather than at either call site: the
+ * project scope and the session-private scope both reach the broker through this
+ * function, and a scope that skipped the lookup would silently ignore the
+ * setting. An explicit option still wins, which is how tests pin the wait.
+ */
 export async function createDaemonBrokerClient(
 	projectDir: string,
 	options: DaemonBrokerClientOptions = {},
@@ -316,7 +330,9 @@ export async function createDaemonBrokerClient(
 	const canonical = await canonicalProjectDir(projectDir);
 	const runtimeDir = options.runtimeDir ?? daemonRuntimeDir(canonical);
 	const token = await readOrCreateToken(runtimeDir);
-	return new SocketDaemonClient(canonical, runtimeDir, token, options);
+	const cleanupWaitMs =
+		options.cleanupWaitMs ?? (isSettingsInitialized() ? Settings.instance.get("launch.cleanupWaitMs") : undefined);
+	return new SocketDaemonClient(canonical, runtimeDir, token, { ...options, cleanupWaitMs });
 }
 
 function rememberClient(

@@ -308,6 +308,27 @@ export const TOOLS_SETTINGS = {
 			condition: "launchEnabled",
 		},
 	},
+	"launch.cleanupWaitMs": {
+		type: "number",
+		default: 15 * 60 * 1000,
+		ui: {
+			tab: "tools",
+			group: "Launch",
+			label: "Launch Cleanup Wait",
+			min: 0, // Wait TTL cannot be negative (0 = never clean up)
+			condition: "launchEnabled",
+			description:
+				"How long an exited process record is retained before being purged from memory and disk (0 = never clean up)",
+			options: [
+				{ value: "0", label: "Never", description: "Retain exited process records indefinitely" },
+				{ value: "300000", label: "5 minutes", description: "Purge exited process records after 5 minutes" },
+				{ value: "600000", label: "10 minutes", description: "Purge exited process records after 10 minutes" },
+				{ value: "900000", label: "15 minutes", description: "Purge exited process records after 15 minutes" },
+				{ value: "1800000", label: "30 minutes", description: "Purge exited process records after 30 minutes" },
+				{ value: "3600000", label: "1 hour", description: "Purge exited process records after 1 hour" },
+			],
+		},
+	},
 
 	"speechgen.enabled": {
 		type: "boolean",
