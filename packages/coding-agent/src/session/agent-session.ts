@@ -10651,13 +10651,13 @@ export class AgentSession {
 		if (phases.length === 0) return undefined;
 
 		const tasks = phases.flatMap(phase => phase.tasks.map(task => ({ ...task, phase: phase.name })));
-		const closed = tasks.filter(task => task.status === "completed" || task.status === "abandoned").length;
-		const openItems = prioritizeTodoItems(
-			tasks.filter(
-				(task): task is typeof task & { status: "pending" | "in_progress" } =>
-					task.status === "pending" || task.status === "in_progress",
-			),
-		);
+		let closed = 0;
+		const openTasks: (typeof tasks)[number][] = [];
+		for (const task of tasks) {
+			if (task.status === "completed" || task.status === "abandoned") closed++;
+			else if (task.status === "pending" || task.status === "in_progress") openTasks.push(task);
+		}
+		const openItems = prioritizeTodoItems(openTasks);
 		const next = openItems[0];
 		const nextItem = next
 			? {
@@ -15188,9 +15188,10 @@ export class AgentSession {
 		// (tools.discoveryMode === "all") can register `todo` while hiding it from
 		// the exposed tools. Forcing a named tool_choice for an inactive tool makes
 		// the provider reject the request (HTTP 400).
-		if (!this.getActiveToolNames().includes(TOOL.todo)) {
+		const activeToolNames = this.getActiveToolNames();
+		if (!activeToolNames.includes(TOOL.todo)) {
 			logger.warn("Eager todo enforcement skipped because todo is not active", {
-				activeToolNames: this.getActiveToolNames(),
+				activeToolNames,
 			});
 			return undefined;
 		}
