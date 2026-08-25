@@ -74,8 +74,7 @@ class OmpAgent(BaseInstalledAgent):
             command=(
                 f"chmod +x {CONTAINER_ASSETS_DIR}/bun {CONTAINER_ASSETS_DIR}/cli.js && "
                 f"chmod 600 {CONTAINER_ASSETS_DIR}/opencode-key && "
-                f"mkdir -p {CONTAINER_ASSETS_DIR}/node_modules && "
-                f"tar -xzf {CONTAINER_ASSETS_DIR}/omp-node-modules.tar.gz -C {CONTAINER_ASSETS_DIR}/node_modules"
+                f"tar -xzf {CONTAINER_ASSETS_DIR}/omp-node-modules.tar.gz -C {CONTAINER_ASSETS_DIR}"
             ),
             user="root",
         )
