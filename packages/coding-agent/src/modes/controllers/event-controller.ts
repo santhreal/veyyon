@@ -344,12 +344,12 @@ export class EventController {
 		if (!settings.get("terminal.showImages")) return false;
 		const assistantComponent = this.#readToolCallAssistantComponents.get(toolCallId);
 		if (!assistantComponent) return false;
-		const images: ImageContent[] = result.content
-			.filter(
-				(content): content is ImageContent =>
-					content.type === "image" && typeof content.data === "string" && typeof content.mimeType === "string",
-			)
-			.map(content => ({ type: "image", data: content.data, mimeType: content.mimeType }));
+		const images: ImageContent[] = [];
+		for (const content of result.content) {
+			if (content.type === "image" && typeof content.data === "string" && typeof content.mimeType === "string") {
+				images.push({ type: "image", data: content.data, mimeType: content.mimeType });
+			}
+		}
 		if (images.length === 0) return false;
 		assistantComponent.setToolResultImages(toolCallId, images);
 		return true;
@@ -610,16 +610,18 @@ export class EventController {
 			this.ctx.ui.requestRender();
 		} else if (event.message.role === "user") {
 			const textContent = this.ctx.getUserMessageText(event.message);
-			const imageBlocks =
-				typeof event.message.content === "string"
-					? []
-					: event.message.content.filter(
-							(content): content is ImageContent =>
-								content.type === "image" &&
-								typeof content.data === "string" &&
-								typeof content.mimeType === "string",
-						);
-			const imageCount = imageBlocks.length;
+			let imageCount = 0;
+			if (Array.isArray(event.message.content)) {
+				for (const content of event.message.content) {
+					if (
+						content.type === "image" &&
+						typeof content.data === "string" &&
+						typeof content.mimeType === "string"
+					) {
+						imageCount++;
+					}
+				}
+			}
 			const signature = `${textContent}\u0000${imageCount}`;
 
 			this.#resetReadGroup();
@@ -883,11 +885,15 @@ export class EventController {
 			const timeline = splitAssistantMessageToolTimeline(this.ctx.streamingMessage);
 			this.#streamingReveal.setTarget(timeline.beforeTools);
 
-			const visibleBlockCount = this.ctx.streamingMessage.content.filter(
-				content =>
+			let visibleBlockCount = 0;
+			for (const content of this.ctx.streamingMessage.content) {
+				if (
 					(content.type === "text" && canonicalizeMessage(content.text)) ||
-					(content.type === "thinking" && canonicalizeMessage(content.thinking)),
-			).length;
+					(content.type === "thinking" && canonicalizeMessage(content.thinking))
+				) {
+					visibleBlockCount++;
+				}
+			}
 			if (visibleBlockCount > this.#lastVisibleBlockCount) {
 				// A new visible block after the first (e.g. thinking closed, next text
 				// block) changes transcript layout; the first block's growth is paced

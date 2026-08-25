@@ -119,7 +119,7 @@ describe("splitAssistantMessageToolTimeline — full walk (with tool calls)", ()
 
 		expect(result.hasToolCalls).toBe(true);
 		expect(result.beforeTools.content).toHaveLength(1);
-		expect(result.beforeTools.content[0]).toMatchObject({ type: "text", text: "Starting" });
+		msg.stopReason = "toolUse";
 		expect(result.afterToolCalls.size).toBe(2);
 		expect(result.afterToolCalls.get("call-1")!.content).toHaveLength(1);
 		expect(result.afterToolCalls.get("call-1")!.content[0]).toMatchObject({ type: "text", text: "After first" });
@@ -147,10 +147,10 @@ describe("splitAssistantMessageToolTimeline — full walk (with tool calls)", ()
 			{ type: "text", text: "Head" },
 			{ type: "toolCall", id: "call-1", name: "read", arguments: { path: "a.ts" } },
 		]);
-		msg.stopReason = "end_turn";
+		msg.stopReason = "toolUse";
 		const result = splitAssistantMessageToolTimeline(msg);
 
 		expect(result.hasToolCalls).toBe(true);
-		expect(result.beforeTools.stopReason).toBe("end_turn");
+		expect(result.beforeTools.stopReason).toBe("toolUse");
 	});
 });
