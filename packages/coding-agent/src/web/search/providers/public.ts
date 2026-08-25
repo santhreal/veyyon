@@ -14,8 +14,11 @@ import { SEARCH_HARD_TIMEOUT_MS } from "./utils";
  * engines with the best ranking quality when they answer come first:
  * Google-index engines (startpage, google) lead, and Mojeek's independent
  * index breaks remaining ties (measured 2026-07).
+ *
+ * Exported as a test seam: a suite that sweeps the fan-out reads the membership
+ * here rather than restating it, so adding an engine turns that suite red.
  */
-const PUBLIC_ENGINE_IDS = [
+export const PUBLIC_ENGINE_IDS = [
 	"startpage",
 	"google",
 	"duckduckgo",
@@ -153,8 +156,12 @@ export async function searchPublicWeb(
 		engineIds.map(async (id, index) => {
 			try {
 				const provider = await getSearchProvider(id);
-				responses[index] = await provider.search({ ...params, signal });
-				firstSuccess.resolve();
+				const response = await provider.search({ ...params, signal });
+				responses[index] = response;
+				// An engine that answers with nothing has not answered. Resolving here
+				// on an empty response let the fastest engine end the extended wait
+				// with no results to show for it.
+				if (response.sources.length > 0) firstSuccess.resolve();
 			} catch (error) {
 				failures[index] = { provider: { id, label: id }, error };
 			}
@@ -164,7 +171,15 @@ export async function searchPublicWeb(
 	try {
 		await Promise.race([all, Bun.sleep(softMs), callerAbort.promise]);
 		const failureCount = failures.reduce(count => count + 1, 0);
-		if (!responses.some(response => response !== undefined) && failureCount < engineIds.length) {
+		// Wait past the soft deadline on "nothing to merge yet", not on "nobody
+		// replied yet". A fast engine serving a bot wall parses to zero results and
+		// returns 200, and counting that as a reply ended the fan-out early and
+		// threw away every slower engine that was about to return real results —
+		// one broken engine reading as an empty web.
+		if (
+			!responses.some(response => response !== undefined && response.sources.length > 0) &&
+			failureCount < engineIds.length
+		) {
 			await Promise.race([all, firstSuccess.promise, Bun.sleep(Math.max(0, hardMs - softMs)), callerAbort.promise]);
 		}
 	} finally {

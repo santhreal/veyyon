@@ -114,6 +114,7 @@ describe("a reply that asks the user something ends the turn", () => {
 				"plan-mode-decision",
 				"todo-reminder",
 				"verification-evidence",
+				"code-review",
 				"unexpected-stop-retry",
 			]);
 		});
