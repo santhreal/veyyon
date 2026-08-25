@@ -67,6 +67,7 @@
 
 ### Fixed
 
+- The write tool rejects content carrying hashline patch markers, unified diff hunks, or read-output display prefixes with an error naming the detection and stating corrective action instead of silently stripping prefixes before writing.
 - Session CPU limits fail closed on unsupported or failed budget groups, lift rate control on removal, refuse a process-creating command before the process exists while leaving `launch stop` and `launch list` reachable, escalate over-budget termination from SIGTERM to SIGKILL, and track descendant processes on macOS.
 - Saturated session CPU limits now refuse spawns for MCP servers, extensions, hooks, and custom tools before the process is created.
 - Windows session CPU limits disable Job Object rate control on non-positive or non-finite core counts rather than throttling the process to the minimum rate.
