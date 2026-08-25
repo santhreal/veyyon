@@ -1,7 +1,7 @@
 //! Bun package-manager, test-runner, and tool output filters.
 
 use super::{cpp, generic, js_tools, lint, node_tests, pkg};
-use crate::minimizer::{MinimizerCtx, MinimizerOutput, primitives};
+use crate::minimizer::{MinimizerCtx, MinimizerOutput, contract, primitives};
 
 const BUN_PACKAGE_SUBCOMMANDS: &[&str] = &[
 	"install", "i", "add", "update", "up", "upgrade", "remove", "rm", "outdated", "pm", "audit",
@@ -202,46 +202,48 @@ fn compact_bun_check_output(ctx: &MinimizerCtx<'_>, input: &str, exit_code: i32)
 		}
 	}
 
-	if !root_checked && packages.is_empty() && diagnostics.is_empty() && nonzero_exits.is_empty() {
+	if !root_checked
+		&& packages.is_empty()
+		&& diagnostics.is_empty()
+		&& nonzero_exits.is_empty()
+		&& timeout.is_none()
+	{
 		return None;
 	}
 
-	let mut out = String::new();
-	out.push_str(command_summary(ctx.command));
-	out.push_str(": ");
-	if !nonzero_exits.is_empty() || !diagnostics.is_empty() {
-		out.push_str("failed\n");
-	} else if timeout.is_some() {
-		out.push_str("visible checks passed; wrapper timed out\n");
+	let subject = command_summary(ctx.command);
+	let verdict = if !nonzero_exits.is_empty() || !diagnostics.is_empty() || timeout.is_some() {
+		contract::errors_unknown(subject)
 	} else if exit_code == 0 {
-		out.push_str("passed\n");
+		contract::clean(subject)
 	} else {
-		out.push_str("incomplete\n");
-	}
+		contract::errors_unknown(subject)
+	};
+	let mut body = String::new();
 	if root_checked {
-		out.push_str("root biome: ok\n");
+		body.push_str("root biome: ok\n");
 	}
 	if !packages.is_empty() {
-		out.push_str("packages checked: ");
-		out.push_str(&packages.join(", "));
-		out.push('\n');
+		body.push_str("packages checked: ");
+		body.push_str(&packages.join(", "));
+		body.push('\n');
 	}
 	if let Some(timeout) = timeout {
-		out.push_str("timeout: ");
-		out.push_str(trim_notice_brackets(timeout));
-		out.push('\n');
+		body.push_str("timeout: ");
+		body.push_str(trim_notice_brackets(timeout));
+		body.push('\n');
 	}
 	for line in nonzero_exits.iter().chain(diagnostics.iter()).take(40) {
-		out.push_str(line);
-		out.push('\n');
+		body.push_str(line);
+		body.push('\n');
 	}
 	let omitted = nonzero_exits.len() + diagnostics.len();
 	if omitted > 40 {
-		out.push_str("[…");
-		out.push_str(&(omitted - 40).to_string());
-		out.push_str(" diagnostic lines elided…]\n");
+		body.push_str("[…");
+		body.push_str(&(omitted - 40).to_string());
+		body.push_str(" diagnostic lines elided…]\n");
 	}
-	Some(out)
+	Some(contract::apply(&verdict, &body))
 }
 
 fn command_summary(command: &str) -> &str {
@@ -522,7 +524,7 @@ mod tests {
 			0,
 		);
 
-		assert!(out.text.contains("check:ts: passed"));
+		assert!(out.text.contains("[clean] check:ts"));
 		assert!(out.text.contains("root biome: ok"));
 		assert!(out.text.contains("@veyyon/utils"));
 		assert!(out.text.contains("@veyyon/coding-agent"));
@@ -532,7 +534,7 @@ mod tests {
 	}
 
 	#[test]
-	fn bun_run_check_timeout_preserves_ambiguous_success() {
+	fn bun_run_check_timeout_is_an_error() {
 		let cfg = MinimizerConfig { enabled: true, ..Default::default() };
 		let ctx = ctx("bun", Some("run"), "bun run check:ts", &cfg);
 		let out = filter(
@@ -543,14 +545,14 @@ mod tests {
 		);
 
 		assert!(
+			out.text.starts_with("[errors] check:ts\n"),
+			"an incomplete check cannot advertise a clean verdict: {:?}",
 			out.text
-				.contains("visible checks passed; wrapper timed out")
 		);
 		assert!(
 			out.text
 				.contains("timeout: Command timed out after 300 seconds")
 		);
-		assert!(!out.text.contains("failed"));
 	}
 
 	#[test]
@@ -659,7 +661,7 @@ mod tests {
 
 		let out = filter(&bun_ctx, input, 1);
 
-		assert!(out.text.contains("failed"), "failed verdict must appear: {:?}", out.text);
+		assert!(out.text.contains("[errors] check:ts"), "failed verdict must appear: {:?}", out.text);
 		assert!(out.text.contains("error TS2322"), "diagnostic must survive: {:?}", out.text);
 		assert!(
 			!out.text.contains("tsgo -p"),
@@ -699,7 +701,7 @@ mod tests {
 		let out = filter(&bun_ctx, input, 0);
 
 		assert!(out.changed, "clean check must be compacted");
-		assert!(out.text.contains("passed"), "passed verdict must appear: {:?}", out.text);
+		assert!(out.text.contains("[clean] check:ts"), "passed verdict must appear: {:?}", out.text);
 		assert!(
 			!out.text.contains("No fixes applied"),
 			"biome noise must be stripped: {:?}",
