@@ -12,6 +12,7 @@
 - `StablePrefix` caches the fingerprint by reference equality of `systemPrompt`, `tools`, and `BuildOptions`, skipping the `JSON.stringify` + `Bun.hash` call on every turn where the inputs are the same references.
 - `convertMessageToLlm` returns user, developer, and toolResult messages by reference when no transformation is needed, avoiding a shallow-spread allocation per message per turn on long conversations.
 - `filterProviderReplayMessages` returns the original array when no provider refusals are present, avoiding a full-array `.filter()` allocation per turn.
+- `storedToolCallIds` is skipped when the assistant message has no tool-call blocks, avoiding a 1.45 ms full-history scan on pure-text turns.
 
 ### Added
 
