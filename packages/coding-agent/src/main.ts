@@ -80,6 +80,7 @@ import {
 } from "./sdk";
 import type { AgentSession } from "./session/agent-session";
 import type { AuthStorage } from "./session/auth-storage";
+import type { InteractiveSessionFactory } from "./session/background-sessions";
 import { rootBudgetGroupOwnerId, sessionCpuExecHooks } from "./session/cpu-limit";
 import { describePendingToolCalls } from "./session/exit-diagnostics";
 import { formatNotice, OperatorNotices, stderrNoticeSink } from "./session/operator-notices";
@@ -535,9 +536,11 @@ async function runInteractiveMode(
 	initialMessage?: string,
 	initialImages?: ImageContent[],
 	joinLink?: string,
+	createNextSession?: InteractiveSessionFactory,
 ): Promise<void> {
 	const { InteractiveMode } = await loadInteractiveMode();
 	const mode = new InteractiveMode(session, version, setExtensionUIContext, lspServers, mcpManager, eventBus);
+	mode.createNextSession = createNextSession;
 
 	// Cold-launch gate: the full setup wizard (every scene + the overlay and
 	// their TUI/OAuth/search/theme deps) is heavy, yet the common case only needs
@@ -726,7 +729,10 @@ async function runInteractiveMode(
 
 	while (true) {
 		const input = await mode.getUserInput();
-		await submitInteractiveInput(mode, session, input);
+		// `mode.session`, not the session this function was handed: `/new` on a
+		// running turn re-points the UI at a new session, and the next prompt
+		// belongs to whichever one is attached now.
+		await submitInteractiveInput(mode, mode.session, input);
 	}
 }
 
@@ -1881,6 +1887,31 @@ async function runRootCommandInner(parsed: Args, rawArgs: string[], deps: RunRoo
 			authStorage.setRuntimeApiKey(session.model.provider, parsedArgs.apiKey);
 		}
 
+		// `/new` while a turn is in flight moves the UI here instead of aborting.
+		// Overridden against the launch options: a fresh SessionManager so the
+		// running turn keeps writing its own transcript, and no inherited
+		// provider state, which `AgentSession.newSession` also drops when it
+		// resets in place. `mcpManager` is passed so the new session reuses the
+		// connected servers rather than re-discovering and re-owning them; the
+		// handed-off session stays their owner for the life of the process.
+		const createNextSession: InteractiveSessionFactory = async () => {
+			const activeCwd = getProjectDir();
+			const nextSessionManager = SessionManager.create(activeCwd, parsedArgs.sessionDir);
+			const { session: next } = await createSession({
+				...sessionOptions,
+				cwd: activeCwd,
+				eventBus,
+				operatorNotices,
+				preloadedExtensions: extensionsResult,
+				sessionManager: nextSessionManager,
+				mcpManager,
+				providerSessionId: undefined,
+				providerPromptCacheKey: undefined,
+				providerPromptCacheKeySource: undefined,
+			});
+			return next;
+		};
+
 		if (modelFallbackMessage) {
 			notifs.push({ kind: "warn", message: modelFallbackMessage });
 		}
@@ -1955,6 +1986,7 @@ async function runRootCommandInner(parsed: Args, rawArgs: string[], deps: RunRoo
 				initialMessage,
 				initialImages,
 				parsedArgs.join,
+				createNextSession,
 			);
 		} else {
 			stopStartupWatchdog();
