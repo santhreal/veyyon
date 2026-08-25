@@ -14,7 +14,7 @@ import {
 	isSkillReadToolResult,
 	type ProtectedToolMatcher,
 } from "./tool-protection";
-import { splitReadSelector } from "./utils";
+import { stripReadSelector } from "./utils";
 
 export interface PruneConfig {
 	/** Keep the most recent tool output tokens intact. */
@@ -71,13 +71,14 @@ export const SUPERSEDED_NOTICE = "[Superseded by a newer read of this file]";
 export const USELESS_NOTICE = "[Uneventful result elided]";
 
 /**
- * Maps a tool call to a supersede key. Results sharing a key form a group in
- * which every result except the newest is a supersede candidate. A key `K`
- * additionally supersedes keys with prefix `K + "\u0000"` (selector-free read
- * supersedes selector-carrying reads of the same base path). Return
- * `undefined` to exempt a call from supersede grouping.
+ * Maps a tool call to its supersede targets. A tool result is superseded when
+ * every target it carries is covered by later (newer) tool results.
+ * Return `undefined` to exempt a call from supersede grouping.
  */
-export type SupersedeKeyFn = (toolName: string, args: Record<string, unknown>) => string | undefined;
+export type SupersedeKeyFn = (
+	toolName: string,
+	args: Record<string, unknown>,
+) => string | readonly string[] | ReadonlySet<string> | undefined;
 
 export interface SupersedePruneConfig {
 	/** Supersede key function; results sharing a key supersede older ones. */
@@ -178,9 +179,11 @@ interface SupersedeCandidate {
 
 /**
  * Collect superseded tool results: for every unpruned, unprotected tool result
- * whose paired call resolves a supersede key, a LATER result with the same key
- * — or with a key that is the `"\u0000"`-prefix parent of this one — marks it
- * superseded. Returned in message order.
+ * whose paired call resolves supersede targets, the result is marked superseded
+ * if and only if EVERY target it carries has been covered by later tool results.
+ * Partial cover (e.g. later read of `a.ts` when earlier read was `a.ts; b.ts`)
+ * does NOT retire the earlier result, preserving content that has not been re-read.
+ * Returned in message order.
  */
 function collectSupersededResults(
 	entries: readonly SessionEntry[],
@@ -189,7 +192,7 @@ function collectSupersededResults(
 	protectedTools: readonly ProtectedToolMatcher[],
 ): SupersedeCandidate[] {
 	const candidates: SupersedeCandidate[] = [];
-	const seenKeys = new Set<string>();
+	const seenTargets = new Set<string>();
 	for (let i = entries.length - 1; i >= 0; i--) {
 		const entry = entries[i];
 		const message = getToolResultMessage(entry);
@@ -205,11 +208,19 @@ function collectSupersededResults(
 		// call's placeholder marked the last real read of that path superseded and the model
 		// was left with a pointer to a read that never ran instead of the content it had.
 		if (toolResultNeverRan(message.details)) continue;
-		const key = supersedeKey(toolCall.name, toolCall.arguments as Record<string, unknown>);
-		if (key === undefined) continue;
-		const separator = key.indexOf("\u0000");
-		const superseded = seenKeys.has(key) || (separator >= 0 && seenKeys.has(key.slice(0, separator)));
-		seenKeys.add(key);
+		const rawKey = supersedeKey(toolCall.name, toolCall.arguments as Record<string, unknown>);
+		if (rawKey === undefined) continue;
+		const targets: readonly string[] =
+			typeof rawKey === "string" ? [rawKey] : Array.isArray(rawKey) ? rawKey : Array.from(rawKey);
+		if (targets.length === 0) continue;
+		// An earlier multi-target read is superseded only when EVERY target it carries
+		// has been covered by newer reads. A partial cover (e.g. later read of a.ts when
+		// earlier read was a.ts; b.ts) must NOT retire the earlier result, because that
+		// earlier result is the only source of b.ts remaining in context.
+		const superseded = targets.every(t => seenTargets.has(t));
+		for (const t of targets) {
+			seenTargets.add(t);
+		}
 		if (!superseded) continue;
 		candidates.push({
 			entry: entry as SessionMessageEntry,
@@ -458,20 +469,26 @@ export function pruneToolOutputs(entries: SessionEntry[], config: PruneConfig = 
 }
 
 /**
- * Supersede key for the `read` tool: the file path with the trailing line/raw
- * selector stripped (the read tool's own splitter grammar via
- * {@link splitReadSelector}, e.g. `src/foo.ts:50-200`, `:2-4:raw`).
- * Internal/URL-scheme paths (`skill://…`, `https://…`) are exempt.
- * Selector-free reads key on the bare path; selector-carrying reads key on
- * `path + "\u0000" + selector`, so two reads collide only when the newer is
- * selector-free or the selectors are identical (the pass's prefix rule lets a
- * bare-path read supersede selector-carrying reads of the same file).
+ * Supersede targets for the `read` tool: a list of normalized target paths
+ * with trailing selectors stripped (via {@link stripReadSelector}).
+ * Multi-target reads (`a.ts; b.ts`) are split into distinct targets.
+ * Different line ranges of the same file normalize to the same target path,
+ * so a later read supersedes earlier reads of that file.
  */
-export function readToolSupersedeKey(toolName: string, args: Record<string, unknown>): string | undefined {
+export function readToolSupersedeKey(toolName: string, args: Record<string, unknown>): readonly string[] | undefined {
 	if (toolName !== "read") return undefined;
 	const path = args.path;
 	if (typeof path !== "string" || path.length === 0) return undefined;
-	if (path.includes("://")) return undefined;
-	const { path: base, sel } = splitReadSelector(path);
-	return sel === undefined ? base : `${base}\u0000${sel}`;
+	const targets: string[] = [];
+	const seen = new Set<string>();
+	for (const chunk of path.split(";")) {
+		const trimmed = chunk.trim();
+		if (trimmed.length === 0) continue;
+		const target = stripReadSelector(trimmed);
+		if (target.length > 0 && !seen.has(target)) {
+			seen.add(target);
+			targets.push(target);
+		}
+	}
+	return targets.length > 0 ? targets : undefined;
 }
