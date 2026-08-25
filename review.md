@@ -93,7 +93,7 @@ The question is not whether the code is clever. It is whether a simpler version 
 - Domain logic does not import CLI, transport, or UI.
 - Dead code is deleted in the same change, including the alias, the re-export, and the compatibility
   shim.
-- Follow the conventions in [`AGENTS.md`](../../AGENTS.md): class privacy, barrels, prompts in `.md`
+- Follow the conventions in [`AGENTS.md`](AGENTS.md): class privacy, barrels, prompts in `.md`
   files, the Bun surface, and logging through the logger rather than `console`.
 
 ## Tests
@@ -108,7 +108,8 @@ The question is not whether the code is clever. It is whether a simpler version 
 - Tests are full-suite safe: no long-lived mutation of `process.env`, `Bun.*`, or `process.platform`
   where a narrower seam exists.
 
-[`testing.md`](testing.md) is the reference; `AGENTS.md` states the enforced rules.
+[`docs/internal/testing.md`](docs/internal/testing.md) is the reference; `AGENTS.md` states the
+enforced rules.
 
 ## Documentation
 
@@ -135,4 +136,4 @@ Do not spend review on these:
 Report which variants you tried to smuggle past the tests and whether each was caught, so a reader
 knows what the review actually covered.
 
-*Verified against `2402701c9` on 2026-08-24.*
+*Verified against `5efaf1d5f` on 2026-08-24.*
