@@ -1,3 +1,4 @@
+import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { getRemoteHostDir, getSshControlDir } from "@veyyon/utils/dirs";
@@ -51,9 +52,56 @@ export interface SSHHostInfo {
 function controlDir(): string {
 	return getSshControlDir();
 }
-function controlPathTemplate(): string {
-	return path.join(controlDir(), "%C.sock");
+
+/**
+ * Longest path an AF_UNIX socket accepts in `sun_path`: 104 bytes on macOS,
+ * 108 on Linux and the BSDs. OpenSSH binds the multiplexed socket at a
+ * temporary `<ControlPath>.<16 random characters>` and renames it into place,
+ * so the usable budget is that limit minus the suffix and the NUL terminator.
+ */
+const CONTROL_TEMP_SUFFIX_BYTES = 17;
+
+function controlPathBudget(platform: SshPlatform): number {
+	return (platform === "darwin" ? 104 : 108) - CONTROL_TEMP_SUFFIX_BYTES - 1;
 }
+
+/**
+ * Socket name for one connection. OpenSSH's own `%C` token expands to a 64-hex
+ * digest, which by itself leaves 27 bytes for the profile directory and put
+ * every control path over the limit, so the digest is computed here and
+ * truncated. The identity is the exact destination handed to ssh plus the port
+ * and key file, which separates connections at least as finely as `%C` does
+ * for these call sites.
+ */
+function controlSocketName(host: SSHConnectionTarget): string {
+	const identity = [buildSshTarget(host.username, host.host), host.port ?? "", host.keyPath ?? ""].join("\0");
+	return `${crypto.createHash("sha256").update(identity).digest("hex").slice(0, 16)}.sock`;
+}
+
+const overlongControlPaths = new Set<string>();
+
+/**
+ * Control socket for `host`, or null when the platform or the profile path
+ * cannot carry one. A path that does not fit disables multiplexing for that
+ * connection rather than failing it: OpenSSH refuses to bind an overlong
+ * socket, which otherwise takes down every ssh call on the host.
+ */
+function controlMasterPath(host: SSHConnectionTarget, platform: SshPlatform = process.platform): string | null {
+	if (!supportsSshControlMaster(platform)) return null;
+	const socketPath = path.join(controlDir(), controlSocketName(host));
+	const bytes = Buffer.byteLength(socketPath);
+	if (bytes <= controlPathBudget(platform)) return socketPath;
+	if (!overlongControlPaths.has(socketPath)) {
+		overlongControlPaths.add(socketPath);
+		logger.warn("SSH connection multiplexing disabled: control socket path exceeds the Unix socket limit", {
+			path: socketPath,
+			bytes,
+			budget: controlPathBudget(platform),
+		});
+	}
+	return null;
+}
+
 const HOST_INFO_VERSION = 4;
 
 const activeHosts = new Map<string, SSHConnectionTarget>();
@@ -114,8 +162,9 @@ async function validateKeyPermissions(keyPath?: string, platform: SshPlatform = 
 function buildCommonArgs(host: SSHConnectionTarget, options?: SSHArgsOptions): string[] {
 	const args = options?.allowStdin ? [] : ["-n"];
 
-	if (supportsSshControlMaster(options?.platform)) {
-		args.push("-o", "ControlMaster=auto", "-o", `ControlPath=${controlPathTemplate()}`, "-o", "ControlPersist=3600");
+	const controlPath = controlMasterPath(host, options?.platform);
+	if (controlPath) {
+		args.push("-o", "ControlMaster=auto", "-o", `ControlPath=${controlPath}`, "-o", "ControlPersist=3600");
 	}
 
 	args.push("-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new");
@@ -604,7 +653,7 @@ export async function ensureConnection(host: SSHConnectionTarget): Promise<void>
 		}
 
 		const target = buildSshTarget(host.username, host.host);
-		if (!supportsSshControlMaster()) {
+		if (!controlMasterPath(host)) {
 			activeHosts.set(key, host);
 			if (!hostInfoCache.has(key) && !(await loadHostInfoFromDisk(host))) {
 				await probeHostInfo(host);
@@ -659,7 +708,7 @@ export async function invalidateHostMetadata(hostNames: Iterable<string>): Promi
 }
 
 async function closeConnectionInternal(host: SSHConnectionTarget): Promise<void> {
-	if (!supportsSshControlMaster()) return;
+	if (!controlMasterPath(host)) return;
 	const target = buildSshTarget(host.username, host.host);
 	await runSshSync(["-O", "exit", ...buildCommonArgs(host), target]);
 }
@@ -675,8 +724,8 @@ export async function closeAllConnections(): Promise<void> {
 	}
 }
 
-export function getControlPathTemplate(): string {
-	return controlPathTemplate();
+export function getControlPath(host: SSHConnectionTarget): string | null {
+	return controlMasterPath(host);
 }
 
 export function getControlDir(): string {
