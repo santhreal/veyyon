@@ -13,12 +13,20 @@ export function partitionVisionContent(
 	imageBlocks: ImageContent[];
 	omittedImages: boolean;
 } {
-	const textBlocks = content.filter((block): block is TextContent => block.type === "text");
-	const imageBlocks = content.filter((block): block is ImageContent => block.type === "image");
+	const textBlocks: TextContent[] = [];
+	const imageBlocks: ImageContent[] = [];
+	let omittedImages = false;
+	for (const block of content) {
+		if (block.type === "text") textBlocks.push(block);
+		else if (block.type === "image") {
+			if (supportsImages) imageBlocks.push(block);
+			else omittedImages = true;
+		}
+	}
 	return {
 		textBlocks,
-		imageBlocks: supportsImages ? imageBlocks : [],
-		omittedImages: !supportsImages && imageBlocks.length > 0,
+		imageBlocks,
+		omittedImages,
 	};
 }
 
