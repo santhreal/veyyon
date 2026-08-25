@@ -72,7 +72,7 @@ describe("search selection follows the best match", () => {
 		for (const char of "compaction model") component.handleInput(char);
 		expect(component.getSelectedSettingId()).toBe("compaction.model");
 
-		component.handleInput("[B"); // arrow down, away from the best match
+		component.handleInput("\x1b[B"); // arrow down, away from the best match
 		const moved = component.getSelectedSettingId();
 		expect(moved).not.toBe("compaction.model");
 
