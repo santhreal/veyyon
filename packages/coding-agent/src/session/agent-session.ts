@@ -14028,9 +14028,9 @@ export class AgentSession {
 			return;
 		}
 
-		const lastAssistant = [...activeMessages]
-			.reverse()
-			.find((message): message is AssistantMessage => message.role === "assistant");
+		const lastAssistant = activeMessages.findLast(
+			(message): message is AssistantMessage => message.role === "assistant",
+		);
 		if (!lastAssistant || lastAssistant.stopReason === "aborted" || lastAssistant.stopReason === "error") return;
 
 		if (!(await this.#persistTurnMessagesForMidRunCompaction(context))) return;
@@ -14392,10 +14392,9 @@ export class AgentSession {
 	}
 
 	#assistantMessageHasSuccessfulYieldToolCall(assistantMessage: AssistantMessage, toolCallId: string): boolean {
-		const lastToolCall = assistantMessage.content
-			.slice()
-			.reverse()
-			.find((content): content is ToolCall => content.type === "toolCall");
+		const lastToolCall = assistantMessage.content.findLast(
+			(content): content is ToolCall => content.type === "toolCall",
+		);
 		return lastToolCall?.name === TOOL.yield && lastToolCall.id === toolCallId;
 	}
 
@@ -14465,7 +14464,9 @@ export class AgentSession {
 		const persistenceKey = sessionMessagePersistenceKey(message);
 		if (!persistenceKey) return;
 		let branchEntry: SessionEntry | undefined;
-		for (const entry of this.sessionManager.getBranch().slice().reverse()) {
+		const branch = this.sessionManager.getBranch();
+		for (let i = branch.length - 1; i >= 0; i--) {
+			const entry = branch[i]!;
 			if (entry.type !== "message" || entry.message.role !== "assistant") continue;
 			if (sessionMessagePersistenceKey(entry.message) !== persistenceKey) continue;
 			if (!sameMessageContent(entry.message, message) && !this.#isSameAssistantMessage(entry.message, message)) {
@@ -14508,15 +14509,12 @@ export class AgentSession {
 		for (const pending of this.#pendingRecoveredRetryErrors) {
 			let entry = branchById.get(pending.entryId);
 			if (entry?.type !== "message" || entry.message.role !== "assistant") {
-				entry = branch
-					.slice()
-					.reverse()
-					.find(
-						candidate =>
-							candidate.type === "message" &&
-							candidate.message.role === "assistant" &&
-							sessionMessagePersistenceKey(candidate.message) === pending.persistenceKey,
-					);
+				entry = branch.findLast(
+					candidate =>
+						candidate.type === "message" &&
+						candidate.message.role === "assistant" &&
+						sessionMessagePersistenceKey(candidate.message) === pending.persistenceKey,
+				);
 			}
 			if (entry?.type !== "message" || entry.message.role !== "assistant") continue;
 			const retryRecovery: AssistantRetryRecovery = {
@@ -14869,15 +14867,12 @@ export class AgentSession {
 
 	#discardAcceptedTerminalEmptyStop(assistantMessage: AssistantMessage): void {
 		const branch = this.sessionManager.getBranch();
-		const branchEntry = branch
-			.slice()
-			.reverse()
-			.find(
-				entry =>
-					entry.type === "message" &&
-					entry.message.role === "assistant" &&
-					this.#isSameAssistantMessage(entry.message, assistantMessage),
-			);
+		const branchEntry = branch.findLast(
+			entry =>
+				entry.type === "message" &&
+				entry.message.role === "assistant" &&
+				this.#isSameAssistantMessage(entry.message, assistantMessage),
+		);
 		const parentEntry =
 			branchEntry?.parentId === null || branchEntry?.parentId === undefined
 				? undefined
@@ -14911,9 +14906,7 @@ export class AgentSession {
 
 		const branchEntry = this.sessionManager
 			.getBranch()
-			.slice()
-			.reverse()
-			.find(
+			.findLast(
 				entry =>
 					entry.type === "message" &&
 					entry.message.role === "assistant" &&
@@ -20073,7 +20066,9 @@ export class AgentSession {
 		// received AFTER the rewrite describes the current shape, and until one
 		// lands the estimate below is the honest figure.
 		const rewriteBoundaryId = this.#historyRewriteAnchorBoundaryEntryId;
-		const rewriteIndex = rewriteBoundaryId ? branchEntries.findIndex(entry => entry.id === rewriteBoundaryId) : -1;
+		const rewriteIndex = rewriteBoundaryId
+			? branchEntries.findLastIndex(entry => entry.id === rewriteBoundaryId)
+			: -1;
 		const anchorFloorIndex = Math.max(compactionIndex, rewriteIndex);
 		let anchorEntry: SessionMessageEntry | undefined;
 		for (let i = branchEntries.length - 1; i > anchorFloorIndex; i--) {
@@ -20095,7 +20090,7 @@ export class AgentSession {
 			anchorAssistant = a;
 			resolvedAnchorIndex = resolvedActiveMessages.lastIndexOf(a);
 			if (resolvedAnchorIndex === -1) {
-				resolvedAnchorIndex = resolvedActiveMessages.findIndex(
+				resolvedAnchorIndex = resolvedActiveMessages.findLastIndex(
 					msg => msg.role === "assistant" && msg.timestamp === a.timestamp,
 				);
 			}

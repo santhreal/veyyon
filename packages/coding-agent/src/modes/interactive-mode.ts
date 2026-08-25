@@ -328,9 +328,9 @@ const GOAL_FAILED_TURN_LIMIT = 3;
  * only a provider/transport error counts here.
  */
 function goalTurnEndedInError(event: Extract<AgentSessionEvent, { type: "agent_end" }>): boolean {
-	const lastAssistant = [...event.messages]
-		.reverse()
-		.find((message): message is AssistantMessage => message.role === "assistant");
+	const lastAssistant = event.messages.findLast(
+		(message): message is AssistantMessage => message.role === "assistant",
+	);
 	return lastAssistant?.stopReason === "error";
 }
 

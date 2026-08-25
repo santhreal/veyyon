@@ -1293,9 +1293,9 @@ export class AcpAgent implements Agent {
 		if (!progress || progress.textEmitted) {
 			return;
 		}
-		const lastAssistant = [...event.messages]
-			.reverse()
-			.find((message): message is AssistantMessage => message.role === "assistant");
+		const lastAssistant = event.messages.findLast(
+			(message): message is AssistantMessage => message.role === "assistant",
+		);
 		if (!lastAssistant) {
 			return;
 		}
@@ -1332,9 +1332,9 @@ export class AcpAgent implements Agent {
 		if (streamedDelivery && (await streamedDelivery)) {
 			return;
 		}
-		const lastAssistant = [...event.messages]
-			.reverse()
-			.find((message): message is AssistantMessage => message.role === "assistant");
+		const lastAssistant = event.messages.findLast(
+			(message): message is AssistantMessage => message.role === "assistant",
+		);
 		if (lastAssistant?.stopReason !== "error") {
 			return;
 		}
@@ -1437,9 +1437,9 @@ export class AcpAgent implements Agent {
 		if (cancelRequested) {
 			return "cancelled";
 		}
-		const lastAssistant = [...event.messages]
-			.reverse()
-			.find((message): message is AssistantMessage => message.role === "assistant");
+		const lastAssistant = event.messages.findLast(
+			(message): message is AssistantMessage => message.role === "assistant",
+		);
 		const reason = lastAssistant?.stopReason;
 		switch (reason) {
 			case "aborted":
