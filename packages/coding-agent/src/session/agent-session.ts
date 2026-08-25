@@ -20093,7 +20093,7 @@ export class AgentSession {
 		if (anchorEntry) {
 			const a = anchorEntry.message as AssistantMessage;
 			anchorAssistant = a;
-			resolvedAnchorIndex = resolvedActiveMessages.indexOf(a);
+			resolvedAnchorIndex = resolvedActiveMessages.lastIndexOf(a);
 			if (resolvedAnchorIndex === -1) {
 				resolvedAnchorIndex = resolvedActiveMessages.findIndex(
 					msg => msg.role === "assistant" && msg.timestamp === a.timestamp,

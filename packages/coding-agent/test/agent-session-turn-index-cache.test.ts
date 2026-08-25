@@ -76,6 +76,7 @@ describe("AgentSession getTurnIndex cache", () => {
 			toolCallId: "call_1",
 			toolName: "read",
 			content: [{ type: "text", text: "file content" }],
+			isError: false,
 			timestamp: Date.now(),
 		};
 	}
