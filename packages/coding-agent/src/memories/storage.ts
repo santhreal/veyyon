@@ -44,6 +44,15 @@ function globalJobKey(cwd: string): string {
 	return `global:${cwd}`;
 }
 
+export const MEMORY_STORAGE_SCHEMA_VERSION = 1;
+
+function addColumnIfMissing(db: Database, table: string, column: string, definition: string): boolean {
+	const rows = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+	if (rows.some(row => row.name === column)) return false;
+	db.run(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+	return true;
+}
+
 export function openMemoryDb(dbPath: string): Database {
 	const db = new Database(dbPath);
 	// Install the busy handler BEFORE any lock-taking statement. See #2421.
@@ -86,6 +95,20 @@ CREATE TABLE IF NOT EXISTS jobs (
 	PRIMARY KEY (kind, job_key)
 );
 `);
+
+	// Schema migration for pre-existing tables created by earlier builds:
+	addColumnIfMissing(db, "threads", "cwd", "TEXT NOT NULL DEFAULT ''");
+	addColumnIfMissing(db, "threads", "source_kind", "TEXT NOT NULL DEFAULT ''");
+	addColumnIfMissing(db, "stage1_outputs", "rollout_slug", "TEXT");
+	addColumnIfMissing(db, "jobs", "input_watermark", "INTEGER");
+	addColumnIfMissing(db, "jobs", "last_success_watermark", "INTEGER");
+
+	const versionRow = db.query("PRAGMA user_version").get() as { user_version: number } | null;
+	const currentVersion = versionRow?.user_version ?? 0;
+	if (currentVersion < MEMORY_STORAGE_SCHEMA_VERSION) {
+		db.run(`PRAGMA user_version = ${MEMORY_STORAGE_SCHEMA_VERSION}`);
+	}
+
 	return db;
 }
 
