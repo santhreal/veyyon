@@ -149,10 +149,19 @@ mod the_order_the_shared_entry_point_rewrites_in {
 	/// returns and escapes included. Rewriting the bytes while reporting that
 	/// nothing was minimized would break the one case where the raw capture is
 	/// what the caller asked for.
+	///
+	/// The subject is an unclassified command, because a classified one no
+	/// longer declines: `bun test` opens its result with a `[clean]`/`[errors]`
+	/// verdict, so its filter always rewrites.
 	#[test]
 	fn a_declining_filter_still_answers_with_the_programs_own_bytes() {
 		let config = enabled();
-		let ctx = bun_test(&config);
+		let ctx = MinimizerCtx {
+			program:    "some-unclassified-tool",
+			subcommand: None,
+			command:    "some-unclassified-tool",
+			config:     &config,
+		};
 		let input = "FAIL a.test.ts\r\r\u{1b}\u{1b}\nError: boom\n";
 
 		let output = filters::filter(&ctx, input, 1);

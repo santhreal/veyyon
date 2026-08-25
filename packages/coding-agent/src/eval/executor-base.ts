@@ -338,11 +338,14 @@ export const MANAGED_KERNEL_ENV_KEYS = [
 	"VEYYON_TOOL_BRIDGE_TOKEN",
 	"VEYYON_TOOL_BRIDGE_SESSION",
 	"VEYYON_EVAL_LOCAL_ROOTS",
+	"VEYYON_EVAL_SESSION_ID",
 ] as const;
 
 interface ManagedKernelEnvOptions {
 	sessionFile?: string;
 	artifactsDir?: string;
+	/** The eval session's stable id; the `kv` store keys its file by it, bridge or no bridge. */
+	evalSessionId?: string;
 	bridgeSessionId?: string;
 	bridge?: { url: string; token: string };
 	localRoots?: Record<string, string>;
@@ -357,6 +360,7 @@ export function buildManagedKernelEnvPatch(options: ManagedKernelEnvOptions): Re
 		VEYYON_TOOL_BRIDGE_TOKEN: options.bridge?.token ?? null,
 		VEYYON_TOOL_BRIDGE_SESSION: options.bridge && options.bridgeSessionId ? options.bridgeSessionId : null,
 		VEYYON_EVAL_LOCAL_ROOTS: localRoots && Object.keys(localRoots).length > 0 ? JSON.stringify(localRoots) : null,
+		VEYYON_EVAL_SESSION_ID: options.evalSessionId ?? null,
 	};
 }
 

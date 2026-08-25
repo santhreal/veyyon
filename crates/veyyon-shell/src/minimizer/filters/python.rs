@@ -14,7 +14,7 @@
 //! prefixes and custom reporters never cause data loss.
 
 use super::lint;
-use crate::minimizer::{MinimizerCtx, MinimizerOutput, primitives};
+use crate::minimizer::{MinimizerCtx, MinimizerOutput, contract, primitives};
 
 /// Cap on rendered verbose failure blocks (the `___ test ___` traceback
 /// sections). Mirrors RTK's `MAX_PYTEST_FAILURES` (== `CAP_WARNINGS` == 10),
@@ -183,11 +183,12 @@ fn filter_pytest(input: &str, exit_code: i32) -> String {
 		out.push_str(" failures elided…]\n");
 	}
 
-	if primitives::has_program_content(&out) {
+	let body = if primitives::has_program_content(&out) {
 		out
 	} else {
 		primitives::head_tail_lines(input, 80, 80)
-	}
+	};
+	classify_pytest(body, exit_code)
 }
 
 fn pytest_success(input: &str) -> String {
@@ -212,13 +213,68 @@ fn pytest_success(input: &str) -> String {
 		primitives::push_line(&mut out, line);
 	}
 
-	if primitives::has_program_content(&out) {
+	let body = if primitives::has_program_content(&out) {
 		out
 	} else if primitives::has_program_content(&summary) {
 		summary
 	} else {
 		primitives::head_tail_lines(input, 0, 20)
+	};
+	classify_pytest(body, 0)
+}
+
+fn classify_pytest(body: String, exit_code: i32) -> String {
+	let failed = pytest_failed_count(&body).filter(|count| *count > 0);
+	let summary = pytest_summary_detail(&body);
+	let verdict = if let Some(count) = failed {
+		contract::errors("pytest", count)
+	} else if exit_code == 0 {
+		if let Some(detail) = summary.as_deref() {
+			contract::clean_with("pytest", detail)
+		} else {
+			contract::clean("pytest")
+		}
+	} else {
+		contract::errors_unknown("pytest")
+	};
+	let body = if matches!(verdict.status, contract::Status::Clean) && summary.is_some() {
+		String::new()
+	} else {
+		body
+	};
+	contract::apply(&verdict, &body)
+}
+
+fn pytest_summary_detail(body: &str) -> Option<String> {
+	let mut detail = None;
+	for line in body.lines().map(str::trim).filter(|line| !line.is_empty()) {
+		let rest = line.strip_prefix("pytest: ")?;
+		if detail.is_some() {
+			return None;
+		}
+		detail = Some(rest.to_string());
 	}
+	detail
+}
+
+fn pytest_failed_count(body: &str) -> Option<u64> {
+	for line in body.lines() {
+		let trimmed = line
+			.trim()
+			.strip_prefix("pytest: ")
+			.unwrap_or_else(|| line.trim());
+		for part in trimmed.split(',') {
+			let part = part.trim();
+			let mut words = part.split_whitespace();
+			let Some(n) = words.next().and_then(|tok| tok.parse::<u64>().ok()) else {
+				continue;
+			};
+			if words.next() == Some("failed") {
+				return Some(n);
+			}
+		}
+	}
+	None
 }
 
 fn starts_pytest_failure(trimmed: &str) -> bool {
@@ -471,7 +527,18 @@ mod tests {
 		             PASSED    [  3%]\ntest_utils.py::TestListOps::test_flatten PASSED      \
 		             [100%]\n\n====== 33 passed in 0.05s ======\n";
 		let out = filter_pytest(input, 0);
-		assert_eq!(out, "pytest: 33 passed in 0.05s\n");
+		assert_eq!(out, "[clean] pytest: 33 passed in 0.05s\n");
+	}
+
+	#[test]
+	fn pytest_failure_summary_wins_over_a_contradictory_zero_exit() {
+		let input = "test_bad.py F\n===== 1 failed in 0.05s =====\n";
+		let out = filter_pytest(input, 0);
+		assert!(
+			out.starts_with("[errors 1] pytest\n"),
+			"a failed pytest summary must never be rendered as clean: {out:?}"
+		);
+		assert!(out.contains("pytest: 1 failed in 0.05s"));
 	}
 
 	#[test]
@@ -490,7 +557,7 @@ mod tests {
 			0,
 		);
 
-		assert_eq!(out.text, "pytest: 2 passed in 0.01s\n");
+		assert_eq!(out.text, "[clean] pytest: 2 passed in 0.01s\n");
 	}
 
 	#[test]

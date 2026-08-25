@@ -165,7 +165,7 @@ export const ALLOWLIST: ReadonlyArray<AllowlistEntry> = [
 		reason:
 			"It is the gate's own suite, and half its subject is the tripwire, which cannot be probed without naming the variable that tells the tripwire what to forbid. What it names is NOT the real config root: every occurrence sets `VEYYON_TEST_REAL_CONFIG_ROOT` to a freshly `mkdtemp`ed directory in the child it spawns, precisely so a door that turns out to be UNGUARDED writes there instead of into the operator's home — which is what makes the red proofs of the six write doors safe to run at all. Each probe removes its own root in a `finally`, and each asserts the root is empty afterwards, so an unguarded door is reported by the absence of the file rather than by damage. The real `~/.veyyon` is never resolved, opened, or written by this file.",
 	},
-	// The seven below are all `unresolved-spawn-target`: a spawn whose command argument is a
+	// The six below are all `unresolved-spawn-target`: a spawn whose command argument is a
 	// variable, a parameter or a property, so no reader of the source alone can say what it
 	// runs. Each reason therefore has to answer the one question the analyzer could not, which
 	// is what the target actually holds at runtime. Two of them genuinely execute a file NAMED
@@ -193,12 +193,6 @@ export const ALLOWLIST: ReadonlyArray<AllowlistEntry> = [
 		rule: "unresolved-spawn-target",
 		reason:
 			"`realBash` is `REAL_BASH`, which is `Bun.env.SHELL` when it names bash and otherwise the literal `/bin/bash`, guarded by an `existsSync` that returns early. It runs the operator's bash with `--noprofile --norc` against a snapshot file the test wrote, which is the point: a snapshot of a login shell cannot be taken with a fake shell.",
-	},
-	{
-		file: "packages/coding-agent/test/tools.test.ts",
-		rule: "unresolved-spawn-target",
-		reason:
-			'`mkfifoPath` is the result of `$which("mkfifo")` and the test returns early when it is absent. It creates a FIFO under the test\'s own temp directory so the special-file path can be exercised on a real named pipe, which no stub can provide.',
 	},
 	{
 		file: "packages/coding-agent/test/tools/browser-tab-evaluate.test.ts",
@@ -340,43 +334,39 @@ function spawnCallRegex(source: string): RegExp {
 }
 
 /**
- * Every `const NAME = "literal"` and `const NAME = ["literal", ...]` in the file, so a
- * command spelled through a variable can still be read.
- * `const bin = "veyyon"; spawnSync(bin, ["auth", "list"])` scanned clean before this
- * existed, and unlike a redirected WRITE, which the real-data tripwire refuses at runtime
- * whatever the path was called, a spawn of the installed binary has no runtime backstop at
- * all: it reaches the operator's real profile, credentials and model spend on the first
- * call and nothing reports it.
+ * Every command binding whose values can be read from source.
  *
- * THE ARRAY FORM IS NOT A CONVENIENCE. `const emit = ["sh", "-c", "..."]` followed by
- * three `spawn(emit)` calls is the single most natural way to write a test that runs one
- * command several ways, and it used to produce three `unresolved-spawn-target` violations
- * whose only honest resolution was an allowlist entry -- an excuse recorded against a file
- * whose command is `sh`, sitting in plain sight one line above the call. Every allowlist
- * entry is a place the gate has stopped looking, so paying one for a target the gate could
- * simply read is the worst trade available: it buys nothing and permanently blinds the
- * rule for that whole file, including the veyyon spawn somebody adds to it next year.
- * Binding the array's HEAD is exactly right, because the head is the command and the tail
- * is its arguments.
- *
- * A name bound more than once resolves to nothing rather than to its first value, and an
- * interpolated template is not a constant. Both then fall through to the unresolvable
- * case, which is a violation, so being unable to read a name never reads as safe.
+ * Literal strings and argv heads cover direct aliases. `$which("a") ?? $which("b")`
+ * covers a platform tool selected from known alternatives; all alternatives remain
+ * visible so one safe option cannot hide an installed `veyyon` fallback. A name bound
+ * more than once and an interpolated value resolve to nothing and fail closed.
  */
 const STRING_BINDING = /(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(["'`])((?:\\.|(?!\2)[^\\\n])*)\2/g;
 const ARRAY_HEAD_BINDING =
 	/(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*(?::[^=\n]+)?=\s*\[\s*(["'`])((?:\\.|(?!\2)[^\\\n])*)\2/g;
+const WHICH_BINDING =
+	/(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*(?::[^=\n]+)?=\s*((?:\$which\(\s*["'`][^"'`\n]+["'`]\s*\)\s*(?:\?\?\s*)?)+)/g;
+const WHICH_LITERAL = /\$which\(\s*(["'`])([^"'`\n]+)\1\s*\)/g;
 const AMBIGUOUS = Symbol("bound more than once");
+type CommandBinding = readonly string[] | typeof AMBIGUOUS;
 
-function stringBindings(source: string): Map<string, string | typeof AMBIGUOUS> {
-	const bindings = new Map<string, string | typeof AMBIGUOUS>();
+function bindCommand(bindings: Map<string, CommandBinding>, name: string, values: readonly string[]): void {
+	const unreadable = values.some(value => value.includes("${"));
+	bindings.set(name, bindings.has(name) || unreadable ? AMBIGUOUS : values);
+}
+
+function stringBindings(source: string): Map<string, CommandBinding> {
+	const bindings = new Map<string, CommandBinding>();
 	for (const pattern of [STRING_BINDING, ARRAY_HEAD_BINDING]) {
 		pattern.lastIndex = 0;
 		for (let match = pattern.exec(source); match; match = pattern.exec(source)) {
-			const name = match[1] as string;
-			const value = match[3] as string;
-			bindings.set(name, bindings.has(name) || value.includes("${") ? AMBIGUOUS : value);
+			bindCommand(bindings, match[1] as string, [match[3] as string]);
 		}
+	}
+	WHICH_BINDING.lastIndex = 0;
+	for (let match = WHICH_BINDING.exec(source); match; match = WHICH_BINDING.exec(source)) {
+		const values = Array.from((match[2] as string).matchAll(WHICH_LITERAL), value => value[2] as string);
+		bindCommand(bindings, match[1] as string, values);
 	}
 	return bindings;
 }
@@ -812,17 +802,21 @@ function spawnViolations(file: string, source: string): Violation[] {
 		// A quoted command that got past the two checks above is a literal naming something
 		// other than veyyon, and the runner's own executable is Bun rather than the install.
 		if (/^["'`]/.test(target) || RUNNER_EXECUTABLE.test(target)) continue;
-		const resolved = /^[A-Za-z_$][\w$]*$/.test(target) ? bindings.get(target) : undefined;
-		if (typeof resolved === "string") {
-			// Re-ask the same two questions of the value the name stands for, so a command
-			// spelled through a variable is judged exactly as the literal would have been.
-			const asWritten = `("${resolved}",`;
-			if (INSTALLED_BINARY_PATH.test(asWritten) || VEYYON_IN_COMMAND_POSITION.test(asWritten)) {
+		const bindingName = /^([A-Za-z_$][\w$]*)!?$/.exec(target)?.[1];
+		const resolved = bindingName ? bindings.get(bindingName) : undefined;
+		if (Array.isArray(resolved)) {
+			// Re-ask the same two questions of every value the name can hold, so
+			// `$which("git") ?? $which("veyyon")` cannot hide its unsafe fallback.
+			const installed = resolved.find(value => {
+				const asWritten = `("${value}",`;
+				return INSTALLED_BINARY_PATH.test(asWritten) || VEYYON_IN_COMMAND_POSITION.test(asWritten);
+			});
+			if (installed) {
 				found.push({
 					file,
 					line,
 					rule: "installed-binary-spawn",
-					evidence: `${evidenceOf(text)}  <- ${target} = "${resolved}"`,
+					evidence: `${evidenceOf(text)}  <- ${target} can resolve to "${installed}"`,
 				});
 			}
 			continue;
@@ -1317,6 +1311,16 @@ describe("the detectors", () => {
 	it("does NOT flag a command resolved through a variable to something harmless", () => {
 		const source = [`const tool = "git";`, `spawnSync(tool, ["status"]);`].join("\n");
 		expect(rulesFor(source)).toEqual([]);
+	});
+
+	it("reads every command in a $which fallback chain", () => {
+		const safe = [`const tool = $which("magick") ?? $which("convert");`, `execFileSync(tool!, ["--version"]);`].join(
+			"\n",
+		);
+		expect(rulesFor(safe)).toEqual([]);
+
+		const unsafe = [`const tool = $which("git") ?? $which("veyyon");`, `spawnSync(tool!, ["--version"]);`].join("\n");
+		expect(rulesFor(unsafe)).toEqual(["installed-binary-spawn", "installed-binary-spawn"]);
 	});
 
 	/**
