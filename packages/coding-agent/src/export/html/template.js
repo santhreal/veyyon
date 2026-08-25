@@ -1203,7 +1203,7 @@
                   cost.cacheWrite += msg.usage.cost.cacheWrite || 0;
                 }
               }
-              toolCalls += msg.content.filter(c => c.type === 'toolCall').length;
+              for (const c of msg.content) if (c.type === 'toolCall') toolCalls++;
             }
             if (msg.role === 'toolResult') toolResults++;
           } else if (entry.type === 'compaction') {
