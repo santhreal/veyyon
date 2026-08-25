@@ -255,3 +255,49 @@ describe("a handed-off session", () => {
 		expect(keeper.size).toBe(0);
 	});
 });
+
+describe("resuming a session that is still running", () => {
+	afterEach(async () => {
+		await BackgroundSessions.global().drain();
+	});
+
+	it("hands back the live object, keyed by the transcript /resume names", () => {
+		const session = makeSession("session-a", true);
+		const keeper = BackgroundSessions.global();
+		keeper.keep(session as unknown as AgentSession);
+
+		const live = keeper.take(session.sessionManager.getSessionFile());
+
+		expect(live).toBe(session as unknown as AgentSession);
+	});
+
+	it("leaves the background set once reclaimed, so it is not counted twice", () => {
+		const session = makeSession("session-a", true);
+		const keeper = BackgroundSessions.global();
+		keeper.keep(session as unknown as AgentSession);
+
+		keeper.take(session.sessionManager.getSessionFile());
+
+		expect(keeper.size).toBe(0);
+		expect(keeper.take(session.sessionManager.getSessionFile())).toBeUndefined();
+	});
+
+	it("does not answer for a transcript nobody handed over", () => {
+		const session = makeSession("session-a", true);
+		const keeper = BackgroundSessions.global();
+		keeper.keep(session as unknown as AgentSession);
+
+		expect(keeper.take("/repo/.veyyon/session-z.jsonl")).toBeUndefined();
+		expect(keeper.size).toBe(1);
+	});
+
+	it("matches the transcript through a non-normalized path, which is what a selector passes", () => {
+		const session = makeSession("session-a", true);
+		const keeper = BackgroundSessions.global();
+		keeper.keep(session as unknown as AgentSession);
+
+		const live = keeper.take("/repo/.veyyon/../.veyyon/session-a.jsonl");
+
+		expect(live).toBe(session as unknown as AgentSession);
+	});
+});

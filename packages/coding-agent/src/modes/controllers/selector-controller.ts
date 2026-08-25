@@ -39,6 +39,7 @@ import {
 	loadAccountInventory,
 } from "../../session/account-inventory";
 import type { ResetCreditAccountStatus, ResetCreditRedeemOutcome } from "../../session/auth-storage";
+import { BackgroundSessions } from "../../session/background-sessions";
 import type { SessionInfo } from "../../session/session-listing";
 import { SessionManager } from "../../session/session-manager";
 import { FileSessionStorage } from "../../session/session-storage";
@@ -92,6 +93,7 @@ import { buildCopyTargets } from "../utils/copy-targets";
 export type SelectorControllerContext = Pick<
 	InteractiveModeContext,
 	| "applyCwdChange"
+	| "attachMainSession"
 	| "chatContainer"
 	| "clearTransientSessionUi"
 	| "collabGuest"
@@ -1338,6 +1340,26 @@ export class SelectorController {
 		this.ctx.clearTransientSessionUi();
 
 		const previousCwd = this.ctx.sessionManager.getCwd();
+		// A session handed off by `/new` is still alive in this process, so resume
+		// the OBJECT rather than its file: its turn keeps streaming into the view
+		// it left, and the session being displayed now takes its place in the
+		// background. Replaying the transcript here would rebuild a running turn
+		// as finished text and leave the live session unreachable.
+		const live = BackgroundSessions.global().take(sessionPath);
+		if (live) {
+			const liveCwd = live.sessionManager.getCwd();
+			this.ctx.attachMainSession(live);
+			if (normalizePathForComparison(liveCwd) !== normalizePathForComparison(previousCwd)) {
+				await this.ctx.applyCwdChange(liveCwd);
+			}
+			this.#refreshSessionTerminalTitle();
+			this.ctx.updateEditorBorderColor();
+			this.ctx.renderInitialMessages({ clearTerminalHistory: true });
+			await this.ctx.reloadTodos();
+			this.ctx.showStatus(live.isStreaming ? "Resumed a session that is still running" : "Resumed session");
+			return;
+		}
+
 		// Switch session via AgentSession (emits hook and tool session events). The
 		// SessionManager adopts the resumed session's own cwd when it differs.
 		await this.ctx.session.switchSession(sessionPath);

@@ -5402,6 +5402,10 @@ export class InteractiveMode implements InteractiveModeContext {
 	 * reference, so reassigning the four session-derived fields re-points the
 	 * whole UI at once. The two event subscriptions and the status line are the
 	 * only holders of a session reference that must be moved by hand.
+	 *
+	 * `next` may already be streaming — that is what re-attaching a session
+	 * handed off earlier looks like — so the turn state a missed `agent_start`
+	 * would have armed is armed here instead.
 	 */
 	attachMainSession(next: AgentSession): KeptSession {
 		const previous = this.session;
@@ -5418,6 +5422,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.#subscribeToAgent();
 		this.#subscribeToGoalSessionEvents();
 		this.statusLine.setSession(next);
+		if (next.isStreaming) void this.#eventController.handleEvent({ type: "agent_start" });
 		return BackgroundSessions.global().keep(previous);
 	}
 }
