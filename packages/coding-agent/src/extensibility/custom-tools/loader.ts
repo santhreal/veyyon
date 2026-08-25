@@ -13,7 +13,7 @@ import { toolCapability } from "../../capability/tool";
 import { type DiscoveredCustomTool, loadCapability } from "../../discovery";
 import { pluginsRootFor } from "../../discovery/helpers";
 import type { ExecOptions } from "../../exec/exec";
-import { execCommand } from "../../exec/exec";
+import { execCommand, withSessionCpuExec } from "../../exec/exec";
 import type { HookUIContext } from "../../extensibility/hooks/types";
 import { getAllPluginToolPaths } from "../../extensibility/plugins/loader";
 // Runtime self-reference: dereference this namespace only inside loader functions to keep the index.ts cycle safe.
@@ -158,6 +158,7 @@ export class CustomToolLoader {
 			reject?(reason: string): Promise<AgentToolResult<unknown> | undefined>;
 		}) => void,
 		adoptSpawnedPid?: (pid: number) => void,
+		gateSpawn?: (what: string) => Promise<void>,
 	) {
 		this.#sharedApi = {
 			cwd,
@@ -166,7 +167,7 @@ export class CustomToolLoader {
 					command,
 					args,
 					options?.cwd ?? cwd,
-					adoptSpawnedPid ? { ...options, adoptPid: adoptSpawnedPid } : options,
+					withSessionCpuExec(options, adoptSpawnedPid, gateSpawn, "a custom tool command"),
 				),
 			ui: createNoOpUIContext(),
 			hasUI: false,
@@ -242,6 +243,7 @@ export async function loadCustomTools(
 		reject?(reason: string): Promise<AgentToolResult<unknown> | undefined>;
 	}) => void,
 	adoptSpawnedPid?: (pid: number) => void,
+	gateSpawn?: (what: string) => Promise<void>,
 ) {
 	// No paths means no author code will ever see the API object, and building one costs the whole
 	// package barrel (see `../coding-agent-api`). Every launch calls this from `createAgentSession`,
@@ -258,6 +260,7 @@ export async function loadCustomTools(
 		builtInToolNames,
 		pushPendingAction,
 		adoptSpawnedPid,
+		gateSpawn,
 	);
 	await loader.load(pathsWithSources);
 	return {
