@@ -19,6 +19,7 @@
 
 ### Fixed
 
+- Fixed `ToolCallLoopGuard` deciding read subsumption from rendered result text and summary phrases, preventing follow-up range reads of summarized files from being falsely blocked.
 - Fixed read tool target parsing in `ToolCallLoopGuard` to correctly handle URI schemes, Windows drive prefixes, compound raw-range selectors, and open-ended ranges without falsely subsuming distinct reads.
 - Fixed OpenAI server-side compaction requests omitting the `Authorization` header when constructing headers from request setup.
 - Supported server-side compaction on the ChatGPT Codex backend with OAuth credential and turn identity headers.

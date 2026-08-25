@@ -24,8 +24,7 @@ interface ReadTargetSpec {
 
 interface FileReadHistory {
 	snapshotTag?: string;
-	hasFullVerbatim: boolean;
-	hasSummary: boolean;
+	hasSelectorFree: boolean;
 	ranges: Array<{ start: number; end: number }>;
 }
 
@@ -155,27 +154,17 @@ function parseReadTargets(pathArg: unknown): ReadTargetSpec[] {
 
 function isTargetSubsumed(target: ReadTargetSpec, history: FileReadHistory | undefined): boolean {
 	if (!history) return false;
-	if (history.hasSummary) return false;
-	if (history.hasFullVerbatim) return true;
 	if (target.isRange && target.startLine !== undefined && target.endLine !== undefined) {
 		const start = target.startLine;
 		const end = target.endLine;
 		return history.ranges.some(r => r.start <= start && r.end >= end);
 	}
-	return false;
+	return !target.isRange && history.hasSelectorFree;
 }
 
 function extractSnapshotTag(text: string): string | undefined {
 	const tagMatch = text.match(/\[[^\]#]+#([0-9A-Fa-f]{4})\]/);
 	return tagMatch ? tagMatch[1] : undefined;
-}
-
-function resultIsStructuralSummary(text: string): boolean {
-	return (
-		text.includes("re-issue ONLY the ranges you need") ||
-		text.includes("structural summary") ||
-		text.includes("recovery selector")
-	);
 }
 
 /** A completed assistant turn plus the tool results it produced. */
@@ -298,9 +287,8 @@ export class ToolCallLoopGuard {
 		if (toolCall.name === "read") {
 			const targets = parseReadTargets((toolCall.arguments as Record<string, unknown>)?.path);
 			const resultText = summarizeToolResult(turn.toolResults, toolCall.id);
-			const isSummary = resultIsStructuralSummary(resultText);
 			const currentTag = extractSnapshotTag(resultText);
-			// Are all requested targets already subsumed by earlier verbatim reads?
+			// Are all requested targets already subsumed by earlier reads?
 			const allSubsumed =
 				targets.length > 0 &&
 				targets.every(t => {
@@ -320,23 +308,18 @@ export class ToolCallLoopGuard {
 				if (!history || (currentTag && history.snapshotTag && currentTag !== history.snapshotTag)) {
 					history = {
 						snapshotTag: currentTag,
-						hasFullVerbatim: false,
-						hasSummary: isSummary,
+						hasSelectorFree: false,
 						ranges: [],
 					};
 					this.#fileReadHistories.set(target.basePath, history);
 				}
 				if (currentTag) history.snapshotTag = currentTag;
-				history.hasSummary = isSummary;
-				if (!isSummary) {
-					if (target.isRange && target.startLine !== undefined && target.endLine !== undefined) {
-						history.ranges.push({ start: target.startLine, end: target.endLine });
-					} else {
-						history.hasFullVerbatim = true;
-					}
+				if (target.isRange && target.startLine !== undefined && target.endLine !== undefined) {
+					history.ranges.push({ start: target.startLine, end: target.endLine });
+				} else if (!target.isRange) {
+					history.hasSelectorFree = true;
 				}
 			}
-
 			if (this.#subsumedReadCount === this.#readSubsumptionThreshold) {
 				return {
 					kind: "repeated_tool_call",
