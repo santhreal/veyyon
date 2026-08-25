@@ -19,6 +19,9 @@
 - `read` accepts a semicolon-delimited list of internal resources (`skill://demo/one.md;skill://demo/two.md`), the same list form `grep` and `glob` take, and returns one section per entry.
 - Eval kernels gain `kv`, a bounded JSON store under the session's artifacts directory that survives kernel resets and is shared between JavaScript and Python without cross-session filename collisions or lost concurrent updates, and `defs()`, which lists the names user code has defined in the kernel.
 - Every supervised process termination records which component ended it and why, with distinct attribution for each path (operator stop, signal, restart, broker shutdown, idle reaper, OS signal, broker recovery, launch failure, external signal, and natural exit); `launch list` output shows the lifetime owning condition and retained completion records with exit codes, reasons, and output tails, queryable after the name is reused and across broker restarts.
+- `/omfg` forges rules that carry the extended TTSR frontmatter (`astCondition`, `interruptMode`, `pathScope`, `repeatMode`, `repeatGap`, `repeatCompactions`, `warmupMatches`), confirms ast-grep conditions against the conversation's tool history through the same gate chain a live stream applies, and fails loudly on a malformed optional field instead of dropping it.
+- `/omfg` saves forged rules to the active profile's rules directory only; the project target is gone, because project `.veyyon/rules` was never discovered across sessions.
+- Settings → Stream Interrupts (TTSR) groups the profile's own rules under a leading `User created` section instead of `From native`, ahead of foreign-tool and built-in sections.
 - A ChatGPT OAuth (Codex) session compacts server-side via the Responses compaction endpoint, preserving encrypted reasoning state.
 - `ToolCallLoopGuard` detects consecutive redundant reads of unchanged files whose requested line ranges are already fully present in recent context, steering runaway exploration loops while preserving prompt cache prefixes.
 - Added Command Code API-key login through the Studio Provider page, with validation against its Provider API, and Nous Research Portal OAuth device login with rotating refresh tokens and short-lived inference JWTs.
@@ -58,6 +61,7 @@
 - A streaming request no longer pins a parsed clone of its wire payload for the life of the stream: every provider's diagnostic dump retains only the exact sent bytes and materializes a body when a 400/413 dump is built.
 - The OpenAI-family, pi-native and Codex request builders serialize the request body once instead of deep-cloning the request graph, which took attempt preparation on a 32MiB context from 82ms to 9ms.
 - A message that names a dead socket reads the same everywhere: `namesDeadSocket` in `@veyyon/ai/error/flags` is the one list of errnos and phrases, and `ENETUNREACH`, `EHOSTUNREACH` and `EAI_AGAIN` now count as transient transport failures like the rest of them.
+- Formatted source files for Biome compliance.
 - `MNEMOPI_NO_EMBEDDINGS=0`, `false`, `no` or `off` now leaves embeddings on everywhere instead of disabling them on the API path.
 - Every `MNEMOPI_*` value is read by `config.ts` alone; the local-model, extraction and embedding modules ask it instead of parsing the variable again.
 - `getDiagnostics` is now `extractionDiagnostics` in `core/extraction/diagnostics` and `recallDiagnostics` in `core/recall-diagnostics`, so the two registries are no longer reached by one name.

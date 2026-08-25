@@ -1,4 +1,4 @@
-import { type Component, Container, Markdown, Text, type TUI } from "@veyyon/tui";
+import { type Component, Container, Markdown, Spacer, Text, type TUI } from "@veyyon/tui";
 import { replaceTabs } from "../../tools/render-utils";
 import { getMarkdownTheme } from "../theme/markdown-theme";
 import { theme } from "../theme/theme";
@@ -137,6 +137,20 @@ export class OmfgPanelComponent extends Container {
 				0,
 			);
 		}
-		return new Markdown(text, COMPOSER_INSET_COLS, 0, getMarkdownTheme());
+		const preview = new Markdown(text, COMPOSER_INSET_COLS, 0, getMarkdownTheme());
+		if (this.#state !== "saved") {
+			return preview;
+		}
+		const block = new Container();
+		block.addChild(preview);
+		block.addChild(new Spacer(1));
+		block.addChild(
+			new Text(
+				theme.fg("dim", "TTSR rule created — manage it under User created in Settings → Stream Interrupts (TTSR)."),
+				COMPOSER_INSET_COLS,
+				0,
+			),
+		);
+		return block;
 	}
 }
