@@ -92,6 +92,8 @@ async function runMultiTargetAstGrep(
 	parseErrors?: string[];
 }> {
 	const retainedMatches: AstFindMatch[] = [];
+	const seenMatchKeys = new Set<string>();
+	const seenFilesWithMatches = new Set<string>();
 	const retainedCapacity = options.skip + options.limit + 1;
 	const parseErrors: string[] = [];
 	let totalMatches = 0;
@@ -123,13 +125,38 @@ async function runMultiTargetAstGrep(
 		if (outcome.status === "rejected") throw outcome.reason;
 		const target = targets[targetIndex]!;
 		const targetResult = outcome.value;
+		const targetSeenFiles = new Set<string>();
 		totalMatches += targetResult.totalMatches;
 		filesWithMatches += targetResult.filesWithMatches;
 		filesSearched += targetResult.filesSearched;
 		limitReached = limitReached || targetResult.limitReached;
 		if (targetResult.parseErrors) parseErrors.push(...targetResult.parseErrors);
 		for (const match of targetResult.matches) {
-			const absolute = path.resolve(target.basePath, match.path);
+			const resolvedBase = path.resolve(target.basePath);
+			const absolute =
+				resolvedBase.endsWith(`/${match.path}`) ||
+				resolvedBase.endsWith(`\\${match.path}`) ||
+				resolvedBase === match.path ||
+				match.path === ""
+					? resolvedBase
+					: path.resolve(target.basePath, match.path);
+			// Overlapping targets (a directory plus a file nested
+			// inside it) surface the same match twice; keep the
+			// first occurrence.
+			const matchKey = `${absolute}\0${match.startLine}\0${match.startColumn}`;
+			if (seenMatchKeys.has(matchKey)) {
+				totalMatches = Math.max(0, totalMatches - 1);
+				if (seenFilesWithMatches.has(absolute) && !targetSeenFiles.has(absolute)) {
+					filesWithMatches = Math.max(0, filesWithMatches - 1);
+					targetSeenFiles.add(absolute);
+				}
+				continue;
+			}
+			seenMatchKeys.add(matchKey);
+			if (!seenFilesWithMatches.has(absolute)) {
+				seenFilesWithMatches.add(absolute);
+				targetSeenFiles.add(absolute);
+			}
 			const rebased = path.relative(options.commonBasePath, absolute).replace(/\\/g, "/");
 			retainAstFindMatch(retainedMatches, retainedCapacity, { ...match, path: rebased });
 		}
