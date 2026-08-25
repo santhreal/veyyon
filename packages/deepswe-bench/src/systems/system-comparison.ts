@@ -1,6 +1,7 @@
 /**
  * Generalized cross-system benchmark aggregation and paired gate evaluation.
  */
+import { errorMessage } from "@veyyon/utils";
 import { requireSystemAdapter } from "./registry";
 import {
 	type ComparisonArmResult,
@@ -249,7 +250,7 @@ export function aggregateSystemComparison(
 		try {
 			requireSystemAdapter(system);
 		} catch (err) {
-			issues.push(err instanceof Error ? err.message : String(err));
+			issues.push(errorMessage(err));
 		}
 	}
 

@@ -3,6 +3,7 @@
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { isRecord } from "@veyyon/utils";
 import type { LoadedReplayManifest } from "../../replay-manifest";
 import {
 	emptyArmResult,
@@ -33,7 +34,7 @@ export function artifactPath(metadataValue: unknown, fallback: string, trialDir:
 }
 
 export function parsedNativeCompaction(value: unknown): NativeCompactionEvidence | null {
-	if (value === null || typeof value !== "object" || Array.isArray(value)) return null;
+	if (!isRecord(value)) return null;
 	const raw = value as Record<string, unknown>;
 	return {
 		native: raw.native === true,
