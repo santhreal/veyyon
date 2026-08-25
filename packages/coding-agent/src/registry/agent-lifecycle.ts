@@ -541,7 +541,7 @@ export class AgentLifecycleManager {
 	async #revive(id: string, revive: AgentReviver, expectedRef: AgentRef): Promise<AgentSession> {
 		const session = await revive();
 		const current = this.#registry.get(id);
-		if (!current || current !== expectedRef || current.status === "aborted") {
+		if (!current || (current !== expectedRef && current.session !== session) || current.status === "aborted") {
 			try {
 				await session.dispose();
 			} catch (error) {
