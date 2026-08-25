@@ -67,7 +67,7 @@ function assistantToolCallTurn(provider: string, api: Api, model: string): Assis
 		role: "assistant",
 		content: [
 			{ type: "text", text: "Let me check." },
-			{ type: "toolCall", id: "call_1", name: "get_weather", arguments: '{"city":"Paris"}' },
+			{ type: "toolCall", id: "call_1", name: "get_weather", arguments: { city: "Paris" } },
 		],
 		api,
 		provider,

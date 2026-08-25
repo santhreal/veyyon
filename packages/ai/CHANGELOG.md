@@ -25,7 +25,7 @@
 - The OpenAI completions message converter merges `.filter().map().join()` + `.some()` into a single-pass `for` loop for tool-result text/image extraction, `.filter().map().filter(Boolean)` into a single loop for reasoning details, and `.filter().map().join()` into a single loop for developer message text extraction.
 - The Google provider message converter merges three passes over tool-result content (`.filter()` for text, `.filter()` for images, `.some()` for omitted images) into a single `for` loop.
 - `partitionVisionContent` in `vision-guard.ts` merges two `.filter()` passes and a `.some()` check into a single `for` loop, avoiding two throwaway arrays per message conversion call.
-- The OpenAI completions assistant message converter merges two separate loops over `msg.content` (text block collection and thinking block collection) into a single `for` loop.
+- The OpenAI completions assistant message converter merges four separate passes over `msg.content` (text block collection, thinking block collection, tool-call `.filter()`, and all-thinking-blocks `.filter()`) into a single `for` loop, avoiding two throwaway arrays and two extra O(n) passes per assistant message per turn.
 - The Codex responses request transformer merges `.filter().map()` in `filterInput` into a single `for` loop that skips `item_reference` entries and strips `id` fields in one pass.
 - `hasCopilotVisionInput` in `github-copilot-headers.ts` replaces nested `.some()` callbacks with direct `for` loops, avoiding callback allocations per message on the per-turn Copilot vision scan.
 - `hasToolHistory` in `openai-completions.ts` replaces `.some()` callback with a direct `for` loop, avoiding callback allocation per assistant message on the per-turn tool history scan.

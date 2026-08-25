@@ -1955,11 +1955,18 @@ export function convertMessages(
 
 			const nonEmptyTextBlocks: TextContent[] = [];
 			const nonEmptyThinkingBlocks: ThinkingContent[] = [];
+			const toolCalls: ToolCall[] = [];
+			const allThinkingBlocks: ThinkingContent[] = [];
 			for (const block of msg.content) {
 				if (block.type === "text" && block.text && block.text.trim().length > 0) {
 					nonEmptyTextBlocks.push(block as TextContent);
-				} else if (block.type === "thinking" && block.thinking && block.thinking.trim().length > 0) {
-					nonEmptyThinkingBlocks.push(block as ThinkingContent);
+				} else if (block.type === "thinking") {
+					allThinkingBlocks.push(block as ThinkingContent);
+					if (block.thinking && block.thinking.trim().length > 0) {
+						nonEmptyThinkingBlocks.push(block as ThinkingContent);
+					}
+				} else if (block.type === "toolCall") {
+					toolCalls.push(block as ToolCall);
 				}
 			}
 			if (nonEmptyTextBlocks.length > 0) {
@@ -2069,7 +2076,6 @@ export function convertMessages(
 				}
 			}
 
-			const toolCalls = msg.content.filter(b => b.type === "toolCall") as ToolCall[];
 			// Replay reasoning_content on assistant turns for backends that validate
 			// thinking-mode history. DeepSeek V4 requires reasoning_content on EVERY
 			// assistant turn once a prior turn included it — not just tool-call turns.
@@ -2110,7 +2116,6 @@ export function convertMessages(
 				compat.requiresReasoningContentForToolCalls &&
 				!compat.allowsSyntheticReasoningContentForToolCalls
 			) {
-				const allThinkingBlocks = msg.content.filter(b => b.type === "thinking") as ThinkingContent[];
 				if (allThinkingBlocks.length > 0) {
 					const signature = allThinkingBlocks[0].thinkingSignature;
 					if (signature === "reasoning_content" || signature === "reasoning" || signature === "reasoning_text") {
