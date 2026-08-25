@@ -1,5 +1,4 @@
 import { beforeAll, describe, expect, it } from "bun:test";
-import { getOAuthProviders } from "@veyyon/ai/oauth";
 import type { AccountInventory } from "../../session/account-inventory";
 import { initTheme } from "../theme/theme";
 import { AccountManagerComponent } from "./account-manager";
@@ -19,45 +18,39 @@ function makeCallbacks() {
 }
 
 function makeEmptyInventory(): AccountInventory {
-	const inventory = { providers: [] } as AccountInventory;
+	const inventory = { providers: [], totalAccounts: 0, unhealthyCount: 0 } as AccountInventory;
 	return inventory;
 }
-
 describe("AccountManager search/filter", () => {
 	beforeAll(async () => {
 		await initTheme();
 	});
 
-	it("shows Type to search and filters on typing with keyboard parity", () => {
+	it("shows Type to search and filters to matching providers only", () => {
 		const inventory = makeEmptyInventory();
 		const component = new AccountManagerComponent(inventory, makeCallbacks(), { terminalHeight: 40 });
 		const firstRender = component.render(80).join("\n");
 		expect(firstRender).toContain("Type to search");
 
-		// Focus sidebar (initial focus is body)
 		component.handleInput("\x1b[D");
-		component.handleInput("a");
-		component.handleInput("n");
-		component.handleInput("t");
+		for (const ch of "anth") component.handleInput(ch);
 		expect(component.hasActiveSearch()).toBe(true);
 		const filteredRender = component.render(80).join("\n");
-		expect(filteredRender).toContain("Search: ant");
-		// filtered list should contain Anthropic but not all providers; check that output shrank
-		const allProviders = getOAuthProviders();
-		const anthropic = allProviders.find(p => p.id === "anthropic");
-		expect(anthropic).toBeDefined();
-		// Render should still contain Anthropic label, but not arbitrary other provider when filtered narrowly
-		// Use a query that isolates one provider
-		component.handleInput("\x1b"); // Esc clears
+		expect(filteredRender).toContain("Search: anth");
+		expect(filteredRender).toContain("Anthropic");
+		expect(filteredRender).not.toContain("Groq");
+		expect(filteredRender).not.toContain("Google");
+
+		component.handleInput("\x1b");
 		expect(component.hasActiveSearch()).toBe(false);
 		const clearedRender = component.render(80).join("\n");
 		expect(clearedRender).toContain("Type to search");
-		expect(clearedRender).not.toContain("Search: ant");
+		expect(clearedRender).not.toContain("Search: anth");
 
 		component.dispose();
 	});
 
-	it("shows No matching providers for nonsense query and clears via Backspace/Escape", () => {
+	it("shows No matching providers and hides all provider rows when nothing matches", () => {
 		const inventory = makeEmptyInventory();
 		const component = new AccountManagerComponent(inventory, makeCallbacks(), { terminalHeight: 40 });
 		component.render(80);
@@ -66,12 +59,13 @@ describe("AccountManager search/filter", () => {
 		expect(component.hasActiveSearch()).toBe(true);
 		const noMatch = component.render(80).join("\n");
 		expect(noMatch).toContain("No matching providers");
+		expect(noMatch).not.toContain("Anthropic");
+		expect(noMatch).not.toContain("Groq");
+		expect(noMatch).not.toContain("OpenAI");
 
-		// Backspace should pop one char and still be active
 		component.handleInput("\x7f");
 		expect(component.hasActiveSearch()).toBe(true);
 
-		// Esc clears
 		component.handleInput("\x1b");
 		expect(component.hasActiveSearch()).toBe(false);
 		expect(component.render(80).join("\n")).toContain("Type to search");
@@ -79,25 +73,32 @@ describe("AccountManager search/filter", () => {
 		component.dispose();
 	});
 
-	it("arrow navigation wraps filtered list", () => {
+	it("arrow navigation stays within filtered providers", () => {
 		const inventory = makeEmptyInventory();
 		const component = new AccountManagerComponent(inventory, makeCallbacks(), { terminalHeight: 40 });
 		component.render(80);
 		component.handleInput("\x1b[D");
-		// Filter to a small subset e.g. "open" matches openai, openai-codex, openrouter
 		for (const ch of "open") component.handleInput(ch);
 		expect(component.hasActiveSearch()).toBe(true);
 		const before = component.render(80).join("\n");
 		expect(before).toContain("Search: open");
+		expect(before).toContain("OpenAI");
+		expect(before).not.toContain("Anthropic");
 
-		// Arrow down should change active provider within filtered set
 		component.handleInput("\x1b[B");
+		let afterDown = component.render(80).join("\n");
+		expect(afterDown).toContain("Search: open");
+		expect(afterDown).not.toContain("Anthropic");
+		expect(afterDown).toContain("OpenAI");
+
 		component.handleInput("\x1b[B");
-		// Arrow up wraps
+		afterDown = component.render(80).join("\n");
+		expect(afterDown).not.toContain("Anthropic");
+
 		component.handleInput("\x1b[A");
-		// Should not throw and should still be filtered
-		expect(component.hasActiveSearch()).toBe(true);
-		expect(component.render(80).join("\n")).toContain("Search: open");
+		const afterUp = component.render(80).join("\n");
+		expect(afterUp).toContain("Search: open");
+		expect(afterUp).not.toContain("Anthropic");
 
 		component.dispose();
 	});

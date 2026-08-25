@@ -351,25 +351,30 @@ export class AccountManagerComponent implements Component {
 			: selection.kind === "account" && selection.credentialId === target.credentialId;
 	}
 
+	/** Whether a query is active and Esc should clear it rather than close the card. */
 	hasActiveSearch(): boolean {
 		return this.#searchQuery.length > 0 && (this.#searchTypedByUser || this.#isSearchEnabled());
 	}
 
+	/** Whether the provider list overflows and filtering is useful. */
 	#isSearchEnabled(): boolean {
 		const baseline = this.#splitRowCount - SIDEBAR_SUMMARY_ROWS;
 		return this.#entries.length > Math.max(1, baseline);
 	}
 
+	/** Whether to render the Type to search / Search: row atop the sidebar. */
 	#shouldRenderSearchStatus(): boolean {
 		return this.#isSearchEnabled() || this.#searchQuery.length > 0;
 	}
 
+	/** Providers matching the current query, or all when the query is empty. */
 	get #filteredEntries(): AccountSidebarEntry[] {
 		const query = this.#searchQuery.trim();
 		if (!query) return this.#entries;
 		return fuzzyFilter(this.#entries, query, entry => `${entry.label} ${entry.providerId}`);
 	}
 
+	/** Update the query and keep the active provider visible within the filtered set. */
 	#setSearchQuery(query: string, typedByUser = false): void {
 		this.#searchQuery = query;
 		this.#searchTypedByUser = query.length > 0 && typedByUser;
@@ -383,6 +388,7 @@ export class AccountManagerComponent implements Component {
 		this.#sidebarScroll = 0;
 	}
 
+	/** Handle backspace and printable input for the sidebar filter. Returns true if consumed. */
 	#handleSearchInput(data: string): boolean {
 		if (matchesKey(data, "backspace") || matchesKey(data, "ctrl+h")) {
 			if (!this.hasActiveSearch()) return false;
@@ -400,6 +406,7 @@ export class AccountManagerComponent implements Component {
 		return true;
 	}
 
+	/** Render the Type to search / Search: status row. */
 	#renderSearchStatus(width: number): string {
 		const query = this.#searchQuery.trim();
 		const suffix = query ? `Search: ${this.#searchQuery}` : "Type to search";
@@ -689,6 +696,7 @@ export class AccountManagerComponent implements Component {
 
 		if (searchOffset === 1 && overSplit && contentLine === 0 && innerCol >= 0 && innerCol < this.#sidebarWidthLast) {
 			this.#focus = "sidebar";
+			this.#requestRender?.();
 			return true;
 		}
 		if (overSidebar) {
