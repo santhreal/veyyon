@@ -2022,19 +2022,22 @@ export function finalizeMessageText(item: ResponseOutputMessage, streamedText: s
 }
 
 /**
- * Merge one Responses function-argument event into the live buffer.
+ * Accumulate one streamed function-argument delta into the live buffer.
  *
- * The wire contract calls the payload a delta, but gateways may replay the
- * complete prefix. Treat a value that extends the current buffer as an
- * authoritative cumulative snapshot; otherwise preserve true delta semantics.
+ * OpenAI Responses and OpenAI Codex Responses streams deliver true incremental
+ * string fragments on `response.function_call_arguments.delta`. Providers with
+ * cumulative stream shapes (such as Cursor's `args_text_delta` or Devin's
+ * `argumentsJson`) handle snapshot prefix-slicing at their own provider
+ * boundaries before emitting stream deltas.
+ *
+ * Do not attempt to guess or infer cumulative resends via prefix heuristics like
+ * `delta.startsWith(current)`: genuine incremental fragments can coincide with
+ * earlier buffer prefixes (e.g. repeated keys, indentation, nested objects, or
+ * duplicated tokens), which causes silent character truncation. Unconditional
+ * appending preserves stream fidelity, and authoritative final arguments are
+ * applied on `response.function_call_arguments.done` via
+ * {@link finalizeToolCallArgumentsDone}.
  */
-function mergeToolCallArgumentsDelta(current: string, delta: string): { buffer: string; appended: string } {
-	if (!delta.startsWith(current)) {
-		return { buffer: current + delta, appended: delta };
-	}
-	return { buffer: delta, appended: delta.slice(current.length) };
-}
-
 export function accumulateToolCallArgumentsDelta(
 	block: ResponsesToolCallBlock,
 	delta: string,
@@ -2042,15 +2045,14 @@ export function accumulateToolCallArgumentsDelta(
 	output: AssistantMessage,
 	contentIndex: number,
 ): void {
-	const merged = mergeToolCallArgumentsDelta(block[kStreamingPartialJson], delta);
-	block[kStreamingPartialJson] = merged.buffer;
+	block[kStreamingPartialJson] = (block[kStreamingPartialJson] ?? "") + delta;
 	const throttled = parseStreamingJsonThrottled(block[kStreamingPartialJson], block[kStreamingLastParseLen] ?? 0);
 	if (throttled) {
 		block.arguments = throttled.value;
 		block[kStreamingLastParseLen] = throttled.parsedLen;
 	}
-	if (merged.appended) {
-		stream.push({ type: "toolcall_delta", contentIndex, delta: merged.appended, partial: output });
+	if (delta) {
+		stream.push({ type: "toolcall_delta", contentIndex, delta, partial: output });
 	}
 }
 
