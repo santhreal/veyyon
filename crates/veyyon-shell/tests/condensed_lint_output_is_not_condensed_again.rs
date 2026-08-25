@@ -282,7 +282,10 @@ mod an_uncondensed_capture_is_still_condensed {
 		}
 		let first = filters::filter(&ctx, &input, 1).text;
 
-		assert!(first.starts_with("30 diagnostics in 1 files\n"), "got: {first:?}");
+		assert!(
+			first.starts_with("[errors 30] biome\n30 diagnostics in 1 files\n"),
+			"got: {first:?}"
+		);
 		assert!(first.contains("src/app.ts (30 diagnostics)"), "got: {first:?}");
 		assert!(first.len() < input.len(), "and the whole point is that it got smaller");
 	}

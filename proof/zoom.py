@@ -1,22 +1,20 @@
 #!/usr/bin/env python3
-"""Ease a recording into one region of the screen and back out.
+"""Ease a recording into a region, pan, and ease back out.
 
     proof/zoom.py take.mp4 zoomed.mp4 --at 184.5
-    proof/zoom.py take.mp4 zoomed.mp4 --marks take-marks.tsv --mark todo-board
+    proof/zoom.py take.mp4 zoomed.mp4 --cues take-cues.txt --fps 60
 
-A landing-page clip is 1920 wide and the recorder captures 2560, so a 1920-wide
-crop out of the take is a 1.33x zoom with no upscale: the extra 640 columns of
-capture width are the whole zoom budget, and `--zoom` above that resamples text
-the surface never drew.
+A landing-page clip is 1920 wide and the recorder captures 2560. The hero camera
+is a 2x crop of the composer: zoom in on `/secret`, pan right as the rest of the
+line is typed, hold readable, zoom out. Cue rows name that path in capture frames:
 
-The region is measured, not typed in. A rect on a 2560x1440 screen would have to
-be found by hand for every scene and would move the next time a block changed
-height, so the stage diffs the frames around the moment and zooms to the bounding
-box of what changed there. A moment with nothing moving in it produces no rect and
-no file.
+    zoom-in FRAME x,y,w,h
+    pan FRAME x,y,w,h
+    zoom-out FRAME
 
-The stage runs on the take, before the cut, so it changes no timing: same frame
-count, same rate, and the cadence gate downstream still reads 33 ms.
+A missing rect on zoom-in still means "measure motion". The stage runs on the
+take before the cut, so frame count and rate are unchanged and the cadence gate
+reads the capture interval.
 """
 
 from __future__ import annotations
@@ -48,8 +46,23 @@ SEARCH_LEAD = 1.0
 # How much of the region's own size is added around it, so the zoom does not clip
 # the thing it is pointing at.
 PAD = 0.25
-EASE = 0.5
-HOLD = 1.6
+# Camera-like ease: smootherstep needs about a second or it still reads as a cut.
+EASE = 1.1
+# Zoom-out is a little longer than zoom-in so the settle back to the wide shot
+# does not snap. The hold between the cues is not charged for either move.
+EASE_OUT = 1.4
+HOLD = 2.0
+# How much larger a glyph is than in the published wide shot. 2.0 crops at most
+# half the capture width and scales it to the published frame, which is an
+# upscale of the crop and is the camera move the hero take needs: the secret
+# line has to be readable at 1080p, not merely a few cells in a wide terminal.
+MAGNIFY = 2.0
+CUE_FPS = 60
+# Seconds of sideways travel between the zoom-in crop and the pan crop.
+PAN_EASE = 1.35
+# zoompan snaps on whole pixels. Working at 2x and scaling back makes each step
+# half a source pixel, which is what stops the crop from stuttering.
+UPSAMPLE = 2
 
 
 @dataclass(frozen=True)
@@ -198,34 +211,139 @@ def _clamp(value: int, low: int, high: int) -> int:
 	return max(low, min(high, value))
 
 
-def zoom_filter(rect: Rect, *, width: int, height: int, at: float, hold: float, ease: float, fps: str) -> str:
+def _smoother(progress: str, raw: int, out: int) -> str:
+	"""Perlin smootherstep of a 0..1 progress, stored in register `out`.
+
+	First and second derivatives are zero at both ends, so the camera does not
+	leave or arrive at a constant speed the way a cubic smoothstep still does.
+	"""
+	return (
+		f"st({raw},{progress});"
+		f"st({out},ld({raw})*ld({raw})*ld({raw})*(ld({raw})*(ld({raw})*6-15)+10))"
+	)
+
+
+def _log_zoom(peak: float, eased_reg: int) -> str:
+	"""Scale as a camera does: multiply, do not lerp the zoom factor."""
+	return f"exp(ld({eased_reg})*log({peak:.6f}))"
+
+def _even_x(center: str) -> str:
+	"""Lock the crop origin to even pixels so zoompan cannot chatter by one pixel."""
+	return f"max(0,trunc((({center})-(iw/zoom)/2)/2)*2)"
+
+def _even_y(center: str) -> str:
+	return f"max(0,trunc((({center})-(ih/zoom)/2)/2)*2)"
+
+
+def _zoompan(factor: str, pan_x: str, pan_y: str, *, width: int, height: int, fps: str) -> str:
+	up = UPSAMPLE
+	zp = f"zoompan=z='{factor}':x='{_even_x(pan_x)}':y='{_even_y(pan_y)}':d=1:s={width}x{height}:fps={fps}"
+	if up <= 1:
+		return zp
+	return f"scale=iw*{up}:ih*{up}:flags=lanczos,{zp}"
+
+
+def zoom_filter(
+	rect: Rect,
+	*,
+	width: int,
+	height: int,
+	at: float,
+	hold: float,
+	ease: float,
+	fps: str,
+	ease_out: float | None = None,
+) -> str:
 	"""The zoom expression, evaluated per frame.
 
 	`time` runs over the take, so one filter covers the ease in, the hold and the ease
-	out. Smoothstep on the progress keeps the move off a constant velocity, which reads
-	as a camera rather than a jump cut.
+	out. Smootherstep plus a log zoom keeps the move off a constant velocity, which
+	reads as a camera rather than a jump cut.
 
 	`crop` cannot express this: ffmpeg 7 evaluates a crop width once at configuration,
 	and the `eval` option that used to make it per-frame is gone. `zoompan` evaluates
 	all three of z, x and y per frame, and `d=1` at the source rate emits one frame per
 	frame in, which is what keeps the cadence the recorder captured.
 	"""
+	out_ease = ease if ease_out is None else ease_out
 	zoom = width / rect.w
 	t0 = max(at - ease, 0.0)
 	t1 = t0 + ease
 	t2 = t1 + hold
-	t3 = t2 + ease
+	t3 = t2 + out_ease
 	progress = (
 		f"if(lt(time,{t0:.3f}),0,"
 		f"if(lt(time,{t1:.3f}),(time-{t0:.3f})/{ease:.3f},"
 		f"if(lt(time,{t2:.3f}),1,"
-		f"if(lt(time,{t3:.3f}),1-(time-{t2:.3f})/{ease:.3f},0))))"
+		f"if(lt(time,{t3:.3f}),1-(time-{t2:.3f})/{out_ease:.3f},0))))"
 	)
-	smooth = f"st(1,{progress});ld(1)*ld(1)*(3-2*ld(1))"
-	factor = f"1+{zoom - 1:.6f}*({smooth})"
-	pan_x = f"clip({rect.cx:.1f}-(iw/zoom)/2,0,iw-iw/zoom)"
-	pan_y = f"clip({rect.cy:.1f}-(ih/zoom)/2,0,ih-ih/zoom)"
-	return f"zoompan=z='{factor}':x='{pan_x}':y='{pan_y}':d=1:s={width}x{height}:fps={fps}"
+	up = UPSAMPLE
+	cx = rect.cx * up
+	cy = rect.cy * up
+	factor = f"{_smoother(progress, 1, 11)};{_log_zoom(zoom, 11)}"
+	return _zoompan(factor, f"{cx:.1f}", f"{cy:.1f}", width=width, height=height, fps=fps)
+
+
+def path_filter(
+	left: Rect,
+	right: Rect,
+	*,
+	width: int,
+	height: int,
+	t_in: float,
+	t_pan: float,
+	t_out: float,
+	ease: float,
+	pan_ease: float,
+	fps: str,
+	ease_out: float | None = None,
+) -> str:
+	"""Zoom into `left`, pan to `right`, hold, zoom out.
+
+	Registers (evaluated in `z`, read in `x`/`y`):
+	  1   zoom progress 0→1→0 (raw)
+	  11  smootherstep of 1
+	  2   pan progress 0→1 (raw)
+	  22  smootherstep of 2
+	"""
+	out_ease = ease if ease_out is None else ease_out
+	t1 = t_in + ease
+	t2 = max(t_pan, t1)
+	t3 = t2 + pan_ease
+	t4 = max(t_out, t3)
+	t5 = t4 + out_ease
+	zoom = width / left.w
+	zprog = (
+		f"if(lt(time,{t_in:.3f}),0,"
+		f"if(lt(time,{t1:.3f}),(time-{t_in:.3f})/{ease:.3f},"
+		f"if(lt(time,{t4:.3f}),1,"
+		f"if(lt(time,{t5:.3f}),1-(time-{t4:.3f})/{out_ease:.3f},0))))"
+	)
+	pprog = (
+		f"if(lt(time,{t2:.3f}),0,"
+		f"if(lt(time,{t3:.3f}),(time-{t2:.3f})/{pan_ease:.3f},1))"
+	)
+	factor = (
+		f"{_smoother(zprog, 1, 11)};"
+		f"{_smoother(pprog, 2, 22)};"
+		f"{_log_zoom(zoom, 11)}"
+	)
+	up = UPSAMPLE
+	cx_full = (width / 2) * up
+	cy_full = (height / 2) * up
+	lx, ly = left.cx * up, left.cy * up
+	rx, ry = right.cx * up, right.cy * up
+	cx = (
+		f"if(lt(time,{t2:.3f}),{cx_full:.1f}+({lx:.1f}-{cx_full:.1f})*ld(11),"
+		f"if(lt(time,{t4:.3f}),{lx:.1f}+({rx:.1f}-{lx:.1f})*ld(22),"
+		f"{rx:.1f}+({cx_full:.1f}-{rx:.1f})*(1-ld(11))))"
+	)
+	cy = (
+		f"if(lt(time,{t2:.3f}),{cy_full:.1f}+({ly:.1f}-{cy_full:.1f})*ld(11),"
+		f"if(lt(time,{t4:.3f}),{ly:.1f}+({ry:.1f}-{ly:.1f})*ld(22),"
+		f"{ry:.1f}+({cy_full:.1f}-{ry:.1f})*(1-ld(11))))"
+	)
+	return _zoompan(factor, cx, cy, width=width, height=height, fps=fps)
 
 
 def render(take: Path, out: Path, expression: str, *, crf: int) -> None:
@@ -271,6 +389,22 @@ def mark_time(marks: Path, name: str) -> float:
 	raise ValueError(f"{marks}: no mark named '{name}'")
 
 
+def _fit_magnify(rect: Rect, *, width: int, height: int, magnify: float) -> Rect:
+	"""Pin a crop to at least `magnify` so a full-frame box cannot collapse the camera to 1x."""
+	floor_w = _even(width / magnify)
+	floor_h = _even(height / magnify)
+	if rect.w <= floor_w and rect.h <= floor_h:
+		return rect
+	cx = rect.x + rect.w / 2
+	cy = rect.y + rect.h / 2
+	return Rect(
+		x=_clamp(round(cx - floor_w / 2), 0, width - floor_w),
+		y=_clamp(round(cy - floor_h / 2), 0, height - floor_h),
+		w=floor_w,
+		h=floor_h,
+	)
+
+
 def zoom_into(
 	take: Path,
 	out: Path,
@@ -282,33 +416,81 @@ def zoom_into(
 	pad: float,
 	crf: int,
 	report: bool = True,
+	magnify: float = MAGNIFY,
+	forced_rect: tuple[int, int, int, int] | None = None,
+	pan_rect: tuple[int, int, int, int] | None = None,
+	at_pan: float | None = None,
+	ease_out: float | None = None,
+	pan_ease: float = PAN_EASE,
 ) -> Rect:
 	width, height = size(take)
 	ceiling = zoom if zoom is not None else width / PUBLISH_WIDTH
+	if magnify > 1.0:
+		ceiling = max(ceiling, magnify)
 	if ceiling <= 1.0:
 		raise ValueError(f"a zoom of {ceiling:.2f}x is not a zoom; the capture is {width} wide")
 	# The search frames are an intermediate of this take, so they live beside the file
 	# being written rather than in a system temp directory a run does not own.
 	out.parent.mkdir(parents=True, exist_ok=True)
-	with tempfile.TemporaryDirectory(prefix=".zoom-", dir=out.parent) as scratch:
-		frames = sample(take, at - SEARCH_LEAD, SEARCH_LEAD + hold, Path(scratch))
-		if len(frames) < 2:
-			raise ValueError(f"{take}: {at:.1f}s is outside the recording")
-		box = motion_box(frames)
-	if box is None:
-		raise ValueError(f"{take}: nothing changed around {at:.1f}s, so there is no region to zoom into")
-	rect = frame_rect(box, width=width, height=height, zoom=ceiling, pad=pad)
+	box = None
+	if forced_rect is None:
+		with tempfile.TemporaryDirectory(prefix=".zoom-", dir=out.parent) as scratch:
+			frames = sample(take, at - SEARCH_LEAD, SEARCH_LEAD + hold, Path(scratch))
+			if len(frames) < 2:
+				raise ValueError(f"{take}: {at:.1f}s is outside the recording")
+			box = motion_box(frames)
+	if forced_rect is not None:
+		rect = Rect(x=forced_rect[0], y=forced_rect[1], w=forced_rect[2], h=forced_rect[3])
+	else:
+		if box is None:
+			raise ValueError(f"{take}: nothing changed around {at:.1f}s, so there is no region to zoom into")
+		rect = frame_rect(box, width=width, height=height, zoom=ceiling, pad=pad)
+	rect = _fit_magnify(rect, width=width, height=height, magnify=magnify)
+	right = None
+	if pan_rect is not None:
+		right = _fit_magnify(
+			Rect(x=pan_rect[0], y=pan_rect[1], w=pan_rect[2], h=pan_rect[3]),
+			width=width,
+			height=height,
+			magnify=magnify,
+		)
+		# The pan keeps the same crop size as the zoom-in so the camera slides, it does not re-crop.
+		right = Rect(x=right.x, y=right.y, w=rect.w, h=rect.h)
 	if report:
+		move = f" pan {right.x},{right.y}" if right is not None else ""
 		print(
-			f"{take}: {rect.w}x{rect.h} at {rect.x},{rect.y}"
+			f"{take}: {rect.w}x{rect.h} at {rect.x},{rect.y}{move}"
 			f" -> {width / rect.w:.2f}x held {hold:.1f}s from {at:.1f}s"
 		)
-	render(
-		take,
-		out,
-		zoom_filter(rect, width=width, height=height, at=at, hold=hold, ease=ease, fps=rate(take)),
-		crf=crf,
-	)
+	out_ease = ease if ease_out is None else ease_out
+	if right is not None:
+		t_out = at + hold
+		t_pan = at_pan if at_pan is not None else at
+		expression = path_filter(
+			rect,
+			right,
+			width=width,
+			height=height,
+			t_in=max(at - ease, 0.0),
+			t_pan=t_pan,
+			t_out=t_out,
+			ease=ease,
+			pan_ease=pan_ease,
+			fps=rate(take),
+			ease_out=out_ease,
+		)
+	else:
+		expression = zoom_filter(
+			rect,
+			width=width,
+			height=height,
+			at=at,
+			hold=hold,
+			ease=ease,
+			fps=rate(take),
+			ease_out=out_ease,
+		)
+	render(take, out, expression, crf=crf)
 	return rect
 
 
@@ -367,7 +549,7 @@ def self_check() -> int:
 			check=True,
 		)
 		out = root / "zoomed.mp4"
-		rect = zoom_into(take, out, at=1.5, hold=1.0, ease=0.4, zoom=None, pad=PAD, crf=18, report=False)
+		rect = zoom_into(take, out, at=1.5, hold=1.0, ease=0.4, zoom=None, pad=PAD, crf=18, report=False, magnify=1.0)
 
 		if not (
 			rect.x <= block["x"]
@@ -397,10 +579,105 @@ def self_check() -> int:
 		if opening > before * 1.3:
 			failures.append(f"the clip opens already zoomed ({opening:.4f} against {before:.4f})")
 
+		cues_path = root / "cues.txt"
+		cues_path.write_text("zoom-in 45\nzoom-out 150\n")
+		at, hold = cues_to_window(parse_cues(cues_path), fps=30, ease=0.5)
+		if abs(at - 1.5) > 1e-9:
+			failures.append(f"cue zoom-in 45 at 30fps should be 1.5s, got {at}")
+		if hold < HOLD:
+			failures.append(f"cue hold {hold} is under the 2s floor")
+		cues_path.write_text("zoom-in 30\nzoom-out 60\n")
+		try:
+			cues_to_window(parse_cues(cues_path), fps=30, ease=0.5)
+			failures.append("a 1s cue pair was accepted; the secret hold is 2s")
+		except ValueError:
+			pass
+		cues_path.write_text("zoom-in 60 0,720,1280,720\npan 120 1280,720,1280,720\nzoom-out 240\n")
+		path_cues = parse_cues(cues_path)
+		at, hold = cues_to_window(path_cues, fps=60, ease=0.5)
+		if abs(at - 1.0) > 1e-9:
+			failures.append(f"60fps zoom-in 60 should be 1.0s, got {at}")
+		if first_pan(path_cues) is None or first_pan(path_cues).rect != (1280, 720, 1280, 720):
+			failures.append("pan cue was not parsed")
+		if hold < HOLD:
+			failures.append(f"pan path hold {hold} is under the 2s floor")
 	for failure in failures:
 		print(f"zoom self-check: {failure}", file=sys.stderr)
 	print(f"zoom self-check: {'FAILED' if failures else 'ok'}")
 	return 1 if failures else 0
+
+
+
+@dataclass(frozen=True)
+class Cue:
+	"""One camera move. Frame numbers are in the take's capture rate."""
+
+	kind: str
+	frame: int
+	rect: tuple[int, int, int, int] | None = None
+
+
+def parse_cues(path: Path) -> list[Cue]:
+	"""Read `zoom-in FRAME [x,y,w,h]` / `zoom-out FRAME` rows."""
+	cues: list[Cue] = []
+	for raw in path.read_text().splitlines():
+		line = raw.strip()
+		if not line or line.startswith("#"):
+			continue
+		parts = line.split()
+		if parts[0] in ("zoom-in", "pan"):
+			if len(parts) not in (2, 3):
+				raise ValueError(f"{path}: bad {parts[0]} row: {raw}")
+			rect = None
+			if len(parts) == 3:
+				nums = [int(n) for n in parts[2].split(",")]
+				if len(nums) != 4:
+					raise ValueError(f"{path}: {parts[0]} rect must be x,y,w,h")
+				rect = (nums[0], nums[1], nums[2], nums[3])
+			kind = "in" if parts[0] == "zoom-in" else "pan"
+			cues.append(Cue(kind, int(parts[1]), rect))
+		elif parts[0] == "zoom-out":
+			if len(parts) != 2:
+				raise ValueError(f"{path}: bad zoom-out row: {raw}")
+			cues.append(Cue("out", int(parts[1])))
+		else:
+			raise ValueError(f"{path}: unknown cue {parts[0]!r}")
+	if not cues:
+		raise ValueError(f"{path}: no cues")
+	return cues
+
+
+def cues_to_window(cues: list[Cue], *, fps: float, ease: float) -> tuple[float, float]:
+	"""The first zoom-in / zoom-out pair, as take-seconds and hold length.
+
+	Ease lives outside the hold: zoom-in finishes on the in cue, zoom-out starts
+	on the out cue. Charging ease against the hold made a longer ease steal the
+	readable secret and start the pull-back early.
+	"""
+	ins = [c for c in cues if c.kind == "in"]
+	outs = [c for c in cues if c.kind == "out"]
+	if len(ins) != 1 or len(outs) != 1:
+		raise ValueError("cues must name exactly one zoom-in and one zoom-out")
+	at = ins[0].frame / fps
+	out_at = outs[0].frame / fps
+	hold = out_at - at
+	if hold < HOLD - 1e-9:
+		raise ValueError(f"cue hold is {hold:.2f}s; the secret must stay readable for {HOLD:.1f}s")
+	return at, hold
+
+
+def first_in_rect(cues: list[Cue]) -> tuple[int, int, int, int] | None:
+	for cue in cues:
+		if cue.kind == "in":
+			return cue.rect
+	return None
+
+
+def first_pan(cues: list[Cue]) -> Cue | None:
+	for cue in cues:
+		if cue.kind == "pan":
+			return cue
+	return None
 
 
 def main() -> int:
@@ -411,7 +688,19 @@ def main() -> int:
 	parser.add_argument("--marks", type=Path, help="the marks file a scene wrote")
 	parser.add_argument("--mark", help="the name of the mark to zoom into")
 	parser.add_argument("--hold", type=float, default=HOLD, help=f"seconds held at full zoom (default {HOLD})")
-	parser.add_argument("--ease", type=float, default=EASE, help=f"seconds of move each way (default {EASE})")
+	parser.add_argument("--ease", type=float, default=EASE, help=f"seconds of zoom-in (default {EASE})")
+	parser.add_argument(
+		"--ease-out",
+		type=float,
+		default=EASE_OUT,
+		help=f"seconds of zoom-out (default {EASE_OUT})",
+	)
+	parser.add_argument(
+		"--pan-ease",
+		type=float,
+		default=PAN_EASE,
+		help=f"seconds of sideways travel at full zoom (default {PAN_EASE})",
+	)
 	parser.add_argument(
 		"--zoom",
 		type=float,
@@ -420,6 +709,14 @@ def main() -> int:
 	parser.add_argument("--pad", type=float, default=PAD, help=f"region padding as a share of its size (default {PAD})")
 	parser.add_argument("--crf", type=int, default=18, help="x264 quality of the intermediate")
 	parser.add_argument("--self-check", action="store_true", help="prove the stage on a synthetic clip")
+	parser.add_argument("--cues", type=Path, help="camera cue file the scene emitted")
+	parser.add_argument("--fps", type=float, default=CUE_FPS, help="capture rate used to turn cue frames into seconds")
+	parser.add_argument(
+		"--magnify",
+		type=float,
+		default=MAGNIFY,
+		help=f"glyph size relative to the published wide shot (default {MAGNIFY})",
+	)
 	args = parser.parse_args()
 
 	if args.self_check:
@@ -432,22 +729,46 @@ def main() -> int:
 		parser.error("take and out are required")
 	if args.mark and not args.marks:
 		parser.error("--mark requires --marks")
-	if (args.at is None) == (args.mark is None):
-		parser.error("pass exactly one of --at and --mark")
-	if args.hold <= 0 or args.ease <= 0:
-		parser.error("--hold and --ease must be greater than zero")
+	named = [args.at is not None, args.mark is not None, args.cues is not None]
+	if sum(named) != 1:
+		parser.error("pass exactly one of --at, --mark, and --cues")
+	if args.hold <= 0 or args.ease <= 0 or args.ease_out <= 0 or args.pan_ease <= 0:
+		parser.error("--hold, --ease, --ease-out and --pan-ease must be greater than zero")
+	if args.magnify < 2.0:
+		parser.error("--magnify must be at least 2 so the secret line is readable at 1080p")
 
 	try:
-		at = args.at if args.at is not None else mark_time(args.marks, args.mark)
+		rect = None
+		pan_rect = None
+		at_pan = None
+		if args.cues is not None:
+			cues = parse_cues(args.cues)
+			at, hold = cues_to_window(cues, fps=args.fps, ease=args.ease)
+			rect = first_in_rect(cues)
+			pan = first_pan(cues)
+			if pan is not None:
+				if pan.rect is None:
+					raise ValueError("a pan cue needs an x,y,w,h crop")
+				pan_rect = pan.rect
+				at_pan = pan.frame / args.fps
+		else:
+			at = args.at if args.at is not None else mark_time(args.marks, args.mark)
+			hold = args.hold
 		zoom_into(
 			args.take,
 			args.out,
 			at=at,
-			hold=args.hold,
+			hold=hold,
 			ease=args.ease,
 			zoom=args.zoom,
 			pad=args.pad,
 			crf=args.crf,
+			magnify=args.magnify,
+			forced_rect=rect,
+			pan_rect=pan_rect,
+			at_pan=at_pan,
+			ease_out=args.ease_out,
+			pan_ease=args.pan_ease,
 		)
 	except ValueError as error:
 		print(f"zoom.py: {error}", file=sys.stderr)
