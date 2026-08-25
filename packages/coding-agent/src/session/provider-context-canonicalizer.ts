@@ -10,8 +10,12 @@ export interface CanonicalizedProviderMessages {
 /**
  * Incrementally canonicalize an append-mostly provider history.
  *
- * Source message identity defines the reusable prefix. A roots-array identity
- * change invalidates path rendering because an added root can affect old text.
+ * Source message identity defines the reusable prefix. A change of roots swaps
+ * the relativizer for everything canonicalized from then on and leaves that
+ * prefix alone, so a message keeps the exact bytes it was already sent with and
+ * a cwd change does not invalidate the provider's cached prefix. Re-rendering it
+ * would not reproduce those bytes: only the active cwd is a root, so a path under
+ * the previous one renders absolute once the session has moved.
  */
 export class ProviderContextCanonicalizer {
 	#map: ToolCallIdMap;
@@ -22,6 +26,12 @@ export class ProviderContextCanonicalizer {
 	#savedPrefix: number[] = [0];
 	#changedPrefix: number[] = [0];
 	#roots: readonly string[] | undefined;
+	#lastTransformedCount = 0;
+
+	/** Number of messages transformed during the most recent call to transform(). */
+	get lastTransformedCount(): number {
+		return this.#lastTransformedCount;
+	}
 	constructor(map: ToolCallIdMap, allocate: () => string) {
 		this.#map = map;
 		this.#allocate = allocate;
@@ -31,10 +41,6 @@ export class ProviderContextCanonicalizer {
 		if (this.#roots !== roots) {
 			this.#roots = roots;
 			this.#relativizer = createPathRelativizer(roots);
-			this.#source = [];
-			this.#output = [];
-			this.#savedPrefix = [0];
-			this.#changedPrefix = [0];
 		}
 
 		let common = 0;
@@ -42,6 +48,7 @@ export class ProviderContextCanonicalizer {
 		while (common < commonLimit && messages[common] === this.#source[common]) common += 1;
 
 		if (common === messages.length && common === this.#source.length) {
+			this.#lastTransformedCount = 0;
 			return {
 				messages: this.#changedPrefix[common] === 0 ? messages : this.#output,
 				bytesSaved: this.#savedPrefix[common] ?? 0,
@@ -63,6 +70,7 @@ export class ProviderContextCanonicalizer {
 			changedPrefix.push((changedPrefix.at(-1) ?? 0) + (relativized.message === source ? 0 : 1));
 		}
 
+		this.#lastTransformedCount = messages.length - common;
 		this.#source = messages;
 		this.#output = output;
 		this.#savedPrefix = savedPrefix;

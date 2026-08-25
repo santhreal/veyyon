@@ -18,7 +18,7 @@
 //!   watcher dies.
 //! - Windows: a Job Object with `JOB_OBJECT_CPU_RATE_CONTROL` hard cap.
 //!   `CpuRate` is a fraction of TOTAL machine capacity (`10_000` = every
-//!   logical processor), so the rate for N cores is `N / available * 10_000`.
+//!   logical processor), so the rate for N cores is `N / host * 10_000`.
 //! - Anything else (macOS): bookkeeping only. No per-group CPU quota exists
 //!   there, `throttles` is false, usage comes from summing `proc_pidinfo` over
 //!   tracked members, and the TS watcher layers deny / renice / kill on top.
@@ -34,6 +34,7 @@ mod linux;
 mod tracked;
 #[cfg(target_os = "windows")]
 mod windows;
+mod windows_rate;
 
 /// Which backend a budget group uses, chosen by the TS probe.
 #[derive(Debug, Clone)]

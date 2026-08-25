@@ -44,7 +44,14 @@ function ruleJson(fields: {
 	name: string;
 	description?: string;
 	condition?: string | string[];
+	astCondition?: string | string[];
 	scope?: string | string[];
+	interruptMode?: string;
+	pathScope?: string;
+	repeatMode?: string;
+	repeatGap?: number;
+	repeatCompactions?: number;
+	warmupMatches?: number;
 	body?: string;
 }): string {
 	return JSON.stringify({
@@ -88,7 +95,7 @@ describe("omfg rule parsing", () => {
 			error: "Generated rule JSON must include a non-empty name",
 		});
 		expect(parseGeneratedRule(ruleJson({ name: "no-condition", scope: "text" }))).toEqual({
-			error: "Generated rule JSON must include at least one condition",
+			error: "Generated rule JSON must include at least one condition or astCondition",
 		});
 		expect(parseGeneratedRule(ruleJson({ name: "no-scope", condition: "x" }))).toEqual({
 			error: "Generated rule JSON must include at least one scope",
@@ -105,7 +112,7 @@ describe("omfg rule parsing", () => {
 });
 
 describe("ruleMatchesAssistantHistory", () => {
-	it("matches edit tool arguments under a scoped TypeScript path", () => {
+	it("matches edit tool arguments under a scoped TypeScript path", async () => {
 		const { rule } = mustParse(ruleJson({ name: "ts-no-any", condition: ": any|as any", scope: "tool:edit(*.ts)" }));
 		const messages: AgentMessage[] = [
 			createAssistantMessage([
@@ -118,35 +125,35 @@ describe("ruleMatchesAssistantHistory", () => {
 			]),
 		];
 
-		expect(ruleMatchesAssistantHistory(rule, messages)).toBe(true);
+		expect(await ruleMatchesAssistantHistory(rule, messages)).toBe(true);
 	});
 
-	it("matches assistant prose in text scope", () => {
+	it("matches assistant prose in text scope", async () => {
 		const { rule } = mustParse(ruleJson({ name: "no-handwave", condition: "cut corners", scope: "text" }));
 		const messages: AgentMessage[] = [
 			createAssistantMessage([{ type: "text", text: "I should not cut corners here." }]),
 		];
 
-		expect(ruleMatchesAssistantHistory(rule, messages)).toBe(true);
+		expect(await ruleMatchesAssistantHistory(rule, messages)).toBe(true);
 	});
 
-	it("returns false when the pattern is absent", () => {
+	it("returns false when the pattern is absent", async () => {
 		const { rule } = mustParse(ruleJson({ name: "absent", condition: "needle", scope: "text" }));
 		const messages: AgentMessage[] = [createAssistantMessage([{ type: "text", text: "Only hay here." }])];
 
-		expect(ruleMatchesAssistantHistory(rule, messages)).toBe(false);
+		expect(await ruleMatchesAssistantHistory(rule, messages)).toBe(false);
 	});
 
-	it("returns false when the rule cannot be registered", () => {
+	it("returns false when the rule cannot be registered", async () => {
 		const { rule } = mustParse(ruleJson({ name: "base", condition: "needle", scope: "text" }));
 		const invalidRule: Rule = { ...rule, name: "no-condition", condition: undefined };
 
 		expect(
-			ruleMatchesAssistantHistory(invalidRule, [createAssistantMessage([{ type: "text", text: "needle" }])]),
+			await ruleMatchesAssistantHistory(invalidRule, [createAssistantMessage([{ type: "text", text: "needle" }])]),
 		).toBe(false);
 	});
 
-	it("repairs one layer of double-escaped regex condition while parsing", () => {
+	it("repairs one layer of double-escaped regex condition while parsing", async () => {
 		const candidate = mustParse(
 			ruleJson({
 				name: "ruby-no-eval",
@@ -166,9 +173,141 @@ describe("ruleMatchesAssistantHistory", () => {
 		];
 
 		expect(candidate.rule.condition).toEqual(["\\beval\\s*\\("]);
-		expect(ruleMatchesAssistantHistory(candidate.rule, messages)).toBe(true);
-		const validation = validateParsedRuleAgainstAssistantHistory(candidate, messages);
+		expect(await ruleMatchesAssistantHistory(candidate.rule, messages)).toBe(true);
+		const validation = await validateParsedRuleAgainstAssistantHistory(candidate, messages);
 		expect(validation.repairedCondition).toBe(false);
 		expect(validation.validation.matched).toBe(true);
+	});
+});
+
+describe("omfg extended TTSR fields", () => {
+	it("writes optional fields into frontmatter and the parsed rule", () => {
+		const result = mustParse(
+			ruleJson({
+				name: "ts-no-as-any",
+				condition: "as any",
+				astCondition: ["$VALUE as any"],
+				scope: "tool:edit(*.ts)",
+				interruptMode: "tool-only",
+				pathScope: "outside-cwd",
+				repeatMode: "after-gap",
+				repeatGap: 5,
+				repeatCompactions: 3,
+				warmupMatches: 2,
+			}),
+		);
+
+		expect(result.rule.astCondition).toEqual(["$VALUE as any"]);
+		expect(result.rule.interruptMode).toBe("tool-only");
+		expect(result.rule.pathScope).toBe("outside-cwd");
+		expect(result.rule.repeatMode).toBe("after-gap");
+		expect(result.rule.repeatGap).toBe(5);
+		expect(result.rule.repeatCompactions).toBe(3);
+		expect(result.rule.warmupMatches).toBe(2);
+		expect(result.fileContent).toContain('astCondition: "$VALUE as any"');
+		expect(result.fileContent).toContain("interruptMode: tool-only");
+		expect(result.fileContent).toContain("pathScope: outside-cwd");
+		expect(result.fileContent).toContain("repeatMode: after-gap");
+		expect(result.fileContent).toContain("repeatGap: 5");
+		expect(result.fileContent).toContain("repeatCompactions: 3");
+		expect(result.fileContent).toContain("warmupMatches: 2");
+	});
+
+	it("keeps every optional field out of frontmatter the model left unset", () => {
+		const result = mustParse(ruleJson({ name: "plain", condition: "needle", scope: "text" }));
+
+		for (const key of [
+			"astCondition:",
+			"interruptMode:",
+			"pathScope:",
+			"repeatMode:",
+			"repeatGap:",
+			"repeatCompactions:",
+			"warmupMatches:",
+		]) {
+			expect(result.fileContent).not.toContain(key);
+			expect(result.rule[key as keyof typeof result.rule]).toBeUndefined();
+		}
+	});
+
+	it("accepts an ast-only rule without a regex condition", () => {
+		const result = mustParse(
+			ruleJson({ name: "rb-eval-shape", astCondition: "eval($X)", scope: "tool:write(*.rb)" }),
+		);
+
+		expect(result.rule.condition).toBeUndefined();
+		expect(result.rule.astCondition).toEqual(["eval($X)"]);
+	});
+
+	it("rejects invalid enum and integer fields loudly instead of dropping them", () => {
+		expect(
+			parseGeneratedRule(ruleJson({ name: "bad-mode", condition: "x", scope: "text", interruptMode: "sometimes" })),
+		).toEqual({
+			error: 'Generated rule JSON field "interruptMode" must be one of "never", "prose-only", "tool-only", "always"',
+		});
+		expect(
+			parseGeneratedRule(ruleJson({ name: "bad-path-scope", condition: "x", scope: "text", pathScope: "anywhere" })),
+		).toEqual({
+			error: 'Generated rule JSON field "pathScope" must be one of "outside-cwd", "inside-cwd"',
+		});
+		expect(
+			parseGeneratedRule(ruleJson({ name: "bad-repeat", condition: "x", scope: "text", repeatMode: "every-turn" })),
+		).toEqual({
+			error: 'Generated rule JSON field "repeatMode" must be one of "once", "after-gap", "per-compact"',
+		});
+		expect(parseGeneratedRule(ruleJson({ name: "bad-gap", condition: "x", scope: "text", repeatGap: -1 }))).toEqual({
+			error: 'Generated rule JSON field "repeatGap" must be an integer >= 0',
+		});
+		expect(
+			parseGeneratedRule(ruleJson({ name: "bad-warmup", condition: "x", scope: "text", warmupMatches: 1.5 })),
+		).toEqual({
+			error: 'Generated rule JSON field "warmupMatches" must be an integer >= 1',
+		});
+	});
+
+	it("matches ast conditions structurally against historical tool source under runtime gates", async () => {
+		const { rule } = mustParse(
+			ruleJson({
+				name: "ts-as-any-shape",
+				condition: "never-happens-zzz",
+				astCondition: "$VALUE as any",
+				scope: "tool:edit(*.ts)",
+			}),
+		);
+		const messages: AgentMessage[] = [
+			createAssistantMessage([
+				{
+					type: "toolCall",
+					id: "call-1",
+					name: "edit",
+					arguments: { path: "src/example.ts", edits: [{ newString: "const speed = input as any;" }] },
+				},
+			]),
+		];
+
+		expect(await ruleMatchesAssistantHistory(rule, messages)).toBe(true);
+	});
+
+	it("does not match ast conditions on a language the scope never reaches", async () => {
+		const { rule } = mustParse(
+			ruleJson({
+				name: "ts-as-any-shape-narrow",
+				condition: "never-happens-zzz",
+				astCondition: "$VALUE as any",
+				scope: "tool:edit(*.go)",
+			}),
+		);
+		const messages: AgentMessage[] = [
+			createAssistantMessage([
+				{
+					type: "toolCall",
+					id: "call-1",
+					name: "edit",
+					arguments: { path: "src/example.ts", edits: [{ newString: "const speed = input as any;" }] },
+				},
+			]),
+		];
+
+		expect(await ruleMatchesAssistantHistory(rule, messages)).toBe(false);
 	});
 });

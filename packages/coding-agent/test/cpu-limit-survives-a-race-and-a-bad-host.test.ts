@@ -26,6 +26,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { CpuBudgetGroupHandle, CpuLimitEnvironment } from "../src/session/cpu-limit";
 import {
+	CpuLimitDeniedError,
 	defaultCpuLimitEnvironment,
 	probeCpuLimitSupport,
 	SessionCpuLimit,
@@ -128,6 +129,9 @@ describe("a budget whose first setup failed", () => {
 
 		expect(await limiter.ensureGroup()).toBeUndefined();
 		expect(notices.some(text => text.includes("could not be created"))).toBe(true);
+		expect(notices.some(text => text.includes("will run uncapped"))).toBe(false);
+		expect(notices.some(text => text.includes("refused rather than run uncapped"))).toBe(true);
+		expect(() => limiter.assertMaySpawn("a bash command")).toThrow(CpuLimitDeniedError);
 		// The failure is sticky WITHIN one setting: a retry on every spawn would
 		// pay the full setup cost again on each command.
 		expect(await limiter.ensureGroup()).toBeUndefined();
