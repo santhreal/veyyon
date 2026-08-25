@@ -68,6 +68,12 @@
 ### Fixed
 
 - With Language Servers off, which is the default, the write and edit tools no longer start a language server to inject diagnostics, format the file, or notify the workspace that a file changed, including on the ACP client-bridge write path.
+- A malformed `irc` send reports its own validation error instead of being reported as an interrupted wait when a peer message arrives in the same batch.
+- A `job` list snapshot or cancel-only call keeps its own result when an interrupt lands beside it.
+- The composer sits on the viewport bottom on the frame it mounts instead of appearing mid-screen for a moment after the launch card is adopted.
+- The Agent Control Center reports the model an agent is running now instead of the one recorded when it registered.
+- `/new` and `/resume` restart the driving session's roster clock, so the Agent Control Center no longer ages the main agent from the conversation that ended.
+- The main agent's roster age advances with its turns instead of freezing at process start.
 - Web search no longer reports "Public Web returned no renderable search content" when one engine serves a bot wall: Startpage's proof-of-work interstitial served at HTTP 200 is now refused as a challenge, and an engine answering with zero results no longer ends the aggregate's wait for a slower engine that has results.
 - Adding an account with a key the provider rejects now leaves the error on screen, instead of remounting the account manager over it so the attempt looked like it silently did nothing; cancelling still returns to the account card.
 - `veyyon plugin install --dry-run` now resolves the target and fails when it cannot be installed, instead of exiting 0 with "Would install" for an unpublished npm name or a missing git repository, and reports the name and version the target resolves to rather than a `0.0.0-dryrun` placeholder ([#911](https://github.com/santhreal/veyyon/issues/911)).
@@ -92,6 +98,7 @@
 - Side requests derive a stable conversation ID per oneshot kind, preventing compaction, handoff, and branch summaries from overwriting live Cursor and Devin conversation state.
 - Aborting while paused rejects the pause wait and prevents the agent loop from starting another provider turn or paused tool.
 - A branch-summary reserve at or above the model's context window now falls back to the proportional 15% reserve instead of leaving a non-positive budget, which the entry preparation read as "no limit" and which sent the whole branch.
+- A tool that blocks on only some of its operations declares interruptibility per call, so an interrupt arriving beside a non-blocking or malformed call no longer replaces that call's own result with a skipped placeholder.
 - Fixed OpenAI server-side compaction requests omitting the `Authorization` header when constructing headers from request setup.
 - Supported server-side compaction on the ChatGPT Codex backend with OAuth credential and turn identity headers.
 - API option mapping preserves side-request conversation IDs, preventing Cursor and Devin requests from falling back to the live session ID.
