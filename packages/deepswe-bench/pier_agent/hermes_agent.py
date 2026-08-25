@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import shlex
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 from hermes_replay_driver import EXACT_MODEL, load_replay_manifest
 from pier.agents.installed.base import BaseInstalledAgent
@@ -24,7 +24,7 @@ CONTAINER_LOGS_DIR = "/logs/agent"
 class HermesAgent(BaseInstalledAgent):
     """Replay user turns through Hermes's real loop, resume, and compact natively."""
 
-    SUPPORTS_ATIF: bool = False
+    SUPPORTS_ATIF: ClassVar[bool] = False
 
     @staticmethod
     def name() -> str:
