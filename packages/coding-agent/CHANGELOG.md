@@ -85,6 +85,7 @@
 - `#checkCompaction` and `orderedByTimestamp` use `Date.parse` instead of `new Date(...).getTime()`, avoiding a Date object allocation on the per-turn compaction check and the session sort comparator.
 - `EventController.#handleMessageUpdate` gates the tool-call component-update and intent-extraction loops behind `timeline.hasToolCalls`, skipping two full `content` array iterations per streaming delta during text-only streaming (the common per-token case).
 - `AgentSession.#emitSessionEvent` skips the `#queueExtensionEvent` promise chain for `message_update` events when no extension handlers are registered for that event type, avoiding a closure and two promise allocations per streamed token in the common no-extensions case.
+- `StreamingRevealController.setTarget` accepts a `hasToolCalls` flag from the caller, replacing a per-token `message.content.some(block => block.type === "toolCall")` scan with an O(1) boolean check during streaming.
 
 ### Added
 

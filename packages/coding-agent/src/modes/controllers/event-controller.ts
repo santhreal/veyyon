@@ -885,7 +885,7 @@ export class EventController {
 			}
 			this.ctx.streamingMessage = event.message;
 			const timeline = splitAssistantMessageToolTimeline(this.ctx.streamingMessage);
-			this.#streamingReveal.setTarget(timeline.beforeTools);
+			this.#streamingReveal.setTarget(timeline.beforeTools, timeline.hasToolCalls);
 
 			let visibleBlockCount = 0;
 			for (const content of this.ctx.streamingMessage.content) {

@@ -274,7 +274,7 @@ export class StreamingRevealController {
 		this.#syncTimer(total);
 	}
 
-	setTarget(message: AssistantMessage): void {
+	setTarget(message: AssistantMessage, hasToolCalls = false): void {
 		this.#target = message;
 		this.#hideThinkingBlock = this.#getHideThinkingBlock();
 		this.#proseOnlyThinking = this.#getProseOnlyThinking();
@@ -286,7 +286,7 @@ export class StreamingRevealController {
 			return;
 		}
 		const total = this.#visibleUnits(message);
-		if (message.content.some(block => block.type === "toolCall")) {
+		if (hasToolCalls) {
 			// A tool call is a transcript-order boundary: finish any leading
 			// assistant text before EventController renders the separate tool card.
 			this.#revealed = total;
