@@ -175,10 +175,10 @@ describe("a footer click target holds the mouse in a session that never scrolls"
 		const bar = new ChipBar();
 		const { term, stop } = await rig([bar]);
 		try {
-			// Footer is the last two frame rows: chip bar then composer. The chip
-			// row is therefore the second-to-last screen row, and the click must
-			// arrive as line 0 of the bar.
-			term.sendInput(leftClickAt(HEIGHT - 2, 4));
+			// Footer is the last two frame rows: chip bar then composer. With body
+			// providing 2 transcript rows, the chip row is screen row 2, and the
+			// click must arrive as line 0 of the bar.
+			term.sendInput(leftClickAt(2, 4));
 			expect(bar.clicks).toEqual([{ line: 0, col: 4 }]);
 		} finally {
 			stop();
@@ -226,7 +226,7 @@ describe("a footer click target holds the mouse in a session that never scrolls"
 			expect(after).toContain(TRACKING_OFF);
 			expect(after).not.toContain(TRACKING_BUTTONS_ON);
 			// And the grab really is gone: a click on the row is not routed.
-			term.sendInput(leftClickAt(HEIGHT - 2, 4));
+			term.sendInput(leftClickAt(2, 4));
 			expect(bar.clicks).toEqual([]);
 		} finally {
 			stop();
