@@ -141,6 +141,7 @@ export const TAB_GROUPS: Record<SettingTab, readonly string[]> = {
 	tools: [
 		"Available Tools",
 		"Todos",
+		"Launch",
 		"Search Context",
 		"Browser",
 		"GitHub",

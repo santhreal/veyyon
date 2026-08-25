@@ -629,6 +629,7 @@ export async function createTools(session: ToolSession, toolNames?: string[]): P
 		goalEnabled,
 		enableLsp,
 		lspEnabled: session.settings.get("lsp.enabled"),
+		lspTool: session.settings.get("lsp.tool"),
 		bashEnabled: session.settings.get("bash.enabled"),
 		launchEnabled: session.settings.get("launch.enabled"),
 		evalAllowed: allowEval,

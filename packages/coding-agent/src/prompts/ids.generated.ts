@@ -104,6 +104,7 @@ export const PROMPT_IDS: readonly string[] = [
 	"requests/review-headless",
 	"rules/ttsr-interrupt",
 	"rules/ttsr-tool-reminder",
+	"session/code-review-reminder",
 	"session/context-file-authority",
 	"session/custom-system-prompt",
 	"session/personalities/default",

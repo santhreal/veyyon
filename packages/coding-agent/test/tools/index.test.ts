@@ -151,6 +151,22 @@ describe("createTools", () => {
 		expect(names).not.toContain("lsp");
 	});
 
+	it("excludes lsp tool when the agent-tool switch is off", async () => {
+		const session = createTestSession({
+			settings: Settings.isolated({ "lsp.enabled": true, "lsp.tool": false }),
+		});
+		const tools = await createTools(session, ["read", "lsp", "write"]);
+		expect(tools.map(t => t.name)).not.toContain("lsp");
+	});
+
+	it("includes lsp tool when language servers and the agent-tool switch are on", async () => {
+		const session = createTestSession({
+			settings: Settings.isolated({ "lsp.enabled": true, "lsp.tool": true }),
+		});
+		const tools = await createTools(session, ["read", "lsp", "write"]);
+		expect(tools.map(t => t.name)).toContain("lsp");
+	});
+
 	it("respects requested tool subset", async () => {
 		const session = createTestSession();
 		const tools = await createTools(session, ["read", "write"]);
