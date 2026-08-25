@@ -1022,7 +1022,8 @@ function renderSingleFileResult(
 				body = uiTheme.fg("dim", `No changes were made${noChangePath ? ` to ${noChangePath}` : ""}.`);
 			}
 		} else if (editDiffPreview) {
-			if ("error" in editDiffPreview) body = renderErrorSection(editDiffPreview.error, rawPath, expanded, uiTheme, linkPath);
+			if ("error" in editDiffPreview)
+				body = renderErrorSection(editDiffPreview.error, rawPath, expanded, uiTheme, linkPath);
 			else if (editDiffPreview.diff)
 				body = renderDiffSection(editDiffPreview.diff, rawPath, expanded, uiTheme, renderDiffFn, diffSectionCache);
 		}
