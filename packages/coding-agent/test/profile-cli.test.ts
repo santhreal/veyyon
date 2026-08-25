@@ -244,7 +244,11 @@ describe("global --profile flag", () => {
 				probePath,
 				[
 					`import { runCli } from ${JSON.stringify(url.pathToFileURL(cliEntry).href)};`,
-					'await runCli(["--profile", "work", "--help"]);',
+					// A subcommand's help, not root help: root help renders from the
+					// registry's summary table and loads no command module, so it
+					// observes no `.env` load at all. `config --help` loads the config
+					// command, which is what pulls `@veyyon/utils` and with it dotenv.
+					'await runCli(["--profile", "work", "config", "--help"]);',
 					'process.stdout.write("\\nSENTINEL=" + (Bun.env.VEYYON_PROFILE_BOOTSTRAP_SENTINEL ?? ""));',
 				].join("\n"),
 			);
