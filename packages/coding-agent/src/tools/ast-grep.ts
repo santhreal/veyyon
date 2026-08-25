@@ -210,7 +210,7 @@ export class AstGrepTool implements AgentTool<typeof astGrepSchema, AstGrepToolD
 	readonly approval = "read" as const;
 	// ast_grep reads file contents under its search path, so an out-of-cwd search
 	// prompts in non-yolo modes like a point read does. See cwd-boundary.ts.
-	readonly filesystemTargets = (args: unknown): string[] => searchPathFilesystemTargets(args);
+	readonly filesystemTargets = (args: unknown, cwd = this.session.cwd): string[] => searchPathFilesystemTargets(args, cwd);
 	readonly label = "AST Grep";
 	readonly summary = "Search code with AST patterns (structural grep)";
 	readonly description: string;

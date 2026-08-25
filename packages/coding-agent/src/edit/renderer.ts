@@ -724,25 +724,17 @@ function renderErrorSection(
 	linkPath?: string,
 ): string {
 	let sanitized = errorText;
-	for (const candidate of [rawPath, linkPath]) {
-		if (candidate && typeof candidate === "string" && candidate.length > 0) {
-			const shortened = shortenPath(candidate);
-			if (shortened !== candidate) {
-				sanitized = sanitized.replaceAll(candidate, shortened);
-			}
-		}
+	for (const p of [rawPath, linkPath]) {
+		if (p) sanitized = sanitized.replaceAll(p, shortenPath(p));
 	}
 	sanitized = sanitized
 		.split("\n")
 		.map(line =>
 			line
 				.split(" ")
-				.map(segment => {
-					const leading = segment.match(/^[("'`[]*/)?.[0] ?? "";
-					const trailing = segment.match(/[)"'`,.;:\]]*$/)?.[0] ?? "";
-					const end = segment.length - trailing.length;
-					if (leading.length >= end) return segment;
-					return `${leading}${shortenPath(segment.slice(leading.length, end))}${trailing}`;
+				.map(w => {
+					const m = /^([("'`[]*)(.*?)([)"'`,.;:\]]*)$/.exec(w);
+					return m ? `${m[1]}${shortenPath(m[2])}${m[3]}` : w;
 				})
 				.join(" "),
 		)
@@ -754,10 +746,9 @@ function renderErrorSection(
 	}
 	const visible = lines.slice(0, PREVIEW_LIMITS.DIFF_COLLAPSED_LINES);
 	const hiddenLines = lines.length - visible.length;
-	const renderedLines = visible.map(line => uiTheme.fg("error", replaceTabs(line)));
-	const hint = formatExpandHint(uiTheme, expanded, true);
-	renderedLines.push(uiTheme.fg("dim", `… ${formatMoreLines(hiddenLines)}${hint ? ` ${hint}` : ""}`));
-	return renderedLines.join("\n");
+	const rendered = visible.map(line => uiTheme.fg("error", replaceTabs(line)));
+	rendered.push(uiTheme.fg("dim", `… ${formatMoreLines(hiddenLines)} ${formatExpandHint(uiTheme)}`.trimEnd()));
+	return rendered.join("\n");
 }
 
 /**
