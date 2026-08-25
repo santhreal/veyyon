@@ -1,0 +1,49 @@
+{
+	"schemaVersion": 1,
+	"id": "4caa179277c55246",
+	"status": "recorded",
+	"recordedAt": "2026-08-25T15:01:09.862Z",
+	"template": "composer-sweep",
+	"seed": 0,
+	"state": {
+		"width": 10,
+		"height": 24,
+		"modeState": {
+			"focusedSubagent": true,
+			"thinkingLevel": "off"
+		},
+		"editorText": "é ä ñ café",
+		"transcriptLines": 50,
+		"scrollIsolation": true,
+		"scrollOffset": 2,
+		"focused": true
+	},
+	"failingOracle": "virtualScrollPreservesFooterStability",
+	"errorMessage": "Virtual scroll footer row 2 ('  › e a n') differs from live footer ('  › é ä').",
+	"observedGrid": [
+		"transcrip│",
+		"transcrip│",
+		"transcrip│",
+		"transcrip│",
+		"transcrip│",
+		"transcrip│",
+		"transcrip│",
+		"transcrip│",
+		"transcrip█",
+		"transcrip█",
+		"transcrip█",
+		"transcrip█",
+		"transcrip█",
+		"transcrip│",
+		"transcrip│",
+		"transcrip│",
+		"──────────",
+		"",
+		"  › e a n",
+		"  ┆ cafe",
+		"",
+		"location:",
+		"/ menu · ^",
+		""
+	]
+}

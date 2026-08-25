@@ -1,0 +1,33 @@
+{
+	"schemaVersion": 1,
+	"id": "e54191ac397fe4bc",
+	"status": "recorded",
+	"recordedAt": "2026-08-25T14:58:04.793Z",
+	"template": "composer-sweep",
+	"seed": 0,
+	"state": {
+		"width": 120,
+		"height": 8,
+		"modeState": {
+			"focusedSubagent": true,
+			"thinkingLevel": "off"
+		},
+		"editorText": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		"transcriptLines": 50,
+		"scrollIsolation": true,
+		"scrollOffset": 2,
+		"focused": true
+	},
+	"failingOracle": "virtualScrollPreservesFooterStability",
+	"errorMessage": "Virtual scroll footer row 2 ('  ┆ aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa') differs from live footer ('  ┆ aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa                                                                                  ').",
+	"observedGrid": [
+		"transcript-output-line-0040",
+		"",
+		"  › aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		"  ┆ aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		"",
+		"location: ~/project · model: test-model",
+		"/ menu · ^c exit",
+		""
+	]
+}

@@ -1,0 +1,37 @@
+{
+	"schemaVersion": 1,
+	"id": "6fd9ed97f746b0d6",
+	"status": "recorded",
+	"recordedAt": "2026-08-25T14:58:13.723Z",
+	"template": "composer-sweep",
+	"seed": 0,
+	"state": {
+		"width": 20,
+		"height": 12,
+		"modeState": {
+			"sessionAccentAnsi": "\u001b[38;2;255;100;50m",
+			"thinkingLevel": "off"
+		},
+		"editorText": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		"transcriptLines": 50,
+		"scrollIsolation": true,
+		"scrollOffset": 2,
+		"focused": true
+	},
+	"failingOracle": "virtualScrollPreservesFooterStability",
+	"errorMessage": "Virtual scroll footer row 6 ('  ┆ aaaaaa') differs from live footer ('  ┆ aaaaaa          ').",
+	"observedGrid": [
+		"transcript-output-li",
+		"  ┆ aaaaaaaaaaaaaaaa",
+		"  ┆ aaaaaaaaaaaaaaaa",
+		"  ┆ aaaaaaaaaaaaaaaa",
+		"  ┆ aaaaaaaaaaaaaaaa",
+		"  ┆ aaaaaaaaaaaaaaaa",
+		"  ┆ aaaaaaaaaaaaaaaa",
+		"  ┆ aaaaaa",
+		"",
+		"location: ~/project",
+		"/ menu · ^c exit",
+		""
+	]
+}

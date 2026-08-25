@@ -1,0 +1,33 @@
+{
+	"schemaVersion": 1,
+	"id": "459f162c4f1d28dc",
+	"status": "recorded",
+	"recordedAt": "2026-08-25T14:44:06.304Z",
+	"template": "composer-sweep",
+	"seed": 0,
+	"state": {
+		"width": 40,
+		"height": 8,
+		"modeState": {
+			"pythonMode": true,
+			"thinkingLevel": "off"
+		},
+		"editorText": "你好世界 こんにちは 🚀",
+		"transcriptLines": 50,
+		"scrollIsolation": true,
+		"scrollOffset": 2,
+		"focused": true
+	},
+	"failingOracle": "exactlyOneComposerPrompt",
+	"errorMessage": "Expected exactly 1 composer prompt row in viewport, found 0 at rows: [].",
+	"observedGrid": [
+		"",
+		"",
+		"",
+		"",
+		"",
+		"",
+		"",
+		""
+	]
+}

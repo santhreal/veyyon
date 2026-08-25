@@ -1,0 +1,32 @@
+{
+	"schemaVersion": 1,
+	"id": "5cc4663accc51e5c",
+	"status": "recorded",
+	"recordedAt": "2026-08-25T14:55:49.240Z",
+	"template": "composer-sweep",
+	"seed": 0,
+	"state": {
+		"width": 20,
+		"height": 8,
+		"modeState": {
+			"thinkingLevel": "off"
+		},
+		"editorText": "function main() {\n  console.log('hello');\n  return 42;\n}",
+		"transcriptLines": 50,
+		"scrollIsolation": true,
+		"scrollOffset": 2,
+		"focused": true
+	},
+	"failingOracle": "virtualScrollPreservesFooterStability",
+	"errorMessage": "Virtual scroll footer row 0 ('  ┆ lo');') differs from live footer ('  ┆ lo');           ').",
+	"observedGrid": [
+		"transcript-output-li",
+		"  ┆ lo');",
+		"  ┆   return 42;",
+		"  ┆ }",
+		"",
+		"location: ~/project",
+		"/ menu · ^c exit",
+		""
+	]
+}

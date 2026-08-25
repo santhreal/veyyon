@@ -1,0 +1,31 @@
+{
+	"schemaVersion": 1,
+	"id": "049403d825ec2499",
+	"status": "recorded",
+	"recordedAt": "2026-08-25T14:53:52.436Z",
+	"template": "composer-sweep",
+	"seed": 0,
+	"state": {
+		"width": 120,
+		"height": 6,
+		"modeState": {
+			"pythonMode": true,
+			"thinkingLevel": "off"
+		},
+		"editorText": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		"transcriptLines": 50,
+		"scrollIsolation": true,
+		"scrollOffset": 2,
+		"focused": true
+	},
+	"failingOracle": "exactlyOneComposerPrompt",
+	"errorMessage": "Expected 1 composer prompt row(s) in viewport (expectedPromptInView=true), found 0 at rows: [].",
+	"observedGrid": [
+		"transcript-output-line-0040",
+		"  ┆ aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		"",
+		"location: ~/project · model: test-model",
+		"/ menu · ^c exit",
+		""
+	]
+}

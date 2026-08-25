@@ -1,0 +1,33 @@
+{
+	"schemaVersion": 1,
+	"id": "b830670c54c9fa22",
+	"status": "recorded",
+	"recordedAt": "2026-08-25T14:59:45.573Z",
+	"template": "composer-sweep",
+	"seed": 0,
+	"state": {
+		"width": 10,
+		"height": 8,
+		"modeState": {
+			"bypass": true,
+			"thinkingLevel": "off"
+		},
+		"editorText": "👨‍👩‍👧‍👦 🌟 🚀 ✨",
+		"transcriptLines": 50,
+		"scrollIsolation": true,
+		"scrollOffset": 2,
+		"focused": true
+	},
+	"failingOracle": "virtualScrollPreservesFooterStability",
+	"errorMessage": "Virtual scroll footer row 1 ('  ! 👨‍👩‍👧‍👦 🌟') differs from live footer ('  ! 👨‍👩‍').",
+	"observedGrid": [
+		"transcript",
+		"",
+		"  ! 👨‍👩‍👧‍👦 🌟",
+		"  ┆ 🚀 ✨",
+		"",
+		"location:",
+		"/ menu · ^",
+		""
+	]
+}

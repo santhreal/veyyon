@@ -1,0 +1,33 @@
+{
+	"schemaVersion": 1,
+	"id": "cb0d06889ec7963f",
+	"status": "recorded",
+	"recordedAt": "2026-08-25T14:52:57.767Z",
+	"template": "composer-sweep",
+	"seed": 0,
+	"state": {
+		"width": 20,
+		"height": 8,
+		"modeState": {
+			"bypass": true,
+			"thinkingLevel": "off"
+		},
+		"editorText": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		"transcriptLines": 5,
+		"scrollIsolation": true,
+		"scrollOffset": 0,
+		"focused": true
+	},
+	"failingOracle": "footerOccupiesBottomPhysicalRows",
+	"errorMessage": "Pinned footer top (-8) does not match expected top (0) for 16 footer rows in viewport of height 8.",
+	"observedGrid": [
+		"  ┆ aaaaaaaaaaaaaaaa",
+		"  ┆ aaaaaaaaaaaaaaaa",
+		"  ┆ aaaaaaaaaaaaaaaa",
+		"  ┆ aaaaaa",
+		"",
+		"location: ~/project",
+		"/ menu · ^c exit",
+		""
+	]
+}

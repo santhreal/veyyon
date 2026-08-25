@@ -1,0 +1,49 @@
+{
+	"schemaVersion": 1,
+	"id": "b6a5ab56bd864245",
+	"status": "recorded",
+	"recordedAt": "2026-08-25T14:53:58.399Z",
+	"template": "composer-sweep",
+	"seed": 0,
+	"state": {
+		"width": 10,
+		"height": 24,
+		"modeState": {
+			"planMode": true,
+			"thinkingLevel": "off"
+		},
+		"editorText": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		"transcriptLines": 0,
+		"scrollIsolation": true,
+		"scrollOffset": 0,
+		"focused": true
+	},
+	"failingOracle": "footerOccupiesBottomPhysicalRows",
+	"errorMessage": "Pinned footer top (-7) does not match expected top (0) for 31 footer rows in viewport of height 24.",
+	"observedGrid": [
+		"  ┆ aaaaaa",
+		"  ┆ aaaaaa",
+		"  ┆ aaaaaa",
+		"  ┆ aaaaaa",
+		"  ┆ aaaaaa",
+		"  ┆ aaaaaa",
+		"  ┆ aaaaaa",
+		"  ┆ aaaaaa",
+		"  ┆ aaaaaa",
+		"  ┆ aaaaaa",
+		"  ┆ aaaaaa",
+		"  ┆ aaaaaa",
+		"  ┆ aaaaaa",
+		"  ┆ aaaaaa",
+		"  ┆ aaaaaa",
+		"  ┆ aaaaaa",
+		"  ┆ aaaaaa",
+		"  ┆ aaaaaa",
+		"  ┆ aaaaaa",
+		"  ┆ aaaaaa",
+		"",
+		"location:",
+		"/ menu · ^",
+		""
+	]
+}

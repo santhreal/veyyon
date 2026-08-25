@@ -1,0 +1,49 @@
+{
+	"schemaVersion": 1,
+	"id": "2ef85736d1189b29",
+	"status": "recorded",
+	"recordedAt": "2026-08-25T15:00:11.793Z",
+	"template": "composer-sweep",
+	"seed": 0,
+	"state": {
+		"width": 20,
+		"height": 24,
+		"modeState": {
+			"bashMode": true,
+			"thinkingLevel": "off"
+		},
+		"editorText": "👨‍👩‍👧‍👦 🌟 🚀 ✨",
+		"transcriptLines": 50,
+		"scrollIsolation": true,
+		"scrollOffset": 2,
+		"focused": true
+	},
+	"failingOracle": "virtualScrollPreservesFooterStability",
+	"errorMessage": "Virtual scroll footer row 2 ('  $ 👨‍👩‍👧‍👦 🌟 🚀 ✨') differs from live footer ('  $ 👨‍👩‍👧‍👦 🌟 \ud83d').",
+	"observedGrid": [
+		"transcript-output-l│",
+		"transcript-output-l│",
+		"transcript-output-l│",
+		"transcript-output-l│",
+		"transcript-output-l│",
+		"transcript-output-l│",
+		"transcript-output-l│",
+		"transcript-output-l│",
+		"transcript-output-l█",
+		"transcript-output-l█",
+		"transcript-output-l█",
+		"transcript-output-l█",
+		"transcript-output-l█",
+		"transcript-output-l█",
+		"transcript-output-l│",
+		"transcript-output-l│",
+		"transcript-output-l│",
+		"────────────────────",
+		"",
+		"  $ 👨‍👩‍👧‍👦 🌟 🚀 ✨",
+		"",
+		"location: ~/project",
+		"/ menu · ^c exit",
+		""
+	]
+}

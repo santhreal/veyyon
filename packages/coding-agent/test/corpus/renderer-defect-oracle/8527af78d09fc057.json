@@ -1,0 +1,49 @@
+{
+	"schemaVersion": 1,
+	"id": "8527af78d09fc057",
+	"status": "recorded",
+	"recordedAt": "2026-08-25T14:57:12.922Z",
+	"template": "composer-sweep",
+	"seed": 0,
+	"state": {
+		"width": 20,
+		"height": 24,
+		"modeState": {
+			"pythonMode": true,
+			"thinkingLevel": "off"
+		},
+		"editorText": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		"transcriptLines": 50,
+		"scrollIsolation": true,
+		"scrollOffset": 2,
+		"focused": true
+	},
+	"failingOracle": "virtualScrollPreservesFooterStability",
+	"errorMessage": "Virtual scroll footer row 11 ('  ┆ aaaaaa') differs from live footer ('  ┆ aaaaaa          ').",
+	"observedGrid": [
+		"transcript-output-l│",
+		"transcript-output-l│",
+		"transcript-output-l│",
+		"transcript-output-l│",
+		"transcript-output-l│",
+		"transcript-output-l│",
+		"transcript-output-l█",
+		"transcript-output-l│",
+		"────────────────────",
+		"",
+		"  › aaaaaaaaaaaaaaaa",
+		"  ┆ aaaaaaaaaaaaaaaa",
+		"  ┆ aaaaaaaaaaaaaaaa",
+		"  ┆ aaaaaaaaaaaaaaaa",
+		"  ┆ aaaaaaaaaaaaaaaa",
+		"  ┆ aaaaaaaaaaaaaaaa",
+		"  ┆ aaaaaaaaaaaaaaaa",
+		"  ┆ aaaaaaaaaaaaaaaa",
+		"  ┆ aaaaaaaaaaaaaaaa",
+		"  ┆ aaaaaa",
+		"",
+		"location: ~/project",
+		"/ menu · ^c exit",
+		""
+	]
+}

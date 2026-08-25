@@ -1,0 +1,31 @@
+{
+	"schemaVersion": 1,
+	"id": "9d3432b8638203fb",
+	"status": "recorded",
+	"recordedAt": "2026-08-25T14:57:02.575Z",
+	"template": "composer-sweep",
+	"seed": 0,
+	"state": {
+		"width": 120,
+		"height": 6,
+		"modeState": {
+			"bashMode": true,
+			"thinkingLevel": "off"
+		},
+		"editorText": "你好世界 こんにちは 🚀",
+		"transcriptLines": 50,
+		"scrollIsolation": true,
+		"scrollOffset": 2,
+		"focused": true
+	},
+	"failingOracle": "virtualScrollPreservesFooterStability",
+	"errorMessage": "Virtual scroll footer row 0 ('  $ 你好世界 こんにちは 🚀') differs from live footer ('  $ 你好世界 こんにちは 🚀                                                                                              ').",
+	"observedGrid": [
+		"transcript-output-line-0040",
+		"  $ 你好世界 こんにちは 🚀",
+		"",
+		"location: ~/project · model: test-model",
+		"/ menu · ^c exit",
+		""
+	]
+}

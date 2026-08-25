@@ -1,0 +1,33 @@
+{
+	"schemaVersion": 1,
+	"id": "24944cec41adff8d",
+	"status": "recorded",
+	"recordedAt": "2026-08-25T14:53:14.873Z",
+	"template": "composer-sweep",
+	"seed": 0,
+	"state": {
+		"width": 10,
+		"height": 8,
+		"modeState": {
+			"bashMode": true,
+			"thinkingLevel": "off"
+		},
+		"editorText": "explain quantum computing",
+		"transcriptLines": 0,
+		"scrollIsolation": true,
+		"scrollOffset": 0,
+		"focused": true
+	},
+	"failingOracle": "footerOccupiesBottomPhysicalRows",
+	"errorMessage": "Pinned footer top (-3) does not match expected top (0) for 11 footer rows in viewport of height 8.",
+	"observedGrid": [
+		"  ┆ n quan",
+		"  ┆ tum co",
+		"  ┆ mputin",
+		"  ┆ g",
+		"",
+		"location:",
+		"/ menu · ^",
+		""
+	]
+}

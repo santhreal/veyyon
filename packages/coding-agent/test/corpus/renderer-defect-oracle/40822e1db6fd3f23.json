@@ -1,0 +1,31 @@
+{
+	"schemaVersion": 1,
+	"id": "40822e1db6fd3f23",
+	"status": "recorded",
+	"recordedAt": "2026-08-25T14:44:41.889Z",
+	"template": "composer-sweep",
+	"seed": 0,
+	"state": {
+		"width": 40,
+		"height": 6,
+		"modeState": {
+			"focusedSubagent": true,
+			"thinkingLevel": "off"
+		},
+		"editorText": "explain quantum computing",
+		"transcriptLines": 5,
+		"scrollIsolation": true,
+		"scrollOffset": 0,
+		"focused": true
+	},
+	"failingOracle": "exactlyOneComposerPrompt",
+	"errorMessage": "Expected exactly 1 composer prompt row in viewport, found 0 at rows: [].",
+	"observedGrid": [
+		"",
+		"",
+		"",
+		"",
+		"",
+		""
+	]
+}

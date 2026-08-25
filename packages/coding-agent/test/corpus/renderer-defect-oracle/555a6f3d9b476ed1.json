@@ -1,0 +1,49 @@
+{
+	"schemaVersion": 1,
+	"id": "555a6f3d9b476ed1",
+	"status": "recorded",
+	"recordedAt": "2026-08-25T14:57:08.577Z",
+	"template": "composer-sweep",
+	"seed": 0,
+	"state": {
+		"width": 10,
+		"height": 24,
+		"modeState": {
+			"pythonMode": true,
+			"thinkingLevel": "off"
+		},
+		"editorText": "",
+		"transcriptLines": 50,
+		"scrollIsolation": true,
+		"scrollOffset": 2,
+		"focused": true
+	},
+	"failingOracle": "virtualScrollPreservesFooterStability",
+	"errorMessage": "Virtual scroll footer row 2 ('  ›') differs from live footer ('  ›       ').",
+	"observedGrid": [
+		"transcrip│",
+		"transcrip│",
+		"transcrip│",
+		"transcrip│",
+		"transcrip│",
+		"transcrip│",
+		"transcrip│",
+		"transcrip│",
+		"transcrip█",
+		"transcrip█",
+		"transcrip█",
+		"transcrip█",
+		"transcrip█",
+		"transcrip█",
+		"transcrip│",
+		"transcrip│",
+		"transcrip│",
+		"──────────",
+		"",
+		"  ›",
+		"",
+		"location:",
+		"/ menu · ^",
+		""
+	]
+}

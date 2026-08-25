@@ -1,0 +1,49 @@
+{
+	"schemaVersion": 1,
+	"id": "95a02775dc99e660",
+	"status": "recorded",
+	"recordedAt": "2026-08-25T15:00:11.718Z",
+	"template": "composer-sweep",
+	"seed": 0,
+	"state": {
+		"width": 20,
+		"height": 24,
+		"modeState": {
+			"bashMode": true,
+			"thinkingLevel": "off"
+		},
+		"editorText": "é ä ñ café",
+		"transcriptLines": 50,
+		"scrollIsolation": true,
+		"scrollOffset": 2,
+		"focused": true
+	},
+	"failingOracle": "virtualScrollPreservesFooterStability",
+	"errorMessage": "Virtual scroll footer row 2 ('  $ e a n cafe') differs from live footer ('  $ é ä ñ café').",
+	"observedGrid": [
+		"transcript-output-l│",
+		"transcript-output-l│",
+		"transcript-output-l│",
+		"transcript-output-l│",
+		"transcript-output-l│",
+		"transcript-output-l│",
+		"transcript-output-l│",
+		"transcript-output-l│",
+		"transcript-output-l█",
+		"transcript-output-l█",
+		"transcript-output-l█",
+		"transcript-output-l█",
+		"transcript-output-l█",
+		"transcript-output-l█",
+		"transcript-output-l│",
+		"transcript-output-l│",
+		"transcript-output-l│",
+		"────────────────────",
+		"",
+		"  $ e a n cafe",
+		"",
+		"location: ~/project",
+		"/ menu · ^c exit",
+		""
+	]
+}
