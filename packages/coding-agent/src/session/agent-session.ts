@@ -6177,9 +6177,9 @@ export class AgentSession {
 					cacheWrite: usage.cacheWrite,
 				},
 			});
-			const fallbackAssistant = [...settledMessages]
-				.reverse()
-				.find((message): message is AssistantMessage => message.role === "assistant");
+		const fallbackAssistant = settledMessages.findLast(
+			(message): message is AssistantMessage => message.role === "assistant",
+		);
 			const msg = this.#lastAssistantMessage ?? fallbackAssistant;
 			this.#lastAssistantMessage = undefined;
 			if (!msg) {
@@ -8470,11 +8470,10 @@ export class AgentSession {
 	 * sent again.
 	 */
 	#lastDeliveredBlock(customType: string): string | undefined {
-		for (const message of [...this.agent.state.messages].reverse()) {
-			if (message.role !== "custom" || message.customType !== customType) continue;
-			return typeof message.content === "string" ? message.content : undefined;
-		}
-		return undefined;
+		const message = this.agent.state.messages.findLast(
+			(m): m is CustomMessage => m.role === "custom" && m.customType === customType,
+		);
+		return typeof message?.content === "string" ? message.content : undefined;
 	}
 
 	/** True once dispose() has begun; deferred background work (e.g. the deferred
