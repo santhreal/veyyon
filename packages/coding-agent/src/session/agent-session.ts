@@ -2372,7 +2372,7 @@ export class AgentSession {
 	/** Session-local provider-ID → `tc_<n>` map; rebuilt from history on resume. */
 	#toolCallIdMap = new Map<string, string>();
 	#toolCallIdCounter = 0;
-	/** Session cwd roots accumulated over setCwd calls; rebuilt from history on resume. */
+	/** Active session cwd root for outbound wire path relativization. */
 	#wirePathRoots: string[] = [];
 	/**
 	 * Directory {@link AgentSession.rescopeToCwd} last re-scoped to, so the two
@@ -3197,17 +3197,11 @@ export class AgentSession {
 		// byte-identically (prompt cache preserved). On resume the map rebuilds from
 		// stored history by walking messages in order (no schema change).
 		const upstreamTransformProviderContext = config.transformProviderContext;
-		// Roots accumulate: initial cwd plus every cwd_changed target replayed from
-		// stored history, so a resumed session renders old bytes identically and a
-		// mid-session setCwd never rewrites them (prompt-cache prefix survives).
-		this.#wirePathRoots = normalizeRoots([
-			this.sessionManager.getCwd(),
-			...this.sessionManager.getEntries().flatMap(entry => {
-				if (entry.type !== "custom_message" || entry.customType !== "cwd_changed") return [];
-				if (!isRecord(entry.details) || typeof entry.details.cwd !== "string") return [];
-				return [entry.details.cwd];
-			}),
-		]);
+		// Outbound wire-path canonicalization (TW-10): render paths under the active
+		// session cwd relative to that root. Only the active cwd is a root; accumulating
+		// prior cwds would strip paths from previous directories to "." as well, making
+		// distinct absolute paths indistinguishable.
+		this.#wirePathRoots = normalizeRoots([this.sessionManager.getCwd()]);
 		const providerContextCanonicalizer = new ProviderContextCanonicalizer(this.#toolCallIdMap, () => {
 			this.#toolCallIdCounter += 1;
 			return `tc_${this.#toolCallIdCounter}`;
@@ -8209,7 +8203,7 @@ export class AgentSession {
 	}
 
 	#recordCwdChange(previous: string, cwd: string): void {
-		this.#wirePathRoots = normalizeRoots([...this.#wirePathRoots, cwd]);
+		this.#wirePathRoots = normalizeRoots([cwd]);
 		const note = `Session working directory changed: ${previous} → ${cwd}`;
 		const details = { previous, cwd };
 		this.agent.appendMessage({
@@ -19216,7 +19210,7 @@ export class AgentSession {
 			if (path.resolve(targetCwd) !== path.resolve(previousSessionState.cwd)) {
 				scopeTransitionAttempted = true;
 				await this.#rescopeToCwd(targetCwd);
-				this.#wirePathRoots = normalizeRoots([...this.#wirePathRoots, targetCwd]);
+				this.#wirePathRoots = normalizeRoots([targetCwd]);
 			}
 
 			if (switchingToDifferentSession) {

@@ -7,10 +7,8 @@
  * relative to their root; persisted history keeps the original absolute bytes
  * (fidelity/audit) and inbound model output passes through untouched (tools
  * resolve relative paths against the live cwd).
- *
- * Roots accumulate over the session (initial cwd plus every setCwd target, in
- * order), so a mid-session setCwd only grows the root set: old history keeps
- * rendering byte-identically and the prompt-cache prefix survives the change.
+ * The active cwd is the single registered root so paths under the current working
+ * directory render relative while paths under other roots stay absolute and distinct.
  */
 
 import type { AssistantMessage, Message, TextContent, ToolResultMessage } from "@veyyon/ai";
