@@ -3390,8 +3390,12 @@ export class SettingsSelectorComponent implements Component {
 	 * Recompute matches across every settings tab. Results render as one flat
 	 * list with a heading row per tab; the footer tab bar reorders to show
 	 * matching tabs (with counts) first and the rest muted at the end.
+	 *
+	 * `pinTopMatch` follows the best hit as the query refines. A recompute the
+	 * query did not cause — a value edited on a result row — passes false,
+	 * because pinning there throws the cursor off the row being edited.
 	 */
-	#setSearchQuery(query: string): void {
+	#setSearchQuery(query: string, pinTopMatch = true): void {
 		if (!this.#searchList) return;
 		if (query.length === 0) {
 			this.#endSearch(false);
@@ -3437,13 +3441,15 @@ export class SettingsSelectorComponent implements Component {
 		}
 
 		this.#searchList.setItems(items);
-		const best = items.find(item => !item.heading);
-		if (best) this.#searchList.selectItem(best.id);
-		// Follow the best match as the query refines. setItems preserves selection
-		// by id, so an intermediate keystroke whose top hit was a worse row
-		// stranded the cursor there while the list re-ranked around it — Enter
-		// then activated the third-best match. Arrow keys never reach this path,
-		// so pinning the top row costs no navigation.
+		if (pinTopMatch) {
+			// setItems preserves selection by id, so an intermediate keystroke
+			// whose top hit was a worse row stranded the cursor there while the
+			// list re-ranked around it, and Enter activated the third-best match.
+			// Arrow keys change no input value and never reach this path, so
+			// pinning the top row costs no navigation.
+			const best = items.find(item => !item.heading);
+			if (best) this.#searchList.selectItem(best.id);
+		}
 		this.#searchMatchCount = total;
 		this.#tabBar.setTabs(
 			this.#buildSearchTabs(
@@ -3535,7 +3541,7 @@ export class SettingsSelectorComponent implements Component {
 		}
 		// Values feed the searchable text and condition gates may have flipped:
 		// recompute results in place (selection is preserved by item id).
-		this.#setSearchQuery(this.#searchQuery);
+		this.#setSearchQuery(this.#searchQuery, false);
 	}
 
 	/**
