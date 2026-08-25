@@ -43,17 +43,6 @@ import { applyGroundPaint, setDetectedTerminalGround } from "./theme/ground-tint
 import { theme } from "./theme/theme";
 import { flushPendingTtyInput } from "./tty-input-flush";
 
-/**
- * Rows the composer zone occupies at rest: the status line, the hairline, the
- * three rows of the bordered editor card, the capability line, the shortcut bar
- * and the bottom margin. The zone does not exist yet, and the centring is a
- * share of the slack below the card ({@link HomeAnchorLayout}), so a stand-in
- * of the right height is what puts the card where the mounted home screen puts
- * it. The stand-in is the composer itself — {@link StaticComposerFrame} paints
- * the resting zone's exact row count with its real chrome, so the prompt is on
- * screen from the first paint and the mounted zone swaps text, not position.
- */
-
 /** Inputs used to decide whether the launch card may be painted this early. */
 export interface FirstFrameDecisionOptions {
 	readonly isInteractive: boolean;
@@ -117,9 +106,11 @@ export function paintFirstFrame(version: string): FirstFrame {
 		hero,
 		new Spacer(1),
 		layout.bottomFill,
-		// The composer at rest, painted NOW: the prompt is on screen from the
-		// first paint, and the real zone mounts into the same rows when init
-		// finishes — a text handover, not a slide.
+		// The composer at rest, painted NOW. Centring is a share of the slack
+		// below the card (HomeAnchorLayout), so the zone's height has to be on
+		// screen before the zone exists: this paints the resting zone's exact
+		// row count with its real chrome, and the mounted zone swaps text into
+		// those rows rather than arriving under them.
 		new StaticComposerFrame(),
 	];
 	for (const child of children) ui.addChild(child);

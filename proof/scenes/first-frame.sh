@@ -38,10 +38,10 @@
 # and nothing that varies between launches.
 #
 # `startup.quiet` would remove the hero and the tip with it, and it is the
-# wrong instrument: quiet startup skips the work whose duration the blank
-# window is made of, and measured here it shrank the window from about a third
-# of a second to two frames. An arm that no longer contains the transition is
-# not an arm of this pair.
+# wrong instrument: `shouldPaintFirstFrame` returns false under it, so the
+# after arm paints no first frame either and there is nothing left to compare.
+# Measured that way the two arms converged to a two-frame difference. An arm
+# that does not contain the subject is not an arm of this pair.
 #
 # The motion floor is zero here and nowhere else. The gate measures unique
 # frames per second across the whole take and exists to catch a capture that
