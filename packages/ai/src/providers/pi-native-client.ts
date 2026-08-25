@@ -197,25 +197,31 @@ export function streamPiNative<TApi extends Api>(
 				options: buildWireOptions(options),
 				stream: true,
 			};
-			try {
-				const onPayload = options?.onPayload;
-				if (onPayload) {
-					// The hook is a JSON seam: a host's secret redactor walks the payload
-					// rewriting every string and refuses any value JSON cannot express.
-					// `context` carries live arktype schemas in `tools[].parameters`,
-					// which are function objects, so the raw object is never that shape.
-					// The wire form is JSON by construction (the body is stringified
-					// below), so the hook sees exactly the wire shape.
-					const wirePayload: unknown = JSON.parse(JSON.stringify(bodyPayload));
-					const replacementPayload = await onPayload(wirePayload, model as Model<Api>);
-					if (replacementPayload !== undefined) bodyPayload = replacementPayload;
+			const onPayload = options?.onPayload;
+			// The hook is a JSON seam: a host's secret redactor walks the payload
+			// rewriting every string and refuses any value JSON cannot express.
+			// `context` carries live arktype schemas in `tools[].parameters`,
+			// which are function objects, so the raw object is never that shape.
+			// Serialize once up front; the hook gets an isolated parse of those
+			// bytes, and when it leaves the payload alone the wire reuses them —
+			// a full-context body is never serialized twice.
+			let body = JSON.stringify(bodyPayload);
+			if (onPayload) {
+				const wirePayload: unknown = JSON.parse(body);
+				let replacementPayload: unknown;
+				try {
+					replacementPayload = await onPayload(wirePayload, model as Model<Api>);
+				} catch (error) {
+					// Payload sanitization is a local policy decision, not an upstream
+					// authentication failure. Keep the rejection out of the
+					// auth-retry classifier even when its original error resembles a 401.
+					throw new PiNativePayloadHookError(error);
 				}
-			} catch (error) {
-				// Payload sanitization is a local policy decision, not an upstream authentication failure. Keep
-				// the rejection out of the auth-retry classifier even when its original error resembles a 401.
-				throw new PiNativePayloadHookError(error);
+				if (replacementPayload !== undefined) {
+					bodyPayload = replacementPayload;
+					body = JSON.stringify(bodyPayload);
+				}
 			}
-			const body = JSON.stringify(bodyPayload);
 
 			response = await fetchImpl(url, { method: "POST", headers, body, signal: abortTracker.requestSignal });
 			if (!response.ok) {
