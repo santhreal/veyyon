@@ -650,6 +650,14 @@ function stringProperty(value: object, key: string): string | undefined {
 	return typeof field === "string" ? field : undefined;
 }
 
+function taskToolUsage(details: unknown): Usage | undefined {
+	if (!details || typeof details !== "object") return undefined;
+	const record = details as Record<string, unknown>;
+	const usage = record.usage;
+	if (!usage || typeof usage !== "object") return undefined;
+	return usage as Usage;
+}
+
 function reportFromRewindReportContent(content: string): string {
 	const marker = "\nReport:\n";
 	const index = content.lastIndexOf(marker);
@@ -19954,14 +19962,6 @@ export class AgentSession {
 		let totalCost = 0;
 		let totalPremiumRequests = 0;
 
-		const getTaskToolUsage = (details: unknown): Usage | undefined => {
-			if (!details || typeof details !== "object") return undefined;
-			const record = details as Record<string, unknown>;
-			const usage = record.usage;
-			if (!usage || typeof usage !== "object") return undefined;
-			return usage as Usage;
-		};
-
 		for (const message of messages) {
 			if (message.role === "user") {
 				userMessages++;
@@ -19980,7 +19980,7 @@ export class AgentSession {
 			} else if (message.role === "toolResult") {
 				toolResults++;
 				if (message.toolName === TOOL.task) {
-					const usage = getTaskToolUsage(message.details);
+					const usage = taskToolUsage(message.details);
 					if (usage) {
 						totalInput += usage.input;
 						totalOutput += usage.output;
