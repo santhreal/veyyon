@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type {
@@ -66,6 +67,26 @@ export class OmpAdapter implements SystemAdapter {
 		if (key) {
 			fs.writeFileSync(path.join(context.assetsDir, "opencode-key"), key.trim());
 			fs.chmodSync(path.join(context.assetsDir, "opencode-key"), 0o600);
+		}
+
+		// Stage omp node_modules as a tar.gz so cli.js can resolve @oh-my-pi/* imports.
+		// The cli.js imports @oh-my-pi/pi-natives and other packages; without the full
+		// node_modules tree Bun fails with "Cannot find module" inside the container.
+		const cliSource = customCli ?? defaultCli;
+		const tarPath = path.join(context.assetsDir, "omp-node-modules.tar.gz");
+		if (cliSource && fs.existsSync(cliSource)) {
+			// cli.js lives at <node_modules>/@oh-my-pi/pi-coding-agent/dist/cli.js;
+			// the node_modules root is four levels up from the dist directory.
+			const distDir = path.dirname(cliSource);
+			const pkgDir = path.dirname(distDir);
+			const ohMyPiDir = path.dirname(pkgDir);
+			const nodeModulesDir = path.dirname(ohMyPiDir);
+			const ohMyPiName = path.basename(ohMyPiDir);
+			if (ohMyPiName === "@oh-my-pi" && fs.existsSync(ohMyPiDir)) {
+				execFileSync("tar", ["-czf", tarPath, "-C", nodeModulesDir, ohMyPiName], {
+					stdio: ["ignore", "ignore", "inherit"],
+				});
+			}
 		}
 	}
 
