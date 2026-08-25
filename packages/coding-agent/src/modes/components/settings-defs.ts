@@ -309,6 +309,7 @@ const CONDITIONS: Record<string, () => boolean> = {
 				Settings.instance.get("github.enabled") === true && Settings.instance.get("github.cache.enabled") === true,
 		),
 	secretsEnabled: () => whenSettingsSay(() => Settings.instance.get("secrets.enabled") === true),
+	prewalkEnabled: () => whenSettingsSay(() => Settings.instance.get("prewalk.enabled") === true),
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
