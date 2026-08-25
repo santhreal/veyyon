@@ -1218,7 +1218,7 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 				this.session.settings.get("session.cpuLimitKill"),
 				sessionBudgetLimits(this.session.settings),
 			);
-			cpuLimit.assertMaySpawn("a bash command");
+			await cpuLimit.gateSpawn("a bash command");
 		}
 		if (timeoutSec !== undefined) {
 			const timeoutClampNotice = formatTimeoutClampNotice("bash", requestedTimeoutSec, timeoutSec);

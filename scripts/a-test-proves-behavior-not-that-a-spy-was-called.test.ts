@@ -526,7 +526,7 @@ describe("a test proves behavior, not that a spy was called", () => {
 		it("still sees a real call, including inside an interpolation", () => {
 			expect(countSpyAssertions("expect(spy).toHaveBeenCalledWith(1);")).toBe(1);
 			expect(usesMockModule("mock.module('x', () => ({}));")).toBe(true);
-			// biome-ignore lint/suspicious/noTemplateCurlyInString: fixture interpolation bytes for mock scanner
+			// biome-ignore lint/suspicious/noTemplateCurlyInString: the `${...}` is the scanned fixture's own bytes — an interpolation the scanner must read as code.
 			expect(usesMockModule("const s = `${mock.module('x', () => ({}))}`;")).toBe(true);
 		});
 
