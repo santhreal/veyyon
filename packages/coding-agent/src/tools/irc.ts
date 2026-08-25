@@ -74,7 +74,14 @@ export class IrcTool implements AgentTool<typeof ircSchema, IrcDetails> {
 	readonly description: string;
 	readonly parameters = ircSchema;
 	readonly strict = true;
-	readonly interruptible = true;
+	// Only the ops that block observe an interrupt. `list`, `inbox`, a
+	// fire-and-forget `send` and a `send` the tool rejects all return at once,
+	// and handing those the IRC abort signal meant a peer message arriving in the
+	// same batch replaced their result with a "skipped" placeholder: a malformed
+	// send then read as an interrupted wait and the caller never saw what was
+	// wrong with it.
+	readonly interruptible = (args: Partial<IrcParams>): boolean =>
+		args.op === "wait" || (args.op === "send" && args.await === true);
 
 	readonly examples: readonly ToolExample<typeof ircSchema.infer>[] = [
 		{

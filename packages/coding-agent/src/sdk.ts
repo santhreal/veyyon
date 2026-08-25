@@ -4550,6 +4550,19 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		// messages here. Refresh sessionFile in case it was unavailable at pre-register
 		// time. The dispose wrapper below unregisters on teardown (unless parked).
 		agentRegistry.attachSession(resolvedAgentId, session, sessionManager.getSessionFile() ?? null);
+		// Keep the driving session's own ref alive in the roster. Only subagents
+		// were ever wired to the registry (`task/executor.ts` on agent_start /
+		// agent_end, `persisted-revive.ts` for a revived one), so the main agent's
+		// row was whatever registration wrote and nothing after it: the Agent
+		// Control Center aged it from process start and printed "1d ago" against a
+		// session that was mid-turn. The status is deliberately left alone — the
+		// bus routes an incoming message by it, and flipping the operator's own
+		// session to idle between turns would change how a peer reaches them.
+		session.subscribe(event => {
+			if (event.type === "agent_start" || event.type === "agent_end") {
+				agentRegistry.noteTurn(resolvedAgentId);
+			}
+		});
 		{
 			const originalDispose = session.dispose.bind(session);
 			let disposeCall: Promise<void> | undefined;
