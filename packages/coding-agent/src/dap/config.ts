@@ -37,8 +37,10 @@ function normalizeAdapterConfig(config: unknown): DapAdapterConfig | null {
 	if (!isRecord(config)) return null;
 	if (typeof config.command !== "string" || config.command.length === 0) return null;
 	const connectMode = config.connectMode === "socket" ? ("socket" as const) : undefined;
+	const commandFallbacks = normalizeStringArray(config.commandFallbacks);
 	return {
 		command: config.command,
+		...(commandFallbacks.length > 0 ? { commandFallbacks } : {}),
 		args: normalizeStringArray(config.args),
 		languages: normalizeStringArray(config.languages),
 		fileTypes: normalizeStringArray(config.fileTypes).map(entry => entry.toLowerCase()),
@@ -109,6 +111,9 @@ function mergeAdapters(
 				? {
 						...existing,
 						...config,
+						...(typeof config.command === "string" && !("commandFallbacks" in config)
+							? { commandFallbacks: [] }
+							: {}),
 						launchDefaults:
 							isRecord(existing.launchDefaults) || isRecord(config.launchDefaults)
 								? { ...existing.launchDefaults, ...normalizeObject(config.launchDefaults) }
@@ -208,14 +213,17 @@ function resolveAdapterFromConfig(
 ): DapResolvedAdapter | null {
 	const config = configs[adapterName];
 	if (!config) return null;
-	const normalizedCommand = normalizeCommandForCwd(config.command, cwd);
-	const commandIsBare =
-		!path.isAbsolute(config.command) && !config.command.includes("/") && !config.command.includes("\\");
-	const resolvedCommand = resolveCommand(normalizedCommand, cwd, {
-		cache: WhichCachePolicy.Fresh,
-		PATH: process.env.PATH,
-		localRoots: commandIsBare ? localRoots : undefined,
-	});
+	const candidates = [config.command, ...(config.commandFallbacks ?? [])];
+	let resolvedCommand: string | null = null;
+	for (const candidate of candidates) {
+		const commandIsBare = !path.isAbsolute(candidate) && !candidate.includes("/") && !candidate.includes("\\");
+		resolvedCommand = resolveCommand(normalizeCommandForCwd(candidate, cwd), cwd, {
+			cache: WhichCachePolicy.Fresh,
+			PATH: process.env.PATH,
+			localRoots: commandIsBare ? localRoots : undefined,
+		});
+		if (resolvedCommand) break;
+	}
 	if (!resolvedCommand) return null;
 	return {
 		name: adapterName,
