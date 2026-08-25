@@ -3,7 +3,7 @@
  * Parses SwiftLint's JSON reporter output into LSP Diagnostic format.
  */
 
-import { readPipeText } from "@veyyon/utils";
+import { errorMessage, readPipeText } from "@veyyon/utils";
 import type { Diagnostic, DiagnosticSeverity, LinterClient, ServerConfig } from "../../lsp/types";
 import { adoptIntoPrimarySessionCpuBudget } from "../../session/cpu-limit";
 
@@ -51,7 +51,7 @@ async function runSwiftLint(
 		// swiftlint exits non-zero when violations found — that's not a failure
 		return { stdout, stderr, success: stdout.length > 0 };
 	} catch (err) {
-		return { stdout: "", stderr: String(err), success: false };
+		return { stdout: "", stderr: errorMessage(err), success: false };
 	}
 }
 

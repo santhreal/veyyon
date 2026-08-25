@@ -761,7 +761,7 @@ export async function verifyBinaryVersion(
 		// The spawn itself failed, which is where ENOEXEC (wrong architecture) and
 		// EACCES (no execute bit, or a `noexec` mount) land. There is no exit code
 		// because no process ever started.
-		return { ok: false, path: binPath, reason: describeUnrunnableBinary(binPath, undefined, String(err)) };
+		return { ok: false, path: binPath, reason: describeUnrunnableBinary(binPath, undefined, errorMessage(err)) };
 	}
 }
 

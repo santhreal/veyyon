@@ -44,7 +44,7 @@ const sourceRequire = createRequire(import.meta.url);
 // ── Error serialization ─────────────────────────────────────────────
 
 export function errorText(error: unknown): string {
-	return error instanceof Error ? (error.stack ?? error.message) : String(error);
+	return error instanceof Error ? (error.stack ?? error.message) : errorMessage(error);
 }
 
 // ── Structured logging ──────────────────────────────────────────────

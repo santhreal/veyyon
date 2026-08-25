@@ -778,7 +778,7 @@ function toErrorPayload(error: unknown): TabRunErrorPayload {
 			isToolError: error instanceof ToolError || error.name === "ToolError",
 		};
 	}
-	return { name: "Error", message: String(error), isAbort: false, isToolError: false };
+	return { name: "Error", message: errorMessage(error), isAbort: false, isToolError: false };
 }
 
 async function recycleTimedOutWorkerTab(tab: WorkerTabSession, timeoutMs: number): Promise<void> {

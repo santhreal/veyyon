@@ -44,6 +44,10 @@
 - Daemon completion parsing and eval-store serialization errors use shared type guards; behavior is unchanged.
 ### Fixed
 
+- `veyyon session` declares the `sessions` alias so the plural command routes to session analysis.
+- Error-formatting call sites use `errorMessage` so thrown non-Error values and empty-message errors surface readable text.
+- `AgentSession` logs compaction tail elision artifact persistence failures explicitly instead of swallowing them.
+- `AgentLifecycleManager` strictly validates agent reference identity on revival completion to reject replaced agents.
 - Quitting no longer hangs when a background session never settles.
 - `/new` typed while the agent is answering starts the new session without interrupting the answer: the running turn finishes in the background and is flushed to its own transcript, while the composer attaches to a fresh session immediately.
 - `/resume` onto a session that is still answering re-attaches the running session instead of replaying its transcript as finished text, so its answer keeps streaming into the view and the session being left takes its place in the background.

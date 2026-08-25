@@ -208,10 +208,10 @@ export class PluginManager {
 			if (isEnoent(err)) return normalizePluginRuntimeConfig({});
 			logger.warn(
 				`The plugin runtime config at ${lockPath} could not be read, so every plugin is treated as ` +
-					`enabled with default settings for this run: ${String(err)}. ` +
+					`enabled with default settings for this run: ${errorMessage(err)}. ` +
 					"Fix: check that file's permissions, or delete it and re-apply your choices with " +
 					"`veyyon plugin enable <name>` and `veyyon plugin disable <name>`.",
-				{ path: lockPath, error: String(err) },
+				{ path: lockPath, error: errorMessage(err) },
 			);
 			return normalizePluginRuntimeConfig({});
 		}
@@ -237,9 +237,9 @@ export class PluginManager {
 			if (isEnoent(err)) return {};
 			logger.warn(
 				`The project plugin overrides at ${overridesPath} could not be read, so this project's plugin ` +
-					`choices are ignored and the user-level ones apply instead: ${String(err)}. ` +
+					`choices are ignored and the user-level ones apply instead: ${errorMessage(err)}. ` +
 					"Fix: check that file's permissions, or delete it to drop the project overrides deliberately.",
-				{ path: overridesPath, error: String(err) },
+				{ path: overridesPath, error: errorMessage(err) },
 			);
 			return {};
 		}

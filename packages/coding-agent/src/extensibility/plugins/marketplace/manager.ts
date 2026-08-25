@@ -827,11 +827,11 @@ export class MarketplaceManager {
 			if (isEnoent(err)) return normalizePluginRuntimeConfig({});
 			logger.warn(
 				`The marketplace plugin runtime config at ${this.#runtimeLockPath(scope)} could not be read ` +
-					`(${String(err)}), so every marketplace plugin is treated as freshly installed with default ` +
+					`(${errorMessage(err)}), so every marketplace plugin is treated as freshly installed with default ` +
 					"settings. Fix: check that file's permissions, or delete it to have it rebuilt.",
 				{
 					path: this.#runtimeLockPath(scope),
-					error: String(err),
+					error: errorMessage(err),
 				},
 			);
 			return normalizePluginRuntimeConfig({});

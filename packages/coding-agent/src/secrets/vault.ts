@@ -27,6 +27,7 @@ import * as path from "node:path";
 import {
 	applyOwnerOnlyWindowsAcl,
 	clamp01,
+	errorMessage,
 	escapeTerminalText,
 	isMissingPath,
 	verifyOwnerOnlyWindowsAcl,
@@ -613,7 +614,7 @@ function safeText(value: string): string {
 }
 
 function safeError(error: unknown): string {
-	return escapeTerminalText(String(error));
+	return escapeTerminalText(errorMessage(error));
 }
 
 /** Compare scope paths using Windows' case-insensitive namespace when appropriate. */

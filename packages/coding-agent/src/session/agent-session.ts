@@ -2628,7 +2628,7 @@ export class AgentSession {
 				user: mode === "system",
 			});
 		} catch (error) {
-			logger.warn("Failed to acquire macOS power assertion", { error: String(error) });
+			logger.warn("Failed to acquire macOS power assertion", { error: errorMessage(error) });
 		}
 	}
 
@@ -2639,7 +2639,7 @@ export class AgentSession {
 		try {
 			assertion.stop();
 		} catch (error) {
-			logger.warn("Failed to release macOS power assertion", { error: String(error) });
+			logger.warn("Failed to release macOS power assertion", { error: errorMessage(error) });
 		}
 	}
 
@@ -2737,7 +2737,7 @@ export class AgentSession {
 		void this.agent
 			.prompt(records)
 			.catch(error => {
-				logger.warn("IRC wake turn failed", { error: String(error) });
+				logger.warn("IRC wake turn failed", { error: errorMessage(error) });
 			})
 			.finally(() => {
 				if (parkedFollowUps.length > 0) {
@@ -4043,7 +4043,7 @@ export class AgentSession {
 		void this.sendCustomMessage(
 			{ customType: "advisor", content, display: true, attribution: "agent", details },
 			{ deliverAs: "steer", triggerTurn: true },
-		).catch(err => logger.debug("advisor delivery failed", { err: String(err) }));
+		).catch(err => logger.debug("advisor delivery failed", { err: errorMessage(err) }));
 	}
 
 	/** Re-prime every advisor's transcript view (compaction/shake/rewind) without the
@@ -4109,7 +4109,7 @@ export class AgentSession {
 				advisor: advisor.name,
 				from: `${currentModel.provider}/${currentModel.id}`,
 				to: `${targetModel.provider}/${targetModel.id}`,
-				error: String(error),
+				error: errorMessage(error),
 			});
 			return false;
 		}
@@ -4255,7 +4255,7 @@ export class AgentSession {
 		}
 
 		if (!compactResult) {
-			logger.warn("Advisor compaction failed, falling back to re-prime", { error: String(lastError) });
+			logger.warn("Advisor compaction failed, falling back to re-prime", { error: errorMessage(lastError) });
 			return true;
 		}
 
@@ -4300,7 +4300,11 @@ export class AgentSession {
 		let artifactId: string | undefined;
 		try {
 			artifactId = await this.sessionManager.saveArtifact(renderTailElisionArtifact(elisions), "compaction-tail");
-		} catch {
+		} catch (error) {
+			logger.warn("Failed to persist compaction tail elision artifact", {
+				error: errorMessage(error),
+				elisionCount: elisions.length,
+			});
 			artifactId = undefined;
 		}
 		const resolved = new Map<AgentMessage, AgentMessage>();
@@ -4794,7 +4798,7 @@ export class AgentSession {
 					} catch (error) {
 						logger.warn("Failed to release a subagent of the previous conversation", {
 							agentId: child,
-							error: String(error),
+							error: errorMessage(error),
 						});
 					}
 				}),
@@ -7514,7 +7518,7 @@ export class AgentSession {
 			try {
 				await this.agent.continue();
 			} catch (err) {
-				logger.warn("gemini tool-call reminder continue failed", { error: String(err) });
+				logger.warn("gemini tool-call reminder continue failed", { error: errorMessage(err) });
 			}
 		});
 	}
@@ -8519,7 +8523,7 @@ export class AgentSession {
 				await this.#extensionRunner.emit({ type: "session_shutdown" });
 			}
 		} catch (error) {
-			logger.warn("Failed to emit session_shutdown event", { error: String(error) });
+			logger.warn("Failed to emit session_shutdown event", { error: errorMessage(error) });
 		}
 		// Abort maintenance controllers before draining post-prompt work. Otherwise
 		// an in-flight compaction, explicit handoff, or scheduled continuation can
@@ -8565,7 +8569,7 @@ export class AgentSession {
 		try {
 			await disposeOwnedResources("eval-kernel-owner", this.#evalKernelOwnerId);
 		} catch (error) {
-			logger.warn("Some owner-scoped resources failed to release during dispose", { error: String(error) });
+			logger.warn("Some owner-scoped resources failed to release during dispose", { error: errorMessage(error) });
 		}
 		// Everything keyed by the SESSION id rather than the eval-kernel owner id. Today that is the
 		// browser tool's headless / spawned Chromium and worker tabs: its `tabs`/`browsers` maps are
@@ -8578,7 +8582,9 @@ export class AgentSession {
 			try {
 				await disposeOwnedResources("session", browserOwnerId);
 			} catch (error) {
-				logger.warn("Some session-scoped resources failed to release during dispose", { error: String(error) });
+				logger.warn("Some session-scoped resources failed to release during dispose", {
+					error: errorMessage(error),
+				});
 			}
 		}
 		await shutdownTinyTitleClient();
@@ -8612,7 +8618,7 @@ export class AgentSession {
 					"Timed out disconnecting owned MCP manager during dispose",
 				);
 			} catch (error) {
-				logger.warn("Failed to disconnect owned MCP manager during dispose", { error: String(error) });
+				logger.warn("Failed to disconnect owned MCP manager during dispose", { error: errorMessage(error) });
 			}
 		}
 		// Flush the retain queue BEFORE clearing the session's pointer so
@@ -8654,7 +8660,7 @@ export class AgentSession {
 				logger.warn("Failed to close provider session state", {
 					providerKey,
 					reason,
-					error: String(error),
+					error: errorMessage(error),
 				});
 			}
 		}
@@ -9635,7 +9641,7 @@ export class AgentSession {
 			} catch (err) {
 				logger.debug("Memory backend beforeAgentStartPrompt failed", {
 					backend: backend.id,
-					error: String(err),
+					error: errorMessage(err),
 				});
 			}
 		}
@@ -9650,7 +9656,7 @@ export class AgentSession {
 			} catch (err) {
 				logger.debug("Memory backend buildVolatileContext failed", {
 					backend: backend.id,
-					error: String(err),
+					error: errorMessage(err),
 				});
 			}
 		}
@@ -9699,7 +9705,7 @@ export class AgentSession {
 			logger.debug("Memory backend buildVolatileContext failed", {
 				backend: backend.id,
 				reason,
-				error: String(err),
+				error: errorMessage(err),
 			});
 			return false;
 		}
@@ -13604,7 +13610,7 @@ export class AgentSession {
 			return compactionResult;
 		} catch (error) {
 			this.#rollbackCompactionTailElisions(preparation);
-			const err = error instanceof Error ? error : new Error(String(error));
+			const err = error instanceof Error ? error : new Error(errorMessage(error));
 			options?.onError?.(err);
 			throw error;
 		} finally {
@@ -13635,7 +13641,7 @@ export class AgentSession {
 		} catch (err) {
 			logger.debug("Memory backend preCompactionContext failed", {
 				backend: backend.id,
-				error: String(err),
+				error: errorMessage(err),
 			});
 			return undefined;
 		}
@@ -15524,7 +15530,7 @@ export class AgentSession {
 			logger.warn("Context promotion failed", {
 				from: `${currentModel.provider}/${currentModel.id}`,
 				to: `${targetModel.provider}/${targetModel.id}`,
-				error: String(error),
+				error: errorMessage(error),
 			});
 			return false;
 		}
@@ -15646,7 +15652,7 @@ export class AgentSession {
 			} catch (error) {
 				logger.warn("Failed to close provider session state during model switch", {
 					providerKey,
-					error: String(error),
+					error: errorMessage(error),
 				});
 			}
 
@@ -15661,7 +15667,7 @@ export class AgentSession {
 				} catch (error) {
 					logger.warn("Failed to close provider session state during model switch", {
 						providerKey: key,
-						error: String(error),
+						error: errorMessage(error),
 					});
 				}
 				this.#providerSessionState.delete(key);
@@ -16490,7 +16496,11 @@ export class AgentSession {
 		let artifactId: string | undefined;
 		try {
 			artifactId = await this.sessionManager.saveArtifact(renderTailElisionArtifact(elisions), "compaction-tail");
-		} catch {
+		} catch (error) {
+			logger.warn("Failed to persist compaction tail elision artifact", {
+				error: errorMessage(error),
+				elisionCount: elisions.length,
+			});
 			artifactId = undefined;
 		}
 		if (artifactId) {
@@ -18903,7 +18913,7 @@ export class AgentSession {
 				logger.warn("IRC auto-reply delivery failed", { to: msg.from, error: receipt.error });
 			}
 		} catch (error) {
-			logger.warn("IRC auto-reply turn failed", { from: msg.from, error: String(error) });
+			logger.warn("IRC auto-reply turn failed", { from: msg.from, error: errorMessage(error) });
 		}
 	}
 	/**
@@ -19386,7 +19396,7 @@ export class AgentSession {
 			} catch (error) {
 				logger.warn("Failed to reconcile session mode after switch", {
 					targetSessionFile: sessionPath,
-					error: String(error),
+					error: errorMessage(error),
 				});
 			}
 			return true;
@@ -20331,7 +20341,7 @@ export class AgentSession {
 				this.settings.set("codexResets.autoRedeem", "no");
 			}
 		} catch (error) {
-			logger.warn("codex-auto-reset prompt failed", { error: String(error) });
+			logger.warn("codex-auto-reset prompt failed", { error: errorMessage(error) });
 		}
 		return false;
 	}
