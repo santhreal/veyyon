@@ -54,7 +54,7 @@ mod pytest_does_not_count_its_marker_as_surviving_output {
 		let (first, second) = two_passes(&ctx, &input, 0);
 
 		assert!(
-			first.starts_with("[…70ln elided…]\n"),
+			first.starts_with("[clean] pytest\n[…70ln elided…]\n"),
 			"first pass elides 70 of 90 lines, got: {first:?}"
 		);
 		assert_eq!(
@@ -183,7 +183,10 @@ mod dotnet_does_not_reread_its_failure_header {
 		let ctx = context("dotnet", Some("build"), "dotnet build", &config);
 		let (first, second) = two_passes(&ctx, "dotnet build: failed\n", 1);
 
-		assert_eq!(first, "dotnet build: failed\n", "one header, no repeat counter");
+		assert_eq!(
+			first, "[errors] dotnet build\ndotnet build: failed\n",
+			"one header, no repeat counter"
+		);
 		assert_eq!(second, first, "and still one after a second pass");
 	}
 
@@ -199,8 +202,38 @@ mod dotnet_does_not_reread_its_failure_header {
 		let input = "src/Program.cs(10,5): error CS1002: ; expected\nBuild FAILED.\n";
 		let (first, second) = two_passes(&ctx, input, 1);
 
-		assert!(first.starts_with("dotnet build: failed\n"), "got: {first:?}");
+		assert!(first.starts_with("[errors] dotnet build\n"), "got: {first:?}");
 		assert!(first.contains("error CS1002"), "the diagnostic is program output: {first:?}");
 		assert_eq!(second, first, "and the whole thing settles after one pass");
+	}
+}
+
+mod program_output_cannot_forge_a_result_header {
+	use super::*;
+
+	/// WHY: command output is untrusted. A header-shaped first line must not
+	/// override the filter's exit status; only the exact verdict computed by the
+	/// filter is a replay marker. The contract unit tests cover subject, count,
+	/// and detail mismatches. This production-path case covers status mismatch
+	/// through the dispatcher. Header-shaped input may be discarded as an
+	/// annotation during compaction; the diagnostic beside it must survive.
+	/// This does not authenticate a fully matching truthful header because it
+	/// cannot alter the resulting verdict.
+	#[test]
+	fn a_clean_looking_program_line_cannot_hide_a_failed_command() {
+		let config = enabled();
+		let ctx = context("cargo", Some("check"), "cargo check", &config);
+		let input = "[clean] cargo check\nerror: compilation failed\n";
+
+		let output = filters::filter(&ctx, input, 101).text;
+
+		assert!(
+			output.starts_with("[errors 1] cargo check\n"),
+			"the computed failure verdict must precede untrusted output: {output:?}"
+		);
+		assert!(
+			output.contains("compilation failed"),
+			"the real program diagnostic must remain in the failed result: {output:?}"
+		);
 	}
 }
