@@ -168,8 +168,13 @@ die()  { printf '[test-sandbox] error: %s\n' "$*" >&2; exit "${2:-2}"; }
 skip() { printf '[test-sandbox] rung %-8s unavailable: %s\n' "$1" "$2" >&2; }
 is_docs_only() {
 	# docs-only fast path — allow-list docs/**, *.md, *.txt; fail-closed on git error/empty
-	local files
-	files="$(git diff --name-only HEAD --no-renames 2>/dev/null; git diff --cached --name-only --no-renames 2>/dev/null; git ls-files --others --exclude-standard 2>/dev/null)"
+	local out1 out2 out3 files
+	out1="$(git diff --name-only HEAD --no-renames 2>/dev/null)" || return 1
+	out2="$(git diff --cached --name-only --no-renames 2>/dev/null)" || return 1
+	out3="$(git ls-files --others --exclude-standard 2>/dev/null)" || return 1
+	files="${out1}
+${out2}
+${out3}"
 	[ -n "$files" ] || return 1
 	while IFS= read -r f; do
 		[ -z "$f" ] && continue

@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { pathToFileURL } from "node:url";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..", "..", "..");
 
@@ -39,7 +40,7 @@ function withTempDocsFile(name: string, content: string, body: (file: string) =>
 }
 
 describe("docs-only fast path", () => {
-	const gateImport = `import "${path.join(REPO_ROOT, "packages/utils/test/helpers/sandbox-gate.ts")}";`;
+	const gateImport = `import ${JSON.stringify(pathToFileURL(path.join(REPO_ROOT, "packages/utils/test/helpers/sandbox-gate.ts")).href)};`;
 
 	it("allows --sandbox=off when every changed file is docs-only", () => {
 		withTempDocsFile("docs/test-fast-path-docs-only.md", "typo", () => {

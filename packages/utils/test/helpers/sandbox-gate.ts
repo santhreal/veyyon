@@ -143,7 +143,7 @@ function isDocsOnlyChange(): boolean {
 				const text = typeof out === "string" ? out : String(out);
 				combined += `\n${text}`;
 			} catch {
-				// ignore per-command failures
+				return false;
 			}
 		}
 		const files = combined
