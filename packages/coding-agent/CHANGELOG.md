@@ -46,6 +46,7 @@
 
 ### Fixed
 
+- A bash command carrying a leading `cd`, or a relative `cwd`, is now judged for approval against the directory it will actually run in.
 - Patch failure error rendering shortens absolute paths to avoid displaying home-directory paths and bounds large unmatched hunks with an omitted line count.
 - Filesystem cwd boundary checks expand comma- and whitespace-delimited path arguments matching execution, preventing multi-target reads or searches from bypassing working-directory approval prompts in non-yolo modes.
 - The read tool renderer sanitizes resolved directory paths with shortenPath to avoid displaying unshortened home-directory paths.
