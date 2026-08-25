@@ -1954,9 +1954,12 @@ export function convertMessages(
 			};
 
 			const nonEmptyTextBlocks: TextContent[] = [];
+			const nonEmptyThinkingBlocks: ThinkingContent[] = [];
 			for (const block of msg.content) {
 				if (block.type === "text" && block.text && block.text.trim().length > 0) {
 					nonEmptyTextBlocks.push(block as TextContent);
+				} else if (block.type === "thinking" && block.thinking && block.thinking.trim().length > 0) {
+					nonEmptyThinkingBlocks.push(block as ThinkingContent);
 				}
 			}
 			if (nonEmptyTextBlocks.length > 0) {
@@ -1977,14 +1980,6 @@ export function convertMessages(
 						return isDemotedThinking(b) && i < nonEmptyTextBlocks.length - 1 ? `${text}\n` : text;
 					})
 					.join("");
-			}
-
-			// Handle thinking blocks
-			const nonEmptyThinkingBlocks: ThinkingContent[] = [];
-			for (const block of msg.content) {
-				if (block.type === "thinking" && block.thinking && block.thinking.trim().length > 0) {
-					nonEmptyThinkingBlocks.push(block as ThinkingContent);
-				}
 			}
 			if (nonEmptyThinkingBlocks.length > 0) {
 				if (compat.requiresThinkingAsText) {
