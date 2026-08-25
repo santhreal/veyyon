@@ -10,6 +10,7 @@
 
 ### Added
 
+- `edit.critiqueCodeMutations` prompts a bounded self-review before finalization after one turn modifies at least two distinct code files.
 - Configurable `launch.cleanupWaitMs` setting (default 15 minutes) purges exited launch daemon records from memory and disk after a retention TTL.
 - Exporting a session to HTML streams the snapshot into the output file instead of assembling the whole document in memory, taking an 80MiB transcript from 1007MiB of peak resident memory to 532MiB with byte-identical output.
 - A session snapshot that contains a reference cycle fails the HTML export with an error instead of writing until the disk fills.
@@ -47,6 +48,14 @@
 
 - `veyyon bench --model @role` and `veyyon dry-balance --model @role` resolve a configured model role instead of failing to find a model named after the alias.
 - With Language Servers off, which is the default, the write and edit tools no longer start a language server to inject diagnostics, format the file, or notify the workspace that a file changed, including on the ACP client-bridge write path.
+- A malformed `irc` send reports its own validation error instead of being reported as an interrupted wait when a peer message arrives in the same batch.
+- A `job` list snapshot or cancel-only call keeps its own result when an interrupt lands beside it.
+- The composer sits on the viewport bottom on the frame it mounts instead of appearing mid-screen for a moment after the launch card is adopted.
+- The Agent Control Center reports the model an agent is running now instead of the one recorded when it registered.
+- `/new` and `/resume` restart the driving session's roster clock, so the Agent Control Center no longer ages the main agent from the conversation that ended.
+- The main agent's roster age advances with its turns instead of freezing at process start.
+- Web search no longer reports "Public Web returned no renderable search content" when one engine serves a bot wall: Startpage's proof-of-work interstitial served at HTTP 200 is now refused as a challenge, and an engine answering with zero results no longer ends the aggregate's wait for a slower engine that has results.
+- Adding an account with a key the provider rejects now leaves the error on screen, instead of remounting the account manager over it so the attempt looked like it silently did nothing; cancelling still returns to the account card.
 - `veyyon plugin install --dry-run` now resolves the target and fails when it cannot be installed, instead of exiting 0 with "Would install" for an unpublished npm name or a missing git repository, and reports the name and version the target resolves to rather than a `0.0.0-dryrun` placeholder ([#911](https://github.com/santhreal/veyyon/issues/911)).
 - `veyyon plugin uninstall` now removes a plugin installed from a local path, which was permanently unremovable because uninstall read only `plugins/package.json` dependencies while linking registers the plugin in the runtime config and `node_modules`; the linked directory itself is left untouched.
 - `veyyon plugin doctor` no longer reports "no plugins installed" in a profile whose plugins were all linked, and names how many linked plugins it found.
@@ -58,11 +67,15 @@
 - IRC broadcasts no longer wake completed idle peers; direct messages still wake the addressed peer.
 - ImageMagick pixel caches used by proof capture and HD demo scripts stay inside an owned scoped directory that the parent removes after child failure without deleting concurrent or inherited unrelated directories.
 - An indented row inside a tool block keeps its indent when it wraps at a narrow width, instead of continuing at the block's left edge.
+- The finalization reminder counts the files a multi-file edit actually wrote: a call that reports overall failure after writing some of its files is now unverified evidence, and a file a per-file entry skipped is no longer named as affected.
+- A mutated path is XML-escaped before it reaches the hidden finalization reminder, so a file name spelling `</system-reminder>` cannot end the reminder envelope early, and a relative `ast_edit` path is resolved against the call's working directory before duplicate paths are collapsed.
 - A colour or title escape sequence a command writes in two pieces no longer leaves part of itself in tool output: the sink holds a sequence its chunk ended inside until the piece that finishes it arrives, and drops one the stream never completes.
 - A `launch` tool block no longer renders as a bare title with no rows: the header drops the placeholder ellipsis while `op` is still streaming, and every operation falls back to the result text when the structured detail it renders from is absent.
 - The `compaction.remote` setting description documents that server-side compaction applies to supported OpenAI, Azure OpenAI, and ChatGPT Codex Responses models.
 - `branchSummary.reserveTokens` now reaches the branch summarizer. It was declared in the settings schema but read by nothing, so every branch summary used the built-in 16384 reserve whatever the setting said.
 - `/prewalk` and `--prewalk` no longer resolve their target through the `smol` role, which stopped resolving when unset; the cheap handoff target now comes from `prewalk.cheapModel` (or `--prewalk-into`, or a `/prewalk <model>` argument) and fails naming that setting when nothing is configured, and a new `prewalk.strongModel` overrides the model a prewalk session starts on.
+- The `ssh` tool works again on a profile whose directory nests more than a few levels deep. Its connection multiplexing socket used a 64-character hash, and OpenSSH binds that path plus a 17-character suffix before renaming it, which exceeded the 108-byte Unix socket limit and failed every command with `unix_listener: path too long for Unix domain socket`; the name is now a 16-character digest, and a path that still cannot fit drops multiplexing with one warning instead of failing the connection.
+- `debug` reaches the Python debugger on a host that installs `python3` and no unsuffixed `python`, which is every current Linux and macOS. The bundled `debugpy` adapter named `python`, so launching answered `adapter 'debugpy' is not available` on a machine that had Python; an adapter may now declare alternate spellings, and a command written in `dap.json` is still used exactly as written.
 
 ## [1.2.0] - 2026-08-23
 
