@@ -7,7 +7,7 @@ import type {
 	AgentToolUpdateCallback,
 	ToolTier,
 } from "@veyyon/agent-core";
-import { formatHashlineHeader, stripHashlinePrefixes } from "@veyyon/hashline";
+import { formatHashlineHeader } from "@veyyon/hashline";
 import type { Component } from "@veyyon/tui";
 import {
 	atomicWriteFileWith,
@@ -99,7 +99,16 @@ import {
 import { ToolError, toolFailure } from "./tool-errors";
 import { toolResult } from "./tool-result";
 
+const HASHLINE_HEADER_RE = /^\s*\[[^#\r\n]+#[0-9a-fA-F]{4}\]\s*$/;
 const LOOSE_HASHLINE_HEADER_RE = /^\s*\[[^#\r\n]+#[^ \t\r\n]*\]\s*$/;
+const HASHLINE_OP_RE =
+	/^\s*(?:SWAP(?:\.BLK)?(?:\s+[1-9]\d*(?:\s*(?:\.\.|\.=|-|…|\s)\s*[1-9]\d*)?)?\s*:|DEL(?:\.BLK)?\s+[1-9]\d*(?:\s*(?:\.\.|\.=|-|…|\s)\s*[1-9]\d*)?\s*$|INS\.(?:PRE\s+[1-9]\d*|POST\s+[1-9]\d*|HEAD|TAIL|BLK\.POST\s+[1-9]\d*)\s*:|REM\s*$|MV\s+\S+)/;
+const UNIFIED_DIFF_HUNK_RE = /^@@\s+[-+]?\d+(?:,\d+)?\s+[-+]?\d+(?:,\d+)?\s+@@/;
+const APPLY_PATCH_MARKER_RE = /^\*\*\*\s+(?:Update File|Add File|Delete File|Move to):/;
+const READ_TRUNCATION_NOTICE_RE = /^\[(?:Showing lines \d+-\d+ of \d+|\d+ more lines? in (?:file|\S+))\b.*\bUse :L?\d+/;
+const SEARCH_PREFIX_RE = /^\s*(?:\*\d+:|\s\d+:|>>>\s*\d+:)/;
+const LINE_PREFIX_RE = /^\s*(\d+):/;
+const BARE_LITERAL_VALUE_RE = /^\s*(?:"[^"]*"|'[^']*'|[-+]?\d+(?:\.\d+)?|true|false|null)\s*,?\s*$/;
 const EXECUTABLE_NOTICE = "[Notice: Made executable via chmod +x]";
 
 const BULK_DIRECTIVE_RE = /^#?(\d+)\s*[:=]\s*(@ours|@theirs|@base|@both)$/;
@@ -164,37 +173,6 @@ function parseBulkDirectives(content: string): Map<number, string> | null {
 	return map;
 }
 
-/**
- * Resolve per-id directives, preferring the pre-strip `raw` content and falling
- * back to the hashline-stripped `stripped` content.
- *
- * Raw is preferred because the `<id>:` directive heads look exactly like
- * hashline `LINE:` prefixes and would be eaten by stripping. When the two
- * contents are identical (hashline mode off) a single parse decides everything,
- * so a malformed-block error propagates straight through — the previous
- * `?? parseBulkDirectives(...)` chain would have swallowed it and silently
- * degraded to uniform bulk mode, pasting the raw directive text into every
- * block. When they differ, a malformed raw block still defers to a *clean*
- * stripped block, but otherwise surfaces its error rather than degrading.
- */
-function resolveBulkDirectives(raw: string, stripped: string): Map<number, string> | null {
-	if (raw === stripped) return parseBulkDirectives(raw);
-	let rawResult: Map<number, string> | null;
-	try {
-		rawResult = parseBulkDirectives(raw);
-	} catch (rawError) {
-		let fallback: Map<number, string> | null = null;
-		try {
-			fallback = parseBulkDirectives(stripped);
-		} catch {
-			fallback = null;
-		}
-		if (fallback) return fallback;
-		throw rawError;
-	}
-	return rawResult ?? parseBulkDirectives(stripped);
-}
-
 const writeSchema = type({
 	path: type("string").describe("file path"),
 	content: type("string").describe("file content"),
@@ -214,41 +192,81 @@ export interface WriteToolDetails {
 }
 
 /**
- * Strip hashline display prefixes from write content.
+ * Validate that write content is a raw file body and not a patch fragment or
+ * read-output display echo.
  *
- * Includes a fallback for loosely-formed section headers that still carry
- * line-number prefixes (for example legacy or malformed hashline echoes).
+ * Replaces legacy silent prefix stripping with refusal: writing a modified
+ * version of pasted patch content creates invisible file corruption, and
+ * auto-stripping mangled legitimate numbered/prefixed text.
  */
-function stripWriteContentWithPotentialLooseHeader(lines: string[]): { text: string; stripped: boolean } {
-	const cleaned = stripHashlinePrefixes(lines);
-	if (cleaned !== lines) {
-		return { text: cleaned.join("\n"), stripped: true };
+function assertValidWriteContent(content: string): void {
+	if (!content) return;
+	const lines = content.split("\n");
+
+	for (let i = 0; i < lines.length; i++) {
+		const line = lines[i]!;
+		const lineNum = i + 1;
+		const trimmed = line.trim();
+		if (trimmed.length === 0) continue;
+
+		if (HASHLINE_HEADER_RE.test(line) || LOOSE_HASHLINE_HEADER_RE.test(line)) {
+			throw new ToolError(
+				`Cannot write content: detected hashline section header '${trimmed}' on line ${lineNum}. The write tool writes whole files and does not apply patches or strip display headers. To write the file, pass the raw file content; to apply a patch, use the edit tool.`,
+			);
+		}
+
+		if (HASHLINE_OP_RE.test(line)) {
+			throw new ToolError(
+				`Cannot write content: detected hashline patch operation '${trimmed}' on line ${lineNum}. The write tool writes whole files and does not apply patches. To write the file, pass the complete file content; to apply a patch, use the edit tool.`,
+			);
+		}
+
+		if (UNIFIED_DIFF_HUNK_RE.test(trimmed)) {
+			throw new ToolError(
+				`Cannot write content: detected unified diff hunk header '${trimmed}' on line ${lineNum}. The write tool writes whole files and does not apply diffs. To write the file, pass the complete file content; to apply a patch, use the edit tool.`,
+			);
+		}
+
+		if (APPLY_PATCH_MARKER_RE.test(trimmed)) {
+			throw new ToolError(
+				`Cannot write content: detected patch marker '${trimmed}' on line ${lineNum}. The write tool writes whole files and does not apply patches. To write the file, pass the complete file content; to apply a patch, use the edit tool.`,
+			);
+		}
+
+		if (READ_TRUNCATION_NOTICE_RE.test(trimmed)) {
+			throw new ToolError(
+				`Cannot write content: detected read tool truncation notice '${trimmed}' on line ${lineNum}. The write tool writes whole files and does not strip read display prefixes. Pass the raw file content without read tool output decorations.`,
+			);
+		}
+
+		if (SEARCH_PREFIX_RE.test(line)) {
+			throw new ToolError(
+				`Cannot write content: detected search/read display prefix '${trimmed.slice(0, 10)}' on line ${lineNum}. The write tool writes whole files and does not strip search/read display prefixes. Pass the raw file content without line prefixes.`,
+			);
+		}
 	}
 
-	const headerIndex = lines.findIndex(line => line.trim().length > 0);
-	if (headerIndex === -1 || !LOOSE_HASHLINE_HEADER_RE.test(lines[headerIndex])) {
-		return { text: lines.join("\n"), stripped: false };
-	}
+	const nonEmptyLines = lines.map((text, idx) => ({ text, lineNum: idx + 1 })).filter(l => l.text.trim().length > 0);
 
-	const linesWithoutHeader = lines.slice(0, headerIndex).concat(lines.slice(headerIndex + 1));
-	const cleanedWithoutHeader = stripHashlinePrefixes(linesWithoutHeader);
-	if (cleanedWithoutHeader === linesWithoutHeader) {
-		return { text: lines.join("\n"), stripped: false };
+	if (nonEmptyLines.length >= 2) {
+		const allPrefixed = nonEmptyLines.every(l => LINE_PREFIX_RE.test(l.text));
+		if (allPrefixed) {
+			const isDirectiveBlock = nonEmptyLines.some(
+				l => BULK_DIRECTIVE_HEAD_RE.test(l.text.trim()) && /@\w+/.test(l.text),
+			);
+			const isLiteralMapping = nonEmptyLines.every(l =>
+				BARE_LITERAL_VALUE_RE.test(l.text.replace(LINE_PREFIX_RE, "")),
+			);
+			if (!isDirectiveBlock && !isLiteralMapping) {
+				const first = nonEmptyLines[0]!;
+				const match = first.text.match(LINE_PREFIX_RE);
+				const prefix = match ? match[0] : "";
+				throw new ToolError(
+					`Cannot write content: detected read tool line-number prefix '${prefix}' on line ${first.lineNum}. The write tool writes whole files and does not strip line-number prefixes. Pass the raw file content without line numbers.`,
+				);
+			}
+		}
 	}
-	return { text: cleanedWithoutHeader.join("\n"), stripped: true };
-}
-
-/**
- * Strip hashline display prefixes from write content.
- *
- * Only active when hashline edit mode is enabled — the model sees `[PATH#HASH]`
- * headers plus `LINE:` prefixes in read output and sometimes copies them into write content.
- */
-function stripWriteContent(session: ToolSession, content: string): { text: string; stripped: boolean } {
-	if (!resolveFileDisplayMode(session).hashLines) {
-		return { text: content, stripped: false };
-	}
-	return stripWriteContentWithPotentialLooseHeader(content.split("\n"));
 }
 
 /**
@@ -727,7 +745,6 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 	async #resolveConflict(
 		entry: ConflictEntry,
 		replacementContent: string,
-		stripped: boolean,
 		signal: AbortSignal | undefined,
 	): Promise<AgentToolResult<WriteToolDetails>> {
 		const absolutePath = entry.absolutePath;
@@ -770,9 +787,6 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 				: `lines ${entry.startLine}\u2013${entry.endLine}`;
 		const summary = `Resolved conflict #${entry.id} at ${range} in ${entry.displayPath}.`;
 		let resultText = header ? `${header}\n${summary}` : summary;
-		if (stripped) {
-			resultText += `\nNote: auto-stripped hashline display prefixes from content before writing.`;
-		}
 		const echoTrimmed = splice.trimmedLeading + splice.trimmedTrailing;
 		if (echoTrimmed > 0) {
 			resultText += `\nNote: dropped ${echoTrimmed} content line(s) that duplicated the code adjacent to the conflict region — writes replace only the marker block; surrounding lines stay in place.`;
@@ -791,7 +805,6 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 	async #resolveSingleConflictById(
 		id: number,
 		replacementContent: string,
-		stripped: boolean,
 		signal: AbortSignal | undefined,
 	): Promise<AgentToolResult<WriteToolDetails>> {
 		const entry = getConflictHistory(this.session).get(id);
@@ -800,7 +813,7 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 				`Conflict #${id} not found. Conflict ids are registered when \`read\` surfaces a marker block; re-read the file to get a current id.`,
 			);
 		}
-		return this.#resolveConflict(entry, replacementContent, stripped, signal);
+		return this.#resolveConflict(entry, replacementContent, signal);
 	}
 
 	/**
@@ -820,9 +833,7 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 	 */
 	async #resolveAllConflicts(
 		replacementContent: string,
-		stripped: boolean,
 		signal: AbortSignal | undefined,
-		rawContent: string = replacementContent,
 	): Promise<AgentToolResult<WriteToolDetails>> {
 		const history = getConflictHistory(this.session);
 		const allEntries = history.entries();
@@ -838,7 +849,7 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 		// winner — one call instead of one write per conflict. Parsed from the
 		// PRE-strip content: hashline prefix stripping would otherwise eat the
 		// `<id>: ` heads as echoed line numbers.
-		const directives = resolveBulkDirectives(rawContent, replacementContent);
+		const directives = parseBulkDirectives(replacementContent);
 		if (directives) {
 			const known = new Set(allEntries.map(entry => entry.id));
 			const unknown = [...directives.keys()].filter(id => !known.has(id));
@@ -967,9 +978,6 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 			summaryLines.push("Snapshots:");
 			for (const header of headerLines) summaryLines.push(`  ${header}`);
 		}
-		if (stripped && !directives) {
-			summaryLines.push("Note: auto-stripped hashline display prefixes from content before writing.");
-		}
 		const resultText = summaryLines.join("\n");
 
 		if (failedFiles.length > 0 && succeededFiles.length === 0) {
@@ -1001,8 +1009,7 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 		// what `read` resolves for the same URL; line-range/malformed selectors throw.
 		const path = peelWriteUrlSelector(unwrapHashlineHeaderPath(rawPath));
 		return untilAborted(signal, async () => {
-			// Strip hashline display prefixes ([PATH#HASH] + LINE:) if the model copied them from read output
-			const { text: cleanContent, stripped } = stripWriteContent(this.session, content);
+			assertValidWriteContent(content);
 			const internalRouter = InternalUrlRouter.instance();
 			if (internalRouter.canHandle(path)) {
 				const parsed = parseInternalUrl(path);
@@ -1012,12 +1019,9 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 					// Handler-owned writes (vault:// notes, host URIs) mutate user
 					// data outside the local sandbox — plan mode must reject them.
 					enforcePlanModeWrite(this.session, path, { op: "update" });
-					emitWriteProgress(onUpdate, cleanContent, path);
-					await handler.write(parsed, cleanContent, { cwd: this.session.cwd, signal });
-					let resultText = `Successfully wrote ${cleanContent.length} bytes to ${path}`;
-					if (stripped) {
-						resultText += `\nNote: auto-stripped hashline display prefixes from content before writing.`;
-					}
+					emitWriteProgress(onUpdate, content, path);
+					await handler.write(parsed, content, { cwd: this.session.cwd, signal });
+					const resultText = `Successfully wrote ${content.length} bytes to ${path}`;
 					return { content: [{ type: "text", text: resultText }], details: {} };
 				}
 				if (scheme !== "local") {
@@ -1043,11 +1047,11 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 						`Conflict URI scope '/${conflictUri.scope}' is read-only — read \`conflict://${conflictUri.id}/${conflictUri.scope}\` to inspect that side. To write, drop the scope (\`conflict://${conflictUri.id}\`) and put the chosen content (or shorthand like \`@${conflictUri.scope}\`) in \`content\`.`,
 					);
 				}
-				emitWriteProgress(onUpdate, cleanContent, path);
+				emitWriteProgress(onUpdate, content, path);
 				const result =
 					conflictUri.id === "*"
-						? await this.#resolveAllConflicts(cleanContent, stripped, signal, content)
-						: await this.#resolveSingleConflictById(conflictUri.id, cleanContent, stripped, signal);
+						? await this.#resolveAllConflicts(content, signal)
+						: await this.#resolveSingleConflictById(conflictUri.id, content, signal);
 				if (conflictUri.recoveredPrefix !== undefined) {
 					appendNoteToResult(
 						result,
@@ -1064,41 +1068,21 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 
 				emitWriteProgress(
 					onUpdate,
-					cleanContent,
+					content,
 					`${formatPathRelativeToCwd(resolvedArchivePath.absolutePath, this.session.cwd)}:${
 						resolvedArchivePath.archiveSubPath
 					}`,
 					resolvedArchivePath.absolutePath,
 				);
-				const archiveResult = await this.#writeArchiveEntry(cleanContent, resolvedArchivePath);
-				if (stripped) {
-					const firstText = archiveResult.content.find(
-						(block): block is { type: "text"; text: string } =>
-							block.type === "text" && typeof block.text === "string",
-					);
-					if (firstText) {
-						firstText.text += `\nNote: auto-stripped hashline display prefixes from content before writing.`;
-					}
-				}
-				return archiveResult;
+				return this.#writeArchiveEntry(content, resolvedArchivePath);
 			}
 
 			const resolvedSqlitePath = await this.#resolveSqliteWritePath(path);
 			if (resolvedSqlitePath) {
 				enforcePlanModeWrite(this.session, resolvedSqlitePath.sqlitePath, { op: "update" });
 
-				emitWriteProgress(onUpdate, cleanContent, path, resolvedSqlitePath.absolutePath);
-				const sqliteResult = await this.#writeSqliteRow(path, cleanContent, resolvedSqlitePath);
-				if (stripped) {
-					const firstText = sqliteResult.content.find(
-						(block): block is { type: "text"; text: string } =>
-							block.type === "text" && typeof block.text === "string",
-					);
-					if (firstText) {
-						firstText.text += `\nNote: auto-stripped hashline display prefixes from content before writing.`;
-					}
-				}
-				return sqliteResult;
+				emitWriteProgress(onUpdate, content, path, resolvedSqlitePath.absolutePath);
+				return this.#writeSqliteRow(path, content, resolvedSqlitePath);
 			}
 
 			enforcePlanModeWrite(this.session, path, { op: "create" });
@@ -1118,47 +1102,34 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 			// file (nothing is stored yet) and on a case-sensitive filesystem.
 			const reportedPath = overwritingExistingFile ? resolveStoredPathCase(absolutePath) : absolutePath;
 			const displayPath = formatPathRelativeToCwd(reportedPath, this.session.cwd);
-			emitWriteProgress(onUpdate, cleanContent, displayPath, absolutePath);
+			emitWriteProgress(onUpdate, content, displayPath, absolutePath);
 
 			// Try ACP bridge first for editor-visible filesystem paths. Internal
 			// artifacts such as local:// plans are owned by veyyon, not the editor.
-			if (await routeWriteThroughBridge(this.session, path, absolutePath, cleanContent, signal)) {
-				const madeExecutable = await maybeMarkExecutableForShebang(absolutePath, cleanContent);
-				const header = maybeWriteSnapshotHeader(this.session, absolutePath, cleanContent);
-				const writeLine = `Successfully wrote ${cleanContent.length} bytes to ${displayPath}`;
-				let resultText = header ? `${header}\n${writeLine}` : writeLine;
-				if (stripped) {
-					resultText += `\nNote: auto-stripped hashline display prefixes from content before writing.`;
-				}
-				if (madeExecutable) {
-					resultText += `\n${EXECUTABLE_NOTICE}`;
-				}
+			if (await routeWriteThroughBridge(this.session, path, absolutePath, content, signal)) {
+				const madeExecutable = await maybeMarkExecutableForShebang(absolutePath, content);
+				const header = maybeWriteSnapshotHeader(this.session, absolutePath, content);
+				const writeLine = `Successfully wrote ${content.length} bytes to ${displayPath}`;
+				const resultText = header ? `${header}\n${writeLine}` : writeLine;
+				const fullResultText = madeExecutable ? `${resultText}\n${EXECUTABLE_NOTICE}` : resultText;
 				return {
-					content: [{ type: "text", text: resultText }],
+					content: [{ type: "text", text: fullResultText }],
 					details: { resolvedPath: absolutePath, madeExecutable: madeExecutable || undefined },
 				};
 			}
 
-			const diagnostics = await this.#writethrough(
-				absolutePath,
-				cleanContent,
-				signal,
-				undefined,
-				batchRequest,
-				dst => this.#deferredDiagnostics?.begin(dst),
+			const diagnostics = await this.#writethrough(absolutePath, content, signal, undefined, batchRequest, dst =>
+				this.#deferredDiagnostics?.begin(dst),
 			);
 			invalidateFsScanAfterWrite(absolutePath);
 			if (!this.#deferredDiagnostics || batchRequest?.flush === false) {
 				this.session.bumpFileMutationVersion?.(absolutePath);
 			}
-			const madeExecutable = await maybeMarkExecutableForShebang(absolutePath, cleanContent);
+			const madeExecutable = await maybeMarkExecutableForShebang(absolutePath, content);
 
-			const header = maybeWriteSnapshotHeader(this.session, absolutePath, cleanContent);
-			const writeLine = `Successfully wrote ${cleanContent.length} bytes to ${displayPath}`;
+			const header = maybeWriteSnapshotHeader(this.session, absolutePath, content);
+			const writeLine = `Successfully wrote ${content.length} bytes to ${displayPath}`;
 			let resultText = header ? `${header}\n${writeLine}` : writeLine;
-			if (stripped) {
-				resultText += `\nNote: auto-stripped hashline display prefixes from content before writing.`;
-			}
 			if (madeExecutable) {
 				resultText += `\n${EXECUTABLE_NOTICE}`;
 			}
