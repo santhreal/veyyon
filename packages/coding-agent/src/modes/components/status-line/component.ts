@@ -2,7 +2,16 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { AgentMessage } from "@veyyon/agent-core";
 import type { AssistantMessage, UsageLimit, UsageReport } from "@veyyon/ai";
-import { type Component, padding, sliceWithWidth, truncateToWidth, visibleWidth } from "@veyyon/tui";
+import {
+	type Component,
+	MOTION,
+	type MotionClock,
+	padding,
+	SettleValue,
+	sliceWithWidth,
+	truncateToWidth,
+	visibleWidth,
+} from "@veyyon/tui";
 import { formatClock, getProjectDir, scopedTimeoutSignal, stripAnsi, withScopedTimeoutSignal } from "@veyyon/utils";
 import { resolveContextLimit } from "../../../config/compaction-strategy";
 // The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
@@ -15,6 +24,7 @@ import { type ActiveRepoContext, resolveActiveRepoContextSync } from "../../../u
 import * as git from "../../../utils/git";
 import { sanitizeStatusText } from "../../shared";
 import { withIcon } from "../../theme/icon-label";
+import { transitionsEnabled } from "../../theme/shimmer";
 import { theme } from "../../theme/theme";
 import { canReuseCachedPr, createPrCacheContext, isSamePrCacheContext, type PrCacheContext } from "./git-utils";
 import { getPreset } from "./presets";
@@ -40,8 +50,12 @@ const SESSION_CLOCK_GAP = "      ";
  * One quiet-footline part: the segment id it came from plus its rendered
  * content. Ids are StatusLineSegmentId values, or the synthetic "badges"
  * (the animated badge slot) / "location_right" (owner-pinned right content).
+ *
+ * `pin` is the cells at the front a front clip must keep, which the segment declares (see
+ * `RenderedSegment.pin`): the path's icon says whether the row names a worktree, a scratch
+ * directory or a plain folder, and the cut takes its cells out of the path instead.
  */
-type QuietPart = { id: string; content: string };
+export type QuietPart = { id: string; content: string; pin?: number };
 
 /**
  * Shed order for the right group, as a rank rather than a boolean. Higher survives longer;
@@ -90,6 +104,23 @@ const RIGHT_PART_SHED_RANK: Record<string, number> = {
 	subagents: 5,
 };
 
+/**
+ * The part the row gives up next: the lowest-ranked one, taken from the END so that equally
+ * ranked parts still go right to left. Index -1 for an empty group.
+ */
+function weakestRightPart(parts: readonly QuietPart[]): { index: number; rank: number } {
+	let index = -1;
+	let rank = Number.POSITIVE_INFINITY;
+	for (let i = parts.length - 1; i >= 0; i--) {
+		const partRank = RIGHT_PART_SHED_RANK[parts[i]?.id ?? ""] ?? 0;
+		if (partRank < rank) {
+			rank = partRank;
+			index = i;
+		}
+	}
+	return { index, rank };
+}
+
 /** The one clip mark on the footline, wherever a clipper puts it. */
 const ELLIPSIS = "…";
 
@@ -127,56 +158,132 @@ function clipStartToWidth(text: string, maxWidth: number): string {
 }
 
 /**
- * The fewest cells a clipped location HEAD is worth keeping. Below about a dozen, a path
- * tail is a fragment of one directory name and names nothing a reader can place, so the
- * room comes out of a later part instead.
+ * Clip one location part to `width`, stepping over the cells it pinned.
+ *
+ * The part's pin is its icon (see `QuietPart.pin`), and the icon is the first thing a front
+ * cut reaches. Eating it made the same directory render as a worktree at one width and as a
+ * plain folder two columns narrower, so the glyph is kept and the mark lands after it: the
+ * row reads `▫ …ingest-pipeline/normalizer`.
+ *
+ * Below the pin plus a mark there is no room to keep both, and the icon is what goes: a bare
+ * glyph says which KIND of location the row named and no longer says which one.
  */
-const MIN_LOCATION_HEAD = 12;
+function clipPartToWidth(part: QuietPart, width: number): string {
+	const pin = part.pin ?? 0;
+	if (pin <= 0 || width <= pin + 1) return clipStartToWidth(part.content, width);
+	const total = visibleWidth(part.content);
+	const head = sliceWithWidth(part.content, 0, pin, true).text;
+	const rest = sliceWithWidth(part.content, pin, total - pin, true).text;
+	return head + clipStartToWidth(rest, width - pin);
+}
 
 /**
- * Fit the location parts into `budget` cells, keeping the RIGHT end of the leading part.
+ * The fewest cells a clipped location part is kept above while any WIDER part can still give
+ * the room instead. Below about a dozen, a clipped tail is a fragment of one name and reads
+ * as a name in its own right.
  *
- * The leading part is the working directory, and the directory the session is in is the
- * whole point of showing it, so it is the last thing on the row to go. Cutting the joined
- * location from the front instead ate the path first and left the branch alone on the row --
- * the tail of the JOIN is the branch, not the directory. So the later parts (the branch, the
- * pull request) are shed WHOLE, right to left, and only the leading part is clipped, from
- * its front, down to `MIN_LOCATION_HEAD` before anything else is given up.
+ * It is also the width at or under which a part is never clipped at all: `⎇ main` is six
+ * cells, and taking cells off a name that short buys the row almost nothing and costs the
+ * reader the branch. A short branch stays whole at every width; only a long one pays.
+ */
+export const MIN_LOCATION_PART = 12;
+
+/**
+ * The fewest cells a part is worth keeping at all: the mark, plus one character of the name
+ * behind it. At one cell a part is nothing but its own clip mark, and `… · …` names neither a
+ * directory nor a branch -- the row is better off dropping the trailing part and spending the
+ * cells on the directory.
+ */
+const MIN_READABLE_PART = 2;
+
+/**
+ * Fit the location parts into `budget` cells, keeping the RIGHT end of every one of them.
+ *
+ * NOTHING IS DROPPED while the row can hold the parts at all. Every part is clipped from its
+ * own front instead, so the directory and the branch both stay on the row and both keep their
+ * identifying end. Shedding a part whole was the first shape of this, and it took the branch
+ * off rows where the release before it still showed the branch clipped: a short branch beside
+ * a short directory is a better row than a long directory alone.
+ *
+ * Cutting the front of the JOIN is the other wrong answer: the tail of `path · branch` is the
+ * branch, so one cut across the join eats the directory first and leaves the branch by itself.
+ * The parts are therefore clipped INDIVIDUALLY.
+ *
+ * WHO PAYS. The widest clippable part, one cell at a time, so two long parts converge on a
+ * shared width instead of one being spent whole to keep the other intact. A part at or under
+ * MIN_LOCATION_PART is never asked -- `⎇ main` reads whole or not at all -- and the rest stop
+ * at that floor while anything is still above it, going under it only when nothing else is
+ * left to give.
+ *
+ * `cramped` says the zone had to go under its own floors to fit, which is the row's cue that
+ * the budget is the problem: the caller sheds the context gauge and asks again rather than
+ * accepting a location too short to read (see the shed loop).
+ *
+ * The one place a part leaves the row is a budget that cannot hold the separators and the
+ * unclippable parts even at a cell each. There the trailing parts go, last first, and the
+ * directory keeps the zone, because a lone `main` says nothing about where the session is.
  *
  * The slots are the painted extents of what survived, in columns of the returned text, so a
  * click resolves against the row on the screen rather than the join it was cut from.
  */
-function fitLocation(
+export function fitLocation(
 	parts: readonly QuietPart[],
 	sep: string,
 	budget: number,
-): { text: string; slots: QuietSegmentBounds[] } {
+): { text: string; slots: QuietSegmentBounds[]; cramped: boolean } {
 	const sepWidth = visibleWidth(sep);
-	const kept = [...parts];
-	while (kept.length > 0) {
-		const head = kept[0];
-		if (head === undefined) break;
-		const headWidth = visibleWidth(head.content);
-		let total = headWidth;
-		for (let i = 1; i < kept.length; i++) total += sepWidth + visibleWidth(kept[i]?.content ?? "");
-		if (total <= budget)
-			return assembleLocation(
-				kept,
-				kept.map(part => part.content),
-				sep,
-			);
-		const roomForHead = budget - (total - headWidth);
-		if (roomForHead >= Math.min(headWidth, MIN_LOCATION_HEAD) || kept.length === 1) {
-			// Clipping to nothing is reachable only for the last part standing -- above that
-			// the floor pops a part instead -- and it renders no location at all rather than
-			// a bare mark, so nothing is left to strand a separator in front of.
-			const clipped = clipStartToWidth(head.content, Math.max(0, roomForHead));
-			const contents = kept.map((part, index) => (index === 0 ? clipped : part.content));
-			return assembleLocation(kept, contents, sep);
-		}
-		kept.pop();
+	for (let count = parts.length; count > 1; count--) {
+		const kept = parts.slice(0, count);
+		const fitted = fillLocation(kept, sepWidth, budget);
+		if (fitted === null) continue;
+		const assembled = assembleLocation(kept, fitted.contents, sep);
+		return { ...assembled, cramped: fitted.cramped || count < parts.length };
 	}
-	return { text: "", slots: [] };
+	const head = parts[0];
+	if (head === undefined) return { text: "", slots: [], cramped: false };
+	// The head alone, clipped to whatever there is -- down to the bare mark, and to nothing at
+	// a budget of zero, which renders no location rather than a stray glyph.
+	const width = visibleWidth(head.content);
+	const content = width <= budget ? head.content : clipPartToWidth(head, Math.max(0, budget));
+	const assembled = assembleLocation([head], [content], sep);
+	return { ...assembled, cramped: width > budget || parts.length > 1 };
+}
+
+/**
+ * Hand out the cells: the widest clippable part gives one up at a time, first down to
+ * MIN_LOCATION_PART and then, only if the row still overflows, down to MIN_READABLE_PART. Null
+ * when even that does not fit, which is the caller's signal to try one part fewer.
+ */
+function fillLocation(
+	parts: readonly QuietPart[],
+	sepWidth: number,
+	budget: number,
+): { contents: string[]; cramped: boolean } | null {
+	const full = parts.map(part => visibleWidth(part.content));
+	const allotted = [...full];
+	let over = full.reduce((sum, width) => sum + width, 0) + sepWidth * (parts.length - 1) - budget;
+	for (const floor of [MIN_LOCATION_PART, MIN_READABLE_PART]) {
+		while (over > 0) {
+			let widest = -1;
+			for (const [index, width] of allotted.entries()) {
+				if ((full[index] ?? 0) <= MIN_LOCATION_PART) continue;
+				if (width <= floor) continue;
+				// Ties go to the LATER part: the directory is the head a reader places the row
+				// by, so when two parts are equally wide the branch gives up the cell.
+				if (widest < 0 || width >= (allotted[widest] ?? 0)) widest = index;
+			}
+			if (widest < 0) break;
+			allotted[widest] = (allotted[widest] ?? 0) - 1;
+			over--;
+		}
+	}
+	if (over > 0) return null;
+	return {
+		contents: parts.map((part, index) =>
+			(allotted[index] ?? 0) < (full[index] ?? 0) ? clipPartToWidth(part, allotted[index] ?? 0) : part.content,
+		),
+		cramped: allotted.some((width, index) => width < Math.min(full[index] ?? 0, MIN_LOCATION_PART)),
+	};
 }
 
 /** Join `contents` and record the painted extent of each part, in columns of the join. */
@@ -441,6 +548,17 @@ function hasGitBackedSegment(segments: readonly StatusLineSegmentId[]): boolean 
 // StatusLineComponent
 // ═══════════════════════════════════════════════════════════════════════════
 
+/** How the host paints the footline's motion. */
+export interface StatusLineMotionOptions {
+	/**
+	 * Repaint hook for the frames between a click and the row it lands on. Without one the
+	 * expansion is a hard cut, which is what every non-interactive caller wants.
+	 */
+	requestRender?: () => void;
+	/** The clock the travel runs on. Tests pass a hand-ticked one. */
+	clock?: MotionClock;
+}
+
 export class StatusLineComponent implements Component {
 	#settings: StatusLineSettings = {};
 	#effectiveSettings: EffectiveStatusLineSettings | undefined;
@@ -531,7 +649,30 @@ export class StatusLineComponent implements Component {
 	// message list + model window yields a stable result we can return verbatim.
 	#contextUsageCache: ContextUsageMemo | undefined;
 
-	constructor(private session: AgentSession) {
+	/**
+	 * The path expansion, as a value between the collapsed row and the expanded one, or
+	 * undefined when the host gave no repaint hook: a widening row nobody paints is a timer
+	 * with no picture, and every caller that only renders (tests, the two-line selector) gets
+	 * the hard cut it always got.
+	 */
+	readonly #expansion: SettleValue | undefined;
+
+	constructor(
+		private session: AgentSession,
+		motion: StatusLineMotionOptions = {},
+	) {
+		if (motion.requestRender) {
+			this.#expansion = new SettleValue({
+				requestRender: motion.requestRender,
+				clock: motion.clock,
+				curve: MOTION.expand,
+			});
+			// Seed the resting state so the FIRST click travels. SettleValue lands its first
+			// value without motion -- a gauge that sweeps up from zero on its first paint is
+			// animating the session starting -- and here that first value is the collapsed row,
+			// which is where the row already is.
+			this.#expansion.set(0);
+		}
 		this.#settings = {
 			preset: settings.get("statusLine.preset"),
 			leftSegments: settings.get("statusLine.leftSegments"),
@@ -790,6 +931,8 @@ export class StatusLineComponent implements Component {
 		this.#disposed = true;
 		this.#onBranchChange = null;
 		this.#clearUsageStartTimer();
+		// A travel with no row left to paint is a repaint loop for a component that is gone.
+		this.#expansion?.dispose();
 		if (this.#gitWatcher) {
 			this.#gitWatcher.close();
 			this.#gitWatcher = null;
@@ -1517,9 +1660,19 @@ export class StatusLineComponent implements Component {
 		// EXPANDED PATH. A click on the path toggles `#pathExpanded`: the location zone
 		// gives up its clamp and takes the room the model chip vacates, so a path too long
 		// for the footline can be read without resizing the terminal. The shed loop below
-		// still right-truncates the location to the row, so this widens the budget rather
-		// than promising the whole path.
-		const pathBudget = this.#pathExpanded ? width : (effectiveSettings.segmentOptions?.path?.maxLength ?? 30);
+		// still clips the location to the row, so this widens the budget rather than
+		// promising the whole path.
+		//
+		// The clamp travels between the two budgets rather than switching between them, so
+		// the path grows a cell at a time out of the room the chip is giving back. Both ends
+		// of the trade are driven by ONE progress value, so the row can never be mid-way
+		// through widening while the chip is already gone.
+		const expansion = this.#expansionProgress();
+		const collapsedPathBudget = effectiveSettings.segmentOptions?.path?.maxLength ?? 30;
+		// A row narrower than the clamp has nothing to widen INTO, and interpolating toward it
+		// would make the click cut the path shorter than the clamp already had it.
+		const expandedPathBudget = Math.max(collapsedPathBudget, width);
+		const pathBudget = Math.round(collapsedPathBudget + (expandedPathBudget - collapsedPathBudget) * expansion);
 		const quietOptions = {
 			...effectiveSettings.segmentOptions,
 			path: {
@@ -1537,12 +1690,23 @@ export class StatusLineComponent implements Component {
 		const capRight: QuietPart[] = [];
 		const push = (id: StatusLineSegmentId, out: QuietPart[]) => {
 			if (id === "subagents") return;
+			const rendered = renderSegment(id, ctx);
+			if (!rendered.visible || !rendered.content) return;
 			// The model chip is what an expanded path spends, and the only thing it spends:
 			// the rungs and the gauge stay put, so widening the path does not cost the
 			// reader the state they were watching. The next click brings the chip back.
-			if (id === "model" && this.#pathExpanded) return;
-			const rendered = renderSegment(id, ctx);
-			if (rendered.visible && rendered.content) out.push({ id, content: rendered.content });
+			//
+			// It retracts by width rather than vanishing, on the same progress value that
+			// widens the path, so the room leaves one end of the row exactly as fast as it
+			// arrives at the other. Fully expanded the width is zero and the chip is not on
+			// the row at all, which is the byte the hard-cut callers see.
+			if (id === "model" && expansion > 0) {
+				const room = Math.round(visibleWidth(rendered.content) * (1 - expansion));
+				if (room <= 0) return;
+				out.push({ id, content: truncateToWidth(rendered.content, room) });
+				return;
+			}
+			out.push({ id, content: rendered.content, pin: rendered.pin });
 		};
 		// The context gauge is the footline's one LIVE value; everything else on the
 		// right is standing state. A gauge configured on the left still belongs in the
@@ -1584,6 +1748,16 @@ export class StatusLineComponent implements Component {
 	// is clamped to the row rather than the preset budget and the model chip is dropped,
 	// which is the room it spends. Not persisted: a new session opens unexpanded.
 	#pathExpanded = false;
+
+	/**
+	 * How far the row is through the trade: 0 is the collapsed row, 1 the expanded one, and
+	 * anything between is a frame of the travel. Without a repaint hook there is no travel and
+	 * the answer is the toggle itself, so a caller that only renders sees the two end states
+	 * and nothing in between.
+	 */
+	#expansionProgress(): number {
+		return this.#expansion?.value ?? (this.#pathExpanded ? 1 : 0);
+	}
 
 	// Background-job badge animation state. Jobs ease in/out over
 	// BADGE_ANIM_MS so a start or finish reads as an intentional merge instead
@@ -1712,6 +1886,8 @@ export class StatusLineComponent implements Component {
 		// Painted extents of the location parts once the fitter has had them, or null while
 		// the location is still whole and its parts sit where the join put them.
 		let locationSlots: QuietSegmentBounds[] | null = null;
+		// Whether the fitter had to cut the location below its own floors to fit it.
+		let locationCramped = false;
 		while (rightParts.length > 0 && visibleWidth(left) + visibleWidth(right) + (left && right ? 2 : 0) > budget) {
 			if (clockStage === 0) {
 				clockStage = 1;
@@ -1726,15 +1902,9 @@ export class StatusLineComponent implements Component {
 			// Shed the LOWEST-RANKED remaining part, walking from the end so equally
 			// ranked parts still go right-to-left. Everything unlisted ranks 0 and goes
 			// first; see RIGHT_PART_SHED_RANK for why the four ranked ids outrank it.
-			let dropIndex = -1;
-			let dropRank = Number.POSITIVE_INFINITY;
-			for (let i = rightParts.length - 1; i >= 0; i--) {
-				const rank = RIGHT_PART_SHED_RANK[rightParts[i]?.id ?? ""] ?? 0;
-				if (rank < dropRank) {
-					dropRank = rank;
-					dropIndex = i;
-				}
-			}
+			const weakest = weakestRightPart(rightParts);
+			const dropIndex = weakest.index;
+			const dropRank = weakest.rank;
 			if (dropRank === 0 && dropIndex >= 0) {
 				rightParts.splice(dropIndex, 1);
 				right = rightParts.map(part => part.content).join(sep);
@@ -1748,6 +1918,7 @@ export class StatusLineComponent implements Component {
 				const fitted = fitLocation(location, sep, leftBudget);
 				left = fitted.text;
 				locationSlots = fitted.slots;
+				locationCramped = fitted.cramped;
 				continue;
 			}
 			// The location is gone too and the ranked parts still do not fit, so the
@@ -1762,6 +1933,22 @@ export class StatusLineComponent implements Component {
 				continue;
 			}
 			break;
+		}
+		// A location squeezed under its floors is a zone that no longer reads: `… · …` says
+		// neither where the session is nor what it is on. At that point the budget is what has
+		// to move, so the CONTEXT GAUGE goes and the zone is asked again -- a percentage is a
+		// number you can re-read on the next frame, and the directory and branch are identity.
+		// The floor stops at the model chip: retaining that chip beside a long path is the
+		// whole point of this row, so it is never spent to widen the zone.
+		while (locationCramped && locationShortened && rightParts.length > 1) {
+			const weakest = weakestRightPart(rightParts);
+			if (weakest.index < 0 || weakest.rank >= (RIGHT_PART_SHED_RANK.model ?? 0)) break;
+			rightParts.splice(weakest.index, 1);
+			right = rightParts.map(part => part.content).join(sep);
+			const fitted = fitLocation(location, sep, Math.max(0, budget - visibleWidth(right) - (right ? 2 : 0)));
+			left = fitted.text;
+			locationSlots = fitted.slots;
+			locationCramped = fitted.cramped;
 		}
 		if (!left && !right) {
 			this.#quietLineBounds = [];
@@ -1840,16 +2027,25 @@ export class StatusLineComponent implements Component {
 	}
 
 	/**
-	 * Toggle the expanded path. Clicking the path segment widens the location zone to the
-	 * row and hides the model chip; clicking again restores both. Returns the new state so
-	 * the caller can request a render without reading it back.
+	 * Toggle the expanded path. Clicking the path, the branch or the pull request widens the
+	 * location zone to the row and retracts the model chip; clicking again restores both.
+	 * Returns the new state so the caller can request a render without reading it back.
 	 *
 	 * The state lives here rather than in the caller because `renderQuietLine` is the only
 	 * place that knows the row's budget, and the expansion is a property of the line, not
-	 * of the session: a resize re-renders it and re-truncates to the new width.
+	 * of the session: a resize re-renders it and re-clips to the new width.
+	 *
+	 * A second click DURING the travel is retargeted rather than restarted, so the row turns
+	 * around from wherever it had got to instead of jumping to the far end and easing back.
+	 * `display.transitions: off` lands it on the same frame as the click, which is the hard
+	 * cut this replaced, byte for byte.
 	 */
 	togglePathExpanded(): boolean {
 		this.#pathExpanded = !this.#pathExpanded;
+		if (this.#expansion) {
+			this.#expansion.set(this.#pathExpanded ? 1 : 0);
+			if (!transitionsEnabled()) this.#expansion.finish();
+		}
 		return this.#pathExpanded;
 	}
 

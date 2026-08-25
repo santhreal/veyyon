@@ -2,7 +2,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { ThinkingLevel } from "@veyyon/agent-core";
 import { normalizePremiumRequests } from "@veyyon/stats/format";
-import { TERMINAL } from "@veyyon/tui";
+import { TERMINAL, visibleWidth } from "@veyyon/tui";
 import {
 	clamp01,
 	DEFAULT_PROFILE_DIR_NAME,
@@ -495,6 +495,15 @@ const modeSegment: StatusLineSegment = {
 	},
 };
 
+/**
+ * The cells `withIcon` spends on the glyph and the space after it, which is what a front clip
+ * has to step over to keep the icon. Zero for the symbol presets whose icons are empty --
+ * there is nothing to keep and nothing to step over.
+ */
+function iconPin(icon: string): number {
+	return icon ? visibleWidth(icon) + 1 : 0;
+}
+
 const pathSegment: StatusLineSegment = {
 	id: "path",
 	render(ctx) {
@@ -509,7 +518,7 @@ const pathSegment: StatusLineSegment = {
 			const { projectName, worktreeName } = ctx.worktree;
 			const label = ctx.git.branch === worktreeName ? projectName : `${projectName}/${worktreeName}`;
 			const content = withIcon(theme.icon.worktree, clampPathLength(label, opts.maxLength ?? 40));
-			return { content: theme.fg("statusLinePath", content), visible: true };
+			return { content: theme.fg("statusLinePath", content), visible: true, pin: iconPin(theme.icon.worktree) };
 		}
 
 		const projectDir = ctx.session.sessionManager?.getCwd?.() ?? ctx.activeRepo?.cwd ?? getProjectDir();
@@ -536,7 +545,7 @@ const pathSegment: StatusLineSegment = {
 		const showScratchIcon = scratch && stripPrefix;
 		const icon = showScratchIcon ? theme.icon.scratchFolder : theme.icon.folder;
 		const content = withIcon(icon, pwd);
-		return { content: theme.fg("statusLinePath", content), visible: true };
+		return { content: theme.fg("statusLinePath", content), visible: true, pin: iconPin(icon) };
 	},
 };
 

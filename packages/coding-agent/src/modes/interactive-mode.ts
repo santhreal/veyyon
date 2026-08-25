@@ -899,7 +899,11 @@ export class InteractiveMode implements InteractiveModeContext {
 		};
 		this.#refreshComposerShortcuts();
 		this.#bashForegroundUnsubscribe = onForegroundBashWaitChange(() => this.#refreshComposerShortcuts());
-		this.statusLine = new StatusLineComponent(session);
+		// The repaint hook is what makes the path expansion a travel rather than a jump: the
+		// component owns the progress, the shared motion clock owns the frames, and this asks
+		// for each one. A caller that only renders (the two-line selector, tests) passes none
+		// and gets the hard cut.
+		this.statusLine = new StatusLineComponent(session, { requestRender: () => this.ui.requestRender() });
 		this.statusLine.setAutoCompactEnabled(session.autoCompactionEnabled);
 		// The borderless composer, per the agreed design mockups: a static
 		// near-invisible hairline, the content inset off the terminal edge, and
