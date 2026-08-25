@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-00633b83.js";
+            window.path_to_searchindex_js = "searchindex-dbc8f20c.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-a2abefc1.js"></script>
@@ -10492,6 +10492,7 @@ veyyon config get compaction.threshold
 <tr><td><code>model.loopGuard.toolCallReminder</code></td><td>Loop Guard Tool-Call Reminder</td><td>boolean</td><td><code>true</code></td><td>When a Gemini reasoning stream emits many consecutive planning headers without calling a tool, interrupt it and inject a reminder to issue a tool call (requires Loop Guard).</td></tr>
 <tr><td><code>model.toolCallLoopGuard.enabled</code></td><td>Tool-Call Loop Guard</td><td>boolean</td><td><code>true</code></td><td>Detect consecutive identical tool calls across turns and inject a corrective steer.</td></tr>
 <tr><td><code>model.toolCallLoopGuard.threshold</code></td><td>Tool-Call Loop Threshold</td><td>number</td><td><code>5</code></td><td>Consecutive identical tool calls required before the corrective steer is injected.</td></tr>
+<tr><td><code>model.toolCallLoopGuard.readSubsumptionThreshold</code></td><td>Read Subsumption Loop Threshold</td><td>number</td><td><code>2</code></td><td>Consecutive fully-subsumed or redundant read calls on unchanged files before the corrective steer is injected.</td></tr>
 <tr><td><code>model.toolCallLoopGuard.exemptTools</code></td><td>Tool-Call Loop Exempt Tools</td><td>array</td><td><code>["job","irc"]</code></td><td>Tool names that may repeat consecutively without triggering the cross-turn loop guard.</td></tr>
 <tr><td><code>providers.autoThinkingModel</code></td><td>Auto Thinking Model</td><td>enum</td><td><code>online</code></td><td>Difficulty classifier for the <code>auto</code> thinking level: online (the TINY role from /models, else smol) by default, or a local on-device model. Values: <code>online</code>, <code>qwen3-1.7b</code>, <code>llama3.2:3b</code>, <code>gemma-3-1b</code>, <code>qwen2.5-1.5b</code>, <code>lfm2-1.2b</code>.</td></tr>
 </tbody>
@@ -11591,7 +11592,7 @@ veyyon config get compaction.threshold
 </tbody>
 </table>
 </div>
-<p>347 settings in /settings, 119 configuration-file keys, 466 in all.</p>
+<p>348 settings in /settings, 119 configuration-file keys, 467 in all.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="model-and-provider-configuration-modelsyml--modelsyaml"><a class="header" href="#model-and-provider-configuration-modelsyml--modelsyaml">Model and Provider Configuration (<code>models.yml</code> / <code>models.yaml</code>)</a></h1>
 <p>How the coding agent loads models, applies overrides, resolves credentials, and chooses models at runtime.</p>
