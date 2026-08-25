@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { Effort, type FetchImpl } from "@veyyon/ai";
+import type { FetchImpl } from "@veyyon/ai";
+import { Effort } from "@veyyon/catalog/effort";
 import { streamSimple } from "@veyyon/ai/stream";
 import type { Context, Model } from "@veyyon/ai/types";
 import { buildModel } from "@veyyon/catalog/build";

@@ -185,8 +185,29 @@ export function failureAdvice(failures: readonly RunSummary[], tag: string): str
  * before it even starts, so the ceiling is generous. Reaching it is not a
  * failed release: the bump is already on main and the operator can tag it
  * later, which is what the timeout message says.
+ *
+ * `VEYYON_RELEASE_WAIT_MINUTES` overrides the default for a slow queue or a
+ * faster abort. A value that is not a positive finite number is refused rather
+ * than replaced with the default, because a release that silently waits the
+ * wrong amount of time is only noticed once the tag is late.
  */
-const WAIT_CEILING_MS = 90 * 60 * 1000;
+const DEFAULT_WAIT_CEILING_MINUTES = 60;
+
+/**
+ * Resolved when the wait starts rather than at import, so a bad value fails the
+ * cut with a message naming the variable instead of breaking every importer.
+ */
+function waitCeilingMs(): number {
+	const configured = process.env.VEYYON_RELEASE_WAIT_MINUTES?.trim();
+	if (!configured) return DEFAULT_WAIT_CEILING_MINUTES * 60 * 1000;
+	const minutes = Number(configured);
+	if (!Number.isFinite(minutes) || minutes <= 0) {
+		throw new Error(
+			`VEYYON_RELEASE_WAIT_MINUTES must be a positive number of minutes; got ${JSON.stringify(configured)}.`,
+		);
+	}
+	return minutes * 60 * 1000;
+}
 const POLL_INTERVAL_MS = 15 * 1000;
 
 /**
@@ -292,7 +313,8 @@ export async function shipRelease(version: string): Promise<void> {
 	await git("push", "origin", "main");
 	console.log(`Pushed ${sha.slice(0, 12)}. Waiting for checks.\n`);
 
-	const deadline = Date.now() + WAIT_CEILING_MS;
+	const ceilingMs = waitCeilingMs();
+	const deadline = Date.now() + ceilingMs;
 	let lastLine = "";
 	for (;;) {
 		const verdict = checkVerdict(await runsForSha(sha));
@@ -314,7 +336,7 @@ export async function shipRelease(version: string): Promise<void> {
 		if (Date.now() > deadline) {
 			throw new Error(
 				[
-					`Gave up waiting for checks on ${sha.slice(0, 12)} after ${WAIT_CEILING_MS / 60000} minutes.`,
+					`Gave up waiting for checks on ${sha.slice(0, 12)} after ${ceilingMs / 60000} minutes.`,
 					`Still waiting on: ${verdict.waitingOn.join(", ")}`,
 					"",
 					"Nothing is wrong with the release; it just is not green yet. Once it is:",
