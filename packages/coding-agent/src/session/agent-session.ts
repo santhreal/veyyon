@@ -2343,6 +2343,9 @@ export class AgentSession {
 	// Extension system
 	#extensionRunner: ExtensionRunner | undefined = undefined;
 	#turnIndex = 0;
+	#turnCountRef: readonly AgentMessage[] | undefined;
+	#turnCountLength = 0;
+	#turnCount = 0;
 	#messageEndPersistenceTail: Promise<void> = Promise.resolve();
 	#pendingMessageEndPersistence = new Map<string, Promise<void>>();
 	#persistedMessageKeys: { anchor: string; keys: Set<string> } | undefined;
@@ -6177,9 +6180,9 @@ export class AgentSession {
 					cacheWrite: usage.cacheWrite,
 				},
 			});
-		const fallbackAssistant = settledMessages.findLast(
-			(message): message is AssistantMessage => message.role === "assistant",
-		);
+			const fallbackAssistant = settledMessages.findLast(
+				(message): message is AssistantMessage => message.role === "assistant",
+			);
 			const msg = this.#lastAssistantMessage ?? fallbackAssistant;
 			this.#lastAssistantMessage = undefined;
 			if (!msg) {
@@ -7696,10 +7699,24 @@ export class AgentSession {
 	 * arriving now will be re-read for. See `inlineCapForTurn`.
 	 */
 	getTurnIndex(): number {
+		const messages = this.agent.state.messages;
+		if (messages === this.#turnCountRef) {
+			if (messages.length === this.#turnCountLength) return this.#turnCount;
+			if (messages.length > this.#turnCountLength) {
+				for (let i = this.#turnCountLength; i < messages.length; i++) {
+					if (messages[i].role === "assistant") this.#turnCount++;
+				}
+				this.#turnCountLength = messages.length;
+				return this.#turnCount;
+			}
+		}
 		let turns = 0;
-		for (const message of this.agent.state.messages) {
+		for (const message of messages) {
 			if (message.role === "assistant") turns++;
 		}
+		this.#turnCountRef = messages;
+		this.#turnCountLength = messages.length;
+		this.#turnCount = turns;
 		return turns;
 	}
 
