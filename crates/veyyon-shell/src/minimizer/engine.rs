@@ -658,7 +658,7 @@ only_on_exit = [0]
 	}
 
 	#[test]
-	fn successful_minimization_keeps_visible_ok_when_filter_removes_all_lines() {
+	fn successful_minimization_opens_with_the_clean_verdict_when_filter_drops_noise() {
 		let cfg = MinimizerConfig { enabled: true, ..Default::default() };
 		let out = apply(
 			"cargo build",
@@ -669,7 +669,7 @@ only_on_exit = [0]
 		);
 
 		assert!(out.changed);
-		assert_eq!(out.text, "OK\n");
+		assert_eq!(out.text, "[clean] cargo build\n");
 		assert_eq!(out.output_bytes, out.text.len());
 		assert!(out.original_text.is_some());
 	}
@@ -696,12 +696,12 @@ strip_lines_matching = [".*"]
 	}
 
 	#[test]
-	fn failed_minimization_does_not_invent_ok_for_empty_output() {
+	fn failed_minimization_opens_with_the_errors_verdict_when_filter_drops_noise() {
 		let cfg = MinimizerConfig { enabled: true, ..Default::default() };
 		let out = apply("cargo build", "   Compiling app v0.1.0\n", 1, &cfg);
 
 		assert!(out.changed);
-		assert_eq!(out.text, "");
+		assert_eq!(out.text, "[errors] cargo build\n");
 		assert!(out.original_text.is_some());
 	}
 
