@@ -6,6 +6,8 @@
 
 ### Added
 
+- `prewalk.cheapModel` and `prewalk.strongModel` configure the cheap model prewalk switches into at the first edit and the strong model it starts on.
+- `/prewalk` accepts an optional model argument to arm a per-session target model override.
 - `edit.critiqueCodeMutations` prompts a bounded self-review before finalization after one turn modifies at least two distinct code files.
 - Configurable `launch.cleanupWaitMs` setting (default 15 minutes) purges exited launch daemon records from memory and disk after a retention TTL.
 - Exporting a session to HTML streams the snapshot into the output file instead of assembling the whole document in memory, taking an 80MiB transcript from 1007MiB of peak resident memory to 532MiB with byte-identical output.
@@ -16,9 +18,14 @@
 - `read` takes `depth` and `limit` arguments for directory listings, and a read of the session working directory root with neither now returns a concise top-level listing with per-subdirectory entry counts instead of the recursive tree.
 - A tool result that carries an image now states whether the picture reached the screen, so a model reading a file describes what it shows instead of reporting that it displayed it.
 - A picture the block gives up on after the fact, because the session's image budget demoted it or a Kitty session could not convert it, is stated to the model as undrawn instead of being reported as displayed.
+- `statusLine.segmentOptions.path.displayRoots` names the workspace roots the working directory is shown relative to, with `~` accepted for the home directory, replacing the two hard-coded conventions (`~/Projects` and `/work`); the first matching entry wins and a non-absolute entry is dropped and named in the log once.
 - `read` accepts a semicolon-delimited list of internal resources (`skill://demo/one.md;skill://demo/two.md`), the same list form `grep` and `glob` take, and returns one section per entry.
 - Eval kernels gain `kv`, a bounded JSON store under the session's artifacts directory that survives kernel resets and is shared between JavaScript and Python without cross-session filename collisions or lost concurrent updates, and `defs()`, which lists the names user code has defined in the kernel.
 - Every supervised process termination records which component ended it and why, with distinct attribution for each path (operator stop, signal, restart, broker shutdown, idle reaper, OS signal, broker recovery, launch failure, external signal, and natural exit); `launch list` output shows the lifetime owning condition and retained completion records with exit codes, reasons, and output tails, queryable after the name is reused and across broker restarts.
+- A click on the working directory, git branch or pull-request text in the composer status line widens the location to the row and retracts the model chip to pay for it, animated over the shared expand curve, and a second click reverses it; `display.transitions: off` lands on the click frame.
+- `/omfg` forges rules that carry the extended TTSR frontmatter (`astCondition`, `interruptMode`, `pathScope`, `repeatMode`, `repeatGap`, `repeatCompactions`, `warmupMatches`), confirms ast-grep conditions against the conversation's tool history through the same gate chain a live stream applies, and fails loudly on a malformed optional field instead of dropping it.
+- `/omfg` saves forged rules to the active profile's rules directory only; the project target is gone, because project `.veyyon/rules` was never discovered across sessions.
+- Settings → Stream Interrupts (TTSR) groups the profile's own rules under a leading `User created` section instead of `From native`, ahead of foreign-tool and built-in sections.
 - A ChatGPT OAuth (Codex) session compacts server-side via the Responses compaction endpoint, preserving encrypted reasoning state.
 - `ToolCallLoopGuard` detects consecutive redundant reads of unchanged files whose requested line ranges are already fully present in recent context, steering runaway exploration loops while preserving prompt cache prefixes.
 - Added Command Code API-key login through the Studio Provider page, with validation against its Provider API, and Nous Research Portal OAuth device login with rotating refresh tokens and short-lived inference JWTs.
@@ -31,6 +38,7 @@
 - Bundled model resolution persists a content-verified enriched snapshot, and a registry cache stamp moves on every row-content write, and on a row crossing the freshness window it is read under, without treating SQLite sidecar churn or a provider re-verifying models it already had as a change.
 - Added `supportsServerCompaction` capability data for ChatGPT Codex backend models on the Responses API.
 - `Image` accepts an `onDisplayed` callback and reports the cause each time an image starts or stops falling back to a placeholder.
+- `MOTION.reflow` states the curve for a row that reflows its content sideways: 320ms, symmetric, where `expand` is 180ms and front-loaded.
 - `run()` accepts verified command summaries for root help and falls back to loading the full registry when any summary is absent.
 - `source-declarations.ts`: `exportedDeclarationsIn` and `declarersOfName` report which modules declare a name, so a one-owner gate no longer matches the declaration's own bytes; a reflowed signature, a signature quoted in a comment and a second module declaring the same name are now all answered correctly.
 
@@ -53,11 +61,13 @@
 - Daemon completion parsing and eval-store serialization errors use shared type guards; behavior is unchanged.
 - Streaming `message_update` snapshots share tool-call arguments by reference instead of deep-cloning them on every delta, cutting a large structured tool call's per-delta snapshot cost from ~0.5 s to ~8 ms, while terminal messages and the authoritative tool call a `toolcall_end` carries keep the sanitizing deep clone.
 - Superseded and useless tool results are now pruned as a batch whose combined size pays for the prompt-cache rewrite it forces, instead of only when a single result sits within 8,000 tokens of the end of the conversation.
+- Formatted tool-call loop guard whitespace; behavior is unchanged.
 - The Anthropic provider reads its endpoint, credential placement, rejected betas and retry policy from the catalog's wire-capability table instead of comparing provider ids at seventeen call sites.
 - `ToolCall.arguments` is a `Readonly<Record<string, unknown>>`, so a producer replaces the object instead of writing into one a streaming snapshot already shares.
 - A streaming request no longer pins a parsed clone of its wire payload for the life of the stream: every provider's diagnostic dump retains only the exact sent bytes and materializes a body when a 400/413 dump is built.
 - The OpenAI-family, pi-native and Codex request builders serialize the request body once instead of deep-cloning the request graph, which took attempt preparation on a 32MiB context from 82ms to 9ms.
 - A message that names a dead socket reads the same everywhere: `namesDeadSocket` in `@veyyon/ai/error/flags` is the one list of errnos and phrases, and `ENETUNREACH`, `EHOSTUNREACH` and `EAI_AGAIN` now count as transient transport failures like the rest of them.
+- Formatted source files for Biome compliance.
 - `MNEMOPI_NO_EMBEDDINGS=0`, `false`, `no` or `off` now leaves embeddings on everywhere instead of disabling them on the API path.
 - Every `MNEMOPI_*` value is read by `config.ts` alone; the local-model, extraction and embedding modules ask it instead of parsing the variable again.
 - `getDiagnostics` is now `extractionDiagnostics` in `core/extraction/diagnostics` and `recallDiagnostics` in `core/recall-diagnostics`, so the two registries are no longer reached by one name.
@@ -67,6 +77,29 @@
 
 ### Fixed
 
+- Quitting no longer hangs when a background session never settles.
+- `/new` typed while the agent is answering starts the new session without interrupting the answer: the running turn finishes in the background and is flushed to its own transcript, while the composer attaches to a fresh session immediately.
+- `/resume` onto a session that is still answering re-attaches the running session instead of replaying its transcript as finished text, so its answer keeps streaming into the view and the session being left takes its place in the background.
+- `veyyon bench --model @role` and `veyyon dry-balance --model @role` resolve a configured model role instead of failing to find a model named after the alias.
+- The model name segment on the composer status line is preserved against wide working directories and git branch names by ranking it above location shortening in footline degradation.
+- A clipped working directory on the composer status line now carries one ellipsis at the front instead of one at each end, so the directory the session is in stays visible and the visible text reads as a suffix of the real path.
+- The composer status line clips the working directory and the git branch from their own fronts together instead of dropping the branch, never clips a branch short enough to read whole, keeps the path's icon in front of the clip mark, and gives up the context gauge before letting either part fall under its floor.
+- A clip mark on the composer status line is painted in the colour of the text it kept instead of the colour in force before the segment, and a clipped directory or branch opens on a name boundary within four cells of the cut rather than on an orphaned separator.
+- The composer status line no longer paints an empty location zone beside a wide gap: the cells a shed right-group part frees are given back to the working directory and branch, including the cells freed by the shed that ended the fitting, and a token estimate or context gauge is given up before the zone falls under the width at which a name reads.
+- The composer status line keeps the running-subagent count after every other part has gone, instead of giving it up to widen the working directory; at the widths where the count is the whole row the location zone is empty rather than the count being absent.
+- The composer status line's state chips stay on the right edge of the row when no working directory or branch shares it, instead of rendering against the left margin.
+- The composer status line leaves the location zone empty rather than painting a directory fragment with its icon cut off, at the widths where the zone cannot hold an icon, a clip mark and a letter.
+- A click on the composer status line's working directory or branch now shows that name in full, spending the model chip and then the rest of the row's readouts for the room, and only leaves it clipped when the name is longer than the whole row; the click previously paid with the model chip alone, and lost even that room to a context gauge the collapsed row had shed.
+- The composer status line's expansion travels on a 320ms symmetric curve instead of a 180ms front-loaded one, and the room it frees now tracks the widening text frame by frame, so the row no longer steps backward at the start of a click before opening.
+- A click on the composer status line shows the half that was clicked in full rather than widening both, and a readout the click narrows past the width a name reads at is given up whole instead of resting as a fragment.
+- A clipped working directory on the composer status line opens on a directory boundary on Windows, where a path outside the home directory keeps its `\` separator; the clip previously had no boundary to find in such a path and always opened mid-name.
+- The composer status line's path budget is counted in terminal cells rather than UTF-16 code units, so a working directory holding wide or astral characters is clamped to the width it paints and is never cut between the halves of one character.
+- The composer footline's click targets — the context gauge, the secrets chip, the goal readout and the path expansion — answer a click in a session whose transcript has not yet overflowed the viewport, instead of staying inert until it does.
+- A stripped working directory keeps the case it has on disk on Windows, instead of being lowercased by the case-insensitive comparison that decided it was under the root.
+- The status line's default-branch lookup no longer raises an unhandled rejection in a directory holding a `.git` on a host with no `git` on PATH; the lookup fails to the `main` fallback instead.
+- The composer status line no longer prints a control character or an escape sequence a name carries: a working directory, git branch, worktree label, multi-repo suffix or provider model name holding a tab, carriage return, bell, newline or escape is sanitized before it reaches the row, where it previously opened a hole in the width arithmetic, overwrote the row's own start, rang the terminal on every repaint, or handed the terminal a sequence of its own.
+- Outbound wire path canonicalization only relativizes paths matching the active session working directory instead of accumulating prior working directory roots, preventing distinct absolute paths in command output from collapsing to the same relative representation.
+- A working-directory change in a live session no longer re-renders earlier messages already sent to the provider, so only messages appended after a `set_cwd` render against the new directory.
 - Session CPU limits fail closed on unsupported or failed budget groups, lift rate control on removal, refuse a process-creating command before the process exists while leaving `launch stop` and `launch list` reachable, escalate over-budget termination from SIGTERM to SIGKILL, and track descendant processes on macOS.
 - Saturated session CPU limits now refuse spawns for MCP servers, extensions, hooks, and custom tools before the process is created.
 - Windows session CPU limits disable Job Object rate control on non-positive or non-finite core counts rather than throttling the process to the minimum rate.
@@ -124,10 +157,12 @@
 - Persisted AVX2 verdicts are schema-versioned and keyed by platform, architecture, and CPU model, so copied or stale caches cannot select a native variant for different hardware.
 - The AVX2 trial load answers from the addon loader's first import and exits, so a compiled host, whose `process.execPath` is the product binary rather than a JavaScript runtime, reports a verdict instead of booting the whole CLI and spawning a trial child of its own at every level.
 - A wrapped line now continues under the indent its first row opened at, so an indented row no longer reads as a new top-level row at a narrow width.
+- Nested optional-argument LaTeX constructs parse in linear time without character-by-character concatenation allocations.
 - Exclude pinned footer rows from the scroll-isolation snapshot and scroll space so the composer does not duplicate inside scrolled-back history.
 - Extract LaTeX argument text by slicing the source rather than appending one character at a time, so a deeply nested optional-argument chain degrades linearly instead of quadratically.
 - `splitTrailingPartialEscape` lets a streaming reader hold back an escape sequence a chunk ended inside, so a sequence divided across two reads is stripped whole instead of losing its head and leaking its tail as text.
 - `discarded-fault.ts`: `bestEffort` and `optionalResult` state which contract discarded a promise's failure, one for a step nobody waits on and one for a probe whose failure is the answer, each taking a mandatory reason.
+- `relativePathWithinRoot` returns the candidate's own spelling instead of the case-folded copy the containment check used, so on Windows a path under `C:\Users\dev\Projects` no longer comes back lowercased, and a root configured in a different case than the directory on disk resolves to the tail rather than to a `..` walk.
 
 ## [1.2.0] - 2026-08-23
 
