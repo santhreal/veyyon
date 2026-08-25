@@ -26,20 +26,68 @@ import * as connectionManager from "@veyyon/coding-agent/ssh/connection-manager"
 import { removeWithRetries } from "@veyyon/utils";
 import * as dirs from "@veyyon/utils/dirs";
 
-const run = promisify(execFile);
+interface ExecError extends Error {
+	code?: number | string;
+	signal?: string | null;
+	cmd?: string;
+	stdout?: string | Buffer;
+	stderr?: string | Buffer;
+}
+
+function isExecError(error: unknown): error is ExecError {
+	return error instanceof Error;
+}
+
+async function run(file: string, args: string[]): Promise<{ stdout: string; stderr: string }> {
+	try {
+		return await promisify(execFile)(file, args);
+	} catch (error: unknown) {
+		if (isExecError(error)) {
+			const code = error.code !== undefined ? ` (exit code ${error.code})` : "";
+			const signal = error.signal ? ` (signal ${error.signal})` : "";
+			const stderr =
+				typeof error.stderr === "string" && error.stderr.trim().length > 0
+					? `\n--- stderr ---\n${error.stderr.trim()}`
+					: "";
+			const stdout =
+				typeof error.stdout === "string" && error.stdout.trim().length > 0
+					? `\n--- stdout ---\n${error.stdout.trim()}`
+					: "";
+			const enhanced = new Error(`Command failed${code}${signal}: ${file} ${args.join(" ")}${stderr}${stdout}`);
+			enhanced.cause = error;
+			throw enhanced;
+		}
+		throw error;
+	}
+}
+
 const SSHD = "/usr/sbin/sshd";
 
-async function hasSshd(): Promise<boolean> {
+async function probeSshPrerequisites(): Promise<boolean> {
 	try {
 		await fs.access(SSHD);
+		await promisify(execFile)("ssh", ["-V"]);
+		const probeDir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-sshd-probe-"));
+		try {
+			await promisify(execFile)("ssh-keygen", [
+				"-q",
+				"-t",
+				"ed25519",
+				"-f",
+				path.join(probeDir, "probe_key"),
+				"-N",
+				"",
+			]);
+		} finally {
+			await removeWithRetries(probeDir);
+		}
 		return true;
 	} catch {
 		return false;
 	}
 }
 
-const sshdAvailable = await hasSshd();
-
+const sshPrerequisitesAvailable = await probeSshPrerequisites();
 async function freePort(): Promise<number> {
 	const server = net.createServer();
 	const { promise, resolve, reject } = Promise.withResolvers<number>();
@@ -90,7 +138,7 @@ async function socketExists(socketPath: string | null): Promise<boolean> {
 	}
 }
 
-describe.skipIf(!sshdAvailable)("a multiplexed connection to a real sshd", () => {
+describe.skipIf(!sshPrerequisitesAvailable)("a multiplexed connection to a real sshd", () => {
 	beforeAll(async () => {
 		root = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-sshd-it-"));
 		const hostKey = path.join(root, "host_key");
