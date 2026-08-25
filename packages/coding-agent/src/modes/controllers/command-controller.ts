@@ -12,6 +12,7 @@ import {
 	errorMessage,
 	formatDuration,
 	isAbortError,
+	logger,
 	Snowflake,
 	sanitizeText,
 } from "@veyyon/utils";
@@ -43,7 +44,7 @@ import { getSymbolTheme, theme } from "../../modes/theme/theme";
 import type { InteractiveModeContext } from "../../modes/types";
 import { buildHotkeysMarkdown } from "../../modes/utils/hotkeys-markdown";
 import { buildToolsMarkdown } from "../../modes/utils/tools-markdown";
-import type { AsyncJobSnapshotItem } from "../../session/agent-session";
+import type { AgentSession, AsyncJobSnapshotItem } from "../../session/agent-session";
 import type { AuthStorage, OAuthAccountIdentity } from "../../session/auth-storage";
 import type { CompactMode } from "../../session/compact-modes";
 import { computeContextBreakdown } from "../../session/context-usage";
@@ -69,10 +70,12 @@ import { renderContextUsage } from "../utils/context-usage";
 export type CommandControllerContext = Pick<
 	InteractiveModeContext,
 	| "applyCwdChange"
+	| "attachMainSession"
 	| "bashComponent"
 	| "chatContainer"
 	| "clearTransientSessionUi"
 	| "clearWorkingLoader"
+	| "createNextSession"
 	| "editor"
 	| "editorContainer"
 	| "flushCompactionQueue"
@@ -818,8 +821,53 @@ export class CommandController {
 		}
 	}
 
+	/**
+	 * Move the UI to a freshly created session and let the displayed one finish
+	 * its turn in the background. Returns false when the caller should fall
+	 * back to resetting the current session in place.
+	 *
+	 * Restricted to a plain `/new` on a streaming session: `/drop` deletes the
+	 * session file the running turn is still writing to, and the option-carrying
+	 * callers seed the next transcript from the current one, so both need the
+	 * turn to be over.
+	 */
+	async #handOffRunningSession(options: NewSessionOptions | undefined): Promise<boolean> {
+		const createNextSession = this.ctx.createNextSession;
+		if (!createNextSession || options || !this.ctx.session.isStreaming) return false;
+		let next: AgentSession;
+		try {
+			next = await createNextSession();
+		} catch (error) {
+			// The new session could not be built, so the only way to honor `/new`
+			// is today's in-place reset, which interrupts the turn.
+			logger.warn("Falling back to an in-place new session", { error: errorMessage(error) });
+			return false;
+		}
+		const kept = this.ctx.attachMainSession(next);
+		this.ctx.resetObserverRegistry();
+		setSessionTerminalTitle(this.ctx.sessionManager.getSessionName(), this.ctx.sessionManager.getCwd());
+		this.ctx.statusLine.invalidate();
+		this.ctx.statusLine.resetActiveTime();
+		this.ctx.updateEditorBorderColor();
+		this.ctx.clearTransientSessionUi();
+		this.ctx.resetTranscript();
+		this.ctx.present([
+			new Spacer(1),
+			new Text(
+				theme.fg("accent", `${theme.status.success} New session started — ${kept.sessionId} keeps running`),
+				1,
+				1,
+			),
+		]);
+		await this.ctx.reloadTodos();
+		this.ctx.ui.requestRender(true, { clearScrollback: true });
+		return true;
+	}
+
 	async #runNewSessionFlow(options?: NewSessionOptions, label: string = "New session started"): Promise<void> {
 		this.ctx.clearTransientSessionUi();
+
+		if (await this.#handOffRunningSession(options)) return;
 
 		if (this.ctx.session.isCompacting) {
 			this.ctx.session.abortCompaction();

@@ -28,7 +28,7 @@ import type { InteractiveModeContext, TodoPhase } from "../../modes/types";
 import type { PlanApprovalDetails } from "../../plan-mode/approved-plan";
 import { sideChannelPrompts } from "../../prompts/side-channel/rows";
 import { SECRET_SPEND_NOTICE_SOURCE } from "../../secrets/notices";
-import type { AgentSessionEvent } from "../../session/agent-session";
+import type { AgentSession, AgentSessionEvent } from "../../session/agent-session";
 import { isSilentAbort, readQueueChipText, resolveAbortLabel } from "../../session/messages";
 import { previewLine, TRUNCATE_LENGTHS } from "../../tools/render-utils";
 import type { ResolveToolDetails } from "../../tools/resolve";
@@ -414,10 +414,36 @@ export class EventController {
 	}
 
 	subscribeToAgent(): void {
-		this.ctx.unsubscribe = this.ctx.session.subscribe(async (event: AgentSessionEvent) => {
+		this.attachTo(this.ctx.session);
+	}
+
+	/**
+	 * Subscribe the transcript to `target`, tolerating an attach that lands
+	 * mid-turn.
+	 *
+	 * Orphan-delta guard: attaching while an assistant message is already
+	 * streaming means its `message_start` predates the attach. `message_update`
+	 * carries the full accumulating message, so synthesize the missing start
+	 * before the first orphaned update; every other handler is tolerant of
+	 * unknown anchors (guarded by streamingComponent/pendingTools lookups).
+	 *
+	 * Both re-pointing paths come through here — viewing a subagent, and `/new`
+	 * or `/resume` swapping the session the UI displays — so neither grows its
+	 * own copy of the guard.
+	 */
+	attachTo(target: AgentSession): void {
+		let assistantStreamSynced = false;
+		this.ctx.unsubscribe = target.subscribe(async (event: AgentSessionEvent) => {
+			if (event.type === "message_start" && event.message.role === "assistant") {
+				assistantStreamSynced = true;
+			} else if (event.type === "message_update" && event.message.role === "assistant" && !assistantStreamSynced) {
+				assistantStreamSynced = true;
+				await this.handleEvent({ type: "message_start", message: event.message });
+			}
 			await this.handleEvent(event);
 		});
 	}
+
 	/**
 	 * Clear every transcript-anchored/turn-scoped piece of state. Used by the
 	 * session focus proxy when re-pointing the transcript at another session:

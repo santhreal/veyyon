@@ -58,6 +58,19 @@ export const MOTION = {
 	hover: { duration: 90, easing: easeOutCubic },
 	/** Content growing or collapsing in place. */
 	expand: { duration: 180, easing: easeOutQuint },
+	/**
+	 * A row reflowing its content sideways: a status line trading one readout for a
+	 * wider path, a column changing width in place.
+	 *
+	 * Longer and symmetric where `expand` is short and front-loaded, because the two
+	 * differ in what the eye is tracking. `expand` reveals content that was not there,
+	 * so a sharp landing reads as "arrived". A reflow moves text that is already on
+	 * screen and being read, across a grid whose smallest step is one cell: under a
+	 * fifth of a second most of a front-loaded curve lands inside two or three frames,
+	 * so the row jumps and then crawls through its tail. Even distribution over a
+	 * longer travel is what makes the cells appear to slide rather than cut.
+	 */
+	reflow: { duration: 320, easing: easeInOutCubic },
 	/** A selection or caret travelling between two rows, interruptible. */
 	move: { spring: { stiffness: 260, damping: 30, mass: 1 } },
 	/** A value being nudged, e.g. a progress or context bar. */
