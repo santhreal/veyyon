@@ -42,6 +42,8 @@ export interface KeptSession {
 	/** Transcript this session writes to, the key `/resume` names it by. */
 	readonly sessionFile: string | undefined;
 	readonly detachedAt: number;
+	/** Monotonic counter disambiguating successive handoffs of the same session object. */
+	readonly handoff: number;
 	/** Resolves once the turn settled and the transcript was flushed. */
 	readonly settled: Promise<void>;
 }
@@ -49,9 +51,8 @@ export interface KeptSession {
 export class BackgroundSessions {
 	static #instance: BackgroundSessions | undefined;
 
+	#nextHandoff = 0;
 	#kept = new Map<AgentSession, KeptSession>();
-
-	/** Process-wide keeper. The interactive host and its shutdown path share one. */
 	static global(): BackgroundSessions {
 		BackgroundSessions.#instance ??= new BackgroundSessions();
 		return BackgroundSessions.#instance;
@@ -77,12 +78,14 @@ export class BackgroundSessions {
 		const existing = this.#kept.get(session);
 		if (existing) return existing;
 		const sessionId = session.sessionManager.getSessionId();
+		const handoff = ++this.#nextHandoff;
 		const entry: KeptSession = {
 			session,
 			sessionId,
 			sessionFile: session.sessionManager.getSessionFile(),
 			detachedAt: Date.now(),
-			settled: this.#settle(session, sessionId),
+			handoff,
+			settled: this.#settle(session, sessionId, handoff),
 		};
 		this.#kept.set(session, entry);
 		return entry;
@@ -98,7 +101,7 @@ export class BackgroundSessions {
 		const wanted = path.resolve(sessionFile);
 		for (const [session, entry] of this.#kept) {
 			if (entry.sessionFile && path.resolve(entry.sessionFile) === wanted) {
-				this.#kept.delete(session);
+				this.#discard(session, entry.handoff);
 				return session;
 			}
 		}
@@ -121,19 +124,25 @@ export class BackgroundSessions {
 		} finally {
 			clearTimeout(timer);
 			for (const entry of snapshot) {
-				this.#kept.delete(entry.session);
+				this.#discard(entry.session, entry.handoff);
 			}
 		}
 	}
 
-	async #settle(session: AgentSession, sessionId: string): Promise<void> {
+	#discard(session: AgentSession, handoff: number): void {
+		if (this.#kept.get(session)?.handoff === handoff) {
+			this.#kept.delete(session);
+		}
+	}
+
+	async #settle(session: AgentSession, sessionId: string, handoff: number): Promise<void> {
 		try {
 			await session.waitForIdle();
 			await session.sessionManager.flush();
 		} catch (error) {
 			logger.warn("Handed-off session failed to settle", { sessionId, error: errorMessage(error) });
 		} finally {
-			this.#kept.delete(session);
+			this.#discard(session, handoff);
 		}
 	}
 }

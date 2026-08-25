@@ -1842,9 +1842,11 @@ async function runRootCommandInner(parsed: Args, rawArgs: string[], deps: RunRoo
 		// connected servers rather than re-discovering and re-owning them; the
 		// handed-off session stays their owner for the life of the process.
 		const createNextSession: InteractiveSessionFactory = async () => {
-			const nextSessionManager = SessionManager.create(cwd, parsedArgs.sessionDir);
+			const activeCwd = getProjectDir();
+			const nextSessionManager = SessionManager.create(activeCwd, parsedArgs.sessionDir);
 			const { session: next } = await createSession({
 				...sessionOptions,
+				cwd: activeCwd,
 				eventBus,
 				operatorNotices,
 				preloadedExtensions: extensionsResult,
