@@ -89,6 +89,7 @@ class VeyyonAgent(BaseInstalledAgent):
                 ".googleapis.com", ".google.com",
                 ".anthropic.com", ".openai.com", ".openrouter.ai",
                 ".opencode.ai",
+                ".models.dev",
             ]
         )
     async def run(
