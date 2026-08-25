@@ -18,6 +18,7 @@
 - A message that names a dead socket reads the same everywhere: `namesDeadSocket` in `@veyyon/ai/error/flags` is the one list of errnos and phrases, and `ENETUNREACH`, `EHOSTUNREACH` and `EAI_AGAIN` now count as transient transport failures like the rest of them.
 - `elidedSignatureBytes` returns zero without scanning messages when no retention window or length cap is active, avoiding an O(n) walk of the full conversation on every provider request in the common case.
 - The OpenAI completions message converter merges its double `.filter()` for text blocks (by type, then by non-empty) and the same for thinking blocks into single `for` loops, avoiding two throwaway arrays per assistant message per turn.
+- The GitHub Copilot usage parser merges its double `reduce` for `totalUsed` and `totalLimit` into a single `for` loop, avoiding a callback allocation per usage fetch.
 
 ### Fixed
 
