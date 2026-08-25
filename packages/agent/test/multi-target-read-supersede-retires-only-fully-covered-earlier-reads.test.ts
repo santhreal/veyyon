@@ -2,18 +2,19 @@
  * WHY: `readToolSupersedeKey` previously treated multi-target read paths (e.g. `read({ path: "a.ts; b.ts" })`)
  * as opaque composite strings. Because the string `"a.ts; b.ts"` never equalled `"a.ts"`, compound reads
  * neither superseded nor were superseded by individual reads of the files they contained, accumulating
- * redundant file contents in context. Furthermore, URL-scheme paths (`skill://...`) were completely exempt,
- * and colon splitting for selectors could mis-split Windows drive letters or URI schemes.
+ * redundant file contents in context. Furthermore, a compound call containing any URL scheme was exempted
+ * entirely rather than per target.
  *
- * This suite closes the class of multi-target supersede pruning defects:
- * - Supersede keys for `read` calls are parsed into sets of normalized target paths.
- * - An earlier read result is retired if and only if EVERY target it carries is covered by later reads.
- * - Partial overlap preserves the earlier read so that unread companion files are not lost.
- * - Full overlap across one or many subsequent reads retires the earlier read.
- * - URI schemes, Windows drive prefixes, and line/raw/compound selectors are preserved or stripped correctly.
+ * This suite defends:
+ * 1. Multi-target supersede pruning where an earlier read result is retired if and only if EVERY target it
+ *    carries is covered by later reads (partial cover preserves earlier compound reads).
+ * 2. Target identity: path + selector (joined by NUL character \u0000). Different range selectors on the same
+ *    file do NOT supersede each other; a selector-free read of a file covers all range reads of that file.
+ * 3. Per-target URL and internal-scheme exemption (`skill://...`, `https://...`): schemes are exempt per
+ *    target, allowing accompanying filesystem targets in compound calls to participate in supersede pruning.
+ * 4. Windows drive prefixes (`C:\...`) are preserved and not mis-split at the drive colon.
  *
- * What this does not catch: Content-level semantic changes where a file was modified externally without a
- * subsequent tool call or tool-call logging.
+ * What this does not catch: Dynamic/semantic content overlap within files or tool results from non-read tools.
  */
 
 import { describe, expect, it } from "bun:test";
@@ -170,50 +171,61 @@ describe("multi-target read supersede pruning", () => {
 		expect(resultText(resultC)).toBe(CONTENT_C1);
 	});
 
-	it("compares URI schemes, Windows drive letters, and line/raw selectors correctly", () => {
-		const [callSkill1, resSkill1] = readPair("skill://react:10-50", CONTENT_A1, T0);
-		const [callSkill2, resSkill2] = readPair("skill://react:raw", CONTENT_A2, T0 + 1_000);
-
-		const [callWin1, resWin1] = readPair("C:\\Users\\admin\\file.ts:50-200", CONTENT_B1, T0 + 2_000);
-		const [callWin2, resWin2] = readPair("C:\\Users\\admin\\file.ts:raw:1-5", CONTENT_B2, T0 + 3_000);
-
-		const [callHttp1, resHttp1] = readPair("https://example.com/docs:50-", CONTENT_C1, T0 + 4_000);
-		const [callHttp2, resHttp2] = readPair("https://example.com/docs", CONTENT_A1, T0 + 5_000);
-
-		const entries: SessionEntry[] = [
-			callSkill1,
-			resSkill1,
-			callSkill2,
-			resSkill2,
-			callWin1,
-			resWin1,
-			callWin2,
-			resWin2,
-			callHttp1,
-			resHttp1,
-			callHttp2,
-			resHttp2,
-		];
-
-		const res = pruneSupersededToolResults(entries, config({ now: T0 + 5_000 }));
-		expect(res.prunedCount).toBe(3);
-		expect(resultText(resSkill1)).toBe(SUPERSEDED_NOTICE);
-		expect(resultText(resSkill2)).toBe(CONTENT_A2);
-		expect(resultText(resWin1)).toBe(SUPERSEDED_NOTICE);
-		expect(resultText(resWin2)).toBe(CONTENT_B2);
-		expect(resultText(resHttp1)).toBe(SUPERSEDED_NOTICE);
-		expect(resultText(resHttp2)).toBe(CONTENT_A1);
-	});
-
-	it("does not supersede across distinct URI resources under the same scheme", () => {
-		const [callSkillA, resSkillA] = readPair("skill://alpha", CONTENT_A1, T0);
-		const [callSkillB, resSkillB] = readPair("skill://beta", CONTENT_B1, T0 + 1_000);
-		const entries: SessionEntry[] = [callSkillA, resSkillA, callSkillB, resSkillB];
+	it("does NOT supersede across different range selectors on the same file", () => {
+		const [callRange1, resRange1] = readPair("src/a.ts:50-200", CONTENT_A1, T0);
+		const [callRange2, resRange2] = readPair("src/a.ts:10-20", CONTENT_A2, T0 + 1_000);
+		const entries: SessionEntry[] = [callRange1, resRange1, callRange2, resRange2];
 
 		const res = pruneSupersededToolResults(entries, config({ now: T0 + 1_000 }));
 		expect(res.prunedCount).toBe(0);
-		expect(resultText(resSkillA)).toBe(CONTENT_A1);
-		expect(resultText(resSkillB)).toBe(CONTENT_B1);
+		expect(resultText(resRange1)).toBe(CONTENT_A1);
+		expect(resultText(resRange2)).toBe(CONTENT_A2);
+	});
+
+	it("retires earlier ranged reads when a later selector-free read reads the whole file", () => {
+		const [callRange, resRange] = readPair("src/a.ts:50-200", CONTENT_A1, T0);
+		const [callFull, resFull] = readPair("src/a.ts", CONTENT_A2, T0 + 1_000);
+		const entries: SessionEntry[] = [callRange, resRange, callFull, resFull];
+
+		const res = pruneSupersededToolResults(entries, config({ now: T0 + 1_000 }));
+		expect(res.prunedCount).toBe(1);
+		expect(resultText(resRange)).toBe(SUPERSEDED_NOTICE);
+		expect(resultText(resFull)).toBe(CONTENT_A2);
+	});
+
+	it("does NOT retire an earlier selector-free read when a later read carries a range selector", () => {
+		const [callFull, resFull] = readPair("src/a.ts", CONTENT_A1, T0);
+		const [callRange, resRange] = readPair("src/a.ts:50-200", CONTENT_A2, T0 + 1_000);
+		const entries: SessionEntry[] = [callFull, resFull, callRange, resRange];
+
+		const res = pruneSupersededToolResults(entries, config({ now: T0 + 1_000 }));
+		expect(res.prunedCount).toBe(0);
+		expect(resultText(resFull)).toBe(CONTENT_A1);
+		expect(resultText(resRange)).toBe(CONTENT_A2);
+	});
+
+	it("exempts URL schemes per-target so accompanying files still participate in supersede pruning", () => {
+		const [callMixed, resMixed] = readPair("src/a.ts; skill://react", CONTENT_A1, T0);
+		const [callA, resA] = readPair("src/a.ts", CONTENT_A2, T0 + 1_000);
+		const entries: SessionEntry[] = [callMixed, resMixed, callA, resA];
+
+		// skill://react is exempt, so resMixed's only tracked target is src/a.ts.
+		// When src/a.ts is read later, resMixed is fully covered and retired.
+		const res = pruneSupersededToolResults(entries, config({ now: T0 + 1_000 }));
+		expect(res.prunedCount).toBe(1);
+		expect(resultText(resMixed)).toBe(SUPERSEDED_NOTICE);
+		expect(resultText(resA)).toBe(CONTENT_A2);
+	});
+
+	it("handles Windows drive letter paths and compound selectors correctly", () => {
+		const [callWin1, resWin1] = readPair("C:\\Users\\admin\\file.ts:50-200", CONTENT_B1, T0);
+		const [callWin2, resWin2] = readPair("C:\\Users\\admin\\file.ts", CONTENT_B2, T0 + 1_000);
+		const entries: SessionEntry[] = [callWin1, resWin1, callWin2, resWin2];
+
+		const res = pruneSupersededToolResults(entries, config({ now: T0 + 1_000 }));
+		expect(res.prunedCount).toBe(1);
+		expect(resultText(resWin1)).toBe(SUPERSEDED_NOTICE);
+		expect(resultText(resWin2)).toBe(CONTENT_B2);
 	});
 
 	it("preserves protected tool results from being retired", () => {
@@ -232,7 +244,6 @@ describe("multi-target read supersede pruning", () => {
 	it("skips tool results that never ran from being retired or acting as superseders", () => {
 		const [callA1, resA1] = readPair("src/a.ts", CONTENT_A1, T0);
 		const [callA2, resA2] = readPair("src/a.ts", CONTENT_A2, T0 + 1_000);
-		// Mark resA2 as never having run (e.g. skipped or synthetic placeholder)
 		(resA2.message as ToolResultMessage).details = { __skipped: true, entered: false };
 		const entries: SessionEntry[] = [callA1, resA1, callA2, resA2];
 		const res = pruneSupersededToolResults(entries, config({ now: T0 + 1_000 }));
