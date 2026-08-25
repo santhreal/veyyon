@@ -199,6 +199,49 @@ mod shapes_the_filters_write {
 			"directory tally",
 		);
 	}
+
+	/// `[clean] <subject>` and `[errors] <subject>` result contract headers.
+	#[test]
+	fn the_result_contract_headers_are_recognized() {
+		let config = enabled();
+		let ctx_cargo = context("cargo", Some("test"), "cargo test", &config);
+		let cargo_pass = "running 2 tests\ntest a ... ok\ntest b ... ok\ntest result: ok. 2 passed; \
+		                  0 failed; 0 ignored; 0 measured\n";
+		let minimized_cargo = filters::filter(&ctx_cargo, cargo_pass, 0).text;
+		assert_recognized(
+			&minimized_cargo,
+			|line| line.starts_with("[clean] cargo test"),
+			"clean cargo test header",
+		);
+
+		let cargo_fail = "running 1 tests\ntest bad ... FAILED\n\nfailures:\n    bad\n\ntest \
+		                  result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured\n";
+		let minimized_cargo_fail = filters::filter(&ctx_cargo, cargo_fail, 101).text;
+		assert_recognized(
+			&minimized_cargo_fail,
+			|line| line.starts_with("[errors 1] cargo test"),
+			"errors cargo test header",
+		);
+
+		let ctx_bun = context("bun", Some("run"), "bun run check:ts", &config);
+		let bun_pass =
+			"Checked 10 files in 10ms. No fixes applied.\n@pkg check: Exited with code 0\n";
+		let minimized_bun = filters::filter(&ctx_bun, bun_pass, 0).text;
+		assert_recognized(
+			&minimized_bun,
+			|line| line.starts_with("[clean] check:ts"),
+			"clean bun check header",
+		);
+
+		let bun_fail = "$ bun run check:ts\n@pkg check: $ tsgo\nfoo.ts:1:1: error TS2322: bad\n@pkg \
+		                check: Exited with code 1\n";
+		let minimized_bun_fail = filters::filter(&ctx_bun, bun_fail, 1).text;
+		assert_recognized(
+			&minimized_bun_fail,
+			|line| line.starts_with("[errors] check:ts"),
+			"errors bun check header",
+		);
+	}
 }
 
 mod the_predicate_does_not_overreach {
@@ -288,5 +331,33 @@ mod the_diff_summary {
 		let second = filters::filter(&ctx, &first, 0).text;
 		assert_eq!(second, first, "the summary must survive a second pass unchanged");
 		assert!(second.contains("2 files changed"), "and must not lose a file: {second:?}");
+	}
+}
+
+mod idempotence {
+	use super::*;
+
+	#[test]
+	fn cargo_and_bun_classified_output_is_idempotent() {
+		let config = enabled();
+		let ctx_cargo = context("cargo", Some("test"), "cargo test", &config);
+		let cargo_input = "running 2 tests\ntest a ... ok\ntest b ... ok\ntest result: ok. 2 \
+		                   passed; 0 failed; 0 ignored; 0 measured\n";
+		let pass1_cargo = filters::filter(&ctx_cargo, cargo_input, 0).text;
+		let pass2_cargo = filters::filter(&ctx_cargo, &pass1_cargo, 0).text;
+		assert_eq!(pass1_cargo, pass2_cargo);
+
+		let cargo_fail = "running 1 tests\ntest bad ... FAILED\n\nfailures:\n    bad\n\ntest \
+		                  result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured\n";
+		let pass1_cargo_fail = filters::filter(&ctx_cargo, cargo_fail, 101).text;
+		let pass2_cargo_fail = filters::filter(&ctx_cargo, &pass1_cargo_fail, 101).text;
+		assert_eq!(pass1_cargo_fail, pass2_cargo_fail);
+
+		let ctx_bun = context("bun", Some("run"), "bun run check:ts", &config);
+		let bun_input = "$ bun run check:ts\n@pkg check: $ tsgo\nfoo.ts:1:1: error TS2322: \
+		                 bad\n@pkg check: Exited with code 1\n";
+		let pass1_bun = filters::filter(&ctx_bun, bun_input, 1).text;
+		let pass2_bun = filters::filter(&ctx_bun, &pass1_bun, 1).text;
+		assert_eq!(pass1_bun, pass2_bun);
 	}
 }

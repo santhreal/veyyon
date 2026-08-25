@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use crate::minimizer::{MinimizerCtx, MinimizerOutput, primitives};
+use crate::minimizer::{MinimizerCtx, MinimizerOutput, contract, primitives};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum CppTool {
@@ -89,7 +89,7 @@ fn filter_cmake(input: &str, exit_code: i32) -> String {
 		}
 		primitives::push_line(&mut out, line.trim_end());
 	}
-	finish_filtered(input, out, exit_code, "cmake: ok")
+	finish_filtered(input, out, exit_code, "cmake")
 }
 
 fn is_cmake_noise(line: &str, exit_code: i32) -> bool {
@@ -119,7 +119,7 @@ fn filter_ctest(input: &str, exit_code: i32) -> String {
 		}
 		primitives::push_line(&mut out, line.trim_end());
 	}
-	finish_filtered(input, out, exit_code, "ctest: ok")
+	finish_filtered(input, out, exit_code, "ctest")
 }
 
 fn is_ctest_noise(line: &str, exit_code: i32) -> bool {
@@ -142,7 +142,7 @@ fn filter_ninja(input: &str, exit_code: i32) -> String {
 		}
 		primitives::push_line(&mut out, line.trim_end());
 	}
-	finish_filtered(input, out, exit_code, "ninja: ok")
+	finish_filtered(input, out, exit_code, "ninja")
 }
 
 fn is_ninja_noise(line: &str, exit_code: i32) -> bool {
@@ -191,7 +191,7 @@ fn filter_gtest(input: &str, exit_code: i32) -> String {
 		}
 	}
 
-	finish_filtered(input, out, exit_code, "gtest: ok")
+	finish_filtered(input, out, exit_code, "gtest")
 }
 
 fn is_gtest_pass_noise(line: &str) -> bool {
@@ -223,15 +223,23 @@ fn looks_like_source_location(line: &str) -> bool {
 	rest.chars().next().is_some_and(|ch| ch.is_ascii_digit())
 }
 
-fn finish_filtered(input: &str, out: String, exit_code: i32, success_message: &str) -> String {
+fn finish_filtered(input: &str, out: String, exit_code: i32, subject: &str) -> String {
 	let deduped = primitives::dedup_consecutive_lines(&out);
-	if deduped.trim().is_empty() {
+	let body = if deduped.trim().is_empty() {
 		if exit_code == 0 {
-			return success_message.to_string();
+			String::new()
+		} else {
+			primitives::head_tail_lines(input, 120, 80)
 		}
-		return primitives::head_tail_lines(input, 120, 80);
-	}
-	primitives::head_tail_lines(&deduped, 120, 80)
+	} else {
+		primitives::head_tail_lines(&deduped, 120, 80)
+	};
+	let verdict = if exit_code == 0 {
+		contract::clean(subject)
+	} else {
+		contract::errors_unknown(subject)
+	};
+	contract::apply(&verdict, &body)
 }
 
 fn is_important(line: &str) -> bool {
