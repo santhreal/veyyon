@@ -163,6 +163,15 @@ export interface RulesSettingDef extends BaseSettingDef {
 	type: "rules";
 }
 
+/**
+ * Files → LSP. One row you enter; the nested page is every `lsp.*` boolean.
+ * The schema keys stay independent so config, the agent tool, and injection
+ * can disagree. The screen is what used to dump them as sibling Files rows.
+ */
+export interface LspSettingDef extends BaseSettingDef {
+	type: "lsp";
+}
+
 export type SettingDef =
 	| BooleanSettingDef
 	| EnumSettingDef
@@ -176,7 +185,8 @@ export type SettingDef =
 	| SubagentModelByDepthSettingDef
 	| DefaultEffortSettingDef
 	| DefaultModelSettingDef
-	| RulesSettingDef;
+	| RulesSettingDef
+	| LspSettingDef;
 
 /**
  * Synthetic settings id for the {@link DefaultModelSettingDef}. Not a real
@@ -313,6 +323,51 @@ function resolveOptions(ui: AnyUiMetadata): OptionList | "runtime" | undefined {
 	return ui.options;
 }
 
+/** Every switch on the LSP nested page, Language Servers first. */
+export const LSP_SETTING_PATHS = [
+	"lsp.enabled",
+	"lsp.tool",
+	"lsp.lazy",
+	"lsp.formatOnWrite",
+	"lsp.diagnosticsOnWrite",
+	"lsp.diagnosticsOnEdit",
+	"lsp.diagnosticsDeduplicate",
+] as const satisfies readonly SettingPath[];
+
+/** Nested LSP knobs: on the Files tab they live behind the LSP row, not beside it. */
+export function isNestedLspKnob(path: SettingPath): boolean {
+	return path.startsWith("lsp.") && path !== "lsp.enabled";
+}
+
+/**
+ * Rows on the nested LSP page. Language Servers is always there; every other
+ * switch is hidden until servers are on, so you enter the page and enable
+ * each piece rather than toggling orphans with no server behind them.
+ */
+export function lspPanelPaths(): readonly SettingPath[] {
+	if (Settings.instance.get("lsp.enabled") !== true) return ["lsp.enabled"];
+	return LSP_SETTING_PATHS;
+}
+
+/**
+ * Search can still name nested LSP knobs, but Files has no sibling row for
+ * them. Landing after search must open the parent, not a missing id.
+ */
+export function settingsSearchLandingPath(path: SettingPath): SettingPath {
+	return isNestedLspKnob(path) ? "lsp.enabled" : path;
+}
+
+/** Short Files-row value: Off, or On plus which nested pieces are on. */
+export function formatLspSummary(): string {
+	if (Settings.instance.get("lsp.enabled") !== true) return "Off";
+	const bits: string[] = [];
+	if (Settings.instance.get("lsp.tool") === true) bits.push("tool");
+	if (Settings.instance.get("lsp.diagnosticsOnWrite") === true) bits.push("write");
+	if (Settings.instance.get("lsp.diagnosticsOnEdit") === true) bits.push("edit");
+	if (Settings.instance.get("lsp.formatOnWrite") === true) bits.push("format");
+	return bits.length === 0 ? "On · servers only" : `On · ${bits.join(" · ")}`;
+}
+
 function pathToSettingDef(path: SettingPath): SettingDef | null {
 	const ui = getUi(path);
 	if (!ui) return null;
@@ -332,6 +387,15 @@ function pathToSettingDef(path: SettingPath): SettingDef | null {
 		advanced: ui.advanced,
 		keywords: ui.keywords,
 	};
+
+	if (path === "lsp.enabled") {
+		return {
+			...base,
+			type: "lsp",
+			description:
+				"Enter to turn language servers, the agent tool, injected diagnostics, and format-after-write on or off independently.",
+		};
+	}
 
 	if (schemaType === "boolean") {
 		return { ...base, type: "boolean" };

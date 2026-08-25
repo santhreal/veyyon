@@ -591,13 +591,21 @@ function daemonMeta(daemon: DaemonSnapshot, theme: Theme): string[] {
 	return meta;
 }
 
-/** Op-specific call context (command line, log filters, wait condition, send payload). */
+/**
+ * The command line a start names, before or after `op` decodes. A streamed call
+ * carries `application` several deltas before `op`, so a renderer keyed on
+ * `op === "start"` alone shows nothing for that window.
+ */
+function startCommand(args: LaunchRenderArgs): string | undefined {
+	if (!args.application) return undefined;
+	if (args.op !== undefined && args.op !== "start") return undefined;
+	return [args.application, ...(args.args ?? [])].join(" ");
+}
+
+/** Op-specific call context (log filters, wait condition, send payload). */
 function callMeta(args: LaunchRenderArgs): string[] {
 	const meta: string[] = [];
 	switch (args.op) {
-		case "start":
-			if (args.application) meta.push([args.application, ...(args.args ?? [])].join(" "));
-			break;
 		case "logs":
 			if (args.follow) meta.push("follow");
 			if (args.grep) meta.push(`grep /${args.grep}/`);
@@ -614,21 +622,47 @@ function callMeta(args: LaunchRenderArgs): string[] {
 	return meta.map(entry => previewLine(replaceTabs(entry), TRUNCATE_LENGTHS.SHORT));
 }
 
+/**
+ * Append a result's plain text as body lines. Every op reaches this when the
+ * structured detail it renders from is absent: an error the broker answered
+ * before it had a snapshot leaves the text as the only thing to show, and a
+ * block with a header and no rows reads as a tool that did nothing.
+ */
+function pushTextLines(body: string[], text: string, theme: Theme): void {
+	if (!text.trim()) return;
+	for (const line of replaceTabs(text.trimEnd()).split("\n")) body.push(theme.fg("toolOutput", line));
+}
+
 /** TUI renderer: one status header per op, meta from structured details, capped body lines. */
 export const launchToolRenderer = {
 	inline: true,
 	mergeCallAndResult: true,
 	animatedPendingPreview: true,
+	// Only an op that can sit produces a partial result worth animating. list,
+	// describe, stop, restart and send answer in one round trip, and a spinner
+	// over those is motion with nothing behind it.
+	animatedPartialResult: (args: unknown) => {
+		const op = (args as LaunchRenderArgs).op;
+		return op === "start" || op === "logs" || op === "wait";
+	},
 
 	renderCall(args: LaunchRenderArgs, options: RenderResultOptions, theme: Theme): Component {
-		const target = args.name ?? args.application;
+		const op = args.op;
+		const command = startCommand(args);
+		// The command line is the description when nothing named the process, and
+		// context beside the name when something did. Placing it here rather than
+		// filtering it back out of the meta keeps the two from disagreeing once
+		// `previewLine` truncates one copy and not the other.
+		const target = args.name ?? command;
+		const meta = callMeta(args);
+		if (args.name && command) meta.unshift(previewLine(replaceTabs(command), TRUNCATE_LENGTHS.SHORT));
 		const header = renderStatusLine(
 			{
 				icon: options.spinnerFrame !== undefined ? "running" : "pending",
 				spinnerFrame: options.spinnerFrame,
-				title: `Launch ${args.op ?? "…"}`,
+				title: op ? `Launch ${op}` : "Launch",
 				description: target ? replaceTabs(target) : undefined,
-				meta: callMeta(args),
+				meta,
 			},
 			theme,
 		);
@@ -678,15 +712,18 @@ export const launchToolRenderer = {
 							),
 						);
 					}
+					if (!daemon) pushTextLines(body, text, theme);
 					break;
 				}
 				case "send":
 					meta.push(...callMeta(params));
 					if (daemon) meta.push(...daemonMeta(daemon, theme));
+					if (!daemon) pushTextLines(body, text, theme);
 					break;
 				case "stop":
 				case "restart":
 					if (daemon) meta.push(...daemonMeta(daemon, theme));
+					if (!daemon) pushTextLines(body, text, theme);
 					break;
 				case "wait": {
 					meta.push(...callMeta(params));
@@ -703,18 +740,28 @@ export const launchToolRenderer = {
 							),
 						);
 					}
+					if (!daemon) pushTextLines(body, text, theme);
 					break;
 				}
 				case "list": {
-					const daemons = details?.daemons ?? [];
-					description = `${daemons.length || "no"} ${pluralize("process", daemons.length)}`;
-					for (const item of daemons) {
-						body.push(
-							`${theme.fg("accent", replaceTabs(item.name))} ${theme.fg("dim", daemonMeta(item, theme).join(theme.sep.dot))}`,
-						);
+					const daemons = details?.daemons;
+					if (daemons !== undefined) {
+						description = `${daemons.length || "no"} ${pluralize("process", daemons.length)}`;
+						for (const item of daemons) {
+							body.push(
+								`${theme.fg("accent", replaceTabs(item.name))} ${theme.fg("dim", daemonMeta(item, theme).join(theme.sep.dot))}`,
+							);
+						}
+					} else if (text.trim()) {
+						pushTextLines(body, text, theme);
+					} else {
+						description = "no processes";
 					}
+					// `daemons` is absent on the fallback path above, which is the case
+					// this branch exists to render: treat it as no live processes so the
+					// completion rows below still print.
 					const settled = new Set(
-						daemons.filter(item => item.exitedAt !== undefined).map(item => `${item.id}${item.exitedAt}`),
+						(daemons ?? []).filter(item => item.exitedAt !== undefined).map(item => `${item.id}${item.exitedAt}`),
 					);
 					for (const record of (details?.completions ?? []).filter(
 						item => !settled.has(`${item.id}${item.exitedAt}`),
@@ -749,13 +796,13 @@ export const launchToolRenderer = {
 						if (spec.detached) flags.push("detached");
 						else if (spec.persist) flags.push("persistent");
 						body.push(theme.fg("dim", flags.join(theme.sep.dot)));
+					} else {
+						pushTextLines(body, text, theme);
 					}
 					break;
 				}
 				default:
-					if (text.trim()) {
-						for (const line of replaceTabs(text.trimEnd()).split("\n")) body.push(theme.fg("toolOutput", line));
-					}
+					pushTextLines(body, text, theme);
 			}
 		}
 
@@ -783,7 +830,7 @@ export const launchToolRenderer = {
 					sections: [
 						{
 							label: theme.fg("toolTitle", "Output"),
-							lines: capPreviewLines(rows, theme, {
+							lines: capPreviewLines(rows.length > 0 ? rows : [theme.fg("dim", "(no output)")], theme, {
 								expanded: options.expanded,
 								max: DEFAULT_TERMINAL_PREVIEW_LINES,
 							}),
