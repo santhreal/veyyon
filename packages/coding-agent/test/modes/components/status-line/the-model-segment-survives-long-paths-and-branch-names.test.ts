@@ -40,7 +40,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { QuietSegmentBounds } from "@veyyon/coding-agent/modes/components/status-line/component";
-import { StatusLineComponent } from "@veyyon/coding-agent/modes/components/status-line/component";
+import { FLOOR_SPENDABLE, StatusLineComponent } from "@veyyon/coding-agent/modes/components/status-line/component";
 import { STATUS_LINE_PRESETS } from "@veyyon/coding-agent/modes/components/status-line/presets";
 import { BASE_MODE_STATES } from "@veyyon/coding-agent/modes/components/status-line/segments";
 import type { StatusLinePreset } from "@veyyon/coding-agent/modes/components/status-line/types";
@@ -195,13 +195,31 @@ describe("the model segment survives long paths and branch names", () => {
 		}
 	});
 
-	it("sheds the right group as a suffix of the documented ranking, and never brings a part back", () => {
+	// The row has two ladders and they answer different questions. The FIT ladder decides what
+	// the row gives up to fit at all, and it runs strictly weakest-first, so what is on screen
+	// is a suffix of the ranking. The FLOOR ladder runs after that, only while the location zone
+	// is still under the width at which a directory and a branch read as themselves, and it pays
+	// with parts that are re-readable rather than with the next part in rank order -- a token
+	// estimate goes before the model chip, whatever their ranks say.
+	//
+	// So an out-of-rank absence is not free: the part must be one the floor is allowed to spend,
+	// and the spend must have bought something, meaning the location is on the row. A part that
+	// vanished while the location zone is empty was not spent, it was lost.
+	const SPENDABLE_ON_THE_FLOOR = ["badges", "context_pct", "context_total", "location_right", "subagents"];
+
+	it("sheds the right group as a suffix of the ranking, except for what the location's floor may spend", () => {
+		// Pinned by equality rather than read from source into the assertion: a new spendable
+		// part widens the exemption below, and that is a decision, not a detail.
+		expect(Object.keys(FLOOR_SPENDABLE).sort()).toEqual(SPENDABLE_ON_THE_FLOOR);
+
 		const statusLine = new StatusLineComponent(makeSession("gpt-4o"));
 
 		const shed = new Set<string>();
+		let sawTheFloorSpendSomething = false;
 		for (let width = 130; width >= 8; width--) {
 			expect(statusLine.renderQuietLine(width, { locationRight: "mcp 3/3" })).not.toBeNull();
-			const present = renderedIds(statusLine.getQuietSegmentBounds());
+			const bounds = statusLine.getQuietSegmentBounds();
+			const present = renderedIds(bounds);
 
 			// Ranked parts on screen must form a SUFFIX of the ranking: a part may
 			// only be missing when every weaker part is missing too. `model` ranked 0
@@ -209,8 +227,18 @@ describe("the model segment survives long paths and branch names", () => {
 			const firstPresent = SHED_ORDER_WEAKEST_FIRST.findIndex(id => present.has(id));
 			if (firstPresent >= 0) {
 				const missing = SHED_ORDER_WEAKEST_FIRST.slice(firstPresent).filter(id => !present.has(id));
-				expect({ width, missing }).toEqual({ width, missing: [] });
+				const locationOnScreen = locationEnd(bounds) > 0;
+				const spent = missing.filter(id => SPENDABLE_ON_THE_FLOOR.includes(id) && locationOnScreen);
+				if (spent.length > 0) sawTheFloorSpendSomething = true;
+				expect({ width, missing: missing.filter(id => !spent.includes(id)) }).toEqual({ width, missing: [] });
 			}
+
+			// The model chip and the mode rungs are never what the floor spends, at any width.
+			// This is the assertion the exemption above must not be able to loosen.
+			const weakerThanTheModel = SHED_ORDER_WEAKEST_FIRST.slice(0, SHED_ORDER_WEAKEST_FIRST.indexOf("model")).filter(
+				id => present.has(id),
+			);
+			if (weakerThanTheModel.length > 0) expect([...present]).toContain("model");
 
 			// Shedding is monotone: narrowing the terminal never restores a part.
 			for (const id of SHED_ORDER_WEAKEST_FIRST) {
@@ -218,6 +246,10 @@ describe("the model segment survives long paths and branch names", () => {
 				else shed.add(id);
 			}
 		}
+
+		// The exemption has to have been exercised, or it is excusing nothing and the sweep
+		// proved the unqualified rule instead of this one.
+		expect(sawTheFloorSpendSomething).toBe(true);
 
 		// The sweep has to have actually degraded something, or the invariant above
 		// was checked against a line that never lost a part.

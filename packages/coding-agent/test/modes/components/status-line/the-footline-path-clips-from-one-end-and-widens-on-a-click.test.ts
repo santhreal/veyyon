@@ -264,18 +264,28 @@ describe("the footline path is clipped from one end", () => {
 		expect(sawClipped).toBe(true);
 	});
 
-	// THE BRANCH STAYS. Shedding it was legal in the version before this one, and the row it
-	// produced -- one long directory and no branch -- is worse than two clipped names, because
-	// the branch is half of what a location is for. This sweeps for a row that still shows the
-	// directory and has silently lost the branch beside it.
+	// THE BRANCH STAYS WHILE THE ZONE CAN HOLD IT. Shedding it was legal in the version before
+	// this one, and the row it produced -- one long directory and no branch -- is worse than two
+	// clipped names, because the branch is half of what a location is for. This sweeps for a row
+	// that still shows the directory and has silently lost the branch beside it.
 	//
 	// Read as an implication rather than a presence check: at the narrowest widths the location
 	// zone is cut down to its tail, which IS the branch, and a row showing the branch alone is
 	// the clip working, not a part being dropped.
-	it("never drops the branch off a row that is still showing the directory", () => {
+	//
+	// The one width band where losing the branch is right is a zone too narrow for two parts
+	// that read: the directory's icon, a mark and one letter, the separator, then a mark and one
+	// letter of the branch. Below that the alternative is `▫ …  ·  …h`, which names neither the
+	// directory nor the branch. The bound is written out here rather than imported, because a
+	// source constant grown until it excused a real regression is what this sweep is for. Those
+	// rows are still checked -- the zone may fall to one part, never to a part that is not the
+	// directory -- and the fitter's own sweep pins what it keeps down there.
+	const ROOM_FOR_TWO_READABLE_PARTS = 2 + 1 + 1 + 5 + 1 + 1;
+	it("never drops the branch off a row whose location zone could hold both", () => {
 		const statusLine = new StatusLineComponent(makeSession());
-		const offenders: { width: number; text: string }[] = [];
+		const offenders: { width: number; text: string; zone: number }[] = [];
 		let sawBothClipped = false;
+		let sawTheZoneGiveUpTheBranch = false;
 
 		for (let width = 200; width >= 8; width--) {
 			const line = statusLine.renderQuietLine(width);
@@ -283,7 +293,12 @@ describe("the footline path is clipped from one end", () => {
 			const bounds = statusLine.getQuietSegmentBounds();
 			const ids = renderedIds(bounds);
 			if (ids.has("path") && !ids.has("git")) {
-				offenders.push({ width, text: stripAnsi(line) });
+				// The painted zone is what the fitter was given: the directory it kept, clipped
+				// to the budget. Wide enough for two readable parts and it should have kept the
+				// branch too.
+				const zone = visibleWidth(slotText(line, bounds, "path") ?? "");
+				if (zone >= ROOM_FOR_TWO_READABLE_PARTS) offenders.push({ width, text: stripAnsi(line), zone });
+				else sawTheZoneGiveUpTheBranch = true;
 				continue;
 			}
 			const pathText = slotText(line, bounds, "path");
@@ -296,6 +311,9 @@ describe("the footline path is clipped from one end", () => {
 		// so a run where they were never both clipped means the row found room that is not
 		// there -- or that one of them was quietly given up after all.
 		expect(sawBothClipped).toBe(true);
+		// And the narrow band is real: a sweep that never reached it has not exercised the
+		// exemption above, so the exemption could be hiding anything.
+		expect(sawTheZoneGiveUpTheBranch).toBe(true);
 	});
 
 	// A branch is not clipped to save four cells. `main`, `dev`, `master` -- the branch most

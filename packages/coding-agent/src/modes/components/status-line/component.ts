@@ -121,6 +121,49 @@ function weakestRightPart(parts: readonly QuietPart[]): { index: number; rank: n
 	return { index, rank };
 }
 
+/**
+ * What the location's FLOOR may be paid with, when the zone has been cut under the width at
+ * which a directory or a branch still reads as itself.
+ *
+ * This is a different question from the shed order above, which asks what the ROW gives up to
+ * fit at all, and it wants a different answer. These four are re-readable or recoverable: a
+ * percentage is back on the next frame, a subagent or job count is usually a zero, and a draft
+ * token estimate is re-derived on the next keystroke. The model chip and the mode rungs are
+ * not on that list: the chip is what this row exists to retain, and a rung says what the next
+ * keystroke will DO, which is not something to spend on a wider directory.
+ *
+ * Without this the ladder stopped at the model chip and left the zone under its floor with
+ * three spendable parts still on the row -- `…izer  ·  …g-path` beside a token estimate, two
+ * fragments that each read as a name in their own right, which is the exact failure
+ * MIN_LOCATION_PART exists to prevent.
+ */
+export const FLOOR_SPENDABLE: Record<string, true> = {
+	badges: true,
+	context_pct: true,
+	context_total: true,
+	location_right: true,
+	subagents: true,
+};
+
+/**
+ * The spendable part the location's floor takes next: lowest-ranked first, from the END, so
+ * the order among them matches the row's own. -1 when the row holds nothing it may spend.
+ */
+function weakestSpendablePart(parts: readonly QuietPart[]): number {
+	let index = -1;
+	let rank = Number.POSITIVE_INFINITY;
+	for (let i = parts.length - 1; i >= 0; i--) {
+		const id = parts[i]?.id ?? "";
+		if (!FLOOR_SPENDABLE[id]) continue;
+		const partRank = RIGHT_PART_SHED_RANK[id] ?? 0;
+		if (partRank < rank) {
+			rank = partRank;
+			index = i;
+		}
+	}
+	return index;
+}
+
 /** The one clip mark on the footline, wherever a clipper puts it. */
 const ELLIPSIS = "…";
 
@@ -320,12 +363,29 @@ export function fitLocation(
 	}
 	const head = parts[0];
 	if (head === undefined) return { text: "", slots: [], cramped: false };
-	// The head alone, clipped to whatever there is -- down to the bare mark, and to nothing at
-	// a budget of zero, which renders no location rather than a stray glyph.
+	// The head alone, clipped to whatever there is. Under its readable minimum the zone says
+	// nothing worth a cell: a directory whose icon has been eaten to fit the mark reads `…er`,
+	// which names no directory and no longer even says whether this is a worktree. An empty
+	// zone is the honest answer, and the row gives those cells to the group that can still use
+	// them. This is reachable only on a terminal narrow enough that the right group alone
+	// fills it.
 	const width = visibleWidth(head.content);
+	if (budget < readableFloor(head)) return { text: "", slots: [], cramped: true };
 	const content = width <= budget ? head.content : clipPartToWidth(head, Math.max(0, budget));
 	const assembled = assembleLocation([head], [content], sep);
 	return { ...assembled, cramped: width > budget || parts.length > 1 };
+}
+
+/**
+ * The fewest cells a part is worth painting in: its pinned cells, plus a mark, plus one cell of
+ * the name the mark is standing in for.
+ *
+ * A pin is an icon, and the clipper drops the icon rather than the name when only one fits
+ * (see `clipPartToWidth`), so without the pin in this number a two-cell icon turned into a
+ * two-letter fragment of a directory name at the widths where the zone is nearly gone.
+ */
+function readableFloor(part: QuietPart): number {
+	return (part.pin ?? 0) + MIN_READABLE_PART;
 }
 
 /**
@@ -341,12 +401,17 @@ function fillLocation(
 	const full = parts.map(part => visibleWidth(part.content));
 	const allotted = [...full];
 	let over = full.reduce((sum, width) => sum + width, 0) + sepWidth * (parts.length - 1) - budget;
-	for (const floor of [MIN_LOCATION_PART, MIN_READABLE_PART]) {
+	// Two passes: every clippable part down to the width a name still reads at, and only then
+	// down to the fewest cells the part is worth painting at all -- which counts its pinned
+	// icon, since the clipper spends the icon before the name.
+	for (const stage of ["preferred", "readable"] as const) {
 		while (over > 0) {
 			let widest = -1;
 			for (const [index, width] of allotted.entries()) {
+				const part = parts[index];
+				if (part === undefined) continue;
 				if ((full[index] ?? 0) <= MIN_LOCATION_PART) continue;
-				if (width <= floor) continue;
+				if (width <= (stage === "preferred" ? MIN_LOCATION_PART : readableFloor(part))) continue;
 				// Ties go to the LATER part: the directory is the head a reader places the row
 				// by, so when two parts are equally wide the branch gives up the cell.
 				if (widest < 0 || width >= (allotted[widest] ?? 0)) widest = index;
@@ -1967,6 +2032,15 @@ export class StatusLineComponent implements Component {
 		let locationSlots: QuietSegmentBounds[] | null = null;
 		// Whether the fitter had to cut the location below its own floors to fit it.
 		let locationCramped = false;
+		// Fit the location into the room the CURRENT right group leaves, for the caller to take.
+		// Asked again every time the group loses a part on the zone's behalf, because the room a
+		// shed frees belongs to the location: fitting once and latching a flag is what put an
+		// empty zone on a row with twenty-one cells of slack. The zone was fitted to the budget
+		// left by a right group that still held the session name and the context gauge -- a
+		// budget of ZERO -- and when those two left a moment later nothing asked the fitter
+		// again, so the row rendered the directory and the branch as nothing at all.
+		const fitToTheRoomLeft = () =>
+			fitLocation(location, sep, Math.max(0, budget - visibleWidth(right) - (right ? 2 : 0)));
 		while (rightParts.length > 0 && visibleWidth(left) + visibleWidth(right) + (left && right ? 2 : 0) > budget) {
 			if (clockStage === 0) {
 				clockStage = 1;
@@ -1981,6 +2055,9 @@ export class StatusLineComponent implements Component {
 			// Shed the LOWEST-RANKED remaining part, walking from the end so equally
 			// ranked parts still go right-to-left. Everything unlisted ranks 0 and goes
 			// first; see RIGHT_PART_SHED_RANK for why the four ranked ids outrank it.
+			//
+			// Every unranked part goes before the location is touched at all, so nothing here
+			// has to be re-fitted: the zone is still whole.
 			const weakest = weakestRightPart(rightParts);
 			const dropIndex = weakest.index;
 			const dropRank = weakest.rank;
@@ -1993,19 +2070,23 @@ export class StatusLineComponent implements Component {
 			// them: a clipped path still says where you are, and these do not degrade.
 			if (!locationShortened) {
 				locationShortened = true;
-				const leftBudget = Math.max(0, budget - visibleWidth(right) - (right ? 2 : 0));
-				const fitted = fitLocation(location, sep, leftBudget);
+				const fitted = fitToTheRoomLeft();
 				left = fitted.text;
 				locationSlots = fitted.slots;
 				locationCramped = fitted.cramped;
 				continue;
 			}
-			// The location is gone too and the ranked parts still do not fit, so the
-			// ranking has to resolve. Shedding the weakest is the whole point of having
-			// one: the alternative is what shipped before it existed, where the return
-			// below truncated the joined group and a budget of one cell rendered a bare
-			// `…` — every ranked part destroyed at once, including the persistent
-			// subagent count that outranks all of them.
+			// The ranked parts still do not fit, so the ranking has to resolve. Shedding the
+			// weakest is the whole point of having one: the alternative is what shipped before
+			// it existed, where the return below truncated the joined group and a budget of one
+			// cell rendered a bare `…` — every ranked part destroyed at once, including the
+			// persistent subagent count that outranks all of them.
+			//
+			// The zone is NOT re-fitted here. It cannot need it: the fit above clipped it to the
+			// room the group left, so a shed that ends the overflow ends this loop, and a shed
+			// that does not is followed by another. Where the freed cells do have to be handed
+			// over is the floor ladder below, which is the only place a shed is made on the
+			// zone's behalf rather than the row's.
 			if (rightParts.length > 1 && dropIndex >= 0) {
 				rightParts.splice(dropIndex, 1);
 				right = rightParts.map(part => part.content).join(sep);
@@ -2013,18 +2094,19 @@ export class StatusLineComponent implements Component {
 			}
 			break;
 		}
-		// A location squeezed under its floors is a zone that no longer reads: `… · …` says
-		// neither where the session is nor what it is on. At that point the budget is what has
-		// to move, so the CONTEXT GAUGE goes and the zone is asked again -- a percentage is a
-		// number you can re-read on the next frame, and the directory and branch are identity.
-		// The floor stops at the model chip: retaining that chip beside a long path is the
-		// whole point of this row, so it is never spent to widen the zone.
-		while (locationCramped && locationShortened && rightParts.length > 1) {
-			const weakest = weakestRightPart(rightParts);
-			if (weakest.index < 0 || weakest.rank >= (RIGHT_PART_SHED_RANK.model ?? 0)) break;
-			rightParts.splice(weakest.index, 1);
+		// A location squeezed under its floors is a zone that no longer reads: `…izer  ·  …g-path`
+		// says neither where the session is nor what it is on. At that point the budget is what
+		// has to move, so the row pays the zone out of what it can re-read on the next frame --
+		// the context gauge, the badge counts, the draft token estimate (see FLOOR_SPENDABLE) --
+		// and asks the fitter again after each one. It never pays with the model chip, which is
+		// what this row exists to retain, and never with a mode rung, which says what the next
+		// keystroke does.
+		while (locationCramped && locationShortened && rightParts.length > 0) {
+			const index = weakestSpendablePart(rightParts);
+			if (index < 0) break;
+			rightParts.splice(index, 1);
 			right = rightParts.map(part => part.content).join(sep);
-			const fitted = fitLocation(location, sep, Math.max(0, budget - visibleWidth(right) - (right ? 2 : 0)));
+			const fitted = fitToTheRoomLeft();
 			left = fitted.text;
 			locationSlots = fitted.slots;
 			locationCramped = fitted.cramped;
@@ -2059,7 +2141,12 @@ export class StatusLineComponent implements Component {
 				}
 			}
 		}
-		const rightStart = left && right ? budget - visibleWidth(right) : 0;
+		// The right group is anchored to the right edge whether or not a location shares the
+		// row with it. Anchoring it only when a location survived is what left a row of state
+		// hanging off the LEFT margin at the widths where the zone could not fit: the model
+		// chip, the rungs and the counters all jumped a screen-width left, and the eye that
+		// had learnt where to find them on every other row had to hunt for them on this one.
+		const rightStart = right ? Math.max(0, budget - visibleWidth(right)) : 0;
 		if (right) {
 			let col = rightStart;
 			for (const part of rightParts) {
@@ -2086,8 +2173,9 @@ export class StatusLineComponent implements Component {
 		// appended to `capRight` unconditionally, so `right` is never empty and a location
 		// alone on the row cannot occur. It also means the shed loop above always runs when
 		// the row overflows, which is where the location's front cut is taken. A lone right
-		// group has no head worth keeping, so it loses its tail.
-		return badge + truncateToWidth(right, budget);
+		// group has no head worth keeping, so it loses its tail -- and it keeps the right
+		// edge, so the state it carries sits where the eye already looks for it.
+		return badge + padding(rightStart) + truncateToWidth(right, budget);
 	}
 
 	/**
