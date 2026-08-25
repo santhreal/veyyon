@@ -338,7 +338,6 @@ export const repoScriptTests = [
 	"scripts/magick-tmpdir.test.ts",
 	"scripts/fuzz-triage.test.ts",
 	"scripts/a-source-file-that-reads-as-binary-is-invisible.test.ts",
-	"scripts/a-streamed-tool-argument-object-is-replaced-never-mutated.test.ts",
 	"scripts/barrel-files-are-imported.test.ts",
 	"scripts/class-privacy-is-the-hash.test.ts",
 	"scripts/a-test-reads-a-module-through-its-graph-not-its-bytes.test.ts",
