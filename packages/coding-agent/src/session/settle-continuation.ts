@@ -36,6 +36,7 @@ export type SettleContinuationRoute =
 	| "plan-mode-decision"
 	| "todo-reminder"
 	| "verification-evidence"
+	| "code-review"
 	| "unexpected-stop-retry";
 
 interface SettleContinuationRule {
@@ -67,6 +68,10 @@ export const SETTLE_CONTINUATION_POLICY: Record<SettleContinuationRoute, SettleC
 	"verification-evidence": {
 		holdsForUserAnswer: true,
 		why: "The mutation is already recorded in the ledger, so the reminder is still owed after the user replies. It must be checked BEFORE the ledger is drained, or the deferral spends the one reminder it was holding.",
+	},
+	"code-review": {
+		holdsForUserAnswer: true,
+		why: "Multi-file code mutation review is owed before finalizing; defer when the assistant is waiting on a user answer so we do not talk over the question.",
 	},
 	"unexpected-stop-retry": {
 		holdsForUserAnswer: true,
