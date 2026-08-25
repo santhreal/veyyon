@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-06b3922a.js";
+            window.path_to_searchindex_js = "../searchindex-3fa167c9.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-a2abefc1.js"></script>
@@ -839,9 +839,6 @@ veyyon config get compaction.threshold
 </thead>
 <tbody>
 <tr><td><code>todo.enabled</code></td><td>Todos</td><td>boolean</td><td><code>true</code></td><td>Enable the todo tool for task tracking.</td></tr>
-<tr><td><code>glob.enabled</code></td><td>Glob</td><td>boolean</td><td><code>true</code></td><td>Enable the glob tool for glob-based file lookup.</td></tr>
-<tr><td><code>grep.enabled</code></td><td>Grep</td><td>boolean</td><td><code>true</code></td><td>Enable the grep tool for regex content search.</td></tr>
-<tr><td><code>astGrep.enabled</code></td><td>AST Grep</td><td>boolean</td><td><code>true</code></td><td>Enable the ast_grep tool for structural AST search.</td></tr>
 <tr><td><code>astEdit.enabled</code></td><td>AST Edit</td><td>boolean</td><td><code>true</code></td><td>Enable the ast_edit tool for structural AST rewrites.</td></tr>
 <tr><td><code>debug.enabled</code></td><td>Debug</td><td>boolean</td><td><code>true</code></td><td>Enable the debug tool for DAP-based debugging.</td></tr>
 <tr><td><code>launch.enabled</code></td><td>Launch</td><td>boolean</td><td><code>true</code></td><td>Enable the launch tool for supervising shared long-running project processes.</td></tr>
@@ -872,15 +869,25 @@ veyyon config get compaction.threshold
 </tbody>
 </table>
 </div>
-<h3 id="grep--browser"><a class="header" href="#grep--browser">Grep &amp; Browser</a></h3>
+<h3 id="search-context"><a class="header" href="#search-context">Search Context</a></h3>
 <div class="table-wrapper">
 <table>
 <thead>
 <tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
 </thead>
 <tbody>
-<tr><td><code>grep.contextBefore</code></td><td>Grep Context Before</td><td>number</td><td><code>1</code></td><td>Lines of context before each grep match.</td></tr>
-<tr><td><code>grep.contextAfter</code></td><td>Grep Context After</td><td>number</td><td><code>3</code></td><td>Lines of context after each grep match.</td></tr>
+<tr><td><code>search.contextBefore</code></td><td>Text Context Before</td><td>number</td><td><code>1</code></td><td>Lines of context before each text search match.</td></tr>
+<tr><td><code>search.contextAfter</code></td><td>Text Context After</td><td>number</td><td><code>3</code></td><td>Lines of context after each text search match.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="browser"><a class="header" href="#browser">Browser</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
 <tr><td><code>browser.headless</code></td><td>Headless Browser</td><td>boolean</td><td><code>true</code></td><td>Launch browser in headless mode (disable to show browser UI).</td></tr>
 <tr><td><code>browser.cmux</code></td><td>cmux Browser</td><td>boolean</td><td><code>true</code></td><td>Use cmux WKWebView surfaces for browser automation when a cmux socket is available. Set VEYYON_BROWSER_CMUX=0 or VEYYON_BROWSER_CMUX=1 to override.</td></tr>
 <tr><td><code>browser.screenshotDir</code></td><td>Screenshot Directory</td><td>string</td><td><em>(unset)</em></td><td>Directory to save screenshots. If unset, screenshots go to a temp file. Supports ~. Examples: ~/Downloads, ~/Desktop, /sdcard/Download (Android).</td></tr>
@@ -907,12 +914,12 @@ veyyon config get compaction.threshold
 <tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
 </thead>
 <tbody>
-<tr><td><code>tools.artifactSpillThreshold</code></td><td>Artifact Spill Threshold (KB)</td><td>number</td><td><code>50</code></td><td>Tool output above this size is saved as an artifact and the result keeps a head/tail window plus the artifact:// id that reads the full text back, so a lower threshold costs a re-read rather than losing output. It governs every tool that streams output, including bash, eval, ssh and the interactive shell, as well as grep and the browser.</td></tr>
+<tr><td><code>tools.artifactSpillThreshold</code></td><td>Artifact Spill Threshold (KB)</td><td>number</td><td><code>50</code></td><td>Tool output above this size is saved as an artifact and the result keeps a head/tail window plus the artifact:// id that reads the full text back, so a lower threshold costs a re-read rather than losing output. It governs every tool that streams output, including bash, eval, ssh and the interactive shell, as well as search and the browser.</td></tr>
 <tr><td><code>tools.artifactTailBytes</code></td><td>Artifact Tail Size (KB)</td><td>number</td><td><code>20</code></td><td>Amount of tail content kept inline when output spills to artifact.</td></tr>
 <tr><td><code>tools.artifactHeadBytes</code></td><td>Artifact Head Size (KB)</td><td>number</td><td><code>20</code></td><td>Amount of head content kept inline alongside the tail when output spills to artifact (middle elision). 0 disables — keep tail only.</td></tr>
 <tr><td><code>tools.outputMaxColumns</code></td><td>Output Column Cap</td><td>number</td><td><code>768</code></td><td>Per-line byte cap for streaming tool outputs (bash, ssh, python, js eval) and <code>read</code>. Lines wider than this are ellipsis-truncated; remaining bytes up to the next newline are dropped. 0 disables.</td></tr>
 <tr><td><code>tools.artifactTailLines</code></td><td>Artifact Tail Lines</td><td>number</td><td><code>500</code></td><td>Maximum lines of tail content kept inline when output spills to artifact.</td></tr>
-<tr><td><code>tools.inlineOutputFloor</code></td><td>Inline Output Floor</td><td>number</td><td><code>0.25</code></td><td>Smallest share of the inline output budget an early tool result may use before the rest spills to an artifact. A result that arrives early is re-read on every later turn, so it is charged more tightly than one that arrives near the end. Lower spills sooner and costs fewer context tokens; 1 keeps the flat cap and never spills early. This governs every tool that streams output, including eval, bash, ssh and the interactive shell, as well as grep and the browser. Shown under the tab’s Advanced fold.</td></tr>
+<tr><td><code>tools.inlineOutputFloor</code></td><td>Inline Output Floor</td><td>number</td><td><code>0.25</code></td><td>Smallest share of the inline output budget an early tool result may use before the rest spills to an artifact. A result that arrives early is re-read on every later turn, so it is charged more tightly than one that arrives near the end. Lower spills sooner and costs fewer context tokens; 1 keeps the flat cap and never spills early. This governs every tool that streams output, including eval, bash, ssh and the interactive shell, as well as search and the browser. Shown under the tab’s Advanced fold.</td></tr>
 </tbody>
 </table>
 </div>
@@ -939,7 +946,7 @@ veyyon config get compaction.threshold
 </thead>
 <tbody>
 <tr><td><code>tools.discoveryMode</code></td><td>Tool Discovery</td><td>enum</td><td><code>auto</code></td><td>Hide tools behind a search tool to save tokens. ‘auto’ hides MCP tools once the tool set has more than 40 tools; ‘mcp-only’ always hides MCP tools; ‘all’ also hides non-essential built-ins and first-party heavyweight tools such as generate_image. Values: <code>auto</code>, <code>off</code>, <code>mcp-only</code>, <code>all</code>.</td></tr>
-<tr><td><code>tools.essentialOverride</code></td><td>Essential Tools Override</td><td>array</td><td><code>[]</code></td><td>Override the always-loaded built-in tools (default: read, bash, launch, edit, write, glob, eval). Leave empty to use defaults.</td></tr>
+<tr><td><code>tools.essentialOverride</code></td><td>Essential Tools Override</td><td>array</td><td><code>[]</code></td><td>Override the always-loaded built-in tools (default: read, bash, launch, edit, write, search, eval). Leave empty to use defaults.</td></tr>
 <tr><td><code>mcp.discoveryMode</code></td><td>MCP Tool Discovery</td><td>boolean</td><td><code>false</code></td><td>Hide MCP tools by default and expose them through a tool discovery tool.</td></tr>
 <tr><td><code>mcp.discoveryDefaultServers</code></td><td>MCP Discovery Default Servers</td><td>array</td><td><code>[]</code></td><td>Keep MCP tools from these servers visible while discovery mode hides other MCP tools.</td></tr>
 <tr><td><code>mcp.notifications</code></td><td>MCP Update Injection</td><td>boolean</td><td><code>false</code></td><td>Inject MCP resource updates into the agent conversation.</td></tr>
@@ -1286,7 +1293,7 @@ veyyon config get compaction.threshold
 <tr><td><code>auth.broker.token</code></td><td>string</td><td><em>(unset)</em></td><td></td></tr>
 <tr><td><code>auth.broker.url</code></td><td>string</td><td><em>(unset)</em></td><td></td></tr>
 <tr><td><code>autolearn.minToolCalls</code></td><td>number</td><td><code>5</code></td><td></td></tr>
-<tr><td><code>bashInterceptor.patterns</code></td><td>array</td><td><code>[{"pattern":"^\\s*(cat|head|tail|less|more)\\s+","tool":"read","message":"Use the </code>read<code>tool instead of cat/head/tail. It provides better context and handles binary files."},{"pattern":"^\\s*(grep|rg|ripgrep|ag|ack)\\s+","tool":"grep","message":"Use the</code>grep<code>tool instead of grep/rg. It respects .gitignore and provides structured output."},{"pattern":"^\\s*(find|fd|locate)\\s+.*(-name|-iname|-type|--type|-glob)","tool":"glob","message":"Use the</code>glob<code>tool instead of find/fd. It respects .gitignore and is faster for glob patterns."},{"pattern":"^\\s*sed\\s+(-i|--in-place)","tool":"edit","message":"Use the</code>edit<code>tool instead of sed -i. It provides diff preview and fuzzy matching."},{"pattern":"^\\s*perl\\s+.*-[pn]?i","tool":"edit","message":"Use the</code>edit<code>tool instead of perl -i. It provides diff preview and fuzzy matching."},{"pattern":"^\\s*awk\\s+.*-i\\s+inplace","tool":"edit","message":"Use the</code>edit<code>tool instead of awk -i inplace. It provides diff preview and fuzzy matching."},{"pattern":"^\\s*(echo|printf|cat\\s*\&lt;\&lt;)\\s+(?:(?:[^\"'&gt;]|\"[^\"]*\"|'[^']*')|(?\&lt;!\\|)&gt;{1,2}\\|?\\s*(?:\"/dev/(?:null|tty|stdout|stderr)\"|'/dev/(?:null|tty|stdout|stderr)'|/dev/(?:null|tty|stdout|stderr))(?:[\\s;&amp;|]|$))*(?\&lt;!\\|)&gt;{1,2}\\|?\\s*(?!(?:\"/dev/(?:null|tty|stdout|stderr)\"|'/dev/(?:null|tty|stdout|stderr)'|/dev/(?:null|tty|stdout|stderr))(?:[\\s;&amp;|]|$))[$\\w./~\"'-]","tool":"write","message":"Use the</code>write<code>tool instead of echo/cat redirection. It handles encoding and provides confirmation."},{"pattern":"^\\s*nohup\\s+|(?\&lt;!&amp;)\\&amp;\\s*$","tool":"launch","message":"Use the</code>launch<code>tool instead of nohup or background shell syntax so the process stays observable and managed."},{"pattern":"^\\s*(?:(?:bun|npm|pnpm|yarn)\\s+(?:run\\s+)?(?:dev|start)(?:\\s|$)|(?:vite|next\\s+dev|nuxt\\s+dev|nodemon|lldb|gdb|tail\\s+-f)(?:\\s|$)|docker\\s+compose\\s+up(?!.*(?:\\s-d(?:\\s|$)|--detach))(?:\\s|$))","tool":"launch","message":"Use the</code>launch<code>tool for services, watchers, and debuggers so other veyyon instances can observe and control them."},{"pattern":"^\\s*(?:(?:bun|npm|pnpm|yarn)\\s+(?:run\\s+)?\\S+|cargo\\s+watch|watchexec|pytest|vitest|jest|tsc)(?:.|\\n)*(?:--watch|-w)(?:\\s|$)","tool":"launch","message":"Use the</code>launch<code> tool for watch mode so its output, input, and lifecycle stay managed."}]</code></td><td></td></tr>
+<tr><td><code>bashInterceptor.patterns</code></td><td>array</td><td><code>[{"pattern":"^\\s*(cat|head|tail|less|more)\\s+","tool":"read","message":"Use the </code>read<code>tool instead of cat/head/tail. It provides better context and handles binary files."},{"pattern":"^\\s*(grep|rg|ripgrep|ag|ack)\\s+","tool":"search","message":"Use</code>search<code>with</code>type: "text"<code>instead of shell grep/rg."},{"pattern":"^\\s*(find|fd|locate)\\s+.*(-name|-iname|-type|--type|-glob)","tool":"search","message":"Use</code>search<code>with</code>type: "files"<code>instead of shell find/fd."},{"pattern":"^\\s*sed\\s+(-i|--in-place)","tool":"edit","message":"Use the</code>edit<code>tool instead of sed -i. It provides diff preview and fuzzy matching."},{"pattern":"^\\s*perl\\s+.*-[pn]?i","tool":"edit","message":"Use the</code>edit<code>tool instead of perl -i. It provides diff preview and fuzzy matching."},{"pattern":"^\\s*awk\\s+.*-i\\s+inplace","tool":"edit","message":"Use the</code>edit<code>tool instead of awk -i inplace. It provides diff preview and fuzzy matching."},{"pattern":"^\\s*(echo|printf|cat\\s*\&lt;\&lt;)\\s+(?:(?:[^\"'&gt;]|\"[^\"]*\"|'[^']*')|(?\&lt;!\\|)&gt;{1,2}\\|?\\s*(?:\"/dev/(?:null|tty|stdout|stderr)\"|'/dev/(?:null|tty|stdout|stderr)'|/dev/(?:null|tty|stdout|stderr))(?:[\\s;&amp;|]|$))*(?\&lt;!\\|)&gt;{1,2}\\|?\\s*(?!(?:\"/dev/(?:null|tty|stdout|stderr)\"|'/dev/(?:null|tty|stdout|stderr)'|/dev/(?:null|tty|stdout|stderr))(?:[\\s;&amp;|]|$))[$\\w./~\"'-]","tool":"write","message":"Use the</code>write<code>tool instead of echo/cat redirection. It handles encoding and provides confirmation."},{"pattern":"^\\s*nohup\\s+|(?\&lt;!&amp;)\\&amp;\\s*$","tool":"launch","message":"Use the</code>launch<code>tool instead of nohup or background shell syntax so the process stays observable and managed."},{"pattern":"^\\s*(?:(?:bun|npm|pnpm|yarn)\\s+(?:run\\s+)?(?:dev|start)(?:\\s|$)|(?:vite|next\\s+dev|nuxt\\s+dev|nodemon|lldb|gdb|tail\\s+-f)(?:\\s|$)|docker\\s+compose\\s+up(?!.*(?:\\s-d(?:\\s|$)|--detach))(?:\\s|$))","tool":"launch","message":"Use the</code>launch<code>tool for services, watchers, and debuggers so other veyyon instances can observe and control them."},{"pattern":"^\\s*(?:(?:bun|npm|pnpm|yarn)\\s+(?:run\\s+)?\\S+|cargo\\s+watch|watchexec|pytest|vitest|jest|tsc)(?:.|\\n)*(?:--watch|-w)(?:\\s|$)","tool":"launch","message":"Use the</code>launch<code> tool for watch mode so its output, input, and lifecycle stay managed."}]</code></td><td></td></tr>
 <tr><td><code>branchSummary.reserveTokens</code></td><td>number</td><td><code>16384</code></td><td></td></tr>
 <tr><td><code>commit.changelogMaxDiffChars</code></td><td>number</td><td><code>120000</code></td><td></td></tr>
 <tr><td><code>commit.mapReduceEnabled</code></td><td>boolean</td><td><code>true</code></td><td></td></tr>
@@ -1404,7 +1411,7 @@ veyyon config get compaction.threshold
 </tbody>
 </table>
 </div>
-<p>345 settings in /settings, 119 configuration-file keys, 464 in all.</p>
+<p>342 settings in /settings, 119 configuration-file keys, 461 in all.</p>
 
                     </main>
 

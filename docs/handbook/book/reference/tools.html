@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-06b3922a.js";
+            window.path_to_searchindex_js = "../searchindex-3fa167c9.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-a2abefc1.js"></script>
@@ -220,7 +220,7 @@ leniency (e.g. hashline parsing) is layered on top. See <a href="../repair/overv
 </tbody>
 </table>
 </div>
-<p>Hashline flow: <code>read</code>/<code>grep</code> mint <code>[path#TAG]</code> anchors → model copies tags into <code>edit</code> →
+<p>Hashline flow: <code>read</code>/<code>search</code> mint <code>[path#TAG]</code> anchors → model copies tags into <code>edit</code> →
 <code>@veyyon/hashline</code> applies ops. See <a href="../edit/engine.html">Edit engine</a> and
 <a href="../../../tools/edit.html"><code>docs/tools/edit.md</code></a>.</p>
 <h2 id="read-and-search"><a class="header" href="#read-and-search">Read and search</a></h2>
@@ -231,8 +231,7 @@ leniency (e.g. hashline parsing) is layered on top. See <a href="../repair/overv
 </thead>
 <tbody>
 <tr><td><code>read</code></td><td>Files, dirs, URLs, archives, SQLite, <code>memory://</code>, <code>skill://</code>, …</td></tr>
-<tr><td><code>grep</code></td><td>Ripgrep-backed search; hashline headers in hashline display mode</td></tr>
-<tr><td><code>glob</code></td><td>Path globbing</td></tr>
+<tr><td><code>search</code></td><td>Unified workspace search (files/paths, text/regex, and code structure)</td></tr>
 <tr><td><code>search_tool_bm25</code></td><td>Discover tools by description (when enabled)</td></tr>
 </tbody>
 </table>
@@ -286,7 +285,7 @@ leniency (e.g. hashline parsing) is layered on top. See <a href="../repair/overv
 </table>
 </div>
 <h2 id="other-builtins"><a class="header" href="#other-builtins">Other builtins</a></h2>
-<p><code>web_search</code>, <code>github</code>, <code>lsp</code>, <code>ast_edit</code>, <code>ast_grep</code>, <code>checkpoint</code>, <code>rewind</code>, <code>resolve</code>,
+<p><code>web_search</code>, <code>github</code>, <code>lsp</code>, <code>ast_edit</code>, <code>checkpoint</code>, <code>rewind</code>, <code>resolve</code>,
 <code>set_cwd</code>, <code>manage_skill</code>, <code>launch</code>, <code>inspect_image</code>, <code>argot_load</code>, <code>argot_unload</code>,
 <code>generate_image</code>, <code>tts</code>, and MCP tools (<code>mcp__*</code>). Extension hooks may register more.
 <code>goal</code>, <code>yield</code>, and <code>report_finding</code> are hidden session-lifecycle tools with no user-facing

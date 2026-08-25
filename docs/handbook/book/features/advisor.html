@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-06b3922a.js";
+            window.path_to_searchindex_js = "../searchindex-3fa167c9.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-a2abefc1.js"></script>
@@ -197,7 +197,7 @@
                     <main>
                         <h1 id="advisor-watchdogmd-and-watchdogyml"><a class="header" href="#advisor-watchdogmd-and-watchdogyml">Advisor, WATCHDOG.md, and WATCHDOG.yml</a></h1>
 <p>The advisor is an optional second model attached to a session. It reviews the primary agent’s transcript after each turn, inspects the workspace with its own tools, and injects concise advice back into the primary session.</p>
-<p>The advisor is not a second executor: it cannot approve actions or change primary session state directly. Its default toolset is read-only (<code>read</code>, <code>grep</code>, <code>glob</code>) plus <code>advise</code>, but a <code>WATCHDOG.yml</code> roster entry may broaden <code>tools:</code> to any built-in, including mutating tools such as <code>edit</code>, <code>write</code>, <code>bash</code>, <code>eval</code>, and <code>browser</code>, so grant those tools only when the advisor model and workspace are trusted (see <a href="#tools-and-isolation">Tools and isolation</a>).</p>
+<p>The advisor is not a second executor: it cannot approve actions or change primary session state directly. Its default toolset is read-only (<code>read</code>, <code>search</code>) plus <code>advise</code>, but a <code>WATCHDOG.yml</code> roster entry may broaden <code>tools:</code> to any built-in, including mutating tools such as <code>edit</code>, <code>write</code>, <code>bash</code>, <code>eval</code>, and <code>browser</code>, so grant those tools only when the advisor model and workspace are trusted (see <a href="#tools-and-isolation">Tools and isolation</a>).</p>
 <h2 id="implementation-files"><a class="header" href="#implementation-files">Implementation files</a></h2>
 <ul>
 <li><a href="../../../../packages/coding-agent/src/advisor/runtime.ts"><code>src/advisor/runtime.ts</code></a></li>
@@ -258,8 +258,7 @@ advisor:
 <p>Every advisor has the <code>advise</code> tool for surfacing notes into the primary transcript. Its investigative pool defaults to the read-only subset:</p>
 <ul>
 <li><code>read</code></li>
-<li><code>grep</code></li>
-<li><code>glob</code></li>
+<li><code>search</code></li>
 </ul>
 <p>A <code>WATCHDOG.yml</code> roster entry may broaden this with <code>tools: [...]</code>, selecting any subset of the built-in pool the session actually built (a factory that returned <code>null</code>, e.g. <code>lsp</code> with no matching servers, is absent). Grantable tools include mutating ones: <code>edit</code>, <code>write</code>, <code>bash</code>, <code>eval</code>, <code>browser</code>, <code>debug</code>, <code>ast_edit</code>, <code>task</code>, <code>job</code>, and the memory tools. Tool names outside <a href="../../../../packages/coding-agent/src/tools/builtin-names.ts"><code>BUILTIN_TOOL_NAMES</code></a> are dropped with a warning.</p>
 <p>Advisor grants are not routed through the primary agent’s approval wrapper. The advisor pool is built from the built-in tool factories against its own <code>-advisor</code> <code>ToolSession</code> and then filtered by <code>WATCHDOG.yml</code>; it is not the primary <code>toolRegistry</code> wrapped with <code>ExtensionToolWrapper</code>. Granting write- or exec-tier tools therefore lets the advisor invoke those tools directly, subject to the tool’s own runtime guards but not to <code>tools.approvalMode</code> / <code>tools.approval.&lt;tool&gt;</code> prompts. Keep mutating grants narrow and trusted.</p>
@@ -374,13 +373,13 @@ Especially watch for:
 advisors:
   - name: Architecture
     model: anthropic/claude-sonnet-4-5:medium
-    tools: [read, grep, glob]
+    tools: [read, search]
     instructions: |
       Watch cross-module coupling and public-API growth.
 
   - name: Fixer
     model: anthropic/claude-sonnet-4-5:high
-    tools: [read, grep, glob, edit, bash]
+    tools: [read, search, edit, bash]
     instructions: |
       You may edit and run tests to prove a fix locally, then advise.
 </code></pre>
@@ -389,7 +388,7 @@ advisors:
 <li><code>instructions</code> (top level): shared prompt prepended to every advisor’s system prompt alongside <code>WATCHDOG.md</code>. Concatenated across all discovered <code>WATCHDOG.yml</code> files.</li>
 <li><code>advisors[].name</code>: human label; slugified for the session id and the <code>&lt;session&gt;/__advisor.jsonl</code> filename. Duplicate slugs across files are resolved by the same specificity rule as <code>WATCHDOG.md</code> discovery (project leaf &gt; project ancestor &gt; user).</li>
 <li><code>advisors[].model</code>: optional model selector with optional <code>:level</code> thinking suffix (e.g. <code>x-ai/grok-code-fast:high</code>). Omitted → the advisor uses <code>modelRoles.advisor</code>.</li>
-<li><code>advisors[].tools</code>: optional list of built-in tool names to grant. Omitted or empty → the default <code>read</code>/<code>grep</code>/<code>glob</code> subset. Any name in <a href="../../../../packages/coding-agent/src/tools/builtin-names.ts"><code>BUILTIN_TOOL_NAMES</code></a> is accepted, including mutating tools (<code>edit</code>, <code>write</code>, <code>bash</code>, <code>eval</code>, <code>browser</code>, <code>debug</code>, <code>ast_edit</code>, <code>task</code>, <code>job</code>, and the memory tools). Legacy aliases (<code>search</code>→<code>grep</code>, <code>find</code>→<code>glob</code>) are normalized. Unknown names are dropped with a warning. See <a href="#tools-and-isolation">Tools and isolation</a> for the safety implications of granting mutating tools.</li>
+<li><code>advisors[].tools</code>: optional list of built-in tool names to grant. Omitted or empty → the default <code>read</code>/<code>search</code> subset. Any name in <a href="../../../../packages/coding-agent/src/tools/builtin-names.ts"><code>BUILTIN_TOOL_NAMES</code></a> is accepted, including mutating tools (<code>edit</code>, <code>write</code>, <code>bash</code>, <code>eval</code>, <code>browser</code>, <code>debug</code>, <code>ast_edit</code>, <code>task</code>, <code>job</code>, and the memory tools). Unknown names are dropped with a warning. See <a href="#tools-and-isolation">Tools and isolation</a> for the safety implications of granting mutating tools.</li>
 <li><code>advisors[].instructions</code>: this advisor’s specialization, appended after the shared baseline. Both instruction fields expand <code>@path</code> imports like <code>WATCHDOG.md</code>.</li>
 </ul>
 <h3 id="discovery-locations-1"><a class="header" href="#discovery-locations-1">Discovery locations</a></h3>
