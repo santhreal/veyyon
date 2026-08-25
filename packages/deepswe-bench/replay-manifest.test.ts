@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { loadReplayManifest } from "./replay-manifest";
-import { COMPARISON_MODEL } from "./system-comparison";
+import { COMPARISON_MODEL } from "./src/systems";
 
 const roots: string[] = [];
 

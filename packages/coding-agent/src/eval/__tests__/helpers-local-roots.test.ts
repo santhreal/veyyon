@@ -16,6 +16,7 @@ function makeCtx(cwd: string, roots: Record<string, string>): HelperContext {
 		env: new Map(),
 		localRoots: () => roots,
 		emitStatus: () => {},
+		session: () => ({ artifactsDir: null, sessionId: "test" }),
 	};
 }
 

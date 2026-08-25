@@ -243,9 +243,10 @@ export class IrcTool implements AgentTool<typeof ircSchema, IrcDetails> {
 		}
 
 		try {
-			// Broadcasts fan out to live peers only (running | idle); reviving every
-			// parked agent on a broadcast would be a stampede. Direct sends still go
-			// through the bus so a parked recipient IS revived, but only where
+			// Broadcasts fan out to running peers only; reviving every parked agent or
+			// waking completed/idle agents on a broadcast would restart finished subagents
+			// and cause stampedes. Direct sends still go through the bus so an idle
+			// recipient is woken and a parked recipient is revived, but only where
 			// `canAddress` says the caller may reach it: `bus.send` revives whatever
 			// id it is handed, so an unguarded directed send is the one path that
 			// can wake an agent belonging to a transcript the operator already left,
@@ -262,7 +263,12 @@ export class IrcTool implements AgentTool<typeof ircSchema, IrcDetails> {
 					{ op: "send", to },
 				);
 			}
-			const targets = isBroadcast ? registry.listVisibleTo(senderId).map(ref => ref.id) : [to];
+			const targets = isBroadcast
+				? registry
+						.listVisibleTo(senderId)
+						.filter(ref => ref.status === "running")
+						.map(ref => ref.id)
+				: [to];
 			// A broadcast that also reaches the main agent delivers the body to it
 			// directly (its own incoming card); relaying the sibling legs to the
 			// main UI would then show the same body once per other recipient.

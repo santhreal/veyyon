@@ -51,6 +51,9 @@ const AGENT_STATUS_SYMBOL = {
 	aborted: "status.aborted",
 } as const;
 
+/** All canonical agent display states derived from the visual language owner. */
+export const AGENT_DISPLAY_STATES = Object.keys(AGENT_STATUS_COLOR) as readonly AgentDisplayState[];
+
 // AGENT_STATUS_ORDER was here: a canonical sort rank per status, shared so the
 // Agent Hub roster and the Subagent Inbox sidebar could not disagree about which
 // agents floated to the top. Both views are gone, and the Agent Control Center
@@ -64,18 +67,21 @@ const AGENT_STATUS_SYMBOL = {
  * The state to render for one agent. Every surface derives it here, so no two
  * can disagree about when an agent counts as blocked or waiting.
  *
- * An open approval outranks everything, because it is the one state a person
- * has to act on. Only a STOPPED agent can be `waiting`: `waitingOnPeer` is
- * written at the end of a run and left in place while the agent is woken again,
- * so reading it on a `running` row would label a working agent with the reason
- * it stopped last time.
+ * An open approval outranks working while the agent is `running`, because it is
+ * the one state a person has to act on. Only a RUNNING agent can be `blocked`:
+ * `pendingApproval` is written during a turn, and once the agent stops, is aborted,
+ * or completes, the terminal state takes precedence.
+ *
+ * Only a STOPPED agent can be `waiting`: `waitingOnPeer` is written at the end of
+ * a run and left in place while the agent is woken again, so reading it on a
+ * `running` row would label a working agent with the reason it stopped last time.
  */
 export function agentDisplayState(agent: {
 	status: AgentStatus;
 	waitingOnPeer?: boolean;
 	blockedOnApproval?: boolean;
 }): AgentDisplayState {
-	if (agent.blockedOnApproval === true) return "blocked";
+	if (agent.status === "running" && agent.blockedOnApproval === true) return "blocked";
 	if (agent.waitingOnPeer !== true) return agent.status;
 	return agent.status === "idle" || agent.status === "parked" ? "waiting" : agent.status;
 }

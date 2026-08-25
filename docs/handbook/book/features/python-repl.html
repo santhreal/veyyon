@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-a800b2b1.js";
+            window.path_to_searchindex_js = "../searchindex-3fa167c9.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-a2abefc1.js"></script>
@@ -331,6 +331,15 @@ operational failure modes.</p>
 <p><code>VEYYON_PY</code> and <code>VEYYON_JS</code> use normal boolean flag parsing. Each flag, when set, overrides only its own setting; an unset flag falls back to its setting (<code>eval.py</code> / <code>eval.js</code>, both default <code>true</code>).</p>
 <p>If Python preflight fails and <code>eval.js</code> is enabled, <code>eval</code> remains available for <code>js</code> cells; <code>py</code> cells fail with a Python-backend availability error.</p>
 <p>Python prelude helpers include <code>agent(prompt, *, agent="deep", model=None, label=None, schema=None, handle=False, isolated=None, apply=None, merge=None)</code>. It synchronously calls the host bridge, runs one subagent through the task executor, and returns the final text. When <code>schema</code> is supplied, the helper parses the subagent’s JSON output and returns the object. When <code>handle=True</code>, it instead returns a DAG node dict (<code>{"text", "output", "handle", "id", "agent"}</code>) whose <code>handle</code> is the spawned agent’s recoverable <code>agent://&lt;id&gt;</code> URI (the parsed object lands under <code>"data"</code> when <code>schema</code> is also set), so a downstream <code>pipeline</code>/<code>parallel</code> stage can reference the transcript by handle instead of re-inlining it.</p>
+<h3 id="persisted-helper-state"><a class="header" href="#persisted-helper-state">Persisted helper state</a></h3>
+<p>JavaScript and Python cells expose <code>kv</code> for JSON values that must survive a kernel reset or session continuation. The store is scoped to the session under its artifacts directory and is shared across both runtimes:</p>
+<pre><code class="language-python">kv.set("cursor_handle", {"id": "callback-17"})
+saved = kv.get("cursor_handle")
+keys = kv.list()
+kv.delete("cursor_handle")
+</code></pre>
+<p><code>kv.get(name, default=None)</code> accepts a Python default value. JavaScript returns <code>undefined</code> for a missing key. Keys contain 1–256 characters without <code>/</code>, <code>\</code>, or NUL. One encoded value is limited to 256 KiB and the store is limited to 4 MiB. Concurrent JavaScript and Python writes preserve updates to different keys.</p>
+<p><code>defs()</code> returns up to 200 sorted names defined by user cells with a short value shape. Prelude and runtime names are omitted. Use it to check retained kernel state before redefining a helper.</p>
 <h2 id="execution-flow-and-cancellationtimeout"><a class="header" href="#execution-flow-and-cancellationtimeout">Execution flow and cancellation/timeout</a></h2>
 <h3 id="cell-timeout"><a class="header" href="#cell-timeout">Cell timeout</a></h3>
 <p>Each eval cell <code>timeout</code> is in seconds, defaults to 30, and is clamped to <code>1..3600</code>. It is a <strong>wall-clock budget on the cell’s own work</strong> that the watchdog (<code>IdleTimeout</code>, <code>src/eval/idle-timeout.ts</code>) enforces, <strong>but it is suspended while a host-side <code>agent()</code>/<code>parallel()</code>/<code>completion()</code> bridge call is in flight</strong>: those calls emit synthetic pause/resume timeout-control status events (<code>withBridgeTimeoutPause</code>, <code>src/eval/bridge-timeout.ts</code>) that pause the watchdog entirely and start a fresh timeout window when control returns to the runtime, so a long fanout or a slow completion runs to completion instead of being killed mid-stream. Pause is reference-counted because <code>parallel()</code> can have multiple bridge calls in flight at once.</p>

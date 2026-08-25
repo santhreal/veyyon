@@ -146,7 +146,7 @@ export async function createDeterministicSearchCorpus(
 			null,
 			2,
 		),
-		".gitignore": ["node_modules/", "ignored/", "*.tmp", "*.log", ".env.local"].join("\n") + "\n",
+		".gitignore": `${["node_modules/", "ignored/", "*.tmp", "*.log", ".env.local"].join("\n")}\n`,
 		".env.example": "API_KEY=example_key_here\nDATABASE_URL=postgres://localhost:5432/bench\n",
 		".hidden/config.json": JSON.stringify({ hiddenConfig: true, secretMode: "enabled" }, null, 2),
 		".hidden/credentials.txt": "oauth_token=sample_deterministic_token_12345\n",
@@ -796,7 +796,7 @@ export function formatBenchmarkSummary(report: SearchBenchmarkReport): string {
 	}
 	lines.push("================================================================================");
 
-	return lines.join("\n") + "\n";
+	return `${lines.join("\n")}\n`;
 }
 
 // CLI runner entrypoint
@@ -833,7 +833,7 @@ if (import.meta.main) {
 		});
 
 		if (jsonStdout) {
-			process.stdout.write(JSON.stringify(report, null, 2) + "\n");
+			process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
 		} else {
 			process.stdout.write(formatBenchmarkSummary(report));
 		}

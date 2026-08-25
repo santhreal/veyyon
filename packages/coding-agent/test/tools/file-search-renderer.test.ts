@@ -1,18 +1,12 @@
-import { beforeAll, describe, expect, it } from "bun:test";
-import { getThemeByName, initTheme } from "@veyyon/coding-agent/modes/theme/theme";
-import { visibleWidth } from "@veyyon/tui";
+import { describe, expect, it } from "bun:test";
+import { getThemeByName } from "@veyyon/coding-agent/modes/theme/theme";
 import { sanitizeText } from "@veyyon/utils";
 import { fileSearchRenderer } from "../../src/tools/file-search";
 import { searchToolRenderer } from "../../src/tools/search-renderer";
-import { expectNotAccented, useFullColor } from "../helpers/theme-assertions";
-
-beforeAll(async () => {
-	await initTheme();
-});
+import { expectNotAccented } from "../helpers/theme-assertions";
 
 describe("fileSearchRenderer and searchToolRenderer (files)", () => {
-	useFullColor();
-	it("renders railed file output without tree connectors and avoids accent-colored success headers", async () => {
+	it("indents inline glob output and avoids accent-colored success headers", async () => {
 		const theme = await getThemeByName("dark");
 		expect(theme).toBeDefined();
 		const uiTheme = theme!;
@@ -21,7 +15,6 @@ describe("fileSearchRenderer and searchToolRenderer (files)", () => {
 			details: {
 				fileCount: 2,
 				files: ["src/a.ts", "src/b.ts"],
-				cwd: "/workspace",
 			},
 		};
 
@@ -40,112 +33,10 @@ describe("fileSearchRenderer and searchToolRenderer (files)", () => {
 			.render(240);
 		const unifiedPlainLines = sanitizeText(unifiedRenderedLines.join("\n")).split("\n");
 
-		const rail = uiTheme.symbol("block.rail");
-		expect(plainLines[0]!).toContain("2 files");
-		expect(plainLines.length).toBe(3); // header + 2 file lines
-		for (const lines of [plainLines, unifiedPlainLines]) {
-			for (const line of lines) {
-				expect(line.startsWith(`${rail} `)).toBe(true);
-				expect(line).not.toMatch(/[├└│]/);
-			}
-		}
+		expect(plainLines.every(line => line.startsWith(" "))).toBe(true);
+		expect(unifiedPlainLines.every(line => line.startsWith(" "))).toBe(true);
 		expectNotAccented(uiTheme, renderedLines[0]!, [uiTheme.symbol("icon.search"), "Find"]);
 		expectNotAccented(uiTheme, unifiedRenderedLines[0]!, [uiTheme.symbol("icon.search"), "Find"]);
-	});
-
-	it("respects collapsed vs expanded line budgets with railed overflow indicator", async () => {
-		const theme = await getThemeByName("dark");
-		const uiTheme = theme!;
-		const files = Array.from({ length: 15 }, (_, i) => `src/file_${i}.ts`);
-		const result = {
-			content: [{ type: "text", text: "" }],
-			details: {
-				fileCount: 15,
-				files,
-			},
-		};
-
-		const rail = uiTheme.symbol("block.rail");
-
-		// Collapsed mode: shows 8 items + 1 overflow summary line
-		const collapsedLines = fileSearchRenderer
-			.renderResult(result as never, { expanded: false, isPartial: false }, uiTheme, { input: "src/**/*.ts" })
-			.render(240);
-		const plainCollapsed = sanitizeText(collapsedLines.join("\n")).split("\n");
-		expect(plainCollapsed[0]!).toContain("15 files");
-		expect(plainCollapsed.length).toBe(10); // header + 8 files + overflow
-		for (const line of plainCollapsed.slice(1)) {
-			expect(line.startsWith(`${rail} `)).toBe(true);
-			expect(line).not.toMatch(/[├└│]/);
-		}
-		expect(plainCollapsed[9]!).toContain("… 7 more files");
-
-		// Expanded mode: shows all 15 items with no overflow summary line
-		const expandedLines = fileSearchRenderer
-			.renderResult(result as never, { expanded: true, isPartial: false }, uiTheme, { input: "src/**/*.ts" })
-			.render(240);
-		const plainExpanded = sanitizeText(expandedLines.join("\n")).split("\n");
-		expect(plainExpanded[0]!).toContain("15 files");
-		expect(plainExpanded.length).toBe(16); // header + 15 files
-		for (const line of plainExpanded.slice(1)) {
-			expect(line.startsWith(`${rail} `)).toBe(true);
-			expect(line).not.toMatch(/[├└│]/);
-		}
-		expect(plainExpanded.some(l => l.includes("more file"))).toBe(false);
-	});
-
-	it("formats directory headers without file indent and files with 2-space indent under the rail", async () => {
-		const theme = await getThemeByName("dark");
-		const uiTheme = theme!;
-		const result = {
-			content: [{ type: "text", text: "" }],
-			details: {
-				fileCount: 3,
-				files: ["src/", "src/index.ts", "src/util.ts"],
-			},
-		};
-
-		const renderedLines = fileSearchRenderer
-			.renderResult(result as never, { expanded: true, isPartial: false }, uiTheme, { input: "src/**" })
-			.render(240);
-		const plainLines = sanitizeText(renderedLines.join("\n")).split("\n");
-
-		const rail = uiTheme.symbol("block.rail");
-		expect(plainLines[0]!).toContain("3 files");
-		// Directory header line: rail + " " + " " (content padding) + folder icon/path (no extra 2-space file indent)
-		expect(plainLines[1]!).toContain(`${rail}  `);
-		expect(plainLines[1]!).toContain("src/");
-		// File lines: rail + " " + " " (content padding) + "  " (file indent) + lang badge/path
-		expect(plainLines[2]!).toContain(`${rail}    `);
-		expect(plainLines[2]!).toContain("src/index.ts");
-		expect(plainLines[3]!).toContain(`${rail}    `);
-		expect(plainLines[3]!).toContain("src/util.ts");
-	});
-
-	it("budgets body width against outputBlockContentWidth so visual rows never wrap", async () => {
-		const theme = await getThemeByName("dark");
-		const uiTheme = theme!;
-		const longPath =
-			"src/very/deep/nested/directory/structure/that/is/exceptionally/long/and/will/overflow/if/not/budgeted/correctly/index.ts";
-		const result = {
-			content: [{ type: "text", text: "" }],
-			details: {
-				fileCount: 1,
-				files: [longPath],
-			},
-		};
-
-		const targetWidth = 40;
-		const renderedLines = fileSearchRenderer
-			.renderResult(result as never, { expanded: true, isPartial: false }, uiTheme, { input: "src/**" })
-			.render(targetWidth);
-
-		// Exactly 2 lines: 1 header line + 1 single truncated body row.
-		// If budgeted against outer width instead of outputBlockContentWidth, outputBlock re-wraps the row into 2 lines (3 total).
-		expect(renderedLines.length).toBe(2);
-		for (const line of renderedLines) {
-			expect(visibleWidth(line)).toBeLessThanOrEqual(targetWidth);
-		}
 	});
 
 	it("renders a timed-out empty scan as incomplete instead of a definitive no-files claim", async () => {

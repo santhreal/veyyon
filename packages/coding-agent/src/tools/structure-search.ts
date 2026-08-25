@@ -406,58 +406,54 @@ export interface StructureSearchRenderArgs {
 
 const COLLAPSED_MATCH_LIMIT = PREVIEW_LIMITS.COLLAPSED_LINES * 2;
 
-function structureSearchStatusIcon(uiTheme: Theme): string {
-	return uiTheme.fg("toolTitle", uiTheme.symbol("icon.search"));
-}
-
-/**
- * Lay out match groups inside a framed block, keeping whole groups together.
- *
- * A group is a file header plus its matched lines, so cutting one in half leaves
- * a header with no matches under it. Collapsed rendering therefore fits whole
- * groups and reserves one line for the summary row when any group is left over.
- */
-function renderBudgetedStructureGroups(
+function renderBudgetedAstGrepGroups(
 	groups: string[][],
 	maxLines: number,
 	uiTheme: Theme,
 	expanded: boolean,
 ): string[] {
 	if (groups.length === 0 || maxLines <= 0) return [];
-	const layout = (visible: string[][]): string[] => {
+	if (expanded) {
 		const lines: string[] = [];
-		for (const group of visible) {
+		for (const group of groups) {
 			lines.push(replaceTabs(group[0]!));
-			for (let index = 1; index < group.length; index++) {
-				lines.push(`  ${replaceTabs(group[index]!)}`);
+			for (let j = 1; j < group.length; j++) {
+				lines.push(`  ${replaceTabs(group[j]!)}`);
 			}
 		}
 		return lines;
-	};
-	if (expanded) return layout(groups);
+	}
 
 	let fittingCount = groups.length;
 	let fittedLineCount = 0;
-	for (let index = 0; index < groups.length; index++) {
-		const count = groups[index]!.length;
-		const remainingAfter = groups.length - (index + 1);
+	for (let i = 0; i < groups.length; i++) {
+		const count = groups[i]!.length;
+		const remainingAfter = groups.length - (i + 1);
 		const reservedSummaryLines = remainingAfter > 0 ? 1 : 0;
 		if (fittedLineCount + count + reservedSummaryLines > maxLines) {
-			fittingCount = index;
+			fittingCount = i;
 			break;
 		}
 		fittedLineCount += count;
-		fittingCount = index + 1;
+		fittingCount = i + 1;
 	}
 
+	const visibleGroups = groups.slice(0, fittingCount);
 	const remaining = groups.length - fittingCount;
-	const lines = layout(groups.slice(0, fittingCount));
-	if (remaining > 0 && (maxLines === Infinity || fittedLineCount < maxLines)) {
+	const hasSummary = remaining > 0 && (maxLines === Infinity || fittedLineCount < maxLines);
+
+	const lines: string[] = [];
+	for (const group of visibleGroups) {
+		lines.push(replaceTabs(group[0]!));
+		for (let j = 1; j < group.length; j++) {
+			lines.push(`  ${replaceTabs(group[j]!)}`);
+		}
+	}
+	if (hasSummary) {
 		lines.push(uiTheme.fg("dim", formatMoreItems(remaining, "match")));
 	}
 	return lines;
 }
-
 export const structureSearchRenderer = {
 	inline: true,
 	renderCall(args: StructureSearchRenderArgs, _options: RenderResultOptions, uiTheme: Theme): Component {
@@ -467,10 +463,7 @@ export const structureSearchRenderer = {
 		if (args.skip !== undefined && args.skip > 0) meta.push(`skip:${args.skip}`);
 
 		const description = args.input || "?";
-		const text = renderStatusLine(
-			{ icon: "pending", title: "Search structure", titleColor: "toolTitle", description, meta },
-			uiTheme,
-		);
+		const text = renderStatusLine({ icon: "pending", title: "Search structure", description, meta }, uiTheme);
 		return new Text(text, 0, 0);
 	},
 
@@ -497,10 +490,7 @@ export const structureSearchRenderer = {
 			const meta = ["0 matches"];
 			if (details?.scopePath) meta.push(`in ${details.scopePath}`);
 			if (filesSearched > 0) meta.push(`searched ${filesSearched}`);
-			const header = renderStatusLine(
-				{ icon: "warning", title: "Search structure", titleColor: "toolTitle", description, meta },
-				uiTheme,
-			);
+			const header = renderStatusLine({ icon: "warning", title: "Search structure", description, meta }, uiTheme);
 			const lines = [header, formatEmptyMessage("No matches found", uiTheme)];
 			if (details?.parseErrors?.length) {
 				lines.push(uiTheme.fg("warning", "Query may be mis-scoped; narrow `path` before concluding absence"));
@@ -517,9 +507,10 @@ export const structureSearchRenderer = {
 		const description = args?.input;
 		const header = renderStatusLine(
 			{
-				...(limitReached ? { icon: "warning" as const } : { iconOverride: structureSearchStatusIcon(uiTheme) }),
+				...(limitReached
+					? { icon: "warning" as const }
+					: { iconOverride: uiTheme.fg("accent", uiTheme.symbol("icon.search")) }),
 				title: "Search structure",
-				titleColor: "toolTitle",
 				description,
 				meta,
 			},
@@ -563,7 +554,7 @@ export const structureSearchRenderer = {
 
 		return framedBlock(uiTheme, width => {
 			const budget = Math.max((options.expanded ? Infinity : COLLAPSED_MATCH_LIMIT) - extraLines.length, 0);
-			const matchLines = renderBudgetedStructureGroups(matchGroups, budget, uiTheme, Boolean(options.expanded));
+			const matchLines = renderBudgetedAstGrepGroups(matchGroups, budget, uiTheme, Boolean(options.expanded));
 			const innerWidth = outputBlockContentWidth(width);
 			const bodyLines = [...matchLines, ...extraLines].map(l => truncateToWidth(l, innerWidth, Ellipsis.Omit));
 			return {
@@ -576,3 +567,5 @@ export const structureSearchRenderer = {
 	},
 	mergeCallAndResult: true,
 };
+
+export const astGrepToolRenderer = structureSearchRenderer;

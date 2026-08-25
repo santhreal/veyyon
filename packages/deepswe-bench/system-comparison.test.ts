@@ -10,7 +10,7 @@ import {
 	type ComparisonSystem,
 	renderSystemComparison,
 	type SystemTrialResult,
-} from "./system-comparison";
+} from "./src/systems";
 
 const TASKS = ["task-a", "task-b"] as const;
 const SYSTEMS = ["veyyon", "factory", "hermes"] as const;

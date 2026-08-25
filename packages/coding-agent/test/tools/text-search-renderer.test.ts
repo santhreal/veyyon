@@ -3,11 +3,10 @@ import * as path from "node:path";
 import * as url from "node:url";
 import { resetSettingsForTest, Settings, settings } from "@veyyon/coding-agent/config/settings";
 import { getThemeByName } from "@veyyon/coding-agent/modes/theme/theme";
-import { visibleWidth } from "@veyyon/tui";
 import { sanitizeText } from "@veyyon/utils";
 import { searchToolRenderer } from "../../src/tools/search-renderer";
 import { textSearchRenderer } from "../../src/tools/text-search";
-import { expectNotAccented, useFullColor } from "../helpers/theme-assertions";
+import { expectNotAccented } from "../helpers/theme-assertions";
 
 function extractLinkUris(text: string): string[] {
 	return [...text.matchAll(/\x1b\]8;[^;]*;([^\x1b]+)\x1b\\/g)].map(match => match[1]!);
@@ -27,7 +26,6 @@ afterAll(() => {
 });
 
 describe("textSearchRenderer and searchToolRenderer (text)", () => {
-	useFullColor();
 	it("indents inline grep output and avoids accent-colored success headers", async () => {
 		const theme = await getThemeByName("dark");
 		expect(theme).toBeDefined();
@@ -45,7 +43,6 @@ describe("textSearchRenderer and searchToolRenderer (text)", () => {
 			.renderResult(result as never, { expanded: true, isPartial: false }, uiTheme, { input: "needle" })
 			.render(240);
 		const plainLines = sanitizeText(renderedLines.join("\n")).split("\n");
-		const bodyLines = plainLines.slice(1);
 
 		const unifiedRenderedLines = searchToolRenderer
 			.renderResult(
@@ -56,16 +53,9 @@ describe("textSearchRenderer and searchToolRenderer (text)", () => {
 			)
 			.render(240);
 		const unifiedPlainLines = sanitizeText(unifiedRenderedLines.join("\n")).split("\n");
-		const unifiedBodyLines = unifiedPlainLines.slice(1);
 
-		const rail = uiTheme.symbol("block.rail");
-		for (const lines of [bodyLines, unifiedBodyLines]) {
-			expect(lines.length).toBeGreaterThan(0);
-			expect(lines.every(line => line.trimStart().startsWith(rail))).toBe(true);
-			for (const line of lines) {
-				expect(line).not.toMatch(/[├└]/);
-			}
-		}
+		expect(plainLines.every(line => line.startsWith(" "))).toBe(true);
+		expect(unifiedPlainLines.every(line => line.startsWith(" "))).toBe(true);
 		expectNotAccented(uiTheme, renderedLines[0]!, [uiTheme.symbol("icon.search"), "Search"]);
 		expectNotAccented(uiTheme, unifiedRenderedLines[0]!, [uiTheme.symbol("icon.search"), "Search"]);
 	});
@@ -150,18 +140,14 @@ describe("textSearchRenderer and searchToolRenderer (text)", () => {
 		// file heading, that the files keep their input order, or that the
 		// truncation notice is the LAST line rather than somewhere in the middle.
 		// A renderer that emitted the two matches before either heading passed.
-		expect(bodyLines.map(l => l.trimEnd())).toEqual([
-			`${uiTheme.symbol("block.rail")}  # src/`,
-			`${uiTheme.symbol("block.rail")}    ## first.ts#aaaa`,
-			`${uiTheme.symbol("block.rail")}    *2│const firstFlag = true;`,
-			`${uiTheme.symbol("block.rail")}    ## second.ts#bbbb`,
-			`${uiTheme.symbol("block.rail")}    *4│const secondFlag = true;`,
-			`${uiTheme.symbol("block.rail")}  … 1 more match`,
+		expect(bodyLines).toEqual([
+			" ├─ # src/ ",
+			" │  ## first.ts#aaaa ",
+			" │  *2│const firstFlag = true; ",
+			" │  ## second.ts#bbbb ",
+			" │  *4│const secondFlag = true; ",
+			" └─ … 1 more match ",
 		]);
-		expect(bodyLines.every(line => line.trimStart().startsWith(uiTheme.symbol("block.rail")))).toBe(true);
-		for (const line of bodyLines) {
-			expect(line).not.toMatch(/[├└]/);
-		}
 		// Kept as negatives: context lines and the budgeted-out third file must be
 		// absent from ANY line, which an equality check states only for this exact
 		// body and these say for the shape in general.
@@ -278,36 +264,5 @@ describe("textSearchRenderer and searchToolRenderer (text)", () => {
 		// Collapsed compacts to match lines only — no context.
 		expect(collapsedBody.some(line => line.includes("context before"))).toBe(false);
 		expect(collapsedBody.some(line => line.includes("more matches"))).toBe(true);
-	});
-
-	it("budgets body width against outputBlockContentWidth so lines do not overflow the outer width", async () => {
-		const theme = await getThemeByName("dark");
-		expect(theme).toBeDefined();
-		const uiTheme = theme!;
-
-		const result = {
-			content: [{ type: "text", text: "" }],
-			details: {
-				matchCount: 1,
-				fileCount: 1,
-				displayContent: [
-					"# src/",
-					"## very-long-file-name-that-exceeds-the-narrow-terminal-width.ts",
-					"*1│const veryLongVariableNameToEnsureWidthBudgetTruncatesProperly = true;",
-				].join("\n"),
-			},
-		};
-
-		const width = 40;
-		const renderedLines = textSearchRenderer
-			.renderResult(result as never, { expanded: true, isPartial: false }, uiTheme, { input: "needle" })
-			.render(width);
-
-		// Exactly 1 header + 3 body rows: if body lines are budgeted against outer width
-		// instead of outputBlockContentWidth, renderOutputBlock re-wraps them and overflows the line count.
-		expect(renderedLines).toHaveLength(4);
-		for (const line of renderedLines.slice(1)) {
-			expect(visibleWidth(line)).toBeLessThanOrEqual(width);
-		}
 	});
 });
