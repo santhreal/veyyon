@@ -36,6 +36,7 @@ import { mistralProvider } from "./mistral";
 import { moonshotProvider } from "./moonshot";
 import { nanogptProvider } from "./nanogpt";
 import { nousResearchProvider } from "./nous-research";
+import { nousResearchApiKeyProvider } from "./nous-research-api-key";
 import { novitaProvider } from "./novita";
 import { nvidiaProvider } from "./nvidia";
 import { ollamaProvider } from "./ollama";
@@ -146,6 +147,7 @@ const ALL = [
 	mistralProvider,
 	minimaxProvider,
 	nousResearchProvider,
+	nousResearchApiKeyProvider,
 	amazonBedrockProvider,
 ];
 

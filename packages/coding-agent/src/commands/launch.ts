@@ -2,11 +2,9 @@
  * Root command for the coding agent CLI.
  */
 
-import { APP_NAME } from "@veyyon/utils";
 import { Args, Command, Flags } from "@veyyon/utils/cli";
+import { APP_NAME } from "@veyyon/utils/dirs";
 import { type Args as ParsedArgs, parseArgs, reportCliUsageError } from "../cli/args";
-import { runRootCommand } from "../main";
-import { prepareAcpTerminalAuthArgs } from "../modes/acp/terminal-auth";
 import { CLI_THINKING_LEVELS } from "../thinking";
 
 export default class Index extends Command {
@@ -220,6 +218,13 @@ export default class Index extends Command {
 	static strict = false;
 
 	async run(): Promise<void> {
+		// Loaded HERE, not at module scope: this module's flag table is the only
+		// thing root help needs, and `../main` pulls the entire runtime graph
+		// (~0.8s of module load) that `veyyon --help` must not pay for.
+		const [{ runRootCommand }, { prepareAcpTerminalAuthArgs }] = await Promise.all([
+			import("../main"),
+			import("../modes/acp/terminal-auth"),
+		]);
 		const { args } = prepareAcpTerminalAuthArgs(this.argv);
 		let parsed: ParsedArgs;
 		try {

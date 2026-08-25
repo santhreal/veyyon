@@ -725,6 +725,20 @@ describe("SettingsList", () => {
 		expect(list.isValueColumnHit(0, 10)).toBe(false);
 	});
 
+	it("opens the selected row's submenu via activateSelected", () => {
+		const list = new SettingsList(
+			[{ id: "picker", label: "Picker", currentValue: "x", submenu: () => ({ render: () => ["line"] }) }],
+			5,
+			testTheme,
+			() => {},
+			() => {},
+		);
+		expect(list.hasOpenSubmenu()).toBe(false);
+		expect(list.selectItem("picker")).toBe(true);
+		list.activateSelected();
+		expect(list.hasOpenSubmenu()).toBe(true);
+	});
+
 	it("routes mouse events into an open submenu", () => {
 		const routed: Array<[number, number, boolean]> = [];
 		const submenu = {
