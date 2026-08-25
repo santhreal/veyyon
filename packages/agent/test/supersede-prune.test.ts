@@ -107,7 +107,7 @@ const BIG_TEXT = "const value = computeSomething(12345);\n".repeat(500);
 
 describe("readToolSupersedeKey", () => {
 	test("bare path keys on itself; non-read and non-string paths are exempt", () => {
-		expect(readToolSupersedeKey("read", { path: "src/foo.ts" })).toBe("src/foo.ts");
+		expect(readToolSupersedeKey("read", { path: "src/foo.ts" })).toEqual(["src/foo.ts"]);
 		expect(readToolSupersedeKey("bash", { path: "src/foo.ts" })).toBeUndefined();
 		expect(readToolSupersedeKey("read", { path: 42 })).toBeUndefined();
 		expect(readToolSupersedeKey("read", {})).toBeUndefined();
@@ -119,17 +119,25 @@ describe("readToolSupersedeKey", () => {
 	});
 
 	test("strips trailing selectors into a \\u0000-separated key", () => {
-		expect(readToolSupersedeKey("read", { path: "src/foo.ts:50-200" })).toBe("src/foo.ts\u000050-200");
-		expect(readToolSupersedeKey("read", { path: "src/foo.ts:raw" })).toBe("src/foo.ts\u0000raw");
-		expect(readToolSupersedeKey("read", { path: "src/foo.ts:conflicts" })).toBe("src/foo.ts\u0000conflicts");
-		expect(readToolSupersedeKey("read", { path: "src/foo.ts:2-4:raw" })).toBe("src/foo.ts\u00002-4:raw");
-		expect(readToolSupersedeKey("read", { path: "src/foo.ts:5-16,960-973" })).toBe("src/foo.ts\u00005-16,960-973");
-		expect(readToolSupersedeKey("read", { path: "src/foo.ts:50+150" })).toBe("src/foo.ts\u000050+150");
+		expect(readToolSupersedeKey("read", { path: "src/foo.ts:50-200" })).toEqual(["src/foo.ts\u000050-200"]);
+		expect(readToolSupersedeKey("read", { path: "src/foo.ts:raw" })).toEqual(["src/foo.ts\u0000raw"]);
+		expect(readToolSupersedeKey("read", { path: "src/foo.ts:conflicts" })).toEqual(["src/foo.ts\u0000conflicts"]);
+		expect(readToolSupersedeKey("read", { path: "src/foo.ts:2-4:raw" })).toEqual(["src/foo.ts\u00002-4:raw"]);
+		expect(readToolSupersedeKey("read", { path: "src/foo.ts:5-16,960-973" })).toEqual([
+			"src/foo.ts\u00005-16,960-973",
+		]);
+		expect(readToolSupersedeKey("read", { path: "src/foo.ts:50+150" })).toEqual(["src/foo.ts\u000050+150"]);
+	});
+
+	test("splits multi-target paths and exempts URL schemes per target", () => {
+		expect(
+			readToolSupersedeKey("read", { path: "src/foo.ts:50-200; skill://beta:raw; C:\\src\\main.ts:1-5" }),
+		).toEqual(["src/foo.ts\u000050-200", "C:\\src\\main.ts\u00001-5"]);
 	});
 
 	test("does not strip non-selector colon segments", () => {
-		expect(readToolSupersedeKey("read", { path: "db.sqlite:users" })).toBe("db.sqlite:users");
-		expect(readToolSupersedeKey("read", { path: "db.sqlite:users:42" })).toBe("db.sqlite:users\u000042");
+		expect(readToolSupersedeKey("read", { path: "db.sqlite:users" })).toEqual(["db.sqlite:users"]);
+		expect(readToolSupersedeKey("read", { path: "db.sqlite:users:42" })).toEqual(["db.sqlite:users\u000042"]);
 	});
 });
 
