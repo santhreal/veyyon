@@ -107,7 +107,7 @@ describe("a delimited path escaping cwd requires approval", () => {
 		return {
 			settings: Settings.isolated({ ...BASE_SETTINGS, ...extraSettings }),
 			sessionManager,
-		} as AgentToolContext;
+		} as unknown as AgentToolContext;
 	}
 
 	function tool(name: "read" | "grep" | "glob") {
