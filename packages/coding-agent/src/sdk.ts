@@ -3033,8 +3033,19 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		// path (resolveModelOverride → resolveModelRoleValue) accepts.
 		if (!model && deferredModelPatterns.length > 0) {
 			const expandedModelPatterns = resolveConfiguredModelPatterns(deferredModelPatterns, settings);
-			const availableModels = modelRegistry.getAll();
+			let availableModels = modelRegistry.getAll();
 			const matchPreferences = getModelMatchPreferences(settings);
+			// The background refresh (refreshInBackground at startup) may not have
+			// completed yet. When an explicit --model points at a dynamically-
+			// discovered model that isn't in the static catalog (e.g. a provider's
+			// /v1/models list or models.dev overlay), the patterns won't resolve
+			// against the static-only registry. Do a synchronous cache-aware
+			// discovery pass and retry before reporting failure. This mirrors the
+			// non-explicit fallback below (resolveModelDiscoveryFallback).
+			if (!expandedModelPatterns.some(pattern => parseModelPattern(pattern, availableModels, matchPreferences).model)) {
+				await logger.time("resolveExplicitModelDiscovery", () => modelRegistry.refresh("online-if-uncached"));
+				availableModels = modelRegistry.getAll();
+			}
 			for (let patternIndex = 0; patternIndex < expandedModelPatterns.length; patternIndex += 1) {
 				const pattern = expandedModelPatterns[patternIndex];
 				const primary = parseModelPattern(pattern, availableModels, matchPreferences);
