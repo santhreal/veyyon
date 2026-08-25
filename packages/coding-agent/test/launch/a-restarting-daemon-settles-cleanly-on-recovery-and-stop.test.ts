@@ -135,7 +135,6 @@ describe("a restarting daemon settles cleanly on recovery and stop", () => {
 			exitCode: 1,
 			restartCount: 1,
 			outputBytes: 0,
-			lifetime: "last-client-exit",
 			persist: false,
 			detached: false,
 		};
