@@ -34,6 +34,36 @@ import { embeddedAddon } from "./embedded-addon.js";
 const SUPPORTED_PLATFORMS = ["linux-x64", "linux-arm64", "darwin-x64", "darwin-arm64", "win32-x64"];
 
 /**
+ * Answer a trial-load request and exit, before this module does anything else.
+ *
+ * {@link trialLoadModernAddon} spawns `process.execPath` to `require()` one
+ * addon under a real process, because an illegal instruction cannot be caught
+ * in-process. In a compiled distribution `process.execPath` is the product
+ * binary, which ignores `-e` and boots the whole CLI; the CLI loads natives,
+ * reaches the same detector, and spawns a child of its own, one level per
+ * launch. Answering here ends the child at its first import instead.
+ *
+ * A JavaScript-runtime host never reaches this branch: `-e` evaluates
+ * {@link TRIAL_LOAD_SCRIPT}, which answers without importing this module.
+ */
+function answerTrialLoadRequest() {
+	const addonPath = process.env.VEYYON_TRIAL_ADDON_PATH;
+	if (!addonPath) return;
+	let verdict = "TRIAL_INCOMPATIBLE";
+	try {
+		const addon = createRequire(import.meta.url)(addonPath);
+		if (addon && typeof addon === "object") verdict = "TRIAL_OK";
+	} catch {
+		// A catchable load failure is not proof that the CPU lacks AVX2, and the
+		// parent classifies TRIAL_INCOMPATIBLE as inconclusive.
+	}
+	process.stdout.write(`${verdict}\n`);
+	process.exit(0);
+}
+
+answerTrialLoadRequest();
+
+/**
  * Streaming startup marker, enabled by `VEYYON_DEBUG_STARTUP`. Local copy of the
  * pi-utils helper (this loader cannot depend on pi-utils). Synchronous on
  * purpose: extraction/dlopen hangs must still leave the `:start` marker.
@@ -668,8 +698,11 @@ export function classifyTrialLoadResult(result) {
  * instruction proves the CPU is unsupported; every catchable load failure or
  * other process failure is inconclusive.
  *
- * The addon path travels by environment variable, not argv: `-e` argv
- * indexing differs between Node and Bun eval modes.
+ * The addon path travels by environment variable, not argv: `-e` argv indexing
+ * differs between Node and Bun eval modes, and a compiled host ignores `-e`
+ * altogether. The variable is also what selects the child's mode, so both hosts
+ * answer: a JavaScript runtime through {@link TRIAL_LOAD_SCRIPT}, the product
+ * binary through {@link answerTrialLoadRequest} at its first natives import.
  *
  * @returns {"supported" | "unsupported" | "unknown"}
  */

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import * as childProcess from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -218,5 +219,53 @@ describe("persisted host variant verdict", () => {
 		} finally {
 			fs.rmSync(dir, { recursive: true, force: true });
 		}
+	});
+});
+
+/**
+ * WHY: the trial load spawns `process.execPath`, and in a compiled
+ * distribution that is the product binary, not a JavaScript runtime. It
+ * ignores `-e` and boots the whole CLI, which loads natives, reaches this same
+ * detector, and spawns a child of its own. The class closed here is "a
+ * trial-load child re-enters detection instead of answering it": whatever host
+ * runs the child, importing the loader with `VEYYON_TRIAL_ADDON_PATH` set must
+ * print one verdict line and end the process there.
+ *
+ * Not caught: whether a real modern addon raises SIGILL on a CPU without AVX2.
+ * That needs such a CPU; `classifyTrialLoadResult` covers the signal mapping.
+ */
+describe("a trial-load child answers instead of probing again", () => {
+	const loaderUrl = new URL("../native/loader-state.js", import.meta.url).href;
+	// The child imports by URL computed at run time, and the point of the test
+	// is the module-load boundary itself, so the specifier cannot be static.
+	const childScript = `await import(${JSON.stringify(loaderUrl)});\nconsole.log("IMPORT_RETURNED");`;
+
+	function runChild(trialAddonPath: string | undefined) {
+		const env = { ...process.env };
+		delete env.VEYYON_TRIAL_ADDON_PATH;
+		if (trialAddonPath !== undefined) env.VEYYON_TRIAL_ADDON_PATH = trialAddonPath;
+		return childProcess.spawnSync(process.execPath, ["-e", childScript], {
+			env,
+			encoding: "utf-8",
+			timeout: 30_000,
+		});
+	}
+
+	it("ends at the first import with an inconclusive verdict when the addon will not load", () => {
+		const result = runChild(path.join(os.tmpdir(), "veyyon-no-such-addon.node"));
+		expect(result.error).toBeUndefined();
+		expect(result.signal).toBeNull();
+		expect(result.status).toBe(0);
+		expect(String(result.stdout).split(/\r?\n/)).toContain("TRIAL_INCOMPATIBLE");
+		expect(String(result.stdout)).not.toContain("IMPORT_RETURNED");
+	});
+
+	it("leaves an ordinary import alone", () => {
+		const result = runChild(undefined);
+		expect(result.error).toBeUndefined();
+		expect(result.signal).toBeNull();
+		expect(result.status).toBe(0);
+		expect(String(result.stdout)).toContain("IMPORT_RETURNED");
+		expect(String(result.stdout)).not.toContain("TRIAL_");
 	});
 });

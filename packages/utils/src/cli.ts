@@ -886,14 +886,12 @@ async function loadEntry(entry: CommandEntry): Promise<CommandCtor> {
  * path instead of misrendering it.
  */
 async function loadRootHelpConfig(opts: RunOptions): Promise<CliConfig> {
-	const missingSummary = opts.commands.some(e => e.summary === undefined);
-	if (missingSummary) {
-		return loadAllCommands(opts);
-	}
-
 	const summaries = new Map<string, CommandSummary>();
-	for (const e of opts.commands) {
-		summaries.set(e.name, e.summary as CommandSummary);
+	for (const entry of opts.commands) {
+		// One unsummarized command degrades the help path to loading everything
+		// rather than rendering a listing that is missing a row.
+		if (!entry.summary) return loadAllCommands(opts);
+		summaries.set(entry.name, entry.summary);
 	}
 
 	const commands = new Map<string, CommandCtor>();
