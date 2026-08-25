@@ -4118,7 +4118,10 @@ export class SettingsSelectorComponent implements Component {
 			settings.get("defaultThinkingLevel"),
 		);
 		const any = rows[ANY_MODEL_EFFORT_KEY];
-		const perModel = Object.keys(rows).filter(key => key !== ANY_MODEL_EFFORT_KEY).length;
+		let perModel = 0;
+		for (const key of Object.keys(rows)) {
+			if (key !== ANY_MODEL_EFFORT_KEY) perModel++;
+		}
 		const parts: string[] = [];
 		parts.push(any ? `any model · ${any}` : "model defaults");
 		if (perModel > 0) parts.push(`${perModel} model${perModel === 1 ? "" : "s"}`);
@@ -4159,7 +4162,10 @@ export class SettingsSelectorComponent implements Component {
 		const table = stored && typeof stored === "object" ? (stored as Record<string, SubagentAgentSettings>) : {};
 		const rows = Object.values(table);
 		if (rows.length === 0) return "defaults";
-		const blocked = rows.filter(row => row?.enabled === false).length;
+		let blocked = 0;
+		for (const row of rows) {
+			if (row?.enabled === false) blocked++;
+		}
 		const parts = [`${rows.length} configured`];
 		if (blocked > 0) parts.push(`${blocked} blocked`);
 		return parts.join(", ");

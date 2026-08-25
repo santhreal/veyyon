@@ -736,10 +736,16 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 	 */
 	#getAllImageBlocks(): Array<{ data?: string; mimeType?: string }> {
 		if (!this.#result) return [];
-		const contentImages = this.#result.content?.filter(c => c.type === "image") || [];
 		const detailImages =
-			(this.#result.details as { images?: Array<{ data?: string; mimeType?: string }> } | undefined)?.images || [];
-		return [...contentImages, ...detailImages];
+			(this.#result.details as { images?: Array<{ data?: string; mimeType?: string }> } | undefined)?.images ?? [];
+		const content = this.#result.content;
+		if (!content) return detailImages.length > 0 ? [...detailImages] : [];
+		const images: Array<{ data?: string; mimeType?: string }> = [];
+		for (const block of content) {
+			if (block.type === "image") images.push(block);
+		}
+		for (const img of detailImages) images.push(img);
+		return images;
 	}
 
 	/**
@@ -1744,8 +1750,15 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 	#getTextOutput(): string {
 		if (!this.#result) return "";
 
-		const textBlocks = this.#result.content?.filter(c => c.type === "text") || [];
-		return textBlocks.map(c => sanitizeWithOptionalSixelPassthrough(c.text || "", sanitizeText)).join("\n");
+		const content = this.#result.content;
+		if (!content) return "";
+		let output = "";
+		for (const block of content) {
+			if (block.type !== "text") continue;
+			if (output) output += "\n";
+			output += sanitizeWithOptionalSixelPassthrough(block.text || "", sanitizeText);
+		}
+		return output;
 	}
 
 	/**

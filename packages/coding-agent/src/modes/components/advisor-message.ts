@@ -54,7 +54,10 @@ export function createAdvisorMessageCard(
 	uiTheme: Theme,
 ): Component {
 	const notes = details?.notes ?? [];
-	const blockers = notes.filter(note => note.severity === "blocker").length;
+	let blockers = 0;
+	for (const note of notes) {
+		if (note.severity === "blocker") blockers++;
+	}
 	const meta: string[] = [formatCount("note", notes.length)];
 	if (blockers > 0) meta.push(uiTheme.fg("error", formatCount("blocker", blockers)));
 

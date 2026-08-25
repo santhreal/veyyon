@@ -1443,12 +1443,13 @@ export class InputController {
 		// Alt+Up reports "No queued messages to restore".
 		const compactionQueued = this.ctx.compactionQueuedMessages;
 		this.ctx.compactionQueuedMessages = [];
-		const allQueued = [
-			...steering,
-			...compactionQueued.filter(e => e.mode === "steer").map(e => ({ text: e.text, images: e.images })),
-			...followUp,
-			...compactionQueued.filter(e => e.mode === "followUp").map(e => ({ text: e.text, images: e.images })),
-		];
+		const steerQueued: { text: string; images?: ImageContent[] }[] = [];
+		const followUpQueued: { text: string; images?: ImageContent[] }[] = [];
+		for (const e of compactionQueued) {
+			if (e.mode === "steer") steerQueued.push({ text: e.text, images: e.images });
+			else if (e.mode === "followUp") followUpQueued.push({ text: e.text, images: e.images });
+		}
+		const allQueued = [...steering, ...steerQueued, ...followUp, ...followUpQueued];
 		if (allQueued.length === 0) {
 			this.ctx.updatePendingMessagesDisplay();
 			if (options?.abort) {

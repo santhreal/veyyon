@@ -151,7 +151,10 @@ export function providerDisabledNote(entry: { disabledCause?: string; rows: read
 export function providerHeaderLine(label: string, rows: readonly AccountRow[]): string {
 	const clean = sanitizeAccountText(label);
 	if (rows.length === 0) return `${clean} · no accounts yet`;
-	const unhealthy = rows.filter(row => row.health === "failed").length;
+	let unhealthy = 0;
+	for (const row of rows) {
+		if (row.health === "failed") unhealthy++;
+	}
 	const counted = `${clean} · ${rows.length} ${rows.length === 1 ? "account" : "accounts"}`;
 	return unhealthy === 0 ? counted : `${counted} · ${unhealthy} ${unhealthy === 1 ? "needs" : "need"} attention`;
 }
