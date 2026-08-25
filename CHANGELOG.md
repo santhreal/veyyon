@@ -67,6 +67,7 @@
 
 ### Fixed
 
+- Multi-target `ast_grep` searches across overlapping paths deduplicate matches so totals, file counts, and paged results are not duplicated or truncated.
 - Acknowledging a completed background job before lifting its watch no longer delivers a duplicate completion notification when retention is zero.
 - A generic tool card with an undrawable image result no longer accumulates duplicate image placeholder rows on rebuild.
 - With Language Servers off, which is the default, the write and edit tools no longer start a language server to inject diagnostics, format the file, or notify the workspace that a file changed, including on the ACP client-bridge write path.
@@ -113,6 +114,7 @@
 - Persisted AVX2 verdicts are schema-versioned and keyed by platform, architecture, and CPU model, so copied or stale caches cannot select a native variant for different hardware.
 - The AVX2 trial load answers from the addon loader's first import and exits, so a compiled host, whose `process.execPath` is the product binary rather than a JavaScript runtime, reports a verdict instead of booting the whole CLI and spawning a trial child of its own at every level.
 - A wrapped line now continues under the indent its first row opened at, so an indented row no longer reads as a new top-level row at a narrow width.
+- Exclude pinned footer rows from the scroll-isolation snapshot and scroll space so the composer does not duplicate inside scrolled-back history.
 - `splitTrailingPartialEscape` lets a streaming reader hold back an escape sequence a chunk ended inside, so a sequence divided across two reads is stripped whole instead of losing its head and leaking its tail as text.
 - `discarded-fault.ts`: `bestEffort` and `optionalResult` state which contract discarded a promise's failure, one for a step nobody waits on and one for a probe whose failure is the answer, each taking a mandatory reason.
 
