@@ -323,7 +323,6 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/swarm-extension/src/swarm/pipeline.ts",
 	"packages/tui/src/components/cancellable-loader.ts",
 	"packages/tui/src/components/settings-search.ts",
-	"packages/tui/src/paint-surface.ts",
 	"packages/typescript-edit-benchmark/src/edit-prompt-bench.ts",
 	"packages/typescript-edit-benchmark/src/goal-budget-context-bench.ts",
 	"packages/typescript-edit-benchmark/src/in-process-client.ts",
