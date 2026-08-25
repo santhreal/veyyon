@@ -117,20 +117,37 @@ mod tests {
 	}
 
 	#[test]
-	fn a_budget_too_small_to_express_floors_at_the_smallest_cap_not_at_zero() {
+	fn a_positive_budget_too_small_to_express_floors_at_the_smallest_cap_not_at_zero() {
 		assert_eq!(cpu_rate_per_10k(0.001, 128.0), 1);
 		assert_eq!(cpu_rate_control(0.001, 128.0), CpuRateControl { enabled: true, rate: 1 });
+		assert_eq!(cpu_rate_control(1e-12, 128.0), CpuRateControl { enabled: true, rate: 1 });
+		assert_eq!(cpu_rate_control(1e-10, 128.0), CpuRateControl { enabled: true, rate: 1 });
+		assert_eq!(cpu_rate_control(4e-6, 128.0), CpuRateControl { enabled: true, rate: 1 });
+		assert_eq!(cpu_rate_control(f64::MIN_POSITIVE, 128.0), CpuRateControl {
+			enabled: true,
+			rate:    1,
+		});
+		for step in 1..=20 {
+			let cores = 10f64.powi(-step);
+			assert!(cores > 0.0, "grid must stay a positive finite budget");
+			let control = cpu_rate_control(cores, 128.0);
+			assert!(control.enabled, "positive cores={cores:?} must enable rate control");
+			assert!(
+				control.rate >= 1,
+				"positive cores={cores:?} must floor at rate >= 1, got {control:?}"
+			);
+		}
 	}
 
 	#[test]
-	fn lifting_the_budget_disables_rate_control_instead_of_flooring_to_one() {
-		assert_eq!(cpu_rate_control(0.0, 8.0), CpuRateControl { enabled: false, rate: 0 });
-		assert_eq!(cpu_rate_control(-4.0, 8.0), CpuRateControl { enabled: false, rate: 0 });
-		assert_eq!(cpu_rate_control(f64::NAN, 8.0), CpuRateControl { enabled: false, rate: 0 });
-		assert_eq!(cpu_rate_control(f64::INFINITY, 8.0), CpuRateControl {
-			enabled: false,
-			rate:    0,
-		});
+	fn non_finite_and_non_positive_cores_disable_rate_control_not_a_freeze() {
+		for cores in [0.0, -1.0, -4.0, f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+			assert_eq!(
+				cpu_rate_control(cores, 8.0),
+				CpuRateControl { enabled: false, rate: 0 },
+				"cores={cores:?} must disable rate control, never freeze"
+			);
+		}
 		assert_eq!(cpu_rate_control(2.0, 8.0), CpuRateControl { enabled: true, rate: 2_500 });
 	}
 
