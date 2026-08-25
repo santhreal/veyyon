@@ -2021,6 +2021,23 @@ export function finalizeMessageText(item: ResponseOutputMessage, streamedText: s
 	return item.content.map(part => (part.type === "output_text" ? (part.text ?? "") : (part.refusal ?? ""))).join("");
 }
 
+/**
+ * Accumulate one streamed function-argument delta into the live buffer.
+ *
+ * OpenAI Responses and OpenAI Codex Responses streams deliver true incremental
+ * string fragments on `response.function_call_arguments.delta`. Providers with
+ * cumulative stream shapes (such as Cursor's `args_text_delta` or Devin's
+ * `argumentsJson`) handle snapshot prefix-slicing at their own provider
+ * boundaries before emitting stream deltas.
+ *
+ * Do not attempt to guess or infer cumulative resends via prefix heuristics like
+ * `delta.startsWith(current)`: genuine incremental fragments can coincide with
+ * earlier buffer prefixes (e.g. repeated keys, indentation, nested objects, or
+ * duplicated tokens), which causes silent character truncation. Unconditional
+ * appending preserves stream fidelity, and authoritative final arguments are
+ * applied on `response.function_call_arguments.done` via
+ * {@link finalizeToolCallArgumentsDone}.
+ */
 export function accumulateToolCallArgumentsDelta(
 	block: ResponsesToolCallBlock,
 	delta: string,
