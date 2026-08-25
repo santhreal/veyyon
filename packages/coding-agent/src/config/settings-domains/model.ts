@@ -146,6 +146,18 @@ export const MODEL_SETTINGS = {
 			description: "Consecutive identical tool calls required before the corrective steer is injected",
 		},
 	},
+	"model.toolCallLoopGuard.readSubsumptionThreshold": {
+		type: "number",
+		default: 2,
+		ui: {
+			min: 1,
+			tab: "model",
+			group: "Thinking",
+			label: "Read Subsumption Loop Threshold",
+			description:
+				"Consecutive fully-subsumed or redundant read calls on unchanged files before the corrective steer is injected",
+		},
+	},
 
 	"model.toolCallLoopGuard.exemptTools": {
 		type: "array",
