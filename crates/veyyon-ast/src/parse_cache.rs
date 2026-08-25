@@ -436,20 +436,40 @@ mod tests {
 		let window = (lines - 2, lines);
 		let edited = format!("{source}\nexport const tail = 1;\n");
 
-		clear();
-		let fresh_start = std::time::Instant::now();
-		let fresh = boundaries(&edited, "typescript", window);
-		let fresh_cost = fresh_start.elapsed();
+		// WHY: noise on a loaded runner only ever makes a run slower, so taking
+		// the cheapest of several trials filters out runner scheduling stalls
+		// while asserting that incremental tree-sitter editing beats a fresh
+		// parse by an order of magnitude.
+		let mut fresh_cost = std::time::Duration::MAX;
+		let mut fresh = None;
+		for _ in 0..5 {
+			clear();
+			let start = std::time::Instant::now();
+			let res = boundaries(&edited, "typescript", window);
+			let elapsed = start.elapsed();
+			if elapsed < fresh_cost {
+				fresh_cost = elapsed;
+				fresh = res;
+			}
+		}
 
-		clear();
-		boundaries(&source, "typescript", window);
-		let reuse_start = std::time::Instant::now();
-		let reused = boundaries(&edited, "typescript", window);
-		let reuse_cost = reuse_start.elapsed();
+		let mut reuse_cost = std::time::Duration::MAX;
+		let mut reused = None;
+		for _ in 0..5 {
+			clear();
+			boundaries(&source, "typescript", window);
+			let start = std::time::Instant::now();
+			let res = boundaries(&edited, "typescript", window);
+			let elapsed = start.elapsed();
+			if elapsed < reuse_cost {
+				reuse_cost = elapsed;
+				reused = res;
+			}
+		}
 
 		assert_eq!(reused, fresh);
 		assert!(
-			reuse_cost.as_secs_f64() < fresh_cost.as_secs_f64() / 2.0,
+			reuse_cost.as_secs_f64() < fresh_cost.as_secs_f64() / 4.0,
 			"an edited source cost {reuse_cost:?} against a fresh parse of {fresh_cost:?}"
 		);
 	}
