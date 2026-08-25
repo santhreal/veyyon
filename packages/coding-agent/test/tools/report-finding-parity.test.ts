@@ -51,8 +51,9 @@ describe("report_finding execute", () => {
 		});
 
 		expect(result.content).toHaveLength(1);
-		expect(result.content[0].type).toBe("text");
-		expect(result.content[0].text).toBe(
+		const block = result.content[0];
+		expect(block.type).toBe("text");
+		expect(block.type === "text" ? block.text : "").toBe(
 			"Finding recorded: P0 Null dereference in handler\nLocation: src/handler.ts:42\nConfidence: 95%",
 		);
 	});
@@ -68,7 +69,8 @@ describe("report_finding execute", () => {
 			line_end: 15,
 		});
 
-		expect(result.content[0].text).toBe(
+		const block = result.content[0];
+		expect(block.type === "text" ? block.text : "").toBe(
 			"Finding recorded: P3 Unused import\nLocation: src/utils.ts:10-15\nConfidence: 100%",
 		);
 	});

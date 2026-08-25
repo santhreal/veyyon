@@ -15,16 +15,12 @@ import { INTENT_FIELD } from "@veyyon/wire";
 
 describe("resolveIntentField", () => {
 	it("returns undefined when tools.intentTracing is false (default)", () => {
-		const settings = new Settings();
-		resetSettingsForTest(settings);
-		settings.set("tools.intentTracing", false);
+		const settings = Settings.isolated({ "tools.intentTracing": false });
 		expect(resolveIntentField(settings)).toBeUndefined();
 	});
 
 	it("returns INTENT_FIELD when tools.intentTracing is true", () => {
-		const settings = new Settings();
-		resetSettingsForTest(settings);
-		settings.set("tools.intentTracing", true);
+		const settings = Settings.isolated({ "tools.intentTracing": true });
 		expect(resolveIntentField(settings)).toBe(INTENT_FIELD);
 	});
 });
