@@ -30,6 +30,7 @@
 - `hasCopilotVisionInput` in `github-copilot-headers.ts` replaces nested `.some()` callbacks with direct `for` loops, avoiding callback allocations per message on the per-turn Copilot vision scan.
 - `hasToolHistory` in `openai-completions.ts` replaces `.some()` callback with a direct `for` loop, avoiding callback allocation per assistant message on the per-turn tool history scan.
 - `appendResponsesToolResultMessages` in `openai-shared.ts` merges `.filter().map().join()` and `.some()` (4 passes) into a single `for` loop that collects text parts and tracks image presence simultaneously.
+- `deduplicateToolCallIds` in `transform-messages.ts` adds a fast-path pre-scan that returns the input array by reference when no duplicate tool call IDs exist, avoiding one 33K-element array allocation per turn in the common case.
 
 ### Fixed
 
