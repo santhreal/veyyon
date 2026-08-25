@@ -14,6 +14,7 @@
 - `replaceLostBlobPayloads` is skipped on every turn when the session loaded with no lost blob refs, eliminating an O(n) per-message scan that ran on every `transformProviderContext` call regardless of whether any blob refs existed.
 - `bindSecretRuntime` skips the per-element WeakMap binding loop when the array is already bound to the same runtime, eliminating redundant 33K-element iterations that occurred several times per turn when `emitContext`, `wrapSteeringForModel`, and `obfuscateMessages` returned their input array by reference.
 - `canonicalizeProviderContext` skips `applyProviderImagePolicy` when the append-only context manager tracks no image blocks, eliminating an O(n) per-turn scan of all message content blocks on conversations with no images.
+- `wrapSteeringForModel` is skipped when an incremental scan finds no steering messages, eliminating an O(n) per-turn iteration over all messages on conversations that never use steering interjections.
 
 ### Added
 

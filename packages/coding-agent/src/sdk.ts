@@ -178,7 +178,7 @@ import { OperatorNotices, stderrNoticeSink } from "./session/operator-notices";
 import { getRestorableSessionModels } from "./session/session-context";
 import { SessionManager } from "./session/session-manager";
 import { createSettingsAwareStreamFn } from "./session/settings-stream-fn";
-import { wrapSteeringForModel } from "./session/steering-envelope";
+import { isSteeringUserMessage, wrapSteeringForModel } from "./session/steering-envelope";
 import { closeAllConnections } from "./ssh/connection-manager";
 import { unmountAll } from "./ssh/sshfs-mount";
 import {
@@ -3937,6 +3937,15 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		};
 		let activeMainRequestRuntime = secretRuntimeLease;
 
+		// Incremental steering-message scan: steering messages are rare, so
+		// tracking whether any exist lets wrapSteeringForModel skip an O(n)
+		// scan of all messages every turn. The scan is incremental — only
+		// new messages are checked when the array is the same reference and
+		// has only grown. A different array reference triggers a full scan.
+		let steeringScanRef: AgentMessage[] | undefined;
+		let steeringScanLength = 0;
+		let hasSteeringMessages = false;
+
 		// Acquire before the first async extension hook. The returned arrays and
 		// context retain this exact authority through provider serialization.
 		const transformContext = async (messages: AgentMessage[], _signal?: AbortSignal) => {
@@ -3944,7 +3953,22 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			activeMainRequestRuntime = runtime;
 			bindSecretRuntime(messages, runtime);
 			const withContext = await extensionRunner.emitContext(messages);
-			const transformed = wrapSteeringForModel(withContext);
+			// Incremental steering scan: only scan new tail messages when the
+			// array is the same reference and has only grown. A different array
+			// (extension rewrite, compaction, reset) triggers a full scan.
+			if (withContext === steeringScanRef && withContext.length >= steeringScanLength) {
+				for (let i = steeringScanLength; i < withContext.length; i++) {
+					if (isSteeringUserMessage(withContext[i])) hasSteeringMessages = true;
+				}
+			} else {
+				hasSteeringMessages = false;
+				for (const m of withContext) {
+					if (isSteeringUserMessage(m)) hasSteeringMessages = true;
+				}
+			}
+			steeringScanRef = withContext;
+			steeringScanLength = withContext.length;
+			const transformed = hasSteeringMessages ? wrapSteeringForModel(withContext) : withContext;
 			bindSecretRuntime(withContext, runtime);
 			bindSecretRuntime(transformed, runtime);
 			return transformed;

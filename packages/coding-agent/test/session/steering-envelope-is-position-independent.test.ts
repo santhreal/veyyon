@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import type { AgentMessage } from "@veyyon/agent-core";
 import type { ImageContent, TextContent, UserMessage } from "@veyyon/ai";
-import { wrapSteeringForModel } from "@veyyon/coding-agent/session/steering-envelope";
+import { isSteeringUserMessage, wrapSteeringForModel } from "@veyyon/coding-agent/session/steering-envelope";
 
 /**
  * Contracts: a steering message's wire bytes are a pure function of the message, not of its position.
@@ -182,5 +182,28 @@ describe("wrapSteeringForModel", () => {
 	/** An empty array of messages is an empty array, not a throw. */
 	it("handles an empty message list", () => {
 		expect(wrapSteeringForModel([])).toEqual([]);
+	});
+});
+
+describe("isSteeringUserMessage", () => {
+	// WHY: The transformContext closure in sdk.ts uses isSteeringUserMessage
+	// for an incremental scan that lets wrapSteeringForModel skip an O(n)
+	// iteration when no steering messages exist. A wrong check either misses
+	// steering messages (they go out unwrapped, busting the prompt cache) or
+	// flags non-steering messages (wrapSteeringForModel runs needlessly).
+	it("returns true for a user message with steering: true", () => {
+		expect(isSteeringUserMessage(userMessage("interject", true))).toBe(true);
+	});
+
+	it("returns false for a user message without steering flag", () => {
+		expect(isSteeringUserMessage(userMessage("hello"))).toBe(false);
+	});
+
+	it("returns false for an assistant message", () => {
+		expect(isSteeringUserMessage(assistantMessage("ok"))).toBe(false);
+	});
+
+	it("returns false for undefined", () => {
+		expect(isSteeringUserMessage(undefined)).toBe(false);
 	});
 });

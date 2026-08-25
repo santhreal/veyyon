@@ -25,7 +25,7 @@ import { prompt } from "@veyyon/utils";
 import { steeringPrompts } from "../prompts/steering/rows";
 import { contentText } from "./content-text";
 
-function isSteeringUserMessage(message: AgentMessage | undefined): message is UserMessage & { steering: true } {
+export function isSteeringUserMessage(message: AgentMessage | undefined): message is UserMessage & { steering: true } {
 	return message?.role === "user" && message.steering === true;
 }
 
