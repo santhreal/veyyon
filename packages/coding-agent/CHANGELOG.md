@@ -44,6 +44,9 @@
 - Daemon completion parsing and eval-store serialization errors use shared type guards; behavior is unchanged.
 ### Fixed
 
+- The session tree selector formats custom tool arguments using width-aware truncation without double-stringifying string arguments or splitting surrogate pairs.
+- Renderer failure notices sanitize thrown errors, subjects, and fallback descriptions by shortening embedded home directory paths, replacing tabs, and truncating long payloads.
+- The extension inspector origin path truncates Windows backslash paths on directory boundaries and uses standard preview limits.
 - Quitting no longer hangs when a background session never settles.
 - `/new` typed while the agent is answering starts the new session without interrupting the answer: the running turn finishes in the background and is flushed to its own transcript, while the composer attaches to a fresh session immediately.
 - `/resume` onto a session that is still answering re-attaches the running session instead of replaying its transcript as finished text, so its answer keeps streaming into the view and the session being left takes its place in the background.

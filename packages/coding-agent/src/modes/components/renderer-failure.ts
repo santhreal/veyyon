@@ -19,6 +19,7 @@
 
 import { Text } from "@veyyon/tui";
 import { collapseWhitespace, errorMessage, logger } from "@veyyon/utils";
+import { replaceTabs, shortenEmbeddedPaths, TRUNCATE_LENGTHS, truncateToWidth } from "../../tools/render-utils";
 import { theme } from "../theme/theme";
 
 /**
@@ -33,8 +34,11 @@ export function rendererFailureNotice(subject: string, error: unknown, fallbackD
 	// One row: a multi-line throw would otherwise reflow the block it reports on.
 	// A message that is nothing but whitespace collapses to empty, which would
 	// leave the notice trailing off after the colon, so say so instead.
-	const detail = collapseWhitespace(errorMessage(error)) || "no message";
-	return `${subject} renderer threw: ${detail} — ${fallbackDescription}; fix or remove the renderer`;
+	const rawDetail = shortenEmbeddedPaths(replaceTabs(collapseWhitespace(errorMessage(error))));
+	const detail = (rawDetail ? truncateToWidth(rawDetail, TRUNCATE_LENGTHS.LINE) : "") || "no message";
+	const cleanSubject = shortenEmbeddedPaths(replaceTabs(collapseWhitespace(subject)));
+	const cleanFallback = shortenEmbeddedPaths(replaceTabs(collapseWhitespace(fallbackDescription)));
+	return `${cleanSubject} renderer threw: ${detail} — ${cleanFallback}; fix or remove the renderer`;
 }
 
 /**

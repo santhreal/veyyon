@@ -17,7 +17,7 @@ import { theme } from "../../modes/theme/theme";
 import { matchesAppInterrupt, matchesSelectDown, matchesSelectUp } from "../../modes/utils/keybinding-matchers";
 import type { SessionTreeNode } from "../../session/session-entries";
 import { toPathList } from "../../tools/path-utils";
-import { shortenPath } from "../../tools/render-utils";
+import { shortenPath, TRUNCATE_LENGTHS } from "../../tools/render-utils";
 import { canonicalizeMessage } from "../../utils/thinking-display";
 import { resolveAssistantErrorPresentation } from "../utils/transcript-render-helpers";
 import {
@@ -889,8 +889,9 @@ class TreeList implements Component {
 			}
 			default: {
 				// Custom tool - show name and truncated JSON args
-				const argsStr = JSON.stringify(args).slice(0, 40);
-				return `[${name}: ${argsStr}${JSON.stringify(args).length > 40 ? "..." : ""}]`;
+				const rawArgs = typeof args === "string" ? args : JSON.stringify(args ?? {});
+				const argsStr = truncateToWidth(rawArgs ?? "{}", TRUNCATE_LENGTHS.SHORT);
+				return `[${name}: ${argsStr}]`;
 			}
 		}
 	}
