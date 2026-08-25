@@ -40,7 +40,7 @@ export class SessionFocusController {
 	/** Session currently attached while focused; undefined when unfocused. */
 	#attachedSession: AgentSession | undefined;
 	#registryUnsubscribe: (() => void) | undefined;
-
+	#focusGeneration = 0;
 	constructor(
 		private ctx: SessionFocusControllerContext,
 		private registry: AgentRegistry = AgentRegistry.global(),
@@ -81,12 +81,26 @@ export class SessionFocusController {
 		if (target && !AgentRegistry.sameScope(target.scope, scope)) {
 			throw new Error(`Agent ${id} belongs to a different conversation and cannot be viewed from this one.`);
 		}
+		const gen = ++this.#focusGeneration;
 		const session = await this.lifecycle().ensureLive(id);
+		if (gen !== this.#focusGeneration) return;
+		const current = this.registry.get(id);
+		if (!current || current.status === "aborted") {
+			throw new Error(
+				current
+					? `Agent "${id}" was terminated and cannot be viewed.`
+					: `Unknown agent "${id}" — it was never registered or has been released.`,
+			);
+		}
+		if (!AgentRegistry.sameScope(current.scope, scope)) {
+			throw new Error(`Agent ${id} belongs to a different conversation and cannot be viewed from this one.`);
+		}
 		if (id === this.#focusedAgentId && session === this.#attachedSession) return;
 		this.#focusedAgentId = id;
 		this.#attachedSession = session;
 		this.#registryUnsubscribe ??= this.registry.onChange(e => this.#onRegistryEvent(e));
 		await this.#attach(session);
+		if (gen !== this.#focusGeneration) return;
 		this.ctx.showStatus(`Viewing agent ${id} — Esc returns to main, ←← hops to parent`);
 	}
 
@@ -102,26 +116,47 @@ export class SessionFocusController {
 
 	/** Return to the main session. No-op when unfocused. */
 	async unfocus(): Promise<void> {
+		const gen = ++this.#focusGeneration;
 		if (!this.#focusedAgentId) return;
 		this.#focusedAgentId = undefined;
 		this.#attachedSession = undefined;
 		await this.#attach(this.ctx.session);
+		if (gen !== this.#focusGeneration) return;
 		this.ctx.showStatus("Returned to main session");
 	}
 
 	dispose(): void {
+		this.#focusGeneration++;
 		this.#registryUnsubscribe?.();
 		this.#registryUnsubscribe = undefined;
+		this.#focusedAgentId = undefined;
+		this.#attachedSession = undefined;
 	}
 
 	#onRegistryEvent(event: RegistryEvent): void {
 		if (event.ref.id !== this.#focusedAgentId) return;
 		const gone = event.type === "removed";
-		const dead = event.type === "status_changed" && (event.ref.status === "parked" || event.ref.status === "aborted");
-		if (!gone && !dead) return;
-		void this.unfocus().then(() => {
-			this.ctx.showStatus(`Agent ${event.ref.id} is ${gone ? "gone" : event.ref.status}; returned to main session`);
-		});
+		const dead = event.type === "status_changed" && event.ref.status === "aborted";
+		if (gone || dead) {
+			const transition = this.unfocus();
+			const gen = this.#focusGeneration;
+			void transition.then(() => {
+				if (gen !== this.#focusGeneration) return;
+				this.ctx.showStatus(
+					`Agent ${event.ref.id} is ${gone ? "gone" : event.ref.status}; returned to main session`,
+				);
+			});
+			return;
+		}
+		if (
+			event.type === "status_changed" &&
+			(event.ref.status === "idle" || event.ref.status === "running") &&
+			event.ref.session &&
+			event.ref.session !== this.#attachedSession
+		) {
+			this.#attachedSession = event.ref.session;
+			void this.#attach(event.ref.session);
+		}
 	}
 
 	/** Retarget core, both directions: swap subscription, transcript, and status line onto `target`. */

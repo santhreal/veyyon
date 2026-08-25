@@ -80,6 +80,10 @@ commits = [
   # every open reference, which is a real price for no gain in secrecy. The
   # per-push gate never reaches these commits; this entry is only so the
   # whole-history fallback scan stays honest instead of red-by-default.
+  # The hero scene once contained a fixed throwaway signing digest so the
+  # recording could display a realistic signing command. It authorized no
+  # service and was replaced by a value generated for each recording.
+  "6bbf5c92bc52224b8ca4e67129c0541299b53983",
   "6dbf3350c2e8a6e4cfe3aa13c311e6d09a30f33a",
   "0ed9680e8d9fea6ee2ace4938bbf9edfa391b2b0",
 ]
