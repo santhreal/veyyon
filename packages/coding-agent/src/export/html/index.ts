@@ -1,7 +1,9 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { setImmediate } from "node:timers/promises";
 import type { AgentState } from "@veyyon/agent-core";
 import { APP_NAME, isEnoent, logger } from "@veyyon/utils";
+import { atomicWriteFileWith } from "@veyyon/utils/atomic-write";
 import { isSessionFileName, SESSION_BACKUP_EXTENSION, sessionFileStem } from "@veyyon/utils/session-file";
 import { getResolvedThemeColors, getThemeExportColors } from "../../modes/theme/theme";
 import type { SecretObfuscator } from "../../secrets/obfuscator";
@@ -267,17 +269,258 @@ async function collectSubSessionsFromDir(
 	}
 }
 
-/** Generate HTML from bundled template with runtime substitutions. */
-async function generateHtml(sessionData: SessionData, palette: "web" | "theme", themeName?: string): Promise<string> {
-	const themeVars = await generateThemeVars(palette, themeName);
-	const sessionDataBase64 = Buffer.from(JSON.stringify(sessionData)).toBase64();
+/**
+ * Split the template at the session-data marker. The marker must appear exactly
+ * once; a template without it (or with two) is a build defect, not bad input.
+ */
+function splitTemplateAtSessionMarker(template: string): { head: string; tail: string } {
+	const marker = "{{SESSION_DATA}}";
+	const first = template.indexOf(marker);
+	if (first < 0) throw new Error("Export template is missing the {{SESSION_DATA}} marker");
+	if (template.indexOf(marker, first + 1) >= 0) throw new Error("Export template repeats the {{SESSION_DATA}} marker");
+	return { head: template.slice(0, first), tail: template.slice(first + marker.length) };
+}
 
-	// Use function replacements so `$'`, `$&`, `$$`, `$n`, etc. in the
-	// substituted CSS/base64 are not interpreted as substitution patterns
-	// (see https://mdn.io/String.replace).
-	return getTemplate()
-		.replace("<theme-vars/>", () => `<style>:root { ${themeVars} }</style>`)
-		.replace("{{SESSION_DATA}}", () => sessionDataBase64);
+/**
+ * The builtin's `toJSON` step: a holder replaces a value with `value.toJSON(key)`
+ * before serializing it, once, and never re-applies it to the result. `key` is
+ * the property name, an array index as a string, or `""` at the root.
+ */
+function applyToJSON(value: unknown, key: string): unknown {
+	if (value !== null && typeof value === "object" && "toJSON" in value && typeof value.toJSON === "function") {
+		return value.toJSON(key);
+	}
+	return value;
+}
+
+/**
+ * Incremental JSON serializer. Emits the same bytes `JSON.stringify(value)`
+ * emits — leaf strings/numbers/booleans go through `JSON.stringify` itself,
+ * object keys are visited in insertion order, and `undefined` property values
+ * are skipped exactly like the builtin — but as a sequence of independent
+ * string pieces, so a large graph never exists as one flat JSON string.
+ *
+ * Same failures too: a cycle raises a `TypeError` before anything unbounded is
+ * emitted, and a BigInt raises rather than serializing to something a reader
+ * would have to guess at. A root that serializes to nothing, which the builtin
+ * answers with `undefined`, raises as well: there is no such document.
+ */
+export function* jsonPieces(value: unknown): Generator<string> {
+	// The objects on the path from the root to the value being emitted. The builtin throws on a
+	// cycle; without this the generator descends forever, and a caller that streams its output
+	// to a file gets an unbounded write instead of an error.
+	const ancestors = new Set<object>();
+
+	const root = applyToJSON(value, "");
+	if (root === undefined || typeof root === "function" || typeof root === "symbol") {
+		// `JSON.stringify` answers `undefined` here, which is not JSON and cannot
+		// be written to a file. A session snapshot that serializes to nothing is
+		// a defect upstream, so say so rather than emitting `null` and shipping a
+		// document whose payload silently became a literal null.
+		throw new TypeError("A session snapshot serializes to nothing");
+	}
+	yield* emitValue(root);
+
+	function* emitValue(v: unknown): Generator<string> {
+		if (v === null) {
+			yield "null";
+			return;
+		}
+		switch (typeof v) {
+			case "string":
+				yield JSON.stringify(v);
+				return;
+			case "number":
+				// NaN and Infinity are not representable in JSON; the builtin
+				// emits them as `null`.
+				yield Number.isFinite(v) ? String(v) : "null";
+				return;
+			case "boolean":
+				yield String(v);
+				return;
+			case "bigint":
+				throw new Error("A session snapshot value is a BigInt, which JSON cannot represent");
+			case "object":
+				break;
+			default:
+				// A symbol or function reaching here as a bare array element
+				// serializes to `null`, exactly like the builtin.
+				yield "null";
+				return;
+		}
+		// No `toJSON` branch here. The builtin applies `toJSON` once, at the
+		// holder that owns the value, and serializes the result as-is; applying
+		// it again on the way down turns a transform returning another holder
+		// (`{ toJSON: () => ({ toJSON: () => 5 }) }`) into `5` where the builtin
+		// emits `{}`. `applyToJSON` is called by each holder instead.
+		// A boxed primitive serializes as the primitive it wraps. Falling through to the object
+		// branch would emit a String box as its index map and a Number box as `{}`.
+		if (v instanceof String || v instanceof Number || v instanceof Boolean) {
+			yield* emitValue(v.valueOf());
+			return;
+		}
+		if (ancestors.has(v)) throw new TypeError("Converting circular structure to JSON");
+		ancestors.add(v);
+		try {
+			if (Array.isArray(v)) {
+				yield "[";
+				for (let index = 0; index < v.length; index++) {
+					if (index > 0) yield ",";
+					// The builtin passes the index as the key, so an element's
+					// `toJSON(key)` sees "0", "1", … and not `undefined`.
+					const item = applyToJSON(v[index], String(index));
+					if (item === undefined || typeof item === "function" || typeof item === "symbol") yield "null";
+					else yield* emitValue(item);
+				}
+				yield "]";
+				return;
+			}
+			// Own enumerable properties only; every value stays `unknown` until its
+			// turn in emitValue, which narrows by runtime typeof checks.
+			const source = v as Record<string, unknown>;
+			yield "{";
+			let first = true;
+			for (const [key, raw] of Object.entries(source)) {
+				const item = applyToJSON(raw, key);
+				// The builtin omits undefined-, function- and symbol-valued properties.
+				if (item === undefined || typeof item === "function" || typeof item === "symbol") continue;
+				if (!first) yield ",";
+				first = false;
+				yield `${JSON.stringify(key)}:`;
+				yield* emitValue(item);
+			}
+			yield "}";
+		} finally {
+			ancestors.delete(v);
+		}
+	}
+}
+
+/** Serialized-string characters accumulated before one Buffer encoding pass. */
+const ENCODE_CHUNK_CHARS = 256 * 1024;
+
+/**
+ * Base64 sink with byte-level carry. Base64 encodes 3 bytes into 4 chars, so a
+ * chunk boundary is only clean at a multiple of 3 input bytes; everything else
+ * waits in `carry` for the next piece. Splitting the input at arbitrary piece
+ * boundaries therefore reproduces `Buffer.from(all).toString("base64")` byte for
+ * byte, while no single piece ever has to be the whole payload.
+ */
+export class StreamingBase64Writer {
+	// Pieces are accumulated to ENCODE_CHUNK_CHARS before one Buffer round trip
+	// encodes them together: per-piece Buffer.from + concat on hundreds of
+	// thousands of small pieces dominated the export profile otherwise.
+	#pending: string[] = [];
+	#pendingChars = 0;
+	#carry = Buffer.alloc(0);
+	/**
+	 * The sink receives base64 chunks in order and may write them however it
+	 * likes (batching, promise chaining) — `push`/`end` are synchronous and
+	 * never await, so the streaming loop has no per-piece async round trips.
+	 */
+	constructor(private readonly write: (chunk: string) => void) {}
+
+	push(piece: string): void {
+		if (piece.length === 0) return;
+		this.#pending.push(piece);
+		this.#pendingChars += piece.length;
+		if (this.#pendingChars >= ENCODE_CHUNK_CHARS) this.#drain();
+	}
+
+	end(): void {
+		this.#drain();
+		if (this.#carry.length > 0) this.write(this.#carry.toString("base64"));
+		this.#carry = Buffer.alloc(0);
+	}
+
+	#drain(): void {
+		if (this.#pending.length === 0) return;
+		const joined = this.#pending.join("");
+		this.#pending = [];
+		this.#pendingChars = 0;
+		// The carry is raw bytes, possibly a SPLIT multi-byte character — never
+		// decode it to a string; prepend it at the byte level instead.
+		const bytes =
+			this.#carry.length > 0
+				? Buffer.concat([this.#carry, Buffer.from(joined, "utf8")])
+				: Buffer.from(joined, "utf8");
+		this.#carry = Buffer.alloc(0);
+		const aligned = bytes.length - (bytes.length % 3);
+		if (aligned > 0) this.write(bytes.subarray(0, aligned).toString("base64"));
+		this.#carry = Buffer.from(bytes.subarray(aligned));
+	}
+}
+
+/** How many JSON source bytes may stream before the writer yields to the event loop. */
+const YIELD_BYTE_BUDGET = 4 * 1024 * 1024;
+
+/** Base64 characters accumulated before the writer commits one file write. */
+const WRITE_FLUSH_CHARS = 1024 * 1024;
+
+/**
+ * Write the standalone HTML export WITHOUT ever holding the whole document —
+ * or even the whole JSON payload — in memory. The template is split at the
+ * session-data marker, the head goes to disk, then the snapshot is serialized
+ * piece by piece through `jsonPieces` and base64-encoded incrementally into
+ * the same stream, and finally the tail closes the file. Peak memory above the
+ * snapshot graph itself is one small chunk instead of several whole-payload
+ * copies (JSON string + Buffer + base64 string + assembled document).
+ */
+async function writeExportFile(
+	outputPath: string,
+	sessionData: SessionData,
+	palette: "web" | "theme",
+	themeName?: string,
+): Promise<void> {
+	const themeVars = await generateThemeVars(palette, themeName);
+	const templated = getTemplate().replace("<theme-vars/>", () => `<style>:root { ${themeVars} }</style>`);
+	const { head: beforeData, tail } = splitTemplateAtSessionMarker(templated);
+
+	await atomicWriteFileWith(outputPath, async tempPath => {
+		const handle = await fs.open(tempPath, "w");
+		try {
+			await handle.write(beforeData);
+			// Batch base64 chunks into ~1 MiB file writes: one awaited write per
+			// serializer piece turns an 80 MiB export into hundreds of thousands of
+			// async round trips (measured: 825ms -> 58s).
+			let pending: string[] = [];
+			let pendingChars = 0;
+			// Writes are chained, never launched concurrently: two overlapping
+			// handle.write calls could reorder base64 quanta and corrupt the payload.
+			let writeChain: Promise<void> = Promise.resolve();
+			const flushPending = (): Promise<void> => {
+				if (pending.length === 0) return writeChain;
+				const joined = pending.join("");
+				pending = [];
+				pendingChars = 0;
+				writeChain = writeChain.then(() => handle.write(joined).then(() => {}));
+				return writeChain;
+			};
+			const b64 = new StreamingBase64Writer(chunk => {
+				pending.push(chunk);
+				pendingChars += chunk.length;
+				if (pendingChars >= WRITE_FLUSH_CHARS) void flushPending();
+			});
+			// Yield only after crossing a byte budget, so timers and sockets keep
+			// getting service during a long export; yielding per piece measured
+			// 825ms -> 65s and is exactly what this budget avoids.
+			let bytesSinceYield = 0;
+			for (const piece of jsonPieces(sessionData)) {
+				b64.push(piece);
+				bytesSinceYield += Buffer.byteLength(piece, "utf8");
+				if (bytesSinceYield >= YIELD_BYTE_BUDGET) {
+					bytesSinceYield = 0;
+					await flushPending();
+					await setImmediate();
+				}
+			}
+			b64.end();
+			await flushPending();
+			await handle.write(tail);
+		} finally {
+			await handle.close();
+		}
+	});
 }
 
 /** Export session to HTML using SessionManager and AgentState. */
@@ -303,10 +546,8 @@ export async function exportSessionToHtml(
 		? redactSessionDataForShare(opts.obfuscator, sessionData)
 		: sessionData;
 	const palette = opts.palette ?? (opts.themeName ? "theme" : "web");
-	const html = await generateHtml(redacted, palette, opts.themeName);
 	const outputPath = opts.outputPath || `${APP_NAME}-session-${sessionFileStem(path.basename(sessionFile))}.html`;
-
-	await Bun.write(outputPath, html);
+	await writeExportFile(outputPath, redacted, palette, opts.themeName);
 	return outputPath;
 }
 
@@ -336,9 +577,7 @@ export async function exportFromFile(inputPath: string, options?: ExportOptions 
 		? redactSessionDataForShare(opts.obfuscator, sessionData)
 		: sessionData;
 	const palette = opts.palette ?? (opts.themeName ? "theme" : "web");
-	const html = await generateHtml(redacted, palette, opts.themeName);
 	const outputPath = opts.outputPath || `${APP_NAME}-session-${sessionFileStem(path.basename(inputPath))}.html`;
-
-	await Bun.write(outputPath, html);
+	await writeExportFile(outputPath, redacted, palette, opts.themeName);
 	return outputPath;
 }
