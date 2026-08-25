@@ -49,9 +49,22 @@ if [ -d /dev/dri ]; then
 	fi
 fi
 
+# A checkout made on Windows carries workspace links under node_modules that
+# point at the Docker Desktop utility VM's own bind path (/mnt/host/c/...),
+# which no container resolves on its own. Setting PROOF_HOST_REPO_TARGET binds
+# the checkout there too, read-only, so those links resolve; Linux checkouts
+# leave it unset and run exactly as before. PROOF_HOST_REPO_SOURCE names the
+# checkout when REPO_ROOT itself is one of those per-container WSL paths, which
+# no sibling container can mount.
+HOST_WORKSPACE_MOUNT=()
+if [ -n "${PROOF_HOST_REPO_TARGET:-}" ]; then
+	HOST_WORKSPACE_MOUNT+=(--mount "type=bind,src=${PROOF_HOST_REPO_SOURCE:-${REPO_ROOT}},dst=${PROOF_HOST_REPO_TARGET},readonly")
+fi
+
 docker run --rm \
 	"${AUTH_MOUNTS[@]}" \
 	"${GPU_ARGS[@]}" \
+	"${HOST_WORKSPACE_MOUNT[@]}" \
 	--network "${PROOF_NETWORK:-veyyon-proof}" \
 	--add-host "${CONTAINER_HOST_ALIAS}:host-gateway" \
 	--mount "type=bind,src=${REPO_ROOT},dst=/repo" \
