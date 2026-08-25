@@ -25,6 +25,7 @@
 - The OpenAI completions message converter merges `.filter().map().join()` + `.some()` into a single-pass `for` loop for tool-result text/image extraction, `.filter().map().filter(Boolean)` into a single loop for reasoning details, and `.filter().map().join()` into a single loop for developer message text extraction.
 - The Google provider message converter merges three passes over tool-result content (`.filter()` for text, `.filter()` for images, `.some()` for omitted images) into a single `for` loop.
 - `partitionVisionContent` in `vision-guard.ts` merges two `.filter()` passes and a `.some()` check into a single `for` loop, avoiding two throwaway arrays per message conversion call.
+- The OpenAI completions assistant message converter merges two separate loops over `msg.content` (text block collection and thinking block collection) into a single `for` loop.
 
 ### Fixed
 
