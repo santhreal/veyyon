@@ -23,6 +23,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { isMissingPath } from "@veyyon/utils";
 import {
+	expandDelimitedPathEntriesSync,
 	globSearchBase,
 	isInternalUrlPath,
 	isPathWithinCwd,
@@ -95,7 +96,7 @@ export interface CwdBoundedTool {
 	 * the boundary. Non-filesystem destinations (URLs, ssh, internal schemes) may
 	 * be included; the boundary skips them.
 	 */
-	filesystemTargets(args: unknown): string[];
+	filesystemTargets(args: unknown, cwd: string): string[];
 }
 
 /** True when `tool` declares filesystem targets, so the cwd boundary applies. */
@@ -125,18 +126,20 @@ function isNonFilesystemTarget(rawPath: string): boolean {
  * verbatim so the boundary skips it. A bare `*.ts` bases at cwd (in-bounds).
  * Shared by all three tools so the split-and-base rule lives in ONE place.
  */
-export function searchPathFilesystemTargets(args: unknown): string[] {
+export function searchPathFilesystemTargets(args: unknown, cwd = process.cwd()): string[] {
 	// `grep` documents `path` but its approval also accepts a legacy `paths`
 	// (string or array); mirror that breadth so a search cannot under-report.
-	const a = args as { path?: unknown; paths?: unknown } | null;
-	const raw = a?.path ?? a?.paths;
+	if (!args || typeof args !== "object") return [];
+	const raw = "path" in args ? args.path : "paths" in args ? args.paths : undefined;
 	const entries: string[] = [];
-	if (typeof raw === "string") entries.push(...raw.split(";"));
+	if (typeof raw === "string") entries.push(raw);
 	else if (Array.isArray(raw)) {
-		for (const item of raw) if (typeof item === "string") entries.push(...item.split(";"));
+		for (const item of raw) if (typeof item === "string") entries.push(item);
 	}
+	if (entries.length === 0) return [];
+	const expanded = expandDelimitedPathEntriesSync(entries, cwd);
 	const targets: string[] = [];
-	for (const entry of entries) {
+	for (const entry of expanded) {
 		const trimmed = entry.trim();
 		if (trimmed.length === 0) continue;
 		targets.push(isNonFilesystemTarget(trimmed) ? trimmed : globSearchBase(trimmed));
@@ -159,7 +162,7 @@ export function cwdEscapingTargets(tool: unknown, args: unknown, cwd: string): s
 	const physicalCwd = physicalPath(cwd);
 	const cwdBase = physicalCwd === UNRESOLVABLE ? cwd : physicalCwd;
 	const escaping: string[] = [];
-	for (const rawPath of tool.filesystemTargets(args)) {
+	for (const rawPath of tool.filesystemTargets(args, cwd)) {
 		if (typeof rawPath !== "string" || rawPath.trim().length === 0) continue;
 		if (isNonFilesystemTarget(rawPath)) continue;
 		const resolved = resolveToCwd(rawPath, cwd);

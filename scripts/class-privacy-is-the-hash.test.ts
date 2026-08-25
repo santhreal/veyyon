@@ -124,7 +124,7 @@ function countParens(text: string): number {
 	return net;
 }
 
-/** Every shipped `.ts` file under `packages/*\/src`, keyed by `<package>/src/<path>`. */
+/** Every shipped `.ts` and `.tsx` file under `packages/*\/src`, keyed by `<package>/src/<path>`. */
 function sourceFiles(): string[] {
 	const found: string[] = [];
 	const walk = (dir: string): void => {
@@ -134,7 +134,13 @@ function sourceFiles(): string[] {
 				if (!SKIPPED_DIRS.has(entry.name)) walk(full);
 				continue;
 			}
-			if (entry.name.endsWith(".ts") && !entry.name.endsWith(".test.ts")) found.push(full);
+			if (
+				(entry.name.endsWith(".ts") || entry.name.endsWith(".tsx")) &&
+				!entry.name.endsWith(".test.ts") &&
+				!entry.name.endsWith(".test.tsx")
+			) {
+				found.push(full);
+			}
 		}
 	};
 	for (const pkg of fs.readdirSync(PACKAGES, { withFileTypes: true })) {
