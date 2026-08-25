@@ -25,6 +25,8 @@ import { theme } from "../theme/theme";
 type CustomOrHookMessage = Extract<AgentMessage, { role: "custom" | "hookMessage" }>;
 type AssistantAgentMessage = Extract<AgentMessage, { role: "assistant" }>;
 
+const EMPTY_MAP: ReadonlyMap<string, AssistantAgentMessage> = new Map();
+
 /**
  * Render an `async-result` custom message (a completed background bash/task job,
  * or a batch of them) as a transcript block of one "Background job completed"
@@ -151,11 +153,25 @@ export function splitAssistantMessageToolTimeline(message: AssistantAgentMessage
 	afterToolCalls: ReadonlyMap<string, AssistantAgentMessage>;
 	hasToolCalls: boolean;
 } {
-	const beforeTools: AssistantAgentMessage["content"] = [];
+	let sawToolCall = false;
+	// Fast path: scan for a toolCall block first. Most assistant messages
+	// (text-only, thinking-only, or streaming partial) have no tool calls, so
+	// allocating the beforeTools array, afterToolCalls Map, and pendingAfterTool
+	// array for every streaming message_update event is pure waste.
+	for (const content of message.content) {
+		if (content.type === "toolCall") {
+			sawToolCall = true;
+			break;
+		}
+	}
+	if (!sawToolCall) {
+		return { beforeTools: message, afterToolCalls: EMPTY_MAP, hasToolCalls: false };
+	}
+
 	const afterToolCalls = new Map<string, AssistantAgentMessage>();
+	const beforeTools: AssistantAgentMessage["content"] = [];
 	let pendingAfterTool: AssistantAgentMessage["content"] = [];
 	let lastToolCallId: string | undefined;
-	let sawToolCall = false;
 
 	const displaySegment = (content: AssistantAgentMessage["content"]): AssistantAgentMessage => ({
 		...message,
@@ -174,21 +190,16 @@ export function splitAssistantMessageToolTimeline(message: AssistantAgentMessage
 	for (const content of message.content) {
 		if (content.type === "toolCall") {
 			flushPendingAfterTool();
-			sawToolCall = true;
 			lastToolCallId = content.id;
 			continue;
 		}
-		if (sawToolCall) {
+		if (lastToolCallId !== undefined) {
 			pendingAfterTool.push(content);
 		} else {
 			beforeTools.push(content);
 		}
 	}
 	flushPendingAfterTool();
-
-	if (!sawToolCall) {
-		return { beforeTools: message, afterToolCalls, hasToolCalls: false };
-	}
 
 	// An after-tool segment is display-only, so `displaySegment` scrubs the stop:
 	// the segment is not the turn and must not restate its ending. The leading

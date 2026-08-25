@@ -707,8 +707,13 @@ export class SettingsList implements Component {
 					startIndex = computeStart(viewportHeight);
 				}
 			}
-			const labelWidths = this.#filteredItems.filter(item => !item.heading).map(item => visibleWidth(item.label));
-			const maxLabelWidth = Math.min(30, labelWidths.length > 0 ? Math.max(...labelWidths) : 0);
+			let maxLabelWidth = 0;
+			for (const item of this.#filteredItems) {
+				if (item.heading) continue;
+				const w = visibleWidth(item.label);
+				if (w > maxLabelWidth) maxLabelWidth = w;
+			}
+			maxLabelWidth = Math.min(30, maxLabelWidth);
 			// Reserved fold/cursor gutter (2) + label column + separator (2) —
 			// the always-aligned start of the value column for this frame.
 			this.#valueColStart = 2 + maxLabelWidth + 2;
@@ -845,8 +850,13 @@ export class SettingsList implements Component {
 			Math.min(this.#selectedIndex - Math.floor(viewportHeight / 2), this.#filteredItems.length - viewportHeight),
 		);
 		// Label column width spans all items so the layout stays stable across sections.
-		const labelWidths = this.#filteredItems.filter(item => !item.heading).map(item => visibleWidth(item.label));
-		const maxLabelWidth = Math.min(30, labelWidths.length > 0 ? Math.max(...labelWidths) : 0);
+		let maxLabelWidth = 0;
+		for (const item of this.#filteredItems) {
+			if (item.heading) continue;
+			const w = visibleWidth(item.label);
+			if (w > maxLabelWidth) maxLabelWidth = w;
+		}
+		maxLabelWidth = Math.min(30, maxLabelWidth);
 		// Sidebar + "│ " separator (2) + reserved fold/cursor gutter (2) + label
 		// column + separator (2) — the always-aligned start of the value column.
 		this.#valueColStart = sidebarWidth + 2 + 2 + maxLabelWidth + 2;
