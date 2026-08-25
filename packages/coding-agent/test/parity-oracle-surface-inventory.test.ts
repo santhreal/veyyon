@@ -27,6 +27,11 @@ const COVERAGE_META_TESTS: Record<string, string> = {
 	"eval languages": "packages/coding-agent/test/eval/eval-language-coverage.test.ts",
 	"system-prompt-builder modules": "packages/coding-agent/test/system-prompt-builder/every-module-has-test-coverage.test.ts",
 	"web scrapers and search providers": "packages/coding-agent/test/web/every-scraper-and-provider-has-test-coverage.test.ts",
+	"MCP transports": "packages/coding-agent/test/mcp/every-transport-has-test-coverage.test.ts",
+	"theme system modules": "packages/coding-agent/test/modes/theme/every-theme-module-has-test-coverage.test.ts",
+	"keybindings": "packages/coding-agent/test/config/every-keybinding-has-test-coverage.test.ts",
+	"Rust native modules": "packages/natives/test/every-native-module-has-test-coverage.test.ts",
+	"stats modules": "packages/stats/test/every-stats-module-has-test-coverage.test.ts",
 };
 
 describe("parity oracle surface inventory is complete", () => {
@@ -44,6 +49,6 @@ describe("parity oracle surface inventory is complete", () => {
 		// by the absence of the file — but only if you add the axis here.
 		// The individual meta-tests are the real guard; this is the index.
 		const axes = Object.keys(COVERAGE_META_TESTS);
-		expect(axes.length).toBeGreaterThanOrEqual(12);
+		expect(axes.length).toBeGreaterThanOrEqual(17);
 	});
 });
