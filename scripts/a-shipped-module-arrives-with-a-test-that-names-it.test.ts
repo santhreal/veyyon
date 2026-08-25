@@ -328,7 +328,6 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/typescript-edit-benchmark/src/edit-prompt-bench.ts",
 	"packages/typescript-edit-benchmark/src/goal-budget-context-bench.ts",
 	"packages/typescript-edit-benchmark/src/in-process-client.ts",
-	"packages/utils/src/byte-truncate.ts",
 	"packages/utils/src/prompt-variables.ts",
 	"packages/utils/src/vendor/mermaid-ascii/ascii/canvas.ts",
 	"packages/utils/src/vendor/mermaid-ascii/ascii/class-diagram.ts",
