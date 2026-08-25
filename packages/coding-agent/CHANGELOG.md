@@ -55,6 +55,7 @@
 - The context-usage bar replaces a double `reduce` for `usedCount` with a counting loop that tracks the total incrementally during the overflow-scaling pass, avoiding a callback allocation and a redundant full-array reduce per context bar render.
 - The usage display unique-account count replaces `.map().filter()` into a `Set` with a single `for` loop, avoiding two intermediate arrays per usage display render.
 - The autoresearch expanded dashboard merges four `.filter().length` counts (kept, discarded, crashed, checks_failed) into a single counting loop, avoiding four throwaway arrays per dashboard render.
+- The `/todo` autocomplete description replaces `.flatMap(phase => phase.tasks)` with a nested counting loop, avoiding a throwaway array of all tasks per keystroke when the `/todo` autocomplete is active.
 
 ### Added
 

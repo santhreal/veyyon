@@ -11,6 +11,7 @@
 - `imageFallback` takes the file name, media type, pixel size and cause of an undrawn image and returns a row naming all four; `ImageFallbackReason` states the cause.
 - Settings rows can open nested panels, used by Files → LSP to keep its dependent switches behind one parent row.
 - `SettingsList` computes the label-column width with a single `for` loop instead of `.filter().map()`, avoiding two throwaway arrays on every settings render.
+- `SelectList.#getPrimaryColumnWidth` uses a `for` loop instead of `.reduce()`, avoiding a callback allocation on every select-list render.
 
 ## [1.2.0] - 2026-08-23
 
