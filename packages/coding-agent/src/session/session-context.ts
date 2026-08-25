@@ -85,12 +85,23 @@ export function getRestorableSessionModels(
 	return [roleModel, defaultModel];
 }
 
-const compactionEntryCache = new WeakMap<SessionEntry[], { length: number; entry: CompactionEntry | null }>();
+const compactionEntryCache = new WeakMap<
+	SessionEntry[],
+	{ length: number; entry: CompactionEntry | null; index: number }
+>();
 
 export function getLatestCompactionEntry(entries: SessionEntry[]): CompactionEntry | null {
+	return resolveCompactionEntry(entries).entry;
+}
+
+export function getLatestCompactionEntryIndex(entries: SessionEntry[]): number {
+	return resolveCompactionEntry(entries).index;
+}
+
+function resolveCompactionEntry(entries: SessionEntry[]): { entry: CompactionEntry | null; index: number } {
 	const cached = compactionEntryCache.get(entries);
 	if (cached !== undefined && cached.length === entries.length) {
-		return cached.entry;
+		return { entry: cached.entry, index: cached.index };
 	}
 	if (cached !== undefined && cached.length < entries.length) {
 		// Incremental: scan only the newly appended entries first. If a
@@ -99,22 +110,25 @@ export function getLatestCompactionEntry(entries: SessionEntry[]): CompactionEnt
 		for (let i = entries.length - 1; i >= cached.length; i--) {
 			if (entries[i].type === "compaction") {
 				const entry = entries[i] as CompactionEntry;
-				compactionEntryCache.set(entries, { length: entries.length, entry });
-				return entry;
+				const result = { entry, index: i };
+				compactionEntryCache.set(entries, { length: entries.length, entry, index: i });
+				return result;
 			}
 		}
 		cached.length = entries.length;
-		return cached.entry;
+		return { entry: cached.entry, index: cached.index };
 	}
 	let entry: CompactionEntry | null = null;
+	let index = -1;
 	for (let i = entries.length - 1; i >= 0; i--) {
 		if (entries[i].type === "compaction") {
 			entry = entries[i] as CompactionEntry;
+			index = i;
 			break;
 		}
 	}
-	compactionEntryCache.set(entries, { length: entries.length, entry });
-	return entry;
+	compactionEntryCache.set(entries, { length: entries.length, entry, index });
+	return { entry, index };
 }
 
 export interface BuildSessionContextOptions {

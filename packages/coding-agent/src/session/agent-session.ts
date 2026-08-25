@@ -494,7 +494,7 @@ import {
 	unreplayableContinueDelayMs,
 } from "./retry-policy";
 import type { BuildSessionContextOptions, SessionContext } from "./session-context";
-import { getLatestCompactionEntry, getRestorableSessionModels } from "./session-context";
+import { getLatestCompactionEntry, getLatestCompactionEntryIndex, getRestorableSessionModels } from "./session-context";
 import { formatSessionDumpText } from "./session-dump-format";
 import type {
 	BranchSummaryEntry,
@@ -20034,7 +20034,7 @@ export class AgentSession {
 
 		const branchEntries = this.sessionManager.getBranch();
 		const latestCompaction = getLatestCompactionEntry(branchEntries);
-		const compactionIndex = latestCompaction ? branchEntries.lastIndexOf(latestCompaction) : -1;
+		const compactionIndex = latestCompaction ? getLatestCompactionEntryIndex(branchEntries) : -1;
 
 		let usedTokens = 0;
 		let anchored = false;
