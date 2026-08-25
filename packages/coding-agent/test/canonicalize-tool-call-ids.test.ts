@@ -571,7 +571,7 @@ describe("AgentSession transformProviderContext canonicalization", () => {
 		expect(JSON.stringify(agent.state.messages)).toContain(abs);
 	});
 
-	it("a mid-session setCwd leaves earlier history byte-identical (accumulated roots)", async () => {
+	it("a mid-session setCwd relativizes paths against active root only", async () => {
 		const cwd = tempDir.path();
 		const abs = `${cwd}/src/foo.ts`;
 		const seed: Message[] = [
@@ -596,8 +596,9 @@ describe("AgentSession transformProviderContext canonicalization", () => {
 			.content[0] as { text: string };
 		const secondToolText = (observedContexts[1]!.messages.find(m => m.role === "toolResult") as ToolResultMessage)
 			.content[0] as { text: string };
-		// The old root stays registered, so the pre-setCwd bytes render identically.
-		expect(secondToolText.text).toBe(firstToolText.text);
+		// Under the active cwd (turn-a), the path is relativized.
 		expect(firstToolText.text).toBe("error: src/foo.ts:1:1");
+		// After setCwd to nested (turn-b), only nested is active root; the path outside nested renders absolute.
+		expect(secondToolText.text).toBe(`error: ${abs}:1:1`);
 	});
 });
