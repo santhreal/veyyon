@@ -11,6 +11,8 @@
 - Eval kernels gain `kv`, a bounded JSON store under the session's artifacts directory that survives kernel resets and is shared between JavaScript and Python without cross-session filename collisions or lost concurrent updates, and `defs()`, which lists the names user code has defined in the kernel.
 - Every supervised process termination records which component ended it and why, with distinct attribution for each path (operator stop, signal, restart, broker shutdown, idle reaper, OS signal, broker recovery, launch failure, external signal, and natural exit); `launch list` output shows the lifetime owning condition and retained completion records with exit codes, reasons, and output tails, queryable after the name is reused and across broker restarts.
 - `/omfg` forges rules that carry the extended TTSR frontmatter (`astCondition`, `interruptMode`, `pathScope`, `repeatMode`, `repeatGap`, `repeatCompactions`, `warmupMatches`), confirms ast-grep conditions against the conversation's tool history through the same gate chain a live stream applies, and fails loudly on a malformed optional field instead of dropping it.
+- `/omfg` saves forged rules to the active profile's rules directory only; the project target is gone, because project `.veyyon/rules` was never discovered across sessions.
+- Settings → Stream Interrupts (TTSR) groups the profile's own rules under a leading `User created` section instead of `From native`, ahead of foreign-tool and built-in sections.
 
 ### Changed
 
@@ -37,6 +39,7 @@
 - A colour or title escape sequence a command writes in two pieces no longer leaves part of itself in tool output: the sink holds a sequence its chunk ended inside until the piece that finishes it arrives, and drops one the stream never completes.
 - The `compaction.remote` setting description documents that server-side compaction applies to supported OpenAI, Azure OpenAI, and ChatGPT Codex Responses models.
 - `branchSummary.reserveTokens` now reaches the branch summarizer. It was declared in the settings schema but read by nothing, so every branch summary used the built-in 16384 reserve whatever the setting said.
+- `/prewalk` and `--prewalk` no longer resolve their target through the `smol` role, which stopped resolving when unset; the cheap handoff target now comes from `prewalk.cheapModel` (or `--prewalk-into`, or a `/prewalk <model>` argument) and fails naming that setting when nothing is configured, and a new `prewalk.strongModel` overrides the model a prewalk session starts on.
 
 ## [1.2.0] - 2026-08-23
 
