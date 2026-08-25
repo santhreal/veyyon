@@ -286,8 +286,17 @@ function splitTemplateAtSessionMarker(template: string): { head: string; tail: s
  * object keys are visited in insertion order, and `undefined` property values
  * are skipped exactly like the builtin — but as a sequence of independent
  * string pieces, so a large graph never exists as one flat JSON string.
+ *
+ * Same failures too: a cycle raises a `TypeError` before anything unbounded is
+ * emitted, and a BigInt raises rather than serializing to something a reader
+ * would have to guess at.
  */
 export function* jsonPieces(value: unknown): Generator<string> {
+	// The objects on the path from the root to the value being emitted. The builtin throws on a
+	// cycle; without this the generator descends forever, and a caller that streams its output
+	// to a file gets an unbounded write instead of an error.
+	const ancestors = new Set<object>();
+
 	yield* emitValue(value);
 
 	function* emitValue(v: unknown): Generator<string> {
@@ -317,18 +326,6 @@ export function* jsonPieces(value: unknown): Generator<string> {
 				yield "null";
 				return;
 		}
-		if (Array.isArray(v)) {
-			yield "[";
-			let first = true;
-			for (const item of v) {
-				if (!first) yield ",";
-				first = false;
-				if (item === undefined || typeof item === "function" || typeof item === "symbol") yield "null";
-				else yield* emitValue(item);
-			}
-			yield "]";
-			return;
-		}
 		if ("toJSON" in v && typeof v.toJSON === "function") {
 			// Rare holder of a custom protocol (the builtin would have called it).
 			// Delegate wholesale so its contract stays intact; the result is small
@@ -336,20 +333,44 @@ export function* jsonPieces(value: unknown): Generator<string> {
 			yield JSON.stringify(v);
 			return;
 		}
-		// Own enumerable properties only; every value stays `unknown` until its
-		// turn in emitValue, which narrows by runtime typeof checks.
-		const source = v as Record<string, unknown>;
-		yield "{";
-		let first = true;
-		for (const [key, item] of Object.entries(source)) {
-			// The builtin omits undefined-, function- and symbol-valued properties.
-			if (item === undefined || typeof item === "function" || typeof item === "symbol") continue;
-			if (!first) yield ",";
-			first = false;
-			yield `${JSON.stringify(key)}:`;
-			yield* emitValue(item);
+		// A boxed primitive serializes as the primitive it wraps. Falling through to the object
+		// branch would emit a String box as its index map and a Number box as `{}`.
+		if (v instanceof String || v instanceof Number || v instanceof Boolean) {
+			yield* emitValue(v.valueOf());
+			return;
 		}
-		yield "}";
+		if (ancestors.has(v)) throw new TypeError("Converting circular structure to JSON");
+		ancestors.add(v);
+		try {
+			if (Array.isArray(v)) {
+				yield "[";
+				let first = true;
+				for (const item of v) {
+					if (!first) yield ",";
+					first = false;
+					if (item === undefined || typeof item === "function" || typeof item === "symbol") yield "null";
+					else yield* emitValue(item);
+				}
+				yield "]";
+				return;
+			}
+			// Own enumerable properties only; every value stays `unknown` until its
+			// turn in emitValue, which narrows by runtime typeof checks.
+			const source = v as Record<string, unknown>;
+			yield "{";
+			let first = true;
+			for (const [key, item] of Object.entries(source)) {
+				// The builtin omits undefined-, function- and symbol-valued properties.
+				if (item === undefined || typeof item === "function" || typeof item === "symbol") continue;
+				if (!first) yield ",";
+				first = false;
+				yield `${JSON.stringify(key)}:`;
+				yield* emitValue(item);
+			}
+			yield "}";
+		} finally {
+			ancestors.delete(v);
+		}
 	}
 }
 

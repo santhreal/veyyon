@@ -64,6 +64,33 @@ describe("streamed JSON serialization matches JSON.stringify byte for byte", () 
 				},
 			},
 		},
+		{
+			// A boxed primitive is what a `new String(...)` in redaction or a
+			// `Number` wrapper from a plugin leaves behind. The builtin unwraps it;
+			// walking its own properties instead turns a String box into an index
+			// map and a Number box into `{}`.
+			name: "boxed primitives serialize as the primitive they wrap",
+			value: {
+				str: new String("boxed"),
+				num: new Number(42),
+				bool: new Boolean(false),
+				inArray: [new String("a"), new Number(0)],
+			},
+		},
+		{
+			name: "a value with toJSON serializes through it",
+			value: { at: new Date(0), custom: { toJSON: () => ({ shape: "replaced" }) } },
+		},
+		{
+			// Not a cycle: the SAME object reached twice down disjoint paths is
+			// emitted twice, the way the builtin does. A visited-set that never
+			// forgets would reject this.
+			name: "one object shared by two properties is emitted twice",
+			value: (() => {
+				const shared = { id: "s1", body: [1, 2, 3] };
+				return { first: shared, second: shared, list: [shared] };
+			})(),
+		},
 	];
 
 	for (const fixture of tortureFixtures) {
@@ -71,6 +98,43 @@ describe("streamed JSON serialization matches JSON.stringify byte for byte", () 
 			expect(piecesToJs(fixture.value)).toBe(JSON.stringify(fixture.value));
 		});
 	}
+
+	/**
+	 * Termination, not a value. A cycle sends a naive recursive emitter down
+	 * forever, and the caller streams every piece to a file as it arrives, so the
+	 * failure is an unbounded write rather than a wrong byte. The builtin throws
+	 * a `TypeError`; so does this, before yielding the piece that would recur.
+	 */
+	it("rejects a cycle instead of emitting forever", () => {
+		const parent: Record<string, unknown> = { name: "parent" };
+		parent.self = parent;
+
+		expect(() => piecesToJs(parent)).toThrow(TypeError);
+		expect(() => JSON.stringify(parent)).toThrow(TypeError);
+	});
+
+	it("rejects a cycle closed through an array", () => {
+		const list: unknown[] = [1];
+		list.push({ back: list });
+
+		expect(() => piecesToJs(list)).toThrow(TypeError);
+	});
+
+	/**
+	 * The cycle guard must not leak across siblings: an object popped from the
+	 * ancestor path has to be emittable again further along the same walk.
+	 */
+	it("still serializes a repeated sibling after a deep branch", () => {
+		const leaf = { v: 1 };
+		const value = { a: { deep: { deeper: leaf } }, b: leaf };
+
+		expect(piecesToJs(value)).toBe(JSON.stringify(value));
+	});
+
+	it("refuses a BigInt the way the builtin does", () => {
+		expect(() => piecesToJs({ n: 1n })).toThrow();
+		expect(() => JSON.stringify({ n: 1n })).toThrow();
+	});
 });
 
 describe("streaming base64 writer matches whole-buffer encoding", () => {
