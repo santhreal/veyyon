@@ -39,14 +39,14 @@ describe("FOREIGN_PROVIDER_IDS", () => {
 
 describe("defineCapability", () => {
 	it("creates a capability with an empty providers array", () => {
-		const cap = defineCapability({ id: `test-cap-${Date.now()}`, description: "test" });
+	const cap = defineCapability({ id: `test-cap-${Date.now()}`, displayName: "Test", description: "test", key: () => undefined });
 		expect(cap.providers).toEqual([]);
 	});
 
 	it("throws when a capability id is already defined", () => {
 		const id = `dup-cap-${Date.now()}`;
-		defineCapability({ id, description: "first" });
-		expect(() => defineCapability({ id, description: "second" })).toThrow(
+		defineCapability({ id, displayName: "First", description: "first", key: () => undefined });
+		expect(() => defineCapability({ id, displayName: "Second", description: "second", key: () => undefined })).toThrow(
 			`Capability "${id}" is already defined`,
 		);
 	});
