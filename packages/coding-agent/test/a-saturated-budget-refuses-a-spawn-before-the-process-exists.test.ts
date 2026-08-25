@@ -26,11 +26,11 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { executePython } from "@veyyon/coding-agent/eval/py/executor";
 import { ExtensionRuntime, loadExtensionFromFactory } from "@veyyon/coding-agent/extensibility/extensions/loader";
-import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { EventBus } from "@veyyon/coding-agent/utils/event-bus";
 import { TempDir } from "@veyyon/utils";
 import { CpuLimitDeniedError, initSessionCpuLimit, resetSessionCpuLimitsForTests } from "../src/session/cpu-limit";
 import { makeCgroupRoot, makeFakeHost, removeCgroupRoots } from "./helpers/fake-cgroup";
+import { makeToolSession } from "./helpers/tool-session";
 
 /**
  * A host with no delegated cgroup parent and no systemd: the probe reports
@@ -96,7 +96,7 @@ describe("a spawn that cannot join the session budget", () => {
 				// by. Resolving the gate from this field finds no limiter and the
 				// cell runs uncapped.
 				sessionId: "python:sess-eval-gate",
-				toolSession: { getSessionId: () => "sess-eval-gate" } as unknown as ToolSession,
+				toolSession: makeToolSession({ getSessionId: () => "sess-eval-gate" }),
 			}),
 		).rejects.toThrow(/Refused to start a Python eval cell/);
 	});
