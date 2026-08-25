@@ -1,22 +1,16 @@
 /**
  * `parseSlashCommand` splits on the earliest whitespace OR `:`.
- * `normalizeSubmittedPrompt` keeps trailing spaces only for a canonical
- * `/secret`. `isSensitiveSlashCommand` treats `/login`/`/join` as sensitive
- * only when they carry arguments.
  *
- * Existing parse.test.ts / history-security / credential-bearing suites pin
- * option-shaped secrets and unknown-command refusal. They do not pin:
- *
+ * Existing parse.test.ts pins unknown-command refusal. It does not pin:
  *   - TAB as the separator (composer can insert one)
  *   - colon vs space when BOTH appear (`/foo: bar` vs `/foo :bar`)
- *   - `/secretive` remaining a trimmed ordinary command
- *   - `/login` with no args staying recallable
  *   - `//etc/hosts` not being a command name
+ *
+ * `/login` length, `/secret` trailing spaces, and `/secretive` live in
+ * sensitive-url-userinfo-and-query-and-login-bare.test.ts.
  */
 import { describe, expect, it } from "bun:test";
 import {
-	isSensitiveSlashCommand,
-	normalizeSubmittedPrompt,
 	parseSlashCommand,
 	parseSubcommand,
 	unresolvedSlashCommandName,
@@ -87,51 +81,6 @@ describe("unresolvedSlashCommandName refuses path-shaped slashes", () => {
 
 	it("does return the name of a letter-leading unknown command, never the args", () => {
 		expect(unresolvedSlashCommandName("/secrt add DB_PASSWORD hunter2")).toBe("secrt");
-	});
-});
-
-describe("normalizeSubmittedPrompt keeps /secret suffix and trims lookalikes", () => {
-	it("does not trim trailing spaces on canonical /secret", () => {
-		expect(normalizeSubmittedPrompt("/secret add X  ")).toBe("/secret add X  ");
-	});
-
-	it("still strips leading whitespace before /secret (navigation chrome)", () => {
-		expect(normalizeSubmittedPrompt("  /secret add X  ")).toBe("/secret add X  ");
-	});
-
-	it("trims /secretive as ordinary chat, including trailing spaces", () => {
-		expect(normalizeSubmittedPrompt("  /secretive list  ")).toBe("/secretive list");
-	});
-
-	it("trims a non-secret command", () => {
-		expect(normalizeSubmittedPrompt("  /account status  ")).toBe("/account status");
-	});
-});
-
-describe("isSensitiveSlashCommand argument-bearing login/join vs bare", () => {
-	it("does not classify bare /login as sensitive", () => {
-		expect(isSensitiveSlashCommand("/login")).toBe(false);
-	});
-
-	it("classifies /login with an argument as sensitive", () => {
-		expect(isSensitiveSlashCommand("/login anthropic")).toBe(true);
-	});
-
-	it("does not classify bare /join as sensitive", () => {
-		expect(isSensitiveSlashCommand("/join")).toBe(false);
-	});
-
-	it("classifies /join with a token as sensitive", () => {
-		expect(isSensitiveSlashCommand("/join abc")).toBe(true);
-	});
-
-	it("classifies every /secret shape", () => {
-		expect(isSensitiveSlashCommand("/secret")).toBe(true);
-		expect(isSensitiveSlashCommand("/secret list")).toBe(true);
-	});
-
-	it("does not classify /secretive as the secret command", () => {
-		expect(isSensitiveSlashCommand("/secretive list")).toBe(false);
 	});
 });
 

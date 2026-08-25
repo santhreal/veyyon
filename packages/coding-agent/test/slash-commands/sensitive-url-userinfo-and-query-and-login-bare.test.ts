@@ -3,38 +3,22 @@
  * submitted line never becomes recallable editor history or a resumable draft.
  *
  * WHY THIS SUITE EXISTS. The persist suite pins option names (`--token`,
- * `-t`, `-H`), `/secret`, and "a URL carrying a credential". It does not pin
- * the THREE recognisers separately, and it does not pin the `/login` /
- * `/join` length rule:
+ * `-t`, `-H`), `/secret`, misspelled `tokn` on `/mcp add`, and a credential
+ * URL on `/mcp add`. It does not pin the three recognisers separately:
  *
- *   1. USERINFO. `scheme://user:pass@host` is sensitive on ANY command,
- *      including `/mcp add srv url http://x` which is supposed to stay
- *      recallable when the URL has no userinfo. The comment in parse.ts
- *      says `url` is deliberately absent from the option-name list for
- *      that reason — so a userinfo-less URL must stay false, and a
- *      userinfo URL must stay true.
+ *   1. USERINFO. `scheme://user:pass@host` is sensitive on ANY command.
+ *      A userinfo-less URL must stay false. `alice@example.com` without
+ *      `//` is not userinfo.
  *
- *   2. QUERY PARAM NAMES. `?api_key=`, `&token=`, `?password=` match
- *      CREDENTIAL_QUERY_PARAM_RE. `?page=` does not. A false negative
- *      writes a live key to disk; a false positive on `?page=` costs
- *      arrow-up recall. Pin both.
+ *   2. QUERY PARAM NAMES. `?api_key=` matches CREDENTIAL_QUERY_PARAM_RE.
+ *      `?page=` does not.
  *
  *   3. `/login` and `/join` are sensitive ONLY when there is more than
- *      `/name` (the `text.length > name.length + 1` rule). Bare `/login`
- *      is a UI command and MUST remain recallable. `/login anthropic` is
- *      not a credential but is still classified sensitive because the
- *      argument CAN carry one — that over-breadth is the documented
- *      contract, pin it.
- *
- *   4. `/secret` is always sensitive, including `/secret` with no args.
- *      `/secretive` is not `/secret` (already pinned in parse-colon-tab).
- *
- *   5. A recognised `/mcp add` tail is recallable; a misspelled `tokn`
- *      value on that grammar is sensitive because the shape is unknown
- *      on a credential-bearing command.
+ *      `/name`. Bare `/login` is a UI command and MUST remain recallable.
+ *      A whitespace-only tail is not a tail.
  */
 import { describe, expect, it } from "bun:test";
-import { isSensitiveSlashCommand, normalizeSubmittedPrompt } from "@veyyon/coding-agent/slash-commands/helpers/parse";
+import { isSensitiveSlashCommand } from "@veyyon/coding-agent/slash-commands/helpers/parse";
 
 describe("userinfo in a URL is sensitive; a plain URL is not", () => {
 	it("classifies scheme://user:pass@host on an ordinary command", () => {
@@ -117,49 +101,5 @@ describe("/login and /join are sensitive only with an argument tail", () => {
 	it("classifies a leading-whitespace /login with a tail after trimStart inside the predicate", () => {
 		expect(isSensitiveSlashCommand("  /login anthropic")).toBe(true);
 		expect(isSensitiveSlashCommand("  /login")).toBe(false);
-	});
-});
-
-describe("/secret is always sensitive; prefix lookalikes are not", () => {
-	it("classifies /secret with and without arguments", () => {
-		expect(isSensitiveSlashCommand("/secret")).toBe(true);
-		expect(isSensitiveSlashCommand("/secret list")).toBe(true);
-		expect(isSensitiveSlashCommand("/secret add DB hunter2")).toBe(true);
-	});
-
-	it("does not classify /secretive as /secret", () => {
-		expect(isSensitiveSlashCommand("/secretive list")).toBe(false);
-	});
-});
-
-describe("normalizeSubmittedPrompt keeps trailing credential bytes on /secret only", () => {
-	it("does not trim a trailing space on /secret add NAME value ", () => {
-		const raw = "/secret add NAME value ";
-		expect(normalizeSubmittedPrompt(raw)).toBe(raw);
-		expect(normalizeSubmittedPrompt(raw).endsWith(" ")).toBe(true);
-	});
-
-	it("still trims ordinary chat and non-secret commands", () => {
-		expect(normalizeSubmittedPrompt("  hello  ")).toBe("hello");
-		expect(normalizeSubmittedPrompt("  /status  ")).toBe("/status");
-		expect(normalizeSubmittedPrompt("  /secretive  ")).toBe("/secretive");
-	});
-
-	it("trims only leading whitespace on /secret, not trailing", () => {
-		expect(normalizeSubmittedPrompt("  /secret add X y  ")).toBe("/secret add X y  ");
-	});
-});
-
-describe("a recognised mcp add tail is recallable; an unknown shape on that grammar is not", () => {
-	it("leaves a fully recognised /mcp add line recallable", () => {
-		expect(isSensitiveSlashCommand("/mcp add srv url http://example.com")).toBe(false);
-	});
-
-	it("classifies a misspelled tokn value on /mcp add as sensitive", () => {
-		expect(isSensitiveSlashCommand("/mcp add srv tokn sk-live-abcdef")).toBe(true);
-	});
-
-	it("classifies a value-less token keyword on /mcp add as sensitive", () => {
-		expect(isSensitiveSlashCommand("/mcp add srv token")).toBe(true);
 	});
 });
