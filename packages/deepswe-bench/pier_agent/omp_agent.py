@@ -78,11 +78,14 @@ class OmpAgent(BaseInstalledAgent):
             ),
             user="root",
         )
+        # --mode json streams NDJSON events (thinking deltas, tool calls, text)
+        # live to stdout instead of buffering the final result until exit.
+        # This gives real-time observability in omp.txt during long trials.
         agent_command = (
             f"export OPENCODE_API_KEY=$(cat {CONTAINER_ASSETS_DIR}/opencode-key) && "
             f"{CONTAINER_ASSETS_DIR}/bun {CONTAINER_ASSETS_DIR}/cli.js "
             f"--model {shlex.quote(self.model_name)} "
-            f"--auto-approve --print {shlex.quote(instruction)} </dev/null 2>&1"
+            f"--auto-approve --print --mode json {shlex.quote(instruction)} </dev/null 2>&1"
         )
         logged = build_status_preserving_tee_command(agent_command, "/logs/agent/omp.txt")
         command = logged
