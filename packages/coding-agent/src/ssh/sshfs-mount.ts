@@ -2,12 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { $which, getRemoteDir, postmortem } from "@veyyon/utils";
 import { $ } from "bun";
-import {
-	getControlDir,
-	getControlPathTemplate,
-	type SSHConnectionTarget,
-	supportsSshControlMaster,
-} from "./connection-manager";
+import { getControlDir, getControlPath, type SSHConnectionTarget } from "./connection-manager";
 import { buildSshTarget, sanitizeHostName } from "./utils";
 
 // Dirs are resolved per call, never frozen at module load: the dirs resolver
@@ -56,15 +51,9 @@ function buildSshfsArgs(host: SSHConnectionTarget): string[] {
 		"StrictHostKeyChecking=accept-new",
 	];
 
-	if (supportsSshControlMaster()) {
-		args.push(
-			"-o",
-			"ControlMaster=auto",
-			"-o",
-			`ControlPath=${getControlPathTemplate()}`,
-			"-o",
-			"ControlPersist=3600",
-		);
+	const controlPath = getControlPath(host);
+	if (controlPath) {
+		args.push("-o", "ControlMaster=auto", "-o", `ControlPath=${controlPath}`, "-o", "ControlPersist=3600");
 	}
 
 	if (host.port) {
