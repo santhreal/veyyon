@@ -8,6 +8,10 @@
 ### Added
 
 - `edit.critiqueCodeMutations` prompts a bounded self-review before finalization after one turn modifies at least two distinct code files.
+- `bench/session-memory.bench.ts` reports heap after a forced GC, current RSS and high-water RSS at each of three phases (module baseline, `SessionManager.open`, `buildSessionContext`) over a synthetic transcript sized by `SESSION_MB`.
+
+- Added `model.toolCallLoopGuard.readSubsumptionThreshold` (default `2`) to steer models that re-read unchanged code lines back-to-back before consuming full context.
+- `VEYYON_DEBUG_STARTUP=1` writes one line per phase of a prompt submission (compaction check, plan arm, context build, memory context), so a slow submit names the phase that spent the time.
 - `read` takes `depth` and `limit` arguments for directory listings, and a read of the session working directory root with neither now returns a concise top-level listing with per-subdirectory entry counts instead of the recursive tree.
 - A tool result that carries an image now states whether the picture reached the screen, so a model reading a file describes what it shows instead of reporting that it displayed it.
 - A picture the block gives up on after the fact, because the session's image budget demoted it or a Kitty session could not convert it, is stated to the model as undrawn instead of being reported as displayed.
@@ -16,6 +20,8 @@
 - Every supervised process termination records which component ended it and why, with distinct attribution for each path (operator stop, signal, restart, broker shutdown, idle reaper, OS signal, broker recovery, launch failure, external signal, and natural exit); `launch list` output shows the lifetime owning condition and retained completion records with exit codes, reasons, and output tails, queryable after the name is reused and across broker restarts.
 
 ### Changed
+
+- Startup paints the composer itself instead of an empty reservation. The first frame used to reserve eight blank rows where the prompt would live and left them empty until the mode finished initializing — slash-command discovery, recent-session reads — so on a cold launch the composer arrived seconds late and read as it sliding up into place. The first frame now paints the resting composer (real hairline, ghost prompt, exact row count) from one static component shared with the mounted zone: the prompt is on screen from the first paint, and the handover swaps text, never position.
 
 - Multi-target `ast_grep` searches now execute concurrently while preserving globally ordered paging, totals, parse errors, cancellation, and target-order failures.
 - The vibe screens, the image-inspection call and an LSP hover code block draw no border of their own inside a tool block, so a block keeps one left edge; a tree connector remains only where a row belongs to the row above it, in the eval value tree, the grep line gutter, the job tree and the LSP reference tree.
@@ -44,6 +50,7 @@
 - The finalization reminder counts the files a multi-file edit actually wrote: a call that reports overall failure after writing some of its files is now unverified evidence, and a file a per-file entry skipped is no longer named as affected.
 - A mutated path is XML-escaped before it reaches the hidden finalization reminder, so a file name spelling `</system-reminder>` cannot end the reminder envelope early, and a relative `ast_edit` path is resolved against the call's working directory before duplicate paths are collapsed.
 - A colour or title escape sequence a command writes in two pieces no longer leaves part of itself in tool output: the sink holds a sequence its chunk ended inside until the piece that finishes it arrives, and drops one the stream never completes.
+- A `launch` tool block no longer renders as a bare title with no rows: the header drops the placeholder ellipsis while `op` is still streaming, and every operation falls back to the result text when the structured detail it renders from is absent.
 - The `compaction.remote` setting description documents that server-side compaction applies to supported OpenAI, Azure OpenAI, and ChatGPT Codex Responses models.
 - `branchSummary.reserveTokens` now reaches the branch summarizer. It was declared in the settings schema but read by nothing, so every branch summary used the built-in 16384 reserve whatever the setting said.
 
