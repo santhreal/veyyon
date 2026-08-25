@@ -9,6 +9,7 @@
 - `AppendOnlyContextManager.#longestStablePrefix` skips the JSON.stringify digest when the incoming message is the same object or shares the same `content` array reference plus matching scalar fields, cutting the per-turn stable-prefix scan from ~13 ms to <1 ms on a 33K-message conversation.
 - `normalizeTools` checks its cache before running the validity filter, avoiding a throwaway array allocation on every cached turn.
 - `StablePrefix.build` computes the fingerprint before allocating the snapshot, avoiding a `systemPrompt` array spread on every turn where the prefix has not changed.
+- `StablePrefix` caches the fingerprint by reference equality of `systemPrompt`, `tools`, and `BuildOptions`, skipping the `JSON.stringify` + `Bun.hash` call on every turn where the inputs are the same references.
 
 ### Added
 
