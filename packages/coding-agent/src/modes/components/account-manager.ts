@@ -23,6 +23,8 @@
 import { getOAuthProviders } from "@veyyon/ai/oauth";
 import {
 	type Component,
+	extractPrintableText,
+	fuzzyFilter,
 	HoverFade,
 	Input,
 	matchesKey,
@@ -233,6 +235,9 @@ export class AccountManagerComponent implements Component {
 	#bodyLines: BodyLine[] = [];
 	/** Mirrors `accounts.loadBalancing`; only `b` and the chip change it. */
 	#loadBalancing = false;
+	#searchQuery = "";
+	/** True while #searchQuery was typed by user; keeps query clearable after resize. */
+	#searchTypedByUser = false;
 
 	constructor(inventory: AccountInventory, callbacks: AccountManagerCallbacks, options: AccountManagerOptions = {}) {
 		this.#inventory = inventory;
@@ -303,6 +308,15 @@ export class AccountManagerComponent implements Component {
 			this.#activeProviderId = this.#entries[0]?.providerId ?? "";
 			this.#sidebarFollowActive = true;
 		}
+		if (this.#searchQuery.trim()) {
+			const filtered = this.#filteredEntries;
+			if (filtered.length > 0 && !filtered.some(entry => entry.providerId === this.#activeProviderId)) {
+				this.#activeProviderId = filtered[0]?.providerId ?? this.#activeProviderId;
+				this.#sidebarFollowActive = true;
+				this.#selectFirstEntry();
+			}
+			this.#sidebarScroll = 0;
+		}
 	}
 
 	#activeEntry(): AccountSidebarEntry | undefined {
@@ -337,6 +351,61 @@ export class AccountManagerComponent implements Component {
 			: selection.kind === "account" && selection.credentialId === target.credentialId;
 	}
 
+	hasActiveSearch(): boolean {
+		return this.#searchQuery.length > 0 && (this.#searchTypedByUser || this.#isSearchEnabled());
+	}
+
+	#isSearchEnabled(): boolean {
+		const baseline = this.#splitRowCount - SIDEBAR_SUMMARY_ROWS;
+		return this.#entries.length > Math.max(1, baseline);
+	}
+
+	#shouldRenderSearchStatus(): boolean {
+		return this.#isSearchEnabled() || this.#searchQuery.length > 0;
+	}
+
+	get #filteredEntries(): AccountSidebarEntry[] {
+		const query = this.#searchQuery.trim();
+		if (!query) return this.#entries;
+		return fuzzyFilter(this.#entries, query, entry => `${entry.label} ${entry.providerId}`);
+	}
+
+	#setSearchQuery(query: string, typedByUser = false): void {
+		this.#searchQuery = query;
+		this.#searchTypedByUser = query.length > 0 && typedByUser;
+		const filtered = this.#filteredEntries;
+		if (filtered.length > 0 && !filtered.some(entry => entry.providerId === this.#activeProviderId)) {
+			this.#activeProviderId = filtered[0]?.providerId ?? this.#activeProviderId;
+			this.#bodyScroll = 0;
+			this.#sidebarFollowActive = true;
+			this.#selectFirstEntry();
+		}
+		this.#sidebarScroll = 0;
+	}
+
+	#handleSearchInput(data: string): boolean {
+		if (matchesKey(data, "backspace") || matchesKey(data, "ctrl+h")) {
+			if (!this.hasActiveSearch()) return false;
+			const chars = [...this.#searchQuery];
+			chars.pop();
+			this.#setSearchQuery(chars.join(""), true);
+			return true;
+		}
+		if (this.#focus !== "sidebar" && !this.hasActiveSearch()) return false;
+		if (!this.#isSearchEnabled()) return false;
+		const printable = extractPrintableText(data);
+		if (printable === undefined) return false;
+		if (this.#searchQuery.length === 0 && printable.trim().length === 0) return false;
+		this.#setSearchQuery(this.#searchQuery + printable, true);
+		return true;
+	}
+
+	#renderSearchStatus(width: number): string {
+		const query = this.#searchQuery.trim();
+		const suffix = query ? `Search: ${this.#searchQuery}` : "Type to search";
+		return theme.fg("muted", truncateToWidth(`  ${suffix}`, width));
+	}
+
 	// ═══════════════════════════════════════════════════════════════════════
 	// Input
 	// ═══════════════════════════════════════════════════════════════════════
@@ -360,6 +429,10 @@ export class AccountManagerComponent implements Component {
 				this.#pendingLogoutCredentialId = null;
 				return;
 			}
+			if (this.hasActiveSearch()) {
+				this.#setSearchQuery("");
+				return;
+			}
 			this.#callbacks.onCancel();
 			return;
 		}
@@ -380,6 +453,7 @@ export class AccountManagerComponent implements Component {
 		// point every non-`x` key passes rather than inside each branch, so a key added later cannot
 		// forget to do it.
 		if (data !== "x") this.#pendingLogoutCredentialId = null;
+		if (this.#handleSearchInput(data)) return;
 
 		if (matchesSelectUp(data)) {
 			this.#step(-1);
@@ -455,13 +529,14 @@ export class AccountManagerComponent implements Component {
 	#step(direction: 1 | -1): void {
 		this.#pendingLogoutCredentialId = null;
 		if (this.#focus === "sidebar") {
-			if (this.#entries.length === 0) return;
+			const filtered = this.#filteredEntries;
+			if (filtered.length === 0) return;
 			const current = Math.max(
 				0,
-				this.#entries.findIndex(entry => entry.providerId === this.#activeProviderId),
+				filtered.findIndex(entry => entry.providerId === this.#activeProviderId),
 			);
-			const next = (current + direction + this.#entries.length) % this.#entries.length;
-			this.#selectProvider(this.#entries[next]?.providerId ?? this.#activeProviderId);
+			const next = (current + direction + filtered.length) % filtered.length;
+			this.#selectProvider(filtered[next]?.providerId ?? this.#activeProviderId);
 			return;
 		}
 		const rows = this.#rows();
@@ -572,23 +647,34 @@ export class AccountManagerComponent implements Component {
 		const innerCol = event.col - this.#frameLeft - 2;
 		const contentLine = event.row - this.#contentRowStart;
 		const overSplit = contentLine >= 0 && contentLine < this.#splitRowCount;
+		const searchOffset = this.#shouldRenderSearchStatus() ? 1 : 0;
 		// The summary block owns the last rows of the sidebar column and answers to no provider,
 		// so a click there must select nothing rather than index past the visible list.
 		const overSidebar =
-			overSplit && contentLine < this.#sidebarListRows() && innerCol >= 0 && innerCol < this.#sidebarWidthLast;
+			overSplit &&
+			contentLine >= searchOffset &&
+			contentLine < searchOffset + this.#sidebarListRows() &&
+			innerCol >= 0 &&
+			innerCol < this.#sidebarWidthLast;
 		const overBody = overSplit && innerCol >= this.#sidebarWidthLast + 3;
 
 		if (event.motion) {
-			this.#sidebarHover = overSidebar ? this.#sidebarScroll + contentLine : null;
+			this.#sidebarHover = overSidebar ? this.#sidebarScroll + contentLine - searchOffset : null;
 			this.#sidebarFade?.set(this.#sidebarHover);
 			return true;
 		}
 		if (event.wheel !== null) {
-			if (overSidebar) {
+			const overSidebarForWheel =
+				overSplit &&
+				contentLine < searchOffset + this.#sidebarListRows() &&
+				innerCol >= 0 &&
+				innerCol < this.#sidebarWidthLast;
+			if (overSidebarForWheel) {
+				const filtered = this.#filteredEntries;
 				this.#sidebarScroll = clampLow(
 					this.#sidebarScroll + event.wheel,
 					0,
-					Math.max(0, this.#entries.length - this.#sidebarListRows()),
+					Math.max(0, filtered.length - this.#sidebarListRows()),
 				);
 			} else if (overBody) {
 				this.#bodyScroll = clampLow(
@@ -601,8 +687,14 @@ export class AccountManagerComponent implements Component {
 		}
 		if (!event.leftClick) return true;
 
+		if (searchOffset === 1 && overSplit && contentLine === 0 && innerCol >= 0 && innerCol < this.#sidebarWidthLast) {
+			this.#focus = "sidebar";
+			return true;
+		}
 		if (overSidebar) {
-			const entry = this.#entries[this.#sidebarScroll + contentLine];
+			const filtered = this.#filteredEntries;
+			const providerLine = contentLine - searchOffset;
+			const entry = filtered[this.#sidebarScroll + providerLine];
 			if (entry) {
 				this.#focus = "sidebar";
 				this.#selectProvider(entry.providerId);
@@ -663,11 +755,12 @@ export class AccountManagerComponent implements Component {
 	 * the fold, and the wheel could never reach the last three providers.
 	 */
 	#sidebarListRows(): number {
-		return Math.max(1, this.#splitRowCount - SIDEBAR_SUMMARY_ROWS);
+		return Math.max(1, this.#splitRowCount - SIDEBAR_SUMMARY_ROWS - (this.#shouldRenderSearchStatus() ? 1 : 0));
 	}
 
 	#renderSidebar(width: number): string[] {
 		const listRows = this.#sidebarListRows();
+		const filtered = this.#filteredEntries;
 		// The scroll offset is the wheel's to pan freely; only an ACTIVATION snaps it back to the
 		// selected provider. Following the active entry on every frame instead made the wheel look
 		// broken: each pan was undone by the very next repaint, so the providers below the fold
@@ -675,40 +768,49 @@ export class AccountManagerComponent implements Component {
 		if (this.#sidebarFollowActive) {
 			const activeIndex = Math.max(
 				0,
-				this.#entries.findIndex(entry => entry.providerId === this.#activeProviderId),
+				filtered.findIndex(entry => entry.providerId === this.#activeProviderId),
 			);
 			if (activeIndex < this.#sidebarScroll) this.#sidebarScroll = activeIndex;
 			else if (activeIndex >= this.#sidebarScroll + listRows) this.#sidebarScroll = activeIndex - listRows + 1;
 			this.#sidebarFollowActive = false;
 		}
-		this.#sidebarScroll = clampLow(this.#sidebarScroll, 0, Math.max(0, this.#entries.length - listRows));
+		this.#sidebarScroll = clampLow(this.#sidebarScroll, 0, Math.max(0, filtered.length - listRows));
 
 		const lines: string[] = [];
-		for (let i = this.#sidebarScroll; i < Math.min(this.#entries.length, this.#sidebarScroll + listRows); i++) {
-			const entry = this.#entries[i];
-			if (!entry) continue;
-			const active = entry.providerId === this.#activeProviderId;
-			const cursor = active && this.#focus === "sidebar" ? theme.fg("accent", theme.nav.cursor) : " ";
-			// A provider you hold no account for dims ENTIRELY, label included. Only its count was
-			// dimmed before, so forty empty providers sat at the same text weight as the three you use
-			// and the eye had to read the right-hand column to find them. The list's job is "what you
-			// have, then what you could have", and weight is what says which is which.
-			const label = active
-				? theme.bold(theme.fg("accent", entry.label))
-				: entry.accountCount === 0
-					? theme.fg("dim", entry.label)
-					: entry.label;
-			const annotation = entry.hasFailure
-				? `${theme.fg("dim", entry.annotation)} ${theme.fg("warning", theme.status.warning)}`
-				: `${theme.fg("dim", entry.annotation)}  `;
-			const left = `${cursor} ${label}`;
-			const gap = Math.max(1, width - visibleWidth(left) - visibleWidth(annotation));
-			let line = `${left}${" ".repeat(gap)}${annotation}`;
-			const hoverStrength = this.#sidebarStrength(i);
-			if (hoverStrength > 0) line = hoverBandAt(line, width, hoverStrength);
-			lines.push(line);
+		if (this.#shouldRenderSearchStatus()) {
+			lines.push(this.#renderSearchStatus(width));
 		}
-		while (lines.length < listRows + 1) lines.push("");
+		if (filtered.length === 0) {
+			lines.push(theme.fg("muted", truncateToWidth("  No matching providers", width)));
+			while (lines.length < (this.#shouldRenderSearchStatus() ? 1 : 0) + listRows) lines.push("");
+		} else {
+			for (let i = this.#sidebarScroll; i < Math.min(filtered.length, this.#sidebarScroll + listRows); i++) {
+				const entry = filtered[i];
+				if (!entry) continue;
+				const active = entry.providerId === this.#activeProviderId;
+				const cursor = active && this.#focus === "sidebar" ? theme.fg("accent", theme.nav.cursor) : " ";
+				// A provider you hold no account for dims ENTIRELY, label included. Only its count was
+				// dimmed before, so forty empty providers sat at the same text weight as the three you use
+				// and the eye had to read the right-hand column to find them. The list's job is "what you
+				// have, then what you could have", and weight is what says which is which.
+				const label = active
+					? theme.bold(theme.fg("accent", entry.label))
+					: entry.accountCount === 0
+						? theme.fg("dim", entry.label)
+						: entry.label;
+				const annotation = entry.hasFailure
+					? `${theme.fg("dim", entry.annotation)} ${theme.fg("warning", theme.status.warning)}`
+					: `${theme.fg("dim", entry.annotation)}  `;
+				const left = `${cursor} ${label}`;
+				const gap = Math.max(1, width - visibleWidth(left) - visibleWidth(annotation));
+				let line = `${left}${" ".repeat(gap)}${annotation}`;
+				const hoverStrength = this.#sidebarStrength(i);
+				if (hoverStrength > 0) line = hoverBandAt(line, width, hoverStrength);
+				lines.push(line);
+			}
+			while (lines.length < (this.#shouldRenderSearchStatus() ? 1 : 0) + listRows) lines.push("");
+		}
+		while (lines.length < (this.#shouldRenderSearchStatus() ? 1 : 0) + listRows + 1) lines.push("");
 		lines.push(theme.fg("borderAccent", "─".repeat(Math.max(1, width - 2))));
 		lines.push(theme.fg("dim", truncateToWidth(sidebarSummaryLine(this.#inventory), width)));
 		return lines;
