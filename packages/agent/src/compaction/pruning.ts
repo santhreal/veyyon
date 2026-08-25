@@ -423,24 +423,19 @@ export function pruneToolOutputs(entries: SessionEntry[], config: PruneConfig = 
 
 	const candidates: Array<{ entry: SessionMessageEntry; tokens: number; superseded: boolean; useless: boolean }> = [];
 	const toolCallsById = collectToolCallsById(entries);
-	const supersededMessages = config.supersedeKey
-		? new Set(
-				collectSupersededResults(entries, toolCallsById, config.supersedeKey, config.protectedTools).map(
-					candidate => candidate.message,
-				),
-			)
-		: undefined;
-	const uselessMessages =
-		config.pruneUseless !== false
-			? new Set(
-					collectUselessResults(
-						entries,
-						toolCallsById,
-						config.protectedTools,
-						supersededMessages ?? new Set(),
-					).map(candidate => candidate.message),
-				)
-			: undefined;
+	const pruneCandidates = collectPruneCandidates(
+		entries,
+		toolCallsById,
+		config.supersedeKey,
+		config.protectedTools,
+		config.pruneUseless !== false,
+	);
+	const supersededMessages = new Set<ToolResultMessage>();
+	const uselessMessages = new Set<ToolResultMessage>();
+	for (const candidate of pruneCandidates) {
+		if (candidate.notice === SUPERSEDED_NOTICE) supersededMessages.add(candidate.message);
+		else uselessMessages.add(candidate.message);
+	}
 
 	const boundaryIndex = resolveCompactionBoundaryIndex(entries, config.keepBoundaryId);
 	const cacheWarmSuffixTokens = config.cacheWarmSuffixTokens;
