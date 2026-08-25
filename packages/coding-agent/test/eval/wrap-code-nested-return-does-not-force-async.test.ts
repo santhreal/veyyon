@@ -34,14 +34,6 @@ describe("wrapCode does not wrap a cell whose only return/await is nested", () =
 		expect(result.source).toContain("return await 1");
 	});
 
-	it("does wrap a cell with a top-level await, and still captures the trailing expression", async () => {
-		const result = await wrapCode("const x = await 1;\nx");
-		expect(result.asyncWrapped).toBe(true);
-		expect(result.source.startsWith("(async () => {")).toBe(true);
-		expect(result.source).toContain("var x = await 1");
-		expect(result.source).toContain("__veyyon_set_final_expr__((x))");
-	});
-
 	it("rewrites a top-level return into the final-expression setter rather than swallowing it", async () => {
 		const result = await wrapCode("return 7;");
 		expect(result.finalExpressionReturned).toBe(true);

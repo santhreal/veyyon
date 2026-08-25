@@ -75,5 +75,4 @@ describe("an empty or reserved file is not a spec", () => {
 		expect(resolved.text.trim().length).toBeGreaterThan(0);
 		expect(resolved.text).not.toBe("");
 	});
-
 });
