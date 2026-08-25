@@ -74,6 +74,7 @@
 - `renderStatusLine` replaces `.map().filter()` on the meta array with a single `for` loop, avoiding two throwaway arrays per status line render.
 - The `convertToLlm` file-mention partitioning merges two `.filter()` calls (text files, image files) into a single `for` loop, avoiding a throwaway array per file-mention message during per-turn conversion.
 - `convertImageBearingCustomMessage` merges two `.filter()` calls (text blocks, image blocks) into a single `for` loop, avoiding a throwaway array per image-bearing custom message during conversion.
+- `#rebasePendingContextSnapshotAfterHistoryRewrite` and the prompt-submission fallback use `computeStoredMessagesTokens` instead of `this.messages.reduce(…)`, serving the incrementally cached running sum instead of re-walking the full 33K-message array after every history rewrite (prune, shake, dedup).
 
 ### Added
 

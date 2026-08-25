@@ -201,6 +201,33 @@ describe("computeStoredMessagesTokens incremental cache", () => {
 		expect(computeStoredMessagesTokens(includedFirst)).toBe(includedAlone);
 		expect(computeStoredMessagesTokens(includedFirst, { excludeEncryptedReasoning: true })).toBe(excludedAlone);
 	});
+	/**
+	 * Regression: `#rebasePendingContextSnapshotAfterHistoryRewrite` and the prompt
+	 * submission fallback must use `computeStoredMessagesTokens` (incrementally
+	 * cached) rather than `this.messages.reduce(…)` so a history rewrite does not
+	 * re-walk the entire stored conversation. The rebase fires after every prune,
+	 * shake, and dedup — all O(n) passes that already walked the array — so the
+	 * token estimate that follows must not add a second full walk.
+	 */
+	it("does not re-walk messages already cached when called a second time (rebase path)", () => {
+		const messages = [userMessage("one"), userMessage("two"), userMessage("three")];
+		const session = makeSession(messages);
+
+		// Prime the cache the way the first prompt submission does.
+		computeStoredMessagesTokens(session as never);
+
+		const estimateSpy = vi.spyOn(compactionModule, "estimateTokens");
+		estimateSpy.mockClear();
+
+		// Simulate the rebase: the same messages array, no growth. The cached
+		// running sum must serve the result without re-measuring any message.
+		const result = computeStoredMessagesTokens(session as never);
+		expect(estimateSpy).toHaveBeenCalledTimes(1);
+		expect(estimateSpy).toHaveBeenCalledWith(messages[messages.length - 1], undefined);
+		expect(result).toBeGreaterThan(0);
+
+		estimateSpy.mockRestore();
+	});
 });
 
 /**

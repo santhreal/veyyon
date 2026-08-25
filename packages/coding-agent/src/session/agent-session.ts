@@ -11291,7 +11291,7 @@ export class AgentSession {
 			const promptTokens =
 				breakdown?.usedTokens ??
 				nonMessageTokens +
-					this.messages.reduce((sum, msg) => sum + estimateTokens(msg), 0) +
+					computeStoredMessagesTokens(this) +
 					messages.reduce((sum, msg) => sum + estimateTokens(msg), 0);
 			const contextDetail = sessionTelemetryDetail(
 				this.settings.get("session.instrumentation"),
@@ -20253,7 +20253,7 @@ export class AgentSession {
 	#rebasePendingContextSnapshotAfterHistoryRewrite(): void {
 		if (!this.#pendingContextSnapshot) return;
 		const nonMessageTokens = computeNonMessageTokens(this);
-		const promptTokens = nonMessageTokens + this.messages.reduce((sum, msg) => sum + estimateTokens(msg), 0);
+		const promptTokens = nonMessageTokens + computeStoredMessagesTokens(this);
 		const rebased: PendingContextSnapshot = {
 			promptTokens,
 			nonMessageTokens,
