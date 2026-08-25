@@ -25,8 +25,8 @@ import { AsyncJobManager } from "@veyyon/coding-agent/async/job-manager";
 import type { DaemonBrokerClient } from "@veyyon/coding-agent/launch/client";
 import type { DaemonOperation, DaemonRpcResult, DaemonSnapshot } from "@veyyon/coding-agent/launch/protocol";
 import { DAEMON_TERMINATION_OWNERS } from "@veyyon/coding-agent/launch/protocol";
-import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { watchLaunchedProcessExit } from "@veyyon/coding-agent/tools/launch-exit-watch";
+import { makeToolSession } from "../helpers/tool-session";
 
 function snapshot(name: string, overrides: Partial<DaemonSnapshot>): DaemonSnapshot {
 	return {
@@ -69,7 +69,7 @@ async function noticeFor(exited: DaemonSnapshot, logText = ""): Promise<string> 
 			delivered.push(text);
 		},
 	});
-	const session = { asyncJobManager: manager } as unknown as ToolSession;
+	const session = makeToolSession({ asyncJobManager: manager });
 
 	watchLaunchedProcessExit({
 		session,
