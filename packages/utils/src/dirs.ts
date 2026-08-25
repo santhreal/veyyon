@@ -1057,13 +1057,37 @@ export function pathIsWithin(root: string, candidate: string): boolean {
 	return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
 }
 
+/**
+ * The path from `root` down to `candidate`, or null when `candidate` is not under it.
+ *
+ * THE RELATIVE PATH IS TAKEN FROM THE CANDIDATE'S OWN SPELLING. Containment is decided on
+ * `normalizePathForComparison`, which lowercases on Windows because that filesystem is
+ * case-insensitive; the string handed back must not be, and it was. A project in
+ * `C:\Users\dev\Projects\MyApp\Src` reported `myapp\src`, and that string is what the status
+ * line paints and what a rule path is named by, so a Windows session read its own directories
+ * in a case it had never used.
+ */
 export function relativePathWithinRoot(root: string, candidate: string): string | null {
 	if (!pathIsWithin(root, candidate)) return null;
-	const normalizedRoot = normalizePathForComparison(root);
-	const normalizedCandidate = normalizePathForComparison(candidate);
-	const relative = path.relative(normalizedRoot, normalizedCandidate);
-	return relative || null;
+	// HOW DEEP, from the folded comparison; WHICH NAMES, from the candidate. Asking
+	// `path.relative` for the answer over the resolved spellings is not enough: it folds case
+	// on win32 and not on posix, so a root configured in one case and a directory on disk in
+	// another walked up and back down (`../../Users/dev/Projects/MyApp`) wherever the platform
+	// compares exactly. Containment is already settled above, so the tail is that many
+	// segments off the end of the candidate.
+	const depth = path
+		.relative(normalizePathForComparison(root), normalizePathForComparison(candidate))
+		.split(PATH_SEPARATORS)
+		.filter(segment => segment !== "").length;
+	if (depth === 0) return null;
+	const segments = resolveEquivalentPath(candidate)
+		.split(PATH_SEPARATORS)
+		.filter(segment => segment !== "");
+	return segments.slice(Math.max(0, segments.length - depth)).join(path.sep) || null;
 }
+
+/** Either platform's separator, since a resolved path may be spelled with either. */
+const PATH_SEPARATORS = /[\\/]+/u;
 
 let projectDir = standardizeMacOSPath(process.cwd());
 
