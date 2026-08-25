@@ -34,6 +34,7 @@
 - `AgentSession.#emit` caches its listener-array snapshot and reuses it across events, invalidating only on subscribe/unsubscribe/dispose. During streaming, `#emit` fires per token and the listener set is stable, so this avoids one array spread allocation per streaming event.
 - `#withPlanProtection` caches the plan-read matcher as a field instead of creating a new closure on every call, and `#pruneStaleToolResults` passes the default `protectedTools` array by reference instead of spreading a throwaway copy, avoiding two per-turn allocations on the compaction pruning path.
 - `AgentSession.#queueExtensionEvent` drops the per-event `async` wrapper around `#emitExtensionEvent`, avoiding one AsyncFunction allocation and an extra microtask per streaming event.
+- `EventController.#handleMessageUpdate` reuses a single `Set<Component>` for repaint targets across streaming events instead of allocating a new `Set` per `message_update` (per token), avoiding one Set allocation per streamed token in the TUI event handler.
 - `getSessionStats` hoists the task-tool usage extractor to module scope instead of allocating a new closure on every call, avoiding a per-turn closure allocation in the session stats path.
 - `#messagesSummarizedAway` caches its result keyed on the branch array reference and compaction boundary, so the three per-turn `getSessionStats` calls share one walk and one array allocation instead of three.
 - `#checkCompaction` caches the `this.model` getter in a local variable, avoiding 5 repeated 3-hop property-chain traversals per turn.

@@ -10,8 +10,9 @@
  * excluded from the provider context, while normal messages pass through.
  */
 import { describe, expect, it } from "bun:test";
-import { Agent, type AssistantMessage } from "@veyyon/agent-core";
+import { Agent } from "@veyyon/agent-core";
 import { createMockModel } from "@veyyon/ai/providers/mock";
+import type { AssistantMessage } from "@veyyon/ai/types";
 import { createAssistantMessage } from "./helpers";
 
 function emptyUsage(): AssistantMessage["usage"] {
@@ -24,7 +25,6 @@ function emptyUsage(): AssistantMessage["usage"] {
 		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 	};
 }
-
 function makeRefusal(): AssistantMessage {
 	return {
 		role: "assistant",
@@ -32,6 +32,10 @@ function makeRefusal(): AssistantMessage {
 		stopReason: "error",
 		stopDetails: { type: "refusal", category: null, explanation: "refused" },
 		usage: emptyUsage(),
+		api: "mock",
+		provider: "mock",
+		model: "mock-model",
+		timestamp: 1,
 	};
 }
 

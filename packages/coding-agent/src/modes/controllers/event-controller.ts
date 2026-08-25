@@ -148,6 +148,7 @@ export class EventController {
 	// emits one read per completion — does not break it, so a run of consecutive
 	// reads collapses into one group even across completion boundaries.
 	#lastVisibleBlockCount = 0;
+	#repaintTargets = new Set<Component>();
 	#renderedCustomMessages = new Set<string>();
 	#lastIntent: string | undefined = undefined;
 	#backgroundTaskCallIds = new Set<string>();
@@ -873,7 +874,8 @@ export class EventController {
 		this.#vocalizeDelta(event);
 		if (this.ctx.streamingComponent && event.message.role === "assistant") {
 			const smoothStreaming = this.ctx.settings.get("display.smoothStreaming");
-			const repaintTargets = new Set<Component>();
+			this.#repaintTargets.clear();
+			const repaintTargets = this.#repaintTargets;
 			const streamingComponent = this.ctx.streamingComponent;
 			const unlockedThinkingVisibility = this.ctx.noteDisplayableThinkingContent(event.message);
 			if (unlockedThinkingVisibility) {
