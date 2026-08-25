@@ -1,3 +1,4 @@
+import { errorMessage } from "@veyyon/utils";
 import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -183,7 +184,7 @@ export class OmpAdapter implements SystemAdapter {
 				}
 			} catch (error) {
 				console.warn(
-					`omp: models.yml generation failed: ${error instanceof Error ? error.message : String(error)}`,
+					`omp: models.yml generation failed: ${errorMessage(error)}`,
 				);
 			}
 		}
