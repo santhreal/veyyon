@@ -26,10 +26,13 @@
 - Bundled model resolution persists a content-verified enriched snapshot, and a registry cache stamp moves on every row-content write, and on a row crossing the freshness window it is read under, without treating SQLite sidecar churn or a provider re-verifying models it already had as a change.
 - Added `supportsServerCompaction` capability data for ChatGPT Codex backend models on the Responses API.
 - `Image` accepts an `onDisplayed` callback and reports the cause each time an image starts or stops falling back to a placeholder.
+- `run()` accepts verified command summaries for root help and falls back to loading the full registry when any summary is absent.
 - `source-declarations.ts`: `exportedDeclarationsIn` and `declarersOfName` report which modules declare a name, so a one-owner gate no longer matches the declaration's own bytes; a reflowed signature, a signature quoted in a comment and a second module declaring the same name are now all answered correctly.
 
 ### Changed
 
+- `veyyon --help` renders its command list from registry summaries verified against command statics and loads only the hidden default command for its flag table, reducing a measured warm Windows invocation from 1.2 seconds to 0.13 seconds.
+- The default launch command imports the session runtime and ACP terminal authentication only when it runs, so loading its flag table no longer imports the runtime graph.
 - Classified runner output (cargo, bun, Go, ctest, dotnet, clippy, golangci-lint, Gradle lint, pytest, and tsc/eslint-family) now opens with a result-contract header: `[clean] <command>` or `[errors]` / `[errors N] <command>`. The header is the verdict and the body contains retained diagnostics.
 - Files → LSP is one enterable row whose nested page independently controls language servers, the agent tool, diagnostics after write or edit, format after write, lazy startup, and diagnostics deduplication; `--no-lsp` still disables the full stack.
 - Startup paints the composer itself instead of an empty reservation. The first frame used to reserve eight blank rows where the prompt would live and left them empty until the mode finished initializing — slash-command discovery, recent-session reads — so on a cold launch the composer arrived seconds late and read as it sliding up into place. The first frame now paints the resting composer (real hairline, ghost prompt, exact row count) from one static component shared with the mounted zone: the prompt is on screen from the first paint, and the handover swaps text, never position.
@@ -82,6 +85,10 @@
 - Supported server-side compaction on the ChatGPT Codex backend with OAuth credential and turn identity headers.
 - API option mapping preserves side-request conversation IDs, preventing Cursor and Devin requests from falling back to the live session ID.
 - Cursor turns fail immediately when an asynchronous exec-server handler fails; malformed grep line or count values and oversized Connect frames fail before protobuf or buffer exhaustion; and success waits for queued handlers and gRPC trailers so quota and availability statuses are preserved.
+- Fixed stock Windows AVX2 detection by trying PowerShell 7 before an isolated modern-addon trial; only explicit shell answers or illegal-instruction exits become verdicts, while missing, incompatible, timed-out, and unexpectedly crashing addons remain unknown.
+- Persisted AVX2 verdicts are schema-versioned and keyed by platform, architecture, and CPU model, so copied or stale caches cannot select a native variant for different hardware.
+- The AVX2 trial load answers from the addon loader's first import and exits, so a compiled host, whose `process.execPath` is the product binary rather than a JavaScript runtime, reports a verdict instead of booting the whole CLI and spawning a trial child of its own at every level.
+- A wrapped line now continues under the indent its first row opened at, so an indented row no longer reads as a new top-level row at a narrow width.
 - `splitTrailingPartialEscape` lets a streaming reader hold back an escape sequence a chunk ended inside, so a sequence divided across two reads is stripped whole instead of losing its head and leaking its tail as text.
 - `discarded-fault.ts`: `bestEffort` and `optionalResult` state which contract discarded a promise's failure, one for a step nobody waits on and one for a probe whose failure is the answer, each taking a mandatory reason.
 
