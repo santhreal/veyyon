@@ -32,7 +32,7 @@ import type {
 import { shouldSendServiceTier } from "../types";
 import { normalizeSystemPrompts } from "../utils";
 import { AssistantMessageEventStream } from "../utils/event-stream";
-import type { RawHttpRequestDump } from "../utils/http-inspector";
+import { materializeDumpBody, type RawHttpRequestDump } from "../utils/http-inspector";
 import { notifyProviderResponse } from "../utils/provider-response";
 import { normalizeSchemaForCCA, normalizeSchemaForGoogle, toolWireSchema } from "../utils/schema";
 import type {
@@ -1076,6 +1076,8 @@ export function streamGoogleGenAI<T extends "google-generative-ai" | "google-ver
 			timestamp: Date.now(),
 		};
 		let rawRequestDump: RawHttpRequestDump | undefined;
+		/** Exact bytes of the last sent request body; materialized into a dump only on the 400/413 path. */
+		let wireBodyJson: string | undefined;
 
 		try {
 			const plan = await prepare();
@@ -1098,11 +1100,14 @@ export function streamGoogleGenAI<T extends "google-generative-ai" | "google-ver
 				model: model.id,
 				method: "POST",
 				url: plan.url,
-				body: params,
 				headers: plan.headers,
 			};
 
+			// Retain the exact sent BYTES, not the parsed object: a dump body is read
+			// only on the 400/413 path, and holding the graph here pinned a full
+			// context-sized object for the whole stream.
 			const bodyJson = JSON.stringify(paramsToWireBody(params));
+			wireBodyJson = bodyJson;
 			const fetchImpl = plan.fetch ?? options?.fetch ?? (globalThis.fetch.bind(globalThis) as FetchImpl);
 			const openStreamAt = async (requestUrl: string): Promise<ReadableStream<Uint8Array>> => {
 				const response = await fetchImpl(requestUrl, {
@@ -1189,7 +1194,11 @@ export function streamGoogleGenAI<T extends "google-generative-ai" | "google-ver
 			stream.push({ type: "done", reason: output.stopReason as "length" | "stop" | "toolUse", message: output });
 			stream.end();
 		} catch (error) {
-			const result = await AIError.finalize(error, { api: model.api, signal: options?.signal, rawRequestDump });
+			const result = await AIError.finalize(error, {
+				api: model.api,
+				signal: options?.signal,
+				rawRequestDump: materializeDumpBody(rawRequestDump, wireBodyJson),
+			});
 			output.stopReason = result.stopReason;
 			output.errorStatus = result.status;
 			output.errorId = result.id;

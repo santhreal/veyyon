@@ -3,6 +3,7 @@ import {
 	buildHttp400DumpPayload,
 	captureHttpErrorResponse,
 	finalizeErrorMessage,
+	materializeDumpBody,
 	type RawHttpRequestDump,
 	shouldDumpRejectedRequest,
 } from "@veyyon/ai/utils/http-inspector";
@@ -50,6 +51,40 @@ describe("buildHttp400DumpPayload", () => {
 
 		expect(payload.headers?.["x-api-key"]).toBe("[redacted]");
 		expect(payload.headers?.["content-type"]).toBe("application/json");
+	});
+});
+
+describe("materializeDumpBody", () => {
+	it("parses the retained wire bytes into the dump body at error time", () => {
+		const dump: RawHttpRequestDump = { provider: "openai", api: "openai-completions", model: "gpt-test" };
+		const materialized = materializeDumpBody(dump, '{"model":"gpt-test","messages":[{"role":"user"}]}');
+		expect(materialized).toBe(dump);
+		expect(dump.body).toEqual({ model: "gpt-test", messages: [{ role: "user" }] });
+	});
+
+	it("returns a body-less dump unchanged when bytes were never sent", () => {
+		const dump: RawHttpRequestDump = { provider: "openai", api: "openai-completions", model: "gpt-test" };
+		expect(materializeDumpBody(dump, undefined)).toBe(dump);
+		expect(dump.body).toBeUndefined();
+		expect(materializeDumpBody(undefined, "{}")).toBeUndefined();
+	});
+
+	it("never overwrites a body that is already present", () => {
+		const existing = { kept: true };
+		const dump: RawHttpRequestDump = {
+			provider: "openai",
+			api: "openai-completions",
+			model: "gpt-test",
+			body: existing,
+		};
+		materializeDumpBody(dump, '{"replaced":true}');
+		expect(dump.body).toBe(existing);
+	});
+
+	it("tolerates unparseable bytes instead of throwing out of an error path", () => {
+		const dump: RawHttpRequestDump = { provider: "openai", api: "openai-completions", model: "gpt-test" };
+		expect(() => materializeDumpBody(dump, "{truncated")).not.toThrow();
+		expect(dump.body).toBeUndefined();
 	});
 });
 
