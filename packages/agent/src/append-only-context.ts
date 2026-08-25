@@ -302,11 +302,7 @@ export class AppendOnlyContextManager {
 			err: m.isError ?? null,
 			id: m.id ?? null,
 		});
-		let hash = 0;
-		for (let j = 0; j < payload.length; j++) {
-			hash = ((hash << 5) - hash + payload.charCodeAt(j)) | 0;
-		}
-		return hash >>> 0;
+		return Number(Bun.hash(payload)) >>> 0;
 	}
 }
 
