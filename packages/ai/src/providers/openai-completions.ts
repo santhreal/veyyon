@@ -427,8 +427,8 @@ function hasToolHistory(messages: Message[]): boolean {
 			return true;
 		}
 		if (msg.role === "assistant") {
-			if (msg.content.some(block => block.type === "toolCall")) {
-				return true;
+			for (const block of msg.content) {
+				if (block.type === "toolCall") return true;
 			}
 		}
 	}
