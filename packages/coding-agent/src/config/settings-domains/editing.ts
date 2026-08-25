@@ -84,6 +84,18 @@ export const EDITING_SETTINGS = {
 		},
 	},
 
+	"edit.critiqueCodeMutations": {
+		type: "boolean",
+		default: false,
+		ui: {
+			tab: "files",
+			group: "Editing",
+			label: "Post-Edit Code Review",
+			description:
+				"Prompt the model to review multi-file code changes for correctness, maintainability, and idioms before finalizing",
+		},
+	},
+
 	readLineNumbers: {
 		type: "boolean",
 		default: false,

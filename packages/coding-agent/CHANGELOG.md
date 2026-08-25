@@ -10,6 +10,7 @@
 
 ### Added
 
+- `edit.critiqueCodeMutations` prompts a bounded self-review before finalization after one turn modifies at least two distinct code files.
 - Configurable `launch.cleanupWaitMs` setting (default 15 minutes) purges exited launch daemon records from memory and disk after a retention TTL.
 - Exporting a session to HTML streams the snapshot into the output file instead of assembling the whole document in memory, taking an 80MiB transcript from 1007MiB of peak resident memory to 532MiB with byte-identical output.
 - A session snapshot that contains a reference cycle fails the HTML export with an error instead of writing until the disk fills.
@@ -54,6 +55,8 @@
 - IRC broadcasts no longer wake completed idle peers; direct messages still wake the addressed peer.
 - ImageMagick pixel caches used by proof capture and HD demo scripts stay inside an owned scoped directory that the parent removes after child failure without deleting concurrent or inherited unrelated directories.
 - An indented row inside a tool block keeps its indent when it wraps at a narrow width, instead of continuing at the block's left edge.
+- The finalization reminder counts the files a multi-file edit actually wrote: a call that reports overall failure after writing some of its files is now unverified evidence, and a file a per-file entry skipped is no longer named as affected.
+- A mutated path is XML-escaped before it reaches the hidden finalization reminder, so a file name spelling `</system-reminder>` cannot end the reminder envelope early, and a relative `ast_edit` path is resolved against the call's working directory before duplicate paths are collapsed.
 - A colour or title escape sequence a command writes in two pieces no longer leaves part of itself in tool output: the sink holds a sequence its chunk ended inside until the piece that finishes it arrives, and drops one the stream never completes.
 - A `launch` tool block no longer renders as a bare title with no rows: the header drops the placeholder ellipsis while `op` is still streaming, and every operation falls back to the result text when the structured detail it renders from is absent.
 - The `compaction.remote` setting description documents that server-side compaction applies to supported OpenAI, Azure OpenAI, and ChatGPT Codex Responses models.

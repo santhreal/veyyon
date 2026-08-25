@@ -516,7 +516,11 @@ import { ToolChoiceQueue } from "./tool-choice-queue";
 import { parseTurnBudgetDirective } from "./turn-budget";
 import { planTurnPersistence, sameMessageContent, sessionMessagePersistenceKey } from "./turn-persistence";
 import { classifyUnexpectedStop, isUnexpectedStopCandidate } from "./unexpected-stop-classifier";
-import { VERIFICATION_EVIDENCE_REMINDER_TYPE, VerificationEvidenceLedger } from "./verification-evidence-ledger";
+import {
+	CODE_REVIEW_REMINDER_TYPE,
+	VERIFICATION_EVIDENCE_REMINDER_TYPE,
+	VerificationEvidenceLedger,
+} from "./verification-evidence-ledger";
 import { YieldQueue } from "./yield-queue";
 
 const SESSION_STOP_CONTINUATION_CAP = 8;
@@ -6414,6 +6418,10 @@ export class AgentSession {
 				await emitAgentEndNotification();
 				return;
 			}
+			if (mayContinueAtSettle("code-review", settleState) && this.#enforceCodeReviewBeforeFinalize()) {
+				await emitAgentEndNotification();
+				return;
+			}
 			await this.#emitSessionStopEvent(settledMessages, msg);
 			await emitAgentEndNotification();
 		}
@@ -10863,7 +10871,9 @@ export class AgentSession {
 		// re-enables advisor auto-resume that a prior user interrupt suppressed.
 		// Agent-initiated synthetic prompts (auto-continue, plan, reminders) do not.
 		if (options?.userInitiated ?? !options?.synthetic) {
-			this.#verificationEvidence.startUserTurn();
+			this.#verificationEvidence.startUserTurn({
+				preservePendingCodeReview: this.settings.get("edit.critiqueCodeMutations"),
+			});
 			this.#advisorAutoResumeSuppressed = false;
 			this.#planModeReminderCount = 0;
 			this.#planModeReminderAwaitingProgress = false;
@@ -14932,6 +14942,31 @@ export class AgentSession {
 		const reminderMessage: CustomMessage = {
 			role: "custom",
 			customType: VERIFICATION_EVIDENCE_REMINDER_TYPE,
+			content: reminder,
+			display: false,
+			attribution: "agent",
+			timestamp: Date.now(),
+		};
+		this.agent.appendMessage(reminderMessage);
+		this.sessionManager.appendCustomMessageEntry(
+			reminderMessage.customType,
+			reminderMessage.content,
+			reminderMessage.display,
+			undefined,
+			reminderMessage.attribution,
+		);
+		this.#scheduleAgentContinue({ generation: this.#promptGeneration });
+		return true;
+	}
+
+	#enforceCodeReviewBeforeFinalize(): boolean {
+		if (this.#isSubagent) return false;
+		if (!this.settings.get("edit.critiqueCodeMutations")) return false;
+		const reminder = this.#verificationEvidence.takeCodeReviewReminder();
+		if (!reminder) return false;
+		const reminderMessage: CustomMessage = {
+			role: "custom",
+			customType: CODE_REVIEW_REMINDER_TYPE,
 			content: reminder,
 			display: false,
 			attribution: "agent",
