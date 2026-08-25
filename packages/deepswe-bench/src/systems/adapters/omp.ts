@@ -23,6 +23,14 @@ function buildModelsYml(refreshJson: string, modelSelector: string): string | nu
 	if (slashIndex < 1) return null;
 	const provider = modelSelector.slice(0, slashIndex);
 	const modelId = modelSelector.slice(slashIndex + 1);
+	const providerBaseUrls: Record<string, string> = {
+		"opencode-go": "https://opencode.ai/zen/go/v1",
+		"opencode-zen": "https://opencode.ai/zen/v1",
+	};
+	const providerApis: Record<string, string> = {
+		"opencode-go": "openai-completions",
+		"opencode-zen": "openai-completions",
+	};
 	for (const line of refreshJson.split("\n")) {
 		const trimmed = line.trim();
 		if (!trimmed.startsWith("{")) continue;
@@ -42,7 +50,12 @@ function buildModelsYml(refreshJson: string, modelSelector: string): string | nu
 		if (Array.isArray(match.input) && match.input.length > 0) entry.input = match.input;
 		if (match.cost && typeof match.cost === "object") entry.cost = match.cost;
 		// Minimal YAML serializer — the structure is flat and predictable.
-		let yml = `providers:\n  ${provider}:\n    apiKey: \${OPENCODE_API_KEY}\n    models:\n`;
+		const baseUrl = providerBaseUrls[provider] ?? "";
+		const api = providerApis[provider] ?? "openai-completions";
+		let yml = `providers:\n  ${provider}:\n    apiKey: \${OPENCODE_API_KEY}\n`;
+		if (baseUrl) yml += `    baseUrl: ${baseUrl}\n`;
+		if (api) yml += `    api: ${api}\n`;
+		yml += "    models:\n";
 		yml += `      - id: ${entry.id}\n`;
 		if (entry.name) yml += `        name: ${String(entry.name)}\n`;
 		if (entry.contextWindow) yml += `        contextWindow: ${entry.contextWindow}\n`;
