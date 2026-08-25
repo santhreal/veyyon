@@ -300,6 +300,7 @@ const CONDITIONS: Record<string, () => boolean> = {
 	lspEnabled: () => whenSettingsSay(() => Settings.instance.get("lsp.enabled") === true),
 	browserEnabled: () => whenSettingsSay(() => Settings.instance.get("browser.enabled") === true),
 	githubEnabled: () => whenSettingsSay(() => Settings.instance.get("github.enabled") === true),
+	launchEnabled: () => whenSettingsSay(() => Settings.instance.get("launch.enabled") === true),
 	// The two TTLs read both toggles: a window on a cache nothing writes to is as
 	// empty a knob as one on a tool nothing runs.
 	githubCacheEnabled: () =>

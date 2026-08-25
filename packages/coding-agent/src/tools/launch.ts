@@ -468,6 +468,7 @@ export class LaunchTool implements AgentTool<typeof launchSchema, LaunchToolDeta
 		}
 		const client = await daemonClientForProject(this.session.cwd, {
 			adoptSpawnedPid: sessionCpuAdoption(getSessionId),
+			cleanupWaitMs: this.session.settings.get("launch.cleanupWaitMs"),
 		});
 		if (params.op === "stop" || params.op === "restart") {
 			// The end of a process the caller asked to end is not news. Drop the
