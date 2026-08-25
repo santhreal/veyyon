@@ -87,6 +87,25 @@ export interface SupersedePruneConfig {
 	/** Prune a candidate now when all messages after it total at most this many estimated tokens. Default 8 000. */
 	suffixTokenLimit?: number;
 	/**
+	 * Read-equivalent price of re-writing one already-cached token, used to decide
+	 * whether a batch of victims is worth the cache write it forces. Providers
+	 * charge roughly 1.25x base input to write a cache entry and 0.1x to read one,
+	 * so a rewritten token costs about 12.5 reads of the same token. Default 12.5.
+	 */
+	cacheWritePremium?: number;
+	/**
+	 * Turns the reclaimed tokens are assumed to survive if nothing prunes them,
+	 * i.e. how many times they would be re-read before the next compaction drops
+	 * them anyway. This is the other half of the trade: reclaiming M tokens saves
+	 * `M * paybackTurns` reads and costs `cacheWritePremium * suffix` writes.
+	 * Default 30. A backtest over 659 recorded sessions (550k turns) priced the
+	 * sweep at 30, 60 and 120: 60 reclaims more in total but leaves 15 sessions
+	 * worse by up to +8% because their real remaining life was shorter than the
+	 * assumption; 30 leaves 2 sessions worse by at most +1.4% and still nets
+	 * -0.5% of the total bill with a 0.02-point cache-hit change.
+	 */
+	paybackTurns?: number;
+	/**
 	 * Prune all candidates when the last message is at least this old: the
 	 * provider prompt cache is then cold, so re-writing it is free. MUST exceed
 	 * the cache retention (Anthropic "long" = 1h) or a still-warm prefix is busted
@@ -108,6 +127,8 @@ export interface SupersedePruneConfig {
 
 const DEFAULT_SUFFIX_TOKEN_LIMIT = 8_000;
 const DEFAULT_IDLE_FLUSH_MS = 30 * 60_000;
+const DEFAULT_CACHE_WRITE_PREMIUM = 12.5;
+const DEFAULT_PAYBACK_TURNS = 30;
 
 function createPrunedNotice(tokens: number): string {
 	return `[Output truncated - ${tokens} tokens]`;
@@ -228,12 +249,46 @@ function collectUselessResults(
 }
 
 /**
+ * Deepest batch of victims whose reclaimed tokens pay for the one cache rewrite
+ * they force, or an empty array when no batch does.
+ *
+ * Rewriting a message invalidates every cached token after it, so the price of a
+ * sweep is set by its EARLIEST victim and is paid once, while the saving is the
+ * whole batch's mass, collected on every later turn. That is why the answer is a
+ * batch: `dead * paybackTurns` against `premium * suffix(earliest)`. Candidates
+ * arrive in message order, so each prefix of the list is a legal cut and the best
+ * one is a single scan from the deep end.
+ */
+function chooseWorthwhileSweep(
+	candidates: readonly SupersedeCandidate[],
+	suffixTokens: readonly number[],
+	config: SupersedePruneConfig,
+): SupersedeCandidate[] {
+	const premium = config.cacheWritePremium ?? DEFAULT_CACHE_WRITE_PREMIUM;
+	const payback = config.paybackTurns ?? DEFAULT_PAYBACK_TURNS;
+	let mass = 0;
+	let bestValue = 0;
+	let bestCut = candidates.length;
+	for (let i = candidates.length - 1; i >= 0; i--) {
+		const candidate = candidates[i]!;
+		mass += estimatePrunedSavings(candidate.tokens, candidate.notice);
+		const value = mass * payback - premium * (suffixTokens[candidate.index] ?? 0);
+		if (value > bestValue) {
+			bestValue = value;
+			bestCut = i;
+		}
+	}
+	return bestCut === candidates.length ? [] : candidates.slice(bestCut);
+}
+
+/**
  * Prune superseded tool results (e.g. stale `read` outputs replaced by a newer
  * read of the same file) and, when `pruneUseless` is set, results their tool
- * flagged contextually useless. Cheap, incremental, and prompt-cache-aware: a
- * candidate is pruned now only when the suffix after it is small (tail case —
- * the read→edit→read loop) or when the context has been idle long enough that
- * the provider cache is cold anyway (then all still-sent candidates flush).
+ * flagged contextually useless. Prompt-cache-aware in three ways: a candidate
+ * whose own suffix is small is rewritten on its own (the read→edit→read loop), a
+ * deeper BATCH is rewritten when its combined mass pays for the one cache write
+ * it forces (see {@link chooseWorthwhileSweep}), and an idle context flushes
+ * everything because its cache has expired anyway.
  * Never mutates entries before `keepBoundaryId` (summarized away — not sent).
  */
 export function pruneSupersededToolResults(entries: SessionEntry[], config: SupersedePruneConfig): PruneResult {
@@ -271,13 +326,18 @@ export function pruneSupersededToolResults(entries: SessionEntry[], config: Supe
 	} else {
 		const suffixTokenLimit = config.suffixTokenLimit ?? DEFAULT_SUFFIX_TOKEN_LIMIT;
 		// suffixTokens[i] = estimated tokens of all messages strictly after entry i.
-		// Mutating a candidate re-writes its suffix in the warm cache, so prune only
-		// when that suffix is small (cheap-to-recache tail) and the candidate sits
-		// at/after the compaction boundary.
 		const suffixTokens = computeMessageSuffixTokens(entries);
-		toPrune = candidates.filter(
-			candidate => candidate.index >= boundaryIndex && suffixTokens[candidate.index] <= suffixTokenLimit,
-		);
+		const eligible = candidates.filter(candidate => candidate.index >= boundaryIndex);
+		// The cheap tail: a candidate whose own suffix is small is worth rewriting on
+		// its own, which is the read -> edit -> read loop.
+		const tail = eligible.filter(candidate => suffixTokens[candidate.index] <= suffixTokenLimit);
+		// Deeper than the tail, one victim never pays for the rewrite it forces, but a
+		// batch of them does. Asking the question per candidate is why a long session
+		// reclaimed almost nothing: at 120k of context every candidate outside the last
+		// few thousand tokens failed the test alone, while together they were most of
+		// the dead weight in the window.
+		const batch = chooseWorthwhileSweep(eligible, suffixTokens, config);
+		toPrune = batch.length > tail.length ? batch : tail;
 	}
 	if (toPrune.length === 0) return { prunedCount: 0, tokensSaved: 0 };
 

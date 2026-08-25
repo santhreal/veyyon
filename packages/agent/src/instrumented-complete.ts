@@ -31,6 +31,26 @@ import {
 import { EventLoopKeepalive } from "./utils/yield";
 
 /**
+ * Enumeration of canonical oneshot kinds across the agent and its tools.
+ * Exported as an array so suites and variant sweeps can enumerate the union
+ * at run time instead of hardcoding a list that drifts in silence.
+ *
+ * `OneshotKind` accepts `string & {}` so extensions and external callers can
+ * introduce ad-hoc kinds without compiler barriers.
+ */
+export const ONESHOT_KINDS = [
+	"compaction_summary",
+	"compaction_turn_prefix",
+	"handoff",
+	"branch_summary",
+	"inspect_image",
+	"eval_completion",
+	"guided_goal_setup",
+] as const;
+
+export type OneshotKind = (typeof ONESHOT_KINDS)[number] | (string & {});
+
+/**
  * Options accepted by {@link instrumentedCompleteSimple}. Mirrors the
  * `streamAssistantResponse` chat-span lifecycle for oneshot LLM calls
  * (compaction summaries, handoff document, branch summary, inspect_image).
@@ -47,7 +67,7 @@ export interface InstrumentedChatSpanOptions {
 	 * `handoff`, `branch_summary`, `inspect_image`. Free-form to allow callers
 	 * outside this package to add new kinds without bumping the helper.
 	 */
-	readonly oneshotKind?: string;
+	readonly oneshotKind?: OneshotKind;
 	/** Extra span attributes applied verbatim. */
 	readonly attributes?: Attributes;
 	/**
@@ -60,6 +80,35 @@ export interface InstrumentedChatSpanOptions {
 		ctx: Context,
 		options: SimpleStreamOptions,
 	) => Promise<AssistantMessage>;
+}
+
+/**
+ * Conversation identity for one oneshot, derived from the live session id and
+ * the kind of side request this is.
+ *
+ * A oneshot READS the conversation and is not a turn in it. Two provider APIs
+ * are stateful about that distinction — `cursor-agent` and `devin-agent` thread
+ * turns by conversation id and cache per-conversation state under it, falling
+ * back to `sessionId` — so a summarization request that carried the live
+ * `sessionId` arrived as a one-message conversation under the live
+ * conversation's own identity, and replaced the cached state the next live turn
+ * would have resumed from. A split-turn compaction is worse: its history and
+ * turn-prefix summaries run concurrently, so both landed on that one id at
+ * once, and a Cursor session answered the second with
+ * `Connect error invalid_argument`, failing every compaction attempt while the
+ * context stayed full.
+ *
+ * The kind is part of the id rather than a random suffix so a retry of the same
+ * side request reuses its own conversation instead of minting a new one, while
+ * two different kinds never share. An explicit `conversationId` from the caller
+ * wins, and a request with no session id is already a fresh conversation
+ * wherever the provider mints one.
+ */
+function sideConversationId(options: SimpleStreamOptions, oneshotKind: string | undefined): string | undefined {
+	if (options.conversationId !== undefined) return options.conversationId;
+	if (options.sessionId === undefined) return undefined;
+	const kind = oneshotKind && oneshotKind.length > 0 ? oneshotKind : "oneshot";
+	return `${options.sessionId}#${kind}`;
 }
 
 /**
@@ -122,6 +171,7 @@ export async function instrumentedCompleteSimple<TApi extends Api>(
 			const complete = span.completeImpl ?? completeSimple;
 			const message = await complete(model, ctx, {
 				...options,
+				conversationId: sideConversationId(options, oneshotKind),
 				onResponse: captureOnResponse,
 			});
 			await finishChatSpan(telemetry, chatSpan, message, {

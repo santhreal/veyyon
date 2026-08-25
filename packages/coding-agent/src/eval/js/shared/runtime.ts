@@ -47,6 +47,11 @@ export interface RuntimeOptions {
 	 * `{ local: "/…/artifacts/local" }`). Stable for the worker's lifetime.
 	 */
 	localRoots?: Record<string, string>;
+	/**
+	 * The session's artifacts directory, when the host knows one. The `kv` helper stores
+	 * under it so a value outlives the kernel; without it `kv` fails with an explicit error.
+	 */
+	artifactsDir?: string | null;
 }
 
 // Strict base64: characters from the standard alphabet plus optional `=` padding, and a
@@ -73,6 +78,9 @@ const PRELUDE_GLOBAL_KEYS = [
 	"read",
 	"write",
 	"env",
+	"kv",
+	"defs",
+	"__veyyon_prelude_baseline__",
 ];
 
 function isStrictBase64(s: string): boolean {
@@ -169,6 +177,7 @@ export class JsRuntime {
 	#als = new AsyncLocalStorage<RunContext>();
 	#moduleLoader: LocalModuleLoader;
 	#localRoots: Record<string, string>;
+	#artifactsDir: string | null;
 
 	constructor(opts: RuntimeOptions) {
 		this.#cwd = opts.initialCwd;
@@ -177,10 +186,12 @@ export class JsRuntime {
 		this.#env = new Map();
 		this.#moduleLoader = new LocalModuleLoader(this.sessionId);
 		this.#localRoots = opts.localRoots ?? {};
+		this.#artifactsDir = opts.artifactsDir ?? null;
 		this.helpers = createHelpers({
 			cwd: () => this.#activeCwd(),
 			env: this.#env,
 			localRoots: () => this.#localRoots,
+			session: () => ({ artifactsDir: this.#artifactsDir, sessionId: this.sessionId }),
 			emitStatus: event => this.#activeHooks("emitStatus")?.onDisplay({ type: "status", event }),
 		});
 		this.#install(opts.extraGlobals);
