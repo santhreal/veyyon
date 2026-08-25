@@ -306,6 +306,7 @@ export const workspaceTestPackages = [
 export const repoScriptTests = [
 	"scripts/a-generated-doc-says-so-on-its-first-line.test.ts",
 	"scripts/a-local-action-is-called-with-everything-it-requires.test.ts",
+	"scripts/a-test-proves-behavior-not-that-a-spy-was-called.test.ts",
 	"scripts/a-production-site-deploy-has-one-owner.test.ts",
 	"scripts/a-third-party-action-is-pinned-in-one-place.test.ts",
 	"scripts/ci-concurrency.test.ts",
