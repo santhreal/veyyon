@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as path from "node:path";
 import type { Api, Model } from "@veyyon/ai";
 import { parseArgs } from "@veyyon/coding-agent/cli/args";
@@ -54,14 +54,20 @@ describe("/prewalk resolves its cheap target", () => {
 	}
 
 	function makeRuntime(registry: ModelRegistry, settings: Settings) {
-		const armPrewalk = vi.fn<(target: Model<Api>, thinkingLevel?: unknown) => void>();
-		const output = vi.fn<(text: string) => Promise<void>>(async _text => {});
+		const armedTargets: Array<Model<Api>> = [];
+		const outputLines: string[] = [];
+		const armPrewalk = (target: Model<Api>) => {
+			armedTargets.push(target);
+		};
+		const output = async (text: string) => {
+			outputLines.push(text);
+		};
 		const runtime = {
 			session: { modelRegistry: registry, armPrewalk },
 			settings,
 			output,
 		} as unknown as SlashCommandRuntime;
-		return { armPrewalk, output, runtime };
+		return { armedTargets, outputLines, runtime };
 	}
 
 	it("arms with the model named as the command argument when no setting exists", async () => {
@@ -70,10 +76,10 @@ describe("/prewalk resolves its cheap target", () => {
 		const h = makeRuntime(registry, Settings.isolated({}));
 		await executeAcpBuiltinSlashCommand(`/prewalk ${CHEAP}`, h.runtime);
 
-		expect(h.armPrewalk).toHaveBeenCalledTimes(1);
-		const [target] = h.armPrewalk.mock.calls[0] as unknown as [Model<Api>];
-		expect(`${target.provider}/${target.id}`).toBe(CHEAP);
-		expect(h.output.mock.calls.map(call => String(call[0])).join("\n")).toContain(CHEAP);
+		expect(h.armedTargets.length).toBe(1);
+		const target = h.armedTargets[0];
+		expect(target && `${target.provider}/${target.id}`).toBe(CHEAP);
+		expect(h.outputLines.join("\n")).toContain(CHEAP);
 	});
 
 	it("falls back to prewalk.cheapModel when the command carries no argument", async () => {
@@ -81,9 +87,9 @@ describe("/prewalk resolves its cheap target", () => {
 		const h = makeRuntime(registry, Settings.isolated({ "prewalk.cheapModel": CHEAP }));
 		await executeAcpBuiltinSlashCommand("/prewalk", h.runtime);
 
-		expect(h.armPrewalk).toHaveBeenCalledTimes(1);
-		const [target] = h.armPrewalk.mock.calls[0] as unknown as [Model<Api>];
-		expect(`${target.provider}/${target.id}`).toBe(CHEAP);
+		expect(h.armedTargets.length).toBe(1);
+		const target = h.armedTargets[0];
+		expect(target && `${target.provider}/${target.id}`).toBe(CHEAP);
 	});
 
 	it("refuses with the corrective action when neither argument nor setting names a target", async () => {
@@ -91,8 +97,8 @@ describe("/prewalk resolves its cheap target", () => {
 		const h = makeRuntime(registry, Settings.isolated({}));
 		await executeAcpBuiltinSlashCommand("/prewalk", h.runtime);
 
-		expect(h.armPrewalk).not.toHaveBeenCalled();
-		const said = h.output.mock.calls.map(call => String(call[0])).join("\n");
+		expect(h.armedTargets.length).toBe(0);
+		const said = h.outputLines.join("\n");
 		expect(said).toContain("prewalk.cheapModel");
 	});
 
@@ -101,8 +107,8 @@ describe("/prewalk resolves its cheap target", () => {
 		const h = makeRuntime(registry, Settings.isolated({ "prewalk.cheapModel": STRONG }));
 		await executeAcpBuiltinSlashCommand(`/prewalk ${CHEAP}`, h.runtime);
 
-		const [target] = h.armPrewalk.mock.calls[0] as unknown as [Model<Api>];
-		expect(`${target.provider}/${target.id}`).toBe(CHEAP);
+		const target = h.armedTargets[0];
+		expect(target && `${target.provider}/${target.id}`).toBe(CHEAP);
 	});
 
 	it("reports missing credentials instead of arming a target no provider can call", async () => {
@@ -111,8 +117,8 @@ describe("/prewalk resolves its cheap target", () => {
 		const h = makeRuntime(registry, Settings.isolated({}));
 		await executeAcpBuiltinSlashCommand("/prewalk openai/gpt-5-mini", h.runtime);
 
-		expect(h.armPrewalk).not.toHaveBeenCalled();
-		const said = h.output.mock.calls.map(call => String(call[0])).join("\n");
+		expect(h.armedTargets.length).toBe(0);
+		const said = h.outputLines.join("\n");
 		expect(said.toLowerCase()).toContain("api key");
 	});
 	it("resolves a configured role alias passed via prewalk.cheapModel setting", async () => {
@@ -122,9 +128,9 @@ describe("/prewalk resolves its cheap target", () => {
 		const h = makeRuntime(registry, settings);
 		await executeAcpBuiltinSlashCommand("/prewalk", h.runtime);
 
-		expect(h.armPrewalk).toHaveBeenCalledTimes(1);
-		const [target] = h.armPrewalk.mock.calls[0] as unknown as [Model<Api>];
-		expect(`${target.provider}/${target.id}`).toBe(CHEAP);
+		expect(h.armedTargets.length).toBe(1);
+		const target = h.armedTargets[0];
+		expect(target && `${target.provider}/${target.id}`).toBe(CHEAP);
 	});
 
 	it("resolves a configured role alias passed as slash command argument", async () => {
@@ -134,9 +140,9 @@ describe("/prewalk resolves its cheap target", () => {
 		const h = makeRuntime(registry, settings);
 		await executeAcpBuiltinSlashCommand("/prewalk @smol", h.runtime);
 
-		expect(h.armPrewalk).toHaveBeenCalledTimes(1);
-		const [target] = h.armPrewalk.mock.calls[0] as unknown as [Model<Api>];
-		expect(`${target.provider}/${target.id}`).toBe(CHEAP);
+		expect(h.armedTargets.length).toBe(1);
+		const target = h.armedTargets[0];
+		expect(target && `${target.provider}/${target.id}`).toBe(CHEAP);
 	});
 
 	it("resolves a role alias in prewalk.cheapModel at launch", async () => {
@@ -170,9 +176,9 @@ describe("/prewalk resolves its cheap target", () => {
 		// Slash command: /prewalk <comma-list> resolves first entry (CHEAP)
 		const h = makeRuntime(registry, settings);
 		await executeAcpBuiltinSlashCommand(`/prewalk ${commaList}`, h.runtime);
-		expect(h.armPrewalk).toHaveBeenCalledTimes(1);
-		const [slashTarget] = h.armPrewalk.mock.calls[0] as unknown as [Model<Api>];
-		expect(`${slashTarget.provider}/${slashTarget.id}`).toBe(CHEAP);
+		expect(h.armedTargets.length).toBe(1);
+		const slashTarget = h.armedTargets[0];
+		expect(slashTarget && `${slashTarget.provider}/${slashTarget.id}`).toBe(CHEAP);
 
 		// CLI flag: --prewalk-into <comma-list> resolves first entry (CHEAP)
 		const parsed = parseArgs(["--prewalk-into", commaList]);
@@ -181,7 +187,9 @@ describe("/prewalk resolves its cheap target", () => {
 		expect(cliTarget && `${cliTarget.provider}/${cliTarget.id}`).toBe(CHEAP);
 
 		// Both resolve the exact same target model
-		expect(cliTarget && `${cliTarget.provider}/${cliTarget.id}`).toBe(`${slashTarget.provider}/${slashTarget.id}`);
+		expect(cliTarget && `${cliTarget.provider}/${cliTarget.id}`).toBe(
+			slashTarget && `${slashTarget.provider}/${slashTarget.id}`,
+		);
 	});
 
 	it("resolves a role alias in prewalk.strongModel as the start model", async () => {
