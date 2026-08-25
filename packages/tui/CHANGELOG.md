@@ -15,6 +15,7 @@
 
 - Nested optional-argument LaTeX constructs parse in linear time without character-by-character concatenation allocations.
 - Exclude pinned footer rows from the scroll-isolation snapshot and scroll space so the composer does not duplicate inside scrolled-back history.
+- Extract LaTeX argument text by slicing the source rather than appending one character at a time, so a deeply nested optional-argument chain degrades linearly instead of quadratically.
 
 ## [1.2.0] - 2026-08-23
 
