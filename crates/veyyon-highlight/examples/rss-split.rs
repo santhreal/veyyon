@@ -1,21 +1,14 @@
-//! Where the resident cost of a syntax set actually goes.
+//! Where the resident cost of a syntax set actually goes, old shape vs new.
 //!
-//! Loading syntect's bundled pack and folding three vendored syntaxes into it
-//! costs around seventeen megabytes of resident heap for the life of the
-//! process. That figure alone does not say what to change, because three
-//! different things are inside it:
+//! The old shape assembled the set per process: load syntect's bundled pack,
+//! `into_builder()` to fold three vendored syntaxes in, `build()` to relink.
+//! The new shape loads one dump that `build.rs` already linked. This example
+//! runs both and reports what each leaves resident.
 //!
-//! 1. the deserialised default pack,
-//! 2. the copy `into_builder` makes of every context of every syntax,
-//! 3. the freshly linked set `build` returns.
-//!
-//! Steps 2 and 3 are freed before the set is first used, so whether they are
-//! still charged to the process depends on whether the allocator returned the
-//! pages. This example reports each step separately and then calls
-//! `malloc_trim`, which distinguishes a set that is genuinely large from an
-//! arena that was never handed back.
-//!
-//! Run with:
+//! Both arms run in their own child process, because RSS is cumulative: two
+//! arms in one process would charge the second for the first's pages. The
+//! parent re-executes itself, so one command produces both numbers and they
+//! cannot drift apart.
 //!
 //! ```sh
 //! cargo run -p veyyon-highlight --profile local --example rss-split
@@ -24,7 +17,10 @@
 //! `--profile local` rather than `--release`: the numbers are allocator
 //! behaviour, not codegen, and a debug build inflates every one of them.
 
+use std::{env, process::Command};
+
 use syntect::parsing::{SyntaxDefinition, SyntaxSet};
+use veyyon_highlight::{Palette, highlight_with};
 
 const EXTRA_SYNTAXES: &[(&str, &str)] = &[
 	("Julia", include_str!("../src/syntaxes/Julia.sublime-syntax")),
@@ -32,7 +28,7 @@ const EXTRA_SYNTAXES: &[(&str, &str)] = &[
 	("Mermaid", include_str!("../src/syntaxes/Mermaid.sublime-syntax")),
 ];
 
-/// Resident set size in bytes, from the kernel rather than from an allocator
+/// Resident set size in bytes, from the kernel rather than an allocator
 /// counter: the question is what the process is charged for, which a
 /// heap-tracking figure cannot answer.
 fn rss_bytes() -> u64 {
@@ -49,9 +45,11 @@ fn rss_bytes() -> u64 {
 	resident_pages * page.unsigned_abs()
 }
 
-/// Ask glibc to return free arena pages to the kernel. Without this, memory
-/// freed by `into_builder`'s copy still counts against RSS and reads as if the
-/// final set were holding it.
+/// Ask glibc to return free arena pages to the kernel.
+///
+/// Without this, memory freed by `into_builder`'s copy still counts against RSS
+/// and reads as if the final set were holding it. The addon never calls this,
+/// so the untrimmed figure is the one a session actually pays.
 fn trim() {
 	#[cfg(all(target_os = "linux", target_env = "gnu"))]
 	// SAFETY: `malloc_trim` takes a byte count and touches only allocator
@@ -61,67 +59,105 @@ fn trim() {
 	}
 }
 
-struct Steps {
+fn mb(bytes: u64) -> f64 {
+	bytes as f64 / (1024.0 * 1024.0)
+}
+
+struct Step {
 	label: &'static str,
 	rss:   u64,
 }
 
 /// Record the current RSS under `label`.
-fn mark(label: &'static str, steps: &mut Vec<Steps>) {
-	steps.push(Steps { label, rss: rss_bytes() });
+fn mark(label: &'static str, steps: &mut Vec<Step>) {
+	steps.push(Step { label, rss: rss_bytes() });
 }
 
-fn mb(bytes: u64) -> f64 {
-	bytes as f64 / (1024.0 * 1024.0)
-}
-
-fn main() {
-	let mut steps: Vec<Steps> = Vec::new();
+/// The shape this change replaced: assemble the set in-process.
+fn arm_old() -> Vec<Step> {
+	let mut steps = Vec::new();
 	mark("process start", &mut steps);
 
 	let defaults = SyntaxSet::load_defaults_newlines();
-	let default_count = defaults.syntaxes().len();
-	mark("after load_defaults_newlines", &mut steps);
+	mark("load_defaults_newlines", &mut steps);
 
 	let mut builder = defaults.into_builder();
-	mark("after into_builder (clones every context)", &mut steps);
+	mark("into_builder (clones every context)", &mut steps);
 
-	for (_, src) in EXTRA_SYNTAXES {
-		if let Ok(def) = SyntaxDefinition::load_from_str(src, true, None) {
-			builder.add(def);
-		}
+	for (name, src) in EXTRA_SYNTAXES {
+		let def = SyntaxDefinition::load_from_str(src, true, None)
+			.unwrap_or_else(|e| panic!("vendored syntax {name} does not parse: {e}"));
+		builder.add(def);
 	}
-	mark("after adding 3 vendored syntaxes", &mut steps);
+	mark("add 3 vendored syntaxes", &mut steps);
 
-	let full = builder.build();
-	let full_count = full.syntaxes().len();
-	mark("after build (relinks everything)", &mut steps);
+	let set = builder.build();
+	mark("build (relinks everything)", &mut steps);
+
+	assert!(set.find_syntax_by_name("Nix").is_some(), "old arm must reach the vendored syntaxes");
+	highlight_once(&set, &mut steps);
+
+	// Untrimmed is what the addon pays, trimmed is what the set genuinely
+	// holds. Reporting both is the only way to tell a large set from an arena
+	// nobody handed back.
+	trim();
+	mark("malloc_trim", &mut steps);
+
+	steps
+}
+
+/// The shape this change introduces: deserialise one build-time dump.
+fn arm_new() -> Vec<Step> {
+	let mut steps = Vec::new();
+	mark("process start", &mut steps);
+
+	let set = veyyon_highlight::syntax_set();
+	mark("load embedded dump", &mut steps);
+
+	assert!(set.find_syntax_by_name("Nix").is_some(), "new arm must reach the vendored syntaxes");
+	highlight_once(set, &mut steps);
 
 	trim();
-	mark("after malloc_trim", &mut steps);
+	mark("malloc_trim", &mut steps);
 
-	// What one self-contained syntax costs on its own. Nix is vendored here and
-	// embeds nothing, so this is a floor for a per-language set: a syntax that
-	// embeds others (HTML, Markdown) additionally carries their contexts.
-	let mut single = SyntaxSet::load_defaults_newlines().into_builder();
-	single = {
-		let nix = SyntaxDefinition::load_from_str(EXTRA_SYNTAXES[1].1, true, None)
-			.expect("vendored Nix syntax must parse");
-		let mut fresh = syntect::parsing::SyntaxSetBuilder::new();
-		fresh.add(nix);
-		drop(single);
-		fresh
+	steps
+}
+
+/// One real highlight pass, so both arms are charged for syntect's lazy regex
+/// compilation. Without this the arms measure set construction alone and
+/// understate the floor a session pays: syntect holds each context's regex in a
+/// `OnceCell` and compiles it on first use, not at load.
+fn highlight_once(set: &SyntaxSet, steps: &mut Vec<Step>) {
+	const CODE: &str = "fn main() {\n\tlet x = 42; // the answer\n\tprintln!(\"{x}\");\n}\n";
+	let palette = Palette {
+		comment:     "\x1b[90m",
+		keyword:     "\x1b[35m",
+		function:    "\x1b[34m",
+		variable:    "\x1b[37m",
+		string:      "\x1b[32m",
+		number:      "\x1b[33m",
+		type_name:   "\x1b[36m",
+		operator:    "\x1b[37m",
+		punctuation: "\x1b[37m",
+		inserted:    "\x1b[32m",
+		deleted:     "\x1b[31m",
 	};
-	let nix_only = single.build();
-	trim();
-	let after_single = rss_bytes();
+	let out = highlight_with(set, CODE, Some("rust"), &palette);
+	assert!(
+		out.contains("\x1b[35m"),
+		"the highlight pass produced no colours, so it proved nothing"
+	);
+	mark("first highlight (compiles regexes)", steps);
+}
 
-	println!("\n{:<46} {:>10}  {:>10}", "step", "RSS MB", "delta MB");
+fn report(arm: &str, steps: &[Step]) {
+	println!("\n=== {arm} ===");
+	println!("{:<40} {:>9}  {:>9}", "step", "RSS MB", "delta MB");
 	let mut prev = steps[0].rss;
-	for step in &steps {
+	for step in steps {
 		let delta = step.rss as i64 - prev as i64;
 		println!(
-			"{:<46} {:>10.1}  {:>+10.1}",
+			"{:<40} {:>9.1}  {:>+9.1}",
 			step.label,
 			mb(step.rss),
 			delta as f64 / (1024.0 * 1024.0)
@@ -137,19 +173,32 @@ fn main() {
 		.expect("marked at least once");
 	let settled = steps.last().expect("marked at least once").rss;
 
-	println!("\nsyntaxes: {default_count} bundled, {full_count} after vendoring");
-	println!("peak over baseline:    {:>8.1} MB", mb(peak.saturating_sub(start)));
+	println!("  peak over baseline      {:>8.1} MB", mb(peak.saturating_sub(start)));
 	println!(
-		"settled over baseline: {:>8.1} MB   <- what the process keeps",
+		"  untrimmed over baseline {:>8.1} MB   <- what a session pays",
+		mb(steps[steps.len() - 2].rss.saturating_sub(start))
+	);
+	println!(
+		"  trimmed over baseline   {:>8.1} MB   <- what the set holds",
 		mb(settled.saturating_sub(start))
 	);
-	println!(
-		"transient (freed):     {:>8.1} MB   <- what into_builder + build cost while running",
-		mb(peak.saturating_sub(settled))
-	);
-	println!(
-		"\nNix-only set ({} syntax): settled {:.1} MB over baseline",
-		nix_only.syntaxes().len(),
-		mb(after_single.saturating_sub(start))
-	);
+}
+
+fn main() {
+	match env::args().nth(1).as_deref() {
+		Some("old") => report("old: assembled per process", &arm_old()),
+		Some("new") => report("new: build-time dump", &arm_new()),
+		// No arm named: run each in its own process so neither is charged for
+		// the other's pages.
+		_ => {
+			let exe = env::current_exe().expect("a running example has a path");
+			for arm in ["old", "new"] {
+				let status = Command::new(&exe)
+					.arg(arm)
+					.status()
+					.unwrap_or_else(|e| panic!("cannot re-execute for the {arm} arm: {e}"));
+				assert!(status.success(), "the {arm} arm failed: {status}");
+			}
+		},
+	}
 }

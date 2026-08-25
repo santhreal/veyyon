@@ -1,39 +1,25 @@
 //! The syntax set every highlight pass parses against.
 //!
-//! Construction is what this crate exists to make cheap. `load_defaults_*`
-//! deserialises syntect's bundled pack — around sixty languages, every context
-//! and match pattern of each — and a caller that highlights TypeScript pays for
-//! all of them. Measurement of the shape this module replaces is in
-//! `examples/rss-split.rs`.
+//! The set is assembled by `build.rs` and embedded as a single dump, so the
+//! process deserialises it and nothing else. Assembling it here instead meant
+//! `into_builder()`, which clones every context of every syntax, and then
+//! `build()`, which relinks all of them, to fold three vendored syntaxes into a
+//! set that is 1.4MB when merely deserialised. That copy cost 12.5MB of
+//! resident heap and glibc returned 10.2MB of it to no one.
+//!
+//! `examples/rss-split.rs` measures the shape this replaced.
 
 use std::sync::LazyLock;
 
-use syntect::parsing::{SyntaxDefinition, SyntaxReference, SyntaxSet};
+use syntect::parsing::{SyntaxReference, SyntaxSet};
 
-/// Syntaxes syntect ships none of, vendored as their `.sublime-syntax` source
-/// and folded into the set.
-const EXTRA_SYNTAXES: &[&str] = &[
-	include_str!("syntaxes/Julia.sublime-syntax"),
-	include_str!("syntaxes/Nix.sublime-syntax"),
-	include_str!("syntaxes/Mermaid.sublime-syntax"),
-];
+/// syntect's newline-aware defaults plus the vendored Julia, Nix and Mermaid
+/// syntaxes, linked at build time. `build.rs` fails the build if a vendored
+/// syntax is missing or unreachable, so an absence cannot reach here and
+/// degrade to uncoloured output.
+const SYNTAX_DUMP: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/syntaxes.packdump"));
 
-/// Newline-aware defaults plus [`EXTRA_SYNTAXES`].
-///
-/// A vendored syntax that fails to parse is skipped rather than taking every
-/// language down with it; `tests/` asserts each one is present, so a silent
-/// absence fails rather than degrading to plain text.
-fn build() -> SyntaxSet {
-	let mut builder = SyntaxSet::load_defaults_newlines().into_builder();
-	for src in EXTRA_SYNTAXES {
-		if let Ok(def) = SyntaxDefinition::load_from_str(src, true, None) {
-			builder.add(def);
-		}
-	}
-	builder.build()
-}
-
-static SYNTAX_SET: LazyLock<SyntaxSet> = LazyLock::new(build);
+static SYNTAX_SET: LazyLock<SyntaxSet> = LazyLock::new(|| syntect::dumps::from_binary(SYNTAX_DUMP));
 
 /// The process-wide set.
 pub fn syntax_set() -> &'static SyntaxSet {

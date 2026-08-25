@@ -5,6 +5,7 @@
 ### Changed
 
 - Syntax highlighting moved from the native addon into the `veyyon-highlight` crate, with no change to highlighting output.
+- The syntax set is linked at build time instead of being assembled on first use, cutting about 8MB of resident memory from any session that highlights code.
 
 ### Fixed
 

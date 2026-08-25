@@ -8,7 +8,7 @@
 pub mod scope_map;
 pub mod syntaxes;
 
-use syntect::parsing::{ParseState, ScopeStack, ScopeStackOp};
+use syntect::parsing::{ParseState, ScopeStack, ScopeStackOp, SyntaxSet};
 
 pub use crate::syntaxes::{is_known_alias, syntax_set};
 use crate::{
@@ -68,8 +68,21 @@ const RESET: &str = "\x1b[39m";
 /// on the next one: one malformed line costs its own colours, not the rest of
 /// the file's.
 pub fn highlight(code: &str, lang: Option<&str>, palette: &Palette<'_>) -> String {
+	highlight_with(syntax_set(), code, lang, palette)
+}
+
+/// [`highlight`] against a caller-supplied set.
+///
+/// The set is a parameter so that two differently built sets can be driven
+/// through one highlighter and their output compared byte for byte. Ordinary
+/// callers want [`highlight`], which uses the embedded set.
+pub fn highlight_with(
+	ss: &SyntaxSet,
+	code: &str,
+	lang: Option<&str>,
+	palette: &Palette<'_>,
+) -> String {
 	let slots = palette.slots();
-	let ss = syntax_set();
 	let syntax = lang
 		.and_then(|l| find_syntax(ss, l))
 		.unwrap_or_else(|| ss.find_syntax_plain_text());
