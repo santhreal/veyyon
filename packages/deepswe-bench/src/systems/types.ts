@@ -173,6 +173,7 @@ export interface SystemStageContext {
 	outRoot: string;
 	binarySha?: string | null;
 	args: Record<string, string>;
+	model: string;
 }
 
 export interface SystemJobConfigContext {
