@@ -29,7 +29,10 @@ const MOCK_MODULE = /\bmock\.module\s*\(/;
  * Spy-call assertions, assembled from fragments so this module does not match
  * its own pattern when the gate reads the repository.
  */
-const SPY_ASSERTION = new RegExp(["(?:toHaveBeen|toBe)", "(?:Called|LastCalledWith|NthCalledWith)", "\\w*"].join(""), "g");
+const SPY_ASSERTION = new RegExp(
+	["(?:toHaveBeen|toBe)", "(?:Called|LastCalledWith|NthCalledWith)", "\\w*"].join(""),
+	"g",
+);
 
 /**
  * Replace comment and string bodies with spaces, preserving length and line
@@ -237,10 +240,7 @@ export function testFiles(repoRoot: string, exclude: string): string[] {
 				if (!SKIPPED_DIRS.has(entry.name)) walk(path.join(dir, entry.name));
 				continue;
 			}
-			if (
-				(entry.name.endsWith(".test.ts") || entry.name.endsWith(".test.tsx")) &&
-				entry.name !== exclude
-			) {
+			if ((entry.name.endsWith(".test.ts") || entry.name.endsWith(".test.tsx")) && entry.name !== exclude) {
 				found.push(path.join(dir, entry.name));
 			}
 		}
