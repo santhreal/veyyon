@@ -14,28 +14,31 @@ export class DeferredDiagnostics {
 
 	/** Begin a file mutation and return the handle consumed by LSP writethrough. */
 	begin(path: string): WritethroughDeferredHandle {
-		const existing = this.#pendingFetches.get(path);
-		if (existing) {
-			existing.abort();
-			this.#pendingFetches.delete(path);
-		}
+		this.#pendingFetches.get(path)?.abort();
 
 		const controller = new AbortController();
+		// Registered here rather than in `finalize(undefined)`. A second begin before the first
+		// finalize used to find nothing to abort, so the first LSP round-trip kept running and
+		// returned a snapshot of a file that had already been mutated again.
+		this.#pendingFetches.set(path, controller);
 		const mutationVersion = this.#bumpVersion(path);
 		return {
 			onDeferredDiagnostics: diagnostics => {
-				this.#pendingFetches.delete(path);
+				this.#release(path, controller);
 				this.#inject(path, diagnostics, mutationVersion);
 			},
 			signal: controller.signal,
 			finalize: diagnostics => {
-				if (!diagnostics) {
-					this.#pendingFetches.set(path, controller);
-				} else {
-					controller.abort();
-				}
+				if (!diagnostics) return;
+				this.#release(path, controller);
+				controller.abort();
 			},
 		};
+	}
+
+	/** Forget `controller` unless a later `begin` already replaced it as the live one for `path`. */
+	#release(path: string, controller: AbortController): void {
+		if (this.#pendingFetches.get(path) === controller) this.#pendingFetches.delete(path);
 	}
 
 	#inject(path: string, diagnostics: FileDiagnosticsResult, mutationVersion: number): void {

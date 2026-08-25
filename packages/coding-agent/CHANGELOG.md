@@ -29,6 +29,12 @@
 
 ### Fixed
 
+- The JSON-RPC frame decoder accepts an LF-only header terminator, so an adapter that writes `Content-Length: N` followed by two newlines no longer stalls until the initialize timeout.
+- Duplicate `Content-Length` headers take the last value, so a proxy that prepends its own no longer frames a zero-length body and reads the real payload as junk.
+- A non-decimal `Content-Length` such as `-1` or `0x5` no longer frames a body, and the decoder resynchronizes on the next header instead of consuming the frame behind it.
+- A DAP response waits for the `write` promises of its header and body, not only for `flush`, so a sink under backpressure cannot resolve a response with the header still queued.
+- `flattenWorkspaceTextEdits` and the workspace-edit applier read own URIs only, so a `changes` object with a URI on its prototype cannot write a file the response never named.
+- A second `DeferredDiagnostics.begin` for the same path aborts the first fetch, which previously kept running and injected diagnostics for a file that had already been mutated again.
 - A collab guest drops undeclared keys a peer stuffed onto a received frame instead of writing them into its replica session file.
 - Shrinking an oversized replication frame copies own keys only, so an inherited enumerable key is no longer materialized onto the clone a guest receives.
 - `applyQuery` reads own keys only, so an internal URL fragment of `.__proto__`, `.constructor` or `.toString` returns nothing instead of a prototype object.

@@ -11,12 +11,22 @@
 // single instance is safe and avoids per-message TextDecoder allocation.
 const MESSAGE_DECODER = new TextDecoder("utf-8");
 
+/** Where a header block ends: the index of the terminator's first byte, and its length. */
+interface HeaderEnd {
+	index: number;
+	sepLen: number;
+}
+
 /**
- * Locate the `\r\n\r\n` header terminator across the pending chunk list.
- * Returns the absolute byte index of the first `\r`, or -1 when not present.
- * Equivalent to scanning the contiguous concatenation of the chunks.
+ * Locate the header terminator across the pending chunk list.
+ *
+ * The base protocol writes `\r\n\r\n`, and a CR-less `\n\n` is what a hand-rolled adapter and
+ * every Unix tool that prints a header block emit. Accepting only the four-byte form meant an
+ * LF-only header never framed at all: `drain` yielded nothing, the bytes stayed in the remainder,
+ * and the reader waited out the adapter timeout and reported a hung initialize rather than a
+ * framing error. The two forms cannot collide, because `\r\n\r\n` holds no two adjacent LFs.
  */
-function findHeaderEndInChunks(chunks: Buffer[]): number {
+function findHeaderEndInChunks(chunks: Buffer[]): HeaderEnd | undefined {
 	let global = 0;
 	let b0 = -1;
 	let b1 = -1;
@@ -24,8 +34,11 @@ function findHeaderEndInChunks(chunks: Buffer[]): number {
 	for (const chunk of chunks) {
 		for (let i = 0; i < chunk.length; i++) {
 			const b3 = chunk[i];
+			if (b2 === 10 && b3 === 10) {
+				return { index: global - 1, sepLen: 2 };
+			}
 			if (b0 === 13 && b1 === 10 && b2 === 13 && b3 === 10) {
-				return global - 3;
+				return { index: global - 3, sepLen: 4 };
 			}
 			b0 = b1;
 			b1 = b2;
@@ -33,8 +46,11 @@ function findHeaderEndInChunks(chunks: Buffer[]): number {
 			global++;
 		}
 	}
-	return -1;
+	return undefined;
 }
+
+/** Every `Content-Length` header in a decoded header block, in the order the sender wrote them. */
+const CONTENT_LENGTH_HEADER = /content-length:[ \t]*([^\r\n]*)/gi;
 
 /** Copy the byte range [from, to) out of the pending chunk list into one Buffer. */
 function copyChunkRange(chunks: Buffer[], from: number, to: number): Buffer {
@@ -107,28 +123,62 @@ export class MessageFramer {
 	 */
 	*drain(onResync: (headerText: string) => void): Generator<string> {
 		while (true) {
-			const headerEnd = findHeaderEndInChunks(this.#pendingChunks);
-			if (headerEnd === -1) break;
+			const header = findHeaderEndInChunks(this.#pendingChunks);
+			if (!header) break;
 
-			const headerText = MESSAGE_DECODER.decode(copyChunkRange(this.#pendingChunks, 0, headerEnd));
-			const contentLengthMatch = headerText.match(/Content-Length: (\d+)/i);
-			if (!contentLengthMatch) {
+			const headerText = MESSAGE_DECODER.decode(copyChunkRange(this.#pendingChunks, 0, header.index));
+			const bodyStart = header.index + header.sepLen;
+			// Last write wins. A proxy that prepends its own `Content-Length: 0` used to frame a
+			// zero-length body and hand the real payload to the next scan as junk.
+			CONTENT_LENGTH_HEADER.lastIndex = 0;
+			let rawLength: string | undefined;
+			for (const match of headerText.matchAll(CONTENT_LENGTH_HEADER)) rawLength = match[1].trim();
+
+			if (rawLength === undefined) {
 				onResync(headerText);
-				dropChunkFront(this.#pendingChunks, headerEnd + 4);
-				this.#pendingLen -= headerEnd + 4;
+				dropChunkFront(this.#pendingChunks, bodyStart);
+				this.#pendingLen -= bodyStart;
 				continue;
 			}
 
-			const contentLength = Number.parseInt(contentLengthMatch[1], 10);
-			const messageStart = headerEnd + 4; // Skip \r\n\r\n
-			const messageEnd = messageStart + contentLength;
+			if (!/^\d+$/.test(rawLength)) {
+				// `-1` and `0x5` are not lengths. The old matcher captured the digits inside them,
+				// so `0x5` framed an empty body and `-1` read as a header with no length at all;
+				// either way the bytes that followed were re-scanned as a header and a real frame
+				// behind them was consumed as junk. There is no body length to trust here, so this
+				// block is not a frame: resynchronize on the next `Content-Length` in the buffer,
+				// and if there is none, keep the bytes and wait for more rather than guess.
+				const next = this.#findNextHeaderName(bodyStart);
+				if (next === -1) break;
+				dropChunkFront(this.#pendingChunks, next);
+				this.#pendingLen -= next;
+				continue;
+			}
+
+			const contentLength = Number.parseInt(rawLength, 10);
+			const messageEnd = bodyStart + contentLength;
 			if (this.#pendingLen < messageEnd) break;
 
-			const messageText = MESSAGE_DECODER.decode(copyChunkRange(this.#pendingChunks, messageStart, messageEnd));
+			const messageText = MESSAGE_DECODER.decode(copyChunkRange(this.#pendingChunks, bodyStart, messageEnd));
 			dropChunkFront(this.#pendingChunks, messageEnd);
 			this.#pendingLen -= messageEnd;
 			yield messageText;
 		}
+	}
+
+	/**
+	 * Absolute index of the next `Content-Length:` header name at or after `from`, or -1.
+	 *
+	 * Copies the tail once. This runs only after a malformed length, which a conforming sender
+	 * never produces, so the common path allocates nothing.
+	 */
+	#findNextHeaderName(from: number): number {
+		if (from >= this.#pendingLen) return -1;
+		const tail = copyChunkRange(this.#pendingChunks, from, this.#pendingLen);
+		// Header names are ASCII, so a latin1 decode is a byte view and never reinterprets a
+		// multi-byte body sequence as a match.
+		const at = tail.toString("latin1").toLowerCase().indexOf("content-length:");
+		return at === -1 ? -1 : from + at;
 	}
 
 	/** The unparsed remainder, to persist when the reader stops. */
