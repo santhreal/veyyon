@@ -83,6 +83,7 @@
 - `convertImageBearingCustomMessage` merges two `.filter()` calls (text blocks, image blocks) into a single `for` loop, avoiding a throwaway array per image-bearing custom message during conversion.
 - `#rebasePendingContextSnapshotAfterHistoryRewrite` and the prompt-submission fallback use `computeStoredMessagesTokens` instead of `this.messages.reduce(…)`, serving the incrementally cached running sum instead of re-walking the full 33K-message array after every history rewrite (prune, shake, dedup).
 - `#checkCompaction` and `orderedByTimestamp` use `Date.parse` instead of `new Date(...).getTime()`, avoiding a Date object allocation on the per-turn compaction check and the session sort comparator.
+- `EventController.#handleMessageUpdate` gates the tool-call component-update and intent-extraction loops behind `timeline.hasToolCalls`, skipping two full `content` array iterations per streaming delta during text-only streaming (the common per-token case).
 
 ### Added
 

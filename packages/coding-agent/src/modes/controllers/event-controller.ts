@@ -916,125 +916,127 @@ export class EventController {
 			// stream (a big write/edit/eval) sits below a still-live block and
 			// can never reach native scrollback: the head of the preview is
 			// neither committed nor on screen and the transcript reads as cut.
-			if (this.ctx.streamingMessage.content.some(content => content.type === "toolCall")) {
+			if (timeline.hasToolCalls) {
 				streamingComponent.markTranscriptBlockFinalized();
 				repaintTargets.add(streamingComponent);
-			}
-			for (const content of this.ctx.streamingMessage.content) {
-				if (content.type !== "toolCall") continue;
-				if (content.name === "read") {
-					if (!readArgsHaveTarget(content.arguments)) {
-						// Args still streaming — defer until path is parseable so we can route to the
-						// read group (regular files) vs ToolExecutionComponent (internal URLs).
-						// Creating either component now would lock the read into the wrong shape.
-						continue;
+				// Both loops below iterate every content block but only act on
+				// toolCall blocks; skip them entirely during text-only streaming.
+				for (const content of this.ctx.streamingMessage.content) {
+					if (content.type !== "toolCall") continue;
+					if (content.name === "read") {
+						if (!readArgsHaveTarget(content.arguments)) {
+							// Args still streaming — defer until path is parseable so we can route to the
+							// read group (regular files) vs ToolExecutionComponent (internal URLs).
+							// Creating either component now would lock the read into the wrong shape.
+							continue;
+						}
+						if (!readArgsTargetInternalUrl(content.arguments)) {
+							if (this.ctx.settledToolCalls.has(content.id)) continue;
+							if (!this.ctx.pendingTools.has(content.id)) this.#resolveDisplaceablePoll(content.name);
+							this.#trackReadToolCall(content.id, content.arguments);
+							const component = this.ctx.pendingTools.get(content.id);
+							if (component) {
+								component.updateArgs(content.arguments, content.id);
+								repaintTargets.add(component);
+							} else {
+								const group = this.#getReadGroup();
+								group.updateArgs(content.arguments, content.id);
+								this.ctx.pendingTools.set(content.id, group);
+								this.#toolTimelineComponents.set(content.id, group);
+								repaintTargets.add(group);
+							}
+							continue;
+						}
+						// Internal URL read falls through to ToolExecutionComponent below.
 					}
-					if (!readArgsTargetInternalUrl(content.arguments)) {
-						if (this.ctx.settledToolCalls.has(content.id)) continue;
-						if (!this.ctx.pendingTools.has(content.id)) this.#resolveDisplaceablePoll(content.name);
-						this.#trackReadToolCall(content.id, content.arguments);
+
+					// Preserve the raw partial JSON only for renderers that need to surface fields before the JSON object closes.
+					// Bash uses this to show inline env assignments during streaming instead of popping them in at completion.
+					// While the JSON is still open, ToolArgsRevealController paces the
+					// reveal (write/edit/bash previews grow smoothly when a slow provider
+					// delivers large batches); once it closes, the final args render
+					// as-is — mirroring how assistant text snaps at message_end.
+					let renderArgs: Record<string, unknown>;
+					const partialJson = getStreamingPartialJson(content);
+					const rawInput = content.customWireName !== undefined;
+					const tool = this.ctx.viewSession.getToolByName(content.name);
+					if (partialJson) {
+						renderArgs = this.#toolArgsReveal.setTarget(content.id, partialJson, {
+							rawInput,
+							exposeRawPartialJson: exposesRawPartialJson(content.name, rawInput, tool),
+							streamingStringKeys: streamingStringKeysForTool(content.name, rawInput),
+							// The preview renders arguments that have NOT reached the tool yet, so
+							// they still carry `§handle` fragments; expansion at seam 1 happens
+							// just before execution. Without the codec here a streaming write or
+							// edit preview shows the handle instead of the text it stands for.
+							argot: this.ctx.viewSession.getArgotSession?.(),
+						});
+					} else {
+						this.#toolArgsReveal.finish(content.id);
+						renderArgs = content.arguments;
+					}
+					if (this.ctx.settledToolCalls.has(content.id)) continue;
+					if (!this.ctx.pendingTools.has(content.id)) {
+						this.#resolveDisplaceablePoll(content.name);
+						this.#resetReadGroup();
+						const component = new ToolExecutionComponent(
+							content.name,
+							renderArgs,
+							{
+								snapshots: getFileSnapshotStore(this.ctx.viewSession),
+								showImages: settings.get("terminal.showImages"),
+								editFuzzyThreshold: settings.get("edit.fuzzyThreshold"),
+								editAllowFuzzy: settings.get("edit.fuzzyMatch"),
+							},
+							tool,
+							this.ctx.ui,
+							this.ctx.sessionManager.getCwd(),
+							content.id,
+						);
+						component.setExpanded(this.ctx.toolOutputExpanded);
+						this.ctx.chatContainer.addChild(component);
+						this.ctx.pendingTools.set(content.id, component);
+						this.#toolTimelineComponents.set(content.id, component);
+						this.#toolArgsReveal.bind(content.id, component);
+						repaintTargets.add(component);
+					} else {
 						const component = this.ctx.pendingTools.get(content.id);
 						if (component) {
-							component.updateArgs(content.arguments, content.id);
-							repaintTargets.add(component);
-						} else {
-							const group = this.#getReadGroup();
-							group.updateArgs(content.arguments, content.id);
-							this.ctx.pendingTools.set(content.id, group);
-							this.#toolTimelineComponents.set(content.id, group);
-							repaintTargets.add(group);
+							component.updateArgs(renderArgs, content.id);
+							this.#toolArgsReveal.bind(content.id, component);
+							// Paced args reveal schedules its own component-scoped paints.
+							if (!partialJson || !smoothStreaming) {
+								repaintTargets.add(component);
+							}
 						}
+					}
+				}
+				for (const [toolCallId, segment] of timeline.afterToolCalls) {
+					const segmentComponent = this.#upsertPostToolAssistantSegment(toolCallId, segment);
+					if (segmentComponent) {
+						repaintTargets.add(segmentComponent);
+					}
+				}
+
+				// Update working message with intent from streamed tool arguments
+				for (const content of this.ctx.streamingMessage.content) {
+					if (content.type !== "toolCall") continue;
+					const args = content.arguments;
+					if (!args || typeof args !== "object") continue;
+					if (INTENT_FIELD in args) {
+						this.#updateWorkingMessageFromIntent(args[INTENT_FIELD]);
 						continue;
 					}
-					// Internal URL read falls through to ToolExecutionComponent below.
-				}
-
-				// Preserve the raw partial JSON only for renderers that need to surface fields before the JSON object closes.
-				// Bash uses this to show inline env assignments during streaming instead of popping them in at completion.
-				// While the JSON is still open, ToolArgsRevealController paces the
-				// reveal (write/edit/bash previews grow smoothly when a slow provider
-				// delivers large batches); once it closes, the final args render
-				// as-is — mirroring how assistant text snaps at message_end.
-				let renderArgs: Record<string, unknown>;
-				const partialJson = getStreamingPartialJson(content);
-				const rawInput = content.customWireName !== undefined;
-				const tool = this.ctx.viewSession.getToolByName(content.name);
-				if (partialJson) {
-					renderArgs = this.#toolArgsReveal.setTarget(content.id, partialJson, {
-						rawInput,
-						exposeRawPartialJson: exposesRawPartialJson(content.name, rawInput, tool),
-						streamingStringKeys: streamingStringKeysForTool(content.name, rawInput),
-						// The preview renders arguments that have NOT reached the tool yet, so
-						// they still carry `§handle` fragments; expansion at seam 1 happens
-						// just before execution. Without the codec here a streaming write or
-						// edit preview shows the handle instead of the text it stands for.
-						argot: this.ctx.viewSession.getArgotSession?.(),
-					});
-				} else {
-					this.#toolArgsReveal.finish(content.id);
-					renderArgs = content.arguments;
-				}
-				if (this.ctx.settledToolCalls.has(content.id)) continue;
-				if (!this.ctx.pendingTools.has(content.id)) {
-					this.#resolveDisplaceablePoll(content.name);
-					this.#resetReadGroup();
-					const component = new ToolExecutionComponent(
-						content.name,
-						renderArgs,
-						{
-							snapshots: getFileSnapshotStore(this.ctx.viewSession),
-							showImages: settings.get("terminal.showImages"),
-							editFuzzyThreshold: settings.get("edit.fuzzyThreshold"),
-							editAllowFuzzy: settings.get("edit.fuzzyMatch"),
-						},
-						tool,
-						this.ctx.ui,
-						this.ctx.sessionManager.getCwd(),
-						content.id,
-					);
-					component.setExpanded(this.ctx.toolOutputExpanded);
-					this.ctx.chatContainer.addChild(component);
-					this.ctx.pendingTools.set(content.id, component);
-					this.#toolTimelineComponents.set(content.id, component);
-					this.#toolArgsReveal.bind(content.id, component);
-					repaintTargets.add(component);
-				} else {
-					const component = this.ctx.pendingTools.get(content.id);
-					if (component) {
-						component.updateArgs(renderArgs, content.id);
-						this.#toolArgsReveal.bind(content.id, component);
-						// Paced args reveal schedules its own component-scoped paints.
-						if (!partialJson || !smoothStreaming) {
-							repaintTargets.add(component);
+					const tool = this.ctx.viewSession.getToolByName(content.name);
+					if (typeof tool?.intent !== "function") continue;
+					try {
+						const derived = tool.intent(args as never)?.trim();
+						if (derived) {
+							this.#updateWorkingMessageFromIntent(derived);
 						}
+					} catch {
+						// intent function must never break the UI
 					}
-				}
-			}
-			for (const [toolCallId, segment] of timeline.afterToolCalls) {
-				const segmentComponent = this.#upsertPostToolAssistantSegment(toolCallId, segment);
-				if (segmentComponent) {
-					repaintTargets.add(segmentComponent);
-				}
-			}
-
-			// Update working message with intent from streamed tool arguments
-			for (const content of this.ctx.streamingMessage.content) {
-				if (content.type !== "toolCall") continue;
-				const args = content.arguments;
-				if (!args || typeof args !== "object") continue;
-				if (INTENT_FIELD in args) {
-					this.#updateWorkingMessageFromIntent(args[INTENT_FIELD]);
-					continue;
-				}
-				const tool = this.ctx.viewSession.getToolByName(content.name);
-				if (typeof tool?.intent !== "function") continue;
-				try {
-					const derived = tool.intent(args as never)?.trim();
-					if (derived) {
-						this.#updateWorkingMessageFromIntent(derived);
-					}
-				} catch {
-					// intent function must never break the UI
 				}
 			}
 

@@ -2142,6 +2142,7 @@ export async function processResponsesStream<TApi extends Api>(
 	interface StreamingItem {
 		item: ResponseReasoningItem | ResponseOutputMessage | ResponseFunctionToolCall | ResponseCustomToolCall;
 		block: ThinkingContent | TextContent | StreamingToolCallBlock;
+		contentIndex: number;
 	}
 
 	// Multiple items (parallel function_calls in particular) can be open at the same
@@ -2361,18 +2362,18 @@ export async function processResponsesStream<TApi extends Api>(
 			const item = event.item;
 			if (item.type === "reasoning") {
 				const block: ThinkingContent = { type: "thinking", thinking: "", itemId: item.id };
-				output.content.push(block);
-				registerOpenItem(event.output_index, item.id, { item, block });
-				stream.push({ type: "thinking_start", contentIndex: contentIndexOf(block), partial: output });
+				const contentIndex = output.content.push(block) - 1;
+				registerOpenItem(event.output_index, item.id, { item, block, contentIndex });
+				stream.push({ type: "thinking_start", contentIndex, partial: output });
 			} else if (item.type === "message") {
 				const block: TextContent = {
 					type: "text",
 					text: "",
 					textSignature: encodeTextSignatureV1(item.id, item.phase ?? undefined),
 				};
-				output.content.push(block);
-				registerOpenItem(event.output_index, item.id, { item, block });
-				stream.push({ type: "text_start", contentIndex: contentIndexOf(block), partial: output });
+				const contentIndex = output.content.push(block) - 1;
+				registerOpenItem(event.output_index, item.id, { item, block, contentIndex });
+				stream.push({ type: "text_start", contentIndex, partial: output });
 			} else if (item.type === "function_call") {
 				const block: StreamingToolCallBlock = {
 					type: "toolCall",
@@ -2381,15 +2382,15 @@ export async function processResponsesStream<TApi extends Api>(
 					arguments: {},
 					[kStreamingPartialJson]: item.arguments || "",
 				};
-				output.content.push(block);
+				const contentIndex = output.content.push(block) - 1;
 				registerOpenItem(
 					event.output_index,
 					item.id,
-					{ item, block },
+					{ item, block, contentIndex },
 					item.call_id,
 					prefixedFunctionCallItemKey(item.call_id),
 				);
-				stream.push({ type: "toolcall_start", contentIndex: contentIndexOf(block), partial: output });
+				stream.push({ type: "toolcall_start", contentIndex, partial: output });
 			} else if (item.type === "custom_tool_call") {
 				const block: StreamingToolCallBlock = {
 					type: "toolCall",
@@ -2405,15 +2406,15 @@ export async function processResponsesStream<TApi extends Api>(
 					// accumulation buffer so later code that inspects the field still works.
 					[kStreamingPartialJson]: item.input ?? "",
 				};
-				output.content.push(block);
+				const contentIndex = output.content.push(block) - 1;
 				registerOpenItem(
 					event.output_index,
 					item.id,
-					{ item, block },
+					{ item, block, contentIndex },
 					item.call_id,
 					prefixedFunctionCallItemKey(item.call_id),
 				);
-				stream.push({ type: "toolcall_start", contentIndex: contentIndexOf(block), partial: output });
+				stream.push({ type: "toolcall_start", contentIndex, partial: output });
 			}
 		} else if (event.type === "response.reasoning_summary_part.added") {
 			const entry = lookupOpenItem(event);
@@ -2421,19 +2422,12 @@ export async function processResponsesStream<TApi extends Api>(
 		} else if (event.type === "response.reasoning_summary_text.delta") {
 			const entry = lookupOpenItem(event);
 			if (entry?.item.type === "reasoning" && entry.block.type === "thinking") {
-				appendReasoningSummaryTextDelta(
-					entry.item,
-					entry.block,
-					event.delta,
-					stream,
-					output,
-					contentIndexOf(entry.block),
-				);
+				appendReasoningSummaryTextDelta(entry.item, entry.block, event.delta, stream, output, entry.contentIndex);
 			}
 		} else if (event.type === "response.reasoning_summary_part.done") {
 			const entry = lookupOpenItem(event);
 			if (entry?.item.type === "reasoning" && entry.block.type === "thinking") {
-				appendReasoningSummaryPartDone(entry.item, entry.block, stream, output, contentIndexOf(entry.block));
+				appendReasoningSummaryPartDone(entry.item, entry.block, stream, output, entry.contentIndex);
 			}
 		} else if (event.type === "response.reasoning_text.delta") {
 			// Raw reasoning text delta from local providers that stream thinking
@@ -2443,7 +2437,7 @@ export async function processResponsesStream<TApi extends Api>(
 				entry.block.thinking += event.delta;
 				stream.push({
 					type: "thinking_delta",
-					contentIndex: contentIndexOf(entry.block),
+					contentIndex: entry.contentIndex,
 					delta: event.delta,
 					partial: output,
 				});
@@ -2460,27 +2454,19 @@ export async function processResponsesStream<TApi extends Api>(
 					event.delta,
 					stream,
 					output,
-					contentIndexOf(entry.block),
+					entry.contentIndex,
 					"output_text",
 				);
 			}
 		} else if (event.type === "response.refusal.delta") {
 			const entry = lookupOpenItem(event);
 			if (entry?.item.type === "message" && entry.block.type === "text") {
-				appendMessageTextDelta(
-					entry.item,
-					entry.block,
-					event.delta,
-					stream,
-					output,
-					contentIndexOf(entry.block),
-					"refusal",
-				);
+				appendMessageTextDelta(entry.item, entry.block, event.delta, stream, output, entry.contentIndex, "refusal");
 			}
 		} else if (event.type === "response.function_call_arguments.delta") {
 			const entry = lookupOpenFunctionCallItem(event);
 			if (entry?.item.type === "function_call" && entry.block.type === "toolCall") {
-				accumulateToolCallArgumentsDelta(entry.block, event.delta, stream, output, contentIndexOf(entry.block));
+				accumulateToolCallArgumentsDelta(entry.block, event.delta, stream, output, entry.contentIndex);
 			}
 		} else if (event.type === "response.function_call_arguments.done") {
 			const entry = lookupOpenFunctionCallItem(event);
@@ -2491,7 +2477,7 @@ export async function processResponsesStream<TApi extends Api>(
 		} else if (event.type === "response.custom_tool_call_input.delta") {
 			const entry = lookupOpenToolCallAlias(event, "custom_tool_call");
 			if (entry?.item.type === "custom_tool_call" && entry.block.type === "toolCall") {
-				accumulateCustomToolCallInputDelta(entry.block, event.delta, stream, output, contentIndexOf(entry.block));
+				accumulateCustomToolCallInputDelta(entry.block, event.delta, stream, output, entry.contentIndex);
 			}
 		} else if (event.type === "response.custom_tool_call_input.done") {
 			const entry = lookupOpenToolCallAlias(event, "custom_tool_call");
@@ -2520,7 +2506,10 @@ export async function processResponsesStream<TApi extends Api>(
 					reasoningBlock.thinkingSignature = JSON.stringify(item);
 					stream.push({
 						type: "thinking_end",
-						contentIndex: contentIndexOf(reasoningBlock),
+						contentIndex:
+							entry?.block.type === "thinking" && reasoningBlock === entry.block
+								? entry.contentIndex
+								: contentIndexOf(reasoningBlock),
 						content: reasoningBlock.thinking,
 						partial: output,
 					});
@@ -2534,7 +2523,7 @@ export async function processResponsesStream<TApi extends Api>(
 				if (block) {
 					block.text = text;
 					block.textSignature = textSignature;
-					contentIndex = contentIndexOf(block);
+					contentIndex = entry!.contentIndex;
 				} else {
 					// `output_item.added` never arrived (lossy proxy) — synthesize the
 					// block so the final message still carries the authoritative text.
@@ -2567,7 +2556,7 @@ export async function processResponsesStream<TApi extends Api>(
 					// and the persisted block must agree.
 					block.arguments = args;
 					clearStreamingPartialJson(block);
-					contentIndex = contentIndexOf(block);
+					contentIndex = entry!.contentIndex;
 				} else {
 					// `output_item.added` never arrived (lossy proxy) — synthesize the
 					// block so the final message carries the call the consumer was told
@@ -2593,7 +2582,7 @@ export async function processResponsesStream<TApi extends Api>(
 					// accumulation buffer, mirroring the function_call branch above.
 					block.arguments = { input: rawInput };
 					clearStreamingPartialJson(block);
-					contentIndex = contentIndexOf(block);
+					contentIndex = entry!.contentIndex;
 				} else {
 					output.content.push(toolCall);
 					contentIndex = output.content.length - 1;

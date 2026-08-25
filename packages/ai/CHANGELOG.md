@@ -34,6 +34,7 @@
 - `transformMessages` in `transform-messages.ts` adds a fast-path that returns same-model non-Anthropic assistant messages by reference when they contain no thinking or fallback blocks, avoiding one object spread and one content array allocation per assistant message per turn in the common case.
 - The OpenAI completions streaming chunk loop hoists the `reasoning_content`/`reasoning`/`reasoning_text` field-name array from a per-chunk allocation to a module-scope constant, avoiding one 3-element array allocation per streamed token.
 - The OpenAI completions streaming chunk loop caches `currentBlockIndex` and returns it in O(1) when `blockIndex` is called with the current block, avoiding one `indexOf` scan per streaming event in the common case (text streaming).
+- `processResponsesStream` in `openai-shared.ts` caches `contentIndex` on each `StreamingItem` at block creation time, replacing an `output.content.indexOf(block)` scan on every delta event with an O(1) field read.
 
 ### Fixed
 
