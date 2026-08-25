@@ -11,7 +11,7 @@
 import { matchesKey } from "../keys";
 import { HoverFade, type HoverFadeOptions } from "../motion-hover";
 import type { Component } from "../tui";
-import { clamp, clampLow, padding, truncateToWidth, visibleWidth } from "../utils";
+import { clampLow, padding, truncateToWidth, visibleWidth } from "../utils";
 
 /** Tab definition */
 export interface Tab {
@@ -101,7 +101,10 @@ export class TabBar implements Component {
 
 	/** Set the active tab by index (clamped to valid range) */
 	setActiveIndex(index: number): void {
-		const newIndex = clamp(index, 0, this.#tabs.length - 1);
+		// `clampLow` for the same reason `setTabs` below uses it: with no tabs the
+		// high bound is -1, and `clamp` returns that inverted bound, which would
+		// report tab -1 and hand `onTabChange` an undefined tab.
+		const newIndex = clampLow(index, 0, this.#tabs.length - 1);
 		if (newIndex !== this.#activeIndex) {
 			this.#activeIndex = newIndex;
 			this.onTabChange?.(this.#tabs[this.#activeIndex], this.#activeIndex);

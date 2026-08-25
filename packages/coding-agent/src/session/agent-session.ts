@@ -17114,7 +17114,10 @@ export class AgentSession {
 				});
 				return COMPACTION_CHECK_NONE;
 			}
-			const errorMessage = error instanceof Error ? error.message : "compaction failed";
+			// Shadowing the `errorMessage` helper with a local also discarded what it
+			// is for: a rejection that is not an `Error` (a string, a provider payload)
+			// reported the literal "compaction failed" and stated no cause at all.
+			const failure = errorMessage(error);
 			await this.#emitSessionEvent({
 				type: "auto_compaction_end",
 				action,
@@ -17123,10 +17126,10 @@ export class AgentSession {
 				willRetry: false,
 				errorMessage:
 					reason === "overflow"
-						? `Context overflow recovery failed: ${errorMessage}`
+						? `Context overflow recovery failed: ${failure}`
 						: reason === "incomplete"
-							? `Incomplete response recovery failed: ${errorMessage}`
-							: `Auto-compaction failed: ${errorMessage}`,
+							? `Incomplete response recovery failed: ${failure}`
+							: `Auto-compaction failed: ${failure}`,
 			});
 			return await this.#afterFailedCompaction(reason, willRetry, autoCompactionSignal, generation, {
 				suppressContinuation,

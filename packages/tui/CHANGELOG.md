@@ -14,6 +14,8 @@
 
 ### Fixed
 
+- A tab bar holding no tabs keeps its active index at 0, instead of reporting tab -1 and handing an undefined tab to the change callback.
+- `SelectList.setSelectedIndex` holds its low bound on an empty list rather than storing an inverted -1; no behavior changes today, since no caller can distinguish the two.
 - Derive scroll-isolation pinned footer hit-test boundaries from the rendered window top and clamp child frame-local mouse coordinates within valid segment bounds.
 - Nested optional-argument LaTeX constructs parse in linear time without character-by-character concatenation allocations.
 - Exclude pinned footer rows from the scroll-isolation snapshot and scroll space so the composer does not duplicate inside scrolled-back history.

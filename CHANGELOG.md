@@ -77,6 +77,14 @@
 
 ### Fixed
 
+- A JSON-RPC header field whose name merely ends in `Content-Length`, or a server log line that mentions it, no longer sets the frame length and parks the language-server connection on a byte count the stream never reaches.
+- A grep over an archive member removes its extracted scratch directory when extraction fails partway, instead of leaving it behind for the life of the host.
+- Waiting for a language server's project load removes its abort listener, instead of leaving one on the turn's signal for every feature request made during that turn.
+- A path list naming an entry the process is not permitted to stat resolves that entry as present, instead of failing the whole tool call with a permission error.
+- The working-directory boundary selects its targets by value, so a `path` argument carrying no usable value can no longer suppress the `paths` it also inspects.
+- An auto-compaction failure names its actual cause when the rejection is not an `Error`, instead of reporting the literal text `compaction failed`.
+- A liveness probe of the lspmux server cancels its timeout once the process answers, instead of leaving a timer pending for the rest of the window on every probe.
+- SQLite path detection restarts its scan at the beginning of the string, so a scan that ended abnormally cannot make the next one miss candidates.
 - The write tool rejects content carrying hashline patch markers, unified diff hunks, or read-output display prefixes with an error naming the detection and stating corrective action instead of silently stripping prefixes before writing.
 - Converted LLM message wrappers preserve reference identity across turns so the provider context canonicalizer re-renders only newly appended messages.
 - Memory pipeline SQLite storage (`storage.sqlite`) manages schema migrations via `PRAGMA user_version` and dynamically backfills missing columns on legacy databases.
@@ -172,6 +180,8 @@
 - Persisted AVX2 verdicts are schema-versioned and keyed by platform, architecture, and CPU model, so copied or stale caches cannot select a native variant for different hardware.
 - The AVX2 trial load answers from the addon loader's first import and exits, so a compiled host, whose `process.execPath` is the product binary rather than a JavaScript runtime, reports a verdict instead of booting the whole CLI and spawning a trial child of its own at every level.
 - A wrapped line now continues under the indent its first row opened at, so an indented row no longer reads as a new top-level row at a narrow width.
+- A tab bar holding no tabs keeps its active index at 0, instead of reporting tab -1 and handing an undefined tab to the change callback.
+- `SelectList.setSelectedIndex` holds its low bound on an empty list rather than storing an inverted -1; no behavior changes today, since no caller can distinguish the two.
 - Derive scroll-isolation pinned footer hit-test boundaries from the rendered window top and clamp child frame-local mouse coordinates within valid segment bounds.
 - Nested optional-argument LaTeX constructs parse in linear time without character-by-character concatenation allocations.
 - Exclude pinned footer rows from the scroll-isolation snapshot and scroll space so the composer does not duplicate inside scrolled-back history.

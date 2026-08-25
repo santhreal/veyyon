@@ -870,12 +870,26 @@ export async function ensureFileOpen(client: LspClient, filePath: string, signal
  */
 export async function waitForProjectLoaded(client: LspClient, signal?: AbortSignal): Promise<void> {
 	if (signal?.aborted) return;
-	await Promise.race([
-		client.projectLoaded,
-		...(signal
-			? [new Promise<void>(resolve => signal.addEventListener("abort", () => resolve(), { once: true }))]
-			: []),
-	]);
+	if (!signal) {
+		await client.projectLoaded;
+	} else {
+		// `{ once: true }` detaches the listener only once abort FIRES. This race is
+		// normally won by an already-settled `projectLoaded`, so without an explicit
+		// removal every LSP feature call leaves one more listener on a signal that
+		// lives as long as the turn, and all of them run when it finally aborts.
+		let onAbort: (() => void) | undefined;
+		try {
+			await Promise.race([
+				client.projectLoaded,
+				new Promise<void>(resolve => {
+					onAbort = () => resolve();
+					signal.addEventListener("abort", onAbort, { once: true });
+				}),
+			]);
+		} finally {
+			if (onAbort) signal.removeEventListener("abort", onAbort);
+		}
+	}
 	if (isRustAnalyzerClient(client)) {
 		await waitForRustAnalyzerWorkspace(client, signal);
 	}
