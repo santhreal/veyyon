@@ -205,7 +205,13 @@ describe("the model segment survives long paths and branch names", () => {
 	// So an out-of-rank absence is not free: the part must be one the floor is allowed to spend,
 	// and the spend must have bought something, meaning the location is on the row. A part that
 	// vanished while the location zone is empty was not spent, it was lost.
-	const SPENDABLE_ON_THE_FLOOR = ["badges", "context_pct", "context_total", "location_right", "subagents"];
+	//
+	// The running-subagent count and the animated badge slot were on this list and came off it.
+	// The count is the part the row sheds LAST, so paying the floor with it inverted the ranking
+	// this suite exists to pin -- and on a row holding nothing else it emptied the footline
+	// outright. The badge slot is unranked, so the fit ladder has already dropped it by the time
+	// the floor ladder runs, and listing it excused an absence that could never occur.
+	const SPENDABLE_ON_THE_FLOOR = ["context_pct", "context_total", "location_right"];
 
 	it("sheds the right group as a suffix of the ranking, except for what the location's floor may spend", () => {
 		// Pinned by equality rather than read from source into the assertion: a new spendable

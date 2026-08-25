@@ -22,10 +22,15 @@
  *
  * HOW THIS SUITE CLOSES THE CLASS.
  *   - The reported frame is one case, not the contract. The row is swept from 130 columns down to
- *     6 and a directory has to be on it at every one. That is unconditional here rather than an
- *     implication, because the last right-group part standing is the subagent count and the floor
- *     is allowed to spend it, so there is always a cell to buy the zone with. A latch
- *     reintroduced in the floor ladder blanks a width and fails the sweep.
+ *     6, and a zone left blank has to justify itself three ways: nothing the floor may spend is
+ *     still on the row, the cells standing in front of the right group are fewer than the
+ *     narrowest zone this same sweep painted, and the blanking is the narrow END of the row
+ *     rather than a band in the middle of it. A latch anywhere in either ladder leaves cells in
+ *     front of the group and fails all three.
+ *   - The running-subagent count is NOT among what the floor may spend -- it is the part the row
+ *     sheds last of everything -- so at six and seven columns the whole row is the count and no
+ *     zone is possible there. That band is the only place a blank zone is right, and the three
+ *     bounds above are what confine it to it.
  *   - What the floor may spend is read from `FLOOR_SPENDABLE` at run time rather than listed, so
  *     a part added to that set is covered on the first run. Removing one is the ranking suite's
  *     job: it pins the set by equality, which is what a run-time read cannot see.
@@ -188,6 +193,20 @@ function rowEnd(bounds: readonly QuietSegmentBounds[]): number {
 	return end;
 }
 
+/**
+ * The cells a blank zone could have been painted in: the columns standing empty in front of the
+ * right group, less the two-cell gap that would have separated the zone from it. The gap is what
+ * makes six columns honestly blank -- four of them hold the count, and the two in front of it
+ * are the gap, not room.
+ */
+function roomForTheZone(bounds: readonly QuietSegmentBounds[]): number {
+	let start = Number.POSITIVE_INFINITY;
+	for (const slot of bounds) {
+		if (slot.end > slot.start && !LOCATION_SEGMENT_IDS.includes(slot.id)) start = Math.min(start, slot.start);
+	}
+	return start === Number.POSITIVE_INFINITY ? 0 : Math.max(0, start - 2);
+}
+
 beforeAll(async () => {
 	await Settings.init({ inMemory: true });
 	const loaded = await getThemeByName("dark");
@@ -223,10 +242,12 @@ describe("a narrow footline spends a readout before it blanks the location", () 
 		expect(stripAnsi(line ?? "")).toContain("normalizer");
 	});
 
-	it("keeps a directory on the row at every width, paying for it out of the readouts", () => {
+	it("keeps a directory on the row wherever the row has room for one", () => {
 		const statusLine = draftFootline();
 		const spendable = new Set(Object.keys(FLOOR_SPENDABLE));
-		const blanked: { width: number; text: string; unspent: string[] }[] = [];
+		const blanked: { width: number; text: string; room: number; unspent: string[] }[] = [];
+		const painted: number[] = [];
+		let narrowestZone = Number.POSITIVE_INFINITY;
 		let sawTheFloorSpend = false;
 
 		for (let width = 130; width >= 6; width--) {
@@ -235,15 +256,34 @@ describe("a narrow footline spends a readout before it blanks the location", () 
 			const bounds = statusLine.getQuietSegmentBounds();
 			const ids = renderedIds(bounds);
 			if (!ids.has("location_right")) sawTheFloorSpend = true;
-			if (locationEnd(bounds) > 0) continue;
-			// Stated positively rather than as an implication, because on this row it is
-			// unconditional: the last right-group part standing is the subagent count, which the
-			// floor is allowed to spend, so there is always a cell to buy the zone with. A latch
-			// anywhere in either ladder puts widths in this list.
-			blanked.push({ width, text: stripAnsi(line), unspent: [...ids].filter(id => spendable.has(id)).sort() });
+			const zone = locationEnd(bounds);
+			if (zone > 0) {
+				painted.push(width);
+				narrowestZone = Math.min(narrowestZone, zone);
+				// The cells a clipped zone leaves in front of the group are the empty middle, and
+				// the sweep over three presets below owns that bound.
+				continue;
+			}
+			blanked.push({
+				width,
+				text: stripAnsi(line),
+				room: roomForTheZone(bounds),
+				unspent: [...ids].filter(id => spendable.has(id)).sort(),
+			});
 		}
 
-		expect(blanked).toEqual([]);
+		// Anything re-readable still on the row is a cell the zone was owed and did not get.
+		expect(blanked.filter(row => row.unspent.length > 0)).toEqual([]);
+		// The sweep has to have painted a zone somewhere, or the bound below means nothing and a
+		// row that blanked the zone at every width would pass.
+		expect(narrowestZone).toBeLessThan(Number.POSITIVE_INFINITY);
+		// The room left standing in front of the group is the reported defect's signature: it
+		// blanked the zone with twenty-one cells of it and a token estimate still on the row. A
+		// blank is honest only where less of it is left than the narrowest zone this row painted.
+		expect(blanked.filter(row => row.room >= narrowestZone)).toEqual([]);
+		// And it is the narrow end of the row, not a band with painted zones below it.
+		const widestBlank = blanked.reduce((widest, row) => Math.max(widest, row.width), 0);
+		expect(painted.filter(width => width < widestBlank)).toEqual([]);
 		// And the zone was bought, not merely never squeezed.
 		expect(sawTheFloorSpend).toBe(true);
 	});

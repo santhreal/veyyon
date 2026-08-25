@@ -126,11 +126,19 @@ function weakestRightPart(parts: readonly QuietPart[]): { index: number; rank: n
  * which a directory or a branch still reads as itself.
  *
  * This is a different question from the shed order above, which asks what the ROW gives up to
- * fit at all, and it wants a different answer. These four are re-readable or recoverable: a
- * percentage is back on the next frame, a subagent or job count is usually a zero, and a draft
- * token estimate is re-derived on the next keystroke. The model chip and the mode rungs are
- * not on that list: the chip is what this row exists to retain, and a rung says what the next
- * keystroke will DO, which is not something to spend on a wider directory.
+ * fit at all, and it wants a different answer. These three are re-readable or recoverable: a
+ * percentage is back on the next frame, a draft token estimate is re-derived on the next
+ * keystroke, and owner-pinned right content restates itself. The model chip and the mode rungs
+ * are not on that list: the chip is what this row exists to retain, and a rung says what the
+ * next keystroke will DO, which is not something to spend on a wider directory.
+ *
+ * Neither is the persistent running-subagent count, which the row sheds LAST of all (see
+ * RIGHT_PART_SHED_RANK). Paying the floor with it inverted that order twice over: a row whose
+ * only remaining part was the count spent it and rendered nothing at all, and a row narrowing
+ * under pressure lost the count while a mode rung it outranks stayed. A count is a small chip
+ * and buys the zone almost nothing; the order it sits in is worth more than its three cells.
+ * The animated badge slot is off the list for a duller reason: it is unranked, so the shed loop
+ * above has already dropped it before this ladder can run.
  *
  * Without this the ladder stopped at the model chip and left the zone under its floor with
  * three spendable parts still on the row -- `…izer  ·  …g-path` beside a token estimate, two
@@ -138,11 +146,9 @@ function weakestRightPart(parts: readonly QuietPart[]): { index: number; rank: n
  * MIN_LOCATION_PART exists to prevent.
  */
 export const FLOOR_SPENDABLE: Record<string, true> = {
-	badges: true,
 	context_pct: true,
 	context_total: true,
 	location_right: true,
-	subagents: true,
 };
 
 /**
@@ -2101,11 +2107,9 @@ export class StatusLineComponent implements Component {
 			// cell rendered a bare `…` — every ranked part destroyed at once, including the
 			// persistent subagent count that outranks all of them.
 			//
-			// The zone is NOT re-fitted here. It cannot need it: the fit above clipped it to the
-			// room the group left, so a shed that ends the overflow ends this loop, and a shed
-			// that does not is followed by another. Where the freed cells do have to be handed
-			// over is the floor ladder below, which is the only place a shed is made on the
-			// zone's behalf rather than the row's.
+			// The zone is not re-fitted inside this branch: a shed that does not end the overflow
+			// is followed by another, so there is nothing settled to fit against yet. The shed
+			// that DOES end it is accounted for below, once the group has stopped moving.
 			if (rightParts.length > 1 && dropIndex >= 0) {
 				rightParts.splice(dropIndex, 1);
 				right = rightParts.map(part => part.content).join(sep);
@@ -2113,13 +2117,26 @@ export class StatusLineComponent implements Component {
 			}
 			break;
 		}
+		// The group has stopped shedding, so the room it leaves is final -- and the shed that
+		// ended the loop above freed cells nobody has handed over yet. The zone was fitted
+		// against the group as it stood BEFORE that shed, which on a narrow row is two parts
+		// wider, so it kept a width the row had already outgrown: the same latch as the reported
+		// defect, one shed later. At 40 columns it left the zone blank with the model chip and a
+		// mode rung standing in the middle of the row.
+		if (locationShortened) {
+			const settled = fitToTheRoomLeft();
+			left = settled.text;
+			locationSlots = settled.slots;
+			locationCramped = settled.cramped;
+		}
 		// A location squeezed under its floors is a zone that no longer reads: `…izer  ·  …g-path`
 		// says neither where the session is nor what it is on. At that point the budget is what
 		// has to move, so the row pays the zone out of what it can re-read on the next frame --
-		// the context gauge, the badge counts, the draft token estimate (see FLOOR_SPENDABLE) --
-		// and asks the fitter again after each one. It never pays with the model chip, which is
-		// what this row exists to retain, and never with a mode rung, which says what the next
-		// keystroke does.
+		// the context gauge, the draft token estimate, owner-pinned right content (see
+		// FLOOR_SPENDABLE) -- and asks the fitter again after each one. It never pays with the
+		// model chip, which is what this row exists to retain, never with a mode rung, which says
+		// what the next keystroke does, and never with the running-subagent count, which the row
+		// sheds last of everything.
 		while (locationCramped && locationShortened && rightParts.length > 0) {
 			const index = weakestSpendablePart(rightParts);
 			if (index < 0) break;
