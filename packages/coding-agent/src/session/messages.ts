@@ -899,7 +899,10 @@ function isAnsweredBatchLedgerNotice(messages: AgentMessage[], index: number, me
  * drew them, and reach the sentence through the record that block keeps.
  */
 function statePlacedImageVisibility(message: ToolResultMessage): ToolResultMessage {
-	const images = message.content.filter(block => block.type === "image").length;
+	let images = 0;
+	for (const block of message.content) {
+		if (block.type === "image") images++;
+	}
 	if (images === 0) return message;
 	const notice = imageVisibilityNotice(imageDisplayStateForCall(message.toolCallId, images), images);
 	if (!notice) return message;

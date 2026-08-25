@@ -65,4 +65,21 @@ describe("filterProviderReplayMessages pure matrix", () => {
 		const msgs = [{ role: "user", content: "a", timestamp: 1 } as Message, assistant("stop"), assistant("length")];
 		expect(filterProviderReplayMessages(msgs)).toEqual(msgs);
 	});
+
+	it("returns the same array reference when no refusals are present", () => {
+		// WHY: filterProviderReplayMessages scans for refusals before calling
+		// .filter(). When none are found, it returns the original array to
+		// avoid a 33K-element allocation per turn on long conversations.
+		const msgs = [{ role: "user", content: "a", timestamp: 1 } as Message, assistant("stop")];
+		expect(filterProviderReplayMessages(msgs)).toBe(msgs);
+	});
+
+	it("returns a new array when a refusal is filtered out", () => {
+		const user = { role: "user", content: "a", timestamp: 1 } as Message;
+		const refusal = assistant("error", { type: "refusal" } as never);
+		const input = [user, refusal];
+		const result = filterProviderReplayMessages(input);
+		expect(result).not.toBe(input);
+		expect(result).toEqual([user]);
+	});
 });
