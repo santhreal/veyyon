@@ -1352,7 +1352,8 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 			// Same chain normalization the setting gets: a comma list contributes
 			// its first entry, an empty argument falls through to the setting.
 			const cheapPattern =
-				normalizeModelPatternList(arg)[0] || normalizeModelPatternList(runtime.settings.get("prewalk.cheapModel"))[0];
+				normalizeModelPatternList(arg)[0] ||
+				normalizeModelPatternList(runtime.settings.get("prewalk.cheapModel"))[0];
 			if (!cheapPattern) {
 				return usage(
 					'Prewalk needs a cheap target model: run /prewalk <model> or set "prewalk.cheapModel" in settings.',
