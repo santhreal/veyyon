@@ -54,6 +54,7 @@
 - The autoresearch dashboard merges three `.filter().length` calls into a single counting loop, avoiding three throwaway arrays per status line render during autoresearch mode.
 - The context-usage bar replaces a double `reduce` for `usedCount` with a counting loop that tracks the total incrementally during the overflow-scaling pass, avoiding a callback allocation and a redundant full-array reduce per context bar render.
 - The usage display unique-account count replaces `.map().filter()` into a `Set` with a single `for` loop, avoiding two intermediate arrays per usage display render.
+- The autoresearch expanded dashboard merges four `.filter().length` counts (kept, discarded, crashed, checks_failed) into a single counting loop, avoiding four throwaway arrays per dashboard render.
 
 ### Added
 
