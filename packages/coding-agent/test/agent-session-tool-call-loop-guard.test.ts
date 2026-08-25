@@ -118,4 +118,90 @@ describe("AgentSession tool-call loop guard", () => {
 		expect(redirects).toHaveLength(1);
 		expect(redirects[0]!.display).toBe(false);
 	});
+	it("injects a redirect on the second consecutive subsumed read call", async () => {
+		const model = createMockModel({ provider: "openai", id: "gpt-test" }).model;
+		const modelRegistry = new ModelRegistry(authStorage);
+		const contexts: Context[] = [];
+		const readTool: AgentTool = {
+			name: "read",
+			label: "Read",
+			description: "read files",
+			parameters: type({ path: "string" }),
+			execute: async () => ({
+				content: [{ type: "text" as const, text: "[src/segments.ts#1A2B]\n1: code\n200: end" }],
+			}),
+		};
+
+		let callCount = 0;
+		const agent = new Agent({
+			getApiKey: () => "test-key",
+			initialState: { model, systemPrompt: ["Test"], tools: [readTool], messages: [] },
+			convertToLlm,
+			streamFn: (_model, context) => {
+				contexts.push(context);
+				const toolCallTurn = callCount < 3;
+				const toolCallId = `read-${callCount}`;
+				const readPaths = ["src/segments.ts:1-200", "src/segments.ts:50-100", "src/segments.ts:80-120"];
+				const readPath = readPaths[callCount] ?? "src/segments.ts";
+				callCount++;
+				const message: AssistantMessage = toolCallTurn
+					? {
+							role: "assistant",
+							content: [{ type: "toolCall", id: toolCallId, name: "read", arguments: { path: readPath } }],
+							api: model.api,
+							provider: model.provider,
+							model: model.id,
+							usage: zeroUsage,
+							stopReason: "toolUse",
+							timestamp: Date.now(),
+						}
+					: {
+							role: "assistant",
+							content: [{ type: "text", text: "Stopped repeating." }],
+							api: model.api,
+							provider: model.provider,
+							model: model.id,
+							usage: zeroUsage,
+							stopReason: "stop",
+							timestamp: Date.now(),
+						};
+				const stream = new AssistantMessageEventStream();
+				queueMicrotask(() => {
+					stream.push({ type: "start", partial: message });
+					stream.push({ type: "done", reason: toolCallTurn ? "toolUse" : "stop", message });
+				});
+				return stream;
+			},
+		});
+
+		const settings = Settings.isolated({
+			"compaction.enabled": false,
+			"todo.enabled": false,
+			"model.toolCallLoopGuard.enabled": true,
+			"model.toolCallLoopGuard.threshold": 5,
+			"model.toolCallLoopGuard.readSubsumptionThreshold": 2,
+			"model.toolCallLoopGuard.exemptTools": ["job", "irc"],
+		});
+		settings.setModelRole("default", `${model.provider}/${model.id}`);
+		session = new AgentSession({
+			agent,
+			sessionManager: SessionManager.inMemory(tempDir.path()),
+			settings,
+			modelRegistry,
+			toolRegistry: new Map([[readTool.name, readTool]]),
+		});
+
+		await session.prompt("read code");
+		await session.waitForIdle();
+
+		expect(contexts).toHaveLength(4);
+		// Context on call 4 should contain the tool_call_loop_detected redirect!
+		expect(JSON.stringify(contexts[3]!.messages)).toContain("tool_call_loop_detected");
+		const redirects = session.agent.state.messages.filter(
+			(message): message is CustomMessage =>
+				message.role === "custom" && message.customType === "tool-call-loop-redirect",
+		);
+		expect(redirects).toHaveLength(1);
+		expect(redirects[0]!.display).toBe(false);
+	});
 });
