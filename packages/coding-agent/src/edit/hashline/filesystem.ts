@@ -164,7 +164,7 @@ export class HashlineFilesystem extends Filesystem {
 			if (isEnoent(error)) throw new NotFoundError(relativePath, error);
 			throw error;
 		}
-		if (this.session.enableLsp ?? true) {
+		if ((this.session.enableLsp ?? true) && this.session.settings.get("lsp.enabled")) {
 			await notifyWorkspaceWatchedFiles(
 				this.session.cwd,
 				[{ filePath: absolutePath, type: FileChangeType.Deleted }],
@@ -200,7 +200,7 @@ export class HashlineFilesystem extends Filesystem {
 		} else {
 			await fs.rename(fromAbsolute, toAbsolute);
 		}
-		if (this.session.enableLsp ?? true) {
+		if ((this.session.enableLsp ?? true) && this.session.settings.get("lsp.enabled")) {
 			await notifyWorkspaceWatchedFiles(
 				this.session.cwd,
 				[

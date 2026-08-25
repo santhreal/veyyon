@@ -470,7 +470,7 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 	readonly #deferredDiagnostics: DeferredDiagnostics | undefined;
 
 	constructor(private readonly session: ToolSession) {
-		const enableLsp = session.enableLsp ?? true;
+		const enableLsp = (session.enableLsp ?? true) && session.settings.get("lsp.enabled");
 		const enableFormat = enableLsp && session.settings.get("lsp.formatOnWrite");
 		const enableDiagnostics = enableLsp && session.settings.get("lsp.diagnosticsOnWrite");
 		const dedup = enableDiagnostics && session.settings.get("lsp.diagnosticsDeduplicate");

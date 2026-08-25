@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-f272b308.js";
+            window.path_to_searchindex_js = "../searchindex-de3d6571.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-a2abefc1.js"></script>
@@ -783,11 +783,12 @@ veyyon config get compaction.threshold
 <tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
 </thead>
 <tbody>
-<tr><td><code>lsp.enabled</code></td><td>Enable LSP</td><td>boolean</td><td><code>false</code></td><td>Enable the lsp tool for code intelligence (definitions, references, diagnostics, rename).</td></tr>
-<tr><td><code>lsp.lazy</code></td><td>Lazy LSP Startup</td><td>boolean</td><td><code>true</code></td><td>Start language servers on first use (lsp tool or editing a matching file type) instead of at session startup.</td></tr>
-<tr><td><code>lsp.formatOnWrite</code></td><td>Format on Write</td><td>boolean</td><td><code>false</code></td><td>Automatically format code files using LSP after writing.</td></tr>
-<tr><td><code>lsp.diagnosticsOnWrite</code></td><td>Diagnostics on Write</td><td>boolean</td><td><code>true</code></td><td>Return LSP diagnostics after writing code files.</td></tr>
-<tr><td><code>lsp.diagnosticsOnEdit</code></td><td>Diagnostics on Edit</td><td>boolean</td><td><code>false</code></td><td>Return LSP diagnostics after editing code files.</td></tr>
+<tr><td><code>lsp.enabled</code></td><td>Language Servers</td><td>boolean</td><td><code>false</code></td><td>Start language servers. Files → LSP is the row you enter; this switch and the others on that page (agent tool, diagnostics after write, diagnostics after edit, format after write) are independent once servers are running.</td></tr>
+<tr><td><code>lsp.tool</code></td><td>Agent Tool</td><td>boolean</td><td><code>true</code></td><td>Give the agent the lsp tool (definitions, references, rename, query diagnostics). Off keeps servers for format and injected diagnostics only.</td></tr>
+<tr><td><code>lsp.lazy</code></td><td>Lazy Startup</td><td>boolean</td><td><code>true</code></td><td>Start language servers on first use (lsp tool or editing a matching file type) instead of at session startup.</td></tr>
+<tr><td><code>lsp.formatOnWrite</code></td><td>Format after Write</td><td>boolean</td><td><code>false</code></td><td>Format the file with the language server after the write tool saves it. Independent of the agent tool and of diagnostics.</td></tr>
+<tr><td><code>lsp.diagnosticsOnWrite</code></td><td>Diagnostics after Write</td><td>boolean</td><td><code>true</code></td><td>After the write tool saves a file, inject language-server diagnostics into the session. Independent of the agent tool.</td></tr>
+<tr><td><code>lsp.diagnosticsOnEdit</code></td><td>Diagnostics after Edit</td><td>boolean</td><td><code>false</code></td><td>After the edit tool saves a file, inject language-server diagnostics into the session. Independent of the agent tool.</td></tr>
 <tr><td><code>lsp.diagnosticsDeduplicate</code></td><td>Deduplicate Diagnostics</td><td>boolean</td><td><code>true</code></td><td>Suppress post-edit LSP diagnostics already shown for a file; only surface new or changed ones.</td></tr>
 </tbody>
 </table>
@@ -1405,7 +1406,7 @@ veyyon config get compaction.threshold
 </tbody>
 </table>
 </div>
-<p>346 settings in /settings, 119 configuration-file keys, 465 in all.</p>
+<p>347 settings in /settings, 119 configuration-file keys, 466 in all.</p>
 
                     </main>
 

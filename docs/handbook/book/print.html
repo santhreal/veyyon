@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-f272b308.js";
+            window.path_to_searchindex_js = "searchindex-de3d6571.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-a2abefc1.js"></script>
@@ -10063,6 +10063,7 @@ julia:
 
 lsp:
   enabled: true
+  tool: true
   lazy: true
   diagnosticsOnWrite: true
   diagnosticsOnEdit: false
@@ -10086,10 +10087,11 @@ lsp:
 <tr><td><code>ruby.kernelMode</code></td><td>enum</td><td><code>session</code></td><td>Same choice for Ruby cells: keep one kernel per session, or start and shut down a kernel for each cell.</td></tr>
 <tr><td><code>julia.kernelMode</code></td><td>enum</td><td><code>session</code></td><td>Same choice for Julia cells. A fresh Julia kernel recompiles, so <code>per-call</code> trades startup time for a clean slate.</td></tr>
 <tr><td><code>python.interpreter</code></td><td>string</td><td><code>""</code></td><td>Path to a Python interpreter; empty = auto-detect.</td></tr>
-<tr><td><code>lsp.enabled</code></td><td>boolean</td><td><code>false</code></td><td>Language-server integration. Opt in; <code>--no-lsp</code> disables it for a run where config turned it on.</td></tr>
+<tr><td><code>lsp.enabled</code></td><td>boolean</td><td><code>false</code></td><td>Start language servers. Opt in; Files → LSP enters the nested switches. <code>--no-lsp</code> disables the whole stack for a run.</td></tr>
+<tr><td><code>lsp.tool</code></td><td>boolean</td><td><code>true</code></td><td>Expose the <code>lsp</code> tool to the agent. Independent of injected diagnostics.</td></tr>
 <tr><td><code>lsp.lazy</code></td><td>boolean</td><td><code>true</code></td><td>Start servers on demand.</td></tr>
-<tr><td><code>lsp.diagnosticsOnWrite</code></td><td>boolean</td><td><code>true</code></td><td>Run diagnostics after a write.</td></tr>
-<tr><td><code>lsp.diagnosticsOnEdit</code></td><td>boolean</td><td><code>false</code></td><td>Run diagnostics after an edit.</td></tr>
+<tr><td><code>lsp.diagnosticsOnWrite</code></td><td>boolean</td><td><code>true</code></td><td>Inject diagnostics after a write. Independent of the agent tool.</td></tr>
+<tr><td><code>lsp.diagnosticsOnEdit</code></td><td>boolean</td><td><code>false</code></td><td>Inject diagnostics after an edit. Independent of the agent tool.</td></tr>
 <tr><td><code>lsp.formatOnWrite</code></td><td>boolean</td><td><code>false</code></td><td>Format files on write.</td></tr>
 <tr><td><code>lsp.diagnosticsDeduplicate</code></td><td>boolean</td><td><code>true</code></td><td>Collapse duplicate diagnostics.</td></tr>
 <tr><td><code>shellPath</code></td><td>string</td><td><em>(unset)</em></td><td>Override the shell binary used by bash.</td></tr>
@@ -10968,11 +10970,12 @@ veyyon config get compaction.threshold
 <tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
 </thead>
 <tbody>
-<tr><td><code>lsp.enabled</code></td><td>Enable LSP</td><td>boolean</td><td><code>false</code></td><td>Enable the lsp tool for code intelligence (definitions, references, diagnostics, rename).</td></tr>
-<tr><td><code>lsp.lazy</code></td><td>Lazy LSP Startup</td><td>boolean</td><td><code>true</code></td><td>Start language servers on first use (lsp tool or editing a matching file type) instead of at session startup.</td></tr>
-<tr><td><code>lsp.formatOnWrite</code></td><td>Format on Write</td><td>boolean</td><td><code>false</code></td><td>Automatically format code files using LSP after writing.</td></tr>
-<tr><td><code>lsp.diagnosticsOnWrite</code></td><td>Diagnostics on Write</td><td>boolean</td><td><code>true</code></td><td>Return LSP diagnostics after writing code files.</td></tr>
-<tr><td><code>lsp.diagnosticsOnEdit</code></td><td>Diagnostics on Edit</td><td>boolean</td><td><code>false</code></td><td>Return LSP diagnostics after editing code files.</td></tr>
+<tr><td><code>lsp.enabled</code></td><td>Language Servers</td><td>boolean</td><td><code>false</code></td><td>Start language servers. Files → LSP is the row you enter; this switch and the others on that page (agent tool, diagnostics after write, diagnostics after edit, format after write) are independent once servers are running.</td></tr>
+<tr><td><code>lsp.tool</code></td><td>Agent Tool</td><td>boolean</td><td><code>true</code></td><td>Give the agent the lsp tool (definitions, references, rename, query diagnostics). Off keeps servers for format and injected diagnostics only.</td></tr>
+<tr><td><code>lsp.lazy</code></td><td>Lazy Startup</td><td>boolean</td><td><code>true</code></td><td>Start language servers on first use (lsp tool or editing a matching file type) instead of at session startup.</td></tr>
+<tr><td><code>lsp.formatOnWrite</code></td><td>Format after Write</td><td>boolean</td><td><code>false</code></td><td>Format the file with the language server after the write tool saves it. Independent of the agent tool and of diagnostics.</td></tr>
+<tr><td><code>lsp.diagnosticsOnWrite</code></td><td>Diagnostics after Write</td><td>boolean</td><td><code>true</code></td><td>After the write tool saves a file, inject language-server diagnostics into the session. Independent of the agent tool.</td></tr>
+<tr><td><code>lsp.diagnosticsOnEdit</code></td><td>Diagnostics after Edit</td><td>boolean</td><td><code>false</code></td><td>After the edit tool saves a file, inject language-server diagnostics into the session. Independent of the agent tool.</td></tr>
 <tr><td><code>lsp.diagnosticsDeduplicate</code></td><td>Deduplicate Diagnostics</td><td>boolean</td><td><code>true</code></td><td>Suppress post-edit LSP diagnostics already shown for a file; only surface new or changed ones.</td></tr>
 </tbody>
 </table>
@@ -11590,7 +11593,7 @@ veyyon config get compaction.threshold
 </tbody>
 </table>
 </div>
-<p>346 settings in /settings, 119 configuration-file keys, 465 in all.</p>
+<p>347 settings in /settings, 119 configuration-file keys, 466 in all.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="model-and-provider-configuration-modelsyml--modelsyaml"><a class="header" href="#model-and-provider-configuration-modelsyml--modelsyaml">Model and Provider Configuration (<code>models.yml</code> / <code>models.yaml</code>)</a></h1>
 <p>How the coding agent loads models, applies overrides, resolves credentials, and chooses models at runtime.</p>
