@@ -1105,9 +1105,14 @@ export async function buildSessionOptions(
 		: parsed.prewalk === true || parsed.prewalkInto !== undefined
 			? true
 			: activeSettings.get("prewalk.enabled");
-	if (prewalkEnabled && !parsed.model) {
+	if (prewalkEnabled && !parsed.model && !parsed.continue && !parsed.resume) {
 		// Strong-model override: the start model an operator named for prewalk
 		// alone. An explicit --model wins; unset inherits the normal start chain.
+		// A resumed or continued session restores its own last model instead —
+		// populating options.model here would make sdk.ts treat the session as
+		// explicitly modeled and silently drop that restoration. Like the
+		// remembered-default branch, this names no persisted default role: it is
+		// a per-launch start override, not a new owner of the default slot.
 		const strongPattern = normalizeModelPatternList(activeSettings.get("prewalk.strongModel"))[0];
 		if (strongPattern) {
 			const resolved = resolveCliModel({
@@ -1138,7 +1143,7 @@ export async function buildSessionOptions(
 		// stopped resolving to a model (#980 fail-closed), so a target the
 		// operator did not name fails loud and points at the setting that fixes
 		// it, instead of dying inside role expansion with no corrective action.
-		const cheapPattern = parsed.prewalkInto ?? normalizeModelPatternList(activeSettings.get("prewalk.cheapModel"))[0];
+		const cheapPattern = parsed.prewalkInto || normalizeModelPatternList(activeSettings.get("prewalk.cheapModel"))[0];
 		if (!cheapPattern) {
 			throw new Error(
 				'Prewalk needs a cheap target model: set "prewalk.cheapModel" in settings or pass --prewalk-into <model>.',
