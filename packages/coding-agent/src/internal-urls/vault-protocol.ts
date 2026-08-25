@@ -155,12 +155,21 @@ function decodeVaultPath(url: InternalUrl): {
 		return { rawPathname, relativePath: "", hasPath: false, isDirectory };
 	}
 
-	let decoded: string;
+	const segments = rawPathname.slice(1).replaceAll("\\", "/").split("/");
+	let decodedSegments: string[];
 	try {
-		decoded = decodeURIComponent(rawPathname.slice(1).replaceAll("\\", "/"));
+		decodedSegments = segments.map(segment => decodeURIComponent(segment));
 	} catch {
 		throw new Error(`Invalid URL encoding in vault:// path: ${url.href}`);
 	}
+
+	// A %2F is a slash inside one URL segment, not a separator. Decoding the whole path in one
+	// call promotes it to one, so foo%2F..%2Fsecret.md would reach the validator already
+	// collapsed to secret.md. Refuse the smuggled separator rather than resolve it.
+	if (decodedSegments.some(segment => segment.includes("/") || segment.includes("\\"))) {
+		throw toVaultValidationError(new Error("Path traversal (..) is not allowed in vault:// URLs"));
+	}
+	const decoded = decodedSegments.join("/");
 
 	try {
 		validateRelativePath(decoded, "vault");
@@ -211,7 +220,12 @@ export function parseVaultUrl(input: string | InternalUrl): ParsedVaultUrl {
 	const url = typeof input === "string" ? parseInternalUrl(input) : input;
 	const host = url.rawHost || url.hostname;
 	const params = paramsFromUrl(url);
-	const rawOp = typeof params.op === "string" ? params.op : undefined;
+	// `?op=` and a bare `?op` both arrive as boolean true from paramsFromUrl. Neither names an
+	// op, and treating them as absent classified the URL as vault-info instead of failing.
+	if ("op" in params && typeof params.op !== "string") {
+		throw new Error(`Unsupported vault:// op: ${String(params.op)}`);
+	}
+	const rawOp = typeof params.op === "string" && params.op.length > 0 ? params.op : undefined;
 	const { rawPathname, relativePath, hasPath, isDirectory } = decodeVaultPath(url);
 
 	if (!host && !hasPath && !rawOp) {

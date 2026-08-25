@@ -107,6 +107,9 @@ export function applyQuery(data: unknown, query: string): unknown {
 		}
 		if (typeof current !== "object") return undefined;
 		const record = current as Record<string, unknown>;
+		// Own keys only. A JSON document can carry a key named __proto__, constructor or
+		// toString as data, and that key is readable; the prototype chain behind it is not.
+		if (!Object.hasOwn(record, token)) return undefined;
 		current = record[token];
 	}
 	return current;

@@ -47,7 +47,8 @@ export function parseInternalUrl(input: string): InternalUrl {
 		}
 
 		parsed = {
-			protocol: `${hostMatch[1]}:`,
+			// WHATWG lowercases a scheme; the fallback must agree or `SKILL://` reports `SKILL:`.
+			protocol: `${hostMatch[1].toLowerCase()}:`,
 			hostname: hostMatch[2] ?? "",
 			host: hostMatch[2] ?? "",
 			pathname: rawPathname,
@@ -64,8 +65,18 @@ export function parseInternalUrl(input: string): InternalUrl {
 	} catch {
 		// Leave rawHost as-is if decoding fails.
 	}
-
 	const result = parsed as InternalUrl;
+	// `new URL` drops a trailing empty fragment, so `a#` and `a` both report "". The `#` is
+	// bytes the caller wrote, and a caller that branches on fragment presence needs to see it.
+	const hashIdx = input.indexOf("#");
+	if (hashIdx !== -1 && parsed.hash === "") {
+		Object.defineProperty(result, "hash", {
+			value: input.slice(hashIdx),
+			configurable: true,
+			enumerable: true,
+			writable: true,
+		});
+	}
 	result.rawHost = rawHost;
 	result.rawPathname = pathMatch?.[1] ?? parsed.pathname;
 	return result;
