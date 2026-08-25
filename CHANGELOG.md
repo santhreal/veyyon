@@ -137,7 +137,7 @@
 - The main agent's roster age advances with its turns instead of freezing at process start.
 - Web search no longer reports "Public Web returned no renderable search content" when one engine serves a bot wall: Startpage's proof-of-work interstitial served at HTTP 200 is now refused as a challenge, and an engine answering with zero results no longer ends the aggregate's wait for a slower engine that has results.
 - Adding an account with a key the provider rejects now leaves the error on screen, instead of remounting the account manager over it so the attempt looked like it silently did nothing; cancelling still returns to the account card.
-- `veyyon plugin install --dry-run` now resolves the target and fails when it cannot be installed, instead of exiting 0 with "Would install" for an unpublished npm name or a missing git repository, and reports the name and version the target resolves to rather than a `0.0.0-dryrun` placeholder ([#911](https://github.com/santhreal/veyyon/issues/911) by [@Crqptx](https://github.com/Crqptx)).
+- `veyyon plugin install --dry-run` now resolves the target and fails when it cannot be installed, instead of exiting 0 with "Would install" for an unpublished npm name or a missing git repository, and reports the name and version the target resolves to rather than a `0.0.0-dryrun` placeholder ([#911](https://github.com/santhreal/veyyon/issues/911) reported by [@Crqptx](https://github.com/Crqptx)).
 - `veyyon plugin uninstall` now removes a plugin installed from a local path, which was permanently unremovable because uninstall read only `plugins/package.json` dependencies while linking registers the plugin in the runtime config and `node_modules`; the linked directory itself is left untouched.
 - `veyyon plugin doctor` no longer reports "no plugins installed" in a profile whose plugins were all linked, and names how many linked plugins it found.
 - `veyyon plugin config <plugin>` now names the missing subcommand instead of reporting "Plugin name required" for a plugin name that was supplied.
@@ -147,7 +147,6 @@
 - `/agents` keeps a parked subagent focused, preserves its reconstructed assistant messages, tool calls, and results, reattaches a revived session, and rejects stale revival, removal, scope, and rapid-focus races instead of switching to the wrong transcript.
 - IRC broadcasts no longer wake completed idle peers; direct messages still wake the addressed peer.
 - ImageMagick pixel caches used by proof capture and HD demo scripts stay inside an owned scoped directory that the parent removes after child failure without deleting concurrent or inherited unrelated directories.
-- An indented row inside a tool block keeps its indent when it wraps at a narrow width, instead of continuing at the block's left edge.
 - The finalization reminder counts the files a multi-file edit actually wrote: a call that reports overall failure after writing some of its files is now unverified evidence, and a file a per-file entry skipped is no longer named as affected.
 - A mutated path is XML-escaped before it reaches the hidden finalization reminder, so a file name spelling `</system-reminder>` cannot end the reminder envelope early, and a relative `ast_edit` path is resolved against the call's working directory before duplicate paths are collapsed.
 - A colour or title escape sequence a command writes in two pieces no longer leaves part of itself in tool output: the sink holds a sequence its chunk ended inside until the piece that finishes it arrives, and drops one the stream never completes.
@@ -164,6 +163,7 @@
 - Aborting while paused rejects the pause wait and prevents the agent loop from starting another provider turn or paused tool.
 - A branch-summary reserve at or above the model's context window now falls back to the proportional 15% reserve instead of leaving a non-positive budget, which the entry preparation read as "no limit" and which sent the whole branch.
 - A tool that blocks on only some of its operations declares interruptibility per call, so an interrupt arriving beside a non-blocking or malformed call no longer replaces that call's own result with a skipped placeholder.
+- A failed Amazon Bedrock turn reports its elapsed duration again, instead of carrying time-to-first-token with no total while a successful turn reported both.
 - Normalized cumulative tool-call argument delta snapshots for OpenAI Codex streams while preserving true incremental deltas on standard OpenAI Responses streams via declared per-provider wire shapes.
 - The Cursor HTTP/2 client session handles error and close events directly so connection drops, DNS resolution failures and socket resets reject the turn with a classified error instead of raising an unhandled exception.
 - Streamed tool-call argument deltas in OpenAI Responses streams append incrementally rather than truncating on coincidental prefix matches.
@@ -180,6 +180,7 @@
 - Persisted AVX2 verdicts are schema-versioned and keyed by platform, architecture, and CPU model, so copied or stale caches cannot select a native variant for different hardware.
 - The AVX2 trial load answers from the addon loader's first import and exits, so a compiled host, whose `process.execPath` is the product binary rather than a JavaScript runtime, reports a verdict instead of booting the whole CLI and spawning a trial child of its own at every level.
 - A wrapped line now continues under the indent its first row opened at, so an indented row no longer reads as a new top-level row at a narrow width.
+- An indented row inside a tool block keeps its indent when it wraps at a narrow width, instead of continuing at the block's left edge.
 - A tab bar holding no tabs keeps its active index at 0, instead of reporting tab -1 and handing an undefined tab to the change callback.
 - `SelectList.setSelectedIndex` holds its low bound on an empty list rather than storing an inverted -1; no behavior changes today, since no caller can distinguish the two.
 - Derive scroll-isolation pinned footer hit-test boundaries from the rendered window top and clamp child frame-local mouse coordinates within valid segment bounds.
