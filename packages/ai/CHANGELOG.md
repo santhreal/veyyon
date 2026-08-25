@@ -17,6 +17,7 @@
 - The OpenAI-family, pi-native and Codex request builders serialize the request body once instead of deep-cloning the request graph, which took attempt preparation on a 32MiB context from 82ms to 9ms.
 - A message that names a dead socket reads the same everywhere: `namesDeadSocket` in `@veyyon/ai/error/flags` is the one list of errnos and phrases, and `ENETUNREACH`, `EHOSTUNREACH` and `EAI_AGAIN` now count as transient transport failures like the rest of them.
 - `elidedSignatureBytes` returns zero without scanning messages when no retention window or length cap is active, avoiding an O(n) walk of the full conversation on every provider request in the common case.
+- The OpenAI completions message converter merges its double `.filter()` for text blocks (by type, then by non-empty) and the same for thinking blocks into single `for` loops, avoiding two throwaway arrays per assistant message per turn.
 
 ### Fixed
 
