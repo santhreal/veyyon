@@ -942,6 +942,14 @@ export interface AsyncJobSnapshot {
 	delivery: AsyncJobDeliveryState;
 }
 
+/** One finished background job queued for the async-result follow-up. */
+export interface AsyncResultEntry {
+	jobId: string;
+	result: string;
+	job: AsyncJob | undefined;
+	durationMs: number | undefined;
+}
+
 export type { ShakeMode, ShakeResult };
 /**
  * Prewalk: switches an active session one-way from its starting model to
@@ -4617,6 +4625,76 @@ export class AgentSession {
 	 *  flag was never set OR was already consumed by `#handleAgentEvent`. */
 	clearPlanInternalAbortPending(): void {
 		this.#planInternalAbortPending = false;
+	}
+
+	/**
+	 * Deliver a finished async job's result to the conversation.
+	 *
+	 * When the job names the tool call that started it and that call is still
+	 * pending in the current context — its `toolCall` block has no `toolResult`
+	 * because a continuation, abort or crash split the pair — the result
+	 * attaches to the original call and no model turn is enqueued: the loop
+	 * does not need to reason over an arrival the transcript can simply record.
+	 * When the call is answered already, or no longer present (the session
+	 * branched away from it), the result takes the ordinary async-result
+	 * follow-up, which re-wakes the loop; a request that then replays the
+	 * unanswered call keeps the provider-side orphan-placeholder repair.
+	 */
+	deliverAsyncJobResult(jobId: string, text: string, job?: AsyncJob): "attached" | "queued" {
+		const toolCallId = job?.toolCallId;
+		if (toolCallId && this.#attachLateToolResult(toolCallId, text, job)) {
+			return "attached";
+		}
+		this.yieldQueue.enqueue<AsyncResultEntry>("async-result", {
+			jobId,
+			result: text,
+			job,
+			durationMs: job ? Math.max(0, Date.now() - job.startTime) : undefined,
+		});
+		return "queued";
+	}
+
+	/**
+	 * Append a `toolResult` for a call the current context left unanswered.
+	 * Returns false — caller falls back to the async-result follow-up — when
+	 * the call is not in the message list at all (branched away, compacted
+	 * out) or already has its result.
+	 */
+	#attachLateToolResult(toolCallId: string, text: string, job: AsyncJob | undefined): boolean {
+		const messages = this.agent.state.messages;
+		let callIndex = -1;
+		let toolName: string | undefined;
+		for (let i = messages.length - 1; i >= 0; i--) {
+			const message = messages[i];
+			if (message.role !== "assistant") continue;
+			const block = message.content.find(part => part.type === "toolCall" && part.id === toolCallId);
+			if (block && block.type === "toolCall") {
+				callIndex = i;
+				toolName = block.name;
+				break;
+			}
+		}
+		if (callIndex < 0) return false;
+		for (let i = callIndex + 1; i < messages.length; i++) {
+			const message = messages[i];
+			if (message.role === "toolResult" && message.toolCallId === toolCallId) return false;
+		}
+		const toolResultMessage: ToolResultMessage = {
+			role: "toolResult",
+			toolCallId,
+			toolName: toolName ?? job?.type ?? "tool",
+			content: [{ type: "text", text }],
+			details: job
+				? { async: { state: job.status === "failed" ? "failed" : "completed", jobId: job.id } }
+				: undefined,
+			isError: job?.status === "failed",
+			timestamp: Date.now(),
+		};
+		this.agent.appendMessage(toolResultMessage);
+		this.#persistSessionMessageIfMissing(toolResultMessage);
+		this.#emitSessionEventDetached({ type: "message_start", message: toolResultMessage }, "late tool result");
+		this.#emitSessionEventDetached({ type: "message_end", message: toolResultMessage }, "late tool result");
+		return true;
 	}
 
 	getAsyncJobSnapshot(options?: { recentLimit?: number }): AsyncJobSnapshot | null {
@@ -16992,12 +17070,89 @@ export class AgentSession {
 							? `Incomplete response recovery failed: ${errorMessage}`
 							: `Auto-compaction failed: ${errorMessage}`,
 			});
+			return await this.#afterFailedCompaction(reason, willRetry, autoCompactionSignal, generation, {
+				suppressContinuation,
+				shouldAutoContinue,
+			});
 		} finally {
 			if (this.#autoCompactionAbortController === autoCompactionAbortController) {
 				this.#autoCompactionAbortController = undefined;
 			}
 		}
-		return COMPACTION_CHECK_NONE;
+	}
+
+	/**
+	 * What happens after every candidate model refused to summarize.
+	 *
+	 * A compaction that threw wrote no summary, so the context is exactly as
+	 * large as it was when the pass started. Reporting that as "nothing
+	 * happened" is what wedged a session: goal mode, a todo reminder and a
+	 * `session_stop` continuation all read the same
+	 * {@link CompactionCheckResult}, so a run at zero headroom started another
+	 * turn, the provider refused the oversized request, recovery compaction
+	 * failed the same way, and the cycle repeated with the elapsed clock
+	 * restarting at 0:00 on every pass while the whole history was
+	 * re-serialized for each refused summary.
+	 *
+	 * Two things happen here instead. The provider-free reduction tiers run
+	 * first — eliding heavy tool output to an artifact, then dropping attached
+	 * images — because they need no model at all and are exactly what a stuck
+	 * operator would reach for by hand. When they create room the pass returns
+	 * to the ordinary flow, since the next request now fits. When they cannot,
+	 * automatic continuation is blocked and the pause is named once, so the
+	 * session waits for the operator rather than spinning.
+	 *
+	 * An `idle` pass keeps returning "nothing happened": it runs on a session
+	 * that is not mid-run, has no continuation to block, and a maintenance
+	 * failure there costs the operator nothing.
+	 */
+	async #afterFailedCompaction(
+		reason: "overflow" | "threshold" | "idle" | "incomplete",
+		willRetry: boolean,
+		signal: AbortSignal,
+		generation: number,
+		options: { suppressContinuation: boolean; shouldAutoContinue: boolean },
+	): Promise<CompactionCheckResult> {
+		if (reason === "idle" || signal.aborted) return COMPACTION_CHECK_NONE;
+		// The retry side only needs the rebuilt prompt to fit the window; the
+		// threshold side needs the recovery band, exactly as the success tail
+		// measures them.
+		const hasProgress = willRetry ? () => this.#compactionCreatedRetryFit() : () => this.#compactionCreatedHeadroom();
+		const rescued = hasProgress() || (await this.#rescueCompactionDeadEnd(signal, { skipElide: false, hasProgress }));
+		if (rescued) {
+			let continuationScheduled = false;
+			if (willRetry) {
+				this.#scheduleAgentContinue({ delayMs: 100, generation });
+				continuationScheduled = true;
+			} else if (options.shouldAutoContinue) {
+				this.#scheduleAutoContinuePrompt(generation);
+				continuationScheduled = true;
+			}
+			if (!continuationScheduled && !options.suppressContinuation && this.agent.hasQueuedMessages()) {
+				this.#scheduleAgentContinue({
+					delayMs: 100,
+					generation,
+					shouldContinue: () => this.agent.hasQueuedMessages(),
+				});
+				continuationScheduled = true;
+			}
+			return {
+				continuationScheduled,
+				historyRewritten: true,
+			};
+		}
+		let continuationScheduled = false;
+		if (!options.suppressContinuation && this.agent.hasQueuedMessages()) {
+			// Pausing maintenance must not strand what the operator already typed.
+			this.#scheduleAgentContinue({
+				delayMs: 100,
+				generation,
+				shouldContinue: () => this.agent.hasQueuedMessages(),
+			});
+			continuationScheduled = true;
+		}
+		this.emitNotice("warning", compactionDeadEndWarning("clear large tool output"), "compaction");
+		return continuationScheduled ? COMPACTION_CHECK_CONTINUATION : COMPACTION_CHECK_BLOCK_AUTOMATIC_CONTINUATION;
 	}
 
 	/**
@@ -19540,13 +19695,14 @@ export class AgentSession {
 				throw new Error(missingCredentialsMessage(model.provider, model.id, "the branch summary model"));
 			}
 			await this.leaseSecretRuntime();
-			const branchSummarySettings = this.settings.getGroup("branchSummary");
 			const result = await generateBranchSummary(entriesToSummarize, {
 				model,
 				apiKey: this.#modelRegistry.resolver(model, this.sessionId),
 				signal: this.#branchSummaryAbortController.signal,
+				sessionId: this.sessionId,
+				promptCacheKey: this.agent.promptCacheKey ?? this.sessionId,
 				customInstructions: options.customInstructions,
-				reserveTokens: branchSummarySettings.reserveTokens,
+				reserveTokens: this.settings.get("branchSummary.reserveTokens"),
 				metadata: this.agent.metadataForProvider(model.provider),
 				convertToLlm,
 				resolveObfuscateProviderText: () => {

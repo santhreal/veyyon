@@ -61,6 +61,12 @@ export interface AsyncJob {
 	 */
 	agentId?: string;
 	/**
+	 * Tool call that started this job, when the registering tool supplied one.
+	 * Lets a late completion attach to its original call when that call is
+	 * still pending in the resumed session instead of forcing a new turn.
+	 */
+	toolCallId?: string;
+	/**
 	 * Job is registered but parked behind a caller-managed gate (e.g. a task
 	 * batch semaphore). Queued jobs do not count toward the running-job limit
 	 * until the caller invokes `markRunning()` from the run context.
@@ -97,6 +103,8 @@ export interface AsyncJobRegisterOptions {
 	ownerId?: string;
 	/** Registry id of the subagent this job runs; see {@link AsyncJob.agentId}. */
 	agentId?: string;
+	/** Tool call that started this job; see {@link AsyncJob.toolCallId}. */
+	toolCallId?: string;
 	onProgress?: (text: string, details?: Record<string, unknown>) => void | Promise<void>;
 	/** Register the job in queued state; see {@link AsyncJob.queued}. */
 	queued?: boolean;
@@ -211,6 +219,7 @@ export class AsyncJobManager {
 			promise: Promise.resolve(),
 			ownerId: options?.ownerId,
 			agentId: options?.agentId,
+			toolCallId: options?.toolCallId,
 			queued: options?.queued === true,
 		};
 
@@ -350,6 +359,9 @@ export class AsyncJobManager {
 			if (!this.#watchedJobs.delete(jobId)) continue;
 			removed += 1;
 			this.#requeueSettledDelivery(jobId);
+			if (this.#retentionMs <= 0) {
+				this.#scheduleEviction(jobId);
+			}
 		}
 		return removed;
 	}
@@ -413,6 +425,16 @@ export class AsyncJobManager {
 			this.#deliveries.length,
 			...this.#deliveries.filter(delivery => !this.isDeliverySuppressed(delivery.jobId)),
 		);
+		if (this.#retentionMs <= 0) {
+			for (const jobId of uniqueJobIds) {
+				const job = this.#jobs.get(jobId);
+				const deliveryInFlight = this.#inFlightDeliveries.some(delivery => delivery.jobId === jobId);
+				if (job && job.status !== "running" && !deliveryInFlight) {
+					this.#suppressedDeliveries.delete(jobId);
+				}
+				this.#scheduleEviction(jobId);
+			}
+		}
 		return before - this.#deliveries.length;
 	}
 
@@ -427,6 +449,9 @@ export class AsyncJobManager {
 			if (!jobId) continue;
 			if (!this.#suppressedDeliveries.delete(jobId)) continue;
 			this.#requeueSettledDelivery(jobId);
+			if (this.#retentionMs <= 0) {
+				this.#scheduleEviction(jobId);
+			}
 		}
 	}
 
@@ -557,7 +582,17 @@ export class AsyncJobManager {
 
 	#scheduleEviction(jobId: string): void {
 		if (this.#disposed) return;
+		const job = this.#jobs.get(jobId);
+		if (job?.status === "running") return;
 		if (this.#retentionMs <= 0) {
+			if (
+				this.#suppressedDeliveries.has(jobId) ||
+				this.#watchedJobs.has(jobId) ||
+				this.#deliveries.some(delivery => delivery.jobId === jobId) ||
+				this.#inFlightDeliveries.some(delivery => delivery.jobId === jobId)
+			) {
+				return;
+			}
 			this.#jobs.delete(jobId);
 			this.#suppressedDeliveries.delete(jobId);
 			this.#watchedJobs.delete(jobId);
@@ -714,6 +749,16 @@ export class AsyncJobManager {
 			} finally {
 				const index = this.#inFlightDeliveries.indexOf(delivery);
 				if (index !== -1) this.#inFlightDeliveries.splice(index, 1);
+				if (
+					this.#retentionMs <= 0 &&
+					this.#suppressedDeliveries.has(delivery.jobId) &&
+					this.#jobs.get(delivery.jobId)?.status !== "running"
+				) {
+					this.#suppressedDeliveries.delete(delivery.jobId);
+				}
+				if (this.#retentionMs <= 0) {
+					this.#scheduleEviction(delivery.jobId);
+				}
 				if (this.#deliveries.length > 0) this.#ensureDeliveryLoop();
 			}
 		})();
