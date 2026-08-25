@@ -121,12 +121,12 @@ describe("a cwd change does not rewrite history already sent", () => {
 		const canonicalizer = createCanonicalizer();
 		const history = HISTORY_BY_ROLE.map(entry => entry.message);
 
-		const before = canonicalizer.transform(history, normalizeRoots([OLD_CWD]));
+		const before = canonicalizer.transform(history, normalizeRoots(OLD_CWD));
 		const renderedBefore = before.messages.map(textOf);
 		// The optimization has to have done something, or the freeze below is vacuous.
 		expect(renderedBefore[0]).toBe("read src/main.ts please");
 
-		const after = canonicalizer.transform([...history, user("now what")], normalizeRoots([NEW_CWD]));
+		const after = canonicalizer.transform([...history, user("now what")], normalizeRoots(NEW_CWD));
 		for (let i = 0; i < HISTORY_BY_ROLE.length; i++) {
 			expect(textOf(after.messages[i]!)).toBe(renderedBefore[i]!);
 		}
@@ -136,8 +136,8 @@ describe("a cwd change does not rewrite history already sent", () => {
 		const canonicalizer = createCanonicalizer();
 		const history = HISTORY_BY_ROLE.map(entry => entry.message);
 
-		const before = canonicalizer.transform(history, normalizeRoots([OLD_CWD]));
-		const after = canonicalizer.transform([...history, user("now what")], normalizeRoots([NEW_CWD]));
+		const before = canonicalizer.transform(history, normalizeRoots(OLD_CWD));
+		const after = canonicalizer.transform([...history, user("now what")], normalizeRoots(NEW_CWD));
 
 		for (let i = 0; i < HISTORY_BY_ROLE.length; i++) {
 			expect(after.messages[i]).toBe(before.messages[i]);
@@ -148,10 +148,10 @@ describe("a cwd change does not rewrite history already sent", () => {
 		const canonicalizer = createCanonicalizer();
 		const history = [user(`read ${OLD_CWD}/src/main.ts`)];
 
-		canonicalizer.transform(history, normalizeRoots([OLD_CWD]));
+		canonicalizer.transform(history, normalizeRoots(OLD_CWD));
 		const after = canonicalizer.transform(
 			[...history, user(`now read ${NEW_CWD}/src/main.ts and ${OLD_CWD}/src/main.ts`)],
-			normalizeRoots([NEW_CWD]),
+			normalizeRoots(NEW_CWD),
 		);
 
 		// The new cwd is relative; the previous one is a different directory and stays
@@ -163,7 +163,7 @@ describe("a cwd change does not rewrite history already sent", () => {
 		const canonicalizer = createCanonicalizer();
 		const listing = toolResult(`${OLD_CWD}\n${NEW_CWD}\n`, "provider-call-1");
 
-		const rendered = textOf(canonicalizer.transform([listing], normalizeRoots([NEW_CWD])).messages[0]!);
+		const rendered = textOf(canonicalizer.transform([listing], normalizeRoots(NEW_CWD)).messages[0]!);
 
 		const lines = rendered.split("\n").filter(line => line.length > 0);
 		expect(lines).toEqual([OLD_CWD, "."]);
@@ -174,10 +174,10 @@ describe("a cwd change does not rewrite history already sent", () => {
 		const canonicalizer = createCanonicalizer();
 		const history = [user(`read ${OLD_CWD}/src/main.ts`)];
 
-		const before = canonicalizer.transform(history, normalizeRoots([OLD_CWD]));
+		const before = canonicalizer.transform(history, normalizeRoots(OLD_CWD));
 		const after = canonicalizer.transform(
 			[...history, user(`read ${NEW_CWD}/src/other.ts`)],
-			normalizeRoots([NEW_CWD]),
+			normalizeRoots(NEW_CWD),
 		);
 
 		expect(before.bytesSaved).toBe(OLD_CWD.length + 1);
@@ -215,7 +215,7 @@ describe("a cwd change does not rewrite history already sent", () => {
 			);
 
 			const rendered = canonicalizer
-				.transform([...history], normalizeRoots([cwd]))
+				.transform([...history], normalizeRoots(cwd))
 				.messages.map(message => JSON.stringify(message));
 			const shared = rendered.reduce(
 				(acc, line, i) =>

@@ -2,51 +2,51 @@
 	"cases": [
 		{
 			"id": "normalize-roots-empty",
-			"contract": "An empty root list normalizes to an empty array",
+			"contract": "An empty root string normalizes to an empty array",
 			"surface": "normalize-roots",
 			"tags": ["boundary"],
-			"input": { "roots": [] },
+			"input": { "root": "" },
 			"expect": { "roots": [] }
 		},
 		{
-			"id": "normalize-roots-dedup-trailing-slash",
-			"contract": "Trailing slashes and whitespace collapse to one absolute root",
+			"id": "normalize-roots-trailing-slash",
+			"contract": "Trailing slashes are stripped from an absolute root",
 			"surface": "normalize-roots",
 			"tags": ["positive", "boundary"],
-			"input": { "roots": ["/proj", "/proj/", " /proj "] },
+			"input": { "root": "/proj/" },
 			"expect": { "roots": ["/proj"] }
 		},
 		{
-			"id": "normalize-roots-longest-first",
-			"contract": "Multiple nested roots sort longest-first so the longest prefix wins",
+			"id": "normalize-roots-whitespace",
+			"contract": "Surrounding whitespace is trimmed from an absolute root",
 			"surface": "normalize-roots",
-			"tags": ["positive", "regression"],
-			"input": { "roots": ["/a", "/a/b/c", "/a/b"] },
-			"expect": { "roots": ["/a/b/c", "/a/b", "/a"] }
+			"tags": ["positive", "boundary"],
+			"input": { "root": " /proj " },
+			"expect": { "roots": ["/proj"] }
 		},
 		{
 			"id": "normalize-roots-drops-relative",
-			"contract": "Relative and empty roots are dropped; bare filesystem root is dropped",
+			"contract": "Relative roots are dropped",
 			"surface": "normalize-roots",
 			"tags": ["adversarial", "negative"],
-			"input": { "roots": ["relative", "", "/", "src/foo"] },
+			"input": { "root": "relative/path" },
 			"expect": { "roots": [] }
 		},
 		{
-			"id": "normalize-roots-keeps-absolute-only",
-			"contract": "Only absolute paths with length greater than one survive normalization",
+			"id": "normalize-roots-drops-root-only",
+			"contract": "Bare filesystem root is dropped",
 			"surface": "normalize-roots",
-			"tags": ["positive", "adversarial"],
-			"input": { "roots": ["/etc", "etc", "/tmp/x/", "../escape"] },
-			"expect": { "roots": ["/tmp/x", "/etc"] }
+			"tags": ["adversarial", "negative"],
+			"input": { "root": "/" },
+			"expect": { "roots": [] }
 		},
 		{
-			"id": "normalize-roots-mixed-siblings",
-			"contract": "Sibling absolute roots keep both entries sorted by length then insertion-stable length ties",
+			"id": "normalize-roots-absolute-path",
+			"contract": "Valid absolute directory paths survive normalization as a single root",
 			"surface": "normalize-roots",
-			"tags": ["boundary"],
-			"input": { "roots": ["/home/a", "/home/b"] },
-			"expect": { "roots": ["/home/a", "/home/b"] }
+			"tags": ["positive"],
+			"input": { "root": "/tmp/x" },
+			"expect": { "roots": ["/tmp/x"] }
 		},
 		{
 			"id": "cwd-reason-single-escape",

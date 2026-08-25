@@ -160,7 +160,7 @@ describe("distinct root paths never collapse to the same string", () => {
 	}
 
 	it("keeps non-active root absolute while relativizing active cwd in pure relativize helper", () => {
-		const activeRoots = normalizeRoots([WORKTREE]);
+		const activeRoots = normalizeRoots(WORKTREE);
 		const toolOutput = [`${MAIN_REPO} 1a2b3c4 [main]`, `${WORKTREE} 5d6e7f8 [feature]`].join("\n");
 
 		const messages: Message[] = createToolCallTurn(toolOutput);
@@ -176,7 +176,7 @@ describe("distinct root paths never collapse to the same string", () => {
 	});
 
 	it("keeps file paths under a previous root absolute so they do not resolve against active cwd", () => {
-		const activeRoots = normalizeRoots([WORKTREE]);
+		const activeRoots = normalizeRoots(WORKTREE);
 		const fileOutput = [
 			`main config: ${MAIN_REPO}/config/settings.json`,
 			`worktree config: ${WORKTREE}/config/settings.json`,
