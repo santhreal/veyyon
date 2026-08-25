@@ -69,6 +69,7 @@
 - `pickWeightedTip` merges `map`+`reduce` into a single loop, avoiding an intermediate weights array and a callback allocation per welcome screen render.
 - The command-controller usage limit max-suffix-width calculation replaces `reduce` with a `for` loop, avoiding a callback allocation per status line render.
 - The public web-search fan-out failure count uses `failures.length` instead of `failures.reduce(count => count + 1, 0)`, avoiding a callback allocation per search fan-out.
+- `isRecursiveDelete` in the bash guard replaces two `argv.slice(1).some(...)` calls with `for` loops starting at index 1, avoiding a temporary array allocation on every recursive-delete check.
 
 ### Added
 

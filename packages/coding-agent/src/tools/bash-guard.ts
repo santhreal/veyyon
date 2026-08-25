@@ -1231,10 +1231,18 @@ function isRecursiveDelete(argv: ExpandedWord[]): boolean {
 	}
 	if (RECURSIVE_DELETE_COMMANDS.has(command)) {
 		if (command !== "rm") return true;
-		return argv.slice(1).some(word => isShortFlagWith(word, ["r", "R"]) || word.text === "--recursive");
+		for (let i = 1; i < argv.length; i++) {
+			const word = argv[i]!;
+			if (isShortFlagWith(word, ["r", "R"]) || word.text === "--recursive") return true;
+		}
+		return false;
 	}
 	if (RECURSIVE_REWRITE_COMMANDS.has(command)) {
-		return argv.slice(1).some(word => isShortFlagWith(word, ["R"]) || word.text === "--recursive");
+		for (let i = 1; i < argv.length; i++) {
+			const word = argv[i]!;
+			if (isShortFlagWith(word, ["R"]) || word.text === "--recursive") return true;
+		}
+		return false;
 	}
 	return false;
 }
