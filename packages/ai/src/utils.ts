@@ -10,7 +10,12 @@ export { isRecord } from "@veyyon/utils/type-guards";
 export function normalizeSystemPrompts(systemPrompt: readonly string[] | string | undefined | null): string[] {
 	if (systemPrompt === undefined || systemPrompt === null) return [];
 	const prompts = Array.isArray(systemPrompt) ? systemPrompt : typeof systemPrompt === "string" ? [systemPrompt] : [];
-	return prompts.map(prompt => prompt.toWellFormed()).filter(prompt => prompt.trim().length > 0);
+	const result: string[] = [];
+	for (const prompt of prompts) {
+		const wellFormed = prompt.toWellFormed();
+		if (wellFormed.trim().length > 0) result.push(wellFormed);
+	}
+	return result;
 }
 
 export function normalizeToolCallId(id: string): string {
