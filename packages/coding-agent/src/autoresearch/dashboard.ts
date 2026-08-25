@@ -262,10 +262,16 @@ export function renderDashboardLines(
 	}
 
 	const current = currentResults(state.results, state.currentSegment);
-	const kept = current.filter(result => result.status === "keep").length;
-	const discarded = current.filter(result => result.status === "discard").length;
-	const crashed = current.filter(result => result.status === "crash").length;
-	const checksFailed = current.filter(result => result.status === "checks_failed").length;
+	let kept = 0;
+	let discarded = 0;
+	let crashed = 0;
+	let checksFailed = 0;
+	for (const result of current) {
+		if (result.status === "keep") kept++;
+		else if (result.status === "discard") discarded++;
+		else if (result.status === "crash") crashed++;
+		else if (result.status === "checks_failed") checksFailed++;
+	}
 	const baseline = findBaselineMetric(state.results, state.currentSegment);
 	const baselineRunNumber = findBaselineRunNumber(state.results, state.currentSegment);
 	const baselineSecondary = findBaselineSecondary(state.results, state.currentSegment, state.secondaryMetrics);
