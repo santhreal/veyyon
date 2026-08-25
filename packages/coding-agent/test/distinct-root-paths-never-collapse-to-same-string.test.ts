@@ -27,7 +27,7 @@
  * reach the session wire-canonicalization pipeline.
  */
 
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
 import { Agent, type AgentMessage } from "@veyyon/agent-core";
 import type { AssistantMessage, Context, Message, Model, ToolResultMessage } from "@veyyon/ai";
@@ -39,7 +39,7 @@ import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { normalizeRoots, relativizePathsUnderRoots } from "@veyyon/coding-agent/session/relativize-paths";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
-import { TempDir } from "@veyyon/utils";
+import { getProjectDir, setProjectDir, TempDir } from "@veyyon/utils";
 import { createAssistantMessage } from "./helpers/agent-session-setup";
 
 function createToolCallTurn(
@@ -77,13 +77,13 @@ describe("distinct root paths never collapse to the same string", () => {
 	const MAIN_REPO = "/media/data/projects/repo-main";
 	const WORKTREE = "/media/data/projects/repo-worktree";
 
+	const originalProjectDir = getProjectDir();
 	let sharedDir: TempDir;
 	let authStorage: AuthStorage;
 	let modelRegistry: ModelRegistry;
 	let model: Model;
 	const tempDirs: TempDir[] = [];
 	const sessions: AgentSession[] = [];
-
 	beforeAll(async () => {
 		sharedDir = TempDir.createSync("@pi-distinct-roots-shared-");
 		authStorage = await AuthStorage.create(path.join(sharedDir.path(), "testauth.db"));
@@ -95,6 +95,7 @@ describe("distinct root paths never collapse to the same string", () => {
 	});
 
 	afterAll(async () => {
+		setProjectDir(originalProjectDir);
 		authStorage.close();
 		try {
 			await sharedDir.remove();
@@ -105,6 +106,7 @@ describe("distinct root paths never collapse to the same string", () => {
 		while (sessions.length > 0) {
 			await sessions.pop()?.dispose();
 		}
+		setProjectDir(originalProjectDir);
 		for (const dir of tempDirs.splice(0)) {
 			try {
 				await dir.remove();
@@ -331,5 +333,44 @@ describe("distinct root paths never collapse to the same string", () => {
 		expect(rendered).toContain(`session A root: ${pathA}`);
 		expect(rendered).toContain("session B root: .");
 		expect(rendered).not.toContain("session A root: .");
+	});
+
+	it("restores wirePathRoots to the original cwd when switchSession fails after rescope", async () => {
+		const dirA = TempDir.createSync("@pi-distinct-roots-fail-a-");
+		const dirB = TempDir.createSync("@pi-distinct-roots-fail-b-");
+		tempDirs.push(dirA, dirB);
+
+		const pathA = dirA.path();
+		const pathB = dirB.path();
+
+		const harness = createHarness(pathA, pathA);
+		const { session, agent, sessionManager } = harness;
+		const sessionBFile = SessionManager.createEmptySessionFile(pathB);
+
+		const buildSpy = vi.spyOn(session, "buildDisplaySessionContext").mockImplementationOnce(() => {
+			throw new Error("simulated post-rescope switchSession failure");
+		});
+
+		await expect(session.switchSession(sessionBFile)).rejects.toThrow("simulated post-rescope switchSession failure");
+		buildSpy.mockRestore();
+		expect(sessionManager.getCwd()).toBe(pathA);
+
+		const toolOutput = [`path A: ${pathA}`, `path B: ${pathB}`].join("\n");
+		for (const msg of createToolCallTurn(toolOutput)) {
+			agent.appendMessage(msg);
+			sessionManager.appendMessage(msg);
+		}
+
+		await session.prompt("check roots after rollback");
+
+		const contexts = harness.getCapturedContexts();
+		expect(contexts.length).toBeGreaterThan(0);
+		const lastContext = contexts.at(-1)!;
+		const toolResultMsg = lastContext.messages.find(m => m.role === "toolResult");
+		expect(toolResultMsg).toBeDefined();
+		const rendered = getTextContent(toolResultMsg!);
+		expect(rendered).toContain("path A: .");
+		expect(rendered).toContain(`path B: ${pathB}`);
+		expect(rendered).not.toContain("path B: .");
 	});
 });

@@ -19213,6 +19213,7 @@ export class AgentSession {
 		const previousPendingRewindReport = this.#pendingRewindReport;
 		const previousLastCompletedRewind = this.#lastCompletedRewind;
 		const previousRewoundToolResultIds = new Set(this.#rewoundToolResultIds);
+		const previousWirePathRoots = this.#wirePathRoots;
 
 		let scopeTransitionAttempted = false;
 
@@ -19391,6 +19392,7 @@ export class AgentSession {
 			return true;
 		} catch (error) {
 			this.sessionManager.restoreState(previousSessionState);
+			this.#wirePathRoots = previousWirePathRoots;
 			let restoreScopeError: unknown;
 			if (scopeTransitionAttempted) {
 				this.#lastRescopedCwd = undefined;
