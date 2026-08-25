@@ -571,10 +571,12 @@ describe("AgentSession transformProviderContext canonicalization", () => {
 		expect(JSON.stringify(agent.state.messages)).toContain(abs);
 	});
 
-	// This test uses the default Anthropic model where appendOnlyContext is off,
-	// so convertToLlm produces fresh message wrappers on each turn. Because object
-	// identity is not preserved, prefix reuse does not engage and history re-relativizes
-	// against the single active root only.
+	// This model has appendOnlyContext off, so convertToLlm hands the
+	// canonicalizer freshly allocated message wrappers every turn, the
+	// reference-equality prefix reuse never engages, and the whole history is
+	// therefore re-transformed against the active root. On an append-only
+	// provider that retains object references, prefix reuse preserves earlier
+	// relativized bytes across a cwd change.
 	it("a mid-session setCwd relativizes paths against active root only", async () => {
 		const cwd = tempDir.path();
 		const abs = `${cwd}/src/foo.ts`;
