@@ -156,9 +156,17 @@ function followedByInterruptedThinking(messages: AgentMessage[], index: number):
  * view only. The run is incomplete and unsigned, so providers reject it; the
  * continuity message that follows carries the reasoning instead.
  */
+const strippedThinkingCache = new WeakMap<AssistantMessage, { sourceContent: unknown; stripped: AssistantMessage }>();
+
 function stripDemotedThinkingForLlm(message: AssistantMessage): AssistantMessage {
+	const cached = strippedThinkingCache.get(message);
+	if (cached && cached.sourceContent === message.content) {
+		return cached.stripped;
+	}
 	const demoted = demoteInterruptedThinking(message);
-	return demoted ? { ...message, content: demoted.strippedContent } : message;
+	const stripped = demoted ? { ...message, content: demoted.strippedContent } : message;
+	strippedThinkingCache.set(message, { sourceContent: message.content, stripped });
+	return stripped;
 }
 
 /** Details persisted on a `/tan` background-dispatch breadcrumb. */
@@ -794,9 +802,18 @@ function isUserInvokedSkillPrompt(message: CustomMessage): boolean {
 	return message.customType === SKILL_PROMPT_MESSAGE_TYPE && message.attribution === "user";
 }
 
+const imageBearingCustomMessageCache = new WeakMap<
+	CustomMessage | HookMessage,
+	{ sourceContent: unknown; attribution: MessageAttribution | undefined; converted: Message[] }
+>();
+
 function convertImageBearingCustomMessage(message: CustomMessage | HookMessage): Message[] | undefined {
 	if (!isCustomMessageContent(message.content)) return undefined;
 	if (typeof message.content === "string") return undefined;
+	const cached = imageBearingCustomMessageCache.get(message);
+	if (cached && cached.sourceContent === message.content && cached.attribution === message.attribution) {
+		return cached.converted;
+	}
 	const textBlocks = message.content.filter((content): content is TextContent => content.type === "text");
 	const imageBlocks = message.content.filter((content): content is ImageContent => content.type === "image");
 	if (imageBlocks.length === 0) return undefined;
@@ -815,6 +832,11 @@ function convertImageBearingCustomMessage(message: CustomMessage | HookMessage):
 		content: [{ type: "text", text: `Images attached to ${message.customType}.` }, ...imageBlocks],
 		attribution: message.attribution,
 		timestamp: message.timestamp,
+	});
+	imageBearingCustomMessageCache.set(message, {
+		sourceContent: message.content,
+		attribution: message.attribution,
+		converted,
 	});
 	return converted;
 }
@@ -841,6 +863,11 @@ function convertImageBearingCustomMessage(message: CustomMessage | HookMessage):
  * The stored result is untouched: the transcript still renders the full ledger,
  * and the details it renders from (`batchLedger`) are what this reads.
  */
+const expiredBatchLedgerCache = new WeakMap<
+	ToolResultMessage,
+	{ sourceContent: unknown; expired: ToolResultMessage }
+>();
+
 function expireAnsweredBatchLedger(
 	messages: AgentMessage[],
 	index: number,
@@ -849,6 +876,10 @@ function expireAnsweredBatchLedger(
 	const ledger = (message.details as { batchLedger?: ToolBatchLedger } | undefined)?.batchLedger;
 	if (ledger === undefined) return message;
 	if (!batchAnsweredAfter(messages, index)) return message;
+	const cached = expiredBatchLedgerCache.get(message);
+	if (cached && cached.sourceContent === message.content) {
+		return cached.expired;
+	}
 	// Rendered by the ONE owner, so the slice cannot drift from what was written.
 	const rendered = renderToolBatchLedger(ledger);
 	let changed = false;
@@ -859,7 +890,9 @@ function expireAnsweredBatchLedger(
 		changed = true;
 		return { ...block, text: block.text.slice(0, at).trimEnd() };
 	});
-	return changed ? { ...message, content } : message;
+	const expired = changed ? { ...message, content } : message;
+	expiredBatchLedgerCache.set(message, { sourceContent: message.content, expired });
+	return expired;
 }
 
 /** Has an assistant turn responded to the batch this message belongs to. */
@@ -898,13 +931,61 @@ function isAnsweredBatchLedgerNotice(messages: AgentMessage[], index: number, me
  * demotion and a failed format conversion are decided later, by the block that
  * drew them, and reach the sentence through the record that block keeps.
  */
+const imageVisibilityCache = new WeakMap<
+	ToolResultMessage,
+	{ sourceContent: unknown; notice: string | undefined; stamped: ToolResultMessage }
+>();
+
 function statePlacedImageVisibility(message: ToolResultMessage): ToolResultMessage {
 	const images = message.content.filter(block => block.type === "image").length;
 	if (images === 0) return message;
 	const notice = imageVisibilityNotice(imageDisplayStateForCall(message.toolCallId, images), images);
 	if (!notice) return message;
-	return { ...message, content: [...message.content, { type: "text", text: notice }] };
+	const cached = imageVisibilityCache.get(message);
+	if (cached && cached.sourceContent === message.content && cached.notice === notice) {
+		return cached.stamped;
+	}
+	const stamped: ToolResultMessage = { ...message, content: [...message.content, { type: "text", text: notice }] };
+	imageVisibilityCache.set(message, { sourceContent: message.content, notice, stamped });
+	return stamped;
 }
+
+interface CachedBashExecution {
+	role: "bashExecution";
+	converted: Message[];
+	command: string;
+	output?: string;
+	cancelled?: boolean;
+	exitCode?: number;
+	signal?: number;
+	meta?: OutputMeta;
+}
+
+interface CachedPythonExecution {
+	role: "pythonExecution";
+	converted: Message[];
+	code: string;
+	output?: string;
+	cancelled?: boolean;
+	exitCode?: number | null;
+	meta?: OutputMeta;
+}
+
+interface CachedFileMention {
+	role: "fileMention";
+	converted: Message[];
+	files: unknown;
+}
+
+interface CachedSkillPrompt {
+	role: "skillPrompt";
+	converted: Message[];
+	content: unknown;
+}
+
+type CachedCodingAgentMessage = CachedBashExecution | CachedPythonExecution | CachedFileMention | CachedSkillPrompt;
+
+const codingAgentMessageCache = new WeakMap<AgentMessage, CachedCodingAgentMessage>();
 
 /**
  * Transform AgentMessages (including custom types) to LLM-compatible Messages.
@@ -917,11 +998,23 @@ function statePlacedImageVisibility(message: ToolResultMessage): ToolResultMessa
 export function convertToLlm(messages: AgentMessage[]): Message[] {
 	return messages.flatMap((m, index): Message[] => {
 		switch (m.role) {
-			case "bashExecution":
+			case "bashExecution": {
 				if (m.excludeFromContext) {
 					return [];
 				}
-				return [
+				const cached = codingAgentMessageCache.get(m);
+				if (
+					cached?.role === "bashExecution" &&
+					cached.command === m.command &&
+					cached.output === m.output &&
+					cached.cancelled === m.cancelled &&
+					cached.exitCode === m.exitCode &&
+					cached.signal === m.signal &&
+					cached.meta === m.meta
+				) {
+					return cached.converted;
+				}
+				const converted: Message[] = [
 					{
 						role: "user",
 						content: [{ type: "text", text: bashExecutionToText(m) }],
@@ -929,11 +1022,34 @@ export function convertToLlm(messages: AgentMessage[]): Message[] {
 						timestamp: m.timestamp,
 					},
 				];
-			case "pythonExecution":
+				codingAgentMessageCache.set(m, {
+					role: "bashExecution",
+					converted,
+					command: m.command,
+					output: m.output,
+					cancelled: m.cancelled,
+					exitCode: m.exitCode,
+					signal: m.signal,
+					meta: m.meta,
+				});
+				return converted;
+			}
+			case "pythonExecution": {
 				if (m.excludeFromContext) {
 					return [];
 				}
-				return [
+				const cached = codingAgentMessageCache.get(m);
+				if (
+					cached?.role === "pythonExecution" &&
+					cached.code === m.code &&
+					cached.output === m.output &&
+					cached.cancelled === m.cancelled &&
+					cached.exitCode === m.exitCode &&
+					cached.meta === m.meta
+				) {
+					return cached.converted;
+				}
+				const converted: Message[] = [
 					{
 						role: "user",
 						content: [{ type: "text", text: pythonExecutionToText(m) }],
@@ -941,14 +1057,22 @@ export function convertToLlm(messages: AgentMessage[]): Message[] {
 						timestamp: m.timestamp,
 					},
 				];
+				codingAgentMessageCache.set(m, {
+					role: "pythonExecution",
+					converted,
+					code: m.code,
+					output: m.output,
+					cancelled: m.cancelled,
+					exitCode: m.exitCode,
+					meta: m.meta,
+				});
+				return converted;
+			}
 			case "fileMention": {
-				// One `fileMention` can mix `@notes.md` (text) and `@screenshot.png` (image)
-				// in the same turn (`generateFileMentionMessages` packs every `@…` into a
-				// single message). Splitting by image presence keeps text-only mentions on
-				// the higher-priority `developer` slot while routing image attachments
-				// through `user`, the only Responses content slot that legitimately accepts
-				// `input_image` (Codex chatgpt.com /codex/responses rejects everything else
-				// with `Invalid value: 'input_image'`, #3443).
+				const cached = codingAgentMessageCache.get(m);
+				if (cached?.role === "fileMention" && cached.files === m.files) {
+					return cached.converted;
+				}
 				const wrap = (file: FileMentionMessage["files"][number]): string => {
 					const inner = file.content ? `\n${file.content}\n` : "\n";
 					return `<file path="${file.path}">${inner}</file>`;
@@ -978,12 +1102,21 @@ export function convertToLlm(messages: AgentMessage[]): Message[] {
 						timestamp: m.timestamp,
 					});
 				}
+				codingAgentMessageCache.set(m, {
+					role: "fileMention",
+					converted: out,
+					files: m.files,
+				});
 				return out;
 			}
 			case "custom": {
 				if (!isCustomMessageContent(m.content)) return [];
 				if (isUserInvokedSkillPrompt(m)) {
-					return [
+					const cached = codingAgentMessageCache.get(m);
+					if (cached?.role === "skillPrompt" && cached.content === m.content) {
+						return cached.converted;
+					}
+					const converted: Message[] = [
 						{
 							role: "user",
 							content: customMessageContentToLlmContent(m.content),
@@ -991,6 +1124,12 @@ export function convertToLlm(messages: AgentMessage[]): Message[] {
 							timestamp: m.timestamp,
 						},
 					];
+					codingAgentMessageCache.set(m, {
+						role: "skillPrompt",
+						converted,
+						content: m.content,
+					});
+					return converted;
 				}
 				const split = convertImageBearingCustomMessage(m);
 				if (split) return split;

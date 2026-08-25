@@ -43,6 +43,7 @@
 
 ### Fixed
 
+- Converted LLM message wrappers preserve reference identity across turns so the provider context canonicalizer re-renders only newly appended messages.
 - Session CPU limits fail closed on unsupported or failed budget groups, lift rate control on removal, refuse a process-creating command before the process exists while leaving `launch stop` and `launch list` reachable, escalate over-budget termination from SIGTERM to SIGKILL, and track descendant processes on macOS.
 - Saturated session CPU limits now refuse spawns for MCP servers, extensions, hooks, and custom tools before the process is created.
 - Windows session CPU limits disable Job Object rate control on non-positive or non-finite core counts rather than throttling the process to the minimum rate.
