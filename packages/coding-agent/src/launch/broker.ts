@@ -5,6 +5,7 @@ import * as path from "node:path";
 import { Process, type PtyRunResult, PtySession } from "@veyyon/natives";
 import {
 	atomicWriteFile,
+	clamp,
 	clampLow,
 	errorMessage,
 	isEexist,
@@ -915,7 +916,7 @@ class DaemonBroker {
 		const name = record.snapshot.name;
 		this.#cancelCleanup(name);
 		const exitedAt = record.snapshot.exitedAt ?? Date.now();
-		const delayMs = Math.min(Math.max(0, exitedAt + this.#cleanupWaitMs - Date.now()), MAX_TIMER_DELAY_MS);
+		const delayMs = clamp(exitedAt + this.#cleanupWaitMs - Date.now(), 0, MAX_TIMER_DELAY_MS);
 		const timer = setTimeout(() => {
 			this.#cleanupTimers.delete(name);
 			void this.#purgeRecord(name);
