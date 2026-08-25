@@ -8,12 +8,12 @@ import * as zodModule from "zod/v4";
 import { hookCapability } from "../../capability/hook";
 import type { Hook } from "../../discovery";
 import { loadCapability } from "../../discovery";
+import { execCommand, withSessionCpuExec } from "../../exec/exec";
 import type { CustomMessagePayload } from "../../session/messages";
 import { loadCodingAgentApi } from "../coding-agent-api";
 import { factoryExportMissingMessage, moduleImportFailedMessage } from "../load-failure";
 import * as typebox from "../typebox";
 import { resolvePath, withExitGuard } from "../utils";
-import { execCommand } from "./runner";
 import type { ExecOptions, HookAPI, HookFactory, HookMessageRenderer, RegisteredCommand } from "./types";
 
 /**
@@ -75,6 +75,8 @@ export interface LoadHooksResult {
 async function createHookAPI(
 	handlers: Map<string, HandlerFn[]>,
 	cwd: string,
+	adoptSpawnedPid?: (pid: number) => void,
+	gateSpawn?: (what: string) => Promise<void>,
 ): Promise<{
 	api: HookAPI;
 	messageRenderers: Map<string, HookMessageRenderer>;
@@ -118,7 +120,12 @@ async function createHookAPI(
 			commands.set(name, { name, ...options });
 		},
 		exec(command: string, args: string[], options?: ExecOptions) {
-			return execCommand(command, args, options?.cwd ?? cwd, options);
+			return execCommand(
+				command,
+				args,
+				options?.cwd ?? cwd,
+				withSessionCpuExec(options, adoptSpawnedPid, gateSpawn, "a hook command"),
+			);
 		},
 		logger,
 		typebox,
@@ -144,7 +151,12 @@ async function createHookAPI(
 /**
  * Load a single hook module using native Bun import.
  */
-async function loadHook(hookPath: string, cwd: string): Promise<{ hook: LoadedHook | null; error: string | null }> {
+async function loadHook(
+	hookPath: string,
+	cwd: string,
+	adoptSpawnedPid?: (pid: number) => void,
+	gateSpawn?: (what: string) => Promise<void>,
+): Promise<{ hook: LoadedHook | null; error: string | null }> {
 	const resolvedPath = resolvePath(hookPath, cwd);
 
 	try {
@@ -161,6 +173,8 @@ async function loadHook(hookPath: string, cwd: string): Promise<{ hook: LoadedHo
 		const { api, messageRenderers, commands, setSendMessageHandler, setAppendEntryHandler } = await createHookAPI(
 			handlers,
 			cwd,
+			adoptSpawnedPid,
+			gateSpawn,
 		);
 
 		// Call factory to register handlers
@@ -188,12 +202,17 @@ async function loadHook(hookPath: string, cwd: string): Promise<{ hook: LoadedHo
  * @param paths - Array of hook file paths
  * @param cwd - Current working directory for resolving relative paths
  */
-export async function loadHooks(paths: string[], cwd: string): Promise<LoadHooksResult> {
+export async function loadHooks(
+	paths: string[],
+	cwd: string,
+	adoptSpawnedPid?: (pid: number) => void,
+	gateSpawn?: (what: string) => Promise<void>,
+): Promise<LoadHooksResult> {
 	const hooks: LoadedHook[] = [];
 	const errors: Array<{ path: string; error: string }> = [];
 
 	for (const hookPath of paths) {
-		const { hook, error } = await loadHook(hookPath, cwd);
+		const { hook, error } = await loadHook(hookPath, cwd, adoptSpawnedPid, gateSpawn);
 
 		if (error) {
 			errors.push({ path: hookPath, error });
@@ -226,6 +245,8 @@ export async function discoverAndLoadHooks(
 	configuredPaths: string[],
 	cwd: string,
 	agentDir?: string,
+	adoptSpawnedPid?: (pid: number) => void,
+	gateSpawn?: (what: string) => Promise<void>,
 ): Promise<LoadHooksResult> {
 	const allPaths: string[] = [];
 	const seen = new Set<string>();
@@ -248,5 +269,5 @@ export async function discoverAndLoadHooks(
 	// 2. Explicitly configured paths (can override/add)
 	addPaths(configuredPaths.map(p => resolvePath(p, cwd)));
 
-	return loadHooks(allPaths, cwd);
+	return loadHooks(allPaths, cwd, adoptSpawnedPid, gateSpawn);
 }

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { beforeAll, describe, expect, it } from "bun:test";
 import * as childProcess from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -240,32 +240,71 @@ describe("a trial-load child answers instead of probing again", () => {
 	// is the module-load boundary itself, so the specifier cannot be static.
 	const childScript = `await import(${JSON.stringify(loaderUrl)});\nconsole.log("IMPORT_RETURNED");`;
 
-	function runChild(trialAddonPath: string | undefined) {
+	interface TrialChild {
+		/** Set only when the child could not be spawned or was killed at the deadline. */
+		error: Error | undefined;
+		exitCode: number | null;
+		signal: NodeJS.Signals | null;
+		stdout: string;
+	}
+
+	/**
+	 * Both arms boot a runtime and import a module graph, which costs two orders
+	 * of magnitude more than the spawn itself, and neither reads what the other
+	 * writes. Spawned together they cost one child instead of two.
+	 */
+	function runChild(trialAddonPath: string | undefined): Promise<TrialChild> {
 		const env = { ...process.env };
 		delete env.VEYYON_TRIAL_ADDON_PATH;
 		if (trialAddonPath !== undefined) env.VEYYON_TRIAL_ADDON_PATH = trialAddonPath;
-		return childProcess.spawnSync(process.execPath, ["-e", childScript], {
+
+		const { promise, resolve } = Promise.withResolvers<TrialChild>();
+		const child = childProcess.spawn(process.execPath, ["-e", childScript], {
 			env,
-			encoding: "utf-8",
-			timeout: 30_000,
+			stdio: ["ignore", "pipe", "ignore"],
 		});
+		let stdout = "";
+		child.stdout.setEncoding("utf-8");
+		child.stdout.on("data", chunk => {
+			stdout += chunk;
+		});
+		// A child that never ends is the failure this suite exists to catch, so the
+		// deadline reports as a killed child rather than as a hung test file.
+		const deadline = setTimeout(() => child.kill("SIGKILL"), 30_000);
+		child.on("error", error => {
+			clearTimeout(deadline);
+			resolve({ error, exitCode: null, signal: null, stdout });
+		});
+		child.on("close", (exitCode, signal) => {
+			clearTimeout(deadline);
+			resolve({ error: undefined, exitCode, signal, stdout });
+		});
+		return promise;
 	}
 
+	let withMissingAddon: TrialChild;
+	let ordinaryImport: TrialChild;
+
+	beforeAll(async () => {
+		[withMissingAddon, ordinaryImport] = await Promise.all([
+			runChild(path.join(os.tmpdir(), "veyyon-no-such-addon.node")),
+			runChild(undefined),
+		]);
+	});
+
 	it("ends at the first import with an inconclusive verdict when the addon will not load", () => {
-		const result = runChild(path.join(os.tmpdir(), "veyyon-no-such-addon.node"));
-		expect(result.error).toBeUndefined();
-		expect(result.signal).toBeNull();
-		expect(result.status).toBe(0);
-		expect(String(result.stdout).split(/\r?\n/)).toContain("TRIAL_INCOMPATIBLE");
-		expect(String(result.stdout)).not.toContain("IMPORT_RETURNED");
+		expect(withMissingAddon.error).toBeUndefined();
+		expect(withMissingAddon.signal).toBeNull();
+		expect(withMissingAddon.exitCode).toBe(0);
+		expect(withMissingAddon.stdout.split(/\r?\n/)).toContain("TRIAL_INCOMPATIBLE");
+		expect(withMissingAddon.stdout).not.toContain("IMPORT_RETURNED");
 	});
 
 	it("leaves an ordinary import alone", () => {
-		const result = runChild(undefined);
-		expect(result.error).toBeUndefined();
-		expect(result.signal).toBeNull();
-		expect(result.status).toBe(0);
-		expect(String(result.stdout)).toContain("IMPORT_RETURNED");
-		expect(String(result.stdout)).not.toContain("TRIAL_");
+		expect(ordinaryImport.error).toBeUndefined();
+		expect(ordinaryImport.signal).toBeNull();
+		expect(ordinaryImport.exitCode).toBe(0);
+		expect(ordinaryImport.stdout).toContain("IMPORT_RETURNED");
+		expect(ordinaryImport.stdout).not.toContain("TRIAL_");
 	});
 });

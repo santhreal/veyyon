@@ -218,11 +218,36 @@ export class MCPManager {
 	#connections = new Map<string, MCPServerConnection>();
 	/** Session CPU budget hook, set by the owning session: spawned stdio server pids join the session's budget group. */
 	#adoptSpawnedPid: ((pid: number) => void) | undefined;
+	/** Session CPU budget gate: refuse a new stdio server while the group is saturated or uncreated. */
+	#gateSpawn: ((what: string) => Promise<void>) | undefined;
 
 	/** Wire the session CPU budget hook for stdio server spawns. */
 	setSpawnAdoption(adopt: ((pid: number) => void) | undefined): void {
 		this.#adoptSpawnedPid = adopt;
 	}
+
+	/** Wire the session CPU budget gate for stdio server spawns. */
+	setSpawnGate(gate: ((what: string) => Promise<void>) | undefined): void {
+		this.#gateSpawn = gate;
+	}
+
+	/**
+	 * Read both hooks once. A connection attempt outlives the read, and
+	 * `setSpawnGate(undefined)` between the two would leave a closure calling a
+	 * field that is no longer a function.
+	 */
+	#stdioSpawnHooks(): {
+		onSpawnPid?: (pid: number) => void;
+		beforeSpawn?: () => Promise<void>;
+	} {
+		const adopt = this.#adoptSpawnedPid;
+		const gate = this.#gateSpawn;
+		return {
+			...(adopt ? { onSpawnPid: adopt } : {}),
+			...(gate ? { beforeSpawn: () => gate("an MCP stdio server") } : {}),
+		};
+	}
+
 	#tools: CustomTool<TSchema, MCPToolDetails>[] = [];
 	#pendingConnections = new Map<string, Promise<MCPServerConnection>>();
 	#pendingToolLoads = new Map<string, Promise<ToolLoadResult>>();
@@ -468,7 +493,7 @@ export class MCPManager {
 					onRequest: (method, params) => {
 						return this.#handleServerRequest(method, params);
 					},
-					onSpawnPid: this.#adoptSpawnedPid,
+					...this.#stdioSpawnHooks(),
 				});
 			})().then(
 				connection => {
@@ -1079,7 +1104,7 @@ export class MCPManager {
 			onRequest: (method, params) => {
 				return this.#handleServerRequest(method, params);
 			},
-			onSpawnPid: this.#adoptSpawnedPid,
+			...this.#stdioSpawnHooks(),
 		});
 
 		connection.config = config;
