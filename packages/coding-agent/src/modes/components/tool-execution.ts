@@ -404,9 +404,7 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 	// preview, and Kitty PNG conversions. Folded into the dirty key so those
 	// updates are not swallowed by the memo (see #updateDisplay).
 	#displayInputVersion = 0;
-	// Set once #rebuildDisplay has populated the display. Replaces a
-	// #contentBox.children.length probe so the memo fast-path also covers the
-	// #contentText fallback path (which leaves #contentBox empty).
+	// Set once #rebuildDisplay has populated the display.
 	#displayBuilt = false;
 	// Number of Image children the last rebuild emitted. Only when this is > 0 does
 	// the memo key fold in viewport-dependent image sizing (resolveImageOptions),
@@ -535,15 +533,6 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 		this.#contentBox = new Box(COMPOSER_INSET_COLS, 1);
 		this.#contentText = new WidthAwareText(contentWidth => this.#formatToolExecution(contentWidth), 0, 0);
 
-		// Use Box for custom tools or built-in tools that have renderers
-		const hasRenderer = toolName in toolRenderers;
-		const hasCustomRenderer = !!(tool?.renderCall || tool?.renderResult);
-		if (!hasCustomRenderer && !hasRenderer) {
-			// A tool with no renderer of its own — an MCP tool, an extension tool —
-			// is a card like any other: it hangs from the same rail at the same
-			// column instead of sitting one cell in from the margin on its own.
-			this.#contentBox.addChild(this.#onRail(this.#contentText));
-		}
 		this.addChild(this.#contentBox);
 		// Tool blocks are visually distinct cards (background-tinted or framed),
 		// so keep their horizontal padding even when the user enables tight layout.
@@ -1553,6 +1542,9 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 			// Generic fallback (no custom/built-in renderer). WidthAwareText
 			// reformats at render time so output fills the actual terminal width
 			// instead of a fixed column cap.
+			this.#contentBox.setBgFn(undefined);
+			this.#contentBox.clear();
+			this.#contentBox.addChild(this.#onRail(this.#contentText));
 			this.#contentText.setCustomBgFn(undefined);
 			this.#contentText.invalidate();
 		}

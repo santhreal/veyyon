@@ -14,7 +14,8 @@ import { describe, expect, it } from "bun:test";
 import type { CursorOptions } from "@veyyon/ai/providers/cursor";
 import type { DevinOptions } from "@veyyon/ai/providers/devin";
 import { mapOptionsForApi } from "@veyyon/ai/stream";
-import { Effort, type Model } from "@veyyon/ai/types";
+import type { Model } from "@veyyon/ai/types";
+import { Effort } from "@veyyon/catalog/effort";
 import { getBundledModel } from "@veyyon/catalog/models";
 
 describe("cursor effort routes to tier-suffixed wire model ids", () => {

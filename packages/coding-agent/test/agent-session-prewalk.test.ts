@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as path from "node:path";
 import { Agent, type AgentTool } from "@veyyon/agent-core";
-import { type Api, Effort, type Model, z } from "@veyyon/ai";
+import { type Api, type Model, z } from "@veyyon/ai";
+import { Effort } from "@veyyon/catalog/effort";
 import { createMockModel, type MockResponse } from "@veyyon/ai/providers/mock";
 import { getBundledModel } from "@veyyon/catalog/models";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
