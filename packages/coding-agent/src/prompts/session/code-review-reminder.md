@@ -1,5 +1,5 @@
 <system-reminder>
-Review the multi-file code changes applied this turn before finalizing.
+Review these unreviewed multi-file code changes before finalizing.
 Affected path(s):
 {{pathsMarkdown}}
 
