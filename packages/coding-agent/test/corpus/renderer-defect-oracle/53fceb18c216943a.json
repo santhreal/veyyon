@@ -1,0 +1,49 @@
+{
+	"schemaVersion": 1,
+	"id": "53fceb18c216943a",
+	"status": "recorded",
+	"recordedAt": "2026-08-25T14:58:26.662Z",
+	"template": "composer-sweep",
+	"seed": 0,
+	"state": {
+		"width": 120,
+		"height": 24,
+		"modeState": {
+			"sessionAccentAnsi": "\u001b[38;2;255;100;50m",
+			"thinkingLevel": "off"
+		},
+		"editorText": "function main() {\n  console.log('hello');\n  return 42;\n}",
+		"transcriptLines": 50,
+		"scrollIsolation": true,
+		"scrollOffset": 2,
+		"focused": true
+	},
+	"failingOracle": "virtualScrollPreservesFooterStability",
+	"errorMessage": "Virtual scroll footer row 2 ('  › function main() {') differs from live footer ('  › function main() {                                                                                                   ').",
+	"observedGrid": [
+		"transcript-output-line-0027                                                                                            │",
+		"transcript-output-line-0028                                                                                            │",
+		"transcript-output-line-0029                                                                                            │",
+		"transcript-output-line-0030                                                                                            │",
+		"transcript-output-line-0031                                                                                            │",
+		"transcript-output-line-0032                                                                                            │",
+		"transcript-output-line-0033                                                                                            │",
+		"transcript-output-line-0034                                                                                            │",
+		"transcript-output-line-0035                                                                                            █",
+		"transcript-output-line-0036                                                                                            █",
+		"transcript-output-line-0037                                                                                            █",
+		"transcript-output-line-0038                                                                                            █",
+		"transcript-output-line-0039                                                                                            │",
+		"transcript-output-line-0040                                                                                            │",
+		"────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────",
+		"",
+		"  › function main() {",
+		"  ┆   console.log('hello');",
+		"  ┆   return 42;",
+		"  ┆ }",
+		"",
+		"location: ~/project · model: test-model",
+		"/ menu · ^c exit",
+		""
+	]
+}

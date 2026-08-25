@@ -1,0 +1,31 @@
+{
+	"schemaVersion": 1,
+	"id": "72a92ce41ff6081c",
+	"status": "recorded",
+	"recordedAt": "2026-08-25T14:56:45.921Z",
+	"template": "composer-sweep",
+	"seed": 0,
+	"state": {
+		"width": 10,
+		"height": 6,
+		"modeState": {
+			"bashMode": true,
+			"thinkingLevel": "off"
+		},
+		"editorText": "explain quantum computing",
+		"transcriptLines": 50,
+		"scrollIsolation": true,
+		"scrollOffset": 2,
+		"focused": true
+	},
+	"failingOracle": "virtualScrollPreservesFooterStability",
+	"errorMessage": "Virtual scroll footer row 0 ('  ┆ g') differs from live footer ('  ┆ g     ').",
+	"observedGrid": [
+		"transcript",
+		"  ┆ g",
+		"",
+		"location:",
+		"/ menu · ^",
+		""
+	]
+}

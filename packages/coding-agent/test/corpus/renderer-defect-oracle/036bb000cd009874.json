@@ -1,0 +1,29 @@
+{
+	"schemaVersion": 1,
+	"id": "036bb000cd009874",
+	"status": "recorded",
+	"recordedAt": "2026-08-25T14:57:51.040Z",
+	"template": "composer-sweep",
+	"seed": 0,
+	"state": {
+		"width": 20,
+		"height": 4,
+		"modeState": {
+			"focusedSubagent": true,
+			"thinkingLevel": "off"
+		},
+		"editorText": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		"transcriptLines": 50,
+		"scrollIsolation": true,
+		"scrollOffset": 2,
+		"focused": true
+	},
+	"failingOracle": "virtualScrollPreservesFooterStability",
+	"errorMessage": "Virtual scroll footer row 0 ('location: ~/project') differs from live footer ('location: ~/project · model: test-model').",
+	"observedGrid": [
+		"transcript-output-li",
+		"location: ~/project",
+		"/ menu · ^c exit",
+		""
+	]
+}

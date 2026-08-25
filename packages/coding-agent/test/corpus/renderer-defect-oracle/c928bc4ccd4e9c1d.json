@@ -1,0 +1,31 @@
+{
+	"schemaVersion": 1,
+	"id": "c928bc4ccd4e9c1d",
+	"status": "recorded",
+	"recordedAt": "2026-08-25T14:53:34.987Z",
+	"template": "composer-sweep",
+	"seed": 0,
+	"state": {
+		"width": 10,
+		"height": 6,
+		"modeState": {
+			"pythonMode": true,
+			"thinkingLevel": "off"
+		},
+		"editorText": "é ä ñ café",
+		"transcriptLines": 5,
+		"scrollIsolation": true,
+		"scrollOffset": 0,
+		"focused": true
+	},
+	"failingOracle": "footerOccupiesBottomPhysicalRows",
+	"errorMessage": "Pinned footer top (-2) does not match expected top (0) for 8 footer rows in viewport of height 6.",
+	"observedGrid": [
+		"  › e a n",
+		"  ┆ cafe",
+		"",
+		"location:",
+		"/ menu · ^",
+		""
+	]
+}

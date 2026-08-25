@@ -1,0 +1,32 @@
+{
+	"schemaVersion": 1,
+	"id": "c827558bf8089653",
+	"status": "recorded",
+	"recordedAt": "2026-08-25T14:55:53.198Z",
+	"template": "composer-sweep",
+	"seed": 0,
+	"state": {
+		"width": 40,
+		"height": 8,
+		"modeState": {
+			"thinkingLevel": "off"
+		},
+		"editorText": "",
+		"transcriptLines": 50,
+		"scrollIsolation": true,
+		"scrollOffset": 2,
+		"focused": true
+	},
+	"failingOracle": "virtualScrollPreservesFooterStability",
+	"errorMessage": "Virtual scroll footer row 2 ('  ›') differs from live footer ('  ›                                     ').",
+	"observedGrid": [
+		"transcript-output-line-0040",
+		"────────────────────────────────────────",
+		"",
+		"  ›",
+		"",
+		"location: ~/project · model: test-model",
+		"/ menu · ^c exit",
+		""
+	]
+}

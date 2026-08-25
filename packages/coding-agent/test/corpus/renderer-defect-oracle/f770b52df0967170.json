@@ -1,0 +1,29 @@
+{
+	"schemaVersion": 1,
+	"id": "f770b52df0967170",
+	"status": "recorded",
+	"recordedAt": "2026-08-25T14:53:17.084Z",
+	"template": "composer-sweep",
+	"seed": 0,
+	"state": {
+		"width": 20,
+		"height": 4,
+		"modeState": {
+			"bashMode": true,
+			"thinkingLevel": "off"
+		},
+		"editorText": "explain quantum computing",
+		"transcriptLines": 0,
+		"scrollIsolation": true,
+		"scrollOffset": 0,
+		"focused": true
+	},
+	"failingOracle": "footerOccupiesBottomPhysicalRows",
+	"errorMessage": "Pinned footer top (-4) does not match expected top (0) for 8 footer rows in viewport of height 4.",
+	"observedGrid": [
+		"",
+		"location: ~/project",
+		"/ menu · ^c exit",
+		""
+	]
+}

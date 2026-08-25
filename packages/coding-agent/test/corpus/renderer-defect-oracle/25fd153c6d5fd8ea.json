@@ -1,0 +1,49 @@
+{
+	"schemaVersion": 1,
+	"id": "25fd153c6d5fd8ea",
+	"status": "recorded",
+	"recordedAt": "2026-08-25T14:56:56.489Z",
+	"template": "composer-sweep",
+	"seed": 0,
+	"state": {
+		"width": 40,
+		"height": 24,
+		"modeState": {
+			"bashMode": true,
+			"thinkingLevel": "off"
+		},
+		"editorText": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		"transcriptLines": 50,
+		"scrollIsolation": true,
+		"scrollOffset": 2,
+		"focused": true
+	},
+	"failingOracle": "virtualScrollPreservesFooterStability",
+	"errorMessage": "Virtual scroll footer row 6 ('  ┆ aaaaaa') differs from live footer ('  ┆ aaaaaa                              ').",
+	"observedGrid": [
+		"transcript-output-line-0028            │",
+		"transcript-output-line-0029            │",
+		"transcript-output-line-0030            │",
+		"transcript-output-line-0031            │",
+		"transcript-output-line-0032            │",
+		"transcript-output-line-0033            │",
+		"transcript-output-line-0034            │",
+		"transcript-output-line-0035            │",
+		"transcript-output-line-0036            █",
+		"transcript-output-line-0037            █",
+		"transcript-output-line-0038            █",
+		"transcript-output-line-0039            │",
+		"transcript-output-line-0040            │",
+		"────────────────────────────────────────",
+		"",
+		"  $ aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		"  ┆ aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		"  ┆ aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		"  ┆ aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		"  ┆ aaaaaa",
+		"",
+		"location: ~/project · model: test-model",
+		"/ menu · ^c exit",
+		""
+	]
+}

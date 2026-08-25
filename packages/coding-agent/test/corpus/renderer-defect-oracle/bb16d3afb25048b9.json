@@ -1,0 +1,33 @@
+{
+	"schemaVersion": 1,
+	"id": "bb16d3afb25048b9",
+	"status": "recorded",
+	"recordedAt": "2026-08-25T14:53:14.917Z",
+	"template": "composer-sweep",
+	"seed": 0,
+	"state": {
+		"width": 10,
+		"height": 8,
+		"modeState": {
+			"bashMode": true,
+			"thinkingLevel": "off"
+		},
+		"editorText": "你好世界 こんにちは 🚀",
+		"transcriptLines": 0,
+		"scrollIsolation": true,
+		"scrollOffset": 0,
+		"focused": true
+	},
+	"failingOracle": "footerOccupiesBottomPhysicalRows",
+	"errorMessage": "Pinned footer top (-2) does not match expected top (0) for 10 footer rows in viewport of height 8.",
+	"observedGrid": [
+		"  $ 你好世",
+		"  ┆ 界 こ",
+		"  ┆ んにち",
+		"  ┆ は 🚀",
+		"",
+		"location:",
+		"/ menu · ^",
+		""
+	]
+}

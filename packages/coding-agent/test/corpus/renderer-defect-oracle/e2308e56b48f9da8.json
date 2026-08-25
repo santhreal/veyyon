@@ -1,0 +1,37 @@
+{
+	"schemaVersion": 1,
+	"id": "e2308e56b48f9da8",
+	"status": "recorded",
+	"recordedAt": "2026-08-25T14:57:24.388Z",
+	"template": "composer-sweep",
+	"seed": 0,
+	"state": {
+		"width": 120,
+		"height": 12,
+		"modeState": {
+			"pythonMode": true,
+			"thinkingLevel": "off"
+		},
+		"editorText": "function main() {\n  console.log('hello');\n  return 42;\n}",
+		"transcriptLines": 50,
+		"scrollIsolation": true,
+		"scrollOffset": 2,
+		"focused": true
+	},
+	"failingOracle": "virtualScrollPreservesFooterStability",
+	"errorMessage": "Virtual scroll footer row 2 ('  › function main() {') differs from live footer ('  › function main() {                                                                                                   ').",
+	"observedGrid": [
+		"transcript-output-line-0039                                                                                            │",
+		"transcript-output-line-0040                                                                                            █",
+		"────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────",
+		"",
+		"  › function main() {",
+		"  ┆   console.log('hello');",
+		"  ┆   return 42;",
+		"  ┆ }",
+		"",
+		"location: ~/project · model: test-model",
+		"/ menu · ^c exit",
+		""
+	]
+}

@@ -1,0 +1,32 @@
+{
+	"schemaVersion": 1,
+	"id": "22dfa697796054ec",
+	"status": "recorded",
+	"recordedAt": "2026-08-25T14:56:17.925Z",
+	"template": "composer-sweep",
+	"seed": 0,
+	"state": {
+		"width": 80,
+		"height": 8,
+		"modeState": {
+			"thinkingLevel": "high"
+		},
+		"editorText": "explain quantum computing",
+		"transcriptLines": 50,
+		"scrollIsolation": true,
+		"scrollOffset": 2,
+		"focused": true
+	},
+	"failingOracle": "virtualScrollPreservesFooterStability",
+	"errorMessage": "Virtual scroll footer row 2 ('  › explain quantum computing') differs from live footer ('  › explain quantum computing                                                   ').",
+	"observedGrid": [
+		"transcript-output-line-0040",
+		"────────────────────────────────────────────────────────────────────────────────",
+		"",
+		"  › explain quantum computing",
+		"",
+		"location: ~/project · model: test-model",
+		"/ menu · ^c exit",
+		""
+	]
+}

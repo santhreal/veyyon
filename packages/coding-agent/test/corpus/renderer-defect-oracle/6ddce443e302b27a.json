@@ -1,0 +1,37 @@
+{
+	"schemaVersion": 1,
+	"id": "6ddce443e302b27a",
+	"status": "recorded",
+	"recordedAt": "2026-08-25T14:57:12.269Z",
+	"template": "composer-sweep",
+	"seed": 0,
+	"state": {
+		"width": 20,
+		"height": 12,
+		"modeState": {
+			"pythonMode": true,
+			"thinkingLevel": "off"
+		},
+		"editorText": "你好世界 こんにちは 🚀",
+		"transcriptLines": 50,
+		"scrollIsolation": true,
+		"scrollOffset": 2,
+		"focused": true
+	},
+	"failingOracle": "virtualScrollPreservesFooterStability",
+	"errorMessage": "Virtual scroll footer row 2 ('  › 你好世界 こんに') differs from live footer ('  › 你好世界 こんに ').",
+	"observedGrid": [
+		"transcript-output-l│",
+		"transcript-output-l│",
+		"transcript-output-l█",
+		"transcript-output-l│",
+		"────────────────────",
+		"",
+		"  › 你好世界 こんに",
+		"  ┆ ちは 🚀",
+		"",
+		"location: ~/project",
+		"/ menu · ^c exit",
+		""
+	]
+}

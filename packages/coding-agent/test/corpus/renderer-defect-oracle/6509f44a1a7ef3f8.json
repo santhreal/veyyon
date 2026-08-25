@@ -1,0 +1,32 @@
+{
+	"schemaVersion": 1,
+	"id": "6509f44a1a7ef3f8",
+	"status": "recorded",
+	"recordedAt": "2026-08-25T14:59:29.101Z",
+	"template": "composer-sweep",
+	"seed": 0,
+	"state": {
+		"width": 20,
+		"height": 8,
+		"modeState": {
+			"thinkingLevel": "high"
+		},
+		"editorText": "é ä ñ café",
+		"transcriptLines": 50,
+		"scrollIsolation": true,
+		"scrollOffset": 2,
+		"focused": true
+	},
+	"failingOracle": "virtualScrollPreservesFooterStability",
+	"errorMessage": "Virtual scroll footer row 2 ('  › e a n cafe') differs from live footer ('  › é ä ñ café').",
+	"observedGrid": [
+		"transcript-output-li",
+		"────────────────────",
+		"",
+		"  › e a n cafe",
+		"",
+		"location: ~/project",
+		"/ menu · ^c exit",
+		""
+	]
+}
