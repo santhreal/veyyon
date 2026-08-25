@@ -870,13 +870,6 @@ const TOP_LEVEL_WHITESPACE_RE = /\s/;
 
 type DelimitedPathSplitMode = "comma" | "semicolon" | "whitespace" | "mixed";
 
-function isDelimitedPathSeparator(ch: string, mode: DelimitedPathSplitMode): boolean {
-	if (mode === "comma") return ch === ",";
-	if (mode === "semicolon") return ch === ";";
-	if (mode === "whitespace") return TOP_LEVEL_WHITESPACE_RE.test(ch);
-	return ch === "," || ch === ";" || TOP_LEVEL_WHITESPACE_RE.test(ch);
-}
-
 function hasTopLevelPathDelimiter(entry: string): boolean {
 	let braceDepth = 0;
 	for (let i = 0; i < entry.length; i++) {
@@ -918,7 +911,15 @@ function splitTopLevelDelimitedPath(entry: string, mode: DelimitedPathSplitMode)
 			if (braceDepth > 0) braceDepth--;
 			continue;
 		}
-		if (braceDepth !== 0 || !isDelimitedPathSeparator(ch, mode)) continue;
+		const isSep =
+			mode === "comma"
+				? ch === ","
+				: mode === "semicolon"
+					? ch === ";"
+					: mode === "whitespace"
+						? TOP_LEVEL_WHITESPACE_RE.test(ch)
+						: ch === "," || ch === ";" || TOP_LEVEL_WHITESPACE_RE.test(ch);
+		if (braceDepth !== 0 || !isSep) continue;
 		parts.push(entry.slice(start, i));
 		start = i + 1;
 	}
@@ -926,18 +927,12 @@ function splitTopLevelDelimitedPath(entry: string, mode: DelimitedPathSplitMode)
 	return parts;
 }
 
-async function delimitedPathPartResolves(entry: string, cwd: string, splitter: PathEntrySplitter): Promise<boolean> {
-	if (isInternalUrlPath(entry)) return true;
-	const peeled = splitPathAndSel(entry).path;
-	const { basePath } = splitter(peeled);
-	const absoluteBasePath = resolveToCwd(basePath, cwd);
-	try {
-		await fs.promises.stat(absoluteBasePath);
-		return true;
-	} catch (err) {
-		if (isEnoent(err)) return false;
-		throw err;
-	}
+function getDelimitedCandidates(entry: string, mode: DelimitedPathSplitMode): string[] | null {
+	const rawParts = splitTopLevelDelimitedPath(entry, mode);
+	if (rawParts.length < 2) return null;
+	const parts = rawParts.map(normalizePathLikeInput).filter(part => part.length > 0);
+	if (parts.length === 0 || (parts.length < 2 && rawParts.length === parts.length)) return null;
+	return parts;
 }
 
 /**
@@ -949,26 +944,82 @@ async function delimitedPathPartResolves(entry: string, cwd: string, splitter: P
  */
 type DelimitedResolveRequirement = "all" | "some" | "none";
 
-async function tryDelimitedPathSplit(
-	entry: string,
+const DELIMITED_SPLIT_LADDER: ReadonlyArray<{
+	mode: DelimitedPathSplitMode;
+	requirement: DelimitedResolveRequirement;
+}> = [
+	{ mode: "semicolon", requirement: "none" },
+	{ mode: "comma", requirement: "some" },
+	{ mode: "whitespace", requirement: "all" },
+	{ mode: "mixed", requirement: "all" },
+];
+
+function probeLiteralExistsSync(filePath: string, cwd: string): boolean {
+	try {
+		fs.lstatSync(resolveReadPath(filePath, cwd));
+		return true;
+	} catch (err) {
+		if (isMissingPath(err)) return false;
+		return true;
+	}
+}
+
+async function probeLiteralExistsAsync(filePath: string, cwd: string): Promise<boolean> {
+	try {
+		await fs.promises.lstat(resolveReadPath(filePath, cwd));
+		return true;
+	} catch (err) {
+		if (isMissingPath(err) || isEnoent(err)) return false;
+		return true;
+	}
+}
+
+function probePartResolvesSync(entry: string, cwd: string, splitter: PathEntrySplitter): boolean {
+	if (isInternalUrlPath(entry)) return true;
+	const peeled = splitPathAndSel(entry).path;
+	const { basePath } = splitter(peeled);
+	try {
+		fs.statSync(resolveToCwd(basePath, cwd));
+		return true;
+	} catch (err) {
+		if (isMissingPath(err)) return false;
+		throw err;
+	}
+}
+
+async function probePartResolvesAsync(entry: string, cwd: string, splitter: PathEntrySplitter): Promise<boolean> {
+	if (isInternalUrlPath(entry)) return true;
+	const peeled = splitPathAndSel(entry).path;
+	const { basePath } = splitter(peeled);
+	try {
+		await fs.promises.stat(resolveToCwd(basePath, cwd));
+		return true;
+	} catch (err) {
+		if (isEnoent(err) || isMissingPath(err)) return false;
+		throw err;
+	}
+}
+
+function validatePartsSync(
+	parts: string[],
 	cwd: string,
 	splitter: PathEntrySplitter,
-	mode: DelimitedPathSplitMode,
 	requirement: DelimitedResolveRequirement,
-): Promise<string[] | null> {
-	const rawParts = splitTopLevelDelimitedPath(entry, mode);
-	if (rawParts.length < 2) return null;
+): boolean {
+	if (requirement === "none") return true;
+	if (requirement === "all") return parts.every(part => probePartResolvesSync(part, cwd, splitter));
+	return parts.some(part => probePartResolvesSync(part, cwd, splitter));
+}
 
-	const parts = rawParts.map(normalizePathLikeInput).filter(part => part.length > 0);
-	if (parts.length === 0) return null;
-	if (parts.length < 2 && rawParts.length === parts.length) return null;
-
-	if (requirement !== "none") {
-		const resolved = await Promise.all(parts.map(part => delimitedPathPartResolves(part, cwd, splitter)));
-		const valid = requirement === "all" ? resolved.every(Boolean) : resolved.some(Boolean);
-		if (!valid) return null;
-	}
-	return parts;
+async function validatePartsAsync(
+	parts: string[],
+	cwd: string,
+	splitter: PathEntrySplitter,
+	requirement: DelimitedResolveRequirement,
+): Promise<boolean> {
+	if (requirement === "none") return true;
+	const resolved = await Promise.all(parts.map(part => probePartResolvesAsync(part, cwd, splitter)));
+	return requirement === "all" ? resolved.every(Boolean) : resolved.some(Boolean);
 }
 
 /** How one path-like entry is allowed to fan out into several targets. */
@@ -986,6 +1037,48 @@ export interface DelimitedPathSplitOptions {
 	internalUrls?: "keep" | "split-on-semicolon";
 }
 
+/** Synchronously split one path-like entry whose multiple targets were flattened into one string. */
+export function splitDelimitedPathEntrySync(
+	entry: string,
+	cwd: string = process.cwd(),
+	options: DelimitedPathSplitOptions = {},
+): string[] | null {
+	const normalizedEntry = normalizePathLikeInput(entry);
+	if (!hasTopLevelPathDelimiter(normalizedEntry)) return null;
+	if (isInternalUrlPath(normalizedEntry)) {
+		if (options.internalUrls !== "split-on-semicolon") return null;
+		return getDelimitedCandidates(normalizedEntry, "semicolon");
+	}
+	if (probeLiteralExistsSync(normalizedEntry, cwd)) return null;
+	const splitter = options.splitter ?? parseSearchPath;
+	const peeledEntry = splitPathAndSel(normalizedEntry).path;
+	if (!hasGlobPathChars(peeledEntry) && probePartResolvesSync(normalizedEntry, cwd, splitter)) {
+		return null;
+	}
+
+	for (const { mode, requirement } of DELIMITED_SPLIT_LADDER) {
+		const parts = getDelimitedCandidates(normalizedEntry, mode);
+		if (parts && validatePartsSync(parts, cwd, splitter, requirement)) return parts;
+	}
+	return null;
+}
+
+/** Expand delimited entries synchronously in-place while preserving unsplit entries. */
+export function expandDelimitedPathEntriesSync(
+	entries: readonly string[],
+	cwd: string = process.cwd(),
+	options: DelimitedPathSplitOptions = {},
+): string[] {
+	const expanded: string[] = [];
+	for (const entry of entries) {
+		const normalizedEntry = normalizePathLikeInput(entry);
+		const split = splitDelimitedPathEntrySync(normalizedEntry, cwd, options);
+		if (split) expanded.push(...split);
+		else expanded.push(normalizedEntry);
+	}
+	return expanded;
+}
+
 /**
  * Split one path-like entry whose multiple targets were flattened into one
  * string. Existing paths are kept intact, so real filenames containing spaces,
@@ -993,39 +1086,33 @@ export interface DelimitedPathSplitOptions {
  */
 export async function splitDelimitedPathEntry(
 	entry: string,
-	cwd: string,
+	cwd: string = process.cwd(),
 	options: DelimitedPathSplitOptions = {},
 ): Promise<string[] | null> {
 	const normalizedEntry = normalizePathLikeInput(entry);
 	if (!hasTopLevelPathDelimiter(normalizedEntry)) return null;
 	if (isInternalUrlPath(normalizedEntry)) {
 		if (options.internalUrls !== "split-on-semicolon") return null;
-		return tryDelimitedPathSplit(normalizedEntry, cwd, options.splitter ?? parseSearchPath, "semicolon", "none");
+		return getDelimitedCandidates(normalizedEntry, "semicolon");
 	}
-	// A real POSIX file may contain the delimiter and a selector-shaped tail
-	// (`a;b:1-2`, `a b:1-2`). Preserve the raw entry whenever the full literal
-	// resolves — or is only ambiguous — so downstream literal-preferring
-	// splitters see it before delimiter expansion peels or splits (issue #4618
-	// reviewer feedback: delimited expansion ran before the literal check).
-	if ((await probeLiteralPathExists(normalizedEntry, cwd)) !== "missing") return null;
+	if (await probeLiteralExistsAsync(normalizedEntry, cwd)) return null;
 	const splitter = options.splitter ?? parseSearchPath;
 	const peeledEntry = splitPathAndSel(normalizedEntry).path;
-	if (!hasGlobPathChars(peeledEntry) && (await delimitedPathPartResolves(normalizedEntry, cwd, splitter))) {
+	if (!hasGlobPathChars(peeledEntry) && (await probePartResolvesAsync(normalizedEntry, cwd, splitter))) {
 		return null;
 	}
 
-	return (
-		(await tryDelimitedPathSplit(normalizedEntry, cwd, splitter, "semicolon", "none")) ??
-		(await tryDelimitedPathSplit(normalizedEntry, cwd, splitter, "comma", "some")) ??
-		(await tryDelimitedPathSplit(normalizedEntry, cwd, splitter, "whitespace", "all")) ??
-		(await tryDelimitedPathSplit(normalizedEntry, cwd, splitter, "mixed", "all"))
-	);
+	for (const { mode, requirement } of DELIMITED_SPLIT_LADDER) {
+		const parts = getDelimitedCandidates(normalizedEntry, mode);
+		if (parts && (await validatePartsAsync(parts, cwd, splitter, requirement))) return parts;
+	}
+	return null;
 }
 
 /** Expand delimited entries in-place while preserving unsplit entries. */
 export async function expandDelimitedPathEntries(
 	entries: readonly string[],
-	cwd: string,
+	cwd: string = process.cwd(),
 	options: DelimitedPathSplitOptions = {},
 ): Promise<string[]> {
 	const expanded: string[] = [];
