@@ -21,6 +21,7 @@
 - `SessionEntryIndex.pathTo` caches the branch array and extends it in-place on the common append path, turning repeated `getBranch()` calls within a turn from O(n) Set-allocated walks into O(1) reference returns.
 - `getSessionStats` merges three `.filter().length` passes and the usage-summing loop into a single `for` loop, cutting the per-call work from 4×O(n) to 1×O(n) on the full message list, and counts tool calls with a loop instead of `.filter().length` to avoid a throwaway array per assistant message.
 - `handoff` and `/compact` count messages with a loop instead of `.filter().length`, avoiding a throwaway array of the entire branch on each command invocation.
+- The todo board counts completed tasks and partitions open from closed with a single loop instead of `.filter()`, avoiding throwaway arrays per phase on every render frame.
 - `getLatestCompactionEntry` caches its result in a WeakMap keyed by the entries array, sharing it across the 3+ per-turn calls from `#checkCompaction`, `#pruneStaleToolResults`, and `#pruneToolOutputs` and incrementally scanning only appended entries on cache hits.
 
 ### Added

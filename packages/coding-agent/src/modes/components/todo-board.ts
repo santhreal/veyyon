@@ -151,8 +151,9 @@ function taskLine(task: TodoItem, options: TodoBoardOptions, width: number): str
  * closed three tasks looked exactly like one that had done nothing.
  */
 function collapsedTasks(phase: TodoPhase): TodoItem[] {
-	const closed = phase.tasks.filter(isClosed);
-	const open = phase.tasks.filter(task => !isClosed(task));
+	const closed: TodoItem[] = [];
+	const open: TodoItem[] = [];
+	for (const task of phase.tasks) (isClosed(task) ? closed : open).push(task);
 	if (open.length === 0) return closed.slice(-ACTIVE_TASK_CAP);
 	const keep = new Set<TodoItem>([...closed.slice(-DONE_TASK_CAP), ...open.slice(0, ACTIVE_TASK_CAP)]);
 	return phase.tasks.filter(task => keep.has(task));
@@ -212,7 +213,8 @@ export function renderTodoBoardLines(phases: readonly TodoPhase[], options: Todo
 	// the plan has as many phases as it has, and the board is a region above the
 	// composer that does not scroll.
 	const phaseLines = (phase: TodoPhase, oneBased: number, active: boolean): string[] => {
-		const done = phase.tasks.filter(task => task.status === "completed").length;
+		let done = 0;
+		for (const task of phase.tasks) if (task.status === "completed") done++;
 		const tally = ` · ${done}/${phase.tasks.length}`;
 		const label = boundedTodoPreviewText(
 			multiPhase ? formatPhaseDisplayName(phase.name, oneBased) : phase.name,
