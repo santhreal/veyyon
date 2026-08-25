@@ -10646,11 +10646,10 @@ export class AgentSession {
 
 	#buildGoalTodoContext(): string | undefined {
 		if (!this.settings.get("todo.enabled")) return undefined;
-		const activeToolNames = this.getActiveToolNames();
-		const canCallTodoTool = activeToolNames.includes(TOOL.todo);
+		const canCallTodoTool = this.#hasActiveTool(TOOL.todo);
 		const canDiscoverTodoTool =
 			!canCallTodoTool && this.getDiscoverableTools({ source: "builtin" }).some(tool => tool.name === TOOL.todo);
-		const canActivateTodoTool = canDiscoverTodoTool && activeToolNames.includes(TOOL.search_tool_bm25);
+		const canActivateTodoTool = canDiscoverTodoTool && this.#hasActiveTool(TOOL.search_tool_bm25);
 		if (!canCallTodoTool && !canDiscoverTodoTool) return undefined;
 		const phases = this.getTodoPhases().filter(phase => phase.tasks.length > 0);
 		if (phases.length === 0) return undefined;
@@ -15189,10 +15188,9 @@ export class AgentSession {
 		// (tools.discoveryMode === "all") can register `todo` while hiding it from
 		// the exposed tools. Forcing a named tool_choice for an inactive tool makes
 		// the provider reject the request (HTTP 400).
-		const activeToolNames = this.getActiveToolNames();
-		if (!activeToolNames.includes(TOOL.todo)) {
+		if (!this.#hasActiveTool(TOOL.todo)) {
 			logger.warn("Eager todo enforcement skipped because todo is not active", {
-				activeToolNames,
+				activeToolNames: this.getActiveToolNames(),
 			});
 			return undefined;
 		}

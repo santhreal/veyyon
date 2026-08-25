@@ -23,6 +23,11 @@
 - `handoff` and `/compact` count messages with a loop instead of `.filter().length`, avoiding a throwaway array of the entire branch on each command invocation.
 - The todo board counts completed tasks and partitions open from closed with a single loop instead of `.filter()`, avoiding throwaway arrays per phase on every render frame.
 - `getLatestCompactionEntry` caches its result in a WeakMap keyed by the entries array, sharing it across the 3+ per-turn calls from `#checkCompaction`, `#pruneStaleToolResults`, and `#pruneToolOutputs` and incrementally scanning only appended entries on cache hits.
+- `#buildGoalTodoContext` and `#createEagerTodoPrelude` use `#hasActiveTool(name)` instead of `getActiveToolNames().includes(name)`, avoiding a `.map()` array allocation on every prompt in goal mode and every eager-todo check.
+- The todo tool card counts completed tasks with a loop instead of `.filter().length`, avoiding a throwaway array per render.
+- The `/todo` autocomplete description counts pending, in-progress, and completed tasks in a single loop instead of three `.filter().length` passes, avoiding three throwaway arrays per keystroke.
+- Hindsight and mnemopi auto-retain count user turns with a loop instead of `.filter().length`, avoiding a throwaway array of the full message list on every `agent_end`.
+- HTML export counts tool calls with a loop instead of `.filter().length`, avoiding a throwaway array per assistant message during export.
 
 ### Added
 

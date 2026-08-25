@@ -1671,9 +1671,9 @@ export const todoToolRenderer = {
 			const active = allTasks.find(task => task.status === "in_progress");
 			const moved = active ?? completedTasks[completedTasks.length - 1];
 			const phaseOf = phases.find(phase => phase.tasks.some(task => task.content === moved?.content));
-			const parts = [
-				uiTheme.fg("dim", formatCount("done", allTasks.filter(task => task.status === "completed").length)),
-			];
+			let completedCount = 0;
+			for (const task of allTasks) if (task.status === "completed") completedCount++;
+			const parts = [uiTheme.fg("dim", formatCount("done", completedCount))];
 			if (phaseOf && phases.length > 1) {
 				parts.push(uiTheme.fg("muted", boundedTodoPreviewText(phaseOf.name, TODO_ITEM_PREVIEW_WIDTH)));
 			}

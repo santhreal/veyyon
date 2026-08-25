@@ -1751,9 +1751,14 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 		getTuiAutocompleteDescription: runtime => {
 			const tasks = runtime.ctx.todoPhases.flatMap(phase => phase.tasks);
 			if (tasks.length === 0) return "Manage the shared todo list · empty";
-			const pending = tasks.filter(task => task.status === "pending").length;
-			const inProgress = tasks.filter(task => task.status === "in_progress").length;
-			const completed = tasks.filter(task => task.status === "completed").length;
+			let pending = 0;
+			let inProgress = 0;
+			let completed = 0;
+			for (const task of tasks) {
+				if (task.status === "pending") pending++;
+				else if (task.status === "in_progress") inProgress++;
+				else if (task.status === "completed") completed++;
+			}
 			return `Manage the shared todo list · ${pending + inProgress} open (${inProgress} in progress, ${completed} done)`;
 		},
 		handle: handleTodoAcp,
