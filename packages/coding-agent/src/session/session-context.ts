@@ -85,13 +85,36 @@ export function getRestorableSessionModels(
 	return [roleModel, defaultModel];
 }
 
+const compactionEntryCache = new WeakMap<SessionEntry[], { length: number; entry: CompactionEntry | null }>();
+
 export function getLatestCompactionEntry(entries: SessionEntry[]): CompactionEntry | null {
+	const cached = compactionEntryCache.get(entries);
+	if (cached !== undefined && cached.length === entries.length) {
+		return cached.entry;
+	}
+	if (cached !== undefined && cached.length < entries.length) {
+		// Incremental: scan only the newly appended entries first. If a
+		// compaction entry exists among them, it is newer than the cached
+		// one. Otherwise return the cached result (still the latest).
+		for (let i = entries.length - 1; i >= cached.length; i--) {
+			if (entries[i].type === "compaction") {
+				const entry = entries[i] as CompactionEntry;
+				compactionEntryCache.set(entries, { length: entries.length, entry });
+				return entry;
+			}
+		}
+		cached.length = entries.length;
+		return cached.entry;
+	}
+	let entry: CompactionEntry | null = null;
 	for (let i = entries.length - 1; i >= 0; i--) {
 		if (entries[i].type === "compaction") {
-			return entries[i] as CompactionEntry;
+			entry = entries[i] as CompactionEntry;
+			break;
 		}
 	}
-	return null;
+	compactionEntryCache.set(entries, { length: entries.length, entry });
+	return entry;
 }
 
 export interface BuildSessionContextOptions {

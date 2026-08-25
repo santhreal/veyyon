@@ -108,6 +108,39 @@ describe("getLatestCompactionEntry", () => {
 		const entries: SessionEntry[] = [msg("m", null, "user", "hi"), compaction("c1", "m", "only", "m")];
 		expect(getLatestCompactionEntry(entries)?.id).toBe("c1");
 	});
+
+	// Cache regression tests: getLatestCompactionEntry caches its result in a
+	// WeakMap keyed by the entries array reference. The cache must stay correct
+	// when the same array is extended in-place (the common append path) and must
+	// find a compaction entry that lands in the newly appended region.
+	it("returns the same result on repeated calls with the same array (cache hit)", () => {
+		const entries: SessionEntry[] = [msg("1", null, "user", "hi"), compaction("c1", "1", "first", "1")];
+		const first = getLatestCompactionEntry(entries);
+		const second = getLatestCompactionEntry(entries);
+		expect(second).toBe(first);
+	});
+
+	it("finds a compaction appended after the first call (incremental scan)", () => {
+		const entries: SessionEntry[] = [msg("1", null, "user", "hi")];
+		getLatestCompactionEntry(entries); // populate cache with null
+		entries.push(compaction("c1", "1", "first", "1"));
+		expect(getLatestCompactionEntry(entries)?.id).toBe("c1");
+	});
+
+	it("returns the cached compaction when appended entries contain no compaction", () => {
+		const entries: SessionEntry[] = [compaction("c1", null, "first", "1"), msg("m", "c1", "user", "hi")];
+		const first = getLatestCompactionEntry(entries);
+		entries.push(msg("m2", "m", "assistant", "yo"));
+		const second = getLatestCompactionEntry(entries);
+		expect(second).toBe(first);
+	});
+
+	it("finds a newer compaction among appended entries over an older cached one", () => {
+		const entries: SessionEntry[] = [compaction("c1", null, "first", "1"), msg("m", "c1", "user", "hi")];
+		getLatestCompactionEntry(entries); // cache c1
+		entries.push(compaction("c2", "m", "second", "m"));
+		expect(getLatestCompactionEntry(entries)?.id).toBe("c2");
+	});
 });
 
 describe("buildSessionContext", () => {
