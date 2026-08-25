@@ -149,23 +149,6 @@ function estimatePrunedSavings(tokens: number, notice: string): number {
 	return Math.max(0, tokens - noticeTokens);
 }
 
-/**
- * For each entry index, the estimated token total of all *message* entries
- * strictly after it — how much prompt-cache content the provider must re-write
- * (cacheWrite premium) if that entry is mutated in place. Used to keep prune
- * mutations inside the cheap-to-recache tail.
- */
-function computeMessageSuffixTokens(entries: readonly SessionEntry[]): number[] {
-	const suffix = new Array<number>(entries.length);
-	let accumulated = 0;
-	for (let i = entries.length - 1; i >= 0; i--) {
-		suffix[i] = accumulated;
-		const entry = entries[i];
-		if (entry.type === "message") accumulated += estimateTokens(entry.message as AgentMessage);
-	}
-	return suffix;
-}
-
 interface SupersedeCandidate {
 	entry: SessionMessageEntry;
 	message: ToolResultMessage;
@@ -174,6 +157,8 @@ interface SupersedeCandidate {
 	tokens: number;
 	/** Placeholder text written over the blanked result. */
 	notice: string;
+	/** Estimated tokens of all messages strictly after this entry's index. */
+	suffixSum: number;
 }
 
 /**
@@ -192,10 +177,14 @@ function collectPruneCandidates(
 ): SupersedeCandidate[] {
 	const candidates: SupersedeCandidate[] = [];
 	const seenKeys = new Set<string>();
+	let suffixSum = 0;
 	for (let i = entries.length - 1; i >= 0; i--) {
 		const entry = entries[i];
 		const message = getToolResultMessage(entry);
-		if (!message || message.prunedAt !== undefined) continue;
+		if (!message || message.prunedAt !== undefined) {
+			if (entry.type === "message") suffixSum += estimateTokens(entry.message as AgentMessage);
+			continue;
+		}
 		const toolCall = toolCallsById.get(message.toolCallId);
 
 		// Superseded check: a newer result with the same key (or a prefix-parent
@@ -214,6 +203,7 @@ function collectPruneCandidates(
 							index: i,
 							tokens: estimateTokens(message as AgentMessage),
 							notice: SUPERSEDED_NOTICE,
+							suffixSum,
 						});
 						continue;
 					}
@@ -234,10 +224,13 @@ function collectPruneCandidates(
 						index: i,
 						tokens,
 						notice: USELESS_NOTICE,
+						suffixSum,
 					});
 				}
 			}
 		}
+
+		suffixSum += estimateTokens(message as AgentMessage);
 	}
 	return candidates.reverse();
 }
@@ -255,7 +248,6 @@ function collectPruneCandidates(
  */
 function chooseWorthwhileSweep(
 	candidates: readonly SupersedeCandidate[],
-	suffixTokens: readonly number[],
 	config: SupersedePruneConfig,
 ): SupersedeCandidate[] {
 	const premium = config.cacheWritePremium ?? DEFAULT_CACHE_WRITE_PREMIUM;
@@ -266,7 +258,7 @@ function chooseWorthwhileSweep(
 	for (let i = candidates.length - 1; i >= 0; i--) {
 		const candidate = candidates[i]!;
 		mass += estimatePrunedSavings(candidate.tokens, candidate.notice);
-		const value = mass * payback - premium * (suffixTokens[candidate.index] ?? 0);
+		const value = mass * payback - premium * candidate.suffixSum;
 		if (value > bestValue) {
 			bestValue = value;
 			bestCut = i;
@@ -318,18 +310,16 @@ export function pruneSupersededToolResults(entries: SessionEntry[], config: Supe
 		toPrune = candidates.filter(candidate => candidate.index >= boundaryIndex);
 	} else {
 		const suffixTokenLimit = config.suffixTokenLimit ?? DEFAULT_SUFFIX_TOKEN_LIMIT;
-		// suffixTokens[i] = estimated tokens of all messages strictly after entry i.
-		const suffixTokens = computeMessageSuffixTokens(entries);
 		const eligible = candidates.filter(candidate => candidate.index >= boundaryIndex);
 		// The cheap tail: a candidate whose own suffix is small is worth rewriting on
 		// its own, which is the read -> edit -> read loop.
-		const tail = eligible.filter(candidate => suffixTokens[candidate.index] <= suffixTokenLimit);
+		const tail = eligible.filter(candidate => candidate.suffixSum <= suffixTokenLimit);
 		// Deeper than the tail, one victim never pays for the rewrite it forces, but a
 		// batch of them does. Asking the question per candidate is why a long session
 		// reclaimed almost nothing: at 120k of context every candidate outside the last
 		// few thousand tokens failed the test alone, while together they were most of
 		// the dead weight in the window.
-		const batch = chooseWorthwhileSweep(eligible, suffixTokens, config);
+		const batch = chooseWorthwhileSweep(eligible, config);
 		toPrune = batch.length > tail.length ? batch : tail;
 	}
 	if (toPrune.length === 0) return { prunedCount: 0, tokensSaved: 0 };
