@@ -2,7 +2,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { ThinkingLevel } from "@veyyon/agent-core";
 import { normalizePremiumRequests } from "@veyyon/stats/format";
-import { TERMINAL, visibleWidth } from "@veyyon/tui";
+import { sliceWithWidth, TERMINAL, visibleWidth } from "@veyyon/tui";
 import {
 	clamp01,
 	DEFAULT_PROFILE_DIR_NAME,
@@ -48,7 +48,7 @@ export type { SegmentContext } from "./types";
 const SECRET_EXPIRY_CHIP_WINDOW_MS = 60 * 60 * 1000;
 
 /**
- * Clamp a path/label to `maxLen`, prepending an ellipsis when clipped.
+ * Clamp a path/label to `maxLen` CELLS, prepending an ellipsis when clipped.
  *
  * CLIPPED FROM ONE END, AND IT IS THE HEAD. A path's identifying end is its last
  * segment -- the directory the session is actually in -- so that is the end that
@@ -57,11 +57,20 @@ const SECRET_EXPIRY_CHIP_WINDOW_MS = 60 * 60 * 1000;
  * BOTH ends of one path: `…orm-services/ingest-pipeline/norm…` named neither the
  * project it sits under nor the directory it is in. A clipped path now carries
  * exactly one ellipsis, at the front, and reads as a suffix of the real path.
+ *
+ * CELLS, not UTF-16 units. `maxLen` is compared against the columns the row will
+ * spend, so a path holding wide characters -- a CJK directory name, an emoji in a
+ * project folder -- was clamped at roughly half the width it then painted, and
+ * `String.prototype.slice` could cut a surrogate pair or a grapheme cluster in
+ * half and hand the row a lone code unit to render.
  */
 function clampPathLength(pwd: string, maxLen: number): string {
-	if (pwd.length <= maxLen) return pwd;
+	const total = visibleWidth(pwd);
+	if (total <= maxLen) return pwd;
 	const ellipsis = "…";
-	return `${ellipsis}${pwd.slice(pwd.length - Math.max(0, maxLen - ellipsis.length))}`;
+	const room = Math.max(0, maxLen - visibleWidth(ellipsis));
+	if (room === 0) return ellipsis;
+	return `${ellipsis}${sliceWithWidth(pwd, total - room, room, true).text}`;
 }
 
 /**

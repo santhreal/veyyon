@@ -242,9 +242,18 @@ const SGR_PREFIX = /^(?:\x1b\[[0-9;:]*m)+/u;
  */
 const CLIP_SNAP = 4;
 
-/** Boundaries a clipped name may open on, and whether the boundary itself is kept. */
-const CLIP_BOUNDARIES: Record<string, "keep" | "drop"> = {
+/**
+ * Boundaries a clipped name may open on, and whether the boundary itself is kept.
+ *
+ * BOTH separators, because only one of them is normalized away. `shortenPath` rewrites `\` to
+ * `/` only for a path under the home directory, so a Windows session in `C:\work\…` reaches
+ * this table with its own separator intact and no other character in it is a boundary: the
+ * walk found nothing, and every clipped path on that platform opened mid-name, which is the
+ * one thing this table exists to prevent.
+ */
+export const CLIP_BOUNDARIES: Record<string, "keep" | "drop"> = {
 	"/": "keep",
+	"\\": "keep",
 	"-": "drop",
 	_: "drop",
 	".": "drop",
