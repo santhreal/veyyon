@@ -144,7 +144,9 @@ describe("openai-completions convertMessages merged content loop", () => {
 		const assistantParam = params.find(p => p.role === "assistant");
 		expect(assistantParam).toBeDefined();
 		expect(assistantParam && "tool_calls" in assistantParam ? assistantParam.tool_calls : undefined).toHaveLength(1);
-		expect(assistantParam && "content" in assistantParam ? assistantParam.content : undefined).toBe("Running a tool.");
+		expect(assistantParam && "content" in assistantParam ? assistantParam.content : undefined).toBe(
+			"Running a tool.",
+		);
 	});
 
 	it("collects empty-text thinking blocks for Tier 1 reasoning recovery", () => {
@@ -185,8 +187,8 @@ describe("openai-completions convertMessages merged content loop", () => {
 		const assistantParam = params.find(p => p.role === "assistant");
 		const toolCalls = assistantParam && "tool_calls" in assistantParam ? assistantParam.tool_calls : [];
 		expect(toolCalls).toHaveLength(2);
-		expect(toolCalls?.[0]?.function?.name).toBe("read");
-		expect(toolCalls?.[1]?.function?.name).toBe("read");
+		expect(toolCalls?.[0]?.type === "function" ? toolCalls[0].function.name : undefined).toBe("read");
+		expect(toolCalls?.[1]?.type === "function" ? toolCalls[1].function.name : undefined).toBe("read");
 		// Text blocks should be joined in order.
 		expect(assistantParam && "content" in assistantParam ? assistantParam.content : undefined).toBe("Step 1.Step 2.");
 	});

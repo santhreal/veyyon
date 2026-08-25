@@ -144,6 +144,10 @@ type OpenAICompletionsAssistantMessageParam = ChatCompletionAssistantMessagePara
 		reasoning_details?: unknown[];
 	};
 
+/** Reasoning field names checked on every streamed delta, in priority order.
+ * Hoisted to module scope to avoid allocating a 3-element array per chunk. */
+const REASONING_DELTA_FIELDS = ["reasoning_content", "reasoning", "reasoning_text"] as const;
+
 type OpenAICompletionsToolMessageParam = ChatCompletionToolMessageParam & {
 	name?: string;
 };
@@ -1162,11 +1166,10 @@ const streamOpenAICompletionsOnce = (
 					// or reasoning (other openai compatible endpoints). Use the first
 					// non-empty reasoning field to avoid duplication when a chunk carries
 					// multiple aliases for the same reasoning text.
-					const reasoningFields = ["reasoning_content", "reasoning", "reasoning_text"];
 					const deltaRecord = choice.delta as Record<string, unknown>;
 					let foundReasoningField: string | undefined;
 					let foundReasoningDelta = "";
-					for (const field of reasoningFields) {
+					for (const field of REASONING_DELTA_FIELDS) {
 						const reasoningDelta = deltaRecord[field];
 						if (typeof reasoningDelta === "string" && reasoningDelta.length > 0) {
 							foundReasoningField = field;

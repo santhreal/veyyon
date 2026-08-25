@@ -32,6 +32,7 @@
 - `appendResponsesToolResultMessages` in `openai-shared.ts` merges `.filter().map().join()` and `.some()` (4 passes) into a single `for` loop that collects text parts and tracks image presence simultaneously.
 - `deduplicateToolCallIds` in `transform-messages.ts` adds a fast-path pre-scan that returns the input array by reference when no duplicate tool call IDs exist, avoiding one 33K-element array allocation per turn in the common case.
 - `transformMessages` in `transform-messages.ts` adds a fast-path that returns same-model non-Anthropic assistant messages by reference when they contain no thinking or fallback blocks, avoiding one object spread and one content array allocation per assistant message per turn in the common case.
+- The OpenAI completions streaming chunk loop hoists the `reasoning_content`/`reasoning`/`reasoning_text` field-name array from a per-chunk allocation to a module-scope constant, avoiding one 3-element array allocation per streamed token.
 
 ### Fixed
 
