@@ -1349,7 +1349,10 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 			// target for this session; without an argument, `prewalk.cheapModel`
 			// is required, and the refusal names the setting that fixes it.
 			const arg = command.args.trim();
-			const cheapPattern = arg || normalizeModelPatternList(runtime.settings.get("prewalk.cheapModel"))[0];
+			// Same chain normalization the setting gets: a comma list contributes
+			// its first entry, an empty argument falls through to the setting.
+			const cheapPattern =
+				normalizeModelPatternList(arg)[0] || normalizeModelPatternList(runtime.settings.get("prewalk.cheapModel"))[0];
 			if (!cheapPattern) {
 				return usage(
 					'Prewalk needs a cheap target model: run /prewalk <model> or set "prewalk.cheapModel" in settings.',
