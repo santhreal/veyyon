@@ -212,7 +212,8 @@ function buildAsciiTable(columns: string[], rows: SqliteRow[]): string {
 	}
 
 	const overhead = columns.length * COLUMN_SEPARATOR_WIDTH + TABLE_FRAME_WIDTH;
-	let totalWidth = widths.reduce((sum, width) => sum + width, 0) + overhead;
+	let totalWidth = overhead;
+	for (const w of widths) totalWidth += w;
 	while (totalWidth > MAX_RENDER_WIDTH) {
 		let widestIndex = -1;
 		let widestWidth = MIN_COLUMN_WIDTH;
@@ -223,8 +224,9 @@ function buildAsciiTable(columns: string[], rows: SqliteRow[]): string {
 			}
 		}
 		if (widestIndex === -1) break;
-		widths[widestIndex] = Math.max(MIN_COLUMN_WIDTH, (widths[widestIndex] ?? MIN_COLUMN_WIDTH) - 1);
-		totalWidth = widths.reduce((sum, width) => sum + width, 0) + overhead;
+		const prevWidth = widths[widestIndex] ?? MIN_COLUMN_WIDTH;
+		widths[widestIndex] = Math.max(MIN_COLUMN_WIDTH, prevWidth - 1);
+		totalWidth -= prevWidth - (widths[widestIndex] ?? MIN_COLUMN_WIDTH);
 	}
 
 	const header = `| ${columns.map((column, index) => padCell(column, widths[index] ?? MIN_COLUMN_WIDTH)).join(" | ")} |`;

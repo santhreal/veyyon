@@ -82,8 +82,12 @@ function parsePositiveInteger(raw: string | undefined): number | undefined {
 }
 
 function fixUnclosedBraces(pattern: string): string {
-	const opens = [...pattern].filter(c => c === "{").length;
-	const closes = [...pattern].filter(c => c === "}").length;
+	let opens = 0;
+	let closes = 0;
+	for (const c of pattern) {
+		if (c === "{") opens++;
+		else if (c === "}") closes++;
+	}
 	if (opens > closes) {
 		return pattern + "}".repeat(opens - closes);
 	}

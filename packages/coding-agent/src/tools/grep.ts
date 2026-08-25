@@ -1460,16 +1460,16 @@ export class GrepTool implements AgentTool<typeof searchSchema, GrepToolDetails>
 					const fileMatches = matchesByFile.get(relativePath) ?? [];
 					const hashContext = hashContexts.get(relativePath);
 					const useHashLines = hashContext !== undefined;
-					const lineNumberWidth = fileMatches.reduce((width, match) => {
-						let nextWidth = Math.max(width, String(match.lineNumber).length);
+					let lineNumberWidth = 0;
+					for (const match of fileMatches) {
+						lineNumberWidth = Math.max(lineNumberWidth, String(match.lineNumber).length);
 						for (const ctx of match.contextBefore ?? []) {
-							nextWidth = Math.max(nextWidth, String(ctx.lineNumber).length);
+							lineNumberWidth = Math.max(lineNumberWidth, String(ctx.lineNumber).length);
 						}
 						for (const ctx of match.contextAfter ?? []) {
-							nextWidth = Math.max(nextWidth, String(ctx.lineNumber).length);
+							lineNumberWidth = Math.max(lineNumberWidth, String(ctx.lineNumber).length);
 						}
-						return nextWidth;
-					}, 0);
+					}
 					let lastEmittedLine: number | undefined;
 					const gutterPad = " ".repeat(lineNumberWidth + 1);
 					// Track match/context lines whose displayed text was
@@ -1728,8 +1728,17 @@ function compactSearchPreviewGroup(group: RenderedSearchLine[]): RenderedSearchL
 }
 
 function countPreviewMatches(lines: readonly RenderedSearchLine[], hasMarkedMatches: boolean): number {
-	if (hasMarkedMatches) return lines.reduce((count, line) => count + (isSearchMatchLine(line.raw) ? 1 : 0), 0);
-	return lines.reduce((count, line) => count + (!isSearchHeaderLine(line.raw) && line.raw.length > 0 ? 1 : 0), 0);
+	let count = 0;
+	if (hasMarkedMatches) {
+		for (const line of lines) {
+			if (isSearchMatchLine(line.raw)) count++;
+		}
+	} else {
+		for (const line of lines) {
+			if (!isSearchHeaderLine(line.raw) && line.raw.length > 0) count++;
+		}
+	}
+	return count;
 }
 
 function renderBudgetedSearchGroups(

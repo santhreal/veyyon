@@ -353,10 +353,10 @@ export class AstEditTool implements AgentTool<typeof astEditSchema, AstEditToolD
 				const displayOut: string[] = [];
 				const fileChanges = changesByFile.get(relativePath) ?? [];
 				const hashContext = hashContexts.get(relativePath);
-				const lineNumberWidth = fileChanges.reduce(
-					(width, change) => Math.max(width, String(change.startLine).length),
-					0,
-				);
+				let lineNumberWidth = 0;
+				for (const change of fileChanges) {
+					lineNumberWidth = Math.max(lineNumberWidth, String(change.startLine).length);
+				}
 				for (const change of fileChanges) {
 					const beforeFirstLine = change.before.split("\n", 1)[0] ?? "";
 					const afterFirstLine = change.after.split("\n", 1)[0] ?? "";

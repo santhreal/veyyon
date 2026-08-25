@@ -532,7 +532,8 @@ export function formatDiagnostics(
 	const files = Array.from(byFile.entries());
 
 	// Count total diagnostics for "... X more" calculation
-	const totalParsedDiags = files.reduce((sum, [, diags]) => sum + diags.length, 0);
+	let totalParsedDiags = 0;
+	for (const [, diags] of files) totalParsedDiags += diags.length;
 	const totalDiags = totalParsedDiags + unparsed.length;
 
 	for (let fi = 0; fi < files.length && diagsShown < maxDiags; fi++) {
@@ -679,8 +680,10 @@ export function truncateDiffByHunk(
 
 	const segments = parseDiffSegments(lines);
 
-	const changeSegments = segments.filter(s => s.isChange);
-	const changeLineCount = changeSegments.reduce((sum, s) => sum + s.lines.length, 0);
+	let changeLineCount = 0;
+	for (const seg of segments) {
+		if (seg.isChange) changeLineCount += seg.lines.length;
+	}
 
 	if (changeLineCount > maxLines) {
 		const kept: string[] = [];
@@ -704,8 +707,14 @@ export function truncateDiffByHunk(
 	}
 
 	const contextBudget = maxLines - changeLineCount;
-	const contextSegments = segments.filter(s => !s.isChange && !s.isEllipsis);
-	const totalContextLines = contextSegments.reduce((sum, s) => sum + s.lines.length, 0);
+	let totalContextLines = 0;
+	let contextSegmentCount = 0;
+	for (const seg of segments) {
+		if (!seg.isChange && !seg.isEllipsis) {
+			totalContextLines += seg.lines.length;
+			contextSegmentCount++;
+		}
+	}
 
 	const kept: string[] = [];
 	let keptHunks = 0;
@@ -719,7 +728,7 @@ export function truncateDiffByHunk(
 			kept.push(...seg.lines);
 		}
 	} else {
-		const contextRatio = contextSegments.length > 0 ? contextBudget / totalContextLines : 0;
+		const contextRatio = contextSegmentCount > 0 ? contextBudget / totalContextLines : 0;
 
 		for (let i = 0; i < segments.length; i++) {
 			const seg = segments[i];

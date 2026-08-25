@@ -56,6 +56,15 @@
 - The usage display unique-account count replaces `.map().filter()` into a `Set` with a single `for` loop, avoiding two intermediate arrays per usage display render.
 - The autoresearch expanded dashboard merges four `.filter().length` counts (kept, discarded, crashed, checks_failed) into a single counting loop, avoiding four throwaway arrays per dashboard render.
 - The `/todo` autocomplete description replaces `.flatMap(phase => phase.tasks)` with a nested counting loop, avoiding a throwaway array of all tasks per keystroke when the `/todo` autocomplete is active.
+- `countPreviewMatches` in the grep renderer replaces two `reduce` calls with `for` loops, avoiding two callback allocations per grep result render.
+- The render-utils diagnostics total replaces a `reduce` with a `for` loop, avoiding a callback allocation per diagnostic render.
+- The render-utils diff segment counting merges `filter`+`reduce` pairs into single-pass `for` loops for change-line and context-line counts, avoiding two throwaway arrays and two callback allocations per diff render.
+- The IRC peer status unread total replaces `reduce` with a `for` loop, avoiding a callback allocation per IRC status render.
+- The vibe sessions status running count replaces `.filter().length` with a counting loop, avoiding a throwaway array per vibe status render.
+- The todo tool card task total replaces `.flatMap()` with a counting loop and the active-task lookup with a phase iteration loop, avoiding a throwaway array of all tasks per todo card render.
+- The LSP symbol renderer merges two `.filter()` calls (top-level count and first-3 collection) into a single `for` loop, avoiding a throwaway array per symbol render.
+- The grep, ast-edit, and ast-grep line-number-width calculations replace `reduce` with `for` loops, avoiding callback allocations per file result render.
+- The sqlite reader table-width calculation replaces `reduce` with a `for` loop for the initial total and a delta subtraction inside the shrink-to-fit loop, avoiding a full re-sum on every iteration.
 
 ### Added
 

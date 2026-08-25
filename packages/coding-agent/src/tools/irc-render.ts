@@ -354,7 +354,8 @@ function renderListResult(
 	const counts = new Map<string, number>();
 	for (const peer of peers) counts.set(peer.status, (counts.get(peer.status) ?? 0) + 1);
 	const meta = [...counts].map(([status, count]) => `${count} ${status}`);
-	const unreadTotal = peers.reduce((sum, peer) => sum + peer.unread, 0);
+	let unreadTotal = 0;
+	for (const peer of peers) unreadTotal += peer.unread;
 	if (unreadTotal > 0) meta.push(theme.fg("warning", `${unreadTotal} unread`));
 	const header = renderStatusLine({ iconOverride: ircGlyph(theme), title: "IRC peers", meta }, theme);
 	const body: string[] = [];

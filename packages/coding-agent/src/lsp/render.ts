@@ -516,7 +516,14 @@ function renderSymbols(symbolsMatch: RegExpMatchArray, lines: string[], expanded
 		return prefix;
 	};
 
-	const topLevelCount = symbols.filter(s => s.indent === 0).length;
+	let topLevelCount = 0;
+	const topLevel: typeof symbols = [];
+	for (const s of symbols) {
+		if (s.indent === 0) {
+			topLevelCount++;
+			if (topLevel.length < 3) topLevel.push(s);
+		}
+	}
 
 	if (expanded) {
 		let output = `${icon} ${theme.fg("dim", `in ${fileName}`)}`;
@@ -534,7 +541,6 @@ function renderSymbols(symbolsMatch: RegExpMatchArray, lines: string[], expanded
 	}
 
 	// Collapsed: show first 3 top-level symbols
-	const topLevel = symbols.filter(s => s.indent === 0).slice(0, 3);
 	const hasMoreSymbols = symbols.length > topLevel.length;
 	const expandHint = formatExpandHint(theme, expanded, hasMoreSymbols);
 	let output = `${icon} ${theme.fg("dim", `in ${fileName}`)}${expandHint}`;

@@ -314,7 +314,10 @@ export function createVibeToolRenderer(op: VibeOp) {
 			const waiting = details.wait?.waiting === true;
 			const settledById = new Map(details.wait?.settled.map(entry => [entry.id, entry.status] as const) ?? []);
 			return linesComponent(() => {
-				const running = screens.filter(screen => screen.state === "running" || screen.state === "starting").length;
+				let running = 0;
+				for (const screen of screens) {
+					if (screen.state === "running" || screen.state === "starting") running++;
+				}
 				const meta: string[] = [];
 				if (running > 0) meta.push(uiTheme.fg("accent", `${running} on air`));
 				if (settledById.size > 0) meta.push(uiTheme.fg("success", `${settledById.size} settled`));

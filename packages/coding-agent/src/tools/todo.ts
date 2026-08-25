@@ -1640,16 +1640,17 @@ export const todoToolRenderer = {
 			}
 			keys.add(task.content);
 		}
-		const allTasks = phases.flatMap(phase => phase.tasks);
+		let allTaskCount = 0;
+		for (const phase of phases) allTaskCount += phase.tasks.length;
 		const header = renderStatusLine(
 			{
 				iconOverride: uiTheme.styledSymbol("tool.todo", "accent"),
 				title: "Todo",
-				meta: [formatCount("task", allTasks.length)],
+				meta: [formatCount("task", allTaskCount)],
 			},
 			uiTheme,
 		);
-		if (allTasks.length === 0) {
+		if (allTaskCount === 0) {
 			const fallback = boundedTodoPreviewText(
 				result.content?.find(content => content.type === "text")?.text ?? "No todos",
 				TODO_TOTAL_PREVIEW_WIDTH,
@@ -1668,11 +1669,20 @@ export const todoToolRenderer = {
 		// Expanded (the block's own toggle) it is the full list, which is what a
 		// reader scrolling back through history wants — by then the board is gone.
 		if (!options.expanded) {
-			const active = allTasks.find(task => task.status === "in_progress");
+			let active: TodoItem | undefined;
+			for (const phase of phases) {
+				for (const task of phase.tasks) {
+					if (task.status === "in_progress") {
+						active = task;
+						break;
+					}
+				}
+				if (active) break;
+			}
 			const moved = active ?? completedTasks[completedTasks.length - 1];
 			const phaseOf = phases.find(phase => phase.tasks.some(task => task.content === moved?.content));
 			let completedCount = 0;
-			for (const task of allTasks) if (task.status === "completed") completedCount++;
+			for (const phase of phases) for (const task of phase.tasks) if (task.status === "completed") completedCount++;
 			const parts = [uiTheme.fg("dim", formatCount("done", completedCount))];
 			if (phaseOf && phases.length > 1) {
 				parts.push(uiTheme.fg("muted", boundedTodoPreviewText(phaseOf.name, TODO_ITEM_PREVIEW_WIDTH)));
