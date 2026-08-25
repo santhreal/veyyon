@@ -135,7 +135,6 @@ describe("a restarting daemon settles cleanly on recovery and stop", () => {
 			exitCode: 1,
 			restartCount: 1,
 			outputBytes: 0,
-			lifetime: "last-client-exit",
 			persist: false,
 			detached: false,
 		};
@@ -148,7 +147,9 @@ describe("a restarting daemon settles cleanly on recovery and stop", () => {
 			if (described.op === "describe") {
 				expect(described.daemon.state).toBe("exited");
 				expect(described.daemon.terminatedBy).toBe("broker-recovery");
-				expect(described.daemon.exitReason).toContain("the previous broker exited; its replacement terminated this non-detached daemon");
+				expect(described.daemon.exitReason).toContain(
+					"the previous broker exited; its replacement terminated this non-detached daemon",
+				);
 				expect(described.daemon.pid).toBeUndefined();
 			}
 
