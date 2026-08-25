@@ -2009,18 +2009,77 @@ function disambiguateToolCallIds(message: AssistantMessage, takenIds: ReadonlySe
  *
  * `skipTrailing` drops the last message, which is the in-flight partial of the
  * message being finalized (the loop appends it and then replaces it in place).
+ *
+ * A WeakMap cache keyed by the messages array shares the full Set across turns.
+ * On append it incrementally adds new messages' tool-call IDs. When the last
+ * element was replaced in-place (partial → finalized message, same length), it
+ * swaps the old last's IDs for the new last's IDs. The `skipTrailing` variant
+ * derives a new Set from the cached full Set by removing the trailing message's
+ * IDs.
  */
-function storedToolCallIds(messages: readonly AgentMessage[], skipTrailing: boolean): Set<string> {
-	const ids = new Set<string>();
-	const end = skipTrailing ? messages.length - 1 : messages.length;
-	for (let index = 0; index < end; index++) {
-		const message = messages[index];
-		if (message.role !== "assistant") continue;
-		for (const block of message.content) {
-			if (block.type === "toolCall") ids.add(block.id);
-		}
+const storedToolCallIdsCache = new WeakMap<
+	readonly AgentMessage[],
+	{ length: number; lastRef: AgentMessage | undefined; set: Set<string> }
+>();
+
+function collectToolCallIdsFromMessage(message: AgentMessage, set: Set<string>): void {
+	if (message.role !== "assistant") return;
+	for (const block of message.content) {
+		if (block.type === "toolCall") set.add(block.id);
 	}
-	return ids;
+}
+
+function removeToolCallIdsFromMessage(message: AgentMessage, set: Set<string>): void {
+	if (message.role !== "assistant") return;
+	for (const block of message.content) {
+		if (block.type === "toolCall") set.delete(block.id);
+	}
+}
+
+function storedToolCallIds(messages: readonly AgentMessage[], skipTrailing: boolean): Set<string> {
+	const currentLast = messages.length > 0 ? messages[messages.length - 1] : undefined;
+	const cached = storedToolCallIdsCache.get(messages);
+	let fullSet: Set<string>;
+
+	if (cached !== undefined && cached.length <= messages.length) {
+		// Check whether the old last message (at index cached.length - 1) was
+		// replaced in-place (partial → finalized). This is the only in-place
+		// mutation the agent loop performs on context.messages.
+		if (cached.length > 0) {
+			const oldLast = messages[cached.length - 1];
+			if (cached.lastRef !== oldLast) {
+				removeToolCallIdsFromMessage(cached.lastRef as AgentMessage, cached.set);
+				collectToolCallIdsFromMessage(oldLast as AgentMessage, cached.set);
+			}
+		}
+		// Incremental: add only new messages appended since the last build.
+		for (let index = cached.length; index < messages.length; index++) {
+			collectToolCallIdsFromMessage(messages[index] as AgentMessage, cached.set);
+		}
+		cached.length = messages.length;
+		cached.lastRef = currentLast;
+		fullSet = cached.set;
+	} else {
+		fullSet = new Set<string>();
+		for (let index = 0; index < messages.length; index++) {
+			collectToolCallIdsFromMessage(messages[index] as AgentMessage, fullSet);
+		}
+		storedToolCallIdsCache.set(messages, { length: messages.length, lastRef: currentLast, set: fullSet });
+	}
+
+	if (!skipTrailing || messages.length === 0) return fullSet;
+	// Derive the skipTrailing variant: remove the last message's tool-call IDs
+	// from a copy so the cached full Set stays intact.
+	const trailing = messages[messages.length - 1] as AgentMessage;
+	if (trailing.role !== "assistant") return fullSet;
+	const trailingIds: string[] = [];
+	for (const block of trailing.content) {
+		if (block.type === "toolCall") trailingIds.push(block.id);
+	}
+	if (trailingIds.length === 0) return fullSet;
+	const derived = new Set(fullSet);
+	for (const id of trailingIds) derived.delete(id);
+	return derived;
 }
 
 function recoverTransientErrorToolTurn(
