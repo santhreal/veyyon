@@ -804,14 +804,20 @@ function isUserInvokedSkillPrompt(message: CustomMessage): boolean {
 
 const imageBearingCustomMessageCache = new WeakMap<
 	CustomMessage | HookMessage,
-	{ sourceContent: unknown; attribution: MessageAttribution | undefined; converted: Message[] }
+	{ sourceContent: unknown; attribution: MessageAttribution | undefined; customType?: string; converted: Message[] }
 >();
 
 function convertImageBearingCustomMessage(message: CustomMessage | HookMessage): Message[] | undefined {
 	if (!isCustomMessageContent(message.content)) return undefined;
 	if (typeof message.content === "string") return undefined;
+	const customType = (message as CustomMessage).customType;
 	const cached = imageBearingCustomMessageCache.get(message);
-	if (cached && cached.sourceContent === message.content && cached.attribution === message.attribution) {
+	if (
+		cached &&
+		cached.sourceContent === message.content &&
+		cached.attribution === message.attribution &&
+		cached.customType === customType
+	) {
 		return cached.converted;
 	}
 	const textBlocks = message.content.filter((content): content is TextContent => content.type === "text");
@@ -836,6 +842,7 @@ function convertImageBearingCustomMessage(message: CustomMessage | HookMessage):
 	imageBearingCustomMessageCache.set(message, {
 		sourceContent: message.content,
 		attribution: message.attribution,
+		customType,
 		converted,
 	});
 	return converted;
