@@ -65,6 +65,9 @@
 - The LSP symbol renderer merges two `.filter()` calls (top-level count and first-3 collection) into a single `for` loop, avoiding a throwaway array per symbol render.
 - The grep, ast-edit, and ast-grep line-number-width calculations replace `reduce` with `for` loops, avoiding callback allocations per file result render.
 - The sqlite reader table-width calculation replaces `reduce` with a `for` loop for the initial total and a delta subtraction inside the shrink-to-fit loop, avoiding a full re-sum on every iteration.
+- The modes diff component line-number-width calculation replaces `reduce` with a `for` loop, avoiding a callback allocation per diff render.
+- `pickWeightedTip` merges `map`+`reduce` into a single loop, avoiding an intermediate weights array and a callback allocation per welcome screen render.
+- The command-controller usage limit max-suffix-width calculation replaces `reduce` with a `for` loop, avoiding a callback allocation per status line render.
 
 ### Added
 

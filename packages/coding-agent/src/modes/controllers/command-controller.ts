@@ -1441,7 +1441,8 @@ function formatAccountHeaderRow(
 			active,
 		};
 	});
-	const maxSuffixWidth = parts.reduce((max, p) => Math.max(max, visibleWidth(p.suffix)), 0);
+	let maxSuffixWidth = 0;
+	for (const p of parts) maxSuffixWidth = Math.max(maxSuffixWidth, visibleWidth(p.suffix));
 	const gap = maxSuffixWidth > 0 ? 1 : 0;
 	const prefixBudget = columnWidth - maxSuffixWidth - gap;
 

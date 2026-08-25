@@ -117,10 +117,11 @@ export function renderDiff(diffText: string, options: RenderDiffOptions = {}): s
 	// breaks the transcript's append-only commit detection and forces a full
 	// recommit of the block into native scrollback. A constant gutter through
 	// 999 lines keeps streamed rows byte-identical to the final result render.
-	const lineNumberWidth = parsedLines.reduce((width, parsed) => {
+	let lineNumberWidth = 3;
+	for (const parsed of parsedLines) {
 		const lineNumber = parsed?.lineNum.trim() ?? "";
-		return Math.max(width, lineNumber.length);
-	}, 3);
+		lineNumberWidth = Math.max(lineNumberWidth, lineNumber.length);
+	}
 
 	// Batch-highlight context (unedited) lines so consecutive lines tokenize
 	// with full multi-line context. Highlighting is a no-op when no language

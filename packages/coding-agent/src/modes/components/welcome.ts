@@ -94,8 +94,13 @@ const NEW_TIP_WEIGHT = 4;
  *  Exported for tests. */
 export function pickWeightedTip(tips: readonly string[], r: number): string {
 	if (tips.length === 0) return "";
-	const weights = tips.map(tip => (NEW_TIP_MARKER.test(tip) ? NEW_TIP_WEIGHT : 1));
-	const total = weights.reduce((sum, weight) => sum + weight, 0);
+	const weights: number[] = new Array(tips.length);
+	let total = 0;
+	for (let i = 0; i < tips.length; i++) {
+		const w = NEW_TIP_MARKER.test(tips[i]!) ? NEW_TIP_WEIGHT : 1;
+		weights[i] = w;
+		total += w;
+	}
 	let acc = r * total;
 	for (let i = 0; i < tips.length; i++) {
 		acc -= weights[i] ?? 1;
