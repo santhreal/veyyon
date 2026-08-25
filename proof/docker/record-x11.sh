@@ -23,13 +23,35 @@ mkdir -p "${OUT}"
 source "${REPO_ROOT}/proof/docker/host-endpoint.sh"
 CONTAINER_LLM_BASE_URL="$(container_endpoint "${PROOF_LLM_BASE_URL:-}")"
 
-# The look belongs to xsession.sh, which is the file that draws it, so the backdrop
-# colours, opacity, radius, blur kernel and inset are forwarded only when a caller sets
-# one. A default repeated here silently wins over the chrome's own, which is how a
-# violet-and-cyan backdrop survived being rewritten as a neutral one: the launcher kept
-# passing the old colours in, and every take came out in the scheme the file no longer
-# contained.
+# Every SCENE_* knob has one definition, in scene-config.sh, and this forwards the
+# set rather than a hand-maintained copy of it. The copy is what went wrong before:
+# a default repeated here silently won over the chrome's own, which is how a
+# violet-and-cyan backdrop survived being rewritten as a neutral one -- the launcher
+# kept passing the old colours in, and every take came out in the scheme the file no
+# longer contained. A knob added to the session and forgotten here was the same
+# defect from the other side: the value existed and the container never saw it.
+# shellcheck source=proof/docker/scene-config.sh
+source "${REPO_ROOT}/proof/docker/scene-config.sh"
+scene_docker_env_args
+AUTH_MOUNTS=()
+if [[ -n "${PROOF_AUTH_DIR:-}" ]]; then
+	AUTH_MOUNTS+=(--mount "type=bind,src=${PROOF_AUTH_DIR},dst=/host-auth,readonly")
+fi
+
+# Mandate GPU acceleration passthrough so the terminal and compositor run at full
+# hardware refresh rate with zero CPU-compositor frame jitter.
+GPU_ARGS=()
+if [ -d /dev/dri ]; then
+	GPU_ARGS+=(--device /dev/dri)
+	if [ -e /dev/dri/renderD128 ]; then
+		RENDER_GID="$(stat -c %g /dev/dri/renderD128 2>/dev/null || echo 992)"
+		GPU_ARGS+=(--group-add "${RENDER_GID}")
+	fi
+fi
+
 docker run --rm \
+	"${AUTH_MOUNTS[@]}" \
+	"${GPU_ARGS[@]}" \
 	--network "${PROOF_NETWORK:-veyyon-proof}" \
 	--add-host "${CONTAINER_HOST_ALIAS}:host-gateway" \
 	--mount "type=bind,src=${REPO_ROOT},dst=/repo" \
@@ -46,40 +68,19 @@ docker run --rm \
 	-e LOCAL_LLM_KEY=none \
 	-e "PROOF_LLM_BASE_URL=${CONTAINER_LLM_BASE_URL}" \
 	-e "VEYYON_DEMO_SECRET=${VEYYON_DEMO_SECRET:-veyyon-demo-value-not-a-real-credential}" \
-	-e "SCENE_HIDE_THINKING=${SCENE_HIDE_THINKING:-}" \
 	-e DISPLAY=:99 \
-	-e "SCENE_COMMAND=${SCENE_COMMAND:-bun /repo/packages/coding-agent/src/cli.ts --model local/qwen2.5-1.5b}" \
-	-e "SCENE_WIDTH=${SCENE_WIDTH:-1600}" \
-	-e "SCENE_HEIGHT=${SCENE_HEIGHT:-1000}" \
-	-e "SCENE_FONT_SIZE=${SCENE_FONT_SIZE:-15}" \
-	-e "SCENE_FPS=${SCENE_FPS:-30}" \
-	-e "SCENE_TERMINAL=${SCENE_TERMINAL:-kitty}" \
-	-e "SCENE_THEME=${SCENE_THEME:-plain}" \
-	-e "SCENE_MARGIN" \
-	-e "SCENE_RADIUS" \
-	-e "SCENE_OPACITY" \
-	-e "SCENE_BLUR_KERN" \
-	-e "SCENE_BLUR_STRENGTH" \
-	-e "SCENE_BACKDROP_BLUR" \
-	-e "SCENE_CHROME_BACKEND" \
-	-e "SCENE_BACKDROP_BASE" \
-	-e "SCENE_BACKDROP_WARM" \
-	-e "SCENE_BACKDROP_COOL" \
-	-e "SCENE_BG=${SCENE_BG:-#1e2127}" \
-	-e "SCENE_FG=${SCENE_FG:-#d7dae0}" \
-	-e "SCENE_CWD=${SCENE_CWD:-/sandbox/home/demo}" \
-	-e "SCENE_SETTLE_SCALE=${SCENE_SETTLE_SCALE:-1}" \
-	-e "SCENE_GIF=${SCENE_GIF:-1}" \
-	-e "SCENE_SETTINGS=${SCENE_SETTINGS:-}" \
-	-e "SCENE_SIGNING_NUMBER=${SCENE_SIGNING_NUMBER:-}" \
+	"${SCENE_DOCKER_ENV[@]}" \
 	-e "TYPE_DELAY" \
-	-e "SCENE_TYPING_REPEAT" \
 	-w /repo \
 	"${RECORDER_IMAGE}" \
 	bash -lc '
 		set -e
 		mkdir -p /sandbox/home/.veyyon
 		cp -r /seed/. /sandbox/home/.veyyon/
+		if [ -d /host-auth ]; then
+			mkdir -p /sandbox/home/.veyyon/shared-auth
+			cp -a /host-auth/. /sandbox/home/.veyyon/shared-auth/
+		fi
 		# A recorder on another machine cannot resolve the llama.cpp container by the
 		# name it has on this daemon, so the base URL is overridable at record time.
 		if [ -n "${PROOF_LLM_BASE_URL}" ]; then

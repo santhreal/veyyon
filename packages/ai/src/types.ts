@@ -256,6 +256,18 @@ export interface StreamOptions {
 	 */
 	sessionId?: string;
 	/**
+	 * Conversation identity for a stateful agent API. `cursor-agent` and
+	 * `devin-agent` thread turns server-side by this id and key their cached
+	 * conversation state on it, falling back to {@link sessionId}.
+	 *
+	 * A SIDE request is not part of the conversation it reads: a compaction
+	 * summary, a branch summary, a title, a critique. Reusing the live id sends
+	 * the server a one-message conversation under the live conversation's
+	 * identity, and overwrites the cached state the next live turn resumes from,
+	 * so every side request passes an id of its own.
+	 */
+	conversationId?: string;
+	/**
 	 * Optional prompt-cache identity. OpenAI-family providers use this for
 	 * `prompt_cache_key` payloads and cache-affinity headers such as
 	 * `x-grok-conv-id`; when omitted, they fall back to `sessionId`.

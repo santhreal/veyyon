@@ -24,6 +24,14 @@ mkdir -p "${OUT}"
 source "${REPO_ROOT}/proof/docker/host-endpoint.sh"
 CONTAINER_LLM_BASE_URL="$(container_endpoint "${PROOF_LLM_BASE_URL:-}")"
 
+# Every SCENE_* knob has one definition, in scene-config.sh, and this forwards the
+# set. SCENE_RENDER_NODE and SCENE_RENDER_GID stay spelled out below: they are
+# computed from this host's /dev/dri on every run, so they are not defaults and
+# have nothing to centralize.
+# shellcheck source=proof/docker/scene-config.sh
+source "${REPO_ROOT}/proof/docker/scene-config.sh"
+scene_docker_env_args
+
 # wlroots will not start its gles2 renderer without a DRM render node, and the
 # blur shader is the whole reason this path exists, so a missing node is a hard
 # stop rather than a silent fall back to a software renderer that cannot blur.
@@ -33,12 +41,20 @@ RENDER_NODE="${RENDER_NODE:-/dev/dri/renderD128}"
 	exit 1
 }
 RENDER_GID="$(stat -c %g "${RENDER_NODE}")"
+VIDEO_GID="$(stat -c %g /dev/dri/card1 2>/dev/null || echo 44)"
+
+AUTH_MOUNTS=()
+if [[ -n "${PROOF_AUTH_DIR:-}" ]]; then
+	AUTH_MOUNTS+=(--mount "type=bind,src=${PROOF_AUTH_DIR},dst=/host-auth,readonly")
+fi
 
 docker run --rm \
+	"${AUTH_MOUNTS[@]}" \
 	--network "${PROOF_NETWORK:-veyyon-proof}" \
 	--add-host "${CONTAINER_HOST_ALIAS}:host-gateway" \
-	--device "${RENDER_NODE}" \
+	--device /dev/dri \
 	--group-add "${RENDER_GID}" \
+	--group-add "${VIDEO_GID}" \
 	--mount "type=bind,src=${REPO_ROOT},dst=/repo" \
 	--mount "type=bind,src=${REPO_ROOT}/proof/docker/home-seed,dst=/seed,readonly" \
 	--mount "type=bind,src=${OUT},dst=/out" \
@@ -53,41 +69,19 @@ docker run --rm \
 	-e LOCAL_LLM_KEY=none \
 	-e "PROOF_LLM_BASE_URL=${CONTAINER_LLM_BASE_URL}" \
 	-e "VEYYON_DEMO_SECRET=${VEYYON_DEMO_SECRET:-veyyon-demo-value-not-a-real-credential}" \
-	-e "SCENE_HIDE_THINKING=${SCENE_HIDE_THINKING:-}" \
 	-e "SCENE_RENDER_NODE=${RENDER_NODE}" \
 	-e "SCENE_RENDER_GID=${RENDER_GID}" \
-	-e "SCENE_COMMAND=${SCENE_COMMAND:-bun /repo/packages/coding-agent/src/cli.ts --model local/qwen2.5-1.5b}" \
-	-e "SCENE_WIDTH=${SCENE_WIDTH:-2560}" \
-	-e "SCENE_HEIGHT=${SCENE_HEIGHT:-1440}" \
-	-e "SCENE_FONT_SIZE=${SCENE_FONT_SIZE:-21}" \
-	-e "SCENE_FPS=${SCENE_FPS:-30}" \
-	-e "SCENE_THEME=${SCENE_THEME:-plain}" \
-	-e "SCENE_MARGIN" \
-	-e "SCENE_RADIUS" \
-	-e "SCENE_OPACITY" \
-	-e "SCENE_PADDING" \
-	-e "SCENE_BLUR_PASSES" \
-	-e "SCENE_BLUR_RADIUS" \
-	-e "SCENE_BLUR_NOISE" \
-	-e "SCENE_BLUR_BRIGHTNESS" \
-	-e "SCENE_SHADOW_BLUR" \
-	-e "SCENE_SHADOW_COLOR" \
-	-e "SCENE_BACKDROP_BLUR" \
-	-e "SCENE_BACKDROP_BASE" \
-	-e "SCENE_BACKDROP_WARM" \
-	-e "SCENE_BACKDROP_COOL" \
-	-e "SCENE_BG=${SCENE_BG:-#1e2127}" \
-	-e "SCENE_FG=${SCENE_FG:-#d7dae0}" \
-	-e "SCENE_CWD=${SCENE_CWD:-/sandbox/home/demo}" \
-	-e "SCENE_SETTLE_SCALE=${SCENE_SETTLE_SCALE:-1}" \
-	-e "SCENE_SETTINGS=${SCENE_SETTINGS:-}" \
-	-e "SCENE_SIGNING_NUMBER=${SCENE_SIGNING_NUMBER:-}" \
+	"${SCENE_DOCKER_ENV[@]}" \
 	-w /repo \
 	"${RECORDER_IMAGE}" \
 	bash -lc '
 		set -e
 		mkdir -p /sandbox/home/.veyyon
 		cp -r /seed/. /sandbox/home/.veyyon/
+		if [ -d /host-auth ]; then
+			mkdir -p /sandbox/home/.veyyon/shared-auth
+			cp -a /host-auth/. /sandbox/home/.veyyon/shared-auth/
+		fi
 		if [ -n "${PROOF_LLM_BASE_URL}" ]; then
 			sed -i "s|baseUrl: .*|baseUrl: ${PROOF_LLM_BASE_URL}|" /sandbox/home/.veyyon/profiles/default/agent/models.yml
 		fi

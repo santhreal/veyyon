@@ -133,7 +133,7 @@ function resolveOpenAiCompactRequest(
 		{ apiKey, messages },
 	);
 	const baseUrl = trimTrailingSlashes(setup.baseUrl ?? "https://api.openai.com/v1");
-	return { url: `${baseUrl}/responses/compact`, headers: setup.requestHeaders };
+	return { url: `${baseUrl}/responses/compact`, headers: setup.headers };
 }
 
 /**
@@ -263,7 +263,6 @@ export const openAIResponsesServerCompaction: ServerCompactionTransport = {
 			body.store = false;
 			if (resolveCodexResponsesLite(model, undefined)) applyCodexResponsesLiteShape(body);
 		}
-
 		const applyCallerSanitizer = (text: string): string => {
 			if (!request.sanitizeErrorText) return text;
 			try {
