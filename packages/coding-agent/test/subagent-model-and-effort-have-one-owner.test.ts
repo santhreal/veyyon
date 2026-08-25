@@ -498,14 +498,17 @@ interface AgentEditor {
 }
 
 /**
- * The right-hand column of one panel row.
+ * The content column of one panel row.
  *
- * The settings panel is two columns inside a box, so a frame line is `│ tabs │ content │`. The tab
- * column carries its own `›` for the highlighted tab, and reading the whole line finds that one first.
+ * With the category sidebar the panel is two columns inside a box, so a frame line is
+ * `│ tabs │ content │`. While a submenu owns the card the sidebar hides and the hairline
+ * goes with it: the line is `│ content │` and the content is the second column. The tab
+ * column carries its own `›` for the highlighted tab, and reading the whole line finds
+ * that one first.
  */
 function contentColumn(line: string): string {
 	const columns = line.split("│");
-	return columns.length >= 3 ? columns[2] : "";
+	return columns.length >= 4 ? columns[2] : (columns[1] ?? "");
 }
 
 /** Drive Settings → Subagents → Agents → <agent> the way an operator reaches it. */

@@ -3437,6 +3437,13 @@ export class SettingsSelectorComponent implements Component {
 		}
 
 		this.#searchList.setItems(items);
+		const best = items.find(item => !item.heading);
+		if (best) this.#searchList.selectItem(best.id);
+		// Follow the best match as the query refines. setItems preserves selection
+		// by id, so an intermediate keystroke whose top hit was a worse row
+		// stranded the cursor there while the list re-ranked around it — Enter
+		// then activated the third-best match. Arrow keys never reach this path,
+		// so pinning the top row costs no navigation.
 		this.#searchMatchCount = total;
 		this.#tabBar.setTabs(
 			this.#buildSearchTabs(

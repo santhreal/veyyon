@@ -20,6 +20,9 @@
 ### Changed
 
 - A `/settings` drill-down takes the full settings card while it is open instead of rendering beside the category sidebar.
+- The model picker's detail block renders directly under the model rows instead of a window of blanks away on a short or filtered list.
+- `/settings` search keeps the cursor on the best match as the query refines instead of stranding it on an intermediate keystroke's top hit.
+- The effort picker's `auto` row wraps its level list instead of clipping the last level behind an ellipsis.
 - An unset text, list or record setting in `/settings` renders `—` instead of a blank value cell.
 - The Exa search delay setting offers named durations instead of a raw millisecond count.
 - Nine `/settings` labels that overflowed the label column or broke casing read consistently ("Enable TTSR", "Gemini Web Search Model", "Anthropic Server-Side Fallback" and six more).
