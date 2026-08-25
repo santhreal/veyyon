@@ -15,10 +15,21 @@ import { visibleWidth } from "@veyyon/tui/utils";
  * a static resting composer into those rows, and the real zone mounts into
  * the same height, so the handover changes text and never position.
  *
- * These tests close the class "the first-frame composer drifts from the
- * mounted one": the static frame must render exactly the reserved row count,
- * must carry the real hairline bytes (same owner), must show the shared ghost
- * placeholder, and must be time-invariant — nothing on it may animate.
+ * What these tests close: the static frame must render exactly
+ * COMPOSER_RESTING_ROWS, must carry the real hairline bytes from the same
+ * owner the mounted zone uses, must show the shared ghost placeholder, and
+ * must be time-invariant — nothing on it may animate.
+ *
+ * WHAT THEY DO NOT CATCH, stated plainly: they do not compare the static
+ * frame against the MOUNTED zone's rendered height. COMPOSER_RESTING_ROWS is
+ * a hand-maintained claim about what the real zone occupies at rest, and
+ * deriving the true height needs the live status, editor, footline and
+ * shortcut components, which this suite does not construct. Change what the
+ * resting zone renders — a footline that gains a row, a status line that
+ * stops collapsing — and the constant, the static frame and these assertions
+ * all still agree with each other while the handover moves the card by a row.
+ * `composer-zone-mount.test.ts` pins the zone's composition; that pairing is
+ * the current guard, not a derivation.
  */
 
 beforeAll(async () => {
