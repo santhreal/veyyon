@@ -63,9 +63,9 @@ async function mount(isolation: boolean): Promise<{
 	tui.start();
 	await term.waitForRender();
 
-	// The pinned footer is always the LAST #pinnedFooterRows rows of the screen, which is
-	// where the composer sits in the running app (the bottom fill anchors it there).
-	return { tui, term, clicks, footerRow: ROWS - 1 };
+	// The pinned footer is the last frame row (row 1), rendered directly below the
+	// short transcript.
+	return { tui, term, clicks, footerRow: 1 };
 }
 
 describe("the footline answers a click in a session that never scrolled", () => {
