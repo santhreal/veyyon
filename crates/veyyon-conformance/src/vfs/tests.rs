@@ -19,7 +19,7 @@
 //! - Operating-system specific symlink resolution loops (symlinks are not in
 //!   the narrow trait).
 
-use std::{collections::BTreeSet, sync::Arc};
+use std::{collections::BTreeSet, sync::Arc, time::Duration};
 
 use super::{
 	error::VfsError,
@@ -452,4 +452,62 @@ fn memory_fs_directory_tree_and_file_lifecycle_contract() {
 	let root_a = VfsPath::new("/a").unwrap();
 	fs.remove_dir_all(&root_a).unwrap();
 	assert!(!fs.exists(&root_a));
+}
+
+/// WHY: the `from_rng` guard `total_ops == 0 || fault_count == 0` returns an
+/// empty plan. Flipping `==` to `!=` or `||` to `&&` changes which inputs
+/// produce an empty plan. Pinning both edge cases kills conditional-inversion
+/// mutants on that guard.
+#[test]
+fn fault_plan_from_rng_with_zero_ops_or_zero_faults_returns_empty() {
+	let mut rng = Rng::new(42);
+	let plan = FaultPlan::from_rng(&mut rng, 0, 10);
+	assert!(plan.is_empty(), "zero total_ops must yield an empty plan");
+
+	let mut rng = Rng::new(42);
+	let plan = FaultPlan::from_rng(&mut rng, 50, 0);
+	assert!(plan.is_empty(), "zero fault_count must yield an empty plan");
+}
+
+/// WHY: a partial write must return `VfsError::PartialWrite`, not silently
+/// succeed. The `?;` → `.ok();` mutation swallows the inner write error and
+/// turns a partial write into a silent success. Pinning the error variant
+/// kills that mutant.
+#[test]
+fn partial_write_returns_partial_write_error_not_ok() {
+	let mut plan = FaultPlan::new();
+	plan.insert(0, FaultKind::PartialWrite { accepted_bytes: 5 });
+	let mut fs = FaultInjectingFs::new(MemoryFs::new(), plan);
+	let path = VfsPath::new("/test.txt").unwrap();
+	let result = fs.write(&path, b"hello world");
+	assert!(matches!(result, Err(VfsError::PartialWrite { .. })), "partial write must return PartialWrite error, got {result:?}");
+}
+
+/// WHY: a torn write must return `VfsError::TornWrite`, not silently succeed.
+/// The `?;` → `.ok();` mutation on the torn-write path swallows the inner
+/// write error. Pinning the error variant kills that mutant.
+#[test]
+fn torn_write_returns_torn_write_error_not_ok() {
+	let mut plan = FaultPlan::new();
+	plan.insert(0, FaultKind::TornWrite { split_offset: 5, mode: TornWriteMode::PrefixOnly });
+	let mut fs = FaultInjectingFs::new(MemoryFs::new(), plan);
+	let path = VfsPath::new("/test.txt").unwrap();
+	let result = fs.write(&path, b"hello world");
+	assert!(matches!(result, Err(VfsError::TornWrite { .. })), "torn write must return TornWrite error, got {result:?}");
+}
+
+/// WHY: the latency fault injects `Duration::from_millis(millis)` where `millis`
+/// is `rng.below(200) + 1` (1..=200). Mutating `from_millis` to `from_secs`
+/// inflates the latency by 1000x. Pinning the accumulated latency to a
+/// known range kills the timeout-relaxation mutant.
+#[test]
+fn latency_fault_accumulates_millis_not_seconds() {
+	let mut plan = FaultPlan::new();
+	plan.insert(0, FaultKind::Latency { virtual_duration: Duration::from_millis(50) });
+	let mut fs = FaultInjectingFs::new(MemoryFs::new(), plan);
+	let path = VfsPath::new("/test.txt").unwrap();
+	let _ = fs.write(&path, b"data");
+	// 50ms latency, not 50s. If from_millis was mutated to from_secs,
+	// accumulated_latency would be 50_000ms, not 50ms.
+	assert_eq!(fs.accumulated_latency(), Duration::from_millis(50));
 }
