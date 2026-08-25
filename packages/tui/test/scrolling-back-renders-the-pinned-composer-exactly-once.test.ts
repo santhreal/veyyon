@@ -64,7 +64,11 @@ function makeTranscriptRows(count: number, start = 0): string[] {
 describe("scrolling back renders the pinned composer exactly once", () => {
 	const VIEWPORT_HEIGHTS = [8, 12, 20, 30] as const;
 	const FOOTER_CONFIGS = [
-		{ name: "single-row footer", lines: ["> [PINNED_COMPOSER_INPUT]" + CURSOR_MARKER], marker: "[PINNED_COMPOSER_INPUT]" },
+		{
+			name: "single-row footer",
+			lines: ["> [PINNED_COMPOSER_INPUT]" + CURSOR_MARKER],
+			marker: "[PINNED_COMPOSER_INPUT]",
+		},
 		{
 			name: "multi-row footer",
 			lines: ["--- [COMPOSER_HEADER_DIVIDER] ---", "> [PINNED_COMPOSER_INPUT]" + CURSOR_MARKER],

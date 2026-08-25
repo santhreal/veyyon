@@ -905,7 +905,8 @@ export class GrepTool implements AgentTool<typeof searchSchema, GrepToolDetails>
 	};
 	// grep reads file contents under its search path, so an out-of-cwd search
 	// prompts in non-yolo modes like a point read does. See cwd-boundary.ts.
-	readonly filesystemTargets = (args: unknown, cwd = this.session.cwd): string[] => searchPathFilesystemTargets(args, cwd);
+	readonly filesystemTargets = (args: unknown, cwd = this.session.cwd): string[] =>
+		searchPathFilesystemTargets(args, cwd);
 	readonly label = "Grep";
 	readonly loadMode = "discoverable";
 	readonly summary = "Grep file contents using ripgrep (fast regex search)";
