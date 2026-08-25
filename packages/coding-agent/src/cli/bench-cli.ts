@@ -457,7 +457,7 @@ function resolveBenchModels(
 	const resolved: BenchTarget[] = [];
 	const errors: string[] = [];
 	for (const selector of selectors) {
-		const result = resolveCliModel({ cliModel: selector, modelRegistry, preferences });
+		const result = resolveCliModel({ cliModel: selector, modelRegistry, preferences, settings });
 		if (result.error) {
 			errors.push(`${selector}: ${result.error}`);
 			continue;

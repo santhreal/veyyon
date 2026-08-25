@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-0df91a36.js";
+            window.path_to_searchindex_js = "searchindex-050fd420.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-a2abefc1.js"></script>
@@ -8167,7 +8167,7 @@ act on a bare invocation: <code>/yolo</code>, <code>/fast</code>, and <code>/bro
 <tr><td><code>/goal …</code></td><td>Goal set/show/pause/resume/drop/budget</td></tr>
 <tr><td><code>/guided-goal</code></td><td>Guided goal wizard</td></tr>
 <tr><td><code>/loop</code></td><td>Loop mode controls</td></tr>
-<tr><td><code>/prewalk</code></td><td>Prewalk edit path</td></tr>
+<tr><td><code>/prewalk [model]</code></td><td>Arm the prewalk switch for this session: the agent moves to the cheap model at its next edit or write, once the todo list exists. The target comes from the argument or <code>prewalk.cheapModel</code>; with neither, the command fails naming the setting</td></tr>
 <tr><td><code>/secret</code></td><td>Store a credential the agent uses by placeholder and never sees. A command comes first on every surface and every argument after it is a plain word: <code>/secret add &lt;value&gt;</code> stores it in a terminal, <code>/secret add</code> alone opens a hidden field, <code>/secret from-env &lt;VAR&gt;</code> reads it out of the environment, and the name is prompted afterwards, with Enter accepting the generated one. The commands are <code>add</code>, <code>from-env</code>, <code>list</code>, <code>rm</code>, <code>clear</code>, <code>rename</code>, <code>value</code>, <code>scope</code>, <code>copy</code>, <code>extend</code>, <code>log</code>, <code>discard</code>, <code>help</code>; a first word that is none of them is rejected and nothing is stored. See <a href="#secrets">Secrets</a></td></tr>
 <tr><td><code>/settings</code>, <code>/setup</code></td><td>Settings UI; <code>/setup</code> opens first-run provider sign-in</td></tr>
 <tr><td><code>/providers</code>, <code>/account manager</code></td><td>Open the account manager: every stored account per provider, with its email, plan, health, and usage. See <a href="#signing-in">Authentication</a></td></tr>
@@ -10614,7 +10614,9 @@ veyyon config get compaction.threshold
 <tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
 </thead>
 <tbody>
-<tr><td><code>prewalk.enabled</code></td><td>Enable Prewalk</td><td>boolean</td><td><code>false</code></td><td>Start on the active model, then switch to a fast/cheap model (default the ‘smol’ role) at the first edit/write after the plan nudge’s todo list exists — the strong model plans, commits the todos, and starts the implementation before handing off. Overridable per session with –prewalk / –no-prewalk.</td></tr>
+<tr><td><code>prewalk.enabled</code></td><td>Enable Prewalk</td><td>boolean</td><td><code>false</code></td><td>Plan on the strong model, then switch to the cheap model at the first edit/write after the plan nudge’s todo list exists — the strong model commits the todos and starts the implementation before handing off. The cheap model comes from Prewalk Cheap Model; Prewalk Strong Model overrides the start model. Overridable per session with –prewalk / –no-prewalk.</td></tr>
+<tr><td><code>prewalk.cheapModel</code></td><td>Prewalk Cheap Model</td><td>modelChain</td><td><em>(unset)</em></td><td>Model prewalk hands off to at the first edit/write. Required once prewalk is on: /prewalk and –prewalk fail with a message naming this setting when it is unset. –prewalk-into overrides it per session; only the first entry is used.</td></tr>
+<tr><td><code>prewalk.strongModel</code></td><td>Prewalk Strong Model</td><td>modelChain</td><td><em>(unset)</em></td><td>Model a prewalk session starts on — the strong model that plans before the handoff. Unset: inherit the normal start model (–model or the remembered default). Only the first entry is used.</td></tr>
 </tbody>
 </table>
 </div>
@@ -11645,7 +11647,7 @@ veyyon config get compaction.threshold
 </tbody>
 </table>
 </div>
-<p>349 settings in /settings, 119 configuration-file keys, 468 in all.</p>
+<p>351 settings in /settings, 119 configuration-file keys, 470 in all.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="model-and-provider-configuration-modelsyml--modelsyaml"><a class="header" href="#model-and-provider-configuration-modelsyml--modelsyaml">Model and Provider Configuration (<code>models.yml</code> / <code>models.yaml</code>)</a></h1>
 <p>How the coding agent loads models, applies overrides, resolves credentials, and chooses models at runtime.</p>
