@@ -10,7 +10,7 @@ import { errorMessage, getAgentDir, getProjectDir, isEnoent, readdirIfPresent, r
 import * as arktype from "arktype";
 import * as zodModule from "zod/v4";
 import { getConfigDirs } from "../../config";
-import { execCommand } from "../../exec/exec";
+import { execCommand, withSessionCpuExec } from "../../exec/exec";
 // Runtime self-reference: dereference this namespace only inside loader functions to keep the index.ts cycle safe.
 import { loadCodingAgentApi } from "../coding-agent-api";
 import {
@@ -222,6 +222,8 @@ export interface LoadCustomCommandsOptions {
 	agentDir?: string;
 	/** Session CPU budget hook: processes a command's `exec` spawns join the session's budget group. */
 	adoptSpawnedPid?: (pid: number) => void;
+	/** Session CPU budget gate: refuse `exec` while the group is saturated or uncreated. */
+	gateSpawn?: (what: string) => Promise<void>;
 }
 
 /**
@@ -273,7 +275,7 @@ export async function loadCustomCommands(options: LoadCustomCommandsOptions = {}
 				command,
 				args,
 				execOptions?.cwd ?? cwd,
-				options.adoptSpawnedPid ? { ...execOptions, adoptPid: options.adoptSpawnedPid } : execOptions,
+				withSessionCpuExec(execOptions, options.adoptSpawnedPid, options.gateSpawn, "a custom command"),
 			),
 		typebox,
 		arktype,

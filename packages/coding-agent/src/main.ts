@@ -80,7 +80,7 @@ import {
 } from "./sdk";
 import type { AgentSession } from "./session/agent-session";
 import type { AuthStorage } from "./session/auth-storage";
-import { primarySessionCpuAdoption } from "./session/cpu-limit";
+import { rootBudgetGroupOwnerId, sessionCpuExecHooks } from "./session/cpu-limit";
 import { describePendingToolCalls } from "./session/exit-diagnostics";
 import { formatNotice, OperatorNotices, stderrNoticeSink } from "./session/operator-notices";
 import { resolveResumableSession, type SessionInfo } from "./session/session-listing";
@@ -1769,15 +1769,18 @@ async function runRootCommandInner(parsed: Args, rawArgs: string[], deps: RunRoo
 		// file — and the same result is handed to createAgentSession via
 		// `preloadedExtensions` so the discovery work is not repeated.
 		const eventBus = new EventBus();
-		// Loaded before the session exists, so extension `exec` spawns join the
-		// root session's CPU budget, resolved lazily once that session starts.
+		// Loaded before the session exists. Adopt and gate resolve lazily
+		// against the root session once it registers: adopting alone still
+		// lets a saturated budget start an uncapped child.
+		const cliCpu = sessionCpuExecHooks(() => rootBudgetGroupOwnerId() ?? null);
 		const extensionsResult = await loadSessionExtensions(
 			sessionOptions,
 			cwd,
 			settingsInstance,
 			eventBus,
 			undefined,
-			primarySessionCpuAdoption(),
+			cliCpu.adoptPid,
+			cliCpu.gate,
 		);
 		const extensionFlagSink: ExtensionFlagSink = {
 			getFlags: () => ExtensionRunner.aggregateFlags(extensionsResult.extensions),
