@@ -40,13 +40,13 @@ export default class Index extends Command {
 		}),
 		prewalk: Flags.boolean({
 			description:
-				"Switch from the active model to a fast/cheap model at the first edit/write after the plan's todo list exists (default off; see prewalk.enabled)",
+				"Switch from the start model to the cheap model at the first edit/write after the plan's todo list exists (default off; see prewalk.enabled)",
 		}),
 		"no-prewalk": Flags.boolean({
 			description: "Disable prewalk even if prewalk.enabled is set",
 		}),
 		"prewalk-into": Flags.string({
-			description: 'Target model for prewalk (default the "smol" role)',
+			description: "Cheap target model for prewalk (default prewalk.cheapModel; required when it is unset)",
 		}),
 		"plan-yolo": Flags.boolean({
 			description:

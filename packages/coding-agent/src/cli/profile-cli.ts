@@ -107,8 +107,9 @@ export interface ProfilePreset {
  * args fingerprints — see captureToolCallMetrics) and enables Argot, the
  * experimental token-shorthand codec. Both are safe with any model, so a fresh
  * `dev` profile runs without extra configuration. Vision-only experiments
- * and role-model features (advisor, prewalk) are left off
- * because they need a vision or extra-role model to be useful; enable them per
+ * and the advisor (a role-model feature) are left off because they need a
+ * vision or extra-role model to be useful; prewalk instead needs its two
+ * model settings (prewalk.cheapModel, prewalk.strongModel). Enable these per
  * session once those models are configured.
  */
 export const PROFILE_PRESETS: Record<string, ProfilePreset> = {
