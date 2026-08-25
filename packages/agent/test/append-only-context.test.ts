@@ -1232,3 +1232,148 @@ describe("longestStablePrefix fast-path", () => {
 		expect(fieldOf(entries[0], "content")).toBe("world");
 	});
 });
+
+describe("AppendOnlyContextManager.hasImages", () => {
+	// WHY: applyProviderImagePolicy scans every message's content blocks for
+	// images on every turn — O(n*blocks). The hasImages flag on
+	// AppendOnlyContextManager lets canonicalizeProviderContext skip that scan
+	// entirely when no message in the log contains an image block, which is the
+	// common case for code-focused sessions. These tests prove the flag is set
+	// and reset correctly across every mutation path: syncMessages append,
+	// syncMessages compaction, syncMessages in-place rewrite (truncate),
+	// appendMessage, replaceTailMessage, invalidateForModelChange,
+	// resetSyncCursor, and reset.
+
+	function imgMsg(role: "user" | "assistant" = "user"): Message {
+		return partialMsg({
+			role,
+			content: [{ type: "image", source: { type: "base64" } }],
+		});
+	}
+	function textMsg(role: "user" | "assistant" = "user"): Message {
+		return partialMsg({ role, content: [{ type: "text", text: "hi" }] });
+	}
+
+	it("is false on a fresh manager", () => {
+		const mgr = new AppendOnlyContextManager();
+		expect(mgr.hasImages).toBe(false);
+	});
+
+	it("stays false after syncing text-only messages", () => {
+		const mgr = new AppendOnlyContextManager();
+		mgr.build(makeContext(), BUILD_OPTS);
+		mgr.syncMessages([textMsg()]);
+		expect(mgr.hasImages).toBe(false);
+	});
+
+	it("becomes true after syncing a message with an image block", () => {
+		const mgr = new AppendOnlyContextManager();
+		mgr.build(makeContext(), BUILD_OPTS);
+		mgr.syncMessages([textMsg(), imgMsg()]);
+		expect(mgr.hasImages).toBe(true);
+	});
+
+	it("stays true on subsequent syncs with no new images", () => {
+		const mgr = new AppendOnlyContextManager();
+		mgr.build(makeContext(), BUILD_OPTS);
+		mgr.syncMessages([imgMsg()]);
+		mgr.syncMessages([imgMsg(), textMsg()]);
+		expect(mgr.hasImages).toBe(true);
+	});
+
+	it("resets to false on compaction (array shrinks below sync count)", () => {
+		const mgr = new AppendOnlyContextManager();
+		mgr.build(makeContext(), BUILD_OPTS);
+		mgr.syncMessages([imgMsg(), textMsg()]);
+		expect(mgr.hasImages).toBe(true);
+		mgr.syncMessages([textMsg()]);
+		expect(mgr.hasImages).toBe(false);
+	});
+
+	it("resets to false on invalidateForModelChange", () => {
+		const mgr = new AppendOnlyContextManager();
+		mgr.build(makeContext(), BUILD_OPTS);
+		mgr.syncMessages([imgMsg()]);
+		expect(mgr.hasImages).toBe(true);
+		mgr.invalidateForModelChange();
+		expect(mgr.hasImages).toBe(false);
+	});
+
+	it("resets to false on resetSyncCursor", () => {
+		const mgr = new AppendOnlyContextManager();
+		mgr.build(makeContext(), BUILD_OPTS);
+		mgr.syncMessages([imgMsg()]);
+		expect(mgr.hasImages).toBe(true);
+		mgr.resetSyncCursor();
+		expect(mgr.hasImages).toBe(false);
+	});
+
+	it("resets to false on reset", () => {
+		const mgr = new AppendOnlyContextManager();
+		mgr.build(makeContext(), BUILD_OPTS);
+		mgr.syncMessages([imgMsg()]);
+		expect(mgr.hasImages).toBe(true);
+		mgr.reset(makeContext(), BUILD_OPTS);
+		expect(mgr.hasImages).toBe(false);
+	});
+
+	it("appendMessage sets hasImages when message has image", () => {
+		const mgr = new AppendOnlyContextManager();
+		mgr.build(makeContext(), BUILD_OPTS);
+		mgr.appendMessage(imgMsg());
+		expect(mgr.hasImages).toBe(true);
+	});
+
+	it("appendMessage does not set hasImages for text-only message", () => {
+		const mgr = new AppendOnlyContextManager();
+		mgr.build(makeContext(), BUILD_OPTS);
+		mgr.appendMessage(textMsg());
+		expect(mgr.hasImages).toBe(false);
+	});
+
+	it("replaceTailMessage recalculates when image-bearing tail is replaced with text", () => {
+		const mgr = new AppendOnlyContextManager();
+		mgr.build(makeContext(), BUILD_OPTS);
+		mgr.appendMessage(textMsg());
+		mgr.appendMessage(imgMsg());
+		expect(mgr.hasImages).toBe(true);
+		mgr.replaceTailMessage(textMsg("assistant"));
+		expect(mgr.hasImages).toBe(false);
+	});
+
+	it("replaceTailMessage sets hasImages when text tail is replaced with image", () => {
+		const mgr = new AppendOnlyContextManager();
+		mgr.build(makeContext(), BUILD_OPTS);
+		mgr.appendMessage(textMsg());
+		expect(mgr.hasImages).toBe(false);
+		mgr.replaceTailMessage(imgMsg());
+		expect(mgr.hasImages).toBe(true);
+	});
+
+	it("in-place rewrite (truncate) recalculates hasImages from remaining log", () => {
+		const mgr = new AppendOnlyContextManager();
+		mgr.build(makeContext(), BUILD_OPTS);
+		// Sync two messages, second has image
+		const m1 = textMsg();
+		const m2 = imgMsg();
+		mgr.syncMessages([m1, m2]);
+		expect(mgr.hasImages).toBe(true);
+		// In-place rewrite: change m2 to text-only (triggers truncation + re-append)
+		const m2Text = textMsg("assistant");
+		mgr.syncMessages([m1, m2Text]);
+		expect(mgr.hasImages).toBe(false);
+	});
+
+	it("in-place rewrite preserves hasImages when image message is in stable prefix", () => {
+		const mgr = new AppendOnlyContextManager();
+		mgr.build(makeContext(), BUILD_OPTS);
+		const m1 = imgMsg();
+		const m2 = textMsg();
+		mgr.syncMessages([m1, m2]);
+		expect(mgr.hasImages).toBe(true);
+		// In-place rewrite: change only m2 (m1 with image stays in stable prefix)
+		const m2New = textMsg("assistant");
+		mgr.syncMessages([m1, m2New]);
+		expect(mgr.hasImages).toBe(true);
+	});
+});

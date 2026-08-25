@@ -13,6 +13,7 @@
 - `truncateForPersistence` only allocates a result array when an element is externalized or truncated, avoiding a throwaway array per content array per message append.
 - `replaceLostBlobPayloads` is skipped on every turn when the session loaded with no lost blob refs, eliminating an O(n) per-message scan that ran on every `transformProviderContext` call regardless of whether any blob refs existed.
 - `bindSecretRuntime` skips the per-element WeakMap binding loop when the array is already bound to the same runtime, eliminating redundant 33K-element iterations that occurred several times per turn when `emitContext`, `wrapSteeringForModel`, and `obfuscateMessages` returned their input array by reference.
+- `canonicalizeProviderContext` skips `applyProviderImagePolicy` when the append-only context manager tracks no image blocks, eliminating an O(n) per-turn scan of all message content blocks on conversations with no images.
 
 ### Added
 

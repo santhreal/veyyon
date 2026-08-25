@@ -3263,10 +3263,15 @@ export class AgentSession {
 			// The model serving THIS request decides which images it can read. The
 			// main turn, a side request, compaction and an advisor each dispatch
 			// their own model, and this is the only seam that sees which one is
-			// going out, so the whole image policy resolves here.
-			const shaped = applyProviderImagePolicy(carried, model, {
-				blockImages: Boolean(this.settings.get("images.blockImages")),
-			});
+			// going out, so the whole image policy resolves here. Skip the
+			// O(n*blocks) scan when the append-only log tracks no images — the
+			// common case for code-focused sessions.
+			const shaped =
+				this.agent.appendOnlyContext?.hasImages === false
+					? carried
+					: applyProviderImagePolicy(carried, model, {
+							blockImages: Boolean(this.settings.get("images.blockImages")),
+						});
 			if (upstreamTransformProviderContext) return upstreamTransformProviderContext(shaped, model, runtime);
 			const fallbackRuntime = runtime ?? this.#secretRuntime;
 			return fallbackRuntime

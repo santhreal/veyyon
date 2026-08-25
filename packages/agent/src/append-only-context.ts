@@ -19,6 +19,16 @@ import type { Dialect } from "@veyyon/ai/dialect";
 import { normalizeTools } from "./agent-loop";
 import type { AgentContext } from "./types";
 
+/** True when a message's content array contains at least one image block. */
+function messageHasImages(msg: Message): boolean {
+	const content = msg.content;
+	if (!Array.isArray(content)) return false;
+	for (const part of content) {
+		if (part.type === "image") return true;
+	}
+	return false;
+}
+
 // ---------------------------------------------------------------------------
 // StablePrefix (formerly ImmutablePrefix)
 // ---------------------------------------------------------------------------
@@ -224,6 +234,18 @@ export class AppendOnlyContextManager {
 	 * point on every subsequent turn.
 	 */
 	#messageDigests: number[] = [];
+	/**
+	 * Whether any synced message contains an image block. Set incrementally
+	 * during `syncMessages` and reset on clear/truncate. Lets the image
+	 * policy skip an O(n*blocks) scan every turn when the conversation has
+	 * no images — the common case for code-focused sessions.
+	 */
+	#hasImages = false;
+
+	/** True when any message in the log contains an image block. */
+	get hasImages(): boolean {
+		return this.#hasImages;
+	}
 
 	build(context: AgentContext, options: BuildOptions): Context {
 		this.prefix.build(context, options);
@@ -256,6 +278,7 @@ export class AppendOnlyContextManager {
 			this.log.clear();
 			this.#lastSyncCount = 0;
 			this.#messageDigests = [];
+			this.#hasImages = false;
 		}
 
 		// In-place rewrite: trim the log down to the longest byte-stable prefix
@@ -269,14 +292,25 @@ export class AppendOnlyContextManager {
 				this.log.truncate(stableCount);
 				this.#lastSyncCount = stableCount;
 				this.#messageDigests.length = stableCount;
+				// Recalculate image presence from the remaining log entries.
+				// Truncation is rare (in-place rewrite), so the O(stableCount)
+				// scan is acceptable; the common append/no-change path is O(1).
+				this.#hasImages = false;
+				for (const entry of this.log.entries()) {
+					if (messageHasImages(entry)) {
+						this.#hasImages = true;
+						break;
+					}
+				}
 			}
 		}
 
 		// Append the diverged tail (or the full delta on a normal turn).
 		for (let i = this.#lastSyncCount; i < normalizedMessages.length; i++) {
-			const msg = normalizedMessages[i];
+			const msg = normalizedMessages[i]!;
 			this.log.append(msg);
 			this.#messageDigests.push(this.#messageDigest(msg));
+			if (!this.#hasImages && messageHasImages(msg)) this.#hasImages = true;
 		}
 		this.#lastSyncCount = normalizedMessages.length;
 	}
@@ -287,6 +321,7 @@ export class AppendOnlyContextManager {
 		this.log.clear();
 		this.#lastSyncCount = 0;
 		this.#messageDigests = [];
+		this.#hasImages = false;
 	}
 
 	/** Reset the sync cursor AND clear the log. */
@@ -294,14 +329,30 @@ export class AppendOnlyContextManager {
 		this.log.clear();
 		this.#lastSyncCount = 0;
 		this.#messageDigests = [];
+		this.#hasImages = false;
 	}
 
 	appendMessage(message: Message): void {
 		this.log.append(message);
+		if (!this.#hasImages && messageHasImages(message)) this.#hasImages = true;
 	}
 
 	replaceTailMessage(message: Message): void {
+		const prev = this.log.entries().at(-1);
 		this.log.replaceTail(message);
+		if (prev && messageHasImages(prev) && !messageHasImages(message)) {
+			// The previous tail had images and the replacement doesn't —
+			// recalculate in case no other message has images.
+			this.#hasImages = false;
+			for (const entry of this.log.entries()) {
+				if (messageHasImages(entry)) {
+					this.#hasImages = true;
+					break;
+				}
+			}
+		} else if (!this.#hasImages && messageHasImages(message)) {
+			this.#hasImages = true;
+		}
 	}
 
 	invalidate(): void {
@@ -313,6 +364,7 @@ export class AppendOnlyContextManager {
 		this.log.clear();
 		this.#lastSyncCount = 0;
 		this.#messageDigests = [];
+		this.#hasImages = false;
 		this.prefix.build(context, options);
 	}
 
