@@ -135,8 +135,25 @@ const ELLIPSIS = "…";
  *
  * `sliceWithWidth` replays the SGR state in force at the cut, so the visible tail keeps the
  * color the dropped opening set.
+ *
+ * THE MARK WEARS THE TEXT'S OWN COLOR. It used to be written ahead of that replayed state,
+ * which left it painted in whatever the row was in before the segment -- the separator's grey
+ * in front of a green branch, so the one glyph announcing a cut looked like it belonged to the
+ * gap rather than to the name. It is emitted after the state instead.
+ *
+ * THE CUT LANDS ON A BOUNDARY WHERE ONE IS NEAR. A cut through the middle of a word leaves the
+ * tail of that word reading as a name in its own right, and a cut one cell before a dash
+ * leaves the dash orphaned against the mark: `…-model-retention-long-path` opens on punctuation
+ * that belongs to a word the row no longer shows. Up to CLIP_SNAP cells are given up to reach
+ * the next boundary, which is few enough that no row loses a name to tidiness, and never past
+ * the point where the part would drop under MIN_LOCATION_PART -- tidiness does not get to spend
+ * the floor. A `/` is kept, because a mark in front of a slash is how a shortened path has
+ * always read; a word separator is dropped, because it has nothing left to join.
+ *
+ * `keepFront` is the part's pin: cells held at the FRONT, ahead of the mark, which the cut
+ * steps over rather than eating (see `clipPartToWidth`).
  */
-function clipStartToWidth(text: string, maxWidth: number): string {
+function clipStartToWidth(text: string, maxWidth: number, keepFront = 0): string {
 	const total = visibleWidth(text);
 	if (total <= maxWidth) return text;
 	if (maxWidth <= 0) return "";
@@ -146,15 +163,77 @@ function clipStartToWidth(text: string, maxWidth: number): string {
 	// Adding a second one painted `……orm-services/…` -- the both-ends defect again, one end
 	// at a time -- so inherit that mark instead of stacking one on it.
 	//
-	// Only this cut is tried. A cut at the FULL budget that lands on the mark returns the
-	// same string as this one does: it keeps a mark this cut drops and re-prepends, so a
-	// branch for it changes no byte.
-	//
 	// At a budget of one cell the mark is all there is room for, and a bare `…` is the honest
 	// answer: the alternative is a fragment of a directory name that reads as a real one.
-	const tail = sliceWithWidth(text, total - (maxWidth - 1), maxWidth - 1, true);
-	if (stripAnsi(tail.text).startsWith(ELLIPSIS)) return tail.text;
-	return `${ELLIPSIS}${tail.text}`;
+	const front = Math.max(0, keepFront);
+	if (maxWidth <= front) return sliceWithWidth(text, 0, Math.min(front, maxWidth), true).text;
+	const room = maxWidth - front - 1;
+	const cut = snapForward(text, total - room, room, maxWidth);
+	const head = front === 0 ? "" : sliceWithWidth(text, 0, front, true).text;
+	const tail = sliceWithWidth(text, cut, total - cut, true).text;
+	if (stripAnsi(tail).startsWith(ELLIPSIS)) return head + tail;
+	// The colour the mark wears: the escapes the slice replays in front of the tail, emitted
+	// once more before the mark so the mark is inside that run rather than in front of it. A
+	// mark written ahead of them paints in whatever the row was in BEFORE the part -- the
+	// separator's grey in front of a green branch -- which reads as belonging to the gap.
+	//
+	// The pin is why this takes a slice of the ORIGINAL text rather than of a head-trimmed
+	// copy: a slice of a slice carries the sequences the first replay emitted, in an order that
+	// need not end on the one in force, and a mark in front of an icon came out in the icon's
+	// colour. One slice of the part's own content replays the state at the cut correctly.
+	//
+	// A budget with no room for a tail at all leaves nothing to read the state from, so it
+	// comes off the last cell instead.
+	const state = tail === "" ? sliceWithWidth(text, Math.max(0, total - 1), 1, true).text : tail;
+	return `${head}${SGR_PREFIX.exec(state)?.[0] ?? ""}${ELLIPSIS}${tail}`;
+}
+
+/** The escape sequences a slice replays before its first visible cell. */
+const SGR_PREFIX = /^(?:\x1b\[[0-9;:]*m)+/u;
+
+/**
+ * Cells a front cut may walk forward to reach a name boundary. Four, because the boundary this
+ * exists for is one or two cells away -- an orphaned separator, or the tail of a short word --
+ * and a wider allowance starts spending the name to buy the tidiness. Nothing is walked when
+ * no boundary is that close.
+ */
+const CLIP_SNAP = 4;
+
+/** Boundaries a clipped name may open on, and whether the boundary itself is kept. */
+const CLIP_BOUNDARIES: Record<string, "keep" | "drop"> = {
+	"/": "keep",
+	"-": "drop",
+	_: "drop",
+	".": "drop",
+	"@": "drop",
+	":": "drop",
+};
+
+/**
+ * The column at or after `cut` a clip should open on: the nearest boundary within CLIP_SNAP
+ * cells, or `cut` itself.
+ *
+ * The walk stops at whichever comes first: CLIP_SNAP cells, the cells the part has above
+ * MIN_LOCATION_PART, or the room itself. The floor cap is the one that matters -- a part
+ * fitted to thirteen cells was fitted there because twelve is the least a clipped name says,
+ * and giving four of them away to open on a nicer character lands at nine.
+ *
+ * Only narrow cells are walked. The window's plain text is indexed as columns here, which is
+ * true exactly while every grapheme in it occupies one cell; a wide or combining cell makes the
+ * two disagree, and a cut placed on the wrong column would slice a cluster rather than tidy a
+ * name. There is nothing to gain there anyway -- a boundary character is narrow by definition.
+ */
+function snapForward(text: string, cut: number, room: number, maxWidth: number): number {
+	const reach = Math.min(CLIP_SNAP, room - 1, maxWidth - MIN_LOCATION_PART);
+	if (reach <= 0) return cut;
+	const window = stripAnsi(sliceWithWidth(text, cut, reach, true).text);
+	if (window.length !== visibleWidth(window)) return cut;
+	for (const [index, char] of [...window].entries()) {
+		const boundary = CLIP_BOUNDARIES[char];
+		if (boundary === undefined) continue;
+		return boundary === "keep" ? cut + index : cut + index + 1;
+	}
+	return cut;
 }
 
 /**
@@ -167,14 +246,14 @@ function clipStartToWidth(text: string, maxWidth: number): string {
  *
  * Below the pin plus a mark there is no room to keep both, and the icon is what goes: a bare
  * glyph says which KIND of location the row named and no longer says which one.
+ *
+ * The pin is handed to the clipper rather than sliced off here, because a slice replays the
+ * escape sequences the cut passed over in an order that need not end on the one in force, and
+ * the mark's colour is read from the text it was given.
  */
 function clipPartToWidth(part: QuietPart, width: number): string {
 	const pin = part.pin ?? 0;
-	if (pin <= 0 || width <= pin + 1) return clipStartToWidth(part.content, width);
-	const total = visibleWidth(part.content);
-	const head = sliceWithWidth(part.content, 0, pin, true).text;
-	const rest = sliceWithWidth(part.content, pin, total - pin, true).text;
-	return head + clipStartToWidth(rest, width - pin);
+	return clipStartToWidth(part.content, width, width <= pin + 1 ? 0 : pin);
 }
 
 /**
