@@ -83,7 +83,7 @@ import {
 } from "@veyyon/coding-agent/modes/components/status-line/component";
 import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { MotionClock, visibleWidth } from "@veyyon/tui";
+import { MOTION, MotionClock, visibleWidth } from "@veyyon/tui";
 import { stripAnsi } from "@veyyon/utils";
 import { useTrackedTempDirs } from "../../../helpers/tracked-temp-dir";
 
@@ -813,18 +813,25 @@ describe("a click on the path trades the model chip for room", () => {
 		expect(expanded.endsWith(collapsed.slice(ELLIPSIS.length))).toBe(true);
 	});
 
-	// A tidy cut gives up cells to land on a name boundary, so the zone can arrive a few cells
-	// short of the room it was handed.
-	const CELLS_A_TIDY_CUT_MAY_ROUND_AWAY = 4;
+	/**
+	 * The order the row gives its readouts up in when a click asks for room: the model chip
+	 * first, then weakest-first, which is the order it already uses under width pressure. Read
+	 * off the row itself at a width that holds everything, so adding a readout to the right
+	 * group turns this red until someone places it in the order.
+	 */
+	const SPEND_ORDER = ["model", "context_pct", "mode", "subagents"];
 
-	it("pays for the room with the model chip only, and hands that room to the directory", () => {
-		// The old form of this asserted only what LEFT the row on a click, and that is how the
-		// trade shipped broken: at 78 columns the collapsed row had shed the context gauge under
-		// pressure, the retracting chip took that pressure off, and the gauge came BACK and took
-		// all twenty of the chip's cells. The directory moved one cell. On screen the click read
-		// as a flash -- a gauge in, a chip out -- and the path stayed where it was. So both
-		// directions are checked here, over a sweep rather than at one width, and the cells are
-		// followed to where they were supposed to land.
+	it("shows the clicked name whole, paying with the right group in order, and puts it all back", () => {
+		// TWO DEFECTS, one contract. The first shipped: the click paid with the chip and nothing
+		// else, so on any row where the chip's twenty cells were not enough the reader clicked a
+		// name and got a slightly longer clipped name. A click means "show me this", so the row
+		// spends the rest of the bar for it and only a name longer than the whole bar stays cut.
+		//
+		// The second is what an earlier form of this test could not see, because it asserted
+		// only which parts LEFT the row: at 78 columns the collapsed row had shed the context
+		// gauge under pressure, the retracting chip took that pressure off, and the gauge came
+		// BACK and ate all twenty freed cells. The zone moved one cell and the click read as a
+		// flash. Nothing the collapsed row gave up may return because the click freed room.
 		const statusLine = new StatusLineComponent(makeSession());
 
 		// What the row holds when nothing is under pressure, so a part missing at a narrower
@@ -832,51 +839,75 @@ describe("a click on the path trades the model chip for room", () => {
 		expect(statusLine.renderQuietLine(220)).not.toBeNull();
 		const unpressured = renderedIds(statusLine.getQuietSegmentBounds());
 
-		const offenders: { width: number; why: string }[] = [];
+		const offenders: { width: number; half: string; why: string }[] = [];
 		let sawARowUnderPressure = false;
-		let sawTheZoneTakeTheRoom = false;
+		let sawAWholeName = false;
+		let sawANameTooLongForTheBar = false;
 
-		for (let width = 160; width >= 60; width--) {
-			const collapsedLine = statusLine.renderQuietLine(width);
-			expect(collapsedLine).not.toBeNull();
-			const collapsedBounds = statusLine.getQuietSegmentBounds();
-			const collapsedIds = renderedIds(collapsedBounds);
-			const collapsedEnd = locationEnd(collapsedBounds);
-			const chip = collapsedBounds.find(slot => slot.id === "model" && slot.end > slot.start);
-			if ([...unpressured].some(id => !collapsedIds.has(id))) sawARowUnderPressure = true;
+		for (const half of LOCATION_SEGMENT_IDS) {
+			if (half === "pr") continue;
+			for (let width = 160; width >= 60; width--) {
+				expect(statusLine.renderQuietLine(width)).not.toBeNull();
+				const collapsedIds = renderedIds(statusLine.getQuietSegmentBounds());
+				if ([...unpressured].some(id => !collapsedIds.has(id))) sawARowUnderPressure = true;
 
-			statusLine.togglePathExpanded();
-			const expandedLine = statusLine.renderQuietLine(width);
-			expect(expandedLine).not.toBeNull();
-			const expandedBounds = statusLine.getQuietSegmentBounds();
-			const expandedIds = renderedIds(expandedBounds);
-			const expandedEnd = locationEnd(expandedBounds);
-			statusLine.togglePathExpanded();
+				statusLine.togglePathExpanded(half);
+				const expandedLine = statusLine.renderQuietLine(width);
+				expect(expandedLine).not.toBeNull();
+				const expandedBounds = statusLine.getQuietSegmentBounds();
+				const expandedIds = renderedIds(expandedBounds);
+				const name = slotText(expandedLine ?? "", expandedBounds, half) ?? "";
 
-			const appeared = [...expandedIds].filter(id => !collapsedIds.has(id)).sort();
-			if (appeared.length > 0) offenders.push({ width, why: `${appeared.join(",")} came back` });
-			const paid = [...collapsedIds].filter(id => !expandedIds.has(id)).sort();
-			if (paid.length > 0 && paid.join(",") !== "model") offenders.push({ width, why: `${paid.join(",")} paid` });
+				// NOTHING COMES BACK. The room a click frees is the location's.
+				const appeared = [...expandedIds].filter(id => !collapsedIds.has(id)).sort();
+				if (appeared.length > 0) offenders.push({ width, half, why: `${appeared.join(",")} came back` });
 
-			if (chip === undefined) continue;
-			const room = chip.end - chip.start;
-			const zone = slotText(expandedLine ?? "", expandedBounds, "path") ?? "";
-			// A zone showing the whole directory has nothing left to widen into; one still
-			// carrying a mark does, and it has to have taken what the chip gave up.
-			if (!zone.includes(ELLIPSIS)) continue;
-			sawTheZoneTakeTheRoom = true;
-			const gained = expandedEnd - collapsedEnd;
-			if (gained < room - CELLS_A_TIDY_CUT_MAY_ROUND_AWAY) {
-				offenders.push({ width, why: `zone gained ${gained} of the chip's ${room}` });
+				// WHAT PAID, and in what order: a prefix of the spend order, never a part out of it.
+				const paid = [...collapsedIds].filter(id => !expandedIds.has(id));
+				const outOfOrder = paid.filter(id => !SPEND_ORDER.includes(id));
+				if (outOfOrder.length > 0) offenders.push({ width, half, why: `${outOfOrder.join(",")} is not spendable` });
+				const rank = paid.length === 0 ? -1 : Math.max(...paid.map(id => SPEND_ORDER.indexOf(id)));
+				const skipped = SPEND_ORDER.slice(0, Math.max(0, rank)).filter(
+					id => collapsedIds.has(id) && expandedIds.has(id),
+				);
+				if (skipped.length > 0) offenders.push({ width, half, why: `${skipped.join(",")} kept out of order` });
+
+				// THE CLICKED NAME IS WHOLE, unless it is longer than the whole bar. The bar is
+				// every cell of the row, so a name still clipped after the click has to be one no
+				// arrangement of this width could have shown.
+				if (name.includes(ELLIPSIS)) {
+					sawANameTooLongForTheBar = true;
+					if (visibleWidth(name.replace(ELLIPSIS, "")) < width - 1 - visibleWidth(name) - 8) {
+						offenders.push({ width, half, why: `${half} still clipped with room to spare` });
+					}
+				} else if (name.trim() !== "") {
+					sawAWholeName = true;
+				}
+
+				// AND THE ROW IS STILL A ROW. A click that spends the last readout leaves the
+				// location alone on the line, which the assembly used to treat as impossible and
+				// paint as nothing at all: `renderQuietLine` returned a non-null empty string, so
+				// every id-based clause above passed on a blank row.
+				if (stripAnsi(expandedLine ?? "").trim() === "") {
+					offenders.push({ width, half, why: "expanded row went blank" });
+				}
+
+				// AND THE SECOND CLICK PUTS EVERYTHING BACK, cell for cell.
+				statusLine.togglePathExpanded(half);
+				expect(statusLine.renderQuietLine(width)).not.toBeNull();
+				const restored = renderedIds(statusLine.getQuietSegmentBounds());
+				const missing = [...collapsedIds].filter(id => !restored.has(id)).sort();
+				if (missing.length > 0) offenders.push({ width, half, why: `${missing.join(",")} never came back` });
 			}
 		}
 
 		expect(offenders).toEqual([]);
-		// Both clauses need a row they bite on: one where the collapsed row had already given
-		// something up (so "nothing comes back" is doing work), and one where the zone was still
-		// clipped after the click (so the room was measurably handed over).
+		// Each clause needs a row it bites on: one where the collapsed row had already given
+		// something up, one where the click delivered a whole name, and one where the name was
+		// longer than the bar so the "still clipped" branch was exercised rather than skipped.
 		expect(sawARowUnderPressure).toBe(true);
-		expect(sawTheZoneTakeTheRoom).toBe(true);
+		expect(sawAWholeName).toBe(true);
+		expect(sawANameTooLongForTheBar).toBe(true);
 	});
 
 	it("re-truncates to the new width while expanded, rather than holding the width it expanded at", () => {
@@ -896,8 +927,16 @@ describe("a click on the path trades the model chip for room", () => {
 
 describe("the trade travels instead of switching", () => {
 	const WIDTH = 118;
-	/** Past `MOTION.expand`, so the value has landed however the curve got there. */
-	const LANDED_MS = 600;
+	/**
+	 * The travel, taken from the curve rather than written down beside it: these samples say
+	 * WHERE in a travel they are, so retuning the motion retunes them with it. A hardcoded
+	 * 4ms read as "on the way" under a 180ms front-loaded curve and as "not moved yet" under a
+	 * symmetric one, and four contracts here failed on the duration changing rather than on
+	 * anything the row did.
+	 */
+	const TRAVEL_MS = MOTION.reflow.duration;
+	/** Far enough past the curve that the value has landed however it got there. */
+	const LANDED_MS = TRAVEL_MS * 2;
 
 	afterEach(() => {
 		settings.set("display.transitions", "on");
@@ -922,7 +961,10 @@ describe("the trade travels instead of switching", () => {
 	 */
 	function settle(clock: MotionClock): void {
 		clock.tick(0);
-		clock.tick(LANDED_MS);
+		// In steps: the clock treats a gap longer than MAX_FRAME_MS as a stall and advances the
+		// animation by one clamped frame, so ONE jump to the far end lands a short curve and
+		// leaves a longer one barely started.
+		for (let now = 50; now <= LANDED_MS; now += 50) clock.tick(now);
 	}
 
 	it("lands on exactly the row the same click paints with no motion at all", () => {
@@ -963,8 +1005,8 @@ describe("the trade travels instead of switching", () => {
 		clock.tick(0);
 		const collapsed = pathWidth();
 		line.togglePathExpanded();
-		const seen = [4, 8, 14].map(ms => {
-			clock.tick(ms);
+		const seen = [0.2, 0.35, 0.5].map(fraction => {
+			clock.tick(Math.round(TRAVEL_MS * fraction));
 			return pathWidth();
 		});
 		clock.tick(LANDED_MS);
@@ -987,7 +1029,7 @@ describe("the trade travels instead of switching", () => {
 
 		line.togglePathExpanded();
 		const seen: { locationEnd: number; chip: number }[] = [];
-		for (let frame = 1; frame <= 12; frame++) {
+		for (let frame = 1; frame <= Math.ceil(LANDED_MS / 16); frame++) {
 			clock.tick(frame * 16);
 			expect(line.renderQuietLine(WIDTH)).not.toBeNull();
 			const bounds = line.getQuietSegmentBounds();
@@ -1018,7 +1060,7 @@ describe("the trade travels instead of switching", () => {
 		const collapsedEnd = locationEnd(line.getQuietSegmentBounds());
 
 		line.togglePathExpanded();
-		clock.tick(32);
+		clock.tick(Math.round(TRAVEL_MS * 0.35));
 		expect(line.renderQuietLine(WIDTH)).not.toBeNull();
 		const midEnd = locationEnd(line.getQuietSegmentBounds());
 		expect(midEnd).toBeGreaterThan(collapsedEnd);
@@ -1027,11 +1069,14 @@ describe("the trade travels instead of switching", () => {
 		// the expanded width first and ease in from there, which is what restarting the curve
 		// instead of retargeting it looks like.
 		line.togglePathExpanded();
-		clock.tick(40);
+		clock.tick(Math.round(TRAVEL_MS * 0.35) + 40);
 		expect(line.renderQuietLine(WIDTH)).not.toBeNull();
 		expect(locationEnd(line.getQuietSegmentBounds())).toBeLessThanOrEqual(midEnd);
 
-		clock.tick(LANDED_MS);
+		// Stepped, not one jump: a gap past MAX_FRAME_MS is treated as a stall and advances the
+		// animation by a single clamped frame, which lands a short curve and strands a long one
+		// part-way -- an assertion about where the row RESTS would then read a travelling row.
+		for (let now = Math.round(TRAVEL_MS * 0.35) + 90; now <= LANDED_MS * 2; now += 50) clock.tick(now);
 		expect(line.renderQuietLine(WIDTH)).not.toBeNull();
 		expect(locationEnd(line.getQuietSegmentBounds())).toBe(collapsedEnd);
 	});
