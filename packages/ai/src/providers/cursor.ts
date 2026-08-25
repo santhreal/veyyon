@@ -544,12 +544,6 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 			}
 
 			const { promise: h2Promise, resolve: resolveH2, reject: rejectH2 } = Promise.withResolvers<void>();
-			h2Client.on("error", (error: Error) => {
-				terminateStream(() => rejectH2(error));
-			});
-			h2Client.on("close", () => {
-				terminateStream();
-			});
 
 			h2Request = h2Client.request(requestHeaders);
 			stream.push({ type: "start", partial: output });
@@ -838,6 +832,14 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 
 			h2Request.on("error", (error: Error) => {
 				terminateStream(() => rejectH2(error));
+			});
+
+			h2Client.on("error", (error: Error) => {
+				terminateStream(() => rejectH2(error));
+			});
+
+			h2Client.on("close", () => {
+				terminateStream();
 			});
 
 			if (abortSignal) {
