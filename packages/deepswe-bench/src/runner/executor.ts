@@ -5,7 +5,7 @@ import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { readPipeText } from "@veyyon/utils";
+import { clampLow, errorMessage, readPipeText } from "@veyyon/utils";
 import YAML from "yaml";
 import { formatArmPrediction, predictArmSaving } from "../../arm-prediction";
 import { resolveBinaryPin } from "../../binary-pin";
@@ -168,7 +168,7 @@ export function reaggregate(runDir: string): void {
 		try {
 			systemComparison = aggregateSystemComparison(comparisonTrialsFromArmResults(results), orderedTasks, model);
 		} catch (error) {
-			comparisonRejection = error instanceof Error ? error.message : String(error);
+			comparisonRejection = errorMessage(error);
 		}
 	}
 	fs.writeFileSync(
@@ -446,7 +446,7 @@ export async function runBench(argv: string[]): Promise<void> {
 	try {
 		trialTimeoutOverrideSec = parseTrialTimeoutFlag(args.trialTimeout);
 	} catch (err) {
-		console.error(`error: ${err instanceof Error ? err.message : String(err)}`);
+		console.error(`error: ${errorMessage(err)}`);
 		process.exit(1);
 	}
 
@@ -516,7 +516,7 @@ export async function runBench(argv: string[]): Promise<void> {
 			const budget = parseTaskTimeBudget(fs.readFileSync(taskToml, "utf8"), task);
 			trialTimeouts.set(task, resolveTrialTimeout(budget, trialTimeoutOverrideSec));
 		} catch (err) {
-			console.error(`error: ${err instanceof Error ? err.message : String(err)}`);
+			console.error(`error: ${errorMessage(err)}`);
 			process.exit(1);
 		}
 	}
@@ -609,7 +609,7 @@ export async function runBench(argv: string[]): Promise<void> {
 	const results: ComparisonArmResult[] = [];
 	const queue = trialQueue(arms, tasks, repeats);
 	const totalQueued = queue.length;
-	const canarySize = Math.max(1, Math.min(Math.max(1, jobParallel), totalQueued));
+	const canarySize = clampLow(jobParallel, 1, totalQueued);
 	let canaryTripped = false;
 
 	console.log(
@@ -819,7 +819,7 @@ export async function runBench(argv: string[]): Promise<void> {
 		try {
 			systemComparison = aggregateSystemComparison(comparisonTrialsFromArmResults(results), orderedTasks, model);
 		} catch (error) {
-			comparisonRejection = error instanceof Error ? error.message : String(error);
+			comparisonRejection = errorMessage(error);
 		}
 	}
 

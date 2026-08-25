@@ -5,6 +5,7 @@ import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { getEnumValues, getType, isSettingPath } from "@veyyon/coding-agent/config/settings-schema";
+import { isRecord } from "@veyyon/utils";
 import YAML from "yaml";
 import {
 	ARM_ATTACHMENT_KINDS,
@@ -70,7 +71,7 @@ export function stageAllArms(opts: {
 			process.exit(1);
 		}
 
-		if (config === null || typeof config !== "object" || Array.isArray(config)) {
+		if (!isRecord(config)) {
 			console.error(
 				`error: arm "${arm}" arms/${arm}.yml must be a mapping of setting -> value, ` +
 					`got ${Array.isArray(config) ? "a sequence" : typeof config}.`,
