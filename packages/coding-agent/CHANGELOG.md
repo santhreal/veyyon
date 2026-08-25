@@ -7,9 +7,12 @@
 - `veyyon --help` renders its command list from registry summaries verified against command statics and loads only the hidden default command for its flag table, reducing a measured warm Windows invocation from 1.2 seconds to 0.13 seconds.
 - The default launch command imports the session runtime and ACP terminal authentication only when it runs, so loading its flag table no longer imports the runtime graph.
 - Classified runner output (cargo, bun, Go, ctest, dotnet, clippy, golangci-lint, Gradle lint, pytest, and tsc/eslint-family) now opens with a result-contract header: `[clean] <command>` or `[errors]` / `[errors N] <command>`. The header is the verdict and the body contains retained diagnostics.
+
 ### Added
 
 - `edit.critiqueCodeMutations` prompts a bounded self-review before finalization after one turn modifies at least two distinct code files.
+- Exporting a session to HTML streams the snapshot into the output file instead of assembling the whole document in memory, taking an 80MiB transcript from 1007MiB of peak resident memory to 532MiB with byte-identical output.
+- A session snapshot that contains a reference cycle fails the HTML export with an error instead of writing until the disk fills.
 - `bench/session-memory.bench.ts` reports heap after a forced GC, current RSS and high-water RSS at each of three phases (module baseline, `SessionManager.open`, `buildSessionContext`) over a synthetic transcript sized by `SESSION_MB`.
 
 - Added `model.toolCallLoopGuard.readSubsumptionThreshold` (default `2`) to steer models that re-read unchanged code lines back-to-back before consuming full context.
