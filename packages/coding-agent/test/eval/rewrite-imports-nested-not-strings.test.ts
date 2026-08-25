@@ -1,23 +1,11 @@
 /**
- * rewriteImports has a cheap `code.includes("import")` gate, then two
- * rewrites on the same AST. rewrite-imports.test.ts already pins a string
- * literal containing `import foo from "y"`. Remaining:
- *
- * - a template that contains the characters `import(` is not a CallExpression
- * - wrapCode runs rewriteImports BEFORE requiresAsyncWrapper, so a static
- *   import becomes a top-level await and forces the IIFE
- * - a dynamic import inside a function is rewritten but does not wrap,
- *   because isExecutionBoundary stops the await walk
+ * js-static-import-rewrite.test.ts already pins template-embedded import()
+ * lookalikes. Remaining: wrapCode runs rewriteImports BEFORE the async-wrapper
+ * walk, so a static import becomes a top-level await and forces the IIFE,
+ * while a nested import() is rewritten but does not wrap.
  */
 import { describe, expect, it } from "bun:test";
-import { rewriteImports, wrapCode } from "@veyyon/coding-agent/eval/js/shared/rewrite-imports";
-
-describe("the characters import( in a template are not a CallExpression", () => {
-	it("leaves a template containing import() byte-identical", async () => {
-		const src = "const s = `import(${mod})`;";
-		expect(await rewriteImports(src)).toBe(src);
-	});
-});
+import { wrapCode } from "@veyyon/coding-agent/eval/js/shared/rewrite-imports";
 
 describe("a static import forces the async wrapper; a nested dynamic import does not", () => {
 	it("wraps a cell that is only a static import, because rewrite produced a top-level await", async () => {
