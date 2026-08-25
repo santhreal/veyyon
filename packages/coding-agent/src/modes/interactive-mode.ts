@@ -1212,7 +1212,9 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.ui.setPinnedFooterChildCount(composerZoneChildren);
 		this.ui.setFocus(this.editor);
 		// Anchor the composer to the viewport bottom on the launch/home screen.
-		this.#layout.sync();
+		// Seeded, not synced: a launch card already on screen leaves a composed
+		// frame this layout did not produce.
+		this.#layout.seedAfterMount();
 
 		this.#inputController.setupKeyHandlers();
 		this.#inputController.setupEditorSubmitHandler();

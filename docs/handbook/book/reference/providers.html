@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-d6d82126.js";
+            window.path_to_searchindex_js = "../searchindex-3b23e5aa.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-a2abefc1.js"></script>
@@ -332,7 +332,7 @@ providers:
 </table>
 </div>
 <p>OAuth-backed providers such as <code>anthropic</code>, <code>github-copilot</code>, <code>cursor</code>, <code>ollama-cloud</code>, <code>qwen-portal</code>, <code>kimi-code</code>, <code>nous-research</code>, <code>xai-oauth</code>, <code>wafer-serverless</code>, <code>google-gemini-cli</code>, and <code>google-antigravity</code> are normally reached through <code>/login</code> rather than an environment variable. Nous Portal stores a durable refresh token and mints short-lived inference access tokens for requests and model discovery; <code>NOUS_API_KEY</code> remains available for explicit headless use.</p>
-<p>Command Code uses <code>https://api.commandcode.ai/provider/v1</code>, defaults to <code>moonshotai/Kimi-K2.7-Code</code>, and issues keys at <a href="https://commandcode.ai/studio/provider">Command Code Provider</a>. Nous Research uses <code>https://inference-api.nousresearch.com/v1</code> and defaults to the tool-capable <code>anthropic/claude-sonnet-4.6</code>; authenticated discovery adds the current tool-capable chat catalog and excludes embedding, media-generation, and non-tool rows.</p>
+<p>Command Code uses <code>https://api.commandcode.ai/provider/v1</code>, defaults to <code>moonshotai/Kimi-K2.7-Code</code>, and issues keys at <a href="https://commandcode.ai/studio/provider">Command Code Provider</a>. Nous Research uses <code>https://inference-api.nousresearch.com/v1</code> and defaults to the tool-capable <code>anthropic/claude-sonnet-4.6</code>; authenticated discovery adds the current tool-capable chat catalog and excludes embedding, media-generation, and non-tool rows. Nous accepts either sign-in: <code>/login nous-research</code> runs the Portal device flow, and <code>/login nous-research-api-key</code> takes a key pasted from the Portal. Both store one credential under <code>nous-research</code>, so the model list and the account card show a single Nous account either way.</p>
 <h3 id="env-discovery-and-precedence"><a class="header" href="#env-discovery-and-precedence"><code>.env</code> discovery and precedence</a></h3>
 <p><code>veyyon</code> eagerly loads <code>.env</code> files into the process environment before any provider lookup. It reads four files and, for each variable, the <strong>highest-priority</strong> source that defines it wins. Effective precedence, high to low:</p>
 <ol>

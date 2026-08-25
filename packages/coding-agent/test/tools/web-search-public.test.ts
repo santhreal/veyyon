@@ -153,6 +153,61 @@ describe("Public Web aggregate provider", () => {
 		expect(response.sources).toEqual([{ title: "Alpha", url: "https://a.example/one", snippet: "alpha snippet" }]);
 	});
 
+	/**
+	 * WHY: an engine that answers HTTP 200 with zero parsed results was counted as
+	 * having answered, so it satisfied the soft deadline on its own and the
+	 * aggregate returned nothing while a slower engine was about to deliver. Live,
+	 * Startpage began serving a proof-of-work interstitial at 200 and parsed to
+	 * zero results in ~380ms, which took the whole tool down to "Public Web
+	 * returned no renderable search content" even though Mojeek answered with ten
+	 * sources at ~1.8s.
+	 *
+	 * WHAT CLASS THIS CLOSES: an empty answer standing in for an answer, in both
+	 * places the fan-out decides it has waited long enough — the soft-deadline
+	 * extension and the `firstSuccess` latch that ends the extended wait.
+	 *
+	 * WHAT IT DOES NOT CATCH: an engine that returns plausible but wrong results,
+	 * and the hard-deadline cap, which the case above owns.
+	 */
+	it("does not let a fast empty answer end the wait for an engine that has results", async () => {
+		setExcludedSearchProviders(NON_TEST_ENGINES);
+		const fetchMock: FetchImpl = async input => {
+			const url = typeof input === "string" ? input : input.toString();
+			if (url.includes("google.com")) {
+				// Answers at once, parses to nothing: a bot wall served as 200.
+				return new Response('<html><body><div class="MjjYud"></div></body></html>', { status: 200 });
+			}
+			await Bun.sleep(60);
+			return new Response(ddgResult("https://a.example/one", "Alpha", "alpha snippet"), { status: 200 });
+		};
+
+		const response = await searchPublicWeb(makeParams("empty fast engine", fetchMock), { softMs: 10, hardMs: 400 });
+
+		expect(response.sources).toEqual([{ title: "Alpha", url: "https://a.example/one", snippet: "alpha snippet" }]);
+	});
+
+	it("ends the extended wait on the first engine with results, not the first to reply", async () => {
+		setExcludedSearchProviders(NON_TEST_ENGINES);
+		const fetchMock: FetchImpl = async input => {
+			const url = typeof input === "string" ? input : input.toString();
+			if (url.includes("google.com")) {
+				await Bun.sleep(30);
+				return new Response('<html><body><div class="MjjYud"></div></body></html>', { status: 200 });
+			}
+			await Bun.sleep(60);
+			return new Response(ddgResult("https://a.example/one", "Alpha", "alpha snippet"), { status: 200 });
+		};
+
+		// A generous hard cap: if the latch fires on the empty reply at ~30ms the
+		// call returns empty long before it, so the assertion is on content, and
+		// the elapsed bound proves the wait ended at the result rather than at the cap.
+		const started = Date.now();
+		const response = await searchPublicWeb(makeParams("latch on results", fetchMock), { softMs: 10, hardMs: 5_000 });
+
+		expect(response.sources).toEqual([{ title: "Alpha", url: "https://a.example/one", snippet: "alpha snippet" }]);
+		expect(Date.now() - started).toBeLessThan(2_000);
+	});
+
 	it("returns whatever it has at the hard deadline even with zero successes", async () => {
 		setExcludedSearchProviders(NON_TEST_ENGINES);
 		const fetchMock: FetchImpl = input => {

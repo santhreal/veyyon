@@ -3783,6 +3783,13 @@ export class AuthStorage {
 			signal: ctrl.signal,
 			fetch: ctrl.fetch,
 		});
+		// `storeCredentialsAs` applies to both shapes. A provider entry exists per
+		// login MECHANISM, so one product can offer OAuth and a pasted key from two
+		// entries; the credential still belongs to the product, and everything that
+		// reads it — the model manager, the account card, the model list — knows only
+		// the product's id. Honoring the redirection on the OAuth branch alone filed
+		// the pasted key under the mechanism's id, where nothing looks for it.
+		const target = def.storeCredentialsAs ?? provider;
 		if (typeof result === "string") {
 			// Some flows (e.g. ollama) return "" to signal that no key was entered.
 			if (!result) {
@@ -3790,13 +3797,13 @@ export class AuthStorage {
 			}
 			const newCredential: ApiKeyCredential = { type: "api_key", key: result, source: "login" };
 			const stored = this.#store.upsertAuthCredentialRemote
-				? await this.#store.upsertAuthCredentialRemote(provider, newCredential)
-				: this.#store.upsertAuthCredentialForProvider(provider, newCredential);
+				? await this.#store.upsertAuthCredentialRemote(target, newCredential)
+				: this.#store.upsertAuthCredentialForProvider(target, newCredential);
 			this.#setStoredCredentials(
-				provider,
+				target,
 				stored.map(entry => ({ id: entry.id, credential: entry.credential })),
 			);
-			this.#resetProviderAssignments(provider);
+			this.#resetProviderAssignments(target);
 			const credentialId = matchStoredCredentialId(stored, newCredential);
 			return { type: "api_key", ...(credentialId !== undefined ? { credentialId } : {}) };
 		}
@@ -3804,7 +3811,7 @@ export class AuthStorage {
 		// Use #upsertOAuthCredential to upsert the new credential.
 		// Any legacy api_key rows from older versions will be cleaned up so they do not
 		// shadow the new OAuth row, while preserving other active OAuth credentials.
-		const credentialId = await this.#upsertOAuthCredential(def.storeCredentialsAs ?? provider, newCredential);
+		const credentialId = await this.#upsertOAuthCredential(target, newCredential);
 		return {
 			type: "oauth",
 			email: newCredential.email,

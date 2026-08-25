@@ -107,7 +107,14 @@ export class JobTool implements AgentTool<typeof jobSchema, JobToolDetails> {
 	readonly description: string;
 	readonly parameters = jobSchema;
 	readonly strict = true;
-	readonly interruptible = true;
+	// Only a polling call blocks. A `list` snapshot and a cancel-only call return
+	// at once (see `execute`), so an interrupt must not be able to replace their
+	// result with a "skipped" placeholder — `list` combined with `poll`/`cancel`
+	// raises a ToolError the caller has to see.
+	readonly interruptible = (args: Partial<JobParams>): boolean => {
+		if (args.list === true) return false;
+		return !(Array.isArray(args.cancel) && args.cancel.length > 0 && args.poll === undefined);
+	};
 	readonly loadMode = "discoverable";
 	constructor(private readonly session: ToolSession) {
 		this.description = prompt.render(toolsPrompts["tools/job"].text);
