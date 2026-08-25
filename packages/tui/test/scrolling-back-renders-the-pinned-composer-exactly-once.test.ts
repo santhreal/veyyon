@@ -39,7 +39,7 @@ class PinnedComposer implements Component, Focusable {
 	focused = true;
 	lines: readonly string[];
 
-	constructor(lines: readonly string[] = ["> [PINNED_COMPOSER_INPUT]" + CURSOR_MARKER]) {
+	constructor(lines: readonly string[] = [`> [PINNED_COMPOSER_INPUT]${CURSOR_MARKER}`]) {
 		this.lines = lines;
 	}
 
@@ -66,12 +66,12 @@ describe("scrolling back renders the pinned composer exactly once", () => {
 	const FOOTER_CONFIGS = [
 		{
 			name: "single-row footer",
-			lines: ["> [PINNED_COMPOSER_INPUT]" + CURSOR_MARKER],
+			lines: [`> [PINNED_COMPOSER_INPUT]${CURSOR_MARKER}`],
 			marker: "[PINNED_COMPOSER_INPUT]",
 		},
 		{
 			name: "multi-row footer",
-			lines: ["--- [COMPOSER_HEADER_DIVIDER] ---", "> [PINNED_COMPOSER_INPUT]" + CURSOR_MARKER],
+			lines: ["--- [COMPOSER_HEADER_DIVIDER] ---", `> [PINNED_COMPOSER_INPUT]${CURSOR_MARKER}`],
 			marker: "[PINNED_COMPOSER_INPUT]",
 		},
 	] as const;
