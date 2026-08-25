@@ -1152,13 +1152,26 @@ function initLoaderContext() {
  * @type {Record<string, unknown> | undefined}
  */
 let loadedNativeBindings;
+/** Memoized load failure — re-throwing the same error without re-running the loader. */
+let loadNativeError;
 
-/** Load the native addon once (memoized), or throw loudly if it cannot load. */
+/**
+ * Load the native addon once (memoized). If the load fails, the failure is
+ * memoized too: subsequent calls re-throw the cached error instead of
+ * re-running the loader (and re-printing every candidate warning) on every
+ * native access. The first call that succeeds caches the bindings; the first
+ * call that fails caches the error. Either way, the loader runs at most once.
+ */
 export function native() {
-	if (loadedNativeBindings === undefined) {
+	if (loadedNativeBindings !== undefined) return loadedNativeBindings;
+	if (loadNativeError !== undefined) throw loadNativeError;
+	try {
 		loadedNativeBindings = loadNative();
+		return loadedNativeBindings;
+	} catch (error) {
+		loadNativeError = error;
+		throw error;
 	}
-	return loadedNativeBindings;
 }
 
 /**
