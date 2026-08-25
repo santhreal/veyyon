@@ -14127,14 +14127,15 @@ export class AgentSession {
 	): Promise<CompactionCheckResult> {
 		// Skip if message was aborted (user cancelled) - unless skipAbortedCheck is false
 		if (skipAbortedCheck && assistantMessage.stopReason === "aborted") return COMPACTION_CHECK_NONE;
-		const contextWindow = this.model?.contextWindow ?? 0;
+		const model = this.model;
+		const contextWindow = model?.contextWindow ?? 0;
 		const generation = this.#promptGeneration;
 		// Skip overflow check if the message came from a different model.
 		// This handles the case where user switched from a smaller-context model (e.g. opus)
 		// to a larger-context model (e.g. codex) - the overflow error from the old model
 		// shouldn't trigger compaction for the new model.
 		const sameModel =
-			this.model && assistantMessage.provider === this.model.provider && assistantMessage.model === this.model.id;
+			model !== undefined && assistantMessage.provider === model.provider && assistantMessage.model === model.id;
 		// This handles the case where an error was kept after compaction (in the "kept" region).
 		// The error shouldn't trigger another compaction since we already compacted.
 		// Example: opus fails -> switch to codex -> compact -> switch back to opus -> opus error
@@ -14192,7 +14193,7 @@ export class AgentSession {
 			autoContinue &&
 			!errorIsFromBeforeCompaction &&
 			assistantMessage.stopReason === "error" &&
-			this.model &&
+			model !== undefined &&
 			contextWindow > 0 &&
 			this.settings.getGroup("contextPromotion").enabled
 		) {
@@ -14206,14 +14207,14 @@ export class AgentSession {
 				failedWindow > 0 &&
 				contextWindow > failedWindow &&
 				promotionTarget &&
-				modelsAreEqual(promotionTarget, this.model) &&
+				modelsAreEqual(promotionTarget, model) &&
 				AIError.isContextOverflow(assistantMessage, failedWindow)
 			) {
 				this.#removeAssistantMessageFromActiveContext(assistantMessage);
 				await this.#dropPersistedAssistantTurn(assistantMessage);
 				logger.debug("Overflow on pre-promotion model; retrying on promoted model", {
 					failed: `${assistantMessage.provider}/${assistantMessage.model}`,
-					current: `${this.model.provider}/${this.model.id}`,
+					current: `${model.provider}/${model.id}`,
 				});
 				this.#scheduleAgentContinue({ delayMs: 100, generation });
 				return COMPACTION_CHECK_CONTINUATION;
