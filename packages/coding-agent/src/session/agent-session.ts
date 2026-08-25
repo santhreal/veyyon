@@ -10651,16 +10651,19 @@ export class AgentSession {
 			!canCallTodoTool && this.getDiscoverableTools({ source: "builtin" }).some(tool => tool.name === TOOL.todo);
 		const canActivateTodoTool = canDiscoverTodoTool && this.#hasActiveTool(TOOL.search_tool_bm25);
 		if (!canCallTodoTool && !canDiscoverTodoTool) return undefined;
-		const phases = this.getTodoPhases().filter(phase => phase.tasks.length > 0);
-		if (phases.length === 0) return undefined;
-
-		const tasks = phases.flatMap(phase => phase.tasks.map(task => ({ ...task, phase: phase.name })));
+		const allPhases = this.getTodoPhases();
+		let total = 0;
 		let closed = 0;
-		const openTasks: (typeof tasks)[number][] = [];
-		for (const task of tasks) {
-			if (task.status === "completed" || task.status === "abandoned") closed++;
-			else if (task.status === "pending" || task.status === "in_progress") openTasks.push(task);
+		const openTasks: (TodoItem & { phase: string })[] = [];
+		for (const phase of allPhases) {
+			for (const task of phase.tasks) {
+				total++;
+				if (task.status === "completed" || task.status === "abandoned") closed++;
+				else if (task.status === "pending" || task.status === "in_progress")
+					openTasks.push({ phase: phase.name, content: task.content, status: task.status });
+			}
 		}
+		if (total === 0) return undefined;
 		const openItems = prioritizeTodoItems(openTasks);
 		const next = openItems[0];
 		const nextItem = next
@@ -10678,7 +10681,7 @@ export class AgentSession {
 			closed: String(closed),
 			nextItem,
 			open: String(openItems.length),
-			total: String(tasks.length),
+			total: String(total),
 		});
 	}
 

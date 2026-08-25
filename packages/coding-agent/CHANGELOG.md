@@ -30,6 +30,7 @@
 - HTML export counts tool calls with a loop instead of `.filter().length`, avoiding a throwaway array per assistant message during export.
 - `#takeMidRunTodoNudge` counts incomplete tasks with a loop instead of `.flatMap().filter()`, avoiding two throwaway arrays per nudge check.
 - `renderTodoStatePreview` counts total tasks with a loop instead of `.reduce()`, avoiding a callback allocation per prompt.
+- `#buildGoalTodoContext` merges `phases.filter`, `phases.flatMap`, and task counting into a single loop, avoiding two throwaway arrays and one intermediate task list per prompt in goal mode.
 
 ### Added
 
