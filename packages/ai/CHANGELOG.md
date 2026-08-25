@@ -20,6 +20,8 @@
 - The OpenAI completions message converter merges its double `.filter()` for text blocks (by type, then by non-empty) and the same for thinking blocks into single `for` loops, avoiding two throwaway arrays per assistant message per turn.
 - The GitHub Copilot usage parser merges its double `reduce` for `totalUsed` and `totalLimit` into a single `for` loop, avoiding a callback allocation per usage fetch.
 - `normalizeSystemPrompts` merges `.map().filter()` into a single `for` loop, avoiding two throwaway arrays per system prompt normalization call.
+- `transformMessages` merges its two O(n) pre-passes over the full message array (real-tool-result indexing and valid-tool-use-id collection) into a single pass, and replaces `.filter()` with a `for` loop for tool-call extraction in the second pass.
+- `convertContentBlocks` in the Anthropic provider replaces `.filter().map().join()` with a single `for` loop on the non-vision path, and `buildToolResultBlock` merges `.some()` + `.filter()` into a single pass for image hoisting.
 
 ### Fixed
 
