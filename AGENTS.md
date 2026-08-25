@@ -33,6 +33,7 @@ operator manual.
 |`packages/typescript-edit-benchmark`|Edit-tool benchmark from TypeScript source mutations (private)|
 |`packages/simulations`|Deterministic offline simulations driving real subsystems end to end (private)|
 |`crates/veyyon-natives`|Rust crate for performance-critical text/grep ops|
+|`crates/veyyon-highlight`|ANSI syntax highlighting over syntect, with the syntax set linked at build time|
 |`crates/veyyon-conformance`|Whole-product conformance corpus and harness (issue #877)|
 
 `packages/tsconfig.workspace.json` is shared TypeScript config, not a package.

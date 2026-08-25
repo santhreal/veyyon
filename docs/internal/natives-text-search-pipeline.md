@@ -26,7 +26,7 @@ Terminology follows [`natives-architecture.md`](./natives-architecture.md):
 - `crates/veyyon-natives/src/summary.rs`
 - `crates/veyyon-natives/src/text.rs`
 - `crates/veyyon-text/src/lib.rs`
-- `crates/veyyon-natives/src/highlight.rs`
+- `crates/veyyon-natives/src/highlight.rs` (N-API shim), `crates/veyyon-highlight/src/lib.rs` (implementation)
 - `crates/veyyon-natives/src/tokens.rs`
 
 ## JS API ↔ Rust export mapping
@@ -239,7 +239,13 @@ Text functions generally return deterministic transformed output; errors are lim
 
 ## 6) Syntax highlighting (`highlight`)
 
-`highlight.rs` is pure transformation; it does not use the filesystem scan cache.
+`highlight.rs` is an N-API shim: it converts the arguments and calls
+`veyyon_highlight::highlight`, which holds the syntax set, the scope-to-category
+map and the ANSI emitter. It is pure transformation and does not use the
+filesystem scan cache.
+
+The syntax set is assembled by `crates/veyyon-highlight/build.rs` and embedded as
+one dump, so no set is built at runtime.
 
 ### Flow
 
