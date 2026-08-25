@@ -39,9 +39,10 @@ import type { AssistantMessage, Message, ToolResultMessage, UserMessage } from "
 import type { ToolCallIdMap } from "@veyyon/coding-agent/session/canonicalize-tool-call-ids";
 import { ProviderContextCanonicalizer } from "@veyyon/coding-agent/session/provider-context-canonicalizer";
 import { normalizeRoots } from "@veyyon/coding-agent/session/relativize-paths";
+import { SET_CWD_TOOL_NAME } from "@veyyon/coding-agent/tools/reroot-hint";
 
-const OLD_CWD = "/media/data/projects/repo-main";
-const NEW_CWD = "/media/data/projects/repo-worktree";
+const OLD_CWD = "/srv/checkout/alpha";
+const NEW_CWD = "/srv/checkout/beta";
 
 function createCanonicalizer(): ProviderContextCanonicalizer {
 	const map: ToolCallIdMap = new Map();
@@ -91,6 +92,11 @@ function toolResult(text: string, toolCallId: string): ToolResultMessage {
 		isError: false,
 		timestamp: TIMESTAMP,
 	};
+}
+
+/** The move itself, which the relativizer must leave alone: it names both ends. */
+function setCwdResult(text: string, toolCallId: string): ToolResultMessage {
+	return { ...toolResult(text, toolCallId), toolName: SET_CWD_TOOL_NAME };
 }
 
 /** Every message role the relativizer rewrites, each carrying a path under OLD_CWD. */
@@ -176,5 +182,73 @@ describe("a cwd change does not rewrite history already sent", () => {
 
 		expect(before.bytesSaved).toBe(OLD_CWD.length + 1);
 		expect(after.bytesSaved).toBe(before.bytesSaved + NEW_CWD.length + 1);
+	});
+
+	// The unit tests above pin the mechanism on four messages. This replays a
+	// growing session the way the request builder drives it — one transform per
+	// turn, twelve turns, the working directory moving at turn seven — and measures
+	// the byte prefix each request shares with the one before it. That prefix is
+	// what a provider's cache is keyed on, so the number is the property itself
+	// rather than a proxy for it.
+	it("shares its whole previous request as a byte prefix on the turn the directory moves", () => {
+		const canonicalizer = createCanonicalizer();
+		const history: Message[] = [];
+		let previous: string[] = [];
+		const rewrittenPerTurn: number[] = [];
+		const reuseAtTurn = new Map<number, { reused: number; previousTotal: number }>();
+		const moveAtTurn = 7;
+
+		for (let index = 1; index <= 12; index++) {
+			const moved = index >= moveAtTurn;
+			const cwd = moved ? NEW_CWD : OLD_CWD;
+			const sibling = moved ? OLD_CWD : NEW_CWD;
+			if (index === moveAtTurn) {
+				history.push(setCwdResult(`Moved cwd: ${OLD_CWD} → ${NEW_CWD}`, "provider-call-move"));
+			}
+			history.push(
+				user(`look at ${cwd}/src/module-${index}.ts and ${sibling}/src/module-${index}.ts`),
+				assistant(`Reading ${cwd}/src/module-${index}.ts`),
+				toolResult(
+					`${cwd}/src/module-${index}.ts:1:export const value = ${index};\n${sibling}/src/module-${index}.ts:1:export const value = ${index};`,
+					`provider-call-${index}`,
+				),
+			);
+
+			const rendered = canonicalizer
+				.transform([...history], normalizeRoots([cwd]))
+				.messages.map(message => JSON.stringify(message));
+			const shared = rendered.reduce(
+				(acc, line, i) =>
+					acc.stopped || previous[i] !== line
+						? { bytes: acc.bytes, stopped: true }
+						: { bytes: acc.bytes + Buffer.byteLength(line, "utf8"), stopped: false },
+				{ bytes: 0, stopped: false },
+			);
+			let rewritten = 0;
+			for (let i = 0; i < Math.min(previous.length, rendered.length); i++) {
+				if (previous[i] !== rendered[i]) rewritten += 1;
+			}
+			rewrittenPerTurn.push(rewritten);
+			reuseAtTurn.set(index, {
+				reused: shared.bytes,
+				previousTotal: previous.reduce((sum, line) => sum + Buffer.byteLength(line, "utf8"), 0),
+			});
+			previous = rendered;
+		}
+
+		// Not one message of the twelve turns is ever re-rendered, including the move.
+		expect(rewrittenPerTurn).toEqual(Array.from({ length: 12 }, () => 0));
+
+		// The whole of the previous request is still a prefix of the request that
+		// follows the move. Before this fix that number was 0 and 18 messages changed.
+		const atMove = reuseAtTurn.get(moveAtTurn);
+		expect(atMove?.reused).toBe(atMove?.previousTotal);
+		expect(atMove?.previousTotal).toBeGreaterThan(0);
+
+		// And every other turn, which is the append-only case the memo already served.
+		for (let index = 2; index <= 12; index++) {
+			const row = reuseAtTurn.get(index);
+			expect(row?.reused).toBe(row?.previousTotal);
+		}
 	});
 });
