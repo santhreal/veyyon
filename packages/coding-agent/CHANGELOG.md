@@ -47,6 +47,9 @@
 - The write tool rejects content carrying hashline patch markers, unified diff hunks, or read-output display prefixes with an error naming the detection and stating corrective action instead of silently stripping prefixes before writing.
 - Converted LLM message wrappers preserve reference identity across turns so the provider context canonicalizer re-renders only newly appended messages.
 - Memory pipeline SQLite storage (`storage.sqlite`) manages schema migrations via `PRAGMA user_version` and dynamically backfills missing columns on legacy databases.
+- The session tree selector formats custom tool arguments using width-aware truncation without double-stringifying string arguments or splitting surrogate pairs.
+- Renderer failure notices sanitize thrown errors, subjects, and fallback descriptions by shortening embedded home directory paths, replacing tabs, and truncating long payloads.
+- The extension inspector origin path truncates Windows backslash paths on directory boundaries and uses standard preview limits.
 - Quitting no longer hangs when a background session never settles.
 - `/new` typed while the agent is answering starts the new session without interrupting the answer: the running turn finishes in the background and is flushed to its own transcript, while the composer attaches to a fresh session immediately.
 - `/resume` onto a session that is still answering re-attaches the running session instead of replaying its transcript as finished text, so its answer keeps streaming into the view and the session being left takes its place in the background.
