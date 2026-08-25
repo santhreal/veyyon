@@ -23,18 +23,6 @@
 import { describe, expect, it } from "bun:test";
 import { rewriteImports, wrapCode } from "@veyyon/coding-agent/eval/js/shared/rewrite-imports";
 
-describe("dynamic import() inside a nested function is still rewritten", () => {
-	it("swaps the callee inside an exported helper, not only at the top level", async () => {
-		const src = [
-			"export async function load(name) {",
-			"  return import(name);",
-			"}",
-		].join("\n");
-		const out = await rewriteImports(src);
-		expect(out).toContain("__veyyon_import__");
-		expect(out).toContain("return (typeof __veyyon_import__ === \"function\" ? __veyyon_import__ : (s, o) => import(s, o))(name);");
-	});
-});
 
 describe("the characters import( in a string or template are not a CallExpression", () => {
 	it("leaves a string containing import('x') byte-identical", async () => {

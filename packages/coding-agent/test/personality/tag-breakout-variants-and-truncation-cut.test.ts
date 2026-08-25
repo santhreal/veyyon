@@ -12,7 +12,8 @@
  *   - truncation AFTER escape must not resurrect a raw `<personality>` tag
  *   - a whitespace-only project file is treated as absent, so the built-in
  *     (or user) spec is what is injected, not an empty block
- *   - `None.md` / `none.MD` cannot shadow the disable sentinel
+ *
+ * `None.md` catalog shadowing lives in project-beats-user-and-unknown-falls-back.
  */
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
@@ -75,11 +76,4 @@ describe("an empty or reserved file is not a spec", () => {
 		expect(resolved.text).not.toBe("");
 	});
 
-	it("does not let None.md register as a selectable personality named none", async () => {
-		const cwd = makeProject();
-		writeSpec(cwd, "None.md", "this is not the sentinel");
-		const resolved = await resolvePersonality("none", { cwd });
-		expect(resolved.name).toBe("none");
-		expect(resolved.text).toBe("");
-	});
 });

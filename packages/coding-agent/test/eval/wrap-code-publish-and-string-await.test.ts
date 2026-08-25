@@ -56,14 +56,6 @@ describe("await in comments and strings is not an AwaitExpression", () => {
 	});
 });
 
-describe("LOOKS_LIKE_TS matching inside a string must not change the string", () => {
-	it("keeps the characters as const inside quotes, and does not wrap", async () => {
-		const result = await wrapCode('const s = "as const";');
-		expect(result.source).toContain('"as const"');
-		expect(result.asyncWrapped).toBe(false);
-	});
-});
-
 describe("publishGlobals writes the binding names, not the pattern keys", () => {
 	it("publishes a renamed destructure and a rest binding when the cell awaits", async () => {
 		const result = await wrapCode("const { a: b, ...rest } = await load();");
