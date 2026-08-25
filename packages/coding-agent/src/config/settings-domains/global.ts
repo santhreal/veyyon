@@ -60,7 +60,7 @@ export const GLOBAL_SETTINGS = {
 			tab: "global",
 			scope: "global",
 			group: "Credentials",
-			label: "Share Credentials Across Profiles",
+			label: "Share Across Profiles",
 			description:
 				"When on (the default), every profile reads one machine-wide set of provider logins. Turn off to give each profile its own private credential store. Changing this setting shuts down the active session; restart is required before any further model dispatch.",
 		},

@@ -1023,7 +1023,16 @@ export class ModelBrowser implements Component {
 			});
 			scrollView.setScrollOffset(startIndex);
 			lines.push(...scrollView.render(width));
+			lines.push("");
+			const [detail1, detail2] = this.#detailLines(width);
+			lines.push(detail1);
+			lines.push(detail2);
+			// The blank reservation used to sit between the rows and the detail
+			// block, stranding the detail a viewport away from the selection it
+			// describes on a short or filtered list. It trails the detail instead:
+			// same total height, and the text explaining a row sits under the rows.
 			for (let i = rows.length; i < this.#maxVisible; i++) lines.push("");
+			return lines;
 		}
 
 		lines.push("");

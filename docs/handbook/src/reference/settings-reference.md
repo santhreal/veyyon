@@ -85,7 +85,7 @@ veyyon config get compaction.threshold
 | `defaultEffort` | Default Effort | record | `{}` | Effort per model, applied when a run does not ask for one. Add a model and pick its effort; the "any model" row covers every model without its own. Per profile. |
 | `hideThinkingBlock` | Hide Thinking Blocks | boolean | `false` | Hide thinking blocks in assistant responses. |
 | `proseOnlyThinking` | Prose Only Thinking | boolean | `true` | Omit code blocks from thinking summaries and replace them with an ellipsis. |
-| `omitThinking` | Omit Thinking summaries | boolean | `false` | Instruct upstream providers to completely omit thinking summaries from responses (where supported). |
+| `omitThinking` | Omit Thinking Summaries | boolean | `false` | Instruct upstream providers to completely omit thinking summaries from responses (where supported). |
 | `model.loopGuard.enabled` | Loop Guard | boolean | `true` | Enable automatic stream loop detection for model reasoning and prose. |
 | `model.loopGuard.checkAssistantContent` | Loop Guard Scan Prose | boolean | `true` | Apply loop guard to assistant prose messages in addition to thinking logs. |
 | `model.loopGuard.toolCallReminder` | Loop Guard Tool-Call Reminder | boolean | `true` | When a Gemini reasoning stream emits many consecutive planning headers without calling a tool, interrupt it and inject a reminder to issue a tool call (requires Loop Guard). |
@@ -131,7 +131,7 @@ veyyon config get compaction.threshold
 | `retry.fallbackChains` | Retry Fallback Chains | record | `{}` | JSON object mapping model roles, model selectors ("provider/model-id"), or provider wildcards ("provider/*") to ordered fallback selectors, e.g. {"default":["openai/gpt-4o-mini"],"google-antigravity/*":["google/*","google-vertex/*"]}. Model-oriented keys apply whenever that model/provider is active, regardless of role; a "provider/*" entry keeps the failing model's id and swaps the provider. |
 | `retry.perProvider` | Per-Provider Retry | record | `{}` | JSON object overriding retry limits for specific backends, keyed like Retry Fallback Chains: a model selector ("provider/model-id"), a provider wildcard ("provider/*"), or a bare provider name. Each value may set maxRetries, baseDelayMs, and maxDelayMs; anything omitted falls back to the global retry settings. Example: {"cursor":{"maxRetries":3,"baseDelayMs":2000}}. Backends whose retries are intrinsically expensive (cursor, devin) already ship with sensible limits; an entry here overrides those. |
 | `retry.fallbackRevertPolicy` | Fallback Revert Policy | enum | `cooldown-expiry` | When to return to the primary model after a fallback. Values: `cooldown-expiry`, `never`. |
-| `providers.anthropic.serverSideFallback` | Anthropic Server-Side Fallback (Fable 5) | boolean | `false` | When a Claude Fable 5 / Mythos 5 request is blocked by Anthropic's safety classifier, retry it on Claude Opus 4.8 server-side (Anthropic `server-side-fallback-2026-06-01` beta). Opt-in — leaving this off preserves the pre-fallback behavior for every request. |
+| `providers.anthropic.serverSideFallback` | Anthropic Server-Side Fallback | boolean | `false` | When a Claude Fable 5 / Mythos 5 request is blocked by Anthropic's safety classifier, retry it on Claude Opus 4.8 server-side (Anthropic `server-side-fallback-2026-06-01` beta). Opt-in — leaving this off preserves the pre-fallback behavior for every request. |
 
 ### Advisor
 
@@ -152,7 +152,7 @@ veyyon config get compaction.threshold
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `images.describeForTextModels` | Describe Images for Text Models | boolean | `true` | When an image is attached to a model without vision support, save it under local:// and inject a description from a vision-capable model instead of dropping it. |
+| `images.describeForTextModels` | Text-Model Image Descriptions | boolean | `true` | When an image is attached to a model without vision support, save it under local:// and inject a description from a vision-capable model instead of dropping it. |
 
 ## Interaction
 
@@ -322,7 +322,7 @@ veyyon config get compaction.threshold
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `ttsr.enabled` | TTSR | boolean | `true` | Interrupt the agent mid-stream when output matches rule patterns (Time-Traveling Stream Rules). |
+| `ttsr.enabled` | Enable TTSR | boolean | `true` | Interrupt the agent mid-stream when output matches rule patterns (Time-Traveling Stream Rules). |
 | `ttsr.contextMode` | Context Mode | enum | `discard` | What to do with partial output when TTSR triggers. Values: `discard`, `keep`. |
 | `ttsr.interruptMode` | Rule Interrupt Mode | enum | `always` | When to interrupt mid-stream vs inject warning after completion. Values: `never`, `prose-only`, `tool-only`, `always`. |
 | `ttsr.repeatMode` | Repeat Mode | enum | `once` | How rules can repeat: once per session or after a message gap. A rule may override this in its frontmatter. Values: `once`, `after-gap`. |
@@ -370,7 +370,7 @@ veyyon config get compaction.threshold
 | `hindsight.autoRetain` | Hindsight Auto Retain | boolean | `true` | Retain transcript every N turns and at session boundaries. |
 | `hindsight.retainMode` | Hindsight Retain Mode | enum | `full-session` | full-session = upsert one document per session, last-turn = chunked. Values: `full-session`, `last-turn`. |
 | `hindsight.mentalModelsEnabled` | Hindsight Mental Models | boolean | `true` | Read curated reflect summaries (mental models) into developer instructions at boot. Loads existing models on the bank — does not write. Pair with hindsight.mentalModelAutoSeed to also auto-create the built-in seed set. |
-| `hindsight.mentalModelAutoSeed` | Hindsight Mental Model Auto-Seed | boolean | `true` | At session start, create any built-in mental models (project-conventions, project-decisions, user-preferences) that do not yet exist on the bank. |
+| `hindsight.mentalModelAutoSeed` | Mental Model Auto-Seed | boolean | `true` | At session start, create any built-in mental models (project-conventions, project-decisions, user-preferences) that do not yet exist on the bank. |
 
 ## Files
 
@@ -400,7 +400,7 @@ veyyon config get compaction.threshold
 | `read.summarize.prose` | Prose Summaries | boolean | `false` | Return structural summaries for Markdown and plain text reads. |
 | `read.summarize.minBodyLines` | Read Summary Body Lines | number | `4` | Minimum multiline body or literal length before read summaries collapse it. |
 | `read.summarize.minCommentLines` | Read Summary Comment Lines | number | `6` | Minimum multiline block comment length before read summaries collapse it. |
-| `read.summarize.minTotalLines` | Read Summary Minimum File Length | number | `100` | Files with fewer total lines are read verbatim instead of structurally summarized. |
+| `read.summarize.minTotalLines` | Read Summary Min File Length | number | `100` | Files with fewer total lines are read verbatim instead of structurally summarized. |
 | `read.summarize.unfoldUntil` | Read Summary Unfold Target | number | `50` | BFS-unfold elidable spans until the summary is at least this many visible lines. 0 keeps only the outermost elisions. |
 | `read.summarize.unfoldLimit` | Read Summary Unfold Ceiling | number | `100` | Hard ceiling on summary size while BFS-unfolding. An unfold whose revealed lines would exceed this is skipped (that span stays folded) and unfolding continues with the remaining spans. |
 
@@ -512,7 +512,7 @@ veyyon config get compaction.threshold
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
 | `tools.intentTracing` | Intent Tracing | boolean | `true` | Ask the agent to describe the intent of each tool call before executing it. |
-| `tools.abortOnFabricatedResult` | Abort On Fabricated Tool Result | boolean | `true` | With in-band tool calls, stop the model immediately when it starts hallucinating a tool result mid-turn. Disable to let the model finish generating and discard the fabricated continuation instead. |
+| `tools.abortOnFabricatedResult` | Abort on Fabricated Result | boolean | `true` | With in-band tool calls, stop the model immediately when it starts hallucinating a tool result mid-turn. Disable to let the model finish generating and discard the fabricated continuation instead. |
 | `tools.maxTimeout` | Max Tool Timeout | number | `0` | Maximum timeout in seconds the agent can set for any tool (0 = no limit). |
 | `async.enabled` | Async Execution | boolean | `true` | Enable async bash commands and background task execution. |
 | `async.pollWaitDuration` | Max Poll Time | enum | `smart` | How long the poll tool waits for background job updates before returning the current state. A fixed value waits that exact duration every time. `smart` adapts: it starts at 30s and climbs to 4m on a back-to-back poll, then resets to 30s after about a minute without polling. The 4m ceiling stays below the 5-minute prompt-cache boundary. Values: `5s`, `10s`, `30s`, `1m`, `5m`, `smart`. |
@@ -629,7 +629,7 @@ veyyon config get compaction.threshold
 | `providers.ollama-cloud.maxConcurrency` | Ollama Cloud Max Concurrency | number | `3` | Maximum concurrent Ollama Cloud subagent runs per process; 0 disables the provider-specific limit. |
 | `providers.webSearch` | Web Search Provider | enum | `auto` | The provider web_search uses; auto tries each in turn. Values: `auto`, `perplexity`, `gemini`, `anthropic`, `codex`, `xai`, `zai`, `exa`, `tinyfish`, `jina`, `kagi`, `tavily`, `firecrawl`, `brave`, `kimi`, `parallel`, `synthetic`, `searxng`, `startpage`, `duckduckgo`, `ecosia`, `google`, `mojeek`, `public`. |
 | `providers.webSearchExclude` | Excluded Web Search Providers | array | `[]` | Providers that web_search should never use, even as fallbacks. |
-| `providers.webSearchGeminiModel` | Gemini web_search model | string | _(unset)_ | Model ID for Gemini Google Search grounding. Defaults to gemini-2.5-flash. |
+| `providers.webSearchGeminiModel` | Gemini Web Search Model | string | _(unset)_ | Model ID for Gemini Google Search grounding. Defaults to gemini-2.5-flash. |
 | `providers.antigravityEndpoint` | Antigravity Endpoint Mode | enum | `auto` | Endpoint routing strategy for google-antigravity providers (chat, search, image, discovery). Values: `auto`, `production`, `sandbox`. |
 | `providers.image` | Image Provider | enum | `auto` | Preferred provider for image generation. Values: `auto`, `openai`, `antigravity`, `xai`, `gemini`, `openrouter`. |
 | `providers.tts` | Text-to-Speech Provider | enum | `auto` | Backend for the tts tool: local on-device neural TTS (Kokoro-82M) or xAI Grok Voice. Values: `auto`, `local`, `xai`. |
@@ -736,7 +736,7 @@ veyyon config get compaction.threshold
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `profileSharing` | Share Credentials Across Profiles | boolean | `true` | When on (the default), every profile reads one machine-wide set of provider logins. Turn off to give each profile its own private credential store. Changing this setting shuts down the active session; restart is required before any further model dispatch. Stored machine-wide, not per profile. |
+| `profileSharing` | Share Across Profiles | boolean | `true` | When on (the default), every profile reads one machine-wide set of provider logins. Turn off to give each profile its own private credential store. Changing this setting shuts down the active session; restart is required before any further model dispatch. Stored machine-wide, not per profile. |
 
 ### Auth Broker
 

@@ -1060,7 +1060,7 @@ export const CONTEXT_SETTINGS = {
 		ui: {
 			tab: "memory",
 			group: "Hindsight",
-			label: "Hindsight Mental Model Auto-Seed",
+			label: "Mental Model Auto-Seed",
 			description:
 				"At session start, create any built-in mental models (project-conventions, project-decisions, user-preferences) that do not yet exist on the bank.",
 			condition: "hindsightActive",
@@ -1076,7 +1076,7 @@ export const CONTEXT_SETTINGS = {
 		ui: {
 			tab: "rules",
 			group: "Stream Interrupts (TTSR)",
-			label: "TTSR",
+			label: "Enable TTSR",
 			description: "Interrupt the agent mid-stream when output matches rule patterns (Time-Traveling Stream Rules)",
 		},
 	},

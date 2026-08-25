@@ -59,13 +59,13 @@ function openExemptToolsEditor(component: SettingsSelectorComponent): readonly s
 }
 
 describe("settings text editor cancellation", () => {
-	/** A category click must clear the selector-owned text-input flag before global search resumes. */
-	it("restores normal keyboard routing after a sidebar switch", () => {
+	/** Esc out of the editor must clear the selector-owned text-input flag before global search resumes. */
+	it("restores normal keyboard routing after Esc", () => {
 		const cancellations: string[] = [];
 		const component = createSelector(cancellations);
-		const frame = openExemptToolsEditor(component);
+		openExemptToolsEditor(component);
 
-		component.handleInput(leftClick(frame, "Appearance"));
+		component.handleInput("\x1b");
 		for (const char of "theme") component.handleInput(char);
 		const searched = component.render(120).map(stripVTControlCharacters).join("\n");
 

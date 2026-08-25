@@ -166,7 +166,7 @@ export const EDITING_SETTINGS = {
 			min: 0, // a line count cannot be negative
 			tab: "files",
 			group: "Read Summaries",
-			label: "Read Summary Minimum File Length",
+			label: "Read Summary Min File Length",
 			description: "Files with fewer total lines are read verbatim instead of structurally summarized",
 		},
 	},

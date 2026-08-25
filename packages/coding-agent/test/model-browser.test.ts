@@ -112,8 +112,10 @@ describe("ModelBrowser perf display", () => {
 	test("detail line shows measured perf regardless of width", () => {
 		const browser = makePerfBrowser();
 
+		// The detail block rides the rows now (the blank reservation trails it),
+		// so pin the content, not a fixed index from the end.
 		const lines = renderPlain(browser, 70);
-		expect(lines[lines.length - 2]).toContain("~118t/s · 0.9s ttft");
+		expect(lines.some(line => line.includes("~118t/s · 0.9s ttft"))).toBe(true);
 	});
 
 	test("models without measurements render no perf cell", () => {

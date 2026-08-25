@@ -6,6 +6,7 @@
 
 ### Added
 
+- The selected row in `/settings` shows its description inline without a keypress.
 - Added `model.toolCallLoopGuard.readSubsumptionThreshold` (default `2`) to steer models that re-read unchanged code lines back-to-back before consuming full context.
 - `VEYYON_DEBUG_STARTUP=1` writes one line per phase of a prompt submission (compaction check, plan arm, context build, memory context), so a slow submit names the phase that spent the time.
 - `read` takes `depth` and `limit` arguments for directory listings, and a read of the session working directory root with neither now returns a concise top-level listing with per-subdirectory entry counts instead of the recursive tree.
@@ -30,6 +31,13 @@
 ### Changed
 
 - Classified runner output (cargo, bun, Go, ctest, dotnet, clippy, golangci-lint, Gradle lint, pytest, and tsc/eslint-family) now opens with a result-contract header: `[clean] <command>` or `[errors]` / `[errors N] <command>`. The header is the verdict and the body contains retained diagnostics.
+- A `/settings` drill-down takes the full settings card while it is open instead of rendering beside the category sidebar.
+- The model picker's detail block renders directly under the model rows instead of a window of blanks away on a short or filtered list.
+- `/settings` search keeps the cursor on the best match as the query refines instead of stranding it on an intermediate keystroke's top hit.
+- The effort picker's `auto` row wraps its level list instead of clipping the last level behind an ellipsis.
+- An unset text, list or record setting in `/settings` renders `—` instead of a blank value cell.
+- The Exa search delay setting offers named durations instead of a raw millisecond count.
+- Nine `/settings` labels that overflowed the label column or broke casing read consistently ("Enable TTSR", "Gemini Web Search Model", "Anthropic Server-Side Fallback" and six more).
 - Startup paints the composer itself instead of an empty reservation. The first frame used to reserve eight blank rows where the prompt would live and left them empty until the mode finished initializing — slash-command discovery, recent-session reads — so on a cold launch the composer arrived seconds late and read as it sliding up into place. The first frame now paints the resting composer (real hairline, ghost prompt, exact row count) from one static component shared with the mounted zone: the prompt is on screen from the first paint, and the handover swaps text, never position.
 - Multi-target `ast_grep` searches now execute concurrently while preserving globally ordered paging, totals, parse errors, cancellation, and target-order failures.
 - The vibe screens, the image-inspection call and an LSP hover code block draw no border of their own inside a tool block, so a block keeps one left edge; a tree connector remains only where a row belongs to the row above it, in the eval value tree, the grep line gutter, the job tree and the LSP reference tree.
@@ -51,6 +59,9 @@
 - `MNEMOPI_NO_EMBEDDINGS=0`, `false`, `no` or `off` now leaves embeddings on everywhere instead of disabling them on the API path.
 - Every `MNEMOPI_*` value is read by `config.ts` alone; the local-model, extraction and embedding modules ask it instead of parsing the variable again.
 - `getDiagnostics` is now `extractionDiagnostics` in `core/extraction/diagnostics` and `recallDiagnostics` in `core/recall-diagnostics`, so the two registries are no longer reached by one name.
+- Settings search ranks a label that contains the whole multi-word query above settings whose fields only split the words.
+- `SettingsList` expand-mode descriptions render for the selected row without an expand keypress.
+- A settings row clips an over-long label or value with an ellipsis instead of breaking the value column's alignment or cutting the value silently.
 - `imageFallback` takes the file name, media type, pixel size and cause of an undrawn image and returns a row naming all four; `ImageFallbackReason` states the cause.
 - `bestEffort` and `optionalResult` are imported from `@veyyon/utils/discarded-fault`. The barrel does not re-export them, so a consumer reaching them through `@veyyon/utils` names the module instead.
 
@@ -79,6 +90,10 @@
 - Cursor turns fail immediately when an asynchronous exec-server handler fails; malformed grep line or count values and oversized Connect frames fail before protobuf or buffer exhaustion; and success waits for queued handlers and gRPC trailers so quota and availability statuses are preserved.
 - `splitTrailingPartialEscape` lets a streaming reader hold back an escape sequence a chunk ended inside, so a sequence divided across two reads is stripped whole instead of losing its head and leaking its tail as text.
 - `discarded-fault.ts`: `bestEffort` and `optionalResult` state which contract discarded a promise's failure, one for a step nobody waits on and one for a probe whose failure is the answer, each taking a mandatory reason.
+
+### Breaking Changes
+
+- `SettingsListOptions.expandedIds` is gone. Expand-mode descriptions paint for the selected row, so there is no set of expanded ids to pass.
 
 ## [1.2.0] - 2026-08-23
 

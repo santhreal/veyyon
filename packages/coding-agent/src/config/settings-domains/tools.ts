@@ -511,7 +511,7 @@ export const TOOLS_SETTINGS = {
 		ui: {
 			tab: "tools",
 			group: "Execution",
-			label: "Abort On Fabricated Tool Result",
+			label: "Abort on Fabricated Result",
 			description:
 				"With in-band tool calls, stop the model immediately when it starts hallucinating a tool result mid-turn. Disable to let the model finish generating and discard the fabricated continuation instead.",
 		},

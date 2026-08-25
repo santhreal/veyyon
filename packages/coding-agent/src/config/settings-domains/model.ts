@@ -84,7 +84,7 @@ export const MODEL_SETTINGS = {
 		ui: {
 			tab: "model",
 			group: "Thinking",
-			label: "Omit Thinking summaries",
+			label: "Omit Thinking Summaries",
 			description:
 				"Instruct upstream providers to completely omit thinking summaries from responses (where supported)",
 		},
@@ -553,7 +553,7 @@ export const MODEL_SETTINGS = {
 		ui: {
 			tab: "model",
 			group: "Retry & Fallback",
-			label: "Anthropic Server-Side Fallback (Fable 5)",
+			label: "Anthropic Server-Side Fallback",
 			description:
 				"When a Claude Fable 5 / Mythos 5 request is blocked by Anthropic's safety classifier, retry it on Claude Opus 4.8 server-side (Anthropic `server-side-fallback-2026-06-01` beta). Opt-in — leaving this off preserves the pre-fallback behavior for every request.",
 		},

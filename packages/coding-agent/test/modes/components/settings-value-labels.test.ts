@@ -50,7 +50,7 @@ afterEach(() => {
 
 const makeTempDir = useTrackedTempDirs("veyyon-settings-labels-");
 
-function subagentsPanel(cwd: string = process.cwd(), width = 100): string {
+function subagentsPanel(cwd: string = process.cwd(), width = 100, select?: string): string {
 	const component = new SettingsSelectorComponent(
 		{
 			availableThinkingLevels: [],
@@ -63,6 +63,10 @@ function subagentsPanel(cwd: string = process.cwd(), width = 100): string {
 		{ onChange: () => {}, onCancel: () => {} },
 	);
 	component.openTab("subagents");
+	// The selected row shows its description inline, which borrows rows from the
+	// visible window: a test that asserts a row must first bring that row into
+	// view, exactly as a user scrolling to it would.
+	if (select) component.selectSetting(select);
 	return component.render(width).map(stripVTControlCharacters).join("\n");
 }
 
@@ -91,7 +95,7 @@ describe("settings rows show option labels, not stored values", () => {
 	 * have to see.
 	 */
 	it("renders the auto-close budgets as durations", () => {
-		const panel = subagentsPanel();
+		const panel = subagentsPanel(process.cwd(), 100, "subagent.autoClose.parkedMs");
 
 		expect(panel).toContain("Close After");
 		expect(panel).toContain("5 minutes");
@@ -106,7 +110,7 @@ describe("settings rows show option labels, not stored values", () => {
 	 * Runtime` is that row, and it predates the auto-close settings entirely.
 	 */
 	it("renders a named zero by its label", () => {
-		const panel = subagentsPanel();
+		const panel = subagentsPanel(process.cwd(), 100, "subagent.maxRuntimeMs");
 
 		expect(panel).toContain("Max Subagent Runtime");
 		expect(panel).toContain("Unlimited");
@@ -120,7 +124,7 @@ describe("settings rows show option labels, not stored values", () => {
 	it("labels a configured value, not only the default", async () => {
 		await Settings.instance.set("subagent.autoClose.parkedMs", 3_600_000);
 
-		const panel = subagentsPanel();
+		const panel = subagentsPanel(process.cwd(), 100, "subagent.autoClose.parkedMs");
 
 		expect(panel).toContain("1 hour");
 		expect(panel).not.toContain("3600000");
@@ -148,7 +152,7 @@ describe("settings rows show option labels, not stored values", () => {
 	it("falls back to the raw value when no option matches", async () => {
 		await Settings.instance.set("subagent.autoClose.parkedMs", 111_000);
 
-		expect(subagentsPanel()).toContain("111000");
+		expect(subagentsPanel(process.cwd(), 100, "subagent.autoClose.parkedMs")).toContain("111000");
 	});
 
 	/**
@@ -176,7 +180,7 @@ describe("settings rows show option labels, not stored values", () => {
 		// enough; the stub has to be replaced.
 		geometryStub?.restore();
 		geometryStub = stubStdoutGeometry({ columns: 140, rows: 40 });
-		const panel = subagentsPanel(fixture.cwd, 140);
+		const panel = subagentsPanel(fixture.cwd, 140, "subagent.autoClose.parkedMs");
 
 		expect(panel).toContain("--config file · 1 hour");
 		expect(panel).not.toContain("3600000");
@@ -196,7 +200,7 @@ describe("settings rows show option labels, not stored values", () => {
 describe("the Auto Close group follows its own switch", () => {
 	/** On: the switch and both budgets. */
 	it("shows both budgets while auto-close is enabled", () => {
-		const panel = subagentsPanel();
+		const panel = subagentsPanel(process.cwd(), 100, "subagent.autoClose.enabled");
 
 		expect(panel).toContain("Close Parked Subagents");
 		expect(panel).toContain("Close After");
@@ -207,7 +211,7 @@ describe("the Auto Close group follows its own switch", () => {
 	it("hides both budgets while auto-close is disabled", async () => {
 		await Settings.instance.set("subagent.autoClose.enabled", false);
 
-		const panel = subagentsPanel();
+		const panel = subagentsPanel(process.cwd(), 100, "subagent.autoClose.enabled");
 
 		expect(panel).toContain("Close Parked Subagents");
 		expect(panel).not.toContain("Close After");
@@ -230,12 +234,14 @@ describe("the Auto Close group follows its own switch", () => {
  */
 describe("stage one of the park/close lifecycle is on the settings screen", () => {
 	it("renders the Park After row as a duration beside the close budgets", () => {
-		const panel = subagentsPanel();
+		const panel = subagentsPanel(process.cwd(), 100, "subagent.idleTtlMs");
 
 		expect(panel).toContain("Park After");
-		// Its default is the same 5 minutes as the quiet close budget, so the row is
-		// only proved present by the label appearing twice, once per row.
-		expect(panel.match(/5 minutes/g)?.length).toBe(2);
+		// The row's own value column carries the duration: `Park After  5 minutes`,
+		// beside the close budget's identical default. (The selected row's inline
+		// description also mentions the default, so a bare count no longer works.)
+		expect(panel).toMatch(/Park After\s+5 minutes/);
+		expect(panel).toMatch(/Close After\s+5 minutes/);
 		expect(panel).not.toContain("300000");
 	});
 
@@ -243,7 +249,7 @@ describe("stage one of the park/close lifecycle is on the settings screen", () =
 	it("renders a zero idle TTL by its label", async () => {
 		await Settings.instance.set("subagent.idleTtlMs", 0);
 
-		const panel = subagentsPanel();
+		const panel = subagentsPanel(process.cwd(), 100, "subagent.idleTtlMs");
 
 		expect(panel).toContain("Until exit");
 	});
@@ -257,7 +263,7 @@ describe("stage one of the park/close lifecycle is on the settings screen", () =
 	it("feeds the value the park timer reads", async () => {
 		await Settings.instance.set("subagent.idleTtlMs", 900_000);
 
-		expect(subagentsPanel()).toContain("15 minutes");
+		expect(subagentsPanel(process.cwd(), 100, "subagent.idleTtlMs")).toContain("15 minutes");
 		expect(resolveSubagentIdleTtlMs(Settings.instance)).toBe(900_000);
 	});
 });

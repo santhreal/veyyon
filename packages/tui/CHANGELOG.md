@@ -2,12 +2,19 @@
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- `SettingsListOptions.expandedIds` is gone. Expand-mode descriptions paint for the selected row, so there is no set of expanded ids to pass.
+
 ### Added
 
 - `Image` accepts an `onDisplayed` callback and reports the cause each time an image starts or stops falling back to a placeholder.
 
 ### Changed
 
+- Settings search ranks a label that contains the whole multi-word query above settings whose fields only split the words.
+- `SettingsList` expand-mode descriptions render for the selected row without an expand keypress.
+- A settings row clips an over-long label or value with an ellipsis instead of breaking the value column's alignment or cutting the value silently.
 - `imageFallback` takes the file name, media type, pixel size and cause of an undrawn image and returns a row naming all four; `ImageFallbackReason` states the cause.
 
 ## [1.2.0] - 2026-08-23

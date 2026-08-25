@@ -7,6 +7,8 @@
 - Classified runner output (cargo, bun, Go, ctest, dotnet, clippy, golangci-lint, Gradle lint, pytest, and tsc/eslint-family) now opens with a result-contract header: `[clean] <command>` or `[errors]` / `[errors N] <command>`. The header is the verdict and the body contains retained diagnostics.
 ### Added
 
+- The selected row in `/settings` shows its description inline without a keypress.
+
 - Added `model.toolCallLoopGuard.readSubsumptionThreshold` (default `2`) to steer models that re-read unchanged code lines back-to-back before consuming full context.
 - `VEYYON_DEBUG_STARTUP=1` writes one line per phase of a prompt submission (compaction check, plan arm, context build, memory context), so a slow submit names the phase that spent the time.
 - `read` takes `depth` and `limit` arguments for directory listings, and a read of the session working directory root with neither now returns a concise top-level listing with per-subdirectory entry counts instead of the recursive tree.
@@ -18,6 +20,13 @@
 
 ### Changed
 
+- A `/settings` drill-down takes the full settings card while it is open instead of rendering beside the category sidebar.
+- The model picker's detail block renders directly under the model rows instead of a window of blanks away on a short or filtered list.
+- `/settings` search keeps the cursor on the best match as the query refines instead of stranding it on an intermediate keystroke's top hit.
+- The effort picker's `auto` row wraps its level list instead of clipping the last level behind an ellipsis.
+- An unset text, list or record setting in `/settings` renders `—` instead of a blank value cell.
+- The Exa search delay setting offers named durations instead of a raw millisecond count.
+- Nine `/settings` labels that overflowed the label column or broke casing read consistently ("Enable TTSR", "Gemini Web Search Model", "Anthropic Server-Side Fallback" and six more).
 - Startup paints the composer itself instead of an empty reservation. The first frame used to reserve eight blank rows where the prompt would live and left them empty until the mode finished initializing — slash-command discovery, recent-session reads — so on a cold launch the composer arrived seconds late and read as it sliding up into place. The first frame now paints the resting composer (real hairline, ghost prompt, exact row count) from one static component shared with the mounted zone: the prompt is on screen from the first paint, and the handover swaps text, never position.
 
 - Multi-target `ast_grep` searches now execute concurrently while preserving globally ordered paging, totals, parse errors, cancellation, and target-order failures.

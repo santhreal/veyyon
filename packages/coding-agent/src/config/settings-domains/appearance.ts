@@ -377,7 +377,7 @@ export const APPEARANCE_SETTINGS = {
 		ui: {
 			tab: "model",
 			group: "Vision",
-			label: "Describe Images for Text Models",
+			label: "Text-Model Image Descriptions",
 			description:
 				"When an image is attached to a model without vision support, save it under local:// and inject a description from a vision-capable model instead of dropping it",
 		},

@@ -126,6 +126,14 @@ const DECIMAL_NUMBER = /^-?\d+(?:\.\d+)?$/;
 export const UNSET_NUMBER_INPUT = "unset";
 
 /**
+ * Value-column text for a setting with nothing stored (empty string, empty
+ * list, empty record). A blank cell reads as a paint bug; the dash says the
+ * row is empty on purpose. Distinct from the `unset` sentinel above, which is
+ * a parse result, never a rendered string.
+ */
+const UNSET_VALUE_DISPLAY = "—";
+
+/**
  * What a typed number does to the setting: store this value, clear it, or refuse.
  *
  * A text input hands back a string and these settings are numbers with meaning: retry
@@ -2868,14 +2876,14 @@ export class SettingsSelectorComponent implements Component {
 	#frameLeft = 0;
 	/** Width of the category sidebar column at the last render. */
 	#sidebarCols = 0;
+	/** Columns before the pane at the last render (sidebar + gap, or 0 while a submenu owns the card). */
+	#paneColOffset = 0;
 	#sidebarWidthCache: number | undefined;
 	/** Last ModalShell geometry for mouse hit-testing. */
 	#shellGeometry: ModalShellGeometry | null = null;
 	/** True when the terminal cannot show an actionable settings pane safely. */
 	#viewportTooSmall = false;
 	#hoveredShortcutId: string | null = null;
-	/** Setting ids whose descriptions are expanded (Right/l). */
-	#expandedIds = new Set<string>();
 	/**
 	 * Keyboard focus rests on the category sidebar (Left from the pane).
 	 * While focused, Up/Down change category without wrapping and Right/Enter
@@ -3099,13 +3107,22 @@ export class SettingsSelectorComponent implements Component {
 		if (maxBodyRows < 1) return this.#renderTooSmall(width, termHeight);
 
 		// Vertical category sidebar on the left, settings pane on the right,
-		// separated by a silver hairline: `sidebar │  pane`.
+		// separated by a silver hairline: `sidebar │  pane`. While a submenu
+		// (enum picker, roster, threshold drill-down) owns the pane the sidebar
+		// hides: keyboard input already belongs to the submenu alone, and a
+		// sidebar click there only discarded the submenu — while its 22 columns
+		// squeezed every nested list into half the card. The submenu gets the
+		// full content width; the breadcrumb and "esc back" chip own the way out.
 		const sidebarWidth = this.#sidebarWidth(contentWidth);
-		const paneWidth = Math.max(1, contentWidth - sidebarWidth - SIDEBAR_GAP_COLS);
+		const searching = this.#searchList !== null;
+		const list = this.#searchList ?? this.#currentList;
+		const submenuOpen = list?.hasOpenSubmenu() === true;
+		const showSidebar = !submenuOpen;
+		const paneColOffset = showSidebar ? sidebarWidth + SIDEBAR_GAP_COLS : 0;
+		const paneWidth = Math.max(1, contentWidth - paneColOffset);
 		// The cursor brightens while the sidebar itself holds keyboard focus.
 		const sidebarCursor = this.#sidebarFocused ? `${theme.fg("accent", theme.nav.cursor)} ` : `${theme.nav.cursor} `;
-		const sidebarLines = this.#tabBar.renderVertical(sidebarWidth, sidebarCursor);
-		const searching = this.#searchList !== null;
+		const sidebarLines = showSidebar ? this.#tabBar.renderVertical(sidebarWidth, sidebarCursor) : [];
 		const showPreview = !searching && this.#currentTabId === "appearance" && paneWidth >= 40;
 		// The preview is a live status-line render: clamp every line to the
 		// pane so a wide preview can't punch through the modal's right border.
@@ -3130,13 +3147,11 @@ export class SettingsSelectorComponent implements Component {
 		// Prefer visible, actionable setting rows in short terminals. The
 		// decorative status preview returns once the body has enough room.
 		const previewLines = estimatedBody >= 8 ? requestedPreviewLines : [];
-		const list = this.#searchList ?? this.#currentList;
 		let listLines: readonly string[] = [];
 		if (list) {
 			list.setMaxVisible(Math.max(1, estimatedBody - previewLines.length));
 			list.setOptions({
 				descriptionMode: "expand",
-				expandedIds: this.#expandedIds,
 				layout: "flat",
 			});
 			listLines = list.render(paneWidth);
@@ -3148,11 +3163,16 @@ export class SettingsSelectorComponent implements Component {
 		const bar = theme.fg("borderAccent", theme.boxSharp.vertical);
 		const bodyRows = Math.max(sidebarLines.length, paneLines.length);
 		// The accented hairline is what makes the split read as a split; the category
-		// column carries no material of its own.
+		// column carries no material of its own. No sidebar, no hairline: a submenu
+		// body is one wide column.
 		const body: string[] = [];
 		for (let r = 0; r < bodyRows; r++) {
-			const side = sidebarLines[r] ?? padding(sidebarWidth);
-			body.push(`${side}${bar}  ${paneLines[r] ?? ""}`);
+			if (showSidebar) {
+				const side = sidebarLines[r] ?? padding(sidebarWidth);
+				body.push(`${side}${bar}  ${paneLines[r] ?? ""}`);
+			} else {
+				body.push(paneLines[r] ?? "");
+			}
 		}
 
 		// Breadcrumb: "Settings › Label" while a sub-pane (enum picker, text
@@ -3185,7 +3205,8 @@ export class SettingsSelectorComponent implements Component {
 		this.#tabRowCount = Math.min(sidebarLines.length, shell.geometry?.bodyRowCount ?? 0);
 		this.#contentRowStart = this.#tabRowStart;
 		this.#contentRowCount = shell.geometry?.bodyRowCount ?? 0;
-		this.#sidebarCols = sidebarWidth;
+		this.#sidebarCols = showSidebar ? sidebarWidth : 0;
+		this.#paneColOffset = paneColOffset;
 		return shell.lines;
 	}
 
@@ -3271,7 +3292,7 @@ export class SettingsSelectorComponent implements Component {
 		const overBody = bodyLine >= 0 && bodyLine < this.#contentRowCount;
 		// Sidebar column on the left, settings pane right of the hairline gap.
 		const overSidebar = overBody && innerCol >= 0 && innerCol < this.#sidebarCols && bodyLine < this.#tabRowCount;
-		const paneCol = innerCol - (this.#sidebarCols + SIDEBAR_GAP_COLS);
+		const paneCol = innerCol - this.#paneColOffset;
 		const overPane = overBody && paneCol >= 0;
 
 		if (event.wheel !== null) {
@@ -3300,10 +3321,9 @@ export class SettingsSelectorComponent implements Component {
 		}
 		if (!event.leftClick) return true;
 
-		// A sidebar click switches category even while a sub-pane is open (the
-		// rebuilt tab list discards the submenu, same as Esc + Tab).
+		// A sidebar click switches category. The sidebar hides while a submenu is
+		// open, so no click here can discard one.
 		if (overSidebar) {
-			this.#cancelOpenSubmenu();
 			const tab = this.#tabBar.tabAt(bodyLine, innerCol);
 			if (tab) {
 				this.#tabBar.selectTab(tab.id);
@@ -3417,6 +3437,13 @@ export class SettingsSelectorComponent implements Component {
 		}
 
 		this.#searchList.setItems(items);
+		const best = items.find(item => !item.heading);
+		if (best) this.#searchList.selectItem(best.id);
+		// Follow the best match as the query refines. setItems preserves selection
+		// by id, so an intermediate keystroke whose top hit was a worse row
+		// stranded the cursor there while the list re-ranked around it — Enter
+		// then activated the third-best match. Arrow keys never reach this path,
+		// so pinning the top row costs no navigation.
 		this.#searchMatchCount = total;
 		this.#tabBar.setTabs(
 			this.#buildSearchTabs(
@@ -3690,7 +3717,6 @@ export class SettingsSelectorComponent implements Component {
 					(source === "config-file" || source === "runtime") &&
 					typeof active === "string" &&
 					active.trim() !== currentValue;
-				if (overridden) this.#expandedIds.add(def.path);
 				return {
 					id: def.path,
 					label: overridden ? `${def.label} · ${source}` : def.label,
@@ -3738,7 +3764,9 @@ export class SettingsSelectorComponent implements Component {
 		if (isUnsetNumberPath(path) && (value === undefined || rawValue === String(UNSET_NUMBER) || rawValue === "")) {
 			return UNSET_NUMBER_OPTION_VALUE;
 		}
-		return rawValue;
+		// Same empty-cell rule as the text settings: an unset submenu string
+		// paints the placeholder, never a blank value column.
+		return rawValue === "" ? UNSET_VALUE_DISPLAY : rawValue;
 	}
 
 	/**
@@ -4211,7 +4239,13 @@ export class SettingsSelectorComponent implements Component {
 
 	#formatTextInputValue(path: SettingPath, value: unknown): string {
 		if (path === "providers.maxInFlightRequests") return this.#formatProviderLimitsValue(value);
-		return this.#formatTextInputEditValue(path, value);
+		const shown = this.#formatTextInputEditValue(path, value);
+		// An empty cell reads as a rendering bug, not as "nothing stored": an unset
+		// URL, an empty list and an empty record all painted as blank space beside
+		// the label. Mark the empty states; the edit seed keeps round-tripping the
+		// raw empty string through #formatTextInputEditValue.
+		if (shown === "" || shown === "{}" || shown === "[]") return UNSET_VALUE_DISPLAY;
+		return shown;
 	}
 
 	#formatTextInputEditValue(_path: SettingPath, value: unknown): string {
@@ -4338,7 +4372,7 @@ export class SettingsSelectorComponent implements Component {
 			() => this.#close(),
 			// The selector owns type-to-search and the footer hint; pin the
 			// split sidebar width so the divider never jumps between tabs.
-			{ typeToSearch: false, hint: "", layout: "flat", descriptionMode: "expand", expandedIds: this.#expandedIds },
+			{ typeToSearch: false, hint: "", layout: "flat", descriptionMode: "expand" },
 		);
 		this.#currentList.setHoverMotion({
 			requestRender: () => this.context.requestRender?.(),
@@ -4562,28 +4596,12 @@ export class SettingsSelectorComponent implements Component {
 
 		// Left/Right never change a setting's value: value edits go through
 		// activation (Enter/Space/click), which toggles a boolean or opens a
-		// chooser for an enum. That keeps Left free for sidebar focus and Right
-		// for description expand, with no collision against sidebar navigation.
-
-		// Right/l expands the selected setting description; Left/h collapses.
-		if (matchesKey(data, "right") || data === "l") {
-			const id = this.#currentList?.getSelectedItem()?.id;
-			if (id) {
-				this.#expandedIds.add(id);
-				this.#currentList?.setOptions({ expandedIds: this.#expandedIds, descriptionMode: "expand" });
-				return;
-			}
-		}
+		// chooser for an enum. That keeps Left free for sidebar focus, with no
+		// collision against sidebar navigation.
 		if (matchesKey(data, "left") || data === "h") {
-			const id = this.#currentList?.getSelectedItem()?.id;
-			if (id && this.#expandedIds.has(id)) {
-				this.#expandedIds.delete(id);
-				this.#currentList?.setOptions({ expandedIds: this.#expandedIds, descriptionMode: "expand" });
-				return;
-			}
-			// No expanded desc: Left focuses the category sidebar (it sits to
-			// the visual left). It must never wrap-cycle tabs — Left on the
-			// first category used to jump to the last one and lose the caret.
+			// Left focuses the category sidebar (it sits to the visual left). It
+			// must never wrap-cycle tabs — Left on the first category used to
+			// jump to the last one and lose the caret.
 			this.#sidebarFocused = true;
 			return;
 		}

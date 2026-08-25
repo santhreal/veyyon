@@ -214,7 +214,7 @@ export const PROVIDERS_SETTINGS = {
 		ui: {
 			tab: "providers",
 			group: "Services",
-			label: "Gemini web_search model",
+			label: "Gemini Web Search Model",
 			description: "Model ID for Gemini Google Search grounding. Defaults to gemini-2.5-flash.",
 		},
 	},
@@ -699,6 +699,14 @@ export const PROVIDERS_SETTINGS = {
 			group: "Services",
 			label: "Exa Search Delay",
 			description: "Minimum delay between Exa web search requests in milliseconds; set 0 to disable pacing",
+			options: [
+				{ value: "0", label: "Off" },
+				{ value: "250", label: "250 ms" },
+				{ value: "500", label: "500 ms" },
+				{ value: "1000", label: "1 second" },
+				{ value: "2000", label: "2 seconds" },
+				{ value: "5000", label: "5 seconds" },
+			],
 		},
 	},
 

@@ -104,12 +104,12 @@ export interface SettingsListOptions {
 	/**
 	 * How selected-item descriptions paint.
 	 * - `reserved` (default): always 1 blank + 3 rows (legacy panel density).
-	 * - `expand`: only when the selected item id is in `expandedIds` (Grok-style).
+	 * - `expand`: inline under the selected row, borrowing rows from the item
+	 *   budget (Grok-style). No keypress: the row under the cursor is the one
+	 *   being considered, so its description is the one worth reading.
 	 * - `none`: never paint descriptions in the list.
 	 */
 	descriptionMode?: "reserved" | "expand" | "none";
-	/** Ids whose descriptions are expanded (used when descriptionMode is `expand`). */
-	expandedIds?: ReadonlySet<string>;
 }
 
 /**
@@ -604,11 +604,16 @@ export class SettingsList implements Component {
 		const isSelected = index === this.#selectedIndex && !this.#sectionFocus;
 		const prefix = isSelected ? this.#theme.cursor : "  ";
 		const prefixWidth = visibleWidth(prefix);
-		const labelPadded = item.label + padding(Math.max(0, maxLabelWidth - visibleWidth(item.label)));
+		// A label longer than the column clips with an ellipsis instead of
+		// overflowing: padding(0) let a 34-column label shove the value column
+		// right for that one row, breaking the column every other row aligns to.
+		const labelClipped = truncateToWidth(item.label, maxLabelWidth, Ellipsis.Unicode);
+		const labelPadded = labelClipped + padding(Math.max(0, maxLabelWidth - visibleWidth(labelClipped)));
 		const separator = "  ";
 		const valueMaxWidth = rowWidth - prefixWidth - maxLabelWidth - visibleWidth(separator) - 2;
-		// The selected boolean/enum row shows ‹ value › so the Left/Right
-		// cycling gesture is discoverable, not a hidden power feature.
+		// The selected boolean/enum row shows ‹ value › so it reads as a value that
+		// steps rather than a fixed one. handleInput cycles it on confirm or space;
+		// Left and Right belong to the sidebar and never change a value.
 		const cyclable =
 			isSelected && !item.readOnly && !item.submenu && item.values !== undefined && item.values.length > 0;
 		// A row whose value is machine-readable (a millisecond count, a byte size) renders
@@ -617,7 +622,9 @@ export class SettingsList implements Component {
 		// a second field would go stale the moment a submenu selection writes the first.
 		const shownValue = item.labelForValue?.(item.currentValue) ?? item.currentValue;
 		const rawValue = cyclable ? `‹ ${shownValue} ›` : String(shownValue ?? "");
-		const valuePlain = truncateToWidth(rawValue, valueMaxWidth, Ellipsis.Omit);
+		// A clipped value carries the ellipsis: `Online (TINY role, els…` reads
+		// as cut; the Omit clip read as a value that happened to end mid-word.
+		const valuePlain = truncateToWidth(rawValue, valueMaxWidth, Ellipsis.Unicode);
 		const band = this.#theme.hovered;
 		const strength = band === undefined ? 0 : this.#hoverStrength(item.id, isSelected);
 		// De-emphasized rows (outside the active section) render as plain text
@@ -671,12 +678,7 @@ export class SettingsList implements Component {
 			const descMode = this.#options.descriptionMode ?? "reserved";
 			const selectedForDesc = this.#filteredItems[this.#selectedIndex];
 			const inlineDesc: string[] = [];
-			if (
-				descMode === "expand" &&
-				selectedForDesc?.description &&
-				!selectedForDesc.heading &&
-				this.#options.expandedIds?.has(selectedForDesc.id)
-			) {
+			if (descMode === "expand" && selectedForDesc?.description && !selectedForDesc.heading) {
 				const wrappedDesc = wrapTextWithAnsi(selectedForDesc.description, Math.max(1, width - 4));
 				const cap = Math.min(8, Math.max(1, this.#maxVisible - 4));
 				for (const line of wrappedDesc.slice(0, cap)) {

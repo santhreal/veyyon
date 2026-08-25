@@ -49,6 +49,38 @@ const FIELD_PENALTY = {
 const SUBSTRING_BONUS = 2_000;
 const PREFIX_BONUS = 3_000;
 
+/**
+ * The whole query scored as one needle against each field, with the bonus
+ * scaled per query word so a field that IS the typed phrase beats any
+ * per-token sum. Exact containment only: a fuzzy subsequence spanning a field
+ * is not the phrase the user typed, just letters in order.
+ *
+ * The label keeps the full per-word scale; every other field clamps to a
+ * single prefix bonus. Without the clamp a description that happened to open
+ * with the query outranked the setting the query NAMES, inverting the field
+ * hierarchy the penalties exist to enforce (a label hit beats a prose hit).
+ */
+function phraseScore(item: SettingItem, query: string, words: number): number | undefined {
+	const needle = query.toLowerCase();
+	const fields: Array<[string | undefined, number, boolean]> = [
+		[item.label, FIELD_PENALTY.label, true],
+		[item.id, FIELD_PENALTY.id, false],
+		[item.group, FIELD_PENALTY.group, false],
+		[item.description, FIELD_PENALTY.description, false],
+	];
+	for (const keyword of item.keywords ?? []) fields.push([keyword, FIELD_PENALTY.keywords, false]);
+	let best: number | undefined;
+	for (const [text, penalty, isLabel] of fields) {
+		if (!text) continue;
+		const at = text.toLowerCase().indexOf(needle);
+		if (at < 0) continue;
+		let score = at === 0 ? penalty - PREFIX_BONUS * words : penalty - SUBSTRING_BONUS * words;
+		if (!isLabel) score = Math.max(score, penalty - PREFIX_BONUS);
+		if (best === undefined || score < best) best = score;
+	}
+	return best;
+}
+
 export interface SettingSearchResult {
 	item: SettingItem;
 	score: number;
@@ -115,7 +147,19 @@ export function rankSettingItems(items: readonly SettingItem[], query: string): 
 			}
 			total += best;
 		}
-		if (matchedAll) results.push({ item, score: total });
+		if (!matchedAll) continue;
+		if (tokens.length > 1) {
+			const phrase = phraseScore(item, trimmed, tokens.length);
+			if (phrase !== undefined && phrase < total) total = phrase;
+		}
+		// Phrase coherence: the whole query, contained in ONE field, outranks
+		// any field-scattered token sum. The raw sum rewarded scattering —
+		// `compaction model` ranked Compaction Fallback over Compaction Model
+		// because "model" hit Fallback's keyword at prefix strength while the
+		// exact label summed only a prefix and a substring token. Scaling the
+		// bonus per word keeps the phrase ahead of any sum: a sum can stack at
+		// most one prefix bonus per token, and the phrase stacks exactly that.
+		results.push({ item, score: total });
 	}
 
 	// Ties break on label so the order is stable between renders rather than
