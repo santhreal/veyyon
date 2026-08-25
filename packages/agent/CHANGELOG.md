@@ -13,6 +13,7 @@
 - `convertMessageToLlm` returns user, developer, and toolResult messages by reference when no transformation is needed, avoiding a shallow-spread allocation per message per turn on long conversations.
 - `filterProviderReplayMessages` returns the original array when no provider refusals are present, avoiding a full-array `.filter()` allocation per turn.
 - `storedToolCallIds` is skipped when the assistant message has no tool-call blocks, avoiding a 1.45 ms full-history scan on pure-text turns.
+- The done, recovered, and abort paths share one snapshot between `message_start` and `message_end` events instead of copying the assistant message twice, avoiding a redundant deep-clone of content and tool-call arguments per finalized turn.
 
 ### Added
 

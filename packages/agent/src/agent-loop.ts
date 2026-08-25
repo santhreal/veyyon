@@ -1069,8 +1069,9 @@ async function runLoopBody(
 				if (recovered) {
 					message = snapshotAssistantMessage(message);
 					currentContext.messages.push(message);
-					stream.push({ type: "message_start", message: snapshotAssistantMessage(message) });
-					stream.push({ type: "message_end", message: snapshotAssistantMessage(message) });
+					const eventSnapshot = snapshotAssistantMessage(message);
+					stream.push({ type: "message_start", message: eventSnapshot });
+					stream.push({ type: "message_end", message: eventSnapshot });
 				}
 				newMessages.push(message);
 
@@ -1737,10 +1738,11 @@ async function streamAssistantResponse(
 						} else {
 							context.messages.push(finalMessage);
 						}
+						const eventSnapshot = snapshotAssistantMessage(finalMessage);
 						if (!addedPartial) {
-							stream.push({ type: "message_start", message: snapshotAssistantMessage(finalMessage) });
+							stream.push({ type: "message_start", message: eventSnapshot });
 						}
-						stream.push({ type: "message_end", message: snapshotAssistantMessage(finalMessage) });
+						stream.push({ type: "message_end", message: eventSnapshot });
 						await finishChat(finalMessage);
 						return finalMessage;
 					}
@@ -2158,13 +2160,14 @@ function emitAbortedAssistantMessage(
 		retained.toolCallAbortMessages = toolCallAbortMessages;
 	}
 	const abortedMessage = snapshotAssistantMessage(retained);
+	const eventSnapshot = snapshotAssistantMessage(abortedMessage);
 	if (addedPartial) {
 		context.messages[context.messages.length - 1] = abortedMessage;
 	} else {
 		context.messages.push(abortedMessage);
-		stream.push({ type: "message_start", message: snapshotAssistantMessage(abortedMessage) });
+		stream.push({ type: "message_start", message: eventSnapshot });
 	}
-	stream.push({ type: "message_end", message: snapshotAssistantMessage(abortedMessage) });
+	stream.push({ type: "message_end", message: eventSnapshot });
 	return abortedMessage;
 }
 

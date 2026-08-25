@@ -3318,6 +3318,113 @@ describe("agentLoop streaming snapshots", () => {
 		// partial, never the mutable partial object itself.
 		expect(update.message).not.toBe(livePartial);
 	});
+
+	it("shares one snapshot between message_start and message_end on a done turn", async () => {
+		// WHY: message_start and message_end carry the same immutable view of
+		// the finalized assistant message. Sharing one snapshot instead of two
+		// avoids a redundant copy per turn. The shared snapshot must be a
+		// distinct object from the stored context message so subscribers cannot
+		// mutate the canonical message through the event.
+		// This covers the non-streaming done path (addedPartial=false) where
+		// both events are emitted from the same snapshot. When the streaming
+		// path emits message_start first (addedPartial=true), only message_end
+		// is emitted here and no sharing is needed.
+		const context: AgentContext = {
+			systemPrompt: ["You are helpful."],
+			messages: [],
+			tools: [],
+		};
+		const config: AgentLoopConfig = {
+			model: createMockModel().model,
+			convertToLlm: identityConverter,
+		};
+		const liveMessage = createAssistantMessage([{ type: "text", text: "Hi there!" }], "stop");
+		// A stream that goes straight to done without a start event keeps
+		// addedPartial=false, so the done path emits both message_start and
+		// message_end from the shared eventSnapshot.
+		const streamFn = () => {
+			const stream = new AssistantMessageEventStream();
+			stream.push({ type: "done", reason: "stop", message: liveMessage });
+			return stream;
+		};
+
+		const events: AgentEvent[] = [];
+		const stream = agentLoop([createUserMessage("say hi")], context, config, undefined, streamFn);
+		for await (const event of stream) {
+			events.push(event);
+		}
+
+		const start = events.find(
+			(e): e is Extract<AgentEvent, { type: "message_start" }> =>
+				e.type === "message_start" && e.message.role === "assistant",
+		);
+		const end = events.find(
+			(e): e is Extract<AgentEvent, { type: "message_end" }> =>
+				e.type === "message_end" && e.message.role === "assistant",
+		);
+		expect(start).toBeDefined();
+		expect(end).toBeDefined();
+		if (!start || !end) throw new Error("missing assistant message_start or message_end");
+		// Shared snapshot: both events carry the same object.
+		expect(start.message).toBe(end.message);
+		// The shared snapshot is distinct from the stored context message.
+		expect(start.message).not.toBe(context.messages.at(-1));
+		// Content is preserved.
+		const block = (start.message as AssistantMessage).content[0];
+		if (block?.type !== "text") throw new Error("expected text block");
+		expect(block.text).toBe("Hi there!");
+	});
+
+	it("shares one snapshot between message_start and message_end on an aborted turn", async () => {
+		// WHY: the abort path also emits message_start + message_end for the
+		// retained assistant message. Sharing one snapshot avoids a redundant
+		// copy on abort. When addedPartial is true (streaming started), only
+		// message_end is emitted; when addedPartial is false, both share.
+		const context: AgentContext = {
+			systemPrompt: ["You are helpful."],
+			messages: [],
+			tools: [],
+		};
+		const config: AgentLoopConfig = {
+			model: createMockModel().model,
+			convertToLlm: identityConverter,
+		};
+		const liveMessage = createAssistantMessage([{ type: "text", text: "Starting." }], "stop");
+		const controller = new AbortController();
+		// Stream goes straight to done without a start event (addedPartial=false),
+		// so the abort path emits both message_start and message_end.
+		const streamFn = () => {
+			const stream = new AssistantMessageEventStream();
+			controller.abort();
+			stream.push({ type: "done", reason: "stop", message: liveMessage });
+			return stream;
+		};
+
+		const events: AgentEvent[] = [];
+		const stream = agentLoop([createUserMessage("run echo")], context, config, controller.signal, streamFn);
+		for await (const event of stream) {
+			events.push(event);
+		}
+
+		const start = events.find(
+			(e): e is Extract<AgentEvent, { type: "message_start" }> =>
+				e.type === "message_start" && e.message.role === "assistant",
+		);
+		const end = events.find(
+			(e): e is Extract<AgentEvent, { type: "message_end" }> =>
+				e.type === "message_end" && e.message.role === "assistant",
+		);
+		// On abort with addedPartial=false, both events are emitted and share
+		// the same snapshot. When addedPartial=true, only message_end is emitted.
+		if (start && end) {
+			expect(start.message).toBe(end.message);
+			expect(start.message).not.toBe(context.messages.at(-1));
+		} else if (end) {
+			expect(end.message).not.toBe(context.messages.at(-1));
+		} else {
+			throw new Error("missing assistant message_end on abort");
+		}
+	});
 });
 
 describe("agentLoop kCursorExecResolved (issue #4348)", () => {
