@@ -276,9 +276,32 @@ export class AppendOnlyContextManager {
 	 * when nothing diverged. */
 	#longestStablePrefix(normalizedMessages: readonly unknown[]): number {
 		const bound = Math.min(this.#lastSyncCount, normalizedMessages.length);
+		const logged = this.log.entries();
 		for (let i = 0; i < bound; i++) {
-			if (this.#messageDigest(normalizedMessages[i]) !== this.#messageDigests[i]) {
-				return i;
+			const incoming = normalizedMessages[i];
+			const prev = logged[i];
+			// Fast path: `convertToLlm` returns assistant messages by reference and
+			// shallow-spreads user/toolResult messages, preserving the `content` array
+			// reference. When the object identity or the content reference plus the
+			// scalar fields the digest covers all match, the message is byte-identical
+			// to the one synced last turn and the JSON.stringify digest can be skipped.
+			if (incoming !== prev) {
+				const a = incoming as unknown as Record<string, unknown> | null;
+				const b = prev as unknown as Record<string, unknown> | null;
+				if (
+					!a ||
+					!b ||
+					a.role !== b.role ||
+					a.content !== b.content ||
+					(a.providerPayload ?? null) !== (b.providerPayload ?? null) ||
+					(a.toolCalls ?? a.tool_calls ?? null) !== (b.toolCalls ?? b.tool_calls ?? null) ||
+					(a.toolCallId ?? a.tool_call_id ?? null) !== (b.toolCallId ?? b.tool_call_id ?? null) ||
+					(a.toolName ?? a.name ?? null) !== (b.toolName ?? b.name ?? null) ||
+					(a.isError ?? null) !== (b.isError ?? null) ||
+					(a.id ?? null) !== (b.id ?? null)
+				) {
+					if (this.#messageDigest(incoming) !== this.#messageDigests[i]) return i;
+				}
 			}
 		}
 		return bound;

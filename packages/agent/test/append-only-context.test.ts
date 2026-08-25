@@ -852,11 +852,77 @@ describe("tool examples injection through build()", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Tool-call mutation detection
+// Helpers for fast-path tests
+// ---------------------------------------------------------------------------
+
+/** Read a field from a test Message by key. The compiler cannot track the
+ *  real shape of `partialMsg` fixtures, so narrow at the boundary instead of
+ *  asserting an inline object type at every access site. */
+function fieldOf<K extends string>(msg: Message, key: K): unknown {
+	if (msg && typeof msg === "object" && key in msg) return (msg as unknown as Record<string, unknown>)[key];
+	return undefined;
+}
+
+/** Simulate `convertToLlm` for user messages: shallow spread preserves the
+ *  `content` reference but creates a new outer object. */
+function spreadUser(content: unknown, extra?: Record<string, unknown>): Message {
+	return { role: "user", content, attribution: "user", ...extra } as unknown as Message;
+}
+
+/** Simulate `convertToLlm` for assistant messages: the same object is returned
+ *  (no spread). */
+function passthroughAssistant(msg: Message): Message {
+	return msg;
+}
+
+/** Simulate `convertToLlm` for toolResult messages: shallow spread with
+ *  `content` usually preserved (when not pruned). */
+function spreadToolResult(content: unknown, extra?: Record<string, unknown>): Message {
+	return { role: "toolResult", content, attribution: "agent", ...extra } as unknown as Message;
+}
+
+// ---------------------------------------------------------------------------
+// Tool-call mutation detection (new-object scenario)
 // ---------------------------------------------------------------------------
 
 describe("syncMessages detects tool_calls mutation", () => {
-	it("rebuilds the log when tool_calls is mutated in place", () => {
+	it("rebuilds the log when tool_calls changes on a new object with same content (#3406)", () => {
+		// WHY: convertToLlm creates a fresh object each turn via shallow spread.
+		// The content reference is preserved, but tool_calls is a different array.
+		// The fast-path must fall through to the digest, which covers tool_calls.
+		const mgr = new AppendOnlyContextManager();
+		mgr.build(makeContext(), BUILD_OPTS);
+
+		const userMsg = partialMsg({ role: "user", content: "q" });
+		const assistantContent = [{ type: "text", text: "response" }];
+		const originalAssistant = partialMsg({
+			role: "assistant",
+			content: assistantContent,
+			tool_calls: [{ id: "c1", type: "function", function: { name: "read", arguments: '{"path":"/a"}' } }],
+		});
+		mgr.syncMessages([userMsg, originalAssistant]);
+		expect(mgr.log.length).toBe(2);
+
+		// New object (shallow spread): same content reference, different tool_calls.
+		const newAssistant = partialMsg({
+			role: "assistant",
+			content: assistantContent,
+			tool_calls: [{ id: "c1", type: "function", function: { name: "read", arguments: '{"path":"/b"}' } }],
+		});
+		mgr.syncMessages([userMsg, newAssistant]);
+
+		expect(mgr.log.length).toBe(2);
+		const rebuilt = mgr.log.toMessages()[1]!;
+		const rebuiltTc = fieldOf(rebuilt, "tool_calls") as Array<{ function: { arguments: string } }>;
+		expect(rebuiltTc[0].function.arguments).toBe('{"path":"/b"}');
+	});
+
+	it("in-place tool_calls mutation on the same object is visible through the log reference", () => {
+		// WHY: when the exact same object is synced again (identity-equal), the
+		// fast-path skips the digest. Any in-place mutation is already visible
+		// because the log stores the object reference, not a copy. This test
+		// documents that behavior so a future change to log-storage semantics
+		// (e.g. deep-cloning on append) doesn't silently break it.
 		const mgr = new AppendOnlyContextManager();
 		mgr.build(makeContext(), BUILD_OPTS);
 
@@ -867,18 +933,266 @@ describe("syncMessages detects tool_calls mutation", () => {
 		};
 		const msgs = [partialMsg({ role: "user", content: "q" }), assistant] as unknown as Message[];
 		mgr.syncMessages(msgs);
-		expect(mgr.log.length).toBe(2);
 
-		// Mutate tool_calls in place — role+content unchanged, so the old
-		// (role+content-only) digest would miss this. The full digest must catch it.
 		const tcs = assistant.tool_calls as Array<{ function: { arguments: string } }>;
 		tcs[0].function.arguments = '{"path":"/b"}';
 		mgr.syncMessages(msgs);
 
-		// Log was rebuilt → length resets to the new normalized message list length.
-		expect(mgr.log.length).toBe(2);
-		const rebuilt = mgr.log.toMessages()[1] as unknown as Record<string, unknown>;
-		const rebuiltTc = (rebuilt.tool_calls as Array<{ function: { arguments: string } }>)[0];
-		expect(rebuiltTc.function.arguments).toBe('{"path":"/b"}');
+		const rebuilt = mgr.log.toMessages()[1]!;
+		const rebuiltTc = fieldOf(rebuilt, "tool_calls") as Array<{ function: { arguments: string } }>;
+		expect(rebuiltTc[0].function.arguments).toBe('{"path":"/b"}');
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Fast-path regression tests for #longestStablePrefix
+// ---------------------------------------------------------------------------
+
+describe("longestStablePrefix fast-path", () => {
+	// WHY: the fast-path skips the JSON.stringify digest when object identity or
+	// content-reference + scalar fields all match. These tests prove every field
+	// the digest covers is also checked by the fast-path, so no in-place rewrite
+	// escapes detection when convertToLlm creates a new object.
+
+	it("identity-equal assistant message: skips digest, log preserves reference", () => {
+		const mgr = new AppendOnlyContextManager();
+		mgr.build(makeContext(), BUILD_OPTS);
+
+		const user = partialMsg({ role: "user", content: "q" });
+		const assistant = passthroughAssistant(partialMsg({ role: "assistant", content: "a" }));
+		mgr.syncMessages([user, assistant]);
+
+		// Same objects — fast-path skips digest for both.
+		mgr.syncMessages([user, assistant]);
+
+		const entries = mgr.log.entries();
+		expect(entries[0]).toBe(user);
+		expect(entries[1]).toBe(assistant);
+	});
+
+	it("shallow-spread user message with same content ref: skips digest", () => {
+		const mgr = new AppendOnlyContextManager();
+		mgr.build(makeContext(), BUILD_OPTS);
+
+		const content = [{ type: "text", text: "hello" }];
+		const original = spreadUser(content);
+		mgr.syncMessages([original]);
+
+		// New object, same content reference — fast-path matches.
+		const spread = spreadUser(content);
+		expect(spread).not.toBe(original); // new outer object
+		expect(fieldOf(spread, "content")).toBe(content); // same content ref
+
+		mgr.syncMessages([spread]);
+		const entries = mgr.log.entries();
+		// Log still holds the original (no divergence detected).
+		expect(entries[0]).toBe(original);
+	});
+
+	it("shallow-spread toolResult with same content ref: skips digest", () => {
+		const mgr = new AppendOnlyContextManager();
+		mgr.build(makeContext(), BUILD_OPTS);
+
+		const content = [{ type: "text", text: "output" }];
+		const original = spreadToolResult(content, { toolCallId: "c1", toolName: "bash" });
+		mgr.syncMessages([original]);
+
+		const spread = spreadToolResult(content, { toolCallId: "c1", toolName: "bash" });
+		expect(spread).not.toBe(original);
+		expect(fieldOf(spread, "content")).toBe(content);
+
+		mgr.syncMessages([spread]);
+		const entries = mgr.log.entries();
+		expect(entries[0]).toBe(original);
+	});
+
+	it("content array changed on new object: fast-path falls through to digest", () => {
+		const mgr = new AppendOnlyContextManager();
+		mgr.build(makeContext(), BUILD_OPTS);
+
+		const original = spreadUser([{ type: "text", text: "old" }]);
+		mgr.syncMessages([original]);
+
+		const changed = spreadUser([{ type: "text", text: "new" }]);
+		mgr.syncMessages([changed]);
+
+		const entries = mgr.log.entries();
+		expect(fieldOf(entries[0], "content")).not.toBe(original);
+		const text = fieldOf(entries[0], "content") as Array<{ text: string }>;
+		expect(text[0].text).toBe("new");
+	});
+
+	it("providerPayload changed on new object with same content ref: detected", () => {
+		const mgr = new AppendOnlyContextManager();
+		mgr.build(makeContext(), BUILD_OPTS);
+
+		const content = [{ type: "text", text: "same" }];
+		const original = partialMsg({
+			role: "assistant",
+			content,
+			providerPayload: { type: "old", data: "a" },
+		});
+		mgr.syncMessages([original]);
+
+		// New object, same content ref, different providerPayload.
+		const changed = partialMsg({
+			role: "assistant",
+			content,
+			providerPayload: { type: "new", data: "b" },
+		});
+		mgr.syncMessages([changed]);
+
+		const entries = mgr.log.entries();
+		const pp = fieldOf(entries[0], "providerPayload") as { type: string };
+		expect(pp.type).toBe("new");
+	});
+
+	it("tool_calls changed on new object with same content ref: detected", () => {
+		const mgr = new AppendOnlyContextManager();
+		mgr.build(makeContext(), BUILD_OPTS);
+
+		const content = [{ type: "text", text: "same" }];
+		const original = partialMsg({
+			role: "assistant",
+			content,
+			tool_calls: [{ id: "c1", type: "function", function: { name: "read", arguments: "{}" } }],
+		});
+		mgr.syncMessages([original]);
+
+		const changed = partialMsg({
+			role: "assistant",
+			content,
+			tool_calls: [{ id: "c1", type: "function", function: { name: "write", arguments: "{}" } }],
+		});
+		mgr.syncMessages([changed]);
+
+		const entries = mgr.log.entries();
+		const tc = fieldOf(entries[0], "tool_calls") as Array<{ function: { name: string } }>;
+		expect(tc[0].function.name).toBe("write");
+	});
+
+	it("toolCallId changed on new object with same content ref: detected", () => {
+		const mgr = new AppendOnlyContextManager();
+		mgr.build(makeContext(), BUILD_OPTS);
+
+		const content = [{ type: "text", text: "output" }];
+		const original = spreadToolResult(content, { toolCallId: "old-call", toolName: "bash" });
+		mgr.syncMessages([original]);
+
+		const changed = spreadToolResult(content, { toolCallId: "new-call", toolName: "bash" });
+		mgr.syncMessages([changed]);
+
+		const entries = mgr.log.entries();
+		expect(fieldOf(entries[0], "toolCallId")).toBe("new-call");
+	});
+
+	it("toolName changed on new object with same content ref: detected", () => {
+		const mgr = new AppendOnlyContextManager();
+		mgr.build(makeContext(), BUILD_OPTS);
+
+		const content = [{ type: "text", text: "output" }];
+		const original = spreadToolResult(content, { toolCallId: "c1", toolName: "read" });
+		mgr.syncMessages([original]);
+
+		const changed = spreadToolResult(content, { toolCallId: "c1", toolName: "write" });
+		mgr.syncMessages([changed]);
+
+		const entries = mgr.log.entries();
+		expect(fieldOf(entries[0], "toolName")).toBe("write");
+	});
+
+	it("isError changed on new object with same content ref: detected", () => {
+		const mgr = new AppendOnlyContextManager();
+		mgr.build(makeContext(), BUILD_OPTS);
+
+		const content = [{ type: "text", text: "output" }];
+		const original = spreadToolResult(content, { toolCallId: "c1", toolName: "bash", isError: false });
+		mgr.syncMessages([original]);
+
+		const changed = spreadToolResult(content, { toolCallId: "c1", toolName: "bash", isError: true });
+		mgr.syncMessages([changed]);
+
+		const entries = mgr.log.entries();
+		expect(fieldOf(entries[0], "isError")).toBe(true);
+	});
+
+	it("id changed on new object with same content ref: detected", () => {
+		const mgr = new AppendOnlyContextManager();
+		mgr.build(makeContext(), BUILD_OPTS);
+
+		const content = [{ type: "text", text: "same" }];
+		const original = partialMsg({ role: "assistant", content, id: "msg-old" });
+		mgr.syncMessages([original]);
+
+		const changed = partialMsg({ role: "assistant", content, id: "msg-new" });
+		mgr.syncMessages([changed]);
+
+		const entries = mgr.log.entries();
+		expect(fieldOf(entries[0], "id")).toBe("msg-new");
+	});
+
+	it("role changed on new object with same content ref: detected", () => {
+		const mgr = new AppendOnlyContextManager();
+		mgr.build(makeContext(), BUILD_OPTS);
+
+		const content = "same text";
+		const original = partialMsg({ role: "user", content });
+		mgr.syncMessages([original]);
+
+		const changed = partialMsg({ role: "assistant", content });
+		mgr.syncMessages([changed]);
+
+		const entries = mgr.log.entries();
+		expect(fieldOf(entries[0], "role")).toBe("assistant");
+	});
+
+	it("snake_case tool_call_id changed on new object: detected", () => {
+		const mgr = new AppendOnlyContextManager();
+		mgr.build(makeContext(), BUILD_OPTS);
+
+		const content = [{ type: "text", text: "output" }];
+		const original = partialMsg({ role: "toolResult", content, tool_call_id: "old", name: "bash" });
+		mgr.syncMessages([original]);
+
+		const changed = partialMsg({ role: "toolResult", content, tool_call_id: "new", name: "bash" });
+		mgr.syncMessages([changed]);
+
+		const entries = mgr.log.entries();
+		expect(fieldOf(entries[0], "tool_call_id")).toBe("new");
+	});
+
+	it("prefix preserved when only the tail message changes on a new object", () => {
+		const mgr = new AppendOnlyContextManager();
+		mgr.build(makeContext(), BUILD_OPTS);
+
+		const content0 = [{ type: "text", text: "stable" }];
+		const user0 = spreadUser(content0);
+		const assistant = passthroughAssistant(partialMsg({ role: "assistant", content: "a1" }));
+		mgr.syncMessages([user0, assistant]);
+
+		// user0: new object, same content ref → fast-path matches, prefix preserved.
+		// assistant: same object → identity match.
+		// New tail appended.
+		const user0Spread = spreadUser(content0);
+		mgr.syncMessages([user0Spread, assistant, partialMsg({ role: "user", content: "q2" })]);
+
+		const entries = mgr.log.entries();
+		expect(entries).toHaveLength(3);
+		expect(entries[0]).toBe(user0);
+		expect(entries[1]).toBe(assistant);
+		expect(fieldOf(entries[2], "content")).toBe("q2");
+	});
+
+	it("divergence at position 0 re-syncs entire log", () => {
+		const mgr = new AppendOnlyContextManager();
+		mgr.build(makeContext(), BUILD_OPTS);
+
+		mgr.syncMessages([spreadUser("hello"), passthroughAssistant(partialMsg({ role: "assistant", content: "a" }))]);
+
+		mgr.syncMessages([spreadUser("world"), passthroughAssistant(partialMsg({ role: "assistant", content: "a" }))]);
+
+		const entries = mgr.log.entries();
+		expect(entries).toHaveLength(2);
+		expect(fieldOf(entries[0], "content")).toBe("world");
 	});
 });
