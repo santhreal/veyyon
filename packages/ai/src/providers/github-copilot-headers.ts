@@ -53,15 +53,14 @@ export function inferCopilotInitiator(messages: unknown[]): CopilotInitiator {
 
 /** Check whether any message in the conversation contains image content. */
 export function hasCopilotVisionInput(messages: Message[]): boolean {
-	return messages.some(msg => {
-		if (msg.role === "user" && Array.isArray(msg.content)) {
-			return msg.content.some(c => c.type === "image");
+	for (const msg of messages) {
+		if (msg.role !== "user" && msg.role !== "toolResult") continue;
+		if (!Array.isArray(msg.content)) continue;
+		for (const c of msg.content) {
+			if (c.type === "image") return true;
 		}
-		if (msg.role === "toolResult" && Array.isArray(msg.content)) {
-			return msg.content.some(c => c.type === "image");
-		}
-		return false;
-	});
+	}
+	return false;
 }
 
 /**
