@@ -46,6 +46,12 @@
 - The agent-dashboard comms summary, advisor-message blocker count, account-manager unhealthy count, and settings-selector per-model and blocked-agent counts use counting loops instead of `.filter().length`, avoiding a throwaway array per render.
 - The agent-dashboard roster column-width `reduce` is replaced with a `for` loop, avoiding a callback allocation per column measure.
 - The input-controller queued-message restore merges two `.filter().map()` passes into a single `for` loop, avoiding four throwaway arrays when restoring compaction-queued messages.
+- `resolveProviderUsageTotal` merges `flatMap`+`map`+`reduce` into a nested `for` loop, avoiding two intermediate arrays per usage display render.
+- `resolveAggregateRemaining` merges `map`+`filter`+double `reduce` into a single `for` loop, avoiding two intermediate arrays and two callback allocations per usage display render.
+- The usage display section-count and section-trailing-width double `reduce` is replaced with a single `for` loop, avoiding two callback allocations per section render.
+- The model-hub recent-search count builds its `Set` without `.map()` and counts with a `for` loop instead of `.reduce()`, avoiding an intermediate array and a callback allocation per search keystroke.
+- The job tool status partition merges three `.filter()` calls into a single `for` loop, avoiding three throwaway arrays per job poll.
+- The autoresearch dashboard merges three `.filter().length` calls into a single counting loop, avoiding three throwaway arrays per status line render during autoresearch mode.
 
 ### Added
 
