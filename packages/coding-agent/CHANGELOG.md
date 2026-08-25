@@ -43,6 +43,7 @@
 
 ### Fixed
 
+- Multi-target `ast_grep` searches across overlapping paths deduplicate matches so totals, file counts, and paged results are not duplicated or truncated.
 - Acknowledging a completed background job before lifting its watch no longer delivers a duplicate completion notification when retention is zero.
 - A generic tool card with an undrawable image result no longer accumulates duplicate image placeholder rows on rebuild.
 - With Language Servers off, which is the default, the write and edit tools no longer start a language server to inject diagnostics, format the file, or notify the workspace that a file changed, including on the ACP client-bridge write path.
