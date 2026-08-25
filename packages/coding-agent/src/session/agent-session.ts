@@ -14964,6 +14964,7 @@ export class AgentSession {
 		this.#scheduleAgentContinue({ generation: this.#promptGeneration });
 		return true;
 	}
+
 	#extractRewindReport(messages: AgentMessage[]): string | undefined {
 		if (!this.#checkpointState) return undefined;
 		if (this.#pendingRewindReport) return this.#pendingRewindReport;
