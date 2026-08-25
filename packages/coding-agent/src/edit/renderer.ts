@@ -716,6 +716,40 @@ function renderDiffSection(
 		return text;
 	});
 }
+function renderErrorSection(
+	errorText: string,
+	rawPath: string,
+	expanded: boolean,
+	uiTheme: Theme,
+	linkPath?: string,
+): string {
+	let sanitized = errorText;
+	for (const p of [rawPath, linkPath]) {
+		if (p) sanitized = sanitized.replaceAll(p, shortenPath(p));
+	}
+	sanitized = sanitized
+		.split("\n")
+		.map(line =>
+			line
+				.split(" ")
+				.map(w => {
+					const m = /^([("'`[]*)(.*?)([)"'`,.;:\]]*)$/.exec(w);
+					return m ? `${m[1]}${shortenPath(m[2])}${m[3]}` : w;
+				})
+				.join(" "),
+		)
+		.join("\n");
+
+	const lines = sanitized.split("\n");
+	if (expanded || lines.length <= PREVIEW_LIMITS.DIFF_COLLAPSED_LINES) {
+		return lines.map(line => uiTheme.fg("error", replaceTabs(line))).join("\n");
+	}
+	const visible = lines.slice(0, PREVIEW_LIMITS.DIFF_COLLAPSED_LINES);
+	const hiddenLines = lines.length - visible.length;
+	const rendered = visible.map(line => uiTheme.fg("error", replaceTabs(line)));
+	rendered.push(uiTheme.fg("dim", `… ${formatMoreLines(hiddenLines)} ${formatExpandHint(uiTheme)}`.trimEnd()));
+	return rendered.join("\n");
+}
 
 /**
  * Split a diff row into the prefix it keeps on its first visual row and the
@@ -966,7 +1000,7 @@ function renderSingleFileResult(
 
 		let body = "";
 		if (isError) {
-			if (errorText) body = uiTheme.fg("error", replaceTabs(errorText));
+			if (errorText) body = renderErrorSection(errorText, rawPath, expanded, uiTheme, linkPath);
 		} else if (details?.diff) {
 			body = renderDiffSection(details.diff, rawPath, expanded, uiTheme, renderDiffFn, diffSectionCache);
 		} else if (details) {
@@ -979,7 +1013,7 @@ function renderSingleFileResult(
 				body = uiTheme.fg("dim", `No changes were made${noChangePath ? ` to ${noChangePath}` : ""}.`);
 			}
 		} else if (editDiffPreview) {
-			if ("error" in editDiffPreview) body = uiTheme.fg("error", replaceTabs(editDiffPreview.error));
+			if ("error" in editDiffPreview) body = renderErrorSection(editDiffPreview.error, rawPath, expanded, uiTheme, linkPath);
 			else if (editDiffPreview.diff)
 				body = renderDiffSection(editDiffPreview.diff, rawPath, expanded, uiTheme, renderDiffFn, diffSectionCache);
 		}

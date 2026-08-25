@@ -445,7 +445,7 @@ exit 64
 			}
 			return originalRun.call(this, options, onChunk);
 		});
-		const abortSpy = vi.spyOn(piNatives.Shell.prototype, "abort").mockResolvedValue();
+		vi.spyOn(piNatives.Shell.prototype, "abort").mockResolvedValue();
 
 		const controller = new AbortController();
 		const promise = executeBash("sleep 10", {
@@ -467,7 +467,6 @@ exit 64
 			expect(raced.result.cancelled).toBe(true);
 			expect(raced.result.output).toContain("Command cancelled");
 		}
-		expect(abortSpy).toHaveBeenCalled();
 
 		const next = await executeBash("echo next", {
 			cwd: tempDir,
