@@ -16,8 +16,6 @@ from pier.environments.base import BaseEnvironment
 from pier.models.agent.context import AgentContext
 from pier.models.agent.install import AgentInstallSpec, InstallStep
 
-CONTAINER_ASSETS_DIR = "/opt/omp-assets"
-
 
 class OmpAgent(BaseInstalledAgent):
     """Run Oh My Pi (omp) CLI headlessly against a DeepSWE benchmark task."""
@@ -79,10 +77,28 @@ class OmpAgent(BaseInstalledAgent):
             ),
             user="root",
         )
+        # A models.yml defining the model statically is staged by the omp
+        # adapter's stageAssets (using the veyvon binary's models.dev overlay
+        # to fetch full metadata). Place it at ~/.omp/agent/models.yml so the
+        # omp binary loads the model into its static catalog at startup,
+        # bypassing the background-discovery race that loses dynamically-
+        # discovered models when --model is explicit.
+        models_yml = host_assets / "omp-models.yml"
+        setup_models_yml = ""
+        if models_yml.is_file():
+            await environment.upload_file(
+                str(models_yml),
+                f"{CONTAINER_ASSETS_DIR}/omp-models.yml",
+            )
+            setup_models_yml = (
+                "mkdir -p ~/.omp/agent && "
+                f"cp {CONTAINER_ASSETS_DIR}/omp-models.yml ~/.omp/agent/models.yml && "
+            )
         # --mode json streams NDJSON events (thinking deltas, tool calls, text)
         # live to stdout instead of buffering the final result until exit.
         # This gives real-time observability in omp.txt during long trials.
         agent_command = (
+            f"{setup_models_yml}"
             f"export OPENCODE_API_KEY=$(cat {CONTAINER_ASSETS_DIR}/opencode-key) && "
             f"{CONTAINER_ASSETS_DIR}/bun {CONTAINER_ASSETS_DIR}/cli.js "
             f"--model {shlex.quote(self.model_name)} "

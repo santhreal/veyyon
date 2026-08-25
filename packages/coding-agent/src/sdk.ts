@@ -3042,7 +3042,9 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			// against the static-only registry. Do a synchronous cache-aware
 			// discovery pass and retry before reporting failure. This mirrors the
 			// non-explicit fallback below (resolveModelDiscoveryFallback).
-			if (!expandedModelPatterns.some(pattern => parseModelPattern(pattern, availableModels, matchPreferences).model)) {
+			if (
+				!expandedModelPatterns.some(pattern => parseModelPattern(pattern, availableModels, matchPreferences).model)
+			) {
 				await logger.time("resolveExplicitModelDiscovery", () => modelRegistry.refresh("online-if-uncached"));
 				availableModels = modelRegistry.getAll();
 			}

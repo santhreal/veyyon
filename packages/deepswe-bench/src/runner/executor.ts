@@ -577,6 +577,7 @@ export async function runBench(argv: string[]): Promise<void> {
 			outRoot,
 			binarySha,
 			args: args.raw,
+			model,
 		});
 	}
 

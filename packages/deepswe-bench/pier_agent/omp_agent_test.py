@@ -40,6 +40,7 @@ def _install_mock_pier() -> None:
         "pier.models.agent": types.ModuleType("pier.models.agent"),
         "pier.models.agent.context": types.ModuleType("pier.models.agent.context"),
         "pier.models.agent.install": types.ModuleType("pier.models.agent.install"),
+        "model_catalog_bootstrap": types.ModuleType("model_catalog_bootstrap"),
     }
     modules["pier.agents.installed.base"].BaseInstalledAgent = _FakeInstalledAgent
     modules["pier.agents.network"].allowlist_from_urls = lambda urls, default_domains=None: SimpleNamespace(
@@ -49,6 +50,7 @@ def _install_mock_pier() -> None:
     modules["pier.models.agent.context"].AgentContext = object
     modules["pier.models.agent.install"].AgentInstallSpec = _Spec
     modules["pier.models.agent.install"].InstallStep = _Spec
+    modules["model_catalog_bootstrap"].build_status_preserving_tee_command = lambda cmd, log_path, **kw: cmd
     for name, module in modules.items():
         sys.modules[name] = module
     sys.modules.pop("omp_agent", None)

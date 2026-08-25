@@ -355,6 +355,7 @@ def _load_agent_module():
         "pier.models.agent": types.ModuleType("pier.models.agent"),
         "pier.models.agent.context": types.ModuleType("pier.models.agent.context"),
         "pier.models.agent.install": types.ModuleType("pier.models.agent.install"),
+        "model_catalog_bootstrap": types.ModuleType("model_catalog_bootstrap"),
     }
     modules["pier.agents.installed.base"].BaseInstalledAgent = _FakeInstalledAgent
     modules["pier.agents.network"].allowlist_from_urls = lambda *args, **kwargs: (args, kwargs)
@@ -362,6 +363,8 @@ def _load_agent_module():
     modules["pier.models.agent.context"].AgentContext = object
     modules["pier.models.agent.install"].AgentInstallSpec = _Spec
     modules["pier.models.agent.install"].InstallStep = _Spec
+    modules["model_catalog_bootstrap"].build_model_catalog_refresh_command = lambda binary, model_name, log_path, **kwargs: f"echo catalog-refresh > {log_path}"
+    modules["model_catalog_bootstrap"].build_status_preserving_tee_command = lambda cmd, *args, **kwargs: cmd
     for name, module in modules.items():
         sys.modules[name] = module
     sys.modules.pop("veyyon_agent", None)

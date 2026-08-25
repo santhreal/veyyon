@@ -9,6 +9,60 @@ import type {
 	SystemStageContext,
 } from "../types";
 
+/**
+ * Parse `vey models refresh <provider> --json` output and build a models.yml
+ * that defines the model statically. The omp binary reads models.yml from
+ * ~/.omp/agent/models.yml at startup, adding the model to its static catalog
+ * before model resolution runs. This bypasses the background-discovery race
+ * that loses dynamically-discovered models when --model is explicit, and
+ * provides metadata (contextWindow, maxTokens, reasoning) that omp's own
+ * `models refresh` lacks because it has no models.dev overlay.
+ */
+function buildModelsYml(refreshJson: string, modelSelector: string): string | null {
+	const slashIndex = modelSelector.indexOf("/");
+	if (slashIndex < 1) return null;
+	const provider = modelSelector.slice(0, slashIndex);
+	const modelId = modelSelector.slice(slashIndex + 1);
+	for (const line of refreshJson.split("\n")) {
+		const trimmed = line.trim();
+		if (!trimmed.startsWith("{")) continue;
+		let data: { models?: Array<Record<string, unknown>> };
+		try {
+			data = JSON.parse(trimmed);
+		} catch {
+			continue;
+		}
+		const match = data.models?.find(m => m.selector === modelSelector || m.id === modelId);
+		if (!match) continue;
+		const entry: Record<string, unknown> = { id: match.id };
+		if (typeof match.name === "string") entry.name = match.name;
+		if (typeof match.contextWindow === "number") entry.contextWindow = match.contextWindow;
+		if (typeof match.maxTokens === "number") entry.maxTokens = match.maxTokens;
+		if (typeof match.reasoning === "boolean") entry.reasoning = match.reasoning;
+		if (Array.isArray(match.input) && match.input.length > 0) entry.input = match.input;
+		if (match.cost && typeof match.cost === "object") entry.cost = match.cost;
+		// Minimal YAML serializer — the structure is flat and predictable.
+		let yml = `providers:\n  ${provider}:\n    apiKey: \${OPENCODE_API_KEY}\n    models:\n`;
+		yml += `      - id: ${entry.id}\n`;
+		if (entry.name) yml += `        name: ${String(entry.name)}\n`;
+		if (entry.contextWindow) yml += `        contextWindow: ${entry.contextWindow}\n`;
+		if (entry.maxTokens) yml += `        maxTokens: ${entry.maxTokens}\n`;
+		if (entry.reasoning !== undefined) yml += `        reasoning: ${entry.reasoning}\n`;
+		if (Array.isArray(entry.input)) {
+			yml += `        input:\n${entry.input.map((i: string) => `          - ${i}`).join("\n")}\n`;
+		}
+		if (entry.cost && typeof entry.cost === "object") {
+			const c = entry.cost as Record<string, number>;
+			yml += "        cost:\n";
+			for (const [k, v] of Object.entries(c)) {
+				yml += `          ${k}: ${v}\n`;
+			}
+		}
+		return yml;
+	}
+	return null;
+}
+
 export class OmpAdapter implements SystemAdapter {
 	readonly name = "omp";
 	readonly displayName = "Oh My Pi (omp)";
@@ -88,6 +142,36 @@ export class OmpAdapter implements SystemAdapter {
 				execFileSync("tar", ["-czf", tarPath, "-C", path.dirname(nodeModulesDir), "node_modules"], {
 					stdio: ["ignore", "ignore", "inherit"],
 				});
+			}
+		}
+		// Generate a models.yml defining the eval model statically. The omp
+		// binary's background discovery may not complete before model
+		// resolution when --model is explicit, and omp's own `models refresh`
+		// lacks the models.dev overlay that provides contextWindow/maxTokens
+		// for models absent from the bundled catalog. The veyvon binary
+		// (already staged at assetsDir/vey) has the overlay, so use it to
+		// fetch metadata and write a models.yml the omp agent copies to
+		// ~/.omp/agent/models.yml before startup.
+		const veyBinary = path.join(context.assetsDir, "vey");
+		const opencodeKey = process.env.OPENCODE_API_KEY ?? context.args["opencode-key"] ?? "";
+		if (fs.existsSync(veyBinary) && opencodeKey && context.model.includes("/")) {
+			const provider = context.model.split("/")[0];
+			try {
+				const refreshOutput = execFileSync(veyBinary, ["models", "refresh", provider, "--json"], {
+					env: { ...process.env, OPENCODE_API_KEY: opencodeKey },
+					stdio: ["ignore", "pipe", "inherit"],
+					timeout: 120_000,
+					maxBuffer: 10 * 1024 * 1024,
+					cwd: context.assetsDir,
+				}).toString("utf8");
+				const modelsYml = buildModelsYml(refreshOutput, context.model);
+				if (modelsYml) {
+					fs.writeFileSync(path.join(context.assetsDir, "omp-models.yml"), modelsYml);
+				}
+			} catch (error) {
+				console.warn(
+					`omp: models.yml generation failed: ${error instanceof Error ? error.message : String(error)}`,
+				);
 			}
 		}
 	}
