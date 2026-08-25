@@ -27,6 +27,7 @@ import { AssistantMessageEventStream } from "../utils/event-stream";
 import {
 	type CapturedHttpErrorResponse,
 	captureHttpErrorResponse,
+	materializeDumpBody,
 	type RawHttpRequestDump,
 } from "../utils/http-inspector";
 import {
@@ -434,6 +435,8 @@ const streamOllamaOnce = (
 		let sawDone = false;
 		const output = createEmptyOutput(model);
 		let rawRequestDump: RawHttpRequestDump | undefined;
+		/** Exact bytes of the last sent request body; materialized into a dump only on the 400/413 path. */
+		let wireBodyJson: string | undefined;
 		let capturedErrorResponse: CapturedHttpErrorResponse | undefined;
 		let activeThinkingIndex: number | undefined;
 		let activeTextIndex: number | undefined;
@@ -552,8 +555,8 @@ const streamOllamaOnce = (
 				model: model.id,
 				method: "POST",
 				url: `${baseUrl}/api/chat`,
-				body,
 			};
+			wireBodyJson = JSON.stringify(body);
 			// Direct callers that bypass `register-builtins` (which installs
 			// the iterator-level watchdog) need a pre-response timer alongside
 			// `timeout: false`; otherwise an Ollama server that accepts the
@@ -738,8 +741,7 @@ const streamOllamaOnce = (
 			const result = await AIError.finalize(error, {
 				api: model.api,
 				provider: model.provider,
-				signal: options.signal,
-				rawRequestDump,
+				rawRequestDump: materializeDumpBody(rawRequestDump, wireBodyJson),
 				capturedErrorResponse,
 			});
 			output.stopReason = result.stopReason;
