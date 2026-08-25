@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
-# Refuse to push a commit that does not typecheck, or whose root changelog is
-# a stale render of the package changelogs.
+# Refuse to push a commit that does not typecheck, fails formatting or import
+# order, or whose root changelog is a stale render of the package changelogs.
 #
 # Why this exists: main has gone red from a pushed commit four separate times,
 # every one of them a TypeScript error that `bun run check:ts` reports in well
@@ -115,6 +115,19 @@ for sha in $shas; do
 		echo "pre-push: REFUSED. Commit $short does not typecheck, and pushing it turns" >&2
 		echo "          every open PR red against a broken base, not just this branch." >&2
 		echo "          Fix the errors above, or bypass with: git push --no-verify" >&2
+		exit 1
+	fi
+
+	# Lint & format is a CI gate too, and biome checks the whole tree in about
+	# two seconds. Twenty formatting and import-order errors reached main in one
+	# night from separate commits that never ran it, and Lint & format then failed
+	# on six open PRs at once, none of which had caused it. Diagnosing an
+	# inherited red check costs far more than the two seconds spent here.
+	if ! (cd "$checkout" && bun run check:tools); then
+		echo >&2
+		echo "pre-push: REFUSED. Commit $short fails biome formatting, import order or a" >&2
+		echo "          lint rule, which turns Lint & format red on every open PR." >&2
+		echo "          Run: bun run fix:tools, then commit the result" >&2
 		exit 1
 	fi
 
