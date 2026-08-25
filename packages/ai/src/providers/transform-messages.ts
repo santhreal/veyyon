@@ -48,6 +48,24 @@ function deduplicateToolCallIds(
 	maxToolCallIdLength = MAX_TOOL_CALL_ID_LENGTH,
 	duplicateSuffixPrefix = "_dup",
 ): Message[] {
+	// Fast path: scan for duplicate tool call IDs before allocating a new array.
+	// The common case (no duplicates) returns the input by reference.
+	const seen = new Set<string>();
+	let hasDuplicate = false;
+	for (const msg of messages) {
+		if (msg.role !== "assistant") continue;
+		for (const block of msg.content) {
+			if (block.type !== "toolCall") continue;
+			if (seen.has(block.id)) {
+				hasDuplicate = true;
+				break;
+			}
+			seen.add(block.id);
+		}
+		if (hasDuplicate) break;
+	}
+	if (!hasDuplicate) return messages;
+
 	const seenToolCallIds = new Map<string, number>();
 	const pendingToolResultRewrites = new Map<string, PendingToolResultRewrite[]>();
 
