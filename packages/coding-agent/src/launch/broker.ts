@@ -529,11 +529,7 @@ class DaemonBroker {
 			throw new Error('Windows batch files require application "cmd.exe" with the batch path after "/c"');
 		}
 		const existing = this.#records.get(spec.name);
-		const existingTimer = this.#cleanupTimers.get(spec.name);
-		if (existingTimer) {
-			clearTimeout(existingTimer);
-			this.#cleanupTimers.delete(spec.name);
-		}
+		this.#cancelCleanup(spec.name);
 		if (existing) await this.#refreshDetached(existing);
 		if (existing && !terminalState(existing.snapshot.state)) {
 			throw new Error(`Daemon ${spec.name} is already ${existing.snapshot.state}`);
@@ -903,14 +899,17 @@ class DaemonBroker {
 		this.#scheduleCleanup(record);
 	}
 
+	#cancelCleanup(name: string): void {
+		const timer = this.#cleanupTimers.get(name);
+		if (timer === undefined) return;
+		clearTimeout(timer);
+		this.#cleanupTimers.delete(name);
+	}
+
 	#scheduleCleanup(record: ManagedDaemon): void {
 		if (this.#cleanupWaitMs <= 0) return;
 		const name = record.snapshot.name;
-		const existing = this.#cleanupTimers.get(name);
-		if (existing) {
-			clearTimeout(existing);
-			this.#cleanupTimers.delete(name);
-		}
+		this.#cancelCleanup(name);
 		const exitedAt = record.snapshot.exitedAt ?? Date.now();
 		const delayMs = Math.max(0, exitedAt + this.#cleanupWaitMs - Date.now());
 		const timer = setTimeout(() => {
@@ -923,11 +922,7 @@ class DaemonBroker {
 	async #purgeRecord(name: string): Promise<void> {
 		const record = this.#records.get(name);
 		if (!record || !terminalState(record.snapshot.state)) return;
-		const timer = this.#cleanupTimers.get(name);
-		if (timer) {
-			clearTimeout(timer);
-			this.#cleanupTimers.delete(name);
-		}
+		this.#cancelCleanup(name);
 		clearTimeout(record.restartTimer);
 		await record.log?.close();
 		record.log = undefined;
@@ -1087,17 +1082,16 @@ class DaemonBroker {
 
 	async #restart(name: string): Promise<DaemonRpcResult> {
 		const record = this.#record(name);
-		const existingTimer = this.#cleanupTimers.get(name);
-		if (existingTimer) {
-			clearTimeout(existingTimer);
-			this.#cleanupTimers.delete(name);
-		}
 		await this.#stopRecord(record, 2_000, {
 			owner: "operator-restart",
 			reason: "stopped by launch restart to start a new generation",
 			signal: "SIGTERM",
 			at: Date.now(),
 		});
+		// Stopping a live record settles it, and settling arms a purge timer. The
+		// cancel has to follow the stop, or the new generation runs with a timer
+		// armed against the corpse of the old one.
+		this.#cancelCleanup(name);
 		await record.log?.close();
 		record.log = await DaemonLog.open(record.dir);
 		record.stopRequested = false;
