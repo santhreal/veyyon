@@ -2176,6 +2176,7 @@ export class AgentSession {
 	/** Last (enable, providerId) tuple resolved by `#syncAppendOnlyContext` — used to skip no-op invalidations. */
 	#lastAppendOnlyResolution?: { enable: boolean; providerId: string | undefined };
 	#eventListeners: AgentSessionEventListener[] = [];
+	#eventListenersSnapshot: AgentSessionEventListener[] | undefined;
 	#commandMetadataChangedListeners: CommandMetadataChangedListener[] = [];
 
 	/** Messages queued to be included with the next user prompt as context ("asides"). */
@@ -4884,8 +4885,15 @@ export class AgentSession {
 
 	/** Emit an event to all listeners */
 	#emit(event: AgentSessionEvent): void {
-		// Copy array before iteration to avoid mutation during iteration.
-		const listeners = [...this.#eventListeners];
+		// Snapshot the listener array once; reuse the cached copy until a
+		// subscribe/unsubscribe invalidates it. During streaming, #emit fires
+		// per token and the listener set is stable, so this avoids one array
+		// allocation per event.
+		let listeners = this.#eventListenersSnapshot;
+		if (!listeners) {
+			listeners = [...this.#eventListeners];
+			this.#eventListenersSnapshot = listeners;
+		}
 		for (const l of listeners) {
 			try {
 				const result = l(event) as unknown;
@@ -8295,12 +8303,14 @@ export class AgentSession {
 
 	subscribe(listener: AgentSessionEventListener): () => void {
 		this.#eventListeners.push(listener);
+		this.#eventListenersSnapshot = undefined;
 
 		// Return unsubscribe function for this specific listener
 		return () => {
 			const index = this.#eventListeners.indexOf(listener);
 			if (index !== -1) {
 				this.#eventListeners.splice(index, 1);
+				this.#eventListenersSnapshot = undefined;
 			}
 		};
 	}
@@ -8692,6 +8702,7 @@ export class AgentSession {
 			this.#unsubscribePromptSettings = undefined;
 		}
 		this.#eventListeners = [];
+		this.#eventListenersSnapshot = undefined;
 	}
 
 	#closeAllProviderSessions(reason: string): void {

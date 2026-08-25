@@ -92,11 +92,7 @@ describe("openai-completions streaming reasoning field detection", () => {
 
 	it("captures reasoning deltas as thinking blocks", async () => {
 		const model = customReasoningModel();
-		const fetchMock = createMockFetch([
-			deltaChunk(model, { reasoning: "thinking B" }),
-			finishChunk(model),
-			"[DONE]",
-		]);
+		const fetchMock = createMockFetch([deltaChunk(model, { reasoning: "thinking B" }), finishChunk(model), "[DONE]"]);
 
 		const result = await streamOpenAICompletions(model, baseContext(), {
 			apiKey: "test-key",
@@ -104,9 +100,7 @@ describe("openai-completions streaming reasoning field detection", () => {
 			reasoning: "high",
 		}).result();
 
-		expect(result.content).toEqual([
-			{ type: "thinking", thinking: "thinking B", thinkingSignature: "reasoning" },
-		]);
+		expect(result.content).toEqual([{ type: "thinking", thinking: "thinking B", thinkingSignature: "reasoning" }]);
 	});
 
 	it("captures reasoning_text deltas as thinking blocks", async () => {
