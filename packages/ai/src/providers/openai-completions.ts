@@ -1935,12 +1935,13 @@ export function convertMessages(
 				}
 				if (content.length === 0) continue;
 				if (msg.role === "developer" && role === "developer" && !msg.content.some(item => item.type === "image")) {
+					const textParts: string[] = [];
+					for (const item of content) {
+						if (item.type === "text") textParts.push(item.text);
+					}
 					params.push({
 						role: "developer",
-						content: content
-							.filter((item): item is ChatCompletionContentPartText => item.type === "text")
-							.map(item => item.text)
-							.join("\n"),
+						content: textParts.join("\n"),
 					});
 				} else {
 					params.push({ role: "user", content });
@@ -2157,10 +2158,13 @@ export function convertMessages(
 						},
 					};
 				});
-				const reasoningDetails = toolCalls
-					.filter(tc => tc.thoughtSignature)
-					.map(tc => tryParseJson(tc.thoughtSignature!))
-					.filter(Boolean);
+				const reasoningDetails: unknown[] = [];
+				for (const tc of toolCalls) {
+					if (tc.thoughtSignature) {
+						const parsed = tryParseJson(tc.thoughtSignature);
+						if (parsed) reasoningDetails.push(parsed);
+					}
+				}
 				if (reasoningDetails.length > 0) {
 					assistantMsg.reasoning_details = reasoningDetails;
 				}
@@ -2194,13 +2198,15 @@ export function convertMessages(
 			for (; j < transformedMessages.length && transformedMessages[j].role === "toolResult"; j++) {
 				const toolMsg = transformedMessages[j] as ToolResultMessage;
 
-				// Extract text and image content
-				const textResult = toolMsg.content
-					.filter(c => c.type === "text")
-					.map(c => (c as TextContent).text)
-					.join("\n");
+				// Extract text and image content in a single pass
+				const textParts: string[] = [];
+				let hasImages = false;
+				for (const c of toolMsg.content) {
+					if (c.type === "text") textParts.push(c.text);
+					else if (c.type === "image") hasImages = true;
+				}
+				const textResult = textParts.join("\n");
 				const supportsImages = model.input.includes("image") && !isDashscopeCompatibleModeTextOnlyQwen(model);
-				const hasImages = toolMsg.content.some(c => c.type === "image");
 				const omittedImages = hasImages && !supportsImages;
 
 				// Always send tool result with text (or placeholder if only images)
