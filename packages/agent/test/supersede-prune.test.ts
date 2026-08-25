@@ -875,3 +875,144 @@ describe("pruneSupersededToolResults — merged superseded+useless collection", 
 		expect(resultText(result2)).toBe(FILE_CONTENT);
 	});
 });
+
+// WHY: pruneSupersededToolResults merged the eligible and tail filter passes
+// (candidates.filter(index >= boundary) then eligible.filter(suffixSum <= limit))
+// into a single for loop. These tests verify the merged loop produces identical
+// results: eligible candidates before the boundary are excluded, tail candidates
+// with small suffix are collected, and the batch-vs-tail selection still works.
+describe("pruneSupersededToolResults — merged eligible+tail single pass", () => {
+	test("candidates before keepBoundaryId are excluded from both eligible and tail", () => {
+		// Two superseded reads before the boundary, one after. The idle flush
+		// path (single filter) and the non-idle path (merged loop) must both
+		// skip the pre-boundary candidates.
+		const [call1, result1] = readPair("src/a.ts", FILE_CONTENT, T0);
+		const [call2, result2] = readPair("src/a.ts", FILE_CONTENT, T0 + 1_000);
+		const [call3, result3] = readPair("src/b.ts", FILE_CONTENT, T0 + 2_000);
+		const [call4, result4] = readPair("src/b.ts", FILE_CONTENT, T0 + 3_000);
+		const entries: SessionEntry[] = [call1, result1, call2, result2, call3, result3, call4, result4];
+
+		// Non-idle: boundary at call3 (index 4). result1 (index 1) is before
+		// boundary → excluded. result3 (index 5) is at/after boundary → eligible.
+		// result3's suffix is small (just call4+result4) → tail case → pruned.
+		const result = pruneSupersededToolResults(
+			entries,
+			cfg({ keepBoundaryId: call3.id, now: T0 + 3_000, suffixTokenLimit: 100_000 }),
+		);
+
+		expect(result.prunedCount).toBe(1);
+		expect(resultText(result1)).toBe(FILE_CONTENT); // before boundary → untouched
+		expect(resultMessage(result1).prunedAt).toBeUndefined();
+		expect(resultText(result3)).toBe(SUPERSEDED_NOTICE); // after boundary → pruned
+		expect(resultText(result4)).toBe(FILE_CONTENT); // latest → kept
+	});
+
+	test("tail candidates with small suffix are pruned when no batch pays better", () => {
+		// One stale read near the tail with a tiny suffix: the tail rule fires
+		// (suffixSum <= suffixTokenLimit), and no batch can beat it.
+		const [call1, result1] = readPair("src/a.ts", FILE_CONTENT, T0);
+		const [call2, result2] = readPair("src/a.ts", FILE_CONTENT, T0 + 1_000);
+		const entries: SessionEntry[] = [call1, result1, call2, result2];
+
+		const result = pruneSupersededToolResults(entries, cfg({ now: T0 + 1_000, suffixTokenLimit: 100_000 }));
+
+		expect(result.prunedCount).toBe(1);
+		expect(resultText(result1)).toBe(SUPERSEDED_NOTICE);
+		expect(resultText(result2)).toBe(FILE_CONTENT);
+	});
+
+	test("eligible candidates with large suffix are not in tail but can be taken as batch", () => {
+		// A deep stale read under a large suffix: not in the tail (suffixSum >
+		// suffixTokenLimit), but a batch of stale reads together pays for the
+		// rewrite. The merged loop must still collect them as eligible and pass
+		// them to chooseWorthwhileSweep.
+		const entries: SessionEntry[] = [];
+		let clock = 1;
+		// 6 stale reads of different files
+		for (let i = 0; i < 6; i++) {
+			entries.push(...readPair(`src/file-${i}.ts`, "s".repeat(3000 * 4), clock++));
+		}
+		// 6 fresh reads that supersede them
+		for (let i = 0; i < 6; i++) {
+			entries.push(...readPair(`src/file-${i}.ts`, "fresh", clock++));
+		}
+		// Large suffix to push all stale reads above the tail limit
+		entries.push(textEntry(BIG_TEXT, clock++));
+
+		const result = pruneSupersededToolResults(
+			entries,
+			cfg({ now: 10_000, idleFlushMs: 30 * 60_000, suffixTokenLimit: 200 }),
+		);
+
+		// The batch pays for the rewrite: all 6 stale reads pruned.
+		expect(result.prunedCount).toBe(6);
+		expect(result.tokensSaved).toBeGreaterThan(10_000);
+	});
+
+	test("empty eligible set yields no pruning on non-idle path", () => {
+		// All candidates before the boundary: eligible is empty, tail is empty,
+		// batch is empty. The merged loop must produce zero pruning.
+		const [call1, result1] = readPair("src/a.ts", FILE_CONTENT, T0);
+		const [call2, result2] = readPair("src/a.ts", FILE_CONTENT, T0 + 1_000);
+		const entries: SessionEntry[] = [call1, result1, call2, result2];
+
+		// Boundary at the last entry: everything is before it.
+		const result = pruneSupersededToolResults(
+			entries,
+			cfg({ keepBoundaryId: result2.id, now: T0 + 1_000, suffixTokenLimit: 100_000 }),
+		);
+
+		expect(result.prunedCount).toBe(0);
+		expect(resultText(result1)).toBe(FILE_CONTENT);
+		expect(resultText(result2)).toBe(FILE_CONTENT);
+	});
+
+	test("mixed eligible and ineligible candidates: only eligible are pruned", () => {
+		// result1 is superseded and before boundary (ineligible).
+		// result3 is superseded and after boundary (eligible, tail).
+		// result5 is superseded and after boundary (eligible, large suffix → batch).
+		const [call1, result1] = readPair("src/a.ts", FILE_CONTENT, T0);
+		const [call2, result2] = readPair("src/a.ts", FILE_CONTENT, T0 + 1_000);
+		const [call3, result3] = readPair("src/b.ts", FILE_CONTENT, T0 + 2_000);
+		const [call4, result4] = readPair("src/b.ts", FILE_CONTENT, T0 + 3_000);
+		const [call5, result5] = readPair("src/c.ts", FILE_CONTENT, T0 + 4_000);
+		const [call6, result6] = readPair("src/c.ts", FILE_CONTENT, T0 + 5_000);
+		const big = textEntry(BIG_TEXT, T0 + 6_000);
+		const entries: SessionEntry[] = [
+			call1,
+			result1,
+			call2,
+			result2,
+			call3,
+			result3,
+			call4,
+			result4,
+			call5,
+			result5,
+			call6,
+			result6,
+			big,
+		];
+
+		// Boundary at call3 (index 4). result1 (index 1) is before → ineligible.
+		// result3 (index 5) is after, suffix is call4+result4+call5+result5+call6+result6+big → large.
+		// result5 (index 9) is after, suffix is call6+result6+big → large.
+		// Both result3 and result5 are eligible but not tail. The batch must
+		// decide whether to take them.
+		const result = pruneSupersededToolResults(entries, {
+			...cfg({ keepBoundaryId: call3.id, now: T0 + 6_000, idleFlushMs: 30 * 60_000, suffixTokenLimit: 200 }),
+		});
+
+		// result1 is before boundary → untouched. result3 and result5 are
+		// eligible (after boundary) with large suffixes, so the batch rule
+		// decides: two stale reads under a BIG_TEXT suffix cannot pay for the
+		// rewrite alone, so neither is pruned.
+		expect(result.prunedCount).toBe(0);
+		// result1 is before boundary → untouched.
+		expect(resultText(result1)).toBe(FILE_CONTENT);
+		expect(resultMessage(result1).prunedAt).toBeUndefined();
+		// result6 (latest of src/c.ts) and result4 (latest of src/b.ts) are kept.
+		expect(resultText(result4)).toBe(FILE_CONTENT);
+		expect(resultText(result6)).toBe(FILE_CONTENT);
+	});
+});

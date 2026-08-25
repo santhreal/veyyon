@@ -310,10 +310,16 @@ export function pruneSupersededToolResults(entries: SessionEntry[], config: Supe
 		toPrune = candidates.filter(candidate => candidate.index >= boundaryIndex);
 	} else {
 		const suffixTokenLimit = config.suffixTokenLimit ?? DEFAULT_SUFFIX_TOKEN_LIMIT;
-		const eligible = candidates.filter(candidate => candidate.index >= boundaryIndex);
-		// The cheap tail: a candidate whose own suffix is small is worth rewriting on
-		// its own, which is the read -> edit -> read loop.
-		const tail = eligible.filter(candidate => candidate.suffixSum <= suffixTokenLimit);
+		// Single pass: collect eligible candidates (at/after the compaction
+		// boundary) and, among those, the cheap tail (suffix small enough to
+		// rewrite on its own). Avoids a second filter pass over `eligible`.
+		const eligible: SupersedeCandidate[] = [];
+		const tail: SupersedeCandidate[] = [];
+		for (const candidate of candidates) {
+			if (candidate.index < boundaryIndex) continue;
+			eligible.push(candidate);
+			if (candidate.suffixSum <= suffixTokenLimit) tail.push(candidate);
+		}
 		// Deeper than the tail, one victim never pays for the rewrite it forces, but a
 		// batch of them does. Asking the question per candidate is why a long session
 		// reclaimed almost nothing: at 120k of context every candidate outside the last
