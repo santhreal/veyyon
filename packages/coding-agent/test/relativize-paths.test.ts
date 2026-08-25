@@ -42,8 +42,12 @@ function toolResult(text: string, toolCallId = "call-1"): ToolResultMessage {
 }
 
 describe("normalizeRoots", () => {
-	test("strips trailing slashes, drops non-absolute and root-only entries, sorts longest-first", () => {
-		expect(normalizeRoots([`${ROOT}/`, "/tmp", "/", "relative", " /tmp "])).toEqual([ROOT, "/tmp"]);
+	test("strips trailing slashes, trims whitespace, and drops non-absolute or root-only entries", () => {
+		expect(normalizeRoots(`${ROOT}/`)).toEqual([ROOT]);
+		expect(normalizeRoots(" /tmp ")).toEqual(["/tmp"]);
+		expect(normalizeRoots("/")).toEqual([]);
+		expect(normalizeRoots("relative")).toEqual([]);
+		expect(normalizeRoots("")).toEqual([]);
 	});
 });
 
@@ -87,10 +91,10 @@ describe("relativizePathsUnderRoots", () => {
 		expect(result.messages).toBe(messages);
 	});
 
-	test("longest root wins for nested roots (setCwd into a subdirectory)", () => {
+	test("active nested root relativizes paths under the subdirectory", () => {
 		const nested = `${ROOT}/packages`;
 		const messages: Message[] = [toolResult(`${nested}/agent/src/a.ts`)];
-		const result = relativizePathsUnderRoots(messages, normalizeRoots([ROOT, nested]));
+		const result = relativizePathsUnderRoots(messages, normalizeRoots(nested));
 		const text = (result.messages[0] as ToolResultMessage).content[0] as { text: string };
 		expect(text.text).toBe("agent/src/a.ts");
 	});
@@ -260,7 +264,7 @@ describe("relativizePathsUnderRoots treats regex metacharacters in roots literal
 	test("a literal path under each metacharacter root is rewritten root-relative", () => {
 		for (const root of METACHAR_ROOTS) {
 			const messages: Message[] = [toolResult(`${root}/src/foo.ts and (${root}/bar.ts)`)];
-			const result = relativizePathsUnderRoots(messages, normalizeRoots([root]));
+			const result = relativizePathsUnderRoots(messages, normalizeRoots(root));
 			const text = (result.messages[0] as ToolResultMessage).content[0] as { text: string };
 			expect(text.text).toBe("src/foo.ts and (bar.ts)");
 		}
@@ -269,7 +273,7 @@ describe("relativizePathsUnderRoots treats regex metacharacters in roots literal
 	test("a bare metacharacter root token renders as a dot", () => {
 		for (const root of METACHAR_ROOTS) {
 			const messages: Message[] = [toolResult(`cwd is ${root} now`)];
-			const result = relativizePathsUnderRoots(messages, normalizeRoots([root]));
+			const result = relativizePathsUnderRoots(messages, normalizeRoots(root));
 			const text = (result.messages[0] as ToolResultMessage).content[0] as { text: string };
 			expect(text.text).toBe("cwd is . now");
 		}
@@ -292,7 +296,7 @@ describe("relativizePathsUnderRoots treats regex metacharacters in roots literal
 		];
 		for (const { root, sibling } of cases) {
 			const messages: Message[] = [toolResult(`${sibling} stays absolute`)];
-			const result = relativizePathsUnderRoots(messages, normalizeRoots([root]));
+			const result = relativizePathsUnderRoots(messages, normalizeRoots(root));
 			// Nothing matched: same array reference, zero bytes saved, text unchanged.
 			expect(result.messages).toBe(messages);
 			expect(result.bytesSaved).toBe(0);
@@ -309,7 +313,7 @@ describe("relativizePathsUnderRoots treats regex metacharacters in roots literal
 		const messages: Message[] = [toolResult(`${root}/deep/file.ts here`)];
 		let result: ReturnType<typeof relativizePathsUnderRoots> | undefined;
 		expect(() => {
-			result = relativizePathsUnderRoots(messages, normalizeRoots([root]));
+			result = relativizePathsUnderRoots(messages, normalizeRoots(root));
 		}).not.toThrow();
 		const text = (result!.messages[0] as ToolResultMessage).content[0] as { text: string };
 		expect(text.text).toBe("deep/file.ts here");
@@ -342,7 +346,7 @@ describe("relativizePathsUnderRoots exempts the set_cwd result", () => {
 
 	test("both endpoints survive byte-for-byte when both are registered roots", () => {
 		const messages: Message[] = [setCwdResult(MOVE_TEXT)];
-		const result = relativizePathsUnderRoots(messages, normalizeRoots([OLD_CWD, NEW_CWD]));
+		const result = relativizePathsUnderRoots(messages, [OLD_CWD, NEW_CWD]);
 		const text = (result.messages[0] as ToolResultMessage).content[0] as { text: string };
 		expect(text.text).toBe(MOVE_TEXT);
 		expect(text.text).toContain(OLD_CWD);
@@ -356,7 +360,7 @@ describe("relativizePathsUnderRoots exempts the set_cwd result", () => {
 		// Negative control. Without it this suite would also pass if the exemption were
 		// widened to every tool result, silently disabling the optimization repo-wide.
 		const messages: Message[] = [toolResult(MOVE_TEXT)];
-		const result = relativizePathsUnderRoots(messages, normalizeRoots([OLD_CWD, NEW_CWD]));
+		const result = relativizePathsUnderRoots(messages, [OLD_CWD, NEW_CWD]);
 		const text = (result.messages[0] as ToolResultMessage).content[0] as { text: string };
 		// This exact string is the reported symptom, reproduced byte-for-byte: the second
 		// dot is the sentence's own period, which `exact`'s lookahead accepts as a right
@@ -371,7 +375,7 @@ describe("relativizePathsUnderRoots exempts the set_cwd result", () => {
 		// failure branch ("could not read the rule files for ...") is equally protected.
 		const warning = `WARNING: the cwd changed, but the rule files for ${NEW_CWD} could not be read.`;
 		const messages: Message[] = [setCwdResult(warning)];
-		const result = relativizePathsUnderRoots(messages, normalizeRoots([OLD_CWD, NEW_CWD]));
+		const result = relativizePathsUnderRoots(messages, [OLD_CWD, NEW_CWD]);
 		const text = (result.messages[0] as ToolResultMessage).content[0] as { text: string };
 		expect(text.text).toBe(warning);
 	});

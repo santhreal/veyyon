@@ -16,9 +16,9 @@
  * the model segment off the line and failed the hit-test below in CI while the
  * same commit passed on a short-named checkout.
  */
-import { beforeAll, describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { visibleWidth } from "@veyyon/tui";
-import { Settings } from "../../../config/settings";
+import { resetSettingsForTest, Settings } from "../../../config/settings";
 import { settings } from "../../../config/settings-instance";
 import type { AgentSession } from "../../../session/agent-session";
 import { getThemeByName, setThemeInstance } from "../../theme/theme";
@@ -67,6 +67,9 @@ beforeAll(async () => {
 	const loaded = await getThemeByName("dark");
 	if (!loaded) throw new Error("theme unavailable");
 	setThemeInstance(loaded);
+});
+afterAll(() => {
+	resetSettingsForTest();
 });
 
 const WIDTH = 120;

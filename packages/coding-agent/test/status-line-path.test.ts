@@ -303,8 +303,13 @@ describe("status line path segment in a linked worktree", () => {
 		const ctx = worktreeContext({ projectName: "very-long-project-name", worktreeName: "feature" }, "other");
 		ctx.options.path = { ...ctx.options.path, maxLength: 10 };
 		const label = Bun.stripANSI(renderSegment("path", ctx).content).slice(theme.icon.worktree.length + 1);
+		// CLIPPED FROM THE HEAD, the same direction the component's width-driven shortening
+		// cuts. Two clippers disagreeing put an ellipsis on both ends of one label, so the
+		// clipped text named neither end of it. The worktree name is the identifying end here,
+		// exactly as the last path segment is for a directory, so it is what survives.
 		expect(label.length).toBeLessThanOrEqual(10);
 		expect(label.startsWith("…")).toBe(true);
+		expect(label.lastIndexOf("…")).toBe(0);
 		expect(label.endsWith("feature")).toBe(true);
 	});
 });
