@@ -1952,9 +1952,12 @@ export function convertMessages(
 				content: null,
 			};
 
-			const textBlocks = msg.content.filter(b => b.type === "text") as TextContent[];
-			// Filter out empty text blocks to avoid API validation errors
-			const nonEmptyTextBlocks = textBlocks.filter(b => b.text && b.text.trim().length > 0);
+			const nonEmptyTextBlocks: TextContent[] = [];
+			for (const block of msg.content) {
+				if (block.type === "text" && block.text && block.text.trim().length > 0) {
+					nonEmptyTextBlocks.push(block as TextContent);
+				}
+			}
 			if (nonEmptyTextBlocks.length > 0) {
 				// Always send assistant content as a plain string. Some OpenAI-compatible
 				// backends mirror array-of-text-block payloads back to the model literally,
@@ -1976,9 +1979,12 @@ export function convertMessages(
 			}
 
 			// Handle thinking blocks
-			const thinkingBlocks = msg.content.filter(b => b.type === "thinking") as ThinkingContent[];
-			// Filter out empty thinking blocks to avoid API validation errors
-			const nonEmptyThinkingBlocks = thinkingBlocks.filter(b => b.thinking && b.thinking.trim().length > 0);
+			const nonEmptyThinkingBlocks: ThinkingContent[] = [];
+			for (const block of msg.content) {
+				if (block.type === "thinking" && block.thinking && block.thinking.trim().length > 0) {
+					nonEmptyThinkingBlocks.push(block as ThinkingContent);
+				}
+			}
 			if (nonEmptyThinkingBlocks.length > 0) {
 				if (compat.requiresThinkingAsText) {
 					const thinkingText = nonEmptyThinkingBlocks
