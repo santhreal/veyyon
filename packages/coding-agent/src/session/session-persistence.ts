@@ -116,15 +116,16 @@ function truncateForPersistence(obj: unknown, blobStore: BlobStore, key?: string
 	}
 
 	if (Array.isArray(obj)) {
-		let changed = false;
-		const result: unknown[] = new Array(obj.length);
+		let result: unknown[] | undefined;
 		for (let i = 0; i < obj.length; i++) {
 			const item = obj[i];
 			const newItem = truncateForPersistence(item, blobStore, key);
-			if (newItem !== item) changed = true;
-			result[i] = newItem;
+			if (newItem !== item) {
+				if (result === undefined) result = obj.slice();
+				result[i] = newItem;
+			}
 		}
-		return changed ? result : obj;
+		return result ?? obj;
 	}
 
 	if (typeof obj === "object") {
