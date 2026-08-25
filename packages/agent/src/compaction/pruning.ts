@@ -14,7 +14,7 @@ import {
 	isSkillReadToolResult,
 	type ProtectedToolMatcher,
 } from "./tool-protection";
-import { stripReadSelector } from "./utils";
+import { splitReadSelector } from "./utils";
 
 export interface PruneConfig {
 	/** Keep the most recent tool output tokens intact. */
@@ -72,7 +72,8 @@ export const USELESS_NOTICE = "[Uneventful result elided]";
 
 /**
  * Maps a tool call to its supersede targets. A tool result is superseded when
- * every target it carries is covered by later (newer) tool results.
+ * every target it carries is covered by later (newer) tool results (either by an
+ * identical target or by a selector-free read of the same base path).
  * Return `undefined` to exempt a call from supersede grouping.
  */
 export type SupersedeKeyFn = (
@@ -181,8 +182,10 @@ interface SupersedeCandidate {
  * Collect superseded tool results: for every unpruned, unprotected tool result
  * whose paired call resolves supersede targets, the result is marked superseded
  * if and only if EVERY target it carries has been covered by later tool results.
- * Partial cover (e.g. later read of `a.ts` when earlier read was `a.ts; b.ts`)
- * does NOT retire the earlier result, preserving content that has not been re-read.
+ * A target is covered by an identical target or by a selector-free read of the
+ * same base path. Partial cover (e.g. later read of `a.ts` when earlier read was
+ * `a.ts; b.ts`) does NOT retire the earlier result, preserving content that has
+ * not been re-read.
  * Returned in message order.
  */
 function collectSupersededResults(
@@ -213,11 +216,15 @@ function collectSupersededResults(
 		const targets: readonly string[] =
 			typeof rawKey === "string" ? [rawKey] : Array.isArray(rawKey) ? rawKey : Array.from(rawKey);
 		if (targets.length === 0) continue;
-		// An earlier multi-target read is superseded only when EVERY target it carries
-		// has been covered by newer reads. A partial cover (e.g. later read of a.ts when
-		// earlier read was a.ts; b.ts) must NOT retire the earlier result, because that
-		// earlier result is the only source of b.ts remaining in context.
-		const superseded = targets.every(t => seenTargets.has(t));
+
+		// An earlier read is superseded only when EVERY target it carries is covered
+		// by newer reads. A target is covered if an identical target was read later, or
+		// if a selector-free read of the same base path was read later.
+		const superseded = targets.every(t => {
+			if (seenTargets.has(t)) return true;
+			const sep = t.indexOf("\u0000");
+			return sep >= 0 && seenTargets.has(t.slice(0, sep));
+		});
 		for (const t of targets) {
 			seenTargets.add(t);
 		}
@@ -469,11 +476,11 @@ export function pruneToolOutputs(entries: SessionEntry[], config: PruneConfig = 
 }
 
 /**
- * Supersede targets for the `read` tool: a list of normalized target paths
- * with trailing selectors stripped (via {@link stripReadSelector}).
+ * Supersede targets for the `read` tool: a list of normalized target keys.
+ * Selector-free reads key on the bare path; selector-carrying reads key on
+ * `path + "\u0000" + selector` (via {@link splitReadSelector}).
  * Multi-target reads (`a.ts; b.ts`) are split into distinct targets.
- * Different line ranges of the same file normalize to the same target path,
- * so a later read supersedes earlier reads of that file.
+ * URL and internal schemes (`skill://…`, `https://…`) are exempt per target.
  */
 export function readToolSupersedeKey(toolName: string, args: Record<string, unknown>): readonly string[] | undefined {
 	if (toolName !== "read") return undefined;
@@ -484,7 +491,9 @@ export function readToolSupersedeKey(toolName: string, args: Record<string, unkn
 	for (const chunk of path.split(";")) {
 		const trimmed = chunk.trim();
 		if (trimmed.length === 0) continue;
-		const target = stripReadSelector(trimmed);
+		if (trimmed.includes("://")) continue;
+		const { path: base, sel } = splitReadSelector(trimmed);
+		const target = sel === undefined ? base : `${base}\u0000${sel}`;
 		if (target.length > 0 && !seen.has(target)) {
 			seen.add(target);
 			targets.push(target);
