@@ -4999,9 +4999,7 @@ export class AgentSession {
 	#queuedExtensionEvents: Promise<void> = Promise.resolve();
 
 	#queueExtensionEvent(event: AgentSessionEvent): Promise<void> {
-		const emit = async () => {
-			await this.#emitExtensionEvent(event);
-		};
+		const emit = () => this.#emitExtensionEvent(event);
 		const queued = this.#queuedExtensionEvents.then(emit, emit);
 		// `queued` is returned, so the failure is delivered to whoever awaits it. The tail must resolve or one
 		// extension throwing would reject every later event on this session; note `then(emit, emit)` above,
