@@ -6,6 +6,7 @@
 
 ### Added
 
+- `run()` accepts verified command summaries for root help and falls back to loading the full registry when any summary is absent.
 - `source-declarations.ts`: `exportedDeclarationsIn` and `declarersOfName` report which modules declare a name, so a one-owner gate no longer matches the declaration's own bytes; a reflowed signature, a signature quoted in a comment and a second module declaring the same name are now all answered correctly.
 
 ### Changed
@@ -25,6 +26,7 @@
 - The minimum supported Bun runtime is now 1.4.0.
 
 ### Added
+- `source-declarations.ts`: `stringConstantsIn`, `declarersOfStringValue` and `stringConstantValue` read the string constants a module declares and compare decoded values, so a one-owner gate no longer searches source text for a formatted line. A duplicate declared under another name, in single quotes, with different spacing, or behind a type annotation is now caught; a rename or a reflow of the owner no longer reports a failure that is only formatting.
 
 - `source-declarations.ts`: `stringConstantsIn`, `declarersOfStringValue` and `stringConstantValue` read the string constants a module declares and compare decoded values, so a one-owner gate no longer searches source text for a formatted line. A duplicate declared under another name, in single quotes, with different spacing, or behind a type annotation is now caught; a rename or a reflow of the owner no longer reports a failure that is only formatting.
 - `definePromptRows` declares a directory's prompt rows and is the seam where an eval-only prompt override applies. A module that sends one prompt imports its row table directly, so replacing text in the aggregate registry alone reached the inspection commands and nothing a model is sent. Costs nothing when `VEYYON_EVAL_PROMPTS` is unset: the table is returned by identity.
