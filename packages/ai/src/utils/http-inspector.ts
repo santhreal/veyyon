@@ -15,6 +15,28 @@ export type RawHttpRequestDump = {
 	body?: unknown;
 };
 
+/**
+ * Attach the request body to a dump at error time. Providers retain only the
+ * exact sent bytes for the life of a stream — holding the parsed object pinned
+ * a full context-sized clone on every in-flight request just to serve a
+ * hypothetical 400/413 dump. This parses those bytes back into `body` once,
+ * when a dump is actually being built; bytes that never parse (never sent, or
+ * truncated by an abort) leave `body` unset rather than fabricating one.
+ */
+export function materializeDumpBody(
+	dump: RawHttpRequestDump | undefined,
+	wireBodyJson: string | undefined,
+): RawHttpRequestDump | undefined {
+	if (!dump || wireBodyJson === undefined) return dump;
+	if (dump.body !== undefined) return dump;
+	try {
+		dump.body = JSON.parse(wireBodyJson) as unknown;
+	} catch {
+		// Unparseable body: the dump still carries method/url/headers.
+	}
+	return dump;
+}
+
 export type CapturedHttpErrorResponse = {
 	status: number;
 	headers?: Headers;
