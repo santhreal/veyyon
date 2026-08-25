@@ -903,7 +903,7 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 			endCurrentTextBlock(output, stream, state);
 			endCurrentThinkingBlock(output, stream, state);
 			if (state.currentToolCall) {
-				const idx = output.content.indexOf(state.currentToolCall);
+				const idx = state.currentToolCall[kStreamingBlockIndex];
 				state.currentToolCall.arguments = parseStreamingJson(state.currentToolCall[kStreamingPartialJson]);
 				clearStreamingPartialJson(state.currentToolCall);
 				stream.push({
@@ -2607,7 +2607,7 @@ export function mergeCursorMcpToolCallArgs(
 function endCurrentTextBlock(output: AssistantMessage, stream: AssistantMessageEventStream, state: BlockState): void {
 	const block = state.currentTextBlock;
 	if (!block) return;
-	const idx = output.content.indexOf(block);
+	const idx = block[kStreamingBlockIndex];
 	stream.push({
 		type: "text_end",
 		contentIndex: idx,
@@ -2624,7 +2624,7 @@ function endCurrentThinkingBlock(
 ): void {
 	const block = state.currentThinkingBlock;
 	if (!block) return;
-	const idx = output.content.indexOf(block);
+	const idx = block[kStreamingBlockIndex];
 	stream.push({
 		type: "thinking_end",
 		contentIndex: idx,
@@ -2735,7 +2735,7 @@ export function processInteractionUpdate(
 			stream.push({ type: "text_start", contentIndex: output.content.length - 1, partial: output });
 		}
 		state.currentTextBlock!.text += delta;
-		const idx = output.content.indexOf(state.currentTextBlock!);
+		const idx = state.currentTextBlock![kStreamingBlockIndex];
 		stream.push({ type: "text_delta", contentIndex: idx, delta, partial: output });
 	} else if (updateCase === "thinkingDelta") {
 		state.setFirstTokenTime();
@@ -2751,7 +2751,7 @@ export function processInteractionUpdate(
 			stream.push({ type: "thinking_start", contentIndex: output.content.length - 1, partial: output });
 		}
 		state.currentThinkingBlock!.thinking += delta;
-		const idx = output.content.indexOf(state.currentThinkingBlock!);
+		const idx = state.currentThinkingBlock![kStreamingBlockIndex];
 		stream.push({ type: "thinking_delta", contentIndex: idx, delta, partial: output });
 	} else if (updateCase === "thinkingCompleted") {
 		endCurrentThinkingBlock(output, stream, state);
@@ -2816,7 +2816,7 @@ export function processInteractionUpdate(
 				state.currentToolCall.arguments = throttled.value;
 				state.currentToolCall[kStreamingLastParseLen] = throttled.parsedLen;
 			}
-			const idx = output.content.indexOf(state.currentToolCall);
+			const idx = state.currentToolCall[kStreamingBlockIndex];
 			stream.push({ type: "toolcall_delta", contentIndex: idx, delta: chunk, partial: output });
 		}
 	} else if (updateCase === "toolCallCompleted") {
@@ -2840,7 +2840,7 @@ export function processInteractionUpdate(
 					state.currentToolCall.arguments = todoArgs;
 				}
 			}
-			const idx = output.content.indexOf(state.currentToolCall);
+			const idx = state.currentToolCall[kStreamingBlockIndex];
 			clearStreamingPartialJson(state.currentToolCall);
 			stream.push({ type: "toolcall_end", contentIndex: idx, toolCall: state.currentToolCall, partial: output });
 			state.setToolCall(null);

@@ -306,6 +306,7 @@ export const streamBedrock: StreamFunction<"bedrock-converse-stream"> = (
 		};
 
 		const blocks = output.content as Block[];
+		const blockIndexMap = new Map<number, number>();
 		let rawRequestDump: RawHttpRequestDump | undefined;
 		/** Exact bytes of the last sent request body; materialized into a dump only on the 400/413 path. */
 		let wireBodyJson: string | undefined;
@@ -503,17 +504,23 @@ export const streamBedrock: StreamFunction<"bedrock-converse-stream"> = (
 						break;
 					}
 					case "contentBlockStart": {
-						if (!firstTokenTime) firstTokenTime = performance.now();
-						handleContentBlockStart(payload as ContentBlockStartEvent, blocks, output, stream, sentinelInjected);
+						handleContentBlockStart(
+							payload as ContentBlockStartEvent,
+							blocks,
+							blockIndexMap,
+							output,
+							stream,
+							sentinelInjected,
+						);
 						break;
 					}
 					case "contentBlockDelta": {
 						if (!firstTokenTime) firstTokenTime = performance.now();
-						handleContentBlockDelta(payload as ContentBlockDeltaEvent, blocks, output, stream);
+						handleContentBlockDelta(payload as ContentBlockDeltaEvent, blocks, blockIndexMap, output, stream);
 						break;
 					}
 					case "contentBlockStop": {
-						handleContentBlockStop(payload as ContentBlockStopEvent, blocks, output, stream);
+						handleContentBlockStop(payload as ContentBlockStopEvent, blocks, blockIndexMap, output, stream);
 						break;
 					}
 					case "messageStop": {
@@ -628,6 +635,7 @@ function safeParsePayload(payload: Uint8Array): unknown {
 function handleContentBlockStart(
 	event: ContentBlockStartEvent,
 	blocks: Block[],
+	blockIndexMap: Map<number, number>,
 	output: AssistantMessage,
 	stream: AssistantMessageEventStream,
 	sentinelInjected: boolean,
@@ -650,20 +658,23 @@ function handleContentBlockStart(
 			[kStreamingBlockIndex]: index,
 		};
 		output.content.push(block);
-		stream.push({ type: "toolcall_start", contentIndex: blocks.length - 1, partial: output });
+		const arrayIndex = blocks.length - 1;
+		blockIndexMap.set(index, arrayIndex);
+		stream.push({ type: "toolcall_start", contentIndex: arrayIndex, partial: output });
 	}
 }
 
 function handleContentBlockDelta(
 	event: ContentBlockDeltaEvent,
 	blocks: Block[],
+	blockIndexMap: Map<number, number>,
 	output: AssistantMessage,
 	stream: AssistantMessageEventStream,
 ): void {
 	const contentBlockIndex = event.contentBlockIndex;
 	const delta = event.delta;
-	let index = blocks.findIndex(b => b[kStreamingBlockIndex] === contentBlockIndex);
-	let block = blocks[index];
+	let index = blockIndexMap.get(contentBlockIndex) ?? -1;
+	let block = index >= 0 ? blocks[index] : undefined;
 
 	if (delta?.text !== undefined) {
 		// If no text block exists yet, create one — `handleContentBlockStart` is not sent for text blocks
@@ -671,6 +682,7 @@ function handleContentBlockDelta(
 			const newBlock: Block = { type: "text", text: "", [kStreamingBlockIndex]: contentBlockIndex };
 			output.content.push(newBlock);
 			index = blocks.length - 1;
+			blockIndexMap.set(contentBlockIndex, index);
 			block = blocks[index];
 			stream.push({ type: "text_start", contentIndex: index, partial: output });
 		}
@@ -699,6 +711,7 @@ function handleContentBlockDelta(
 			};
 			output.content.push(newBlock);
 			thinkingIndex = blocks.length - 1;
+			blockIndexMap.set(contentBlockIndex, thinkingIndex);
 			thinkingBlock = blocks[thinkingIndex];
 			stream.push({ type: "thinking_start", contentIndex: thinkingIndex, partial: output });
 		}
@@ -735,11 +748,12 @@ function handleMetadata(event: MetadataEvent, model: Model<"bedrock-converse-str
 function handleContentBlockStop(
 	event: ContentBlockStopEvent,
 	blocks: Block[],
+	blockIndexMap: Map<number, number>,
 	output: AssistantMessage,
 	stream: AssistantMessageEventStream,
 ): void {
-	const index = blocks.findIndex(b => b[kStreamingBlockIndex] === event.contentBlockIndex);
-	const block = blocks[index];
+	const index = blockIndexMap.get(event.contentBlockIndex) ?? -1;
+	const block = index >= 0 ? blocks[index] : undefined;
 	if (!block) return;
 
 	switch (block.type) {

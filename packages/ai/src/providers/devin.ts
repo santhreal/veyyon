@@ -145,10 +145,13 @@ export const streamDevin: StreamFunction<"devin-agent"> = (
 		};
 
 		let currentTextBlock: TextContent | null = null;
+		let currentTextBlockIndex = -1;
 		let currentThinkingBlock: ThinkingContent | null = null;
+		let currentThinkingBlockIndex = -1;
 		// Tool-call content blocks keyed by streamed tool-call id, plus the JSON-args text
 		// accumulated per id (kept out of the content object so finalized tool calls stay clean).
 		const toolBlocks = new Map<string, ToolCall>();
+		const toolBlockIndex = new Map<string, number>();
 		const toolPartialJson = new Map<string, string>();
 		// Last-parsed argument-buffer length per tool-call id — bounds the
 		// mid-stream parse work to O(N) via `parseStreamingJsonThrottled`; the
@@ -163,27 +166,25 @@ export const streamDevin: StreamFunction<"devin-agent"> = (
 		};
 
 		const endTextBlock = () => {
-			const block = currentTextBlock;
-			if (!block) return;
-			currentTextBlock = null;
+			if (!currentTextBlock) return;
 			stream.push({
 				type: "text_end",
-				contentIndex: output.content.indexOf(block),
-				content: block.text,
+				contentIndex: currentTextBlockIndex,
+				content: currentTextBlock.text,
 				partial: output,
 			});
+			currentTextBlock = null;
 		};
 
 		const endThinkingBlock = () => {
-			const block = currentThinkingBlock;
-			if (!block) return;
-			currentThinkingBlock = null;
+			if (!currentThinkingBlock) return;
 			stream.push({
 				type: "thinking_end",
-				contentIndex: output.content.indexOf(block),
-				content: block.thinking,
+				contentIndex: currentThinkingBlockIndex,
+				content: currentThinkingBlock.thinking,
 				partial: output,
 			});
+			currentThinkingBlock = null;
 		};
 
 		try {
@@ -296,21 +297,21 @@ export const streamDevin: StreamFunction<"devin-agent"> = (
 
 					if (msg.deltaThinking) {
 						markFirstToken();
-						const block: ThinkingContent = currentThinkingBlock ?? { type: "thinking", thinking: "" };
-						if (currentThinkingBlock !== block) {
-							output.content.push(block);
-							currentThinkingBlock = block;
+						if (!currentThinkingBlock) {
+							currentThinkingBlock = { type: "thinking", thinking: "" };
+							output.content.push(currentThinkingBlock);
+							currentThinkingBlockIndex = output.content.length - 1;
 							stream.push({
 								type: "thinking_start",
-								contentIndex: output.content.length - 1,
+								contentIndex: currentThinkingBlockIndex,
 								partial: output,
 							});
 						}
-						block.thinking += msg.deltaThinking;
-						if (msg.deltaSignature) block.thinkingSignature = msg.deltaSignature;
+						currentThinkingBlock.thinking += msg.deltaThinking;
+						if (msg.deltaSignature) currentThinkingBlock.thinkingSignature = msg.deltaSignature;
 						stream.push({
 							type: "thinking_delta",
-							contentIndex: output.content.indexOf(block),
+							contentIndex: currentThinkingBlockIndex,
 							delta: msg.deltaThinking,
 							partial: output,
 						});
@@ -319,16 +320,16 @@ export const streamDevin: StreamFunction<"devin-agent"> = (
 					if (msg.deltaText) {
 						markFirstToken();
 						endThinkingBlock();
-						const block: TextContent = currentTextBlock ?? { type: "text", text: "" };
-						if (currentTextBlock !== block) {
-							output.content.push(block);
-							currentTextBlock = block;
-							stream.push({ type: "text_start", contentIndex: output.content.length - 1, partial: output });
+						if (!currentTextBlock) {
+							currentTextBlock = { type: "text", text: "" };
+							output.content.push(currentTextBlock);
+							currentTextBlockIndex = output.content.length - 1;
+							stream.push({ type: "text_start", contentIndex: currentTextBlockIndex, partial: output });
 						}
-						block.text += msg.deltaText;
+						currentTextBlock.text += msg.deltaText;
 						stream.push({
 							type: "text_delta",
-							contentIndex: output.content.indexOf(block),
+							contentIndex: currentTextBlockIndex,
 							delta: msg.deltaText,
 							partial: output,
 						});
@@ -346,10 +347,11 @@ export const streamDevin: StreamFunction<"devin-agent"> = (
 								block = { type: "toolCall", id: toolCallId, name: tc.name, arguments: {} };
 								output.content.push(block);
 								toolBlocks.set(toolCallId, block);
+								toolBlockIndex.set(toolCallId, output.content.length - 1);
 								toolPartialJson.set(toolCallId, "");
 								stream.push({
 									type: "toolcall_start",
-									contentIndex: output.content.length - 1,
+									contentIndex: toolBlockIndex.get(toolCallId)!,
 									partial: output,
 								});
 							}
@@ -377,7 +379,7 @@ export const streamDevin: StreamFunction<"devin-agent"> = (
 							}
 							stream.push({
 								type: "toolcall_delta",
-								contentIndex: output.content.indexOf(block),
+								contentIndex: toolBlockIndex.get(toolCallId)!,
 								delta,
 								partial: output,
 							});
@@ -407,7 +409,7 @@ export const streamDevin: StreamFunction<"devin-agent"> = (
 				clearStreamingPartialJson(block);
 				stream.push({
 					type: "toolcall_end",
-					contentIndex: output.content.indexOf(block),
+					contentIndex: toolBlockIndex.get(id)!,
 					toolCall: block,
 					partial: output,
 				});

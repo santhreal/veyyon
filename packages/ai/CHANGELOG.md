@@ -35,6 +35,9 @@
 - The OpenAI completions streaming chunk loop hoists the `reasoning_content`/`reasoning`/`reasoning_text` field-name array from a per-chunk allocation to a module-scope constant, avoiding one 3-element array allocation per streamed token.
 - The OpenAI completions streaming chunk loop caches `currentBlockIndex` and returns it in O(1) when `blockIndex` is called with the current block, avoiding one `indexOf` scan per streaming event in the common case (text streaming).
 - `processResponsesStream` in `openai-shared.ts` caches `contentIndex` on each `StreamingItem` at block creation time, replacing an `output.content.indexOf(block)` scan on every delta event with an O(1) field read.
+- The Cursor provider streaming chunk loop replaces `output.content.indexOf(block)` with an O(1) read of the block's cached `kStreamingBlockIndex` field, avoiding one array scan per streamed token.
+- The Devin provider streaming chunk loop caches the content array index at block creation time, replacing `output.content.indexOf(block)` on every delta event with an O(1) local variable read.
+- The Amazon Bedrock provider streaming chunk loop replaces `blocks.findIndex(b => b[kStreamingBlockIndex] === idx)` with an O(1) `Map<number, number>` lookup, avoiding one array scan per streamed token.
 
 ### Fixed
 
