@@ -52,6 +52,8 @@
 - The model-hub recent-search count builds its `Set` without `.map()` and counts with a `for` loop instead of `.reduce()`, avoiding an intermediate array and a callback allocation per search keystroke.
 - The job tool status partition merges three `.filter()` calls into a single `for` loop, avoiding three throwaway arrays per job poll.
 - The autoresearch dashboard merges three `.filter().length` calls into a single counting loop, avoiding three throwaway arrays per status line render during autoresearch mode.
+- The context-usage bar replaces a double `reduce` for `usedCount` with a counting loop that tracks the total incrementally during the overflow-scaling pass, avoiding a callback allocation and a redundant full-array reduce per context bar render.
+- The usage display unique-account count replaces `.map().filter()` into a `Set` with a single `for` loop, avoiding two intermediate arrays per usage display render.
 
 ### Added
 
