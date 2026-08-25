@@ -51,7 +51,7 @@ describe("root $ref is inlined before incremental-label metadata is derived", ()
 		expect(validator?.isKnownSection("summary")).toBe(true);
 		expect(validator?.isKnownSection("findings")).toBe(true);
 		expect(validator?.isKnownSection("other")).toBe(false);
-		expect(validator?.knownSectionLabels.sort()).toEqual(["findings", "summary"]);
+		expect([...(validator?.knownSectionLabels ?? [])].sort()).toEqual(["findings", "summary"]);
 	});
 });
 

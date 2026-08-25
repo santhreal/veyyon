@@ -55,7 +55,7 @@ describe("formatAllValidationIssues uses slashes and no (root) prefix", () => {
 
 describe("summarizeValidationFailure ignores issues when the result already succeeded", () => {
 	it("returns empty message and no missing-required on success", () => {
-		expect(summarizeValidationFailure({ success: true }, { a: 1 }, ["a"])).toEqual({
+		expect(summarizeValidationFailure({ success: true, issues: [] }, { a: 1 }, ["a"])).toEqual({
 			message: "",
 			missingRequired: [],
 		});

@@ -76,11 +76,11 @@ describe("fromWireSessionEntry drops undeclared keys a peer stuffed onto the fra
 		const wire = toWireSessionEntry(assistantEntry());
 		if (!wire) throw new Error("expected a projected entry");
 		const message = {
-			...(wire as { message: Record<string, unknown> }).message,
+			...((wire as unknown as { message: Record<string, unknown> }).message),
 			stolen: true,
 			request: { temperature: 0 },
 		};
-		const back = fromWireSessionEntry({ ...wire, message } as typeof wire) as unknown as {
+		const back = fromWireSessionEntry({ ...(wire as object), message } as never) as unknown as {
 			message: Record<string, unknown>;
 		};
 		expect(Object.hasOwn(back.message, "stolen")).toBe(false);
@@ -91,8 +91,11 @@ describe("fromWireSessionEntry drops undeclared keys a peer stuffed onto the fra
 	it("invents api as the unreported marker, never echoing a peer-supplied endpoint name", () => {
 		const wire = toWireSessionEntry(assistantEntry());
 		if (!wire) throw new Error("expected a projected entry");
-		const message = { ...(wire as { message: Record<string, unknown> }).message, api: "anthropic-messages" };
-		const back = fromWireSessionEntry({ ...wire, message } as typeof wire) as unknown as {
+		const message = {
+			...((wire as unknown as { message: Record<string, unknown> }).message),
+			api: "anthropic-messages",
+		};
+		const back = fromWireSessionEntry({ ...(wire as object), message } as never) as unknown as {
 			message: { api: string };
 		};
 		expect(back.message.api).toBe(WIRE_API_UNREPORTED);
