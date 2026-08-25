@@ -107,6 +107,12 @@
 : "${SCENE_OUTPUT:=HEADLESS-1}"
 : "${SCENE_SEAT:=seat0}"
 
+# ─── Which arm of a pair this is ────────────────────────────────────────────
+# `after` unless record-x11-before.sh says otherwise. A scene that photographs NEW
+# behavior has no assertion that holds on both sides -- the after arm must see the new
+# state and the before arm the old one -- so it needs to know which one it is running.
+: "${SCENE_ARM:=after}"
+
 # ─── Motion gate ────────────────────────────────────────────────────────────
 : "${SCENE_MOTION_GATE:=1}"
 : "${SCENE_MOTION_FLOOR:=12}"
@@ -127,7 +133,7 @@ SCENE_BACKDROP_BASE SCENE_BACKDROP_WARM SCENE_BACKDROP_COOL
 SCENE_BACKDROP_BLUR SCENE_CWD SCENE_SETTLE_SCALE SCENE_GIF SCENE_GIF_FPS
 SCENE_GIF_WIDTH SCENE_SETTINGS
 SCENE_SIGNING_NUMBER SCENE_HIDE_THINKING SCENE_COMMAND SCENE_MOTION_GATE
-SCENE_MOTION_FLOOR SCENE_MOTION_GATE_BIN SCENE_OUTPUT SCENE_SEAT SCENE_HOLD SCENE_TYPING_REPEAT SCENE_MARK_LEAD_MIN_MS
+SCENE_MOTION_FLOOR SCENE_MOTION_GATE_BIN SCENE_OUTPUT SCENE_SEAT SCENE_HOLD SCENE_TYPING_REPEAT SCENE_MARK_LEAD_MIN_MS SCENE_ARM
 "
 
 # Exported, not merely set. A session writes a bootstrap script and hands it to a

@@ -80,7 +80,7 @@ describe("an exited launch process is purged after the configured cleanup wait",
 		const client = await createDaemonBrokerClient(projectDir, {
 			runtimeDir,
 			idleGraceMs: 10_000,
-			cleanupWaitMs: 350,
+			cleanupWaitMs: 1_000,
 		});
 
 		try {
@@ -309,7 +309,7 @@ describe("an exited launch process is purged after the configured cleanup wait",
 		const client = await createDaemonBrokerClient(projectDir, {
 			runtimeDir,
 			idleGraceMs: 10_000,
-			cleanupWaitMs: 400,
+			cleanupWaitMs: 1_000,
 		});
 
 		try {

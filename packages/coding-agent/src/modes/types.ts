@@ -21,6 +21,7 @@ import type { Skill } from "../extensibility/skills";
 import type { MCPManager } from "../mcp";
 import type { PlanApprovalDetails } from "../plan-mode/approved-plan";
 import type { AgentSession } from "../session/agent-session";
+import type { InteractiveSessionFactory, KeptSession } from "../session/background-sessions";
 import type { CompactMode } from "../session/compact-modes";
 import type { HistoryStorage } from "../session/history-storage";
 import type { SessionContext } from "../session/session-context";
@@ -123,6 +124,14 @@ export interface InteractiveModeContext {
 	focusParentSession(): Promise<void>;
 	/** Return the view to the main session (delegates to SessionFocusController.unfocus). */
 	unfocusSession(): Promise<void>;
+	/**
+	 * Build the session `/new` moves to while the displayed one finishes its
+	 * turn. Absent in a host that cannot create a second session, which makes
+	 * `/new` reset the current session in place as it always has.
+	 */
+	createNextSession?: InteractiveSessionFactory;
+	/** Display `next` and hand the session being displayed to the background keeper. */
+	attachMainSession(next: AgentSession): KeptSession;
 	/** Clear loader, transient HUD/pending containers, streaming state, and pending tools. */
 	clearTransientSessionUi(): void;
 	settings: Settings;
