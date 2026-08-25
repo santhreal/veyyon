@@ -289,10 +289,12 @@ describe("a picture the terminal cannot draw leaves a row that says so", () => {
 		// block text: each row drops its gutter rail and the padding that follows
 		// the last glyph, and the rows are concatenated without a separator,
 		// because a terminal wrap inserts nothing between them. The rail pattern
-		// matches a box-drawing glyph specifically rather than any non-space
-		// character, so a renderer that stops drawing one fails this loudly
-		// instead of quietly eating the first character of every row.
-		const row = rows.map(r => r.replace(/^ *[\u2500-\u257F] ?/u, "").trimEnd()).join("");
+		// matches one box-drawing or block-element glyph specifically rather than
+		// any non-space character, so a renderer that stops drawing a rail fails
+		// this loudly instead of quietly eating the first character of every row.
+		// The rail this block draws is U+258F, a block element, so the class has
+		// to reach past the box-drawing range to cover it.
+		const row = rows.map(r => r.replace(/^ *[\u2500-\u259F] ?/u, "").trimEnd()).join("");
 
 		expect(row).toContain("[image not shown, no image protocol]");
 		expect(row).toContain("board.png");
