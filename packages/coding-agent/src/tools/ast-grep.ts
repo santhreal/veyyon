@@ -145,9 +145,7 @@ async function runMultiTargetAstGrep(
 		limitReached = limitReached || targetResult.limitReached;
 		if (targetResult.parseErrors) parseErrors.push(...targetResult.parseErrors);
 		for (const match of targetResult.matches) {
-			const absolute = targetInfo.isFile
-				? targetInfo.basePath
-				: path.resolve(targetInfo.basePath, match.path);
+			const absolute = targetInfo.isFile ? targetInfo.basePath : path.resolve(targetInfo.basePath, match.path);
 			// Overlapping targets (a directory plus a file nested
 			// inside it) surface the same match twice; keep the
 			// first occurrence.
@@ -210,7 +208,8 @@ export class AstGrepTool implements AgentTool<typeof astGrepSchema, AstGrepToolD
 	readonly approval = "read" as const;
 	// ast_grep reads file contents under its search path, so an out-of-cwd search
 	// prompts in non-yolo modes like a point read does. See cwd-boundary.ts.
-	readonly filesystemTargets = (args: unknown, cwd = this.session.cwd): string[] => searchPathFilesystemTargets(args, cwd);
+	readonly filesystemTargets = (args: unknown, cwd = this.session.cwd): string[] =>
+		searchPathFilesystemTargets(args, cwd);
 	readonly label = "AST Grep";
 	readonly summary = "Search code with AST patterns (structural grep)";
 	readonly description: string;
