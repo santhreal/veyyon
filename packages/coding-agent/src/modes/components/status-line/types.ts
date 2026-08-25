@@ -20,7 +20,19 @@ export interface StatusLineSegmentOptions {
 		/** Quiet zones: a wide gap between the model name and the effort tail. */
 		roomy?: boolean;
 	};
-	path?: { abbreviate?: boolean; maxLength?: number; stripWorkPrefix?: boolean };
+	path?: {
+		abbreviate?: boolean;
+		maxLength?: number;
+		stripWorkPrefix?: boolean;
+		/**
+		 * Workspace roots the working directory is shown relative to, most specific first, with
+		 * `~` accepted for the home directory. Absent means the two conventions this segment has
+		 * always stripped (`~/Projects` and `/work`); `stripWorkPrefix: false` means none at all,
+		 * whatever is listed here. A relative entry is dropped and named to the log, because a
+		 * root that cannot contain a directory would otherwise read as applied and do nothing.
+		 */
+		displayRoots?: string[];
+	};
 	git?: { showBranch?: boolean };
 	time?: { format?: "12h" | "24h"; showSeconds?: boolean };
 }
