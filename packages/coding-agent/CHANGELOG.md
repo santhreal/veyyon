@@ -33,6 +33,7 @@
 - The todo tool card counts completed tasks with a loop instead of `.filter().length`, avoiding a throwaway array per render.
 - `#withPlanProtection` caches the plan-read matcher as a field instead of creating a new closure on every call, and `#pruneStaleToolResults` passes the default `protectedTools` array by reference instead of spreading a throwaway copy, avoiding two per-turn allocations on the compaction pruning path.
 - `getSessionStats` hoists the task-tool usage extractor to module scope instead of allocating a new closure on every call, avoiding a per-turn closure allocation in the session stats path.
+- `#messagesSummarizedAway` caches its result keyed on the branch array reference and compaction boundary, so the three per-turn `getSessionStats` calls share one walk and one array allocation instead of three.
 - The `/todo` autocomplete description counts pending, in-progress, and completed tasks in a single loop instead of three `.filter().length` passes, avoiding three throwaway arrays per keystroke.
 - Hindsight and mnemopi auto-retain count user turns with a loop instead of `.filter().length`, avoiding a throwaway array of the full message list on every `agent_end`.
 - HTML export counts tool calls with a loop instead of `.filter().length`, avoiding a throwaway array per assistant message during export.
