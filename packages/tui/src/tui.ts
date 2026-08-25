@@ -3148,7 +3148,7 @@ export class TUI extends Container {
 			if (frameRow < segment.start || frameRow >= segment.start + segment.rowCount) continue;
 			const component = segment.component as Component & Partial<MouseRoutable>;
 			if (typeof component.routeMouse === "function") {
-				const localRow = Math.max(0, Math.min(segment.rowCount - 1, frameRow - segment.start));
+				const localRow = clampLow(frameRow - segment.start, 0, segment.rowCount - 1);
 				component.routeMouse(event, localRow, event.col);
 				this.requestRender();
 			}
