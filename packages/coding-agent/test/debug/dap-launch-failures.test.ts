@@ -644,11 +644,11 @@ describe("DebugTool launch validation", () => {
 		}
 	});
 
-	it("throws targeted 'python not found in PATH' when adapter:'debugpy' is unresolvable for launch", async () => {
+	it("throws targeted 'neither python3 nor python' when adapter:'debugpy' is unresolvable for launch", async () => {
 		const launchSpy = spyOn(dapModule, "selectLaunchAdapter").mockReturnValue({
 			kind: "unavailable",
 			adapterName: "debugpy",
-			command: "python",
+			command: "python3",
 		});
 		try {
 			const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-debug-debugpy-"));
@@ -665,7 +665,7 @@ describe("DebugTool launch validation", () => {
 
 				await expect(
 					tool.execute("call", { action: "launch", program: "main.py", adapter: "debugpy" }),
-				).rejects.toThrow(/debugpy.*python not found in PATH/);
+				).rejects.toThrow(/debugpy.*neither python3 nor python was found in PATH/);
 			} finally {
 				await removeWithRetries(cwd);
 			}
@@ -674,7 +674,7 @@ describe("DebugTool launch validation", () => {
 		}
 	});
 
-	it("throws targeted 'python not found in PATH' when adapter:'debugpy' is unresolvable for attach", async () => {
+	it("throws targeted 'neither python3 nor python' when adapter:'debugpy' is unresolvable for attach", async () => {
 		const attachSpy = spyOn(dapModule, "selectAttachAdapter").mockReturnValue(null);
 		try {
 			const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-debug-debugpy-attach-"));
@@ -689,7 +689,7 @@ describe("DebugTool launch validation", () => {
 				const tool = new DebugTool(session);
 
 				await expect(tool.execute("call", { action: "attach", pid: 1234, adapter: "debugpy" })).rejects.toThrow(
-					/debugpy.*python not found in PATH/,
+					/debugpy.*neither python3 nor python was found in PATH/,
 				);
 			} finally {
 				await removeWithRetries(cwd);

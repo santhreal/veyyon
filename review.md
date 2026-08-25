@@ -101,7 +101,10 @@ The question is not whether the code is clever. It is whether a simpler version 
 - Every changed observable behavior has a test that fails without the change. A test that passes
   against the unfixed code proves nothing.
 - The test drives the production path. A test whose subject is a mock of the thing under test is not
-  evidence, and neither is asserting that a spy was called.
+  evidence, and neither is asserting that a spy was called. Both are enforced by
+  `scripts/a-test-proves-behavior-not-that-a-spy-was-called.test.ts`: `mock.module` is refused
+  outright, and a spy-call assertion is refused in any file that did not already carry one. A count
+  in its ledger may only fall, so do not raise one to land a diff.
 - A variant space is enumerated from source at run time, so a new member turns the suite red rather
   than slipping past a hardcoded list.
 - No source-grep assertions, no tautologies, no "the code ran" checks.

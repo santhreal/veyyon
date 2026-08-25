@@ -424,7 +424,10 @@ describe("IRC", () => {
 			session.settings.set("subagent.maxNestedSpawnDepth", 0);
 			const tool = IrcTool.createIf(session);
 			expect(tool).toBeInstanceOf(IrcTool);
-			expect(tool?.interruptible).toBe(true);
+			// A wait blocks, so it observes an interrupt; a fire-and-forget send
+			// returns at once and must keep its own result.
+			expect(tool?.interruptible({ op: "wait" })).toBe(true);
+			expect(tool?.interruptible({ op: "send", to: "0-Leaf", message: "hi" })).toBe(false);
 		});
 
 		it("createIf enables irc for a depth-one leaf subagent", () => {
@@ -449,7 +452,8 @@ describe("IRC", () => {
 			capped.settings.set("subagent.maxNestedSpawnDepth", 0);
 			const cappedTool = IrcTool.createIf(capped);
 			expect(cappedTool).toBeInstanceOf(IrcTool);
-			expect(cappedTool?.interruptible).toBe(true);
+			expect(cappedTool?.interruptible({ op: "wait" })).toBe(true);
+			expect(cappedTool?.interruptible({ op: "send", to: "0-Main", message: "hi", await: true })).toBe(true);
 
 			const noDelegation = makeLeaf();
 			noDelegation.settings.set("subagent.enabled", false);

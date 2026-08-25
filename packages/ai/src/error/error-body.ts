@@ -294,3 +294,54 @@ function boundedWithNote(text: string, bytesRead: number, declaredBytes: number 
 export async function readProviderErrorDetail(response: Response, options?: { maxBytes?: number }): Promise<string> {
 	return (await readProviderErrorBody(response, options)).detail;
 }
+
+/**
+ * The human sentence inside a provider's JSON error envelope, or the bounded
+ * body when there is not one.
+ *
+ * Providers answer a rejected key with a readable explanation wrapped in JSON:
+ * Command Code returns `{"error":{"message":"Your Go plan doesn't include API
+ * access. Upgrade to Provider or higher at …","type":"permission_error"}}`.
+ * Interpolating the raw body puts that sentence behind punctuation and field
+ * names, and the one line the operator needs — that this is a plan limit and
+ * not a mistyped key — is the hardest part of it to find.
+ *
+ * Parses the ALREADY redacted and bounded `text`, so nothing here can widen what
+ * a message may contain. An unparseable or unrecognized body falls back to the
+ * existing detail rather than inventing one.
+ */
+export function providerErrorMessage(body: ProviderErrorBody): string {
+	const trimmed = body.text.trim();
+	if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) return body.detail;
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(trimmed);
+	} catch {
+		// A truncated or non-JSON body is normal from a proxy; the raw detail is
+		// still the most informative thing available.
+		return body.detail;
+	}
+	const message = extractMessage(parsed);
+	return message ? boundProviderErrorDetail(message) : body.detail;
+}
+
+/**
+ * `message` from the envelopes providers actually use, checked by own-property
+ * so a body carrying `__proto__` cannot reach anything but its own fields.
+ */
+function extractMessage(value: unknown): string | undefined {
+	if (typeof value !== "object" || value === null) return undefined;
+	const own = (key: string): unknown =>
+		Object.hasOwn(value, key) ? (value as Record<string, unknown>)[key] : undefined;
+	const error = own("error");
+	if (typeof error === "string" && error.trim()) return error.trim();
+	if (typeof error === "object" && error !== null) {
+		const nested = Object.hasOwn(error, "message") ? (error as Record<string, unknown>).message : undefined;
+		if (typeof nested === "string" && nested.trim()) return nested.trim();
+	}
+	for (const key of ["message", "detail"]) {
+		const candidate = own(key);
+		if (typeof candidate === "string" && candidate.trim()) return candidate.trim();
+	}
+	return undefined;
+}
