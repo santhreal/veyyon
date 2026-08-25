@@ -481,6 +481,12 @@ veyyon config get compaction.threshold
 | `todo.eager` | Create Todos Automatically | enum | `default` | How strongly to push automatic todo-list creation after the first message. Values: `default`, `preferred`, `always`. |
 | `tasks.todoClearDelay` | Todo Auto-Clear Delay | number | `-1` | Delay before completed or abandoned todos are removed from the todo widget. |
 
+### Launch
+
+| Key | Setting | Type | Default | What it does |
+|---|---|---|---|---|
+| `launch.cleanupWaitMs` | Launch Cleanup Wait | number | `900000` | How long an exited process record is retained before being purged from memory and disk (0 = never clean up). |
+
 ### Grep & Browser
 
 | Key | Setting | Type | Default | What it does |
@@ -874,4 +880,4 @@ These keys are not in `/settings`. Some are state veyyon writes for itself (a sc
 | `tui.maxInlineImageRows` | number | `20` |  |
 | `tui.maxInlineImages` | number | `8` |  |
 
-349 settings in /settings, 119 configuration-file keys, 468 in all.
+350 settings in /settings, 119 configuration-file keys, 469 in all.
