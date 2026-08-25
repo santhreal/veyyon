@@ -19,6 +19,7 @@
 - `collectToolCallsById` caches its tool-call Map in a WeakMap keyed by the entries array, sharing it across the two per-turn pruning calls (`pruneSupersededToolResults` and `pruneToolOutputs`) and incrementally updating on append instead of rebuilding from scratch.
 - `resolveCompactionBoundaryIndex` caches its result in a WeakMap keyed by the entries array and boundary ID, sharing it across the two per-turn pruning calls that pass the same branch and compaction boundary.
 - `pruneSupersededToolResults` computes the cache-warm suffix during `collectPruneCandidates`'s backward scan instead of calling `computeMessageSuffixTokens` separately, eliminating another O(n) array allocation and O(n) pass per turn. The suffix is stored per-candidate and read directly by `chooseWorthwhileSweep`.
+- `pruneToolOutputs` skips the `collectPruneCandidates` backward walk when no supersede key is configured (the production default), checking the useless-result flag inline in its existing backward scan instead. This eliminates one O(n) pass per turn.
 
 ### Added
 

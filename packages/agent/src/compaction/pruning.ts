@@ -341,18 +341,24 @@ export function pruneToolOutputs(entries: SessionEntry[], config: PruneConfig = 
 
 	const candidates: Array<{ entry: SessionMessageEntry; tokens: number; superseded: boolean; useless: boolean }> = [];
 	const toolCallsById = collectToolCallsById(entries);
-	const pruneCandidates = collectPruneCandidates(
-		entries,
-		toolCallsById,
-		config.supersedeKey,
-		config.protectedTools,
-		config.pruneUseless !== false,
-	);
-	const supersededMessages = new Set<ToolResultMessage>();
-	const uselessMessages = new Set<ToolResultMessage>();
-	for (const candidate of pruneCandidates) {
-		if (candidate.notice === SUPERSEDED_NOTICE) supersededMessages.add(candidate.message);
-		else uselessMessages.add(candidate.message);
+	const hasSupersedeKey = config.supersedeKey !== undefined;
+	const pruneUseless = config.pruneUseless !== false;
+	let supersededMessages: Set<ToolResultMessage> | undefined;
+	let uselessMessages: Set<ToolResultMessage> | undefined;
+	if (hasSupersedeKey) {
+		supersededMessages = new Set();
+		uselessMessages = new Set();
+		const pruneCandidates = collectPruneCandidates(
+			entries,
+			toolCallsById,
+			config.supersedeKey,
+			config.protectedTools,
+			pruneUseless,
+		);
+		for (const candidate of pruneCandidates) {
+			if (candidate.notice === SUPERSEDED_NOTICE) supersededMessages.add(candidate.message);
+			else uselessMessages.add(candidate.message);
+		}
 	}
 
 	const boundaryIndex = resolveCompactionBoundaryIndex(entries, config.keepBoundaryId);
@@ -383,7 +389,14 @@ export function pruneToolOutputs(entries: SessionEntry[], config: PruneConfig = 
 				// is dead weight at any age) — but only within the cache-warm tail: the
 				// guard above already excluded deeper, still-cached copies.
 				const superseded = supersededMessages?.has(message) ?? false;
-				const useless = uselessMessages?.has(message) ?? false;
+				const useless =
+					uselessMessages?.has(message) ??
+					(!hasSupersedeKey &&
+						pruneUseless &&
+						message.useless === true &&
+						!message.isError &&
+						!isProtected &&
+						estimatePrunedSavings(tokens, USELESS_NOTICE) > 0);
 				const tooSmall = tokens < MIN_PRUNE_TOKENS;
 				if (!superseded && !useless && (accumulatedTokens < config.protectTokens || isProtected || tooSmall)) {
 					accumulatedTokens += tokens;
