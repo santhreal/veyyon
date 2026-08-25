@@ -53,6 +53,7 @@ commands, and vendored trees are not prose pages and are not listed.
 | [`ARCHITECTURE.md`](../ARCHITECTURE.md) | The package map and the cross-cutting rules. Conventional at the root, and the first file a new contributor opens. |
 | [`SECURITY.md`](../SECURITY.md), [`SUPPORT.md`](../SUPPORT.md) | GitHub reads these from the root to render the security and support links on the repository page. Moving them breaks that. |
 | [`UPSTREAM.md`](../UPSTREAM.md) | The fork statement and where the legal notices live. Root-level because it is about the repository itself, not about the code in it. Lineage and the port pipeline are in [`docs/internal/porting-from-pi-mono.md`](internal/porting-from-pi-mono.md). |
+| [`review.md`](../review.md) | The pull-request review procedure. Root-level so a reviewer reaches it without knowing the docs layout, and so an agent harness loads it beside `AGENTS.md`. |
 | [`packages/coding-agent/DEVELOPMENT.md`](../packages/coding-agent/DEVELOPMENT.md) | Maps `src/` subsystems to their authoritative doc. It belongs beside the tree it maps, since a map that lives elsewhere goes stale the first time a directory moves. |
 | [`packages/coding-agent/docs/modal-shell.md`](../packages/coding-agent/docs/modal-shell.md) | The `ModalShell` overlay contract, read while editing the component it specifies. |
 | [`packages/ai/src/utils/schema/CONSTRAINTS.md`](../packages/ai/src/utils/schema/CONSTRAINTS.md) | The normalization and strictness contract for the module it sits in, and the module is the only reader. |
