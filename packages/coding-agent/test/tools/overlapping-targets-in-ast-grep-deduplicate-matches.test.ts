@@ -115,9 +115,7 @@ describe("ast_grep overlapping target deduplication", () => {
 			});
 
 			const text = result.content.find(content => content.type === "text")?.text ?? "";
-			const details = result.details as
-				| { matchCount?: number; fileCount?: number }
-				| undefined;
+			const details = result.details as { matchCount?: number; fileCount?: number } | undefined;
 
 			const alphaMatches = text.match(/targetFunction\("alpha"\)/g);
 			const betaMatches = text.match(/targetFunction\("beta"\)/g);
@@ -156,9 +154,7 @@ describe("ast_grep overlapping target deduplication", () => {
 			});
 
 			const text = result.content.find(content => content.type === "text")?.text ?? "";
-			const details = result.details as
-				| { matchCount?: number; fileCount?: number }
-				| undefined;
+			const details = result.details as { matchCount?: number; fileCount?: number } | undefined;
 
 			const bMatches = text.match(/sameNamedCall\("inside-b"\)/g);
 			const otherMatches = text.match(/sameNamedCall\("inside-other"\)/g);
@@ -200,9 +196,7 @@ describe("ast_grep overlapping target deduplication", () => {
 			});
 
 			const text = result.content.find(content => content.type === "text")?.text ?? "";
-			const details = result.details as
-				| { matchCount?: number; fileCount?: number }
-				| undefined;
+			const details = result.details as { matchCount?: number; fileCount?: number } | undefined;
 
 			const match1 = text.match(/threeWayCall\("match-1"\)/g);
 			const match2 = text.match(/threeWayCall\("match-2"\)/g);
@@ -281,9 +275,7 @@ describe("ast_grep overlapping target deduplication", () => {
 				});
 
 				const overlapText = overlappingPage.content.find(content => content.type === "text")?.text ?? "";
-				const details = overlappingPage.details as
-					| { matchCount?: number; fileCount?: number }
-					| undefined;
+				const details = overlappingPage.details as { matchCount?: number; fileCount?: number } | undefined;
 
 				expect(details?.matchCount).toBe(totalExpectedMatches);
 				expect(details?.fileCount).toBe(totalExpectedFiles);
