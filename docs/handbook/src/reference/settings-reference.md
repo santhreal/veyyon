@@ -91,6 +91,7 @@ veyyon config get compaction.threshold
 | `model.loopGuard.toolCallReminder` | Loop Guard Tool-Call Reminder | boolean | `true` | When a Gemini reasoning stream emits many consecutive planning headers without calling a tool, interrupt it and inject a reminder to issue a tool call (requires Loop Guard). |
 | `model.toolCallLoopGuard.enabled` | Tool-Call Loop Guard | boolean | `true` | Detect consecutive identical tool calls across turns and inject a corrective steer. |
 | `model.toolCallLoopGuard.threshold` | Tool-Call Loop Threshold | number | `5` | Consecutive identical tool calls required before the corrective steer is injected. |
+| `model.toolCallLoopGuard.readSubsumptionThreshold` | Read Subsumption Loop Threshold | number | `2` | Consecutive fully-subsumed or redundant read calls on unchanged files before the corrective steer is injected. |
 | `model.toolCallLoopGuard.exemptTools` | Tool-Call Loop Exempt Tools | array | `["job","irc"]` | Tool names that may repeat consecutively without triggering the cross-turn loop guard. |
 | `providers.autoThinkingModel` | Auto Thinking Model | enum | `online` | Difficulty classifier for the `auto` thinking level: online (the TINY role from /models, else smol) by default, or a local on-device model. Values: `online`, `qwen3-1.7b`, `llama3.2:3b`, `gemma-3-1b`, `qwen2.5-1.5b`, `lfm2-1.2b`. |
 
@@ -871,4 +872,4 @@ These keys are not in `/settings`. Some are state veyyon writes for itself (a sc
 | `tui.maxInlineImageRows` | number | `20` |  |
 | `tui.maxInlineImages` | number | `8` |  |
 
-346 settings in /settings, 119 configuration-file keys, 465 in all.
+347 settings in /settings, 119 configuration-file keys, 466 in all.
