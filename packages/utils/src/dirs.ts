@@ -1068,21 +1068,21 @@ export function pathIsWithin(root: string, candidate: string): boolean {
  * in a case it had never used.
  */
 export function relativePathWithinRoot(root: string, candidate: string): string | null {
-	if (!pathIsWithin(root, candidate)) return null;
+	const resolvedRoot = resolveEquivalentPath(root);
+	const resolvedCandidate = resolveEquivalentPath(candidate);
+	const normalizedRoot = process.platform === "win32" ? resolvedRoot.toLowerCase() : resolvedRoot;
+	const normalizedCandidate = process.platform === "win32" ? resolvedCandidate.toLowerCase() : resolvedCandidate;
+	const relative = path.relative(normalizedRoot, normalizedCandidate);
+	if (relative === "" || relative.startsWith("..") || path.isAbsolute(relative)) return null;
 	// HOW DEEP, from the folded comparison; WHICH NAMES, from the candidate. Asking
 	// `path.relative` for the answer over the resolved spellings is not enough: it folds case
 	// on win32 and not on posix, so a root configured in one case and a directory on disk in
 	// another walked up and back down (`../../Users/dev/Projects/MyApp`) wherever the platform
 	// compares exactly. Containment is already settled above, so the tail is that many
 	// segments off the end of the candidate.
-	const depth = path
-		.relative(normalizePathForComparison(root), normalizePathForComparison(candidate))
-		.split(PATH_SEPARATORS)
-		.filter(segment => segment !== "").length;
+	const depth = relative.split(PATH_SEPARATORS).filter(segment => segment !== "").length;
 	if (depth === 0) return null;
-	const segments = resolveEquivalentPath(candidate)
-		.split(PATH_SEPARATORS)
-		.filter(segment => segment !== "");
+	const segments = resolvedCandidate.split(PATH_SEPARATORS).filter(segment => segment !== "");
 	return segments.slice(Math.max(0, segments.length - depth)).join(path.sep) || null;
 }
 
