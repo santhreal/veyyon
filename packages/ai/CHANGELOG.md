@@ -21,6 +21,7 @@
 
 ### Fixed
 
+- The Cursor HTTP/2 client session handles error and close events directly so connection drops, DNS resolution failures and socket resets reject the turn with a classified error instead of raising an unhandled exception.
 - Fixed read tool target parsing in `ToolCallLoopGuard` to correctly handle URI schemes, Windows drive prefixes, compound raw-range selectors, and open-ended ranges without falsely subsuming distinct reads.
 - Fixed OpenAI server-side compaction requests omitting the `Authorization` header when constructing headers from request setup.
 - Supported server-side compaction on the ChatGPT Codex backend with OAuth credential and turn identity headers.
