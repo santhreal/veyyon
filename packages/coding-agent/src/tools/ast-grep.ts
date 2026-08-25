@@ -1,3 +1,4 @@
+import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
 import type { ToolExample } from "@veyyon/ai";
@@ -101,6 +102,18 @@ async function runMultiTargetAstGrep(
 	let filesSearched = 0;
 	let limitReached = false;
 	throwIfAborted(options.signal, "ast_grep");
+	// Resolve target kind once outside the per-match loop so file vs directory
+	// path resolution is deterministic and does not rely on string suffix matching.
+	const targetStats = await Promise.all(
+		targets.map(async target => {
+			const resolvedBase = path.resolve(target.basePath);
+			const isFile = await fs
+				.stat(resolvedBase)
+				.then(stat => stat.isFile())
+				.catch(() => false);
+			return { basePath: resolvedBase, isFile };
+		}),
+	);
 	// Each target is an independent native scan on libuv's blocking pool, so
 	// they run concurrently instead of serializing behind one another. Every
 	// scan still carries the tool's own signal, so a cancellation fails each
@@ -123,7 +136,7 @@ async function runMultiTargetAstGrep(
 	);
 	for (const [targetIndex, outcome] of settled.entries()) {
 		if (outcome.status === "rejected") throw outcome.reason;
-		const target = targets[targetIndex]!;
+		const targetInfo = targetStats[targetIndex]!;
 		const targetResult = outcome.value;
 		const targetSeenFiles = new Set<string>();
 		totalMatches += targetResult.totalMatches;
@@ -132,14 +145,9 @@ async function runMultiTargetAstGrep(
 		limitReached = limitReached || targetResult.limitReached;
 		if (targetResult.parseErrors) parseErrors.push(...targetResult.parseErrors);
 		for (const match of targetResult.matches) {
-			const resolvedBase = path.resolve(target.basePath);
-			const absolute =
-				resolvedBase.endsWith(`/${match.path}`) ||
-				resolvedBase.endsWith(`\\${match.path}`) ||
-				resolvedBase === match.path ||
-				match.path === ""
-					? resolvedBase
-					: path.resolve(target.basePath, match.path);
+			const absolute = targetInfo.isFile
+				? targetInfo.basePath
+				: path.resolve(targetInfo.basePath, match.path);
 			// Overlapping targets (a directory plus a file nested
 			// inside it) surface the same match twice; keep the
 			// first occurrence.
