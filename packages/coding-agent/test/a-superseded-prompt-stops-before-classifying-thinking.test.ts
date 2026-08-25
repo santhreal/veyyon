@@ -21,8 +21,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
 import { Agent } from "@veyyon/agent-core";
-import { Effort } from "@veyyon/ai";
 import { createMockModel } from "@veyyon/ai/providers/mock";
+import { Effort } from "@veyyon/catalog/effort";
 import { getBundledModel } from "@veyyon/catalog/models";
 import * as classifier from "@veyyon/coding-agent/auto-thinking/classifier";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
@@ -98,6 +98,8 @@ describe("a prompt superseded inside before_agent_start", () => {
 
 		expect(emitBeforeAgentStart).toHaveBeenCalledTimes(1);
 		expect(classify).toHaveBeenCalledTimes(1);
+		expect(session.thinkingLevel).toBe(Effort.Medium);
+		expect(session.agent.state.thinkingLevel).toBe(Effort.Medium);
 	});
 
 	it("issues no classifier request when an abort lands inside the hook", async () => {
@@ -112,5 +114,7 @@ describe("a prompt superseded inside before_agent_start", () => {
 
 		expect(emitBeforeAgentStart).toHaveBeenCalledTimes(1);
 		expect(classify).not.toHaveBeenCalled();
+		expect(session.thinkingLevel).toBe(Effort.High);
+		expect(session.agent.state.thinkingLevel).toBe(Effort.High);
 	});
 });
