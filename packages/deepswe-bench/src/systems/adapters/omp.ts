@@ -18,7 +18,7 @@ import type {
  * provides metadata (contextWindow, maxTokens, reasoning) that omp's own
  * `models refresh` lacks because it has no models.dev overlay.
  */
-function buildModelsYml(refreshJson: string, modelSelector: string): string | null {
+function buildModelsYml(refreshJson: string, modelSelector: string, apiKey: string): string | null {
 	const slashIndex = modelSelector.indexOf("/");
 	if (slashIndex < 1) return null;
 	const provider = modelSelector.slice(0, slashIndex);
@@ -52,7 +52,7 @@ function buildModelsYml(refreshJson: string, modelSelector: string): string | nu
 		// Minimal YAML serializer — the structure is flat and predictable.
 		const baseUrl = providerBaseUrls[provider] ?? "";
 		const api = providerApis[provider] ?? "openai-completions";
-		let yml = `providers:\n  ${provider}:\n    apiKey: \${OPENCODE_API_KEY}\n`;
+		let yml = `providers:\n  ${provider}:\n    apiKey: ${apiKey}\n`;
 		if (baseUrl) yml += `    baseUrl: ${baseUrl}\n`;
 		if (api) yml += `    api: ${api}\n`;
 		yml += "    models:\n";
@@ -177,9 +177,9 @@ export class OmpAdapter implements SystemAdapter {
 					maxBuffer: 10 * 1024 * 1024,
 					cwd: context.assetsDir,
 				}).toString("utf8");
-				const modelsYml = buildModelsYml(refreshOutput, context.model);
+				const modelsYml = buildModelsYml(refreshOutput, context.model, opencodeKey.trim());
 				if (modelsYml) {
-					fs.writeFileSync(path.join(context.assetsDir, "omp-models.yml"), modelsYml);
+					fs.writeFileSync(path.join(context.assetsDir, "omp-models.yml"), modelsYml, { mode: 0o600 });
 				}
 			} catch (error) {
 				console.warn(
