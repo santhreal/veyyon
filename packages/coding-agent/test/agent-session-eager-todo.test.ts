@@ -152,6 +152,8 @@ describe("AgentSession eager todo enforcement", () => {
 			getSessionFile: () => sessionManager.getSessionFile() ?? null,
 			getSessionSpawns: () => "*",
 			settings,
+			getTodoPhases: () => session?.getTodoPhases() ?? [],
+			setTodoPhases: phases => session?.setTodoPhases(phases),
 		};
 		const todoTool = new TodoTool(toolSession);
 		const mockBashTool: AgentTool = {
