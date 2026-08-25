@@ -915,32 +915,32 @@ function statePlacedImageVisibility(message: ToolResultMessage): ToolResultMessa
  * - Custom extensions and tools
  */
 export function convertToLlm(messages: AgentMessage[]): Message[] {
-	return messages.flatMap((m, index): Message[] => {
+	// Pre-allocate to the input length — most messages produce exactly one
+	// output, so this avoids the intermediate arrays flatMap allocates per
+	// element. The write index trims any gaps from filtered messages.
+	const out: Message[] = new Array(messages.length);
+	let w = 0;
+	for (let index = 0; index < messages.length; index++) {
+		const m = messages[index]!;
 		switch (m.role) {
 			case "bashExecution":
-				if (m.excludeFromContext) {
-					return [];
-				}
-				return [
-					{
-						role: "user",
-						content: [{ type: "text", text: bashExecutionToText(m) }],
-						attribution: "user",
-						timestamp: m.timestamp,
-					},
-				];
+				if (m.excludeFromContext) continue;
+				out[w++] = {
+					role: "user",
+					content: [{ type: "text", text: bashExecutionToText(m) }],
+					attribution: "user",
+					timestamp: m.timestamp,
+				};
+				continue;
 			case "pythonExecution":
-				if (m.excludeFromContext) {
-					return [];
-				}
-				return [
-					{
-						role: "user",
-						content: [{ type: "text", text: pythonExecutionToText(m) }],
-						attribution: "user",
-						timestamp: m.timestamp,
-					},
-				];
+				if (m.excludeFromContext) continue;
+				out[w++] = {
+					role: "user",
+					content: [{ type: "text", text: pythonExecutionToText(m) }],
+					attribution: "user",
+					timestamp: m.timestamp,
+				};
+				continue;
 			case "fileMention": {
 				// One `fileMention` can mix `@notes.md` (text) and `@screenshot.png` (image)
 				// in the same turn (`generateFileMentionMessages` packs every `@…` into a
@@ -955,54 +955,68 @@ export function convertToLlm(messages: AgentMessage[]): Message[] {
 				};
 				const textFiles = m.files.filter(file => !file.image);
 				const imageFiles = m.files.filter(file => file.image);
-				const out: Message[] = [];
 				if (textFiles.length > 0) {
-					out.push({
+					out[w++] = {
 						role: "developer",
-						content: [{ type: "text" as const, text: textFiles.map(wrap).join("\n") }],
+						content: [{ type: "text", text: textFiles.map(wrap).join("\n") }],
 						attribution: "user",
 						timestamp: m.timestamp,
-					});
+					};
 				}
 				if (imageFiles.length > 0) {
 					const content: (TextContent | ImageContent)[] = [
-						{ type: "text" as const, text: imageFiles.map(wrap).join("\n") },
+						{ type: "text", text: imageFiles.map(wrap).join("\n") },
 					];
 					for (const file of imageFiles) {
 						if (file.image) content.push(file.image);
 					}
-					out.push({
+					out[w++] = {
 						role: "user",
 						content,
 						attribution: "user",
 						timestamp: m.timestamp,
-					});
+					};
 				}
-				return out;
+				continue;
 			}
 			case "custom": {
-				if (!isCustomMessageContent(m.content)) return [];
+				if (!isCustomMessageContent(m.content)) continue;
 				if (isUserInvokedSkillPrompt(m)) {
-					return [
-						{
-							role: "user",
-							content: customMessageContentToLlmContent(m.content),
-							attribution: "user",
-							timestamp: m.timestamp,
-						},
-					];
+					out[w++] = {
+						role: "user",
+						content: customMessageContentToLlmContent(m.content),
+						attribution: "user",
+						timestamp: m.timestamp,
+					};
+					continue;
 				}
-				const split = convertImageBearingCustomMessage(m);
-				if (split) return split;
-				const converted = convertMessageToLlm(m);
-				return converted ? [converted] : [];
+				{
+					const split = convertImageBearingCustomMessage(m);
+					if (split) {
+						for (const s of split) out[w++] = s;
+						continue;
+					}
+				}
+				{
+					const converted = convertMessageToLlm(m);
+					if (converted) out[w++] = converted;
+				}
+				continue;
 			}
 			case "hookMessage": {
-				if (!isCustomMessageContent(m.content)) return [];
-				const split = convertImageBearingCustomMessage(m);
-				if (split) return split;
-				const converted = convertMessageToLlm(m);
-				return converted ? [converted] : [];
+				if (!isCustomMessageContent(m.content)) continue;
+				{
+					const split = convertImageBearingCustomMessage(m);
+					if (split) {
+						for (const s of split) out[w++] = s;
+						continue;
+					}
+				}
+				{
+					const converted = convertMessageToLlm(m);
+					if (converted) out[w++] = converted;
+				}
+				continue;
 			}
 			case "assistant": {
 				// A user-interrupted turn keeps its trailing thinking run on the
@@ -1012,19 +1026,22 @@ export function convertToLlm(messages: AgentMessage[]): Message[] {
 				// interrupted-thinking continuity message follows.
 				const source = followedByInterruptedThinking(messages, index) ? stripDemotedThinkingForLlm(m) : m;
 				const converted = convertMessageToLlm(source);
-				return converted ? [converted] : [];
+				if (converted) out[w++] = converted;
+				continue;
 			}
 			case "toolResult": {
 				// Core roles share one transformer with agent-core, but this one carries
 				// a standing instruction with an expiry, so it is spelled out.
 				const withVisibility = statePlacedImageVisibility(expireAnsweredBatchLedger(messages, index, m));
 				const converted = convertMessageToLlm(withVisibility);
-				return converted ? [converted] : [];
+				if (converted) out[w++] = converted;
+				continue;
 			}
 			case "user": {
-				if (isAnsweredBatchLedgerNotice(messages, index, m)) return [];
+				if (isAnsweredBatchLedgerNotice(messages, index, m)) continue;
 				const converted = convertMessageToLlm(m);
-				return converted ? [converted] : [];
+				if (converted) out[w++] = converted;
+				continue;
 			}
 			case "branchSummary":
 			case "compactionSummary":
@@ -1033,11 +1050,13 @@ export function convertToLlm(messages: AgentMessage[]): Message[] {
 				// duplicating them here is how compaction-summary image blocks
 				// once silently fell off the provider request.
 				const converted = convertMessageToLlm(m);
-				return converted ? [converted] : [];
+				if (converted) out[w++] = converted;
+				continue;
 			}
 			default:
 				m satisfies never;
-				return [];
 		}
-	});
+	}
+	out.length = w;
+	return out;
 }

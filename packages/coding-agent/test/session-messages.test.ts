@@ -448,3 +448,124 @@ describe("wrapSteeringForModel", () => {
 		expect(getUserText(wrapped[1])).toContain("<message>\nsecond steer\n</message>");
 	});
 });
+
+// ---------------------------------------------------------------------------
+// convertToLlm for-loop conversion regression tests
+// ---------------------------------------------------------------------------
+
+describe("convertToLlm for-loop conversion", () => {
+	// WHY: convertToLlm was rewritten from flatMap to a pre-allocated for loop.
+	// These tests prove the output is identical: correct filtering, ordering,
+	// multi-output expansion (fileMention), and array length trimming.
+
+	it("filters excluded bashExecution messages", () => {
+		const messages: AgentMessage[] = [
+			{ role: "user", content: "q", timestamp: 1 },
+			{
+				role: "bashExecution",
+				command: "ls",
+				output: "",
+				exitCode: 0,
+				excludeFromContext: true,
+				timestamp: 2,
+			} as AgentMessage,
+			{ role: "assistant", content: [{ type: "text", text: "a" }], timestamp: 3 } as AgentMessage,
+		];
+		const result = convertToLlm(messages);
+		expect(result).toHaveLength(2);
+		expect(result[0]!.role).toBe("user");
+		expect(result[1]!.role).toBe("assistant");
+	});
+
+	it("preserves ordering when messages are filtered in the middle", () => {
+		const messages: AgentMessage[] = [
+			{ role: "user", content: "first", timestamp: 1 },
+			{
+				role: "bashExecution",
+				command: "ls",
+				output: "",
+				exitCode: 0,
+				excludeFromContext: true,
+				timestamp: 2,
+			} as AgentMessage,
+			{
+				role: "bashExecution",
+				command: "pwd",
+				output: "",
+				exitCode: 0,
+				excludeFromContext: true,
+				timestamp: 3,
+			} as AgentMessage,
+			{ role: "user", content: "second", timestamp: 4 },
+		];
+		const result = convertToLlm(messages);
+		expect(result).toHaveLength(2);
+		expect(result[0]!.role).toBe("user");
+		expect(result[1]!.role).toBe("user");
+	});
+
+	it("handles fileMention producing two outputs without array overflow", () => {
+		const image: ImageContent = { type: "image", data: "aW1n", mimeType: "image/png" };
+		const messages: AgentMessage[] = [
+			{ role: "user", content: "before", timestamp: 1 },
+			{
+				role: "fileMention",
+				files: [
+					{ path: "notes.md", content: "text" },
+					{ path: "shot.png", content: "", image },
+				],
+				timestamp: 2,
+			},
+			{ role: "user", content: "after", timestamp: 3 },
+		];
+		const result = convertToLlm(messages);
+		// 1 (before) + 2 (fileMention split: developer + user) + 1 (after) = 4
+		expect(result).toHaveLength(4);
+		expect(result[0]!.role).toBe("user");
+		expect(result[1]!.role).toBe("developer");
+		expect(result[2]!.role).toBe("user");
+		expect(result[3]!.role).toBe("user");
+	});
+
+	it("handles all messages filtered to empty", () => {
+		const messages: AgentMessage[] = [
+			{
+				role: "bashExecution",
+				command: "ls",
+				output: "",
+				exitCode: 0,
+				excludeFromContext: true,
+				timestamp: 1,
+			} as AgentMessage,
+		];
+		const result = convertToLlm(messages);
+		expect(result).toHaveLength(0);
+	});
+
+	it("handles empty input", () => {
+		const result = convertToLlm([]);
+		expect(result).toHaveLength(0);
+	});
+
+	it("preserves exact output for a mixed conversation", () => {
+		const messages: AgentMessage[] = [
+			{ role: "user", content: [{ type: "text", text: "hello" }], timestamp: 1 },
+			{ role: "assistant", content: [{ type: "text", text: "hi" }], timestamp: 2 } as AgentMessage,
+			{
+				role: "toolResult",
+				content: [{ type: "text", text: "output" }],
+				toolCallId: "c1",
+				toolName: "bash",
+				isError: false,
+				timestamp: 3,
+			},
+			{ role: "user", content: [{ type: "text", text: "next" }], timestamp: 4 },
+		];
+		const result = convertToLlm(messages);
+		expect(result).toHaveLength(4);
+		expect(result[0]!.role).toBe("user");
+		expect(result[1]!.role).toBe("assistant");
+		expect(result[2]!.role).toBe("toolResult");
+		expect(result[3]!.role).toBe("user");
+	});
+});
