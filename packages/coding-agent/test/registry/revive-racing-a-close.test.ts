@@ -206,6 +206,38 @@ describe("a revive racing a close leaks no session", () => {
 	});
 
 	/**
+	 * Even if a replacement ref happens to hold the same session reference, registry
+	 * identity must still guard against attaching the old sessionFile or reviving a replaced ref.
+	 */
+	it("rejects and disposes a revived session when the ref was replaced even if session matched", async () => {
+		const gate = deferred();
+		const revived = makeSessionStub();
+		const runs = { n: 0 };
+		parkAdopted("ReplacedSameSession", gate.promise, revived, runs);
+
+		const waking = lifecycle.ensureLive("ReplacedSameSession");
+		await flushAsync();
+		expect(runs.n).toBe(1);
+
+		registry.unregister("ReplacedSameSession");
+		const replacement = registry.register({
+			id: "ReplacedSameSession",
+			displayName: "replacement-same-session",
+			kind: "sub",
+			session: revived as never,
+			sessionFile: "/tmp/new-generation.jsonl",
+			scope: "scoped-conv",
+			status: "idle",
+		});
+		gate.resolve();
+		await expect(waking).rejects.toThrow(
+			'Agent "ReplacedSameSession" was replaced while it was being revived. Its transcript remains readable at history://ReplacedSameSession.',
+		);
+		expect(revived.disposeCalls()).toBe(1);
+		expect(registry.get("ReplacedSameSession")).toBe(replacement);
+	});
+
+	/**
 	 * The same race one step later: the revive completed and attached, and only THEN
 	 * does the close deadline fire. Now there is nothing in flight and the agent is
 	 * `idle`, so the close must decline on status and leave the live session alone.

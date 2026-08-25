@@ -453,7 +453,7 @@ async function loadImportPlan(
 		try {
 			json = (await Bun.file(file).json()) as CliProxyCredentialJson;
 		} catch (err) {
-			skipped.push({ file, reason: `unreadable JSON: ${String(err)}` });
+			skipped.push({ file, reason: `unreadable JSON: ${errorMessage(err)}` });
 			continue;
 		}
 		if (json.disabled === true && !includeDisabled) {

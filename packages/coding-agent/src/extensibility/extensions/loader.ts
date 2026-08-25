@@ -532,9 +532,9 @@ async function readExtensionManifest(packageJsonPath: string): Promise<Extension
 		}
 		logger.warn(
 			`The extension manifest ${packageJsonPath} could not be read, so this directory's declared entry points ` +
-				`are not loaded and only its index.ts/index.js is tried: ${String(error)}. ` +
+				`are not loaded and only its index.ts/index.js is tried: ${errorMessage(error)}. ` +
 				"Fix: check the file's permissions and that it is valid JSON.",
-			{ path: packageJsonPath, error: String(error) },
+			{ path: packageJsonPath, error: errorMessage(error) },
 		);
 		return null;
 	}

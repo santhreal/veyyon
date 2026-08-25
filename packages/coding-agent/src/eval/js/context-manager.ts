@@ -573,7 +573,7 @@ function toErrorPayload(error: unknown): EvalRunErrorPayload {
 			isToolError: error instanceof ToolError || error.name === "ToolError",
 		};
 	}
-	return { message: String(error) };
+	return { message: errorMessage(error) };
 }
 
 function spawnJsWorker(): WorkerHandle {

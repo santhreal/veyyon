@@ -131,7 +131,7 @@ function safeText(value: string): string {
 }
 
 function safeError(error: unknown): string {
-	return escapeTerminalText(String(error));
+	return escapeTerminalText(errorMessage(error));
 }
 
 function sameInode(left: Pick<Stats, "dev" | "ino">, right: Pick<Stats, "dev" | "ino">): boolean {

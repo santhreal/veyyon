@@ -10,7 +10,7 @@
  * `parked` ↔ `idle`.
  */
 
-import { clamp, logger } from "@veyyon/utils";
+import { clamp, errorMessage, logger } from "@veyyon/utils";
 import type { AgentSession } from "../session/agent-session";
 import { type AgentRef, AgentRegistry, MAIN_AGENT_ID, type RegistryEvent } from "./agent-registry";
 
@@ -259,7 +259,7 @@ export class AgentLifecycleManager {
 			} catch (error) {
 				logger.warn("AgentLifecycleManager.park: session flush failed; keeping agent live", {
 					id,
-					error: String(error),
+					error: errorMessage(error),
 				});
 				return;
 			}
@@ -270,7 +270,7 @@ export class AgentLifecycleManager {
 			try {
 				await session.dispose();
 			} catch (error) {
-				logger.warn("AgentLifecycleManager.park: session dispose failed", { id, error: String(error) });
+				logger.warn("AgentLifecycleManager.park: session dispose failed", { id, error: errorMessage(error) });
 			}
 			this.#registry.detachSession(id);
 			this.#registry.setStatus(id, "parked");
@@ -394,7 +394,7 @@ export class AgentLifecycleManager {
 			try {
 				await ref.session.dispose();
 			} catch (error) {
-				logger.warn("AgentLifecycleManager.release: session dispose failed", { id, error: String(error) });
+				logger.warn("AgentLifecycleManager.release: session dispose failed", { id, error: errorMessage(error) });
 			}
 		}
 		this.#registry.unregister(id);
@@ -541,13 +541,13 @@ export class AgentLifecycleManager {
 	async #revive(id: string, revive: AgentReviver, expectedRef: AgentRef): Promise<AgentSession> {
 		const session = await revive();
 		const current = this.#registry.get(id);
-		if (!current || (current !== expectedRef && current.session !== session) || current.status === "aborted") {
+		if (!current || current !== expectedRef || current.status === "aborted") {
 			try {
 				await session.dispose();
 			} catch (error) {
 				logger.warn("AgentLifecycleManager.revive: disposing an orphaned revive failed", {
 					id,
-					error: String(error),
+					error: errorMessage(error),
 				});
 			}
 			throw new Error(
