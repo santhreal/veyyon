@@ -8,7 +8,19 @@
  * - Summary attachment at correct position in tree
  * - Abort handling during summarization
  */
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
+import * as path from "node:path";
+import { Agent } from "@veyyon/agent-core";
+import * as ai from "@veyyon/ai/stream";
+import type { SimpleStreamOptions } from "@veyyon/ai/types";
+import { AssistantMessageEventStream } from "@veyyon/ai/utils/event-stream";
+import { getBundledModel } from "@veyyon/catalog/models";
+import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
+import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { TempDir } from "@veyyon/utils";
 import { createTestSession, e2eApiKey, type TestSessionContext } from "./helpers/e2e-session";
 
 describe.skipIf(!e2eApiKey("ANTHROPIC_API_KEY"))("AgentSession tree navigation e2e", () => {
@@ -314,4 +326,112 @@ describe.skipIf(!e2eApiKey("ANTHROPIC_API_KEY"))("AgentSession tree navigation -
 		// Summary captures the branch we're leaving (the "Branch path" conversation)
 		expect(result.summaryEntry?.summary.length).toBeGreaterThan(0);
 	}, 180000);
+});
+
+describe("AgentSession tree navigation branch summary options", () => {
+	let tempDir: TempDir;
+	let session: AgentSession;
+	let sessionManager: SessionManager;
+	let authStorage: AuthStorage;
+
+	beforeEach(async () => {
+		tempDir = TempDir.createSync("@pi-tree-nav-summary-");
+		authStorage = await AuthStorage.create(path.join(tempDir.path(), "testauth.db"));
+		authStorage.setRuntimeApiKey("anthropic", "test-key");
+		const modelRegistry = new ModelRegistry(authStorage);
+		sessionManager = SessionManager.create(tempDir.path(), tempDir.path());
+
+		const bundled = getBundledModel("anthropic", "claude-sonnet-4-5");
+		if (!bundled) throw new Error("Expected built-in anthropic/claude-sonnet-4-5 to exist");
+		const model = { ...bundled, contextWindow: 200_000, maxTokens: 64_000 };
+
+		const agent = new Agent({
+			getApiKey: () => "test-key",
+			initialState: { model, systemPrompt: ["Test"], tools: [], messages: [] },
+		});
+		session = new AgentSession({
+			agent,
+			sessionManager,
+			settings: Settings.isolated(),
+			modelRegistry,
+		});
+	});
+
+	afterEach(async () => {
+		vi.restoreAllMocks();
+		try {
+			await session?.dispose();
+		} finally {
+			authStorage?.close();
+			tempDir?.remove();
+		}
+	});
+
+	it("forwards live sessionId-derived branch_summary conversationId and promptCacheKey", async () => {
+		const u1Id = sessionManager.appendMessage({
+			role: "user",
+			content: [{ type: "text", text: "What is 2+2?" }],
+			timestamp: 1,
+		});
+		sessionManager.appendMessage({
+			role: "assistant",
+			content: [{ type: "text", text: "4" }],
+			api: "anthropic-messages",
+			provider: "anthropic",
+			model: "claude-sonnet-4-5",
+			stopReason: "stop",
+			usage: {
+				input: 10,
+				output: 10,
+				cacheRead: 0,
+				cacheWrite: 0,
+				totalTokens: 20,
+				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+			},
+			timestamp: 2,
+		});
+		sessionManager.appendMessage({
+			role: "user",
+			content: [{ type: "text", text: "What is 3+3?" }],
+			timestamp: 3,
+		});
+		let capturedOptions: SimpleStreamOptions | undefined;
+		vi.spyOn(ai, "streamSimple").mockImplementation((_model, _ctx, options) => {
+			capturedOptions = options;
+			const stream = new AssistantMessageEventStream();
+			queueMicrotask(() => {
+				stream.push({
+					type: "done",
+					reason: "stop",
+					message: {
+						role: "assistant",
+						content: [{ type: "text", text: "Summary of earlier branch." }],
+						api: "anthropic-messages",
+						provider: "anthropic",
+						model: "claude-sonnet-4-5",
+						stopReason: "stop",
+						usage: {
+							input: 10,
+							output: 10,
+							cacheRead: 0,
+							cacheWrite: 0,
+							totalTokens: 20,
+							cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+						},
+						timestamp: 4,
+					},
+				});
+				stream.end();
+			});
+			return stream;
+		});
+		const result = await session.navigateTree(u1Id, { summarize: true });
+
+		expect(result.cancelled).toBe(false);
+		expect(capturedOptions).toBeDefined();
+		expect(capturedOptions?.sessionId).toBe(session.sessionId);
+		expect(capturedOptions?.conversationId).toBe(`${session.sessionId}#branch_summary`);
+		expect(capturedOptions?.conversationId).not.toBe(session.sessionId);
+		expect(capturedOptions?.promptCacheKey).toBe(session.agent.promptCacheKey ?? session.sessionId);
+	});
 });

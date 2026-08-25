@@ -89,12 +89,17 @@ const COMPACT_RESPONSE = {
 };
 
 function mockCompactFetch(responseBody: unknown = COMPACT_RESPONSE) {
-	const calls: { url: string; body: Record<string, unknown> }[] = [];
+	const calls: { url: string; headers: Record<string, string>; body: Record<string, unknown> }[] = [];
 	vi.spyOn(globalThis, "fetch").mockImplementation(
 		Object.assign(
 			async (input: string | URL | Request, init?: RequestInit) => {
+				const headers: Record<string, string> = {};
+				for (const [name, value] of new Headers(init?.headers).entries()) {
+					headers[name.toLowerCase()] = value;
+				}
 				calls.push({
 					url: String(input),
+					headers,
 					body: JSON.parse(String(init?.body)) as Record<string, unknown>,
 				});
 				return new Response(JSON.stringify(responseBody), { status: 200 });
@@ -219,6 +224,7 @@ describe("compactWithProvider", () => {
 		expect(calls).toHaveLength(1);
 		expect(calls[0].url).toBe("https://api.openai.com/v1/responses/compact");
 		expect(calls[0].body.model).toBe("gpt-5.1");
+		expect(calls[0].headers.authorization).toBe("Bearer test-key");
 		expect(calls[0].body.instructions).toBe("base system prompt");
 		// Only the documented fields ride the body.
 		expect(Object.keys(calls[0].body).sort()).toEqual(["input", "instructions", "model"]);

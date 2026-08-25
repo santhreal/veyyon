@@ -5,6 +5,18 @@
 ### Changed
 
 - Streaming `message_update` snapshots share tool-call arguments by reference instead of deep-cloning them on every delta, cutting a large structured tool call's per-delta snapshot cost from ~0.5 s to ~8 ms, while terminal messages and the authoritative tool call a `toolcall_end` carries keep the sanitizing deep clone.
+### Added
+
+- A ChatGPT OAuth (Codex) session compacts server-side via the Responses compaction endpoint, preserving encrypted reasoning state.
+### Changed
+
+- Superseded and useless tool results are now pruned as a batch whose combined size pays for the prompt-cache rewrite it forces, instead of only when a single result sits within 8,000 tokens of the end of the conversation.
+
+### Fixed
+
+- Side requests derive a stable conversation ID per oneshot kind, preventing compaction, handoff, and branch summaries from overwriting live Cursor and Devin conversation state.
+- Aborting while paused rejects the pause wait and prevents the agent loop from starting another provider turn or paused tool.
+- A branch-summary reserve at or above the model's context window now falls back to the proportional 15% reserve instead of leaving a non-positive budget, which the entry preparation read as "no limit" and which sent the whole branch.
 
 ## [1.2.0] - 2026-08-23
 

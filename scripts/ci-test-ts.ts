@@ -335,6 +335,7 @@ export const repoScriptTests = [
 	"scripts/install-methods-coverage.test.ts",
 	"scripts/read-if-present.test.ts",
 	"scripts/fuzz.test.ts",
+	"scripts/magick-tmpdir.test.ts",
 	"scripts/fuzz-triage.test.ts",
 	"scripts/a-source-file-that-reads-as-binary-is-invisible.test.ts",
 	"scripts/a-streamed-tool-argument-object-is-replaced-never-mutated.test.ts",

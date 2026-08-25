@@ -120,6 +120,8 @@ export const STREAM_INTERRUPTED_AFTER_CONTENT_STOP_DETAIL = "stream_interrupted_
 /** Sentinel returned by the abort race in `streamAssistantResponse`. */
 const ABORTED: unique symbol = Symbol("agent-loop-aborted");
 
+const EMPTY_STRING_SET: ReadonlySet<string> = new Set<string>();
+
 /**
  * Cap on consecutive re-samples triggered by a non-terminal stop
  * (`stopDetails.type === "pause_turn"`) without an intervening tool call. Each
@@ -937,7 +939,28 @@ async function runLoopBody(
 				// engaged (host /pause). An external abort releases the park so a
 				// cancelled run still unwinds while everything else stays frozen.
 				const pauseGate = config.pauseGate ?? agentPauseGate;
-				if (pauseGate.paused) await pauseGate.waitUntilResumed(signal);
+				if (pauseGate.paused) {
+					try {
+						await pauseGate.waitUntilResumed(signal);
+					} catch (err) {
+						if (isAbortError(err) || signal?.aborted) {
+							const message = emitAbortedAssistantMessage(
+								null,
+								false,
+								EMPTY_STRING_SET,
+								currentContext,
+								config,
+								stream,
+								signal,
+							);
+							newMessages.push(message);
+							await emitTurnEnd(stream, currentContext, message, [], config, signal, { willContinue: false });
+							endAgentStream(stream, newMessages, telemetry, stepCounter.count);
+							return;
+						}
+						throw err;
+					}
+				}
 				if (!firstTurn) {
 					stream.push({ type: "turn_start" });
 				} else {
@@ -2360,7 +2383,17 @@ async function executeToolCalls(
 		// engaged. Tools already executing are unaffected (pausing never aborts);
 		// a batch interrupted mid-pause unwinds via the signal checks below.
 		const pauseGate = config.pauseGate ?? agentPauseGate;
-		if (pauseGate.paused) await pauseGate.waitUntilResumed(record.signal);
+		if (pauseGate.paused) {
+			try {
+				await pauseGate.waitUntilResumed(record.signal);
+			} catch (err) {
+				if (isAbortError(err) || record.signal.aborted) {
+					record.skipped = true;
+					return;
+				}
+				throw err;
+			}
+		}
 
 		const { toolCall, tool } = record;
 		let argsForExecution = toolCall.arguments as Record<string, unknown>;

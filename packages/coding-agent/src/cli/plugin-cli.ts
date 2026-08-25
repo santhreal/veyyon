@@ -363,7 +363,10 @@ async function handleInstall(
 				console.log(JSON.stringify(result, null, 2));
 			} else {
 				if (flags.dryRun) {
-					console.log(chalk.dim(`[dry-run] Would install ${spec}`));
+					// Name the version bun resolved: the whole value of the dry run is that
+					// the target was resolved, and echoing the spec back proved nothing (#911).
+					const resolved = result.version ? `${result.name}@${result.version}` : result.name;
+					console.log(chalk.dim(`[dry-run] Would install ${resolved}`));
 				} else {
 					console.log(chalk.green(`${theme.status.success} Installed ${result.name}@${result.version}`));
 					if (result.enabledFeatures && result.enabledFeatures.length > 0) {
@@ -650,9 +653,22 @@ async function handleConfig(
 		return;
 	}
 
+	const CONFIG_SUBCOMMANDS = ["list", "get", "set", "delete", "validate"];
+	if (!CONFIG_SUBCOMMANDS.includes(subcommand)) {
+		// `plugin config <plugin>` reads as complete, so it arrived here with the
+		// plugin name parsed as the subcommand and reported "Plugin name required"
+		// about a name the operator had just typed.
+		console.error(chalk.red(`Unknown config subcommand "${subcommand}".`));
+		console.error(
+			chalk.dim(`Usage: ${APP_NAME} plugin config <${CONFIG_SUBCOMMANDS.join("|")}> <plugin> [key] [value]`),
+		);
+		console.error(chalk.dim(`Example: ${APP_NAME} plugin config list ${subcommand}`));
+		process.exit(EXIT_USAGE);
+	}
+
 	if (!pluginName) {
-		console.error(chalk.red("Plugin name required"));
-		process.exit(1);
+		console.error(chalk.red(`Plugin name required: ${APP_NAME} plugin config ${subcommand} <plugin>`));
+		process.exit(EXIT_USAGE);
 	}
 
 	const plugins = await manager.list();
