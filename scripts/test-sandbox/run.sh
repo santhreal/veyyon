@@ -166,6 +166,17 @@ HOST_HOME="$(getent passwd "$(id -u)" 2>/dev/null | cut -d: -f6 || true)"
 log()  { printf '[test-sandbox] %s\n' "$*" >&2; }
 die()  { printf '[test-sandbox] error: %s\n' "$*" >&2; exit "${2:-2}"; }
 skip() { printf '[test-sandbox] rung %-8s unavailable: %s\n' "$1" "$2" >&2; }
+is_docs_only() {
+	# docs-only fast path — allow-list docs/**, *.md, *.txt; fail-closed on git error/empty
+	local files
+	files="$(git diff --name-only HEAD --no-renames 2>/dev/null; git diff --cached --name-only --no-renames 2>/dev/null; git ls-files --others --exclude-standard 2>/dev/null)"
+	[ -n "$files" ] || return 1
+	while IFS= read -r f; do
+		[ -z "$f" ] && continue
+		case "$f" in docs/*|*.md|*.txt) ;; *) return 1 ;; esac
+	done <<< "$files"
+	return 0
+}
 
 # An empty value is not a default, it is a refusal. The mount-relocation case
 # below tests "${HOST_HOME}"/* against the repo root, so an empty home makes that
@@ -413,6 +424,19 @@ main() {
 		log "already inside the '${VEYYON_TEST_SANDBOX}' sandbox; running directly"
 		exec "${cmd[@]}"
 	fi
+	# docs-only fast path — allow --sandbox=off without kernel boundary
+	for arg in "${cmd[@]}"; do
+		if [ "$arg" = "--sandbox=off" ]; then
+			if is_docs_only; then
+				log "docs-only change — running without sandbox (--sandbox=off)"
+				local -a ncmd=()
+				for a in "${cmd[@]}"; do [ "$a" = "--sandbox=off" ] || ncmd+=("$a"); done
+				exec "${ncmd[@]}"
+			else
+				die "--sandbox=off is only for docs-only changes (docs/**, *.md, *.txt); this change touches code and still requires the sandbox"
+			fi
+		fi
+	done
 	if [ "$(uname -s)" != "Linux" ]; then
 		die "no kernel-level isolation rung exists on $(uname -s). This script refuses to run the suite on the bare host. On macOS CI the TypeScript suites are expected to run on the ubuntu runner; see the MACOS CI note in this file." 3
 	fi

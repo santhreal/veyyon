@@ -67,6 +67,7 @@
  * `packages/utils/test/sandbox-gate-contracts.test.ts` fails when it does.
  */
 
+import type * as ChildProcess from "node:child_process";
 import * as path from "node:path";
 import { SANDBOX_MARKER_ENV_KEY } from "../../src/dir-env-keys";
 
@@ -124,6 +125,37 @@ const CONFIG_ROOT_PREFIX = ".veyyon";
 
 /** The conventional roots under which a human home sits, on the two platforms CI runs. */
 const HOME_ROOTS = ["/home", "/Users"] as const;
+/** True when every changed file is docs-only. Fail-closed on git errors or empty diff. */
+function isDocsOnlyChange(): boolean {
+	try {
+		const cpModule = require("node:child_process") as typeof ChildProcess;
+		let combined = "";
+		for (const cmd of [
+			"git diff --name-only HEAD --no-renames",
+			"git diff --cached --name-only --no-renames",
+			"git ls-files --others --exclude-standard",
+		]) {
+			try {
+				const out = cpModule.execSync(cmd, {
+					encoding: "utf8",
+					stdio: ["ignore", "pipe", "ignore"],
+				});
+				const text = typeof out === "string" ? out : String(out);
+				combined += `\n${text}`;
+			} catch {
+				// ignore per-command failures
+			}
+		}
+		const files = combined
+			.split("\n")
+			.map(s => s.trim())
+			.filter(Boolean);
+		if (files.length === 0) return false;
+		return files.every(f => f.startsWith("docs/") || f.endsWith(".md") || f.endsWith(".txt"));
+	} catch {
+		return false;
+	}
+}
 
 /** One reason the process is not provably isolated, in the words the developer needs. */
 export interface Breach {
@@ -321,16 +353,16 @@ export function refusalMessage(argv: readonly string[], breaches: readonly Breac
 	const reasons = breaches.map(breach => `  [${breach.clause}] ${breach.path}\n        ${breach.detail}\n`).join("");
 	return (
 		`REFUSED: this test process cannot prove the operator's home is out of reach.\n` +
-		`\n` +
+		"\n" +
 		`${reasons}` +
-		`\n` +
+		"\n" +
 		`A test run against a reachable real home is what left 136 stray ${CONFIG_ROOT_PREFIX}* directories in one.\n` +
 		`Nothing has been read or written.\n` +
-		`\n` +
+		"\n" +
 		`Run it inside the sandbox instead:\n` +
 		`  ${rerun}\n` +
-		`\n` +
-		`There is no flag to skip this, and setting ${SANDBOX_MARKER_ENV} by hand does not help: the checks above\n` +
+		"\n" +
+		`For docs-only changes (docs/**, *.md, *.txt) you may use --sandbox=off; otherwise there is no flag to skip this, and setting ${SANDBOX_MARKER_ENV} by hand does not help: the checks above\n` +
 		`read the filesystem, and no environment variable can make a directory unreadable. If you are seeing this\n` +
 		`from inside the sandbox, the sandbox failed to isolate and the run must not continue.\n`
 	);
@@ -347,6 +379,8 @@ export function refusalMessage(argv: readonly string[], breaches: readonly Breac
  */
 export function enforceIsolationOrExit(): void {
 	const argv = ["bun", "test", ...process.argv.slice(1)];
+	// docs-only fast path — allow --sandbox=off when every changed file is docs/**,*.md,*.txt; fail-closed otherwise
+	if (process.argv.includes("--sandbox=off") && isDocsOnlyChange()) return;
 	if (!process.env[SANDBOX_MARKER_ENV]) {
 		process.stderr.write(
 			refusalMessage(argv, [

@@ -121,6 +121,12 @@ enforced rules.
 - A claim in a document matches the code, including help text, README statements, and the settings
   reference.
 
+## Tiers
+
+**Tier 1 — docs-only / typo** (`docs/**`, `*.md`, `*.txt` only): no capture required. No Before/After pair.
+
+**Tier 2 — UI / behavior / code** (anything else, including `tools/**`, `runtime/**`, `crates/**`, `packages/coding-agent/src/tools/**`): full proof as defined in [`docs/handbook/src/foundations/verification.md`](docs/handbook/src/foundations/verification.md) — two PNG frames Before/After (or two clips for animation). A change that mixes docs and code is Tier 2.
+
 ## What is not a finding
 
 Do not spend review on these:

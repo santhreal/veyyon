@@ -33,6 +33,11 @@ animation as WebP at 33 ms per frame; a GIF is the same clip in an older contain
 proves the same thing. Both arms of a pair are the same class, produced by one driver
 run, and attached to the pull request body.
 
+### Tiers
+
+* **Tier 1 — docs-only / typo** (`docs/**`, `*.md`, `*.txt` only): no capture required. No Before/After pair. A docs-only change that mixes `tools/**`, `runtime/**`, `crates/**` or code is Tier 2.
+* **Tier 2 — UI / behavior / code**: as above. The `tmux` capture ban and off-screen raster ban still apply to every Tier 2 proof — a `tmux capture-pane` or `render-proof.ts` raster never satisfies a Tier 2 requirement.
+
 The recorder refuses to publish a clip whose cadence is not the one it captured. Three
 criteria come from `--expect-ms`:
 

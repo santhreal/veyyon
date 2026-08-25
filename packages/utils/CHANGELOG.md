@@ -8,6 +8,7 @@
 
 - `run()` accepts verified command summaries for root help and falls back to loading the full registry when any summary is absent.
 - `source-declarations.ts`: `exportedDeclarationsIn` and `declarersOfName` report which modules declare a name, so a one-owner gate no longer matches the declaration's own bytes; a reflowed signature, a signature quoted in a comment and a second module declaring the same name are now all answered correctly.
+- Added docs-only fast path: `bun test --sandbox=off` is allowed without the sandbox when every changed file is `docs/**`, `*.md` or `*.txt` (review Tier 1), otherwise the sandbox remains required.
 
 ### Changed
 
