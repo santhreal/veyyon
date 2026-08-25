@@ -1836,20 +1836,6 @@ export class StatusLineComponent implements Component {
 			if (id === "subagents") return;
 			const rendered = renderSegment(id, ctx);
 			if (!rendered.visible || !rendered.content) return;
-			// The model chip is what an expanded path spends, and the only thing it spends:
-			// the rungs and the gauge stay put, so widening the path does not cost the
-			// reader the state they were watching. The next click brings the chip back.
-			//
-			// It retracts by width rather than vanishing, on the same progress value that
-			// widens the path, so the room leaves one end of the row exactly as fast as it
-			// arrives at the other. Fully expanded the width is zero and the chip is not on
-			// the row at all, which is the byte the hard-cut callers see.
-			if (id === "model" && expansion > 0) {
-				const room = Math.round(visibleWidth(rendered.content) * (1 - expansion));
-				if (room <= 0) return;
-				out.push({ id, content: truncateToWidth(rendered.content, room) });
-				return;
-			}
 			out.push({ id, content: rendered.content, pin: rendered.pin });
 		};
 		// The context gauge is the footline's one LIVE value; everything else on the
@@ -2110,6 +2096,35 @@ export class StatusLineComponent implements Component {
 			left = fitted.text;
 			locationSlots = fitted.slots;
 			locationCramped = fitted.cramped;
+		}
+		// THE CLICK'S TRADE, settled last. The chip retracts here rather than before the ladders
+		// above, and that ordering is the whole trade: the ladders decide what the row holds while
+		// the chip is still standing at full width, so they reach the same decisions the collapsed
+		// row reached, and the cells the chip then gives up have nowhere to go but the location.
+		//
+		// Retracting first is what shipped, and at 78 columns it moved the zone by ONE cell: the
+		// collapsed row had shed the context gauge under pressure, the narrower chip took that
+		// pressure off, and the gauge came back and ate all twenty cells. On screen the click
+		// flashed a gauge in and a chip out and left the directory exactly where it was. A part
+		// the collapsed row had already given up must not return because the chip stepped aside --
+		// the rungs and the gauge stay put, and the chip is the only thing an expanded path spends.
+		const expansion = this.#expansionProgress();
+		if (expansion > 0) {
+			const chip = rightParts.findIndex(part => part.id === "model");
+			if (chip >= 0) {
+				const content = rightParts[chip]?.content ?? "";
+				// One progress value drives both ends, so the room leaves the chip exactly as fast
+				// as it arrives at the directory: at 1 the chip is off the row, which is the byte
+				// a hard-cut caller sees.
+				const room = Math.round(visibleWidth(content) * (1 - expansion));
+				if (room <= 0) rightParts.splice(chip, 1);
+				else rightParts[chip] = { id: "model", content: truncateToWidth(content, room) };
+				right = rightParts.map(part => part.content).join(sep);
+				const widened = fitToTheRoomLeft();
+				left = widened.text;
+				locationSlots = widened.slots;
+				locationCramped = widened.cramped;
+			}
 		}
 		if (!left && !right) {
 			this.#quietLineBounds = [];
