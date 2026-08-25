@@ -15,6 +15,7 @@
  * transcript. `drain()` is the shutdown seam: it waits for every kept turn.
  */
 
+import * as path from "node:path";
 import { logger } from "@veyyon/utils";
 import type { AgentSession } from "./agent-session";
 
@@ -30,6 +31,8 @@ export interface KeptSession {
 	readonly session: AgentSession;
 	/** Session id at the moment it was handed off. */
 	readonly sessionId: string;
+	/** Transcript this session writes to, the key `/resume` names it by. */
+	readonly sessionFile: string | undefined;
 	readonly detachedAt: number;
 	/** Resolves once the turn settled and the transcript was flushed. */
 	readonly settled: Promise<void>;
@@ -69,11 +72,29 @@ export class BackgroundSessions {
 		const entry: KeptSession = {
 			session,
 			sessionId,
+			sessionFile: session.sessionManager.getSessionFile(),
 			detachedAt: Date.now(),
 			settled: this.#settle(session, sessionId),
 		};
 		this.#kept.set(session, entry);
 		return entry;
+	}
+
+	/**
+	 * Reclaim a kept session by the transcript it writes to, so `/resume` can
+	 * re-attach the LIVE object instead of replaying its file as finished text.
+	 * It leaves the background set: the UI is displaying it again, and its
+	 * pending settle only flushes what the turn already wrote.
+	 */
+	take(sessionFile: string): AgentSession | undefined {
+		const wanted = path.resolve(sessionFile);
+		for (const [session, entry] of this.#kept) {
+			if (entry.sessionFile && path.resolve(entry.sessionFile) === wanted) {
+				this.#kept.delete(session);
+				return session;
+			}
+		}
+		return undefined;
 	}
 
 	/**
