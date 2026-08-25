@@ -786,6 +786,7 @@ export type AgentSessionEventListener = (event: AgentSessionEvent) => void;
 const UNEXPECTED_STOP_MAX_RETRIES = 3;
 const UNEXPECTED_STOP_TIMEOUT_MS = 4000;
 const EMPTY_STOP_MAX_RETRIES = 3;
+const EMPTY_AGENT_MESSAGES: AgentMessage[] = [];
 /**
  * Budget for callers on the user-visible `/quit` / `/exit` shutdown path that
  * want to cap how long they wait for `MnemopiSessionState.dispose()` to finish
@@ -2210,6 +2211,7 @@ export class AgentSession {
 	#planReferenceSent = false;
 	#planReferencePath: string = DEFAULT_PLAN_FILE_URL;
 	#planReadMatcher = createPlanReadMatcher(() => this.#planReferencePath);
+	#summarizedAwayCache: { branch: readonly SessionEntry[]; boundary: number; messages: AgentMessage[] } | undefined;
 	#clientBridge: ClientBridge | undefined;
 	#allowAcpAgentInitiatedTurns = false;
 	/** Per-session memory of allow_always / reject_always decisions for gated tools. */
@@ -20030,12 +20032,15 @@ export class AgentSession {
 	#messagesSummarizedAway(): AgentMessage[] {
 		const branch = this.sessionManager.getBranch();
 		const boundary = resolveCompactionBoundaryIndex(branch, getLatestCompactionEntry(branch)?.firstKeptEntryId);
-		if (boundary <= 0) return [];
+		if (boundary <= 0) return EMPTY_AGENT_MESSAGES;
+		const cache = this.#summarizedAwayCache;
+		if (cache && cache.branch === branch && cache.boundary === boundary) return cache.messages;
 		const summarized: AgentMessage[] = [];
 		for (let index = 0; index < boundary; index++) {
 			const entry = branch[index];
 			if (entry.type === "message") summarized.push(entry.message);
 		}
+		this.#summarizedAwayCache = { branch, boundary, messages: summarized };
 		return summarized;
 	}
 
