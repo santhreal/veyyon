@@ -691,6 +691,10 @@ export function finalizeSubprocessOutput(args: FinalizeSubprocessOutputArgs): Fi
 	let abortedViaYield = false;
 	const hasYield = Array.isArray(yieldItems) && yieldItems.length > 0;
 	const hadFailureBeforeYield = exitCode !== 0 && stderr.trim().length > 0;
+	// Both yield arms need this: a null yield is only tolerable when no structured output was
+	// demanded and the turn left usable prose behind.
+	const { normalized: normalizedSchema, error: normalizedSchemaError } = normalizeSchema(outputSchema);
+	const hasOutputSchema = normalizedSchema !== undefined && !normalizedSchemaError;
 
 	if (hasYield) {
 		const lastYield = yieldItems[yieldItems.length - 1];
@@ -706,7 +710,14 @@ export function finalizeSubprocessOutput(args: FinalizeSubprocessOutputArgs): Fi
 		} else {
 			const assembled = assembleYieldResult(yieldItems, lastAssistantText, arrayValuedLabels(outputSchema));
 			if (!assembled || assembled.missingData) {
+				const hasRawOutput = rawOutput.trim().length > 0;
 				rawOutput = rawOutput ? `${SUBAGENT_WARNING_NULL_YIELD}\n\n${rawOutput}` : SUBAGENT_WARNING_NULL_YIELD;
+				// Mirror the missing-yield policy: yielding unusable data is a harder failure than
+				// never yielding, so it must not exit 0 and hand the warning back as the result.
+				if (hasOutputSchema || !hasRawOutput) {
+					exitCode = 1;
+					if (!stderr.trim()) stderr = SUBAGENT_WARNING_NULL_YIELD;
+				}
 			} else {
 				const { validator, error: schemaError } = buildOutputValidator(outputSchema);
 				const completeData = assembled.rawText
@@ -742,8 +753,6 @@ export function finalizeSubprocessOutput(args: FinalizeSubprocessOutputArgs): Fi
 		}
 	} else {
 		const allowFallback = exitCode === 0 && !doneAborted && !signalAborted;
-		const { normalized: normalizedSchema, error: schemaError } = normalizeSchema(outputSchema);
-		const hasOutputSchema = normalizedSchema !== undefined && !schemaError;
 		const fallback = allowFallback ? resolveFallbackCompletion(rawOutput, outputSchema) : null;
 		if (fallback) {
 			const { validator } = buildOutputValidator(outputSchema);
