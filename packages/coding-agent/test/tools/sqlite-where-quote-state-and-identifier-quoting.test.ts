@@ -247,7 +247,7 @@ describe("quoted table names and integer keys that do not fit in Number", () => 
 		const db = new Database(":memory:");
 		db.run("CREATE TABLE t (id INTEGER PRIMARY KEY, n TEXT)");
 		const key = "9007199254740993"; // MAX_SAFE_INTEGER + 2
-		db.run("INSERT INTO t (id, n) VALUES (?, ?)", BigInt(key), "wide");
+		db.prepare("INSERT INTO t (id, n) VALUES (?, ?)").run(BigInt(key), "wide");
 		const row = getRowByKey(db, "t", { column: "id", type: "INTEGER" }, key);
 		expect(row?.n).toBe("wide");
 		expect(String(row?.id)).toBe(key);

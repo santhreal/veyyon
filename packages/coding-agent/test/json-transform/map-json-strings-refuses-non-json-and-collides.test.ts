@@ -177,7 +177,7 @@ describe("mapJsonStrings key-collision is on the mapped keys, not the source key
 	});
 
 	it("allows two keys that look similar but map to distinct strings", () => {
-		const out = mapJsonStrings({ a: "x", b: "y" }, s => `_${s}`);
+		const out = mapJsonStrings({ a: "x", b: "y" }, s => `_${s}`) as Record<string, string>;
 		expect(out).toEqual({ _a: "_x", _b: "_y" });
 	});
 });
