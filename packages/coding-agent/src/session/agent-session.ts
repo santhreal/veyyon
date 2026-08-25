@@ -19953,7 +19953,7 @@ export class AgentSession {
 			} else if (message.role === "assistant") {
 				assistantMessages++;
 				const assistantMsg = message as AssistantMessage;
-				toolCalls += assistantMsg.content.filter(c => c.type === "toolCall").length;
+				for (const block of assistantMsg.content) if (block.type === "toolCall") toolCalls++;
 				totalInput += assistantMsg.usage.input;
 				totalOutput += assistantMsg.usage.output;
 				totalReasoning += assistantMsg.usage.reasoningTokens ?? 0;
