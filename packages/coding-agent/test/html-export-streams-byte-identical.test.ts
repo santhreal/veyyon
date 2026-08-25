@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { jsonPieces, StreamingBase64Writer } from "../src/export/html";
+import { exportFromFile, jsonPieces, StreamingBase64Writer } from "../src/export/html";
 
 /**
  * WHY: the HTML export used to build the whole document in memory — JSON
@@ -82,6 +82,41 @@ describe("streamed JSON serialization matches JSON.stringify byte for byte", () 
 			value: { at: new Date(0), custom: { toJSON: () => ({ shape: "replaced" }) } },
 		},
 		{
+			name: "toJSON returning undefined in array element becomes null",
+			value: [{ toJSON: () => undefined }, 42],
+		},
+		{
+			name: "toJSON returning undefined in object property is omitted",
+			value: { dropped: { toJSON: () => undefined }, keep: 1 },
+		},
+		{
+			name: "toJSON returning nested structure with toJSON",
+			value: { custom: { toJSON: () => ({ nested: [1, { toJSON: () => "leaf" }] }) } },
+		},
+		{
+			name: "toJSON returning primitives",
+			value: { a: { toJSON: () => null }, b: { toJSON: () => false }, c: { toJSON: () => 0 } },
+		},
+		{
+			// The builtin applies `toJSON` once, at the holder, and serializes the
+			// result as-is. Re-applying it on the way down collapses this to `5`.
+			name: "a toJSON returning another holder is not transformed again",
+			value: {
+				inObject: { toJSON: () => ({ toJSON: () => 5 }) },
+				inArray: [{ toJSON: () => ({ toJSON: () => 5 }) }],
+				toDate: { toJSON: () => new Date(0) },
+			},
+		},
+		{
+			// The key argument is the property name, and for an element its index
+			// as a string. Passing nothing makes every element read "undefined".
+			name: "toJSON receives the property name and the array index",
+			value: {
+				named: { toJSON: (key: unknown) => String(key) },
+				indexed: [{ toJSON: (key: unknown) => String(key) }, { toJSON: (key: unknown) => String(key) }],
+			},
+		},
+		{
 			// Not a cycle: the SAME object reached twice down disjoint paths is
 			// emitted twice, the way the builtin does. A visited-set that never
 			// forgets would reject this.
@@ -118,6 +153,17 @@ describe("streamed JSON serialization matches JSON.stringify byte for byte", () 
 		list.push({ back: list });
 
 		expect(() => piecesToJs(list)).toThrow(TypeError);
+	});
+
+	/**
+	 * `JSON.stringify` answers `undefined` for a root that serializes to nothing,
+	 * which is not JSON and cannot be written into the document. Emitting `null`
+	 * instead would ship a page whose whole payload silently became a literal
+	 * null, so this raises.
+	 */
+	it("rejects a root that serializes to nothing", () => {
+		expect(() => piecesToJs({ toJSON: () => undefined })).toThrow(TypeError);
+		expect(JSON.stringify({ toJSON: () => undefined })).toBeUndefined();
 	});
 
 	/**
@@ -174,7 +220,6 @@ describe("streaming base64 writer matches whole-buffer encoding", () => {
 
 describe("exported html decodes to exactly the snapshot json", () => {
 	it("end-to-end export round-trips through the streaming path", async () => {
-		const { exportFromFile } = await import("../src/export/html");
 		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "html-export-stream-"));
 		try {
 			const lines = [
@@ -234,6 +279,98 @@ describe("exported html decodes to exactly the snapshot json", () => {
 			expect(decoded).toContain("🎛️");
 			// The decoded bytes must be exactly what the builtin would emit.
 			expect(decoded).toBe(JSON.stringify(JSON.parse(decoded)));
+		} finally {
+			fs.rmSync(dir, { recursive: true, force: true });
+		}
+	});
+	it("handles adversarial escaping in paths messages tool args and errors", async () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "html-export-adv-"));
+		try {
+			const maliciousStrings = [
+				"<script>alert(1)</script>",
+				'</script><script>document.location="http://evil.com"</script>',
+				'</style><script>alert("css-break")</script>',
+				'quotes: "single" \' &amp; &lt; &gt;',
+				"lone surrogate high: \uD800 and low: \uDFFF",
+				"surrogate pair emoji: 👨‍👩‍👧‍👦 🎛️ \uD83C\uDF9B\uFE0F",
+				"null byte \u0000 and control \x01\x1F",
+				"newlines \r\n\t and backslashes \\\\\\",
+			];
+
+			const lines = [
+				JSON.stringify({
+					type: "session",
+					version: 3,
+					id: "adv-001",
+					timestamp: "2026-08-24T00:00:00.000Z",
+					cwd: "/evil/path/<script>alert(1)</script>/\"'&</style>",
+				}),
+				JSON.stringify({
+					type: "message",
+					id: "m1",
+					parentId: null,
+					timestamp: "2026-08-24T00:00:01.000Z",
+					message: {
+						role: "user",
+						content: maliciousStrings.map(text => ({ type: "text", text })),
+					},
+				}),
+				JSON.stringify({
+					type: "message",
+					id: "m2",
+					parentId: "m1",
+					timestamp: "2026-08-24T00:00:02.000Z",
+					message: {
+						role: "assistant",
+						content: [
+							{
+								type: "tool_use",
+								id: "call_1",
+								name: "bash",
+								arguments: { command: `rm -rf /; ${maliciousStrings.join(" ")}` },
+							},
+						],
+						usage: { input: 1, output: 2, cacheRead: 0, cacheWrite: 0, cost: { total: 0 } },
+					},
+				}),
+				JSON.stringify({
+					type: "message",
+					id: "m3",
+					parentId: "m2",
+					timestamp: "2026-08-24T00:00:03.000Z",
+					message: {
+						role: "toolResult",
+						toolCallId: "call_1",
+						content: [{ type: "text", text: `Command failed: ${maliciousStrings.join(" | ")}` }],
+						isError: true,
+					},
+				}),
+			];
+
+			const sessionFile = path.join(dir, "session.jsonl");
+			fs.writeFileSync(sessionFile, `${lines.join("\n")}\n`);
+
+			const outputPath = path.join(dir, "adv-out.html");
+			await exportFromFile(sessionFile, outputPath);
+
+			const html = fs.readFileSync(outputPath, "utf8");
+
+			const base64Match = html.match(
+				/<script id="session-data" type="application\/json">([A-Za-z0-9+/=]+)<\/script>/,
+			);
+			if (!base64Match) throw new Error("Could not extract #session-data base64!");
+
+			const binary = Buffer.from(base64Match[1], "base64");
+			const jsonStr = new TextDecoder("utf-8").decode(binary);
+			const parsed = JSON.parse(jsonStr) as {
+				header: { cwd: string };
+				entries: Array<{ message: { content: Array<{ text?: string }> } }>;
+			};
+
+			expect(parsed.header.cwd).toBe("/evil/path/<script>alert(1)</script>/\"'&</style>");
+			expect(parsed.entries.length).toBe(3);
+			expect(parsed.entries[0].message.content[0].text).toBe("<script>alert(1)</script>");
+			expect(jsonStr).toBe(JSON.stringify(JSON.parse(jsonStr)));
 		} finally {
 			fs.rmSync(dir, { recursive: true, force: true });
 		}
