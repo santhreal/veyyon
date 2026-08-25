@@ -113,6 +113,7 @@ import {
 	type ResolvedRoleModel,
 	SHUTDOWN_CONSOLIDATE_BUDGET_MS,
 } from "../session/agent-session";
+import { BackgroundSessions, type InteractiveSessionFactory, type KeptSession } from "../session/background-sessions";
 import type { CompactMode } from "../session/compact-modes";
 import { HistoryStorage } from "../session/history-storage";
 import type { SessionContext } from "../session/session-context";
@@ -438,6 +439,11 @@ export class InteractiveMode implements InteractiveModeContext {
 	keybindings: KeybindingsManager;
 	agent: Agent;
 	historyStorage?: HistoryStorage;
+	/**
+	 * Set by the interactive host at startup. Its absence is what makes `/new`
+	 * reset the current session in place instead of handing it off.
+	 */
+	createNextSession?: InteractiveSessionFactory;
 
 	ui: TUI;
 	chatContainer: TranscriptContainer;
@@ -1346,18 +1352,15 @@ export class InteractiveMode implements InteractiveModeContext {
 		// Subscribe to agent events
 		this.#subscribeToAgent();
 
+		this.#subscribeToGoalSessionEvents();
+
 		this.#eventBusUnsubscribers.push(
-			// Return the async handler so AgentSession can attach its rejection
-			// guard; a detached goal bookkeeping failure must not crash the TUI.
-			this.session.subscribe(event => {
-				return this.#handleGoalSessionEvent(event).catch(error => {
-					logger.warn("Goal mode session event handler failed", {
-						event: event.type,
-						error: errorMessage(error),
-					});
-					this.showWarning(`Goal mode update failed: ${errorMessage(error)}`);
-				});
-			}),
+			// The goal subscription is re-pointed on a session handoff, so dispose
+			// whichever one is current rather than capturing today's unsubscriber.
+			() => {
+				this.#goalUnsubscribe?.();
+				this.#goalUnsubscribe = undefined;
+			},
 			onStatusLineSessionAccentChanged(() => {
 				this.#syncStatusLineSettings();
 				this.#handleSessionAccentInputsChanged();
@@ -4267,6 +4270,11 @@ export class InteractiveMode implements InteractiveModeContext {
 		await this.#commitClosingFrame();
 		this.#freezeFrameProduction();
 
+		// A session handed off by `/new` is still finishing its turn and owns its
+		// own transcript writer, so wait for it before the UI stops. Its turn is
+		// already bounded by the agent loop; nothing new can be submitted to it.
+		await BackgroundSessions.global().drain();
+
 		// Persist the draft and dispose the session through the shared teardown
 		// so a signal that arrives mid-shutdown cannot fire a second dispose.
 		// The teardown is a promise-memoized singleton; whichever path calls it
@@ -5366,5 +5374,50 @@ export class InteractiveMode implements InteractiveModeContext {
 
 	#subscribeToAgent(): void {
 		this.#eventController.subscribeToAgent();
+	}
+
+	#goalUnsubscribe?: () => void;
+
+	/** Subscribe goal bookkeeping to the session currently displayed. */
+	#subscribeToGoalSessionEvents(): void {
+		// Return the async handler so AgentSession can attach its rejection
+		// guard; a detached goal bookkeeping failure must not crash the TUI.
+		this.#goalUnsubscribe = this.session.subscribe(event => {
+			return this.#handleGoalSessionEvent(event).catch(error => {
+				logger.warn("Goal mode session event handler failed", {
+					event: event.type,
+					error: errorMessage(error),
+				});
+				this.showWarning(`Goal mode update failed: ${errorMessage(error)}`);
+			});
+		});
+	}
+
+	/**
+	 * Point the UI at `next` and hand the session it was displaying to the
+	 * background keeper, so a turn in flight runs to completion instead of
+	 * being aborted.
+	 *
+	 * Every controller reads `ctx.session` dynamically and none caches its own
+	 * reference, so reassigning the four session-derived fields re-points the
+	 * whole UI at once. The two event subscriptions and the status line are the
+	 * only holders of a session reference that must be moved by hand.
+	 */
+	attachMainSession(next: AgentSession): KeptSession {
+		const previous = this.session;
+		if (next === previous) return BackgroundSessions.global().keep(previous);
+		this.unsubscribe?.();
+		this.unsubscribe = undefined;
+		this.#goalUnsubscribe?.();
+		this.#goalUnsubscribe = undefined;
+		this.session = next;
+		this.sessionManager = next.sessionManager;
+		this.settings = next.settings;
+		this.agent = next.agent;
+		this.#eventController.resetTranscriptAnchors();
+		this.#subscribeToAgent();
+		this.#subscribeToGoalSessionEvents();
+		this.statusLine.setSession(next);
+		return BackgroundSessions.global().keep(previous);
 	}
 }
