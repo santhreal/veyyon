@@ -1084,6 +1084,10 @@ export class Markdown implements Component {
 	#renderingFrozenPrefix = false;
 	#streamingDiffLineCache?: StreamingDiffLineCache;
 	#activeRenderSignature?: RenderSignature;
+	#cachedBgColorProbe = "";
+	#cachedBgColorProbeId = -1;
+	#cachedHeadingProbe = "";
+	#cachedHeadingProbeId = -1;
 
 	#ignoreTight = false;
 
@@ -1373,20 +1377,28 @@ export class Markdown implements Component {
 	}
 
 	#renderSignature(width: number, paddingX: number): RenderSignature {
-		const bgColorProbe = this.#defaultTextStyle?.bgColor ? this.#defaultTextStyle.bgColor("\x01") : "";
-		const headingProbe = this.#theme.heading("");
+		const bgStyleId = this.#defaultTextStyle ? objectId(this.#defaultTextStyle) : -1;
+		if (bgStyleId !== this.#cachedBgColorProbeId) {
+			this.#cachedBgColorProbe = this.#defaultTextStyle?.bgColor ? this.#defaultTextStyle.bgColor("\x01") : "";
+			this.#cachedBgColorProbeId = bgStyleId;
+		}
+		const themeId = objectId(this.#theme);
+		if (themeId !== this.#cachedHeadingProbeId) {
+			this.#cachedHeadingProbe = this.#theme.heading("");
+			this.#cachedHeadingProbeId = themeId;
+		}
 		return {
 			width,
 			paddingX,
 			paddingY: this.#paddingY,
 			codeBlockIndent: this.#codeBlockIndent,
-			themeId: objectId(this.#theme),
-			defaultTextStyleId: this.#defaultTextStyle ? objectId(this.#defaultTextStyle) : -1,
+			themeId,
+			defaultTextStyleId: bgStyleId,
 			imageProtocol: TERMINAL.imageProtocol ?? "",
 			hyperlinks: TERMINAL.hyperlinks,
 			textSizing: TERMINAL.textSizing,
-			bgColorProbe,
-			headingProbe,
+			bgColorProbe: this.#cachedBgColorProbe,
+			headingProbe: this.#cachedHeadingProbe,
 		};
 	}
 
