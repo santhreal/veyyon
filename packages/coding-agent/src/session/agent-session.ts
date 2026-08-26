@@ -11934,8 +11934,8 @@ export class AgentSession {
 	 *  empty-submit abort gate. The user-restorable subset is surfaced by getQueuedMessages()/clearQueue(). */
 	get queuedMessageCount(): number {
 		return (
-			this.agent.peekSteeringQueue().filter(isDisplayableQueuedMessage).length +
-			this.agent.peekFollowUpQueue().filter(isDisplayableQueuedMessage).length +
+			countWhere(this.agent.peekSteeringQueue(), isDisplayableQueuedMessage) +
+			countWhere(this.agent.peekFollowUpQueue(), isDisplayableQueuedMessage) +
 			this.#pendingNextTurnMessages.length
 		);
 	}
