@@ -516,14 +516,9 @@ function renderSymbols(symbolsMatch: RegExpMatchArray, lines: string[], expanded
 		return prefix;
 	};
 
-	let topLevelCount = 0;
-	const topLevel: typeof symbols = [];
-	for (const s of symbols) {
-		if (s.indent === 0) {
-			topLevelCount++;
-			if (topLevel.length < 3) topLevel.push(s);
-		}
-	}
+	const allTopLevel = symbols.filter(s => s.indent === 0);
+	const topLevel = allTopLevel.slice(0, 3);
+	const topLevelCount = allTopLevel.length;
 
 	if (expanded) {
 		let output = `${icon} ${theme.fg("dim", `in ${fileName}`)}`;

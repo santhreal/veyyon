@@ -255,24 +255,16 @@ export function convertMessageToLlm(message: AgentMessage): Message | undefined 
 
 	switch (message.role) {
 		case "user":
-			// Avoid a shallow spread when attribution is already set — the spread
-			// is only needed to default the field, not to copy the object.
 			return message.attribution !== undefined ? message : { ...message, attribution: "user" };
 		case "developer":
 			return message.attribution !== undefined ? message : { ...message, attribution: "agent" };
 		case "assistant":
 			return message;
 		case "toolResult": {
-			// Avoid a shallow spread when the content is unpruned and attribution
-			// is already set — both conditions hold for the vast majority of tool
-			// results in a long conversation.
 			const content = getPrunedToolResultContent(message as ToolResultMessage);
-			if (content === message.content && message.attribution !== undefined) return message;
-			return {
-				...message,
-				content,
-				attribution: message.attribution ?? "agent",
-			};
+			return content === message.content && message.attribution !== undefined
+				? message
+				: { ...message, content, attribution: message.attribution ?? "agent" };
 		}
 		default:
 			return undefined;

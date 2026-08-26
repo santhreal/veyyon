@@ -9,6 +9,7 @@ import {
 	APP_NAME,
 	CHANGELOG_URL,
 	clamp01,
+	countWhere,
 	errorMessage,
 	formatDuration,
 	isAbortError,
@@ -1112,8 +1113,7 @@ export class CommandController {
 		internalGuidance?: string,
 	): Promise<CompactionOutcome> {
 		const entries = this.ctx.sessionManager.getEntries();
-		let messageCount = 0;
-		for (const entry of entries) if (entry.type === "message") messageCount++;
+		const messageCount = countWhere(entries, entry => entry.type === "message");
 
 		if (messageCount < 2) {
 			this.ctx.showWarning("Nothing to compact (no messages yet)");
@@ -1235,8 +1235,7 @@ export class CommandController {
 		}
 
 		const entries = this.ctx.sessionManager.getEntries();
-		let messageCount = 0;
-		for (const entry of entries) if (entry.type === "message") messageCount++;
+		const messageCount = countWhere(entries, entry => entry.type === "message");
 
 		if (messageCount < 2) {
 			this.ctx.showWarning("Nothing to hand off (no messages yet)");
@@ -1354,13 +1353,7 @@ export function renderProviderSection(details: ProviderDetails, uiTheme: Pick<ty
 }
 
 function resolveProviderUsageTotal(reports: UsageReport[]): number {
-	let total = 0;
-	for (const report of reports) {
-		for (const limit of report.limits) {
-			total += resolveUsedFraction(limit) ?? 0;
-		}
-	}
-	return total;
+	return reports.flatMap(r => r.limits).reduce((total, limit) => total + (resolveUsedFraction(limit) ?? 0), 0);
 }
 
 function formatLimitTitle(limit: UsageLimit): string {
@@ -1493,31 +1486,18 @@ function formatAggregateAmount(limits: UsageLimit[]): string {
 		return `${formatDecimal(avgRemaining)}% free`;
 	}
 
-	let totalUsed = 0;
-	let totalLimit = 0;
-	let validCount = 0;
-	for (const limit of limits) {
-		const amount = limit.amount;
-		if (amount.used !== undefined && amount.limit !== undefined && amount.limit > 0) {
-			totalUsed += amount.used;
-			totalLimit += amount.limit;
-			validCount++;
-		}
-	}
-	if (validCount === limits.length && validCount > 0) {
+	const valid = limits.filter(l => l.amount.used !== undefined && l.amount.limit !== undefined && l.amount.limit > 0);
+	if (valid.length === limits.length && valid.length > 0) {
+		const totalUsed = valid.reduce((s, l) => s + (l.amount.used ?? 0), 0);
+		const totalLimit = valid.reduce((s, l) => s + (l.amount.limit ?? 0), 0);
 		const remainingPct = totalLimit > 0 ? Math.max(0, 100 - (totalUsed / totalLimit) * 100) : 0;
 		return `${formatDecimal(remainingPct)}% free`;
 	}
 
-	// Count unique accounts from limit scopes — not limits.length.
-	const uniqueAccountIds = new Set<string>();
-	for (const limit of limits) {
-		const id = limit.scope.accountId;
-		if (typeof id === "string" && id.length > 0) uniqueAccountIds.add(id);
-	}
+	const uniqueAccountIds = new Set(
+		limits.map(l => l.scope.accountId).filter((id): id is string => typeof id === "string" && id.length > 0),
+	);
 	if (uniqueAccountIds.size > 0) return `${uniqueAccountIds.size} ${uniqueAccountIds.size === 1 ? "acct" : "accts"}`;
-	// No account IDs available — keep the pre-existing fallback so providers
-	// that don't populate scope.accountId still show a summary.
 	return `${limits.length} accts`;
 }
 

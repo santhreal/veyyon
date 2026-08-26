@@ -156,6 +156,7 @@ import type { InMemorySnapshotStore } from "@veyyon/hashline";
 import { Patch } from "@veyyon/hashline";
 import { MacOSPowerAssertion } from "@veyyon/natives";
 import {
+	countWhere,
 	errorMessage,
 	escapeXmlText,
 	extractRetryHint,
@@ -494,7 +495,7 @@ import {
 	unreplayableContinueDelayMs,
 } from "./retry-policy";
 import type { BuildSessionContextOptions, SessionContext } from "./session-context";
-import { getLatestCompactionEntry, getLatestCompactionEntryIndex, getRestorableSessionModels } from "./session-context";
+import { getLatestCompactionEntry, getRestorableSessionModels, resolveCompactionEntry } from "./session-context";
 import { formatSessionDumpText } from "./session-dump-format";
 import type {
 	BranchSummaryEntry,
@@ -651,11 +652,9 @@ function stringProperty(value: object, key: string): string | undefined {
 }
 
 function taskToolUsage(details: unknown): Usage | undefined {
-	if (!details || typeof details !== "object") return undefined;
-	const record = details as Record<string, unknown>;
-	const usage = record.usage;
-	if (!usage || typeof usage !== "object") return undefined;
-	return usage as Usage;
+	return details && typeof details === "object" && "usage" in details && typeof details.usage === "object"
+		? (details.usage as Usage)
+		: undefined;
 }
 
 function reportFromRewindReportContent(content: string): string {
@@ -3269,18 +3268,11 @@ export class AgentSession {
 			// the request and every later turn of the session refuses the same way.
 			// The transcript keeps the reference, so restoring the blobs directory
 			// restores the payload; the request carries the loss instead of the hash.
-			// Skip the per-message blob-ref scan when the session loaded with no
-			// lost blobs: a live session never mints blob refs into message content
-			// (externalization happens only in the persistence layer, on the JSONL
-			// copy), so the scan is pure overhead on every turn until a reload.
 			const recovered = this.sessionManager.hasLostBlobRefs ? replaceLostBlobPayloads(next.messages) : next.messages;
 			const carried = recovered === next.messages ? next : { ...next, messages: recovered };
 			// The model serving THIS request decides which images it can read. The
 			// main turn, a side request, compaction and an advisor each dispatch
 			// their own model, and this is the only seam that sees which one is
-			// going out, so the whole image policy resolves here. Skip the
-			// O(n*blocks) scan when the append-only log tracks no images — the
-			// common case for code-focused sessions.
 			const shaped =
 				this.agent.appendOnlyContext?.hasImages === false
 					? carried
@@ -4885,20 +4877,11 @@ export class AgentSession {
 
 	/** Emit an event to all listeners */
 	#emit(event: AgentSessionEvent): void {
-		// Snapshot the listener array once; reuse the cached copy until a
-		// subscribe/unsubscribe invalidates it. During streaming, #emit fires
-		// per token and the listener set is stable, so this avoids one array
-		// allocation per event.
-		let listeners = this.#eventListenersSnapshot;
-		if (!listeners) {
-			listeners = [...this.#eventListeners];
-			this.#eventListenersSnapshot = listeners;
-		}
+		const listeners = this.#eventListenersSnapshot ?? [...this.#eventListeners];
+		this.#eventListenersSnapshot ??= listeners;
 		for (const l of listeners) {
 			try {
 				const result = l(event) as unknown;
-				// Listener may be an async function whose returned Promise we don't await;
-				// attach a catch so a rejection does not become an unhandled rejection.
 				if (isPromise(result)) {
 					result.catch(err => {
 						logger.warn("AgentSession listener rejected", {
@@ -5026,9 +5009,6 @@ export class AgentSession {
 	async #emitSessionEvent(event: AgentSessionEvent): Promise<void> {
 		if (event.type === "message_update") {
 			this.#emit(event);
-			// Skip the promise chain when no extension handlers are registered for
-			// message_update (the common case), avoiding a closure + two promise
-			// allocations per streamed token.
 			if (this.#extensionRunner?.hasHandlers(event.type)) {
 				void this.#queueExtensionEvent(event);
 			}
@@ -5835,9 +5815,6 @@ export class AgentSession {
 		if (event.type === "agent_end") {
 			// The closing event repeats the turn's messages, so it repeats every
 			// handle in them unless it is expanded like the events it summarises.
-			// Fast path: when neither secret expansion nor argot is active,
-			// displayAssistantContent returns content unchanged, so no message
-			// in the array would change — skip the map+some allocation entirely.
 			const expand = this.#displaySecretExpander();
 			const argotActive = this.#argot?.loaded === true;
 			if (expand !== undefined || argotActive) {
@@ -5850,9 +5827,7 @@ export class AgentSession {
 					changed = true;
 					return { ...message, content };
 				});
-				if (changed) {
-					displayEvent = { ...(displayEvent as typeof event), messages };
-				}
+				if (changed) displayEvent = { ...(displayEvent as typeof event), messages };
 			}
 		}
 		// The intent rides on the execution events rather than in the message
@@ -7721,33 +7696,19 @@ export class AgentSession {
 		return resolveToCwd(normalized, this.sessionManager.getCwd());
 	}
 
-	/**
-	 * How many assistant turns this session has produced.
-	 *
-	 * The count of assistant messages is the turn index: each one is a request
-	 * that re-read the whole context. Used to price how long a tool result
-	 * arriving now will be re-read for. See `inlineCapForTurn`.
-	 */
+	/** Count of assistant messages — each is a turn that re-read the whole context. Used by `inlineCapForTurn`. */
 	getTurnIndex(): number {
 		const messages = this.agent.state.messages;
-		if (messages === this.#turnCountRef) {
-			if (messages.length === this.#turnCountLength) return this.#turnCount;
-			if (messages.length > this.#turnCountLength) {
-				for (let i = this.#turnCountLength; i < messages.length; i++) {
-					if (messages[i].role === "assistant") this.#turnCount++;
-				}
-				this.#turnCountLength = messages.length;
-				return this.#turnCount;
-			}
+		if (this.#turnCountRef !== messages || messages.length < this.#turnCountLength) {
+			this.#turnCount = countWhere(messages, m => m.role === "assistant");
+			this.#turnCountLength = messages.length;
+			this.#turnCountRef = messages;
+		} else if (messages.length > this.#turnCountLength) {
+			for (let i = this.#turnCountLength; i < messages.length; i++)
+				if (messages[i].role === "assistant") this.#turnCount++;
+			this.#turnCountLength = messages.length;
 		}
-		let turns = 0;
-		for (const message of messages) {
-			if (message.role === "assistant") turns++;
-		}
-		this.#turnCountRef = messages;
-		this.#turnCountLength = messages.length;
-		this.#turnCount = turns;
-		return turns;
+		return this.#turnCount;
 	}
 
 	#localProtocolOptions(): LocalProtocolOptions {
@@ -13750,8 +13711,7 @@ export class AgentSession {
 	 */
 	async handoff(customInstructions?: string, options?: SessionHandoffOptions): Promise<HandoffResult | undefined> {
 		const entries = this.sessionManager.getBranch();
-		let messageCount = 0;
-		for (const entry of entries) if (entry.type === "message") messageCount++;
+		const messageCount = countWhere(entries, entry => entry.type === "message");
 
 		if (messageCount < 2) {
 			throw new Error("Nothing to hand off (no messages yet)");
@@ -19979,36 +19939,27 @@ export class AgentSession {
 		let totalCost = 0;
 		let totalPremiumRequests = 0;
 
+		const addUsage = (u: Usage) => {
+			totalInput += u.input;
+			totalOutput += u.output;
+			totalReasoning += u.reasoningTokens ?? 0;
+			totalCacheRead += u.cacheRead;
+			totalCacheWrite += u.cacheWrite;
+			totalTokens += u.totalTokens;
+			totalPremiumRequests += u.premiumRequests ?? 0;
+			totalCost += u.cost.total;
+		};
 		for (const message of messages) {
-			if (message.role === "user") {
-				userMessages++;
-			} else if (message.role === "assistant") {
+			if (message.role === "user") userMessages++;
+			else if (message.role === "assistant") {
 				assistantMessages++;
 				const assistantMsg = message as AssistantMessage;
 				for (const block of assistantMsg.content) if (block.type === "toolCall") toolCalls++;
-				totalInput += assistantMsg.usage.input;
-				totalOutput += assistantMsg.usage.output;
-				totalReasoning += assistantMsg.usage.reasoningTokens ?? 0;
-				totalCacheRead += assistantMsg.usage.cacheRead;
-				totalCacheWrite += assistantMsg.usage.cacheWrite;
-				totalTokens += assistantMsg.usage.totalTokens;
-				totalPremiumRequests += assistantMsg.usage.premiumRequests ?? 0;
-				totalCost += assistantMsg.usage.cost.total;
+				addUsage(assistantMsg.usage);
 			} else if (message.role === "toolResult") {
 				toolResults++;
-				if (message.toolName === TOOL.task) {
-					const usage = taskToolUsage(message.details);
-					if (usage) {
-						totalInput += usage.input;
-						totalOutput += usage.output;
-						totalReasoning += usage.reasoningTokens ?? 0;
-						totalCacheRead += usage.cacheRead;
-						totalCacheWrite += usage.cacheWrite;
-						totalTokens += usage.totalTokens;
-						totalPremiumRequests += usage.premiumRequests ?? 0;
-						totalCost += usage.cost.total;
-					}
-				}
+				const usage = message.toolName === TOOL.task ? taskToolUsage(message.details) : undefined;
+				if (usage) addUsage(usage);
 			}
 		}
 
@@ -20077,8 +20028,8 @@ export class AgentSession {
 		const currentNonMessageTokens = computeNonMessageTokens(this);
 
 		const branchEntries = this.sessionManager.getBranch();
-		const latestCompaction = getLatestCompactionEntry(branchEntries);
-		const compactionIndex = latestCompaction ? getLatestCompactionEntryIndex(branchEntries) : -1;
+		const compaction = resolveCompactionEntry(branchEntries);
+		const compactionIndex = compaction.index;
 
 		let usedTokens = 0;
 		let anchored = false;

@@ -3,7 +3,7 @@ import * as path from "node:path";
 import type { AgentMessage } from "@veyyon/agent-core";
 import type { AssistantMessage, UsageLimit, UsageReport } from "@veyyon/ai";
 import { type Component, padding, truncateToWidth, visibleWidth } from "@veyyon/tui";
-import { formatClock, getProjectDir, scopedTimeoutSignal, withScopedTimeoutSignal } from "@veyyon/utils";
+import { countWhere, formatClock, getProjectDir, scopedTimeoutSignal, withScopedTimeoutSignal } from "@veyyon/utils";
 import { resolveContextLimit } from "../../../config/compaction-strategy";
 // The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
 import { settings } from "../../../config/settings-instance";
@@ -1359,11 +1359,7 @@ export class StatusLineComponent implements Component {
 	#backgroundJobBadgeCount(): number {
 		const running = this.session.getAsyncJobSnapshot()?.running;
 		if (!running) return 0;
-		let count = 0;
-		for (const job of running) {
-			if (job.type !== "task") count++;
-		}
-		return count;
+		return countWhere(running, job => job.type !== "task");
 	}
 
 	/**
@@ -1663,15 +1659,9 @@ export class StatusLineComponent implements Component {
 		// The badge shifts every segment right by its width; the recorded bounds
 		// answer in columns of the RETURNED line (quietSegmentAt hit-testing), so
 		// they shift with it.
-		const shifted: Array<{ id: string; start: number; end: number }> = [];
-		for (const entry of bounds) {
-			if (entry.start >= budget) continue;
-			shifted.push({
-				id: entry.id,
-				start: entry.start + badgeWidth,
-				end: Math.min(entry.end, budget) + badgeWidth,
-			});
-		}
+		const shifted = bounds
+			.filter(e => e.start < budget)
+			.map(e => ({ id: e.id, start: e.start + badgeWidth, end: Math.min(e.end, budget) + badgeWidth }));
 		this.#quietLineBounds = shifted;
 		if (left && right) {
 			return badge + left + padding(budget - visibleWidth(left) - visibleWidth(right)) + right;

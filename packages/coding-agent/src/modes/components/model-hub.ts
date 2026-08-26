@@ -29,7 +29,7 @@ import {
 	truncateToWidth,
 	visibleWidth,
 } from "@veyyon/tui";
-import { clampLow, errorMessage } from "@veyyon/utils";
+import { clampLow, countWhere, errorMessage } from "@veyyon/utils";
 import type { ModelRegistry } from "../../config/model-registry";
 import { getKnownRoleIds, getRoleInfo, ROLE_INHERIT_LABEL } from "../../config/model-roles";
 import type { Settings } from "../../config/settings";
@@ -439,10 +439,7 @@ export class ModelHubComponent implements Component {
 		});
 
 		const visibleRoles = this.#visibleRoleIds();
-		let assignedCount = 0;
-		for (const role of visibleRoles) {
-			if (this.#roles[role]) assignedCount++;
-		}
+		const assignedCount = countWhere(visibleRoles, role => Boolean(this.#roles[role]));
 
 		// Roles leads the fixed section so downward hops from Recent head into
 		// model scopes instead of being captured by the roles view.
@@ -629,10 +626,7 @@ export class ModelHubComponent implements Component {
 		}
 		const recentSelectors = new Set<string>();
 		for (const ri of this.#recentItems) recentSelectors.add(ri.selector);
-		let recentSearchCount = 0;
-		for (const item of matches) {
-			if (recentSelectors.has(item.selector)) recentSearchCount++;
-		}
+		const recentSearchCount = countWhere(matches, item => recentSelectors.has(item.selector));
 		this.#recentSearchCount = recentSearchCount;
 		this.#searchTotal = matches.length;
 		this.#searchCounts = counts;

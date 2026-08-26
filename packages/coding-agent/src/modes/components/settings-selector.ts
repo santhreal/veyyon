@@ -24,7 +24,7 @@ import {
 	truncateToWidth,
 	visibleWidth,
 } from "@veyyon/tui";
-import { clamp, collapseWhitespace, errorMessage, isRecord, VERSION } from "@veyyon/utils";
+import { clamp, collapseWhitespace, countWhere, errorMessage, isRecord, VERSION } from "@veyyon/utils";
 import { BUILTIN_DEFAULTS_PROVIDER_ID, type Rule, ruleCapability } from "../../capability/rule";
 import { ANY_MODEL_EFFORT_KEY, withLegacyDefaultEffort } from "../../config/effort-resolver";
 import type { ModelRegistry } from "../../config/model-registry";
@@ -1233,7 +1233,7 @@ class RulesSubmenu extends MouseRoutedSubmenu {
 		}
 
 		const items: SelectItem[] = sections.map(section => {
-			const off = section.rules.filter(rule => this.#isOff(rule, disabled, experiments, builtinOff)).length;
+			const off = countWhere(section.rules, rule => this.#isOff(rule, disabled, experiments, builtinOff));
 			return {
 				value: section.label,
 				label: section.label,
@@ -4049,10 +4049,7 @@ export class SettingsSelectorComponent implements Component {
 
 	#formatModelRolesValue(): string {
 		const roles = settings.getModelRoles();
-		let assigned = 0;
-		for (const role of SELECTABLE_MODEL_ROLE_IDS) {
-			if (roles[role]?.trim()) assigned++;
-		}
+		const assigned = countWhere(SELECTABLE_MODEL_ROLE_IDS, role => Boolean(roles[role]?.trim()));
 		if (assigned === 0) return "all inherit";
 		return `${assigned} assigned`;
 	}
@@ -4118,10 +4115,7 @@ export class SettingsSelectorComponent implements Component {
 			settings.get("defaultThinkingLevel"),
 		);
 		const any = rows[ANY_MODEL_EFFORT_KEY];
-		let perModel = 0;
-		for (const key of Object.keys(rows)) {
-			if (key !== ANY_MODEL_EFFORT_KEY) perModel++;
-		}
+		const perModel = countWhere(Object.keys(rows), key => key !== ANY_MODEL_EFFORT_KEY);
 		const parts: string[] = [];
 		parts.push(any ? `any model · ${any}` : "model defaults");
 		if (perModel > 0) parts.push(`${perModel} model${perModel === 1 ? "" : "s"}`);
@@ -4162,10 +4156,7 @@ export class SettingsSelectorComponent implements Component {
 		const table = stored && typeof stored === "object" ? (stored as Record<string, SubagentAgentSettings>) : {};
 		const rows = Object.values(table);
 		if (rows.length === 0) return "defaults";
-		let blocked = 0;
-		for (const row of rows) {
-			if (row?.enabled === false) blocked++;
-		}
+		const blocked = countWhere(rows, row => row?.enabled === false);
 		const parts = [`${rows.length} configured`];
 		if (blocked > 0) parts.push(`${blocked} blocked`);
 		return parts.join(", ");
@@ -4239,10 +4230,10 @@ export class SettingsSelectorComponent implements Component {
 	 */
 	#formatRulesValue(): string {
 		const stored = settings.get("ttsr.disabledRules");
-		const off = Array.isArray(stored) ? stored.filter(name => String(name).trim().length > 0).length : 0;
+		const off = Array.isArray(stored) ? countWhere(stored, name => String(name).trim().length > 0) : 0;
 		const enabledRaw = settings.get("ttsr.experimentalRules");
 		const experiments = Array.isArray(enabledRaw)
-			? enabledRaw.filter(name => String(name).trim().length > 0).length
+			? countWhere(enabledRaw, name => String(name).trim().length > 0)
 			: 0;
 		const experimentSuffix = experiments === 0 ? "" : `, ${experiments} experimental on`;
 		if (settings.get("ttsr.builtinRules") !== true) {

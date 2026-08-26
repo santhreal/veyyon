@@ -69,7 +69,7 @@ import {
 	visibleWidth,
 	wrapTextWithAnsi,
 } from "@veyyon/tui";
-import { clampLow, errorMessage, formatAge, formatMoreLines, getProjectDir, logger } from "@veyyon/utils";
+import { clampLow, countWhere, errorMessage, formatAge, formatMoreLines, getProjectDir, logger } from "@veyyon/utils";
 import type { KeyId } from "../../config/keybindings";
 import type { MessageRenderer } from "../../extensibility/extensions/types";
 import { IrcBus, type IrcLogEntry } from "../../irc/bus";
@@ -317,14 +317,8 @@ class LiveRosterPane implements Component {
 		// the subtle one, because `formatAge` returns an EMPTY string for an agent
 		// that just moved, so those rows lost the column entirely and everything
 		// after them slid left.
-		const widest = (measure: (agent: LiveAgent) => string) => {
-			let width = 0;
-			for (const agent of this.agents) {
-				const w = visibleWidth(measure(agent));
-				if (w > width) width = w;
-			}
-			return width;
-		};
+		const widest = (measure: (agent: LiveAgent) => string) =>
+			this.agents.reduce((w, a) => Math.max(w, visibleWidth(measure(a))), 0);
 		// No column may take more than a quarter of the row. Status and age are
 		// short words and cap themselves, but the two NAME columns are whatever an
 		// agent was called: one subagent spawned as
@@ -1170,10 +1164,7 @@ export class AgentDashboard extends Container {
 	 */
 	#commsSummary(): string {
 		const shown = this.#filteredComms();
-		let failed = 0;
-		for (const entry of shown) {
-			if (entry.outcome === "failed") failed++;
-		}
+		const failed = countWhere(shown, entry => entry.outcome === "failed");
 		const parts = [`${shown.length} ${shown.length === 1 ? "message" : "messages"}`];
 		if (failed > 0) parts.push(theme.fg("error", `${failed} undelivered`));
 		const filterHint = this.#canFilterComms() ? " (f)" : "";

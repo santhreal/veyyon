@@ -919,15 +919,12 @@ export class EventController {
 			if (timeline.hasToolCalls) {
 				streamingComponent.markTranscriptBlockFinalized();
 				repaintTargets.add(streamingComponent);
-				// Both loops below iterate every content block but only act on
-				// toolCall blocks; skip them entirely during text-only streaming.
+				// Skip content blocks during text-only streaming; only toolCall blocks act.
 				for (const content of this.ctx.streamingMessage.content) {
 					if (content.type !== "toolCall") continue;
 					if (content.name === "read") {
 						if (!readArgsHaveTarget(content.arguments)) {
-							// Args still streaming — defer until path is parseable so we can route to the
-							// read group (regular files) vs ToolExecutionComponent (internal URLs).
-							// Creating either component now would lock the read into the wrong shape.
+							// Defer until args are parseable; creating a component now locks the wrong read shape.
 							continue;
 						}
 						if (!readArgsTargetInternalUrl(content.arguments)) {
@@ -950,12 +947,7 @@ export class EventController {
 						// Internal URL read falls through to ToolExecutionComponent below.
 					}
 
-					// Preserve the raw partial JSON only for renderers that need to surface fields before the JSON object closes.
-					// Bash uses this to show inline env assignments during streaming instead of popping them in at completion.
-					// While the JSON is still open, ToolArgsRevealController paces the
-					// reveal (write/edit/bash previews grow smoothly when a slow provider
-					// delivers large batches); once it closes, the final args render
-					// as-is — mirroring how assistant text snaps at message_end.
+					// Preserve raw partial JSON for renderers that surface fields before the JSON closes (bash env assignments, ToolArgsRevealController pacing).
 					let renderArgs: Record<string, unknown>;
 					const partialJson = getStreamingPartialJson(content);
 					const rawInput = content.customWireName !== undefined;
@@ -965,10 +957,7 @@ export class EventController {
 							rawInput,
 							exposeRawPartialJson: exposesRawPartialJson(content.name, rawInput, tool),
 							streamingStringKeys: streamingStringKeysForTool(content.name, rawInput),
-							// The preview renders arguments that have NOT reached the tool yet, so
-							// they still carry `§handle` fragments; expansion at seam 1 happens
-							// just before execution. Without the codec here a streaming write or
-							// edit preview shows the handle instead of the text it stands for.
+							// Preview args carry `§handle` fragments; expand here so streaming previews show text, not handles.
 							argot: this.ctx.viewSession.getArgotSession?.(),
 						});
 					} else {

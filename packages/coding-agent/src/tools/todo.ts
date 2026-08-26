@@ -4,7 +4,7 @@ import { type SessionTelemetryDetail, sessionTelemetryDetail } from "@veyyon/ai/
 import type { Component } from "@veyyon/tui";
 import { Text } from "@veyyon/tui/components/text";
 import { truncateToWidth, visibleWidth } from "@veyyon/tui/utils";
-import { formatCount, NON_ALNUM_RUN_RE, prompt } from "@veyyon/utils";
+import { countWhere, formatCount, NON_ALNUM_RUN_RE, prompt } from "@veyyon/utils";
 import { collapseWhitespace } from "@veyyon/utils/collapse-whitespace";
 import { sanitizeText } from "@veyyon/utils/sanitize-text";
 import { isTerminalTodoStatus, isTodoListDone, TODO_DONE_SUMMARY, type TodoStatus } from "@veyyon/wire";
@@ -1119,12 +1119,8 @@ export function markdownToPhases(md: string): { phases: TodoPhase[]; errors: str
  * `done`, which is the direction that cannot lie about progress.
  */
 function formatOverall(tasks: readonly TodoItem[]): string {
-	let done = 0;
-	let dropped = 0;
-	for (const task of tasks) {
-		if (task.status === "completed") done++;
-		else if (isTerminalTodoStatus(task.status)) dropped++;
-	}
+	const done = countWhere(tasks, task => task.status === "completed");
+	const dropped = countWhere(tasks, task => isTerminalTodoStatus(task.status) && task.status !== "completed");
 	const open = tasks.length - done - dropped;
 	return `Overall: ${done}/${tasks.length} done, ${dropped > 0 ? `${dropped} dropped, ` : ""}${open} open.`;
 }
@@ -1225,7 +1221,7 @@ function formatSummaryBody(phases: TodoPhase[], errors: string[], readOnly: bool
 		);
 	} else {
 		const current = phases[currentIdx];
-		const done = current.tasks.filter(task => isTerminalTodoStatus(task.status)).length;
+		const done = countWhere(current.tasks, task => isTerminalTodoStatus(task.status));
 		// The active phase is the EARLIEST one still holding open work, so the
 		// in-progress pointer can sit in a phase whose successors already have
 		// completed tasks. Explain that worked-ahead case explicitly.
@@ -1669,16 +1665,7 @@ export const todoToolRenderer = {
 		// Expanded (the block's own toggle) it is the full list, which is what a
 		// reader scrolling back through history wants — by then the board is gone.
 		if (!options.expanded) {
-			let active: TodoItem | undefined;
-			for (const phase of phases) {
-				for (const task of phase.tasks) {
-					if (task.status === "in_progress") {
-						active = task;
-						break;
-					}
-				}
-				if (active) break;
-			}
+			const active = phases.flatMap(p => p.tasks).find(t => t.status === "in_progress");
 			const moved = active ?? completedTasks[completedTasks.length - 1];
 			const phaseOf = phases.find(phase => phase.tasks.some(task => task.content === moved?.content));
 			let completedCount = 0;

@@ -1096,11 +1096,11 @@ function convertContentBlocks(
 	}
 
 	if (!supportsImages) {
-		const parts: string[] = [];
-		for (const block of blocks) {
-			if (block.type === "text") parts.push(block.text);
-		}
-		return parts.join("\n").toWellFormed();
+		return blocks
+			.filter(b => b.type === "text")
+			.map(b => b.text)
+			.join("\n")
+			.toWellFormed();
 	}
 
 	if (sawImage && !sawText) {
@@ -3730,17 +3730,11 @@ function buildToolResultBlock(
 	// type `text` if `is_error` is true") — keep the text in the block and
 	// hoist the images after the message's tool_result run.
 	if (msg.isError && typeof content !== "string") {
-		const textBlocks: typeof content = [];
-		let hasImage = false;
-		for (const block of content) {
-			if (block.type === "image") {
-				hasImage = true;
-				hoistedImages.push(block);
-			} else {
-				textBlocks.push(block);
-			}
+		const images = content.filter(b => b.type === "image");
+		if (images.length > 0) {
+			hoistedImages.push(...images);
+			content = content.filter(b => b.type !== "image");
 		}
-		if (hasImage) content = textBlocks;
 	}
 	content = ensureErrorToolResultWireContent(content, msg.isError);
 	const block: ContentBlockParam = {

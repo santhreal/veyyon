@@ -191,9 +191,7 @@ function filterInput(input: InputItem[] | undefined): InputItem[] | undefined {
 		if (item.id != null) {
 			const { id: _id, ...rest } = item;
 			result.push(rest as InputItem);
-		} else {
-			result.push(item);
-		}
+		} else result.push(item);
 	}
 	return result;
 }

@@ -85,50 +85,29 @@ export function getRestorableSessionModels(
 	return [roleModel, defaultModel];
 }
 
-const compactionEntryCache = new WeakMap<
-	SessionEntry[],
-	{ length: number; entry: CompactionEntry | null; index: number }
->();
-
+type CompactionCacheEntry = { length: number; entry: CompactionEntry | null; index: number };
+const compactionEntryCache = new WeakMap<SessionEntry[], CompactionCacheEntry>();
 export function getLatestCompactionEntry(entries: SessionEntry[]): CompactionEntry | null {
 	return resolveCompactionEntry(entries).entry;
 }
 
-export function getLatestCompactionEntryIndex(entries: SessionEntry[]): number {
-	return resolveCompactionEntry(entries).index;
-}
-
-function resolveCompactionEntry(entries: SessionEntry[]): { entry: CompactionEntry | null; index: number } {
-	const cached = compactionEntryCache.get(entries);
-	if (cached !== undefined && cached.length === entries.length) {
-		return { entry: cached.entry, index: cached.index };
+export function resolveCompactionEntry(entries: SessionEntry[]): CompactionCacheEntry {
+	let cached = compactionEntryCache.get(entries);
+	if (!cached || cached.length > entries.length) {
+		cached = { length: 0, entry: null, index: -1 };
+		compactionEntryCache.set(entries, cached);
 	}
-	if (cached !== undefined && cached.length < entries.length) {
-		// Incremental: scan only the newly appended entries first. If a
-		// compaction entry exists among them, it is newer than the cached
-		// one. Otherwise return the cached result (still the latest).
-		for (let i = entries.length - 1; i >= cached.length; i--) {
+	if (cached.length < entries.length) {
+		for (let i = entries.length - 1; i >= cached.length; i--)
 			if (entries[i].type === "compaction") {
-				const entry = entries[i] as CompactionEntry;
-				const result = { entry, index: i };
-				compactionEntryCache.set(entries, { length: entries.length, entry, index: i });
-				return result;
+				cached.entry = entries[i] as CompactionEntry;
+				cached.index = i;
+				cached.length = entries.length;
+				return cached;
 			}
-		}
 		cached.length = entries.length;
-		return { entry: cached.entry, index: cached.index };
 	}
-	let entry: CompactionEntry | null = null;
-	let index = -1;
-	for (let i = entries.length - 1; i >= 0; i--) {
-		if (entries[i].type === "compaction") {
-			entry = entries[i] as CompactionEntry;
-			index = i;
-			break;
-		}
-	}
-	compactionEntryCache.set(entries, { length: entries.length, entry, index });
-	return { entry, index };
+	return cached;
 }
 
 export interface BuildSessionContextOptions {

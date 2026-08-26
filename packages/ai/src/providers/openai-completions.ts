@@ -144,8 +144,6 @@ type OpenAICompletionsAssistantMessageParam = ChatCompletionAssistantMessagePara
 		reasoning_details?: unknown[];
 	};
 
-/** Reasoning field names checked on every streamed delta, in priority order.
- * Hoisted to module scope to avoid allocating a 3-element array per chunk. */
 const REASONING_DELTA_FIELDS = ["reasoning_content", "reasoning", "reasoning_text"] as const;
 
 type OpenAICompletionsToolMessageParam = ChatCompletionToolMessageParam & {
@@ -426,17 +424,9 @@ function mergeStreamingArgumentObjects(
  * to be present when messages include tool_calls or tool role messages.
  */
 function hasToolHistory(messages: Message[]): boolean {
-	for (const msg of messages) {
-		if (msg.role === "toolResult") {
-			return true;
-		}
-		if (msg.role === "assistant") {
-			for (const block of msg.content) {
-				if (block.type === "toolCall") return true;
-			}
-		}
-	}
-	return false;
+	return messages.some(
+		msg => msg.role === "toolResult" || (msg.role === "assistant" && msg.content.some(b => b.type === "toolCall")),
+	);
 }
 /**
  * Identify "real progress" stream chunks vs. keepalives, role-only preambles,
@@ -1943,13 +1933,8 @@ export function convertMessages(
 				if (content.length === 0) continue;
 				if (msg.role === "developer" && role === "developer" && !msg.content.some(item => item.type === "image")) {
 					const textParts: string[] = [];
-					for (const item of content) {
-						if (item.type === "text") textParts.push(item.text);
-					}
-					params.push({
-						role: "developer",
-						content: textParts.join("\n"),
-					});
+					for (const item of content) if (item.type === "text") textParts.push(item.text);
+					params.push({ role: "developer", content: textParts.join("\n") });
 				} else {
 					params.push({ role: "user", content });
 				}
@@ -2205,7 +2190,6 @@ export function convertMessages(
 			for (; j < transformedMessages.length && transformedMessages[j].role === "toolResult"; j++) {
 				const toolMsg = transformedMessages[j] as ToolResultMessage;
 
-				// Extract text and image content in a single pass
 				const textParts: string[] = [];
 				let hasImages = false;
 				for (const c of toolMsg.content) {

@@ -10,6 +10,7 @@
  */
 import type { Component } from "@veyyon/tui";
 import { Text } from "@veyyon/tui/components/text";
+import { countWhere } from "@veyyon/utils";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import { shimmerEnabled, shimmerText } from "../modes/theme/shimmer";
 import type { Theme } from "../modes/theme/theme";
@@ -314,10 +315,7 @@ export function createVibeToolRenderer(op: VibeOp) {
 			const waiting = details.wait?.waiting === true;
 			const settledById = new Map(details.wait?.settled.map(entry => [entry.id, entry.status] as const) ?? []);
 			return linesComponent(() => {
-				let running = 0;
-				for (const screen of screens) {
-					if (screen.state === "running" || screen.state === "starting") running++;
-				}
+				const running = countWhere(screens, screen => screen.state === "running" || screen.state === "starting");
 				const meta: string[] = [];
 				if (running > 0) meta.push(uiTheme.fg("accent", `${running} on air`));
 				if (settledById.size > 0) meta.push(uiTheme.fg("success", `${settledById.size} settled`));

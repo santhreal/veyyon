@@ -1,5 +1,5 @@
 import { type Component, visibleWidth } from "@veyyon/tui";
-import { formatCount } from "@veyyon/utils";
+import { countWhere, formatCount } from "@veyyon/utils";
 import type { AdvisorMessageDetails, AdvisorSeverity } from "../../advisor";
 import {
 	createCachedComponent,
@@ -54,10 +54,7 @@ export function createAdvisorMessageCard(
 	uiTheme: Theme,
 ): Component {
 	const notes = details?.notes ?? [];
-	let blockers = 0;
-	for (const note of notes) {
-		if (note.severity === "blocker") blockers++;
-	}
+	const blockers = countWhere(notes, note => note.severity === "blocker");
 	const meta: string[] = [formatCount("note", notes.length)];
 	if (blockers > 0) meta.push(uiTheme.fg("error", formatCount("blocker", blockers)));
 

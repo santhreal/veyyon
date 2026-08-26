@@ -26,7 +26,7 @@ import { modelsAreEqual } from "@veyyon/catalog/models";
 import { DEFAULT_MODEL_PER_PROVIDER } from "@veyyon/catalog/provider-models";
 import { resolveBareVariantAlias, resolveVariantAlias } from "@veyyon/catalog/variant-collapse";
 import { fuzzyMatch } from "@veyyon/tui/fuzzy";
-import { logger } from "@veyyon/utils";
+import { logger, partition } from "@veyyon/utils";
 import MODEL_PRIO from "../priority.json" with { type: "json" };
 import {
 	AUTO_THINKING,
@@ -755,8 +755,7 @@ function matchModel(
 	}
 
 	// Separate into aliases and dated versions
-	const aliases = matches.filter(m => isAlias(m.id));
-	const datedVersions = matches.filter(m => !isAlias(m.id));
+	const [aliases, datedVersions] = partition(matches, m => isAlias(m.id));
 
 	if (aliases.length > 0) {
 		return pickPreferredModel(aliases, context);

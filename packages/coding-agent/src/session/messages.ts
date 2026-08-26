@@ -29,6 +29,7 @@ import type {
 } from "@veyyon/ai";
 import * as AIError from "@veyyon/ai/error";
 // Owners, not the `@veyyon/utils` barrel: 1 module against 74.
+import { countWhere, partition } from "@veyyon/utils/array";
 import { isRecord } from "@veyyon/utils/type-guards";
 import { formatExitCodeNotice } from "../exec/exit-notice";
 import { ToolAbortError } from "../tools/tool-errors";
@@ -797,13 +798,9 @@ function isUserInvokedSkillPrompt(message: CustomMessage): boolean {
 function convertImageBearingCustomMessage(message: CustomMessage | HookMessage): Message[] | undefined {
 	if (!isCustomMessageContent(message.content)) return undefined;
 	if (typeof message.content === "string") return undefined;
-	const textBlocks: TextContent[] = [];
-	const imageBlocks: ImageContent[] = [];
-	for (const content of message.content) {
-		if (content.type === "text") textBlocks.push(content);
-		else if (content.type === "image") imageBlocks.push(content);
-	}
-	if (imageBlocks.length === 0) return undefined;
+	const [textBlocks, nonText] = partition(message.content, (c): c is TextContent => c.type === "text");
+	const images = nonText.filter((c): c is ImageContent => c.type === "image");
+	if (images.length === 0) return undefined;
 
 	const converted: Message[] = [];
 	if (textBlocks.length > 0) {
@@ -816,7 +813,7 @@ function convertImageBearingCustomMessage(message: CustomMessage | HookMessage):
 	}
 	converted.push({
 		role: "user",
-		content: [{ type: "text", text: `Images attached to ${message.customType}.` }, ...imageBlocks],
+		content: [{ type: "text", text: `Images attached to ${message.customType}.` }, ...images],
 		attribution: message.attribution,
 		timestamp: message.timestamp,
 	});
@@ -903,10 +900,7 @@ function isAnsweredBatchLedgerNotice(messages: AgentMessage[], index: number, me
  * drew them, and reach the sentence through the record that block keeps.
  */
 function statePlacedImageVisibility(message: ToolResultMessage): ToolResultMessage {
-	let images = 0;
-	for (const block of message.content) {
-		if (block.type === "image") images++;
-	}
+	const images = countWhere(message.content, block => block.type === "image");
 	if (images === 0) return message;
 	const notice = imageVisibilityNotice(imageDisplayStateForCall(message.toolCallId, images), images);
 	if (!notice) return message;
@@ -922,9 +916,6 @@ function statePlacedImageVisibility(message: ToolResultMessage): ToolResultMessa
  * - Custom extensions and tools
  */
 export function convertToLlm(messages: AgentMessage[]): Message[] {
-	// Pre-allocate to the input length — most messages produce exactly one
-	// output, so this avoids the intermediate arrays flatMap allocates per
-	// element. The write index trims any gaps from filtered messages.
 	const out: Message[] = new Array(messages.length);
 	let w = 0;
 	for (let index = 0; index < messages.length; index++) {
@@ -949,23 +940,12 @@ export function convertToLlm(messages: AgentMessage[]): Message[] {
 				};
 				continue;
 			case "fileMention": {
-				// One `fileMention` can mix `@notes.md` (text) and `@screenshot.png` (image)
-				// in the same turn (`generateFileMentionMessages` packs every `@…` into a
-				// single message). Splitting by image presence keeps text-only mentions on
-				// the higher-priority `developer` slot while routing image attachments
-				// through `user`, the only Responses content slot that legitimately accepts
-				// `input_image` (Codex chatgpt.com /codex/responses rejects everything else
-				// with `Invalid value: 'input_image'`, #3443).
+				// Split text vs image: developer slot for text, user slot for image (Codex rejects input_image elsewhere, #3443).
 				const wrap = (file: FileMentionMessage["files"][number]): string => {
 					const inner = file.content ? `\n${file.content}\n` : "\n";
 					return `<file path="${file.path}">${inner}</file>`;
 				};
-				const textFiles: typeof m.files = [];
-				const imageFiles: typeof m.files = [];
-				for (const file of m.files) {
-					if (file.image) imageFiles.push(file);
-					else textFiles.push(file);
-				}
+				const [textFiles, imageFiles] = partition(m.files, file => Boolean(file.image));
 				if (textFiles.length > 0) {
 					out[w++] = {
 						role: "developer",
@@ -1030,19 +1010,14 @@ export function convertToLlm(messages: AgentMessage[]): Message[] {
 				continue;
 			}
 			case "assistant": {
-				// A user-interrupted turn keeps its trailing thinking run on the
-				// persisted/displayed message so reload and Ctrl+L rebuilds still
-				// show it. That run is incomplete/unsigned and gets rejected on
-				// resend, so strip it here — LLM path only — when the hidden
-				// interrupted-thinking continuity message follows.
+				// Strip demoted thinking from interrupted turns — LLM path only.
 				const source = followedByInterruptedThinking(messages, index) ? stripDemotedThinkingForLlm(m) : m;
 				const converted = convertMessageToLlm(source);
 				if (converted) out[w++] = converted;
 				continue;
 			}
 			case "toolResult": {
-				// Core roles share one transformer with agent-core, but this one carries
-				// a standing instruction with an expiry, so it is spelled out.
+				// Carries a standing instruction with an expiry, spelled out here.
 				const withVisibility = statePlacedImageVisibility(expireAnsweredBatchLedger(messages, index, m));
 				const converted = convertMessageToLlm(withVisibility);
 				if (converted) out[w++] = converted;
@@ -1057,9 +1032,7 @@ export function convertToLlm(messages: AgentMessage[]): Message[] {
 			case "branchSummary":
 			case "compactionSummary":
 			case "developer": {
-				// Core roles share one transformer with agent-core —
-				// duplicating them here is how compaction-summary image blocks
-				// once silently fell off the provider request.
+				// Core roles share one transformer with agent-core (duplication once dropped compaction-summary image blocks).
 				const converted = convertMessageToLlm(m);
 				if (converted) out[w++] = converted;
 				continue;

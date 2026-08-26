@@ -1,7 +1,7 @@
 import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
 import type { Component } from "@veyyon/tui";
 import { Text } from "@veyyon/tui";
-import { errorMessage, formatCount, prompt } from "@veyyon/utils";
+import { errorMessage, formatCount, partition, prompt } from "@veyyon/utils";
 import { stripTaskResultEnvelope } from "@veyyon/wire/task-result";
 import { type } from "arktype";
 import type { AsyncJob, AsyncJobManager, AsyncJobType } from "../async";
@@ -495,17 +495,8 @@ export class JobTool implements AgentTool<typeof jobSchema, JobToolDetails> {
 		});
 		const jobResults = this.#snapshotJobs(uniqueJobs);
 
-		const completed: typeof jobResults = [];
-		const running: typeof jobResults = [];
-		const ackIds: string[] = [];
-		for (const j of jobResults) {
-			if (j.status !== "running") {
-				completed.push(j);
-				ackIds.push(j.id);
-			} else {
-				running.push(j);
-			}
-		}
+		const [completed, running] = partition(jobResults, j => j.status !== "running");
+		const ackIds = completed.map(j => j.id);
 		manager.acknowledgeDeliveries(ackIds);
 
 		const lines: string[] = [];

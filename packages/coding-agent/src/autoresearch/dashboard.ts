@@ -1,4 +1,5 @@
 import { matchesKey, replaceTabs, ScrollView, Text, truncateToWidth, visibleWidth } from "@veyyon/tui";
+import { countWhere } from "@veyyon/utils";
 import type { Theme } from "../modes/theme/theme";
 import { formatElapsed, formatNum, formatPercentChange, isBetter } from "./helpers";
 import { AUTORESEARCH_OVERLAY_KEY, AUTORESEARCH_TOGGLE_KEY } from "./shortcuts";
@@ -188,14 +189,9 @@ function renderCollapsedLine(runtime: AutoresearchRuntime, state: ExperimentStat
 		return parts.join("");
 	}
 	const current = currentResults(state.results, state.currentSegment);
-	let kept = 0;
-	let crashed = 0;
-	let checksFailed = 0;
-	for (const result of current) {
-		if (result.status === "keep") kept++;
-		else if (result.status === "crash") crashed++;
-		else if (result.status === "checks_failed") checksFailed++;
-	}
+	const kept = countWhere(current, result => result.status === "keep");
+	const crashed = countWhere(current, result => result.status === "crash");
+	const checksFailed = countWhere(current, result => result.status === "checks_failed");
 	const best = findBestResult(state);
 	const archivedRuns = Math.max(0, state.results.length - current.length);
 	const parts = [
@@ -262,16 +258,10 @@ export function renderDashboardLines(
 	}
 
 	const current = currentResults(state.results, state.currentSegment);
-	let kept = 0;
-	let discarded = 0;
-	let crashed = 0;
-	let checksFailed = 0;
-	for (const result of current) {
-		if (result.status === "keep") kept++;
-		else if (result.status === "discard") discarded++;
-		else if (result.status === "crash") crashed++;
-		else if (result.status === "checks_failed") checksFailed++;
-	}
+	const kept = countWhere(current, result => result.status === "keep");
+	const discarded = countWhere(current, result => result.status === "discard");
+	const crashed = countWhere(current, result => result.status === "crash");
+	const checksFailed = countWhere(current, result => result.status === "checks_failed");
 	const baseline = findBaselineMetric(state.results, state.currentSegment);
 	const baselineRunNumber = findBaselineRunNumber(state.results, state.currentSegment);
 	const baselineSecondary = findBaselineSecondary(state.results, state.currentSegment, state.secondaryMetrics);

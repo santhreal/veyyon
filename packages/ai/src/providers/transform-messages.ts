@@ -48,23 +48,13 @@ function deduplicateToolCallIds(
 	maxToolCallIdLength = MAX_TOOL_CALL_ID_LENGTH,
 	duplicateSuffixPrefix = "_dup",
 ): Message[] {
-	// Fast path: scan for duplicate tool call IDs before allocating a new array.
-	// The common case (no duplicates) returns the input by reference.
 	const seen = new Set<string>();
-	let hasDuplicate = false;
-	for (const msg of messages) {
-		if (msg.role !== "assistant") continue;
-		for (const block of msg.content) {
-			if (block.type !== "toolCall") continue;
-			if (seen.has(block.id)) {
-				hasDuplicate = true;
-				break;
-			}
-			seen.add(block.id);
-		}
-		if (hasDuplicate) break;
-	}
-	if (!hasDuplicate) return messages;
+	const hasDup = messages.some(
+		msg =>
+			msg.role === "assistant" &&
+			msg.content.some(b => b.type === "toolCall" && (seen.has(b.id) || !seen.add(b.id))),
+	);
+	if (!hasDup) return messages;
 
 	const seenToolCallIds = new Map<string, number>();
 	const pendingToolResultRewrites = new Map<string, PendingToolResultRewrite[]>();
@@ -347,22 +337,8 @@ export function transformMessages<TApi extends Api>(
 				assistantMsg.model === model.id;
 
 			const isAnthropicTarget = isAnthropicMessagesModel(model);
-			// Fast path: same-model replay to a non-Anthropic target with no
-			// thinking or fallback blocks. Every content block type passes
-			// through the flatMap by reference (text, toolCall,
-			// redactedThinking all return unchanged for same-model
-			// non-Anthropic), so skip the allocation and return the message
-			// by reference.
-			if (isSameModel && !isAnthropicTarget) {
-				let needsTransform = false;
-				for (const block of assistantMsg.content) {
-					if (block.type === "thinking" || block.type === "fallback") {
-						needsTransform = true;
-						break;
-					}
-				}
-				if (!needsTransform) return msg;
-			}
+			const hasSpecialBlocks = assistantMsg.content.some(b => b.type === "thinking" || b.type === "fallback");
+			if (isSameModel && !isAnthropicTarget && !hasSpecialBlocks) return msg;
 			// Anthropic's all-or-none contract on prior-turn thinking blocks
 			// applies to every `anthropic-messages → anthropic-messages` replay,
 			// not just the latest assistant turn. The legacy
@@ -659,12 +635,7 @@ export function transformMessages<TApi extends Api>(
 	// the id. `takeRealToolResult` pulls the earliest unconsumed result positioned
 	// AFTER the call's assistant turn, so an orphaned earlier result is never
 	// pulled forward onto a later call (which would surface a prior turn's output).
-	//
-	// Anthropic rejects `tool_result` blocks whose `tool_use_id` does not appear in a prior
-	// `tool_use` block. After handoff/compaction folds an assistant turn into a summary
-	// string, the user-side `toolResult` for that turn can survive while the originating
-	// `tool_use` disappears — leaving an orphan that triggers HTTP 400. Track the set of
-	// `tool_use` ids that survive transformation so the second pass can drop orphans cleanly.
+	// Anthropic rejects `tool_result` blocks whose `tool_use_id` has no matching `tool_use`. Track surviving ids to drop orphans.
 	type IndexedToolResult = { index: number; msg: ToolResultMessage; consumed: boolean };
 	const realToolResultsById = new Map<string, IndexedToolResult[]>();
 	const validToolUseIds = new Set<string>();
@@ -676,9 +647,7 @@ export function transformMessages<TApi extends Api>(
 			if (entries) entries.push(entry);
 			else realToolResultsById.set(msg.toolCallId, [entry]);
 		} else if (msg.role === "assistant") {
-			for (const block of msg.content) {
-				if (block.type === "toolCall") validToolUseIds.add(block.id);
-			}
+			for (const block of msg.content) if (block.type === "toolCall") validToolUseIds.add(block.id);
 		}
 	}
 	const takeRealToolResult = (id: string, afterIndex: number): ToolResultMessage | undefined => {
@@ -781,9 +750,7 @@ export function transformMessages<TApi extends Api>(
 			}
 
 			const toolCalls: ToolCall[] = [];
-			for (const block of assistantMsg.content) {
-				if (block.type === "toolCall") toolCalls.push(block as ToolCall);
-			}
+			for (const block of assistantMsg.content) if (block.type === "toolCall") toolCalls.push(block as ToolCall);
 
 			if (assistantMsg.stopReason === "error" || assistantMsg.stopReason === "aborted") {
 				// Keep the assistant message with tool calls intact. Real tool results are

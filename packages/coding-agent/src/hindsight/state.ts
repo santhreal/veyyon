@@ -1,4 +1,4 @@
-import { formatCount, logger } from "@veyyon/utils";
+import { countWhere, formatCount, logger } from "@veyyon/utils";
 import type { AgentSession } from "../session/agent-session";
 import { type BankScope, ensureBankExists } from "./bank";
 import type { HindsightApi, MemoryItemInput } from "./client";
@@ -413,8 +413,7 @@ export class HindsightSessionState {
 		if (!this.config.autoRetain) return;
 		const messages = extractMessages(this.session.sessionManager);
 		if (messages.length === 0) return;
-		let userTurns = 0;
-		for (const m of messages) if (m.role === "user") userTurns++;
+		const userTurns = countWhere(messages, m => m.role === "user");
 		if (userTurns - this.lastRetainedTurn < this.config.retainEveryNTurns) return;
 
 		try {
@@ -442,8 +441,7 @@ export class HindsightSessionState {
 		if (messages.length === 0) return;
 		try {
 			await this.retainSession(messages);
-			let userTurns = 0;
-			for (const m of messages) if (m.role === "user") userTurns++;
+			const userTurns = countWhere(messages, m => m.role === "user");
 			this.lastRetainedTurn = userTurns;
 		} catch (err) {
 			logger.warn("Hindsight: forced retain failed", {

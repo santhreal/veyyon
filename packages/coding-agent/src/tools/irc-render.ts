@@ -9,7 +9,7 @@
  * every runtime import below is type-only and erased at compile time.
  */
 import type { Component } from "@veyyon/tui";
-import { formatAge, formatDuration } from "@veyyon/utils";
+import { countWhere, formatAge, formatDuration, partition } from "@veyyon/utils";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import type { IrcDeliveryReceipt } from "../irc/bus";
 import type { Theme } from "../modes/theme/theme";
@@ -91,7 +91,7 @@ function bodyLines(
 	const indent = options.indent ?? "";
 	const tone = options.tone ?? "toolOutput";
 	const max = expanded ? BODY_LINES_EXPANDED : (options.collapsedLines ?? BODY_LINES_COLLAPSED);
-	const total = body.split("\n").filter(line => line.trim()).length;
+	const total = countWhere(body.split("\n"), line => Boolean(line.trim()));
 	// A message body is indented text and carries no quote glyph of its own. The
 	// block already hangs from the house rail, and a second `▏` two cells inside
 	// it drew a second left edge for the same rows.
@@ -212,8 +212,8 @@ function renderSendResult(
 		};
 	}
 
-	const delivered = receipts.filter(receipt => receipt.outcome !== "failed");
-	const failedCount = receipts.length - delivered.length;
+	const [delivered, failedReceipts] = partition(receipts, receipt => receipt.outcome !== "failed");
+	const failedCount = failedReceipts.length;
 	const waited = details.waited;
 	const timedOut = waited === null;
 

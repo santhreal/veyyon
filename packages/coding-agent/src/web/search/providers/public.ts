@@ -1,4 +1,5 @@
 import type { AuthStorage } from "@veyyon/ai";
+import { countWhere } from "@veyyon/utils";
 import { scopedTimeoutSignal } from "../../../utils/fetch-timeout";
 import { formatSearchProviderFailures, getSearchProvider, isSearchProviderExcluded } from "../provider";
 import type { SearchProviderId, SearchResponse, SearchSource } from "../types";
@@ -170,8 +171,7 @@ export async function searchPublicWeb(
 
 	try {
 		await Promise.race([all, Bun.sleep(softMs), callerAbort.promise]);
-		let failureCount = 0;
-		for (const _ of failures) failureCount++;
+		const failureCount = countWhere(failures, f => f !== undefined);
 		// Wait past the soft deadline on "nothing to merge yet", not on "nobody
 		// replied yet". A fast engine serving a bot wall parses to zero results and
 		// returns 200, and counting that as a reply ended the fan-out early and

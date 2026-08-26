@@ -153,18 +153,8 @@ export function splitAssistantMessageToolTimeline(message: AssistantAgentMessage
 	afterToolCalls: ReadonlyMap<string, AssistantAgentMessage>;
 	hasToolCalls: boolean;
 } {
-	let sawToolCall = false;
-	// Fast path: scan for a toolCall block first. Most assistant messages
-	// (text-only, thinking-only, or streaming partial) have no tool calls, so
-	// allocating the beforeTools array, afterToolCalls Map, and pendingAfterTool
-	// array for every streaming message_update event is pure waste.
-	for (const content of message.content) {
-		if (content.type === "toolCall") {
-			sawToolCall = true;
-			break;
-		}
-	}
-	if (!sawToolCall) {
+	// Fast path: skip allocation when no toolCall blocks (common case for streaming updates).
+	if (!message.content.some(c => c.type === "toolCall")) {
 		return { beforeTools: message, afterToolCalls: EMPTY_MAP, hasToolCalls: false };
 	}
 

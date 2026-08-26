@@ -6,6 +6,7 @@ import type * as MnemopiNs from "@veyyon/mnemopi";
 import type { Mnemopi, RecallResult } from "@veyyon/mnemopi";
 import type * as MnemopiCoreNs from "@veyyon/mnemopi/core";
 import type { LocalModelInitializer } from "@veyyon/mnemopi/core";
+import { countWhere } from "@veyyon/utils";
 import * as logger from "@veyyon/utils/logger";
 import { escapeRegExp } from "@veyyon/utils/regex";
 import {
@@ -491,8 +492,7 @@ export class MnemopiSessionState {
 	async maybeRetainOnAgentEnd(_messages: AgentMessage[]): Promise<void> {
 		if (!this.config.autoRetain || this.aliasOf) return;
 		const flat = extractMessages(this.session.sessionManager);
-		let userTurns = 0;
-		for (const message of flat) if (message.role === "user") userTurns++;
+		const userTurns = countWhere(flat, message => message.role === "user");
 		if (userTurns - this.lastRetainedTurn < this.config.retainEveryNTurns) return;
 		await this.retainMessages(
 			sliceUnretainedMessages(flat, this.lastRetainedTurn),
@@ -504,8 +504,7 @@ export class MnemopiSessionState {
 	async forceRetainCurrentSession(): Promise<void> {
 		if (this.aliasOf) return;
 		const flat = extractMessages(this.session.sessionManager);
-		let userTurns = 0;
-		for (const message of flat) if (message.role === "user") userTurns++;
+		const userTurns = countWhere(flat, message => message.role === "user");
 		this.lastRetainedTurn = userTurns;
 	}
 

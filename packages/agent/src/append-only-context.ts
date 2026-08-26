@@ -21,12 +21,7 @@ import type { AgentContext } from "./types";
 
 /** True when a message's content array contains at least one image block. */
 function messageHasImages(msg: Message): boolean {
-	const content = msg.content;
-	if (!Array.isArray(content)) return false;
-	for (const part of content) {
-		if (part.type === "image") return true;
-	}
-	return false;
+	return Array.isArray(msg.content) && msg.content.some(part => part.type === "image");
 }
 
 // ---------------------------------------------------------------------------
@@ -49,27 +44,12 @@ export interface BuildOptions {
 	pruneToolDescriptions?: boolean;
 }
 
-/**
- * A frozen prefix (system prompt + tools) that produces stable byte
- * sequences across `build()` calls.
- *
- * The first `build()` snapshots the live state. Subsequent calls reuse
- * the cached copy until `invalidate()` is called or the live state's
- * fingerprint changes.
- */
+/** Frozen prefix (system prompt + tools) producing stable bytes across `build()` calls; reuses cached copy until `invalidate()` or fingerprint change. */
+type FpCache = BuildOptions & { systemPrompt: unknown; tools: unknown; fingerprint: string };
 export class StablePrefix {
 	#snapshot: StablePrefixSnapshot | null = null;
 	#version = 0;
-	// Fingerprint cache: when the inputs are the same references as last time,
-	// the fingerprint is reused without calling computeFingerprint at all.
-	#fpCache: {
-		systemPrompt: unknown;
-		tools: unknown;
-		intentTracing: boolean;
-		exampleDialect: string | undefined;
-		pruneToolDescriptions: boolean | undefined;
-		fingerprint: string;
-	} | null = null;
+	#fpCache: FpCache | null = null;
 
 	get fingerprint(): string {
 		return this.#snapshot?.fingerprint ?? "<unbuilt>";
@@ -81,14 +61,8 @@ export class StablePrefix {
 		return this.#snapshot !== null;
 	}
 
-	/**
-	 * Build or rebuild from live context.
-	 * Returns `true` if the prefix actually changed (cache miss imminent).
-	 */
+	/** Build or rebuild from live context. Returns `true` if the prefix changed. */
 	build(context: AgentContext, options: BuildOptions): boolean {
-		// Compute the fingerprint first — when it matches the cached snapshot,
-		// the systemPrompt spread and tools normalization result are reused
-		// from the cached snapshot, avoiding per-turn allocations.
 		const tools =
 			normalizeTools(context.tools, options.intentTracing, options.exampleDialect, options.pruneToolDescriptions) ??
 			[];
@@ -114,18 +88,10 @@ export class StablePrefix {
 			c.intentTracing === options.intentTracing &&
 			c.exampleDialect === options.exampleDialect &&
 			c.pruneToolDescriptions === options.pruneToolDescriptions
-		) {
+		)
 			return c.fingerprint;
-		}
 		const fingerprint = computeFingerprint(systemPrompt, tools, options);
-		this.#fpCache = {
-			systemPrompt,
-			tools,
-			intentTracing: options.intentTracing,
-			exampleDialect: options.exampleDialect,
-			pruneToolDescriptions: options.pruneToolDescriptions,
-			fingerprint,
-		};
+		this.#fpCache = { ...options, systemPrompt, tools, fingerprint };
 		return fingerprint;
 	}
 
@@ -205,41 +171,15 @@ export class AppendOnlyLog {
 // AppendOnlyContextManager
 // ---------------------------------------------------------------------------
 
-/**
- * Manages a stable prefix + append-only log for the agent loop.
- *
- * Call `build(context)` each turn to get a `Context` with stable
- * `systemPrompt` and `tools` and append-only messages. Call
- * `syncMessages(normalizedMessages)` after `convertToLlm` each
- * turn to keep the log in sync.
- *
- * Example:
- * ```
- * const mgr = new AppendOnlyContextManager();
- * const ctx = mgr.build(context);  // first call snapshots prefix
- * mgr.syncMessages(normalized);    // grow the log
- * ctx = mgr.build(context);        // subsequent calls use cache
- * ```
- */
+/** Manages a stable prefix + append-only log for the agent loop. Call `build(context)` each turn for stable system prompt, tools, and append-only messages; call `syncMessages(normalizedMessages)` after `convertToLlm` to grow the log. */
 export class AppendOnlyContextManager {
 	readonly prefix = new StablePrefix();
 	readonly log = new AppendOnlyLog();
 	/** How many normalized messages were synced into the log as of the last sync. */
 	#lastSyncCount = 0;
-	/**
-	 * Per-message digests of the synced log. Lets a deep or tail rewrite
-	 * (per-turn pruning, image strip, transformContext re-render) preserve
-	 * the byte-stable prefix instead of re-sending the entire conversation
-	 * — keeps the provider's prompt-cache hit rate up to the divergence
-	 * point on every subsequent turn.
-	 */
+	/** Per-message digests: preserve byte-stable prefix across rewrites to keep provider prompt-cache warm. */
 	#messageDigests: number[] = [];
-	/**
-	 * Whether any synced message contains an image block. Set incrementally
-	 * during `syncMessages` and reset on clear/truncate. Lets the image
-	 * policy skip an O(n*blocks) scan every turn when the conversation has
-	 * no images — the common case for code-focused sessions.
-	 */
+	/** Incrementally tracked: lets the image policy skip an O(n*blocks) scan when there are no images. */
 	#hasImages = false;
 
 	/** True when any message in the log contains an image block. */
@@ -253,59 +193,27 @@ export class AppendOnlyContextManager {
 		return { systemPrompt, messages: this.log.toMessages(), tools };
 	}
 
-	/**
-	 * Sync normalized (provider-level) messages into the append-only log.
-	 *
-	 * Three cases:
-	 *
-	 * 1. **Append**: same prefix, new tail → push the new entries.
-	 * 2. **Compaction**: shorter array → clear the log and replay.
-	 * 3. **In-place rewrite** (per-turn pruning, transformContext re-render,
-	 *    image strip, etc.): find the longest byte-stable prefix between
-	 *    the previously-synced messages and the new ones, drop the log
-	 *    down to that prefix, then append the diverged tail. Earlier
-	 *    revisions cleared the whole log on any digest change, which on
-	 *    llama.cpp / local backends forced a full ~40k-token re-prefill
-	 *    every turn that an extension, prune pass, or steering re-wrap
-	 *    rewrote a single message (#3406). Preserving the stable prefix
-	 *    lets the provider's KV cache stay warm up to the divergence
-	 *    point — the model only re-prefills from the changed message on.
-	 */
+	#rescanImages(): void {
+		this.#hasImages = this.log.entries().some(messageHasImages);
+	}
+	/** Sync normalized messages: append (same prefix), compaction (shorter), or in-place rewrite (trim to byte-stable prefix, re-append diverged tail). Preserving the prefix keeps provider KV cache warm (#3406). */
 	syncMessages(normalizedMessages: Message[]): void {
-		// Compaction (array shrunk) — every previously-synced message is gone,
-		// so the log can't carry any byte-stable bytes forward.
 		if (normalizedMessages.length < this.#lastSyncCount) {
 			this.log.clear();
 			this.#lastSyncCount = 0;
 			this.#messageDigests = [];
 			this.#hasImages = false;
 		}
-
-		// In-place rewrite: trim the log down to the longest byte-stable prefix
-		// that both the previous sync and the new messages share. Bound it by
-		// the current log length because `log.clear()` is public; direct clears
-		// (advisor reset) can leave the sync cursor ahead of the physical log.
-		// Anything past that point will be re-appended below with the new bytes.
 		if (this.#lastSyncCount > 0) {
 			const stableCount = Math.min(this.#longestStablePrefix(normalizedMessages), this.log.length);
 			if (stableCount < this.#lastSyncCount) {
 				this.log.truncate(stableCount);
 				this.#lastSyncCount = stableCount;
 				this.#messageDigests.length = stableCount;
-				// Recalculate image presence from the remaining log entries.
-				// Truncation is rare (in-place rewrite), so the O(stableCount)
-				// scan is acceptable; the common append/no-change path is O(1).
-				this.#hasImages = false;
-				for (const entry of this.log.entries()) {
-					if (messageHasImages(entry)) {
-						this.#hasImages = true;
-						break;
-					}
-				}
+				this.#rescanImages();
 			}
 		}
 
-		// Append the diverged tail (or the full delta on a normal turn).
 		for (let i = this.#lastSyncCount; i < normalizedMessages.length; i++) {
 			const msg = normalizedMessages[i]!;
 			this.log.append(msg);
@@ -341,15 +249,7 @@ export class AppendOnlyContextManager {
 		const prev = this.log.entries().at(-1);
 		this.log.replaceTail(message);
 		if (prev && messageHasImages(prev) && !messageHasImages(message)) {
-			// The previous tail had images and the replacement doesn't —
-			// recalculate in case no other message has images.
-			this.#hasImages = false;
-			for (const entry of this.log.entries()) {
-				if (messageHasImages(entry)) {
-					this.#hasImages = true;
-					break;
-				}
-			}
+			this.#rescanImages();
 		} else if (!this.#hasImages && messageHasImages(message)) {
 			this.#hasImages = true;
 		}
@@ -368,47 +268,37 @@ export class AppendOnlyContextManager {
 		this.prefix.build(context, options);
 	}
 
-	/** Index of the first message whose serialized bytes differ from the
-	 * previously-synced log; equals `min(lastSyncCount, normalizedMessages.length)`
-	 * when nothing diverged. */
+	/** Index of the first message whose serialized bytes differ from the previously-synced log. */
+	#shallowDiffers(incoming: unknown, prev: unknown, i: number): boolean {
+		const a = incoming as Record<string, unknown> | null;
+		const b = prev as Record<string, unknown> | null;
+		if (
+			!a ||
+			!b ||
+			a.role !== b.role ||
+			a.content !== b.content ||
+			(a.providerPayload ?? null) !== (b.providerPayload ?? null) ||
+			(a.toolCalls ?? a.tool_calls ?? null) !== (b.toolCalls ?? b.tool_calls ?? null) ||
+			(a.toolCallId ?? a.tool_call_id ?? null) !== (b.toolCallId ?? b.tool_call_id ?? null) ||
+			(a.toolName ?? a.name ?? null) !== (b.toolName ?? b.name ?? null) ||
+			(a.isError ?? null) !== (b.isError ?? null) ||
+			(a.id ?? null) !== (b.id ?? null)
+		)
+			return true;
+		return this.#messageDigest(incoming) !== this.#messageDigests[i];
+	}
 	#longestStablePrefix(normalizedMessages: readonly unknown[]): number {
 		const bound = Math.min(this.#lastSyncCount, normalizedMessages.length);
 		const logged = this.log.entries();
 		for (let i = 0; i < bound; i++) {
 			const incoming = normalizedMessages[i];
 			const prev = logged[i];
-			// Fast path: `convertToLlm` returns assistant messages by reference and
-			// shallow-spreads user/toolResult messages, preserving the `content` array
-			// reference. When the object identity or the content reference plus the
-			// scalar fields the digest covers all match, the message is byte-identical
-			// to the one synced last turn and the JSON.stringify digest can be skipped.
-			if (incoming !== prev) {
-				const a = incoming as unknown as Record<string, unknown> | null;
-				const b = prev as unknown as Record<string, unknown> | null;
-				if (
-					!a ||
-					!b ||
-					a.role !== b.role ||
-					a.content !== b.content ||
-					(a.providerPayload ?? null) !== (b.providerPayload ?? null) ||
-					(a.toolCalls ?? a.tool_calls ?? null) !== (b.toolCalls ?? b.tool_calls ?? null) ||
-					(a.toolCallId ?? a.tool_call_id ?? null) !== (b.toolCallId ?? b.tool_call_id ?? null) ||
-					(a.toolName ?? a.name ?? null) !== (b.toolName ?? b.name ?? null) ||
-					(a.isError ?? null) !== (b.isError ?? null) ||
-					(a.id ?? null) !== (b.id ?? null)
-				) {
-					if (this.#messageDigest(incoming) !== this.#messageDigests[i]) return i;
-				}
-			}
+			if (incoming !== prev && this.#shallowDiffers(incoming, prev, i)) return i;
 		}
 		return bound;
 	}
 
-	/** Deterministic digest over every field the provider may serialize — role,
-	 * content, provider-native replay payloads, tool calls (both `toolCalls` and
-	 * OpenAI-wire `tool_calls`), tool-result ids/names/error flags (both internal
-	 * camelCase and wire snake_case), and assistant `id` — so an in-place rewrite
-	 * of *any* of these fields is visible to {@link #longestStablePrefix}. */
+	/** Deterministic digest over all provider-serialized fields so in-place rewrites are visible to {@link #longestStablePrefix}. */
 	#messageDigest(msg: unknown): number {
 		if (!msg || typeof msg !== "object") return 0;
 		const m = msg as Record<string, unknown>;

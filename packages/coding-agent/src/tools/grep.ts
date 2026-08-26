@@ -12,7 +12,7 @@ import { formatHashlineHeader } from "@veyyon/hashline";
 import { type GrepMatch, GrepOutputMode, type GrepResult, grep } from "@veyyon/natives";
 import type { Component } from "@veyyon/tui";
 import { Text } from "@veyyon/tui";
-import { errorMessage, logger, prompt, trimTrailingSlashes, untilAborted } from "@veyyon/utils";
+import { countWhere, errorMessage, logger, prompt, trimTrailingSlashes, untilAborted } from "@veyyon/utils";
 import { type } from "arktype";
 import { recordFileSnapshot, recordSeenLinesFromBody } from "../edit/file-snapshot-store";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
@@ -1728,17 +1728,8 @@ function compactSearchPreviewGroup(group: RenderedSearchLine[]): RenderedSearchL
 }
 
 function countPreviewMatches(lines: readonly RenderedSearchLine[], hasMarkedMatches: boolean): number {
-	let count = 0;
-	if (hasMarkedMatches) {
-		for (const line of lines) {
-			if (isSearchMatchLine(line.raw)) count++;
-		}
-	} else {
-		for (const line of lines) {
-			if (!isSearchHeaderLine(line.raw) && line.raw.length > 0) count++;
-		}
-	}
-	return count;
+	if (hasMarkedMatches) return countWhere(lines, line => isSearchMatchLine(line.raw));
+	return countWhere(lines, line => !isSearchHeaderLine(line.raw) && line.raw.length > 0);
 }
 
 function renderBudgetedSearchGroups(

@@ -19,7 +19,7 @@
  * silent swap is the failure this whole surface exists to make visible.
  */
 import { replaceTabs, truncateToWidth } from "@veyyon/tui/utils";
-import { sanitizeText } from "@veyyon/utils";
+import { countWhere, sanitizeText } from "@veyyon/utils";
 import {
 	type AccountInventory,
 	type AccountRow,
@@ -236,7 +236,7 @@ export function renderAccountStatus(
 	// sentence seven times in an eight-provider block: it tripled the height, buried the accounts
 	// between repetitions of itself, and read as nagging rather than as an offer. The placeholder
 	// on each row is what marks WHICH accounts it applies to.
-	const unnamed = [...routed.values()].filter(rows => !(rows.find(r => r.activeForSession) ?? rows[0])?.name).length;
+	const unnamed = countWhere([...routed.values()], rows => !(rows.find(r => r.activeForSession) ?? rows[0])?.name);
 	if (unnamed > 0) {
 		lines.push(
 			line(ROW_INDENT, `${unnamed === 1 ? "1 account has" : `${unnamed} accounts have`} no name · ${NAME_HINT}`),

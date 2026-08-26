@@ -783,38 +783,9 @@ function supportsThinkingSignature(model: Model<"bedrock-converse-stream">): boo
 }
 
 /**
- * Serialize the system blocks, anchoring the stable prefix separately from the
- * volatile tail.
+ * Serialize the system blocks, anchoring the stable prefix separately from the volatile tail. A single trailing `cachePoint` caches a prefix that ENDS at the last system block, so any edit to a later block invalidates the whole system prompt. The first block is the harness shared across parent and subagent prompts; project context, the assignment and the handle table are appended after it and change constantly.
  *
- * A single trailing `cachePoint` caches a prefix that ENDS at the last system
- * block, so any edit to a later block invalidates the whole system prompt and
- * the next turn re-reads and re-writes all of it. That is the normal shape
- * here: the first block is the harness shared across parent and subagent
- * prompts, and project context, the assignment and the handle table are
- * appended after it and change constantly. The Anthropic provider anchors its
- * own first block for exactly this reason (`applyPromptCaching`); Bedrock did
- * not, so the two transports disagreed about the same conversation.
- *
- * This is AWS's own guidance, not an invention: the Bedrock prompt-caching
- * page says to use multiple cache checkpoints "if you are caching sections
- * that change at different frequencies", which is exactly a fixed harness
- * followed by a handle table that changes every turn.
- *
- * Budget: Claude allows four cache checkpoints per request. This spends two on
- * system (the anchor plus the trailing block) and `convertMessages` spends one
- * on the last message, so three of four, leaving one unspent. Adding the
- * anchor cannot break a request: per the same page, "if you try to add a cache
- * checkpoint before meeting the minimum number of tokens, your inference will
- * still succeed, but your prefix will not be cached", so a stable prefix under
- * the model's floor (1024 tokens on Sonnet 4.6, 4096 on the 4.5 generation)
- * costs an unused slot and nothing else. Both checkpoints carry the same ttl,
- * which keeps the documented ordering rule (longer TTLs must precede shorter
- * ones) satisfied by construction.
- *
- * There is no Claude Code billing layout on this path: Bedrock authenticates
- * with AWS credentials and this function injects no blocks of its own, so
- * index 0 is always the caller's first prompt, and the anchor index needs none
- * of the offsetting the Anthropic path does.
+ * Budget: Claude allows four cache checkpoints per request. This spends two on system and `convertMessages` spends one on the last message, leaving one unspent. AWS's guidance says to use multiple cache checkpoints when caching sections that change at different frequencies.
  */
 function buildSystemPrompt(
 	systemPrompt: readonly string[] | undefined,

@@ -4,6 +4,7 @@
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { countWhere } from "./array";
 import { isFsError } from "./fs-error";
 import * as logger from "./logger";
 import { errorMessage } from "./type-guards";
@@ -82,12 +83,8 @@ function parsePositiveInteger(raw: string | undefined): number | undefined {
 }
 
 function fixUnclosedBraces(pattern: string): string {
-	let opens = 0;
-	let closes = 0;
-	for (const c of pattern) {
-		if (c === "{") opens++;
-		else if (c === "}") closes++;
-	}
+	const opens = countWhere([...pattern], c => c === "{");
+	const closes = countWhere([...pattern], c => c === "}");
 	if (opens > closes) {
 		return pattern + "}".repeat(opens - closes);
 	}

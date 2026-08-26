@@ -197,7 +197,6 @@ export function elidedSignatureBytes(
 	policy: SignaturePolicy,
 	sameProviderAndModel: (message: AssistantMessage) => boolean,
 ): number {
-	// No rule is active: every signature is sent, so nothing is elided.
 	if (policy.retainFrom === 0 && policy.maxLength === undefined) return 0;
 	let elided = 0;
 	for (let index = 0; index < messages.length; index++) {
@@ -445,22 +444,15 @@ export function convertMessages<T extends GoogleApiType>(model: Model<T>, contex
 				parts,
 			});
 		} else if (msg.role === "toolResult") {
-			// Extract text and image content in a single pass
 			const supportsImages = model.input.includes("image");
-			const textParts: string[] = [];
-			const imageContent: ImageContent[] = [];
-			let omittedImages = false;
-			for (const c of msg.content) {
-				if (c.type === "text") textParts.push(c.text);
-				else if (c.type === "image") {
-					if (supportsImages) imageContent.push(c);
-					else omittedImages = true;
-				}
-			}
-			const textResult = textParts.join("\n");
+			let textResult = "";
+			for (const c of msg.content) if (c.type === "text") textResult += (textResult ? "\n" : "") + c.text;
+			const imageContent = msg.content.filter((c): c is ImageContent => c.type === "image");
+			const omittedImages = !supportsImages && imageContent.length > 0;
+			const visibleImages = supportsImages ? imageContent : [];
 
 			const hasText = textResult.length > 0;
-			const hasImages = imageContent.length > 0;
+			const hasImages = visibleImages.length > 0;
 
 			// Gemini 3+ models support multimodal function responses with images nested inside
 			// functionResponse.parts. Claude and other non-Gemini models behind Cloud Code Assist /
@@ -476,7 +468,7 @@ export function convertMessages<T extends GoogleApiType>(model: Model<T>, contex
 						? "(see attached image)"
 						: "";
 
-			const imageParts: Part[] = imageContent.map(imageBlock => ({
+			const imageParts: Part[] = visibleImages.map(imageBlock => ({
 				inlineData: {
 					mimeType: imageBlock.mimeType,
 					data: imageBlock.data,

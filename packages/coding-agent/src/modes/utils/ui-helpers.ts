@@ -2,7 +2,7 @@ import type { AgentMessage } from "@veyyon/agent-core";
 import type { AssistantMessage, ImageContent, Message, Usage } from "@veyyon/ai";
 import { getStreamingPartialJson } from "@veyyon/ai/utils/block-symbols";
 import { type Component, Spacer, Text, TruncatedText } from "@veyyon/tui";
-import { APP_NAME, errorMessage, formatCount } from "@veyyon/utils";
+import { APP_NAME, countWhere, errorMessage, formatCount } from "@veyyon/utils";
 import type { AdvisorMessageDetails } from "../../advisor";
 import { COLLAB_PROMPT_MESSAGE_TYPE, type CollabPromptDetails } from "../../collab/protocol";
 import { type SettingsSaveFailure, settings } from "../../config/settings";
@@ -747,12 +747,7 @@ export class UiHelpers {
 
 		// Show compaction info if session was compacted
 		const allEntries = this.ctx.viewSession.sessionManager.getEntries();
-		let compactionCount = 0;
-		for (const entry of allEntries) {
-			if (entry.type === "compaction") {
-				compactionCount++;
-			}
-		}
+		const compactionCount = countWhere(allEntries, entry => entry.type === "compaction");
 		if (compactionCount > 0) {
 			const times = compactionCount === 1 ? "1 time" : `${compactionCount} times`;
 			this.ctx.showStatus(`Session compacted ${times}`);

@@ -8,13 +8,9 @@ export const NON_VISION_IMAGE_PLACEHOLDER = "[image omitted: model does not supp
 export function partitionVisionContent(
 	content: ReadonlyArray<TextContent | ImageContent>,
 	supportsImages: boolean,
-): {
-	textBlocks: TextContent[];
-	imageBlocks: ImageContent[];
-	omittedImages: boolean;
-} {
-	const textBlocks: TextContent[] = [];
-	const imageBlocks: ImageContent[] = [];
+): { textBlocks: TextContent[]; imageBlocks: ImageContent[]; omittedImages: boolean } {
+	const textBlocks: TextContent[] = [],
+		imageBlocks: ImageContent[] = [];
 	let omittedImages = false;
 	for (const block of content) {
 		if (block.type === "text") textBlocks.push(block);
@@ -23,35 +19,16 @@ export function partitionVisionContent(
 			else omittedImages = true;
 		}
 	}
-	return {
-		textBlocks,
-		imageBlocks,
-		omittedImages,
-	};
+	return { textBlocks, imageBlocks, omittedImages };
 }
 
 export function joinTextWithImagePlaceholder(text: string, omittedImages: boolean): string {
-	const parts: string[] = [];
-	if (text.length > 0) {
-		parts.push(text);
-	}
-	if (omittedImages) {
-		parts.push(NON_VISION_IMAGE_PLACEHOLDER);
-	}
-	return parts.join("\n");
+	return [text.length > 0 ? text : null, omittedImages ? NON_VISION_IMAGE_PLACEHOLDER : null]
+		.filter(s => s !== null)
+		.join("\n");
 }
 
-/**
- * Detect known text-only Qwen models served via Alibaba DashScope's consumer
- * `compatible-mode` endpoint that the upstream chat-completions API rejects
- * multimodal content arrays for. The compatible-mode endpoint also serves
- * multimodal Qwen SKUs without `vl` in the id (e.g. `qwen3.7-plus`), so this
- * guard only covers families verified to be text-only for issue #1859:
- * `qwen*-max` and `qwen*-coder*`.
- *
- * Used as a defensive override in `convertMessages` so a misconfigured custom
- * provider (issue #1859) can't drive the request into an unrecoverable 400.
- */
+/** Detect text-only Qwen models on DashScope's `compatible-mode` endpoint that reject multimodal content. Covers `qwen*-max` and `qwen*-coder*` (issue #1859). */
 export function isDashscopeCompatibleModeTextOnlyQwen(model: Model<"openai-completions">): boolean {
 	if (!isDashscopeCompatibleModeUrl(model.baseUrl)) {
 		return false;

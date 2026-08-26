@@ -310,9 +310,7 @@ export function pruneSupersededToolResults(entries: SessionEntry[], config: Supe
 		toPrune = candidates.filter(candidate => candidate.index >= boundaryIndex);
 	} else {
 		const suffixTokenLimit = config.suffixTokenLimit ?? DEFAULT_SUFFIX_TOKEN_LIMIT;
-		// Single pass: collect eligible candidates (at/after the compaction
-		// boundary) and, among those, the cheap tail (suffix small enough to
-		// rewrite on its own). Avoids a second filter pass over `eligible`.
+		// Single pass: collect eligible candidates and cheap tail together.
 		const eligible: SupersedeCandidate[] = [];
 		const tail: SupersedeCandidate[] = [];
 		for (const candidate of candidates) {
@@ -390,10 +388,7 @@ export function pruneToolOutputs(entries: SessionEntry[], config: PruneConfig = 
 			} else if (inWarmPrefix || i < boundaryIndex) {
 				accumulatedTokens += tokens;
 			} else {
-				// Superseded and useless results bypass the age-based protect window
-				// (a stale re-read copy, or a result the tool flagged as uninformative,
-				// is dead weight at any age) — but only within the cache-warm tail: the
-				// guard above already excluded deeper, still-cached copies.
+				// Superseded/useless bypass the age protect window, but only in the cache-warm tail.
 				const superseded = supersededMessages?.has(message) ?? false;
 				const useless =
 					uselessMessages?.has(message) ??
@@ -408,17 +403,13 @@ export function pruneToolOutputs(entries: SessionEntry[], config: PruneConfig = 
 					accumulatedTokens += tokens;
 				} else {
 					candidates.push({ entry: entry as SessionMessageEntry, tokens, superseded, useless });
-					// Dead weight being pruned away (superseded/useless) must not consume
-					// the protectTokens window of the real results retained behind it.
+					// Dead weight doesn't consume the protectTokens window.
 					if (!superseded && !useless) accumulatedTokens += tokens;
 				}
 			}
 		}
 
-		// Update suffixSum for ALL message entries (not just tool results) so the
-		// next iteration's inWarmPrefix check sees the true suffix at its index.
-		// estimateTokens is WeakMap-cached, so the second call for tool-result
-		// entries (already called above) is O(1).
+		// Update suffixSum for all message entries (estimateTokens is cached, so the second call is O(1)).
 		if (trackSuffix && entry.type === "message") {
 			suffixSum += estimateTokens(entry.message as AgentMessage);
 		}

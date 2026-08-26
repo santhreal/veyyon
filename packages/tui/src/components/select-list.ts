@@ -662,13 +662,14 @@ export class SelectList implements Component, MouseRoutable {
 
 	#getPrimaryColumnWidth(): number {
 		const { min, max } = this.#getPrimaryColumnBounds();
-		let widestPrimary = 0;
-		for (const item of this.#filteredItems) {
-			const w = visibleWidth(this.#getDisplayValue(item)) + PRIMARY_COLUMN_GAP;
-			if (w > widestPrimary) widestPrimary = w;
-		}
-
-		return clamp(widestPrimary, min, max);
+		return clamp(
+			this.#filteredItems.reduce(
+				(w, item) => Math.max(w, visibleWidth(this.#getDisplayValue(item)) + PRIMARY_COLUMN_GAP),
+				0,
+			),
+			min,
+			max,
+		);
 	}
 
 	#getPrimaryColumnBounds(): { min: number; max: number } {

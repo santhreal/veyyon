@@ -23,6 +23,7 @@ import {
 	getAgentDir,
 	getGlobalConfigRootDir,
 	getProjectDir,
+	IncrementalScan,
 	logger,
 	postmortem,
 	prefetch,
@@ -3913,12 +3914,6 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		const secretRuntimeByObject = new WeakMap<object, SecretRuntimeLease>();
 		const bindSecretRuntime = (value: unknown, runtime: SecretRuntimeLease): void => {
 			if (typeof value !== "object" || value === null) return;
-			// Skip the per-element iteration when the array is already bound to the
-			// same runtime: transformContext, convertToLlmFinal and
-			// transformProviderContext each re-bind the same array reference multiple
-			// times per turn (emitContext, wrapSteeringForModel and obfuscateMessages
-			// return their input by reference in the common case), so without this
-			// guard the loop below runs 33K WeakMap.set calls redundantly per call.
 			if (secretRuntimeByObject.get(value) === runtime) return;
 			secretRuntimeByObject.set(value, runtime);
 			if (Array.isArray(value)) {
@@ -3938,14 +3933,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		};
 		let activeMainRequestRuntime = secretRuntimeLease;
 
-		// Incremental steering-message scan: steering messages are rare, so
-		// tracking whether any exist lets wrapSteeringForModel skip an O(n)
-		// scan of all messages every turn. The scan is incremental — only
-		// new messages are checked when the array is the same reference and
-		// has only grown. A different array reference triggers a full scan.
-		let steeringScanRef: AgentMessage[] | undefined;
-		let steeringScanLength = 0;
-		let hasSteeringMessages = false;
+		const steeringScan = new IncrementalScan(isSteeringUserMessage);
 
 		// Acquire before the first async extension hook. The returned arrays and
 		// context retain this exact authority through provider serialization.
@@ -3954,58 +3942,18 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			activeMainRequestRuntime = runtime;
 			bindSecretRuntime(messages, runtime);
 			const withContext = await extensionRunner.emitContext(messages);
-			// Incremental steering scan: only scan new tail messages when the
-			// array is the same reference and has only grown. A different array
-			// (extension rewrite, compaction, reset) triggers a full scan.
-			if (withContext === steeringScanRef && withContext.length >= steeringScanLength) {
-				for (let i = steeringScanLength; i < withContext.length; i++) {
-					if (isSteeringUserMessage(withContext[i])) hasSteeringMessages = true;
-				}
-			} else {
-				hasSteeringMessages = false;
-				for (const m of withContext) {
-					if (isSteeringUserMessage(m)) hasSteeringMessages = true;
-				}
-			}
-			steeringScanRef = withContext;
-			steeringScanLength = withContext.length;
-			const transformed = hasSteeringMessages ? wrapSteeringForModel(withContext) : withContext;
+			const transformed = steeringScan.check(withContext) ? wrapSteeringForModel(withContext) : withContext;
 			bindSecretRuntime(withContext, runtime);
 			bindSecretRuntime(transformed, runtime);
 			return transformed;
 		};
 
-		// Incremental refusal scan: provider refusals (stopReason "error" +
-		// refusal/sensitive stop type) are extremely rare. Tracking whether
-		// any exist lets filterProviderReplayMessages skip an O(n) scan of
-		// all messages every turn. The scan is incremental — only new
-		// messages are checked when the array is the same reference and has
-		// only grown. A different array triggers a full scan.
-		let refusalScanRef: AgentMessage[] | undefined;
-		let refusalScanLength = 0;
-		let hasRefusalMessages = false;
+		const refusalScan = new IncrementalScan<AgentMessage>(m => m.role === "assistant" && isProviderRefusalMessage(m));
 
 		const convertToLlmFinal = (messages: AgentMessage[]): Message[] => {
 			const runtime = secretRuntimeByObject.get(messages) ?? activeMainRequestRuntime;
-			// No image policy here. Conversion sees one model per session, while the
-			// main turn, a side request, compaction and an advisor each dispatch
-			// their own; the policy resolves in AgentSession's provider-context hook,
-			// which knows the model the request is actually going to.
-			if (messages === refusalScanRef && messages.length >= refusalScanLength) {
-				for (let i = refusalScanLength; i < messages.length; i++) {
-					const m = messages[i];
-					if (m?.role === "assistant" && isProviderRefusalMessage(m)) hasRefusalMessages = true;
-				}
-			} else {
-				hasRefusalMessages = false;
-				for (const m of messages) {
-					if (m?.role === "assistant" && isProviderRefusalMessage(m)) hasRefusalMessages = true;
-				}
-			}
-			refusalScanRef = messages;
-			refusalScanLength = messages.length;
 			const converted = convertToLlm(messages);
-			const filtered = hasRefusalMessages ? filterProviderReplayMessages(converted) : converted;
+			const filtered = refusalScan.check(messages) ? filterProviderReplayMessages(converted) : converted;
 			const redacted = runtime.obfuscateMessages(filtered);
 			bindSecretRuntime(converted, runtime);
 			bindSecretRuntime(redacted, runtime);

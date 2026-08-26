@@ -274,14 +274,9 @@ function normalizeBillingUsage(data: BillingUsageResponse): UsageLimit[] {
 	const premiumItems = data.usageItems.filter(
 		item => item.sku === "Copilot Premium Request" || item.sku.includes("Premium"),
 	);
-	let totalUsed = 0;
-	let totalLimit = 0;
-	for (const item of premiumItems) {
-		totalUsed += item.grossQuantity;
-		totalLimit += item.limit ?? 0;
-	}
-	const totalLimitFinal = totalLimit || undefined;
-	const totalAmount = buildAmount(totalUsed, totalLimitFinal, "requests");
+	const totalUsed = premiumItems.reduce((s, item) => s + item.grossQuantity, 0);
+	const totalLimit = premiumItems.reduce((s, item) => s + (item.limit ?? 0), 0) || undefined;
+	const totalAmount = buildAmount(totalUsed, totalLimit, "requests");
 	limits.push({
 		id: "copilot:premium",
 		label: "Premium Requests",

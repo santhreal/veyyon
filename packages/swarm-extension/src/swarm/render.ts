@@ -1,7 +1,7 @@
 /**
  * TUI progress rendering for swarm pipeline status.
  */
-import { formatDuration, truncate } from "@veyyon/utils";
+import { countWhere, formatDuration, truncate } from "@veyyon/utils";
 import type { AgentState, SwarmState } from "./state";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -36,14 +36,9 @@ export function renderSwarmProgress(state: SwarmState): string[] {
 	}
 
 	// Summary line
-	let completed = 0;
-	let failed = 0;
-	let running = 0;
-	for (const a of agents) {
-		if (a.status === "completed") completed++;
-		else if (a.status === "failed") failed++;
-		else if (a.status === "running") running++;
-	}
+	const completed = countWhere(agents, a => a.status === "completed");
+	const failed = countWhere(agents, a => a.status === "failed");
+	const running = countWhere(agents, a => a.status === "running");
 
 	lines.push("");
 	const parts = [`${completed}/${agents.length} done`];

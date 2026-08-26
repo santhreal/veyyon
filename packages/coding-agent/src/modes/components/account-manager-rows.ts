@@ -20,6 +20,7 @@
  * or a newline in an upstream failure reason tears a card open, and those strings arrive from
  * the network.
  */
+import { countWhere, partition } from "@veyyon/utils";
 import {
 	type AccountInventory,
 	type AccountRow,
@@ -120,9 +121,9 @@ export function buildSidebarEntries(
 			hasFailure: false,
 		});
 	}
-	const all = Array.from(entries.values());
-	const populated = all.filter(entry => entry.accountCount > 0).sort((a, b) => a.label.localeCompare(b.label));
-	const empty = all.filter(entry => entry.accountCount === 0).sort((a, b) => a.label.localeCompare(b.label));
+	const [populatedEntries, emptyEntries] = partition(Array.from(entries.values()), entry => entry.accountCount > 0);
+	const populated = populatedEntries.sort((a, b) => a.label.localeCompare(b.label));
+	const empty = emptyEntries.sort((a, b) => a.label.localeCompare(b.label));
 	return [...populated, ...empty];
 }
 
@@ -151,10 +152,7 @@ export function providerDisabledNote(entry: { disabledCause?: string; rows: read
 export function providerHeaderLine(label: string, rows: readonly AccountRow[]): string {
 	const clean = sanitizeAccountText(label);
 	if (rows.length === 0) return `${clean} · no accounts yet`;
-	let unhealthy = 0;
-	for (const row of rows) {
-		if (row.health === "failed") unhealthy++;
-	}
+	const unhealthy = countWhere(rows, row => row.health === "failed");
 	const counted = `${clean} · ${rows.length} ${rows.length === 1 ? "account" : "accounts"}`;
 	return unhealthy === 0 ? counted : `${counted} · ${unhealthy} ${unhealthy === 1 ? "needs" : "need"} attention`;
 }

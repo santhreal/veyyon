@@ -419,6 +419,10 @@ export class SettingsList implements Component {
 		const index = this.#filteredItems.findIndex(item => !item.heading);
 		return index >= 0 ? index : 0;
 	}
+	get #maxLabelWidth(): number {
+		const w = this.#filteredItems.reduce((m, item) => (item.heading ? m : Math.max(m, visibleWidth(item.label))), 0);
+		return Math.min(30, w);
+	}
 
 	/** Move selection by one selectable item, wrapping or clamping, and skipping headings. */
 	#moveSelection(delta: -1 | 1, wrap = true): void {
@@ -707,13 +711,7 @@ export class SettingsList implements Component {
 					startIndex = computeStart(viewportHeight);
 				}
 			}
-			let maxLabelWidth = 0;
-			for (const item of this.#filteredItems) {
-				if (item.heading) continue;
-				const w = visibleWidth(item.label);
-				if (w > maxLabelWidth) maxLabelWidth = w;
-			}
-			maxLabelWidth = Math.min(30, maxLabelWidth);
+			const maxLabelWidth = this.#maxLabelWidth;
 			// Reserved fold/cursor gutter (2) + label column + separator (2) —
 			// the always-aligned start of the value column for this frame.
 			this.#valueColStart = 2 + maxLabelWidth + 2;
@@ -849,14 +847,7 @@ export class SettingsList implements Component {
 			0,
 			Math.min(this.#selectedIndex - Math.floor(viewportHeight / 2), this.#filteredItems.length - viewportHeight),
 		);
-		// Label column width spans all items so the layout stays stable across sections.
-		let maxLabelWidth = 0;
-		for (const item of this.#filteredItems) {
-			if (item.heading) continue;
-			const w = visibleWidth(item.label);
-			if (w > maxLabelWidth) maxLabelWidth = w;
-		}
-		maxLabelWidth = Math.min(30, maxLabelWidth);
+		const maxLabelWidth = this.#maxLabelWidth;
 		// Sidebar + "│ " separator (2) + reserved fold/cursor gutter (2) + label
 		// column + separator (2) — the always-aligned start of the value column.
 		this.#valueColStart = sidebarWidth + 2 + 2 + maxLabelWidth + 2;

@@ -253,16 +253,6 @@ class SessionEntryIndex {
 	#labels = new Map<string, string>();
 	#leaf: string | null = null;
 	#usage = emptyUsageStatistics();
-	/**
-	 * Cached branch from root to {@link #leaf}. Invalidated on structural
-	 * mutation; appended in-place when an {@link insert} extends the current
-	 * leaf. `getBranch()` is called 10+ times per turn (context breakdown,
-	 * compaction checks, todo sync, exit diagnostics) and each uncached
-	 * `pathTo` allocates a Set and walks the full branch — O(n) with a
-	 * reversal — so the cache turns the second and later calls into O(1).
-	 * No caller mutates the returned array (all use iteration, `.filter`,
-	 * `.find`, `.some`, `.slice`, `.at`), so sharing one reference is safe.
-	 */
 	#cachedBranch: SessionEntry[] | undefined;
 
 	clear(): void {
@@ -281,7 +271,8 @@ class SessionEntryIndex {
 
 	insert(entry: SessionEntry): void {
 		this.#entriesById.set(entry.id, entry);
-		const oldLeaf = this.#leaf;
+		if (this.#cachedBranch !== undefined && entry.parentId === this.#leaf) this.#cachedBranch.push(entry);
+		else this.#cachedBranch = undefined;
 		this.#leaf = entry.id;
 
 		const bucket = this.#children.get(entry.parentId);
@@ -294,15 +285,6 @@ class SessionEntryIndex {
 		}
 
 		addUsage(this.#usage, entryUsage(entry));
-
-		// Extend the cached branch in-place when the new entry's parent is the
-		// old leaf — the common append path. A non-append insert (rebuild,
-		// branch switch) invalidates so the next pathTo rebuilds from scratch.
-		if (this.#cachedBranch !== undefined && entry.parentId === oldLeaf) {
-			this.#cachedBranch.push(entry);
-		} else {
-			this.#cachedBranch = undefined;
-		}
 	}
 
 	has(id: string): boolean {
@@ -351,9 +333,7 @@ class SessionEntryIndex {
 	}
 
 	pathTo(id: string | null | undefined = this.#leaf): SessionEntry[] {
-		if (id === this.#leaf && this.#cachedBranch !== undefined) {
-			return this.#cachedBranch;
-		}
+		if (id === this.#leaf && this.#cachedBranch) return this.#cachedBranch;
 		const branch: SessionEntry[] = [];
 		const seen = new Set<string>();
 		let cursor = id ? this.#entriesById.get(id) : undefined;
@@ -364,9 +344,7 @@ class SessionEntryIndex {
 			cursor = cursor.parentId ? this.#entriesById.get(cursor.parentId) : undefined;
 		}
 		branch.reverse();
-		if (id === this.#leaf) {
-			this.#cachedBranch = branch;
-		}
+		if (id === this.#leaf) this.#cachedBranch = branch;
 		return branch;
 	}
 
@@ -2152,7 +2130,6 @@ export class SessionManager {
 	getSessionId(): string {
 		return this.#sessionId;
 	}
-	/** True when the loaded session has blob refs the blob store could not restore. */
 	get hasLostBlobRefs(): boolean {
 		return this.#lostBlobRefs;
 	}

@@ -270,48 +270,20 @@ function snapshotAssistantMessage(
 	mode: SnapshotMode = "full",
 	contentIndex?: number,
 ): AssistantMessage {
-	// Incremental delta snapshot: during streaming, only the block at
-	// `contentIndex` is being mutated by the provider (text +=, arguments
-	// replacement). Every earlier block is finished and never touched again.
-	// Clone the content array (push mutates the original) but share finished
-	// blocks by reference instead of spreading each one. This reduces per-token
-	// block allocations from O(n) to O(1) where n is the content-block count —
-	// a meaningful win on turns with many tool calls and interleaved text.
-	if (mode === "delta" && contentIndex !== undefined && contentIndex >= 0 && contentIndex < message.content.length) {
-		const content = message.content.slice();
-		content[contentIndex] = snapshotAssistantContentBlock(content[contentIndex]!, mode);
-		return {
-			...message,
-			content,
-			usage: {
-				...message.usage,
-				cost: { ...message.usage.cost },
-			},
-			disabledFeatures: message.disabledFeatures ? [...message.disabledFeatures] : undefined,
-			toolCallAbortMessages: message.toolCallAbortMessages ? { ...message.toolCallAbortMessages } : undefined,
-		};
-	}
-	return {
-		...message,
-		content: message.content.map(block => snapshotAssistantContentBlock(block, mode)),
-		usage: {
-			...message.usage,
-			cost: { ...message.usage.cost },
-		},
+	const shared = {
+		usage: { ...message.usage, cost: { ...message.usage.cost } },
 		disabledFeatures: message.disabledFeatures ? [...message.disabledFeatures] : undefined,
 		toolCallAbortMessages: message.toolCallAbortMessages ? { ...message.toolCallAbortMessages } : undefined,
 	};
+	if (mode === "delta" && contentIndex !== undefined && contentIndex >= 0 && contentIndex < message.content.length) {
+		const content = message.content.slice();
+		content[contentIndex] = snapshotAssistantContentBlock(content[contentIndex]!, mode);
+		return { ...message, content, ...shared };
+	}
+	return { ...message, content: message.content.map(block => snapshotAssistantContentBlock(block, mode)), ...shared };
 }
 
-/**
- * Copy an assistant streaming event so subscribers get an immutable view.
- *
- * Pass `partialSnapshot` when the caller has already snapshotted
- * `event.partial` (the `message_update` push sites alias it as the event's
- * `message`) so the identical partial is not copied twice per streaming delta.
- * Streaming arms use `delta` mode; terminal events (`done`, `error`, and a
- * `toolcall_end`'s authoritative tool call) keep full sanitizing clones.
- */
+/** Copy an assistant streaming event so subscribers get an immutable view. Pass `partialSnapshot` when the caller already snapshotted `event.partial` to avoid double-copy per delta. */
 function snapshotAssistantMessageEvent(
 	event: AssistantMessageEvent,
 	partialSnapshot?: AssistantMessage,
@@ -727,27 +699,13 @@ function injectIntentIntoSchema(
 	};
 }
 
-/**
- * Cross-request cache for {@link normalizeTools} (P7, BACKLOG perf hotspots).
- * `toolWireSchema`/`stripSchemaDescriptions` are already stamped per-tool (see
- * `@veyyon/ai/utils/schema/stamps`), so the expensive schema conversion
- * itself is not repeated — but every call still re-runs the outer `.map()`
- * (object spreads, `injectIntentIntoSchema`, `renderToolExamples`) even when
- * `tools` and the flags are unchanged. Callers like `takeSnapshot` in
- * `append-only-context.ts` and `Agent#buildSideRequestContext` invoke this
- * with the SAME `tools` array reference on every turn/request, so keying a
- * single-slot cache off that array identity (invalidated whenever the flags
- * change) skips the whole rebuild. Keyed on the array, not the session, since
- * that's the actual stable+shared reference across call sites.
- */
+/** Cross-request cache for {@link normalizeTools}: keyed on array identity + flags, skips the outer `.map()` rebuild when the same `tools` ref is passed every turn. */
 const normalizedToolsCache = new WeakMap<
 	NonNullable<AgentContext["tools"]>,
 	{ key: string; result: Context["tools"] }
 >();
 
-// Overloads: a defined tool list normalizes to a defined tool list (the body only
-// returns `undefined` for a falsy input), so callers passing a real array do not
-// have to null-check the result.
+// Overloads: a defined tool list normalizes to a defined tool list, so callers passing a real array do not null-check the result.
 export function normalizeTools(
 	tools: NonNullable<AgentContext["tools"]>,
 	injectIntent: boolean,
@@ -771,8 +729,6 @@ export function normalizeTools(
 	const cacheKey = `${injectIntent}|${exampleDialect ?? ""}|${pruneDescriptions}`;
 	const cached = normalizedToolsCache.get(tools);
 	if (cached && cached.key === cacheKey) return cached.result;
-	// Drop null/undefined/non-object slots so a bad registry entry cannot
-	// TypeError mid-map (adversarial / partial tool lists).
 	const valid = tools.filter(
 		(t): t is NonNullable<(typeof tools)[number]> =>
 			t !== null && t !== undefined && typeof t === "object" && typeof (t as { name?: unknown }).name === "string",
@@ -780,12 +736,6 @@ export function normalizeTools(
 	const result = valid.map(t => {
 		const intentMode = resolveIntentMode(t.intent);
 		const doInjectIntent = injectIntent && intentMode !== "omit";
-		// When the full catalog is rendered into the system prompt, ship the tool
-		// specs without their descriptions (top-level + nested schema annotations)
-		// so they are not duplicated on the wire. Strip the STABLE wire schema (the
-		// memoized `stripSchemaDescriptions` result is reused across requests), then
-		// re-inject `i` (without its hint, which `describeIntent: false` omits) so
-		// intent tracing keeps the field while no descriptions ride the wire.
 		if (pruneDescriptions) {
 			let parameters = stripSchemaDescriptions(toolWireSchema(t)) as TSchema;
 			if (doInjectIntent) parameters = injectIntentIntoSchema(parameters, intentMode, false) as TSchema;
@@ -1978,46 +1928,10 @@ function retainCompletedToolCalls(
 }
 
 /**
- * Give every tool call in one assistant message its own id.
- *
- * WHY. A provider that repeats a block id inside one message produces two
- * `tool_use` blocks sharing that id, and the two results that answer them then
- * also share it. Nothing downstream can pair them: the outbound canonicalizer
- * maps by original id, so both calls collapse onto one handle, and the wire
- * form is rejected by every provider that validates the pairing. Because the
- * malformed pair is stored, it replays on every later request in the session,
- * so one glitched stream ends the conversation rather than one turn. Renaming
- * the repeat here, at the single funnel where a finished message is assembled,
- * keeps stored history unambiguous and leaves every other layer untouched.
- *
- * Scope is the BRANCH, not one message. The reason is the outbound canonicalizer
- * (`canonicalizeToolCallIds`): its handle map is keyed by the original id and
- * lives for the whole session, so two distinct calls that happen to share an id
- * collapse onto one `tc_<n>` handle no matter how many turns apart they are, and
- * the request then carries two `tool_use` blocks and two `tool_result` blocks
- * under that one handle. Providers that hand out ids from a per-message counter
- * (`call_0`, `chatcmpl-tool-0`) produce exactly that on their second tool turn.
- * Ids already stored on the branch are therefore taken, and a first occurrence
- * that collides with one is renamed like an in-message repeat.
- *
- * `takenIds` must exclude the in-flight partial of the message being finalized:
- * it is this same message, so its ids are not history, and counting them would
- * rename every call in the turn. Ids recorded only in `incompleteToolCalls` are
- * not counted either: that ledger names a call that was never run and has no
- * result, so nothing pairs against it.
+ * Give every tool call in one assistant message its own id. Scope is the branch, not one message: the outbound canonicalizer's handle map is keyed by original id and lives for the session, so ids already stored on the branch are taken. `takenIds` must exclude the in-flight partial being finalized.
  */
 function disambiguateToolCallIds(message: AssistantMessage, takenIds: ReadonlySet<string>): AssistantMessage {
-	// Fast path: if there are no tool calls, or no taken IDs and no duplicate
-	// IDs in the message, return by reference. Avoids allocating a Set and
-	// scanning every block in the common case (unique IDs, no history).
-	let hasToolCall = false;
-	for (const block of message.content) {
-		if (block.type === "toolCall") {
-			hasToolCall = true;
-			break;
-		}
-	}
-	if (!hasToolCall) return message;
+	if (!message.content.some(b => b.type === "toolCall")) return message;
 
 	const seen = new Set<string>();
 	let content: AssistantMessage["content"] | undefined;
@@ -2041,36 +1955,15 @@ function disambiguateToolCallIds(message: AssistantMessage, takenIds: ReadonlySe
 	return content ? { ...message, content } : message;
 }
 
-/**
- * Every tool-call id already stored on this branch, for {@link disambiguateToolCallIds}.
- *
- * `skipTrailing` drops the last message, which is the in-flight partial of the
- * message being finalized (the loop appends it and then replaces it in place).
- *
- * A WeakMap cache keyed by the messages array shares the full Set across turns.
- * On append it incrementally adds new messages' tool-call IDs. When the last
- * element was replaced in-place (partial → finalized message, same length), it
- * swaps the old last's IDs for the new last's IDs. The `skipTrailing` variant
- * derives a new Set from the cached full Set by removing the trailing message's
- * IDs.
- */
+/** Tool-call IDs stored on this branch, for {@link disambiguateToolCallIds}. WeakMap cache: incremental on append, swaps last on in-place replacement. `skipTrailing` drops the in-flight partial. */
 const storedToolCallIdsCache = new WeakMap<
 	readonly AgentMessage[],
 	{ length: number; lastRef: AgentMessage | undefined; set: Set<string> }
 >();
 
-function collectToolCallIdsFromMessage(message: AgentMessage, set: Set<string>): void {
+function swapToolCallIds(message: AgentMessage, set: Set<string>, add: boolean): void {
 	if (message.role !== "assistant") return;
-	for (const block of message.content) {
-		if (block.type === "toolCall") set.add(block.id);
-	}
-}
-
-function removeToolCallIdsFromMessage(message: AgentMessage, set: Set<string>): void {
-	if (message.role !== "assistant") return;
-	for (const block of message.content) {
-		if (block.type === "toolCall") set.delete(block.id);
-	}
+	for (const block of message.content) if (block.type === "toolCall") add ? set.add(block.id) : set.delete(block.id);
 }
 
 function storedToolCallIds(messages: readonly AgentMessage[], skipTrailing: boolean): Set<string> {
@@ -2079,43 +1972,26 @@ function storedToolCallIds(messages: readonly AgentMessage[], skipTrailing: bool
 	let fullSet: Set<string>;
 
 	if (cached !== undefined && cached.length <= messages.length) {
-		// Check whether the old last message (at index cached.length - 1) was
-		// replaced in-place (partial → finalized). This is the only in-place
-		// mutation the agent loop performs on context.messages.
-		if (cached.length > 0) {
-			const oldLast = messages[cached.length - 1];
-			if (cached.lastRef !== oldLast) {
-				removeToolCallIdsFromMessage(cached.lastRef as AgentMessage, cached.set);
-				collectToolCallIdsFromMessage(oldLast as AgentMessage, cached.set);
-			}
+		if (cached.length > 0 && cached.lastRef !== messages[cached.length - 1]) {
+			swapToolCallIds(cached.lastRef as AgentMessage, cached.set, false);
+			swapToolCallIds(messages[cached.length - 1] as AgentMessage, cached.set, true);
 		}
-		// Incremental: add only new messages appended since the last build.
-		for (let index = cached.length; index < messages.length; index++) {
-			collectToolCallIdsFromMessage(messages[index] as AgentMessage, cached.set);
-		}
+		for (let i = cached.length; i < messages.length; i++)
+			swapToolCallIds(messages[i] as AgentMessage, cached.set, true);
 		cached.length = messages.length;
 		cached.lastRef = currentLast;
 		fullSet = cached.set;
 	} else {
 		fullSet = new Set<string>();
-		for (let index = 0; index < messages.length; index++) {
-			collectToolCallIdsFromMessage(messages[index] as AgentMessage, fullSet);
-		}
+		for (let i = 0; i < messages.length; i++) swapToolCallIds(messages[i] as AgentMessage, fullSet, true);
 		storedToolCallIdsCache.set(messages, { length: messages.length, lastRef: currentLast, set: fullSet });
 	}
 
 	if (!skipTrailing || messages.length === 0) return fullSet;
-	// Derive the skipTrailing variant: remove the last message's tool-call IDs
-	// from a copy so the cached full Set stays intact.
 	const trailing = messages[messages.length - 1] as AgentMessage;
 	if (trailing.role !== "assistant") return fullSet;
-	const trailingIds: string[] = [];
-	for (const block of trailing.content) {
-		if (block.type === "toolCall") trailingIds.push(block.id);
-	}
-	if (trailingIds.length === 0) return fullSet;
 	const derived = new Set(fullSet);
-	for (const id of trailingIds) derived.delete(id);
+	for (const block of trailing.content) if (block.type === "toolCall") derived.delete(block.id);
 	return derived;
 }
 
@@ -2181,14 +2057,12 @@ function buildToolCallAbortMessages(
 	message: AssistantMessage,
 	reason: ToolScopedAbortReason,
 ): Record<string, string> | undefined {
-	let hasToolCall = false;
 	const messages: Record<string, string> = {};
 	for (const block of message.content) {
 		if (block.type !== "toolCall") continue;
-		hasToolCall = true;
 		messages[block.id] = reason.toolCallMessages[block.id] ?? reason.defaultToolCallMessage;
 	}
-	return hasToolCall ? messages : undefined;
+	return Object.keys(messages).length > 0 ? messages : undefined;
 }
 
 /** Resolve the human-readable reason an abort carried. A caller that aborts via
