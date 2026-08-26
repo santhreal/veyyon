@@ -2394,8 +2394,8 @@ export class Markdown implements Component {
 		const align: TableAlign[] = Array.from({ length: numCols }, (_, i) => token.align?.[i] ?? null);
 
 		// Render top border
-		const topBorderCells = columnWidths.map(w => h.repeat(w));
-		lines.push(`${t.topLeft}${h}${topBorderCells.join(`${h}${t.teeDown}${h}`)}${h}${t.topRight}`);
+		const borderCells = columnWidths.map(w => h.repeat(w));
+		lines.push(`${t.topLeft}${h}${borderCells.join(`${h}${t.teeDown}${h}`)}${h}${t.topRight}`);
 
 		// Render header with wrapping
 		const headerCellLines: string[][] = token.header.map((cell, i) => {
@@ -2413,8 +2413,7 @@ export class Markdown implements Component {
 		}
 
 		// Render separator
-		const separatorCells = columnWidths.map(w => h.repeat(w));
-		const separatorLine = `${t.teeRight}${h}${separatorCells.join(`${h}${t.cross}${h}`)}${h}${t.teeLeft}`;
+		const separatorLine = `${t.teeRight}${h}${borderCells.join(`${h}${t.cross}${h}`)}${h}${t.teeLeft}`;
 		lines.push(separatorLine);
 
 		// Render rows with wrapping. Inter-row rules are drawn only where a cell
@@ -2444,8 +2443,7 @@ export class Markdown implements Component {
 		}
 
 		// Render bottom border
-		const bottomBorderCells = columnWidths.map(w => h.repeat(w));
-		lines.push(`${t.bottomLeft}${h}${bottomBorderCells.join(`${h}${t.teeUp}${h}`)}${h}${t.bottomRight}`);
+		lines.push(`${t.bottomLeft}${h}${borderCells.join(`${h}${t.teeUp}${h}`)}${h}${t.bottomRight}`);
 
 		if (nextTokenType && nextTokenType !== "space") {
 			lines.push(""); // Add spacing after table
