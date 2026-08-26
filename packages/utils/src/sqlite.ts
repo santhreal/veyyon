@@ -45,7 +45,7 @@ export function sqlPlaceholders(count: number): string {
 	if (!Number.isInteger(count) || count < 0) {
 		throw new RangeError(`sqlPlaceholders: count must be a non-negative integer, got ${count}`);
 	}
-	return Array.from({ length: count }, () => "?").join(", ");
+	return new Array(count).fill("?").join(", ");
 }
 
 /**

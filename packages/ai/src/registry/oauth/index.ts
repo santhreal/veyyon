@@ -162,7 +162,7 @@ export async function getOAuthApiKey(
  * Get list of OAuth providers.
  */
 export function getOAuthProviders(): OAuthProviderInfo[] {
-	const customProviders = Array.from(customOAuthProviders.values(), provider => ({
+	const customProviders = [...customOAuthProviders.values()].map(provider => ({
 		id: provider.id,
 		name: provider.name,
 		available: true,

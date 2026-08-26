@@ -57,7 +57,8 @@ export function levenshteinDistance(a: string, b: string): number {
  * the other is a suggestion.
  */
 export function damerauLevenshteinDistance(a: string, b: string): number {
-	const rows: number[][] = Array.from({ length: a.length + 1 }, () => new Array<number>(b.length + 1).fill(0));
+	const rows: number[][] = new Array(a.length + 1);
+	for (let i = 0; i <= a.length; i++) rows[i] = new Array<number>(b.length + 1).fill(0);
 	for (let i = 0; i <= a.length; i++) rows[i]![0] = i;
 	for (let j = 0; j <= b.length; j++) rows[0]![j] = j;
 	for (let i = 1; i <= a.length; i++) {

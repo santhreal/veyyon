@@ -2313,7 +2313,8 @@ export class Markdown implements Component {
 		// A table whose delimiter row omits a column, or a token from a source that
 		// does not populate `align`, falls back to the GFM default rather than
 		// indexing past the end.
-		const align: TableAlign[] = Array.from({ length: numCols }, (_, i) => token.align?.[i] ?? null);
+		const align: TableAlign[] = new Array(numCols);
+		for (let i = 0; i < numCols; i++) align[i] = token.align?.[i] ?? null;
 
 		// Render top border
 		const topBorderCells = columnWidths.map(w => h.repeat(w));
