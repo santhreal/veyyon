@@ -22,6 +22,7 @@
 
 ### Fixed
 
+- OpenAI Codex request diagnostics redact every credential header rather than `authorization` alone, so a Codex request carrying `x-api-key`, `proxy-authorization` or a provider-specific key spelling no longer writes it in plaintext to the debug log.
 - A first-event stall is retried once on every provider that does not run its own stall ladder, so a single silent connect on OpenAI completions, OpenAI Responses, Azure Responses or Ollama no longer ends the turn unretried.
 - A persisted 400/413 request dump redacts `x-goog-api-key`, so a rejected Google Generative AI or Vertex request no longer writes the operator's plaintext API key into `logs/http-400-requests/`.
 - A failed Amazon Bedrock turn reports its elapsed duration again, instead of carrying time-to-first-token with no total while a successful turn reported both.
