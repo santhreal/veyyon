@@ -634,7 +634,7 @@ export class AccountManagerComponent implements Component {
 				: `${theme.fg("dim", entry.annotation)}  `;
 			const left = `${cursor} ${label}`;
 			const gap = Math.max(1, width - visibleWidth(left) - visibleWidth(annotation));
-			let line = `${left}${" ".repeat(gap)}${annotation}`;
+			let line = `${left}${padding(gap)}${annotation}`;
 			const hoverStrength = this.#sidebarStrength(i);
 			if (hoverStrength > 0) line = hoverBandAt(line, width, hoverStrength);
 			lines.push(line);
@@ -743,7 +743,7 @@ export class AccountManagerComponent implements Component {
 			// word costs nothing, while one gap column is the minimum that keeps them apart.
 			const tagFits = tag.length > 0 && visibleWidth(left) + 1 + visibleWidth(tag) <= width;
 			const gap = tagFits ? width - visibleWidth(left) - visibleWidth(tag) : 0;
-			let text = tagFits ? `${left}${" ".repeat(gap)}${tag}` : truncateToWidth(left, width);
+			let text = tagFits ? `${left}${padding(gap)}${tag}` : truncateToWidth(left, width);
 			if (selected) text = selectionBand(text, width);
 			lines.push({ text, target });
 

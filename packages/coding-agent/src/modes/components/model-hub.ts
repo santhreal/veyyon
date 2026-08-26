@@ -1599,11 +1599,11 @@ export class ModelHubComponent implements Component {
 			const annWidth = visibleWidth(annotationStyled);
 			let line: string;
 			if (leftWidth + annWidth + 1 <= width) {
-				line = `${left}${" ".repeat(width - leftWidth - annWidth)}${annotationStyled}`;
+				line = `${left}${padding(width - leftWidth - annWidth)}${annotationStyled}`;
 			} else {
 				line = truncateToWidth(left, width);
 				const lineWidth = visibleWidth(line);
-				if (lineWidth < width) line += " ".repeat(width - lineWidth);
+				if (lineWidth < width) line += padding(width - lineWidth);
 			}
 			if (hoverStrength > 0) {
 				line = hoverBandAt(line, width, hoverStrength);
@@ -1812,7 +1812,7 @@ export class ModelHubComponent implements Component {
 			const rightWidth = visibleWidth(right);
 			const lineWidth = visibleWidth(line);
 			if (rightWidth > 0 && lineWidth + rightWidth + 2 <= width) {
-				line = `${line}${" ".repeat(width - lineWidth - rightWidth - 1)}${right}`;
+				line = `${line}${padding(width - lineWidth - rightWidth - 1)}${right}`;
 			}
 			line = this.#finishRolesRow(line, width, hoverStrength);
 			rowLines.push(line);

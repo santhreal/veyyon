@@ -1355,7 +1355,7 @@ export class StatusLineComponent implements Component {
 		if (width === 0) return null;
 		const clipped = truncateToWidth(this.#badgeSlotText, width);
 		const clippedWidth = visibleWidth(clipped);
-		return clippedWidth >= width ? clipped : clipped + " ".repeat(width - clippedWidth);
+		return clippedWidth >= width ? clipped : clipped + padding(width - clippedWidth);
 	}
 
 	#badgeSlotCurrentWidth(): number {
