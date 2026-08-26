@@ -18,22 +18,25 @@
  * - hard: Long files with similar blocks, no location hint
  * - nightmare: Long files where target line repeats, minimal info
  */
+import * as childProcess from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import * as util from "node:util";
 import { parseArgs } from "node:util";
-import { clampLow, TempDir } from "@veyyon/utils";
-import { $ } from "bun";
+import { clampLow, errorMessage, TempDir } from "@veyyon/utils";
 import { diffLines } from "diff";
 import { typescriptEditFixturesArchive } from "../../paths";
 import { formatContent } from "./formatter";
-import { ALL_MUTATIONS, CATEGORY_MAP, type Mutation, type MutationInfo } from "./mutations";
+import { allMutations, type Mutation, type MutationInfo, mutationCategoryMap } from "./mutations";
+
+const execFile = util.promisify(childProcess.execFile);
 
 const SUPPORTED_EXTENSIONS = new Set([".js", ".jsx", ".ts", ".tsx"]);
 using DEFAULT_SOURCE_REPO_DIR = TempDir.createSync("@pi-mono-source");
 const DEFAULT_OUTPUT = typescriptEditFixturesArchive();
-/** Default when no `--typescript-dir` is passed: shallow-clone this repo and scan `packages/`. */
-const DEFAULT_SOURCE_REPO_URL = "https://github.com/badlogic/pi-mono.git";
-
+/** Default when no `--typescript-dir` is passed: clone this repo and checkout pinned commit. */
+export const DEFAULT_SOURCE_REPO_URL = "https://github.com/badlogic/pi-mono.git";
+export const DEFAULT_SOURCE_COMMIT_SHA = "8fa7eebd235355522c8104166b4f1f959b4e2f10";
 const EXCLUDE_DIRS = new Set([
 	"__tests__",
 	"__mocks__",
@@ -45,9 +48,9 @@ const EXCLUDE_DIRS = new Set([
 	"scripts",
 ]);
 
-type Difficulty = "easy" | "medium" | "hard" | "nightmare";
+export type Difficulty = "easy" | "medium" | "hard" | "nightmare";
 
-interface FileEntry {
+export interface FileEntry {
 	path: string;
 	content: string;
 	lineCount: number;
@@ -58,7 +61,7 @@ interface FileEntry {
 	functionRanges: Array<[string, number, number]>;
 }
 
-interface CaseResult {
+export interface CaseResult {
 	caseId: string;
 	mutation: Mutation;
 	finalInfo: MutationInfo;
@@ -67,9 +70,12 @@ interface CaseResult {
 	formattedOriginalContent: string;
 	difficulty: Difficulty;
 	difficultyScore: number;
+	seed: number;
+	sourceRepoUrl: string;
+	sourceCommitSha: string;
 }
 
-interface Args {
+export interface Args {
 	typescriptDir: string;
 	output: string;
 	countPerType: number;
@@ -78,9 +84,11 @@ interface Args {
 	difficulty: string;
 	minScore: number | null;
 	dryRun: boolean;
+	sourceRepoUrl: string;
+	sourceCommitSha: string;
 }
 
-function parseArguments(): Args {
+export function parseArguments(): Args {
 	const { values } = parseArgs({
 		options: {
 			"typescript-dir": { type: "string", default: DEFAULT_SOURCE_REPO_DIR.path() },
@@ -91,6 +99,8 @@ function parseArguments(): Args {
 			difficulty: { type: "string", default: "easy,medium,hard,nightmare" },
 			"min-score": { type: "string" },
 			"dry-run": { type: "boolean", default: false },
+			"source-repo": { type: "string", default: DEFAULT_SOURCE_REPO_URL },
+			"source-commit": { type: "string", default: DEFAULT_SOURCE_COMMIT_SHA },
 		},
 	});
 
@@ -103,10 +113,16 @@ function parseArguments(): Args {
 		difficulty: values.difficulty ?? "easy,medium,hard,nightmare",
 		minScore: values["min-score"] ? parseInt(values["min-score"], 10) : null,
 		dryRun: values["dry-run"] ?? false,
+		sourceRepoUrl: values["source-repo"] ?? DEFAULT_SOURCE_REPO_URL,
+		sourceCommitSha: values["source-commit"] ?? DEFAULT_SOURCE_COMMIT_SHA,
 	};
 }
 
-async function ensureSourceRepo(typescriptDir: string): Promise<void> {
+export async function ensureSourceRepo(
+	typescriptDir: string,
+	repoUrl: string = DEFAULT_SOURCE_REPO_URL,
+	commitSha: string = DEFAULT_SOURCE_COMMIT_SHA,
+): Promise<void> {
 	if (fs.existsSync(typescriptDir)) {
 		const packagesDir = path.join(typescriptDir, "packages");
 		if (fs.existsSync(packagesDir) && fs.statSync(packagesDir).isDirectory()) return;
@@ -115,11 +131,11 @@ async function ensureSourceRepo(typescriptDir: string): Promise<void> {
 
 	console.log(`Cloning pi-mono repository to ${typescriptDir}…`);
 	fs.mkdirSync(path.dirname(typescriptDir), { recursive: true });
-	const result = await $`git clone --depth 1 ${DEFAULT_SOURCE_REPO_URL} ${typescriptDir}`.quiet().nothrow();
-	if (result.exitCode !== 0) {
-		const decoder = new TextDecoder();
-		const stderr = result.stderr ? decoder.decode(result.stderr) : "";
-		throw new Error(`Failed to clone pi-mono: ${stderr.trim()}`);
+	try {
+		await execFile("git", ["clone", repoUrl, typescriptDir]);
+		await execFile("git", ["checkout", commitSha], { cwd: typescriptDir });
+	} catch (error) {
+		throw new Error(`Failed to clone pi-mono: ${errorMessage(error)}`);
 	}
 	console.log("Clone complete.");
 }
@@ -140,7 +156,7 @@ function hasStructure(content: string): boolean {
 	return ["function ", "class ", "export ", "=>"].some(token => content.includes(token));
 }
 
-async function collectFiles(typescriptDir: string): Promise<string[]> {
+export async function collectFiles(typescriptDir: string): Promise<string[]> {
 	const sourceDir = path.join(typescriptDir, "packages");
 	const candidates: string[] = [];
 
@@ -165,7 +181,7 @@ async function collectFiles(typescriptDir: string): Promise<string[]> {
 }
 
 async function readFileAsync(filePath: string): Promise<string> {
-	return Bun.file(filePath).text();
+	return fs.promises.readFile(filePath, "utf-8");
 }
 
 function findRepeatedLines(content: string, minRepeats = 2): Map<string, number[]> {
@@ -263,7 +279,7 @@ async function analyzeFile(filePath: string): Promise<FileEntry> {
 	};
 }
 
-async function filterFiles(paths: string[], minLines = 30, maxLines = 800): Promise<FileEntry[]> {
+export async function filterFiles(paths: string[], minLines = 30, maxLines = 800): Promise<FileEntry[]> {
 	const filtered: FileEntry[] = [];
 	for (const filePath of paths) {
 		const content = await readFileAsync(filePath);
@@ -379,7 +395,7 @@ function recordRegion(usedLines: Map<string, number[]>, filePath: string, lineNu
 	usedLines.set(filePath, used);
 }
 
-function buildPrompt(
+export function buildPrompt(
 	filePath: string,
 	mutation: Mutation,
 	info: MutationInfo,
@@ -388,12 +404,9 @@ function buildPrompt(
 ): string {
 	const header = `# Fix the bug in \`${path.basename(filePath)}\``;
 
-	const isStructural = mutation.category === "structural";
-	const isMultiEdit = mutation.name === "identifier-multi-edit";
-
 	if (difficulty === "easy") {
 		const detail = mutation.describe(info);
-		const location = isStructural
+		const location = mutation.isStructural
 			? `The issue starts around line ${info.lineNumber}.`
 			: `The issue is on line ${info.lineNumber}.`;
 		return [header, detail, location, mutation.fixHint].join("\n\n");
@@ -411,7 +424,7 @@ function buildPrompt(
 			else if (ratio < 0.66) location = "The issue is around the middle of the file.";
 			else location = "The issue is near the end of the file.";
 		}
-		if (isMultiEdit) {
+		if (mutation.isMultiEdit) {
 			location += " The same error appears in multiple places.";
 		}
 		return [header, detail, location, mutation.fixHint].join("\n\n");
@@ -419,22 +432,22 @@ function buildPrompt(
 
 	if (difficulty === "hard") {
 		const detail = mutation.describe(info);
-		if (isMultiEdit) {
+		if (mutation.isMultiEdit) {
 			return [header, detail, "Find and fix all occurrences of this issue."].join("\n\n");
 		}
-		if (isStructural) {
+		if (mutation.isStructural) {
 			return [header, detail, "The fix may involve multiple lines."].join("\n\n");
 		}
 		return [header, detail, "Find and fix this issue."].join("\n\n");
 	}
 
 	// nightmare
-	if (isStructural) {
+	if (mutation.isStructural) {
 		return [header, "There is a structural bug in this file.", "Track it down and fix it with a minimal edit."].join(
 			"\n\n",
 		);
 	}
-	if (isMultiEdit) {
+	if (mutation.isMultiEdit) {
 		return [
 			header,
 			"An identifier is consistently misspelled throughout this file.",
@@ -444,7 +457,7 @@ function buildPrompt(
 	return [header, "There is a subtle bug in this file.", "Track it down and fix it with a minimal edit."].join("\n\n");
 }
 
-function createSeededRng(seed: number): () => number {
+export function createSeededRng(seed: number): () => number {
 	let state = seed;
 	return () => {
 		state = (state * 1103515245 + 12345) & 0x7fffffff;
@@ -634,7 +647,7 @@ function resolveFormattedMutationInfo(
 	return resolved;
 }
 
-async function generateCase(
+export async function generateCase(
 	rng: () => number,
 	mutation: Mutation,
 	files: FileEntry[],
@@ -679,9 +692,7 @@ async function generateCase(
 		const changedLines = countChangedLines(entry.content, mutatedContent);
 		const positionalHunks = countPositionalLineHunks(entry.content, mutatedContent);
 		const positionalChanges = countPositionalLineChanges(entry.content, mutatedContent);
-		const isStructural = mutation.category === "structural";
-		const isMultiEdit = mutation.name === "identifier-multi-edit";
-		if (!isStructural && !isMultiEdit) {
+		if (!mutation.allowsMultipleHunks) {
 			if (changedHunks !== 1) continue;
 			if (positionalHunks !== 1) continue;
 			if (changedLines > 30 || positionalChanges > 30) continue;
@@ -721,6 +732,9 @@ async function generateCase(
 			formattedOriginalContent: normalizedOriginal,
 			difficulty,
 			difficultyScore: diffScore,
+			seed: 0,
+			sourceRepoUrl: DEFAULT_SOURCE_REPO_URL,
+			sourceCommitSha: DEFAULT_SOURCE_COMMIT_SHA,
 		};
 	}
 
@@ -731,7 +745,7 @@ function ensureTrailingNewline(content: string): string {
 	return content.replace(/\n*$/, "\n");
 }
 
-interface TarEntry {
+export interface TarEntry {
 	name: string;
 	content: string;
 }
@@ -744,7 +758,7 @@ async function writeTarball(entries: TarEntry[], outputPath: string): Promise<vo
 	await Bun.Archive.write(outputPath, data, { compress: "gzip" });
 }
 
-async function buildCaseEntries(result: CaseResult, typescriptDir: string): Promise<TarEntry[]> {
+export async function buildCaseEntries(result: CaseResult, typescriptDir: string): Promise<TarEntry[]> {
 	const filename = path.basename(result.filePath);
 	const relativePath = path.relative(typescriptDir, result.filePath);
 	const caseDir = `fixtures/${result.caseId}`;
@@ -767,6 +781,11 @@ async function buildCaseEntries(result: CaseResult, typescriptDir: string): Prom
 	const prompt = buildPrompt(result.filePath, result.mutation, result.finalInfo, result.difficulty, entry);
 
 	const metadata = {
+		seed: result.seed,
+		source_repo_url: result.sourceRepoUrl,
+		source_commit_sha: result.sourceCommitSha,
+		sourceRepoUrl: result.sourceRepoUrl,
+		sourceCommitSha: result.sourceCommitSha,
 		mutation_type: result.mutation.name,
 		mutation_category: result.mutation.category,
 		difficulty: result.difficulty,
@@ -805,13 +824,84 @@ async function buildCaseEntries(result: CaseResult, typescriptDir: string): Prom
 	];
 }
 
-function chooseDifficulties(difficulties: Difficulty[], count: number): Difficulty[] {
+export function chooseDifficulties(difficulties: Difficulty[], count: number): Difficulty[] {
 	return Array.from({ length: count }, (_, i) => difficulties[i % difficulties.length]);
+}
+
+export interface GenerateCasesOptions {
+	files: FileEntry[];
+	mutations?: readonly Mutation[];
+	seed?: number;
+	countPerType?: number;
+	difficulties?: Difficulty[];
+	minScore?: number | null;
+	sourceRepoUrl?: string;
+	sourceCommitSha?: string;
+	onProgress?: (message: string) => void;
+}
+
+export async function generateCases(options: GenerateCasesOptions): Promise<CaseResult[]> {
+	const seed = options.seed ?? 42;
+	const rng = createSeededRng(seed);
+	const mutations = options.mutations ?? allMutations();
+	const countPerType = options.countPerType ?? 20;
+	const difficulties = options.difficulties ?? ["easy", "medium", "hard", "nightmare"];
+	const minScore = options.minScore ?? null;
+	const sourceRepoUrl = options.sourceRepoUrl ?? DEFAULT_SOURCE_REPO_URL;
+	const sourceCommitSha = options.sourceCommitSha ?? DEFAULT_SOURCE_COMMIT_SHA;
+	const usedLines = new Map<string, number[]>();
+	const results: CaseResult[] = [];
+	const fallbackOrder: Difficulty[] = ["hard", "medium", "easy"];
+
+	for (const mutation of mutations) {
+		const difficultiesForType = chooseDifficulties(difficulties, countPerType);
+		let generated = 0;
+
+		for (let index = 0; index < countPerType; index++) {
+			const difficulty = difficultiesForType[index];
+			let result = await generateCase(rng, mutation, options.files, usedLines, difficulty, minScore);
+
+			if (!result) {
+				for (const fallback of fallbackOrder) {
+					if (fallback === difficulty) continue;
+					result = await generateCase(rng, mutation, options.files, usedLines, fallback, 0);
+					if (result) {
+						options.onProgress?.(
+							`Note: ${mutation.name} case ${index + 1} fell back from ${difficulty} to ${fallback}`,
+						);
+						break;
+					}
+				}
+			}
+
+			if (!result) {
+				options.onProgress?.(`Warning: Skipping ${mutation.name} case ${index + 1} (no applicable files left)`);
+				continue;
+			}
+
+			generated++;
+			const caseId = `${mutation.category}-${mutation.name}-${String(index + 1).padStart(3, "0")}`;
+			results.push({
+				...result,
+				caseId,
+				seed,
+				sourceRepoUrl,
+				sourceCommitSha,
+			});
+		}
+
+		if (generated === 0) {
+			options.onProgress?.(`Warning: No cases generated for ${mutation.name} (mutation may be too rare)`);
+		} else if (generated < countPerType) {
+			options.onProgress?.(`Note: Only ${generated}/${countPerType} cases generated for ${mutation.name}`);
+		}
+	}
+
+	return results;
 }
 
 async function main(): Promise<number> {
 	const args = parseArguments();
-	const rng = createSeededRng(args.seed);
 	const typescriptDir = args.typescriptDir;
 
 	await ensureSourceRepo(typescriptDir);
@@ -838,7 +928,8 @@ async function main(): Promise<number> {
 		return 1;
 	}
 
-	let mutations = ALL_MUTATIONS;
+	const categoryMap = mutationCategoryMap();
+	let mutations = allMutations();
 	if (args.categories) {
 		const categories = new Set(
 			args.categories
@@ -846,58 +937,25 @@ async function main(): Promise<number> {
 				.map(s => s.trim())
 				.filter(Boolean),
 		);
-		const unknown = Array.from(categories).filter(c => !(c in CATEGORY_MAP));
+		const unknown = Array.from(categories).filter(c => !(c in categoryMap));
 		if (unknown.length > 0) {
 			console.error(`Unknown categories: ${unknown.join(", ")}`);
 			return 1;
 		}
-		mutations = ALL_MUTATIONS.filter(m => categories.has(m.category));
+		mutations = mutations.filter(m => categories.has(m.category));
 	}
 
-	const usedLines = new Map<string, number[]>();
-	const results: CaseResult[] = [];
-
-	const fallbackOrder: Difficulty[] = ["hard", "medium", "easy"];
-
-	for (const mutation of mutations) {
-		const difficultiesForType = chooseDifficulties(difficulties, args.countPerType);
-		let generated = 0;
-
-		for (let index = 0; index < args.countPerType; index++) {
-			const difficulty = difficultiesForType[index];
-			let result = await generateCase(rng, mutation, files, usedLines, difficulty, args.minScore);
-
-			if (!result) {
-				for (const fallback of fallbackOrder) {
-					if (fallback === difficulty) continue;
-					result = await generateCase(rng, mutation, files, usedLines, fallback, 0);
-					if (result) {
-						console.log(`Note: ${mutation.name} case ${index + 1} fell back from ${difficulty} to ${fallback}`);
-						break;
-					}
-				}
-			}
-
-			if (!result) {
-				console.log(`Warning: Skipping ${mutation.name} case ${index + 1} (no applicable files left)`);
-				continue;
-			}
-
-			generated++;
-			const caseId = `${mutation.category}-${mutation.name}-${String(index + 1).padStart(3, "0")}`;
-			results.push({
-				...result,
-				caseId,
-			});
-		}
-
-		if (generated === 0) {
-			console.log(`Warning: No cases generated for ${mutation.name} (mutation may be too rare)`);
-		} else if (generated < args.countPerType) {
-			console.log(`Note: Only ${generated}/${args.countPerType} cases generated for ${mutation.name}`);
-		}
-	}
-
+	const results = await generateCases({
+		files,
+		mutations,
+		seed: args.seed,
+		countPerType: args.countPerType,
+		difficulties,
+		minScore: args.minScore,
+		sourceRepoUrl: args.sourceRepoUrl,
+		sourceCommitSha: args.sourceCommitSha,
+		onProgress: msg => console.log(msg),
+	});
 	if (args.dryRun) {
 		const byDifficulty = new Map<Difficulty, CaseResult[]>();
 		for (const result of results) {
@@ -945,4 +1003,6 @@ async function main(): Promise<number> {
 	return 0;
 }
 
-process.exit(await main());
+if (import.meta.main) {
+	process.exitCode = await main();
+}
