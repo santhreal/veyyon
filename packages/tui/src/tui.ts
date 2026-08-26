@@ -833,20 +833,40 @@ function isSgrParamByte(c: number): boolean {
 function endsWithIncompleteExtendedColor(params: string): boolean {
 	const t = params.split(";");
 	let i = 0;
-	while (i < t.length) {
-		const tok = t[i];
-		if (tok === "38" || tok === "48" || tok === "58") {
-			const mode = t[i + 1];
-			if (mode === undefined) return true; // introducer with no mode
-			if (mode === "2") {
-				if (i + 4 >= t.length) return true; // missing r/g/b
-				i += 5;
-				continue;
-			}
-			if (mode === "5") {
-				if (i + 2 >= t.length) return true; // missing index
-				i += 3;
-				continue;
+	const n = params.length;
+	while (i < n) {
+		// Find the next semicolon or end.
+		let j = i;
+		while (j < n && params.charCodeAt(j) !== 0x3b) j++;
+		const tokLen = j - i;
+		if (
+			tokLen === 2 &&
+			params.charCodeAt(i + 1) === 0x38 &&
+			(params.charCodeAt(i) === 0x33 || params.charCodeAt(i) === 0x34 || params.charCodeAt(i) === 0x35)
+		) {
+			// Parse mode token after the semicolon.
+			let p = j + 1;
+			let modeEnd = p;
+			while (modeEnd < n && params.charCodeAt(modeEnd) !== 0x3b) modeEnd++;
+			const modeLen = modeEnd - p;
+			if (modeLen === 0) return true;
+			if (modeLen === 1 && params.charCodeAt(p) === 0x32) {
+				// Need 3 more tokens (r;g;b).
+				let q = modeEnd + 1;
+				for (let s = 0; s < 3; s++) {
+					if (q > n) return true;
+					while (q < n && params.charCodeAt(q) !== 0x3b) q++;
+					q++;
+				}
+				i = q - 1;
+			} else if (modeLen === 1 && params.charCodeAt(p) === 0x35) {
+				// Need 1 more token (index).
+				let q = modeEnd + 1;
+				if (q > n) return true;
+				while (q < n && params.charCodeAt(q) !== 0x3b) q++;
+				i = q;
+			} else {
+				i = modeEnd;
 			}
 		}
 		i += 1;
