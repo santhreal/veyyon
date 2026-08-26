@@ -317,10 +317,7 @@ export function convertMessages<T extends GoogleApiType>(model: Model<T>, contex
 	const retainThinkingFrom = firstRetainedAssistantIndex(transformedMessages, context.thinkingRetention);
 	let messageIndex = -1;
 
-	// Gemini < 3 image tool results go in a separate user turn, but parallel tool results must
-	// stay a single contiguous functionResponse turn ("number of function response parts is not
-	// equal to number of function call parts"). Buffer image turns and flush them only after the
-	// merged functionResponse turn is complete.
+	// Gemini < 3: image tool results go in a separate user turn, but parallel results must stay one functionResponse turn. Buffer images, flush after.
 	let pendingToolImageParts: Part[] = [];
 	const flushPendingToolImages = () => {
 		if (pendingToolImageParts.length === 0) return;
@@ -1124,9 +1121,7 @@ export function streamGoogleGenAI<T extends "google-generative-ai" | "google-ver
 				});
 				await notifyProviderResponse(options, response, model, response.headers.get("x-request-id"));
 				if (!response.ok) {
-					// The STATUS is the failure; the body is the detail. An unreadable body degrades to empty rather than
-					// replacing the status with a read error, and the read is bounded because the HTML-page case has no
-					// size a provider promised.
+					// Status is the failure; body is detail. Unreadable body degrades to empty; read is bounded.
 					const errorBody = await AIError.readProviderErrorBody(response);
 					throw new AIError.GoogleApiError(
 						`Google API error (${response.status}): ${extractGoogleErrorMessage(errorBody)}`,
