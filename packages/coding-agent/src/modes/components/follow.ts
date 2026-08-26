@@ -50,24 +50,33 @@ function hexChannel(hex: string, i: number): number {
 	return (hv << 4) | lv;
 }
 
-/** Linear blend of two `#rrggbb` colors, returning a `#rrggbb` string. */
-function mixHex(a: string, b: string, t: number): string {
+/** Linear blend of two `#rrggbb` colors, returning raw RGB channels. */
+function mixHex(a: string, b: string, t: number): [number, number, number] {
 	const c = t < 0 ? 0 : t > 1 ? 1 : t;
-	const r = Math.round(hexChannel(a, 0) + (hexChannel(b, 0) - hexChannel(a, 0)) * c)
-		.toString(16)
-		.padStart(2, "0");
-	const g = Math.round(hexChannel(a, 1) + (hexChannel(b, 1) - hexChannel(a, 1)) * c)
-		.toString(16)
-		.padStart(2, "0");
-	const bl = Math.round(hexChannel(a, 2) + (hexChannel(b, 2) - hexChannel(a, 2)) * c)
-		.toString(16)
-		.padStart(2, "0");
-	return `#${r}${g}${bl}`;
+	return [
+		Math.round(hexChannel(a, 0) + (hexChannel(b, 0) - hexChannel(a, 0)) * c),
+		Math.round(hexChannel(a, 1) + (hexChannel(b, 1) - hexChannel(a, 1)) * c),
+		Math.round(hexChannel(a, 2) + (hexChannel(b, 2) - hexChannel(a, 2)) * c),
+	];
 }
 
-/** Truecolor foreground SGR for a `#rrggbb` color. */
-function sgr(hex: string): string {
-	return `\x1b[38;2;${hexChannel(hex, 0)};${hexChannel(hex, 1)};${hexChannel(hex, 2)}m`;
+/** Linear blend of two RGB channel triples. */
+function mixRgb(
+	a: readonly [number, number, number],
+	b: readonly [number, number, number],
+	t: number,
+): [number, number, number] {
+	const c = t < 0 ? 0 : t > 1 ? 1 : t;
+	return [
+		Math.round(a[0] + (b[0] - a[0]) * c),
+		Math.round(a[1] + (b[1] - a[1]) * c),
+		Math.round(a[2] + (b[2] - a[2]) * c),
+	];
+}
+
+/** Truecolor foreground SGR for raw RGB channels. */
+function sgr(rgb: readonly [number, number, number]): string {
+	return `\x1b[38;2;${rgb[0]};${rgb[1]};${rgb[2]}m`;
 }
 
 /** Smoothstep easing on [0,1] — the cool-in ramp reads softer than linear. */
@@ -104,7 +113,8 @@ export function paintHotTail(
 	// The glow anchors at the LAST VISIBLE character, not the row edge:
 	// rendered rows arrive right-padded to the component width, and painting
 	// fg color onto trailing spaces is invisible ink — the trail never showed.
-	const paddingLen = row.length - row.replace(/ +$/, "").length;
+	let paddingLen = 0;
+	for (let i = row.length - 1; i >= 0 && row.charCodeAt(i) === 32; i--) paddingLen++;
 	const padding = row.slice(row.length - paddingLen);
 	const body = row.slice(0, row.length - paddingLen);
 	const plain = stripAnsi(body);
@@ -137,7 +147,7 @@ export function paintHotTail(
 		// even at the moment the sheen band is elsewhere on the trail.
 		const tipGlow = p > 0.8 ? ((p - 0.8) / 0.2) * 0.5 : 0;
 		const amount = Math.min(1, sheen + tipGlow);
-		out += `${sgr(mixHex(base, sheenColor, amount))}${tailPlain[i]}`;
+		out += `${sgr(mixRgb(base, sheenColor, amount))}${tailPlain[i]}`;
 	}
 	return `${out}\x1b[39m${padding}`;
 }
