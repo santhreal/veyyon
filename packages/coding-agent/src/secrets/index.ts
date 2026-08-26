@@ -226,7 +226,7 @@ async function loadSecretsFile(filePath: string): Promise<SecretEntry[]> {
 	} catch (err) {
 		if (isEnoent(err)) return [];
 		throw new Error(
-			`Refusing to start: ${filePath} exists but could not be read (${String(err)}). ` +
+			`Refusing to start: ${filePath} exists but could not be read (${errorMessage(err)}). ` +
 				`Fix the file's permissions or remove it. Continuing without it would leave every secret ` +
 				`it declares unprotected.`,
 		);

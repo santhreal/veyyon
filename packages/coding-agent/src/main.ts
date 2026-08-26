@@ -42,6 +42,7 @@ import {
 	expandRoleAlias,
 	fallbackForUnavailableDefault,
 	getModelMatchPreferences,
+	normalizeModelPatternList,
 	resolveCliModel,
 	resolveModelRoleValue,
 	resolveModelScope,
@@ -79,7 +80,8 @@ import {
 } from "./sdk";
 import type { AgentSession } from "./session/agent-session";
 import type { AuthStorage } from "./session/auth-storage";
-import { primarySessionCpuAdoption } from "./session/cpu-limit";
+import type { InteractiveSessionFactory } from "./session/background-sessions";
+import { rootBudgetGroupOwnerId, sessionCpuExecHooks } from "./session/cpu-limit";
 import { describePendingToolCalls } from "./session/exit-diagnostics";
 import { formatNotice, OperatorNotices, stderrNoticeSink } from "./session/operator-notices";
 import { resolveResumableSession, type SessionInfo } from "./session/session-listing";
@@ -534,9 +536,11 @@ async function runInteractiveMode(
 	initialMessage?: string,
 	initialImages?: ImageContent[],
 	joinLink?: string,
+	createNextSession?: InteractiveSessionFactory,
 ): Promise<void> {
 	const { InteractiveMode } = await loadInteractiveMode();
 	const mode = new InteractiveMode(session, version, setExtensionUIContext, lspServers, mcpManager, eventBus);
+	mode.createNextSession = createNextSession;
 
 	// Cold-launch gate: the full setup wizard (every scene + the overlay and
 	// their TUI/OAuth/search/theme deps) is heavy, yet the common case only needs
@@ -725,7 +729,10 @@ async function runInteractiveMode(
 
 	while (true) {
 		const input = await mode.getUserInput();
-		await submitInteractiveInput(mode, session, input);
+		// `mode.session`, not the session this function was handed: `/new` on a
+		// running turn re-points the UI at a new session, and the next prompt
+		// belongs to whichever one is attached now.
+		await submitInteractiveInput(mode, mode.session, input);
 	}
 }
 
@@ -1104,21 +1111,70 @@ export async function buildSessionOptions(
 		: parsed.prewalk === true || parsed.prewalkInto !== undefined
 			? true
 			: activeSettings.get("prewalk.enabled");
+	if (prewalkEnabled && !parsed.model && !parsed.continue && !parsed.resume) {
+		// Strong-model override: the start model an operator named for prewalk
+		// alone. An explicit --model wins; unset inherits the normal start chain.
+		// A resumed or continued session restores its own last model instead —
+		// populating options.model here would make sdk.ts treat the session as
+		// explicitly modeled and silently drop that restoration. Like the
+		// remembered-default branch, this names no persisted default role: it is
+		// a per-launch start override, not a new owner of the default slot.
+		const strongPattern = normalizeModelPatternList(activeSettings.get("prewalk.strongModel"))[0];
+		if (strongPattern) {
+			const resolved = resolveCliModel({
+				cliModel: strongPattern,
+				modelRegistry,
+				preferences: modelMatchPreferences,
+				settings: activeSettings,
+			});
+			if (resolved.warning) {
+				process.stderr.write(`${chalk.yellow(`Warning: ${resolved.warning}`)}\n`);
+			}
+			if (resolved.error || !resolved.model) {
+				throw new Error(resolved.error ?? modelResolutionFailureMessage([strongPattern], modelRegistry));
+			}
+			if (!modelRegistry.hasConfiguredAuth(resolved.model)) {
+				throw new Error(
+					missingCredentialsMessage(resolved.model.provider, resolved.model.id, "prewalk.strongModel"),
+				);
+			}
+			options.model = resolved.model;
+			if (!parsed.thinking && resolved.thinkingLevel) {
+				options.thinkingLevel = resolved.thinkingLevel;
+				options.thinkingSource = "selector";
+			}
+		}
+	}
 	if (prewalkEnabled) {
-		const rolePattern = expandRoleAlias(parsed.prewalkInto ?? "@smol", activeSettings);
-		const resolved = resolveCliModel({ cliModel: rolePattern, modelRegistry, preferences: modelMatchPreferences });
+		// The cheap target no longer falls back to a role alias. An unset role
+		// stopped resolving to a model (#980 fail-closed), so a target the
+		// operator did not name fails loud and points at the setting that fixes
+		// it, instead of dying inside role expansion with no corrective action.
+		const cheapPattern =
+			normalizeModelPatternList(parsed.prewalkInto)[0] ||
+			normalizeModelPatternList(activeSettings.get("prewalk.cheapModel"))[0];
+		if (!cheapPattern) {
+			throw new Error(
+				'Prewalk needs a cheap target model: set "prewalk.cheapModel" in settings or pass --prewalk-into <model>.',
+			);
+		}
+		const resolved = resolveCliModel({
+			cliModel: cheapPattern,
+			modelRegistry,
+			preferences: modelMatchPreferences,
+			settings: activeSettings,
+		});
 		if (resolved.warning) {
 			process.stderr.write(`${chalk.yellow(`Warning: ${resolved.warning}`)}\n`);
 		}
 		if (resolved.error || !resolved.model) {
-			throw new Error(resolved.error ?? modelResolutionFailureMessage([rolePattern], modelRegistry));
+			throw new Error(resolved.error ?? modelResolutionFailureMessage([cheapPattern], modelRegistry));
 		}
 		if (!modelRegistry.hasConfiguredAuth(resolved.model)) {
 			throw new Error(missingCredentialsMessage(resolved.model.provider, resolved.model.id, "--prewalk target"));
 		}
 		options.prewalk = { target: resolved.model, thinkingLevel: resolved.thinkingLevel };
 	}
-
 	if (parsed.planYoloInto !== undefined && !parsed.planYolo) {
 		throw new Error("--plan-yolo-into requires --plan-yolo");
 	}
@@ -1719,15 +1775,18 @@ async function runRootCommandInner(parsed: Args, rawArgs: string[], deps: RunRoo
 		// file — and the same result is handed to createAgentSession via
 		// `preloadedExtensions` so the discovery work is not repeated.
 		const eventBus = new EventBus();
-		// Loaded before the session exists, so extension `exec` spawns join the
-		// root session's CPU budget, resolved lazily once that session starts.
+		// Loaded before the session exists. Adopt and gate resolve lazily
+		// against the root session once it registers: adopting alone still
+		// lets a saturated budget start an uncapped child.
+		const cliCpu = sessionCpuExecHooks(() => rootBudgetGroupOwnerId() ?? null);
 		const extensionsResult = await loadSessionExtensions(
 			sessionOptions,
 			cwd,
 			settingsInstance,
 			eventBus,
 			undefined,
-			primarySessionCpuAdoption(),
+			cliCpu.adoptPid,
+			cliCpu.gate,
 		);
 		const extensionFlagSink: ExtensionFlagSink = {
 			getFlags: () => ExtensionRunner.aggregateFlags(extensionsResult.extensions),
@@ -1828,6 +1887,31 @@ async function runRootCommandInner(parsed: Args, rawArgs: string[], deps: RunRoo
 			authStorage.setRuntimeApiKey(session.model.provider, parsedArgs.apiKey);
 		}
 
+		// `/new` while a turn is in flight moves the UI here instead of aborting.
+		// Overridden against the launch options: a fresh SessionManager so the
+		// running turn keeps writing its own transcript, and no inherited
+		// provider state, which `AgentSession.newSession` also drops when it
+		// resets in place. `mcpManager` is passed so the new session reuses the
+		// connected servers rather than re-discovering and re-owning them; the
+		// handed-off session stays their owner for the life of the process.
+		const createNextSession: InteractiveSessionFactory = async () => {
+			const activeCwd = getProjectDir();
+			const nextSessionManager = SessionManager.create(activeCwd, parsedArgs.sessionDir);
+			const { session: next } = await createSession({
+				...sessionOptions,
+				cwd: activeCwd,
+				eventBus,
+				operatorNotices,
+				preloadedExtensions: extensionsResult,
+				sessionManager: nextSessionManager,
+				mcpManager,
+				providerSessionId: undefined,
+				providerPromptCacheKey: undefined,
+				providerPromptCacheKeySource: undefined,
+			});
+			return next;
+		};
+
 		if (modelFallbackMessage) {
 			notifs.push({ kind: "warn", message: modelFallbackMessage });
 		}
@@ -1902,6 +1986,7 @@ async function runRootCommandInner(parsed: Args, rawArgs: string[], deps: RunRoo
 				initialMessage,
 				initialImages,
 				parsedArgs.join,
+				createNextSession,
 			);
 		} else {
 			stopStartupWatchdog();

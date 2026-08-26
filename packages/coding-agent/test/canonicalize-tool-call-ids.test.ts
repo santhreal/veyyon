@@ -571,7 +571,19 @@ describe("AgentSession transformProviderContext canonicalization", () => {
 		expect(JSON.stringify(agent.state.messages)).toContain(abs);
 	});
 
-	it("a mid-session setCwd leaves earlier history byte-identical (accumulated roots)", async () => {
+	// `ProviderContextCanonicalizer` keys its reusable prefix on source message
+	// identity, so a message already rendered keeps the exact bytes it was sent
+	// with once the directory moves; re-rendering it would both lie about what
+	// was sent and drop the provider's cached prefix. That contract is owned by
+	// `a-cwd-change-does-not-rewrite-history-already-sent.test.ts`. This case is
+	// the session-level half of it: the frozen bytes reach the wire, and a path
+	// first named after the move is relative to the directory now active.
+	//
+	// It once asserted the opposite for the earlier message, because
+	// `convertToLlm` allocated a fresh wrapper per turn, identity never matched
+	// and the whole history was re-rendered. That was an artifact of allocation
+	// rather than a rule, and memoizing the conversion removed it.
+	it("a mid-session setCwd freezes sent paths and relativizes new ones against the active root", async () => {
 		const cwd = tempDir.path();
 		const abs = `${cwd}/src/foo.ts`;
 		const seed: Message[] = [
@@ -589,15 +601,26 @@ describe("AgentSession transformProviderContext canonicalization", () => {
 		const nested = path.join(cwd, "packages");
 		mkdirSync(nested, { recursive: true });
 		await session.setCwd(nested, { validate: false });
-		await session.prompt("turn-b");
+		await session.prompt(`turn-b look at ${nested}/lib/bar.ts`);
 
 		expect(observedContexts.length).toBeGreaterThanOrEqual(2);
 		const firstToolText = (observedContexts[0]!.messages.find(m => m.role === "toolResult") as ToolResultMessage)
 			.content[0] as { text: string };
 		const secondToolText = (observedContexts[1]!.messages.find(m => m.role === "toolResult") as ToolResultMessage)
 			.content[0] as { text: string };
-		// The old root stays registered, so the pre-setCwd bytes render identically.
-		expect(secondToolText.text).toBe(firstToolText.text);
+		// Under the active cwd (turn-a), the path is relativized.
 		expect(firstToolText.text).toBe("error: src/foo.ts:1:1");
+		// Turn-b already sent those bytes, so they stay put rather than being
+		// rewritten absolute against the directory the session moved into.
+		expect(secondToolText.text).toBe("error: src/foo.ts:1:1");
+
+		// A path named for the first time after the move is relative to `nested`,
+		// which is what keeps the freeze above from meaning "never relativize".
+		// Asserted as the exact rendering: `nested` is a subdirectory of the
+		// directory the session started in, so a stale relativizer still produces
+		// a relative path — `packages/lib/bar.ts` — and only the exact bytes tell
+		// the two apart.
+		const lastUser = observedContexts[1]!.messages.filter(m => m.role === "user").at(-1);
+		expect(JSON.stringify(lastUser)).toContain("turn-b look at lib/bar.ts");
 	});
 });

@@ -73,13 +73,13 @@ const SEARCH_TARGET_FIELDS: Record<SearchType, "input" | "path"> = {
 	structure: "path",
 };
 
-function searchFilesystemTargets(args: unknown): string[] {
+function searchFilesystemTargets(args: unknown, cwd?: string): string[] {
 	if (!isRecord(args)) return [];
 	const type = args.type as SearchType | undefined;
 	if (typeof type !== "string") return [];
 	const targetField = SEARCH_TARGET_FIELDS[type];
 	if (!targetField) return [];
-	return searchPathFilesystemTargets(args[targetField]);
+	return searchPathFilesystemTargets(args[targetField], cwd);
 }
 
 export class SearchTool implements AgentTool<typeof searchSchema, SearchToolDetails> {
@@ -90,7 +90,8 @@ export class SearchTool implements AgentTool<typeof searchSchema, SearchToolDeta
 	readonly parameters = searchSchema;
 	readonly strict = true;
 	readonly description: string;
-	readonly filesystemTargets = searchFilesystemTargets;
+	readonly filesystemTargets = (args: unknown, cwd = this.session.cwd): string[] =>
+		searchFilesystemTargets(args, cwd);
 	readonly examples: readonly ToolExample<SearchToolInput>[] = [
 		{
 			caption: "Find TypeScript files",

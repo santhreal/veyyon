@@ -14,12 +14,15 @@
 
 ### Fixed
 
+- Converted message wrappers preserve reference identity across turns when inputs are unchanged, avoiding unnecessary allocations and memo invalidations.
+- Fixed tool-result supersede pruning to parse multi-target `read` calls into target sets with per-target URL scheme exemption, retiring an earlier read result when all of its targets are covered by newer reads while preserving results with partial coverage.
 - Side requests derive a stable conversation ID per oneshot kind, preventing compaction, handoff, and branch summaries from overwriting live Cursor and Devin conversation state.
 - Aborting while paused rejects the pause wait and prevents the agent loop from starting another provider turn or paused tool.
 - A branch-summary reserve at or above the model's context window now falls back to the proportional 15% reserve instead of leaving a non-positive budget, which the entry preparation read as "no limit" and which sent the whole branch.
 ### Changed
 
 - Compaction's directory-list documentation now uses canonical `search` `files` terminology instead of the retired `find` tool name. No runtime behavior changed.
+- A tool that blocks on only some of its operations declares interruptibility per call, so an interrupt arriving beside a non-blocking or malformed call no longer replaces that call's own result with a skipped placeholder.
 
 ## [1.2.0] - 2026-08-23
 

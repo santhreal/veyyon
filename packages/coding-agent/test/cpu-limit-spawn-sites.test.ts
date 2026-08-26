@@ -79,7 +79,7 @@ const SPAWN_SITES: Record<string, SpawnSiteEntry> = {
 	},
 	"mcp/transports/stdio.ts": {
 		wired: true,
-		reason: "onSpawnPid hands the server pid to the session's limiter",
+		reason: "beforeSpawn gates, then onSpawnPid hands the server pid to the session's limiter",
 	},
 	"session/cpu-limit.ts": {
 		wired: true,
@@ -95,7 +95,8 @@ const SPAWN_SITES: Record<string, SpawnSiteEntry> = {
 	},
 	"exec/exec.ts": {
 		wired: true,
-		reason: "ExecOptions.adoptPid reaches onSpawnPid; custom tools, commands and extensions pass the session's",
+		reason:
+			"beforeSpawn runs the session gate, then adoptPid joins the child; custom tools, commands and extensions pass both",
 	},
 	"eval/py/kernel.ts": { wired: true, reason: "kernel subprocess adopted via KernelStartOptions.adoptPid" },
 	"eval/rb/kernel.ts": { wired: true, reason: "kernel subprocess adopted via KernelStartOptions.adoptPid" },

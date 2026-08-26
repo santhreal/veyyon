@@ -5,12 +5,22 @@
 ### Added
 
 - `Image` accepts an `onDisplayed` callback and reports the cause each time an image starts or stops falling back to a placeholder.
+- `MOTION.reflow` states the curve for a row that reflows its content sideways: 320ms, symmetric, where `expand` is 180ms and front-loaded.
 
 ### Changed
 
 - `imageFallback` takes the file name, media type, pixel size and cause of an undrawn image and returns a row naming all four; `ImageFallbackReason` states the cause.
 - The fuzzy-match benchmark fixture now names the canonical text-search source path instead of the retired grep-tool path. No benchmark behavior changed.
 - Settings rows can open nested panels, used by Files → LSP to keep its dependent switches behind one parent row.
+
+### Fixed
+
+- A tab bar holding no tabs keeps its active index at 0, instead of reporting tab -1 and handing an undefined tab to the change callback.
+- `SelectList.setSelectedIndex` holds its low bound on an empty list rather than storing an inverted -1; no behavior changes today, since no caller can distinguish the two.
+- Derive scroll-isolation pinned footer hit-test boundaries from the rendered window top and clamp child frame-local mouse coordinates within valid segment bounds.
+- Nested optional-argument LaTeX constructs parse in linear time without character-by-character concatenation allocations.
+- Exclude pinned footer rows from the scroll-isolation snapshot and scroll space so the composer does not duplicate inside scrolled-back history.
+- Extract LaTeX argument text by slicing the source rather than appending one character at a time, so a deeply nested optional-argument chain degrades linearly instead of quadratically.
 
 ## [1.2.0] - 2026-08-23
 

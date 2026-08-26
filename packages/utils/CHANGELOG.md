@@ -24,6 +24,7 @@
 ### Changed
 
 - The `prompt-variables` documentation examples name the `search` tool, which is the workspace-search tool that now exists, instead of the retired `grep` tool. No behavior change.
+- `relativePathWithinRoot` returns the candidate's own spelling instead of the case-folded copy the containment check used, so on Windows a path under `C:\Users\dev\Projects` no longer comes back lowercased, and a root configured in a different case than the directory on disk resolves to the tail rather than to a `..` walk.
 
 ## [1.2.0] - 2026-08-23
 

@@ -129,7 +129,9 @@ import {
 	normalizeOpenAIPromptCacheKey,
 	populateResponsesUsageFromResponse,
 	promoteResponsesToolUseStopReason,
+	resolveResponsesToolCallDeltaShape,
 	type SequentialCutoffSummaryState,
+	type ToolCallArgumentsDeltaShape,
 } from "./openai-shared";
 import { transformMessages } from "./transform-messages";
 
@@ -936,6 +938,7 @@ class CodexStreamRuntime {
 		rawEvent: Record<string, unknown>,
 		stream: AssistantMessageEventStream,
 		output: AssistantMessage,
+		shape?: ToolCallArgumentsDeltaShape,
 	): CodexWhitespaceToolCallArgumentsDeltaInterruption | undefined {
 		const delta = (rawEvent as { delta?: string }).delta || "";
 		// Observe BEFORE the item/block guard: degenerate whitespace frames can keep
@@ -949,7 +952,14 @@ class CodexStreamRuntime {
 		const entry = this.openItemForEvent(rawEvent);
 		if (!entry) return undefined;
 		if (entry.item.type !== "function_call" || entry.block?.type !== "toolCall") return undefined;
-		accumulateToolCallArgumentsDelta(entry.block, delta, stream, output, entry.contentIndex);
+		accumulateToolCallArgumentsDelta(
+			entry.block,
+			delta,
+			stream,
+			output,
+			entry.contentIndex,
+			shape ?? resolveResponsesToolCallDeltaShape("openai-codex", "openai-codex-responses"),
+		);
 		return undefined;
 	}
 
@@ -2005,7 +2015,12 @@ class CodexStreamProcessor {
 		}
 
 		if (eventType === "response.function_call_arguments.delta") {
-			const interruption = this.runtime.handleToolCallArgumentsDelta(rawEvent, stream, output);
+			const interruption = this.runtime.handleToolCallArgumentsDelta(
+				rawEvent,
+				stream,
+				output,
+				resolveResponsesToolCallDeltaShape(this.model),
+			);
 			if (interruption) {
 				this.runtime.websocketState?.connection?.close("degenerate-tool-call");
 				throw new CodexWhitespaceToolCallLoopError(interruption.message);

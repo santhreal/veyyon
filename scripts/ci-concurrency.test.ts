@@ -403,7 +403,13 @@ describe("a release sha's run cannot be cancelled by a successor push", () => {
 	it("finds the workflows a release sha reaches", () => {
 		// Names, not a count: a rename has to be seen, and this is the list every
 		// case below is generated from, so an empty or truncated scan cannot pass.
-		expect(workflows.map(w => w.name).sort()).toEqual(["checks.yml", "ci.yml", "docs.yml", "site.yml"]);
+		expect(workflows.map(w => w.name).sort()).toEqual([
+			"changelog-sync.yml",
+			"checks.yml",
+			"ci.yml",
+			"docs.yml",
+			"site.yml",
+		]);
 	});
 
 	for (const { name, yaml } of workflows) {

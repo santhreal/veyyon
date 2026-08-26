@@ -8,6 +8,7 @@ import type { SymbolTheme } from "../symbols";
 import type { Component } from "../tui";
 import {
 	clamp,
+	clampLow,
 	Ellipsis,
 	padding,
 	sanitizeSingleLine,
@@ -243,7 +244,10 @@ export class SelectList implements Component, MouseRoutable {
 	}
 
 	setSelectedIndex(index: number): void {
-		this.#selectedIndex = clamp(index, 0, this.#filteredItems.length - 1);
+		// `clampLow`, because an empty filtered list makes the high bound -1 and
+		// `clamp` returns that inverted bound: a selection index of -1 indexes off
+		// the front of the list. `clampLow` keeps the low bound in that case.
+		this.#selectedIndex = clampLow(index, 0, this.#filteredItems.length - 1);
 	}
 
 	/** Resolve a 0-based rendered-line index to a filtered-item index. */

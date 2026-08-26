@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-26c51471.js";
+            window.path_to_searchindex_js = "../searchindex-6dc876ce.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-a2abefc1.js"></script>
@@ -234,6 +234,28 @@ detached|BISECT      bisecting
 <p>A rebase detaches HEAD, so without the suffix the segment could only say <code>detached</code>, which shows neither the branch being rebased nor that a rebase is running. Veyyon reads the branch back from the rebase’s own record, so you see <code>topic|REBASE</code>. A merge is the opposite case: it leaves HEAD on its branch, so the segment would look like an ordinary checkout while your working tree holds conflict markers. The suffix is what distinguishes them.</p>
 <p>The <code>pr</code> segment is skipped while any of these operations is in progress. A branch being rebased does not yet point where it is going to end up, so a pull request looked up against it would describe a state that is about to be replaced.</p>
 <p>The <code>profile</code> segment shows the active profile name (<code>work</code>, <code>rec</code>, a client sandbox), so you always know which profile’s config, sessions, and keys are live. It hides itself on the built-in <code>default</code> profile, so an unconfigured status line stays clean. Every built-in preset places it, so switching profiles is visible without any configuration.</p>
+<p>The <code>path</code> segment shows the working directory, shortened in three steps: a workspace root is
+stripped off the front, the home directory collapses to <code>~</code>, and what is left is clipped to a
+column budget from its front, so the directory you are in stays readable. Each step is a
+<code>statusLine.segmentOptions.path</code> key:</p>
+<pre><code class="language-yaml">statusLine:
+  preset: custom
+  segmentOptions:
+    path:
+      displayRoots: ["~/code", "/srv/workspaces"]  # workspace roots, most specific first
+      maxLength: 40                                 # columns the path may spend
+      abbreviate: true                              # collapse the home directory to ~
+      stripWorkPrefix: true                         # strip a workspace root at all
+</code></pre>
+<p><code>displayRoots</code> lists the directories your projects live under, and <code>~</code> stands for the home
+directory. A working directory under one of them is shown relative to it, so
+<code>/srv/workspaces/platform-services/normalizer</code> reads <code>platform-services/normalizer</code>. The first
+entry that matches wins, which is how a nested root is named ahead of the one above it. The list
+replaces the defaults rather than adding to them; without it the defaults are <code>~/Projects</code> and
+<code>/work/</code>. An entry that is not an absolute path cannot contain a directory, so it is dropped and
+named in the log once. <code>stripWorkPrefix: false</code> turns the whole step off.</p>
+<p>A project inside a temporary directory is shown relative to that temporary directory instead,
+with its own icon, whatever <code>displayRoots</code> says.</p>
 <p>The <code>secrets</code> segment shows that a stored credential is live where you are working: <code>2 secrets</code>. It counts
 what would actually expand at the tool boundary in this directory, not what is in the vault file, so
 a credential scoped elsewhere or already expired is not counted. It hides itself when nothing is

@@ -15,7 +15,7 @@ import { type Hook, hookCapability } from "../../capability/hook";
 import { loadCapability } from "../../discovery";
 import { discoverExtensionModulePaths, getExtensionNameFromPath } from "../../discovery/helpers";
 import type { ExecOptions } from "../../exec/exec";
-import { execCommand } from "../../exec/exec";
+import { execCommand, withSessionCpuExec } from "../../exec/exec";
 import {
 	canonicalProjectRoot,
 	describeProjectExecutable,
@@ -155,6 +155,7 @@ class ConcreteExtensionAPI implements ExtensionAPI, IExtensionRuntime {
 		private readonly cwd: string,
 		public readonly events: EventBus,
 		private readonly adoptSpawnedPid?: (pid: number) => void,
+		private readonly gateSpawn?: (what: string) => Promise<void>,
 	) {}
 
 	on<F extends HandlerFn>(event: string, handler: F): void {
@@ -241,7 +242,7 @@ class ConcreteExtensionAPI implements ExtensionAPI, IExtensionRuntime {
 			command,
 			args,
 			options?.cwd ?? this.cwd,
-			this.adoptSpawnedPid ? { ...options, adoptPid: this.adoptSpawnedPid } : options,
+			withSessionCpuExec(options, this.adoptSpawnedPid, this.gateSpawn, "an extension command"),
 		);
 	}
 
@@ -309,6 +310,7 @@ async function loadExtension(
 	eventBus: EventBus,
 	runtime: IExtensionRuntime,
 	adoptSpawnedPid?: (pid: number) => void,
+	gateSpawn?: (what: string) => Promise<void>,
 ): Promise<{ extension: LoadedExtension | null; error: string | null }> {
 	const resolvedPath = resolvePath(extensionPath, cwd);
 	try {
@@ -330,6 +332,7 @@ async function loadExtension(
 			cwd,
 			eventBus,
 			adoptSpawnedPid,
+			gateSpawn,
 		);
 		await withExitGuard(async () => {
 			await factory(api);
@@ -351,9 +354,18 @@ export async function loadExtensionFromFactory(
 	runtime: IExtensionRuntime,
 	name = "<inline>",
 	adoptSpawnedPid?: (pid: number) => void,
+	gateSpawn?: (what: string) => Promise<void>,
 ): Promise<LoadedExtension> {
 	const extension = createExtension(name, name);
-	const api = new ConcreteExtensionAPI(await loadCodingAgentApi(), extension, runtime, cwd, eventBus, adoptSpawnedPid);
+	const api = new ConcreteExtensionAPI(
+		await loadCodingAgentApi(),
+		extension,
+		runtime,
+		cwd,
+		eventBus,
+		adoptSpawnedPid,
+		gateSpawn,
+	);
 	await factory(api);
 	return extension;
 }
@@ -400,6 +412,7 @@ export async function loadExtensions(
 	eventBus?: EventBus,
 	adoptSpawnedPid?: (pid: number) => void,
 	trustOptions?: ExtensionTrustOptions,
+	gateSpawn?: (what: string) => Promise<void>,
 ): Promise<LoadExtensionsResult> {
 	const extensions: LoadedExtension[] = [];
 	const errors: Array<{ path: string; error: string }> = [];
@@ -415,7 +428,14 @@ export async function loadExtensions(
 			continue;
 		}
 
-		const { extension, error } = await loadExtension(extPath, cwd, resolvedEventBus, runtime, adoptSpawnedPid);
+		const { extension, error } = await loadExtension(
+			extPath,
+			cwd,
+			resolvedEventBus,
+			runtime,
+			adoptSpawnedPid,
+			gateSpawn,
+		);
 
 		if (error) {
 			errors.push({ path: extPath, error });
@@ -512,9 +532,9 @@ async function readExtensionManifest(packageJsonPath: string): Promise<Extension
 		}
 		logger.warn(
 			`The extension manifest ${packageJsonPath} could not be read, so this directory's declared entry points ` +
-				`are not loaded and only its index.ts/index.js is tried: ${String(error)}. ` +
+				`are not loaded and only its index.ts/index.js is tried: ${errorMessage(error)}. ` +
 				"Fix: check the file's permissions and that it is valid JSON.",
-			{ path: packageJsonPath, error: String(error) },
+			{ path: packageJsonPath, error: errorMessage(error) },
 		);
 		return null;
 	}

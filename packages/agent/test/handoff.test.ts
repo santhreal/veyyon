@@ -9,7 +9,8 @@ import {
 import { ThinkingLevel } from "@veyyon/agent-core/thinking";
 import type { AssistantMessage, Model, ToolCall } from "@veyyon/ai";
 import * as ai from "@veyyon/ai";
-import { Effort, z } from "@veyyon/ai";
+import { z } from "@veyyon/ai";
+import { Effort } from "@veyyon/catalog/effort";
 import { getBundledModel } from "@veyyon/catalog/models";
 
 function createAssistantMessage(content: AssistantMessage["content"]): AssistantMessage {

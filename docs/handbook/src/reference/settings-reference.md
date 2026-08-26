@@ -146,7 +146,9 @@ veyyon config get compaction.threshold
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `prewalk.enabled` | Enable Prewalk | boolean | `false` | Start on the active model, then switch to a fast/cheap model (default the 'smol' role) at the first edit/write after the plan nudge's todo list exists — the strong model plans, commits the todos, and starts the implementation before handing off. Overridable per session with --prewalk / --no-prewalk. |
+| `prewalk.enabled` | Enable Prewalk | boolean | `false` | Plan on the strong model, then switch to the cheap model at the first edit/write after the plan nudge's todo list exists — the strong model commits the todos and starts the implementation before handing off. The cheap model comes from Prewalk Cheap Model; Prewalk Strong Model overrides the start model. Overridable per session with --prewalk / --no-prewalk. |
+| `prewalk.cheapModel` | Prewalk Cheap Model | modelChain | _(unset)_ | Model prewalk hands off to at the first edit/write. Required once prewalk is on: /prewalk and --prewalk fail with a message naming this setting when it is unset. --prewalk-into overrides it per session; only the first entry is used. |
+| `prewalk.strongModel` | Prewalk Strong Model | modelChain | _(unset)_ | Model a prewalk session starts on — the strong model that plans before the handoff. Unset: inherit the normal start model (--model or the remembered default). Only the first entry is used. |
 
 ### Vision
 
@@ -881,4 +883,4 @@ These keys are not in `/settings`. Some are state veyyon writes for itself (a sc
 | `tui.maxInlineImageRows` | number | `20` |  |
 | `tui.maxInlineImages` | number | `8` |  |
 
-346 settings in /settings, 119 configuration-file keys, 465 in all.
+348 settings in /settings, 119 configuration-file keys, 467 in all.

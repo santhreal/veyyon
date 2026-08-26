@@ -2021,36 +2021,107 @@ export function finalizeMessageText(item: ResponseOutputMessage, streamedText: s
 	return item.content.map(part => (part.type === "output_text" ? (part.text ?? "") : (part.refusal ?? ""))).join("");
 }
 
+export type ToolCallArgumentsDeltaShape = "incremental" | "cumulative";
+
 /**
- * Merge one Responses function-argument event into the live buffer.
+ * Declared wire shape for tool-call argument deltas across Responses-family providers.
  *
- * The wire contract calls the payload a delta, but gateways may replay the
- * complete prefix. Treat a value that extends the current buffer as an
- * authoritative cumulative snapshot; otherwise preserve true delta semantics.
+ * Every provider or API that routes into `processResponsesStream` or `accumulateToolCallArgumentsDelta`
+ * must explicitly declare its stream shape here. A provider added without a declared shape
+ * throws rather than silently inheriting an arbitrary default.
  */
-function mergeToolCallArgumentsDelta(current: string, delta: string): { buffer: string; appended: string } {
-	if (!delta.startsWith(current)) {
-		return { buffer: current + delta, appended: delta };
-	}
-	return { buffer: delta, appended: delta.slice(current.length) };
+export const RESPONSES_PROVIDER_TOOL_CALL_DELTA_SHAPES: Readonly<Record<string, ToolCallArgumentsDeltaShape>> = {
+	azure: "incremental",
+	"github-copilot": "incremental",
+	"gitlab-duo": "incremental",
+	ollama: "incremental",
+	openai: "incremental",
+	"openai-codex": "cumulative",
+	opencode: "incremental",
+	"opencode-go": "incremental",
+	"opencode-zen": "incremental",
+	openrouter: "incremental",
+	sakana: "incremental",
+	"xai-oauth": "incremental",
+};
+
+/**
+ * Declared wire shape fallback by built-in Responses API identifier when provider is not matched.
+ */
+export const RESPONSES_API_TOOL_CALL_DELTA_SHAPES: Readonly<Record<string, ToolCallArgumentsDeltaShape>> = {
+	"openai-responses": "incremental",
+	"azure-openai-responses": "incremental",
+	"openai-codex-responses": "cumulative",
+	openrouter: "incremental",
+};
+
+export function resolveResponsesToolCallDeltaShape(
+	providerOrModel: string | { provider?: string; api?: string },
+	api?: string,
+): ToolCallArgumentsDeltaShape {
+	const provider = typeof providerOrModel === "string" ? providerOrModel : (providerOrModel.provider ?? "");
+	const resolvedApi = typeof providerOrModel === "object" ? (providerOrModel.api ?? api) : api;
+
+	const providerShape = provider ? RESPONSES_PROVIDER_TOOL_CALL_DELTA_SHAPES[provider] : undefined;
+	if (providerShape) return providerShape;
+
+	const apiShape = resolvedApi ? RESPONSES_API_TOOL_CALL_DELTA_SHAPES[resolvedApi] : undefined;
+	if (apiShape) return apiShape;
+
+	throw new Error(
+		`Undeclared tool-call argument delta wire shape for provider "${provider}" (api: "${resolvedApi}"). Explicitly declare its shape in RESPONSES_PROVIDER_TOOL_CALL_DELTA_SHAPES before routing through the Responses accumulator.`,
+	);
 }
 
+/**
+ * Accumulate one streamed function-argument delta into the live buffer.
+ *
+ * Wire streams differ in the shape of `response.function_call_arguments.delta`:
+ * - Incremental providers (e.g. OpenAI Responses, Azure OpenAI Responses) deliver
+ *   true incremental string fragments.
+ * - Cumulative providers (e.g. OpenAI Codex Responses) deliver cumulative snapshots
+ *   representing the full arguments string accumulated so far.
+ *
+ * The accumulator behavior is driven by the explicitly declared {@link ToolCallArgumentsDeltaShape}
+ * rather than guessing or inferring from payload bytes: inferring cumulative resends
+ * via prefix heuristics on an incremental stream risks corrupting valid arguments
+ * (such as repeated keys or indentation that coincidental prefix matches truncate),
+ * while unconditional appending on a cumulative stream doubles argument text.
+ *
+ * Authoritative final arguments are applied on `response.function_call_arguments.done` via
+ * {@link finalizeToolCallArgumentsDone}.
+ */
 export function accumulateToolCallArgumentsDelta(
 	block: ResponsesToolCallBlock,
 	delta: string,
 	stream: AssistantMessageEventStream,
 	output: AssistantMessage,
 	contentIndex: number,
+	shape: ToolCallArgumentsDeltaShape,
 ): void {
-	const merged = mergeToolCallArgumentsDelta(block[kStreamingPartialJson], delta);
-	block[kStreamingPartialJson] = merged.buffer;
-	const throttled = parseStreamingJsonThrottled(block[kStreamingPartialJson], block[kStreamingLastParseLen] ?? 0);
-	if (throttled) {
-		block.arguments = throttled.value;
-		block[kStreamingLastParseLen] = throttled.parsedLen;
-	}
-	if (merged.appended) {
-		stream.push({ type: "toolcall_delta", contentIndex, delta: merged.appended, partial: output });
+	if (shape === "cumulative") {
+		const previous = block[kStreamingPartialJson] ?? "";
+		const accumulated = delta.startsWith(previous) ? delta : previous + delta;
+		const incrementalDelta = accumulated.slice(previous.length);
+		block[kStreamingPartialJson] = accumulated;
+		const throttled = parseStreamingJsonThrottled(block[kStreamingPartialJson], block[kStreamingLastParseLen] ?? 0);
+		if (throttled) {
+			block.arguments = throttled.value;
+			block[kStreamingLastParseLen] = throttled.parsedLen;
+		}
+		if (incrementalDelta) {
+			stream.push({ type: "toolcall_delta", contentIndex, delta: incrementalDelta, partial: output });
+		}
+	} else {
+		block[kStreamingPartialJson] = (block[kStreamingPartialJson] ?? "") + delta;
+		const throttled = parseStreamingJsonThrottled(block[kStreamingPartialJson], block[kStreamingLastParseLen] ?? 0);
+		if (throttled) {
+			block.arguments = throttled.value;
+			block[kStreamingLastParseLen] = throttled.parsedLen;
+		}
+		if (delta) {
+			stream.push({ type: "toolcall_delta", contentIndex, delta, partial: output });
+		}
 	}
 }
 
@@ -2129,6 +2200,7 @@ export async function processResponsesStream<TApi extends Api>(
 	model: Model<TApi>,
 	options?: ProcessResponsesStreamOptions,
 ): Promise<void> {
+	const deltaShape = resolveResponsesToolCallDeltaShape(model);
 	type StreamingToolCallBlock = ToolCall & {
 		[kStreamingPartialJson]: string;
 		[kStreamingLastParseLen]?: number;
@@ -2475,7 +2547,14 @@ export async function processResponsesStream<TApi extends Api>(
 		} else if (event.type === "response.function_call_arguments.delta") {
 			const entry = lookupOpenFunctionCallItem(event);
 			if (entry?.item.type === "function_call" && entry.block.type === "toolCall") {
-				accumulateToolCallArgumentsDelta(entry.block, event.delta, stream, output, contentIndexOf(entry.block));
+				accumulateToolCallArgumentsDelta(
+					entry.block,
+					event.delta,
+					stream,
+					output,
+					contentIndexOf(entry.block),
+					deltaShape,
+				);
 			}
 		} else if (event.type === "response.function_call_arguments.done") {
 			const entry = lookupOpenFunctionCallItem(event);

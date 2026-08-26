@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-26c51471.js";
+            window.path_to_searchindex_js = "searchindex-6dc876ce.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-a2abefc1.js"></script>
@@ -1881,11 +1881,16 @@ cores each may use 4 between them. There is no cross-session cap, by design.</p>
 </code></pre>
 <h2 id="what-is-capped"><a class="header" href="#what-is-capped">What is capped</a></h2>
 <p>Every process a session spawns to do its work joins the budget. That covers bash commands (plain
-and PTY), MCP stdio servers, the <code>exec</code> calls that custom tools, custom commands, and extensions
-make, background processes from the <code>launch</code> tool, the eval kernels (Python, Ruby, Julia),
+and PTY), MCP stdio servers, the <code>exec</code> calls that custom tools, custom commands, extensions, and
+hooks make, background processes from the <code>launch</code> tool, the eval kernels (Python, Ruby, Julia),
 language servers, debug adapters, the managed browser, <code>git</code> and <code>jj</code>, <code>ssh</code>, and the installs
-that plugins run. A capped process passes the budget to its own children, so a build that spawns
-a compiler fleet is still one budget.</p>
+that plugins run. A capped process passes the budget to its own children, by cgroup and Job
+Object inheritance on Linux and Windows and by a process-tree walk on macOS, so a build that
+spawns a compiler fleet is still one budget.</p>
+<p>A spawn is refused while the budget is saturated or the group could not be created. That applies
+to a bash command, a new MCP stdio server, an <code>exec</code> call from a custom tool, custom command,
+extension, or hook, and a new eval cell. An extension module the CLI loads before a session
+exists resolves the root session’s gate when it spawns.</p>
 <p>Some processes belong to no single session and join the root session’s budget instead. Those are
 the shared harness workers, such as the tiny title model and embeddings, and the speech capture
 and playback helpers.</p>
@@ -1908,23 +1913,33 @@ nothing, because the session does not own that process.</li>
 <h2 id="how-it-is-enforced"><a class="header" href="#how-it-is-enforced">How it is enforced</a></h2>
 <p>Where the operating system offers a per-group CPU quota, the kernel does the capping:</p>
 <ul>
-<li><strong>Linux</strong> uses a cgroup v2 directory per session with <code>cpu.max</code> set to the core count. If the
-harness’s own cgroup is not writable, veyyon requests a scope from the systemd user manager with
-<code>CPUQuota</code> instead.</li>
-<li><strong>Windows</strong> uses a Job Object with a hard CPU rate cap.</li>
+<li><strong>Linux</strong> uses a cgroup v2 directory per session with <code>cpu.max</code> set to the core count. A
+positive budget smaller than one microsecond of the 100ms period writes <code>1 100000</code>, not a freeze
+quota of <code>0</code>. If the harness’s own cgroup is not writable, veyyon starts a delegated transient
+<strong>service</strong> in the systemd user manager (<code>Delegate=yes</code>, <code>CPUQuota</code>) and adopts children into that
+cgroup. It is not a <code>--scope</code> unit: a scope would block on the placeholder and leave setup failed.
+A positive <code>CPUQuota</code> too small for systemd to express floors at <code>0.001%</code> rather than <code>0%</code>.</li>
+<li><strong>Windows</strong> uses an unnamed Job Object with a hard CPU rate cap. <code>CpuRate</code> is a fraction of
+<strong>host</strong> logical processors (4 cores on a 16-processor machine is 2500, not 40000), counted with
+<code>GetActiveProcessorCount</code> rather than this process’s affinity mask, so a 2-core budget inside a
+2-of-16 slice is 12.5% of the machine rather than 100%. Setting the limit to 0, or
+<code>/cpu-limit remove</code>, turns rate control off rather than flooring to 0.01% of the machine.</li>
 </ul>
 <p>A once-per-second watcher reads the group’s usage on top of the kernel cap. When usage stays
 pinned at the budget for about three seconds, new commands are rejected with an error that names
 the budget, the measured usage, and the fix (raise <code>session.cpuLimitCores</code> or wait), until usage
 drops. The kernel cap is the enforcement of last resort: if the watcher lags, commands throttle,
 they never run free.</p>
-<p>With <code>session.cpuLimitKill: true</code>, a sustained breach also sends SIGTERM to the group’s
-processes. The kill is reported as a budget action: the notice and the killed command’s result
-both state the command was stopped by the CPU budget, not that it crashed.</p>
+<p>With <code>session.cpuLimitKill: true</code>, a sustained breach sends SIGTERM to the group’s processes,
+then SIGKILL on the next watcher tick if they are still over budget. The kill is reported as a
+budget action: the notice and the killed command’s result both state the command was stopped by
+the CPU budget, not that it crashed.</p>
 <p><strong>macOS has no per-group CPU quota.</strong> There the budget is policy only: new commands are rejected
-while the group is saturated, running members are reniced, and <code>session.cpuLimitKill</code> still
+while the group is saturated, running members (including descendants of the adopted child, so a
+<code>make -j</code> compiler fleet is in the same set) are reniced, and <code>session.cpuLimitKill</code> still
 kills. Nothing throttles. The settings row and the startup warning state this, and the same
-warning appears on any platform where no backend works. A configured limit never fails silently.</p>
+warning appears on any platform where no backend works. A configured limit never fails silently:
+if the group cannot be created, new commands are refused rather than run uncapped.</p>
 <p>Changing <code>session.cpuLimitCores</code> mid-session takes effect on the next command: the live quota is
 rewritten, and setting it back to 0 lifts it.</p>
 <h2 id="example"><a class="header" href="#example">Example</a></h2>
@@ -3103,6 +3118,28 @@ detached|BISECT      bisecting
 <p>A rebase detaches HEAD, so without the suffix the segment could only say <code>detached</code>, which shows neither the branch being rebased nor that a rebase is running. Veyyon reads the branch back from the rebase’s own record, so you see <code>topic|REBASE</code>. A merge is the opposite case: it leaves HEAD on its branch, so the segment would look like an ordinary checkout while your working tree holds conflict markers. The suffix is what distinguishes them.</p>
 <p>The <code>pr</code> segment is skipped while any of these operations is in progress. A branch being rebased does not yet point where it is going to end up, so a pull request looked up against it would describe a state that is about to be replaced.</p>
 <p>The <code>profile</code> segment shows the active profile name (<code>work</code>, <code>rec</code>, a client sandbox), so you always know which profile’s config, sessions, and keys are live. It hides itself on the built-in <code>default</code> profile, so an unconfigured status line stays clean. Every built-in preset places it, so switching profiles is visible without any configuration.</p>
+<p>The <code>path</code> segment shows the working directory, shortened in three steps: a workspace root is
+stripped off the front, the home directory collapses to <code>~</code>, and what is left is clipped to a
+column budget from its front, so the directory you are in stays readable. Each step is a
+<code>statusLine.segmentOptions.path</code> key:</p>
+<pre><code class="language-yaml">statusLine:
+  preset: custom
+  segmentOptions:
+    path:
+      displayRoots: ["~/code", "/srv/workspaces"]  # workspace roots, most specific first
+      maxLength: 40                                 # columns the path may spend
+      abbreviate: true                              # collapse the home directory to ~
+      stripWorkPrefix: true                         # strip a workspace root at all
+</code></pre>
+<p><code>displayRoots</code> lists the directories your projects live under, and <code>~</code> stands for the home
+directory. A working directory under one of them is shown relative to it, so
+<code>/srv/workspaces/platform-services/normalizer</code> reads <code>platform-services/normalizer</code>. The first
+entry that matches wins, which is how a nested root is named ahead of the one above it. The list
+replaces the defaults rather than adding to them; without it the defaults are <code>~/Projects</code> and
+<code>/work/</code>. An entry that is not an absolute path cannot contain a directory, so it is dropped and
+named in the log once. <code>stripWorkPrefix: false</code> turns the whole step off.</p>
+<p>A project inside a temporary directory is shown relative to that temporary directory instead,
+with its own icon, whatever <code>displayRoots</code> says.</p>
 <p>The <code>secrets</code> segment shows that a stored credential is live where you are working: <code>2 secrets</code>. It counts
 what would actually expand at the tool boundary in this directory, not what is in the vault file, so
 a credential scoped elsewhere or already expired is not counted. It hides itself when nothing is
@@ -8129,7 +8166,7 @@ act on a bare invocation: <code>/yolo</code>, <code>/fast</code>, and <code>/bro
 <tr><td><code>/goal …</code></td><td>Goal set/show/pause/resume/drop/budget</td></tr>
 <tr><td><code>/guided-goal</code></td><td>Guided goal wizard</td></tr>
 <tr><td><code>/loop</code></td><td>Loop mode controls</td></tr>
-<tr><td><code>/prewalk</code></td><td>Prewalk edit path</td></tr>
+<tr><td><code>/prewalk [model]</code></td><td>Arm the prewalk switch for this session: the agent moves to the cheap model at its next edit or write, once the todo list exists. The target comes from the argument or <code>prewalk.cheapModel</code>; with neither, the command fails naming the setting</td></tr>
 <tr><td><code>/secret</code></td><td>Store a credential the agent uses by placeholder and never sees. A command comes first on every surface and every argument after it is a plain word: <code>/secret add &lt;value&gt;</code> stores it in a terminal, <code>/secret add</code> alone opens a hidden field, <code>/secret from-env &lt;VAR&gt;</code> reads it out of the environment, and the name is prompted afterwards, with Enter accepting the generated one. The commands are <code>add</code>, <code>from-env</code>, <code>list</code>, <code>rm</code>, <code>clear</code>, <code>rename</code>, <code>value</code>, <code>scope</code>, <code>copy</code>, <code>extend</code>, <code>log</code>, <code>discard</code>, <code>help</code>; a first word that is none of them is rejected and nothing is stored. See <a href="#secrets">Secrets</a></td></tr>
 <tr><td><code>/settings</code>, <code>/setup</code></td><td>Settings UI; <code>/setup</code> opens first-run provider sign-in</td></tr>
 <tr><td><code>/providers</code>, <code>/account manager</code></td><td>Open the account manager: every stored account per provider, with its email, plan, health, and usage. See <a href="#signing-in">Authentication</a></td></tr>
@@ -10575,7 +10612,9 @@ veyyon config get compaction.threshold
 <tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
 </thead>
 <tbody>
-<tr><td><code>prewalk.enabled</code></td><td>Enable Prewalk</td><td>boolean</td><td><code>false</code></td><td>Start on the active model, then switch to a fast/cheap model (default the ‘smol’ role) at the first edit/write after the plan nudge’s todo list exists — the strong model plans, commits the todos, and starts the implementation before handing off. Overridable per session with –prewalk / –no-prewalk.</td></tr>
+<tr><td><code>prewalk.enabled</code></td><td>Enable Prewalk</td><td>boolean</td><td><code>false</code></td><td>Plan on the strong model, then switch to the cheap model at the first edit/write after the plan nudge’s todo list exists — the strong model commits the todos and starts the implementation before handing off. The cheap model comes from Prewalk Cheap Model; Prewalk Strong Model overrides the start model. Overridable per session with –prewalk / –no-prewalk.</td></tr>
+<tr><td><code>prewalk.cheapModel</code></td><td>Prewalk Cheap Model</td><td>modelChain</td><td><em>(unset)</em></td><td>Model prewalk hands off to at the first edit/write. Required once prewalk is on: /prewalk and –prewalk fail with a message naming this setting when it is unset. –prewalk-into overrides it per session; only the first entry is used.</td></tr>
+<tr><td><code>prewalk.strongModel</code></td><td>Prewalk Strong Model</td><td>modelChain</td><td><em>(unset)</em></td><td>Model a prewalk session starts on — the strong model that plans before the handoff. Unset: inherit the normal start model (–model or the remembered default). Only the first entry is used.</td></tr>
 </tbody>
 </table>
 </div>
@@ -11613,7 +11652,7 @@ veyyon config get compaction.threshold
 </tbody>
 </table>
 </div>
-<p>346 settings in /settings, 119 configuration-file keys, 465 in all.</p>
+<p>348 settings in /settings, 119 configuration-file keys, 467 in all.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="model-and-provider-configuration-modelsyml--modelsyaml"><a class="header" href="#model-and-provider-configuration-modelsyml--modelsyaml">Model and Provider Configuration (<code>models.yml</code> / <code>models.yaml</code>)</a></h1>
 <p>How the coding agent loads models, applies overrides, resolves credentials, and chooses models at runtime.</p>

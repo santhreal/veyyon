@@ -474,7 +474,7 @@ export async function scanSkillsFromDir(options: ScanSkillsFromDirOptions): Prom
 		entries = await fs.promises.readdir(dir, { withFileTypes: true });
 	} catch (error) {
 		if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-			warnings.push(`Failed to read skills directory: ${dir} (${String(error)})`);
+			warnings.push(`Failed to read skills directory: ${dir} (${errorMessage(error)})`);
 		}
 		return { items, warnings };
 	}

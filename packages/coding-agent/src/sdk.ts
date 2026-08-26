@@ -165,7 +165,7 @@ import {
 } from "./session/agent-session";
 import { discoverAuthStorage } from "./session/auth-broker-config";
 import type { AuthStorage } from "./session/auth-storage";
-import { sessionCpuAdoption } from "./session/cpu-limit";
+import { sessionCpuExecHooks } from "./session/cpu-limit";
 import { abortDetached } from "./session/detached-abort";
 import { createInterruptedTurnAbortMessage } from "./session/exit-diagnostics";
 import {
@@ -879,12 +879,22 @@ export async function loadSessionExtensions(
 	eventBus: EventBus,
 	agentDir?: string,
 	adoptSpawnedPid?: (pid: number) => void,
+	gateSpawn?: (what: string) => Promise<void>,
 ): Promise<LoadExtensionsResult> {
 	const paths = await discoverSessionExtensionPaths(options, cwd, settings, agentDir);
-	const result = await logger.time("loadExtensions", loadExtensions, paths, cwd, eventBus, adoptSpawnedPid, {
-		agentDir,
-		configuredPaths: [...(options.additionalExtensionPaths ?? []), ...(settings.get("extensions") ?? [])],
-	});
+	const result = await logger.time(
+		"loadExtensions",
+		loadExtensions,
+		paths,
+		cwd,
+		eventBus,
+		adoptSpawnedPid,
+		{
+			agentDir,
+			configuredPaths: [...(options.additionalExtensionPaths ?? []), ...(settings.get("extensions") ?? [])],
+		},
+		gateSpawn,
+	);
 	reportExtensionLoadFailures(result);
 	return result;
 }
@@ -2841,7 +2851,9 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		// closure resolves the limiter lazily, so registration order (limiter
 		// created in the AgentSession constructor, tools loaded before it) is
 		// irrelevant.
-		const adoptSpawnedPid = sessionCpuAdoption(() => toolSession.getSessionId?.() ?? null);
+		const cpuExec = sessionCpuExecHooks(() => toolSession.getSessionId?.() ?? null);
+		const adoptSpawnedPid = cpuExec.adoptPid;
+		const gateSpawn = cpuExec.gate;
 		const customToolPaths: ToolPathWithSource[] =
 			options.preloadedCustomToolPaths ??
 			(await logger.time("discoverCustomToolPaths", () => discoverCustomToolPaths([], cwd, agentDir)));
@@ -2852,6 +2864,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				builtInToolNames,
 				action => queueResolveHandler(toolSession, action),
 				adoptSpawnedPid,
+				gateSpawn,
 			),
 		);
 		for (const { path, error } of customToolsLoadResult.errors) {
@@ -2922,6 +2935,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				eventBus,
 				adoptSpawnedPid,
 				extensionTrustOptions,
+				gateSpawn,
 			);
 			reportExtensionLoadFailures(extensionsResult, operatorNotices);
 		} else {
@@ -2936,6 +2950,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				eventBus,
 				adoptSpawnedPid,
 				extensionTrustOptions,
+				gateSpawn,
 			);
 			reportExtensionLoadFailures(extensionsResult, operatorNotices);
 		}
@@ -2955,6 +2970,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 					extensionsResult.runtime,
 					`<inline-${i}>`,
 					adoptSpawnedPid,
+					gateSpawn,
 				);
 				extensionsResult.extensions.push(loaded);
 			}
@@ -3292,7 +3308,12 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		// Discover custom commands (TypeScript slash commands)
 		const customCommandsResult: CustomCommandsLoadResult = options.disableExtensionDiscovery
 			? { commands: [], errors: [] }
-			: await logger.time("discoverCustomCommands", loadCustomCommandsInternal, { cwd, agentDir, adoptSpawnedPid });
+			: await logger.time("discoverCustomCommands", loadCustomCommandsInternal, {
+					cwd,
+					agentDir,
+					adoptSpawnedPid,
+					gateSpawn,
+				});
 		if (!options.disableExtensionDiscovery) {
 			for (const { path, error } of customCommandsResult.errors) {
 				logger.error("Failed to load custom command", { path, error });
@@ -4542,6 +4563,19 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		// messages here. Refresh sessionFile in case it was unavailable at pre-register
 		// time. The dispose wrapper below unregisters on teardown (unless parked).
 		agentRegistry.attachSession(resolvedAgentId, session, sessionManager.getSessionFile() ?? null);
+		// Keep the driving session's own ref alive in the roster. Only subagents
+		// were ever wired to the registry (`task/executor.ts` on agent_start /
+		// agent_end, `persisted-revive.ts` for a revived one), so the main agent's
+		// row was whatever registration wrote and nothing after it: the Agent
+		// Control Center aged it from process start and printed "1d ago" against a
+		// session that was mid-turn. The status is deliberately left alone — the
+		// bus routes an incoming message by it, and flipping the operator's own
+		// session to idle between turns would change how a peer reaches them.
+		session.subscribe(event => {
+			if (event.type === "agent_start" || event.type === "agent_end") {
+				agentRegistry.noteTurn(resolvedAgentId);
+			}
+		});
 		{
 			const originalDispose = session.dispose.bind(session);
 			let disposeCall: Promise<void> | undefined;
@@ -4711,8 +4745,11 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		if (mcpManager && !options.mcpManager) {
 			const reactiveMcpManager = mcpManager;
 			// MCP stdio servers are session-spawned processes: they join the
-			// session's CPU budget group when one is configured.
-			reactiveMcpManager.setSpawnAdoption(sessionCpuAdoption(() => session.sessionManager.getSessionId() ?? null));
+			// session's CPU budget group when one is configured, and a saturated
+			// or uncreated group refuses a new server the same way it refuses bash.
+			const mcpCpu = sessionCpuExecHooks(() => session.sessionManager.getSessionId() ?? null);
+			reactiveMcpManager.setSpawnAdoption(mcpCpu.adoptPid);
+			reactiveMcpManager.setSpawnGate(mcpCpu.gate);
 			reactiveMcpManager.setOnToolsChanged(tools => {
 				void (async () => {
 					try {

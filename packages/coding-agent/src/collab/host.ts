@@ -12,7 +12,7 @@
 import { timingSafeEqual } from "node:crypto";
 import * as fs from "node:fs/promises";
 import type { ImageContent, TextContent } from "@veyyon/ai";
-import { logger } from "@veyyon/utils";
+import { errorMessage, logger } from "@veyyon/utils";
 import type {
 	BusChannel,
 	CollabUiRequest,
@@ -518,8 +518,8 @@ export class CollabHost {
 				{ streamingBehavior: "steer", queueChipText: text },
 			)
 			.catch(err => {
-				logger.warn("collab guest prompt failed", { error: String(err) });
-				this.#sendTo({ t: "error", message: `prompt failed: ${String(err)}` }, fromPeer);
+				logger.warn("collab guest prompt failed", { error: errorMessage(err) });
+				this.#sendTo({ t: "error", message: `prompt failed: ${errorMessage(err)}` }, fromPeer);
 			});
 	}
 
@@ -533,7 +533,7 @@ export class CollabHost {
 		void this.#ctx.session
 			.abort({ reason: USER_INTERRUPT_LABEL })
 			.then(() => this.#ctx.session.emitNotice("info", `${name} interrupted`, "collab"))
-			.catch(err => logger.warn("collab guest abort failed", { error: String(err) }));
+			.catch(err => logger.warn("collab guest abort failed", { error: errorMessage(err) }));
 	}
 
 	#handlePeerLeft(peer: number): void {
@@ -637,8 +637,8 @@ export class CollabHost {
 			return;
 		}
 		const fail = (err: unknown) => {
-			logger.warn("collab agent-cmd failed", { cmd, agentId, error: String(err) });
-			this.#sendTo({ t: "error", message: `agent ${agentId}: ${String(err)}` }, fromPeer);
+			logger.warn("collab agent-cmd failed", { cmd, agentId, error: errorMessage(err) });
+			this.#sendTo({ t: "error", message: `agent ${agentId}: ${errorMessage(err)}` }, fromPeer);
 		};
 		switch (cmd) {
 			case "chat": {
@@ -714,8 +714,8 @@ export class CollabHost {
 			}
 			reply(slice.toString("utf-8"), reachedEof ? stat.size : fromByte + slice.byteLength);
 		} catch (err) {
-			logger.debug("collab transcript read failed", { agentId, error: String(err) });
-			reply("", fromByte, String(err));
+			logger.debug("collab transcript read failed", { agentId, error: errorMessage(err) });
+			reply("", fromByte, errorMessage(err));
 		}
 	}
 

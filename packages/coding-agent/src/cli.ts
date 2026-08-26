@@ -492,12 +492,12 @@ export function formatCliFatal(err: unknown, opts: { stack: boolean; colors: boo
 				out += formatAggregateMembers(cause, seen, "    ");
 				cause = cause.cause;
 			} else {
-				out += `\n  caused by: ${String(cause)}`;
+				out += `\n  caused by: ${errorMessage(cause)}`;
 				break;
 			}
 		}
 	} else {
-		out = `Error: ${String(err)}`;
+		out = `Error: ${errorMessage(err)}`;
 	}
 	return `${out}\n  (set VEYYON_STACK=1 for the full stack trace)\n`;
 }
