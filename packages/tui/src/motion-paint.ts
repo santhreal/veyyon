@@ -84,7 +84,7 @@ export function fadeLineTowards(line: string, groundHex: string, strength: numbe
 
 /** Fade a block of rendered lines toward the ground behind it. */
 export function fadeLinesTowards(lines: readonly string[], groundHex: string, strength: number): string[] {
-	if (strength >= 1) return lines as string[];
+	if (strength >= 1) return [...lines];
 	return lines.map(line => fadeLineTowards(line, groundHex, strength));
 }
 

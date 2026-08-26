@@ -50,6 +50,7 @@ const TICK_MS = 1_000;
 const BAR_ROWS = 7;
 const BAR_WIDTH = 5;
 const BAR_GAP = 4;
+const BAR_GAP_STR = " ".repeat(BAR_GAP);
 
 /** Below either bound the full scene cannot breathe; drop to the compact card. */
 const MIN_FULL_WIDTH = 64;
@@ -98,7 +99,7 @@ export function renderPauseScreen(width: number, height: number, elapsedMs: numb
 			seed: 7,
 		});
 		for (let i = 0; i < BAR_ROWS; i++) {
-			content.push(centerLine(`${left[i]}${" ".repeat(BAR_GAP)}${right[i]}`, width));
+			content.push(centerLine(`${left[i]}${BAR_GAP_STR}${right[i]}`, width));
 		}
 		content.push("");
 		content.push(centerLine(theme.bold(theme.fg("accent", TITLE)), width));
