@@ -74,7 +74,8 @@ built by string concatenation in code.
 bun packages/evals/src/suites/typescript-edit/adapter/cli.ts --help
 ```
 
-`src/suites/typescript-edit/adapter/runner.ts` drives the trials, `adapter/report.ts` renders the
+`src/suites/typescript-edit/adapter/runner/scheduler.ts` drives the trials across workers,
+`adapter/runner/session.ts` runs one task against the harness, and `adapter/report.ts` renders the
 result table.
 
 ## Argot bench

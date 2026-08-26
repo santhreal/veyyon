@@ -6,7 +6,8 @@ import { errorMessage } from "@veyyon/utils";
 import { extractFixtures } from "../extract";
 import { loadTasksFromDir } from "../tasks";
 import { generateJsonReport } from "./report";
-import { type BenchmarkConfig, runBenchmark } from "./runner";
+import { runBenchmark } from "./runner/scheduler";
+import type { BenchmarkConfig } from "./runner/types";
 
 /** Execute an edit benchmark and continuously materialize its normalized source artifact. */
 export async function main(argv = process.argv.slice(2)): Promise<void> {
