@@ -624,9 +624,7 @@ function mixRgb(a: readonly [number, number, number], b: string, t: number): [nu
  * deep-ember (trough) → ember → gold (crest) → ember → deep-ember. Returns
  * r/g/b so callers can emit one 24-bit sequence.
  */
-function lavaRgbAt(theme: LavaTheme, p: number): [number, number, number] {
-	const ember = theme.getColorHex("borderAccent");
-	const gold = theme.getColorHex("matchHighlight");
+function lavaRgbAt(ember: string, gold: string, p: number): [number, number, number] {
 	// Triangle: 0→1→0 across the cycle, so the heat rises and falls smoothly —
 	// trough (phase 0) is deep ember, crest (phase 0.5) is gold.
 	const f = p - Math.floor(p);
@@ -651,7 +649,7 @@ function lavaRgbAt(theme: LavaTheme, p: number): [number, number, number] {
 export function lavaAnsi(theme: LavaTheme, trueColor: boolean, now = Date.now(), cell = 0): string | undefined {
 	if (!trueColor) return undefined;
 	const p = now / LAVA_PERIOD_MS + cell * LAVA_CELL_PHASE;
-	const [r, g, b] = lavaRgbAt(theme, p);
+	const [r, g, b] = lavaRgbAt(theme.getColorHex("borderAccent"), theme.getColorHex("matchHighlight"), p);
 	return `\x1b[38;2;${r};${g};${b}m`;
 }
 
