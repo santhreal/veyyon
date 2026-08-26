@@ -17,6 +17,10 @@
  * the status and the trace link it must produce, and the sweep asserts every status the aggregate
  * counts is reached, so a new terminal state has to be given a row.
  *
+ * A trial whose verifier recorded no reward graded nothing, so it reads as an error rather than a
+ * fail: a fail states a result the run never produced. The runner's own reader of the same file has
+ * always said so, and both readers of one `result.json` now agree.
+ *
  * What this suite does not catch: it drives the harbor adapter only. The edit and deepswe readers
  * cast `JSON.parse` output to their result shape and still lose a whole run to one malformed row.
  */
@@ -114,6 +118,16 @@ const TRIAL_CASES: TrialCase[] = [
 	{
 		label: "a terminal result with no reward",
 		fixture: { result: JSON.stringify({ agent_result: { cost_usd: 0.1 } }), agentFiles: { "veyyon.txt": "x\n" } },
+		status: "error",
+		detail: "missing or unparsable reward",
+		trace: "agent/veyyon.txt",
+	},
+	{
+		label: "a graded failure",
+		fixture: {
+			result: JSON.stringify({ verifier_result: { rewards: { reward: 0 } }, agent_result: { cost_usd: 0.1 } }),
+			agentFiles: { "veyyon.txt": "x\n" },
+		},
 		status: "fail",
 		detail: "",
 		trace: "agent/veyyon.txt",

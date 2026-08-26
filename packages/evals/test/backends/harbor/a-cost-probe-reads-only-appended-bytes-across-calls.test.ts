@@ -98,7 +98,9 @@ describe("a cost probe reads only appended bytes across calls", () => {
 		fs.writeFileSync(logPath, part1);
 
 		const probe1 = probeTrialCost(logPath);
-		expect(probe1?.tokIn).toBe(0); // incomplete JSON cannot produce usage yet
+		// Incomplete JSON cannot produce usage yet, and nothing measured is absent rather than zero.
+		expect(probe1?.tokIn).toBeNull();
+		expect(probe1?.costUsd).toBeNull();
 		expect(probe1?.remainder.length).toBe(30);
 
 		// Complete the line

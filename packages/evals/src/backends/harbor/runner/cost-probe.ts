@@ -13,10 +13,14 @@ export interface CostProbe {
 	remainder: Buffer;
 	/** True while discarding an oversized line (resync at the next newline). */
 	discarding: boolean;
-	costUsd: number;
-	tokIn: number;
-	tokOut: number;
-	tokCache: number;
+	/** Spend summed over the usage events that carried a price, or null while none did. */
+	costUsd: number | null;
+	/** Input tokens summed over the usage events that carried a count, or null while none did. */
+	tokIn: number | null;
+	/** Output tokens summed the same way, or null while none was counted. */
+	tokOut: number | null;
+	/** Cache-read tokens summed the same way, or null while none was counted. */
+	tokCache: number | null;
 }
 
 /** Incremental parse state per live transcript path. Entries are dropped once the trial finishes. */
@@ -28,8 +32,14 @@ export const COST_PROBE_FIRST_SCAN_BYTES = 16 * 1024 * 1024;
 export const COST_PROBE_MAX_LINE_BYTES = 4 * 1024 * 1024;
 export const COST_PROBE_CHUNK_BYTES = 1024 * 1024;
 
-function num(v: unknown): number {
-	return typeof v === "number" && Number.isFinite(v) ? v : 0;
+function finite(v: unknown): number | null {
+	return typeof v === "number" && Number.isFinite(v) ? v : null;
+}
+
+/** Add a measured delta to a running total, leaving a total nothing measured absent. */
+function add(total: number | null, delta: number | null): number | null {
+	if (delta === null) return total;
+	return total === null ? delta : total + delta;
 }
 
 /** Accumulate assistant `message_end` usage from one complete transcript line. */
@@ -43,11 +53,13 @@ export function probeLine(line: string, probe: CostProbe): void {
 		if (!message || typeof message !== "object" || message.role !== "assistant") return;
 		const usage = message.usage;
 		if (!usage || typeof usage !== "object") return;
-		probe.tokIn += num(usage.input) + num(usage.cacheRead);
-		probe.tokOut += num(usage.output);
-		probe.tokCache += num(usage.cacheRead);
+		const input = finite(usage.input);
+		const cacheRead = finite(usage.cacheRead);
+		if (input !== null || cacheRead !== null) probe.tokIn = add(probe.tokIn, (input ?? 0) + (cacheRead ?? 0));
+		probe.tokOut = add(probe.tokOut, finite(usage.output));
+		probe.tokCache = add(probe.tokCache, cacheRead);
 		const cost = usage.cost;
-		if (cost && typeof cost === "object") probe.costUsd += num(cost.total);
+		if (cost && typeof cost === "object") probe.costUsd = add(probe.costUsd, finite(cost.total));
 	} catch {
 		/* Ignore malformed lines from incomplete writes */
 	}
@@ -74,10 +86,10 @@ export function probeTrialCost(ompLogPath: string): CostProbe | null {
 			offset: Math.max(0, size - COST_PROBE_FIRST_SCAN_BYTES),
 			remainder: Buffer.alloc(0),
 			discarding: size > COST_PROBE_FIRST_SCAN_BYTES, // resync to the next full line
-			costUsd: 0,
-			tokIn: 0,
-			tokOut: 0,
-			tokCache: 0,
+			costUsd: null,
+			tokIn: null,
+			tokOut: null,
+			tokCache: null,
 		};
 		costProbes.set(ompLogPath, probe);
 	}

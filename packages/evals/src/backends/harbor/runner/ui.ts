@@ -28,7 +28,9 @@ export function fmtUsd(n: number | null): string {
 	return formatUsd(n, "—");
 }
 
-export function fmtNum(n: number): string {
+/** A token count, with harbor's own absent marker for a count nothing measured. */
+export function fmtNum(n: number | null): string {
+	if (n === null) return "—";
 	if (n >= 1e6) return `${(n / 1e6).toFixed(2)}M`;
 	if (n >= 1e3) return `${(n / 1e3).toFixed(1)}k`;
 	return `${n}`;
