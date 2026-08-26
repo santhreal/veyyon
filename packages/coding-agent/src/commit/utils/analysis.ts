@@ -13,16 +13,56 @@ export function extractTextContent(message: AssistantMessage): string {
 		.trim();
 }
 
+/**
+ * Every balanced `{...}` run in `text`, in order, ignoring braces inside JSON
+ * strings. A greedy match from the first brace to the last swallows the prose
+ * between two unrelated objects, so it parses neither.
+ */
+function* balancedObjectsIn(text: string): Generator<string> {
+	for (let start = text.indexOf("{"); start !== -1; start = text.indexOf("{", start + 1)) {
+		let depth = 0;
+		let inString = false;
+		let escaped = false;
+		for (let i = start; i < text.length; i++) {
+			const ch = text[i];
+			if (escaped) {
+				escaped = false;
+				continue;
+			}
+			if (inString && ch === "\\") {
+				escaped = true;
+				continue;
+			}
+			if (ch === '"') {
+				inString = !inString;
+				continue;
+			}
+			if (inString) continue;
+			if (ch === "{") depth++;
+			else if (ch === "}" && --depth === 0) {
+				yield text.slice(start, i + 1);
+				break;
+			}
+		}
+	}
+}
+
+/**
+ * The first JSON object in `text`, whatever surrounds it.
+ *
+ * A model asked for JSON answers with prose around it, a fenced block, or a
+ * brace run that is not JSON at all. Every one of those used to reach
+ * `JSON.parse` unguarded and raise a `SyntaxError` at the caller.
+ */
 export function parseJsonPayload(text: string): unknown {
-	const trimmed = text.trim();
-	if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
-		return JSON.parse(trimmed) as unknown;
+	for (const candidate of balancedObjectsIn(text.trim())) {
+		try {
+			return JSON.parse(candidate) as unknown;
+		} catch {
+			// Prose contains brace runs that are not JSON; keep looking.
+		}
 	}
-	const match = trimmed.match(/\{[\s\S]*\}/);
-	if (!match) {
-		throw new Error("No JSON payload found in response");
-	}
-	return JSON.parse(match[0]) as unknown;
+	throw new Error("No JSON payload found in response");
 }
 
 export function normalizeAnalysis(parsed: {
