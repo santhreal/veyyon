@@ -141,6 +141,19 @@ export class Theme {
 	/** Resolved hex strings for background colors — populated at construction. */
 	readonly #hexBgColors: Record<ThemeBg, string>;
 	#symbols: SymbolMap;
+	#boxSharpCache: {
+		readonly topLeft: string;
+		readonly topRight: string;
+		readonly bottomLeft: string;
+		readonly bottomRight: string;
+		readonly horizontal: string;
+		readonly vertical: string;
+		readonly cross: string;
+		readonly teeDown: string;
+		readonly teeUp: string;
+		readonly teeRight: string;
+		readonly teeLeft: string;
+	};
 	#spinnerFramesOverrides: Partial<Record<SpinnerType, string[]>>;
 	/**
 	 * Perceptual luma (0..1) of the status-line background used to classify the theme as light/dark.
@@ -197,6 +210,19 @@ export class Theme {
 				logger.debug("Invalid symbol key in override", { key, availableKeys: Object.keys(this.#symbols) });
 			}
 		}
+		this.#boxSharpCache = {
+			topLeft: this.#symbols["boxSharp.topLeft"],
+			topRight: this.#symbols["boxSharp.topRight"],
+			bottomLeft: this.#symbols["boxSharp.bottomLeft"],
+			bottomRight: this.#symbols["boxSharp.bottomRight"],
+			horizontal: this.#symbols["boxSharp.horizontal"],
+			vertical: this.#symbols["boxSharp.vertical"],
+			cross: this.#symbols["boxSharp.cross"],
+			teeDown: this.#symbols["boxSharp.teeDown"],
+			teeUp: this.#symbols["boxSharp.teeUp"],
+			teeRight: this.#symbols["boxSharp.teeRight"],
+			teeLeft: this.#symbols["boxSharp.teeLeft"],
+		};
 		this.#spinnerFramesOverrides = spinnerFramesOverrides;
 	}
 
@@ -528,19 +554,7 @@ export class Theme {
 	}
 
 	get boxSharp() {
-		return {
-			topLeft: this.#symbols["boxSharp.topLeft"],
-			topRight: this.#symbols["boxSharp.topRight"],
-			bottomLeft: this.#symbols["boxSharp.bottomLeft"],
-			bottomRight: this.#symbols["boxSharp.bottomRight"],
-			horizontal: this.#symbols["boxSharp.horizontal"],
-			vertical: this.#symbols["boxSharp.vertical"],
-			cross: this.#symbols["boxSharp.cross"],
-			teeDown: this.#symbols["boxSharp.teeDown"],
-			teeUp: this.#symbols["boxSharp.teeUp"],
-			teeRight: this.#symbols["boxSharp.teeRight"],
-			teeLeft: this.#symbols["boxSharp.teeLeft"],
-		};
+		return this.#boxSharpCache;
 	}
 
 	get sep() {
