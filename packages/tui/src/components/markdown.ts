@@ -1555,15 +1555,15 @@ export class Markdown implements Component {
 				}
 
 				previousLineWasOsc66 = false;
-				const lineWithMargins = leftMargin + wLine + rightMargin;
 
 				if (bgFn) {
-					contentLines.push(applyBackgroundToLine(lineWithMargins, signature.width, bgFn));
+					contentLines.push(applyBackgroundToLine(leftMargin + wLine + rightMargin, signature.width, bgFn));
 				} else {
-					// No background - just pad to width
-					const visibleLen = visibleWidth(lineWithMargins);
-					const paddingNeeded = Math.max(0, signature.width - visibleLen);
-					contentLines.push(lineWithMargins + padding(paddingNeeded));
+					// No background - just pad to width. Measure the line alone and
+					// subtract the margin widths already known, avoiding a
+					// visibleWidth() call on the full concatenated string.
+					const paddingNeeded = Math.max(0, signature.width - visibleWidth(wLine) - 2 * signature.paddingX);
+					contentLines.push(leftMargin + wLine + rightMargin + padding(paddingNeeded));
 				}
 			}
 		}
