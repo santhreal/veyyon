@@ -5121,7 +5121,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		void this.#selectorController.showExtensionsDashboard();
 	}
 
-	showAgentsDashboard(options?: { requireContent?: boolean }): void {
+	showAgentsDashboard(options?: { requireContent?: boolean; processScope?: boolean }): void {
 		this.#selectorController.showAgentsDashboard(this.#observerRegistry, options);
 	}
 

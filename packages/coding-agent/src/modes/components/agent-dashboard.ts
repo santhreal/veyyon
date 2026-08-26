@@ -132,11 +132,12 @@ const VIEW_ORDER: readonly ViewId[] = ["live", "comms"];
  * offering three keys that do nothing under it reads as a broken panel rather
  * than an idle one.
  */
-function liveShortcuts(rosterRows: number): readonly ModalShortcut[] {
+function liveShortcuts(rosterRows: number, scopeHint: string): readonly ModalShortcut[] {
 	return [
 		...(rosterRows > 0
 			? [{ label: "up/down navigate" }, { label: "enter open agent" }, { label: "x terminate" }]
 			: []),
+		...(scopeHint ? [{ label: scopeHint }] : []),
 		{ label: "left/right view" },
 		{ label: "esc close", clickable: true, id: "close" },
 	];
@@ -152,7 +153,7 @@ function liveShortcuts(rosterRows: number): readonly ModalShortcut[] {
  * reaches the card at all the chip is dropped rather than shown, since a chip for
  * a gesture nothing can trigger is worse than one fewer chip.
  */
-function commsShortcuts(expandHint: string, canFilter: boolean): readonly ModalShortcut[] {
+function commsShortcuts(expandHint: string, canFilter: boolean, scopeHint: string): readonly ModalShortcut[] {
 	return [
 		{ label: "up/down scroll" },
 		...(expandHint ? [{ label: `${expandHint} expand` }] : []),
@@ -160,6 +161,7 @@ function commsShortcuts(expandHint: string, canFilter: boolean): readonly ModalS
 		// one agent in the log there is nothing to narrow to, and a key that cycles
 		// between "everything" and "everything" reads as a broken control.
 		...(canFilter ? [{ label: "f filter" }] : []),
+		...(scopeHint ? [{ label: scopeHint }] : []),
 		{ label: "left/right view" },
 		{ label: "esc close", clickable: true, id: "close" },
 	];
@@ -802,6 +804,17 @@ export interface AgentDashboardDeps {
 	 * tests), and an omitted scope shows everything rather than nothing.
 	 */
 	scope?: string;
+	/**
+	 * Open showing every conversation in the process rather than only `scope`.
+	 *
+	 * The entry point decides the opening scope; `a` toggles it either way once
+	 * the card is up. `/agents` opens on the conversation the operator is in,
+	 * because that is the tree they are working in and a roster that also lists
+	 * a background conversation's subagents buries it. `/process-manager` opens
+	 * wide, because the whole reason to reach for it is a conversation no screen
+	 * is showing.
+	 */
+	processScope?: boolean;
 	/** Collab guest: route transcript reads and actions to the host. */
 	remote?: AgentTranscriptRemote;
 	/**
@@ -825,6 +838,13 @@ export interface AgentDashboardDeps {
 
 export class AgentDashboard extends Container {
 	#activeView: ViewId = "live";
+
+	/**
+	 * Whether the roster and the stream show the whole process or one
+	 * conversation. `#deps.scope` stays the conversation this card was opened
+	 * for, so narrowing back is exact rather than a guess.
+	 */
+	#processScope: boolean;
 
 	/** Live roster, refreshed from the registry on every change. */
 	#liveAgents: LiveAgent[] = [];
@@ -910,6 +930,7 @@ export class AgentDashboard extends Container {
 	constructor(deps: AgentDashboardDeps = {}) {
 		super();
 		this.#deps = deps;
+		this.#processScope = deps.processScope ?? false;
 		this.#registry = deps.registry ?? AgentRegistry.global();
 		this.#irc = deps.irc ?? IrcBus.global();
 		// Lazy: the lifecycle global self-constructs against the global registry,
@@ -1020,10 +1041,46 @@ export class AgentDashboard extends Container {
 		this.#dataChangeTimer.unref?.();
 	}
 
+	/**
+	 * The conversation the roster and the stream are filtered to, or undefined
+	 * for the whole process.
+	 *
+	 * One accessor rather than a check at each read site, so the roster, the
+	 * stream and the transcript guard cannot disagree about what the card is
+	 * currently showing — a card that LISTS a row it then refuses to open is
+	 * worse than one that never listed it.
+	 */
+	#effectiveScope(): string | undefined {
+		return this.#processScope ? undefined : this.#deps.scope;
+	}
+
+	/**
+	 * `a`: widen to every conversation in the process, or narrow back.
+	 *
+	 * A plain letter, like `x` and `f`, because the card owns every key while it
+	 * is open, and Tab is already the view switch. Selection is not carried
+	 * across: the rows either side of the toggle are different sets, and keeping
+	 * an index would land the cursor on an unrelated agent.
+	 */
+	toggleProcessScope(): void {
+		this.#processScope = !this.#processScope;
+		this.#notice = undefined;
+		this.#liveSelectedIndex = 0;
+		this.#liveScrollOffset = 0;
+		this.#refreshLiveAgents();
+		this.#comms = this.#scopedComms();
+		this.#buildLayout();
+	}
+
+	/** Whether the card is currently showing every conversation in the process. */
+	get showingWholeProcess(): boolean {
+		return this.#processScope;
+	}
+
 	#refreshLiveAgents(): void {
 		const selectedId = this.#liveAgents[this.#liveSelectedIndex]?.id;
 		this.#liveHoveredIndex = -1;
-		this.#liveAgents = collectLiveAgents(this.#registry.listInScope(this.#deps.scope));
+		this.#liveAgents = collectLiveAgents(this.#registry.listInScope(this.#effectiveScope()));
 		// Keep the cursor on the AGENT, not on the row number: a spawn or a park
 		// reorders the roster under an operator who is about to press Enter.
 		const kept = selectedId ? this.#liveAgents.findIndex(agent => agent.id === selectedId) : -1;
@@ -1047,7 +1104,7 @@ export class AgentDashboard extends Container {
 	 * moment both endpoints were still addressable.
 	 */
 	#scopedComms(): IrcLogEntry[] {
-		const scope = this.#deps.scope;
+		const scope = this.#effectiveScope();
 		if (!scope) return this.#irc.log();
 		return this.#irc.log().filter(entry => AgentRegistry.sameScope(entry.scope, scope));
 	}
@@ -1236,10 +1293,22 @@ export class AgentDashboard extends Container {
 		return keyHint(this.#expandKeys);
 	}
 
+	/**
+	 * The chip names the scope the key moves TO, not the one you are in, so it
+	 * reads as an action like every other chip. Dropped when the card has no
+	 * conversation to narrow to (collab guest, render-only host), because
+	 * offering a toggle between "everything" and "everything" is the same broken
+	 * control the filter chip is dropped to avoid.
+	 */
+	#scopeHint(): string {
+		if (this.#processScope) return this.#deps.scope ? "a this conversation" : "";
+		return this.#deps.scope ? "a all conversations" : "";
+	}
+
 	#currentShortcuts(): readonly ModalShortcut[] {
 		return this.#activeView === "live"
-			? liveShortcuts(this.#liveAgents.length)
-			: commsShortcuts(this.#expandHint(), this.#canFilterComms());
+			? liveShortcuts(this.#liveAgents.length, this.#scopeHint())
+			: commsShortcuts(this.#expandHint(), this.#canFilterComms(), this.#scopeHint());
 	}
 
 	/**
@@ -1277,7 +1346,11 @@ export class AgentDashboard extends Container {
 
 		const body = super.render(dims.contentWidth);
 		const shell = renderModalShell({
-			title: "Agent Control Center",
+			// The title states the scope, because the two rosters look alike: a
+			// conversation with no subagents and a process with one conversation
+			// draw the same single row, and the chip below names where the key
+			// GOES rather than where you are.
+			title: this.#processScope ? "Agent Control Center — all conversations" : "Agent Control Center",
 			sizing,
 			areaWidth: width,
 			areaHeight: area,
@@ -1406,7 +1479,7 @@ export class AgentDashboard extends Container {
 	openTranscript(id: string): void {
 		const ref = this.#registry.get(id);
 		if (!ref) return;
-		if (!AgentRegistry.sameScope(ref.scope, this.#deps.scope)) return;
+		if (!AgentRegistry.sameScope(ref.scope, this.#effectiveScope())) return;
 		if (typeof this.#ui.showOverlay !== "function") return;
 		this.#closeTranscriptOverlay({ restoreFocus: false });
 		const viewer = new AgentTranscriptViewer({
@@ -1454,10 +1527,13 @@ export class AgentDashboard extends Container {
 	/**
 	 * `x`: ask before terminating the selected agent.
 	 *
-	 * The main session owns this dashboard and cannot terminate itself here. An
-	 * advisor is a read-only transcript rather than a running peer. Every real
-	 * subagent opens the same focused confirmation card whether the request came
-	 * from the keyboard or the row-local [x].
+	 * A conversation is not terminated here, whether it is the one on screen or
+	 * one running off it: stopping a conversation ends a turn, closes a provider
+	 * stream and settles a transcript, which is the owning session's job and is
+	 * what `session.newKeepsBackground` decides. An advisor is a read-only
+	 * transcript rather than a running peer. Every real subagent opens the same
+	 * focused confirmation card whether the request came from the keyboard or
+	 * the row-local [x].
 	 */
 	killSelectedAgent(): void {
 		const agent = this.#liveAgents[this.#liveSelectedIndex];
@@ -1467,7 +1543,9 @@ export class AgentDashboard extends Container {
 
 	#requestTermination(agent: LiveAgent): void {
 		if (agent.kind === "main") {
-			this.#notice = "The main session cannot be terminated from its own roster.";
+			this.#notice = this.#processScope
+				? "A conversation is stopped by the session running it, not from this roster."
+				: "The main session cannot be terminated from its own roster.";
 			this.#rebuildAndRender();
 			return;
 		}
@@ -1823,6 +1901,16 @@ export class AgentDashboard extends Container {
 		}
 		if (matchesSelectPageDown(data)) {
 			this.#movePage(1);
+			this.onRequestRender?.();
+			return;
+		}
+
+		// Bound above the per-view keys so it works from the roster AND the stream:
+		// widening only one of them would make the two panes disagree about which
+		// conversations the card is showing. Ignored where there is nothing to
+		// narrow to, so the key matches the chip.
+		if (data === "a" && this.#deps.scope) {
+			this.toggleProcessScope();
 			this.onRequestRender?.();
 			return;
 		}

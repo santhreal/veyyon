@@ -6,6 +6,7 @@
 
 - `session.newKeepsBackground` decides what `/new` does to a turn still streaming: on (the default) keeps the old conversation running and says which one, off stops it and closes its provider stream before the new session starts.
 - The status line carries a background chip counting conversations this process is still running that no screen is showing, present in every preset and silent at zero.
+- `/process-manager` opens the Agent Control Center across every conversation this process is running rather than only the one on screen, and `a` switches the roster, the comms stream and the transcript guard between the two scopes together.
 - The terminal renderer composer zone gains a formal defect oracle and automated invariant sweep suite covering prompt counts, output bleed, row mixing, footer alignment, mouse click routing, caret positioning, overflow, pad transparency, hairline integrity, and virtual scroll stability.
 - `prewalk.cheapModel` and `prewalk.strongModel` configure the cheap model prewalk switches into at the first edit and the strong model it starts on.
 - `/prewalk` accepts an optional model argument to arm a per-session target model override.

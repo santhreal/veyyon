@@ -172,9 +172,14 @@ describe("the split kept one set of commands", () => {
 	 *     MCP server it names) is withheld until the operator decides, and a refusal with no way to
 	 *     answer it inside the session is a dead end: the CLI `veyyon trust` needs a shell, which a
 	 *     running TUI does not have.
+	 *   - UP to 74: `/process-manager` was added. It opens the Agent Control Center at process
+	 *     scope, so a conversation `/new` left running in the background is reachable from the
+	 *     session that replaced it. `/agents` opens the same card on the current conversation,
+	 *     and `a` toggles between them; the separate command exists because the question "is
+	 *     this process spending anywhere" cannot be answered from the screen you are on.
 	 */
-	it("there are the 73 builtins the declarations hold", () => {
-		expect(BUILTIN_SLASH_COMMAND_DECLARATIONS.length).toBe(73);
+	it("there are the 74 builtins the declarations hold", () => {
+		expect(BUILTIN_SLASH_COMMAND_DECLARATIONS.length).toBe(74);
 	});
 
 	/**
