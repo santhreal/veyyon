@@ -19,20 +19,30 @@ import * as path from "node:path";
 import { errorMessage } from "@veyyon/utils";
 import { registerAllBackends } from "./backends";
 import type {
+	BackendId,
 	CellSummary,
 	ConfigSpec,
 	EvalRunRecord,
 	EvalSuite,
+	HarnessAdapter,
 	PromptVariantSpec,
 	SuiteContext,
 	VariantMatrixSelection,
 } from "./core";
-import { judgeRunOutcome, requireBackend, requireSuite, summarizeRunCells } from "./core";
+import {
+	judgeRunOutcome,
+	listBackendIds,
+	listHarnesses,
+	listSuites,
+	requireBackend,
+	requireSuite,
+	summarizeRunCells,
+} from "./core";
 import { preflightHarnesses } from "./core/harness-preflight";
 import { registerBuiltinHarnesses } from "./harnesses";
 import { runsDir as defaultRunsDir } from "./paths";
 import { buildRunPlan, describeRunPlan, executeRun, type RunPlan } from "./run";
-import { builtinSuites, registerAllSuites } from "./suites";
+import { registerAllSuites } from "./suites";
 
 /** Flags that take a value. A flag outside this table never consumes the next argument. */
 export const VALUE_FLAGS: Record<string, true> = {
@@ -319,6 +329,57 @@ function summaryTable(summaries: readonly CellSummary[]): string {
 	return [header, divider, ...rows].join("\n");
 }
 
+/**
+ * What `--list` states without a suite: the three registries an invocation selects from.
+ *
+ * Every row is read from the registry rather than from a literal, so a suite, backend or
+ * harness registered by anything outside this package is listed by the same call. A
+ * harness states the backends it binds, because a harness the run backend cannot reach is
+ * the refusal an operator hits after the container is already paid for.
+ */
+export function describeRegistries(
+	suites: readonly Pick<EvalSuite, "name" | "backend" | "description">[],
+	backends: readonly BackendId[],
+	harnesses: readonly Pick<HarnessAdapter, "name" | "defaultModel" | "backends">[],
+): string {
+	const columns = (rows: readonly (readonly string[])[]): string[] => {
+		const widths = rows.reduce<number[]>(
+			(acc, row) => row.map((cell, index) => Math.max(acc[index] ?? 0, cell.length)),
+			[],
+		);
+		return rows.map(row =>
+			`  ${row.map((cell, index) => (index === row.length - 1 ? cell : cell.padEnd(widths[index] ?? 0))).join("  ")}`.trimEnd(),
+		);
+	};
+
+	const suiteRows = columns(
+		[...suites]
+			.sort((a, b) => a.name.localeCompare(b.name))
+			.map(suite => [suite.name, suite.backend, suite.description]),
+	);
+	const backendRows = [...backends].sort().map(id => `  ${id}`);
+	const harnessRows = columns(
+		[...harnesses]
+			.sort((a, b) => a.name.localeCompare(b.name))
+			.map(harness => [
+				harness.name,
+				harness.defaultModel ?? "--model required",
+				Object.keys(harness.backends).sort().join(", ") || "none",
+			]),
+	);
+	return [
+		"suites (name, backend, description):",
+		...suiteRows,
+		"",
+		"backends (id):",
+		...backendRows,
+		"",
+		"harnesses (name, default model, backends it binds):",
+		...harnessRows,
+		"",
+	].join("\n");
+}
+
 export async function main(argv: readonly string[] = process.argv.slice(2)): Promise<number> {
 	registerAllSuites();
 	registerAllBackends();
@@ -338,10 +399,7 @@ export async function main(argv: readonly string[] = process.argv.slice(2)): Pro
 	}
 
 	if (args.list && args.suites.length === 0) {
-		const lines = builtinSuites.map(
-			suite => `  ${suite.name.padEnd(18)} ${suite.backend.padEnd(12)} ${suite.description}`,
-		);
-		process.stdout.write(`suites (name, backend, description):\n${lines.join("\n")}\n`);
+		process.stdout.write(describeRegistries(listSuites(), listBackendIds(), listHarnesses()));
 		return 0;
 	}
 

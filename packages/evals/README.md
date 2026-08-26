@@ -19,7 +19,7 @@ The execution backend is a property of the suite, not a sixth axis: `deep-swe` r
 ## Run something
 
 ```sh
-bun run list                                    # suites, their backends and descriptions
+bun run list                                    # every registered suite, backend and harness
 bun run evals --list --suite terminal-bench     # the tasks of one suite
 bun run evals --suite terminal-bench --model anthropic/claude-sonnet-4-6 \
 	--tasks datasets/terminal-bench/tasks/smoke.txt --jobs 2
