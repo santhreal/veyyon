@@ -159,7 +159,7 @@ describe("the dialog render sweep", () => {
 	it("pins the label sets a surface refuses to mount", () => {
 		// The ask dialog rejects an empty question outright, which is a contract rather than a hole. The
 		// set is pinned by exact equality, so a surface that stops validating gains cases and turns red.
-		expect(rejected.sort()).toEqual(DIALOG_WIDTHS.map(width => `askDialog/empty@${width}`).sort());
+		expect([...rejected].sort()).toEqual(DIALOG_WIDTHS.map(width => `askDialog/empty@${width}`).sort());
 		expect(judged.some(entry => entry.spec.surface === "hookSelector" && entry.spec.fixture === "empty")).toBe(true);
 	});
 
