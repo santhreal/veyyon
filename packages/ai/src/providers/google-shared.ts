@@ -446,8 +446,11 @@ export function convertMessages<T extends GoogleApiType>(model: Model<T>, contex
 		} else if (msg.role === "toolResult") {
 			const supportsImages = model.input.includes("image");
 			let textResult = "";
-			for (const c of msg.content) if (c.type === "text") textResult += (textResult ? "\n" : "") + c.text;
-			const imageContent = msg.content.filter((c): c is ImageContent => c.type === "image");
+			const imageContent: ImageContent[] = [];
+			for (const c of msg.content) {
+				if (c.type === "text") textResult += (textResult ? "\n" : "") + c.text;
+				else if (c.type === "image") imageContent.push(c);
+			}
 			const omittedImages = !supportsImages && imageContent.length > 0;
 			const visibleImages = supportsImages ? imageContent : [];
 
