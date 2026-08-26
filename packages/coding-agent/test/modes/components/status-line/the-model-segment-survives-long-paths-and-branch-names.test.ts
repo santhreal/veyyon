@@ -74,6 +74,7 @@ const SHED_ORDER_WEAKEST_FIRST = ["session_name", "context_pct", "model", "mode"
  */
 const RIGHT_GROUP_CAPABLE_SEGMENT_IDS = [
 	"account",
+	"background",
 	"cache_hit",
 	"cache_read",
 	"cache_write",

@@ -70,10 +70,15 @@ export function createPersistedSubagentReviverFactory(
 		let taskDepth = 1;
 		let parentId = ref.parentId;
 		const seen = new Set<string>();
-		while (parentId && parentId !== MAIN_AGENT_ID && !seen.has(parentId)) {
+		while (parentId && !seen.has(parentId)) {
+			const parent = registry.get(parentId);
+			// A driving agent terminates the chain. Matched by role because its id
+			// names the conversation it drives, and by name because a seeded ref
+			// whose parent was never registered still carries the bare alias.
+			if (parentId === MAIN_AGENT_ID || parent?.kind === "main") break;
 			seen.add(parentId);
 			taskDepth++;
-			parentId = registry.get(parentId)?.parentId;
+			parentId = parent?.parentId;
 		}
 		return async () => {
 			// Re-peek and re-open on EVERY invocation. This closure is reusable,
