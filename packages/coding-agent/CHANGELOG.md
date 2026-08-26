@@ -22,6 +22,8 @@
 - The renderer defect corpus records diff-render reproductions, and the recording command states that a case carries colour bytes so it must be recorded in the environment its replay runs in.
 - The inline markdown renderer every dialog and selector paints a label through gains its own defect oracle registry covering line breaks, raw tabs, C0 control bytes, severed escape sequences, content-supplied escape bytes, unclosed styles, cells painted with no style, dropped words, a second render and the unstyled render of the same source, swept over forty-six sources in both caller shapes.
 - The renderer defect corpus records inline-markdown reproductions, pinning the nine defects a label carrying a line break, a tab, a control byte, an escape sequence, a code span or a pipe table reaches a dialog row with today.
+- The ask dialog and the hook selector gain their own defect oracle registry covering row width, embedded line breaks, raw tabs, severed escape sequences, label-supplied escape sequences, card width uniformity, closed card borders, a repaint, a resize and painted home-directory paths, swept over sixteen label sets on both surfaces at five widths.
+- The renderer defect corpus records dialog-render reproductions, pinning that a label carrying a line break, a tab, an escape sequence or a home-directory path reaches a painted dialog row today.
 - `prewalk.cheapModel` and `prewalk.strongModel` configure the cheap model prewalk switches into at the first edit and the strong model it starts on.
 - `/prewalk` accepts an optional model argument to arm a per-session target model override.
 - `edit.critiqueCodeMutations` prompts a bounded self-review before finalization after one turn modifies at least two distinct code files.

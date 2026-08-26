@@ -16,6 +16,7 @@
 
 export * from "./composer-defect-oracle";
 export * from "./defect-oracle-registry";
+export * from "./dialog-render-defect-oracle";
 export * from "./diff-render-defect-oracle";
 export * from "./inline-markdown-defect-oracle";
 export * from "./markdown-defect-oracle";

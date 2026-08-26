@@ -25,6 +25,8 @@ import {
 	type ComposerOracleGuarantee,
 	DEFECT_ORACLE_REGISTRIES,
 	DEFECT_ORACLE_REGISTRY_NAMES,
+	type DialogRenderOracleFailure,
+	type DialogRenderOracleGuarantee,
 	type DiffRenderOracleFailure,
 	type DiffRenderOracleGuarantee,
 	type InlineMarkdownOracleFailure,
@@ -44,6 +46,14 @@ import {
 } from "../../../src/modes/components/defect-oracles";
 import type { Theme } from "../../../src/modes/theme/theme";
 import { type RunnerOptions, type RunnerResult, runComposerOracleScenario } from "./composer-oracle-runner";
+import {
+	DIALOG_FIXTURES,
+	DIALOG_SURFACES,
+	DIALOG_WIDTHS,
+	type DialogRenderCase,
+	dialogStateFor,
+	evaluateDialogRenderCase,
+} from "./dialog-render-oracle-runner";
 import {
 	DIFF_FILE_PATHS,
 	DIFF_FIXTURES,
@@ -137,7 +147,8 @@ export interface CorpusObservation {
 		| TextPrimitiveOracleGuarantee
 		| MarkdownOracleGuarantee
 		| DiffRenderOracleGuarantee
-		| InlineMarkdownOracleGuarantee;
+		| InlineMarkdownOracleGuarantee
+		| DialogRenderOracleGuarantee;
 	kind: CorpusCaseKind;
 	message: string;
 }
@@ -231,6 +242,9 @@ export type DiffRenderCorpusCaseState = DiffRenderCase;
  */
 export type InlineMarkdownCorpusCaseState = InlineMarkdownCase;
 
+/** What a dialog-render case records: which surface, which label set, and the width it was painted at. */
+export type DialogRenderCorpusCaseState = DialogRenderCase;
+
 /** Any family's state, for the id hash and the promotion path that are shared across families. */
 export type AnyCorpusCaseState =
 	| CorpusCaseState
@@ -239,7 +253,8 @@ export type AnyCorpusCaseState =
 	| TextPrimitiveCorpusCaseState
 	| MarkdownCorpusCaseState
 	| DiffRenderCorpusCaseState
-	| InlineMarkdownCorpusCaseState;
+	| InlineMarkdownCorpusCaseState
+	| DialogRenderCorpusCaseState;
 
 interface CorpusCaseFields {
 	schemaVersion: typeof CORPUS_SCHEMA_VERSION;
@@ -301,6 +316,12 @@ export interface InlineMarkdownCorpusCase extends CorpusCaseFields {
 	oracle: InlineMarkdownOracleGuarantee;
 }
 
+export interface DialogRenderCorpusCase extends CorpusCaseFields {
+	family: "dialogRender";
+	state: DialogRenderCorpusCaseState;
+	oracle: DialogRenderOracleGuarantee;
+}
+
 /** Discriminated on `family`, so a reader that handles one cannot silently be handed the other. */
 export type CorpusCase =
 	| ComposerCorpusCase
@@ -309,7 +330,8 @@ export type CorpusCase =
 	| TextPrimitiveCorpusCase
 	| MarkdownCorpusCase
 	| DiffRenderCorpusCase
-	| InlineMarkdownCorpusCase;
+	| InlineMarkdownCorpusCase
+	| DialogRenderCorpusCase;
 
 /**
  * Which state shape each family records.
@@ -325,6 +347,7 @@ interface CorpusStateByFamily extends Record<CorpusFamily, AnyCorpusCaseState> {
 	markdown: MarkdownCorpusCaseState;
 	diffRender: DiffRenderCorpusCaseState;
 	inlineMarkdown: InlineMarkdownCorpusCaseState;
+	dialogRender: DialogRenderCorpusCaseState;
 }
 
 /** What a replay produces, in the terms every family reports: a verdict, the rows, and a teardown. */
@@ -395,6 +418,10 @@ const ORACLE_FAMILIES: { readonly [F in CorpusFamily]: OracleFamily<CorpusStateB
 	inlineMarkdown: {
 		readState: inlineMarkdownCorpusStateFrom,
 		replay: state => Promise.resolve(replayInlineMarkdownCorpusCase(state)),
+	},
+	dialogRender: {
+		readState: dialogRenderCorpusStateFrom,
+		replay: state => Promise.resolve(replayDialogRenderCorpusCase(state)),
 	},
 };
 
@@ -695,6 +722,49 @@ export function replayInlineMarkdownCorpusCase(state: InlineMarkdownCorpusCaseSt
 	return {
 		evaluation: evaluateInlineMarkdownCase(state),
 		frameState: { viewportLines: [inlineMarkdownStateFor(state).fragment] },
+		cleanUp: () => {},
+	};
+}
+
+function dialogRenderCorpusStateFrom(value: Record<string, unknown>, label: string): DialogRenderCorpusCaseState {
+	const state = value.state;
+	if (typeof state !== "object" || state === null) {
+		throw new Error(`${label}: no state object.`);
+	}
+	const fields = state as Record<string, unknown>;
+	if (typeof fields.surface !== "string" || typeof fields.fixture !== "string" || typeof fields.width !== "number") {
+		throw new Error(
+			`${label}: a dialog-render case records surface, fixture and width. Re-record the case with the sweep.`,
+		);
+	}
+	if (!DIALOG_SURFACES.some(surface => surface === fields.surface)) {
+		throw new Error(
+			`${label}: surface ${String(fields.surface)} is not one the sweep drives; the surfaces are ${DIALOG_SURFACES.join(", ")}.`,
+		);
+	}
+	if (DIALOG_FIXTURES[fields.fixture] === undefined) {
+		throw new Error(
+			`${label}: fixture ${String(fields.fixture)} is not one the runner drives. A fixture was renamed or removed; re-record the case.`,
+		);
+	}
+	if (!DIALOG_WIDTHS.includes(fields.width)) {
+		throw new Error(
+			`${label}: width ${String(fields.width)} is not one the sweep drives; the widths are ${DIALOG_WIDTHS.join(", ")}.`,
+		);
+	}
+	return state as DialogRenderCorpusCaseState;
+}
+
+/**
+ * Replay a dialog-render case by mounting the same surface with the same label set at the same width.
+ *
+ * The component reads the bound theme and the settings store, which the suite supplies; a mount holds
+ * no timer that outlives the render, so there is nothing to tear down.
+ */
+export function replayDialogRenderCorpusCase(state: DialogRenderCorpusCaseState): CorpusReplay {
+	return {
+		evaluation: evaluateDialogRenderCase(state),
+		frameState: { viewportLines: dialogStateFor(state).rows },
 		cleanUp: () => {},
 	};
 }
@@ -1087,6 +1157,22 @@ export function promoteInlineMarkdownFailureToCorpus(
 ): string {
 	return promoteCaseToCorpus(
 		"inlineMarkdown",
+		state,
+		{ oracle: failure.oracle, kind: "failed", message: failure.message },
+		observedGrid,
+		options,
+	);
+}
+
+/** Record a dialog-render failure the evaluator reported. */
+export function promoteDialogRenderFailureToCorpus(
+	state: DialogRenderCorpusCaseState,
+	failure: DialogRenderOracleFailure,
+	observedGrid: readonly string[],
+	options?: { template?: string; seed?: number; status?: CorpusCaseStatus; reason?: string },
+): string {
+	return promoteCaseToCorpus(
+		"dialogRender",
 		state,
 		{ oracle: failure.oracle, kind: "failed", message: failure.message },
 		observedGrid,

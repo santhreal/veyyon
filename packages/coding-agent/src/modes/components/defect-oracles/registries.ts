@@ -19,6 +19,7 @@
  */
 
 import { COMPOSER_ORACLE_GUARANTEES, COMPOSER_ORACLES } from "./composer-defect-oracle";
+import { DIALOG_RENDER_ORACLE_GUARANTEES, DIALOG_RENDER_ORACLES } from "./dialog-render-defect-oracle";
 import { DIFF_RENDER_ORACLE_GUARANTEES, DIFF_RENDER_ORACLES } from "./diff-render-defect-oracle";
 import { INLINE_MARKDOWN_ORACLE_GUARANTEES, INLINE_MARKDOWN_ORACLES } from "./inline-markdown-defect-oracle";
 import { MARKDOWN_ORACLE_GUARANTEES, MARKDOWN_ORACLES } from "./markdown-defect-oracle";
@@ -66,6 +67,11 @@ export const DEFECT_ORACLE_REGISTRIES = {
 		guarantees: DIFF_RENDER_ORACLE_GUARANTEES,
 		entryIds: Object.keys(DIFF_RENDER_ORACLES),
 		subject: "the rows the diff renderer returns",
+	},
+	dialogRender: {
+		guarantees: DIALOG_RENDER_ORACLE_GUARANTEES,
+		entryIds: Object.keys(DIALOG_RENDER_ORACLES),
+		subject: "the rows a dialog or selector paints around a label",
 	},
 	inlineMarkdown: {
 		guarantees: INLINE_MARKDOWN_ORACLE_GUARANTEES,
