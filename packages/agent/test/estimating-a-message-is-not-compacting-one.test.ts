@@ -2,7 +2,7 @@
  * Contract: asking what a message costs does not load the machinery that compacts one.
  *
  * WHAT WAS WRONG. `estimateTokens` lived in `compaction/compaction.ts`, which is the compaction ENGINE: the
- * summarizer, the cut-point search and the provider round trip. It reaches 395 modules to do that job, and it
+ * summarizer, the cut-point search and the provider round trip. It reaches 302 modules to do that job, and it
  * should. Estimating a message needs a tokenizer and nothing else.
  *
  * Three modules in the same directory wanted only the estimate, and the marginal cost of that one import was
