@@ -8,7 +8,7 @@
  */
 
 import type { AgentTool, ToolApprovalDecision, ToolTier } from "@veyyon/agent-core";
-import { isRecord } from "@veyyon/utils";
+import { isRecord, truncate } from "@veyyon/utils";
 import type { ApprovalMode, AutonomyLevel } from "./approval-modes";
 import { APPROVAL_MODE_VALUES, DEFAULT_APPROVAL_MODE, isKnownApprovalMode } from "./approval-modes";
 
@@ -453,8 +453,9 @@ export function requiresApproval(
 
 export function truncateForPrompt(value: string, maxChars = DEFAULT_PROMPT_TRUNCATE_CHARS): string {
 	if (value.length <= maxChars) return value;
-	const omitted = value.length - maxChars;
-	return `${value.slice(0, maxChars)}[…${omitted}ch elided…]`;
+	const chars = [...value];
+	if (chars.length <= maxChars) return value;
+	return `${truncate(value, maxChars, "")}[…${chars.length - maxChars}ch elided…]`;
 }
 
 /**

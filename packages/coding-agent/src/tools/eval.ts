@@ -1,6 +1,6 @@
 import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
 import type { ImageContent, ToolExample } from "@veyyon/ai";
-import { errorMessage, formatCount, logger, prompt } from "@veyyon/utils";
+import { errorMessage, formatCount, logger, prompt, truncate } from "@veyyon/utils";
 import { type } from "arktype";
 import { jsBackend, juliaBackend, pythonBackend, rubyBackend } from "../eval";
 import type { ExecutorBackend, ExecutorBackendResult } from "../eval/backend";
@@ -132,19 +132,19 @@ export type EvalToolResult = {
 export type EvalProxyExecutor = (params: EvalToolParams, signal?: AbortSignal) => Promise<EvalToolResult>;
 
 /** Cap per `display()` value sent back to the model. */
-const MAX_DISPLAY_TEXT_BYTES = 8000;
+const MAX_DISPLAY_TEXT_CHARS = 8000;
 
-function formatDisplayJsonForText(value: unknown): string {
+export function formatDisplayJsonForText(value: unknown): string {
 	let text: string;
 	try {
 		text = JSON.stringify(value, null, 2) ?? String(value);
 	} catch {
 		text = String(value);
 	}
-	if (text.length > MAX_DISPLAY_TEXT_BYTES) {
-		text = `${text.slice(0, MAX_DISPLAY_TEXT_BYTES)}\n[…${text.length - MAX_DISPLAY_TEXT_BYTES}ch elided…]`;
-	}
-	return text;
+	if (text.length <= MAX_DISPLAY_TEXT_CHARS) return text;
+	const chars = [...text];
+	if (chars.length <= MAX_DISPLAY_TEXT_CHARS) return text;
+	return `${truncate(text, MAX_DISPLAY_TEXT_CHARS, "")}\n[…${chars.length - MAX_DISPLAY_TEXT_CHARS}ch elided…]`;
 }
 
 /**

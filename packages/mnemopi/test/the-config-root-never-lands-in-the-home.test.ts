@@ -23,6 +23,7 @@ import { mkdirSync, readdirSync, rmdirSync } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { getFastembedCacheDir } from "@veyyon/utils";
+import { DELIBERATE_HOME_CONTROL_ROOT } from "./helpers/home-isolation";
 import { useMnemopiTestEnv } from "./setup";
 
 useMnemopiTestEnv();
@@ -61,10 +62,10 @@ describe("the mnemopi config root", () => {
 			// The directory `VEYYON_CONFIG_DIR = ".veyyon-mnemopi-profile-iso-<id>"` produced,
 			// created directly rather than through the variable so the defect is demonstrated and
 			// not reintroduced. In this process the home is the preload's temp sandbox.
-			const strayRoot = path.join(os.homedir(), ".veyyon-mnemopi-config-root-control");
+			const strayRoot = path.join(os.homedir(), DELIBERATE_HOME_CONTROL_ROOT);
 			mkdirSync(strayRoot);
 			try {
-				expect(veyyonSiblingsInHome()).toEqual([...before, ".veyyon-mnemopi-config-root-control"].sort());
+				expect(veyyonSiblingsInHome()).toEqual([...before, DELIBERATE_HOME_CONTROL_ROOT].sort());
 			} finally {
 				rmdirSync(strayRoot);
 			}

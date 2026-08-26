@@ -203,6 +203,22 @@ const LOG_CAP = 500;
  */
 const PING_PONG_CAP = 16;
 
+/**
+ * Who counts as alive for a blocking `wait`, so it ends when nobody can answer
+ * instead of burning its whole timeout.
+ *
+ * - `running`: the peer must be actively running. A bare `wait` uses this,
+ *   because nothing in that call will wake anyone.
+ * - `revivable`: the peer must still exist and not be terminated. A `send` with
+ *   `await` uses this, because its own delivery wakes an idle or parked peer,
+ *   and a parked ref is absent from the `running` roster altogether.
+ */
+export interface IrcLivenessOptions {
+	registry: AgentRegistry;
+	senderId: string;
+	mode?: "running" | "revivable";
+}
+
 export class IrcBus {
 	static #global: IrcBus | undefined;
 
@@ -640,7 +656,7 @@ export class IrcBus {
 		filter: { from?: string },
 		timeoutMs: number,
 		signal?: AbortSignal,
-		options?: { drainPending?: boolean; liveness?: { registry: AgentRegistry; senderId: string } },
+		options?: { drainPending?: boolean; liveness?: IrcLivenessOptions },
 	): Promise<IrcMessage | null> {
 		if (signal?.aborted) {
 			throw signal.reason instanceof Error ? signal.reason : new Error("IRC wait aborted");
@@ -658,9 +674,13 @@ export class IrcBus {
 		let unsubscribeLiveness: (() => void) | undefined;
 
 		const liveness = options?.liveness;
-		const livenessReason = filter.from
-			? `IRC wait aborted: agent "${filter.from}" is not running`
-			: "IRC wait aborted: no running peers remain";
+		const livenessMode = liveness?.mode ?? "running";
+		const livenessReason =
+			livenessMode === "revivable"
+				? `IRC wait aborted: agent "${filter.from}" has exited and cannot reply`
+				: filter.from
+					? `IRC wait aborted: agent "${filter.from}" is not running`
+					: "IRC wait aborted: no running peers remain";
 
 		const settle = (
 			outcome: { kind: "message"; msg: IrcMessage } | { kind: "timeout" } | { kind: "abort"; error: Error },
@@ -719,7 +739,23 @@ export class IrcBus {
 			const { registry, senderId } = liveness;
 			const hasRunningSender = (from?: string): boolean =>
 				registry.listVisibleTo(senderId).some(ref => ref.status === "running" && (!from || ref.id === from));
-			const check = filter.from ? () => hasRunningSender(filter.from) : () => hasRunningSender();
+			// `revivable` asks whether the peer could still answer, not whether it
+			// is answering now. A recipient that is idle or parked is woken by the
+			// delivery this wait accompanies, and `listVisibleTo` drops a parked ref
+			// entirely, so the `running` predicate would abort a send the moment it
+			// was armed. Only a terminated ref, or one no longer in the registry,
+			// can never reply.
+			const canStillReply = (from: string): boolean => {
+				const ref = registry.get(from);
+				return ref !== undefined && ref.status !== "aborted" && registry.canAddress(senderId, from);
+			};
+			const target = filter.from;
+			const check =
+				livenessMode === "revivable" && target
+					? () => canStillReply(target)
+					: target
+						? () => hasRunningSender(target)
+						: () => hasRunningSender();
 			unsubscribeLiveness = registry.onChange(() => {
 				if (!check()) {
 					settle({ kind: "abort", error: new Error(livenessReason) });

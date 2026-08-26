@@ -1381,26 +1381,32 @@ function initLoaderContext() {
  * @type {Record<string, unknown> | undefined}
  */
 let loadedNativeBindings;
-/** Memoized load failure — re-throwing the same error without re-running the loader. */
-let loadNativeError;
 
 /**
- * Load the native addon once (memoized). If the load fails, the failure is
- * memoized too: subsequent calls re-throw the cached error instead of
- * re-running the loader (and re-printing every candidate warning) on every
- * native access. The first call that succeeds caches the bindings; the first
- * call that fails caches the error. Either way, the loader runs at most once.
+ * Memoized load failure.
+ *
+ * `loadNative()` reports every candidate it tried, and a failed pipeline left
+ * `loadedNativeBindings` unset, so the next native call re-ran the whole
+ * pipeline and re-printed that report. A run that reached ~100 native calls
+ * printed ~100 copies of it. One failure is final for the life of the process:
+ * variant detection, the addon files and the sentinel do not change while it
+ * runs.
+ * @type {unknown}
  */
+let nativeLoadFailure;
+
+/** Load the native addon once (memoized), or throw loudly if it cannot load. */
 export function native() {
-	if (loadedNativeBindings !== undefined) return loadedNativeBindings;
-	if (loadNativeError !== undefined) throw loadNativeError;
-	try {
-		loadedNativeBindings = loadNative();
-		return loadedNativeBindings;
-	} catch (error) {
-		loadNativeError = error;
-		throw error;
+	if (nativeLoadFailure !== undefined) throw nativeLoadFailure;
+	if (loadedNativeBindings === undefined) {
+		try {
+			loadedNativeBindings = loadNative();
+		} catch (error) {
+			nativeLoadFailure = error ?? new Error("The native addon failed to load.");
+			throw nativeLoadFailure;
+		}
 	}
+	return loadedNativeBindings;
 }
 
 /**

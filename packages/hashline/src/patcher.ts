@@ -23,6 +23,7 @@
  * filesystem configuration.
  */
 import * as path from "node:path";
+import { truncate } from "@veyyon/utils/format";
 import { applyEdits, collectRewrittenAnchorLines } from "./apply";
 import { hasAnchorScopedEdit, hasBlockEdit, resolveBlockEdits } from "./block";
 import { computeFileHash, formatHashlineHeader } from "./format";
@@ -597,11 +598,14 @@ export class Patcher {
 			// message; skip them here so they never join the revealed set.
 			if (line < 1 || line > sourceLines.length) continue;
 			const source = sourceLines[line - 1] ?? "";
-			if (source.length > SEEN_LINE_REVEAL_MAX_COLUMNS) {
-				revealed.push({ line, text: `${source.slice(0, SEEN_LINE_REVEAL_MAX_COLUMNS)}…` });
-				columnTruncated = true;
-			} else {
+			// Cut by code point so a wide line never reveals a lone surrogate.
+			const clipped =
+				source.length > SEEN_LINE_REVEAL_MAX_COLUMNS ? truncate(source, SEEN_LINE_REVEAL_MAX_COLUMNS, "") : source;
+			if (clipped === source) {
 				revealed.push({ line, text: source });
+			} else {
+				revealed.push({ line, text: `${clipped}…` });
+				columnTruncated = true;
 			}
 		}
 		const overCap = unseen.length > revealed.length;

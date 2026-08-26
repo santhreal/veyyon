@@ -95,20 +95,29 @@ export interface KagiErrorResponse {
 
 export class KagiApiError extends Error {
 	readonly statusCode?: number;
+	/**
+	 * The upstream error body, kept so the caller can classify a quota or credit message that Kagi
+	 * reports in prose under a status code that carries no such meaning on its own. Capped because a
+	 * thrown error may be logged, and the classifier only reads a short window.
+	 */
+	readonly body: string;
 
-	constructor(message: string, statusCode?: number) {
+	constructor(message: string, statusCode?: number, body?: string) {
 		super(message);
 		this.name = "KagiApiError";
 		this.statusCode = statusCode;
+		this.body = (body ?? "").slice(0, KAGI_ERROR_BODY_LIMIT);
 	}
 }
 
-function createKagiApiError(statusCode: number): KagiApiError {
-	return new KagiApiError(`Kagi API error (${statusCode})`, statusCode);
+const KAGI_ERROR_BODY_LIMIT = 8192;
+
+function createKagiApiError(statusCode: number, body?: string): KagiApiError {
+	return new KagiApiError(`Kagi API error (${statusCode})`, statusCode, body);
 }
 
-function parseKagiErrorResponse(statusCode: number, _responseText: string): KagiApiError {
-	return createKagiApiError(statusCode);
+function parseKagiErrorResponse(statusCode: number, responseText: string): KagiApiError {
+	return createKagiApiError(statusCode, responseText);
 }
 
 // ---------------------------------------------------------------------------
