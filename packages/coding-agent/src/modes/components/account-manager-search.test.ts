@@ -130,6 +130,25 @@ describe("the provider filter", () => {
 		expect(harness.text()).not.toContain("Search:");
 	});
 
+	/**
+	 * The card opens with the body pane focused, and the filter acts on the sidebar. Entering from
+	 * the body has to move focus, or the first arrow after `ctrl+s` walks the account rows of the
+	 * provider the query is about to filter away.
+	 */
+	it("takes focus to the sidebar when it is entered from the body pane", () => {
+		const harness = openCard();
+		harness.card.render(80);
+		// The sidebar draws its cursor only while it holds focus, so its absence is the body pane.
+		expect(harness.text()).not.toContain("› Anthropic");
+
+		harness.card.handleInput(CTRL_S);
+		expect(harness.text()).toContain("› Anthropic");
+
+		harness.card.handleInput("\x1b[B");
+
+		expect(harness.text()).toContain("› Google");
+	});
+
 	it("filters the sidebar to matching providers once it is on", () => {
 		const harness = openCard();
 		harness.card.handleInput(CTRL_S);
