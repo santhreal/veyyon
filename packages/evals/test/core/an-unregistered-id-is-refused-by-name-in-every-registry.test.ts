@@ -91,6 +91,7 @@ function createMockHarness(name: string): HarnessAdapter {
 		name,
 		displayName: `Harness ${name}`,
 		description: `Test harness for ${name}`,
+		flags: [],
 		defaultModel: "anthropic/claude-3-7-sonnet",
 		capabilities: {
 			armAttachments: true,

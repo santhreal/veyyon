@@ -44,7 +44,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { generateDictFromRepo } from "argot";
-import { parseFlags } from "../../core/flags";
+import { type FlagGrammar, flagCount, parseFlags } from "../../core/flags";
 import { dictsDir, evalsPackageDir, resolvePackagePath, taskCorpusDir } from "../../paths";
 import { OBSERVED_TYPEABLE_EMISSION_RATE, typeableHandleMass } from "./aggregate";
 
@@ -261,9 +261,15 @@ export function renderDictReport(rows: readonly DictRow[], generatedAt: string):
 	return lines.join("\n");
 }
 
+/** Flags the dictionary generator accepts. */
+export const GEN_DICTS_FLAGS = {
+	valued: { jobs: true, tasks: true },
+	valueless: { all: true },
+} as const satisfies FlagGrammar;
+
 async function main(): Promise<void> {
-	const args = parseFlags(process.argv.slice(2));
-	const jobs = Number(args.jobs ?? "8");
+	const args = parseFlags(process.argv.slice(2), GEN_DICTS_FLAGS);
+	const jobs = flagCount(args, "jobs") ?? 8;
 	let tasks: string[];
 	if (args.all) {
 		tasks = fs

@@ -20,6 +20,7 @@ export class FactoryAdapter implements HarnessAdapter {
 	readonly name = "factory";
 	readonly displayName = "Factory";
 	readonly description = "Factory CLI (droid) execution and compaction replay.";
+	readonly flags: readonly string[] = ["factory-binary", "factory-auth", "factory-settings"];
 	readonly defaultModel = "google-antigravity/gemini-3.6-flash";
 
 	readonly capabilities: HarnessCapabilities = {

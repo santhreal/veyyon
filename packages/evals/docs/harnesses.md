@@ -19,6 +19,7 @@ To add one, follow [`deep-swe/ADAPTER_AUTHORING.md`](deep-swe/ADAPTER_AUTHORING.
 | `defaultModel` | Model used when a run names none; `null` requires `--model` |
 | `capabilities` | `replay`, `compaction`, `armAttachments`, `promptOverrides` |
 | `backends` | The backends it runs on, and the binding each needs |
+| `flags` | The invocation flags the adapter reads (`omp-binary`, `factory-auth`, …) |
 | `preflight` | Rejects before a run when a binary or credential is absent |
 | `stageAssets` | Writes binaries, configs and credentials the trial reads |
 
@@ -57,6 +58,12 @@ for a CLI that reports all bad ids at once.
 
 The registry is process-wide. A test that resolves a harness calls `registerBuiltinHarnesses()`
 first; it is idempotent, and no test clears the shared registry.
+
+`listHarnessFlags()` is the union of the registered adapters' `flags`. An entry point adds it to its
+flag grammar, so `--omp-binary` is accepted where the omp adapter is registered and `--ompbinary`
+refuses the invocation instead of leaving the adapter on its PATH default. A flag an adapter reads
+without declaring, and a declared flag it never reads, both fail
+`test/harnesses/an-adapter-declares-the-flags-it-reads-and-the-runner-accepts-them.test.ts`.
 
 ## Cross-harness comparison
 

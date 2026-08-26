@@ -19,6 +19,7 @@ export class HermesAdapter implements HarnessAdapter {
 	readonly name = "hermes";
 	readonly displayName = "Hermes";
 	readonly description = "Hermes agent native replay and compaction execution.";
+	readonly flags: readonly string[] = ["hermes-auth"];
 	readonly defaultModel = "google-antigravity/gemini-3.6-flash";
 
 	readonly capabilities: HarnessCapabilities = {

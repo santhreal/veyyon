@@ -19,31 +19,55 @@
  *
  * Values are strings so a caller reads a flag the same way whether it arrived as
  * `--jobs=8` or `--jobs 8`; `flagNumber` is the one place a numeric flag is rejected.
+ *
+ * A grammar declares every key it accepts, so a misspelled flag refuses the invocation
+ * instead of running with the default the caller was trying to change, and a stray argument
+ * that names no flag refuses rather than being read by nothing.
  */
 
+/** A flag the grammar does not declare, or a stray argument that names no flag. */
+export class UnknownFlagError extends Error {
+	constructor(what: string, accepted: readonly string[]) {
+		super(`${what}. Accepted flags: ${accepted.map(key => `--${key}`).join(", ")}`);
+		this.name = "UnknownFlagError";
+	}
+}
+
 export interface FlagGrammar {
+	/** Keys that take a value: `{ model: true }`. */
+	valued: Readonly<Record<string, true>>;
 	/** Keys that take no value: `{ "dry-run": true }`. */
 	valueless?: Readonly<Record<string, true>>;
 	/** Alternate spellings mapped onto a key, including short forms: `{ h: "help" }`. */
 	aliases?: Readonly<Record<string, string>>;
+	/** Keys accepted beyond `valued`, contributed by a plugin the entry point resolves. */
+	extraValued?: readonly string[];
 }
 
 /** Parse `argv` (already stripped of the runtime and script path) into flag values. */
-export function parseFlags(argv: string[], grammar: FlagGrammar = {}): Record<string, string> {
-	const { valueless = {}, aliases = {} } = grammar;
+export function parseFlags(argv: string[], grammar: FlagGrammar): Record<string, string> {
+	const { valued, valueless = {}, aliases = {}, extraValued = [] } = grammar;
 	const canonical = (name: string): string => (Object.hasOwn(aliases, name) ? aliases[name] : name);
+	const accepted = [...new Set([...Object.keys(valued), ...extraValued, ...Object.keys(valueless)])].sort();
+	const known = new Set(accepted);
 	const out: Record<string, string> = {};
 	for (let i = 0; i < argv.length; i++) {
 		const arg = argv[i];
 		if (arg === undefined) continue;
 		const dashed = arg.startsWith("--") ? arg.slice(2) : arg.startsWith("-") ? arg.slice(1) : null;
-		if (dashed === null || dashed === "") continue;
+		if (dashed === null) {
+			throw new UnknownFlagError(`Unexpected argument "${arg}": every input is named by a flag`, accepted);
+		}
+		if (dashed === "") continue;
 		const eq = dashed.indexOf("=");
 		if (eq !== -1) {
-			out[canonical(dashed.slice(0, eq))] = dashed.slice(eq + 1);
+			const key = canonical(dashed.slice(0, eq));
+			if (!known.has(key)) throw new UnknownFlagError(`Unknown flag "--${key}"`, accepted);
+			out[key] = dashed.slice(eq + 1);
 			continue;
 		}
 		const key = canonical(dashed);
+		if (!known.has(key)) throw new UnknownFlagError(`Unknown flag "--${key}"`, accepted);
 		if (Object.hasOwn(valueless, key)) {
 			out[key] = "";
 			continue;
@@ -66,6 +90,30 @@ export function flagNumber(flags: Record<string, string>, key: string): number |
 	const value = Number(raw);
 	if (!Number.isFinite(value)) throw new Error(`--${key} expects a number, got ${JSON.stringify(raw)}`);
 	return value;
+}
+
+/** Read a flag that counts something: an integer >= 1, or a refusal by name. */
+export function flagCount(flags: Record<string, string>, key: string): number | undefined {
+	const value = flagNumber(flags, key);
+	if (value === undefined) return undefined;
+	if (!Number.isInteger(value) || value < 1) {
+		throw new Error(`--${key} expects an integer >= 1, got ${JSON.stringify(flags[key])}`);
+	}
+	return value;
+}
+
+/** Read a flag pinned to a set of spellings, or a refusal naming the ones it accepts. */
+export function flagChoice<T extends string>(
+	flags: Record<string, string>,
+	key: string,
+	choices: readonly T[],
+): T | undefined {
+	const raw = flags[key];
+	if (raw === undefined || raw === "" || raw === "true") return undefined;
+	if (!(choices as readonly string[]).includes(raw)) {
+		throw new Error(`--${key} expects one of ${choices.join(", ")}, got ${JSON.stringify(raw)}`);
+	}
+	return raw as T;
 }
 
 /** Read a flag that the invocation cannot proceed without. */
