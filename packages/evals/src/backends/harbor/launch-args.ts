@@ -148,6 +148,12 @@ export interface LaunchRequest {
 	attempts?: number;
 	agent?: string;
 	jobName?: string;
+	/**
+	 * Experiment this run joins, and its arm label inside that experiment. Recorded on the run
+	 * so a reader never has to parse an id back out of the job name.
+	 */
+	experiment?: string;
+	arm?: string;
 	webSearch?: boolean;
 	/** Harbor container backend. Defaults to apple-container whenever the Apple `container` CLI is installed; docker is an explicit opt-in. */
 	environment?: "docker" | "apple-container";
@@ -157,7 +163,7 @@ export interface LaunchRequest {
 	role?: RunRole;
 	/** One-line description of what this arm tests. */
 	note?: string;
-	/** Experiment goal; upserted for the run's experiment (job-name prefix). */
+	/** Experiment goal; upserted for the run's experiment. */
 	goal?: string;
 	/** Use prebuilt dist/vey-linux-* binaries instead of the default source mount. */
 	prebuiltBinaries?: boolean;

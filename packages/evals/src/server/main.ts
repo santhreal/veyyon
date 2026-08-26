@@ -27,7 +27,13 @@ import * as path from "node:path";
 import type { Server, Subprocess } from "bun";
 import { harborRunnerArgs, type LaunchRequest } from "../backends/harbor/launch-args";
 import { BENCHMARK_DEFINITIONS } from "../manager/benchmarks";
-import { buildExperiments, experimentDetail, experimentOf } from "../manager/experiments";
+import {
+	buildExperiments,
+	experimentDetail,
+	experimentOf,
+	knownExperimentIds,
+	knownExperimentIdsWith,
+} from "../manager/experiments";
 import { assertSafeJobName, type LaunchRecord, type RunRole, type RunRow, RunStore } from "../manager/store";
 
 /** PUT /api/experiments/:id body — goal and per-run role/note/label metadata. */
@@ -121,7 +127,8 @@ function pidAlive(pid: number | null): boolean {
 export function resolveArmLaunch(store: RunStore, experimentId: string, req: AddArmRequest): LaunchRequest {
 	if (!req.arm || /[^\w.-]/.test(req.arm)) throw new Error("arm must be a non-empty [A-Za-z0-9_.-] token");
 	if (!req.model) throw new Error("model is required");
-	const siblings = store.listRuns().filter(r => experimentOf(r.jobName) === experimentId);
+	const registeredIds = knownExperimentIdsWith(store, experimentId);
+	const siblings = store.listRuns().filter(r => experimentOf(r, registeredIds) === experimentId);
 	if (siblings.length === 0) throw new Error(`experiment '${experimentId}' has no runs to inherit from`);
 	// Template = the sibling whose recorded `include` list is the longest (the
 	// fullest expression of the experiment's sample — partial re-run arms
@@ -177,6 +184,8 @@ export function resolveArmLaunch(store: RunStore, experimentId: string, req: Add
 		webSearch: cfg.webSearch === true || undefined,
 		prebuiltBinaries: cfg.prebuiltBinaries === true || undefined,
 		jobName,
+		experiment: experimentId,
+		arm: req.arm,
 		prewalk: req.prewalk,
 		role: req.role,
 		note: req.note,
@@ -332,7 +341,10 @@ export class ManagerServer {
 				const status = url.searchParams.get("status");
 				const benchmark = url.searchParams.get("benchmark");
 				let runs = this.#store.listRuns();
-				if (experiment) runs = runs.filter(r => experimentOf(r.jobName) === experiment);
+				if (experiment) {
+					const registeredIds = knownExperimentIdsWith(this.#store, experiment);
+					runs = runs.filter(r => experimentOf(r, registeredIds) === experiment);
+				}
 				if (status) runs = runs.filter(r => r.status === status);
 				if (benchmark) runs = runs.filter(r => r.benchmark === benchmark);
 				return Response.json(runs);
@@ -460,6 +472,8 @@ export class ManagerServer {
 			benchmark,
 			jobName,
 			dataset,
+			experiment: request.experiment,
+			arm: request.arm,
 			agent: request.agent ?? "veyyon",
 			models: [request.model],
 			prewalk: request.prewalk,
@@ -467,7 +481,12 @@ export class ManagerServer {
 			role: request.role,
 			note: request.note,
 		});
-		if (request.goal) this.#store.setExperimentGoal(experimentOf(jobName), request.goal);
+		if (request.goal) {
+			this.#store.setExperimentGoal(
+				experimentOf({ jobName, ...request }, knownExperimentIds(this.#store)),
+				request.goal,
+			);
+		}
 		return { jobName, pid };
 	}
 
@@ -507,6 +526,8 @@ export class ManagerServer {
 			benchmark: "harbor",
 			jobName,
 			dataset: run.dataset,
+			experiment: run.experiment,
+			arm: run.arm,
 			agent: run.agent,
 			models: run.models ? run.models.split(",") : [],
 			prewalk,
@@ -561,8 +582,8 @@ export class ManagerServer {
 	/** Register an experiment id (with an optional goal) so it is browsable before its first arm. */
 	createExperiment(req: CreateExperimentRequest): { id: string; goal: string } {
 		const id = req.id?.trim() ?? "";
-		// Dashes are structurally impossible: `experimentOf` groups job names by
-		// the token before the first dash, so a dashed id could never own a run.
+		// The id becomes the prefix of every arm's job name, so it stays a job-name-safe token.
+		// Grouping itself reads the recorded coordinates, not this spelling.
 		if (!/^[A-Za-z0-9_.]+$/.test(id)) {
 			throw new Error("experiment id must be a non-empty token of [A-Za-z0-9_.] (runs group as `<id>-<arm>`)");
 		}
@@ -576,7 +597,8 @@ export class ManagerServer {
 		if (update.goal !== undefined) this.#store.setExperimentGoal(id, update.goal);
 		const updatedRuns: string[] = [];
 		for (const jobName in update.runs) {
-			if (experimentOf(jobName) !== id) continue;
+			const run = this.#store.getRun(jobName);
+			if (!run || experimentOf(run, knownExperimentIdsWith(this.#store, id)) !== id) continue;
 			if (this.#store.setRunMeta(jobName, update.runs[jobName])) updatedRuns.push(jobName);
 		}
 		this.#tick();
@@ -590,7 +612,7 @@ export class ManagerServer {
 	 * id names neither runs nor a registered experiment.
 	 */
 	deleteExperiment(id: string): { id: string; deletedRuns: string[] } | null {
-		const runs = this.#store.listRuns().filter(r => experimentOf(r.jobName) === id);
+		const runs = this.#store.listRuns().filter(r => experimentOf(r, knownExperimentIdsWith(this.#store, id)) === id);
 		if (runs.length === 0 && !this.#store.getExperimentMeta(id)) return null;
 		const live = runs.filter(r => this.#runLive(r));
 		if (live.length > 0) {

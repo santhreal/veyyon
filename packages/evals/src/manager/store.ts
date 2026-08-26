@@ -10,7 +10,7 @@
 import { Database } from "bun:sqlite";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { atomicWriteFileSync, isProcessAlive } from "@veyyon/utils";
+import { atomicWriteFileSync, isProcessAlive, logger } from "@veyyon/utils";
 import { readJobResult } from "../backends/harbor/runner";
 import type { BackendId } from "../core/types";
 import { readBenchmarkSnapshot } from "./benchmarks";
@@ -47,6 +47,14 @@ export interface RunRow {
 	backend: BackendId;
 	benchmark: BenchmarkKind;
 	jobName: string;
+	/**
+	 * Experiment this run belongs to, as recorded at launch. Empty when the run predates
+	 * recorded coordinates; a reader then treats the job name as its own single-arm experiment
+	 * rather than parsing an id out of it.
+	 */
+	experiment: string;
+	/** Arm label inside the experiment, as recorded at launch. Empty for an uncoordinated run. */
+	arm: string;
 	dataset: string;
 	agent: string;
 	models: string;
@@ -71,10 +79,12 @@ export interface RunRow {
 	fail: number;
 	error: number;
 	running: number;
-	costUsd: number;
+	/** `null` when no trial in the run reported a cost: unmeasured, not free. */
+	costUsd: number | null;
 	tokIn: number;
 	tokOut: number;
-	tokCache: number;
+	/** `null` when no trial reported a cache-token count. */
+	tokCache: number | null;
 	/** Benchmark-native aggregate score, when the benchmark exposes one. */
 	score: number | null;
 	/** Values keyed by the adapter's metric definitions. */
@@ -87,7 +97,8 @@ export interface TraceRow {
 	task: string;
 	status: string;
 	reward: number | null;
-	costUsd: number;
+	/** `null` when the trial reported no cost. */
+	costUsd: number | null;
 	durationMs: number;
 	detail: string;
 	updatedAt: number;
@@ -116,6 +127,9 @@ export interface LaunchRecord {
 	role?: RunRole;
 	note?: string;
 	config?: Record<string, unknown>;
+	/** Experiment id and arm label; recorded rather than parsed back out of the job name. */
+	experiment?: string;
+	arm?: string;
 }
 
 export function inferSuiteAndBackend(record: {
@@ -164,14 +178,22 @@ export function inferSuiteAndBackend(record: {
 	return { suite, backend, benchmark };
 }
 
-const SCHEMA = `
-CREATE TABLE IF NOT EXISTS runs (
+/**
+ * Column bodies of every table, keyed by table name.
+ *
+ * Split per table because relaxing a NOT NULL constraint in SQLite means rebuilding the
+ * table from its declaration; a single concatenated schema string cannot be reused for that.
+ */
+const TABLE_BODIES: Readonly<Record<string, string>> = {
+	runs: `
 	job_name TEXT PRIMARY KEY,
 	schema_version INTEGER NOT NULL DEFAULT 2,
 	suite TEXT NOT NULL DEFAULT '',
 	backend TEXT NOT NULL DEFAULT 'harbor',
 	benchmark TEXT NOT NULL DEFAULT 'harbor',
 	dataset TEXT NOT NULL DEFAULT '',
+	experiment TEXT NOT NULL DEFAULT '',
+	arm TEXT NOT NULL DEFAULT '',
 	agent TEXT NOT NULL DEFAULT 'veyyon',
 	models TEXT NOT NULL DEFAULT '',
 	prewalk TEXT,
@@ -190,33 +212,79 @@ CREATE TABLE IF NOT EXISTS runs (
 	fail INTEGER NOT NULL DEFAULT 0,
 	error INTEGER NOT NULL DEFAULT 0,
 	running INTEGER NOT NULL DEFAULT 0,
-	cost_usd REAL NOT NULL DEFAULT 0,
+	cost_usd REAL,
 	tok_in INTEGER NOT NULL DEFAULT 0,
 	tok_out INTEGER NOT NULL DEFAULT 0,
 	score REAL,
 	metrics_json TEXT NOT NULL DEFAULT '{}',
-	tok_cache INTEGER NOT NULL DEFAULT 0
-);
-CREATE TABLE IF NOT EXISTS trials (
+	tok_cache INTEGER
+`,
+	trials: `
 	job_name TEXT NOT NULL,
 	name TEXT NOT NULL,
 	task TEXT NOT NULL,
 	status TEXT NOT NULL,
 	reward REAL,
-	cost_usd REAL NOT NULL DEFAULT 0,
+	cost_usd REAL,
 	duration_ms INTEGER NOT NULL DEFAULT 0,
 	detail TEXT NOT NULL DEFAULT '',
 	trace_path TEXT,
 	updated_at INTEGER NOT NULL,
 	PRIMARY KEY (job_name, name)
-);
-CREATE INDEX IF NOT EXISTS idx_trials_job ON trials(job_name);
-CREATE TABLE IF NOT EXISTS experiments (
+`,
+	experiments: `
 	id TEXT PRIMARY KEY,
 	goal TEXT NOT NULL DEFAULT '',
 	updated_at INTEGER NOT NULL
-);
-`;
+`,
+};
+
+/** Indexes recreated after any table rebuild drops them along with their table. */
+const INDEXES = "CREATE INDEX IF NOT EXISTS idx_trials_job ON trials(job_name);";
+
+const SCHEMA = `${Object.entries(TABLE_BODIES)
+	.map(([table, body]) => `CREATE TABLE IF NOT EXISTS ${table} (${body});`)
+	.join("\n")}\n${INDEXES}`;
+
+/** Spend columns that must accept NULL: an unmeasured amount is not zero. */
+const NULLABLE_SPEND_COLUMNS: Readonly<Record<string, readonly string[]>> = {
+	runs: ["cost_usd", "tok_cache"],
+	trials: ["cost_usd"],
+};
+
+/**
+ * Rebuilds a table whose spend columns still carry the `NOT NULL DEFAULT 0` declaration.
+ *
+ * The first schema forced an unmeasured cost to be stored as 0, which reads back as a
+ * genuinely free trial. SQLite cannot drop NOT NULL in place, so the table is recreated from
+ * `TABLE_BODIES` and its rows copied across the columns both declarations share. Existing
+ * values transfer verbatim: a stored 0 stays 0, because nothing in an old row distinguishes
+ * an unmeasured cost from a measured zero, and inventing NULLs would rewrite recorded history.
+ */
+function relaxSpendColumns(db: Database, table: string): void {
+	const columns = db.query(`PRAGMA table_info(${table})`).all() as Array<{ name: string; notnull: number }>;
+	const nullable = NULLABLE_SPEND_COLUMNS[table];
+	const constrained = columns.filter(c => nullable.includes(c.name) && c.notnull === 1);
+	if (constrained.length === 0) return;
+
+	const body = TABLE_BODIES[table];
+	const declared = new Set(
+		body
+			.split("\n")
+			.map(line => line.trim().split(/\s+/)[0])
+			.filter(name => name.length > 0 && name !== "PRIMARY"),
+	);
+	const shared = columns.map(c => c.name).filter(name => declared.has(name));
+	const list = shared.join(", ");
+
+	db.transaction(() => {
+		db.run(`CREATE TABLE ${table}_migrated (${body})`);
+		db.run(`INSERT INTO ${table}_migrated (${list}) SELECT ${list} FROM ${table}`);
+		db.run(`DROP TABLE ${table}`);
+		db.run(`ALTER TABLE ${table}_migrated RENAME TO ${table}`);
+	})();
+	db.run(INDEXES);
+}
 
 /** Directory names inside the jobs root that are not Harbor job dirs. */
 const NON_JOB_DIRS = new Set(["_bench", "_manager"]);
@@ -291,6 +359,10 @@ export class RunStore {
 		if (!runColumns.has("metrics_json")) {
 			this.#db.run("ALTER TABLE runs ADD COLUMN metrics_json TEXT NOT NULL DEFAULT '{}'");
 		}
+		if (!runColumns.has("experiment")) {
+			this.#db.run("ALTER TABLE runs ADD COLUMN experiment TEXT NOT NULL DEFAULT ''");
+		}
+		if (!runColumns.has("arm")) this.#db.run("ALTER TABLE runs ADD COLUMN arm TEXT NOT NULL DEFAULT ''");
 		if (runColumns.has("slide") && !runColumns.has("prewalk")) {
 			this.#db.run("ALTER TABLE runs RENAME COLUMN slide TO prewalk");
 		}
@@ -301,6 +373,10 @@ export class RunStore {
 			(this.#db.query("PRAGMA table_info(trials)").all() as Array<{ name: string }>).map(c => c.name),
 		);
 		if (!traceColumns.has("trace_path")) this.#db.run("ALTER TABLE trials ADD COLUMN trace_path TEXT");
+		// Last, because it rebuilds from the current declaration and every ADD COLUMN
+		// above must already have run.
+		relaxSpendColumns(this.#db, "runs");
+		relaxSpendColumns(this.#db, "trials");
 	}
 
 	close(): void {
@@ -316,13 +392,15 @@ export class RunStore {
 			this.#db
 				.query(
 					`INSERT INTO runs
-					 (job_name, schema_version, suite, backend, benchmark, dataset, agent, models, prewalk, role, note, config_json, status, pid, created_at)
-					 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, ?)
+					 (job_name, schema_version, suite, backend, benchmark, dataset, experiment, arm, agent, models, prewalk, role, note, config_json, status, pid, created_at)
+					 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, ?)
 					 ON CONFLICT(job_name) DO UPDATE SET
 						schema_version = excluded.schema_version,
 						suite = excluded.suite,
 						backend = excluded.backend,
 						benchmark = excluded.benchmark,
+						experiment = CASE WHEN excluded.experiment != '' THEN excluded.experiment ELSE runs.experiment END,
+						arm = CASE WHEN excluded.arm != '' THEN excluded.arm ELSE runs.arm END,
 						pid = excluded.pid, status = 'running',
 						config_json = excluded.config_json,
 						role = CASE WHEN excluded.role != '' THEN excluded.role ELSE runs.role END,
@@ -335,6 +413,8 @@ export class RunStore {
 					backend,
 					benchmark,
 					launch.dataset,
+					launch.experiment ?? "",
+					launch.arm ?? "",
 					launch.agent,
 					launch.models.join(","),
 					launch.prewalk ? JSON.stringify(launch.prewalk) : null,
@@ -597,6 +677,13 @@ export class RunStore {
 		return r ? rowToRun(r) : null;
 	}
 
+	/**
+	 * Every run whose record this build can still read.
+	 *
+	 * A row stamped by an older schema is omitted and named in the log. `getRun` refuses the
+	 * same row with `StaleSchemaError` instead: a listing that aborts on one obsolete row shows
+	 * nothing, while a request for one run by name must not answer "no such run".
+	 */
 	listRuns(): RunRow[] {
 		const rows = this.#db.query("SELECT * FROM runs ORDER BY created_at DESC").all() as Array<
 			Record<string, unknown>
@@ -606,7 +693,13 @@ export class RunStore {
 			const version = typeof r.schema_version === "number" ? r.schema_version : 1;
 			if (version >= CURRENT_SCHEMA_VERSION) {
 				out.push(rowToRun(r));
+				continue;
 			}
+			logger.warn("Omitting run recorded by an obsolete schema", {
+				jobName: String(r.job_name),
+				schemaVersion: version,
+				expected: CURRENT_SCHEMA_VERSION,
+			});
 		}
 		return out;
 	}
@@ -621,13 +714,18 @@ export class RunStore {
 			task: String(r.task),
 			status: String(r.status),
 			reward: r.reward === null ? null : Number(r.reward),
-			costUsd: Number(r.cost_usd),
+			costUsd: optionalNumber(r.cost_usd),
 			durationMs: Number(r.duration_ms),
 			detail: String(r.detail),
 			updatedAt: Number(r.updated_at),
 			tracePath: r.trace_path === null ? null : String(r.trace_path),
 		}));
 	}
+}
+
+/** Reads a column that may hold NULL, keeping the absence rather than reading it as zero. */
+function optionalNumber(value: unknown): number | null {
+	return value === null || value === undefined ? null : Number(value);
 }
 
 function rowToRun(r: Record<string, unknown>): RunRow {
@@ -647,6 +745,8 @@ function rowToRun(r: Record<string, unknown>): RunRow {
 		backend,
 		benchmark,
 		jobName: String(r.job_name),
+		experiment: String(r.experiment ?? ""),
+		arm: String(r.arm ?? ""),
 		dataset: String(r.dataset),
 		agent: String(r.agent),
 		models: String(r.models),
@@ -666,10 +766,10 @@ function rowToRun(r: Record<string, unknown>): RunRow {
 		fail: Number(r.fail),
 		error: Number(r.error),
 		running: Number(r.running),
-		costUsd: Number(r.cost_usd),
+		costUsd: optionalNumber(r.cost_usd),
 		tokIn: Number(r.tok_in),
 		tokOut: Number(r.tok_out),
-		tokCache: Number(r.tok_cache),
+		tokCache: optionalNumber(r.tok_cache),
 		score: r.score === null ? null : Number(r.score),
 		metrics: JSON.parse(String(r.metrics_json ?? "{}")),
 	};

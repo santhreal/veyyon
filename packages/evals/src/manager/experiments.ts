@@ -3,6 +3,8 @@
  * `sb2-gemini` → experiment `sb2`) so comparable arms can be charted together,
  * with linear projections for arms still in flight.
  */
+import { isRecord } from "@veyyon/utils";
+import { sumOfMeasured } from "../core/scoring";
 import type { RunRow, RunStore, TraceRow } from "./store";
 
 /** Linear extrapolation of a running arm to its full task count. */
@@ -10,8 +12,8 @@ export interface ArmProjection {
 	/** Expected finish timestamp (ms epoch), from observed completion rate. */
 	etaMs: number | null;
 	passPct: number;
-	costPerTask: number;
-	totalCostUsd: number;
+	costPerTask: number | null;
+	totalCostUsd: number | null;
 	meanTrialMs: number;
 }
 
@@ -40,7 +42,7 @@ export interface ExperimentSummary {
 	pass: number;
 	fail: number;
 	error: number;
-	costUsd: number;
+	costUsd: number | null;
 	createdAt: number;
 	updatedAt: number;
 }
@@ -55,16 +57,128 @@ export interface ExperimentDetail {
 	matrix: Record<string, Record<string, { status: string; reward: number | null }>>;
 }
 
-/** Experiment id = first `-`-delimited token of the job name. */
-export function experimentOf(jobName: string): string {
-	const dash = jobName.indexOf("-");
-	return dash > 0 ? jobName.slice(0, dash) : jobName;
+export interface RunCoordinates {
+	experiment: string;
+	arm: string;
 }
 
-/** Arm label = job name minus the experiment prefix (falls back to the full name). */
-export function armOf(jobName: string): string {
-	const exp = experimentOf(jobName);
-	return jobName.length > exp.length ? jobName.slice(exp.length + 1) : jobName;
+/** What a run carries that can identify its experiment and arm. `RunRow` satisfies it. */
+export interface RunCoordinateSource {
+	readonly jobName?: string;
+	readonly experiment?: string;
+	readonly arm?: string;
+	readonly config?: Record<string, unknown>;
+}
+
+/** A trimmed string, or "" when the value is not a string. */
+function trimmedString(value: unknown): string {
+	return typeof value === "string" ? value.trim() : "";
+}
+
+/**
+ * Split `<id>-<arm>` when `id` is an experiment somebody registered.
+ *
+ * The longest matching id wins, so registering both `sb` and `sb-v2` reads `sb-v2-base` as arm
+ * `base` of `sb-v2` rather than arm `v2-base` of `sb`.
+ */
+function splitOnRegisteredId(jobName: string, registeredIds: ReadonlySet<string>): RunCoordinates | null {
+	let best: RunCoordinates | null = null;
+	for (const id of registeredIds) {
+		if (!id || !jobName.startsWith(`${id}-`)) continue;
+		const arm = jobName.slice(id.length + 1);
+		if (arm.length === 0) continue;
+		if (best === null || id.length > best.experiment.length) best = { experiment: id, arm };
+	}
+	return best;
+}
+
+/**
+ * Read the coordinates a run carries.
+ *
+ * A run launched through the manager records its experiment and arm, and those win. A run from
+ * before coordinates were recorded carries only a job name, and the only unambiguous reading of
+ * a name is `<registered id>-<arm>` for an id that was actually registered: pass those ids in
+ * to recover the grouping. Nothing is sliced off a name matching no registered experiment, so a
+ * standalone run stays its own single-arm experiment instead of colliding with every other run
+ * that happens to share its first token.
+ */
+export function inferRunCoordinates(
+	runOrJobName: string | RunCoordinateSource,
+	registeredIds: ReadonlySet<string> = new Set(),
+): RunCoordinates {
+	if (typeof runOrJobName === "string") {
+		return splitOnRegisteredId(runOrJobName, registeredIds) ?? { experiment: runOrJobName, arm: runOrJobName };
+	}
+	const jobName = trimmedString(runOrJobName.jobName);
+	const cfg = isRecord(runOrJobName.config) ? runOrJobName.config : undefined;
+
+	const recordedExp =
+		trimmedString(runOrJobName.experiment) ||
+		trimmedString(cfg?.experiment) ||
+		trimmedString(cfg?.experimentId) ||
+		trimmedString(cfg?.experiment_id);
+
+	const recordedArm =
+		trimmedString(runOrJobName.arm) ||
+		trimmedString(cfg?.arm) ||
+		trimmedString(cfg?.armId) ||
+		trimmedString(cfg?.arm_id);
+
+	if (recordedExp && recordedArm) {
+		return { experiment: recordedExp, arm: recordedArm };
+	}
+	if (recordedExp) {
+		return { experiment: recordedExp, arm: jobName || recordedExp };
+	}
+	if (recordedArm) {
+		return { experiment: jobName || recordedArm, arm: recordedArm };
+	}
+	return splitOnRegisteredId(jobName, registeredIds) ?? { experiment: jobName, arm: jobName };
+}
+
+/**
+ * Every experiment id the store knows: registered rows, plus ids recorded on runs.
+ *
+ * This is the set an uncoordinated job name is read against.
+ */
+export function knownExperimentIds(store: RunStore): ReadonlySet<string> {
+	const ids = new Set<string>();
+	for (const meta of store.listExperimentMeta()) {
+		if (meta.id) ids.add(meta.id);
+	}
+	for (const run of store.listRuns()) {
+		const cfg = isRecord(run.config) ? run.config : undefined;
+		const recorded =
+			trimmedString(run.experiment) ||
+			trimmedString(cfg?.experiment) ||
+			trimmedString(cfg?.experimentId) ||
+			trimmedString(cfg?.experiment_id);
+		if (recorded) ids.add(recorded);
+	}
+	return ids;
+}
+
+/**
+ * The known ids plus one the caller named.
+ *
+ * A lookup for a specific experiment already asserts that experiment exists, so its own id is
+ * a legitimate reading of an uncoordinated `<id>-<arm>` job name. The aggregate index, which
+ * names no id, gets no such licence: it groups only what runs actually recorded.
+ */
+export function knownExperimentIdsWith(store: RunStore, id: string): ReadonlySet<string> {
+	const ids = new Set(knownExperimentIds(store));
+	if (id) ids.add(id);
+	return ids;
+}
+
+/** Experiment id from recorded coordinates, else from a registered `<id>-<arm>` job name. */
+export function experimentOf(runOrJobName: string | RunCoordinateSource, registeredIds?: ReadonlySet<string>): string {
+	return inferRunCoordinates(runOrJobName, registeredIds).experiment;
+}
+
+/** Arm label from recorded coordinates, else from a registered `<id>-<arm>` job name. */
+export function armOf(runOrJobName: string | RunCoordinateSource, registeredIds?: ReadonlySet<string>): string {
+	return inferRunCoordinates(runOrJobName, registeredIds).arm;
 }
 
 function prewalkLabel(prewalkJson: string | null): string {
@@ -91,7 +205,7 @@ function prewalkLabel(prewalkJson: string | null): string {
 	}
 }
 
-export function summarizeArm(run: RunRow, traces: TraceRow[]): ArmSummary {
+export function summarizeArm(run: RunRow, traces: TraceRow[], registeredIds?: ReadonlySet<string>): ArmSummary {
 	// Every observed stat is computed over DECIDED trials only — numerator and
 	// denominator from the same population. `run.costUsd` includes in-flight
 	// trials' accumulating spend, so dividing it by the decided count wildly
@@ -100,27 +214,37 @@ export function summarizeArm(run: RunRow, traces: TraceRow[]): ArmSummary {
 	const durations = decided.filter(t => t.durationMs > 0).map(t => t.durationMs);
 	const meanTrialMs = durations.length > 0 ? durations.reduce((a, b) => a + b, 0) / durations.length : null;
 	const decidedPass = decided.filter(t => t.status === "pass").length;
-	const decidedCost = decided.reduce((sum, t) => sum + (t.costUsd || 0), 0);
+	const measuredCosts = decided
+		.map(t => t.costUsd)
+		.filter((c): c is number => typeof c === "number" && Number.isFinite(c));
+	const decidedCost = sumOfMeasured(decided.map(t => t.costUsd));
 	const passPct = decided.length > 0 ? (100 * decidedPass) / decided.length : null;
-	const costPerTask = decided.length > 0 ? decidedCost / decided.length : null;
+	const costPerTask = measuredCosts.length > 0 && decidedCost !== null ? decidedCost / measuredCosts.length : null;
 
 	let projected: ArmProjection | null = null;
 	if (run.status === "running" && decided.length > 0 && run.nTotal > decided.length) {
 		const elapsed = Date.now() - run.createdAt;
 		const rate = decided.length / Math.max(elapsed, 1);
 		const remaining = run.nTotal - decided.length;
+		const totalCostUsd =
+			run.costUsd !== null && costPerTask !== null
+				? run.costUsd + costPerTask * remaining
+				: run.costUsd !== null
+					? run.costUsd
+					: costPerTask !== null
+						? costPerTask * run.nTotal
+						: null;
 		projected = {
 			etaMs: rate > 0 ? Date.now() + remaining / rate : null,
 			passPct: passPct ?? 0,
-			costPerTask: costPerTask ?? 0,
-			// Spend already committed plus the decided-rate estimate for what's left.
-			totalCostUsd: run.costUsd + (decidedCost / decided.length) * remaining,
+			costPerTask,
+			totalCostUsd,
 			meanTrialMs: meanTrialMs ?? 0,
 		};
 	}
 	return {
 		run,
-		arm: armOf(run.jobName),
+		arm: run.label || armOf(run, registeredIds),
 		config: `${run.benchmark} · ${run.models}${prewalkLabel(run.prewalk)}`,
 		passPct,
 		costPerTask,
@@ -196,9 +320,10 @@ export function calibratedFinalPassPct(options: {
 }
 
 export function buildExperiments(store: RunStore): ExperimentSummary[] {
+	const registeredIds = knownExperimentIds(store);
 	const groups = new Map<string, RunRow[]>();
 	for (const run of store.listRuns()) {
-		const id = experimentOf(run.jobName);
+		const id = experimentOf(run, registeredIds);
 		let bucket = groups.get(id);
 		if (!bucket) {
 			bucket = [];
@@ -219,7 +344,7 @@ export function buildExperiments(store: RunStore): ExperimentSummary[] {
 			pass: runs.reduce((a, r) => a + r.pass, 0),
 			fail: runs.reduce((a, r) => a + r.fail, 0),
 			error: runs.reduce((a, r) => a + r.error, 0),
-			costUsd: runs.reduce((a, r) => a + r.costUsd, 0),
+			costUsd: sumOfMeasured(runs.map(r => r.costUsd)),
 			createdAt: Math.min(...runs.map(r => r.createdAt)),
 			updatedAt: Math.max(...runs.map(r => r.finishedAt ?? Date.now())),
 		});
@@ -239,7 +364,7 @@ export function buildExperiments(store: RunStore): ExperimentSummary[] {
 			pass: 0,
 			fail: 0,
 			error: 0,
-			costUsd: 0,
+			costUsd: null,
 			createdAt: meta.updatedAt,
 			updatedAt: meta.updatedAt,
 		});
@@ -252,8 +377,11 @@ export function buildExperiments(store: RunStore): ExperimentSummary[] {
 const RERUN_SUFFIX = /-(fix|backfill|refill|retry|rerun|bf)\d*$/i;
 
 /** Arm label with re-run suffixes stripped: `n4p2-fix2` and `n4p2-backfill` both merge into `n4p2`. */
-export function canonicalArmOf(jobName: string): string {
-	let arm = armOf(jobName);
+export function canonicalArmOf(
+	runOrJobName: string | RunCoordinateSource,
+	registeredIds?: ReadonlySet<string>,
+): string {
+	let arm = armOf(runOrJobName, registeredIds);
 	for (;;) {
 		const next = arm.replace(RERUN_SUFFIX, "");
 		if (next === arm || next.length === 0) return arm;
@@ -284,7 +412,8 @@ export function pickMergedTrials(traces: TraceRow[]): TraceRow[] {
 }
 
 export function experimentDetail(store: RunStore, id: string): ExperimentDetail | null {
-	const runs = store.listRuns().filter(r => experimentOf(r.jobName) === id);
+	const registeredIds = knownExperimentIdsWith(store, id);
+	const runs = store.listRuns().filter(r => experimentOf(r, registeredIds) === id);
 	if (runs.length === 0) {
 		// Registered but armless (POST /api/experiments): still readable.
 		const meta = store.getExperimentMeta(id);
@@ -294,7 +423,7 @@ export function experimentDetail(store: RunStore, id: string): ExperimentDetail 
 	// base arm — per-task best trial, summed spend.
 	const groups = new Map<string, RunRow[]>();
 	for (const run of runs) {
-		const key = canonicalArmOf(run.jobName);
+		const key = canonicalArmOf(run, registeredIds);
 		const bucket = groups.get(key);
 		if (bucket) bucket.push(run);
 		else groups.set(key, [run]);
@@ -304,7 +433,7 @@ export function experimentDetail(store: RunStore, id: string): ExperimentDetail 
 	const tasks = new Set<string>();
 	for (const [canonical, members] of groups) {
 		members.sort((a, b) => a.createdAt - b.createdAt);
-		const base = members.find(m => armOf(m.jobName) === canonical) ?? members[0];
+		const base = members.find(m => armOf(m, registeredIds) === canonical) ?? members[0];
 		const armLabel = base.label || canonical;
 		const merged = pickMergedTrials(members.flatMap(m => store.listTraces(m.jobName)));
 		const running = members.some(m => m.status === "running");
@@ -321,16 +450,16 @@ export function experimentDetail(store: RunStore, id: string): ExperimentDetail 
 			fail: merged.filter(t => t.status === "fail").length,
 			error: merged.filter(t => t.status === "error").length,
 			running: members.reduce((a, m) => a + m.running, 0),
-			costUsd: members.reduce((a, m) => a + m.costUsd, 0),
+			costUsd: sumOfMeasured(members.map(m => m.costUsd)),
 			tokIn: members.reduce((a, m) => a + m.tokIn, 0),
 			tokOut: members.reduce((a, m) => a + m.tokOut, 0),
-			tokCache: members.reduce((a, m) => a + m.tokCache, 0),
+			tokCache: sumOfMeasured(members.map(m => m.tokCache)),
 			createdAt: Math.min(...members.map(m => m.createdAt)),
 			finishedAt: running
 				? null
 				: members.reduce<number | null>((a, m) => Math.max(a ?? 0, m.finishedAt ?? 0) || null, null),
 		};
-		const summary = summarizeArm(mergedRun, merged);
+		const summary = summarizeArm(mergedRun, merged, registeredIds);
 		summary.arm = armLabel;
 		if (members.length > 1) summary.config += ` · merged ${members.length} runs`;
 		arms.push(summary);

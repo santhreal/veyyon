@@ -46,7 +46,7 @@ export function renderBenchResultsBlock(run: RunRow, snapshot: BenchmarkSnapshot
 		"| --- | --- |",
 		...metricCells,
 		`| Tasks pass / fail / error | ${snapshot.pass} / ${snapshot.fail} / ${snapshot.error} (of ${snapshot.total}) |`,
-		`| Cost | $${snapshot.costUsd.toFixed(2)} |`,
+		`| Cost | ${formatMetric(snapshot.costUsd, "usd")} |`,
 	];
 	if (run.note) lines.splice(2, 0, "", run.note.trim());
 	lines.push(`<!-- /bench-results:${key} -->`);

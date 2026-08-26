@@ -4,6 +4,7 @@ import {
 	calibratedFinalPassPct,
 	canonicalArmOf,
 	experimentOf,
+	inferRunCoordinates,
 	pickMergedTrials,
 	summarizeArm,
 } from "../../src/manager/experiments";
@@ -11,7 +12,8 @@ import type { RunRow, TraceRow } from "../../src/manager/store";
 
 /**
  * Contracts under test:
- *  - job names group by their first `-` token; arm labels strip that prefix.
+ *  - recorded run coordinates group runs into experiment and arm without string slicing.
+ *  - uncoordinated job names fall back to the whole job name as a single-arm experiment.
  *  - summarizeArm computes observed metrics from decided trials only and
  *    projects running arms linearly (ETA, pass%, total cost).
  */
@@ -23,6 +25,8 @@ function runRow(overrides: Partial<RunRow>): RunRow {
 		backend: "harbor",
 		benchmark: "harbor",
 		jobName: "exp-arm",
+		experiment: "",
+		arm: "",
 		dataset: "d",
 		agent: "veyyon",
 		models: "anthropic/claude-opus-4-8",
@@ -69,9 +73,20 @@ function traceRow(overrides: Partial<TraceRow>): TraceRow {
 }
 
 describe("experiment grouping", () => {
-	it("groups by prefix and strips it from arm labels", () => {
-		expect(experimentOf("sb2-n4p-fix")).toBe("sb2");
-		expect(armOf("sb2-n4p-fix")).toBe("n4p-fix");
+	it("reads recorded coordinates from run configs or records", () => {
+		const run = runRow({ jobName: "deep-swe-baseline", config: { experiment: "deep-swe", arm: "baseline" } });
+		expect(experimentOf(run)).toBe("deep-swe");
+		expect(armOf(run)).toBe("baseline");
+		expect(inferRunCoordinates(run)).toEqual({ experiment: "deep-swe", arm: "baseline" });
+	});
+
+	it("falls back to the whole job name when no coordinates were recorded", () => {
+		expect(experimentOf("deep-swe-baseline")).toBe("deep-swe-baseline");
+		expect(armOf("deep-swe-baseline")).toBe("deep-swe-baseline");
+		expect(inferRunCoordinates("deep-swe-baseline")).toEqual({
+			experiment: "deep-swe-baseline",
+			arm: "deep-swe-baseline",
+		});
 		expect(experimentOf("standalone")).toBe("standalone");
 		expect(armOf("standalone")).toBe("standalone");
 	});
@@ -95,6 +110,7 @@ describe("summarizeArm", () => {
 		const running = summarizeArm(
 			runRow({
 				jobName: "sb2-n8",
+				config: { experiment: "sb2", arm: "n8" },
 				status: "running",
 				createdAt: tenMinutesAgo,
 				nTotal: 20,
@@ -214,14 +230,24 @@ describe("calibratedFinalPassPct", () => {
 
 describe("re-run merging", () => {
 	it("strips stacked re-run suffixes down to the base arm", () => {
-		expect(canonicalArmOf("sb3-n4p2-fix")).toBe("n4p2");
-		expect(canonicalArmOf("sb3-n4p2-fix2")).toBe("n4p2");
-		expect(canonicalArmOf("sb3-planyolo2-fix2")).toBe("planyolo2");
-		expect(canonicalArmOf("sb3-nact-backfill")).toBe("nact");
-		expect(canonicalArmOf("sb3-nact-fix-retry2")).toBe("nact");
+		expect(canonicalArmOf({ jobName: "sb3-n4p2-fix", config: { experiment: "sb3", arm: "n4p2-fix" } })).toBe("n4p2");
+		expect(canonicalArmOf({ jobName: "sb3-n4p2-fix2", config: { experiment: "sb3", arm: "n4p2-fix2" } })).toBe(
+			"n4p2",
+		);
+		expect(
+			canonicalArmOf({ jobName: "sb3-planyolo2-fix2", config: { experiment: "sb3", arm: "planyolo2-fix2" } }),
+		).toBe("planyolo2");
+		expect(
+			canonicalArmOf({ jobName: "sb3-nact-backfill", config: { experiment: "sb3", arm: "nact-backfill" } }),
+		).toBe("nact");
+		expect(
+			canonicalArmOf({ jobName: "sb3-nact-fix-retry2", config: { experiment: "sb3", arm: "nact-fix-retry2" } }),
+		).toBe("nact");
 		// Not a re-run suffix — stays intact.
-		expect(canonicalArmOf("sb3-nbmrng")).toBe("nbmrng");
-		expect(canonicalArmOf("sb2-opus48")).toBe("opus48");
+		expect(canonicalArmOf({ jobName: "sb3-nbmrng", config: { experiment: "sb3", arm: "nbmrng" } })).toBe("nbmrng");
+		expect(canonicalArmOf({ jobName: "sb2-opus48", config: { experiment: "sb2", arm: "opus48" } })).toBe("opus48");
+		// String fallback stripping
+		expect(canonicalArmOf("n4p2-fix")).toBe("n4p2");
 	});
 
 	it("prefers decided re-runs over errors but never downgrades a decided result", () => {

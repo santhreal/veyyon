@@ -11,52 +11,12 @@
 import { errorMessage, formatCount } from "@veyyon/utils";
 import { type RefObject, useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
+import type { ArmProjection, ArmSummary, ExperimentDetail, ExperimentSummary } from "../manager/experiments";
 import type { BenchmarkKind, RunRole, RunRow, RunStatus, TraceRow } from "../manager/store";
 
 // ── api types (mirrors server modules) ──────────────────────────────────────
 
 export type { BenchmarkKind, RunRole, RunRow, RunStatus, TraceRow };
-
-interface ArmProjection {
-	etaMs: number | null;
-	passPct: number;
-	costPerTask: number;
-	totalCostUsd: number;
-	meanTrialMs: number;
-}
-
-interface ArmSummary {
-	run: RunRow;
-	arm: string;
-	config: string;
-	passPct: number | null;
-	costPerTask: number | null;
-	meanTrialMs: number | null;
-	projected: ArmProjection | null;
-}
-
-interface ExperimentSummary {
-	id: string;
-	goal: string;
-	arms: number;
-	runningArms: number;
-	datasets: string[];
-	nTotal: number;
-	done: number;
-	pass: number;
-	fail: number;
-	error: number;
-	costUsd: number;
-	updatedAt: number;
-}
-
-interface ExperimentDetail {
-	id: string;
-	goal: string;
-	arms: ArmSummary[];
-	tasks: string[];
-	matrix: Record<string, Record<string, { status: string; reward: number | null }>>;
-}
 
 interface TranscriptEntry {
 	kind: string;
@@ -69,7 +29,8 @@ interface TranscriptEntry {
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
-const fmtUsd = (v: number) => (v >= 100 ? `$${v.toFixed(0)}` : v >= 1 ? `$${v.toFixed(2)}` : `$${v.toFixed(3)}`);
+const fmtUsd = (v: number | null) =>
+	v === null ? "—" : v >= 100 ? `$${v.toFixed(0)}` : v >= 1 ? `$${v.toFixed(2)}` : `$${v.toFixed(3)}`;
 const fmtMin = (ms: number) => `${(ms / 60000).toFixed(1)}m`;
 const fmtEta = (etaMs: number | null) => {
 	if (etaMs === null) return "—";
@@ -438,7 +399,7 @@ interface MetricBar {
 function metricBars(
 	arms: ArmSummary[],
 	actual: (arm: ArmSummary) => number | null,
-	projected: (proj: ArmProjection) => number,
+	projected: (proj: ArmProjection) => number | null,
 ): MetricBar[] {
 	const bars: MetricBar[] = [];
 	for (const arm of arms) {
