@@ -33,6 +33,9 @@ import type { RenderedSegment, SegmentContext, StatusLineSegment, StatusLineSegm
 
 export type { SegmentContext } from "./types";
 
+/** Hostname is fixed for the process lifetime; cache the short form once. */
+const SHORT_HOSTNAME = os.hostname().split(".")[0]!;
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Helpers
 // ═══════════════════════════════════════════════════════════════════════════
@@ -802,8 +805,7 @@ const sessionSegment: StatusLineSegment = {
 const hostnameSegment: StatusLineSegment = {
 	id: "hostname",
 	render(_ctx) {
-		const name = os.hostname().split(".")[0];
-		return { content: withIcon(theme.icon.host, name), visible: true };
+		return { content: withIcon(theme.icon.host, SHORT_HOSTNAME), visible: true };
 	},
 };
 
