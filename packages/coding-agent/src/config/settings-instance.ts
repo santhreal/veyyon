@@ -10,8 +10,8 @@ import type { Settings } from "./settings";
 /**
  * What a caller sees when the slot is empty.
  *
- * One string because two places raise it, the proxy and `Settings.instance`, and an operator who greps the
- * message should land on one definition rather than wonder which of two paths produced it.
+ * One string because two places raise it (proxy and `Settings.instance`); an operator who greps should
+ * land on one definition.
  */
 export const SETTINGS_NOT_INITIALIZED_MESSAGE = "Settings not initialized. Call Settings.init() first.";
 
@@ -23,9 +23,8 @@ let boundSettingsMethods = new Map<PropertyKey, unknown>();
 /**
  * Drop the cache of methods bound to the previous instance.
  *
- * The proxy binds each method once so repeated `settings.get` calls do not allocate, and a cache keyed by
- * property name outlives the instance it was bound against. Calling this whenever the slot changes is what
- * stops a torn-down instance from being reachable through a bound method.
+ * The proxy binds each method once so repeated `settings.get` calls do not allocate. The cache outlives
+ * the instance; calling this when the slot changes stops a torn-down instance from being reachable.
  */
 export function clearBoundSettingsMethods(): void {
 	boundSettingsInstance = null;
@@ -67,18 +66,10 @@ export function setSettingsInstancePromise(promise: Promise<Settings> | null): v
 /**
  * Extra teardown a downstream module asks `resetSettingsForTest` to run.
  *
- * WHY A REGISTRY RATHER THAN DIRECT CALLS. The state a settings change lands in does not live in the
- * settings store: writing `symbolPreset` runs a hook in `modes/theme/theme.ts`, which stores the result in
- * ITS module scope, and that value is what a renderer reads afterwards. So resetting settings without
- * resetting the theme leaves the run holding whatever preset the last suite chose, and a later suite draws
- * ASCII box characters where it expected Unicode ones. Calling into the theme from the store would invert
- * the layering (settings is below the UI), so the theme registers instead, at import, and only if it was
- * imported at all.
- *
- * WHY IT LIVES HERE RATHER THAN IN `settings.ts`. Registering is what a UI module does, and the registrars
- * are cheap modules: `modes/theme/markdown-theme.ts` registers one hook and had to import the whole store
- * to reach the function, 95 modules for a `Set.add`. Running the hooks is what the store does, and it
- * already imports this module for the slot.
+ * WHY A REGISTRY. Settings-change state doesn't live in the store: writing `symbolPreset` runs a hook in
+ * `modes/theme/theme.ts` that stores the result in its own module scope. Resetting settings without
+ * resetting the theme leaves the last suite's preset. The theme registers at import (not called from the
+ * store, which would invert layering). Lives here not `settings.ts` because registrars are cheap modules.
  *
  * @internal
  */
