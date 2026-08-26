@@ -4,6 +4,8 @@ import type { Settings } from "@veyyon/coding-agent";
 import { clamp, errorMessage } from "@veyyon/utils";
 import { type BackendRegistry, defaultBackendRegistry } from "../../core/backend-registry";
 import { resolveCellVariant } from "../../core/cell-variant";
+import { requireHarness } from "../../core/harness-registry";
+import { resolveTrialModel } from "../../core/trial-model";
 import type {
 	BackendId,
 	ExecutionBackend,
@@ -192,11 +194,8 @@ export class InProcessBackend implements ExecutionBackend {
 		}
 
 		const variant = resolveCellVariant(cell, context);
-		const model =
-			variant.model ||
-			(context.options?.model as string | undefined) ||
-			(context.options?.defaultModel as string | undefined) ||
-			"anthropic/claude-sonnet-4-6";
+		const harness = requireHarness(variant.harness);
+		const model = resolveTrialModel(variant, harness, context).id;
 
 		const configPath = variant.configPath ?? (context.options?.configPath as string | undefined) ?? null;
 		const promptVariantPath =

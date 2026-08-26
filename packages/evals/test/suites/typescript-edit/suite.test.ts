@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { beforeAll, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { TempDir } from "@veyyon/utils";
@@ -6,6 +6,7 @@ import { InProcessBackend, inProcessBackend, registerInProcessBackend } from "..
 import { getBackend, requireBackend } from "../../../src/core/backend-registry";
 import { getSuite, requireSuite, SuiteRegistry } from "../../../src/core/suite-registry";
 import type { RunContext, TrialArtifacts, TrialCell } from "../../../src/core/types";
+import { registerBuiltinHarnesses } from "../../../src/harnesses/index";
 import {
 	registerTypescriptEditSuite,
 	TypescriptEditSuite,
@@ -14,6 +15,13 @@ import {
 import { verifyExpectedFiles } from "../../../src/suites/typescript-edit/verify";
 
 describe("TypeScript Edit Benchmark — EvalSuite & ExecutionBackend contracts", () => {
+	// The in-process backend resolves the trial's model through the harness the variant
+	// names, so the harness registry has to be populated. Registration is idempotent and
+	// process-wide; clearing it would poison every later file in this worker.
+	beforeAll(() => {
+		registerBuiltinHarnesses();
+	});
+
 	it("registers with global registries under 'typescript-edit' and 'in-process'", () => {
 		registerTypescriptEditSuite();
 		registerInProcessBackend();
@@ -148,7 +156,7 @@ describe("TypeScript Edit Benchmark — EvalSuite & ExecutionBackend contracts",
 					workDir: tempRunsDir.absolute(),
 					runsDir: tempRunsDir.absolute(),
 					options: {
-						model: "test-model",
+						model: "vendor/test-model",
 						tools: ["read", "edit", "write"],
 						variants: [
 							{
@@ -156,7 +164,7 @@ describe("TypeScript Edit Benchmark — EvalSuite & ExecutionBackend contracts",
 								harness: "veyyon",
 								configPath: null,
 								promptVariantPath: null,
-								model: "test-model",
+								model: "vendor/test-model",
 								attachments: [],
 							},
 						],

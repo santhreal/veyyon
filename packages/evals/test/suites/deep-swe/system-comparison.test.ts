@@ -3,7 +3,6 @@ import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import {
 	aggregateSystemComparison,
-	COMPARISON_MODEL,
 	COMPARISON_TASK_LIST,
 	COMPARISON_TASK_LIST_SHA256,
 	ComparisonRejected,
@@ -15,6 +14,9 @@ import { resolvePackagePath } from "../../../src/paths";
 
 const TASKS = ["task-a", "task-b"] as const;
 const SYSTEMS = ["veyyon", "factory", "hermes"] as const;
+/** The model these trials ran under. A comparison derives its model from its trials, so
+ * this is fixture data rather than a constant the code exports. */
+const TRIAL_MODEL = "openrouter/example-model-1";
 
 function trial(system: ComparisonSystem, task: string): SystemTrialResult {
 	const veyyon = system === "veyyon";
@@ -22,8 +24,8 @@ function trial(system: ComparisonSystem, task: string): SystemTrialResult {
 		system,
 		task,
 		repeat: 0,
-		requestedModel: COMPARISON_MODEL,
-		resolvedModel: COMPARISON_MODEL,
+		requestedModel: TRIAL_MODEL,
+		resolvedModel: TRIAL_MODEL,
 		reward: veyyon ? 1 : 0.5,
 		qualitativeScore: null,
 		recoveryReads: null,

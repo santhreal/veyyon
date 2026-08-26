@@ -15,7 +15,7 @@
  * correct (that is `SessionStats.cost`, owned by the session), and whether harbor
  * parses `cost_usd` out of a real harbor result (covered by the harbor suites).
  */
-import { describe, expect, it } from "bun:test";
+import { beforeAll, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import { TempDir } from "@veyyon/utils";
 import { InProcessBackend } from "../../src/backends/in-process/backend";
@@ -29,6 +29,7 @@ import type {
 	TrialScore,
 	Variant,
 } from "../../src/core/types";
+import { registerBuiltinHarnesses } from "../../src/harnesses/index";
 import { typescriptEditSuite } from "../../src/suites/typescript-edit/suite";
 
 function probeSuite(): EvalSuite {
@@ -107,6 +108,13 @@ async function runOneTrial(cost: number): Promise<TrialArtifacts> {
 }
 
 describe("a trial reports its spend or reports nothing", () => {
+	// The in-process backend resolves the trial's model through the harness the variant
+	// names, so the harness registry has to be populated. Registration is idempotent and
+	// process-wide; clearing it would poison every later file in this worker.
+	beforeAll(() => {
+		registerBuiltinHarnesses();
+	});
+
 	it("carries the session's provider spend and token counts out of the backend", async () => {
 		const artifacts = await runOneTrial(0.4213);
 

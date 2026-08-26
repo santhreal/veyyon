@@ -25,7 +25,10 @@ export class VeyyonAdapter implements HarnessAdapter, SystemAdapter {
 	readonly name = "veyyon";
 	readonly displayName = "Veyyon";
 	readonly description = "Main Veyyon headless agent CLI execution and replay in isolated Docker containers.";
-	readonly defaultModel = "google-antigravity/gemini-3.5-flash";
+	// Veyyon drives any provider-qualified model the run names, so it declares no
+	// default: a default here decided which model an unspecified run measured, and the
+	// arm's name never said which one. `resolveTrialModel` refuses instead.
+	readonly defaultModel = null;
 
 	readonly capabilities: HarnessCapabilities = {
 		replay: true,
@@ -104,11 +107,11 @@ export class VeyyonAdapter implements HarnessAdapter, SystemAdapter {
 			);
 		} else {
 			try {
-				const model =
-					typeof options.model === "string"
-						? options.model
-						: (this.defaultModel ?? "google-antigravity/gemini-3.5-flash");
-				await requireStagedAuthCanServeToken(model, true, candidateDb);
+				// Preflight probes the credential the run's model needs. With no model named
+				// there is nothing to probe, so the probe is skipped rather than aimed at some
+				// other provider's pool, whose emptiness says nothing about this run.
+				const model = typeof options.model === "string" ? options.model : null;
+				if (model !== null) await requireStagedAuthCanServeToken(model, true, candidateDb);
 			} catch (err) {
 				missing.push(`staged auth DB at ${candidateDb}: ${errorMessage(err)} (log in first with: vey /login)`);
 			}

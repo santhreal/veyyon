@@ -19,8 +19,6 @@ import {
 } from "./types";
 
 export { ComparisonRejected } from "./types";
-export const DEFAULT_MODEL = "google-antigravity/gemini-3.5-flash";
-export const COMPARISON_MODEL = "google-antigravity/gemini-3.6-flash";
 export const COMPARISON_TASK_LIST = "datasets/deep-swe/tasks/pilot-10.txt";
 export const COMPARISON_TASK_LIST_SHA256 = "439b07dfbf30a988286e614b6b200def41b56f2447b249583560a78152cbfa06";
 
@@ -231,10 +229,20 @@ export function comparisonTrialsFromArmResults(results: readonly ComparisonArmRe
 export function aggregateSystemComparison(
 	trials: readonly SystemTrialResult[],
 	expectedTasks: readonly string[],
-	model: string = COMPARISON_MODEL,
+	requestedModel?: string,
 	explicitSystems?: readonly string[],
 ): SystemComparison {
 	const issues: string[] = [];
+	// A comparison is only a comparison if every arm ran the same model, and the trials
+	// carry which one that was. Naming a model here is therefore optional: pass it to
+	// pin what the run asked for, or let the trials say. A hardcoded default was neither
+	// — it pinned one vendor's id, so a comparison of any other model validated every
+	// arm against a model none of them ran.
+	const requestedModels = Array.from(new Set(trials.map(trial => trial.requestedModel).filter(id => id !== "")));
+	if (requestedModel === undefined && requestedModels.length > 1) {
+		issues.push(`comparison arms requested different models: ${requestedModels.sort().join(", ")}`);
+	}
+	const model = requestedModel ?? requestedModels[0] ?? "";
 	if (!model) issues.push("comparison model is empty");
 	if (expectedTasks.length === 0) issues.push("expected task set is empty");
 	if (new Set(expectedTasks).size !== expectedTasks.length) issues.push("expected task set contains duplicates");
