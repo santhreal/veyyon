@@ -30,13 +30,17 @@ import type {
 	VariantMatrixSelection,
 } from "./core";
 import {
+	checkVariantSupport,
 	judgeRunOutcome,
 	listBackendIds,
 	listHarnesses,
 	listSuites,
 	requireBackend,
+	requireHarness,
 	requireSuite,
 	summarizeRunCells,
+	type UnappliedVariantAxisError,
+	variantSupportQuery,
 } from "./core";
 import { preflightHarnesses } from "./core/harness-preflight";
 import { registerBuiltinHarnesses } from "./harnesses";
@@ -604,7 +608,32 @@ async function runOneSuite(args: EvalsCliArgs, suite: EvalSuite, running: readon
 	}
 
 	const backend = requireBackend(suite.backend);
+	// Every axis this selection varies needs someone to apply it. `--prompts a,b` against a
+	// backend that drops the path expands the matrix, names the cells apart, and runs the
+	// same trial twice — a report comparing two identical arms. One line per axis and
+	// refusing party, not one per variant, which would repeat the same sentence per cell.
+	const unappliedAxes = new Map<string, UnappliedVariantAxisError>();
+	for (const problem of checkVariantSupport(
+		variantSupportQuery(backend, plan.variants, harness => requireHarness(harness).capabilities),
+	)) {
+		const key = `${problem.axis}\u0000${problem.holder}\u0000${problem.holderName}`;
+		if (!unappliedAxes.has(key)) unappliedAxes.set(key, problem);
+	}
 	process.stdout.write(`${describeRunPlan(plan)}\n  backend    ${backend.id}\n`);
+
+	// An axis nobody applies cannot be preflighted into working, so this refuses here rather
+	// than stating verdicts for a run that will not happen — the same shape as an unusable
+	// directory above.
+	if (unappliedAxes.size > 0) {
+		const reasons = [...unappliedAxes.values()].map(problem => errorMessage(problem));
+		if (args.dryRun) {
+			const lines = reasons.map(reason => `  axes       REFUSED — ${reason}`).join("\n");
+			process.stdout.write(`\npreflight:\n  paths      ok\n${lines}\n`);
+		} else {
+			for (const reason of reasons) process.stderr.write(`${reason}\n`);
+		}
+		return 1;
+	}
 
 	if (args.dryRun) {
 		const suiteVerdict = await suite.preflight(context);
@@ -639,9 +668,11 @@ async function runOneSuite(args: EvalsCliArgs, suite: EvalSuite, running: readon
 		// paid for.
 		const resumeLine = args.resume ? `  resume     ${await describeResume(runsDir, plan.runId)}` : null;
 		const verdicts = [
-			// Reached only when every directory checked out above, which is why this states `ok`
-			// rather than checking again: a dry run names the same verdicts the real run reaches.
+			// Reached only when the directories and the axes checked out above, which is why these
+			// state `ok` rather than checking again: a dry run names the same verdicts the real run
+			// reaches, and a refusal above never gets this far.
 			"  paths      ok",
+			"  axes       ok",
 			`  suite      ${suiteVerdict.ok ? "ok" : `REFUSED — ${suiteVerdict.reason ?? "no reason given"}`}`,
 			harnessLine,
 			`  backend    ${backendVerdict.ok ? "ok" : `REFUSED — ${backendVerdict.reason ?? "no reason given"}`}`,

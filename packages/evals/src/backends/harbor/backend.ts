@@ -21,6 +21,7 @@ import type {
 	TaskDescriptor,
 	TrialArtifacts,
 	TrialCell,
+	VariantAxis,
 } from "../../core/types";
 import { runsDir as defaultRunsDir } from "../../paths";
 import { buildHarborArgs, type HarborRunArgsOptions } from "./launch-args";
@@ -167,6 +168,8 @@ export async function agentSetupFailure(logPath: string): Promise<string | null>
  */
 export class HarborBackend implements ExecutionBackend {
 	readonly id: BackendId = "harbor";
+	/** `harbor run` takes an agent and a model and nothing else this matrix varies. */
+	readonly appliesVariantAxes: readonly VariantAxis[] = [];
 
 	readonly #which: WhichLookup;
 	readonly #exec: CommandExecutor;

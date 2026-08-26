@@ -17,7 +17,7 @@ To add one, follow [`deep-swe/ADAPTER_AUTHORING.md`](deep-swe/ADAPTER_AUTHORING.
 |---|---|
 | `name`, `displayName`, `description` | Identity and report labels |
 | `defaultModel` | Model used when a run names none; `null` requires `--model` |
-| `capabilities` | `replay`, `compaction`, `armAttachments`, `promptOverrides` |
+| `capabilities` | `replay`, `compaction`, `armAttachments`, `promptOverrides`, each stated as a boolean |
 | `backends` | The backends it runs on, and the binding each needs |
 | `flags` | The invocation flags the adapter reads (`omp-binary`, `factory-auth`, …) |
 | `preflight` | Rejects before a run when a binary or credential is absent |
@@ -34,6 +34,13 @@ To add one, follow [`deep-swe/ADAPTER_AUTHORING.md`](deep-swe/ADAPTER_AUTHORING.
 
 `veyyon` declares no default model. A run that names no model is rejected by `resolveTrialModel`
 rather than measured against an unstated one, because the arm name never states which model it used.
+
+`armAttachments` and `promptOverrides` decide whether a run may vary those axes. A run whose
+`--prompts` axis reaches a harness declaring `promptOverrides: false` is rejected on the `axes`
+verdict, because the overlay would go unread and every cell of that axis would run the identical
+trial under a different arm name. The backend states the same thing for itself in
+`appliesVariantAxes`: `in-process` reads a config overlay and prompt overrides, `pier` reads a config
+overlay and stages arm attachments, `harbor` reads none of the three.
 
 ## Backend bindings
 

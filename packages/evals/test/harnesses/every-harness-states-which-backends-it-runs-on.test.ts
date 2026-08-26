@@ -149,7 +149,7 @@ describe("every harness states which backends it runs on", () => {
 			description: "A newly added harness without recorded backends",
 			flags: [],
 			defaultModel: "anthropic/claude-sonnet-4-5",
-			capabilities: {},
+			capabilities: { replay: false, compaction: false, armAttachments: false, promptOverrides: false },
 			backends: {},
 			async preflight() {
 				return { ok: true };
@@ -189,7 +189,7 @@ describe("every harness states which backends it runs on", () => {
 			description: "Test harness A",
 			flags: [],
 			defaultModel: "model-1",
-			capabilities: {},
+			capabilities: { replay: false, compaction: false, armAttachments: false, promptOverrides: false },
 			backends: { "in-process": {} },
 			async preflight() {
 				return { ok: true };
@@ -202,7 +202,7 @@ describe("every harness states which backends it runs on", () => {
 			description: "Test harness B",
 			flags: [],
 			defaultModel: "model-1",
-			capabilities: {},
+			capabilities: { replay: false, compaction: false, armAttachments: false, promptOverrides: false },
 			backends: { "in-process": {} },
 			async preflight() {
 				return { ok: true };

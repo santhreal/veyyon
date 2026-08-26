@@ -10,6 +10,7 @@ import type {
 	RunContext,
 	TrialArtifacts,
 	TrialCell,
+	VariantAxis,
 } from "../../core/types";
 import { authDbPath, pierAgentDir, veyBinaryPath } from "../../paths";
 import { stagePierAssets } from "./asset-staging";
@@ -43,6 +44,9 @@ export interface PierBackendOptions {
 
 export class PierExecutionBackend implements ExecutionBackend {
 	readonly id: BackendId = "pier";
+	/** Asset staging writes an arm YAML per config and stages arm attachments; prompt
+	 * overlays reach nothing inside the container. */
+	readonly appliesVariantAxes: readonly VariantAxis[] = ["config", "attachments"];
 
 	readonly #stageAssets: StagePierAssetsFn;
 	readonly #veyBinary: string;
