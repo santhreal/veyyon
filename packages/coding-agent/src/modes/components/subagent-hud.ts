@@ -49,7 +49,9 @@ export interface SubagentHudOptions {
  * lines it occupies.
  */
 function cell(text: string, width: number): string {
-	return truncateToWidth(replaceTabs(text).replace(/[\r\n]+/g, " "), width);
+	const tabbed = replaceTabs(text);
+	const single = tabbed.includes("\r") || tabbed.includes("\n") ? tabbed.replace(/[\r\n]+/g, " ") : tabbed;
+	return truncateToWidth(single, width);
 }
 
 /**
