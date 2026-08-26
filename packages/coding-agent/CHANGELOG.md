@@ -14,6 +14,14 @@
 - `paintBand` in `theme.ts` inlines the `arriving`/`arrivingRgb` closures, eliminating per-call closure allocation and hoisting constant branch checks out of the per-span loop.
 - `renderSignature` in `markdown.ts` caches the `bgColor` and `heading` probe strings keyed on theme/style object identity, eliminating two styled-string function calls per frame during streaming.
 - `getDefaultInlineStyleContext` in `markdown.ts` caches its object and `applyText` closure keyed on `defaultTextStyle` identity, eliminating per-paragraph allocation during rendering.
+- `#renderList` and `htmlListIndent` in `markdown.ts` use the pre-allocated `padding()` buffer instead of `"  ".repeat(depth)`.
+- Heading prefixes in `markdown.ts` use a pre-computed lookup table; the `"#".repeat()` allocation is skipped for h1 and h2.
+- `getLongestWordWidth` in `markdown.ts` scans word boundaries in-place via `charCodeAt` instead of `split(/\s+/).filter()`.
+- `renderContentLines` in `markdown.ts` combines wrapping and margin loops into a single pass, eliminating the intermediate `wrappedLines` array.
+- Table border rendering in `markdown.ts` computes `borderCells` once and reuses it for all three borders.
+- Math tokenizer and HTML entity decoder in `markdown.ts` use `charCodeAt` instead of `startsWith` for prefix checks.
+- `renderEmptyPaddingLines` in `markdown.ts` caches the `applyBackgroundToLine` result before the loop.
+- The no-background padding path in `renderContentLines` measures the wrapped line alone instead of the margin-concatenated string.
 ### Added
 
 - `/advisor` reports advisor status, opens the `WATCHDOG.yml` roster editor and applies a save to the running session, starts or stops the advisor for the session, and copies the advisor's own transcript; the subsystem shipped complete but no command, key or menu row reached it.
