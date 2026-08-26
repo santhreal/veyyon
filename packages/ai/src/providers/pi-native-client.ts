@@ -17,6 +17,7 @@
  */
 import { emptyUsage } from "@veyyon/catalog/models";
 import { readSseJson } from "@veyyon/utils/stream";
+import { errorMessage } from "@veyyon/utils/type-guards";
 import { trimTrailingSlashes } from "@veyyon/utils/url";
 import * as AIError from "../error";
 import { AUTH_EVIDENCE_LOCAL } from "../error/auth-classify";
@@ -72,7 +73,7 @@ class PiNativePayloadHookError extends Error {
 	readonly [AUTH_EVIDENCE_LOCAL] = true;
 
 	constructor(rejection: unknown) {
-		const detail = rejection instanceof Error ? rejection.message : String(rejection);
+		const detail = errorMessage(rejection);
 		super(detail ? `pi-native onPayload hook rejected: ${detail}` : "pi-native onPayload hook rejected");
 		this.name = "PiNativePayloadHookError";
 		this.rejection = rejection;
