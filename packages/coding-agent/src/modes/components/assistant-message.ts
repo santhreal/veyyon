@@ -926,13 +926,17 @@ export class AssistantMessageComponent extends Container {
 				}
 				// Add spacing only when another visible assistant content block follows.
 				// This avoids a superfluous blank line before separately-rendered tool execution blocks.
-				const hasVisibleContentAfter = message.content
-					.slice(i + 1)
-					.some(
-						c =>
-							(c.type === "text" && canonicalizeMessage(c.text)) ||
-							(c.type === "thinking" && resolveThinkingDisplay(c, this.proseOnlyThinking).visible),
-					);
+				let hasVisibleContentAfter = false;
+				for (let k = i + 1; k < message.content.length; k++) {
+					const c = message.content[k]!;
+					if (
+						(c.type === "text" && canonicalizeMessage(c.text)) ||
+						(c.type === "thinking" && resolveThinkingDisplay(c, this.proseOnlyThinking).visible)
+					) {
+						hasVisibleContentAfter = true;
+						break;
+					}
+				}
 
 				// A muted "Thinking" label heads the first visible reasoning block:
 				// without it the trace read as ordinary italic prose,
