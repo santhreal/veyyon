@@ -30,6 +30,7 @@
 - `/omfg` forges rules that carry the extended TTSR frontmatter (`astCondition`, `interruptMode`, `pathScope`, `repeatMode`, `repeatGap`, `repeatCompactions`, `warmupMatches`), confirms ast-grep conditions against the conversation's tool history through the same gate chain a live stream applies, and fails loudly on a malformed optional field instead of dropping it.
 - `/omfg` saves forged rules to the active profile's rules directory only; the project target is gone, because project `.veyyon/rules` was never discovered across sessions.
 - Settings → Stream Interrupts (TTSR) groups the profile's own rules under a leading `User created` section instead of `From native`, ahead of foreign-tool and built-in sections.
+- Added interactive search and filtering to the /providers account manager sidebar with real-time fuzzy matching across provider names and IDs, keyboard navigation parity and Escape/Backspace to clear (Refs #885).
 - A ChatGPT OAuth (Codex) session compacts server-side via the Responses compaction endpoint, preserving encrypted reasoning state.
 - `ToolCallLoopGuard` detects consecutive redundant reads of unchanged files whose requested line ranges are already fully present in recent context, steering runaway exploration loops while preserving prompt cache prefixes.
 - Added Command Code API-key login through the Studio Provider page, with validation against its Provider API, and Nous Research Portal OAuth device login with rotating refresh tokens and short-lived inference JWTs.
