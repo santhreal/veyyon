@@ -234,7 +234,10 @@ fn macos_live_pids() -> Vec<i32> {
 /// Live pid → children, from libproc. Used only to close the adopted set.
 #[cfg(target_os = "macos")]
 fn macos_child_map() -> HashMap<i32, Vec<i32>> {
-	let mut map = HashMap::new();
+	// Annotated: the only site that pinned the value type used to be an early
+	// `return map` before the first insert, and `or_default().push(..)` resolves
+	// its method before the tail expression unifies with the return type.
+	let mut map: HashMap<i32, Vec<i32>> = HashMap::new();
 	for pid in macos_live_pids() {
 		if pid <= 0 {
 			continue;
