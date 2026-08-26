@@ -11,7 +11,8 @@
  */
 import { describe, expect, it } from "bun:test";
 import type { TrialArtifacts, TrialResultRecord } from "../../src/core";
-import { MAX_RAW_OUTPUT_CHARS, sanitizeArtifacts, sanitizeTrialRecord } from "../../src/run/journal";
+import { RAW_OUTPUT_MAX_BYTES } from "../../src/core/trial-deadline";
+import { sanitizeArtifacts, sanitizeTrialRecord } from "../../src/run/journal";
 
 /** Every field TrialArtifacts declares, each with a distinguishable value. */
 const fullArtifacts: TrialArtifacts = {
@@ -38,10 +39,10 @@ describe("sanitizing a trial's artifacts", () => {
 	});
 
 	it("bounds only the raw output, keeping its tail", () => {
-		const oversized = `${"a".repeat(MAX_RAW_OUTPUT_CHARS)}THE-END`;
+		const oversized = `${"a".repeat(RAW_OUTPUT_MAX_BYTES)}THE-END`;
 		const sanitized = sanitizeArtifacts({ ...fullArtifacts, rawOutput: oversized });
 
-		expect(sanitized?.rawOutput?.length).toBe(MAX_RAW_OUTPUT_CHARS);
+		expect(sanitized?.rawOutput?.length).toBe(RAW_OUTPUT_MAX_BYTES);
 		expect(sanitized?.rawOutput?.endsWith("THE-END")).toBe(true);
 		expect(sanitized?.usage).toEqual(fullArtifacts.usage);
 	});

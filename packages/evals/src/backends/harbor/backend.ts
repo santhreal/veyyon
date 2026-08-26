@@ -10,6 +10,7 @@ import { $which, errorMessage, isRecord, readPipeText } from "@veyyon/utils";
 import { type BackendRegistry, defaultBackendRegistry } from "../../core/backend-registry";
 import { resolveCellVariant } from "../../core/cell-variant";
 import { getHarness, listHarnesses, requireHarness } from "../../core/harness-registry";
+import { boundRawOutput, DEFAULT_GRACE_PERIOD_MS, trialTimeoutFromOptions } from "../../core/trial-deadline";
 import { resolveTrialModel } from "../../core/trial-model";
 import type {
 	BackendId,
@@ -25,14 +26,7 @@ import type {
 } from "../../core/types";
 import { runsDir as defaultRunsDir } from "../../paths";
 import { buildHarborArgs, type HarborRunArgsOptions } from "./launch-args";
-import {
-	cleanupHarborTrialContainers,
-	DEFAULT_GRACE_PERIOD_MS,
-	DEFAULT_TRIAL_TIMEOUT_SEC,
-	HARD_CEILING_TIMEOUT_SEC,
-	terminateProcessTree,
-	truncateRawOutput,
-} from "./runner/cleanup";
+import { cleanupHarborTrialContainers, terminateProcessTree } from "./runner/cleanup";
 import { buildHarborEnv, type Config, defaultConfig } from "./runner/config";
 import { prepareSourceDeps, type SourceMount } from "./runner/deps";
 import { gatewayHealthOk, writeModelsYaml } from "./runner/gateway";
@@ -338,12 +332,7 @@ export class HarborBackend implements ExecutionBackend {
 		const jobDir = path.join(runDir, jobName);
 		await fs.mkdir(jobDir, { recursive: true });
 
-		const rawBudget = descriptor.timeBudgetSec > 0 ? descriptor.timeBudgetSec : DEFAULT_TRIAL_TIMEOUT_SEC;
-		const multiplier =
-			typeof context.options?.timeoutMultiplier === "number" && context.options.timeoutMultiplier > 0
-				? context.options.timeoutMultiplier
-				: 1;
-		const trialTimeoutSec = Math.min(Math.round(rawBudget * multiplier), HARD_CEILING_TIMEOUT_SEC);
+		const trialTimeoutSec = trialTimeoutFromOptions(descriptor.timeBudgetSec, context.options);
 
 		const metadata = descriptor.metadata;
 		const overrideCpus = typeof metadata.cpus === "number" ? metadata.cpus : undefined;
@@ -458,8 +447,8 @@ export class HarborBackend implements ExecutionBackend {
 			if (raceResult.kind === "timed_out") {
 				timedOut = true;
 				await killTrial();
-				stdout = truncateRawOutput(await readPipeText(proc.stdout));
-				stderr = truncateRawOutput(await readPipeText(proc.stderr));
+				stdout = boundRawOutput(await readPipeText(proc.stdout)) ?? "";
+				stderr = boundRawOutput(await readPipeText(proc.stderr)) ?? "";
 				exitCode = -1;
 			} else {
 				exitCode = raceResult.code;
@@ -523,11 +512,11 @@ export class HarborBackend implements ExecutionBackend {
 
 		const allowPartial = context.options?.allowPartialResults === true;
 		if (exitCode !== 0 && !allowPartial) {
-			const outputTail = truncateRawOutput(stderr || stdout);
+			const outputTail = boundRawOutput(stderr || stdout);
 			throw new Error(`Harbor run failed with exit code ${exitCode}${outputTail ? `: ${outputTail}` : ""}`);
 		}
 
-		const rawOutput = truncateRawOutput(stdout || stderr);
+		const rawOutput = boundRawOutput(stdout || stderr);
 		return {
 			trialDir,
 			logPaths,

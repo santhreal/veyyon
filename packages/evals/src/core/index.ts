@@ -16,6 +16,7 @@ export * from "./prompt-overrides";
 export * from "./run-model";
 export * from "./scoring";
 export * from "./suite-registry";
+export * from "./trial-deadline";
 export * from "./trial-model";
 export * from "./types";
 export * from "./variant-matrix";

@@ -9,10 +9,10 @@ import {
 	cleanupPierContainers,
 	terminateProcessTree,
 	trialArtifactsFromExecution,
-	truncateRawOutput,
 	writePierJobConfig,
 } from "../../../src/backends/pier/runner";
 import { BackendRegistry, hasBackend, requireBackend } from "../../../src/core/backend-registry";
+import { boundRawOutput } from "../../../src/core/trial-deadline";
 import type { EvalSuite, RunContext, SuiteProvenance, TaskDescriptor, TrialScore } from "../../../src/core/types";
 
 function createMockSuite(): EvalSuite {
@@ -226,9 +226,8 @@ describe("Pier ExecutionBackend", () => {
 		}
 	});
 
-	it("rawOutput tail is capped by truncateRawOutput", () => {
+	it("rawOutput tail is bounded by boundRawOutput", () => {
 		const huge = "A".repeat(100000);
-		const capped = truncateRawOutput(huge, 65536);
-		expect(capped.length).toBe(65536);
+		expect(boundRawOutput(huge, 65536)?.length).toBe(65536);
 	});
 });

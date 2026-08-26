@@ -73,6 +73,8 @@ export const VALUE_FLAGS: Record<string, true> = {
 	"--work-dir": true,
 	"--dataset-dir": true,
 	"--run-id": true,
+	"--trial-timeout": true,
+	"--timeout-multiplier": true,
 };
 
 export const BOOLEAN_FLAGS: Record<string, true> = {
@@ -95,6 +97,8 @@ export interface EvalsCliArgs {
 	readonly workDir: string | null;
 	readonly datasetDir: string | null;
 	readonly runId: string | null;
+	readonly trialTimeoutSec: number | null;
+	readonly timeoutMultiplier: number | null;
 	readonly dryRun: boolean;
 	readonly list: boolean;
 	readonly resume: boolean;
@@ -128,6 +132,8 @@ export function parseEvalsArgs(argv: readonly string[]): EvalsCliArgs {
 	let workDir: string | null = null;
 	let datasetDir: string | null = null;
 	let runId: string | null = null;
+	let trialTimeoutSec: number | null = null;
+	let timeoutMultiplier: number | null = null;
 	let dryRun = false;
 	let list = false;
 	let resume = false;
@@ -218,6 +224,22 @@ export function parseEvalsArgs(argv: readonly string[]): EvalsCliArgs {
 			case "--dataset-dir":
 				datasetDir = value;
 				break;
+			case "--trial-timeout": {
+				const parsed = Number(value);
+				if (!Number.isInteger(parsed) || parsed < 1) {
+					throw new CliUsageError(`--trial-timeout must be an integer >= 1 seconds, got "${value}".`);
+				}
+				trialTimeoutSec = parsed;
+				break;
+			}
+			case "--timeout-multiplier": {
+				const parsed = Number(value);
+				if (!Number.isFinite(parsed) || parsed <= 0) {
+					throw new CliUsageError(`--timeout-multiplier must be a number > 0, got "${value}".`);
+				}
+				timeoutMultiplier = parsed;
+				break;
+			}
 			case "--run-id":
 				// The id names a directory under the runs directory. Refused here so a separator
 				// or a `..` is a usage error, not a journal written outside the tree.
@@ -241,6 +263,8 @@ export function parseEvalsArgs(argv: readonly string[]): EvalsCliArgs {
 		workDir,
 		datasetDir,
 		runId,
+		trialTimeoutSec,
+		timeoutMultiplier,
 		dryRun,
 		list,
 		resume,
@@ -278,6 +302,9 @@ Selection and execution:
                             (default cwd)
   --run-id <name>           name the run instead of generating a timestamped id; with
                             several suites each run is named <name>-<suite>
+  --trial-timeout <sec>     replace each task's own time budget (integer >= 1)
+  --timeout-multiplier <x>  scale whatever budget applies (number > 0). A scaled budget stops
+                            at 3600s; a budget a task states for itself is honored to 86400s
   --dry-run                 print the plan and every preflight verdict, run nothing
   --resume                  resume a prior run from its trials.jsonl journal
   --help                    this text
@@ -531,7 +558,7 @@ export async function main(argv: readonly string[] = process.argv.slice(2)): Pro
 }
 
 /** The context every suite call takes: dataset override, working directory, run options. */
-function suiteContext(args: EvalsCliArgs, suite: EvalSuite): SuiteContext {
+export function suiteContext(args: EvalsCliArgs, suite: EvalSuite): SuiteContext {
 	return {
 		datasetDir: args.datasetDir ?? undefined,
 		workDir: args.workDir ?? process.cwd(),
@@ -540,6 +567,9 @@ function suiteContext(args: EvalsCliArgs, suite: EvalSuite): SuiteContext {
 			ensureBinary: !args.dryRun,
 			model: args.models[0],
 			suite: suite.name,
+			// The deadline owner reads these two names off the options bag on every backend.
+			...(args.trialTimeoutSec === null ? {} : { trialTimeoutSec: args.trialTimeoutSec }),
+			...(args.timeoutMultiplier === null ? {} : { timeoutMultiplier: args.timeoutMultiplier }),
 		},
 	};
 }

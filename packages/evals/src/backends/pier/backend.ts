@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { requireBackendBinding, resolveCellVariant } from "../../core/cell-variant";
 import { requireHarness } from "../../core/harness-registry";
+import { trialTimeoutFromOptions } from "../../core/trial-deadline";
 import { resolveTrialModel } from "../../core/trial-model";
 import type {
 	BackendId,
@@ -17,8 +18,6 @@ import { stagePierAssets } from "./asset-staging";
 import {
 	checkPierPreflight,
 	cleanupPierContainers,
-	DEFAULT_TRIAL_TIMEOUT_SEC,
-	HARD_CEILING_TIMEOUT_SEC,
 	runPierTrial,
 	trialArtifactsFromExecution,
 	writePierJobConfig,
@@ -162,12 +161,7 @@ export class PierExecutionBackend implements ExecutionBackend {
 			configDir: configsDir,
 		});
 
-		const rawBudget = taskDescriptor.timeBudgetSec > 0 ? taskDescriptor.timeBudgetSec : DEFAULT_TRIAL_TIMEOUT_SEC;
-		const multiplier =
-			typeof context.options?.timeoutMultiplier === "number" && context.options.timeoutMultiplier > 0
-				? context.options.timeoutMultiplier
-				: 1;
-		const trialTimeoutSec = Math.min(Math.round(rawBudget * multiplier), HARD_CEILING_TIMEOUT_SEC);
+		const trialTimeoutSec = trialTimeoutFromOptions(taskDescriptor.timeBudgetSec, context.options);
 
 		const execution = await runPierTrial({
 			jobName,

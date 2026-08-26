@@ -74,6 +74,14 @@ real ids, so a typo costs a second rather than a container. Each harness declare
 runs on, and a suite whose backend a harness is not bound to is rejected during planning instead of
 at the first trial.
 
+One module decides how long a trial gets: `src/core/trial-deadline.ts`. A task's own
+`timeBudgetSec` applies, or 1800 seconds when it states none; `--trial-timeout` replaces that
+budget and `--timeout-multiplier` scales it. A scaled or defaulted budget stops at 3600 seconds,
+a budget the task states for itself is honored up to 86400, and no deadline is shorter than one
+second, so `--timeout-multiplier 0.0001` shortens a trial rather than failing it before it
+starts. A trial's raw output keeps its last 65536 bytes, counted in bytes so multi-byte output is
+bounded by what the journal writes.
+
 DeepSWE also keeps its own runner for the flags that are specific to it (arm overlays, attachment
 staging, replay manifests):
 

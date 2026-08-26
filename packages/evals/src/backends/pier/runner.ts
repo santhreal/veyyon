@@ -3,6 +3,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { readPipeText } from "@veyyon/utils";
+import { boundRawOutput, DEFAULT_GRACE_PERIOD_MS, resolveTrialTimeoutSec } from "../../core/trial-deadline";
 import type { PreflightVerdict, TrialArtifacts } from "../../core/types";
 import { MINIMUM_DEEPSWE_PIER_VERSION, pierSupportsSeparateVerifierCollect } from "./version";
 
@@ -26,17 +27,6 @@ export interface PierTrialRunOptions {
 	readonly attempt?: number;
 	readonly signal?: AbortSignal;
 	readonly exec?: (file: string, args: readonly string[]) => Promise<{ stdout: string; stderr: string }>;
-}
-
-export const DEFAULT_TRIAL_TIMEOUT_SEC = 1800;
-export const HARD_CEILING_TIMEOUT_SEC = 3600;
-export const DEFAULT_GRACE_PERIOD_MS = 5000;
-export const RAW_OUTPUT_MAX_BYTES = 65536;
-
-export function truncateRawOutput(output: string | null | undefined, maxBytes = RAW_OUTPUT_MAX_BYTES): string {
-	if (!output) return "";
-	if (output.length <= maxBytes) return output;
-	return output.slice(-maxBytes);
 }
 
 export interface TerminableProcess {
@@ -273,10 +263,7 @@ export async function runPierTrial(options: PierTrialRunOptions): Promise<PierEx
 		throw new Error("pier executable not found");
 	}
 
-	const timeoutSec = Math.min(
-		options.trialTimeoutSec > 0 ? options.trialTimeoutSec : DEFAULT_TRIAL_TIMEOUT_SEC,
-		HARD_CEILING_TIMEOUT_SEC,
-	);
+	const timeoutSec = resolveTrialTimeoutSec({ timeBudgetSec: options.trialTimeoutSec });
 
 	const started = Date.now();
 	const proc = Bun.spawn([pier, "run", "-c", options.configPath, "-q"], {
@@ -323,13 +310,13 @@ export async function runPierTrial(options: PierTrialRunOptions): Promise<PierEx
 		if (raceResult.kind === "timed_out") {
 			timedOut = true;
 			await killTrial();
-			stdout = truncateRawOutput(await readPipeText(proc.stdout));
-			stderr = truncateRawOutput(await readPipeText(proc.stderr));
+			stdout = boundRawOutput(await readPipeText(proc.stdout)) ?? "";
+			stderr = boundRawOutput(await readPipeText(proc.stderr)) ?? "";
 			exitCode = -1;
 		} else {
 			exitCode = raceResult.code;
-			stdout = truncateRawOutput(raceResult.out);
-			stderr = truncateRawOutput(raceResult.err);
+			stdout = boundRawOutput(raceResult.out) ?? "";
+			stderr = boundRawOutput(raceResult.err) ?? "";
 		}
 	} finally {
 		clearTimeout(timer);
@@ -409,7 +396,7 @@ export function trialArtifactsFromExecution(
 		trialDir: trialDirPath,
 		logPaths,
 		filePaths,
-		rawOutput: truncateRawOutput(execution.stdout || execution.stderr),
+		rawOutput: boundRawOutput(execution.stdout || execution.stderr),
 		extra: {
 			exitCode: execution.exitCode,
 			durationMs: execution.durationMs,
