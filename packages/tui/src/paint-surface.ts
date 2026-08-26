@@ -23,7 +23,7 @@
 // frame of the treatment is byte-assertable.
 
 import { clamp01 } from "@veyyon/utils/math";
-import { blendHex } from "./motion-paint";
+import { blendHex, blendRgb } from "./motion-paint";
 import { type ColumnWindow, paintBlockBackground } from "./paint-columns";
 import { parseHexColor } from "./paint-ground";
 
@@ -50,6 +50,12 @@ function liftTarget(ground: string): string {
 /** A colour `amount` of the way off `ground`, in whichever direction is visible on it. */
 export function liftHex(ground: string, amount: number): string {
 	return blendHex(ground, liftTarget(ground), clamp01(amount));
+}
+
+/** Internal: lift pre-parsed ground channels. Skips the per-call `parseHexColor` + `liftTarget` parse. */
+function liftRgb(ground: { r: number; g: number; b: number }, amount: number): string {
+	const target = (0.299 * ground.r + 0.587 * ground.g + 0.114 * ground.b) / 255 < 0.5 ? LIGHT : DARK;
+	return blendRgb(ground, target, clamp01(amount));
 }
 
 /**
@@ -119,6 +125,23 @@ export function surfaceRowColor(spec: SurfaceSpec, row: number, rows: number): s
 	return surfaceColorAt(spec, rows <= 0 ? 0 : row / rows);
 }
 
+/** Internal: surface row color with pre-parsed ground channels. */
+function surfaceRowColorRgb(
+	ground: { r: number; g: number; b: number },
+	spec: SurfaceSpec,
+	row: number,
+	rows: number,
+): string {
+	for (let i = (spec.bands?.length ?? 0) - 1; i >= 0; i--) {
+		const band = spec.bands![i]!;
+		if (row >= band.start && row < band.end) return liftRgb(ground, band.lift);
+	}
+	const top = spec.lift ?? DEFAULT_LIFT;
+	const bottom = spec.bottomLift ?? DEFAULT_BOTTOM_LIFT;
+	const k = clamp01(rows <= 0 ? 0 : row / rows);
+	return liftRgb(ground, top + (bottom - top) * k);
+}
+
 /**
  * Fill a block's own rows with the surface gradient.
  *
@@ -136,11 +159,13 @@ export function fillSurface(lines: readonly string[], width: number, spec: Surfa
 	if (strength <= 0 || lines.length === 0) return lines as string[];
 	const rows = Math.max(1, lines.length - 1);
 	const clamped = clamp01(strength);
+	const groundRgb = parseHexColor(spec.ground);
+	if (groundRgb === null) return lines as string[];
 	return paintBlockBackground(
 		lines,
 		width,
 		row => {
-			const surface = blendHex(spec.ground, surfaceRowColor(spec, row, rows), clamped);
+			const surface = blendRgb(groundRgb, surfaceRowColorRgb(groundRgb, spec, row, rows), clamped);
 			return ({ background }) => (background === undefined ? surface : undefined);
 		},
 		spec.columns,

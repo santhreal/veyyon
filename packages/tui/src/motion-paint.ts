@@ -42,6 +42,14 @@ export function blendHex(from: string, to: string, t: number): string {
 	return toHexColor(a.r + (b.r - a.r) * k, a.g + (b.g - a.g) * k, a.b + (b.b - a.b) * k);
 }
 
+/** Blend pre-parsed `from` channels toward `to` hex. Skips the `from` parse when the caller already has the channels. */
+export function blendRgb(from: { r: number; g: number; b: number }, to: string, t: number): string {
+	const b = parseHexColor(to);
+	if (b === null) return t >= 0.5 ? to : toHexColor(from.r, from.g, from.b);
+	const k = clamp01(t);
+	return toHexColor(from.r + (b.r - from.r) * k, from.g + (b.g - from.g) * k, from.b + (b.b - from.b) * k);
+}
+
 /**
  * The SGR scanner. `ansi.ts` owns the pattern: four modules used to spell it
  * out themselves and the fourth had already drifted into dropping colon-form
