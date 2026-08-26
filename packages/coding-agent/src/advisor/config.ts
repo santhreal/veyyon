@@ -64,10 +64,8 @@ const UUID_V7_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}
 const ADVISOR_PROVIDER_SESSION_KEY_SEPARATOR = "\u0000";
 
 /**
- * Returns a stable provider-facing UUIDv7 for one advisor within one primary session.
- *
- * Codex treats `session_id`/`conversation_id` as a UUID-shaped routing identity,
- * so advisor labels such as `-advisor` stay local-only.
+ * Returns a stable provider-facing UUIDv7 for one advisor within a primary session.
+ * Codex treats `session_id` as a routing identity, so advisor labels stay local-only.
  */
 export function getOrCreateAdvisorProviderSessionId(
 	ids: Map<string, string>,
@@ -210,14 +208,8 @@ export async function resolveAdvisorConfigEditPath(
 }
 
 /**
- * Load one `WATCHDOG.yml` file for editing — raw, un-merged, un-expanded. Missing,
- * unparseable, or schema-invalid files yield an empty doc (never throws) so the
- * editor opens cleanly on a fresh or broken file.
- *
- * A broken file is preserved before it is treated as empty. Opening the editor on
- * an empty doc and saving it deletes the file outright (see
- * {@link saveWatchdogConfigFile}), so without the copy a single syntax error plus
- * one visit to the editor destroyed every advisor the user had configured.
+ * Load one `WATCHDOG.yml` file raw and un-merged for editing.
+ * Missing or unparseable files yield an empty doc without throwing.
  */
 export async function loadWatchdogConfigFile(filePath: string): Promise<WatchdogConfigDoc> {
 	let text: string;

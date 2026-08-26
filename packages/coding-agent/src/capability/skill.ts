@@ -32,12 +32,8 @@ export interface SkillFrontmatter {
 }
 
 /**
- * A skill file as the discovery layer loads it: the whole markdown body plus its parsed
- * frontmatter. `extensibility/skills.ts` owns a different `Skill`, the session-facing summary
- * (name, description, paths) built FROM these, and the two shapes share only `name` and
- * `_source`. They used to share the exported name as well, in one package, so code that
- * touched nothing but `name` type-checked against either and could read the wrong provenance.
- * Named the way `capability/tool.ts` names `DiscoveredCustomTool`, for the same reason.
+ * A skill file as the discovery layer loads it (markdown body plus parsed frontmatter).
+ * Distinct from extensibility/skills.ts `Skill` (session-facing summary); they share only `name` and `_source`.
  */
 export interface DiscoveredSkill {
 	/** Skill name (unique key, derived from filename or frontmatter) */

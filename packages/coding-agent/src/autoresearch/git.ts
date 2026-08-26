@@ -27,12 +27,8 @@ export async function getCurrentAutoresearchBranch(_api: ExtensionAPI, workDir: 
 }
 
 /**
- * Ensure the working tree is on an `autoresearch/*` branch when possible.
- *
- * If the worktree is dirty and we're not already on an autoresearch branch, this returns
- * `{ ok: true, branchName: null, warning }` rather than failing. The caller surfaces the
- * warning and continues on the current branch — `keep` will skip auto-commits and `discard`
- * will revert only run-modified paths instead of resetting to baseline.
+ * Ensure the working tree is on an `autoresearch/*` branch. If dirty and not on an
+ * autoresearch branch, returns `{ ok: true, branchName: null, warning }` for caller to surface.
  */
 export async function ensureAutoresearchBranch(
 	api: ExtensionAPI,
@@ -123,8 +119,7 @@ export function relativizeGitPathToWorkDir(repoRelativePath: string, workDirPref
 }
 
 /**
- * The prefix from the repository root to `workDir`. `""` is real (workDir IS root), so a failure
- * answering `""` resolves paths against the wrong directory. Reported; value still returned.
+ * Prefix from repo root to `workDir`. Empty is real (workDir is root).
  */
 async function readGitWorkDirPrefix(api: ExtensionAPI, workDir: string): Promise<string> {
 	void api;
@@ -340,12 +335,8 @@ export function computeRunModifiedPaths(
 }
 
 /**
- * The commit HEAD points at, or null when there is none to read.
- *
- * An experiment records the commit it ran against, and a directory that is not a repository yet, or a
- * repository with no commits, is an ordinary case there rather than a failure: the run is still worth
- * recording, with no commit attached. The two experiment tools each had their own copy of this, so a
- * change to what "no commit" means would have landed in one of them.
+ * Read commit HEAD points at, or null. An experiment records the commit it ran against;
+ * having no commits is ordinary rather than a failure.
  */
 export async function tryReadHeadSha(cwd: string): Promise<string | null> {
 	try {

@@ -97,19 +97,8 @@ export function formatNum(value: number | null, unit: string): string {
 }
 
 /**
- * Percent change against a baseline, signed: `+12.3%`, `-4.0%`. `undefined` when there is
- * nothing to compare against.
- *
- * The owner of that format, and of the three conditions under which a delta must NOT be
- * shown: no baseline, a zero baseline (the division has no meaning), and a value equal to
- * the baseline (`+0.0%` next to an unchanged number is noise). The computation and all
- * three guards were written out five times across the dashboard and the log-experiment
- * tool, which is how the run overlay and the tool's own report came to be two places to
- * change one format.
- *
- * Positive deltas carry an explicit `+` because the reader is comparing runs, and a bare
- * `12.3%` beside a metric reads as the metric's own percentage. Negative values already
- * carry their sign.
+ * Percent change against a baseline, signed (+12.3%/-4.0%). Returns undefined
+ * when there is no baseline, a zero baseline, or a value equal to baseline.
  */
 export function formatPercentChange(value: number, baseline: number | null | undefined): string | undefined {
 	if (baseline === null || baseline === undefined || baseline === 0 || value === baseline) return undefined;
@@ -166,13 +155,7 @@ export function pathMatchesSpec(pathValue: string, specValue: string): boolean {
 	return normalizedPath === normalizedSpec || normalizedPath.startsWith(`${normalizedSpec}/`);
 }
 
-/**
- * The distinct non-blank values, trimmed, in first-seen order.
- *
- * Uniqueness is the only thing added here; what counts as blank comes from
- * `nonEmptyTrimmed`, so this cannot drift from the rest of the codebase on whether a
- * whitespace-only entry is a value.
- */
+/** Distinct non-blank values in first-seen order, with uniqueness added; blank check from nonEmptyTrimmed. */
 export function dedupeStrings(values: readonly string[]): string[] {
 	return [...new Set(nonEmptyTrimmed(values))];
 }
@@ -227,9 +210,7 @@ function sanitizeAsiValue(value: unknown): ASIValue | undefined {
 }
 
 /**
- * The porcelain status autoresearch reads dirty paths from. Failures propagate (used to return `""`,
- * falsely reporting "no dirty paths"). A cwd outside a repository returns `""` (true answer, no tracked
- * changes); decided by a directory walk, not confused with a failed `git status`.
+ * Porcelain status for dirty paths. Failures propagate; outside repo returns "".
  */
 export async function gitStatusPorcelain(cwd: string): Promise<string> {
 	if (!(await git.repo.resolve(cwd))) return "";
@@ -237,8 +218,7 @@ export async function gitStatusPorcelain(cwd: string): Promise<string> {
 }
 
 /**
- * Prefix from repository root to `cwd`. Failures propagate like {@link gitStatusPorcelain}: empty prefix
- * is real (cwd IS root), so a failed `""` resolves paths against the wrong directory. Outside a repo: `""`.
+ * Prefix from repo root to cwd. Empty is real (cwd is root); outside repo returns "".
  */
 export async function gitWorkDirPrefix(cwd: string): Promise<string> {
 	if (!(await git.repo.resolve(cwd))) return "";

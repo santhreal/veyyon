@@ -241,13 +241,8 @@ function renderInitCall(name: string, theme: Theme): string {
 }
 
 /**
- * Whether the worktree has changes that need committing before a baseline is recorded.
- *
- * FAILS CLOSED: a status that cannot be read answers TRUE, not false. The caller commits the harness
- * changes when this is true, and warns that "discard may not preserve uncommitted harness files" when the
- * commit fails -- so answering false on a failure quietly took the branch that loses work, and the
- * baseline was recorded at a HEAD that did not contain the harness. Answering true instead attempts the
- * commit, and a commit that cannot run produces the warning the reader needs to see.
+ * Check for pending changes before baseline. Fails closed: unreadable status returns true
+ * so the caller attempts to commit harness changes and surfaces any commit errors.
  */
 async function detectPendingChanges(cwd: string): Promise<boolean> {
 	try {

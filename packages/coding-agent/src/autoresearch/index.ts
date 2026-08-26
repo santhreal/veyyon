@@ -523,8 +523,7 @@ function bestKeptResult(
 }
 
 /**
- * The current branch name, or null. Null is ordinary (detached HEAD, not a repo), not a swallowed
- * failure. Caller treats null as "no session for this branch" — conservative: nothing started or logged.
+ * Current branch name or null. Null is ordinary (detached HEAD, not a repo).
  */
 async function tryReadBranch(cwd: string): Promise<string | null> {
 	try {

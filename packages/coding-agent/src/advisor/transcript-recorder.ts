@@ -12,12 +12,8 @@ import {
 import { SessionManager } from "../session/session-manager";
 
 /**
- * The advisor transcript naming contract, owned by `@veyyon/utils/session-file` and re-exported here.
- *
- * It lives there because `@veyyon/stats` classifies a transcript as the advisor's by matching this name and
- * cannot import the coding agent, so it had declared the same filename itself. The stem is chosen so it
- * cannot collide with a task subagent's `<id>.jsonl` (task ids are reserved against this exact stem in
- * {@link AgentOutputManager}).
+ * Advisor transcript naming contract owned by `@veyyon/utils/session-file`.
+ * The stem is chosen so it cannot collide with task subagent IDs.
  */
 export {
 	ADVISOR_TRANSCRIPT_FILENAME,
@@ -35,25 +31,8 @@ export function advisorTranscriptFilename(slug: string): string {
 }
 
 /**
- * Append-only persister for an advisor agent's transcript.
- *
- * The advisor is a passive reviewer with its own model usage, so — like a task
- * subagent — its turns are written to a JSONL inside the owning session's
- * artifacts dir (`<session>/__advisor.jsonl`, `<session>/<SubId>/__advisor.jsonl`
- * for subagent advisors). That single file gives the advisor model proper usage
- * attribution in `veyyon stats` (the stats parser scans the session dir
- * recursively) and a read-only transcript in the Control Center, without making the
- * advisor a registered, messageable peer.
- *
- * The target is derived from the *session file* (`getSessionFile()`), never
- * `getArtifactsDir()` — subagents adopt the parent's artifact manager, so the
- * artifacts dir points at the parent root and every subagent advisor would
- * collide. The file path is resolved synchronously when a message finalizes and
- * captured for the queued write, so a `/new`, resume, or session switch in
- * flight can never misattribute an old advisor turn into the new session's file.
- * On such a switch the previous writer is closed and the new file opened on the
- * next recorded turn. The recorder never truncates: the advisor's in-memory
- * context resets/compacts independently, but every billed turn is appended here.
+ * Append-only persister for advisor transcripts, providing attribution in `veyyon stats`
+ * and a read-only Control Center transcript. Target is derived from the session file.
  */
 export class AdvisorTranscriptRecorder {
 	#manager: SessionManager | undefined;

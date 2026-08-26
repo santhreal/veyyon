@@ -89,25 +89,8 @@ export interface ArgotSessionInit {
 
 /**
  * Build the {@link ArgotSession} for a session, applying the subagent policy.
- *
- * Loading is agent-driven (the canonical flow in argot's SPEC): every session
- * starts UNARMED and the model loads the project it intends to work in through
- * the `argot_load` tool, so the launch directory never picks the wrong project
- * in a monorepo. An unarmed session is fully correct: expansion is identity
- * until a dictionary loads, so nothing decodes wrong and nothing leaks. A
- * session that is never loaded simply saves no tokens.
- *
- * - A top-level session starts as an empty {@link ArgotSession} (the feature off
- *   returns no codec at all).
- * - A subagent follows {@link ArgotSessionInit.subagentMode}: `off` gets no codec,
- *   `fresh` gets its own empty session and loads its task's project itself, and
- *   `inherit` starts as a detached {@link ArgotSession.fork} of the parent's
- *   loaded shorthand.
- *
- * `inherit` with no parent codec to fork (a revived subagent with no live parent,
- * or a parent that had Argot off) is not a silent failure: it starts unarmed
- * instead, which is a fully correct path, and says so loudly in the log rather
- * than leaving the subagent silently without shorthand.
+ * Subagents follow subagentMode: `off` gets no codec, `fresh` starts its own empty session,
+ * and `inherit` starts as a detached {@link ArgotSession.fork}.
  */
 export function createArgotSession(init: ArgotSessionInit): ArgotSession | undefined {
 	if (!init.enabled) {
@@ -259,27 +242,9 @@ export function unloadArgotFolder(argot: ArgotSession, folder: string): { root: 
 }
 
 /**
- * Arm a session's shorthand in the background after startup. The first load in
- * a project walks the repo to generate the dictionary, so awaiting it inline
- * would block session construction on large trees; instead the session starts
- * unarmed and the completed load fires `onArmed` (the prompt refresh, the same
- * contract `argot_load` uses). A missing project marker resolves quietly to
- * nothing; a genuine failure (malformed cache, handle conflict) logs loudly.
- *
- * `onResolved` (optional) fires whenever the launch folder resolves to a project,
- * with the vocabulary the dictionary produced — INCLUDING an empty one. That empty
- * case is the whole point: a repo with no repeated-token mass generates an empty
- * dictionary, so the model has nothing to encode and the prompt is never refreshed
- * (the size gate below). Downstream instruments (the deepswe-bench argot telemetry)
- * need to see it to tell "the corpus had nothing to compress" apart from "the model
- * ignored available handles"; without it, a null encode result is uninterpretable.
- *
- * The callback receives the handle ENTRIES, not just a count, because a count alone
- * cannot bound the effect: an eval needs the actual expansions to compute how much
- * the model could have saved at perfect adoption. A vocabulary of long, never-typed
- * strings (license text, fixture YAML) and one of hot file paths both report the
- * same size while offering wildly different headroom. `onResolved` runs before
- * `onArmed` so the record is durable even if the refresh throws.
+ * Arm a session's shorthand in the background after startup.
+ * `onResolved` fires when the launch folder resolves to a project, including empty vocabularies
+ * (distinguishing "nothing to compress" from ignored handles), receiving handle entries, not just counts.
  */
 export async function armArgotAfterStartup(opts: {
 	argot: ArgotSession;

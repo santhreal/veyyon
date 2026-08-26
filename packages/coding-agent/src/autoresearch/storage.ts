@@ -663,8 +663,7 @@ function parseStatus(value: string | null): ExperimentStatus | null {
 }
 
 /**
- * A JSON string array from a storage column, or `[]`. Empty is a real value (no scope/off-limits/dirty
- * paths). Written only by this module, so unparseable JSON means DB corruption — `[]` is the best answer.
+ * JSON string array from storage column, or `[]`. Unparseable JSON indicates DB corruption.
  */
 function parseStringArray(json: string): string[] {
 	try {

@@ -403,10 +403,8 @@ async function revertFailedExperiment(
 }
 
 /**
- * The paths this run changed. Failures propagate: an unreadable status used to parse as "nothing
- * changed", which recorded the experiment with an empty modified-path list and made the
- * scope-deviation check pass vacuously, so an experiment that touched an `off_limits` file was logged
- * as staying inside its scope.
+ * Paths this run changed. Failures propagate so an unreadable status is not
+ * falsely treated as "nothing changed".
  */
 async function detectModifiedPaths(
 	cwd: string,

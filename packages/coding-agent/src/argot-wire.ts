@@ -42,24 +42,9 @@ export function expandToolArguments(argot: ArgotSession, args: Record<string, un
 }
 
 /**
- * Expand handles in a subagent's returned text at the RETURN boundary — the last
- * seam a child emits across, and the one a broken harness silently skips.
- *
- * A subagent running `fresh`/`inherit` writes `§handle` tokens keyed to its OWN
- * codec. The raw assistant text the executor captures from the child's stream
- * events (accumulated output chunks, the final turn, cancelled-run salvage) is in
- * that handle form, and it becomes the parent's tool result and on-disk artifact.
- * The parent's codec may bind those same handle names to a DIFFERENT expansion, or
- * not know them at all, so a raw handle that crossed the wire would reach the
- * parent either undecodable (a bare `§x` in its history) or, worse, silently
- * decoded to the parent's divergent meaning. Expanding here with the CHILD's codec
- * is what upholds the boundary contract documented on {@link ArgotSession.fork}:
- * "the child expands its own result, which covers any handle it added by loading a
- * project the parent never had."
- *
- * An `off` child has no codec (`undefined`) and never wrote a handle, so this is
- * identity; `expand` on text carrying no sigil is also identity. Both make it safe
- * to route every captured chunk through here unconditionally.
+ * Expand handles in a subagent's returned text using the child's codec at the return boundary.
+ * The child expands its own result because the parent may bind the same handle names differently.
+ * An `off` child has no codec, making expansion an identity operation.
  */
 export function expandSubagentReturn(codec: ArgotSession | undefined, text: string): string {
 	if (!text || codec === undefined || !codec.loaded) return text;

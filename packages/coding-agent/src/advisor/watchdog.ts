@@ -120,8 +120,8 @@ export async function collectConfigCandidates(
 }
 
 /**
- * Discover and load WATCHDOG.md files walking up from cwd, project .veyyon folder, and user agent dir.
- * Returns formatted watchdog file blocks ready to be appended to the advisor system prompt.
+ * Discover and load WATCHDOG.md files walking up from cwd.
+ * Returns formatted watchdog blocks ready to append to the advisor system prompt.
  */
 export async function discoverWatchdogFiles(cwd: string, agentDir?: string): Promise<string[]> {
 	const items = await collectConfigCandidates(cwd, agentDir, ["WATCHDOG.md"]);

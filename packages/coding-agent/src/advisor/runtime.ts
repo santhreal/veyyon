@@ -92,12 +92,8 @@ const ADVISOR_OUTPUT_ONLY_HAZARDS: readonly AdvisorOutputHazard[] = [
 ];
 
 /**
- * Replaces an advisor assistant turn that requested unavailable tools or generated
- * output-only destructive directives with a sanitized error before dispatch.
- *
- * The agent loop records assistant turns before dispatching tools. Without this
- * pre-dispatch rewrite, an advisor hallucination can leave unrelated text in the
- * advisor transcript even though the action itself never executes.
+ * Replaces an advisor assistant turn requesting unavailable tools or generating destructive
+ * directives with a sanitized error before dispatch, preventing unexecuted hallucinations in transcripts.
  */
 export function quarantineAdvisorUnsafeOutput(
 	message: AssistantMessage,
@@ -172,9 +168,7 @@ export function buildAdvisorQuarantineSourceText(currentInput: string, messages:
 	return parts.join("\n");
 }
 /**
- * Maximum number of late-arrival coalescing rounds in {@link AdvisorRuntime.#collectAndMaintainBatch}.
- * After this many rounds any items still in `#pending` are left for the next drain iteration
- * so a pathologically fast primary + slow `maintainContext` cannot stall dispatch indefinitely.
+ * Maximum late-arrival coalescing rounds before pending items wait for the next drain.
  */
 const MAX_COALESCE_ROUNDS = 3;
 
