@@ -1,4 +1,4 @@
-import { errorMessage } from "@veyyon/utils";
+import { errorMessage } from "@veyyon/utils/type-guards";
 import { useState } from "react";
 import { putExperimentMeta } from "../api";
 import { INPUT_CLASS } from "./ui";

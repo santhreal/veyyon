@@ -1,4 +1,4 @@
-import { errorMessage } from "@veyyon/utils";
+import { errorMessage } from "@veyyon/utils/type-guards";
 import { useState } from "react";
 import type { ArmSummary, RunRole } from "../../wire";
 import { putExperimentMeta } from "../api";
