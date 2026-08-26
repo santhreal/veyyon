@@ -830,10 +830,16 @@ export class CommandController {
 	 * session file the running turn is still writing to, and the option-carrying
 	 * callers seed the next transcript from the current one, so both need the
 	 * turn to be over.
+	 *
+	 * `session.newKeepsBackground` decides the streaming case. Off, this declines
+	 * and the in-place reset below aborts the turn and closes its provider
+	 * stream, so a conversation that leaves the screen stops billing. On, the
+	 * turn survives and the status line counts it.
 	 */
 	async #handOffRunningSession(options: NewSessionOptions | undefined): Promise<boolean> {
 		const createNextSession = this.ctx.createNextSession;
 		if (!createNextSession || options || !this.ctx.session.isStreaming) return false;
+		if (!this.ctx.settings.get("session.newKeepsBackground")) return false;
 		let next: AgentSession;
 		try {
 			next = await createNextSession();
@@ -867,6 +873,13 @@ export class CommandController {
 	async #runNewSessionFlow(options?: NewSessionOptions, label: string = "New session started"): Promise<void> {
 		this.ctx.clearTransientSessionUi();
 
+		// Read before anything resets: `newSession()` aborts the turn, so asking
+		// afterwards always reports a quiet session and the outcome line would
+		// never mention the turn it just stopped. Only a plain `/new` reports it;
+		// `/drop` states its own outcome and the option-carrying callers were
+		// never streaming.
+		const stoppedARunningTurn = !options && this.ctx.session.isStreaming;
+
 		if (await this.#handOffRunningSession(options)) return;
 
 		if (this.ctx.session.isCompacting) {
@@ -885,7 +898,8 @@ export class CommandController {
 		this.ctx.clearTransientSessionUi();
 		this.ctx.resetTranscript();
 
-		this.ctx.present([new Spacer(1), new Text(`${theme.fg("accent", `${theme.status.success} ${label}`)}`, 1, 1)]);
+		const outcome = stoppedARunningTurn ? `${label} — previous session stopped` : label;
+		this.ctx.present([new Spacer(1), new Text(`${theme.fg("accent", `${theme.status.success} ${outcome}`)}`, 1, 1)]);
 		await this.ctx.reloadTodos();
 		this.ctx.ui.requestRender(true, { clearScrollback: true });
 	}

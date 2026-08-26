@@ -64,6 +64,7 @@ function createCtx(activeMs: number): SegmentContext {
 		contextLimitKind: "window" as const,
 		autoCompactEnabled: false,
 		subagentCount: 0,
+		backgroundSessionCount: 0,
 		activeMs,
 		activeRepo: null,
 		worktree: null,

@@ -734,6 +734,7 @@ export class InteractiveMode implements InteractiveModeContext {
 	 * the bar cannot be refreshed off those alone.
 	 */
 	#bashForegroundUnsubscribe?: () => void;
+	#backgroundSessionsUnsubscribe?: () => void;
 	#agentRegistrySubscriptionTarget?: AgentRegistry;
 	#mcpPendingServers = new Set<string>();
 	#mcpConnectedServers = new Set<string>();
@@ -915,6 +916,16 @@ export class InteractiveMode implements InteractiveModeContext {
 		// and gets the hard cut.
 		this.statusLine = new StatusLineComponent(session, { requestRender: () => this.ui.requestRender() });
 		this.statusLine.setAutoCompactEnabled(session.autoCompactionEnabled);
+		// The count has to arrive on the keeper's own events, not on the next
+		// repaint that happens for another reason: a handed-off conversation
+		// produces no UI activity at all, so a chip refreshed by ambient redraws
+		// reads zero for as long as the operator sits still — which is exactly the
+		// stretch where an unwatched turn is spending.
+		this.statusLine.setBackgroundSessionCount(BackgroundSessions.global().size);
+		this.#backgroundSessionsUnsubscribe = BackgroundSessions.global().subscribe(() => {
+			this.statusLine.setBackgroundSessionCount(BackgroundSessions.global().size);
+			this.ui.requestRender();
+		});
 		// The borderless composer, per the agreed design mockups: a static
 		// near-invisible hairline, the content inset off the terminal edge, and
 		// ONE quiet metadata footline below the input — location (path · git)
@@ -4213,6 +4224,8 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.#agentRegistrySubscriptionTarget = undefined;
 		this.#bashForegroundUnsubscribe?.();
 		this.#bashForegroundUnsubscribe = undefined;
+		this.#backgroundSessionsUnsubscribe?.();
+		this.#backgroundSessionsUnsubscribe = undefined;
 		this.#eventController.dispose();
 		this.statusLine.dispose();
 		if (this.#resizeHandler) {

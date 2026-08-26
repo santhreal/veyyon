@@ -751,6 +751,7 @@ export class StatusLineComponent implements Component {
 	#autoCompactEnabled: boolean = true;
 	#hookStatuses: Map<string, string> = new Map();
 	#subagentCount: number = 0;
+	#backgroundSessionCount: number = 0;
 	/**
 	 * Active-processing accounting for the `time_spent` segment, keyed per
 	 * {@link AgentSession} so the focus-controller mid-turn attach path
@@ -938,6 +939,18 @@ export class StatusLineComponent implements Component {
 	/** Currently executing subagents shown on every interactive status surface. */
 	get subagentCount(): number {
 		return this.#subagentCount;
+	}
+
+	setBackgroundSessionCount(count: number): void {
+		const next = Number.isFinite(count) ? Math.max(0, Math.trunc(count)) : 0;
+		if (next === this.#backgroundSessionCount) return;
+		this.#backgroundSessionCount = next;
+		this.invalidate();
+	}
+
+	/** Conversations still running that no screen is showing. */
+	get backgroundSessionCount(): number {
+		return this.#backgroundSessionCount;
 	}
 
 	/**
@@ -1724,6 +1737,7 @@ export class StatusLineComponent implements Component {
 			contextLimitKind,
 			autoCompactEnabled: this.#autoCompactEnabled,
 			subagentCount: this.#subagentCount,
+			backgroundSessionCount: this.#backgroundSessionCount,
 			activeMs: this.getActiveMs(),
 			git: {
 				branch: gitBranch,
