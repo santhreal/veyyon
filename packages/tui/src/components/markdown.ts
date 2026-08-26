@@ -1091,6 +1091,8 @@ export class Markdown implements Component {
 	#cachedHeadingProbeId = -1;
 	#cachedInlineStyleContext?: InlineStyleContext;
 	#cachedInlineStyleContextId = -1;
+	#cachedWalkContext?: InlineWalkContext;
+	#cachedWalkContextId = -1;
 
 	#ignoreTight = false;
 
@@ -2083,8 +2085,39 @@ export class Markdown implements Component {
 	}
 
 	#renderInlineTokensInner(tokens: Token[], styleContext?: InlineStyleContext): string {
-		const resolvedStyleContext = styleContext ?? this.#getDefaultInlineStyleContext();
-		const { applyText, stylePrefix } = resolvedStyleContext;
+		if (!styleContext) {
+			const styleId = this.#defaultTextStyle ? objectId(this.#defaultTextStyle) : -1;
+			if (styleId === this.#cachedWalkContextId && this.#cachedWalkContext) {
+				return walkInlineTokens(tokens, this.#cachedWalkContext);
+			}
+			const resolved = this.#getDefaultInlineStyleContext();
+			const { applyText, stylePrefix } = resolved;
+			const swatchGlyph = this.#theme.symbols.colorSwatch || DEFAULT_COLOR_SWATCH_GLYPH;
+			const applyTextWithNewlines = (text: string): string => {
+				if (text.indexOf("\n") === -1) return text === "" ? "" : applyText(text);
+				return text
+					.split("\n")
+					.map((segment: string) => (segment === "" ? "" : applyText(segment)))
+					.join("\n");
+			};
+			const ctx: InlineWalkContext = {
+				theme: this.#theme,
+				applyText,
+				applyTextWithNewlines,
+				renderLeafText: (text: string) => renderTextWithSwatches(text, applyTextWithNewlines, swatchGlyph),
+				stylePrefix,
+				swatchGlyph,
+				hyperlinks: true,
+				useHtmlState: true,
+				handleBlocks: true,
+				stripTrailingPrefix: true,
+				renderNested: (subTokens: Token[]) => this.#renderInlineTokens(subTokens, resolved),
+			};
+			this.#cachedWalkContext = ctx;
+			this.#cachedWalkContextId = styleId;
+			return walkInlineTokens(tokens, ctx);
+		}
+		const { applyText, stylePrefix } = styleContext;
 		const applyTextWithNewlines = (text: string): string => {
 			const segments: string[] = text.split("\n");
 			return segments.map((segment: string) => (segment === "" ? "" : applyText(segment))).join("\n");
@@ -2101,7 +2134,7 @@ export class Markdown implements Component {
 			useHtmlState: true,
 			handleBlocks: true,
 			stripTrailingPrefix: true,
-			renderNested: (subTokens: Token[]) => this.#renderInlineTokens(subTokens, resolvedStyleContext),
+			renderNested: (subTokens: Token[]) => this.#renderInlineTokens(subTokens, styleContext),
 		});
 	}
 
@@ -2391,7 +2424,8 @@ export class Markdown implements Component {
 		// A table whose delimiter row omits a column, or a token from a source that
 		// does not populate `align`, falls back to the GFM default rather than
 		// indexing past the end.
-		const align: TableAlign[] = Array.from({ length: numCols }, (_, i) => token.align?.[i] ?? null);
+		const align: TableAlign[] = new Array(numCols);
+		for (let i = 0; i < numCols; i++) align[i] = token.align?.[i] ?? null;
 
 		// Render top border
 		const borderCells = columnWidths.map(w => h.repeat(w));
