@@ -1,24 +1,15 @@
 /**
  * Preflight verification, binary fresh-build checks, and auth database seeding.
  */
+
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
-import { AuthStorage, SqliteAuthCredentialStore } from "@veyyon/ai";
+import { AUTH_DB_SOURCES, requireStagedAuthCanServeToken } from "../../../../core";
 import { assetsDir, authDbPath, codingAgentDir, evalsPackageDir, veyBinaryPath } from "../../../../paths";
-import {
-	type CredentialProbe,
-	decideAuthPreflight,
-	decideAuthSeed,
-	describeAuthPreflightFailure,
-	describeExhaustedPool,
-	exhaustedPoolFor,
-	modelVendor,
-	probeCredentialStore,
-	snapshotCredentialStore,
-	spentQuotaShouldAbort,
-} from "../shared";
+import { decideAuthSeed, probeCredentialStore, snapshotCredentialStore } from "../shared";
+import { BinaryBuildFailedError, MissingCredentialStoreError, MissingRequiredFileError } from "./errors";
 
 export function getBenchDir(): string {
 	return evalsPackageDir();
@@ -36,16 +27,11 @@ export function getAuthDbPath(): string {
 	return authDbPath();
 }
 
-export const AUTH_DB_SOURCES = [
-	path.join(os.homedir(), ".veyyon", "shared-auth", "agent.db"),
-	path.join(os.homedir(), ".veyyon", "profiles", "default", "shared-auth", "agent.db"),
-	path.join(os.homedir(), ".veyyon", "profiles", "work", "shared-auth", "agent.db"),
-];
+export { AUTH_DB_SOURCES };
 
 export function requireFile(p: string, hint: string): void {
 	if (!fs.existsSync(p)) {
-		console.error(`missing: ${p}\n${hint}`);
-		process.exit(1);
+		throw new MissingRequiredFileError(`missing: ${p}\n${hint}`);
 	}
 }
 
@@ -141,18 +127,16 @@ export function checkBinaryBuildNeeded(customBinaryPath?: string): BinaryBuildCh
 
 export async function ensureBinaryUpToDate(): Promise<void> {
 	const status = checkBinaryBuildNeeded();
-	if (status.needsBuild) {
-		console.log("deep-swe: building fresh vey binary...");
-		const proc = Bun.spawn(["bun", "scripts/build-binary.ts"], {
-			cwd: getCodingAgentDir(),
-			stdout: "inherit",
-			stderr: "inherit",
-		});
-		const code = await proc.exited;
-		if (code !== 0) {
-			console.error("failed to build vey binary");
-			process.exit(1);
-		}
+	if (!status.needsBuild) return;
+	console.log("deep-swe: building fresh vey binary...");
+	const built = spawnSync("bun", ["scripts/build-binary.ts"], {
+		cwd: getCodingAgentDir(),
+		stdio: "inherit",
+	});
+	if (built.status !== 0) {
+		throw new BinaryBuildFailedError(
+			`failed to build vey binary (${status.buildCommand} exited with ${built.status ?? built.signal})`,
+		);
 	}
 }
 
@@ -162,11 +146,10 @@ export function ensureAuthDbSeeded(): void {
 	const mtimeOf = (p: string): number | undefined => (fs.existsSync(p) ? fs.statSync(p).mtimeMs : undefined);
 	const decision = decideAuthSeed(AUTH_DB_SOURCES, authDb, mtimeOf, probeCredentialStore);
 	if (decision.kind === "missing") {
-		console.error(
+		throw new MissingCredentialStoreError(
 			`missing credential store: no agent.db at any of\n  ${AUTH_DB_SOURCES.join("\n  ")}\n` +
 				"log in first: vey (then /login), which writes ~/.veyyon/shared-auth/agent.db",
 		);
-		process.exit(1);
 	}
 	if (decision.legacy) {
 		console.warn(
@@ -188,52 +171,4 @@ export function ensureAuthDbSeeded(): void {
 	snapshotCredentialStore(decision.source, authDb);
 }
 
-export async function requireStagedAuthCanServeToken(
-	model: string,
-	dryRun = false,
-	dbPath = getAuthDbPath(),
-): Promise<void> {
-	const store = await SqliteAuthCredentialStore.open(dbPath);
-	let probes: CredentialProbe[];
-	try {
-		const storage = new AuthStorage(store);
-		await storage.reload();
-		probes = await storage.checkCredentials();
-	} finally {
-		store.close();
-	}
-
-	if (modelVendor(model) === null) {
-		const message =
-			`deep-swe: cannot resolve the upstream vendor for model "${model}", so its quota pool cannot be ` +
-			`checked. Verify the model id against @veyyon/catalog.`;
-		console.error(message);
-		if (!dryRun) throw new Error(message);
-		console.error("deep-swe: continuing anyway because this is a --dry-run; no trial will be started.\n");
-	}
-
-	const spent = exhaustedPoolFor(probes, model);
-	if (spent) {
-		console.error(`deep-swe: ${describeExhaustedPool(spent, model)}`);
-		if (spentQuotaShouldAbort(spent, dryRun)) {
-			throw new Error(describeExhaustedPool(spent, model));
-		}
-		console.error("deep-swe: continuing anyway because this is a --dry-run; no trial will be started.\n");
-	}
-
-	const verdict = decideAuthPreflight(probes);
-	if (verdict.kind === "ok") {
-		console.log(`deep-swe: staged auth DB serves a token (${verdict.usable} usable credential(s))`);
-		return;
-	}
-	if (verdict.kind === "unverifiable") {
-		console.warn(
-			`deep-swe: WARNING the staged auth DB could NOT be verified. No probe is configured for: ` +
-				`${verdict.providers.join(", ")}. Proceeding UNVERIFIED; an auth failure will now surface per trial.`,
-		);
-		return;
-	}
-	const failureMessage = describeAuthPreflightFailure(verdict, dbPath);
-	console.error(failureMessage);
-	throw new Error(failureMessage);
-}
+export { requireStagedAuthCanServeToken };
