@@ -1,21 +1,8 @@
 /**
- * The default sqlite-backed credential store.
- *
- * WHY IT IS NOT IN `auth-storage.ts` ANY MORE. That module owns the OAuth machinery -- refreshing
- * tokens, consulting provider registries, classifying provider errors -- and reaching it costs 213
- * modules, most of them the provider registry and its 75 provider definitions. This class does none of
- * that. It opens a database, prepares statements, and reads and writes rows. The caller that forced the
- * split is `packages/coding-agent`'s storage layer: it wants exactly this class, and importing it
- * through `auth-storage.ts` put the OAuth flows on the path of `config/settings.ts`, which is the most
- * imported module in that package.
- *
- * The pure row logic it calls lives in `auth-credential-rows.ts`, which imports nothing but
- * `@veyyon/utils`, and the credential TYPES stay in `auth-storage.ts` and arrive as `import type`, which
- * is erased. So there is no runtime edge back to the OAuth side at all: this module and the row helpers
- * are a closed pair.
- *
- * `auth-storage.ts` re-exports this class, so every existing importer of `@veyyon/ai/auth-storage` or of
- * the package barrel is unaffected.
+ * The default sqlite-backed credential store. Split from `auth-storage.ts` (OAuth machinery, 213 modules)
+ * so `config/settings.ts` doesn't pay for the provider registry to write a row. Row logic lives in
+ * `auth-credential-rows.ts` (imports only `@veyyon/utils`); credential TYPES arrive as `import type`.
+ * `auth-storage.ts` re-exports this class, so no existing importer changed.
  */
 import { Database, type Statement } from "bun:sqlite";
 import * as fs from "node:fs/promises";

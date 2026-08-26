@@ -1,29 +1,10 @@
 /**
- * Which environment variable holds a provider's API key, for every provider the catalog cannot describe.
- *
- * WHY THIS IS ITS OWN MODULE. `env-api-key.ts` answers "which variable holds provider X's key" and it is
- * imported for exactly that, by eighteen web-search providers in `@veyyon/coding-agent`, by
- * `web/parallel.ts`, and through that by `tools/fetch.ts` and `tools/read.ts`. Its own doc records why it
- * was split out of `stream.ts`: asking a one-line question should not cost the streaming engine.
- *
- * It kept costing 158 modules anyway, because the OVERRIDES lived on the provider DEFINITIONS. A definition
- * is heavy by design (login flows, transports, model lists, OAuth callbacks), and reading one field off all
- * of them meant importing `./registry`, which is 121 modules and was 95 MARGINAL on this lookup. So the
- * table that says `AWS_PROFILE or AWS_ACCESS_KEY_ID counts as authenticated` dragged the whole provider
- * registry into every web-search provider in the product.
- *
- * The rule is small and self-contained; the definition it used to hang on is not. Both facts belong
- * somewhere, and this is the somewhere for the first one. `registry/types.ts` no longer declares an
- * `envKeys` field, so there is exactly one place a provider's env-key rule can be written and exactly one
- * module that reads it. `packages/ai/test/provider-env-keys.test.ts` fails if a definition grows the field
- * back, which is the failure mode that matters: a field nothing reads looks like configuration and does
- * nothing.
- *
- * WHAT BELONGS HERE AND WHAT DOES NOT. `@veyyon/catalog`'s `envVars` is the source for a plain provider
- * env-var name and stays the source: this table is only for what a variable name cannot express, which is
- * three probes (Bedrock's credential chain, Vertex ADC, Anthropic under Foundry) plus the ids the catalog
- * does not model at all (search tools and local servers). A provider whose key is one ordinary variable
- * belongs in the catalog, not here, and adding it here as well is the duplicate this module exists to end.
+ * Which environment variable holds a provider's API key, for providers the catalog cannot describe.
+ * Split from `env-api-key.ts` so the overrides table doesn't import `./registry` (121 modules). The
+ * rule is small and self-contained; `registry/types.ts` no longer declares `envKeys` — one place to write,
+ * one module to read. Test fails if a definition grows the field back.
+ * `@veyyon/catalog`'s `envVars` owns plain variable names; this table is only for probes (Bedrock, Vertex
+ * ADC, Anthropic under Foundry) and ids the catalog doesn't model.
  */
 
 import * as fs from "node:fs";

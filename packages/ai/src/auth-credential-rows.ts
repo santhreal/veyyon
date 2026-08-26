@@ -1,22 +1,8 @@
 /**
- * Credential ROWS: the shapes stored in sqlite and the pure functions that map between them.
- *
- * WHY THIS IS SEPARATE FROM `auth-storage.ts`. That module owns two different jobs. One is the OAuth
- * machinery: refreshing tokens, talking to provider registries, classifying provider errors. The other
- * is persistence: a row shape, a JSON payload, an identity key, a comparison that decides whether one
- * credential replaces another. Only the first needs a provider registry, and it costs 168 modules.
- * Everything here is pure -- strings, JSON, a decoded JWT payload -- so a module that only has to read
- * or write a credential row can name this and pay for nothing else. `packages/coding-agent`'s storage
- * layer is the caller that motivated it: it wants the sqlite store, and reaching it through
- * `auth-storage.ts` put the OAuth flows on the path of everything that reads a setting.
- *
- * The credential TYPES stay in `auth-storage.ts` and arrive here as `import type`, which is erased, so
- * there is no runtime edge back and nothing circular at load time. They are the package's public
- * credential vocabulary and moving them would change every consumer's import for no gain; what moves is
- * the row logic that belongs beside sqlite.
- *
- * NOTHING HERE TOUCHES A DATABASE. The store in `auth-storage-sqlite.ts` holds the statements and the
- * transactions; these are the functions it calls, which is why they can be tested without one.
+ * Credential ROWS: shapes stored in sqlite and pure functions that map between them. Split from
+ * `auth-storage.ts` (OAuth machinery, 168 modules) so callers needing only row logic don't pay for it.
+ * Credential TYPES stay in `auth-storage.ts` as `import type` (erased, no runtime edge). Nothing here
+ * touches a database — `auth-storage-sqlite.ts` holds the statements; these are the functions it calls.
  */
 import { readCodexClaimsFromPayload } from "@veyyon/catalog/wire/codex";
 import { tryParseJson } from "@veyyon/utils/json";

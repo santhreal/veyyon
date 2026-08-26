@@ -1,20 +1,8 @@
 /**
- * Credential management for API keys and OAuth tokens.
- *
- * This module defines:
- * - `AuthCredentialStore` interface: the persistence abstraction (SQLite, remote vault, ...)
- * - `AuthStorage` class: credential selection with round-robin, usage limits, OAuth refresh
- * - the credential types every consumer speaks: `AuthCredential`, `StoredAuthCredential`, and friends
- *
- * IT NO LONGER TOUCHES A DATABASE. The sqlite implementation moved to `auth-storage-sqlite.ts` and the
- * row logic to `auth-credential-rows.ts`, so this file has no `bun:sqlite` import, no filesystem import,
- * and no schema statements left: it decides WHICH credential to use and how to refresh it, and asks a
- * store to read or write rows. Both moved modules are re-exported at the bottom, so no caller changed.
- *
- * The reason for the split was cost, and the shape it revealed is the better argument. Reaching the
- * sqlite store meant importing this module, which imports the provider registry and its 75 provider
- * definitions, the OAuth flows, and the error taxonomy: 213 modules to write a credential row. The store
- * needed none of it, which is what "these are two jobs" looks like from the graph.
+ * Credential management for API keys and OAuth tokens. Defines `AuthCredentialStore` (persistence
+ * abstraction), `AuthStorage` (selection, round-robin, usage limits, OAuth refresh), and credential types.
+ * No longer touches a database: sqlite moved to `auth-storage-sqlite.ts`, row logic to
+ * `auth-credential-rows.ts`. Both re-exported at the bottom. Split was cost: 213 modules to write a row.
  */
 
 import { createHash } from "node:crypto";

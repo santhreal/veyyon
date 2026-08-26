@@ -1,39 +1,10 @@
 /**
- * The in-band tag vocabulary the ChatML-family dialects share.
- *
- * These are not constants in the ordinary sense. Each one is a byte sequence that appears in a prompt this
- * repo writes AND in the model output this repo parses, so a tag is a contract between a renderer, a streaming
- * scanner, and, for two of them, a detector living in another directory entirely. Nothing validates that the
- * three agree. If they stop agreeing the model keeps answering and the parser keeps running, and the only
- * symptom is tool calls quietly turning into visible text.
- *
- * WHAT WAS SPREAD OUT. Before this module the vocabulary was declared 19 times across 8 modules under 15
- * names, plus 8 bare literals with no name at all:
- *
- *   `<tool_call>` `</tool_call>`      `glm.ts`, `hermes.ts`, `qwen3.ts` as `TOOL_OPEN`/`TOOL_CLOSE`, and the
- *                                     closer a FOURTH time in `utils/validation.ts` as `SPILL_TOOL_CLOSE`
- *   `<arg_key>` … `</arg_value>`      `glm.ts` as `ARG_*`, and again in `utils/validation.ts` as `SPILL_*`
- *   `<tool_response>` …               `glm.ts` as `RESPONSE_*`, inline in `rendering.ts`, and as bare literals
- *                                     in seven rows of the `owned-stream.ts` detection table
- *   `<think>` `</think>`              `rendering.ts` (owner), plus inline in `thinking.ts`
- *   `<thinking>` `</thinking>`        `rendering.ts` (owner), plus inline in `thinking.ts`
- *
- * The `<think>` pair shows why leaving it alone was not an option: `rendering.ts` had already been made its
- * owner, with a doc saying it is "shared by every ChatML-style dialect", and all three of those dialects import
- * it from there. The tool-call pair, shared by exactly the same three dialects for exactly the same reason, was
- * retyped in each. One pair followed the rule and its neighbour did not, which is what a convention with no
- * enforcement looks like.
- *
- * WHY A LEAF WITH NO IMPORTS. The consumer with the most at stake is `utils/validation.ts`, which repairs
- * GLM-style syntax that spills into a natively-parsed tool call's arguments. It is not a dialect and must not
- * depend on one, and reaching `rendering.ts` for a tag would have pulled in the coercion helpers and the
- * dialect types behind it. So it retyped five tags instead, which is the rational choice when importing costs
- * a subtree and retyping costs nothing. This module imports nothing at all, so that pressure is gone.
- *
- * WHAT DOES NOT BELONG HERE. A tag used by one dialect and nobody else stays with that dialect: DeepSeek's
- * fullwidth tokens, Harmony's channel markers, Gemma's turn envelope, Gemini's fenced blocks. They are that
- * model's format, not a shared vocabulary, and hoisting them would turn this module into a dumping ground where
- * the reader can no longer tell which tags are actually shared.
+ * The in-band tag vocabulary the ChatML-family dialects share. Each tag is a byte sequence that appears in
+ * a prompt this repo writes AND in model output this repo parses — a contract between renderer, scanner, and
+ * detector. Nothing validates agreement; drift turns tool calls into visible text.
+ * Before this module the vocabulary was declared 19 times across 8 modules under 15 names. This leaf imports
+ * nothing so `utils/validation.ts` can reach tags without pulling in dialect types. Per-dialect tags (DeepSeek,
+ * Harmony, Gemma, Gemini) stay with their dialect.
  */
 
 /**
