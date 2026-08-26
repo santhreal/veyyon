@@ -165,6 +165,9 @@ export class Theme {
 	#mdCache: MdChars;
 	#contrastFgAnsiCache: Map<ThemeColor, string>;
 	#thinkingBorderColors: Partial<Record<string, (str: string) => string>>;
+	#bashModeBorderColor: (str: string) => string;
+	#pythonModeBorderColor: (str: string) => string;
+	#bypassModeBorderColor: (str: string) => string;
 	#spinnerFramesOverrides: Partial<Record<SpinnerType, string[]>>;
 	/**
 	 * Perceptual luma (0..1) of the status-line background used to classify the theme as light/dark.
@@ -359,6 +362,9 @@ export class Theme {
 		};
 		this.#contrastFgAnsiCache = new Map();
 		this.#thinkingBorderColors = {};
+		this.#bashModeBorderColor = (str: string) => this.fg("bashMode", str);
+		this.#pythonModeBorderColor = (str: string) => this.fg("pythonMode", str);
+		this.#bypassModeBorderColor = (str: string) => this.fg("error", str);
 		this.#spinnerFramesOverrides = spinnerFramesOverrides;
 	}
 
@@ -593,11 +599,11 @@ export class Theme {
 	}
 
 	getBashModeBorderColor(): (str: string) => string {
-		return (str: string) => this.fg("bashMode", str);
+		return this.#bashModeBorderColor;
 	}
 
 	getPythonModeBorderColor(): (str: string) => string {
-		return (str: string) => this.fg("pythonMode", str);
+		return this.#pythonModeBorderColor;
 	}
 
 	/**
@@ -606,7 +612,7 @@ export class Theme {
 	 * in every theme. Single owner for the bypass indicator color.
 	 */
 	getBypassModeBorderColor(): (str: string) => string {
-		return (str: string) => this.fg("error", str);
+		return this.#bypassModeBorderColor;
 	}
 
 	// ============================================================================
