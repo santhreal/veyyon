@@ -47,3 +47,10 @@ about to finish. `formatMinutes(ms)` renders a measured duration.
 event to its row table; it does not poll. A row's `schemaVersion` travels with it, so a client
 reading a row written by an older store version reports the mismatch instead of rendering fields it
 cannot interpret.
+
+A frame the page cannot use is one frame, not the end of the subscription: a payload that is not a
+list of rows carrying a job name leaves the last run list on screen and the page states what
+arrived. A dropped connection is stated the same way, because a stale table and a live one look
+identical otherwise. `usePolled` returns the same reason beside the payload it last read, so a
+detail pane whose endpoint stopped answering says so instead of continuing to render its last
+response.

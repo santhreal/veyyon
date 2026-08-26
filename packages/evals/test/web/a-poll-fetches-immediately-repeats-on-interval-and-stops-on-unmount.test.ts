@@ -6,9 +6,15 @@
  * when a single network request fails, the UI will exhibit sluggish loads, background
  * resource leaks / orphaned network polling, or permanent data staleness after a transient error.
  *
+ * A failed poll was caught and discarded, so the pane kept rendering the payload it last read for
+ * as long as the manager stayed down, and a dead pane read as a live one. The hook returns the
+ * reason beside the data, and the tests below pin both: the stale payload stays available to render,
+ * and the failure is stated until a later poll succeeds.
+ *
  * WHAT THIS DOES NOT CATCH:
  * This suite does not test HTTP response serialization or server endpoint route resolution
- * handled by the server router and api client.
+ * handled by the server router and api client, and it does not check how a component renders the
+ * reason it is given.
  */
 
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
@@ -304,8 +310,9 @@ describe("usePolled fetches immediately, repeats on declared interval, and stops
 				usePolled<{ recovered: boolean; attempt: number }>("/api/runs", 1000),
 			);
 
-			// 1st fetch failed (500) -> data remains null, hook does not crash
+			// 1st fetch failed (500) -> data remains null, hook does not crash, and the failure is stated
 			expect(result.current[0]).toBeNull();
+			expect(result.current[2]).toContain("500");
 			expect(attempt).toBe(1);
 
 			// 2nd poll tick rejects (Network error) -> data remains null, hook does not crash
@@ -313,6 +320,7 @@ describe("usePolled fetches immediately, repeats on declared interval, and stops
 				timerCallback?.();
 			});
 			expect(result.current[0]).toBeNull();
+			expect(result.current[2]).toBe("Network offline");
 			expect(attempt).toBe(2);
 
 			// 3rd poll tick succeeds -> data updates properly, proving hook is not wedged
@@ -321,6 +329,52 @@ describe("usePolled fetches immediately, repeats on declared interval, and stops
 			});
 			expect(attempt).toBe(3);
 			expect(result.current[0]).toEqual({ recovered: true, attempt: 3 });
+			expect(result.current[2]).toBeNull();
+		} finally {
+			globalThis.fetch = originalFetch;
+			globalThis.setInterval = originalSetInterval;
+			globalThis.clearInterval = originalClearInterval;
+		}
+	});
+
+	// WHY: the failure was swallowed, so the pane kept rendering the last good payload for as long
+	// as the manager stayed down. A pane that cannot refresh states that instead of looking live.
+	it("keeps the payload it last read, and says the refresh failed", async () => {
+		const originalFetch = globalThis.fetch;
+		const originalSetInterval = globalThis.setInterval;
+		const originalClearInterval = globalThis.clearInterval;
+
+		let attempt = 0;
+		globalThis.fetch = (async () => {
+			attempt++;
+			if (attempt === 1) {
+				return new Response(JSON.stringify({ live: true }), {
+					status: 200,
+					headers: { "content-type": "application/json" },
+				});
+			}
+			return new Response("gone", { status: 503 });
+		}) as unknown as typeof globalThis.fetch;
+
+		let timerCallback: (() => void) | null = null;
+		globalThis.setInterval = ((handler: () => void) => {
+			timerCallback = handler;
+			return 1 as unknown as NodeJS.Timeout;
+		}) as unknown as typeof globalThis.setInterval;
+		globalThis.clearInterval = (() => {}) as unknown as typeof globalThis.clearInterval;
+
+		try {
+			const { result } = await renderHook(() => usePolled<{ live: boolean }>("/api/runs/:name", 1000));
+			expect(result.current[0]).toEqual({ live: true });
+			expect(result.current[2]).toBeNull();
+
+			await act(async () => {
+				timerCallback?.();
+			});
+
+			// The stale payload is still there to render, and so is the reason it is stale.
+			expect(result.current[0]).toEqual({ live: true });
+			expect(result.current[2]).toContain("503");
 		} finally {
 			globalThis.fetch = originalFetch;
 			globalThis.setInterval = originalSetInterval;
