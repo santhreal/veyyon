@@ -230,7 +230,12 @@ function getPartialJsonEditPath(args: EditRenderArgs): string | undefined {
 
 /** Count distinct file paths in an edits array. */
 function countEditFiles(edits: EditRenderEntry[]): number {
-	return new Set(edits.map(edit => filePathFromEditEntry(edit.path)).filter(Boolean)).size;
+	const seen = new Set<string>();
+	for (let i = 0; i < edits.length; i++) {
+		const path = filePathFromEditEntry(edits[i]!.path);
+		if (path) seen.add(path);
+	}
+	return seen.size;
 }
 
 function getOperationTitle(op: Operation | undefined): string {
@@ -406,8 +411,8 @@ function hasEditCallPayload(args: EditRenderArgs, renderContext: EditRenderConte
 function renderPlainTextPreview(text: string, uiTheme: Theme, _filePath?: string): string {
 	const previewLines = sanitizeText(text).split("\n");
 	let preview = "\n\n";
-	for (const line of previewLines.slice(0, CALL_TEXT_PREVIEW_LINES)) {
-		preview += `${uiTheme.fg("toolOutput", truncateToWidth(replaceTabs(line), CALL_TEXT_PREVIEW_WIDTH))}\n`;
+	for (let i = 0; i < Math.min(previewLines.length, CALL_TEXT_PREVIEW_LINES); i++) {
+		preview += `${uiTheme.fg("toolOutput", truncateToWidth(replaceTabs(previewLines[i]!), CALL_TEXT_PREVIEW_WIDTH))}\n`;
 	}
 	if (previewLines.length > CALL_TEXT_PREVIEW_LINES) {
 		preview += uiTheme.fg("dim", `… ${formatMoreLines(previewLines.length - CALL_TEXT_PREVIEW_LINES)}`);
@@ -499,8 +504,10 @@ function formatMultiFileStreamingDiff(
 		? Math.max(1, previewWindowRows() - EDIT_STREAMING_HEADROOM)
 		: Math.min(EDIT_STREAMING_PREVIEW_LINES, previewWindowRows());
 
-	const activePreviews = previews.filter(p => p.diff || p.error);
-	let remainingActiveFiles = activePreviews.length;
+	let remainingActiveFiles = 0;
+	for (let i = 0; i < previews.length; i++) {
+		if (previews[i]!.diff || previews[i]!.error) remainingActiveFiles++;
+	}
 	let remainingBudget = totalBudget;
 
 	const parts: string[] = [];
