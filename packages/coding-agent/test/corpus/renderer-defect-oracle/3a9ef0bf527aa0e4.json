@@ -1,0 +1,24 @@
+{
+	"schemaVersion": 3,
+	"id": "3a9ef0bf527aa0e4",
+	"status": "recorded",
+	"recordedAt": "2026-08-26T10:27:36.249Z",
+	"template": "tool-render-sweep",
+	"seed": 0,
+	"kind": "failed",
+	"message": "launch/result/embedded newline row 2 contains a line break at column 11. A row is one line; a renderer that returns two in one string paints a row the differ cannot account for.",
+	"observedGrid": [
+		"Launch: first line second line third li…",
+		"first line",
+		"second line\r",
+		"third line"
+	],
+	"family": "toolRender",
+	"state": {
+		"tool": "launch",
+		"surface": "result",
+		"fixture": "embedded newline",
+		"width": 40
+	},
+	"oracle": "noRowSmugglesALineBreak"
+}

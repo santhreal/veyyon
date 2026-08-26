@@ -1,0 +1,22 @@
+{
+	"schemaVersion": 3,
+	"id": "145527fa7573e3dc",
+	"status": "recorded",
+	"recordedAt": "2026-08-26T10:27:36.244Z",
+	"template": "tool-render-sweep",
+	"seed": 0,
+	"kind": "failed",
+	"message": "ask/result/escape injection row 1 forwards the control sequence \"\\u001b[2J\" the content supplied, at offset 6. The engine writes a row as bytes, so the sequence is executed by the terminal rather than painted as text.",
+	"observedGrid": [
+		"! Ask                                   ",
+		"before\u001b[2J\u001b]0;renamed\u0007after                             "
+	],
+	"family": "toolRender",
+	"state": {
+		"tool": "ask",
+		"surface": "result",
+		"fixture": "escape injection",
+		"width": 40
+	},
+	"oracle": "noContentSuppliedEscapeSurvives"
+}

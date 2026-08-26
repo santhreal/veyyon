@@ -1,0 +1,22 @@
+{
+	"schemaVersion": 3,
+	"id": "bd3d4bcdf90dc0c2",
+	"status": "recorded",
+	"recordedAt": "2026-08-26T10:27:36.244Z",
+	"template": "tool-render-sweep",
+	"seed": 0,
+	"kind": "failed",
+	"message": "ask/result/control bytes row 1 carries a NUL at column 6. It survives escape-sequence stripping, so it reaches a cell and moves the cursor instead of painting.",
+	"observedGrid": [
+		"! Ask                                   ",
+		"before\u0000middle\u0007after\bend\u000btail\fdone            "
+	],
+	"family": "toolRender",
+	"state": {
+		"tool": "ask",
+		"surface": "result",
+		"fixture": "control bytes",
+		"width": 40
+	},
+	"oracle": "noControlCharacterOtherThanStyle"
+}

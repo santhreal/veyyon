@@ -11,6 +11,7 @@
 import { sgrSequence } from "@veyyon/tui/ansi";
 import { visibleWidth } from "@veyyon/tui/utils";
 import { COMPOSER_INSET_COLS } from "./composer-chrome";
+import { type DefectEvaluation, evaluateOracleRegistry, type OracleProbe } from "./defect-oracle-registry";
 
 export const COMPOSER_ORACLE_GUARANTEES = [
 	"exactlyOneComposerPrompt",
@@ -112,17 +113,11 @@ export interface OracleFailure {
  * `passed` collapses to whether anything failed. The three arrays separate outcomes a single boolean
  * hides: an oracle out of scope for the state, an oracle in scope whose subject was empty so it read
  * nothing, and an oracle that actually looked at something. Their union is always every guarantee.
+ *
+ * The shape is shared with every other oracle registry, so a consumer that reads a verdict reads the
+ * same four buckets whichever registry produced it.
  */
-export interface OracleEvaluationResult {
-	passed: boolean;
-	failures: OracleFailure[];
-	/** Oracles whose `appliesTo` rejected the state. */
-	skipped: ComposerOracleGuarantee[];
-	/** Oracles that read a non-empty subject and reached a verdict. */
-	inspected: ComposerOracleGuarantee[];
-	/** Oracles that applied but had nothing to read. A silent pass, and where two defects hid. */
-	blind: ComposerOracleGuarantee[];
-}
+export type OracleEvaluationResult = DefectEvaluation<ComposerOracleGuarantee, OracleFailure>;
 
 const PROMPT_GLYPHS = ["›", "!", "$", "◈", ">"] as const;
 
@@ -896,32 +891,23 @@ export const COMPOSER_ORACLES: Readonly<Record<ComposerOracleGuarantee, Composer
 // ---------------------------------------------------------------------------
 
 /**
+ * How the registry reads one of its guarantees, for `evaluateOracleRegistry`.
+ *
+ * One object for the module rather than one per evaluation: the sweep evaluates thousands of states
+ * and a closure per oracle per state is an allocation for nothing.
+ */
+const PROBE: OracleProbe<ComposerOracleGuarantee, ComposerOracleFrameState, OracleFailure> = {
+	appliesTo: (id, state) => COMPOSER_ORACLES[id].appliesTo(state),
+	subjectSize: (id, state) => subjectSize(COMPOSER_ORACLES[id].subject(state)),
+	check: (id, state) => COMPOSER_ORACLES[id].run(state),
+};
+
+/**
  * Run every composer defect oracle on a frame state.
  *
- * Walks `COMPOSER_ORACLE_GUARANTEES` so the order is the declared one rather than an object's key
- * order, and separates the three outcomes an oracle can have. `passed` still reports only whether
- * anything failed, so existing callers are unaffected.
+ * The sorting into skipped, blind and inspected lives in `defect-oracle-registry.ts`, which every
+ * registry shares, so a third one cannot invent a fourth outcome nobody else reports.
  */
 export function evaluateAllComposerOracles(state: ComposerOracleFrameState): OracleEvaluationResult {
-	const failures: OracleFailure[] = [];
-	const skipped: ComposerOracleGuarantee[] = [];
-	const inspected: ComposerOracleGuarantee[] = [];
-	const blind: ComposerOracleGuarantee[] = [];
-
-	for (const id of COMPOSER_ORACLE_GUARANTEES) {
-		const oracle = COMPOSER_ORACLES[id];
-		if (!oracle.appliesTo(state)) {
-			skipped.push(id);
-			continue;
-		}
-		if (subjectSize(oracle.subject(state)) === 0) {
-			blind.push(id);
-			continue;
-		}
-		inspected.push(id);
-		const failure = oracle.run(state);
-		if (failure) failures.push(failure);
-	}
-
-	return { passed: failures.length === 0, failures, skipped, inspected, blind };
+	return evaluateOracleRegistry(COMPOSER_ORACLE_GUARANTEES, state, PROBE);
 }

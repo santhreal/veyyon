@@ -18,6 +18,7 @@
  */
 
 import { stripVTControlCharacters } from "node:util";
+import { type DefectEvaluation, evaluateOracleRegistry, type OracleProbe } from "./defect-oracle-registry";
 
 export const OVERLAY_ORACLE_GUARANTEES = [
 	"overlayRowsPaintContiguouslyInOrder",
@@ -479,38 +480,21 @@ export const OVERLAY_ORACLES: Readonly<Record<OverlayOracleGuarantee, OverlayOra
 	},
 };
 
-export interface OverlayEvaluationResult {
-	passed: boolean;
-	failures: OverlayOracleFailure[];
-	/** Guarantees whose `appliesTo` rejected the frame. */
-	skipped: OverlayOracleGuarantee[];
-	/** Guarantees that applied and read a real subject. */
-	inspected: OverlayOracleGuarantee[];
-	/** Guarantees that applied and had nothing to read, which is not a pass. */
-	blind: OverlayOracleGuarantee[];
-}
+export type OverlayEvaluationResult = DefectEvaluation<OverlayOracleGuarantee, OverlayOracleFailure>;
+
+/**
+ * How the registry reads one of its guarantees, for `evaluateOracleRegistry`.
+ *
+ * One object for the module rather than one per evaluation, so a sweep over thousands of frames
+ * allocates nothing per frame beyond the verdict it returns.
+ */
+const PROBE: OracleProbe<OverlayOracleGuarantee, OverlayOracleFrameState, OverlayOracleFailure> = {
+	appliesTo: (id, state) => OVERLAY_ORACLES[id].appliesTo(state),
+	subjectSize: (id, state) => OVERLAY_ORACLES[id].subject(state),
+	check: (id, state) => OVERLAY_ORACLES[id].check(state),
+};
 
 /** Run every overlay guarantee over one frame and sort each into skipped, blind or inspected. */
 export function evaluateAllOverlayOracles(state: OverlayOracleFrameState): OverlayEvaluationResult {
-	const failures: OverlayOracleFailure[] = [];
-	const skipped: OverlayOracleGuarantee[] = [];
-	const inspected: OverlayOracleGuarantee[] = [];
-	const blind: OverlayOracleGuarantee[] = [];
-
-	for (const id of OVERLAY_ORACLE_GUARANTEES) {
-		const oracle = OVERLAY_ORACLES[id];
-		if (!oracle.appliesTo(state)) {
-			skipped.push(id);
-			continue;
-		}
-		if (oracle.subject(state) === 0) {
-			blind.push(id);
-			continue;
-		}
-		inspected.push(id);
-		const failure = oracle.check(state);
-		if (failure) failures.push(failure);
-	}
-
-	return { passed: failures.length === 0, failures, skipped, inspected, blind };
+	return evaluateOracleRegistry(OVERLAY_ORACLE_GUARANTEES, state, PROBE);
 }

@@ -1,0 +1,22 @@
+{
+	"schemaVersion": 3,
+	"id": "882ad1829fe5047e",
+	"status": "recorded",
+	"recordedAt": "2026-08-26T10:27:36.247Z",
+	"template": "tool-render-sweep",
+	"seed": 0,
+	"kind": "failed",
+	"message": "glob/result/tabs row 0 contains a raw tab at column 13, which the terminal expands to a hole of unpredictable width. Call replaceTabs on the content.",
+	"observedGrid": [
+		"\u001b[48;5;16m▏ ⌕ Glob: src\tindex.ts\tchanged\ttwice 1 file\u001b[49m",
+		"\u001b[48;5;16m▏    src\tindex.ts\tchanged\ttwice   \u001b[49m"
+	],
+	"family": "toolRender",
+	"state": {
+		"tool": "glob",
+		"surface": "result",
+		"fixture": "tabs",
+		"width": 40
+	},
+	"oracle": "noRawTabReachesTheScreen"
+}

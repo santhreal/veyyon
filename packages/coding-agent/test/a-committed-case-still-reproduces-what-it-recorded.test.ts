@@ -13,9 +13,10 @@
  * both were, and which a corpus that could only record a failure could not hold at all.
  *
  * The corpus holds one case shape per oracle registry, not one store per registry. A composer case
- * records a mount; an overlay case records the same mount plus the modals shown over it. The reader
- * dispatches on `family`, so a case is replayed by the runner that recorded it and judged against
- * the registry that owns its oracle. A second copy of the round trip is how the two stores drift.
+ * records a mount; an overlay case records the same mount plus the modals shown over it; a tool-render
+ * case records which renderer painted which hostile fixture at which width. The reader dispatches on
+ * `family`, so a case is replayed by the runner that recorded it and judged against the registry that
+ * owns its oracle. A second copy of the round trip is how the stores drift.
  *
  * WHAT IT ASSERTS:
  * Every file in the corpus loads through the validating reader, and every case replays into the
@@ -29,7 +30,9 @@
  * The negative controls drive the reader against a stale schema version, a hand-edited state, an
  * unknown status, an unknown kind, an exemption with no reason, an oracle that is no longer in the
  * registry, an unknown family, an overlay case naming a composer oracle, an overlay case with no
- * overlays, and an overlay case recording the one option a file cannot hold. Each has to be rejected
+ * overlays, an overlay case recording the one option a file cannot hold, a tool-render case naming a
+ * fixture the runner does not drive, one with a surface that does not exist, and one naming an overlay
+ * oracle. Each has to be rejected
  * with the corrective action, because a case silently replayed under the wrong shape is worse than no
  * case: it reports success for a scenario nobody recorded.
  *
@@ -60,9 +63,11 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { Settings } from "../src/config/settings";
 import type { ComposerOracleGuarantee } from "../src/modes/components/composer-defect-oracle";
 import type { OverlayOracleGuarantee } from "../src/modes/components/overlay-defect-oracle";
-import { initTheme } from "../src/modes/theme/theme";
+import type { ToolRenderOracleGuarantee } from "../src/modes/components/tool-render-defect-oracle";
+import { getThemeByName, initTheme, setThemeInstance, type Theme } from "../src/modes/theme/theme";
 import {
 	CORPUS_CASE_KINDS,
 	CORPUS_CASE_STATUSES,
@@ -79,6 +84,7 @@ import {
 	loadCorpusCase,
 	type OverlayCorpusCase,
 	replayCorpusFile,
+	type ToolRenderCorpusCase,
 } from "./helpers/renderer-defect-corpus";
 
 const files = listCorpusFiles();
@@ -207,14 +213,22 @@ describe("the corpus directory", () => {
 });
 
 describe("replaying a committed case", () => {
+	let uiTheme: Theme;
+
 	beforeAll(async () => {
 		await initTheme(false);
-	});
+		// A tool-render case replays through a renderer, which takes the theme as an argument.
+		await Settings.init({ inMemory: true });
+		const loaded = await getThemeByName("dark");
+		if (!loaded) throw new Error("theme unavailable");
+		uiTheme = loaded;
+		setThemeInstance(uiTheme);
+	}, 120_000);
 
 	it.each(files.map(file => [path.basename(file), file] as const))(
 		"reproduces the verdict it recorded: %s",
 		async (_name, file) => {
-			const { corpusCase, result } = await replayCorpusFile(file);
+			const { corpusCase, result } = await replayCorpusFile(file, { theme: uiTheme });
 			const claim = CLAIMS[corpusCase.status][corpusCase.kind];
 			try {
 				claim.assert(corpusCase, result.evaluation);
@@ -278,6 +292,26 @@ function overlayValidCase(): OverlayCorpusCase {
 		oracle,
 		kind: "failed",
 		message: "a row of the card was painted nowhere",
+		observedGrid: ["row"],
+	};
+}
+
+/** A tool-render case that validates: which renderer, which surface, which fixture, at which width. */
+function toolRenderValidCase(): ToolRenderCorpusCase {
+	const state = { tool: "glob", surface: "result", fixture: "tabs", width: 40 } as const;
+	const oracle: ToolRenderOracleGuarantee = "noRawTabReachesTheScreen";
+	return {
+		schemaVersion: CORPUS_SCHEMA_VERSION,
+		id: computeCaseHash("toolRender", state, oracle, "failed"),
+		status: "recorded",
+		recordedAt: "2026-01-01T00:00:00.000Z",
+		template: "negative-control",
+		seed: 0,
+		family: "toolRender",
+		state,
+		oracle,
+		kind: "failed",
+		message: "a raw tab reached a cell",
 		observedGrid: ["row"],
 	};
 }
@@ -356,6 +390,33 @@ describe("a case the reader has to reject", () => {
 			/needs a name and a lines array/,
 		],
 		[
+			"a tool-render case naming a fixture the runner does not drive",
+			() => {
+				const base = toolRenderValidCase();
+				return { ...base, state: { ...base.state, fixture: "the old fixture" } };
+			},
+			/is not one the runner drives/,
+		],
+		[
+			"a tool-render case with no surface",
+			() => {
+				const base = toolRenderValidCase();
+				return {
+					...base,
+					state: { ...base.state, surface: "preview" as unknown as ToolRenderCorpusCase["state"]["surface"] },
+				};
+			},
+			/records tool, surface, fixture and width/,
+		],
+		[
+			"a tool-render case naming an overlay oracle",
+			() => ({
+				...toolRenderValidCase(),
+				oracle: "topmostOverlayWinsTheOverlap" as unknown as ToolRenderOracleGuarantee,
+			}),
+			/not a guarantee of the toolRender registry/,
+		],
+		[
 			"an overlay option a file cannot round-trip",
 			() => {
 				const base = overlayValidCase();
@@ -385,6 +446,7 @@ describe("a case the reader has to reject", () => {
 	it.each([
 		["a composer case", composerValidCase],
 		["an overlay case", overlayValidCase],
+		["a tool-render case", toolRenderValidCase],
 	] as const)("accepts %s the controls are built from", (_name, build) => {
 		const corpusCase = build();
 		const file = path.join(INVALID_DIR, `${corpusCase.id}.json`);

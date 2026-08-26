@@ -1,0 +1,23 @@
+{
+	"schemaVersion": 3,
+	"id": "4a25e910f261ffc4",
+	"status": "recorded",
+	"recordedAt": "2026-08-26T10:27:36.245Z",
+	"template": "tool-render-sweep",
+	"seed": 0,
+	"kind": "failed",
+	"message": "ast_grep/call/home path row 1 prints the home directory /home/oracle-operator at column 0, which leaks the account name into any transcript that is shared. Shorten it with shortenPath.",
+	"observedGrid": [
+		"⋯ AST Grep: ? in                        ",
+		"/home/oracle-operator/projects/veyyon/pa",
+		"ckages/coding-agent/src/index.ts        "
+	],
+	"family": "toolRender",
+	"state": {
+		"tool": "ast_grep",
+		"surface": "call",
+		"fixture": "home path",
+		"width": 40
+	},
+	"oracle": "noHomeDirectoryPathIsPainted"
+}

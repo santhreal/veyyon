@@ -31,8 +31,17 @@ import {
 	type OverlayOracleFailure,
 	type OverlayOracleGuarantee,
 } from "../../src/modes/components/overlay-defect-oracle";
+import {
+	TOOL_RENDER_ORACLE_GUARANTEES,
+	type ToolRenderEvaluationResult,
+	type ToolRenderOracleFailure,
+	type ToolRenderOracleGuarantee,
+	type ToolRenderSurface,
+} from "../../src/modes/components/tool-render-defect-oracle";
+import type { Theme } from "../../src/modes/theme/theme";
 import { type RunnerOptions, type RunnerResult, runComposerOracleScenario } from "./composer-oracle-runner";
 import { type OverlayRunnerResult, type OverlaySpec, runOverlayOracleScenario } from "./overlay-oracle-runner";
+import { evaluateToolRenderAttempts, RENDER_FIXTURES, sweepToolRenders } from "./tool-render-oracle-runner";
 
 /**
  * Option keys that cannot round-trip through CorpusCaseState JSON serialisation.
@@ -53,12 +62,12 @@ export const CORPUS_SCHEMA_VERSION = 3;
 /**
  * The oracle families the corpus holds a case for.
  *
- * One corpus, two registries. The round trip, the validation on load and the promotion path are the
- * same work for both, and a second copy of them for overlays would drift the way the two mode axes
- * did. Keyed tables below make a new family a compile error until it declares its guarantees, its
+ * One corpus, three registries. The round trip, the validation on load and the promotion path are the
+ * same work for all of them, and a second copy of them per registry would drift the way the two mode
+ * axes did. Keyed tables below make a new family a compile error until it declares its guarantees, its
  * state validator and its replay.
  */
-export const CORPUS_FAMILIES = ["composer", "overlay"] as const;
+export const CORPUS_FAMILIES = ["composer", "overlay", "toolRender"] as const;
 export type CorpusFamily = (typeof CORPUS_FAMILIES)[number];
 
 /**
@@ -81,7 +90,7 @@ export type CorpusCaseKind = (typeof CORPUS_CASE_KINDS)[number];
 
 /** What one oracle did with one state, as the corpus records it. */
 export interface CorpusObservation {
-	oracle: ComposerOracleGuarantee | OverlayOracleGuarantee;
+	oracle: ComposerOracleGuarantee | OverlayOracleGuarantee | ToolRenderOracleGuarantee;
 	kind: CorpusCaseKind;
 	message: string;
 }
@@ -129,6 +138,23 @@ export interface OverlayCorpusCaseState extends CorpusCaseState {
 	overlays: OverlayCaseSpec[];
 }
 
+/**
+ * A tool-render case: which renderer, which surface, which fixture, at which width.
+ *
+ * The rows are not recorded as the state, because they are the output. The four fields are the whole
+ * input to `sweepToolRenders`, so a replay renders the same component over the same hostile string and
+ * the recorded `observedGrid` is the comparison.
+ */
+export interface ToolRenderCorpusCaseState {
+	tool: string;
+	surface: ToolRenderSurface;
+	fixture: string;
+	width: number;
+}
+
+/** Any family's state, for the id hash and the promotion path that are shared across families. */
+export type AnyCorpusCaseState = CorpusCaseState | OverlayCorpusCaseState | ToolRenderCorpusCaseState;
+
 interface CorpusCaseFields {
 	schemaVersion: typeof CORPUS_SCHEMA_VERSION;
 	id: string;
@@ -159,8 +185,14 @@ export interface OverlayCorpusCase extends CorpusCaseFields {
 	oracle: OverlayOracleGuarantee;
 }
 
+export interface ToolRenderCorpusCase extends CorpusCaseFields {
+	family: "toolRender";
+	state: ToolRenderCorpusCaseState;
+	oracle: ToolRenderOracleGuarantee;
+}
+
 /** Discriminated on `family`, so a reader that handles one cannot silently be handed the other. */
-export type CorpusCase = ComposerCorpusCase | OverlayCorpusCase;
+export type CorpusCase = ComposerCorpusCase | OverlayCorpusCase | ToolRenderCorpusCase;
 
 /**
  * The guarantees a case of each family may name.
@@ -171,6 +203,7 @@ export type CorpusCase = ComposerCorpusCase | OverlayCorpusCase;
 export const CORPUS_FAMILY_GUARANTEES: Readonly<Record<CorpusFamily, readonly string[]>> = {
 	composer: COMPOSER_ORACLE_GUARANTEES,
 	overlay: OVERLAY_ORACLE_GUARANTEES,
+	toolRender: TOOL_RENDER_ORACLE_GUARANTEES,
 };
 
 export const CORPUS_DIR = path.resolve(import.meta.dirname, "../corpus/renderer-defect-oracle");
@@ -178,7 +211,7 @@ export const CORPUS_DIR = path.resolve(import.meta.dirname, "../corpus/renderer-
 /** Compute the deterministic case id: the file name a state and observation are recorded under. */
 export function computeCaseHash(
 	family: CorpusFamily,
-	state: CorpusCaseState,
+	state: AnyCorpusCaseState,
 	oracle: string,
 	kind: CorpusCaseKind,
 ): string {
@@ -310,6 +343,63 @@ export function listCorpusFiles(): readonly string[] {
 		.map(name => path.join(CORPUS_DIR, name));
 }
 
+function toolRenderCorpusStateFrom(value: Record<string, unknown>, label: string): ToolRenderCorpusCaseState {
+	const state = value.state;
+	if (typeof state !== "object" || state === null) {
+		throw new Error(`${label}: no state object.`);
+	}
+	const fields = state as Record<string, unknown>;
+	if (
+		typeof fields.tool !== "string" ||
+		typeof fields.width !== "number" ||
+		typeof fields.fixture !== "string" ||
+		(fields.surface !== "call" && fields.surface !== "result")
+	) {
+		throw new Error(
+			`${label}: a tool-render case records tool, surface, fixture and width. Re-record the case with the sweep.`,
+		);
+	}
+	if (!RENDER_FIXTURES.some(fixture => fixture.name === fields.fixture)) {
+		throw new Error(
+			`${label}: fixture ${String(fields.fixture)} is not one the runner drives. A fixture was renamed or removed; re-record the case.`,
+		);
+	}
+	return state as ToolRenderCorpusCaseState;
+}
+
+/**
+ * Replay a tool-render case by rendering the same component over the same fixture.
+ *
+ * The theme comes from the caller. A renderer takes it as an argument, loading one needs the settings
+ * store initialised, and a corpus module that bootstrapped settings on load would do it for every
+ * suite that reads a case.
+ */
+export interface ToolRenderReplayResult {
+	evaluation: ToolRenderEvaluationResult;
+	/** The rows the renderer returned, under the name every family's replay reports its frame by. */
+	frameState: { viewportLines: readonly string[] };
+	cleanUp: () => void;
+}
+
+export function replayToolRenderCorpusCase(state: ToolRenderCorpusCaseState, theme: Theme): ToolRenderReplayResult {
+	const fixture = RENDER_FIXTURES.find(entry => entry.name === state.fixture);
+	if (!fixture) throw new Error(`fixture ${state.fixture} is not one the runner drives`);
+	const attempts = sweepToolRenders({
+		theme,
+		widths: [state.width],
+		fixtures: [fixture],
+		tools: [state.tool],
+	}).filter(attempt => attempt.surface === state.surface);
+	const attempt = attempts[0];
+	if (!attempt) throw new Error(`${state.tool}/${state.surface} rendered nothing to replay`);
+	if (attempt.error) throw attempt.error;
+	return {
+		evaluation: evaluateToolRenderAttempts([attempt]),
+		frameState: { viewportLines: attempt.snapshot?.rawRows ?? [] },
+		cleanUp: () => {},
+	};
+}
+
 function overlayCorpusStateFrom(value: Record<string, unknown>, label: string): OverlayCorpusCaseState {
 	const state = composerCorpusStateFrom(value, label);
 	const overlays = (state as unknown as Record<string, unknown>).overlays;
@@ -372,6 +462,21 @@ function composerCorpusStateFrom(value: Record<string, unknown>, label: string):
 }
 
 /**
+ * Which validator reads a family's state.
+ *
+ * A `Record` over the family union: a family added to `CORPUS_FAMILIES` does not compile until it says
+ * how its state is validated, which is the check that keeps a case from being replayed as a scenario
+ * of a shape nobody recorded.
+ */
+const STATE_READERS: Readonly<
+	Record<CorpusFamily, (fields: Record<string, unknown>, label: string) => AnyCorpusCaseState>
+> = {
+	composer: composerCorpusStateFrom,
+	overlay: overlayCorpusStateFrom,
+	toolRender: toolRenderCorpusStateFrom,
+};
+
+/**
  * Read a committed case and reject anything that would replay as a different scenario than the one
  * recorded: a stale schema, an unknown status or kind, an exemption with no reason, an oracle that no
  * longer exists in the registry, or a state edited without recomputing the id.
@@ -417,7 +522,7 @@ export function loadCorpusCase(filePath: string): CorpusCase {
 	if (typeof fields.message !== "string" || fields.message.trim() === "" || !Array.isArray(fields.observedGrid)) {
 		throw new Error(`${label}: message or observedGrid is missing.`);
 	}
-	const state = family === "overlay" ? overlayCorpusStateFrom(fields, label) : composerCorpusStateFrom(fields, label);
+	const state = STATE_READERS[family as CorpusFamily](fields, label);
 	const id = computeCaseHash(family as CorpusFamily, state, oracle, kind as CorpusCaseKind);
 	if (fields.id !== id) {
 		throw new Error(
@@ -435,13 +540,24 @@ export function loadCorpusCase(filePath: string): CorpusCase {
  */
 export async function replayCorpusFile(
 	filePath: string,
+	deps?: { theme?: Theme },
 ): Promise<
 	| { corpusCase: ComposerCorpusCase; result: RunnerResult }
 	| { corpusCase: OverlayCorpusCase; result: OverlayRunnerResult }
+	| { corpusCase: ToolRenderCorpusCase; result: ToolRenderReplayResult }
 > {
 	const corpusCase = loadCorpusCase(filePath);
 	if (corpusCase.family === "overlay") {
 		return { corpusCase, result: await replayOverlayCorpusCase(corpusCase.state) };
+	}
+	if (corpusCase.family === "toolRender") {
+		const theme = deps?.theme;
+		if (!theme) {
+			throw new Error(
+				`${path.basename(filePath)}: a tool-render case is replayed with a theme, which a renderer takes as an argument. Pass one in deps.theme.`,
+			);
+		}
+		return { corpusCase, result: replayToolRenderCorpusCase(corpusCase.state, theme) };
 	}
 	return { corpusCase, result: await replayCorpusCase(corpusCase.state) };
 }
@@ -452,7 +568,7 @@ export async function replayCorpusFile(
  */
 export function promoteCaseToCorpus(
 	family: CorpusFamily,
-	state: CorpusCaseState,
+	state: AnyCorpusCaseState,
 	observation: CorpusObservation,
 	observedGrid: readonly string[],
 	options?: { template?: string; seed?: number; status?: CorpusCaseStatus; reason?: string },
@@ -489,23 +605,46 @@ export function promoteCaseToCorpus(
 		message: observation.message,
 		observedGrid: [...observedGrid],
 	};
-	const corpusCase: CorpusCase =
-		family === "overlay"
-			? {
-					...fields,
-					family: "overlay",
-					state: state as OverlayCorpusCaseState,
-					oracle: observation.oracle as OverlayOracleGuarantee,
-				}
-			: {
-					...fields,
-					family: "composer",
-					state,
-					oracle: observation.oracle as ComposerOracleGuarantee,
-				};
+	const corpusCase = caseOf(family, fields, state, observation.oracle);
 
 	fs.writeFileSync(filePath, `${JSON.stringify(corpusCase, null, "\t")}\n`, "utf-8");
 	return filePath;
+}
+
+/**
+ * Assemble the family's case from the shared fields.
+ *
+ * The casts land here and nowhere else: the family decided which validator read the state, and this is
+ * the one place that knows both which family it is and that the state came back from that validator.
+ */
+function caseOf(
+	family: CorpusFamily,
+	fields: CorpusCaseFields,
+	state: AnyCorpusCaseState,
+	oracle: CorpusObservation["oracle"],
+): CorpusCase {
+	if (family === "overlay") {
+		return {
+			...fields,
+			family: "overlay",
+			state: state as OverlayCorpusCaseState,
+			oracle: oracle as OverlayOracleGuarantee,
+		};
+	}
+	if (family === "toolRender") {
+		return {
+			...fields,
+			family: "toolRender",
+			state: state as ToolRenderCorpusCaseState,
+			oracle: oracle as ToolRenderOracleGuarantee,
+		};
+	}
+	return {
+		...fields,
+		family: "composer",
+		state: state as CorpusCaseState,
+		oracle: oracle as ComposerOracleGuarantee,
+	};
 }
 
 /** Record a failure the evaluator reported. */
@@ -517,6 +656,22 @@ export function promoteFailureToCorpus(
 ): string {
 	return promoteCaseToCorpus(
 		"composer",
+		state,
+		{ oracle: failure.oracle, kind: "failed", message: failure.message },
+		observedGrid,
+		options,
+	);
+}
+
+/** Record a tool-render failure the evaluator reported. */
+export function promoteToolRenderFailureToCorpus(
+	state: ToolRenderCorpusCaseState,
+	failure: ToolRenderOracleFailure,
+	observedGrid: readonly string[],
+	options?: { template?: string; seed?: number; status?: CorpusCaseStatus; reason?: string },
+): string {
+	return promoteCaseToCorpus(
+		"toolRender",
 		state,
 		{ oracle: failure.oracle, kind: "failed", message: failure.message },
 		observedGrid,

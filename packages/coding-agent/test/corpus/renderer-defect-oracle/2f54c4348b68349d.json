@@ -1,0 +1,22 @@
+{
+	"schemaVersion": 3,
+	"id": "2f54c4348b68349d",
+	"status": "recorded",
+	"recordedAt": "2026-08-26T10:27:36.248Z",
+	"template": "tool-render-sweep",
+	"seed": 0,
+	"kind": "failed",
+	"message": "glob/result/long line row 0 is 548 cells wide at a render width of 40. The engine truncates it with no ellipsis, so the tail is dropped with nothing on screen saying so. Elide it with truncateToWidth.",
+	"observedGrid": [
+		"\u001b[48;5;16m▏ ⌕ Glob: the quick brown fox jumps over the lazy dog the quick brown fox jumps over the lazy dog the quick brown fox jumps over the lazy dog the quick brown fox jumps over the lazy dog the quick brown fox jumps over the lazy dog the quick brown fox jumps over the lazy dog the quick brown fox jumps over the lazy dog the quick brown fox jumps over the lazy dog the quick brown fox jumps over the lazy dog the quick brown fox jumps over the lazy dog the quick brown fox jumps over the lazy dog the quick brown fox jumps over the lazy dog end 1 file\u001b[49m",
+		"\u001b[48;5;16m▏    the quick brown fox jumps over the \u001b[49m"
+	],
+	"family": "toolRender",
+	"state": {
+		"tool": "glob",
+		"surface": "result",
+		"fixture": "long line",
+		"width": 40
+	},
+	"oracle": "everyRowFitsTheRenderWidth"
+}
