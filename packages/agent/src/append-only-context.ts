@@ -302,16 +302,7 @@ export class AppendOnlyContextManager {
 	#messageDigest(msg: unknown): number {
 		if (!msg || typeof msg !== "object") return 0;
 		const m = msg as Record<string, unknown>;
-		const payload = JSON.stringify({
-			r: m.role ?? null,
-			c: m.content ?? null,
-			pp: m.providerPayload ?? null,
-			tc: m.toolCalls ?? m.tool_calls ?? null,
-			tcid: m.toolCallId ?? m.tool_call_id ?? null,
-			tn: m.toolName ?? m.name ?? null,
-			err: m.isError ?? null,
-			id: m.id ?? null,
-		});
+		const payload = `${m.role ?? ""}\x01${m.content ?? ""}\x02${m.providerPayload ?? ""}\x03${m.toolCalls ?? m.tool_calls ?? ""}\x04${m.toolCallId ?? m.tool_call_id ?? ""}\x05${m.toolName ?? m.name ?? ""}\x06${m.isError ?? ""}\x07${m.id ?? ""}`;
 		return Number(Bun.hash(payload)) >>> 0;
 	}
 }
