@@ -62,6 +62,9 @@ export function fadeLineTowards(line: string, groundHex: string, strength: numbe
 	SGR.lastIndex = 0;
 	return line.replace(SGR, (whole, params: string) => {
 		if (params === "") return whole;
+		// Fast path: only extended-color sequences (38/48) have channels to fade.
+		// Bold, italic, underline, reset, etc. pass through unchanged.
+		if (params.indexOf("38") === -1 && params.indexOf("48") === -1) return whole;
 		// Even indices are values, odd indices the `;` or `:` between them.
 		const tokens = params.split(/([;:])/);
 		let changed = false;
