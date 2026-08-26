@@ -23,20 +23,8 @@ export type KnownApi =
 export type Api = KnownApi | (string & {});
 
 /**
- * Canonical thinking transports, as a value so the set can be enumerated at run
- * time. A transport says only how a chosen effort is ENCODED on the wire: a
- * level name, a token budget, a Google thinkingLevel, an adaptive literal.
- *
- * It does NOT decide which efforts exist. That comes from the declaration in
- * models.dev, and where models.dev declares no levels the surface is whatever
- * opencode offers for that shape, copied rather than derived. A transport that
- * carries a number instead of a name is not permission to invent the names:
- * that reasoning is exactly how a ladder of tiers no endpoint ever published
- * got shipped, and how operators were handed `low` and `medium` rungs that
- * silently resolved to something else.
- *
- * Tests iterate this array and fail on a member with no recorded decision,
- * which is what keeps a sixth transport from landing green.
+ * Canonical thinking transports defining how effort is encoded on the wire.
+ * Enumerated as a runtime value to validate all transport implementations.
  */
 export const THINKING_CONTROL_MODES = [
 	"effort",
@@ -79,39 +67,25 @@ export interface ThinkingConfig {
 	 */
 	effortRouting?: Readonly<Partial<Record<Effort | "off", string>>>;
 	/**
-	 * Per-effort thinking budget in tokens, baked at build time for collapsed
-	 * variants whose upstream expects an explicit `thinkingBudget` instead of a
-	 * value derived from the generic ladder (Antigravity Cloud Code Assist
-	 * gemini-3.x). Request mapping prefers caller `thinkingBudgets`, then this
-	 * map, then the provider default ladder. Only meaningful for `mode: "budget"`.
+	 * Per-effort thinking token budget for collapsed variants requiring explicit
+	 * budgets. Only meaningful for `mode: "budget"`.
 	 */
 	effortBudgets?: Readonly<Partial<Record<Effort, number>>>;
 	/**
-	 * When true, a thinking-off request MUST explicitly suppress thinking on
-	 * the wire (google-level: `thinkingLevel: "MINIMAL"` + `includeThoughts:
-	 * false`; budget: `thinkingBudget: 0`) instead of omitting thinkingConfig —
-	 * Cloud Code Assist re-applies the per-id baked server default when the
-	 * config is absent.
+	 * When true, thinking-off requests must explicitly suppress thinking on the wire
+	 * instead of omitting thinkingConfig to prevent upstream server defaults.
 	 */
 	suppressWhenOff?: boolean;
 	/**
-	 * Reasoning is mandatory upstream: the endpoint rejects disabled or
-	 * omitted thinking (e.g. OpenRouter Gemini 3.x — "Reasoning is mandatory
-	 * for this endpoint and cannot be disabled"). Request mapping clamps
-	 * thinking-off to the lowest supported effort unless `suppressWhenOff`
-	 * provides an explicit wire off-path.
+	 * Reasoning is mandatory upstream: request mapping clamps thinking-off to the
+	 * lowest supported effort unless `suppressWhenOff` provides an explicit wire path.
 	 */
 	requiresEffort?: boolean;
 }
 
 /**
- * Discovery-declared reasoning surface, mapped from models.dev
- * `reasoning_options` (see `mapModelsDevToModels`). When present on a spec it
- * is authoritative over the identity-derived effort ladder: the endpoint told
- * us which efforts it accepts, so the hand-maintained identity ladder is only
- * the fallback for rows discovery says nothing about. The thinking MODE and
- * wire value mapping still derive from identity/compat; models.dev carries
- * levels, not transports.
+ * Discovery-declared reasoning surface mapped from models.dev `reasoning_options`.
+ * When present, authoritative over the identity-derived effort ladder.
  */
 export interface ModelReasoningOptions {
 	/**
@@ -159,12 +133,8 @@ export interface Usage {
 	/** Copilot premium-request counter, when applicable. */
 	premiumRequests?: number;
 	/**
-	 * Reasoning/thinking tokens included in `output`, when the provider reports them
-	 * (OpenAI `output_tokens_details.reasoning_tokens`, Google `thoughtsTokenCount`).
-	 * Always a subset of `output` — non-reasoning output is `output - reasoningTokens`.
-	 *
-	 * Providers that don't expose this leave it undefined rather than guessing;
-	 * `undefined` means unknown, NOT zero.
+	 * Reasoning/thinking tokens included in `output`, when reported by the provider.
+	 * Always a subset of `output`; undefined means unknown, not zero.
 	 */
 	reasoningTokens?: number;
 	/**
@@ -184,17 +154,8 @@ export interface Usage {
 		webFetch?: number;
 	};
 	/**
-	 * Tokens a provider already billed for an attempt whose output this turn threw
-	 * away: a stream that died before its first content block and was retried in
-	 * place, a degenerate empty completion that was asked again, a thinking loop
-	 * that was aborted mid-sample. The provider charges for the attempt whether or
-	 * not its text survived, and under prompt caching the discarded attempt is
-	 * frequently the expensive cache WRITE while the surviving one is a cheap read.
-	 *
-	 * The token fields above describe the delivered message only, because they
-	 * answer a different question (how large is the context) with a different
-	 * owner. This bucket answers what was paid for text nobody ever saw, and
-	 * `cost.total` includes it.
+	 * Tokens billed for discarded attempts (retries, aborted streams).
+	 * Tracks spend on non-delivered attempts; included in `cost.total`.
 	 */
 	discarded?: {
 		/** How many billed attempts were thrown away. */
@@ -251,16 +212,8 @@ export interface OpenAICompat {
 	/** Whether the provider supports the `developer` role (vs `system`). Default: auto-detected from URL. */
 	supportsDeveloperRole?: boolean;
 	/**
-	 * Whether the provider's chat-completions endpoint accepts multiple
-	 * leading `system`/`developer` messages. When false, ordered system
-	 * prompts are coalesced into a single message joined by `\n\n` so
-	 * strict chat templates (e.g. Qwen-served via vLLM, MiniMax) accept
-	 * the request. Default: detected per provider/baseUrl. Canonical
-	 * OpenAI/Azure/OpenRouter/Cerebras/Together/Fireworks/Groq/DeepSeek/
-	 * Mistral/xAI/Z.ai/GitHub Copilot/Zenmux are treated as `true`;
-	 * unknown or strict-template hosts default to `false`. Setting this
-	 * to `true` preserves separate blocks, which is preferred for
-	 * KV-cache reuse when the trailing prompt changes between calls.
+	 * Whether the endpoint accepts multiple leading `system`/`developer` messages.
+	 * When false, ordered system prompts coalesce into one message for strict templates.
 	 */
 	supportsMultipleSystemMessages?: boolean;
 	/** Whether the provider supports `reasoning_effort`. Default: auto-detected from URL. */
@@ -307,39 +260,13 @@ export interface OpenAICompat {
 	/** Whether the provider accepts a synthetic placeholder (e.g. ".") for missing reasoning_content on tool-call turns. Default: true. Set to false for providers like DeepSeek that validate the exact reasoning_content value. */
 	allowsSyntheticReasoningContentForToolCalls?: boolean;
 	/**
-	 * Replay preserved thinking blocks as `reasoning_content` (or the configured
-	 * `reasoningContentField`) on EVERY assistant turn that carried reasoning,
-	 * regardless of whether the upstream provider validates the field. Local
-	 * llama.cpp-style servers (llama.cpp, LM Studio, vLLM, sglang, Ollama in
-	 * openai-completions mode) re-tokenize the full chat-template prompt every
-	 * request; Qwen3 / DeepSeek-R1 / GLM templates reconstruct the `<think>`
-	 * block from `reasoning_content`. Dropping the field re-renders the
-	 * assistant turn without `<think>`, diverging from the slot's KV cache state
-	 * and forcing full prompt re-processing (#3528). Default: auto-detected
-	 * (loopback/private baseUrl or local provider id with thinking-enabled
-	 * models).
+	 * Replay thinking blocks as `reasoning_content` on every reasoning turn.
+	 * Prevents KV cache divergence in local templates (llama.cpp/vLLM/Ollama #3528).
 	 */
 	replayReasoningContent?: boolean;
 	/**
-	 * Send `preserve_thinking: true` so the Qwen3.6+ chat template renders
-	 * `<think>...</think>` markup for EVERY assistant turn (not just turns
-	 * after the last user message). Without it, the template strips the think
-	 * block from older assistant turns:
-	 *
-	 * ```jinja
-	 * {%- if (preserve_thinking is defined and preserve_thinking is true)
-	 *        or (loop.index0 > ns.last_query_index) %}
-	 *   <|im_start|>assistant\n<think>\n{rc}\n</think>\n\n{content}
-	 * {%- else %}
-	 *   <|im_start|>assistant\n{content}
-	 * ```
-	 *
-	 * The cache from the original generation has `<think>...</think>` tokens,
-	 * so once a new user message arrives the prior assistant turns become
-	 * "older" and the stripped re-render diverges — full prompt re-processing
-	 * on SWA models (#3541). Default: auto-detected (Qwen thinking format on
-	 * a local llama.cpp-style backend, paired with `replayReasoningContent`).
-	 * Non-Qwen templates ignore the flag, so the auto-detection is safe.
+	 * Send `preserve_thinking: true` so Qwen3.6+ chat templates render thinking markup
+	 * across all turns, avoiding KV cache invalidation (#3541).
 	 */
 	qwenPreserveThinking?: boolean;
 	/** Whether assistant tool-call messages must include non-empty content. Default: false. */
@@ -353,19 +280,13 @@ export interface OpenAICompat {
 	 */
 	supportsForcedToolChoice?: boolean;
 	/**
-	 * Whether the chat-completions endpoint accepts the object form that pins one
-	 * named function (`{ type: "function", function: { name } }`). Some
-	 * OpenAI-compatible hosts such as llama.cpp only accept string
-	 * `tool_choice` values; request builders downgrade a named force to
-	 * `"required"` when this is false. Default: true.
+	 * Whether the endpoint accepts object-form named `tool_choice`.
+	 * When false, named forces downgrade to `"required"`. Default: true.
 	 */
 	supportsNamedToolChoice?: boolean;
 	/**
-	 * Drop reasoning fields (`reasoning_effort`, OpenRouter `reasoning`) for
-	 * the request when `tool_choice` forces a tool call. Mirrors the Anthropic
-	 * `disableThinkingIfToolChoiceForced` rule for backends like Kimi that
-	 * 400 with `tool_choice 'specified' is incompatible with thinking
-	 * enabled` whenever both are present. Default: auto-detected (Kimi).
+	 * Drop reasoning fields when `tool_choice` forces a tool call.
+	 * Required for backends (like Kimi) where forced tools conflict with thinking.
 	 */
 	disableReasoningOnForcedToolChoice?: boolean;
 	/**
@@ -388,13 +309,8 @@ export interface OpenAICompat {
 	/** Whether the provider supports the `strict` field in tool definitions. Default: auto-detected per provider/baseUrl (conservative for unknown providers). */
 	supportsStrictMode?: boolean;
 	/**
-	 * Tool-schema dialect the endpoint validates `tools.function.parameters`
-	 * against. `"moonshot-mfjs"` triggers Moonshot Flavored JSON Schema
-	 * normalization (collapse `const`→`enum`, infer `type` on bare enums, strip
-	 * unsupported validators/`prefixItems`) because Moonshot/Kimi native hosts
-	 * reject standard JSON Schema constructs with HTTP 400. Default:
-	 * auto-detected (`"moonshot-mfjs"` on api.moonshot.ai / api.kimi.com). Set
-	 * `"none"` to opt a custom Moonshot-compatible host out.
+	 * Tool-schema dialect for parameter validation. `"moonshot-mfjs"` normalizes
+	 * JSON Schema constructs (const->enum, etc.) rejected by Moonshot/Kimi hosts.
 	 */
 	toolSchemaFlavor?: "moonshot-mfjs" | "none";
 	/**
@@ -432,11 +348,8 @@ export interface OpenAICompat {
 	/** Normalize tool call ids to OpenAI's 40-character limit. Default: auto-detected. */
 	usesOpenAIToolCallIdLimit?: boolean;
 	/**
-	 * Compat deltas applied when a request actually engages thinking mode
-	 * (reasoning requested and not disabled, model reasoning-capable, and not
-	 * suppressed by a forced tool choice). `buildModel` materializes the full
-	 * alternate view as `compat.whenThinking`; handlers pointer-swap, never
-	 * spread. Default: auto-detected (OpenCode gateways, #1071/#1484).
+	 * Compat deltas applied when a request engages thinking mode.
+	 * Materialized on `compat.whenThinking` for pointer-swapping (#1071/#1484).
 	 */
 	whenThinking?: Partial<Omit<OpenAICompat, "whenThinking">>;
 }
@@ -465,19 +378,13 @@ export interface AnthropicCompat {
 	/** Whether long prompt-cache retention (`ttl: "1h"`) is supported. Default: true for canonical Anthropic API. */
 	supportsLongCacheRetention?: boolean;
 	/**
-	 * Whether mid-conversation `role: "system"` messages are accepted in the
-	 * `messages` array (Claude Opus 4.8+ and Claude Fable/Mythos 5 on the
-	 * first-party Claude API and Claude Platform on AWS). When unset,
-	 * auto-detected from the model id and base URL. Not available on Bedrock,
-	 * Vertex AI, or Microsoft Foundry.
+	 * Whether mid-conversation `role: "system"` messages are accepted in `messages`.
+	 * Supported on first-party Claude API for newer models. Auto-detected when unset.
 	 */
 	supportsMidConversationSystem?: boolean;
 	/**
-	 * Whether the model accepts a forced `tool_choice` (`{ type: "any" }` or
-	 * `{ type: "tool", name }`). Claude Fable/Mythos 5 reject forced tool use
-	 * outright ("tool_choice forces tool use is not compatible with this model");
-	 * the request builder downgrades forced choices to `auto` when this is false.
-	 * When unset, auto-detected from the model id. Default: true.
+	 * Whether the model accepts forced `tool_choice`. When false, forced choices
+	 * downgrade to `auto` (needed for models rejecting forced tool use). Default: true.
 	 */
 	supportsForcedToolChoice?: boolean;
 	/**
@@ -494,12 +401,8 @@ export interface AnthropicCompat {
 	 */
 	requiresToolResultId?: boolean;
 	/**
-	 * Replay unsigned `thinking` blocks from prior assistant turns as native
-	 * thinking instead of demoting them to text. Official Anthropic enforces
-	 * signature-based thinking-chain integrity, so unsigned blocks must stay
-	 * text there; compatible reasoning endpoints (Z.AI, DeepSeek, …) emit
-	 * unsigned blocks and expect them back as `type: "thinking"` (#2005).
-	 * Default: auto-detected from provider/baseUrl and `model.reasoning`.
+	 * Replay unsigned thinking blocks as native thinking instead of text.
+	 * Used by compatible reasoning endpoints (Z.AI, DeepSeek) that omit signatures (#2005).
 	 */
 	replayUnsignedThinking?: boolean;
 	/**
@@ -705,24 +608,15 @@ export type ResolvedAnthropicCompat = Required<AnthropicCompat> & {
 	 */
 	officialEndpoint: boolean;
 	/**
-	 * The configured endpoint enforces Anthropic's signature protocol on
-	 * replayed thinking blocks — either the official API itself or a proxy
-	 * that forwards to it (GitHub Copilot, ZenMux, Cloudflare AI Gateway's
-	 * `/anthropic` route, Google Vertex's `publishers/anthropic/…`).
-	 * Downstream transforms strip stale cross-model thinking signatures on
-	 * these endpoints so the signing proxy doesn't 400 with
-	 * `Invalid signature in thinking block` (#4297). Superset of
-	 * {@link officialEndpoint}.
+	 * Whether endpoint enforces Anthropic's signature protocol on replayed thinking blocks.
+	 * Downstream transforms strip stale signatures to avoid 400 errors (#4297).
 	 */
 	signingEndpoint: boolean;
 };
 
 /**
- * Compatibility settings for the devin-agent (Codeium Cascade) API. Cascade
- * selects reasoning effort only by routing to a sibling model id (the
- * `thinking.effortRouting` baked by variant-collapse), never by a wire
- * reasoning/effort field, so the model-thinking deriver must not invent an
- * effort ladder from identity for these models.
+ * Compatibility settings for devin-agent (Codeium Cascade) API, where reasoning
+ * effort routes via sibling model IDs rather than wire fields.
  */
 export interface DevinCompat {
 	/**
@@ -738,11 +632,8 @@ export interface DevinCompat {
 export type ResolvedDevinCompat = Required<DevinCompat>;
 
 /**
- * Compatibility settings for the cursor-agent API. Cursor's transport carries
- * no reasoning/effort field: effort is selected by routing to a tier-suffixed
- * sibling model id (the `thinking.effortRouting` baked by variant-collapse),
- * exactly like Cascade. An uncollapsed Cursor row therefore has no
- * controllable thinking surface, whatever its id looks like.
+ * Compatibility settings for cursor-agent API, where reasoning effort routes
+ * via tier-suffixed sibling model IDs rather than wire fields.
  */
 export interface CursorCompat {
 	/**
@@ -792,12 +683,8 @@ export type CompatOf<TApi extends Api> = TApi extends "openrouter"
 export interface Model<TApi extends Api = Api> {
 	id: string;
 	/**
-	 * Model id to send on the wire when it differs from `id`. Used by catalog
-	 * variants that present one upstream model under several local entries —
-	 * e.g. GitHub Copilot long-context variants (`claude-opus-4.7-1m` requests
-	 * upstream `claude-opus-4.7`; the tier is a client-side context budget, not
-	 * a served model id). Providers MUST serialize `requestModelId ?? id`;
-	 * everything local (selection, caching, usage attribution) keys on `id`.
+	 * Upstream wire model ID when different from local `id`.
+	 * Providers serialize `requestModelId ?? id` while local tracking uses `id`.
 	 */
 	requestModelId?: string;
 	/**
@@ -836,18 +723,8 @@ export interface Model<TApi extends Api = Api> {
 		cacheWrite: number; // $/million tokens
 	};
 	/**
-	 * Whether the numbers in {@link cost} were actually published by the upstream.
-	 *
-	 * `cost` cannot represent "we were never told": a provider that publishes no
-	 * pricing produces the same all-zero object as a genuinely free model, and
-	 * reading that zero as free is how veyyon came to display roughly 1,500 paid
-	 * models as costing nothing. This field records which of the two happened, so
-	 * {@link getModelPricing} reads a fact instead of inferring one from a zero.
-	 *
-	 * `"unknown"` is set by any discovery module whose upstream `/models` response
-	 * carries no pricing, which today is all of them. Absent means the entry
-	 * predates this field, and is treated as unknown-but-unrecorded: the
-	 * `:free` id marker is the only evidence available for those.
+	 * Whether {@link cost} numbers were published by upstream or unpriced (`"unknown"`).
+	 * Distinguishes unpriced models from genuinely free zero-cost models.
 	 */
 	pricing?: "published" | "unknown";
 	/** Premium Copilot requests charged per user-initiated request (defaults to 1). */
@@ -855,31 +732,14 @@ export interface Model<TApi extends Api = Api> {
 	contextWindow: number | null;
 	maxTokens: number | null;
 	/**
-	 * When `true`, providers MUST omit `max_output_tokens` (Responses) /
-	 * `max_tokens` / `max_completion_tokens` (Completions) from the outbound
-	 * request and let the upstream API decide the per-response cap. `maxTokens`
-	 * is still used locally for budgeting (compaction, context promotion); only
-	 * the wire field is suppressed.
-	 *
-	 * Use this for proxies (notably Ollama) that forward to a backend whose true
-	 * output limit Veyyon cannot discover — sending the wrong value triggers 400s
-	 * from the upstream provider.
+	 * When true, omit max output tokens on outbound requests to let upstream cap them.
+	 * Used for proxies (e.g. Ollama) forwarding to backends with unknown output limits.
 	 */
 	omitMaxOutputTokens?: boolean;
 	headers?: Record<string, string>;
 	/**
-	 * Streaming transport override. When `"pi-native"`, `streamSimple` routes
-	 * the request to the model's `baseUrl` via the auth-gateway's
-	 * `POST /v1/pi/stream` endpoint instead of dispatching the per-API
-	 * provider client. The `baseUrl` must point at an `veyyon auth-gateway`
-	 * (or compatible) host; `headers.Authorization` (or `apiKey` resolved by
-	 * the registry) carries the gateway bearer.
-	 *
-	 * Used by containerized veyyon installs (e.g. veybot slots) to route every
-	 * LLM call through a sidecar gateway that holds the real provider
-	 * credentials. The model's other metadata (pricing, context window,
-	 * thinking config, …) still resolves locally; only the streaming
-	 * dispatch is redirected.
+	 * Streaming transport override. When `"pi-native"`, routes streaming requests
+	 * through `POST /v1/pi/stream` on an auth-gateway sidecar.
 	 */
 	transport?: "pi-native";
 	/** Hint that websocket transport should be preferred when supported by the provider implementation. */
@@ -908,11 +768,8 @@ export interface Model<TApi extends Api = Api> {
 	/** Verbatim sparse compat from the spec (user/config intent), for introspection only. */
 	compatConfig?: CompatConfigOf<TApi>;
 	/**
-	 * Which shape to use when exposing the Codex `apply_patch` tool to this model.
-	 * Generated catalog policy sets `"freeform"` for first-party GPT-5 Responses
-	 * models that support OpenAI custom tools with a Lark grammar. The freeform
-	 * variant sends a raw patch string with no JSON envelope.
-	 * - `"function"` or undefined: JSON function-tool with `{input: string}` (spec §1.2).
+	 * Shape to use when exposing Codex `apply_patch` (`"freeform"` raw patch or
+	 * `"function"` JSON envelope).
 	 */
 	applyPatchToolType?: "freeform" | "function";
 	/**

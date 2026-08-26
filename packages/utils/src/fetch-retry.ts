@@ -12,13 +12,7 @@ const RETRY_DELAY_FIELD_PATTERN = /"retryDelay":\s*"([0-9.]+)(ms|s)"/i;
 // "try again in 90 minutes" / "try again in 1 hour"
 const TRY_AGAIN_PATTERN = /try again in\s+~?\s*([0-9.]+)\s*(ms|sec|s|minutes?|mins?|m|hours?|hrs?|h)\b/i;
 /**
- * `retry-after-ms=62000` / `retry-after-ms: 62000`. This is the spelling this
- * codebase's OWN formatter appends to a provider error message when the
- * response carried a `retry-after` header, and until it was listed here the
- * text-only callers of {@link extractRetryHint} — the auth gateway passes
- * `extractRetryHint(undefined, message)` with no headers left to read — could
- * not see the very hint we had just written for them, and fell back to a flat
- * default block that returned an exhausted account to the pool early.
+ * Matches `retry-after-ms=62000` / `retry-after-ms: 62000` in error message text.
  */
 const RETRY_AFTER_MS_TEXT_PATTERN = /retry-after-ms\s*[:=]?\s*(\d+(?:\.\d+)?)/i;
 /**
@@ -30,18 +24,8 @@ const RETRY_AFTER_MS_TEXT_PATTERN = /retry-after-ms\s*[:=]?\s*(\d+(?:\.\d+)?)/i;
 const RETRY_AFTER_SECONDS_TEXT_PATTERN = /retry-after\s*[:=]?\s*(\d+(?:\.\d+)?)/i;
 
 /**
- * Anthropic's per-bucket rate-limit reset clocks, each an RFC 3339 timestamp
- * (`anthropic-ratelimit-unified-reset` may also arrive as epoch seconds).
- *
- * Anthropic omits `retry-after` on a meaningful share of its 429s, and those
- * responses still say exactly when the exhausted bucket refills. Without these
- * the caller has no stated window at all and falls back to a sub-10s
- * exponential backoff against a limit measured in minutes, which is the
- * immediate-repeat signature that dominates the error telemetry.
- *
- * Each entry names the reset clock and the sibling header that says whether
- * THAT bucket is the exhausted one, so a 60-second request bucket is not
- * mistaken for a multi-hour unified window or the other way round.
+ * Anthropic's per-bucket rate-limit reset clocks (RFC 3339 timestamp or epoch seconds).
+ * Used when `retry-after` is omitted to determine when exhausted buckets refill.
  */
 export const ANTHROPIC_RESET_HEADERS: readonly { reset: string; remaining: string }[] = [
 	{ reset: "anthropic-ratelimit-unified-reset", remaining: "anthropic-ratelimit-unified-remaining" },
@@ -52,23 +36,13 @@ export const ANTHROPIC_RESET_HEADERS: readonly { reset: string; remaining: strin
 ];
 
 /**
- * Upper bound on a window derived from {@link ANTHROPIC_RESET_HEADERS}. A reset
- * clock is provider-controlled data, and a skewed or malformed one must not be
- * able to translate into an unbounded stand-down. Anything past this is treated
- * as absent, so the caller keeps its own backoff instead of inheriting garbage.
+ * Upper bound (24h) on a window derived from {@link ANTHROPIC_RESET_HEADERS} to prevent unbounded delays.
  */
 const ANTHROPIC_RESET_MAX_HOLD_MS = 24 * 60 * 60 * 1000;
 
 /**
- * The delay implied by Anthropic's rate-limit reset clocks, or `undefined` when
- * none are present, parseable, and in the future.
- *
- * Buckets whose `-remaining` sibling reads `0` are the ones that actually
- * rejected the request, so when any of those is present the LONGEST of them
- * wins: retrying while the bucket that failed is still empty fails again. With
- * no `-remaining` evidence at all we cannot tell which bucket rejected, so the
- * SHORTEST reset wins — under-waiting costs one more retry, while over-waiting
- * on a guess strands the caller behind a window that may not even apply.
+ * Returns the delay implied by Anthropic rate-limit reset headers, or `undefined` if none apply.
+ * Prioritizes exhausted buckets (`remaining: 0`) with the longest reset delay.
  */
 export function anthropicResetDelayMs(headers: Headers, nowMs: number = Date.now()): number | undefined {
 	let exhaustedMs: number | undefined;
@@ -123,12 +97,7 @@ export const RESET_EPOCH_MS_MIN = 1e12;
 export const RESET_EPOCH_S_MIN = 1e9;
 
 /**
- * Disambiguate the three shapes a single rate-limit `reset` numeric field
- * conflates (a Unix epoch in ms, a Unix epoch in seconds, or a plain wait
- * delta) by magnitude, since a present-day epoch dwarfs any sane delta.
- * Returns the absolute target instant in ms for the two epoch shapes, or
- * `{ delta: true }` so the caller applies the header's own unit to the raw
- * value. Owns the epoch/delta thresholds for every `reset`-header parser.
+ * Disambiguates a rate-limit `reset` numeric field into an epoch timestamp (ms) or delta flag.
  */
 export function resetHeaderTargetMs(value: number): { atMs: number } | { delta: true } {
 	if (value > RESET_EPOCH_MS_MIN) return { atMs: value };
@@ -137,26 +106,8 @@ export function resetHeaderTargetMs(value: number): { atMs: number } | { delta: 
 }
 
 /**
- * Server-suggested retry delay extraction. Merges the patterns historically used
- * by the OpenAI Codex and Google Gemini retry helpers.
- *
- * Header sources (checked in order):
- *  - `retry-after-ms` (milliseconds)
- *  - `Retry-After` (numeric seconds, or HTTP date)
- *  - `x-ratelimit-reset-ms` (delta ms, or Unix epoch ms/s for large values)
- *  - `x-ratelimit-reset` (Unix epoch seconds)
- *  - `x-ratelimit-reset-after` (seconds)
- *  - `anthropic-ratelimit-*-reset` (see {@link anthropicResetDelayMs})
- *
- * Body patterns:
- *  - `retry-after-ms=62000` / `retry-after-ms: 62000` (milliseconds)
- *  - `retry-after: 60` / `retry-after 60` (seconds)
- *  - `Your quota will reset after 18h31m10s` / `10m15s` / `39s`
- *  - `Please retry in 250ms` / `Please retry in 12s`
- *  - `"retryDelay": "34.074824224s"` (JSON error detail field)
- *  - `try again in 250ms` / `try again in 12s` / `try again in 5 min` / `try again in ~158 min`
- *
- * Returns `undefined` if no signal is found.
+ * Extracts server-suggested retry delay in milliseconds from headers or response body text.
+ * Returns `undefined` if no retry hint is found.
  */
 export function extractRetryHint(source: Response | Headers | null | undefined, body?: string): number | undefined {
 	const headers = source instanceof Headers ? source : (source?.headers ?? undefined);
@@ -287,49 +238,29 @@ export interface FetchWithRetryOptions extends RequestInit {
 	 */
 	fetch?: (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 	/**
-	 * The retry verdict for a FAILED response — any status that is not 2xx, not only the transient
-	 * set. Receives a cloned body string, because a status means something only next to a body: a 429
-	 * that says `overloaded` is a throttle, one with nothing to read is a wall, and a 400 carrying a
-	 * deterministic parse failure is the same wall at a different number. Absent, the transient set
-	 * ({@link isRetryableStatus}) decides, which is all this module can say on its own.
+	 * Retry verdict for non-2xx responses given the response, cloned body text, and attempt count.
+	 * Defaults to {@link isRetryableStatus}.
 	 */
 	shouldRetryResponse?: (response: Response, bodyText: string, attempt: number) => boolean | Promise<boolean>;
 	/**
-	 * Optional retry gate for a THROWN transport failure — no response arrived.
-	 * Returning `false` re-throws instead of retrying. The loop's own bounds
-	 * (`maxAttempts`, the HTTP/2 verdict) cannot see a budget the caller is
-	 * keeping, and a stall retried to the attempt ceiling multiplies whatever
-	 * deadline the caller declared by the ladder plus its backoff.
+	 * Retry gate for thrown transport failures. Returning `false` re-throws immediately.
 	 */
 	shouldRetryError?: (error: Error, attempt: number) => boolean | Promise<boolean>;
 	/**
-	 * Bun extension forwarded verbatim to the underlying `fetch` call. `false`
-	 * disables Bun's native ~300s pre-response timeout (callers that own a
-	 * configurable first-event/idle watchdog or an external `AbortSignal`
-	 * supply this so the runtime ceiling cannot pre-empt them); a positive
-	 * number sets a custom ceiling in ms. Bare browser/Node fetch ignores it.
+	 * Bun fetch timeout: `false` disables default ceiling; positive number sets ms timeout.
 	 */
 	timeout?: number | false;
 }
 
 /**
- * The longest single server-directed wait a retry will sit on when the caller
- * declared no cap of its own. Exported because a provider that runs its own
- * retry ladder outside this helper (the Anthropic client honors
- * `retry-after-ms` itself) has to bound it by the same number, or the same
- * `retry-after` means one minute on one path and an unbounded sleep on another.
+ * Default maximum delay (60s) for a single server-directed retry wait.
  */
 export const DEFAULT_MAX_DELAY_MS = 60_000;
 const DEFAULT_MAX_ATTEMPTS = 5;
 
 /**
- * Fetch with bounded retries and sensible defaults. A 2xx is returned untouched; every other status
- * goes to `shouldRetryResponse`, or to `isRetryableStatus` (5xx, 408, 429) when the caller passes no
- * verdict. Transient network errors are retried. Server `Retry-After`/quota hints are honoured up to
- * `maxDelayMs`; a hint that exceeds the cap returns the current response so the caller can fail fast.
- * Aborts on `init.signal` propagate as `"Request was aborted"`.
- *
- * The caller is responsible for inspecting `!response.ok` once the call returns.
+ * Executes fetch with bounded retries, handling retry headers, transient errors, and aborts.
+ * Inspect `!response.ok` on returned response.
  */
 export async function fetchWithRetry(
 	url: string | URL | ((attempt: number) => string | URL),
@@ -521,23 +452,7 @@ export function isUnexpectedSocketCloseMessage(message: string): boolean {
 }
 
 /**
- * HTTP/2 error codes (RFC 7540 section 7) whose meaning is "the transport or
- * the peer failed", not "the request you sent is wrong". A fresh stream, and in
- * most cases a fresh connection, has a real chance of succeeding.
- *
- * Two of these carry their own argument:
- *
- * - `REFUSED_STREAM` is the only code the RFC gives a normative replay
- *   guarantee. Section 8.1.4 says the stream closed "prior to any processing
- *   having occurred" and that the request "can be safely retried".
- * - `NO_ERROR` on a stream that was still in flight is a graceful GOAWAY, which
- *   is what a peer rolling out a deploy looks like from here. It is the most
- *   common real-world member of this set.
- *
- * `PROTOCOL_ERROR` is the loosest inclusion: it can in principle mean our own
- * framing is wrong, in which case a replay reproduces it. In practice it is an
- * intermediary hiccup, and the bounded attempt count caps the cost of being
- * wrong about it.
+ * HTTP/2 error codes indicating transport/peer failures that are safe to retry on a fresh stream.
  */
 const RETRYABLE_HTTP2_ERROR_CODES: ReadonlySet<string> = new Set([
 	"NGHTTP2_NO_ERROR",
@@ -551,15 +466,7 @@ const RETRYABLE_HTTP2_ERROR_CODES: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * HTTP/2 error codes where the next attempt fails the same way, so retrying
- * only hides the real answer behind a loop.
- *
- * `CANCEL` is the one to be careful about: it usually means our own side
- * aborted the stream, and retrying a user-initiated cancel is a bug, not a
- * recovery. `FLOW_CONTROL_ERROR`, `FRAME_SIZE_ERROR` and `COMPRESSION_ERROR`
- * are protocol defects a replay reproduces. `INADEQUATE_SECURITY` and
- * `HTTP_1_1_REQUIRED` are configuration answers: the fix is a different TLS
- * profile or a protocol downgrade, never another identical attempt.
+ * HTTP/2 error codes indicating deterministic errors where replay will fail identically.
  */
 const NON_RETRYABLE_HTTP2_ERROR_CODES: ReadonlySet<string> = new Set([
 	"NGHTTP2_FLOW_CONTROL_ERROR",
@@ -592,15 +499,7 @@ export function http2ErrorCode(message: string): string | undefined {
 }
 
 /**
- * Retry verdict for an HTTP/2 transport failure, or `undefined` when the
- * message names no code we recognise.
- *
- * A named code is a definite statement about whether another attempt can
- * differ, so callers should let it win over generic wording heuristics: those
- * read `NGHTTP2_INTERNAL_ERROR` as the phrase "internal error" they happen to
- * know and would just as happily read a transient-sounding wrapper around
- * `NGHTTP2_CANCEL`. An unknown code returns `undefined` rather than a guess, so
- * a future code still reaches the existing heuristics.
+ * Determines retry verdict for an HTTP/2 transport failure message, or `undefined` if unrecognized.
  */
 export function http2RetryVerdict(message: string): boolean | undefined {
 	const code = http2ErrorCode(message);
@@ -613,16 +512,6 @@ export function http2RetryVerdict(message: string): boolean | undefined {
 }
 
 /**
- * THERE IS NO `isRetryableError` HERE ANY MORE, and that is the contract.
- *
- * This module kept its own transient vocabulary (`overloaded`, `rate limit`, `service unavailable`,
- * `connection error`, `unable to connect`, …) and its own validation veto, and
- * `@veyyon/ai`'s `isProviderRetryableError` consulted it as a last resort. So one provider sentence
- * was matched by two rule sets that had drifted apart by a phrase, and a failure the utils list
- * recognised came back retryable while carrying no flag — which is what the session layer reads.
- *
- * `utils` cannot import `ai`, so the split is by KIND rather than by convenience: what a transport
- * states about itself lives here ({@link http2RetryVerdict}, {@link isRetryableStatus},
- * {@link isUnexpectedSocketCloseMessage}, {@link extractHttpStatusFromError}), and what a failure
- * MEANS is `@veyyon/ai/error`'s registry, which composes these. A retry decision belongs there.
+ * Transport-level status and error code helpers live here; high-level retry error classification
+ * belongs in `@veyyon/ai/error`.
  */

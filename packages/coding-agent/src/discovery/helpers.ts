@@ -33,18 +33,7 @@ import { normalizeToolNames, TOOL } from "../tools/builtin-names";
 import { buildPluginDirRoot } from "./plugin-dir-roots";
 
 /**
- * Where each tool keeps its USER-level configuration, relative to home.
- *
- * There is deliberately no project entry, and no `getProjectPath` twin of
- * {@link getUserPath}. Each of these tools also defines a per-repository
- * directory (`.claude`, `.cursor`, `.codex`, `.gemini`, `.opencode`,
- * `.windsurf`, `.github`) and every one of them used to be resolved from
- * `ctx.cwd` and registered against the same capability ids as veyyon's own. A
- * cloned repository therefore needed no `.veyyon` directory to install a rule,
- * a hook, a command or an MCP server: an ordinary `.cursor/rules/` was the same
- * door under a different name. Config comes from home. The only thing a working
- * tree still contributes is the context-file walk, which is prose the model
- * reads rather than a capability grant.
+ * User-level configuration directory mappings relative to home for supported tools.
  */
 export const SOURCE_PATHS = {
 	native: {
@@ -127,23 +116,7 @@ export function createSourceMeta(provider: string, filePath: string, level: "use
 }
 
 /**
- * Read a context file for a discovery scope, telling "absent" apart from
- * "present but unreadable".
- *
- * {@link readFile} collapses both into `null` and only logs the second case, so
- * a provider that just checks for `null` reports an empty `items` list and no
- * warning when a real AGENTS.md/CLAUDE.md was on disk but could not be read.
- * Instructions vanishing from the prompt with no operator-visible signal is the
- * exact failure this returns a warning for; callers push it onto the
- * `LoadResult.warnings` channel they already return.
- *
- * The extra `stat` runs only when the read produced nothing, so the hit path
- * (and the far more common genuinely-absent path, which stats once and stops at
- * ENOENT) costs no more than before. When the stat says a regular file is there,
- * the file is re-read directly to recover the errno the cached reader swallowed:
- * this is the ONE report the operator gets for that path (the scope loader in
- * system-prompt.ts defers to it), so "could not be read" without EACCES/EIO left
- * them nothing to act on.
+ * Reads a context file, differentiating missing files from unreadable files with a warning.
  */
 export async function readContextFile(filePath: string): Promise<{ content: string | null; warning?: string }> {
 	const content = await readFile(filePath);
@@ -398,18 +371,7 @@ function surfaceUnreadableDir(dir: string, warnings?: string[]): void {
 }
 
 /**
- * Glob helper for extension discovery.
- *
- * `gitignore: false` is deliberate. Whether a file is tracked by git says nothing
- * about whether the user wants it loaded, and a gitignored `extensions/` folder is
- * the normal way to keep local experiments out of a repo. Filtering on it silently
- * dropped those extensions from the well-known directories while the configured-path
- * walk still loaded them, so the same file loaded or not depending on which route
- * reached it. The globs here are all one level deep, so there is no walk-pruning
- * cost to giving it up.
- *
- * `hidden: false` stays: a dotfile in an extensions directory is tool config
- * (`.eslintrc.js`, `.prettierrc.js`), not an extension to execute.
+ * Discovers extension files using native glob without gitignore filtering for local extensions.
  */
 async function globIf(
 	dir: string,
@@ -437,12 +399,7 @@ export interface ScanSkillsFromDirOptions {
 	level: "user" | "project";
 	requireDescription?: boolean;
 	/**
-	 * When true, treat a `SKILL.md` sitting directly under `dir` as a single skill in addition to
-	 * scanning `<dir>/<name>/SKILL.md` children. Matches the Claude plugin manifest convention
-	 * that lets a skill path point at a directory containing `SKILL.md` directly (e.g.
-	 * `"skills": ["./"]`), where the frontmatter `name` determines the invocation name and the
-	 * directory basename is the fallback. Default `false` preserves the strict child-scan
-	 * semantic every non-Claude provider relies on.
+	 * When true, treats `dir/SKILL.md` as a skill in addition to `<dir>/<name>/SKILL.md` children.
 	 */
 	includeSelf?: boolean;
 }
@@ -458,11 +415,7 @@ export function compareSkillOrder(aName: string, aPath: string, bName: string, b
 }
 
 /**
- * Scan `options.dir` for `<name>/SKILL.md` children (plus `dir/SKILL.md` itself when
- * `includeSelf` is set). Every input is explicit in `options`: the directory is already
- * resolved by the caller, so there is no `LoadContext` parameter. One used to be accepted
- * and never read, which made the signature imply the scan was context-relative when it is
- * not.
+ * Scans directory for skill markdown definitions with deterministic sorting.
  */
 export async function scanSkillsFromDir(options: ScanSkillsFromDirOptions): Promise<LoadResult<DiscoveredSkill>> {
 	const items: DiscoveredSkill[] = [];
@@ -529,12 +482,7 @@ export async function scanSkillsFromDir(options: ScanSkillsFromDirOptions): Prom
 }
 
 /**
- * Load files from `dir` matching `options.extensions`.
- * Uses native glob for fast filesystem scanning with gitignore support.
- *
- * `dir` is already resolved by the caller, so there is no `LoadContext` parameter. One
- * used to be accepted and never read, which made the signature imply the scan was
- * context-relative when it is not.
+ * Loads and transforms files matching specified extensions from a directory.
  */
 export async function loadFilesFromDir<T>(
 	dir: string,
@@ -618,11 +566,7 @@ export async function loadFilesFromDir<T>(
 }
 
 /**
- * Calculate depth of target directory relative to current working directory.
- * Depth is the number of directory levels from cwd to target.
- * - Positive depth: target is above cwd (parent/ancestor)
- * - Zero depth: target is cwd
- * - This uses path splitting to count directory levels
+ * Calculates directory hierarchy depth of target relative to current working directory.
  */
 export function calculateDepth(cwd: string, targetDir: string, separator: string): number {
 	return cwd.split(separator).length - targetDir.split(separator).length;
@@ -683,23 +627,7 @@ async function readExtensionModuleManifest(packageJsonPath: string): Promise<Ext
 }
 
 /**
- * Discover extension module entry points in a directory.
- *
- * Discovery rules:
- * 1. Direct files: `extensions/*.ts` or `*.js` → load
- * 2. Subdirectory with index: `extensions/<ext>/index.ts` or `index.js` → load
- * 3. Subdirectory with package.json: `extensions/<ext>/package.json` with "veyyon" (legacy "omp"/"pi") field → load declared paths
- *
- * No recursion beyond one level. Complex packages must use package.json manifest.
- *
- * The single owner of these rules. Both routes that load extensions come through
- * here: the well-known agent directories (the five discovery adapters) and the
- * paths a user configures explicitly (`extensions/loader.ts`
- * `discoverExtensionPaths`). They used to be separate walks — one glob, one
- * readdir — that carried this same comment while behaving differently. Do not
- * reintroduce a second walk; extend this one.
- *
- * Runs on the native glob. See `globIf` for why it does not filter on gitignore.
+ * Discovers extension module entry points (direct files, index files, or package.json manifests).
  */
 export async function discoverExtensionModulePaths(dir: string): Promise<string[]> {
 	const discovered = new Set<string>();
@@ -888,17 +816,7 @@ export function parseClaudePluginsRegistry(content: string): ClaudePluginsRegist
 }
 
 /**
- * Resolve the active project registry path by walking up from `cwd`.
- *
- * Walk order:
- * 1. Walk up from `cwd` looking for the nearest directory containing the project
- *    config dir (`.veyyon/`). The first match returns `<dir>/.veyyon/plugins/installed_plugins.json`.
- * 2. If none is found, rescan from `cwd` upward looking for `.git`.
- *    The git root is used as an anchor: `<gitRoot>/.veyyon/plugins/installed_plugins.json`.
- * 3. If neither is found, return `null` — no project context is active.
- *
- * This is the single source of truth for "active project root" used by install,
- * uninstall, list, upgrade, discovery, and doctor. Deterministic for a given `cwd`.
+ * Resolves the active project plugin registry path by walking up from `cwd` toward project root or git root.
  */
 export async function resolveActiveProjectRegistryPath(cwd: string): Promise<string | null> {
 	// Pass 1: walk up looking for an existing project config directory (nearest wins).
@@ -961,13 +879,7 @@ export function registerPluginCacheInvalidator(invalidator: () => void): void {
 }
 
 /**
- * The `plugins` root that belongs to `agentDir`, or undefined when `agentDir` IS the
- * active profile and {@link getPluginsDir} should resolve it (that path is XDG-aware;
- * this derivation is not, so it must not displace it for the default case).
- *
- * A profile lays out `<profile root>/agent` and `<profile root>/plugins` as siblings,
- * the same derivation `getProfileAgentsCandidates` uses to find a profile's instruction
- * file from its agent dir.
+ * Derives the plugin root directory corresponding to an agent directory.
  */
 export function pluginsRootFor(agentDir: string): string | undefined {
 	const resolved = path.resolve(agentDir);
@@ -976,12 +888,7 @@ export function pluginsRootFor(agentDir: string): string | undefined {
 }
 
 /**
- * Whether the project-scoped plugin registry at `registryPath` may be read at all.
- *
- * The registry itself is the trusted unit, not the plugins it names: its `installPath` entries
- * are arbitrary absolute paths, so filtering by location would let a project point at a payload
- * anywhere on disk. A registry that lives outside the canonical project root is not
- * project-controlled and is left alone, which is what keeps a profile-level registry working.
+ * Evaluates whether a project-scoped plugin registry is authorized under project trust rules.
  */
 export async function projectRegistryIsTrusted(
 	registryPath: string,
@@ -998,19 +905,7 @@ export async function projectRegistryIsTrusted(
 }
 
 /**
- * List all installed Claude Code plugin roots from the plugin cache.
- * Reads ~/.claude/plugins/installed_plugins.json and profile plugins/installed_plugins.json,
- * and optionally the nearest project-scoped registry resolved from `cwd`.
- *
- * `pluginsRoot` names WHICH profile's marketplace registry to read; it defaults to the
- * process-active profile's via {@link getPluginsDir}. Callers that load on behalf of
- * another agent dir pass {@link pluginsRootFor}, because reading the active profile's
- * registry there hands that profile's plugin rules, commands, hooks and MCP servers to
- * a session that asked for a different profile.
- *
- * Results are cached per `home:resolvedProjectPath:pluginsRoot` key to avoid repeated
- * parsing. The plugins root is part of the key: leaving it out served the first
- * profile's roots to every later profile out of cache.
+ * Lists all installed Claude Code plugin roots from user, profile, and project registries.
  */
 export async function listClaudePluginRoots(
 	home: string,

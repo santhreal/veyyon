@@ -163,13 +163,7 @@ export const CURSOR_CLIENT_VERSION = "cli-2026.01.09-231024f";
 const CURSOR_PROXY_TUNNEL_TIMEOUT_MS = 30_000;
 
 /**
- * A bounded, least-recently-used map. The cursor provider keys per-conversation
- * state and blob stores by conversationId; a plain module-level Map grew without
- * limit, so a long-lived process (an autonomous run touching many conversations,
- * or many short sessions with random ids) leaked one entry per conversation for
- * the process lifetime. This evicts the least-recently-used entry past `#max`.
- * `get`/`set` both refresh recency, so an actively-streamed conversation is
- * never evicted out from under an in-flight round.
+ * Bounded least-recently-used map that evicts oldest entries past `#max` on `set`.
  */
 export class BoundedLruMap<K, V> {
 	readonly #max: number;
@@ -199,24 +193,9 @@ const CURSOR_CONVERSATION_CACHE_MAX = 128;
 const conversationStateCache = new BoundedLruMap<string, ConversationStateStructure>(CURSOR_CONVERSATION_CACHE_MAX);
 const conversationBlobStores = new BoundedLruMap<string, Map<string, Uint8Array>>(CURSOR_CONVERSATION_CACHE_MAX);
 /**
- * The rules this process has actually put on the wire for a conversation, by content.
- *
- * The rules channel is the ONLY way a Cursor turn carries the caller's system prompt and the
- * operator's instruction files, and it is driven by the SERVER: nothing leaves the client until a
- * `requestContextArgs` ask arrives. A turn where the ask never comes therefore runs on Cursor's
- * canned CLI prompt with none of the caller's instructions, which is exactly the failure the
- * kv-channel blob miss already fails closed on.
- *
- * The value is a FINGERPRINT rather than a flag, because "this conversation received something
- * once" is not the guarantee that matters. The operator can edit an instruction file, reload, or
- * move the session mid-conversation, and the caller composes the new bytes on the next turn; if
- * the server does not ask again, those bytes never arrive and a flag would call that delivered.
- * Comparing content is what makes a CHANGED instruction set an undelivered one.
- *
- * Bounded like the two caches above, and for the same reason.
+ * Tracks the fingerprint of rules delivered to the server per conversation ID.
  */
 const conversationRulesDelivered = new BoundedLruMap<string, string>(CURSOR_CONVERSATION_CACHE_MAX);
-
 /**
  * Identity of a composed rule set: every path and every byte, in order.
  *
@@ -289,19 +268,7 @@ function frameConnectMessage(data: Uint8Array, flags = 0): Buffer {
 }
 
 /**
- * A Connect/gRPC stream failure, mapped so the shared classifier can read it.
- *
- * THE WIRE SAYS THIS TWICE, IN TWO SPELLINGS: the end-stream JSON trailer carries
- * the code by name, the HTTP/2 trailers carry the numeric `grpc-status`. Both mean
- * the same failure, and both used to arrive as a bare `ProviderResponseError` with
- * an `envelope` kind, which classifies as nothing at all. So an `unavailable` or
- * an `internal` from Cursor failed the turn outright while the identical code from
- * Devin (same Connect protocol, same trailer) was retried and recovered.
- * {@link AIError.connectFailureStatus} is the one table both providers read; a code
- * it cannot place is a fault of the request itself and stays terminal.
- *
- * Exported for tests: the mapping is the whole retry decision for a Cursor stream
- * failure, and it has to be assertable next to Devin's for the same codes.
+ * Maps Connect/gRPC stream error codes to provider errors or standard API errors.
  */
 export function cursorStreamFailure(code: string, message: string, label: string): Error {
 	// A trailer often carries a code and no sentence at all, which used to render as a
@@ -546,12 +513,7 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 			let pendingBuffer = Buffer.alloc(0);
 			let endStreamError: Error | null = null;
 			/**
-			 * Fail this turn from inside a server-message handler.
-			 *
-			 * Reuses the `endStreamError` channel a Connect end-stream error already uses (the outer
-			 * promise rejects with it), rather than throwing: a throw out of `handleServerMessage` is
-			 * caught by the `.catch` below and cannot stop the turn. The first cause wins, so a later
-			 * end-stream error cannot overwrite the reason the turn was actually abandoned.
+			 * Fails the turn from inside a server message handler and closes the stream.
 			 */
 			const failTurn = (error: Error): void => {
 				if (endStreamError) return;
@@ -967,21 +929,7 @@ export type ToolCallState = ToolCall & {
 };
 
 /**
- * Every token number Cursor puts on the wire, and the only place any of them
- * becomes `usage`.
- *
- * Cursor reports two quantities and neither one is a usage object.
- * `TokenDeltaUpdate.tokens` is an increment of THIS turn's completion.
- * `ConversationTokenDetails` is a gauge of the WHOLE conversation against the
- * model's window: `used_tokens` counts the system prompt, the tool schemas, the
- * rules, the skills, the subagent definitions and the conversation, and it is
- * sampled after this turn's reply was appended, so it already contains the
- * completion. Nothing on the wire reports a prompt-cache breakdown, which is
- * why `cacheRead` and `cacheWrite` stay zero: Cursor does not say.
- *
- * Three shipped defects came from folding those two quantities into `usage`
- * where each one happened to arrive. They are accumulated raw here instead, and
- * turned into a usage object by {@link CursorUsageAccount.fold} alone.
+ * Token accounting structure aggregating stream delta tokens and conversation token details.
  */
 export interface CursorUsageAccount {
 	/** Running sum of `TokenDeltaUpdate.tokens`: this turn's completion. */
@@ -1099,16 +1047,7 @@ export async function handleServerMessage(
 }
 
 /**
- * Turn-scoped hooks the message handlers need beyond the blob store itself.
- *
- * `systemPromptBlobIds` is the set of hex ids `buildGrpcRequest` minted for this request's system
- * prompt entries. The kv channel only ever sees an opaque id, so without it a miss on the system
- * prompt and a miss on some historical turn are the same event, and they are not: one is a
- * degraded transcript, the other is a model running with no instructions at all.
- *
- * `onRequestContextDelivered` is the other half of the same guarantee on the other channel. Both
- * channels can drop the caller's instructions without any error, so both report what they actually
- * did and let the turn decide.
+ * Turn-scoped delivery hooks and system prompt blob IDs for request lifecycle management.
  */
 interface CursorTurnDelivery {
 	systemPromptBlobIds: ReadonlySet<string>;
@@ -2343,18 +2282,7 @@ function buildGrepErrorResult(error: string) {
 }
 
 /**
- * Reject a Cursor exec-channel `grepArgs` frame whose `pattern` is empty or
- * whitespace-only. Returns an actionable error message when the pattern is
- * unusable (with a `glob`-aware hint when the model likely meant to list
- * files), or `null` when the pattern is valid and grep should run.
- *
- * Exported for tests. Cursor's model sometimes sends `pattern=""` together
- * with a non-empty `glob`, expecting grep to enumerate matching files; the
- * downstream coding-agent `grep` tool rejects that with a bare "Pattern must
- * not be empty", which the TUI renders as `?` in the tool preview (issue
- * #4574). Handling it at the Cursor exec dispatch keeps the synthesized
- * `toolCall` block off the persisted assistant message and gives the model a
- * specific recovery hint.
+ * Validates grep patterns from Cursor exec messages, rejecting empty or whitespace-only patterns.
  */
 export function emptyGrepPatternRejection(pattern: string | undefined, glob: string | undefined): string | null {
 	if (pattern && pattern.trim().length > 0) return null;
@@ -2569,20 +2497,7 @@ function buildMcpErrorResult(error: string) {
 }
 
 /**
- * Merge the decoded completion-frame `McpArgs` map into the args assembled
- * from streamed `args_text_delta` snapshots.
- *
- * The completion frame is authoritative for the scalars it carries — but it
- * can omit oversized parameters entirely and can downgrade a structured value
- * to its raw string fallback when `decodeMcpArgValue` cannot parse it as
- * JSON. Overwriting the streamed args wholesale therefore loses data (e.g.
- * the task tool's `tasks` array on multi-subagent dispatches, issue #2615).
- *
- * Rules per key:
- * - completion key absent  → keep the streamed value.
- * - completion is a string while the streamed value is structured (object or
- *   array) → keep the streamed value (the completion frame downgraded it).
- * - otherwise               → completion wins.
+ * Merges completion-frame McpArgs into streamed args, preserving structured values over string downgrades.
  */
 export function mergeCursorMcpToolCallArgs(
 	streamed: Record<string, unknown> | undefined,
@@ -2631,33 +2546,7 @@ function endCurrentThinkingBlock(
 }
 
 /**
- * Synthesize a completed `toolCall` content block for a Cursor exec-channel
- * native tool (`shell`, `read`, `write`, `grep`, `ls`, `delete`, `diagnostics`).
- *
- * Args arrive complete on the exec message, so the block opens and closes in
- * one step — no partial-JSON streaming path. Without this the persisted
- * assistant message carries only text/thinking blocks, and on replay the
- * following `toolResult` messages have no matching `toolCall.id` in
- * `renderSessionContext`, so they render as header-less `⎿` lines beneath the
- * last text block instead of proper tool components (issue #4348).
- *
- * The block is stamped with {@link kCursorExecResolved} so the shared
- * `agent-loop.ts` execution pass skips it: the exec channel has already
- * dispatched this call, so treating the block as runnable would re-execute the
- * same side-effecting tool a second time.
- *
- * "Already dispatched" is not "already finished, elsewhere". The handler is a
- * caller-supplied `execHandler` and it runs IN THIS PROCESS, and this function
- * pushes the block BEFORE `resolveExecHandler` is awaited. So between this
- * block appearing and its `toolResult` arriving, the tool is running locally
- * and may be part-way through its side effects. A stream reset in that window
- * leaves a call that is neither safe to retry verbatim nor answered, which is
- * why `buildAbortedTurnLedger` in `agent-loop.ts` reports such a block as
- * "started, no result recorded" rather than as never run. Do not restate this
- * as server-side execution: that wording is what made the harness's
- * "nothing is in flight at abort time" claim look unconditional.
- *
- * Exported for tests to exercise ordering with adjacent text/thinking blocks.
+ * Synthesizes a completed toolCall block marked with {@link kCursorExecResolved} for native exec tools.
  */
 export function synthesizeCursorExecToolCall(
 	output: AssistantMessage,
@@ -2851,12 +2740,7 @@ export function processInteractionUpdate(
 }
 
 /**
- * Map `ConversationTokenDetails.detailed` onto the provider-neutral buckets.
- *
- * The entries are the whole point of the field: `used_tokens` and `max_tokens`
- * are repeated inside it and are already read off the parent. An entry list
- * that is empty means the server sent the wrapper and measured nothing, which
- * is not a reading, so it maps to undefined and leaves the last one standing.
+ * Maps `ConversationTokenDetails.detailed` entries to provider-neutral context buckets.
  */
 function cursorContextComposition(details?: ConversationTokenDetails): ProviderContextBucket[] | undefined {
 	const entries = details?.detailed?.entry;
@@ -3030,24 +2914,7 @@ function findLastUserMessageIndex(messages: Message[]): number {
 }
 
 /**
- * Build `ConversationStateStructure.rootPromptMessagesJson` blob IDs for the
- * system prompt plus prior conversation history, as JSON blobs matching
- * Cursor's internal Vercel-AI-SDK-shaped message format.
- *
- * Cursor's server uses `rootPromptMessagesJson` (not `turns[]`) to build the
- * actual model prompt. `turns[]` is UI/display metadata. Without populating
- * this field, multi-turn conversations lose prior context — the model sees
- * only an empty placeholder where historical user turns should be.
- * The active user message is excluded because it is sent in the action.
- */
-/**
- * Build one Cursor system-message JSON blob per ordered system prompt. Emitting separate blobs
- * (rather than a single `\n\n`-joined string) lets Cursor's blob cache hit independently per
- * entry: changing only the last prompt does not invalidate earlier blob ids, so the prefix
- * up to the changed prompt remains cached on the server side.
- *
- * When no system prompts are provided, returns a single default greeting so we never emit
- * an empty `rootPromptMessagesJson` head.
+ * Builds Cursor system-message JSON blobs per ordered system prompt, or a default greeting.
  */
 export function buildCursorSystemPromptJsons(systemPrompt: readonly string[] | undefined): string[] {
 	const systemPrompts = normalizeSystemPrompts(systemPrompt);
@@ -3079,18 +2946,7 @@ function createCursorRule(fullPath: string, content: string): CursorRule {
 }
 
 /**
- * Compose the `requestContext.rules` payload: the session system prompt as one rule,
- * followed by the caller-supplied file units in caller order (the coding-agent hands
- * them over in ascending authority, so the operator's global file keeps the last,
- * highest-recency slot, same as in the prompt).
- *
- * Rules are Cursor's only honored client-instruction channel: the system-prompt blobs
- * at the `rootPromptMessagesJson` head are fetched and then replaced by the server's
- * own prompt (wire capture, 2026-08), so without this the model runs with none of the
- * caller's instructions. One rule per unit, not one joined blob, so the server's
- * content-keyed rule cache stays warm for every file that did not change.
- *
- * Exported for tests.
+ * Composes the `requestContext.rules` payload containing the system prompt rule and file rules.
  */
 export function buildCursorRules(
 	systemPrompt: readonly string[] | undefined,
@@ -3147,12 +3003,7 @@ function buildRootPromptMessagesJson(
 }
 
 /**
- * Convert context.messages to Cursor's ConversationTurnStructure blob IDs.
- * Groups messages into turns: each turn is a user message followed by the assistant's response.
- * Excludes the active user message (which goes in the action).
- *
- * Each `AgentConversationTurnStructure.user_message`, `steps[]`, and the outer
- * `ConversationStateStructure.turns[]` entry is a blob ID into `blobStore`.
+ * Converts historical conversation messages into Cursor ConversationTurnStructure blob IDs.
  */
 function buildConversationTurns(
 	messages: Message[],

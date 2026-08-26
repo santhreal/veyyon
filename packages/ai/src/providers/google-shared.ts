@@ -91,32 +91,14 @@ export interface GoogleSharedStreamOptions extends StreamOptions {
 }
 
 /**
- * Determines whether a streamed Gemini `Part` should be treated as "thinking".
- *
- * Protocol note (Gemini / Vertex AI thought signatures):
- * - `thought: true` is the definitive marker for thinking content (thought summaries).
- * - `thoughtSignature` is an encrypted representation of the model's internal thought process
- *   used to preserve reasoning context across multi-turn interactions.
- * - `thoughtSignature` can appear on ANY part type (text, functionCall, etc.) - it does NOT
- *   indicate the part itself is thinking content.
- * - For non-functionCall responses, the signature appears on the last part for context replay.
- * - When persisting/replaying model outputs, signature-bearing parts must be preserved as-is;
- *   do not merge/move signatures across parts.
- *
- * See: https://ai.google.dev/gemini-api/docs/thought-signatures
+ * Determines whether a streamed Gemini `Part` should be treated as thinking content.
  */
 export function isThinkingPart(part: Pick<Part, "thought" | "thoughtSignature">): boolean {
 	return part.thought === true;
 }
 
 /**
- * Retain thought signatures during streaming.
- *
- * Some backends only send `thoughtSignature` on the first delta for a given part/block; later deltas may omit it.
- * This helper preserves the last non-empty signature for the current block.
- *
- * Note: this does NOT merge or move signatures across distinct response parts. It only prevents
- * a signature from being overwritten with `undefined` within the same streamed block.
+ * Preserves the last non-empty thought signature across streamed chunks for the current block.
  */
 export function retainThoughtSignature(existing: string | undefined, incoming: string | undefined): string | undefined {
 	if (typeof incoming === "string" && incoming.length > 0) return incoming;
@@ -142,24 +124,7 @@ function resolveThoughtSignature(isSameProviderAndModel: boolean, signature: str
 }
 
 /**
- * Index of the first message whose tool-call thought signatures are sent verbatim.
- *
- * WHY THIS EXISTS. A `thoughtSignature` is an opaque blob Gemini attaches to
- * every function call, and until this was added every historical one was
- * re-uploaded on every request forever. Measured over nine live sessions they
- * were the single largest thing in the context: 40.2% of the conversation body,
- * 1,295 signatures averaging 2,239 characters, the largest one 71,636 (about
- * 18k tokens on its own). They cost more than the tool results, the tool
- * arguments, the thinking, and the model's own text combined.
- *
- * The signature exists to replay reasoning context, so the recent ones are the
- * ones worth paying for. `retention` is how many trailing assistant messages
- * keep theirs; everything older sends {@link SKIP_THOUGHT_SIGNATURE} instead,
- * which is Google's sentinel for "this part has no signature, do not fail
- * validation" and costs 33 characters.
- *
- * `undefined` means retain everything, which is the behaviour before this
- * existed. Any caller that does not opt in is unaffected.
+ * Returns the index of the first assistant message whose tool-call thought signatures are retained.
  */
 export function firstRetainedAssistantIndex(messages: readonly Message[], retention: number | undefined): number {
 	if (retention === undefined || !Number.isFinite(retention) || retention < 0) return 0;
@@ -174,23 +139,7 @@ export function firstRetainedAssistantIndex(messages: readonly Message[], retent
 }
 
 /**
- * Characters this request does not send because of the retention window.
- *
- * The saving has to be observable or nobody can tell the setting is doing
- * anything: the request just silently gets smaller, and "silently" is how a
- * mechanism ends up disabled for a year without anyone noticing. The session
- * accumulates this across requests and exposes it the same way it exposes the
- * bytes elided by wire path relativization.
- *
- * It counts the same thing {@link convertMessages} elides, and only that: a
- * tool-call signature that is currently sent and would not be under this
- * window, minus the {@link SKIP_THOUGHT_SIGNATURE} that replaces it. Signatures
- * already dropped for another reason, such as a foreign model's, are not
- * counted, because this window did not save them.
- *
- * The figure is per request and cumulative over a session, so it grows faster
- * than linearly: the same historical signature is elided again on every
- * subsequent turn, which is precisely the cost the window exists to avoid.
+ * Calculates character count saved across messages by omitting historical thought signatures.
  */
 export function elidedSignatureBytes(
 	messages: readonly Message[],
@@ -213,14 +162,7 @@ export function elidedSignatureBytes(
 }
 
 /**
- * The two independent rules that decide whether a historical thought signature is
- * re-uploaded, resolved once so nothing can apply one without the other.
- *
- * They exist as one type because they are trivially easy to drift apart: the
- * request builder and the byte accounting both have to answer the same question,
- * and if the accounting knows about recency but not length, the context panel
- * reports a saving that does not match the request that was sent. That is the
- * quiet kind of wrong, so both callers take this and neither reimplements it.
+ * Signature retention policy defining recency and length thresholds for re-uploading thought signatures.
  */
 export interface SignaturePolicy {
 	/**
@@ -236,13 +178,7 @@ export interface SignaturePolicy {
 }
 
 /**
- * Resolve both signature rules from a request's context.
- *
- * A non-positive `thoughtSignatureMaxLength` means "no limit" rather than "elide
- * everything". Settings default numeric knobs to -1 to mean unset, and a literal
- * reading of that would silently strip every signature in the conversation the
- * moment the setting existed, which is the most damaging possible interpretation
- * of a default.
+ * Resolves signature retention policy from request context options.
  */
 export function signaturePolicy(
 	messages: readonly Message[],
@@ -256,21 +192,7 @@ export function signaturePolicy(
 }
 
 /**
- * Whether one historical signature is sent, under both rules at once.
- *
- * THE SIZE RULE IS THE INTERESTING ONE, and it is not a variation on recency.
- * Signature bytes are extremely concentrated: measured over twenty DeepSWE
- * sessions, 2,297 signatures averaged 2,606 characters with a median of 660 and a
- * maximum of 91,960, and the largest tenth of them held 62.1% of all signature
- * bytes. So a length cap removes most of the mass while leaving the great
- * majority of the reasoning chain intact, whereas the recency window removes
- * nearly all of the mass and nearly all of the chain.
- *
- * That difference is the point. If replaying older reasoning turns out to matter,
- * a length cap degrades gently where a recency window does not, and the two can be
- * compared as separate arms because they are independent settings. They compose
- * when both are set: a signature is sent only if it is recent enough AND small
- * enough.
+ * Checks if a thought signature meets both recency and length constraints of the policy.
  */
 export function sendsSignature(policy: SignaturePolicy, messageIndex: number, signature: string): boolean {
 	if (messageIndex < policy.retainFrom) return false;
@@ -516,13 +438,7 @@ export function convertMessages<T extends GoogleApiType>(model: Model<T>, contex
 }
 
 /**
- * Convert tools to Gemini function declarations format.
- *
- * We prefer `parametersJsonSchema` (full JSON Schema: anyOf/oneOf/const/etc.).
- *
- * Claude models via Cloud Code Assist require the legacy `parameters` field; the API
- * translates it into Anthropic's `input_schema`. When using that path, we sanitize the
- * schema to remove Google-unsupported JSON Schema keywords.
+ * Converts Tool array to Gemini function declarations format using JSON Schema.
  */
 export function convertTools(
 	tools: Tool[],
@@ -620,12 +536,7 @@ export const MAX_EMPTY_STREAM_RETRIES = 2;
 export const EMPTY_STREAM_BASE_DELAY_MS = 500;
 
 /**
- * Whether a completed Google assistant message carries content worth delivering.
- *
- * A tool call or any non-whitespace text counts as meaningful. An empty/whitespace-only
- * text part — or thinking that never produced an answer — is the "empty response" failure:
- * delivered as-is the agent loop has nothing to act on and silently halts, so the request
- * must be retried instead of surfaced.
+ * Returns true if an assistant message contains non-empty text or tool calls.
  */
 export function hasMeaningfulGoogleContent(output: AssistantMessage): boolean {
 	for (const block of output.content) {
@@ -743,19 +654,7 @@ export function startTextOrThinkingBlock(
 }
 
 /**
- * Drives the chunked `generateContentStream` iterator into an `AssistantMessage` and
- * the corresponding `AssistantMessageEventStream`. Shared between `streamGoogle` and
- * `streamGoogleVertex` — every observable event order and stop-reason rule is preserved.
- *
- * The caller still owns: `output` construction, timing fields (`duration`/`ttft`),
- * `rawRequestDump`, the `client.models.generateContentStream(params)` call itself,
- * pushing `start`/`done`/`error` events, and the surrounding try/catch that translates
- * thrown errors into `output.stopReason`/`errorMessage`.
- *
- * This helper handles: the chunk loop, currentBlock flush transitions, usage metadata
- * decoding (`calculateCost` included), tool-call id collision avoidance, finish-reason
- * mapping, and the abort/stop-reason post-checks that re-throw to bubble into the
- * caller's catch.
+ * Consumes chunked Gemini stream iterator into an AssistantMessage and dispatches stream events.
  */
 export async function consumeGoogleStream<T extends GoogleApiType>(args: {
 	googleStream: AsyncIterable<GenerateContentResponse>;
@@ -947,13 +846,7 @@ interface GoogleGenerationConfig extends GenerateContentConfig {
 }
 
 /**
- * Build the `GenerateContentParameters` payload for the public Gemini API and Vertex AI.
- * Both surfaces accept the same `GenerateContentConfig` shape — every numeric/string knob,
- * tool-config, thinking-config, and system-instruction conversion is identical.
- *
- * `google-gemini-cli` is NOT routed through here: its `CloudCodeAssistRequest` body has a
- * distinct top-level shape (project/request/requestType) and a different thinking-config
- * placement on `generationConfig`.
+ * Builds the `GenerateContentParameters` payload for Gemini and Vertex AI API requests.
  */
 export function buildGoogleGenerateContentParams<T extends "google-generative-ai" | "google-vertex">(
 	model: Model<T>,
@@ -1038,12 +931,7 @@ export function buildGoogleGenerateContentParams<T extends "google-generative-ai
 }
 
 /**
- * Drive the `streamGoogle` / `streamGoogleVertex` event flow: build the assistant message,
- * push start/done/error events, run `consumeGoogleStream`, and translate thrown errors into
- * the canonical `error` event shape.
- *
- * Caller-supplied `prepare()` runs inside the try-block so any failure (missing project,
- * bad auth, etc.) is funneled through the same error path as a streaming failure.
+ * Request execution plan for streamGoogleGenAI including parameters, URL, and headers.
  */
 export interface GoogleGenAIRequestPlan {
 	params: GenerateContentParameters;
@@ -1215,13 +1103,7 @@ export function streamGoogleGenAI<T extends "google-generative-ai" | "google-ver
 }
 
 /**
- * Lift the SDK's `params.config` fields out of `config` and place them where the
- * Gemini / Vertex AI REST API expects them on the request body. Mirrors the
- * generateContentParametersTo{Mldev,Vertex} transformation in @google/genai
- * for the subset of fields this codebase actually sets.
- *
- * `abortSignal` is intentionally dropped — the SDK propagates it via `fetch.signal`,
- * which our caller already wires up through `options.signal`.
+ * Formats SDK GenerateContentParameters into the raw JSON body expected by the Google REST API.
  */
 function paramsToWireBody(params: GenerateContentParameters): Record<string, unknown> {
 	const body: Record<string, unknown> = { contents: params.contents };
@@ -1258,16 +1140,7 @@ function paramsToWireBody(params: GenerateContentParameters): Record<string, unk
 }
 
 /**
- * Pull the human-readable detail out of a Google error body, bounded.
- *
- * A non-2xx body is not always a Google error envelope. A corporate proxy, a
- * captive portal, or a CDN interstitial in front of
- * `generativelanguage.googleapis.com` answers with an HTML page, and the whole
- * page used to become the message: rendered in the TUI, written to the session
- * file, and replayed on every later read of that turn. The ceiling now lives in
- * `error/detail-bounds`, shared with every other provider that interpolates a
- * response body, because the per-site caps had drifted to four different
- * numbers and three of them were "none".
+ * Extracts and bounds human-readable error messages from a Google API error response body.
  */
 function extractGoogleErrorMessage(body: AIError.ProviderErrorBody): string {
 	if (!body.text) return "Unknown error";

@@ -106,30 +106,14 @@ export interface ModelsDevReasoningOption {
 }
 
 /**
- * models.dev `effort` values that name the ABSENCE of a level rather than a
- * level: `none`/`null` is thinking-off, and `default`/`auto` is "whatever the
- * endpoint picks". A declaration made only of these states that the row reasons
- * with no addressable effort, which is the `toggle` surface spelled through the
- * effort field.
+ * models.dev `effort` values representing the absence of a selectable level
+ * (`none`/`null` for off, `default`/`auto` for endpoint defaults).
  */
 const REASONING_NON_LEVEL_VALUES: Record<string, true> = { none: true, default: true, auto: true };
 
 /**
- * Map models.dev `reasoning_options` to the spec-level reasoning surface.
- * The declared effort ladder is authoritative; an empty list or a toggle-only
- * surface means the model reasons but exposes no effort control. A budget-only
- * declaration is a token RANGE and names no level, so it declares nothing about
- * the ladder and the control mode owns it (see `resolveModelThinking`). An
- * effort option naming only values Veyyon does not know (a future tier) returns
- * `undefined` rather than hiding a working control; a MIXED list keeps its known
- * values, so a newly added tier appears the moment Veyyon learns it instead of
- * silently dropping the declared surface.
- *
- * An effort declaration carrying no level at all is the toggle case, not the
- * future-tier case, and maps like the empty option list: `cerebras/zai-glm-4.7`
- * declares `["none"]` and `groq/qwen/qwen3.6-27b` declares `["none","default"]`,
- * and both were falling through to identity, which offered four and five levels
- * the endpoint says it does not accept.
+ * Map models.dev `reasoning_options` to spec-level reasoning capabilities.
+ * The declared effort ladder is authoritative; empty/toggle lists indicate no selectable effort.
  */
 export function mapModelsDevReasoningOptions(
 	options: readonly ModelsDevReasoningOption[] | undefined,
@@ -187,14 +171,8 @@ function toInputCapabilities(value: unknown): ("text" | "image")[] {
 }
 
 /**
- * Reads the models.dev catalog, reporting which stage failed.
- *
- * A null payload maps to no models, which is exactly what the throw this
- * replaced produced downstream -- the difference is that the operator now
- * learns whether models.dev was unreachable, answered with a status, or
- * served something that is not JSON. Those three send them to three different
- * places, and the previous silent `catch {}` in the model manager sent them
- * nowhere.
+ * Reads the models.dev catalog, reporting failure stage details to hooks.
+ * Returns null if unreachable, invalid JSON, or non-200.
  */
 async function fetchModelsDevPayload(
 	fetchImpl: FetchImpl = discoveryFetch(),
@@ -308,15 +286,8 @@ function buildAnthropicReferenceMap(
 }
 
 /**
- * Curated Anthropic models that are live or limited-availability on the
- * first-party `/v1/models` endpoint but that models.dev has not catalogued yet.
- * Seeded into model generation so the bundled catalog is never gated on
- * models.dev's update cadence; deduped behind upstream catalog / models.dev
- * entries once those appear. Token limits and pricing are pinned either directly or
- * in `applyAnthropicCatalogPolicy`. The reasoning surface is a hand-authored
- * declaration (Anthropic's first-party docs put the 5.x generation on the
- * adaptive low..max effort scale); the generator's policy pass bakes the wire
- * facts (mode, display support) around it.
+ * Curated Anthropic fallback models seeded into model generation before models.dev
+ * catalogues them, ensuring uncatalogued live models remain accessible.
  */
 const ANTHROPIC_CURATED_REASONING_OPTIONS: ModelReasoningOptions = {
 	efforts: [Effort.Low, Effort.Medium, Effort.High, Effort.XHigh, Effort.Max],
@@ -531,16 +502,8 @@ function getOllamaThinkingConfig(capabilities: string[] | undefined): ThinkingCo
 }
 
 /**
- * Query Ollama's `/api/show` endpoint for a single model and pull native
- * context and capability metadata from the response. Returns `undefined` when
- * the endpoint is unavailable so callers can layer their own fallback.
- *
- * The fallback is not neutral, which is why every branch reports. The caller
- * OVERWRITES the model's context window with it, so a `/api/show` that fails
- * does not leave the bundled figure in place: it replaces a real 32k with a
- * hardcoded 128k, prompts get packed to the larger size, and Ollama drops the
- * front of the context to make them fit. The agent then loses its system
- * prompt mid-session and looks like it forgot rather than like it failed.
+ * Query Ollama's `/api/show` for model context and capabilities.
+ * Returns undefined on failure so callers can apply appropriate fallbacks.
  */
 async function fetchOllamaShowMetadata(
 	nativeBaseUrl: string,
@@ -831,14 +794,8 @@ function normalizeUmansBaseUrl(baseUrl: string | undefined): string {
 }
 
 /**
- * Umans `models/info` reports `supports_vision: true` for natively
- * vision-capable models and a non-empty string sentinel (e.g.
- * `"via-handoff"`) for models that route image inputs through a vision
- * handoff pre-analysis step instead of accepting raw image blocks. Only
- * `true` means the model accepts image content directly; sentinel values
- * MUST map to text-only so the agent's vision-handoff path runs instead
- * of triggering an upstream HTTP 400 (`This model does not support image
- * inputs`).
+ * Whether Umans model supports native vision. String sentinels (e.g. "via-handoff")
+ * map to false so vision-handoff paths handle image conversion.
  */
 function umansSupportsVision(value: unknown): boolean {
 	return value === true;
@@ -1043,15 +1000,8 @@ function isGeneratedOpenAIProReasoningAlias(model: ModelSpec<Api>): boolean {
 }
 
 /**
- * Re-derive the generated pro-reasoning aliases (`gpt-5.6-*-pro`) for the
- * first-party `openai` gpt-5.6 rows. Each alias inherits the base row's
- * metadata, requests the base wire id via `requestModelId`, and sets
- * `reasoningMode: "pro"` so Responses-family request builders emit
- * `reasoning: { mode: "pro" }`. Called by the models.json generator after all
- * sources merge: stale copies of the owned aliases (previous snapshot,
- * including retired `openai-codex` rows) are dropped and re-projected from the
- * current base rows so alias metadata always tracks the base, while a real
- * upstream model that occupies an alias id wins and suppresses the projection.
+ * Project generated pro-reasoning aliases (`gpt-5.6-*-pro`) for first-party `openai` rows,
+ * configuring `reasoningMode: "pro"` and forwarding to the base `requestModelId`.
  */
 export function projectOpenAIProReasoningAliases(models: readonly ModelSpec<Api>[]): ModelSpec<Api>[] {
 	const kept = models.filter(model => !isGeneratedOpenAIProReasoningAlias(model));
@@ -1149,12 +1099,8 @@ export interface HuggingfaceModelManagerConfig {
 }
 
 /**
- * The HF Inference Providers router advertises per-upstream capabilities in a
- * `providers` array on each `/v1/models` entry (`supports_tools`,
- * `context_length`, pricing, …). Stamp `supportsTools: false` only when every
- * listed upstream explicitly reports `supports_tools: false` — sending a native
- * `tools` param to such a model 400s. Unknown or mixed capability keeps the
- * default (tool-capable) so discovery never speculatively degrades a model.
+ * Apply Hugging Face provider router tool capabilities. Sets `supportsTools: false`
+ * only when all listed upstreams explicitly report false.
  */
 export function applyHuggingfaceProviderCapabilities(
 	entry: OpenAICompatibleModelRecord,
@@ -1320,11 +1266,8 @@ interface XAICuratedModel {
 	/** Whether the model reasons natively. Defaults to true for Grok-4.x family. */
 	reasoning?: boolean;
 	/**
-	 * Whether xAI accepts the `reasoning.effort` wire param for this model.
-	 * Default true. When false: the picker hides the effort dial (via
-	 * getSupportedEfforts in model-thinking.ts) AND the wire omits the param —
-	 * both derive from `isGrokReasoningEffortCapable` (identity/family.ts), the
-	 * single allowlist shared by this curated layer and the compat builder.
+	 * Whether xAI accepts `reasoning.effort` wire param for this model.
+	 * When false, hides the effort picker and omits the wire param.
 	 */
 	supportsReasoningEffort?: boolean;
 	/**
@@ -1460,26 +1403,8 @@ function mergeCuratedIntoModel(
 }
 
 /**
- * Overlay/inject curated xai-oauth metadata onto dynamic-fetch results so
- * a successful `online refresh` doesn't regress vision capability, context
- * window, reasoning flags, or the effort-dial allowlist.
- *
- * Three passes:
- *   1. Filter `XAI_NON_CHAT_PREFIXES` (picker pollution defense for tool
- *      surfaces routed through dedicated tools — generate_image, tts).
- *   2. Overlay curated metadata onto dynamic-fetch matches. xAI's /v1/models
- *      does not return context_window or reasoning metadata, so without
- *      this overlay the runtime falls back to the bundled-reference default
- *      (effectively 128k context) and `reasoning: false` (suppressing the
- *      effort dial and stripping thinking metadata downstream).
- *   3. Inject curated entries missing from the dynamic fetch. Clones the
- *      first surviving entry as a template so required Model fields (api,
- *      provider, baseUrl, cost, etc.) inherit sane defaults. If `filtered`
- *      is empty (offline / no auth) injection is skipped — the descriptor's
- *      defaultModel covers the fallback.
- *
- * Order: curated models first in declaration order; then dynamic remainder
- * in original order.
+ * Overlay curated xai-oauth metadata onto dynamic-fetch results to preserve
+ * vision capabilities, context windows, and reasoning flags.
  */
 function applyXAIOAuthCuration(dynamic: readonly ModelSpec<"openai-responses">[]): ModelSpec<"openai-responses">[] {
 	const filtered = dynamic.filter(e => !XAI_NON_CHAT_PREFIXES.some(p => e.id.startsWith(p)));
@@ -1514,22 +1439,8 @@ function applyXAIOAuthCuration(dynamic: readonly ModelSpec<"openai-responses">[]
 }
 
 /**
- * Render `XAI_OAUTH_CURATED_MODELS` as full `ModelSpec<"openai-responses">` entries.
- *
- * Single source of truth for the curated to Model fan-in, consumed by both
- * - {@link xaiOAuthModelManagerOptions} (runtime static seed handed to the model
- *   manager so the picker is populated on a fresh login), and
- * - \`packages/catalog/scripts/generate-models.ts\` (bundles the same entries into
- *   `models.json`, so the synchronous `ModelRegistry.#loadModels()` boot path
- *   sees `xai-oauth` without waiting for a refresh — fixes the boot-time
- *   default-model reset when `modelRoles.default = "xai-oauth/<id>"`).
- *
- * `reasoning` defaults to `true` for the Grok-4.x family; the explicit
- * `grok-4.20-0309-non-reasoning` entry opts out via `XAICuratedModel.reasoning`.
- * `maxTokens` mirrors each model's `contextWindow` (the OAuth surface reports
- * no per-request output limit); the openai-responses wire still clamps the
- * actual request to OPENAI_MAX_OUTPUT_TOKENS. Mirrors
- * `hermes-agent/hermes_cli/models.py:_XAI_STATIC_FALLBACK`.
+ * Render `XAI_OAUTH_CURATED_MODELS` as full `ModelSpec<"openai-responses">` entries
+ * for static seeding in the model manager and catalog generation.
  */
 export function buildXaiOAuthStaticSeed(baseUrl?: string): ModelSpec<"openai-responses">[] {
 	const resolvedBaseUrl = baseUrl ?? "https://api.x.ai/v1";
@@ -1711,11 +1622,8 @@ export function zhipuCodingPlanModelManagerOptions(
 // ---------------------------------------------------------------------------
 
 /**
- * Fireworks-published cap for the Kimi K2 family. Fireworks' `/v1/models`
- * envelope generically reports `max_completion_tokens: 65536` for every Kimi
- * deployment, but Kimi K2 (instruct / thinking / turbo) on Fireworks is
- * documented to ship long reasoning traces that should be bounded — capping
- * at 32,768 prevents handing callers a budget the router cannot honor.
+ * Max completion tokens cap (32,768) for Kimi K2 models on Fireworks
+ * to prevent requesting budgets exceeding backend routing limits.
  */
 export const FIREWORKS_KIMI_MAX_TOKENS = 32_768;
 
@@ -1760,12 +1668,8 @@ export function clampKimiK27CodeMaxTokens(modelId: string, candidate: number | n
 }
 
 /**
- * Fireworks Fast variants we surface. Each inherits the base model's
- * limits/modalities/thinking and overrides only the cost with the Standard-column
- * Fast prices from the Serverless pricing table; `cacheWrite` stays 0 (Fireworks
- * bills no cache-write). Derived from the bundled base entries so metadata stays
- * in lockstep, and the runtime auto-falls back to the base id on a failed fast
- * request. See https://docs.fireworks.ai/serverless/pricing.
+ * Fireworks Fast variant specifications with overridden pricing from the Serverless
+ * pricing table, inheriting limits and modalities from base models.
  */
 const FIREWORKS_FAST_VARIANT_SPECS: ReadonlyArray<{
 	base: string;
@@ -1839,13 +1743,8 @@ const FIREWORKS_CONTROL_PLANE_PAGE_SIZE = 200;
 const FIREWORKS_CONTROL_PLANE_MAX_PAGES = 25;
 
 /**
- * One record from the Fireworks control-plane catalog
- * (`GET /v1/accounts/{account}/models`). This is distinct from the
- * OpenAI-compatible `/v1/models` inference envelope: the control plane
- * enumerates the full serverless catalog with camelCase capability metadata,
- * including on-demand models (e.g. `kimi-k2p7-code`) that never surface in
- * `/v1/models`. Discovering here is what keeps new serverless models appearing
- * without catalog edits — see the Fireworks docs `List Models` API.
+ * Record from Fireworks control-plane catalog (`GET /v1/accounts/{account}/models`)
+ * providing serverless capability metadata and on-demand model listings.
  */
 interface FireworksControlPlaneModel {
 	/** Resource name, e.g. `accounts/fireworks/models/kimi-k2p7-code`. */
@@ -1859,11 +1758,8 @@ interface FireworksControlPlaneModel {
 }
 
 /**
- * Derive the control-plane list endpoint from the inference base URL. The
- * inference API lives under `/inference/v1` while the control plane is
- * `/v1/accounts/<account>/models` on the same origin, so we route off origin.
- * Returns null for unparseable overrides (custom gateways) so discovery falls
- * back to the cached/bundled catalog.
+ * Derive the control-plane models endpoint URL from the inference base URL origin.
+ * Returns null for unparseable custom gateway URLs.
  */
 function toFireworksControlPlaneModelsUrl(baseUrl: string, account: string): string | null {
 	try {
@@ -2073,11 +1969,8 @@ export interface FirepassModelManagerConfig {
 }
 
 /**
- * Fire Pass is a Fireworks subscription product that exposes a single router
- * model (Kimi K2.6 Turbo) under `accounts/fireworks/routers/kimi-k2p6-turbo`.
- * The dedicated `fpk_…` keys do not authorize `/v1/models`, so this manager
- * never performs dynamic discovery — the bundled catalog entry is canonical.
- * See https://docs.fireworks.ai/firepass.
+ * Fire Pass model manager options using the canonical bundled router entry
+ * (`accounts/fireworks/routers/kimi-k2p6-turbo`) without dynamic discovery.
  */
 export function firepassModelManagerOptions(
 	_config?: FirepassModelManagerConfig,
@@ -2101,14 +1994,8 @@ const WAFER_DEFAULT_BASE_URL = "https://pass.wafer.ai/v1";
 const WAFER_MAX_TOKENS_CAP = 65536;
 
 /**
- * Mapper for Wafer Serverless `/v1/models` records.
- *
- * Wafer wraps each entry with a `wafer` envelope describing capabilities and
- * pricing. The mapper folds that metadata into the canonical
- * `ModelSpec<"openai-completions">` shape and applies upstream-specific thinking
- * compat when the entry advertises reasoning support. Wafer pricing is exposed
- * through internal wholesale units; the public Serverless rate equals
- * `cents × 125 / 10000`.
+ * Wafer Serverless `/v1/models` record shape with capabilities, pricing, and
+ * metadata mapped to `ModelSpec<"openai-completions">`.
  */
 interface WaferRecord {
 	context_length?: unknown;
@@ -3171,12 +3058,8 @@ export function coreWeaveModelManagerOptions(
 // ---------------------------------------------------------------------------
 
 /**
- * The Command Code models the provider documents with fixed rates and context
- * windows (the coding flagships of its open-model catalog). Its Provider API
- * lists every hosted model publicly, so live discovery with a key widens the
- * list at runtime; the seed keeps the provider usable when generation has no
- * key. Output ceilings are left unset: the endpoint is an OpenAI-compatible
- * proxy and does not document a per-model completion cap.
+ * Static seed models for Command Code with documented pricing and context windows,
+ * providing defaults when live API discovery is unavailable.
  */
 export const COMMAND_CODE_STATIC_MODELS: readonly ModelSpec<"openai-completions">[] = [
 	{
@@ -4323,13 +4206,8 @@ function copilotTierCost(
 }
 
 /**
- * Synthesize the opt-in long-context sibling for a Copilot model that reports
- * a `billing.token_prices.long_context` tier (e.g. Claude Opus 200k → 1M, as
- * selectable in copilot-cli). The variant is a local catalog entry: it keeps
- * the upstream model id on the wire via `requestModelId` — the tier is purely
- * a client-side context budget with its own pricing, not a served model id.
- * The base entry stays on the default tier so nobody silently pays
- * long-context rates.
+ * Synthesize opt-in long-context variant for Copilot models with a long_context tier,
+ * routing upstream via `requestModelId` with separate client-side pricing and limits.
  */
 function createCopilotLongContextVariant(
 	base: ModelSpec<Api>,
@@ -4644,12 +4522,8 @@ export interface ModelsDevProviderDescriptor {
 	 */
 	resolveApi?: (modelId: string, raw: ModelsDevModel) => { api: Api; baseUrl: string } | null;
 	/**
-	 * Twin-surface descriptors (an OAuth surface models.dev catalogs only under
-	 * its API-key twin, e.g. `xai` -> `xai-oauth`) set this so the runtime merge
-	 * may use their rows to fill declared surfaces on ids the endpoint actually
-	 * serves, but never to introduce an id of their own. The OAuth listing is
-	 * subscription-gated, so an additive overlay would list models that fail at
-	 * request time.
+	 * When true, only enriches matching existing models rather than adding new model IDs.
+	 * Used for subscription-gated twin surfaces (e.g. `xai-oauth`).
 	 */
 	enrichOnly?: boolean;
 }

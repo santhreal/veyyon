@@ -109,19 +109,7 @@ export function encodeTextSized(text: string, options: TextSizingOptions = {}): 
 
 /**
  * Take the run of `line` covering columns `[startCol, startCol + length)`.
- *
- * Always cuts on grapheme boundaries, so no caller can emit half a cluster.
- * That means the result's width does not always equal `length`, and the
- * difference is what `strict` selects:
- *
- * - `strict` false (the DEFAULT): a grapheme straddling either edge is kept
- *   whole, so `width` may EXCEED `length` by up to one grapheme's width. A
- *   caller sizing a viewport by `length` alone can overflow it by a cell.
- * - `strict` true: such a grapheme is dropped instead, so `width <= length`
- *   always, at the cost of leaving a blank column.
- *
- * Starting inside a wide grapheme drops that grapheme rather than emitting its
- * second half. Locked by `packages/tui/test/grapheme-boundary-integrity.test.ts`.
+ * Cuts on grapheme boundaries. `strict: false` keeps straddling graphemes; `strict: true` drops them.
  */
 export function sliceWithWidth(line: string, startCol: number, length: number, strict?: boolean | null): SliceResult {
 	return nativeSliceWithWidth(line, startCol, length, strict ?? null, DEFAULT_TAB_WIDTH);
@@ -163,15 +151,8 @@ export function centerLine(line: string, width: number): string {
 }
 
 /**
- * Normalize CR and CRLF to LF for wrapping. The native wrapper breaks only
- * on LF, so a `\r\n` source leaves a trailing `\r` on the wrapped row and a
- * bare `\r` stays embedded — either one moves the terminal cursor to column 0
- * and corrupts the line. Universal-newline normalization (`\r\n` and bare `\r`
- * both become `\n`) keeps every produced row a single clean line. Guarded on
- * `includes` so the overwhelmingly common CR-free text pays one scan rather
- * than a regex rewrite. Exported so callers that index into the text they
- * pass to {@link wrapTextWithAnsi} can align their offsets with what the
- * wrapper actually wraps.
+ * Normalize CR and CRLF to LF for native wrapping.
+ * Guarded on `includes("\r")` to avoid regex overhead on clean text.
  */
 export function normalizeWrapInput(text: string): string {
 	return text.includes("\r") ? text.replace(/\r\n?/g, "\n") : text;
@@ -201,29 +182,7 @@ export function compactSgrCarry(carry: string): string {
 	return cut === -1 ? carry : carry.slice(cut);
 }
 
-/**
- * Re-open `background` after every reset in `text`, so a painted ground survives its content.
- *
- * A component that paints a background behind a row cannot trust the row: an inner
- * `ESC [ 0 m` from a reverse-video cursor, a themed span, or a wrapped tool output clears the
- * background from that point on and punches a hole in the ground for the rest of the line. The
- * fix is to re-emit the background immediately after each reset, which is what every painter
- * here was already doing, separately.
- *
- * THREE COPIES, THREE DIFFERENT ANSWERS, which is why this is one function now.
- * `coding-agent/src/tui/output-block.ts` handled `ESC [ 0 m` and `ESC [ 49 m`,
- * `tui/src/components/editor.ts` handled only `ESC [ 0 m`, and
- * `coding-agent/src/modes/components/sun.ts` handled both but DROPPED the `ESC [ 49 m` instead
- * of keeping it. None of the three handled `ESC [ m`, the parameterless reset, which means the
- * same hole for content that happens to spell its reset the short way. Each miss is a visible
- * defect in one surface and not in the others, which is the shape a reader has no way to
- * notice from any single site.
- *
- * All three resets are KEPT and the background re-emitted after them. Keeping the reset matters
- * for `ESC [ 0 m`, which the content emitted to clear its foreground as well; for `ESC [ 49 m`
- * it makes no visible difference, because the background that follows overrides it either way,
- * and one rule is easier to read than two.
- */
+/** Re-open `background` after every SGR reset in `text` so a painted ground survives inner styling resets. */
 export function reopenBackgroundAfterResets(text: string, background: string): string {
 	return text
 		.replaceAll(SGR_RESET, `${SGR_RESET}${background}`)
@@ -267,19 +226,7 @@ export function replaceTabs(text: string): string {
 	return text.replaceAll("\t", TAB_SPACES);
 }
 
-/**
- * Flatten text to a single trimmed line: expand tabs, collapse every run of
- * whitespace (including newlines) to one space. Used by list components that
- * render one row per item and must never let an embedded newline break the row.
- *
- * The collapse itself belongs to `collapseWhitespace` in `@veyyon/utils`, the
- * repo-wide owner of that idiom; this is the tab-expanding wrapper over it, not a
- * second implementation. It used to inline the regexes (`[\r\n]+` then `\s+`,
- * the first of which the second already covers), which is the kind of copy that
- * drifts: `ask-dialog.ts` and `transcript-render-helpers.ts` were already calling
- * `collapseWhitespace(replaceTabs(...))` by hand for the same effect, so the
- * repository had two answers to one question.
- */
+/** Flatten text to a single line: expand tabs and collapse whitespace runs (including newlines) to a single space. */
 export function sanitizeSingleLine(text: string): string {
 	return collapseWhitespace(replaceTabs(text));
 }
@@ -331,22 +278,7 @@ export function getSegmenter(): Intl.Segmenter {
 // than the terminal drew it. Found by the width fuzz on seed 0x1234.
 const OSC66_SPAN_REGEX = /\x1b\]66;([^;\x07\x1b]*);([^\x07\x1b]*)(?:\x07|\x1b\\)/g;
 
-/**
- * One OSC 66 metadata value, `2` in `s=2`, as a number, or `undefined` when the
- * value is not a run of ASCII digits and nothing.
- *
- * `Number.parseInt` is wrong here and was the bug. It takes a numeric PREFIX, so
- * `s=2x` parsed as 2; it accepts a leading sign, so `w=+5` parsed as 5; and it
- * skips leading whitespace, so `w= 5` parsed as 5. The Rust side reads the same
- * metadata with an all-digits parse and rejects every one of those, so a span the
- * native measured at its payload width re-measured here at the width the malformed
- * metadata claimed. The native truncate then left the line whole and the compositor
- * padded it to a width three cells wider than the terminal.
- *
- * The digits are read here rather than through `Number` so the two implementations
- * are the same rule rather than two spellings of it. A value with no digits at all
- * is `undefined`, which the caller treats as absent, which is what the native does.
- */
+/** Parse an OSC 66 numeric metadata value (e.g. `2` in `s=2`), returning `undefined` if non-numeric or empty. */
 function parseOsc66MetaValue(value: string): number | undefined {
 	if (value.length === 0) return undefined;
 	let parsed = 0;
@@ -372,75 +304,13 @@ function countTabs(text: string): number {
 	return count;
 }
 
-/**
- * One OSC sequence: `ESC ] <ps> ; <payload>` up to its terminator, which is
- * either BEL or ST (`ESC \`). Both spellings are in use and OSC 8 hyperlinks in
- * Markdown tables arrive ST-terminated, which is what upstream #6282 fixed.
- *
- * `visibleWidth` strips these before measuring because the sequence itself
- * draws no cells, and a link counted at its escape length rather than its label
- * length pushes every column boundary after it out of place. The payload class
- * excludes both terminators so a sequence can never swallow the text that
- * follows it, and defining the pattern once keeps the escape spelling from
- * drifting between call sites. It is written with `\x07`/`\x1b` escapes rather
- * than the literal control bytes so it survives being read, copied, and
- * reviewed.
- */
+/** Match OSC escape sequences (`ESC ] <ps> ; <payload>` terminated by BEL or ST). */
 const OSC_SEQUENCE_REGEX = /\x1b\][0-9]+;[^\x07\x1b]*(?:\x07|\x1b\\)/g;
 
-/**
- * What an OSC sequence is replaced BY when it is stripped, rather than deleted.
- *
- * `ESC \` is ST, two bytes, zero cells, and it is one of the escape families both
- * the width measurement and the grapheme-run splitter already recognise, so it
- * costs nothing and it keeps the boundary.
- *
- * Keeping the boundary is the whole point. Deleting the sequence outright JOINS
- * the text on either side of it, and the native engine treats an escape as a
- * grapheme break, so the join can INVENT a cluster that neither the terminal nor
- * the native ever saw. `"9\x1b]66;;i\x1b\\️⃣"` is a `9`, a span, and a
- * keycap combiner with nothing to combine with: one cell natively. Delete the span
- * and the `9` lands against the selector, which is a real keycap, and the string
- * measured two. Found by the width fuzz on seed 0x1234. Same defect the
- * escape-run splitter in `correctedRunWidth` fixes for CSI and the Fe families;
- * this is the OSC half of it, and it has to happen here because the strip runs
- * before that splitter ever sees the text.
- */
+/** ST marker (`ESC \`) used to replace stripped OSC sequences, preserving grapheme cluster boundaries. */
 const OSC_STRIP_MARKER = "\x1b\\";
 
-/**
- * The escape sequences `Bun.stringWidth` does NOT recognise, which the native
- * engine strips and every terminal consumes.
- *
- * Bun handles CSI (`ESC [ ... final`) and OSC, and nothing else, so the rest of
- * ECMA-48 arrives as ordinary text and gets charged for the bytes it happens to
- * contain. Measured against the native oracle, this was eleven of the nineteen
- * escape-class disagreements between the two: `"\x1bm"` measured one cell here and
- * zero there, `"\x1b(B"` two against zero, and a DCS or APC string measured its
- * whole payload. Text a terminal never draws was widening every layout that
- * carried it.
- *
- * Three families, in the order the pattern tries them:
- *
- * 1. STRING SEQUENCES, `ESC` then one of `P` (DCS), `X` (SOS), `^` (PM) or `_`
- *    (APC), running to a `ST` or `BEL` terminator. These carry a payload, so they
- *    must be matched before the two-byte rule, which would otherwise take the
- *    introducer and leave the payload as text.
- * 2. nF SEQUENCES, `ESC` then one or more bytes in `0x20..0x2f` then a final:
- *    character-set designators such as `ESC ( B`, and `ESC # 8`.
- * 3. TWO-BYTE Fp, Fe AND Fs SEQUENCES, `ESC` then a single byte in `0x30..0x7e`.
- *    The class excludes `[` and `]`, whose sequences Bun already strips, and the
- *    four string introducers, which family 1 owns. Fp (`0x30..0x3f`) is `ESC 7`,
- *    `ESC 8`, `ESC =` and `ESC >`; Bun strips those itself from 1.4.0 on, and
- *    matching them here keeps this side's answer independent of which Bun is
- *    under it.
- *
- * NOT INCLUDED: an UNTERMINATED introducer. Bun scores `"\x1b[3"` and `"\x1b]8;;"`
- * at zero, which is what a terminal does with a sequence it is still waiting to
- * finish, and the native counts the bytes after the `ESC` instead. Those eight
- * remaining disagreements are the native's to fix, and adopting its answer here
- * would mean teaching this side to draw characters the terminal does not.
- */
+/** Match ECMA-48 escape sequences (DCS, APC, nF, two-byte Fp/Fe/Fs) that Bun.stringWidth does not natively recognise. */
 const UNRECOGNIZED_ESCAPE_SEQUENCE =
 	/\x1b[PX^_][\s\S]*?(?:\x1b\\|\x07)|\x1b[\x20-\x2f]+[\x30-\x7e]|\x1b[\x30-\x4f\x51-\x57\x59-\x5a\x5c\x60-\x7e]/g;
 const TAB = "\t";
@@ -504,66 +374,16 @@ function correctHangulCompatibilityJamoWidth(width: number, str: string): number
 	return corrected;
 }
 
-/**
- * Marks `Bun.stringWidth` charges cells for that occupy none, and how they are removed.
- *
- * Three separate over-counts, all with the same consequence. `truncateToWidth` cuts
- * on the Rust native engine and `visibleWidth` measures here, so anywhere the two
- * disagree a span cut to fit W re-measures as more than W and the caller that sized
- * a viewport by that cut writes past the last column. These were 30 of the 37
- * measured divergences between the pair, making them by far the largest class.
- *
- * 1. FIVE ENCLOSING MARKS. `Me` is zero-width: the glyph draws around its base and
- *    advances the cursor by nothing. Bun agrees for eight of the thirteen `Me` code
- *    points and charges a cell for five Cyrillic numeral signs. Measured rather than
- *    assumed, because the set is not the whole category: U+1ABE, U+20DD..U+20E0,
- *    U+20E2 and U+20E4 already come back zero.
- * 2. KEYCAP COMBINERS WITH NO KEYCAP. A keycap is base + U+FE0F + U+20E3, where the
- *    base is a digit, `#` or `*`, and it really is two cells wide. Bun widens the
- *    cluster to two for ANY U+20E3, so `a` + U+20E3 reads as two and a lone U+20E3
- *    reads as two, where the native (and every terminal) says one and zero. Note
- *    that the U+FE0F is required: the native scores `1` + U+20E3 as one cell.
- * 3. DOUBLED VARIATION SELECTORS. One U+FE0F with nothing to modify measures zero,
- *    two in a row measure two. Degenerate input, but a real width-bound violation.
- *
- * REMOVED BEFORE MEASURING, NOT SUBTRACTED AFTERWARDS. The first version of this
- * subtracted a fixed cell per match, and the width fuzzer shrank a counterexample to
- * `"\x1b]҉"` in one run: the OSC strip below had already removed the mark from the
- * text that was measured, so subtracting for it again returned a NEGATIVE width. Any
- * arithmetic correction has that shape of bug, because it re-scans a string that is
- * not the one the number came from. Deleting the marks and re-measuring cannot: the
- * result is whatever Bun says about text that no longer contains them, and it also
- * needs no per-mark knowledge of what Bun charged.
- */
+/** Detect zero-width or overcounted marks in Bun.stringWidth (enclosing marks, stray keycap combiners, doubled variation selectors). */
 const OVERCOUNTED_MARK_PROBE = /\u0488|\u0489|[\ua670-\ua672]|\u20e3|\ufe0f/;
 
 /** The five `Me` code points from case 1, which are always dropped. */
 const ZERO_WIDTH_ENCLOSING_MARKS = /[\u0488\u0489\ua670-\ua672]/g;
 
-/**
- * Case 2: a U+20E3 that is NOT completing a keycap sequence.
- *
- * Written as a lookbehind rather than by consuming the base, because a consuming
- * pattern cannot match two combiners in a row: the first match eats the character
- * the second one would have needed to look at, and `"\u20e3\u20e3"` kept a cell.
- */
+/** Match U+20E3 combining enclosing keycaps that do not follow a valid `[0-9#*]\ufe0f` base. */
 const KEYCAP_COMBINER_WITHOUT_KEYCAP = /(?<![0-9#*]\ufe0f)\u20e3/g;
 
-/**
- * Case 3: a U+FE0F with no visible base in front of it.
- *
- * The selector asks the character it follows to render as an emoji, so with nothing
- * to modify it draws nothing and occupies nothing, which is what the native says.
- * Bun scores that cluster at two cells, and "nothing to modify" covers more shapes
- * than it first appears: a selector at the start of the string, a second selector
- * after the first, and a selector after any zero-width mark, including a combining
- * accent, an enclosing mark, or a zero-width space that ended the previous cluster.
- * All of them were measured as two against a native zero.
- *
- * The base is classified by asking Bun for the width of the single preceding code
- * point rather than by listing Unicode categories, so the test and the count come
- * from the same table and cannot drift apart.
- */
+/** Match U+FE0F variation selectors that lack a preceding visible base character. */
 const VARIATION_SELECTOR = /\ufe0f/g;
 
 /** Whether the code point before `offset` renders anything for a selector to modify. */
@@ -575,20 +395,7 @@ function hasVisibleBase(text: string, offset: number): boolean {
 	return Bun.stringWidth(text.slice(start, offset), STRING_WIDTH_OPTS) > 0;
 }
 
-/**
- * Every escape sequence, as a GRAPHEME CLUSTER BREAK.
- *
- * Measured, and it is the rule that makes the mark corrections agree with the
- * native oracle on styled text: `"9\ufe0f\u20e3"` is a keycap worth two cells, and
- * `"9\x1b[0m\ufe0f\u20e3"` is a `9` followed by two marks with nothing to attach to,
- * worth one. `Bun.stringWidth` deletes the escape and measures the two sides as one
- * cluster, so it answers two for both. Mark-bearing text is therefore SPLIT here and
- * each run corrected and measured on its own, rather than the escapes being deleted
- * and the remainder measured as one string, which would rejoin the cluster.
- *
- * CSI first, then the families in {@link UNRECOGNIZED_ESCAPE_SEQUENCE}, because a
- * boundary is a boundary whether or not Bun would have stripped the bytes itself.
- */
+/** Match CSI escape sequences as grapheme cluster breaks. */
 const CSI_SEQUENCE = /\x1b\[[0-?]*[ -/]*[@-~]/g;
 
 /** Drop the marks Bun over-counts so the re-measure is the width they actually occupy. */
@@ -614,16 +421,7 @@ function stripOvercountedMarks(text: string): string {
 		);
 }
 
-/**
- * `Bun.stringWidth` with every correction this module owns, over the text that is
- * actually being measured.
- *
- * The one entry point, because the corrections must see the SAME string the count
- * came from. `visibleWidth` measures three different strings depending on the path
- * it takes (the input, the input with OSC sequences stripped, and each OSC 66
- * payload on its own), and a correction applied to the input while the number came
- * from one of the others is the negative-width bug described above.
- */
+/** Compute visible string width using `Bun.stringWidth` with custom mark, escape, and compatibility jamo corrections. */
 function correctedBunWidth(text: string): number {
 	// Only mark-bearing text pays for the split. Everything else deletes the escapes
 	// Bun does not recognise and keeps the single `Bun.stringWidth` call over the
@@ -653,11 +451,7 @@ function correctedRunWidth(run: string): number {
 
 /**
  * Visible width of a string in terminal columns, excluding ANSI/OSC escapes.
- *
- * `Bun.stringWidth` does the heavy lifting (UAX#11 width tables + ANSI/OSC
- * stripping); this adds the corrections it omits — tabs (expanded to
- * `tabWidth` cells), OSC 66 text-sizing payloads (scaled by `s=`), Hangul
- * compatibility jamo, and the zero-width marks it charges cells for.
+ * Combines Bun.stringWidth with corrections for tabs, OSC 66 scaling, Hangul jamo, and zero-width marks.
  */
 export function visibleWidth(str: string): number {
 	if (!str) return 0;
@@ -817,14 +611,7 @@ export function isWordNavJoiner(grapheme: string): boolean {
 	return WORD_NAV_JOINERS.has(ch);
 }
 
-/**
- * Snap a UTF-16 index to the grapheme-cluster boundary at or before it. Callers
- * normally keep the cursor on a boundary, but if one ever lands mid-cluster (a
- * surrogate pair or ZWJ/combining sequence), the word-nav below would slice the
- * string mid-cluster and return another mid-cluster index — a cursor-corruption
- * hazard. Flooring first makes the result unconditionally a boundary; it is a
- * no-op when `cursor` is already one, so valid callers see no behavior change.
- */
+/** Snap a UTF-16 index to the grapheme cluster boundary at or before it. */
 function floorToGraphemeBoundary(text: string, cursor: number): number {
 	if (cursor <= 0) return 0;
 	let prev = 0;
@@ -950,14 +737,7 @@ export function moveWordRight(text: string, cursor: number): number {
 	return i + next.value.segment.length;
 }
 
-/**
- * Apply background color to a line, padding to full width.
- *
- * @param line - Line of text (may contain ANSI codes)
- * @param width - Total width to pad to
- * @param bgFn - Background color function
- * @returns Line with background applied and padded to width
- */
+/** Apply background color to a line, padding to full width. */
 export function applyBackgroundToLine(line: string, width: number, bgFn: (text: string) => string): string {
 	// Calculate padding needed
 	const visibleLen = visibleWidth(line);

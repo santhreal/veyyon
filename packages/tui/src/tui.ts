@@ -1,19 +1,6 @@
 /**
- * Minimal TUI implementation with differential rendering.
- *
- * Append-only render contract: rows committed to native scrollback are
- * immutable — the tape is the terminal's visual record. Whatever scrolls
- * above the window enters history exactly once, in order: as exact-final
- * bytes when the component seam (`NativeScrollbackLiveRegion`) declared them
- * final, else as a frozen snapshot of what was on screen. When recorded
- * history diverges from the frame (a finalized block replacing its
- * scrolled-off live render), the engine erases and replays (ED3, `CSI 3 J`)
- * so history holds the content exactly once — the same replay used for
- * gestures (session replace, resize, resetDisplay). Multiplexer panes, where
- * ED3 is unsafe, instead re-anchor and recommit below the stale fragment —
- * duplication, never loss. The engine never probes or guesses the terminal's
- * scroll position, and the hot path clamps over-wide lines instead of
- * throwing. See `docs/internal/tui-core-renderer.md`.
+ * Minimal TUI implementation with differential rendering and append-only native scrollback commits.
+ * See `docs/internal/tui-core-renderer.md`.
  */
 import * as fs from "node:fs";
 import { performance } from "node:perf_hooks";
@@ -125,16 +112,7 @@ const ALT_SCREEN_EXIT = "\x1b[?1049l";
 // `ScrollTransport` documents how that ambiguity is resolved.
 const ALT_SCROLL_ON = "\x1b[?1007h";
 const ALT_SCROLL_OFF = "\x1b[?1007l";
-/**
- * Legacy cursor-key sequences mapped to a scroll direction: -1 scrolls back into
- * history, +1 walks toward the live tail.
- *
- * Both the normal (`CSI A`) and application-cursor (`SS3 A`) forms appear,
- * because the terminal synthesizes whichever the active DECCKM mode calls for and
- * an application that set application-cursor keys would otherwise see the wheel
- * do nothing. Exact-match only: anything carrying parameters or modifiers is a
- * real keypress, never a synthesized wheel tick.
- */
+/** Legacy cursor-key sequences mapped to scroll direction (-1 back in history, +1 toward live tail). */
 const LEGACY_CURSOR_SCROLL: Readonly<Record<string, -1 | 1 | undefined>> = {
 	"\x1b[A": -1,
 	"\x1b[B": 1,
@@ -143,18 +121,8 @@ const LEGACY_CURSOR_SCROLL: Readonly<Record<string, -1 | 1 | undefined>> = {
 };
 
 /**
- * How a scroll gesture reaches the engine while scroll isolation is on.
- *
- * `"mouse"` grabs mouse reporting on the normal screen: the wheel is
- * unambiguous and native drag-select is lost (Shift+drag instead), and the
- * transcript stays in the terminal's own scrollback.
- *
- * `"alt-arrows"` holds the alternate screen with Alternate Scroll Mode, so the
- * terminal converts the wheel into cursor keys and no mouse tracking is needed:
- * native drag-select keeps working, at the cost of the transcript no longer
- * living in terminal scrollback. Because a synthesized wheel arrow is
- * byte-identical to a typed one, the host must tell the engine which arrows are
- * scrolls; see {@link TUI.setScrollTransport}.
+ * How scroll gestures reach the engine under scroll isolation:
+ * `"mouse"` (normal screen mouse reporting) or `"alt-arrows"` (alternate screen with Alternate Scroll Mode).
  */
 export type ScrollTransport = "mouse" | "alt-arrows";
 
@@ -197,18 +165,8 @@ const DEFAULT_RENDER_SCHEDULER: RenderScheduler = {
 };
 
 /**
- * Component interface - all components must implement this
- *
- * Render contract: the returned array (and its rows) belongs to the component.
- * Callers MUST NOT mutate it — components are allowed to return a cached array
- * and will return the exact same reference for as long as their rendered
- * content is unchanged. Conversely, a component MUST return a fresh array
- * reference whenever its content changed; reference equality across two
- * render() calls is the engine's proof that the rows are byte-identical
- * (containers memoize their concatenation on it, and the TUI derives the
- * frame's stable prefix from it). A component that mutates a previously
- * returned array in place must implement {@link RenderStablePrefix} to declare
- * which leading rows survived.
+ * Component interface.
+ * Render contract: components own returned row arrays and must return fresh references on content changes.
  */
 export interface Component {
 	/**
@@ -256,20 +214,8 @@ export interface OverlayFocusOwner {
 }
 
 /**
- * Component seam for append-only native-scrollback commits. A component whose
- * rendered rows can still change reports, after each render, the local line
- * index where that mutable suffix begins. Rows above the boundary are declared
- * FINAL — byte-stable at the current width for the component's lifetime — and
- * commit to native scrollback as exact, audited content. Rows at/after the
- * boundary repaint in place inside the visible window; when they scroll above
- * the window top they still commit — the tape records what was on screen —
- * but as frozen visual snapshots that are permanently audit-exempt: later
- * re-layout of their source never re-anchors or recommits them. A root that
- * reports no seam commits everything that scrolls as final (shell semantics).
- *
- * When several root children report a seam in the same frame, the topmost one
- * defines the boundary: exactness is prefix-only, so everything below the
- * first seam is already excluded.
+ * Component seam for append-only native-scrollback commits.
+ * Reports the row index where mutable content begins; rows before it are committed as final.
  */
 export interface NativeScrollbackLiveRegion {
 	getNativeScrollbackLiveRegionStart(): number | undefined;
@@ -291,31 +237,10 @@ function prepareNativeScrollbackReplay(component: Component): void {
 	(component as Component & Partial<NativeScrollbackReplay>).prepareNativeScrollbackReplay?.();
 }
 
-/**
- * A virtualized root that DROPS committed rows out of the front of its render
- * output reports how many it dropped this render, so the engine can move its
- * own commit coordinates with the frame.
- *
- * Without the report the shift is invisible until classification, where it
- * reads as a committed-prefix violation: the frame is suddenly shorter than
- * the commit index and row 0 no longer matches the recorded prefix, so the
- * engine re-anchors and — on a direct terminal with `tui.scrollbackRebuild`
- * on — erases native scrollback and replays a frame the component has already
- * emptied of history. That is a whole transcript deleted to repair a
- * divergence that never happened.
- */
+/** Virtualized roots report dropped leading rows on each render to keep commit coordinates synchronized. */
 export interface NativeScrollbackCompaction {
 	takeNativeScrollbackDroppedRows(): number;
-	/**
-	 * Rows of already-committed history the render MUST keep in the frame,
-	 * however committed they are. The engine re-shows committed rows whenever
-	 * the frame shrinks below the viewport — a tall streaming answer collapsing
-	 * to its short final render, an overlay closing — and it can only re-show
-	 * rows the frame still contains ("duplication, never loss"). A child that
-	 * compacted every committed row leaves the engine nothing to fill the screen
-	 * with, and the viewport paints a screen-sized band of blank rows over a
-	 * conversation that is still on the tape.
-	 */
+	/** Rows of committed history the component must retain in its frame to fill the viewport when content collapses. */
 	setNativeScrollbackRetainRows?(rows: number): void;
 }
 
@@ -349,24 +274,8 @@ function getNativeScrollbackLiveRegionStart(component: Component): number | unde
 }
 
 /**
- * Opt-in stability report for components that mutate their returned render
- * array in place across frames (instead of returning a fresh array per
- * change). The engine reads it right after the component's `render()` returns:
- * the report counts the leading rows of the just-returned array that are
- * byte-identical to the array state the reader last observed. The engine uses
- * it to reuse the composed frame's prefix — skipping marker extraction, line
- * preparation, and the committed-prefix audit for those rows.
- *
- * Contract:
- * - Reading CONSUMES the report: it re-bases the baseline to the current
- *   array state. The accumulated count therefore covers every render since
- *   the previous read, so out-of-band `render()` calls between engine frames
- *   (an exporter walking the tree) can only lower the report, never inflate
- *   it past what the engine actually has.
- * - An implementer that cannot prove stability for a frame must lower the
- *   accumulated count to 0 for that render.
- * - Rows at or beyond the report may have been mutated in place; rows before
- *   it must be the identical string values at the identical indices.
+ * Stability report for components that mutate render arrays in place.
+ * Returns the count of leading rows byte-identical to the last read state.
  */
 export interface RenderStablePrefix {
 	getRenderStablePrefixRows(): number;
@@ -377,25 +286,8 @@ function getRenderStablePrefixRows(component: Component): number | undefined {
 }
 
 /**
- * Opt-in fast path for composing only the visible tail of a tall component
- * during a terminal resize. A drag emits a SIGWINCH burst, and the width
- * changes on every event: a full compose re-lays-out (and, for markdown,
- * re-lexes) the entire transcript per event — O(history) work that is
- * discarded the instant the next event arrives. While the resize is in flight
- * the engine paints only the viewport, so it asks each tall root child for at
- * most `maxRows` rows from the bottom of its render at `width` and skips
- * composing everything above the fold. The authoritative full paint replays
- * once the drag settles (see {@link TUI} resize handling).
- *
- * Contract:
- * - Returns the BOTTOM rows of the component's full render at `width`, in
- *   top-to-bottom order, capped at `maxRows` (fewer when the component is
- *   shorter). The rows MUST be byte-identical to the corresponding tail of
- *   what `render(width)` would have returned, modulo a one-row separator at
- *   the very top edge (a transient frame the settle paint overwrites).
- * - MUST NOT mutate any persistent full-compose state: the next `render()`
- *   (the settle paint) has to reconcile exactly as if the tail render never
- *   happened. Warming pure per-width render caches is fine and desirable.
+ * Opt-in fast path returning the visible tail rows (up to `maxRows`) during terminal resize drag bursts.
+ * Must not mutate persistent full-compose state.
  */
 export interface ViewportTailProvider {
 	renderViewportTail(width: number, maxRows: number): readonly string[];
@@ -407,15 +299,7 @@ function asViewportTailProvider(component: Component): ViewportTailProvider | un
 }
 
 /**
- * Interface for components that can receive focus and display a cursor.
- * When focused, the component should emit CURSOR_MARKER at the cursor position
- * in its render output. TUI will find this marker and position the hardware
- * cursor there for proper IME candidate window positioning.
- *
- * Components that can switch between terminal-cursor and software-cursor
- * rendering expose `setUseTerminalCursor`; TUI keeps that mode in sync with
- * its resolved hardware-cursor preference whenever focus or the preference
- * changes.
+ * Interface for components that receive focus and emit CURSOR_MARKER for hardware cursor / IME positioning.
  */
 export interface Focusable {
 	/** Set by TUI when focus changes. Component should emit CURSOR_MARKER when true. */
@@ -488,18 +372,7 @@ function isMultiplexerSession(): boolean {
 	return isInsideTerminalMultiplexer();
 }
 
-/**
- * Terminals that re-report their size whenever the alternate screen buffer is
- * toggled. The non-multiplexer resize fast path ({@link TUI.#beginResizeViewport})
- * borrows the alternate screen for throwaway drag frames; on these terminals
- * entering/leaving the alt buffer emits a fresh SIGWINCH (Warp reports a height
- * one row different for the alt buffer), which re-enters the fast path — a
- * self-sustaining resize loop that floods ED3 full repaints even though the
- * geometry never actually changes. Routing them through the in-place
- * (multiplexer) resize path never touches the alt buffer, breaking the loop.
- *
- * `VEYYON_TUI_RESIZE_IN_PLACE=1|0` forces this on/off for any terminal.
- */
+/** Terminals that re-report size when toggling the alternate buffer (e.g. Warp), requiring in-place resize routing. */
 function reportsSizeOnAltScreenToggle(): boolean {
 	const override = Bun.env.VEYYON_TUI_RESIZE_IN_PLACE;
 	if (override === "0" || override === "false") return false;
@@ -557,14 +430,7 @@ export interface OverlayOptions {
 	visible?: (termWidth: number, termHeight: number) => boolean;
 
 	// === Fullscreen ===
-	/**
-	 * Borrow the terminal's alternate screen buffer for this overlay's lifetime
-	 * (vim/less idiom). While the topmost visible overlay sets this, the engine
-	 * paints only the modal on the alt screen and emits no ED3 / scrollback
-	 * bytes, so the transcript on the normal screen stays untouched and is not
-	 * scrollable behind the modal. Defaults off — all other overlays are
-	 * unchanged and still draw over the transcript on the normal screen.
-	 */
+	/** Borrow the terminal's alternate screen buffer for this overlay's lifetime, isolating modal rendering. */
 	fullscreen?: boolean;
 }
 
@@ -580,17 +446,7 @@ export interface OverlayHandle {
 	isHidden(): boolean;
 }
 
-/**
- * An overlay that would rather fade out than vanish.
- *
- * `hide()` asks the component for an exit before removing it. Answering `true` means the component
- * has taken a repaint callback and will call `done` when its last frame is drawn; the host keeps
- * painting it until then and stops routing input to it at once. Answering `false`, or not
- * implementing this at all, removes the overlay the way it always has.
- *
- * The capability lives here rather than in a modal base class because the overlay STACK is what
- * has to keep the card alive: a component cannot outlive the host's decision to drop it.
- */
+/** Overlay interface for components that animate their exit before being unmounted. */
 export interface OverlayExitAnimatable {
 	beginOverlayExit(requestRender: () => void, done: () => void): boolean;
 }
@@ -701,17 +557,7 @@ export class Container implements Component, MouseRoutable {
 		return lines;
 	}
 
-	/**
-	 * Hand a pointer event to the child under `line`, in that child's own rows.
-	 *
-	 * A pinned-footer click is routed to a ROOT child (see `#routeFooterMouse`),
-	 * and the composer zone mounts its editor inside a container, so without this
-	 * the event stopped at the container and nothing below it could own a click
-	 * target. Row spans come from the last render's memoized child lines, so this
-	 * costs nothing per frame; a container that has not rendered since its child
-	 * list changed has no trustworthy geometry and drops the event rather than
-	 * routing to the wrong child.
-	 */
+	/** Route mouse pointer events to the child component occupying `line`. */
 	routeMouse(event: SgrMouseEvent, line: number, col: number): void {
 		const children = this.children;
 		const refs = this.#memoChildLines;
@@ -729,17 +575,7 @@ export class Container implements Component, MouseRoutable {
 	}
 }
 
-/**
- * Render intent. `#doRender` classifies each frame, and the matching `#emit*`
- * method owns the bytes written and the state update.
- *
- * - `fullPaint`: gesture-driven replay — initial paint, session replacement,
- *   resize, resetDisplay. Rewrites the frame from home; destructive replaces
- *   clear native scrollback via ED3 without first blanking the viewport. The
- *   only ED3 callsite in the engine.
- * - `update`: ordinary frame. Commits the newly settled chunk at the
- *   scrollback seam (if any) and repaints the window with relative moves.
- */
+/** Render intent: `fullPaint` for gesture/re-anchor replays, `update` for relative in-window diffs and chunk commits. */
 type RenderIntent =
 	| { kind: "fullPaint"; clearScrollback: boolean }
 	| { kind: "update"; chunkTo: number; windowTop: number };
@@ -762,13 +598,7 @@ interface CursorControlResult extends HardwareCursorUpdate {
 	visible: boolean;
 }
 
-/**
- * One root child's contribution to the composed frame: the array reference its
- * render() returned, the frame row it starts at, the row count recorded at
- * compose time (in-place mutators keep the reference but may change length),
- * and the child-local seam report captured at render time — replayed verbatim
- * when a component-scoped frame reuses this segment without re-rendering.
- */
+/** Segment contribution of one root child to the composed frame, used for component-scoped re-renders. */
 interface FrameSegment {
 	component: Component;
 	lines: readonly string[];
@@ -946,38 +776,8 @@ const RESYNC_TAIL_LOOKBACK = 24;
 const RESYNC_TAIL_SAMPLES = 8;
 
 /**
- * Decide whether `frame` still aligns with the committed prefix, and where to
- * re-anchor the commit index when it does not. Returns the resync row index,
- * or -1 when no resync is needed.
- *
- * Zones (verifiedTo ≤ finalTo ≤ prefix.length):
- *   [0, verifiedTo)         VERIFIED exact rows — sampled with tolerance.
- *   [verifiedTo, finalTo)   NEWLY-FINAL rows — frozen visual snapshots whose
- *       source just became declared-final (the block finalized / a barrier
- *       cleared). Hard-scanned in FULL with no tolerance: any content change
- *       (a pending header settling, a preview replaced by its result, a tail
- *       shifting up after a barrier removal) re-anchors so the engine can
- *       erase-and-replay history with the final content exactly once (or, on
- *       ED3-unsafe multiplexers, recommit it below the frozen snapshot —
- *       duplication, never loss) instead of committing it nowhere and
- *       painting it nowhere.
- *   [finalTo, prefix.length) FROZEN visual snapshots of still-live rows —
- *       exempt: their drift is expected (a collapsing preview, a ticking
- *       progress tree) and must never spray re-anchors mid-run.
- *
- * The verified zone's sampled check exploits the asymmetry between the two
- * mutation classes: an in-place edit/restyle disturbs only the touched rows
- * (alignment below stays intact; the stale copy in history is the accepted
- * artifact), while an insertion/deletion shifts EVERY row below it. Up to 8
- * non-blank rows within the last 24 verified rows are compared SGR-stripped
- * (theme changes stay quiet), tolerating a SINGLE mismatch. The tolerance is
- * load-bearing for roots that report NO seam: an animated row already in
- * history would otherwise re-anchor on every glyph tick.
- *
- * Highly repetitive tails (identical filler rows) can mask a shift in the tail
- * sample, in which case the skipped rows are content-identical to the committed
- * ones — observationally harmless. Exported for the render-stress harness, whose
- * shadow commit ledger must mirror the engine's law exactly.
+ * Decide whether `frame` aligns with the committed prefix, returning the resync row index or -1 if aligned.
+ * Tolerates single mismatches in verified history while strictly checking newly-final rows.
  */
 export function findCommittedPrefixResync(
 	frame: readonly string[],
@@ -1045,17 +845,7 @@ export class TUI extends Container {
 	/** Global callback for debug key (Shift+Ctrl+D). Called before input is forwarded to focused component. */
 	onDebug?: () => void;
 
-	/**
-	 * Called when the operator tries to select text with the mouse while the
-	 * engine holds it: a left press and a release in a DIFFERENT cell, outside
-	 * the pinned footer. Holding the mouse is what lets the wheel scroll the
-	 * transcript, and it also takes plain drag-select away from the terminal —
-	 * so the gesture arrives here instead of highlighting anything, and the
-	 * operator gets no feedback at all unless the host says something (reported
-	 * 2026-07-24 as "I can't copy and paste from the terminal"). Hosts use this
-	 * to name the alternatives once; the engine only reports the attempt and
-	 * keeps no "already told them" state of its own.
-	 */
+	/** Callback invoked when the user attempts text selection drag while the engine holds mouse reporting. */
 	onSelectionAttempt?: () => void;
 	/** Cell of the left press being tracked for {@link onSelectionAttempt}. */
 	#pressCell: { row: number; col: number } | null = null;
@@ -1063,24 +853,7 @@ export class TUI extends Container {
 	#renderTimer: RenderTimer | undefined;
 	#renderScheduler: RenderScheduler;
 	#lastRenderAt = 0;
-	/**
-	 * Decayed estimate of what a frame costs, in milliseconds. `#scheduleRender`
-	 * derives the adaptive floor from it to hold the render loop near a 50%
-	 * duty cycle: without one the throttle collapses to zero as soon as
-	 * `elapsed >= MIN_RENDER_INTERVAL_MS`, and a run of slow frames (large
-	 * transcript diffs, huge assistant text wrap, component-tree walks) turns
-	 * the loop into a busy loop at 40-50% CPU (see #4145).
-	 *
-	 * A duty cycle is a property of a window, not of one frame, and reading the
-	 * previous frame alone conflated two different situations. A loop that
-	 * paints slowly on every frame converges here and is held to half the CPU,
-	 * which is what #4145 asked for. A single expensive paint among cheap ones
-	 * moves the estimate by a fraction of itself, so the frame after it still
-	 * arrives at the cadence: a scrolled viewport leaves the diff nothing to
-	 * reuse and costs a full paint, and putting a 66ms floor under the cheap
-	 * diff that followed it is how a session that painted on time 68% of the
-	 * time published at 14.2 fps against a 30 fps capture.
-	 */
+	/** Decayed frame cost estimate in milliseconds, used to maintain an adaptive 50% render loop duty cycle. */
 	#frameCostEstimateMs = 0;
 	/**
 	 * Weight of the newest frame in `#frameCostEstimateMs`. At 0.3 a sustained
@@ -1637,26 +1410,8 @@ export class TUI extends Container {
 	}
 
 	/**
-	 * True while a frame is owed: requested, throttled, or waiting out one of the
-	 * quiet windows, and not yet painted. Read-only diagnostic surface like
-	 * {@link committedRows}.
-	 *
-	 * It exists because tests cannot otherwise tell "the engine is idle" from
-	 * "the engine has not started yet". Their settle helpers sampled counters
-	 * (`committedRows`, `scrollTapeRows`, …) and returned as soon as two samples
-	 * matched, which is also exactly what an engine that has not run yet looks
-	 * like: nothing has changed BECAUSE nothing has happened. Under a loaded
-	 * sweep the throttled frame then landed after the assertion, and the test
-	 * failed with a stale frame — `overlay-scroll` read `"status-before"` after
-	 * setting the text to `"status-after"`, and the pinned-composer suite
-	 * snapshotted a view that three later wheel events then moved. Both were
-	 * green alone and only failed in a 378,000-test run, which is the worst kind
-	 * of flake: it reads exactly like a regression.
-	 *
-	 * All four sources of an owed frame count. `#renderRequested` is the request
-	 * itself; `#renderTimer` is the throttled/adaptive schedule; the ConPTY
-	 * post-full-paint settle and the multiplexer resize settle both hold a frame
-	 * back deliberately and then paint it.
+	 * True while a frame is owed (requested, throttled, or awaiting quiet windows) and not yet painted.
+	 * Read-only diagnostic surface.
 	 */
 	get renderPending(): boolean {
 		return (
@@ -1668,12 +1423,8 @@ export class TUI extends Container {
 	}
 
 	/**
-	 * Rows of the composed frame the engine has committed to native scrollback
-	 * (`frame[0..committedRows)` is the engine's claim of what terminal history
-	 * holds). Read-only diagnostic surface: the render-stress harness reads
-	 * this claim and verifies it against the terminal's actual scroll behavior
-	 * and buffer bytes, so drift between this counter and physical scrollback
-	 * is a test failure, never silently re-derived.
+	 * Rows of the composed frame committed to native scrollback (`frame[0..committedRows)`).
+	 * Read-only diagnostic surface.
 	 */
 	get committedRows(): number {
 		return this.#committedRows;
@@ -1724,13 +1475,7 @@ export class TUI extends Container {
 		return this.#scrollTape.length + Math.max(0, frameRows - this.#committedRows);
 	}
 
-	/**
-	 * Scroll-space row the live tail's view starts at — the bottom-most view,
-	 * which is what "following" shows. Derived from the space's own length and
-	 * never from `#windowTopRow`: that counter is a frame coordinate, and a
-	 * virtualized root dropping rows leaves it describing a frame that no longer
-	 * exists (it read 41 against a 12-row frame in the case this fixes).
-	 */
+	/** Scroll-space row index where the live tail view starts (bottom-most view). */
 	#scrollSpaceLiveTop(frameRows = this.#previousFrameLength): number {
 		return Math.max(0, this.#scrollSpaceRows(frameRows) - this.terminal.rows);
 	}
@@ -1745,11 +1490,8 @@ export class TUI extends Container {
 	}
 
 	/**
-	 * Invoked after every frame commit, once the freshly composed row count is
-	 * readable via {@link composedFrameRows}. Lets a bottom-anchoring owner
-	 * correct its fill against the exact frame instead of a stale estimate; the
-	 * callback must not render synchronously — schedule via requestRender()
-	 * (a corrected fill converges after one follow-up frame).
+	 * Invoked after each frame commit when `composedFrameRows` is updated,
+	 * allowing bottom-anchored components to correct fill via requestRender().
 	 */
 	onFrameComposed?: () => void;
 
@@ -1799,15 +1541,8 @@ export class TUI extends Container {
 	}
 
 	/**
-	 * Enable or disable scroll isolation (default off). While enabled the TUI
-	 * captures wheel/button mouse reports: wheel up freezes the transcript
-	 * region on an older slice of the scroll space (the tape plus the live
-	 * frame, see {@link scrollTapeRows}) and wheel down walks it back, with the
-	 * pinned footer (see {@link setPinnedFooterChildCount}) live at the bottom.
-	 * A frozen view resumes following on wheel-down to the tail, on
-	 * {@link scrollToLiveTail} (the host calls it on submit), on resize/full
-	 * paints, and while an overlay is visible. Enabling mid-session writes
-	 * the wheel-tracking mode; disabling restores native terminal scrollback.
+	 * Enable or disable scroll isolation (default off).
+	 * Captures mouse/wheel reports to freeze and navigate transcript history with a pinned footer.
 	 */
 	setScrollIsolation(enabled: boolean): void {
 		if (this.#scrollIsolation === enabled) return;
@@ -1819,15 +1554,7 @@ export class TUI extends Container {
 	}
 
 	/**
-	 * Choose how scroll gestures reach the engine (default `"mouse"`, or
-	 * `"alt-arrows"` when `VEYYON_TUI_SCROLL_TRANSPORT` selects it).
-	 *
-	 * Switching to `"alt-arrows"` releases any mouse grab and moves the transcript
-	 * to the alternate screen with Alternate Scroll Mode set, so the terminal keeps
-	 * native selection and sends wheel ticks as cursor keys. The engine classifies
-	 * those itself: only bare legacy cursor sequences are read as the wheel, which a
-	 * terminal speaking the kitty keyboard protocol at a level that reports event
-	 * types never sends for a real keypress.
+	 * Set scroll transport (`"mouse"` for normal screen mouse reporting, `"alt-arrows"` for alternate screen).
 	 */
 	setScrollTransport(transport: ScrollTransport): void {
 		if (this.#scrollTransport === transport) return;
@@ -1853,14 +1580,8 @@ export class TUI extends Container {
 	}
 
 	/**
-	 * Scroll the frozen transcript region by `rows` (negative scrolls back into
-	 * history, positive walks toward the live tail), the same movement the wheel
-	 * drives under the mouse transport.
-	 *
-	 * This is the `"alt-arrows"` entry point: the host receives a cursor-key
-	 * sequence it has decided came from the wheel rather than the keyboard and
-	 * hands the movement here. Returns true when the gesture was consumed, so a
-	 * host that guessed wrong can fall back to normal key handling.
+	 * Scroll frozen transcript region by `rows` (negative for history, positive for tail).
+	 * Used as the `"alt-arrows"` transport entry point.
 	 */
 	scrollByRows(rows: number): boolean {
 		if (!this.#scrollIsolation || rows === 0) return false;
@@ -1911,13 +1632,7 @@ export class TUI extends Container {
 		this.requestRender();
 	}
 
-	/** True while a pinned-footer child has click targets on screen.
-	 *
-	 * Scroll isolation is not the only reason to hold the mouse: the composer
-	 * chips are click targets whose whole session may never overflow the
-	 * viewport, and without the grab the terminal reports nothing and the chip
-	 * is inert text. The want is per frame — the ledger is re-read after every
-	 * compose — so the grab lasts exactly as long as the targets do. */
+	/** True while any pinned-footer child requests mouse tracking for click targets. */
 	#footerWantsPointer(): boolean {
 		const segments = this.#frameSegments;
 		if (this.#pinnedFooterChildCount <= 0 || segments.length === 0) return false;
@@ -1929,15 +1644,7 @@ export class TUI extends Container {
 		return false;
 	}
 
-	/** Apply or tear down wheel/button mouse tracking for scroll isolation.
-	 * Alt-screen overlays own the full tracking set while active, so this is
-	 * a no-op then; the alt-exit path re-syncs.
-	 *
-	 * The `"alt-arrows"` transport never grabs the mouse — that grab is exactly
-	 * what it exists to avoid, since it is what takes native drag-select away.
-	 * There it gets its gestures from Alternate Scroll Mode instead. A footer
-	 * click target does not override that choice: the operator who picked that
-	 * transport asked for the terminal to keep the mouse. */
+	/** Apply or tear down wheel/button mouse tracking on normal screen when scroll isolation or click targets require it. */
 	#syncWheelTracking(): void {
 		const want =
 			this.#scrollTransport === "mouse" &&
@@ -1954,15 +1661,7 @@ export class TUI extends Container {
 		this.terminal.write(want ? MOUSE_WHEEL_TRACKING_ON : MOUSE_WHEEL_TRACKING_OFF);
 	}
 
-	/**
-	 * Set or clear Alternate Scroll Mode to match the transport.
-	 *
-	 * The mode only has meaning while the alternate screen is displayed, but it is
-	 * a terminal-level flag rather than a per-buffer one, so it is written when the
-	 * transport selects it and cleared when the transport leaves or the engine
-	 * stops — never left set behind us, or the operator's next full-screen program
-	 * inherits a wheel that types arrow keys.
-	 */
+	/** Set or clear Alternate Scroll Mode to match the active transport. */
 	#syncAltScroll(): void {
 		const want = this.#scrollTransport === "alt-arrows" && this.#scrollIsolation && !this.#stopped;
 		if (want === this.#altScrollActive) return;
@@ -2051,17 +1750,7 @@ export class TUI extends Container {
 		return search(this.overlayStack.map(entry => entry.component));
 	}
 
-	/**
-	 * Hand focus back after an overlay closes. An overlay captures the focused
-	 * component when it opens and restores it when it closes, and in between
-	 * that component can be swapped out of its container and disposed: a
-	 * dialog occupying the editor slot is replaced by the next dialog or by
-	 * the editor itself. Restoring focus to it aims the keyboard at a
-	 * component nothing renders, so the surface underneath looks live and
-	 * ignores every keystroke, with no error and nothing to dismiss. A
-	 * captured component that has left the tree is therefore dropped in favour
-	 * of one that is still in it.
-	 */
+	/** Restore focus after an overlay closes, validating that the target is still attached to the tree. */
 	#restoreFocusAfterOverlay(preFocus: Component | null): void {
 		const topVisible = this.#getTopmostInteractiveOverlay();
 		if (topVisible) {
@@ -2530,24 +2219,7 @@ export class TUI extends Container {
 		this.terminal.stop();
 	}
 
-	/**
-	 * Replay a resident alt-buffer transcript onto the normal screen, so terminal
-	 * scrollback, the terminal's own find, and tmux copy-mode can see the
-	 * conversation after veyyon exits. Returns the number of rows written, or 0 when
-	 * there was nothing to replay (the native-scrollback surface already leaves the
-	 * transcript in the terminal, so it replays nothing).
-	 *
-	 * The source is the scroll tape plus the live tail captured by the last resident
-	 * paint, which together are the full transcript this surface holds — the tape is
-	 * the only copy here rather than a mirror of terminal scrollback. It is capped
-	 * (see {@link setScrollTapeCap}), so a very long session replays its most recent
-	 * rows rather than growing without bound; the session file on disk remains the
-	 * complete record either way.
-	 *
-	 * A crash cannot run this. That is a real limit and not worth pretending
-	 * otherwise: the alt buffer restores whatever preceded launch, and the transcript
-	 * is then only in the session file.
-	 */
+	/** Replay resident alt-buffer transcript onto normal screen on exit so history is visible in terminal scrollback. */
 	#replayTranscriptToNormalScreen(): number {
 		if (!this.#altTranscriptReplayPending) return 0;
 		this.#altTranscriptReplayPending = false;
@@ -2562,20 +2234,7 @@ export class TUI extends Container {
 		return rows.length;
 	}
 
-	/**
-	 * Force an immediate full replay of the current frame, including native
-	 * scrollback. This is the keyboard-accessible equivalent of the resize reset:
-	 * no queued diff frame or terminal scrollback probe can downgrade it to a
-	 * viewport-only repaint.
-	 *
-	 * Invalidates every component first so the replay reflects current state. A
-	 * geometry-driven reset thaws frozen scrollback snapshots implicitly (the new
-	 * width misses every cached snapshot), but a same-width reset would otherwise
-	 * replay stale snapshots — leaving host-frozen blocks (e.g. a transcript whose
-	 * committed rows are immutable on ED3-risk terminals) showing pre-mutation
-	 * content. Invalidation is the generic signal those containers use to retire
-	 * their snapshots, which is exactly what a user-driven display reset wants.
-	 */
+	/** Force an immediate full replay of the current frame, invalidating component caches to thaw frozen snapshots. */
 	resetDisplay(): void {
 		if (this.#stopped) return;
 		this.invalidate();
@@ -2629,21 +2288,7 @@ export class TUI extends Container {
 		this.#requestOrdinaryRender();
 	}
 
-	/**
-	 * Schedule a render on behalf of `component` after a self-contained change
-	 * (spinner frame, blink) that cannot have affected any other component.
-	 *
-	 * When every request since the last frame is component-scoped and the
-	 * frame is otherwise quiet — no resize or geometry change, no overlays, no
-	 * live inline images, no forced repaint, unchanged root child list — the
-	 * next compose re-renders only the root subtrees containing the requesting
-	 * components and reuses the previous frame's rows (and seam reports) for
-	 * every other root child, skipping the full component-tree walk that makes
-	 * long transcripts expensive to repaint at animation rate. Any concurrent
-	 * full request or unsafe condition downgrades the frame to a normal full
-	 * compose, so this is never less correct than `requestRender()` — only
-	 * cheaper.
-	 */
+	/** Schedule component-scoped render for self-contained changes, skipping full-tree walks on quiet frames. */
 	requestComponentRender(component: Component): void {
 		if (this.#stopped) return;
 		// Start a component-scoped accumulation only when nothing else is in
@@ -2656,15 +2301,7 @@ export class TUI extends Container {
 		this.#requestOrdinaryRender();
 	}
 
-	/**
-	 * Rewrite a quiet, visible component segment directly.
-	 *
-	 * Loader-style animation changes one already-positioned segment at a fixed
-	 * size. When the current frame geometry is still valid, rewrite just those
-	 * rows and update the diff baseline instead of scheduling a full render
-	 * cycle. Unsafe states fall back to `requestComponentRender()`, preserving
-	 * the ordinary renderer as the correctness path.
-	 */
+	/** Rewrite a quiet, visible component segment directly in place during loader animations. */
 	requestDirectWrite(component: Component): void {
 		if (this.#stopped) return;
 		if (
@@ -2837,13 +2474,7 @@ export class TUI extends Container {
 		this.#renderScheduler.scheduleImmediate(() => this.#scheduleRender());
 	}
 
-	/**
-	 * Decide whether this frame may compose component-scoped, and resolve the
-	 * requested components to the root children that must re-render. Returns
-	 * null — full compose — whenever a global condition could invalidate rows
-	 * the partial compose would reuse, or when a requested component is not
-	 * reachable from the current root child list.
-	 */
+	/** Resolve components requesting partial compose to root children, or return null if full compose is required. */
 	#resolvePartialComposeRoots(width: number, height: number): Set<Component> | null {
 		if (this.#componentRenderTargets.size === 0) return null;
 		if (!this.#hasEverRendered || this.#resizeEventPending) return null;
@@ -2887,16 +2518,7 @@ export class TUI extends Container {
 		return null;
 	}
 
-	/**
-	 * Arm or extend the multiplexer-resize debounce so a single forced render
-	 * fires once the pane is quiet. Called by the SIGWINCH callback on every
-	 * resize event, and by `requestRender(true)` / `resetDisplay()` when they
-	 * land inside an in-flight settle window. Each call cancels the prior
-	 * timer, supersedes any queued throttled render (otherwise it would race
-	 * tmux's mid-reflow paint), and OR's the caller's `clearScrollback`
-	 * intent into `#deferredForcedClearScrollback` — the timer's callback
-	 * consumes that flag exactly once when it re-enters `requestRender(true)`.
-	 */
+	/** Arm or extend the multiplexer-resize debounce timer so a single forced render fires once resize quietens. */
 	#armMultiplexerResizeTimer(clearScrollback: boolean): void {
 		this.#deferredForcedClearScrollback ||= clearScrollback;
 		if (this.#renderTimer) {
@@ -2919,24 +2541,7 @@ export class TUI extends Container {
 		}, TUI.#MULTIPLEXER_RESIZE_DEBOUNCE_MS);
 	}
 
-	/**
-	 * Arm the post-full-paint settle window after an `#emitFullPaint` that
-	 * pushed content into native scrollback on a ConPTY host. Idempotent inside
-	 * the window: a later overflowing paint extends `until` to the later
-	 * deadline so back-to-back big paints do not double-fire the trailing
-	 * coalesced render, and the existing deferred timer is rescheduled to the
-	 * later deadline.
-	 *
-	 * Mid-composition callers (most notably `ImageBudget.endPass()`, which can
-	 * call `requestRender()` from inside the in-flight paint when a new image
-	 * trips the budget) queue their render *before* the settle exists, so they
-	 * fall through the gate and set `#renderRequested` / `#renderTimer` on the
-	 * 30 Hz throttle. Without absorbing those, the throttled follow-up fires
-	 * inside the 150 ms quiet window and reintroduces the cascade the settle
-	 * was meant to stop. Cancel both, then eagerly arm the trailing settle
-	 * timer so the in-flight request still rides one coalesced render at the
-	 * end of the window. See #2095.
-	 */
+	/** Arm the post-full-paint settle window on ConPTY hosts to coalesce follow-up renders. */
 	#armPostFullPaintSettle(): void {
 		if (!isConPTYHosted()) return;
 		const until = this.#renderScheduler.now() + TUI.#CONPTY_POST_FULL_PAINT_SETTLE_MS;
@@ -3049,17 +2654,7 @@ export class TUI extends Container {
 		}, delay);
 	}
 
-	/**
-	 * Wrap `#doRender()` so every path records the wall-clock frame cost that
-	 * feeds adaptive backpressure. Set `#lastRenderAt` first (some render code
-	 * reads it re-entrantly) and compute the cost once the paint returns.
-	 *
-	 * The phase is what a blocked frame is reported as. A compose walks every
-	 * component, wraps every line of the transcript and diffs the frame, and it
-	 * is the longest synchronous span in an interactive session by a wide margin,
-	 * so a `ui.loop-blocked` line with no phase was nearly always this. Two array
-	 * operations per frame buys the watchdog a cause it can name.
-	 */
+	/** Execute `#doRender()` within the `ui.render` loop phase, tracking frame cost for adaptive backpressure. */
 	#executeRender(): void {
 		const start = this.#renderScheduler.now();
 		this.#lastRenderAt = start;
@@ -3073,19 +2668,7 @@ export class TUI extends Container {
 		}
 	}
 
-	/** Wheel step for scroll isolation: freeze/walk the transcript region.
-	 * Anchored to the live window top so the first wheel-up starts from the
-	 * currently visible tail; walking down to the tail resumes following. */
-	/**
-	 * Route a pinned-footer click to the root child under it. `footerRow` is
-	 * 0-based from the footer's top screen row. The footer always shows the
-	 * LAST #pinnedFooterRows rows of the composed frame (both when following
-	 * the live tail with a full frame and during virtual scroll), so the
-	 * clicked frame row is `totalFrameRows - pinnedFooterRows + footerRow`;
-	 * the segment ledger then resolves it to a component and a local line.
-	 * Components opt in by implementing MouseRoutable; everyone else keeps
-	 * ignoring clicks exactly as before.
-	 */
+	/** Route mouse click on pinned footer to the corresponding component. */
 	#routeFooterMouse(event: SgrMouseEvent, footerRow: number): void {
 		const segments = this.#frameSegments;
 		if (segments.length === 0) return;
@@ -3105,6 +2688,7 @@ export class TUI extends Container {
 		}
 	}
 
+	/** Wheel step for scroll isolation: freeze/walk the transcript region. */
 	#handleIsolationWheel(direction: -1 | 1): void {
 		const now = this.#renderScheduler.now();
 		if (direction === this.#lastWheelDirection && now - this.#lastWheelAtMs < TUI.#WHEEL_ACCEL_WINDOW_MS) {
@@ -3118,19 +2702,7 @@ export class TUI extends Container {
 		this.#applyScrollDelta(direction === -1 ? -step : step);
 	}
 
-	/**
-	 * Move the frozen transcript view by `rows` in SCROLL-SPACE coordinates: the
-	 * tape's rows, then the frame's uncommitted rows, where 0 is the oldest row
-	 * the tape still holds and the live tail's view starts at
-	 * `#scrollSpaceLiveTop()`. Negative scrolls back into history, positive walks
-	 * toward the tail and resumes following once it reaches it.
-	 *
-	 * One owner for both transports: the wheel path applies its acceleration and
-	 * calls this, and the `"alt-arrows"` path routes host-classified cursor keys
-	 * here, so the two can never drift on where the view may stop. Returns false
-	 * when the gesture changed nothing, which is what lets a mis-classified arrow
-	 * fall back to ordinary key handling instead of being silently swallowed.
-	 */
+	/** Move the frozen transcript view by `rows` in scroll-space coordinates. Returns false if no movement occurred. */
 	#applyScrollDelta(rows: number): boolean {
 		const liveTop = this.#scrollSpaceLiveTop();
 		if (rows < 0) {
@@ -3154,17 +2726,7 @@ export class TUI extends Container {
 		return true;
 	}
 
-	/**
-	 * Every byte the terminal delivers enters here, so this is the second of the
-	 * two spans an interactive session spends its synchronous time in. A keystroke
-	 * runs the focused component's handler, and that handler can filter a large
-	 * list, rebuild a completion set or reflow the composer; without the phase all
-	 * of it was reported as a block with no cause.
-	 *
-	 * The dispatch is a separate method because it returns from a dozen places and
-	 * a `finally` around the whole body is the only way to pop the phase on each
-	 * one.
-	 */
+	/** Handle terminal input within the `ui.input` loop phase. */
 	#handleInput(data: string): void {
 		pushLoopPhase("ui.input");
 		try {
@@ -3452,13 +3014,7 @@ export class TUI extends Container {
 		}
 	}
 
-	/**
-	 * Composite all visible overlays into the window slice (screen
-	 * coordinates, in stack order, later = on top). Overlays never touch the
-	 * frame: composited rows exist only in the painted window, and commits are
-	 * frozen while an overlay is visible, so overlay pixels can never enter
-	 * native scrollback.
-	 */
+	/** Composite all visible overlays into the window slice in stack order. */
 	#compositeOverlaysIntoWindow(window: string[], termWidth: number, termHeight: number): string[] {
 		const result = [...window];
 		for (const entry of this.overlayStack) {
@@ -3487,16 +3043,7 @@ export class TUI extends Container {
 		return result;
 	}
 
-	/**
-	 * Draw the scroll position on the right edge of the frozen transcript
-	 * region: a dim one-column track with a bright thumb, the placement
-	 * opencode uses. It lives in the region that actually moved, so the pinned
-	 * footer renders byte-identically whether the view is frozen or following —
-	 * the composer's own rows never become a scroll readout.
-	 *
-	 * Mutates `window` in place through the same cell-accurate compositor
-	 * overlays use, so a row's styling and any wide glyphs survive.
-	 */
+	/** Draw scroll track and thumb on the right edge of the frozen transcript region. */
 	#drawScrollTrack(window: string[], regionRows: number, viewTop: number, spaceRows: number, width: number): void {
 		if (width < 4 || regionRows < 2 || spaceRows <= regionRows) return;
 		const col = width - 1;
@@ -3562,13 +3109,7 @@ export class TUI extends Container {
 		return sliceByColumn(result, 0, totalWidth, true);
 	}
 
-	/**
-	 * Strip every CURSOR_MARKER from the rendered lines (markers are internal
-	 * sentinels and must never reach the terminal, the committed prefix, or
-	 * the resync audit) and return the positions of the stripped markers,
-	 * bottom-most first. Callers pick the visible one once the window top is
-	 * known.
-	 */
+	/** Strip internal CURSOR_MARKERs from rendered lines and return their positions (bottom-most first). */
 	#extractCursorMarkers(lines: string[]): { row: number; col: number }[] {
 		const markers: { row: number; col: number }[] = [];
 		for (let row = lines.length - 1; row >= 0; row--) {
@@ -3644,13 +3185,8 @@ export class TUI extends Container {
 	}
 
 	/**
-	 * Render one frame.
-	 *
-	 * Append-only pipeline: compose the frame, derive the commit boundary from
-	 * the component-reported live-region seam, advance the committed-row count
-	 * monotonically, and emit either a gesture-driven full paint or an
-	 * incremental update. Scrollback is `frame[0..committedRows)` at all
-	 * times — no viewport probes, no deferred reconciliation.
+	 * Render one frame: compose root children, advance committed-row count along the live-region seam,
+	 * and emit full paint or incremental update.
 	 */
 	#doRender(): void {
 		if (this.#stopped) return;
@@ -4283,14 +3819,7 @@ export class TUI extends Container {
 		this.#publishCommittedRows();
 	}
 
-	/**
-	 * Detect committed-prefix violations (see {@link findCommittedPrefixResync}
-	 * for the zone semantics) and re-anchor the commit index at the first moved
-	 * row, so subsequent rows recommit instead of being skipped: the stale copy
-	 * stays in history — duplication, never loss. Pure in-place restyles keep
-	 * their alignment and are left alone (stale styling in history was always
-	 * the accepted artifact).
-	 */
+	/** Detect committed-prefix violations and re-anchor the commit index at the first diverged row. */
 	#auditCommittedPrefix(rawFrame: readonly string[], newlyFinalEnd: number): void {
 		const prefix = this.#committedPrefix;
 		if (prefix.length === 0) return;
@@ -4305,23 +3834,7 @@ export class TUI extends Container {
 		}
 	}
 
-	/**
-	 * Frame row where HISTORY ends. Root children that implement the native
-	 * scrollback contract are the transcript — the only rows that belong in the
-	 * terminal's own scrollback. Anything mounted after the last of them is
-	 * chrome: a todo or subagent HUD, the composer, the status line. Chrome
-	 * rewrites itself every frame, so a chrome row that reached the committed
-	 * prefix is a prefix violation waiting to happen, and the repair for that is
-	 * an erase-and-replay of the whole screen.
-	 *
-	 * Falls back to the whole frame when no child claims history, which is every
-	 * plain-container host (a dialog, a one-shot command): there is no chrome to
-	 * separate and the old ceiling is the right one. A declared pinned footer is
-	 * the exception — it IS chrome, named as such by the host — so its first row
-	 * caps the ceiling whether or not anything above it claims the replay
-	 * contract. Without that cap a pinned footer over a plain container had no
-	 * ceiling at all.
-	 */
+	/** Row index where history ends in the composed frame (excluding trailing chrome/pinned footers). */
 	#historyEndRow(frameLength: number): number {
 		const segments = this.#frameSegments;
 		let end = frameLength;
@@ -4338,16 +3851,7 @@ export class TUI extends Container {
 		return end;
 	}
 
-	/**
-	 * Push the post-emit committed-row count to root children that implement
-	 * {@link NativeScrollbackCommittedRows}. Compose feeds the same signal
-	 * before each child render (see {@link render}), but guards that run
-	 * BETWEEN frames — e.g. a controller consulting the transcript's
-	 * committed boundary to decide whether a displaceable block may still be
-	 * retracted — would otherwise observe a count one frame stale and retract
-	 * rows that just entered immutable native scrollback, stranding an
-	 * orphaned copy above the repainted block.
-	 */
+	/** Publish committed-row count to root children implementing NativeScrollbackCommittedRows. */
 	#publishCommittedRows(): void {
 		for (const segment of this.#frameSegments) {
 			setNativeScrollbackCommittedRows(
@@ -4357,13 +3861,7 @@ export class TUI extends Container {
 		}
 	}
 
-	/**
-	 * Prepare the composed frame for emission, in place. Rows below
-	 * `#preparedValidRows` are already prepared against the current frame (the
-	 * compose lowered that floor to the stable prefix); rows at/after it are
-	 * revalidated positionally — a row whose raw content and width match its
-	 * cached entry reuses the prepared line, anything else re-prepares.
-	 */
+	/** Prepare the composed frame for emission in place, revalidating only lines past `#preparedValidRows`. */
 	#prepareFrame(frame: readonly string[], width: number): string[] {
 		const prepared = this.#preparedFrame;
 		const meta = this.#preparedMeta;
@@ -4640,13 +4138,7 @@ export class TUI extends Container {
 		);
 	}
 
-	/**
-	 * Replay the frame from home, optionally clearing native scrollback first:
-	 * committed prefix `[0, chunkTo)` followed by the visible window. ED3
-	 * (`CSI 3 J`) is emitted here and only here, and only for gesture-driven
-	 * paints (session replace, resize, resetDisplay, or an explicit
-	 * `clearScrollback` initial paint).
-	 */
+	/** Replay full frame from home, optionally clearing native scrollback (ED3) for gesture-driven paints. */
 	#emitFullPaint(
 		frame: readonly string[],
 		window: string[],
@@ -4789,13 +4281,7 @@ export class TUI extends Container {
 		this.#commit(frame, window, width, height, committedCursor);
 	}
 
-	/**
-	 * Enter (or extend) the non-multiplexer resize fast path. Marks the drag
-	 * active so subsequent `#doRender` calls paint viewport-only, then (re)arms
-	 * the quiet-window timer whose callback ends the drag with one authoritative
-	 * full paint. Reset on every SIGWINCH, so the full replay fires only once the
-	 * user stops dragging.
-	 */
+	/** Enter or extend the resize fast path, painting viewport-only until drag settles. */
 	#beginResizeViewport(): void {
 		this.#resizeViewportActive = true;
 		this.#resizeViewportSettleTimer?.cancel();
@@ -4843,17 +4329,7 @@ export class TUI extends Container {
 		this.#resizeViewportPaintCount += 1;
 	}
 
-	/**
-	 * Build the viewport window for a resize fast-path frame: the bottom
-	 * `height` rows of the would-be full frame, collected bottom-up across root
-	 * children. {@link ViewportTailProvider}s (the transcript) yield only their
-	 * tail; the small live-region children below render in full — so every child
-	 * entirely above the fold is skipped. A frame shorter than the viewport is
-	 * top-aligned with blank rows below, matching the full-paint window geometry
-	 * (windowTop = max(0, frameLength - height)). Cursor markers are stripped
-	 * (the drag hides the hardware cursor) and rows are width-fitted via the
-	 * stateless preparer, so no persistent prepared-frame cache is touched.
-	 */
+	/** Build the viewport window for a resize fast-path frame by collecting tail rows bottom-up across root children. */
 	#composeResizeViewport(width: number, height: number): { window: readonly string[]; contentRows: number } {
 		const tail: string[] = []; // bottom-first
 		const children = this.children;
@@ -4915,14 +4391,7 @@ export class TUI extends Container {
 		return `${enhancementExit}${ALT_SCREEN_EXIT}`;
 	}
 
-	/**
-	 * Emit a throwaway viewport repaint for the resize fast path as an alternate-
-	 * screen per-row overwrite. The normal buffer may reflow full-width rows on a
-	 * width change before the app can repaint; keeping the drag on the alternate
-	 * screen makes those transient resizes truncate instead of pushing wrapped
-	 * fragments into native scrollback. Normal-screen history is rebuilt once at
-	 * settle via `#emitFullPaint`.
-	 */
+	/** Emit a throwaway viewport repaint for the resize fast path as an alternate-screen per-row overwrite. */
 	#emitResizeViewport(window: readonly string[], height: number, contentRows: number, width: number): void {
 		let buffer = `${this.#paintBeginSequence + this.#enterResizeAltSequence()}\x1b[H`;
 		for (let r = 0; r < height; r++) {
@@ -4963,33 +4432,12 @@ export class TUI extends Container {
 		this.#emitAltFrame(lines, width, height);
 	}
 
-	/**
-	 * Whether the transcript itself should reside on the alt buffer.
-	 *
-	 * True only for the `"alt-arrows"` transport with isolation on: that transport
-	 * gets its gestures from Alternate Scroll Mode, which the terminal honors only
-	 * while the alternate screen is displayed. Residency is therefore not a
-	 * preference but the precondition for the transport working at all.
-	 *
-	 * Gated on having rendered once so the first paint still lands on the normal
-	 * screen: entering the alt buffer before anything is composed would blank the
-	 * operator's terminal for a frame with nothing to show in its place.
-	 */
+	/** Whether the transcript resides on the alt buffer (`"alt-arrows"` transport with scroll isolation). */
 	#altTranscriptWanted(): boolean {
 		return this.#scrollTransport === "alt-arrows" && this.#scrollIsolation && !this.#stopped && this.#hasEverRendered;
 	}
 
-	/**
-	 * Full per-row viewport rewrite on the alt buffer. Emits only sync-output
-	 * brackets, a cursor home, and per-row rewrites — never ED3, append-tail, or
-	 * any native-scrollback byte, so it is fully isolated from the planner and
-	 * #commit.
-	 *
-	 * `cursor` places the hardware caret after the paint and shows it. A
-	 * fullscreen overlay passes nothing and keeps the caret hidden (it draws its
-	 * own in-band one), but a resident transcript surface has a live composer on
-	 * the alt buffer, and a composer with no visible caret is not a composer.
-	 */
+	/** Rewrite full viewport per-row on the alt buffer without touching native scrollback or history. */
 	#emitAltFrame(lines: string[], width: number, height: number, cursor?: { row: number; col: number }): void {
 		const fitted: string[] = new Array(height);
 		for (let r = 0; r < height; r++) fitted[r] = lines[r] ?? "";
@@ -5055,20 +4503,8 @@ export class TUI extends Container {
 	}
 
 	/**
-	 * Incremental frame update. Three byte shapes:
-	 *
-	 * - scroll-append: the rows leaving the screen are exactly the newly
-	 *   committed chunk, already painted with final content — emit `\r\n` plus
-	 *   the new bottom rows, then rewrite whatever else changed in place;
-	 * - in-window diff: nothing scrolls, nothing commits — rewrite the changed
-	 *   row range (cursor-only when nothing changed);
-	 * - seam rewrite: write the chunk at the scrollback seam, then rewrite the
-	 *   whole window (live-region re-layout, hidden-gap backfill, mux resize).
-	 *
-	 * Only chunk rows ever enter native history; the live window repaints in
-	 * place with relative moves. This path never emits ED2/ED3 or an absolute
-	 * cursor home — those snap a reader scrolled into history back to the
-	 * bottom on several terminal families.
+	 * Incremental frame update: emits scroll-append for newly committed chunks, in-window diffs,
+	 * or seam rewrites with relative moves.
 	 */
 	#emitUpdate(
 		frame: readonly string[],
@@ -5275,13 +4711,7 @@ export class TUI extends Container {
 		fs.appendFileSync(getDebugLogPath(), msg);
 	}
 
-	/**
-	 * Build cursor control sequences to position the hardware cursor for the IME
-	 * candidate window. Returns escape sequences and the resulting cursor row for
-	 * the caller to update `#hardwareCursorRow`. The sequences should be appended
-	 * into the caller's own synchronized output block to avoid a flicker between
-	 * content and cursor frames.
-	 */
+	/** Build cursor control sequences to position the hardware cursor for IME candidate windows. */
 	#cursorControlSequence(
 		cursorPos: { row: number; col: number } | null,
 		totalLines: number,

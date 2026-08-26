@@ -60,53 +60,13 @@ function shouldPollWindowsTerminalAppearance(env: NodeJS.ProcessEnv = Bun.env): 
 }
 /**
  * Maximum encoded UTF-8 bytes per `process.stdout.write` call on Windows.
- *
- * Windows ConPTY ties viewport tracking to per-`WriteFile` boundaries: when a
- * single write exceeds ~32-64 KB, the pseudo-console stops following the
- * cursor and the host UI's viewport stays parked at whatever scroll position
- * the write started from. The visible symptom is that a full-paint of a long
- * session (resume, history rebuild, large permission dialog) shows only the
- * first ~30 lines until any focus event forces the host to re-query the
- * cursor. The data is delivered correctly — it's purely a viewport-sync bug.
- *
- * The cap is on **encoded UTF-8 bytes**, not JS code units, because
- * `process.stdout.write(string)` UTF-8-encodes before handing off to
- * `WriteFile`. A pure-CJK transcript row encodes to ~3 bytes per BMP code
- * unit, so a code-unit-based cap of 16 KiB could land at ~48 KiB of actual
- * `WriteFile` traffic and reintroduce the #2034 parked-viewport bug for
- * non-ASCII content.
- *
- * 16 KiB is half the smallest observed Windows Terminal threshold (32 KiB),
- * which keeps the per-write parked-viewport bug fixed by #2034 while halving
- * the WriteFile count on multi-megabyte paints (a 3 MB session resume splits
- * into ~192 chunks instead of ~384). Fewer WriteFiles means fewer chances for
- * WT's viewport-following logic to lose track of the cursor during the burst,
- * which mitigates the residual mid-paint drift the original 8 KiB cap left
- * behind (#2095). Still well clear of the threshold so the other ConPTY hosts
- * (Tabby, Hyper, VS Code) — where the exact limit is undocumented — keep
- * their safety margin.
+ * Capped at 16 KiB to prevent Windows ConPTY from parking viewport tracking on oversized writes.
  */
 const MAX_CONPTY_WRITE_CHUNK_BYTES = 16 * 1024;
 
 /**
- * Split `data` into chunks whose encoded UTF-8 byte length is no greater than
- * `maxChunkBytes`, preferring a line boundary (`\n`) as the cut point so
- * escape sequences (which never contain `\n`) stay intact. The TUI's
- * full-paint buffers are line-structured (`buffer += "\r\n"` between rows),
- * so a newline almost always exists within the window. The fallback for a
- * buffer with no newline in range is a hard cut at the last UTF-8 code-point
- * boundary that still fits — the ConPTY viewport bug from a single oversized
- * write is strictly worse than a one-frame escape-sequence glitch on a
- * buffer the renderer effectively never produces.
- *
- * UTF-16 code units are walked manually rather than measuring with
- * `Buffer.byteLength` per slice candidate: each code unit's UTF-8 width is
- * known from its value (BMP `<0x80` → 1, `<0x800` → 2, surrogate pair → 4
- * bytes across two units, other BMP → 3), and surrogate pairs are kept
- * together so the chunker never splits a non-BMP character.
- *
- * Exported for unit testing of the chunking contract; `#safeWrite` is the
- * sole production caller.
+ * Split `data` into chunks whose UTF-8 byte length is <= `maxChunkBytes`, preferring `\n` line boundaries.
+ * Exported for testing; `#safeWrite` is the production caller.
  */
 export function chunkForConPTY(data: string, maxChunkBytes: number = MAX_CONPTY_WRITE_CHUNK_BYTES): string[] {
 	// Fast path: whole buffer fits in one write.
@@ -163,23 +123,10 @@ export function chunkForConPTY(data: string, maxChunkBytes: number = MAX_CONPTY_
 	return chunks;
 }
 
-/**
- * Codes that mean the terminal is genuinely gone: every future write will fail
- * the same way, so rendering must latch off once (loudly) rather than repaint
- * into the void and spam the log. `EPIPE`/`ERR_STREAM_*` = the reader (terminal
- * or piped consumer) closed; `EBADF`/`ENXIO` = the fd is no longer a valid
- * device. Anything else (notably `EAGAIN`/`EWOULDBLOCK`/`EINTR` backpressure and
- * transient PTY `EIO` hiccups) is recoverable and must NOT brick the UI.
- */
+/** Fatal error codes indicating the terminal device or stream is closed and writes cannot recover. */
 const FATAL_WRITE_CODES = new Set(["EPIPE", "EBADF", "ENXIO", "ERR_STREAM_DESTROYED", "ERR_STREAM_WRITE_AFTER_END"]);
 
-/**
- * Latch rendering off after this many CONSECUTIVE non-fatal write failures. A
- * single transient error must never disable the terminal (the next frame
- * retries and the display recovers), but a sustained run of failures with no
- * success in between means the device is effectively dead even without a fatal
- * code, so this backstop stops an unbounded per-frame retry-and-fail loop.
- */
+/** Maximum consecutive non-fatal write failures before latching terminal rendering off. */
 const MAX_CONSECUTIVE_WRITE_FAILURES = 8;
 
 /** Extract a Node/libuv error `code` string from an unknown thrown value. */
@@ -194,15 +141,8 @@ export function terminalWriteErrorCode(err: unknown): string | undefined {
 export type WriteFailureDecision = "disable-fatal" | "disable-exhausted" | "retry";
 
 /**
- * Decide what a write failure means, given the error and the number of
- * consecutive failures INCLUDING this one (the caller increments first, resets
- * to 0 on any success). `disable-fatal` → the terminal closed, latch off now;
- * `disable-exhausted` → too many failures in a row with no success, latch off as
- * a backstop; `retry` → transient, keep rendering and let the next paint retry.
- *
- * Pure and exported so the policy is unit-tested without a live terminal — the
- * old code latched off on the FIRST error of any kind, so one momentary
- * `EAGAIN`/`EIO` blanked the whole session permanently.
+ * Decide action on write failure (`disable-fatal`, `disable-exhausted`, or `retry`).
+ * Pure and exported for unit testing.
  */
 export function decideTerminalWriteFailure(err: unknown, consecutiveFailures: number): WriteFailureDecision {
 	const code = terminalWriteErrorCode(err);
@@ -235,25 +175,10 @@ let altScreenActive = false;
  */
 let osc11BackgroundOverridden = false;
 
-/**
- * DEC private mode for kitty-style enhanced paste notifications. Named because
- * three sites have to agree on it: the DECRQM probe, the set, and the reset.
- * No shipping emulator implements it -- kitty answers a blind set with
- * `[PARSE ERROR] Unsupported screen mode: 5522 (private)` in its own log --
- * so the set is written only after a positive report, which today means never.
- * The OSC 5522 clipboard protocol kitty DOES implement is a different thing
- * and is unaffected: it needs no mode set at all.
- */
+/** DEC private mode 5522 for kitty-style enhanced paste notifications. */
 export const ENHANCED_PASTE_MODE = 5522;
 
-/**
- * True once any terminal instance has armed enhanced paste (DEC private mode
- * 5522). Module level for the same reason as the background override: the blind
- * emergency-restore path has no live instance, and the reset for this mode must
- * be written only by a process that actually set it -- kitty logs a parse error
- * for the mode either way, so an unconditional reset is a line of noise in the
- * log of every session that never pasted.
- */
+/** True once any terminal instance has armed enhanced paste (DEC private mode 5522). */
 let enhancedPasteArmed = false;
 let terminalRestoreRegistered = false;
 
@@ -300,26 +225,8 @@ const CP_UTF8 = 65001;
 let consoleCodepageGuard: (() => void) | null | undefined;
 
 /**
- * Re-assert the UTF-8 console codepage before writing (win32 only).
- *
- * Bun sets both console codepages to UTF-8 (65001) at startup, and
- * `process.stdout.write(string)` hands UTF-8 bytes to `WriteFile`, which
- * conhost translates using the *current* console output codepage. Child
- * processes spawned by tools (bash commands, MCP/LSP servers, eval kernels)
- * share this console, and some flip the codepage behind our back: PHP >=7.1
- * CLI issues the equivalent of `chcp` whenever `internal_encoding` mismatches
- * the console codepage (php.net request #73716) and skips the restore when
- * killed — and two PHP processes in a pipeline race their restores. Once the
- * codepage falls back to an OEM page (437/850), every non-ASCII glyph the TUI
- * paints is mis-translated: box-drawing borders degrade into `Γöé`/`ΓöÇ`
- * mojibake on the next full repaint (most visibly ctrl+o expand, which
- * rewrites every row).
- *
- * `GetConsoleOutputCP` is one cheap console call per `#safeWrite`; the setter
- * only runs after a foreign flip. A reading of 0 means "no console" — leave
- * that alone. Guarding the write chokepoint (rather than per-spawn cleanup)
- * covers every console-sharing child and long-running processes that flip
- * the codepage mid-session.
+ * Re-assert UTF-8 console codepage (65001) on Windows before writing,
+ * guarding against child processes that alter the output codepage.
  */
 function ensureWindowsConsoleUtf8(): void {
 	if (consoleCodepageGuard === undefined) consoleCodepageGuard = createConsoleCodepageGuard();
@@ -492,11 +399,8 @@ export interface Terminal {
 	setProgress(active: boolean): void;
 
 	/**
-	 * Register a callback for terminal appearance (dark/light) changes.
-	 * Detection uses OSC 11 background color query with Mode 2031 as a change trigger.
-	 * Fires when the detected appearance changes, including the initial detection.
-	 * Subscribers registered after detection are invoked immediately with the
-	 * already-detected appearance so late subscribers never miss it.
+	 * Register a callback for terminal appearance changes via OSC 11.
+	 * Invokes immediately for late subscribers if appearance is already detected.
 	 */
 	onAppearanceChange(callback: (appearance: TerminalAppearance) => void): void;
 	/** The last detected terminal appearance, or undefined if not yet known. */
@@ -536,14 +440,7 @@ export interface Terminal {
 	requestEnhancedPaste?(): void;
 }
 
-/**
- * True when stdout flows through a ConPTY pseudo-console (native win32, or
- * Linux running under WSL where stdout still crosses into ConPTY at the
- * `wslhost` boundary). ConPTY hosts share the per-WriteFile viewport-tracking
- * quirks documented above and on {@link MAX_CONPTY_WRITE_CHUNK_BYTES}, so both
- * `#safeWrite` and the renderer's post-big-paint settle gate hang off this
- * single predicate.
- */
+/** True when stdout flows through a ConPTY pseudo-console (Windows or WSL). */
 export function isConPTYHosted(): boolean {
 	if (process.platform === "win32") return true;
 	// WSL: stdout still crosses into ConPTY at the `wslhost` boundary.
@@ -570,16 +467,7 @@ function parseOsc99KeyValues(section: string): Map<string, string> {
 }
 const XTERM_SCROLL_TO_BOTTOM_MODES = [1010, 1011] as const;
 
-/**
- * Every DEC private mode probed by DECRQM at startup, in send order. One list
- * because two things have to agree on it: `start()`, which writes a probe plus a
- * DA1 sentinel per mode, and anything counting how many sentinels are in flight.
- * 2026 gates synchronized output, 2048 in-band resize, 2031 appearance
- * notifications, {@link ENHANCED_PASTE_MODE} the enhanced-paste set, and
- * 1010/1011 are the xterm scroll-to-bottom modes Veyyon turns off while it owns
- * the TTY. Exported so a test can derive the sentinel count instead of pinning a
- * number that goes stale the next time a capability is added.
- */
+/** DEC private modes probed by DECRQM at startup in send order. Exported for test sentinel counting. */
 export const STARTUP_PRIVATE_MODE_PROBES: readonly number[] = [
 	2026,
 	2048,
@@ -910,14 +798,7 @@ export class ProcessTerminal implements Terminal {
 		}
 	}
 
-	/**
-	 * Set up StdinBuffer to split batched input into individual sequences.
-	 * This ensures components receive single events, making matchesKey/isKeyRelease work correctly.
-	 *
-	 * Also watches for Kitty protocol response and enables it when detected.
-	 * This is done here (after stdinBuffer parsing) rather than on raw stdin
-	 * to handle the case where the response arrives split across multiple events.
-	 */
+	/** Set up StdinBuffer to split batched input into individual key events and detect Kitty protocol responses. */
 	#setupStdinBuffer(): void {
 		// 50ms balances two failure modes: a bare ESC keypress on legacy
 		// terminals waits this long before it is delivered, while a CSI key
@@ -1347,15 +1228,7 @@ export class ProcessTerminal implements Terminal {
 		this.#modifyOtherKeysActive = true;
 	}
 
-	/**
-	 * Query terminal for Kitty keyboard protocol support and enable if available.
-	 *
-	 * Sends CSI ? u to query current flags. If terminal responds with CSI ? <flags> u,
-	 * it supports the protocol and we enable it with CSI > 1 u.
-	 *
-	 * The response is detected in setupStdinBuffer's data handler, which properly
-	 * handles the case where the response arrives split across multiple stdin events.
-	 */
+	/** Query terminal for Kitty keyboard protocol support (CSI ? u) and enable if supported. */
 	#queryAndEnableKittyProtocol(): void {
 		this.#setupStdinBuffer();
 		process.stdin.on("data", this.#stdinDataHandler!);
@@ -1499,19 +1372,7 @@ export class ProcessTerminal implements Terminal {
 		}
 	}
 
-	/**
-	 * Reconcile cached in-band geometry with the OS on an OS-level resize.
-	 *
-	 * SIGWINCH (POSIX) and ConPTY (Windows) refresh `process.stdout.columns`/
-	 * `rows` before the `resize` event fires, so they are authoritative for the
-	 * new cell geometry. A cached DEC 2048 report can be stale: the matching
-	 * post-resize report may be dropped (split across stdin reads past the flush
-	 * window, or interrupted by another escape mid-reassembly), leaving the
-	 * getters pinned to the old size — which freezes the rendered width because
-	 * the renderer reflows against {@link columns}/{@link rows}, not the live OS
-	 * value. Drop a cached dimension that disagrees with the live OS value; the
-	 * terminal's next valid in-band report re-seeds pixel sizing.
-	 */
+	/** Reconcile cached DEC 2048 in-band geometry against authoritative OS stdout dimensions on resize. */
 	#reconcileInBandGeometryOnResize(): void {
 		if (!this.#inBandResizeActive) return;
 		const osColumns = process.stdout.columns;

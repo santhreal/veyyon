@@ -4,12 +4,8 @@ import modelsSourceJson from "./models.json" with { type: "text" };
 import type { Api, Model, ModelSpec, Usage } from "./types";
 
 /**
- * Static bundled model registry loaded from `models.json`.
- *
- * This module intentionally exposes compile-time defaults only.
- * It does not include runtime discovery, models.dev overlays, or on-disk cache state.
- *
- * For runtime-aware resolution, use `createModelManager()` / `resolveProviderModels()`.
+ * Static bundled model registry loaded from `models.json` (compile-time defaults).
+ * For runtime-aware resolution, use `createModelManager()` or `resolveProviderModels()`.
  */
 
 /**
@@ -29,11 +25,8 @@ export type GeneratedProvider = Extract<keyof BundledModelsJson, string>;
 const modelsSource = modelsSourceJson as unknown as string;
 
 /**
- * Persisted enriched-registry snapshot format. The snapshot stores RESOLVED
- * records (`buildModel` output), so a change to what `buildModel` produces
- * makes an old snapshot lie about capabilities the request builders rely on.
- * Bump this version whenever the resolved record's contract changes, the same
- * way `CACHE_SCHEMA_VERSION` is bumped in `model-cache.ts` for cached specs.
+ * Persisted enriched-registry snapshot format version. Bump whenever resolved
+ * `buildModel` output contracts change to invalidate stale snapshots.
  */
 const ENRICHED_REGISTRY_FORMAT_VERSION = 2;
 let modelRegistry: Map<string, Map<string, Model<Api>>> | undefined;
@@ -117,34 +110,21 @@ export function getBundledModels(provider: GeneratedProvider): Model<Api>[] {
 }
 
 /**
- * What we actually know about a model's per-token price.
- *
- * `unpriced` is the important one. Discovery fills `cost` with zeros whenever a
- * provider's `/models` endpoint carries no pricing, which is most of them, so an
- * all-zero cost means "we were never told" far more often than it means "this
- * costs nothing". Treating the two as the same thing is how a paid model ends up
- * displayed as free.
+ * Model per-token pricing status, distinguishing known priced or free models
+ * from unpriced models that lack pricing data.
  */
 export type ModelPricing = "priced" | "free" | "unpriced";
 
 /**
- * Positive evidence that a model is free, as opposed to merely unpriced.
- *
- * OpenRouter is the one provider that marks its free tier in the model id, with
- * a `:free` suffix, and it does so consistently: in the bundled catalog every
- * `:free` model has a zero cost and no priced model carries the suffix. That
- * marker is the only free signal we have, so it is the only one trusted here.
+ * Checks for explicit `:free` model ID suffix markers used by providers like OpenRouter.
  */
 function hasFreeMarker(modelId: string): boolean {
 	return modelId.endsWith(":free");
 }
 
 /**
- * Classify a model's pricing.
- *
- * This is the one owner of the "is it free or do we just not know" question.
- * Anything rendering or reasoning about price asks here rather than testing
- * `cost.input === 0` itself, because that test cannot tell the two apart.
+ * Classify model pricing into `"priced"`, `"free"`, or `"unpriced"` based on
+ * cost values, metadata flags, and ID markers.
  */
 export function getModelPricing<TApi extends Api>(
 	model: Pick<Model<TApi>, "id" | "cost"> & { pricing?: "published" | "unknown" },
@@ -177,13 +157,7 @@ export function calculateCost<TApi extends Api>(model: Model<TApi>, usage: Usage
 }
 
 /**
- * Sum {@link Usage.cost}'s total from its buckets plus whatever already-discarded
- * attempts cost.
- *
- * This is the ONE owner of that sum. Providers that rescale the buckets after
- * pricing (a Codex or OpenAI service-tier multiplier) call this instead of adding
- * the four fields themselves, because a hand-written sum silently drops the spend
- * of every retried attempt: the buckets price the delivered tokens only.
+ * Sum {@link Usage.cost}'s total from input, output, cache buckets, and discarded attempts.
  */
 export function recomputeCostTotal(usage: Usage): number {
 	usage.cost.total =
@@ -196,13 +170,8 @@ export function recomputeCostTotal(usage: Usage): number {
 }
 
 /**
- * Scale every priced bucket by a billing multiplier the provider applied after
- * the fact (an OpenAI or Codex service tier), then re-total.
- *
- * The scale-and-total step is the same operation for every biller, and it is the
- * step that keeps losing money: written out by hand it ends in a four-field sum
- * that drops what discarded attempts cost. A multiplier of 1 is a no-op, so a
- * caller can hand over whatever it resolved without guarding first.
+ * Scale usage cost buckets by a provider billing multiplier (e.g. service tier)
+ * and update `cost.total`.
  */
 export function scaleUsageCost(usage: Usage, multiplier: number): void {
 	if (multiplier === 1) return;
@@ -214,20 +183,8 @@ export function scaleUsageCost(usage: Usage, multiplier: number): void {
 }
 
 /**
- * Carry the spend of an attempt whose output is being thrown away into the usage
- * that replaces it.
- *
- * Every in-provider retry discards the attempt's text, which is correct (it is
- * not replayable), and used to discard its billed tokens with it, which is not:
- * the provider bills a stream that died after `message_start` for the whole
- * prompt, including the cache write, and bills an aborted thinking loop for every
- * token it sampled. Dropping that spend understates cost and, for providers whose
- * limit window is measured locally from observed cost, understates how much of
- * the operator's quota is already gone.
- *
- * The discarded tokens never join the delivered token fields, so the context
- * meter still describes the message that survived. They land in
- * {@link Usage.discarded} with their price folded into `cost.total`.
+ * Carry token counts and spend from discarded attempts (e.g. retries, aborted streams)
+ * into replacement usage under `Usage.discarded`.
  */
 export function discardAttemptUsage<TApi extends Api>(model: Model<TApi>, discarded: Usage, next: Usage): Usage {
 	const billed = discarded.input + discarded.output + discarded.cacheRead + discarded.cacheWrite;
@@ -247,11 +204,8 @@ export function discardAttemptUsage<TApi extends Api>(model: Model<TApi>, discar
 }
 
 /**
- * What a discarded attempt cost. An attempt its provider already priced keeps
- * that number, so a service-tier multiplier the provider applied is not
- * recomputed away; an attempt that died before pricing is priced here at the
- * model that served it. A zero for a free or unpriced model is a real zero and
- * pricing it again changes nothing.
+ * Calculate the cost of a discarded attempt using existing cost totals or
+ * computing from the serving model.
  */
 function discardedAttemptCost<TApi extends Api>(model: Model<TApi>, discarded: Usage): number {
 	if (discarded.cost.total !== 0) return discarded.cost.total;
@@ -259,18 +213,8 @@ function discardedAttemptCost<TApi extends Api>(model: Model<TApi>, discarded: U
 }
 
 /**
- * Install a freshly built token accounting on a message without destroying the
- * facts a replacement is not allowed to lose.
- *
- * Providers that receive the whole accounting in one wire field (Google's
- * `usageMetadata`, an OpenAI Responses `response.usage`) rebuild `usage` from
- * scratch on every update rather than adding to it. That wholesale assignment
- * destroys anything an earlier step put on the object: what discarded attempts
- * billed, and Copilot's premium-request counter. Both had to be hand-restored at
- * one site each, which is how the next carried field gets lost, so the
- * replacement itself is the thing with an owner.
- *
- * `next` is returned so a call site can keep the single assignment it already had.
+ * Preserve discarded attempt accounting and premium request counts when replacing
+ * usage objects during streaming updates.
  */
 export function inheritUsageCarryovers(previous: Usage, next: Usage): Usage {
 	if (previous.discarded !== undefined) next.discarded = previous.discarded;
@@ -289,19 +233,7 @@ export function emptyCost(): Usage["cost"] {
 }
 
 /**
- * Does this cost object carry a non-zero price in any bucket?
- *
- * Read this as "are there numbers here to use", NOT as "is the model paid". An all-zero cost is
- * ambiguous by construction, which is what {@link ModelSpec.costKnown} exists to disambiguate: a
- * provider that publishes no pricing produces the same object as a genuinely free model. Callers
- * use this to decide whether to go looking for pricing somewhere else (the Codex entries take
- * theirs from the matching OpenAI model, and the stats database falls back through the bundled
- * catalog), so the ambiguity is harmless there: trying a fallback for a free model finds nothing
- * and changes nothing. Do not use it to label a model free in any user-facing surface.
- *
- * The parameter is structural so the generator's `ModelSpec["cost"]`, a {@link Usage} cost with
- * its extra `total`, and the stats row shape all pass. It had a copy in `catalog`'s generator and
- * another in `stats`, spelled identically down to the bucket order.
+ * Returns true if any cost bucket (input, output, cacheRead, cacheWrite) is non-zero.
  */
 export function hasBillableCost(cost: {
 	input: number;
@@ -313,14 +245,7 @@ export function hasBillableCost(cost: {
 }
 
 /**
- * A fresh, fully-zeroed {@link Usage}: every required token bucket and every
- * cost field set to 0, optional fields (orchestration, reasoningTokens, cttl,
- * server, premiumRequests) left absent. This is the ONE owner for the zeroed
- * Usage every provider needs, both as a "no tokens reported" result and as the
- * starting accumulator a streaming provider increments field by field.
- *
- * A new object is returned on every call, so mutating the result (the streaming
- * accumulator pattern) never leaks into another turn's usage.
+ * Returns a new zero-initialized {@link Usage} object with all token and cost fields set to 0.
  */
 export function emptyUsage(): Usage {
 	return {

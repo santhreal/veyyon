@@ -1,10 +1,6 @@
 /**
- * Model-family id predicates: the shared vocabulary for "is this id a member
- * of family X" checks that gate wire-level behavior across hosts (a Kimi or
- * DeepSeek model keeps its quirks no matter which OpenAI-compatible proxy
- * serves it). Looser per-feature heuristics (e.g. stream-markup healing)
- * deliberately keep their own patterns — only provably-shared matchers live
- * here.
+ * Model-family ID predicates for wire-level compatibility and capability gating
+ * across hosts and providers.
  */
 
 import {
@@ -42,12 +38,8 @@ export const isKimiK26ModelId = memo((modelId: string): boolean => {
 });
 
 /**
- * Claude ids in any namespace form: bare (`claude-*`), path-namespaced
- * (`anthropic/claude.x`), or dot-prefixed (`us.anthropic.claude-…`,
- * `global.anthropic.claude-…`, `au.anthropic.claude-…` — Bedrock cross-region
- * inference profiles). Necessary because {@link parseAnthropicModel} only
- * classifies kinds enumerated in its regex, so any dotted profile whose kind
- * (e.g. `haiku`) is not enumerated would otherwise slip past this fallback.
+ * Claude IDs in any namespace form (bare, path-namespaced, or Bedrock dot-prefixed
+ * cross-region inference profiles).
  */
 export const isClaudeModelId = memo((modelId: string): boolean => {
 	return /(^|[/.])claude[-.]/i.test(modelId);
@@ -79,12 +71,8 @@ export const isMimoModelIdOrName = memo((value: string): boolean => {
 });
 
 /**
- * OpenAI o-series (o1/o3/o4, incl. -mini/-pro/-preview, dated snapshots, and
- * effort-pinned aggregator ids like `o3-mini-high`). Every o-series model
- * reasons by construction; aggregator catalogs (models.dev rows for aimlapi,
- * kilo, nanogpt, openrouter) routinely ship them `reasoning: false`, which
- * hides the thinking surface entirely. Used by the catalog generator to force
- * the flag back on.
+ * OpenAI o-series models (o1/o3/o4, variants, snapshots).
+ * Used by catalog generators to ensure reasoning capability is enabled.
  */
 export const isOpenAIOSeriesModelId = memo((modelId: string): boolean => {
 	const bare = bareModelId(modelId).trim().toLowerCase();
@@ -114,13 +102,8 @@ export const isGrokReasoningEffortCapable = memo((modelId: string): boolean => {
 });
 
 /**
- * MiniMax M2-generation family (M2, M2.1, M2.5, M2.7, including `-highspeed`/
- * `-lightning`/`-her`/`-turbo` variants, dotless aliases like `minimax-m21`,
- * and short `minimax/m2-…` ids on aggregator hosts). Underlying model accepts
- * only `low|medium|high` for `reasoning_effort` and 400s on `minimal`,
- * `xhigh`, or `none` — so hosts whose default effort map otherwise lowers
- * `minimal` to `none` (Fireworks) or expects the full 5-tier scale must
- * clamp instead. Excludes M1, M3, MiniMax-Text-01, music, hailuo, voice ids.
+ * MiniMax M2-generation family (M2, M2.1, M2.5, M2.7 and variants).
+ * Clamps `reasoning_effort` to supported `low|medium|high` tiers.
  */
 export const isMinimaxM2FamilyModelId = memo((modelId: string): boolean => {
 	const lower = modelId.toLowerCase();
@@ -164,14 +147,8 @@ const isOpenAIWireGen54Plus = memo((modelId: string): boolean => {
 });
 
 /**
- * OpenAI model generations old enough to reject `prompt_cache_breakpoint`
- * outright: 5.6 is the floor at which the field exists at all.
- *
- * This answers the GENERATION question only, never "may this request carry the
- * field". The field is a platform API capability, so the endpoint decides too:
- * `gpt-5.6-codex` clears this floor and the ChatGPT Codex backend still fails
- * the turn with `prompt_cache_breakpoint is not supported on this model`.
- * Callers gate on the endpoint as well; see `resolveOpenAIPromptCachePolicy`.
+ * Whether the model meets the OpenAI wire generation floor (5.6+) for
+ * `prompt_cache_breakpoint` support.
  */
 export const supportsOpenAIPromptCacheBreakpoints = memo((modelId: string): boolean => {
 	const parsed = parseOpenAIModel(bareModelId(modelId));
@@ -180,46 +157,28 @@ export const supportsOpenAIPromptCacheBreakpoints = memo((modelId: string): bool
 });
 
 /**
- * OpenAI Codex models that honor `reasoning.context: "all_turns"` (full
- * cross-turn reasoning replay). The `reasoning.context` field itself exists for
- * the whole gpt-5/o-series family, but the `all_turns` value is only accepted
- * from gpt-5.4 onward; earlier ids (`gpt-5.1-codex`, `gpt-5.3-codex`, and
- * `gpt-5.3-codex-spark`) reject it with
- * `Unsupported value: 'all_turns' is not supported with this model`. Version
- * floor (not an allowlist) so 5.6/6.x inherit support automatically. Callers
- * fall back to omitting `context`, letting the server default to `current_turn`.
+ * OpenAI Codex models (generation 5.4+) that accept `reasoning.context: "all_turns"`
+ * for cross-turn reasoning replay.
  */
 export const supportsAllTurnsReasoningContext = isOpenAIWireGen54Plus;
 
 /**
- * Whether an id states an OpenAI wire generation at all.
- *
- * Every version floor above answers false for two different situations: a model
- * below the floor, and a model whose id carries no version to read. A codename
- * (`gpt-daybreak-blue-latest`, `codex-auto-review`) is the second, and a caller
- * that has other evidence about such a model — a catalog transport flag, say —
- * needs to tell the two apart before it trusts a floor's refusal.
+ * Whether the model ID specifies a parsable OpenAI wire generation version,
+ * distinguishing unversioned codenames from below-floor versions.
  */
 export const statesOpenAIWireGeneration = memo((modelId: string): boolean => {
 	return parseOpenAIModel(bareModelId(modelId)) !== null;
 });
 
 /**
- * OpenAI Codex models that accept `reasoning.summary`. Shares the gpt-5.4 wire
- * floor with {@link supportsAllTurnsReasoningContext}: earlier Codex ids
- * (`gpt-5.1-codex`, `gpt-5.3-codex`, `gpt-5.3-codex-spark`) reject the field
- * with `Unsupported parameter: 'reasoning.summary' is not supported with this
- * model`. Callers omit `summary` for unsupported ids, letting the server skip
- * the human-readable summary stream.
+ * OpenAI Codex models (generation 5.4+) that support `reasoning.summary`
+ * for human-readable reasoning summary streams.
  */
 export const supportsCodexReasoningSummary = isOpenAIWireGen54Plus;
 
 /**
- * Reasoning-capable GLM coding SKUs: glm-4.5 and up on the base / `-air` /
- * `-turbo` lines. Excludes the vision (`…v`) shape, the non-reasoning
- * `-flash`/`-flashx`/`-preview` variants, and pre-4.5 ids. Matching the family
- * keeps newly-bumped integers (`glm-5.3`, `glm-6`, …) covered without a per-id
- * allowlist.
+ * Reasoning-capable GLM coding models (glm-4.5+ base, air, and turbo variants;
+ * excludes vision and flash/preview variants).
  */
 export const isReasoningGlmModelId = memo((modelId: string): boolean => {
 	const glm = parseGlmModel(bareModelId(modelId));
@@ -250,15 +209,8 @@ export const isGlmVisionModelId = memo((modelId: string): boolean => {
 });
 
 /**
- * Coarse vendor-lineage token for "are two models the same family?" checks
- * (e.g. picking a cross-family reviewer). All Claude point releases share a token,
- * Claude and GPT differ; namespace prefixes and aggregator mirrors fold onto the
- * lineage via {@link parseKnownModel}'s `bareModelId` normalization. Opaque and
- * comparison-only — not a stable key to persist, since the vocabulary tracks new
- * releases. Returns `""` for ids it cannot classify; callers fall back to the provider.
- *
- * Vendor-only by design: a model's kind/variant (opus vs sonnet, codex vs base) is
- * collapsed onto the single vendor token; use {@link parseKnownModel} for finer breakdowns.
+ * Coarse vendor-lineage token for model comparison checks (e.g. cross-family selection).
+ * Returns normalized vendor family string or empty string if unclassified.
  */
 export const modelFamilyToken = memo((modelId: string): string => {
 	const parsed = parseKnownModel(modelId);
@@ -277,11 +229,8 @@ export const modelFamilyToken = memo((modelId: string): string => {
 });
 
 /**
- * Adaptive thinking `display` is supported starting with Claude Opus 4.7+,
- * Sonnet 5+, and the Claude Fable/Mythos 5 generation. Older adaptive-thinking
- * models (Opus 4.6, Sonnet 4.6) reject the field. Classifier-based, so dotted
- * and dashed version forms both match while bare dated ids
- * (`claude-opus-4-20250514` = Opus 4.0) stay excluded.
+ * Whether Claude model supports adaptive thinking `display` (Opus 4.7+,
+ * Sonnet 5+, Fable/Mythos 5+).
  */
 export const supportsAdaptiveThinkingDisplay = memo((modelId: string): boolean => {
 	const parsed = parseAnthropicModel(bareModelId(modelId));
@@ -300,11 +249,8 @@ export const hasOpus47ApiRestrictions = memo((modelId: string): boolean => {
 });
 
 /**
- * Mid-conversation `role: "system"` messages (system instructions appended at
- * non-first positions in the `messages` array) are supported starting with
- * Claude Opus 4.8+, Sonnet 5+, and the Claude Fable/Mythos 5 generation.
- * Earlier Claude models reject the role.
- * @see https://platform.claude.com/docs/en/build-with-claude/mid-conversation-system-messages
+ * Whether Claude model supports mid-conversation `role: "system"` messages
+ * (Opus 4.8+, Sonnet 5+, Fable/Mythos 5+).
  */
 export const supportsMidConversationSystemMessages = memo((modelId: string): boolean => {
 	const parsed = parseAnthropicModel(bareModelId(modelId));
@@ -344,11 +290,8 @@ export function findThinkingVariantToken(modelId: string): ThinkingVariantToken 
 }
 
 /**
- * Removes the located thinking-variant token: `kimi-k2-thinking` → `kimi-k2`,
- * `mimo-v2-flash-thinking-original` → `mimo-v2-flash-original`,
- * `grok-4.1-fast-reasoning` → `grok-4.1-fast`. Returns `undefined` when no
- * token exists or nothing would remain. Callers MUST verify the result names
- * a live model.
+ * Removes thinking-variant tokens (e.g. `-thinking`, `-reasoning`) from a model ID.
+ * Returns undefined if no token exists or stripped result is empty.
  */
 export const stripThinkingVariantToken = memo((modelId: string): string | undefined => {
 	const token = findThinkingVariantToken(modelId);

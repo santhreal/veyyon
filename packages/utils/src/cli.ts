@@ -23,12 +23,8 @@ interface ParsedArgs {
 }
 
 /**
- * Replace negative-number tokens with sentinels so `node:util`'s parseArgs treats
- * them as ordinary words, and hand back the function that puts them where they
- * belong. Both halves of the result are restored: a negative number can arrive as
- * a positional (`config set presencePenalty -1`) or as a flag's value
- * (`--temperature -1`), and masking would otherwise leak the sentinel into one of
- * them.
+ * Masks negative-number tokens as sentinels during argument parsing to prevent
+ * them from being misinterpreted as short flags, returning a restore function.
  */
 function maskNegativeNumbers(argv: readonly string[]): {
 	args: string[];
@@ -71,27 +67,12 @@ function maskNegativeNumbers(argv: readonly string[]): {
 }
 
 /**
- * The status a command-line mistake exits with, following the conventional Unix
- * meaning of `2`: the invocation was wrong, so nothing ran and an identical retry
- * cannot help.
- *
- * `packages/coding-agent/src/cli/exit-codes.ts` declares the same number as
- * `EXIT_USAGE` rather than importing this one, because that module sits on
- * `cli.ts`'s static boot graph and this one does not: `the-boot-path-stays-thin`
- * caps that graph, and a boot-path module edge for a single integer is not worth
- * the parse on every `veyyon --version`. The two are held equal by an assertion
- * in `packages/coding-agent/test/cli/exit-codes.test.ts`, which is what stops
- * them drifting.
+ * Standard exit status (2) for command-line syntax and argument validation errors.
  */
 export const CLI_EXIT_USAGE = 2;
 
 /**
- * A user-facing argument/flag validation failure. Thrown by {@link Command.parse}
- * for missing/invalid positionals and flags. The top-level {@link run} handler
- * prints its message plus the command usage line to stderr and exits
- * {@link CLI_EXIT_USAGE}, instead of letting it bubble to the process-level catch,
- * which would dump a minified `dist/cli.js` code frame over a plain argument
- * mistake (issue #5369).
+ * Thrown for missing or invalid flags/arguments to print usage errors and exit with code 2.
  */
 export class CliUsageError extends Error {
 	constructor(message: string) {
@@ -113,14 +94,7 @@ export interface FlagDescriptor<K extends "string" | "boolean" | "integer" = "st
 	options?: readonly string[];
 	required?: boolean;
 	/**
-	 * Extra long names that mean the same flag. `--<alias>` parses into the
-	 * canonical name and the help entry lists it beside that name.
-	 *
-	 * Declare an alias rather than a second flag whenever two spellings are one
-	 * behaviour: two descriptors print two entries and imply they differ. This
-	 * field used to be accepted and silently ignored, so `--yolo` was declared as
-	 * an alias of `--auto-approve` with a comment claiming help would list it, and
-	 * help never did.
+	 * Alternative flag names that resolve to this canonical flag in parsed output.
 	 */
 	aliases?: readonly string[];
 }
@@ -459,13 +433,7 @@ export function tokenizeQuotedArgs(input: string): string[] {
 // ---------------------------------------------------------------------------
 
 /**
- * Terminal width to lay help out for, clamped to something a human reads.
- *
- * Help used to be laid out for an infinite terminal: it padded to the widest entry and never
- * wrapped, so `veyyon --help` emitted 85 lines past 80 columns with a 221-character worst case, and
- * every one of those was re-wrapped by the terminal at an arbitrary point with no indent. The lower
- * bound keeps a narrow split pane from collapsing the description column to nothing; the upper one
- * stops a maximized window from producing lines too long to track back to their flag.
+ * Returns terminal width clamped between 60 and 100 columns for readable help layout.
  */
 function helpWidth(): number {
 	const columns = process.stdout.columns;
@@ -482,33 +450,12 @@ function helpWidth(): number {
 }
 
 /**
- * How much of the terminal the left column may take when the caller does not say.
- *
- * One owner, defaulted on `gutter` itself rather than at each call site. It was briefly defaulted
- * in `renderHelpTable` instead, which left `renderRootHelp`'s direct `gutter` call passing nothing
- * for a required parameter: `width * undefined` is `NaN`, `Math.min(n, NaN)` is `NaN`, and the pad
- * silently collapsed to zero, printing `grepRun the grep tool standalone...` with no gap at all.
- * A layout constant with two homes is a layout constant with one stale home.
+ * Default maximum fraction (1/3) of terminal width allocated to the left help column.
  */
 const DEFAULT_GUTTER_FRACTION = 1 / 3;
 
 /**
- * The widest left column worth aligning to, given the terminal.
- *
- * ALIGNING TO THE LONGEST ENTRY IS THE BUG. One flag spelling out an enum
- * (`--approval-mode=<plan|ask|auto-edit|yolo|always-ask|write>`, 58 characters) set the gutter for
- * all seventy-odd, so every description started past column 62 and had roughly fifteen usable
- * columns left. A single outlier decided the layout for everything around it.
- *
- * So the gutter is capped. Entries within it still align, which is what makes a flag list
- * scannable; the few that overflow put their description on the next line instead of dragging the
- * column right. Trading alignment for one entry beats losing the column for all.
- *
- * `maxFraction` is how much of the width that cap may take, and it is a parameter because the right
- * answer depends on what the left column IS. For flags a third is generous: the name is short and
- * the description is the content. For `veyyon config list` the left column is a dotted setting path
- * that legitimately runs to thirty characters, so a third pushed a four-character value like `true`
- * onto its own line and grew the listing from 470 lines to 714 for no gain in readability.
+ * Computes the left column width for help tables, capped by maxFraction of terminal width.
  */
 function gutter(entries: readonly string[], width: number, maxFraction: number = DEFAULT_GUTTER_FRACTION): number {
 	// `Bun.stringWidth`, never `.length`: a styled entry carries escape bytes that occupy no columns.
@@ -517,11 +464,7 @@ function gutter(entries: readonly string[], width: number, maxFraction: number =
 }
 
 /**
- * Emit `left` and its description, wrapped, with continuation lines under the description.
- *
- * A wrapped description that returns to column 0 reads as a new entry, so the indent is what keeps
- * a two-line flag from looking like two flags. `Bun.wrapAnsi` is the repo's wrapper and is correct
- * for wide characters, which matters here because a description may quote a model id or a path.
+ * Appends a left column entry and its wrapped description lines with proper indentation.
  */
 function pushWrapped(lines: string[], left: string, description: string, column: number, width: number): void {
 	if (!description) {
@@ -549,16 +492,7 @@ function pushWrapped(lines: string[], left: string, description: string, column:
 }
 
 /**
- * Lay out a two-column help table so it fits the terminal, wrapping the right column.
- *
- * Exported because the same table is built by hand elsewhere. `getExtraHelpText` in the coding
- * agent held an eighty-five line environment-variable table with its gutter typed into every row as
- * literal spaces, three different gutters across its sections, and no wrapping at all, so the widest
- * row ran to 129 columns and the terminal re-broke it wherever it liked. A padded string cannot
- * respond to a terminal width; a table of rows can, and there is now one place that knows how.
- *
- * Widths go through `Bun.stringWidth`, not `.length`, because a caller may style the left column and
- * an escape sequence occupies no columns on screen while counting as characters in a string.
+ * Lays out a two-column help table wrapped to terminal width using visual string widths.
  */
 export function renderHelpTable(
 	rows: ReadonlyArray<readonly [name: string, description: string]>,
@@ -578,11 +512,7 @@ export function renderHelpTable(
 }
 
 /**
- * Wrap a paragraph of help prose to the terminal, at a given indent.
- *
- * Prose interleaved into a table is how the environment section became unreadable: three sentences
- * about profile resolution sat between two variable rows, aligned as though they were rows, so the
- * eye read them as a variable with a very long name. Prose gets its own shape.
+ * Wraps a paragraph of help prose to fit terminal width at the given indent.
  */
 export function renderHelpParagraph(text: string, options: { indent?: string } = {}): string[] {
 	const indent = options.indent ?? "  ";
@@ -756,11 +686,7 @@ export interface CommandEntry {
 	load: () => Promise<CommandCtor>;
 	aliases?: string[];
 	/**
-	 * Listing metadata copied from the loaded class's statics. When EVERY entry
-	 * in the registry carries one, root help renders from the table and loads
-	 * only the default (hidden) command — on a large registry this removes most
-	 * of `veyyon --help`'s module-load cost. A parity test in each product pins
-	 * the copy against the real statics so it cannot drift.
+	 * Metadata summary allowing root help to render without loading command modules.
 	 */
 	summary?: CommandSummary;
 }
@@ -877,13 +803,7 @@ async function loadEntry(entry: CommandEntry): Promise<CommandCtor> {
 }
 
 /**
- * Build the config for ROOT help. Root help lists every command's name and
- * one-line description, plus the default (hidden) command's full flag table.
- * When every registry entry carries a `summary`, the listing renders from the
- * table and ONLY the default command's module loads — on a large registry
- * this is most of `veyyon --help`'s cost. Any entry without a summary falls
- * back to loading everything, so an unsummarized command degrades the help
- * path instead of misrendering it.
+ * Builds root help config, using summaries when available or loading all commands as fallback.
  */
 async function loadRootHelpConfig(opts: RunOptions): Promise<CliConfig> {
 	const summaries = new Map<string, CommandSummary>();

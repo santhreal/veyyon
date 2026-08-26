@@ -1,21 +1,5 @@
 /**
- * Shared adversarial-string generators for every fuzz suite in the workspace.
- *
- * One home for the fragment pool, the deterministic LCG, and the random-string
- * builder, so every fuzzer draws from the SAME adversarial surface -- lone
- * surrogates, malformed ANSI/OSC, combining / zero-width / wide / ZWJ graphemes,
- * control bytes -- instead of each test hand-rolling its own drifting copy.
- *
- * WHY IT LIVES IN `@veyyon/utils` AND NOT IN A TEST DIRECTORY. It used to sit
- * under `packages/tui/test/helpers/`, which nine tui suites imported by relative
- * path. A test directory is not an API: the coding-agent fuzzer could not import
- * it, so it carried a byte-identical copy of {@link lcg} instead -- same
- * multiplier, same increment, same normalization. A duplicated seeded RNG is the
- * worst kind of copy, because the two stay identical right up until one is tuned
- * and then "the same seed" silently means two different streams in two suites.
- * A dependency every package already has is the only place both can reach, so
- * that is where it is, beside the other cross-package dev utilities
- * (`bench-harness`, `conformance`).
+ * Shared adversarial string generators and deterministic seeded RNG for fuzz suites.
  */
 
 /** Adversarial fragments assembled into random strings. */
@@ -58,16 +42,7 @@ export const FRAGMENTS: readonly string[] = [
 ];
 
 /**
- * Deterministic 32-bit LCG, drawing raw `uint32` states.
- *
- * This is the ONE place the recurrence lives. Numerical Recipes' `ranqd1`
- * constants: `s = (s * 1664525 + 1013904223) mod 2^32`. Callers that want a
- * fraction use {@link lcg}, which is this function normalized -- so the two draw
- * the identical state sequence from the identical seed and can never drift apart
- * the way two hand-written copies do.
- *
- * Use this form when you need integers: `next() % n` over raw states costs one
- * operation, where the fraction form would multiply back out and re-floor.
+ * Deterministic 32-bit linear congruential generator returning raw `uint32` states.
  */
 export function lcgUint32(seed: number): () => number {
 	let s = seed >>> 0;
@@ -98,12 +73,7 @@ export const FUZZ_SEED_ENV = "VEYYON_FUZZ_SEED";
 let runNonce: number | null = null;
 
 /**
- * The nonce every seed in this run is mixed with.
- *
- * Resolved from {@link FUZZ_SEED_ENV} when it is set, and drawn at random otherwise, in which case
- * the value is printed once so the run can be replayed. A malformed value THROWS rather than
- * falling back to a random one: silently ignoring `VEYYON_FUZZ_SEED=0xdeadbeff` would run a
- * different set of inputs than the one being reproduced and report that the bug is gone.
+ * Resolves the run nonce from {@link FUZZ_SEED_ENV} or draws a random unsigned 32-bit int.
  */
 function resolveRunNonce(): number {
 	if (runNonce !== null) return runNonce;
@@ -126,22 +96,7 @@ function resolveRunNonce(): number {
 }
 
 /**
- * The seed a fuzz suite should use, given the fixed one written at the call site.
- *
- * WHY THE FIXED SEED IS NOT ENOUGH. Every hand-rolled fuzzer in this workspace hardcoded its seed,
- * so each run replayed the identical inputs: a large table-driven suite rather than a fuzzer, and
- * one that will never reach input 8,001 however long it runs. Mixing the call site's constant with
- * a per-run nonce makes consecutive runs explore different inputs while keeping every suite's
- * streams independent of each other.
- *
- * Reproducibility is preserved rather than traded away. The nonce is printed once per process, and
- * setting {@link FUZZ_SEED_ENV} to it replays every suite in the run exactly. `VEYYON_FUZZ_SEED=0`
- * is the deterministic mode: the nonce is zero and every call site gets back the constant it was
- * written with, which is what a bisect wants.
- *
- * `base` doubles as the call site's identity, so two suites that pass different constants keep
- * different streams under every nonce. That is why the constants stay in the source rather than
- * being replaced by labels: they are already unique, already there, and cost nothing.
+ * Mixes a call-site's fixed base seed with the per-run nonce using SplitMix32.
  */
 export function fuzzSeed(base: number): number {
 	const nonce = resolveRunNonce();
@@ -171,22 +126,13 @@ export interface FuzzStringsOptions {
 	/** Generated inputs to try, after the corpus. */
 	readonly iterations: number;
 	/**
-	 * Inputs that broke this check before, replayed FIRST on every run and under every seed.
-	 *
-	 * A fuzz find that is not written down is only found again by luck. Each entry is a literal in
-	 * the suite's source, copied from the `corpus entry:` line a failure prints.
+	 * Known-failing input strings replayed first on every run before generated inputs.
 	 */
 	readonly corpus?: readonly string[];
 	/** Upper bound on fragments per generated input. Defaults to `buildString`'s own. */
 	readonly maxFragments?: number;
 	/**
-	 * How to build one generated input, when the shared {@link FRAGMENTS} pool is not the right one.
-	 *
-	 * Several suites need a narrower alphabet than the shared pool: the width-math oracle only holds
-	 * for fragments both implementations agree on, the stdin decoder wants raw byte sequences, and
-	 * the key parser wants CSI-shaped noise. They each had their own loop over their own pool, which
-	 * is exactly how they ended up without shrinking or a corpus. Passing the builder keeps the pool
-	 * where it belongs -- next to the invariant that constrains it -- and still gets both.
+	 * Optional custom generator when the suite requires a specialized alphabet or shape.
 	 */
 	readonly build?: (rand: () => number) => string;
 }
@@ -206,15 +152,7 @@ interface ShrinkResult {
 }
 
 /**
- * The same driver for a case that is a STRUCTURE rather than a string.
- *
- * Two suites could not use {@link fuzzStrings} and said so in their headers: `bracketed-paste-fuzz`
- * generates a pasted stream together with the marker offsets inside it and a chunking of that
- * stream, and `deccara-fuzz` generates a line together with the width it must fill. Shrinking the
- * string alone would report an input that no longer matches its own parameters -- a stream whose
- * recorded marker offsets point past its end -- and a reader would chase that instead of the bug.
- * So they kept hand-written loops, which is exactly how they ended up without shrinking or a
- * corpus, the two gaps `fuzzStrings` exists to close.
+ * Options for structured fuzzing where test cases are complex objects rather than strings.
  */
 export interface FuzzCasesOptions<T> {
 	/** Same contract as {@link FuzzStringsOptions.seed}: mixed with the per-run nonce. */
@@ -225,13 +163,7 @@ export interface FuzzCasesOptions<T> {
 	/** Build one case. The generator is the run's stream, so cases stay reproducible in order. */
 	readonly build: (rand: () => number) => T;
 	/**
-	 * Every simpler case this one could be reduced to, biggest reduction first.
-	 *
-	 * Candidates rather than a search, so ONE minimisation strategy serves every domain: the driver
-	 * takes the first candidate that still fails and repeats from there. Each candidate must be a
-	 * case the builder could itself have produced -- drop a whole paste, drop a segment, merge two
-	 * chunks -- because a candidate that is internally inconsistent reports a bug that does not
-	 * exist. Omit it and a failure is reported unshrunk, which is still better than a wrong minimum.
+	 * Returns candidate simplifications for a failing case, ordered from largest reduction first.
 	 */
 	readonly simplify?: (input: T) => readonly T[];
 	/** How the failure names a case. Defaults to `JSON.stringify`. */
@@ -242,12 +174,7 @@ export interface FuzzCasesOptions<T> {
 export type FuzzCaseCheck<T> = (input: T, rand: () => number) => void;
 
 /**
- * Run `check` over the corpus and then over generated cases, minimising any failure through
- * `simplify`.
- *
- * The failure report is deliberately identical in shape to the string driver's: what failed, how
- * far it shrank, the seed that replays the run, and a paste-ready corpus line. A reader should not
- * have to know which driver a suite uses to read its output.
+ * Runs `check` over corpus and generated cases, shrinking any failures via `simplify`.
  */
 export function fuzzCases<T>(options: FuzzCasesOptions<T>, check: FuzzCaseCheck<T>): void {
 	const streamSeed = fuzzSeed(options.seed);
@@ -285,12 +212,7 @@ function boundCaseCheck<T>(check: FuzzCaseCheck<T>, caseSeed: number): (input: T
 }
 
 /**
- * Take the first candidate that still fails and repeat from there.
- *
- * Candidates already tried are remembered, so a `simplify` that can return the case it was given
- * (or cycle between two forms) cannot spin: it runs out of new candidates and stops. The bound on
- * total attempts is the second half of that guarantee, for a `simplify` that generates an unbounded
- * family -- a fuzz run must not become the thing that hangs CI.
+ * Shrinks a failing structured case by trying candidates from `simplify` until minimal.
  */
 function shrinkCase<T>(
 	input: T,
@@ -342,23 +264,7 @@ function caseFailure(original: string, minimal: string, error: unknown, fromCorp
 }
 
 /**
- * Run `check` over the corpus and then over generated adversarial strings, shrinking any failure.
- *
- * WHY THIS EXISTS RATHER THAN A HAND-WRITTEN LOOP. The ten hand-rolled fuzzers each wrote their own
- * `for` loop over {@link buildString}, which left two gaps that no amount of iterations closes.
- *
- * The first is shrinking. A generated input is up to 24 fragments of lone surrogates, truncated CSI
- * sequences and ZWJ clusters; exactly one of them usually matters. Reporting the whole 300-character
- * string means the first job after every find is to minimise it by hand, which is mechanical work a
- * machine does better and does the same way every time.
- *
- * The second is the corpus. Nothing persisted a failing input, so a find became a hand-written test
- * or was lost, and the fuzzer was as likely to re-find it as it was the first time -- which is to
- * say, by luck. Replaying known-bad inputs before any generated one costs microseconds and makes a
- * regression impossible to miss.
- *
- * Failures are re-thrown with the minimal input, the original length, and a paste-ready corpus line.
- * The original error is kept as `cause`, so its own message and stack survive.
+ * Runs `check` over corpus and generated adversarial strings, delta-debugging failures to minimal inputs.
  */
 export function fuzzStrings(options: FuzzStringsOptions, check: FuzzCheck): void {
 	const streamSeed = fuzzSeed(options.seed);
@@ -390,12 +296,7 @@ export function fuzzStrings(options: FuzzStringsOptions, check: FuzzCheck): void
 }
 
 /**
- * Pin a case's secondary randomness so shrinking replays the SAME case.
- *
- * A suite that also draws column indices, widths or flags per iteration cannot take them from the
- * generator's shared stream: every shrink attempt would advance it and check a different case than
- * the one that failed, which turns minimisation into a second search. Each case therefore gets its
- * own generator, rebuilt from a fixed per-case seed on every replay.
+ * Wraps `check` with a per-case deterministic RNG so shrinking replays the exact same secondary choices.
  */
 function boundCheck(check: FuzzCheck, caseSeed: number): (input: string) => void {
 	return input => check(input, lcg(caseSeed));
@@ -410,13 +311,7 @@ function mix32(value: number): number {
 }
 
 /**
- * Delta-debug `input` down to the shortest string `check` still rejects.
- *
- * Halves first, so a long input collapses in a few passes rather than one code point at a time, then
- * single code points for the last few. Code points rather than UTF-16 units: splitting a surrogate
- * pair would invent an input the generator could not produce and send the reader after a lone
- * surrogate that was never there. Any throw counts as still-failing -- narrowing to the same message
- * sounds stricter but stalls whenever the assertion text quotes the input.
+ * Delta-debugs `input` by binary partitioning down to the shortest string `check` still rejects.
  */
 function shrink(input: string, error: unknown, check: (input: string) => void): ShrinkResult {
 	let best: ShrinkResult = { input, error };
