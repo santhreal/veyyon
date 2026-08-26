@@ -1215,7 +1215,7 @@ export class Markdown implements Component {
 			const tail = text.slice(prefix.length);
 			if (canStreamLex(tail)) {
 				const tailTokens = markdownParser.lexer(tail);
-				const tokens = [...prefixTokens, ...tailTokens];
+				const tokens = prefixTokens.concat(tailTokens);
 				this.#freezeStablePrefix(text, tokens, { preserveExisting: true });
 				// `text` extends the prefix, proven just above, and the freeze only
 				// ever advances the boundary within it. Recording which string that
