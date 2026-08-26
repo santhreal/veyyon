@@ -11,7 +11,7 @@
 
 ### Changed
 
-- `bestEffort` and `optionalResult` are imported from `@veyyon/utils/discarded-fault`. The barrel does not re-export them, so a consumer reaching them through `@veyyon/utils` names the module instead.
+- `bestEffort` and `optionalResult` are imported from `@veyyon/utils/discarded-fault`, which the barrel does not re-export, so a consumer reaching them names the module instead.
 
 ### Fixed
 

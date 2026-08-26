@@ -31,7 +31,7 @@
 - A failed Amazon Bedrock turn reports its elapsed duration again, instead of carrying time-to-first-token with no total while a successful turn reported both.
 - Normalized cumulative tool-call argument delta snapshots for OpenAI Codex streams while preserving true incremental deltas on standard OpenAI Responses streams via declared per-provider wire shapes.
 - The Cursor HTTP/2 client session handles error and close events directly so connection drops, DNS resolution failures and socket resets reject the turn with a classified error instead of raising an unhandled exception.
-- A read of several ranges, such as `:5-16,960-973`, is judged already-read only when every one of its ranges was read before. The loop guard kept the first range and discarded the rest, so it steered the model away from lines nobody had read and never recorded the trailing ranges it did read.
+- A read of several ranges, such as `:5-16,960-973`, is judged already-read only when every one of its ranges was read before, instead of keeping the first range, discarding the rest and steering the model away from lines nobody had read.
 - Streamed tool-call argument deltas in OpenAI Responses streams append incrementally rather than truncating on coincidental prefix matches.
 - Fixed `ToolCallLoopGuard` deciding read subsumption from rendered result text and summary phrases, preventing follow-up range reads of summarized files from being falsely blocked.
 - Fixed read tool target parsing in `ToolCallLoopGuard` to correctly handle URI schemes, Windows drive prefixes, compound raw-range selectors, and open-ended ranges without falsely subsuming distinct reads.
