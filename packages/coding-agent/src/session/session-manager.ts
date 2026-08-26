@@ -1878,22 +1878,13 @@ export class SessionManager {
 	async #dropIfEmptyAndNoDraft(): Promise<void> {
 		if (!this.#draftOnlySessionCleanupArmed) return;
 		const sessionFile = this.#sessionFile;
-		// `!== "present"` disarms on both absent and unreachable. Falling through is the branch that
-		// DELETES, so the only state allowed to reach it is one where this manager can see the file
-		// it is about to remove. An unreachable session file used to read as absent here too, which
-		// happened to disarm as well; the difference now is that it is reported rather than guessed
-		// right by accident.
+		// `!== "present"` disarms on absent AND unreachable: falling through deletes, so only a visible file qualifies.
 		if (!sessionFile || this.#storage.existsStateSync(sessionFile) !== "present") {
 			this.#draftOnlySessionCleanupArmed = false;
 			return;
 		}
-		// A DRAFT MEANS KEEP THE SESSION, AND SO DOES NOT KNOWING. The draft lives in the session's
-		// ARTIFACTS directory, which is a different directory from the session file, so it can be
-		// unreachable while the session file beside it reads fine. With the boolean probe an unreachable
-		// artifacts directory answered "no draft" and fell through to `deleteSessionWithArtifacts`, which
-		// deletes the session AND the draft in it: the operator loses unsent text because a mount was
-		// briefly unavailable. This is the case `pathExistsOrThrow` exists for, and the safe direction here
-		// is to keep the session rather than to throw out of a close path.
+		// A draft means keep; so does not knowing. Draft lives in ARTIFACTS dir (different from session file),
+		// so unreachable artifacts must not read as "no draft" → deleting session + draft.
 		const draftPath = this.#draftPath();
 		if (draftPath && this.#storage.existsStateSync(draftPath) !== "absent") return;
 		if (!holdsOnlyDraftMetadata(this.#entries)) {
@@ -1938,10 +1929,7 @@ export class SessionManager {
 		await this.#scheduleDiskWork(async () => {
 			const hadWriter = this.#writer !== undefined;
 			await this.#closeWriterHandle();
-			// `=== "present"` because `#fileIsCurrent` is a claim that the file on disk MATCHES the
-			// entries in memory, and an unreachable file cannot be claimed to match anything. Leaving
-			// it false costs a full rewrite on the next write, which is the cheap wrong answer; the
-			// expensive one is a title patch applied to a file nobody could read.
+			// `=== "present"`: `#fileIsCurrent` claims disk matches memory; unreachable can't match.
 			if (hadWriter || (this.#sessionFile && this.#storage.existsStateSync(this.#sessionFile) === "present"))
 				this.#fileIsCurrent = true;
 		});
@@ -3032,12 +3020,8 @@ export class SessionManager {
 				// may be the newest entry there; prefer a genuine current-cwd session.
 				let newestInTargetDir = await findMostRecentSession(dir, storage);
 				const breadcrumbFile = path.resolve(breadcrumb.sessionFile);
-				// `=== "absent"` because "missing" here means the worktree was moved or renamed, and
-				// that conclusion RE-ROOTS a session into a different directory. `existsSync` answered
-				// `false` for a cwd that exists and cannot be reached (an unmounted network project, a
-				// directory whose permissions changed), so a temporarily unavailable project read as a
-				// deleted one and the terminal's session was adopted somewhere else. Not knowing is not
-				// the same as gone.
+				// `=== "absent"`: "missing" means worktree moved/renamed → re-roots session. `existsSync` answered
+				// `false` for unreachable cwd (unmounted project), adopting the session elsewhere. Not knowing ≠ gone.
 				const breadcrumbCwdMissing = pathStateSync(breadcrumbCwd) === "absent";
 				const newestIsBreadcrumb = newestInTargetDir ? path.resolve(newestInTargetDir) === breadcrumbFile : false;
 				let currentProjectAlreadyHasSession = false;
