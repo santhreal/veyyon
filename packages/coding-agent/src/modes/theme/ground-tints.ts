@@ -101,6 +101,14 @@ export function resetGroundTintsForTest(): void {
 }
 
 function channels(hex: string): [number, number, number] {
+	// Fast path: `#RRGGBB` is 7 chars. charCodeAt-based parse avoids
+	// three `hex.slice()` + `Number.parseInt()` allocations.
+	if (hex.length === 7 && hex.charCodeAt(0) === 35) {
+		const r = (hexDigit(hex.charCodeAt(1)) << 4) | hexDigit(hex.charCodeAt(2));
+		const g = (hexDigit(hex.charCodeAt(3)) << 4) | hexDigit(hex.charCodeAt(4));
+		const b = (hexDigit(hex.charCodeAt(5)) << 4) | hexDigit(hex.charCodeAt(6));
+		return [r, g, b];
+	}
 	return [
 		Number.parseInt(hex.slice(1, 3), 16),
 		Number.parseInt(hex.slice(3, 5), 16),
@@ -108,14 +116,21 @@ function channels(hex: string): [number, number, number] {
 	];
 }
 
+function hexDigit(c: number): number {
+	return c <= 57 ? c - 48 : (c & 0xdf) - 55;
+}
+
 function toHex(rgb: [number, number, number]): string {
-	return `#${rgb
-		.map(c =>
-			Math.round(Math.min(255, Math.max(0, c)))
-				.toString(16)
-				.padStart(2, "0"),
-		)
-		.join("")}`;
+	const r = Math.round(Math.min(255, Math.max(0, rgb[0])))
+		.toString(16)
+		.padStart(2, "0");
+	const g = Math.round(Math.min(255, Math.max(0, rgb[1])))
+		.toString(16)
+		.padStart(2, "0");
+	const b = Math.round(Math.min(255, Math.max(0, rgb[2])))
+		.toString(16)
+		.padStart(2, "0");
+	return `#${r}${g}${b}`;
 }
 
 /** Perceived lightness in [0,1] (Rec. 601 luma — enough to pick a direction). */
