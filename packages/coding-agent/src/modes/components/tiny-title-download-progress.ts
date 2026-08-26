@@ -1,4 +1,4 @@
-import { type Component, type MotionClock, SettleValue, subCellBar } from "@veyyon/tui";
+import { type Component, type MotionClock, padding, SettleValue, subCellBar } from "@veyyon/tui";
 import { clamp01, clampLow, formatBytes } from "@veyyon/utils";
 import { getTinyTitleModelSpec, type TinyTitleLocalModelKey } from "../../tiny/models";
 import type { TinyTitleProgressEvent } from "../../tiny/title-protocol";
@@ -120,7 +120,7 @@ export class TinyTitleDownloadProgressComponent implements Component {
 	 */
 	render(width: number): readonly string[] {
 		width = Math.max(1, width);
-		const inset = " ".repeat(COMPOSER_INSET_COLS);
+		const inset = padding(COMPOSER_INSET_COLS);
 		const spec = getTinyTitleModelSpec(this.#modelKey);
 		const dot = theme.sep.dot.trim();
 		const status = statusLabel(this.#event);

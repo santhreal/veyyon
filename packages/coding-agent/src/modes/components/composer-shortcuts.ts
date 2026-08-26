@@ -1,4 +1,5 @@
 import type { Component, MouseRoutable, SgrMouseEvent } from "@veyyon/tui";
+import { padding } from "@veyyon/tui";
 import type { KeybindingsManager } from "../../config/keybindings";
 import { COMPOSER_INSET_COLS } from "./composer-chrome";
 import { appKey } from "./keybinding-hints";
@@ -112,7 +113,7 @@ export class ComposerShortcutsBar implements Component, MouseRoutable {
 				colEnd: COMPOSER_INSET_COLS + chip.offset + chip.width,
 			});
 		}
-		const inset = " ".repeat(COMPOSER_INSET_COLS);
+		const inset = padding(COMPOSER_INSET_COLS);
 		return [inset + first.styled];
 	}
 

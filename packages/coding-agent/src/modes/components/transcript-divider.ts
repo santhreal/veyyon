@@ -1,3 +1,4 @@
+import { padding } from "@veyyon/tui";
 import { theme } from "../../modes/theme/theme";
 import { COMPOSER_INSET_COLS } from "./composer-chrome";
 
@@ -36,7 +37,7 @@ export function renderTranscriptDivider(width: number, label: string, hint?: str
 	const tail = hint ? `${dot} ${hint}` : "";
 	const content = tail ? `${label} ${tail}` : label;
 	const contentWidth = Bun.stringWidth(content, { countAnsiEscapeCodes: false });
-	const inset = " ".repeat(COMPOSER_INSET_COLS);
+	const inset = padding(COMPOSER_INSET_COLS);
 	const ruleWidth = Math.min(TRANSCRIPT_DIVIDER_RULE_WIDTH, width - COMPOSER_INSET_COLS - contentWidth - 1);
 	const styled = tail ? `${theme.fg("muted", label)} ${theme.fg("dim", tail)}` : theme.fg("muted", label);
 	if (ruleWidth < 1) return `${inset}${styled}`;

@@ -9,7 +9,7 @@
 
 import type { ThinkingLevel } from "@veyyon/agent-core";
 import type { Component, MouseRoutable, SgrMouseEvent } from "@veyyon/tui";
-import { Spacer, TERMINAL, truncateToWidth } from "@veyyon/tui";
+import { padding, Spacer, TERMINAL, truncateToWidth } from "@veyyon/tui";
 import { groundHairlineHex, groundTintFgAnsi } from "../theme/ground-tints";
 import { theme } from "../theme/theme";
 import { EMBER } from "./sun";
@@ -97,7 +97,7 @@ export function resolveComposerAccents(state: ComposerAccentState): ComposerAcce
 	}
 	if (state.focusedSubagent) gutter = `\x1b[2m${gutter}\x1b[22m`;
 
-	const inset = " ".repeat(COMPOSER_INSET_COLS);
+	const inset = padding(COMPOSER_INSET_COLS);
 	return {
 		borderColor,
 		promptGutter: `${inset}${gutter} `,
@@ -191,7 +191,7 @@ export class QuietZoneLine implements Component, MouseRoutable {
 		const pad = Math.max(0, Math.min(this.indent, width - 1));
 		this.#lastPad = pad;
 		const line = this.line(width - pad);
-		return line === null ? [] : [" ".repeat(pad) + line];
+		return line === null ? [] : [padding(pad) + line];
 	}
 
 	routeMouse(event: SgrMouseEvent, _line: number, col: number): void {
@@ -276,7 +276,7 @@ export class StaticComposerFrame implements Component {
 		const w = Math.max(1, width);
 		const clip = (row: string): string => truncateToWidth(row, w);
 		const hairline = new ComposerHairline().render(w)[0] ?? "";
-		const inset = " ".repeat(COMPOSER_INSET_COLS);
+		const inset = padding(COMPOSER_INSET_COLS);
 		const gutter = `${theme.getFgAnsi("borderAccent")}›\x1b[39m`;
 		return [
 			"",
