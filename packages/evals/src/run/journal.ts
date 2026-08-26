@@ -4,6 +4,11 @@
  * Each settled trial is written immediately as a single JSON line and synced
  * to disk (<runsDir>/<runId>/trials.jsonl). Large artifacts (file trees, logs)
  * are stored as disk paths, and rawOutput is bounded to a 64 KiB tail.
+ *
+ * The first line is a header stating the record shape the rest of the file holds. A resume
+ * reads trials written by an earlier build of this package, so a shape it does not know is
+ * rejected rather than mixed into a run: an outcome classified from fields a record predates
+ * is not a measurement.
  */
 
 import * as fs from "node:fs/promises";
@@ -11,11 +16,96 @@ import * as path from "node:path";
 import type { TrialArtifacts, TrialCell, TrialResultRecord } from "../core";
 export const MAX_RAW_OUTPUT_CHARS = 65_536; // 64 KiB character ceiling
 
+/** Marks a file as this journal rather than any other JSONL a run directory holds. */
+export const RUN_JOURNAL_KIND = "veyyon-evals-trials";
+
+/**
+ * The trial record shape the journal writes. Bump this whenever a reader of a settled trial
+ * starts depending on a field or a meaning the previous shape did not carry.
+ */
+export const RUN_JOURNAL_VERSION = 1;
+
+export interface RunJournalHeader {
+	readonly journal: string;
+	readonly version: number;
+	readonly runId: string;
+}
+
+/** A journal written before this shape existed, or by a build that writes another one. */
+export class StaleRunJournalError extends Error {
+	readonly journalPath: string;
+	readonly foundVersion: number | null;
+
+	constructor(journalPath: string, foundVersion: number | null) {
+		super(
+			`Journal '${journalPath}' holds trial records of ${
+				foundVersion === null ? "an unstated shape" : `shape version ${foundVersion}`
+			}; this build reads version ${RUN_JOURNAL_VERSION}. Start a new run id instead of resuming this one.`,
+		);
+		this.name = "StaleRunJournalError";
+		this.journalPath = journalPath;
+		this.foundVersion = foundVersion;
+	}
+}
+
+/** A line that parses as JSON and is not a trial record: the file is not what its header says. */
+export class CorruptRunJournalError extends Error {
+	readonly journalPath: string;
+	readonly lineNumber: number;
+
+	constructor(journalPath: string, lineNumber: number) {
+		super(`Journal '${journalPath}' line ${lineNumber} parses as JSON but is not a settled trial.`);
+		this.name = "CorruptRunJournalError";
+		this.journalPath = journalPath;
+		this.lineNumber = lineNumber;
+	}
+}
+
 /**
  * Returns the canonical path to the trials.jsonl journal for a run.
  */
 export function journalPathFor(runsDir: string, runId: string): string {
 	return path.join(runsDir, runId, "trials.jsonl");
+}
+
+/** The header a journal opens with, or null when the first line is not one. */
+function parseHeader(line: string): RunJournalHeader | null {
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(line);
+	} catch {
+		return null;
+	}
+	if (!parsed || typeof parsed !== "object") return null;
+	const header = parsed as Record<string, unknown>;
+	if (header.journal !== RUN_JOURNAL_KIND) return null;
+	if (typeof header.version !== "number") return null;
+	return { journal: RUN_JOURNAL_KIND, version: header.version, runId: String(header.runId ?? "") };
+}
+
+/**
+ * The header of an existing journal, or null when the file is absent or empty.
+ * Throws when a journal exists and states a shape this build does not read.
+ */
+async function requireReadableJournal(journalPath: string): Promise<{ header: RunJournalHeader; body: string } | null> {
+	let content: string;
+	try {
+		content = await fs.readFile(journalPath, "utf-8");
+	} catch {
+		return null;
+	}
+	if (content.trim() === "") return null;
+
+	const newline = content.indexOf("\n");
+	const firstLine = (newline === -1 ? content : content.slice(0, newline)).trim();
+	const header = parseHeader(firstLine);
+	if (header === null) {
+		throw new StaleRunJournalError(journalPath, null);
+	}
+	if (header.version !== RUN_JOURNAL_VERSION) {
+		throw new StaleRunJournalError(journalPath, header.version);
+	}
+	return { header, body: newline === -1 ? "" : content.slice(newline + 1) };
 }
 
 /**
@@ -66,13 +156,23 @@ export interface RunJournal {
 /**
  * Opens or creates an append-only JSONL journal for a run.
  * Concurrent appends are serialized and fsynced to disk per line.
+ * A journal already on disk must state the record shape this build writes.
  */
 export async function openRunJournal(runsDir: string, runId: string): Promise<RunJournal> {
 	const journalPath = journalPathFor(runsDir, runId);
 	await fs.mkdir(path.dirname(journalPath), { recursive: true });
 
+	const existing = await requireReadableJournal(journalPath);
 	const handle = await fs.open(journalPath, "a");
 	let writeQueue = Promise.resolve();
+
+	if (existing === null) {
+		const header: RunJournalHeader = { journal: RUN_JOURNAL_KIND, version: RUN_JOURNAL_VERSION, runId };
+		writeQueue = writeQueue.then(async () => {
+			await handle.write(`${JSON.stringify(header)}\n`);
+			await handle.sync();
+		});
+	}
 
 	return {
 		path: journalPath,
@@ -98,32 +198,34 @@ export async function openRunJournal(runsDir: string, runId: string): Promise<Ru
 
 /**
  * Reads all settled trial records from an existing run journal.
- * Returns an empty array if the journal does not exist.
- * Malformed or partial trailing lines are discarded.
+ * Returns an empty array if the journal does not exist or holds only its header.
+ * A partial trailing line from an abrupt termination is discarded; a complete line that is
+ * not a settled trial, and a journal of another record shape, are reported.
  */
 export async function readRunJournal(runsDir: string, runId: string): Promise<readonly TrialResultRecord[]> {
 	const journalPath = journalPathFor(runsDir, runId);
-	let content: string;
-	try {
-		content = await fs.readFile(journalPath, "utf-8");
-	} catch {
-		return [];
-	}
+	const existing = await requireReadableJournal(journalPath);
+	if (existing === null) return [];
 
-	const lines = content.split("\n");
+	const lines = existing.body.split("\n");
 	const records: TrialResultRecord[] = [];
 
-	for (const line of lines) {
-		const trimmed = line.trim();
+	for (let i = 0; i < lines.length; i++) {
+		const trimmed = lines[i].trim();
 		if (!trimmed) continue;
+		let parsed: unknown;
 		try {
-			const parsed = JSON.parse(trimmed) as TrialResultRecord;
-			if (parsed?.cell && parsed.score) {
-				records.push(sanitizeTrialRecord(parsed));
-			}
+			parsed = JSON.parse(trimmed);
 		} catch {
-			// Skip unparseable lines (e.g. truncated from abrupt termination)
+			// A torn write leaves one unparseable line, always the last one.
+			if (i === lines.length - 1) continue;
+			throw new CorruptRunJournalError(journalPath, i + 2);
 		}
+		const record = parsed as TrialResultRecord;
+		if (!record?.cell || !record.score) {
+			throw new CorruptRunJournalError(journalPath, i + 2);
+		}
+		records.push(sanitizeTrialRecord(record));
 	}
 
 	return records;

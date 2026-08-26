@@ -1,5 +1,5 @@
 /**
- * Tests for EvalRunRecord, result validation, and the cross-suite refusal invariant.
+ * Tests for EvalRunRecord construction and the cross-suite refusal invariant.
  *
  * Invariant: Cross-suite comparison is strictly refused. Pass rates and metrics
  * from different evaluation suites may never share a table or aggregate run.
@@ -16,7 +16,6 @@ import {
 	mergeRunRecords,
 	summarizeRunCells,
 	type TrialResultRecord,
-	validateRunRecord,
 } from "../../src/core/run-model";
 
 function createSampleRun(
@@ -47,7 +46,7 @@ function createSampleRun(
 	});
 }
 
-describe("createRunRecord and validateRunRecord", () => {
+describe("createRunRecord", () => {
 	it("creates a well-formed EvalRunRecord", () => {
 		const run = createSampleRun("run-001", "deep-swe", "2.0.0");
 		expect(run.id).toBe("run-001");
@@ -58,21 +57,10 @@ describe("createRunRecord and validateRunRecord", () => {
 		expect(run.repeats).toBe(1);
 	});
 
-	it("validates valid run records and rejects malformed objects", () => {
-		const run = createSampleRun("run-002", "terminal-bench");
-		const validated = validateRunRecord(run);
-		expect(validated.id).toBe("run-002");
-
-		expect(() => validateRunRecord(null)).toThrow(InvalidRunRecordError);
-		expect(() => validateRunRecord({})).toThrow(InvalidRunRecordError);
-		expect(() => validateRunRecord({ id: "run-x", suite: null })).toThrow(InvalidRunRecordError);
-		expect(() =>
-			validateRunRecord({
-				id: "run-x",
-				suite: { name: "x", version: "1" },
-				variants: "not-array",
-			}),
-		).toThrow(InvalidRunRecordError);
+	it("refuses a record that cannot identify itself or its suite", () => {
+		expect(() => createSampleRun("", "deep-swe")).toThrow(InvalidRunRecordError);
+		expect(() => createSampleRun("run-x", "")).toThrow(InvalidRunRecordError);
+		expect(() => createSampleRun("run-x", "deep-swe", "")).toThrow(InvalidRunRecordError);
 	});
 });
 
