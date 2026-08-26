@@ -233,19 +233,8 @@ type AssistantToolCallBlock = Extract<AssistantContentBlock, { type: "toolCall" 
 type SnapshotMode = "full" | "delta";
 
 /**
- * Copy a content block for an immutable subscriber view.
- *
- * `delta` mode serves the per-streaming-event path, where cost scales with
- * event count: a `toolCall` block copies its fields but shares `arguments` by
- * reference. That stays immutable under provider activity because every
- * arguments write across `packages/ai` REPLACES the value wholesale (`parseStreamingJson`,
- * throttle re-parses, object merges, literals) and none mutates an existing
- * arguments object in place, so a reference captured now never changes later.
- * The block itself is still copied because providers do mutate block fields
- * (`text +=`, marker keys) across deltas. `full` mode additionally deep-clones
- * `arguments` with own-enumerable-only semantics; it runs once per message at
- * terminal paths (`done`, `error`, `message_end`, final `toolCall` events),
- * where the sanitized view is authoritative.
+ * Copy a content block for an immutable subscriber view. `delta` mode shares `arguments` by reference
+ * (providers replace, never mutate). `full` mode deep-clones `arguments` at terminal paths.
  */
 function snapshotAssistantContentBlock(block: AssistantContentBlock, mode: SnapshotMode): AssistantContentBlock {
 	switch (block.type) {
@@ -311,13 +300,8 @@ function snapshotAssistantMessageEvent(
 }
 
 /**
- * Normalize a value coming back from `tool.execute()` (or its streaming partial-update callback)
- * into a structurally valid {@link AgentToolResult}.
- *
- * The tool interface is typed, but third-party tools (MCP, extensions, user-authored AgentTools)
- * can violate the contract at runtime. Persisting a malformed result corrupts the session file
- * (missing `content` array → crash on reload). We coerce at the single boundary where untyped
- * results enter the agent loop, so every downstream consumer can rely on the type.
+ * Normalize a `tool.execute()` return into a valid {@link AgentToolResult}. Third-party tools
+ * (MCP, extensions) can violate the contract; coerce at this boundary so downstream stays safe.
  */
 
 function hasSubstantiveToolResultContent(content: AgentToolResult["content"]): boolean {
@@ -825,11 +809,8 @@ function endAgentStream(
 }
 
 /**
- * Resolve aside entries at the moment the loop is about to inject them. Each entry
- * is either a ready {@link AgentMessage} or a sync thunk evaluated here so the
- * producer can make the final inject-or-drop decision (return null) against
- * up-to-the-injection state — e.g. dropping late diagnostics a newer edit
- * superseded. Kept sync so it can never stall the loop.
+ * Resolve aside entries at injection time. Each is a ready {@link AgentMessage} or a sync thunk
+ * evaluated here so the producer can inject-or-drop against current state. Sync so it can't stall.
  */
 function resolveAsides(entries: AsideMessage[] | undefined): AgentMessage[] {
 	if (!entries || entries.length === 0) return [];
