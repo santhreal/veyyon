@@ -29,6 +29,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import {
 	createModuleReachCache,
+	dynamicImportSpecifiersIn,
 	type ModuleReachResolution,
 	moduleReach,
 	moduleReachCount,
@@ -175,14 +176,17 @@ describe("asking whether a model is configured is not calling one", () => {
 	 * THE DEFERRAL ITSELF, by specifier, in both spellings. A reach count cannot tell a deferred edge
 	 * from a deleted one, and `import(x)` and `import ... from x` name the same path, so the static
 	 * form is asserted absent and the dynamic form present. Without the second half, a change that
-	 * dropped the LLM call entirely would pass everything above.
+	 * dropped the LLM call entirely would pass everything above: deleting the call makes the helper
+	 * that holds the deferred import dead, and deleting the helper takes the specifier with it.
+	 *
+	 * Both halves read the specifier lists rather than the source text, so reformatting the call
+	 * across lines or changing its quotes moves nothing.
 	 */
 	it("loads the calling half dynamically, and only dynamically", () => {
 		const source = fs.readFileSync(path.join(SRC, "core", "extraction.ts"), "utf-8");
 
 		expect(runtimeImportsOf("core/extraction.ts")).not.toContain("./local-llm");
-		expect(source).toContain('import("./local-llm")');
-		expect(source).toContain("llmClient()");
+		expect(dynamicImportSpecifiersIn(source)).toContain("./local-llm");
 	});
 
 	/**

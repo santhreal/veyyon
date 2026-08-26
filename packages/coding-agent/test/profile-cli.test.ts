@@ -14,6 +14,7 @@ import {
 	setProfile,
 	VERSION,
 } from "@veyyon/utils/dirs";
+import { moduleSpecifiersIn } from "@veyyon/utils/module-reach";
 import { enterIsolatedConfigRoot, type IsolatedConfigRoot } from "../../utils/test/helpers/isolated-config-root";
 import { runCli } from "../src/cli";
 import * as profileAliasCli from "../src/cli/profile-alias";
@@ -292,10 +293,13 @@ describe("global --profile flag", () => {
 		// (e.g. @veyyon/utils/type-guards, /dirs) so nothing loads the agent .env
 		// before runCli() calls setProfile(). A bare-barrel static import here
 		// silently reintroduces the wrong-profile-.env bug, so fail on it.
+		//
+		// The specifier list comes from moduleSpecifiersIn, not a per-line regex: a
+		// clause broken across lines by the formatter, which is what a long import
+		// becomes, put the specifier on a line with no `import` keyword on it and
+		// the scan walked past the exact edge it exists to forbid.
 		const cliSource = await fs.readFile(path.join(import.meta.dir, "..", "src", "cli.ts"), "utf-8");
-		const barrelImports = cliSource
-			.split("\n")
-			.filter(line => /^\s*import\b/.test(line) && /from\s+["']@veyyon\/utils["']/.test(line));
+		const barrelImports = moduleSpecifiersIn(cliSource).filter(specifier => specifier === "@veyyon/utils");
 		expect(barrelImports).toEqual([]);
 	});
 
