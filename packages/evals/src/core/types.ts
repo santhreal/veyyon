@@ -160,6 +160,10 @@ export interface HarnessBackendBinding {
 	readonly containerAssetsDir?: string;
 	readonly envVars?: Readonly<Record<string, string>>;
 	readonly cliFlags?: readonly string[];
+	readonly sourceMount?: boolean;
+	readonly localTarball?: boolean;
+	readonly authGateway?: boolean;
+	readonly requiresDocker?: boolean;
 	readonly extra?: Readonly<Record<string, unknown>>;
 }
 

@@ -44,6 +44,10 @@ export class VeyyonAdapter implements HarnessAdapter {
 		harbor: {
 			agentName: "veyyon",
 			agentImportPath: AGENT_IMPORT_PATH,
+			sourceMount: true,
+			localTarball: true,
+			authGateway: true,
+			requiresDocker: true,
 		},
 		"in-process": {},
 	} as const;

@@ -6,8 +6,11 @@
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { BackendId } from "../../core/types";
+import { getHarness } from "../../core/harness-registry";
 import { codingAgentDir } from "../../paths";
+import type { LaunchRequest, RunRole } from "../../wire";
+
+export type { LaunchRequest, RunRole };
 export const AGENT_IMPORT_PATH = "veyyon_local:VeyyonLocal";
 
 export interface HarborRunArgsOptions {
@@ -117,58 +120,20 @@ export function buildHarborArgs(options: HarborRunArgsOptions): string[] {
 	const agent = options.agent ?? "veyyon";
 	if (options.agentImportPath) {
 		a.push("--agent-import-path", options.agentImportPath);
-	} else if (agent === "veyyon") {
-		a.push("--agent-import-path", AGENT_IMPORT_PATH);
 	} else {
-		a.push("-a", agent);
+		const harness = getHarness(agent);
+		const binding = harness?.backends.harbor;
+		if (binding?.agentImportPath) {
+			a.push("--agent-import-path", binding.agentImportPath);
+		} else {
+			a.push("-a", binding?.agentName ?? agent);
+		}
 	}
 
 	if (options.passthrough && options.passthrough.length > 0) {
 		a.push(...options.passthrough);
 	}
 	return a;
-}
-
-import type { BenchmarkKind, RunRole } from "../../manager/store";
-
-/** POST /api/runs body. Mirrors the runner CLI surface we actually use. */
-export interface LaunchRequest {
-	suite?: string;
-	backend?: BackendId;
-	/** Benchmark adapter to execute. */
-	benchmark?: BenchmarkKind;
-	model: string;
-	dataset?: string;
-	/** Task count for a dataset sample, or omit when `include` is given. */
-	tasks?: number;
-	/** Explicit task names (passed as repeated --include). */
-	include?: string[];
-	concurrency?: number;
-	timeoutMultiplier?: number;
-	attempts?: number;
-	agent?: string;
-	jobName?: string;
-	/**
-	 * Experiment this run joins, and its arm label inside that experiment. Recorded on the run
-	 * so a reader never has to parse an id back out of the job name.
-	 */
-	experiment?: string;
-	arm?: string;
-	webSearch?: boolean;
-	/** Harbor container backend. Defaults to apple-container whenever the Apple `container` CLI is installed; docker is an explicit opt-in. */
-	environment?: "docker" | "apple-container";
-	/** Prewalk to a fast/cheap model at the first edit/write once the todo list exists; `into` overrides the default "smol" target. */
-	prewalk?: { into?: string };
-	/** Role of this run inside its experiment (baseline vs treatment). */
-	role?: RunRole;
-	/** One-line description of what this arm tests. */
-	note?: string;
-	/** Experiment goal; upserted for the run's experiment. */
-	goal?: string;
-	/** Use prebuilt dist/vey-linux-* binaries instead of the default source mount. */
-	prebuiltBinaries?: boolean;
-	/** Extra raw runner args, appended verbatim. */
-	extraArgs?: string[];
 }
 
 /** Runner CLI flags (sans the `bun src/runner.ts` prefix) for a harbor launch. */

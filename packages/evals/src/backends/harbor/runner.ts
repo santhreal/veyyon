@@ -21,7 +21,11 @@ import { clampLow, errorMessage, isRecord, trimTrailingSlashes, tryParseJson } f
  *   bun packages/evals/src/backends/harbor/runner.ts --help
  */
 import type { Server } from "bun";
+import { getHarness, requireHarness } from "../../core/harness-registry";
+import { HarborBindingNotFoundError, harborAgentLogPath, requireHarborBinding } from "./backend";
 import { buildHarborArgs, harborRunnerArgs, type LaunchRequest } from "./launch-args";
+
+export { HarborBindingNotFoundError, harborAgentLogPath, requireHarborBinding };
 
 // ────────────────────────────────────────────────────────────────────── config
 
@@ -596,7 +600,7 @@ function probeLine(line: string, probe: CostProbe): void {
 
 /**
  * Realtime usage for a still-running trial, read incrementally from its
- * `agent/veyyon.txt` JSONL. Only bytes appended since the previous call are read
+ * agent transcript JSONL. Only bytes appended since the previous call are read
  * and parsed — both this runner's render loop and the manager's 2s sync tick
  * call this for every live trial, and a full-file reread used to block the
  * event loop for seconds (and OOM outright on runaway multi-GB transcripts).
@@ -659,7 +663,7 @@ function probeTrialCost(ompLogPath: string): CostProbe | null {
 }
 
 /** Parse one trial directory into a Trial, or null if it isn't a trial dir yet. */
-function parseTrial(dir: string, name: string): Trial | null {
+function parseTrial(dir: string, name: string, agentName = "veyyon"): Trial | null {
 	const resultPath = path.join(dir, "result.json");
 	if (!fs.existsSync(resultPath)) {
 		// running: dir exists, no result yet. Use dir mtime as start proxy.
@@ -670,8 +674,9 @@ function parseTrial(dir: string, name: string): Trial | null {
 			/* ignore */
 		}
 
-		// Realtime cost from the live agent veyyon.txt log, parsed incrementally.
-		const probe = probeTrialCost(path.join(dir, "agent", "veyyon.txt"));
+		// Realtime cost from the live agent log, parsed incrementally.
+		const relAgentLog = harborAgentLogPath(agentName);
+		const probe = probeTrialCost(path.join(dir, relAgentLog));
 		const costUsd = probe?.costUsd ?? 0;
 		const tokIn = probe?.tokIn ?? 0;
 		const tokOut = probe?.tokOut ?? 0;
@@ -690,7 +695,7 @@ function parseTrial(dir: string, name: string): Trial | null {
 		};
 	}
 	// Trial finished: usage now comes from result.json; drop the live-parse state.
-	costProbes.delete(path.join(dir, "agent", "veyyon.txt"));
+	costProbes.delete(path.join(dir, harborAgentLogPath(agentName)));
 	const raw = readJson(resultPath);
 	if (!raw || typeof raw !== "object") return null;
 	const r = raw as Record<string, unknown>;
@@ -759,7 +764,7 @@ function parseTrial(dir: string, name: string): Trial | null {
 	return { name, status, reward, costUsd, tokIn, tokOut, tokCache, durationMs, detail };
 }
 
-export function readTrials(jobDir: string): Trial[] {
+export function readTrials(jobDir: string, agentName = "veyyon"): Trial[] {
 	let entries: fs.Dirent[] = [];
 	try {
 		entries = fs.readdirSync(jobDir, { withFileTypes: true });
@@ -772,7 +777,7 @@ export function readTrials(jobDir: string): Trial[] {
 	const trials: Trial[] = [];
 	for (const e of entries) {
 		if (!e.isDirectory()) continue;
-		const t = parseTrial(path.join(jobDir, e.name), e.name);
+		const t = parseTrial(path.join(jobDir, e.name), e.name, agentName);
 		if (t) trials.push(t);
 	}
 	return trials;
@@ -898,7 +903,7 @@ interface RenderState {
 }
 
 function render(st: RenderState): void {
-	const trials = readTrials(st.jobDir);
+	const trials = readTrials(st.jobDir, st.cfg.agent);
 	const tot = aggregate(trials, readJobResult(st.jobDir), st.expected);
 	const elapsed = Date.now() - st.startMs;
 	const rate = tot.done > 0 ? elapsed / tot.done : 0;
@@ -982,11 +987,13 @@ export function renderTrialRow(t: Trial): string {
 }
 
 function writeReport(st: RenderState, benchDir: string, exitCode: number): string {
-	const trials = readTrials(st.jobDir).sort((a, b) => a.name.localeCompare(b.name));
+	const trials = readTrials(st.jobDir, st.cfg.agent).sort((a, b) => a.name.localeCompare(b.name));
 	const tot = aggregate(trials, readJobResult(st.jobDir), st.expected);
 	const successPct = tot.done > 0 ? (tot.pass / tot.done) * 100 : 0;
 	const lines: string[] = [];
-	const isOmp = st.cfg.agent === "veyyon";
+	const harness = getHarness(st.cfg.agent);
+	const binding = harness?.backends.harbor;
+	const isHarborHarness = Boolean(binding);
 	const argsLabel = agentArgsLabel(st.cfg);
 	const baseModelLine = st.cfg.models.join(", ");
 	const modelLine = argsLabel ? `${baseModelLine} (${argsLabel})` : baseModelLine;
@@ -994,7 +1001,7 @@ function writeReport(st: RenderState, benchDir: string, exitCode: number): strin
 	lines.push("");
 	lines.push(`- dataset: \`${st.cfg.dataset}\``);
 	lines.push(`- tasks: ${st.cfg.tasks} · attempts: ${st.cfg.attempts} · concurrency: ${st.cfg.concurrency}`);
-	if (isOmp) {
+	if (isHarborHarness) {
 		lines.push(
 			`- install: ${st.cfg.install} · auth: ${st.cfg.gateway ? "host gateway (no keys in container)" : "direct provider keys"}`,
 		);
@@ -1461,7 +1468,9 @@ export function buildHarborEnv(
 	// Drop any stale VEYYON_BENCH_FORWARD_ENV inherited from the caller's shell before
 	// the agent-type early return, so it never leaks (incl. into the dry-run dump).
 	delete env.VEYYON_BENCH_FORWARD_ENV;
-	if (cfg.agent !== "veyyon") return env;
+	const harness = getHarness(cfg.agent);
+	const binding = harness?.backends.harbor;
+	if (!binding) return env;
 	const prepend = (k: string, v: string): void => {
 		env[k] = env[k] ? `${v}:${env[k]}` : v;
 	};
@@ -1489,6 +1498,9 @@ export function buildHarborEnv(
 	if (cfg.envType === "apple-container") env.VEYYON_BENCH_CONTAINER_DNS = CONTAINER_DNS;
 	const forward = collectForwardEnv(cfg);
 	if (Object.keys(forward).length > 0) env.VEYYON_BENCH_FORWARD_ENV = JSON.stringify(forward);
+	if (binding.envVars) {
+		Object.assign(env, binding.envVars);
+	}
 	return env;
 }
 
@@ -1810,7 +1822,10 @@ async function runBenchmark(cfg: Config): Promise<BenchmarkRun> {
 	if (!which("harbor")) {
 		throw new Error("harbor not found on PATH. Install with: uv tool install harbor");
 	}
-	if (cfg.agent === "veyyon" && cfg.envType === "docker" && !which("docker")) {
+	const harness = requireHarness(cfg.agent);
+	const binding = requireHarborBinding(harness);
+
+	if (binding.requiresDocker && cfg.envType === "docker" && !which("docker")) {
 		throw new Error("docker not found on PATH (required to run task containers).");
 	}
 	if (cfg.envType === "apple-container" && !which("container")) {
@@ -1835,7 +1850,7 @@ async function runBenchmark(cfg: Config): Promise<BenchmarkRun> {
 
 	// tarball (local install only)
 	let tarball: string | null = cfg.tarball;
-	if (cfg.agent === "veyyon" && cfg.install === "local" && !cfg.binaryArm64 && !cfg.binaryX64) {
+	if (binding.localTarball && cfg.install === "local" && !cfg.binaryArm64 && !cfg.binaryX64) {
 		if (tarball) {
 			process.stdout.write(dim(`using tarball ${tarball}\n`));
 		} else if (cfg.build) {
@@ -1848,13 +1863,13 @@ async function runBenchmark(cfg: Config): Promise<BenchmarkRun> {
 
 	// source mount (default): repo bind-mounted read-only + cached linux deps tree
 	let source: SourceMount | null = null;
-	if (cfg.agent === "veyyon" && cfg.install === "source" && !cfg.binaryArm64 && !cfg.binaryX64) {
+	if (binding.sourceMount && cfg.install === "source" && !cfg.binaryArm64 && !cfg.binaryX64) {
 		source = prepareSourceDeps(cfg);
 	}
 
 	// models.yml (gateway)
 	let modelsYaml = "";
-	if (cfg.agent === "veyyon" && cfg.gateway) {
+	if (binding.authGateway && cfg.gateway) {
 		modelsYaml = writeModelsYaml(benchDir, cfg);
 		if (!gatewayHealthOk(cfg.gatewayUrl)) {
 			throw new Error(
@@ -1973,7 +1988,7 @@ async function runBenchmark(cfg: Config): Promise<BenchmarkRun> {
 	}
 
 	// final summary (printed to the normal screen)
-	const trials = readTrials(jobDir);
+	const trials = readTrials(jobDir, cfg.agent);
 	const totals = aggregate(trials, readJobResult(jobDir), expected);
 	const successPct = totals.done > 0 ? (totals.pass / totals.done) * 100 : 0;
 	const elapsedMs = Date.now() - st.startMs;
