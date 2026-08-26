@@ -1,6 +1,7 @@
 import * as net from "node:net";
-import { Process, ProcessStatus } from "@veyyon/natives";
+import { ProcessStatus } from "@veyyon/natives";
 import { trimTrailingSlashes } from "@veyyon/utils";
+import { processHandle, processHandlesByPath } from "@veyyon/utils/native-process";
 import type { Browser, Page } from "puppeteer-core";
 import { scopedTimeoutSignal } from "../../utils/fetch-timeout";
 import { ToolError, throwIfAborted } from "../tool-errors";
@@ -108,7 +109,7 @@ export async function findReusableCdp(
 	exe: string,
 	signal?: AbortSignal,
 ): Promise<{ cdpUrl: string; pid: number } | null> {
-	const candidates = Process.fromPath(exe).filter(p => p.status() === ProcessStatus.Running);
+	const candidates = processHandlesByPath(exe).filter(p => p.status() === ProcessStatus.Running);
 	for (const proc of candidates) {
 		let args: string[];
 		try {
@@ -183,7 +184,7 @@ async function pickPageFromList(pages: Page[], matcher?: string): Promise<Page> 
  * Single-process variant for our own spawned children.
  */
 export async function gracefulKillTreeOnce(pid: number, gracePeriodMs = 2000): Promise<void> {
-	const process = Process.fromPid(pid);
+	const process = processHandle(pid);
 	if (!process) return;
 	await process.terminate({ gracefulMs: gracePeriodMs, timeoutMs: 500 });
 }
@@ -193,7 +194,7 @@ export async function gracefulKillTreeOnce(pid: number, gracePeriodMs = 2000): P
  * (single-instance apps may keep an orphan around) and tear them all down.
  */
 export async function killExistingByPath(executablePath: string, signal?: AbortSignal): Promise<number> {
-	const processes = Process.fromPath(executablePath);
+	const processes = processHandlesByPath(executablePath);
 	if (!processes.length) return 0;
 	const results = await Promise.all(
 		processes.map(async process => {

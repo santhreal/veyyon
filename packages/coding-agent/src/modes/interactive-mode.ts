@@ -876,6 +876,12 @@ export class InteractiveMode implements InteractiveModeContext {
 		// fill was seeded (e.g. the async MCP status line) would otherwise leave
 		// the composer drifting off the viewport bottom until the next resize.
 		this.ui.onFrameComposed = () => this.#layout.onFrameComposed();
+		// Size the anchor from the children of the frame about to compose. A turn
+		// that grows in place between one frame and the next has no other moment
+		// to be measured in: the post-commit correction below reads a frame that
+		// already composed too tall, so on its own it moves the window to fit and
+		// back on every chunk of a streaming answer.
+		this.ui.onBeforeCompose = () => this.#layout.sync();
 		try {
 			this.historyStorage = HistoryStorage.open();
 			this.editor.setHistoryStorage(this.historyStorage);

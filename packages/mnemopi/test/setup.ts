@@ -9,6 +9,7 @@ import type { CompleteOptions, LlmBackend } from "@veyyon/mnemopi/core/llm-backe
 import * as LlmBackends from "@veyyon/mnemopi/core/llm-backends";
 import * as Memory from "@veyyon/mnemopi/core/memory";
 import { enterIsolatedConfigRoot, type IsolatedConfigRoot } from "../../utils/test/helpers/isolated-config-root";
+import { DELIBERATE_HOME_CONTROL_ROOT } from "./helpers/home-isolation";
 
 type ResettableModule = Record<string, unknown>;
 
@@ -90,9 +91,13 @@ class FakeLocalLlmBackend implements LlmBackend {
  * Reading the directory is the only way to see any of them, because every path the suite
  * resolves looks correct from inside the suite.
  */
-function homeRootsAMnemopiRunCouldCreate(): string[] {
-	return readdirSync(homedir())
-		.filter(entry => entry.startsWith(".veyyon") || entry === ".hermes" || entry === ".mnemopi")
+export function homeRootsAMnemopiRunCouldCreate(dir: string = homedir()): string[] {
+	return readdirSync(dir)
+		.filter(
+			entry =>
+				(entry.startsWith(".veyyon") || entry === ".hermes" || entry === ".mnemopi") &&
+				entry !== DELIBERATE_HOME_CONTROL_ROOT,
+		)
 		.sort();
 }
 

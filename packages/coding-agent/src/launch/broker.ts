@@ -2,7 +2,7 @@ import * as fs from "node:fs/promises";
 import * as net from "node:net";
 import * as os from "node:os";
 import * as path from "node:path";
-import { Process, type PtyRunResult, PtySession } from "@veyyon/natives";
+import { type PtyRunResult, PtySession } from "@veyyon/natives";
 import {
 	atomicWriteFile,
 	clamp,
@@ -15,6 +15,7 @@ import {
 	postmortem,
 	sanitizeText,
 } from "@veyyon/utils";
+import { processHandle } from "@veyyon/utils/native-process";
 import { truncateHead, truncateHeadBytes, truncateTail, truncateTailBytes } from "../session/streaming-output";
 import { workerEnvFromParent } from "../subprocess/worker-client";
 import { appendDaemonCompletion, readDaemonCompletions } from "./completions";
@@ -791,7 +792,7 @@ class DaemonBroker {
 		const generation = record.generation;
 		await this.#readDetachedOutput(record, generation);
 		if (generation !== record.generation || record.process) return;
-		const processRef = record.snapshot.pid === undefined ? null : Process.fromPid(record.snapshot.pid);
+		const processRef = record.snapshot.pid === undefined ? null : processHandle(record.snapshot.pid);
 		if (processRef?.status() === "running") return;
 		await this.#settle(record, generation);
 	}
@@ -1034,7 +1035,7 @@ class DaemonBroker {
 				if (operation.signal === "SIGINT") record.pty.write("\u0003");
 				else record.pty.kill();
 			} else {
-				const processRef = record.snapshot.pid === undefined ? null : Process.fromPid(record.snapshot.pid);
+				const processRef = record.snapshot.pid === undefined ? null : processHandle(record.snapshot.pid);
 				if (!processRef) throw new Error(`Daemon ${operation.name} process is unavailable`);
 				processRef.killTree(SIGNAL_NUMBER[operation.signal]);
 			}
@@ -1071,7 +1072,7 @@ class DaemonBroker {
 		}
 		record.snapshot.state = "stopping";
 		this.#persist(record);
-		const processRef = record.snapshot.pid === undefined ? null : Process.fromPid(record.snapshot.pid);
+		const processRef = record.snapshot.pid === undefined ? null : processHandle(record.snapshot.pid);
 		if (processRef) await processRef.terminate({ group: true, gracefulMs: timeoutMs, timeoutMs: timeoutMs + 1_000 });
 		else record.pty?.kill();
 		// Process.terminate kills the OS PID and its group, but for pipe-spawned
@@ -1219,7 +1220,7 @@ class DaemonBroker {
 				}
 				const snapshot = parseDaemonSnapshot(decoded.daemon);
 				const spec = parseDaemonSpec(decoded.spec);
-				const processRef = snapshot.pid === undefined ? null : Process.fromPid(snapshot.pid);
+				const processRef = snapshot.pid === undefined ? null : processHandle(snapshot.pid);
 				const wasTerminal = terminalState(snapshot.state);
 				const detached =
 					spec.detached && !wasTerminal && snapshot.state !== "stopping" && processRef?.status() === "running";

@@ -84,7 +84,7 @@ const PREVIEW_WIDTH = 60;
 function previewLine(text: string | undefined): string {
 	if (!text?.trim()) return "(none)";
 	const first = text.trim().split("\n", 1)[0] ?? "";
-	return first.length > PREVIEW_WIDTH ? `${first.slice(0, PREVIEW_WIDTH - 1)}…` : first;
+	return truncateToWidth(first, PREVIEW_WIDTH);
 }
 
 /** Omitted means default read/search; an explicit empty set means no tools. */

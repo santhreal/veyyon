@@ -7,8 +7,8 @@
  * - Convenience helpers: captureText / execText, AbortSignal, timeouts.
  */
 
-import { Process } from "@veyyon/natives";
 import type { Spawn, Subprocess } from "bun";
+import { processHandle } from "./native-process";
 import { readPipeText } from "./stream";
 import { errorMessage } from "./type-guards";
 
@@ -245,20 +245,18 @@ export class ChildProcess<In extends InMask = InMask> {
 	kill(reason?: Exception) {
 		if (reason && !this.#exitReasonPending) this.#exitReasonPending = reason;
 		if (this.proc.killed) return;
-		// Prefer the native Process class for tree-aware termination, but fall
-		// back to Bun's built-in proc.kill() (SIGTERM) when the native addon
-		// cannot load (e.g. GLIBC mismatch in older containers). Without this
-		// fallback, kill() throws an uncaught exception that crashes the host.
+		const handle = processHandle(this.proc.pid);
+		if (handle) {
+			void handle.terminate()?.catch(e => void e);
+			return;
+		}
+		// No addon means no tree walk, so a descendant that outlived its parent
+		// is not reached. Ending the direct child is what the runtime still
+		// offers, and it is what the exit handlers below wait on.
 		try {
-			void Process.fromPid(this.proc.pid)
-				?.terminate()
-				?.catch(e => void e);
+			this.proc.kill();
 		} catch {
-			try {
-				this.proc.kill();
-			} catch {
-				// Process already exited.
-			}
+			// Already gone, which is the state this asked for.
 		}
 	}
 

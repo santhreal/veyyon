@@ -5,7 +5,7 @@ import { formatHashlineHeader } from "@veyyon/hashline";
 import { type AstReplaceChange, type AstReplaceFileChange, astEdit } from "@veyyon/natives";
 import type { Component } from "@veyyon/tui";
 import { replaceTabs, Text } from "@veyyon/tui";
-import { $envpos, collapseWhitespace, prompt, untilAborted } from "@veyyon/utils";
+import { $envpos, collapseWhitespace, prompt, truncate, untilAborted } from "@veyyon/utils";
 import { type } from "arktype";
 import { canonicalSnapshotKey, getFileSnapshotStore } from "../edit/file-snapshot-store";
 import { normalizeToLF } from "../edit/normalize";
@@ -37,6 +37,9 @@ import { queueResolveHandler } from "./resolve";
 import { resolveToolSearchScope } from "./search-scope";
 import { ToolError } from "./tool-errors";
 import { toolResult } from "./tool-result";
+
+/** Chars of a changed line kept in the diff preview sent to the model and the display. */
+const DIFF_PREVIEW_MAX_CHARS = 120;
 
 const astEditOpSchema = type({
 	pat: type("string").describe("ast pattern"),
@@ -365,8 +368,8 @@ export class AstEditTool implements AgentTool<typeof astEditSchema, AstEditToolD
 				for (const change of fileChanges) {
 					const beforeFirstLine = change.before.split("\n", 1)[0] ?? "";
 					const afterFirstLine = change.after.split("\n", 1)[0] ?? "";
-					const beforeLine = beforeFirstLine.slice(0, 120);
-					const afterLine = afterFirstLine.slice(0, 120);
+					const beforeLine = truncate(beforeFirstLine, DIFF_PREVIEW_MAX_CHARS, "");
+					const afterLine = truncate(afterFirstLine, DIFF_PREVIEW_MAX_CHARS, "");
 					const beforeRef = hashContext ? `${change.startLine}` : `${change.startLine}:${change.startColumn}`;
 					const afterRef = hashContext ? `${change.startLine}` : `${change.startLine}:${change.startColumn}`;
 					const lineSeparator = hashContext ? ":" : " ";

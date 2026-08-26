@@ -291,7 +291,12 @@ export async function paintSim(shape: PaintShape): Promise<PaintReport> {
 	for (let row = shape.footerRows; row > 1; row--) tui.addChild(new FooterRow(`footer ${row}`));
 	if (shape.footerRows > 0) tui.addChild(new Composer());
 	tui.setPinnedFooterChildCount(Math.max(0, shape.footerRows));
-	if (anchor) tui.onFrameComposed = () => anchor.onFrameComposed();
+	if (anchor) {
+		// Both halves of the shipped wiring: the anchor is sized from the children
+		// of the frame about to compose, and corrected against the frame that did.
+		tui.onBeforeCompose = () => anchor.sync();
+		tui.onFrameComposed = () => anchor.onFrameComposed();
+	}
 	tui.start();
 	await settleFrames(term, tui);
 

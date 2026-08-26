@@ -68,8 +68,15 @@ const reachable = moduleReach(BARREL);
  * re-exports it, so a subpath cannot move it off the graph, and it is deliberately a zero-import
  * leaf: `@veyyon/ai`'s error classifier keys off the error class structurally and must not pull the
  * reader stack in to do it. `moduleReach("stream-frame-limit.ts")` is 1.
+ *
+ * RE-MEASURED 2026-08-25 at 85. The new module is `native-process.ts`, which owns the decision that a
+ * host unable to load the native addon gets no process handle rather than a throw (issue #917). A
+ * subpath cannot move it off the graph: `ptree.ts` and `procmgr.ts` are both exported from the barrel
+ * and call it directly, which is the point of the module — every `Process.fromPid` and
+ * `Process.fromPath` call site resolves through one owner. It adds no new edge to `@veyyon/natives`,
+ * which both of those modules already imported for the same symbol.
  */
-const BARREL_CEILING = 84;
+const BARREL_CEILING = 85;
 
 describe("the @veyyon/utils barrel", () => {
 	/** The number that multiplies by six hundred realms. */

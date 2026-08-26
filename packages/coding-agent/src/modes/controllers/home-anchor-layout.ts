@@ -74,16 +74,23 @@ export class HomeAnchorLayout {
 		// composer lands on the bottom edge on this frame, not the next.
 		let contentExclFill = ui.composedFrameRows - currentFill - currentTopFill;
 		if (remeasure || ui.composedFrameRows <= 0) {
-			let total = 0;
-			for (const child of ui.children) {
-				if (child === this.bottomFill || child === this.topFill) continue;
-				try {
-					total += child.render(width).length;
-				} catch {
-					total += 1;
-				}
-			}
-			contentExclFill = total;
+			contentExclFill = this.#measureContent(width);
+		} else if (contentExclFill < rows) {
+			// The composed frame is one frame old. While it still accounts for
+			// more content than the viewport holds, slack is zero either way and
+			// the stale number is free. Below that line the routing is live, and
+			// a frame composed before the current children understates the
+			// content: a turn that grew since that frame gets slack sized for the
+			// shorter content, composes past the viewport, and the engine scrolls
+			// the window down on that frame and back up on the next — the screen
+			// shakes for as long as the answer keeps growing, and every mounted
+			// chat child syncs against a frame that predates it. The larger of
+			// the two keeps the composed frame's exactness, which counts wrapping
+			// the child walk cannot see, and never routes more slack than the
+			// live children leave room for. Under-filling is the safe sign: it
+			// seats the composer a row high for one frame, where over-filling
+			// scrolls the viewport.
+			contentExclFill = Math.max(contentExclFill, this.#measureContent(width));
 		}
 
 		const slack = Math.max(0, rows - contentExclFill);
@@ -123,6 +130,26 @@ export class HomeAnchorLayout {
 	}
 
 	/**
+	 * Content height from the live children, excluding this layout's own fills.
+	 * Approximate where the composed frame is exact — it does not account for
+	 * wrapping and treats the bordered editor as its minimum height — and it is
+	 * the only measurement that includes children mounted since the last frame
+	 * composed.
+	 */
+	#measureContent(width: number): number {
+		let total = 0;
+		for (const child of this.port.ui.children) {
+			if (child === this.bottomFill || child === this.topFill) continue;
+			try {
+				total += child.render(width).length;
+			} catch {
+				total += 1;
+			}
+		}
+		return total;
+	}
+
+	/**
 	 * Seed the anchor on the frame the composer zone mounts.
 	 *
 	 * Always remeasures, and the mount path must go through here rather than a
@@ -149,10 +176,15 @@ export class HomeAnchorLayout {
 	 */
 	onFrameComposed(): void {
 		const width = this.port.ui.terminal.columns;
-		const before = this.topFill.render(width).length + this.bottomFill.render(width).length;
+		const beforeTop = this.topFill.render(width).length;
+		const beforeBottom = this.bottomFill.render(width).length;
 		this.sync();
-		const after = this.topFill.render(width).length + this.bottomFill.render(width).length;
-		if (after !== before) this.port.ui.requestRender();
+		// Both fills are compared, not their sum: the frame a conversation
+		// starts on moves the whole slack from the bottom fill to the top one,
+		// which leaves the sum identical and the screen completely rearranged.
+		const changed =
+			this.topFill.render(width).length !== beforeTop || this.bottomFill.render(width).length !== beforeBottom;
+		if (changed) this.port.ui.requestRender();
 	}
 
 	/**

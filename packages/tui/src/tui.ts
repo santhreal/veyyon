@@ -1765,6 +1765,20 @@ export class TUI extends Container {
 	}
 
 	/**
+	 * Invoked at the top of every frame, before any root child renders. A layout
+	 * whose own height is a function of its siblings' heights can be sized only
+	 * here: {@link composedFrameRows} describes the PREVIOUS frame, so a
+	 * measurement taken outside a frame is against the previous frame's
+	 * children. Sizing such a layout after the fact instead composes the frame
+	 * past the viewport on the turn its content grows, which moves the window to
+	 * fit on that frame and back on the next.
+	 *
+	 * The callback must not render synchronously and must not mount or unmount a
+	 * root child; it may only resize what is already mounted.
+	 */
+	onBeforeCompose?: () => void;
+
+	/**
 	 * Invoked after every frame commit, once the freshly composed row count is
 	 * readable via {@link composedFrameRows}. Lets a bottom-anchoring owner
 	 * correct its fill against the exact frame instead of a stale estimate; the
@@ -3719,6 +3733,10 @@ export class TUI extends Container {
 		if (this.#stopped) return;
 		const width = this.terminal.columns;
 		const height = this.terminal.rows;
+
+		// Size any sibling-dependent layout before the children render, while a
+		// measurement of them is still a measurement of THIS frame.
+		this.onBeforeCompose?.();
 
 		// Consume the component-scoped accumulation: it describes the render
 		// requests made up to this frame, whichever path the frame takes.

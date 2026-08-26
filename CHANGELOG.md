@@ -58,6 +58,7 @@
 - Moved benchmark and trace reporting tools into `src/report/`.
 - Harness adapters declare their supported execution backends in their backend map, refusing planning for unbound backend pairs and supporting multi-harness trial matrix generation.
 - The in-process backend loads a config overlay and a prompt-variant overlay per trial, applying settings to the agent session and the prompt text through `VEYYON_EVAL_PROMPTS`, and refuses a missing file, an unknown setting key or a prompt id no registry holds before any trial starts.
+- `TUI.onBeforeCompose` runs at the top of every frame, before any root child renders, so a layout whose height is a function of its siblings' heights is sized against the children about to render rather than the previous frame's.
 - `Image` accepts an `onDisplayed` callback and reports the cause each time an image starts or stops falling back to a placeholder.
 - `MOTION.reflow` states the curve for a row that reflows its content sideways: 320ms, symmetric, where `expand` is 180ms and front-loaded.
 - `run()` accepts verified command summaries for root help and falls back to loading the full registry when any summary is absent.
@@ -124,6 +125,16 @@
 - Unified search now preserves purpose-specific field semantics through the Antigravity tool-schema adapter, replaces primitive search tools in explicit tool lists, keeps plan/subagent/bash guidance aligned with the active tool, and redirects intercepted shell searches to `search`.
 - The `runtime` tool's implementation is imported when the tool is built rather than when the tool registry loads, so a session that never enables `tools.unifiedRuntime` no longer parses the eval kernel and launch broker graphs at startup.
 - Bundled edit and write guidance now uses TTSR's deferred reminder path instead of inheriting the global interrupt policy and aborting the active model response. Every bundled tool-scoped rule must now declare its interrupt policy explicitly.
+- Launch daemon teardown and browser process cleanup no longer throw on a host where the native addon cannot load; a daemon falls back to ending its PTY and a browser scan reports no candidates, instead of the failure ending the session ([#917](https://github.com/santhreal/veyyon/issues/917)).
+- A streaming answer no longer composes a frame one row taller than the viewport on every chunk, which moved the window down to fit and back up on the next frame and shook the screen for as long as the answer kept arriving.
+- Mounting a chat block no longer routes home-anchor slack for rows the content has already taken, which composed a frame taller than the viewport and moved the window on that frame and back on the next.
+- An `irc send` with `await` ends as soon as its recipient is terminated or leaves the roster, instead of blocking for the full timeout, or forever at `timeoutMs: 0`, on a reply that can no longer arrive; a recipient that is merely idle or parked is still woken by the delivery and given the full timeout to answer.
+- A truncated advisor preview, retry reason, and background-task label measure their budget in display columns rather than UTF-16 code units, so a wide or multi-code-unit character is no longer cut in half or counted as one column.
+- The tool approval card, the `ast_edit` diff preview, and an `eval` `display()` value cut long text at a code point rather than a UTF-16 code unit, so an emoji or rare CJK character sitting at the limit is no longer split into an invalid lone surrogate.
+- The Stream First Event Timeout and Stream Idle Timeout settings name the `VEYYON_*` environment variables that override them, instead of a `PI_*` prefix that no longer exists.
+- A Kagi search refused for exhausted credits reports that, instead of a generic request failure, on any status code other than 401, 402 and 403.
+- A rendered tool error shortens embedded home-directory paths, so an error card no longer prints the home directory and no longer spends its width budget on the prefix instead of the reason.
+- A job label truncated for display keeps a regional-indicator flag whole instead of emitting half of one, and an empty width budget yields an empty label rather than an ellipsis a column too wide.
 - Brave and Jina web search honor an API key held in the credential store, instead of reporting themselves unconfigured unless the key was also exported as an environment variable.
 - A JSON-RPC header field whose name merely ends in `Content-Length`, or a server log line that mentions it, no longer sets the frame length and parks the language-server connection on a byte count the stream never reaches.
 - A grep over an archive member removes its extracted scratch directory when extraction fails partway, instead of leaving it behind for the life of the host.
@@ -226,7 +237,9 @@
 - An API-key login for a provider that declares `storeCredentialsAs` now stores the credential under that provider id, as an OAuth login already did, instead of filing it under the login mechanism's id where nothing reads it.
 - DeepSWE dry-run preflight reports missing or stale binary artifacts with their build command instead of triggering a product build.
 - `--dry-run` refuses an overlay the real run would refuse: the backend's preflight now receives the plan's variants, so a missing overlay file, an unknown setting key or a prompt id no registry holds is reported before any quota is spent instead of hours into the run.
+- A wide line clipped in the unseen-line reveal is cut at a code point rather than a UTF-16 code unit, so an emoji or rare CJK character sitting at the column limit is no longer split into an invalid lone surrogate.
 - Mnemopi cost log SQLite database (`cost_log.db`) manages schema migrations via `PRAGMA user_version` and dynamically backfills missing columns on legacy databases.
+- A native addon load that fails is reported once instead of once per native call; the failed pipeline is memoized, so a run that reached a hundred native calls no longer prints a hundred copies of the candidate report ([#917](https://github.com/santhreal/veyyon/issues/917)).
 - Fixed stock Windows AVX2 detection by trying PowerShell 7 before an isolated modern-addon trial; only explicit shell answers or illegal-instruction exits become verdicts, while missing, incompatible, timed-out, and unexpectedly crashing addons remain unknown.
 - Persisted AVX2 verdicts are schema-versioned and keyed by platform, architecture, and CPU model, so copied or stale caches cannot select a native variant for different hardware.
 - The AVX2 trial load answers from the addon loader's first import and exits, so a compiled host, whose `process.execPath` is the product binary rather than a JavaScript runtime, reports a verdict instead of booting the whole CLI and spawning a trial child of its own at every level.
@@ -239,6 +252,7 @@
 - Nested optional-argument LaTeX constructs parse in linear time without character-by-character concatenation allocations.
 - Exclude pinned footer rows from the scroll-isolation snapshot and scroll space so the composer does not duplicate inside scrolled-back history.
 - Extract LaTeX argument text by slicing the source rather than appending one character at a time, so a deeply nested optional-argument chain degrades linearly instead of quadratically.
+- Ending a child process no longer throws on a host where the native addon cannot load, such as a container whose glibc predates the modern build; the direct child is terminated through the runtime and process liveness falls back to signal 0, so the tree walk is the only capability lost ([#917](https://github.com/santhreal/veyyon/issues/917)).
 - `splitTrailingPartialEscape` lets a streaming reader hold back an escape sequence a chunk ended inside, so a sequence divided across two reads is stripped whole instead of losing its head and leaking its tail as text.
 - `discarded-fault.ts`: `bestEffort` and `optionalResult` state which contract discarded a promise's failure, one for a step nobody waits on and one for a probe whose failure is the answer, each taking a mandatory reason.
 - `ChildProcess.kill()` falls back to Bun's built-in `proc.kill()` (SIGTERM) when the native `Process` class cannot load, instead of throwing an uncaught exception that crashes the host. This fixes a crash in containers with older glibc where the native addon fails to load ([#917](https://github.com/santhreal/veyyon/issues/917)).

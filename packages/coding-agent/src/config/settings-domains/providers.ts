@@ -535,7 +535,7 @@ export const PROVIDERS_SETTINGS = {
 			description:
 				"Seconds to wait for the first model stream event; -1 uses provider/env defaults, 0 disables the watchdog",
 			options: [
-				{ value: "-1", label: "Auto", description: "Use provider defaults and PI_* timeout env vars" },
+				{ value: "-1", label: "Auto", description: "Use provider defaults and VEYYON_* timeout env vars" },
 				{ value: "0", label: "Off", description: "Disable first-event timeout" },
 				{ value: "300", label: "5 minutes" },
 				{ value: "600", label: "10 minutes" },
@@ -554,7 +554,7 @@ export const PROVIDERS_SETTINGS = {
 			description:
 				"Seconds a model stream may stay silent between events; -1 uses provider/env defaults, 0 disables the watchdog",
 			options: [
-				{ value: "-1", label: "Auto", description: "Use provider defaults and PI_* timeout env vars" },
+				{ value: "-1", label: "Auto", description: "Use provider defaults and VEYYON_* timeout env vars" },
 				{ value: "0", label: "Off", description: "Disable idle timeout" },
 				{ value: "300", label: "5 minutes" },
 				{ value: "600", label: "10 minutes" },
