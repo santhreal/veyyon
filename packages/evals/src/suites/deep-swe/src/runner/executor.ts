@@ -9,21 +9,21 @@ import { clampLow, errorMessage, readPipeText } from "@veyyon/utils";
 import YAML from "yaml";
 import { cleanupPierContainers } from "../../../../backends/pier/runner";
 import {
-	aggregateSystemComparison,
-	COMPARISON_MODEL,
-	COMPARISON_TASK_LIST,
-	type ComparisonArmResult,
-	type ComparisonExecution,
-	type ComparisonSystem,
-	comparisonTrialsFromArmResults,
-	DEFAULT_MODEL,
 	getAllSystemAdapters,
 	getSystemAdapter,
 	hasSystemAdapter,
 	listSystemAdapters,
+} from "../../../../harnesses/registry";
+import {
+	aggregateSystemComparison,
+	COMPARISON_MODEL,
+	COMPARISON_TASK_LIST,
+	type ComparisonSystem,
+	comparisonTrialsFromArmResults,
+	DEFAULT_MODEL,
 	renderSystemComparison,
-	type SystemComparison,
-} from "../../../../harnesses";
+} from "../../../../harnesses/system-comparison";
+import type { ComparisonArmResult, ComparisonExecution, SystemComparison } from "../../../../harnesses/types";
 import {
 	armsDir,
 	comparisonTaskListPath,

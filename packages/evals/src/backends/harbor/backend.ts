@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { promisify } from "node:util";
-import { $which, errorMessage, readPipeText } from "@veyyon/utils";
+import { $which, errorMessage, isRecord, readPipeText } from "@veyyon/utils";
 import { type BackendRegistry, defaultBackendRegistry } from "../../core/backend-registry";
 import { requireBackendBinding, resolveCellVariant } from "../../core/cell-variant";
 import { requireHarness } from "../../core/harness-registry";
@@ -19,14 +19,19 @@ import { runsDir as defaultRunsDir } from "../../paths";
 import { buildHarborArgs, type HarborRunArgsOptions } from "./launch-args";
 import {
 	buildHarborEnv,
+	buildMountsJson,
+	type Config,
 	cleanupHarborTrialContainers,
 	DEFAULT_GRACE_PERIOD_MS,
 	DEFAULT_TRIAL_TIMEOUT_SEC,
+	gatewayHealthOk,
 	HARD_CEILING_TIMEOUT_SEC,
 	prepareSourceDeps,
 	type SourceMount,
 	terminateProcessTree,
 	truncateRawOutput,
+	writeComposeOverlay,
+	writeModelsYaml,
 } from "./runner";
 
 const execFileAsync = promisify(execFile);
@@ -44,13 +49,72 @@ export async function defaultCommandExecutor(
 	});
 }
 
+export type SourceDepsPreparer = (cfg: Config) => SourceMount;
+export type GatewayHealthProbe = (url: string) => boolean;
+
 export interface HarborBackendOptions {
 	readonly which?: WhichLookup;
 	readonly exec?: CommandExecutor;
+	/** Builds the linux deps tree the source mount serves; the real one runs a container. */
+	readonly prepareDeps?: SourceDepsPreparer;
+	/** Probes the host auth gateway the containers route model calls through. */
+	readonly gatewayHealth?: GatewayHealthProbe;
 }
 
 function sanitizeName(s: string): string {
 	return s.replace(/[^a-zA-Z0-9._-]/g, "_");
+}
+
+/** The per-call parts of a harbor `Config`; everything else comes from run options. */
+interface HarborConfigParams {
+	readonly agent: string;
+	readonly model: string | null;
+	readonly task: string | null;
+	readonly jobsDir: string;
+	readonly jobName: string;
+	readonly envType: "docker" | "apple-container";
+	readonly build: boolean;
+}
+
+function harborEnvType(context: RunContext): "docker" | "apple-container" {
+	return context.options?.envType === "apple-container" ? "apple-container" : "docker";
+}
+
+/**
+ * Reads a veyyon JSONL transcript and reports why the agent never produced work:
+ * a final turn that errored with zero tokens spent means no request reached a
+ * provider (an unreachable auth gateway, a revoked credential, a bad model id).
+ * Returns null when the agent did reach one, whatever it then scored.
+ */
+export async function agentSetupFailure(logPath: string): Promise<string | null> {
+	let text: string;
+	try {
+		text = await fs.readFile(logPath, "utf-8");
+	} catch {
+		return null;
+	}
+	let spentTokens = false;
+	let lastError: string | null = null;
+	for (const line of text.split("\n")) {
+		if (!line.startsWith("{")) continue;
+		let event: unknown;
+		try {
+			event = JSON.parse(line);
+		} catch {
+			continue;
+		}
+		if (!isRecord(event) || !Array.isArray(event.messages)) continue;
+		for (const message of event.messages) {
+			if (!isRecord(message)) continue;
+			const usage = isRecord(message.usage) ? message.usage : null;
+			if (typeof usage?.totalTokens === "number" && usage.totalTokens > 0) spentTokens = true;
+			if (message.stopReason === "error") {
+				lastError = typeof message.errorMessage === "string" ? message.errorMessage : "unknown error";
+			}
+		}
+	}
+	if (spentTokens || lastError === null) return null;
+	return lastError;
 }
 
 /**
@@ -62,11 +126,16 @@ export class HarborBackend implements ExecutionBackend {
 
 	readonly #which: WhichLookup;
 	readonly #exec: CommandExecutor;
+	readonly #prepareDeps: SourceDepsPreparer;
+	readonly #gatewayHealth: GatewayHealthProbe;
 	#sourceMount: SourceMount | null = null;
+	#composeOverlayPath: string | null = null;
 
 	constructor(options: HarborBackendOptions = {}) {
 		this.#which = options.which ?? $which;
 		this.#exec = options.exec ?? defaultCommandExecutor;
+		this.#prepareDeps = options.prepareDeps ?? prepareSourceDeps;
+		this.#gatewayHealth = options.gatewayHealth ?? gatewayHealthOk;
 	}
 
 	async preflight(context: RunContext): Promise<PreflightVerdict> {
@@ -115,7 +184,29 @@ export class HarborBackend implements ExecutionBackend {
 			}
 		}
 
-		// 3. Jobs directory creation / accessibility check
+		// 3. Auth gateway. A container never carries provider credentials: models.yml
+		// points every provider's baseUrl at the host gateway. When that gateway is
+		// down every trial still runs, the agent's first request fails, and the
+		// verifier scores an honest-looking 0 — a whole run of zeros that says nothing
+		// about the harness. Refuse instead.
+		if (context.options?.gateway !== false) {
+			const gatewayUrl =
+				typeof context.options?.gatewayUrl === "string"
+					? context.options.gatewayUrl
+					: "http://host.docker.internal:4000";
+			if (!this.#gatewayHealth(gatewayUrl)) {
+				return {
+					ok: false,
+					reason:
+						`Auth gateway at ${gatewayUrl} is not answering /healthz. Start it on the host with ` +
+						"`vey auth-broker serve` and `vey auth-gateway serve --no-auth --bind 127.0.0.1:4000`, " +
+						"or pass --no-gateway to forward host provider keys into the containers instead.",
+					missingRequirements: ["auth-gateway"],
+				};
+			}
+		}
+
+		// 4. Jobs directory creation / accessibility check
 		const runsDir = context.runsDir || defaultRunsDir();
 		try {
 			await fs.mkdir(runsDir, { recursive: true });
@@ -131,60 +222,79 @@ export class HarborBackend implements ExecutionBackend {
 		return { ok: true };
 	}
 
+	/**
+	 * The legacy runner's `Config`, which `prepareSourceDeps`, `writeComposeOverlay`,
+	 * `writeModelsYaml` and `buildHarborEnv` all read. One builder, because a second
+	 * literal drifts from the first and the container then mounts a different tree than
+	 * the deps step built.
+	 */
+	#harborConfig(context: RunContext, params: HarborConfigParams): Config {
+		const options = context.options;
+		return {
+			models: params.model ? [params.model] : [],
+			dataset: context.suite.name || "terminal-bench",
+			tasks: 1,
+			concurrency: 1,
+			attempts: 1,
+			include: params.task ? [params.task] : [],
+			exclude: [],
+			thinking: typeof options?.thinking === "string" ? options.thinking : null,
+			agentArgs: Array.isArray(options?.agentArgs) ? (options.agentArgs as string[]) : [],
+			agent: params.agent,
+			install: (options?.install as "source" | "local" | "published") ?? "source",
+			version: typeof options?.version === "string" ? options.version : null,
+			tarball: typeof options?.tarball === "string" ? options.tarball : null,
+			binaryArm64: null,
+			binaryX64: null,
+			build: params.build,
+			jobsDir: params.jobsDir,
+			jobName: params.jobName,
+			gatewayUrl: (options?.gatewayUrl as string) ?? "http://host.docker.internal:4000",
+			gatewayToken: (options?.gatewayToken as string) ?? "no-auth",
+			providers: Array.isArray(options?.providers) ? (options.providers as string[]) : [],
+			gateway: options?.gateway !== false,
+			webSearch: Boolean(options?.webSearch),
+			allowHosts: Array.isArray(options?.allowHosts) ? (options.allowHosts as string[]) : [],
+			timeoutMultiplier: null,
+			yes: true,
+			dryRun: false,
+			cleanup: false,
+			cleanupForce: false,
+			hostNetwork: false,
+			resume: null,
+			filterErrorTypes: [],
+			envType: params.envType,
+			passthrough: [],
+			env: (options?.env as Record<string, string>) ?? {},
+		};
+	}
+
 	async prepare(context: RunContext): Promise<void> {
 		const runsDir = context.runsDir || defaultRunsDir();
 		const runDir = path.join(runsDir, context.runId);
 		await fs.mkdir(runDir, { recursive: true });
+		await fs.mkdir(path.join(runsDir, "_bench"), { recursive: true });
 
-		// If veyyon agent is used with source install mode (default), prepare source deps once per run
+		// Source install (the default) runs veyyon from the repo mounted into the task
+		// container, so the linux deps tree has to exist before the first trial. A failure
+		// here is fatal: without the mount every trial dies in agent setup with
+		// "bun mount missing", which is how a whole run used to report 100% errors.
 		const agent = typeof context.options?.agent === "string" ? context.options.agent : undefined;
 		const installMode = typeof context.options?.install === "string" ? context.options.install : "source";
 		if ((!agent || agent === "veyyon") && installMode === "source") {
-			try {
-				const envType =
-					typeof context.options?.envType === "string" && context.options.envType === "apple-container"
-						? "apple-container"
-						: "docker";
-				this.#sourceMount = prepareSourceDeps({
-					models: [],
-					dataset: "terminal-bench",
-					tasks: 1,
-					concurrency: 1,
-					attempts: 1,
-					include: [],
-					exclude: [],
-					thinking: null,
-					agentArgs: [],
-					agent: "veyyon",
-					install: "source",
-					version: null,
-					tarball: null,
-					binaryArm64: null,
-					binaryX64: null,
-					build: true,
-					jobsDir: runsDir,
-					jobName: context.runId,
-					gatewayUrl: "http://host.docker.internal:4000",
-					gatewayToken: "no-auth",
-					providers: [],
-					gateway: true,
-					webSearch: false,
-					allowHosts: [],
-					timeoutMultiplier: null,
-					yes: true,
-					dryRun: false,
-					cleanup: false,
-					cleanupForce: false,
-					hostNetwork: false,
-					resume: null,
-					filterErrorTypes: [],
-					envType,
-					passthrough: [],
-					env: {},
-				});
-			} catch {
-				// Non-fatal if source deps preparation is deferred or skipped
-			}
+			const cfg = this.#harborConfig(context, {
+				agent: "veyyon",
+				model: null,
+				task: null,
+				jobsDir: runsDir,
+				jobName: context.runId,
+				envType: harborEnvType(context),
+				build: true,
+			});
+			this.#sourceMount = this.#prepareDeps(cfg);
+			// One overlay per run: its bytes depend only on the source mount, so writing it
+			// here keeps concurrent trials off a shared file.
+			this.#composeOverlayPath = writeComposeOverlay(path.join(runsDir, "_bench"), cfg, this.#sourceMount);
 		}
 	}
 
@@ -282,62 +392,32 @@ export class HarborBackend implements ExecutionBackend {
 			artifacts: artifactsList,
 			disableVerification,
 			passthrough,
+			composeOverlayPath: envType === "docker" ? this.#composeOverlayPath : null,
+			mountsJson: envType === "docker" ? null : buildMountsJson(this.#sourceMount),
 		};
 
 		const harborArgs = buildHarborArgs(harborArgsOptions);
 
-		// Environment setup
-		let harborEnv: Record<string, string>;
-		if (agent === "veyyon") {
-			harborEnv = buildHarborEnv(
-				{
-					models: model ? [model] : [],
-					dataset: context.suite.name || "terminal-bench",
-					tasks: 1,
-					concurrency: 1,
-					attempts: 1,
-					include: [cell.task],
-					exclude: [],
-					thinking: typeof context.options?.thinking === "string" ? context.options.thinking : null,
-					agentArgs: Array.isArray(context.options?.agentArgs) ? (context.options.agentArgs as string[]) : [],
-					agent: "veyyon",
-					install: (context.options?.install as "source" | "local" | "published") ?? "source",
-					version: typeof context.options?.version === "string" ? context.options.version : null,
-					tarball: typeof context.options?.tarball === "string" ? context.options.tarball : null,
-					binaryArm64: null,
-					binaryX64: null,
-					build: false,
-					jobsDir: runDir,
-					jobName,
-					gatewayUrl: (context.options?.gatewayUrl as string) ?? "http://host.docker.internal:4000",
-					gatewayToken: (context.options?.gatewayToken as string) ?? "no-auth",
-					providers: Array.isArray(context.options?.providers) ? (context.options.providers as string[]) : [],
-					gateway: context.options?.gateway !== false,
-					webSearch: Boolean(context.options?.webSearch),
-					allowHosts: Array.isArray(context.options?.allowHosts) ? (context.options.allowHosts as string[]) : [],
-					timeoutMultiplier: null,
-					yes: true,
-					dryRun: false,
-					cleanup: false,
-					cleanupForce: false,
-					hostNetwork: false,
-					resume: null,
-					filterErrorTypes: [],
-					envType: envType === "apple-container" ? "apple-container" : "docker",
-					passthrough: [],
-					env: (context.options?.env as Record<string, string>) ?? {},
-				},
-				"",
-				null,
-				"latest",
-				this.#sourceMount,
-			);
-		} else {
-			harborEnv = {
-				...(process.env as Record<string, string>),
-				...((context.options?.env as Record<string, string>) ?? {}),
-			};
-		}
+		const cfg = this.#harborConfig(context, {
+			agent,
+			model: model ?? null,
+			task: cell.task,
+			jobsDir: runDir,
+			jobName,
+			envType: envType === "apple-container" ? "apple-container" : "docker",
+			build: false,
+		});
+
+		// The gateway proxies model calls back to the host, so each trial gets its own
+		// providers file: its contents follow this trial's model.
+		const modelsYaml = cfg.gateway ? writeModelsYaml(jobDir, cfg) : "";
+		const harborEnv: Record<string, string> =
+			agent === "veyyon"
+				? buildHarborEnv(cfg, modelsYaml, null, "latest", this.#sourceMount)
+				: {
+						...(process.env as Record<string, string>),
+						...((context.options?.env as Record<string, string>) ?? {}),
+					};
 
 		const proc = Bun.spawn(["harbor", ...harborArgs], {
 			cwd: context.workDir,
@@ -459,6 +539,17 @@ export class HarborBackend implements ExecutionBackend {
 				} catch {
 					// File does not exist, continue
 				}
+			}
+		}
+
+		// A trial whose agent never reached a provider produced no attempt at the task,
+		// and its verifier's 0 is a measurement of the infrastructure, not of the
+		// harness. Report it as an error so the run records `reward: null`.
+		const agentLog = fileMap["agent/veyyon.txt"];
+		if (agentLog) {
+			const setupFailure = await agentSetupFailure(agentLog);
+			if (setupFailure) {
+				throw new Error(`Agent never reached a provider: ${setupFailure}`);
 			}
 		}
 

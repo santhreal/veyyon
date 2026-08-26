@@ -74,6 +74,9 @@ describe("HarborBackend preflight", () => {
 					}
 					return { stdout: "", stderr: "" };
 				},
+				// This suite is about harbor, docker and the jobs directory; the gateway
+				// probe has its own suite and would otherwise shell out to the host.
+				gatewayHealth: () => true,
 			});
 
 			const context: RunContext = {
@@ -176,6 +179,7 @@ describe("HarborBackend preflight", () => {
 		const backend = new HarborBackend({
 			which: bin => (bin === "harbor" ? "/usr/local/bin/harbor" : "/usr/bin/docker"),
 			exec: async () => ({ stdout: "ok", stderr: "" }),
+			gatewayHealth: () => true,
 		});
 
 		const context: RunContext = {

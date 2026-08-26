@@ -1127,6 +1127,41 @@ function sourceDepsStamp(manifests: string[], bunVersion: string): string {
 }
 
 /**
+ * `--user` for a container that writes into a host bind mount. Without it the deps
+ * install runs as root and leaves a root-owned tree that the next run cannot replace.
+ */
+function hostUserArgs(): string[] {
+	const uid = typeof process.getuid === "function" ? process.getuid() : null;
+	const gid = typeof process.getgid === "function" ? process.getgid() : null;
+	if (uid === null || gid === null) return [];
+	return ["--user", `${uid}:${gid}`];
+}
+
+/**
+ * Replace the deps tree, healing one left root-owned by an older run: that tree is
+ * unremovable by the host user, so a privileged container removes it instead of the
+ * run dying with EACCES on a directory it created itself.
+ */
+function resetDepsDir(depsDir: string, runtime: string, image: string): void {
+	try {
+		fs.rmSync(depsDir, { recursive: true, force: true });
+	} catch {
+		const parent = path.dirname(depsDir);
+		const r = spawnSync(
+			runtime,
+			["run", "--rm", "--user", "0:0", "-v", `${parent}:/x`, image, "rm", "-rf", `/x/${path.basename(depsDir)}`],
+			{ stdio: ["ignore", "inherit", "inherit"] },
+		);
+		if (r.status !== 0) {
+			throw new Error(
+				`cannot replace the source deps tree at ${depsDir} (root-owned; ${runtime} rm exit ${r.status})`,
+			);
+		}
+	}
+	fs.mkdirSync(depsDir, { recursive: true });
+}
+
+/**
  * Ensure the cached linux deps tree for source mode: a manifest-only skeleton of the
  * workspace with `bun install --production` run inside `oven/bun:<ver>` (matching the
  * daemon's native arch), plus the image's linux `bun` under `bin/`. Rebuilt only when
@@ -1148,8 +1183,9 @@ export function prepareSourceDeps(cfg: Config): SourceMount {
 	}
 	if (current !== stamp) {
 		process.stdout.write(dim(`building linux-${arch} deps tree for source mount (one-time per lockfile change)…\n`));
-		fs.rmSync(depsDir, { recursive: true, force: true });
-		fs.mkdirSync(depsDir, { recursive: true });
+		const runtime = cfg.envType === "apple-container" ? "container" : "docker";
+		const image = `oven/bun:${bunVersion}`;
+		resetDepsDir(depsDir, runtime, image);
 		for (const rel of manifests) {
 			const dst = path.join(depsDir, rel);
 			fs.mkdirSync(path.dirname(dst), { recursive: true });
@@ -1159,15 +1195,15 @@ export function prepareSourceDeps(cfg: Config): SourceMount {
 		// (root `prepare` → gen:tool-views) would fail; patchedDependencies still apply.
 		const script =
 			'mkdir -p /deps/bin && cp "$(command -v bun)" /deps/bin/bun && cd /deps && bun install --production --omit=optional --ignore-scripts';
-		const image = `oven/bun:${bunVersion}`;
 		const runArgv =
 			cfg.envType === "apple-container"
 				? [
-						"container",
+						runtime,
 						"run",
 						"--rm",
 						"--dns",
 						CONTAINER_DNS,
+						...hostUserArgs(),
 						"-e",
 						"HOME=/tmp",
 						"-v",
@@ -1178,11 +1214,12 @@ export function prepareSourceDeps(cfg: Config): SourceMount {
 						script,
 					]
 				: [
-						"docker",
+						runtime,
 						"run",
 						"--rm",
 						"--platform",
 						`linux/${arch === "x64" ? "amd64" : "arm64"}`,
+						...hostUserArgs(),
 						"-e",
 						"HOME=/tmp",
 						"-v",
@@ -1218,19 +1255,29 @@ export function prepareSourceDeps(cfg: Config): SourceMount {
 }
 
 /**
- * Compose overlay applied to every trial's `main` service: host networking and/or the
- * read-only source + linux-deps mounts. Returns null when nothing needs overlaying.
+ * Compose overlay applied to every trial's `main` service: host networking, the
+ * read-only source + linux-deps mounts, and — on a plain Linux docker engine, which
+ * has no Docker Desktop DNS — a host-gateway mapping so the container can reach the
+ * host auth gateway by name. Returns null when nothing needs overlaying.
+ *
+ * Every host path is absolute: compose resolves a relative bind against the compose
+ * project directory, which is the task's directory, not this repository.
  */
-function writeComposeOverlay(benchDir: string, cfg: Config, source: SourceMount | null): string | null {
+export function writeComposeOverlay(benchDir: string, cfg: Config, source: SourceMount | null): string | null {
 	const lines: string[] = [];
 	if (cfg.hostNetwork) lines.push('    network_mode: "host"');
+	if (cfg.gateway && new URL(cfg.gatewayUrl).hostname === "host.docker.internal") {
+		lines.push("    extra_hosts:");
+		lines.push('      - "host.docker.internal:host-gateway"');
+	}
 	if (source) {
+		const depsDir = path.resolve(source.depsDir);
 		lines.push("    volumes:");
-		lines.push(`      - ${repoRootDir()}:${SOURCE_SRC_MOUNT}:ro`);
+		lines.push(`      - ${path.resolve(repoRootDir())}:${SOURCE_SRC_MOUNT}:ro`);
 		for (const rel of source.nodeModules) {
-			lines.push(`      - ${path.join(source.depsDir, rel)}:${SOURCE_SRC_MOUNT}/${rel}:ro`);
+			lines.push(`      - ${path.join(depsDir, rel)}:${SOURCE_SRC_MOUNT}/${rel}:ro`);
 		}
-		lines.push(`      - ${path.join(source.depsDir, "bin")}:${SOURCE_BIN_MOUNT}:ro`);
+		lines.push(`      - ${path.join(depsDir, "bin")}:${SOURCE_BIN_MOUNT}:ro`);
 	}
 	if (lines.length === 0) return null;
 	const file = path.join(benchDir, "veyyon-compose-overlay.yaml");
@@ -1243,7 +1290,7 @@ function writeComposeOverlay(benchDir: string, cfg: Config, source: SourceMount 
  * environments (apple-container): source repo + linux deps tree. Apple
  * Container currently mounts binds read-write regardless of `read_only`.
  */
-function buildMountsJson(source: SourceMount | null): string | null {
+export function buildMountsJson(source: SourceMount | null): string | null {
 	if (!source) return null;
 	const mounts: Array<{ type: "bind"; source: string; target: string; read_only: true }> = [
 		{ type: "bind", source: repoRootDir(), target: SOURCE_SRC_MOUNT, read_only: true },
@@ -1279,7 +1326,7 @@ function deriveProviders(cfg: Config): string[] {
 	return [...set];
 }
 
-function writeModelsYaml(benchDir: string, cfg: Config): string {
+export function writeModelsYaml(benchDir: string, cfg: Config): string {
 	const providers = deriveProviders(cfg);
 	const lines = ["# Generated by the evals harbor backend — auth via host pm2 gateway.", "providers:"];
 	for (const p of providers) {
@@ -1294,7 +1341,7 @@ function writeModelsYaml(benchDir: string, cfg: Config): string {
 	return file;
 }
 
-function gatewayHealthOk(url: string): boolean {
+export function gatewayHealthOk(url: string): boolean {
 	const hostUrl = trimTrailingSlashes(
 		url.replace("host.docker.internal", "127.0.0.1").replace(VMNET_HOST_IP, "127.0.0.1"),
 	);
