@@ -417,15 +417,9 @@ function renderOneSection(inspection: PromptInspection, id: string, asJson: bool
 }
 
 /**
- * Print one statement, or say why it is not in this prompt.
- *
- * Mirrors {@link renderOneSection}, including the non-zero exit and the valid list on an unknown id,
- * because an empty stdout reads as an empty rule rather than as a typo.
- *
- * AN ABSENT RULE IS NOT AN ERROR, and that is the case worth getting right. It exits 0 and reports the
- * condition that would include it, because "this rule is off because the task tool is not built" is
- * the answer to the question being asked. Printing nothing would be indistinguishable from a rule that
- * renders to nothing, and exiting non-zero would report a working configuration as broken.
+ * Print one statement, or say why it is not in this prompt. Mirrors {@link renderOneSection}. An absent
+ * rule is not an error: exits 0 and reports the condition that would include it. Printing nothing reads
+ * as an empty rule; non-zero would report a working configuration as broken.
  */
 function renderOneStatement(inspection: PromptInspection, id: string, asJson: boolean): PromptCommandResult {
 	if (!inspection.fromStatements) {

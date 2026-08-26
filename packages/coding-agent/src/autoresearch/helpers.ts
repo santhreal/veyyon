@@ -227,19 +227,9 @@ function sanitizeAsiValue(value: unknown): ASIValue | undefined {
 }
 
 /**
- * The porcelain status autoresearch reads dirty paths out of.
- *
- * FAILURES PROPAGATE, and that is the whole point of this function existing separately. It used to answer
- * any git failure with `""`, which parses to "no paths are dirty" -- and every caller acts on that: the
- * revert reported "nothing to revert" while the experiment's changes sat in the tree, the scope-deviation
- * check passed vacuously because it had no modified paths to compare against `off_limits`, and the run
- * recorded an empty modified-path list as the experiment's result. Three false statements from one
- * swallow. Callers each have an error channel and now use it.
- *
- * A cwd that is NOT inside a repository is the one case answered here rather than raised: `""` is then
- * the true answer, since there are no tracked changes to report, and autoresearch is allowed to run
- * outside a repository. That case is decided by resolving the repository, a walk up the directory chain
- * with no subprocess, so it is never confused with a `git status` that failed for another reason.
+ * The porcelain status autoresearch reads dirty paths from. Failures propagate (used to return `""`,
+ * falsely reporting "no dirty paths"). A cwd outside a repository returns `""` (true answer, no tracked
+ * changes); decided by a directory walk, not confused with a failed `git status`.
  */
 export async function gitStatusPorcelain(cwd: string): Promise<string> {
 	if (!(await git.repo.resolve(cwd))) return "";
@@ -247,12 +237,8 @@ export async function gitStatusPorcelain(cwd: string): Promise<string> {
 }
 
 /**
- * The prefix from the repository root to `cwd`, used to make status paths relative to the work directory.
- *
- * Failures propagate for the same reason as {@link gitStatusPorcelain}: an empty prefix is a real value
- * (cwd IS the repository root), so a failed lookup that returned `""` silently claimed the work directory
- * was the root and every path was then resolved against the wrong directory. As above, a cwd outside a
- * repository is answered with `""` rather than raised, because there is no prefix for it to have.
+ * Prefix from repository root to `cwd`. Failures propagate like {@link gitStatusPorcelain}: empty prefix
+ * is real (cwd IS root), so a failed `""` resolves paths against the wrong directory. Outside a repo: `""`.
  */
 export async function gitWorkDirPrefix(cwd: string): Promise<string> {
 	if (!(await git.repo.resolve(cwd))) return "";
