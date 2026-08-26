@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-c2256a25.js";
+            window.path_to_searchindex_js = "../searchindex-9edeb024.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-a2abefc1.js"></script>
@@ -421,6 +421,17 @@ veyyon config get compaction.threshold
 <tr><td><code>autocompleteMaxVisible</code></td><td>Autocomplete Items</td><td>number</td><td><code>5</code></td><td>Max visible items in autocomplete dropdown (3-20).</td></tr>
 <tr><td><code>emojiAutocomplete</code></td><td>Emoji Autocomplete</td><td>boolean</td><td><code>true</code></td><td>Suggest emojis from <code>:name:</code> shortcodes and expand text emoticons like <code>:D</code> or <code>:-)</code>.</td></tr>
 <tr><td><code>paste.largeMenuThreshold</code></td><td>Large Paste Menu</td><td>number</td><td><code>100</code></td><td>When a paste reaches this many lines, offer a menu to wrap it in a code block, wrap it in XML tags, or save it to a file. 0 disables the menu (large pastes still collapse to a [Paste] marker).</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="session"><a class="header" href="#session">Session</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>session.newKeepsBackground</code></td><td>/new Keeps The Old Session</td><td>boolean</td><td><code>true</code></td><td>On /new while a response is still streaming, keep the old conversation running in the background and attach the screen to a fresh one. The status line counts running background conversations and /process-manager opens them. Off stops the old turn and closes its provider stream before the new session starts, so nothing keeps billing once it leaves the screen.</td></tr>
 </tbody>
 </table>
 </div>
@@ -1420,7 +1431,7 @@ veyyon config get compaction.threshold
 </tbody>
 </table>
 </div>
-<p>351 settings in /settings, 119 configuration-file keys, 470 in all.</p>
+<p>352 settings in /settings, 119 configuration-file keys, 471 in all.</p>
 
                     </main>
 

@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-c2256a25.js";
+            window.path_to_searchindex_js = "searchindex-9edeb024.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-a2abefc1.js"></script>
@@ -10668,6 +10668,17 @@ veyyon config get compaction.threshold
 </tbody>
 </table>
 </div>
+<h3 id="session"><a class="header" href="#session">Session</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>session.newKeepsBackground</code></td><td>/new Keeps The Old Session</td><td>boolean</td><td><code>true</code></td><td>On /new while a response is still streaming, keep the old conversation running in the background and attach the screen to a fresh one. The status line counts running background conversations and /process-manager opens them. Off stops the old turn and closes its provider stream before the new session starts, so nothing keeps billing once it leaves the screen.</td></tr>
+</tbody>
+</table>
+</div>
 <h3 id="approvals-4"><a class="header" href="#approvals-4">Approvals</a></h3>
 <div class="table-wrapper">
 <table>
@@ -11664,7 +11675,7 @@ veyyon config get compaction.threshold
 </tbody>
 </table>
 </div>
-<p>351 settings in /settings, 119 configuration-file keys, 470 in all.</p>
+<p>352 settings in /settings, 119 configuration-file keys, 471 in all.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="model-and-provider-configuration-modelsyml--modelsyaml"><a class="header" href="#model-and-provider-configuration-modelsyml--modelsyaml">Model and Provider Configuration (<code>models.yml</code> / <code>models.yaml</code>)</a></h1>
 <p>How the coding agent loads models, applies overrides, resolves credentials, and chooses models at runtime.</p>
@@ -14523,7 +14534,7 @@ during a long-running <code>bash</code> is handled without waiting for it to fin
 its own. The <code>bash</code> response is emitted when the command completes; hosts
 correlate it via <code>id</code>. Ordering across concurrent commands is not guaranteed
 , clients MUST match responses on <code>id</code>, not on emission order.</p>
-<h3 id="session"><a class="header" href="#session">Session</a></h3>
+<h3 id="session-1"><a class="header" href="#session-1">Session</a></h3>
 <ul>
 <li><code>{ id?, type: "get_session_stats" }</code></li>
 <li><code>{ id?, type: "export_html", outputPath?: string }</code></li>
