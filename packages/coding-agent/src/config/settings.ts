@@ -2832,10 +2832,8 @@ export const onHindsightScopeChanged = (cb: () => void) => hindsightScopeSignal.
 
 /**
  * Teardown a downstream module asks `resetSettingsForTest` to run.
- *
- * The registry lives in `./settings-instance.ts` with the slot, and is re-exported here because this is
- * the name callers import. A module that only REGISTERS should import the leaf: `modes/theme/markdown-theme.ts`
- * registers one hook and paid 95 modules of settings store for the privilege.
+ * Registry lives in `./settings-instance.ts` with the slot, re-exported here as the name callers import.
+ * Modules that only register should import the leaf directly.
  *
  * @internal
  */
@@ -2882,11 +2880,8 @@ export function settingSignalListenerCounts(): Record<string, number> {
 }
 
 /**
- * The global settings singleton and the check for whether it exists yet.
- *
- * Both live in `./settings-instance.ts`, which owns the slot and imports nothing at runtime, and are
- * re-exported here because this is the name every caller already imports. A caller that needs only the
- * value should import the leaf directly: reaching it through this module costs 94 modules of store.
+ * The global settings singleton and its check. Both live in `./settings-instance.ts` (leaf, no runtime
+ * imports), re-exported here as the name callers import. Reach the leaf directly for the value only.
  */
 export { isSettingsInitialized, settings } from "./settings-instance";
 
