@@ -45,6 +45,9 @@
 ### Fixed
 
 - Launch daemon teardown and browser process cleanup no longer throw on a host where the native addon cannot load; a daemon falls back to ending its PTY and a browser scan reports no candidates, instead of the failure ending the session ([#917](https://github.com/santhreal/veyyon/issues/917)).
+- `ctrl+g` passes a GUI editor the flag that makes it block, so an edit made in VS Code, Cursor, Zed or Sublime is read back into the composer instead of the editor forking and the composer keeping the text it already held.
+- A `/guided` goal turn survives a model that wraps its JSON in prose, a code fence or a brace run that is not JSON, instead of ending the interview with a parse error.
+- A `/guided` goal turn shows a spinner while it runs, so the screen between an answer and the next question no longer looks inert.
 - A streaming answer no longer composes a frame one row taller than the viewport on every chunk, which moved the window down to fit and back up on the next frame and shook the screen for as long as the answer kept arriving.
 - Mounting a chat block no longer routes home-anchor slack for rows the content has already taken, which composed a frame taller than the viewport and moved the window on that frame and back on the next.
 - An `irc send` with `await` ends as soon as its recipient is terminated or leaves the roster, instead of blocking for the full timeout, or forever at `timeoutMs: 0`, on a reply that can no longer arrive; a recipient that is merely idle or parked is still woken by the delivery and given the full timeout to answer.

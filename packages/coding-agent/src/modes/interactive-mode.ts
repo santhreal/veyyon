@@ -3774,7 +3774,10 @@ export class InteractiveMode implements InteractiveModeContext {
 			// Codex socket instead of leaking one per turn (#5471 review).
 			const guidedGoalSessionId = newGuidedGoalSessionId(this.session);
 			for (let turn = 0; turn < 6; turn++) {
-				const result = await runGuidedGoalTurn(this.session, { messages, sideSessionId: guidedGoalSessionId });
+				const result = await this.#withGuidedGoalProgress(
+					turn === 0 ? "Refining the objective" : "Reading your answer",
+					() => runGuidedGoalTurn(this.session, { messages, sideSessionId: guidedGoalSessionId }),
+				);
 				if (result.objective?.trim()) latestDraftObjective = result.objective.trim();
 				if (result.kind === "question") {
 					messages.push({ role: "assistant", content: result.question });
@@ -4610,6 +4613,33 @@ export class InteractiveMode implements InteractiveModeContext {
 		// regions, so without it a board that was still when the turn began
 		// stays still until some unrelated event redraws it.
 		this.#renderTodoList();
+	}
+
+	/**
+	 * Run `work` behind a spinner in the status area.
+	 *
+	 * A guided-goal turn is a one-shot completion that streams nothing and
+	 * emits no session events, so the screen between the answer the user typed
+	 * and the next question showed no sign that anything was running.
+	 */
+	async #withGuidedGoalProgress<T>(label: string, work: () => Promise<T>): Promise<T> {
+		this.statusContainer.disposeChildren();
+		const loader = new Loader(
+			this.ui,
+			spinner => theme.fg("accent", spinner),
+			text => theme.fg("muted", text),
+			`${label} (esc to cancel)`,
+			getSymbolTheme().spinnerFrames,
+		);
+		this.statusContainer.addChild(loader);
+		this.ui.requestRender();
+		try {
+			return await work();
+		} finally {
+			loader.stop();
+			this.statusContainer.disposeChildren();
+			this.ui.requestRender();
+		}
 	}
 
 	#stopLoadingAnimation(clearStatusContainer: boolean): void {
