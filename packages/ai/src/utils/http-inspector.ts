@@ -3,6 +3,7 @@ import { getLogsDir } from "@veyyon/utils/dirs";
 import { isBunTestRuntime } from "@veyyon/utils/env";
 import { asRecord, errorMessage, getNonBlankStringProperty, isRecord } from "@veyyon/utils/type-guards";
 import * as AIError from "../error/flags";
+import { isCredentialHeaderName } from "./request-debug.js";
 import { formatErrorMessageWithRetryAfter } from "./retry-after.js";
 
 export type RawHttpRequestDump = {
@@ -69,8 +70,6 @@ export async function captureHttpErrorResponse(response: Response): Promise<Capt
 	}
 	return { status: response.status, headers: response.headers, bodyText, bodyJson };
 }
-
-const SENSITIVE_HEADERS = ["authorization", "x-api-key", "api-key", "cookie", "set-cookie", "proxy-authorization"];
 
 /**
  * Build the JSON persisted for a rejected request. Request fields stay at the
@@ -180,7 +179,7 @@ function redactHeaders(headers: Record<string, string> | undefined): Record<stri
 
 	const redacted: Record<string, string> = {};
 	for (const [key, value] of Object.entries(headers)) {
-		if (SENSITIVE_HEADERS.includes(key.toLowerCase())) {
+		if (isCredentialHeaderName(key)) {
 			redacted[key] = "[redacted]";
 			continue;
 		}
