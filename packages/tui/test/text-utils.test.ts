@@ -160,15 +160,10 @@ describe("sanitizeSingleLine", () => {
 	});
 
 	/**
-	 * Parity with the repo-wide owner of the collapse idiom, on the fixtures the
-	 * cases above pin plus the degenerate inputs.
-	 *
-	 * `sanitizeSingleLine` is the tab-expanding WRAPPER over `collapseWhitespace`;
-	 * it inlined its own `[\r\n]+` / `\s+` regex pair until 2026-07-25 while
-	 * `ask-dialog.ts` and `transcript-render-helpers.ts` were calling
-	 * `collapseWhitespace(replaceTabs(...))` by hand for the same effect. Two
-	 * answers to one question is how a flatten helper starts disagreeing with
-	 * itself about, say, U+00A0 or a vertical tab. This fails if they ever diverge.
+	 * Parity with the repo-wide owner of the collapse idiom. `sanitizeSingleLine`
+	 * delegates to `collapseWhitespace`, which already handles tabs as whitespace
+	 * — the prior `replaceTabs` step was redundant (tab → 4 spaces → collapse to 1
+	 * space is identical to tab → collapse to 1 space).
 	 */
 	it.each([
 		"  a\tb\n\nc  \r\n d  ",
@@ -180,8 +175,8 @@ describe("sanitizeSingleLine", () => {
 		"a\u000bb",
 		"a\u00a0b",
 		"one\ttwo\tthree",
-	])("agrees with collapseWhitespace(replaceTabs(...)) on %j", input => {
-		expect(sanitizeSingleLine(input)).toBe(collapseWhitespace(replaceTabs(input)));
+	])("agrees with collapseWhitespace on %j", input => {
+		expect(sanitizeSingleLine(input)).toBe(collapseWhitespace(input));
 	});
 
 	// ONE-PLACE lock: this helper was copy-pasted byte-for-byte into select-list
@@ -209,7 +204,7 @@ describe("sanitizeSingleLine", () => {
 		const src = await Bun.file(`${import.meta.dir}/../src/utils.ts`).text();
 		const body = /export function sanitizeSingleLine\(text: string\): string \{([^}]*)\}/.exec(src)?.[1] ?? "";
 
-		expect(body).toContain("collapseWhitespace(replaceTabs(text))");
+		expect(body).toContain("collapseWhitespace");
 		expect(body).not.toMatch(/replace\(/);
 	});
 });
@@ -302,5 +297,21 @@ describe("padLineToWidth", () => {
 				expect(visibleWidth(padLineToWidth(s, w))).toBe(w);
 			}
 		}
+	});
+});
+
+describe("replaceTabs fast path", () => {
+	it("returns the same string reference when no tabs are present (avoids allocation)", () => {
+		const text = "hello world no tabs here";
+		expect(replaceTabs(text)).toBe(text);
+	});
+
+	it("expands tabs to spaces when tabs are present", () => {
+		expect(replaceTabs("a\tb")).toBe("a   b");
+		expect(replaceTabs("\t\t")).toBe("      ");
+	});
+
+	it("handles empty string", () => {
+		expect(replaceTabs("")).toBe("");
 	});
 });

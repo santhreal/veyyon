@@ -140,11 +140,15 @@ function deduplicateToolCallIds(
  * Run before other transforms; idempotent; provider-agnostic.
  */
 function isMalformedToolCallName(name: string | undefined): boolean {
-	return !name || name.trim().length === 0;
+	if (!name) return true;
+	for (let i = 0; i < name.length; i++) if (name.charCodeAt(i) > 32) return false;
+	return true;
 }
 
 function isMalformedToolCallId(id: string | undefined): boolean {
-	return !id || id.trim().length === 0;
+	if (!id) return true;
+	for (let i = 0; i < id.length; i++) if (id.charCodeAt(i) > 32) return false;
+	return true;
 }
 
 function isMalformedToolCall(block: { id: string; name: string }): boolean {
