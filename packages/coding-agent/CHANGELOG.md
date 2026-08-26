@@ -7,6 +7,9 @@
 - Classified runner output (cargo, bun, Go, ctest, dotnet, clippy, golangci-lint, Gradle lint, pytest, and tsc/eslint-family) now opens with a result-contract header: `[clean] <command>` or `[errors]` / `[errors N] <command>`. The header is the verdict and the body contains retained diagnostics.
 - `nextBackground` in `deccara.ts` scans SGR parameters in-place via byte offsets, eliminating a `line.slice()` allocation per SGR sequence in `analyzeBgFillLine`.
 - `sun.ts` pre-computes truecolor and 256-color SGR string arrays for the EMBER and SKY ramps, eliminating per-cell template literal allocation across 400+ cells per animation frame in `renderSunField` and `renderSunsetField`.
+- `trackBackground` and `touchesBackground` in `paint-columns.ts` scan SGR parameters in-place via `charCodeAt`, eliminating per-token `slice()` allocations.
+- `fadeLineWithParsedGround` in `motion-paint.ts` uses a pre-computed channel-string lookup table and `charCodeAt` comparisons, eliminating `String()` calls and slice allocations per truecolor SGR during animation.
+- `coalesceAdjacentSgr` in `tui.ts` skips the params array allocation for single SGR sequences and `endsWithIncompleteExtendedColor` uses `charCodeAt` instead of `slice()` for token comparisons.
 ### Added
 
 - `/advisor` reports advisor status, opens the `WATCHDOG.yml` roster editor and applies a save to the running session, starts or stops the advisor for the session, and copies the advisor's own transcript; the subsystem shipped complete but no command, key or menu row reached it.
