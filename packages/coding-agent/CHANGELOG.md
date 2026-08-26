@@ -47,6 +47,7 @@
 - An `irc send` with `await` ends as soon as its recipient is terminated or leaves the roster, instead of blocking for the full timeout, or forever at `timeoutMs: 0`, on a reply that can no longer arrive; a recipient that is merely idle or parked is still woken by the delivery and given the full timeout to answer.
 - A truncated advisor preview, retry reason, and background-task label measure their budget in display columns rather than UTF-16 code units, so a wide or multi-code-unit character is no longer cut in half or counted as one column.
 - The tool approval card, the `ast_edit` diff preview, and an `eval` `display()` value cut long text at a code point rather than a UTF-16 code unit, so an emoji or rare CJK character sitting at the limit is no longer split into an invalid lone surrogate.
+- The Stream First Event Timeout and Stream Idle Timeout settings name the `VEYYON_*` environment variables that override them, instead of a `PI_*` prefix that no longer exists.
 - A Kagi search refused for exhausted credits reports that, instead of a generic request failure, on any status code other than 401, 402 and 403.
 - A rendered tool error shortens embedded home-directory paths, so an error card no longer prints the home directory and no longer spends its width budget on the prefix instead of the reason.
 - A job label truncated for display keeps a regional-indicator flag whole instead of emitting half of one, and an empty width budget yields an empty label rather than an ellipsis a column too wide.
