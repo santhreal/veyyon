@@ -49,3 +49,21 @@ if (!process.env.MNEMOPI_HOME) {
 		rmSync(root, { recursive: true, force: true });
 	});
 }
+
+/**
+ * The one entry a mnemopi suite creates in the shared home on purpose.
+ *
+ * `the-config-root-never-lands-in-the-home.test.ts` creates it, asserts the
+ * detector reports it, and removes it inside a single test body. Every test
+ * process resolves the same `os.homedir()`, so under `--parallel` another
+ * file's `beforeAll` can snapshot the home while this marker exists, and that
+ * file's `afterAll` then reports a root that disappeared underneath it —
+ * naming a witness rather than a culprit, and moving between runs.
+ *
+ * The cross-file snapshot therefore skips this exact name. It is one fixed
+ * literal with one creator, so skipping it leaves the guard sharp for every
+ * other `.veyyon*`, `.hermes` and `.mnemopi` entry, which is what it exists to
+ * catch. The control suite's own detector does NOT skip it: reporting it is
+ * that suite's assertion.
+ */
+export const DELIBERATE_HOME_CONTROL_ROOT = ".veyyon-mnemopi-config-root-control";
