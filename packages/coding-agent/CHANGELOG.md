@@ -10,6 +10,10 @@
 - `trackBackground` and `touchesBackground` in `paint-columns.ts` scan SGR parameters in-place via `charCodeAt`, eliminating per-token `slice()` allocations.
 - `fadeLineWithParsedGround` in `motion-paint.ts` uses a pre-computed channel-string lookup table and `charCodeAt` comparisons, eliminating `String()` calls and slice allocations per truecolor SGR during animation.
 - `coalesceAdjacentSgr` in `tui.ts` skips the params array allocation for single SGR sequences and `endsWithIncompleteExtendedColor` uses `charCodeAt` instead of `slice()` for token comparisons.
+- `analyzeBgFillLine` in `deccara.ts` skips `line.slice()` and `visibleWidth()` for pure ASCII printable runs, scanning trailing spaces in-place via `charCodeAt`.
+- `paintBand` in `theme.ts` inlines the `arriving`/`arrivingRgb` closures, eliminating per-call closure allocation and hoisting constant branch checks out of the per-span loop.
+- `renderSignature` in `markdown.ts` caches the `bgColor` and `heading` probe strings keyed on theme/style object identity, eliminating two styled-string function calls per frame during streaming.
+- `getDefaultInlineStyleContext` in `markdown.ts` caches its object and `applyText` closure keyed on `defaultTextStyle` identity, eliminating per-paragraph allocation during rendering.
 ### Added
 
 - `/advisor` reports advisor status, opens the `WATCHDOG.yml` roster editor and applies a save to the running session, starts or stops the advisor for the session, and copies the advisor's own transcript; the subsystem shipped complete but no command, key or menu row reached it.
