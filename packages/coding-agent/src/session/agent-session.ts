@@ -266,8 +266,8 @@ import { RawSseDebugBuffer } from "../debug/raw-sse-buffer";
 import { loadCapability } from "../discovery";
 import { clearClaudePluginRootsCache } from "../discovery/helpers";
 // The owning modules, not the `../edit` barrel. The barrel `export *`s the streaming applier, the
-// hashline engine and the EditTool, and owns 44 modules nothing else here reaches; these six
-// symbols live in four leaves that reach a handful between them.
+// hashline engine and the EditTool, and pulls in 44 modules nothing else here reaches; these six
+// symbols are declared in four leaves that reach a handful between them.
 import { normalizeDiff, ParseError } from "../edit/diff";
 import { getFileSnapshotStore } from "../edit/file-snapshot-store";
 import { expandApplyPatchToEntries } from "../edit/modes/apply-patch";
@@ -313,8 +313,8 @@ import { GoalRuntime } from "../goals/runtime";
 import type { Goal, GoalAbortReason, GoalModeState } from "../goals/state";
 import type { HindsightSessionState } from "../hindsight/state";
 // The owning module, not the `../internal-urls` barrel: the barrel re-exports every protocol
-// handler and reaches several hundred modules, and all three of these live in `local-protocol`,
-// which reaches seven.
+// handler and reaches several hundred modules, and all three of these are declared in
+// `local-protocol`, which reaches seven.
 import {
 	type LocalProtocolOptions,
 	listLocalPlanFileUrls,
@@ -1012,7 +1012,7 @@ export interface SecretRuntimeLease {
 	 * that hold a redactor themselves rather than calling through the lease.
 	 */
 	readonly redactionObfuscator: SecretObfuscator | undefined;
-	/** True when the redaction-only authority still carries live values or tombstones. */
+	/** True when the redaction-only authority still holds live values or tombstones. */
 	readonly hasRedactions: boolean;
 	obfuscateText(text: string): string;
 	obfuscateMessages(messages: Message[]): Message[];
@@ -2662,7 +2662,7 @@ export class AgentSession {
 
 	/** A steer/follow-up can land after the agent loop's final queue poll, or
 	 *  after an abort stops an auto-continued queued turn. In both cases the
-	 *  agent-core queue still owns the message, but no loop is left to poll it.
+	 *  agent-core queue still holds the message, but no loop is left to poll it.
 	 *  Runs whenever the session settles; the guard makes it a no-op when the
 	 *  queue was consumed normally or a new turn already started. */
 	#drainStrandedQueuedMessages(): void {
@@ -3249,7 +3249,7 @@ export class AgentSession {
 			// image block whose data is a hash is not base64, so the provider refuses
 			// the request and every later turn of the session refuses the same way.
 			// The transcript keeps the reference, so restoring the blobs directory
-			// restores the payload; the request carries the loss instead of the hash.
+			// restores the payload; the request states the loss instead of the hash.
 			const recovered = replaceLostBlobPayloads(next.messages);
 			const carried = recovered === next.messages ? next : { ...next, messages: recovered };
 			// The model serving THIS request decides which images it can read. The
@@ -3421,7 +3421,7 @@ export class AgentSession {
 			this.#maybeAbortStreamingEdit(event);
 			this.#maybeInterruptGeminiHeaderRunaway(message, assistantMessageEvent);
 		});
-		// Tool-result hook owns synchronous post-tool actions that must affect the current loop.
+		// The tool-result hook is the single site for synchronous post-tool actions that must affect the current loop.
 		this.agent.afterToolCall = ctx => this.#afterToolCall(ctx);
 		this.agent.providerSessionState = this.#providerSessionState;
 		this.#syncAgentSessionId();
