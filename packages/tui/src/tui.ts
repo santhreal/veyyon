@@ -3188,6 +3188,8 @@ export class TUI extends Container {
 
 	#terminalLine(line: string): string {
 		if (TERMINAL.isImageLine(line)) return line;
+		// Plain text with no escape sequences skips SGR coalescing and OSC 8 detection.
+		if (line.indexOf("\x1b") === -1) return line + SGR_RESET;
 		const coalesced = coalesceAdjacentSgr(line);
 		return coalesced + (line.includes("\x1b]8;") ? LINE_TERMINATOR : SGR_RESET);
 	}
