@@ -128,11 +128,7 @@ function resolveBreadcrumbToInteractiveRoot(sessionFile: string): string {
 	// (`<dir>.jsonl` exists). Capped to defend against pathological layouts.
 	for (let depth = 0; depth < 8; depth++) {
 		const parentSessionFile = sessionFileName(path.dirname(current));
-		// `!== "present"` stops the climb on absent AND on unreachable. This is a resolution walk
-		// where a miss is the expected answer at nearly every step, so the state is not reported,
-		// but the direction still matters: climbing into a parent transcript this process cannot
-		// read would hand `--continue` a session it cannot load, and stopping one level down hands
-		// it a real one.
+		// Stop on absent AND unreachable: climbing into an unreadable parent would hand `--continue` a session it cannot load.
 		if (pathStateSync(parentSessionFile) !== "present") return current;
 		current = parentSessionFile;
 	}
@@ -1208,17 +1204,8 @@ export class SessionManager {
 			return;
 		}
 
-		// `!== "present"` keeps the answer this had and stops it being silent. Both other states
-		// take the same branch on purpose: a title change is written by patching a fixed-width slot
-		// in place, which needs the file to be readable, so "gone" and "there but unreachable" are
-		// equally reasons to rewrite the whole thing instead. The rewrite then fails with the real
-		// errno if the path is genuinely unusable. What changes is that the unreachable case is
-		// REPORTED once through the storage fault channel rather than looking like an absent file.
-		//
-		// The replacement probe belongs here for the same reason it belongs on the append hot path:
-		// this path appends the entry through the writer handle, which another window's publish
-		// leaves addressing an unlinked inode. The slot patch addresses the PATH and lands on the
-		// new file, so without the probe the title changes and the entry recording it disappears.
+		// `!== "present"`: "gone" and "unreachable" both need a full rewrite (slot patch needs readable file).
+		// Replacement probe: writer handle may address an unlinked inode from another window's publish.
 		if (
 			!this.#fileIsCurrent ||
 			this.#rewriteRequired ||
@@ -2050,16 +2037,9 @@ export class SessionManager {
 			}
 		}
 
-		// `resolvedCwd`, not `this.#cwd`. Both sides of the comparison are resolved, so returning the
-		// raw field here was the one path that could hand a caller a relative cwd it had just proved
-		// was the same directory: `set_cwd /abs/path/keyhog` on a session whose field held `.` matched,
-		// took this branch, and answered `Session cwd is . `, which is false twice over and reads as a
-		// failed call. The declared contract is "returns the resolved absolute path" and this is the
-		// same directory either way, so there is nothing to weigh.
+		// Compare resolved paths; returning raw `this.#cwd` could hand a caller a relative path.
 		if (resolvedCwd === path.resolve(this.#cwd)) {
-			// The field is normalized, but the header is deliberately left alone: this branch is the
-			// no-move case, so there is no change to persist, and the header does not exist yet on a
-			// manager that has not been initialized.
+			// No-move: normalize field, leave header alone (nothing to persist).
 			this.#cwd = resolvedCwd;
 			return resolvedCwd;
 		}
@@ -2202,11 +2182,7 @@ export class SessionManager {
 		}
 
 		const sessionFile = this.#sessionFile;
-		// `=== "absent"` and not `!existsSync(...)`, because this flag ARMS the cleanup that deletes
-		// the session on close. The boolean answered `false` for an unreachable file, which negates
-		// to `true` here: a session whose file exists and could not be reached was recorded as one
-		// this draft had just brought into being, and closing then deleted a real transcript. Only a
-		// file that is genuinely not there yet can make this a materialization.
+		// `=== "absent"` (not `!existsSync`): unreachable file must not arm cleanup that deletes a real transcript.
 		const draftWillMaterializeMetadataOnlyFile =
 			sessionFile !== undefined &&
 			this.#storage.existsStateSync(sessionFile) === "absent" &&
