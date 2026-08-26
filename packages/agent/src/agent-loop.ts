@@ -265,7 +265,32 @@ function snapshotAssistantContentBlock(block: AssistantContentBlock, mode: Snaps
 	}
 }
 
-function snapshotAssistantMessage(message: AssistantMessage, mode: SnapshotMode = "full"): AssistantMessage {
+function snapshotAssistantMessage(
+	message: AssistantMessage,
+	mode: SnapshotMode = "full",
+	contentIndex?: number,
+): AssistantMessage {
+	// Incremental delta snapshot: during streaming, only the block at
+	// `contentIndex` is being mutated by the provider (text +=, arguments
+	// replacement). Every earlier block is finished and never touched again.
+	// Clone the content array (push mutates the original) but share finished
+	// blocks by reference instead of spreading each one. This reduces per-token
+	// block allocations from O(n) to O(1) where n is the content-block count —
+	// a meaningful win on turns with many tool calls and interleaved text.
+	if (mode === "delta" && contentIndex !== undefined && contentIndex >= 0 && contentIndex < message.content.length) {
+		const content = message.content.slice();
+		content[contentIndex] = snapshotAssistantContentBlock(content[contentIndex]!, mode);
+		return {
+			...message,
+			content,
+			usage: {
+				...message.usage,
+				cost: { ...message.usage.cost },
+			},
+			disabledFeatures: message.disabledFeatures ? [...message.disabledFeatures] : undefined,
+			toolCallAbortMessages: message.toolCallAbortMessages ? { ...message.toolCallAbortMessages } : undefined,
+		};
+	}
 	return {
 		...message,
 		content: message.content.map(block => snapshotAssistantContentBlock(block, mode)),
@@ -1799,7 +1824,7 @@ async function streamAssistantResponse(
 								// consumer treats both as read-only. Delta mode shares tool-call
 								// `arguments` by reference (providers replace, never mutate) so
 								// per-delta cost no longer scales with accumulated argument size.
-								const messageSnapshot = snapshotAssistantMessage(partialMessage, "delta");
+								const messageSnapshot = snapshotAssistantMessage(partialMessage, "delta", event.contentIndex);
 								stream.push({
 									type: "message_update",
 									assistantMessageEvent: snapshotAssistantMessageEvent(event, messageSnapshot),

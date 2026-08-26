@@ -25,6 +25,7 @@
 - `defaultConvertToLlm` returns the input array by reference when no messages would be filtered out (no refusals, no custom messages), avoiding a full-array `.filter()` allocation per turn in the common case.
 - `countTokens` replaces its array-branch `reduce` with a `for` loop, avoiding a callback allocation per token count call on string arrays.
 - `createBranchSummaryMessage`, `createCompactionSummaryMessage`, and `createCustomMessage` use `Date.parse` instead of `new Date(...).getTime()`, avoiding a Date object allocation per compaction message creation.
+- Delta-mode streaming snapshots clone only the content block at the event's `contentIndex` and share finished blocks by reference via `content.slice()`, reducing per-token block allocations from O(n) to O(1) where n is the content-block count, a measurable CPU reduction on turns with many tool calls and interleaved text.
 
 ### Added
 
