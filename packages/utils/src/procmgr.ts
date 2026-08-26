@@ -1,8 +1,11 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { Process, ProcessStatus } from "@veyyon/natives";
+import { setTimeout as delay } from "node:timers/promises";
+import { ProcessStatus } from "@veyyon/natives";
 import type { Subprocess } from "bun";
 import { $env, filterChildShellEnv } from "./env";
+import { processHandle } from "./native-process";
+import { isProcessAlive } from "./process-liveness";
 import { $which } from "./which";
 
 export interface ShellConfig {
@@ -182,7 +185,27 @@ export function isPidRunning(pid: number | Subprocess): boolean {
 		return true;
 	}
 
-	return Process.fromPid(pid)?.status() === ProcessStatus.Running;
+	const handle = processHandle(pid);
+	// Without the addon there is no status enum to read, and signal 0 answers
+	// the same question for a single pid.
+	if (!handle) return isProcessAlive(pid);
+	return handle.status() === ProcessStatus.Running;
+}
+
+const EXIT_POLL_INTERVAL_MS = 100;
+
+/**
+ * Wait for a bare pid to exit without the addon.
+ *
+ * `waitForExit` is an OS-level wait the native handle owns. Polling signal 0 is
+ * the portable answer, at the cost of resolving up to one interval late.
+ */
+async function pollUntilPidExits(pid: number, abortSignal?: AbortSignal): Promise<boolean> {
+	while (isProcessAlive(pid)) {
+		if (abortSignal?.aborted) return false;
+		await delay(EXIT_POLL_INTERVAL_MS);
+	}
+	return true;
 }
 
 export async function onProcessExit(proc: Subprocess | number, abortSignal?: AbortSignal): Promise<boolean> {
@@ -193,5 +216,7 @@ export async function onProcessExit(proc: Subprocess | number, abortSignal?: Abo
 		);
 	}
 
-	return (await Process.fromPid(proc)?.waitForExit({ signal: abortSignal })) ?? true;
+	const handle = processHandle(proc);
+	if (handle) return (await handle.waitForExit({ signal: abortSignal })) ?? true;
+	return await pollUntilPidExits(proc, abortSignal);
 }
