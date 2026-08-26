@@ -3,7 +3,7 @@
  */
 
 import { formatDuration, formatPercent, truncate } from "@veyyon/utils";
-import { type BenchmarkResult, EDIT_FAILURE_CATEGORIES, type TaskResult } from "./runner";
+import { type BenchmarkResult, EDIT_FAILURE_CATEGORIES, type TaskResult } from "./runner/types";
 
 function formatBestStatus(task: TaskResult, runsPerTask: number): { status: string; label: string } {
 	const completed = task.runs.filter(run => !isCompletedGhost(run)).length;
