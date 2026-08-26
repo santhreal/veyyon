@@ -8,9 +8,10 @@ import {
 	TERMINAL_BENCH_GIT_REMOTE,
 	TERMINAL_BENCH_TAG,
 } from "./dataset";
+import { TERMINAL_BENCH_SUITE_NAME } from "./paths";
 
 export interface TerminalBenchProvenance {
-	readonly suiteName: "terminal-bench";
+	readonly suiteName: typeof TERMINAL_BENCH_SUITE_NAME;
 	readonly version: string;
 	readonly gitRemote: string;
 	readonly resolvedCommitSha: string;
@@ -93,7 +94,7 @@ export async function computeTerminalBenchProvenance(
 	const contentHash = await computeTaskSetContentHash(datasetRoot, selectedTasks);
 
 	return Object.freeze({
-		suiteName: "terminal-bench",
+		suiteName: TERMINAL_BENCH_SUITE_NAME,
 		version: options.version ?? TERMINAL_BENCH_TAG,
 		gitRemote: options.gitRemote ?? TERMINAL_BENCH_GIT_REMOTE,
 		resolvedCommitSha: resolvedSha,

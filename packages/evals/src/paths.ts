@@ -9,6 +9,41 @@ export function evalsPackageDir(): string {
 	return path.resolve(import.meta.dirname, "..");
 }
 
+/** A dynamic path segment that would escape the directory it is joined into. */
+export class UnsafePathSegmentError extends Error {
+	readonly segment: string;
+
+	constructor(segment: string, what: string) {
+		super(
+			`Unsafe ${what} ${JSON.stringify(segment)}: a path segment must be a single name, ` +
+				`without a separator, and must not be "." or "..".`,
+		);
+		this.name = "UnsafePathSegmentError";
+		this.segment = segment;
+	}
+}
+
+/**
+ * Validate one dynamic path segment and return it unchanged.
+ *
+ * A dataset tag, suite name or arm label reaches this module from a CLI flag, a config file or a
+ * run record. Joining such a value unchecked lets `../../..` reach any directory the process can
+ * write, so every dynamic segment passes through here.
+ */
+export function requirePathSegment(value: string, what: string): string {
+	if (value.length === 0 || value.trim() !== value) throw new UnsafePathSegmentError(value, what);
+	if (value === "." || value === "..") throw new UnsafePathSegmentError(value, what);
+	if (value.includes("/") || value.includes("\\") || value.includes("\0")) {
+		throw new UnsafePathSegmentError(value, what);
+	}
+	if (path.basename(value) !== value) throw new UnsafePathSegmentError(value, what);
+	return value;
+}
+
+function checkedSegments(segments: readonly string[]): string[] {
+	return segments.map(segment => requirePathSegment(segment, "path segment"));
+}
+
 /** Root directory of the DeepSWE suite (packages/evals/src/suites/deep-swe). */
 export function deepSweSuiteDir(): string {
 	return path.join(import.meta.dirname, "suites", "deep-swe");
@@ -21,24 +56,24 @@ export function armsDir(): string {
 
 /** Curated task lists directory (packages/evals/datasets/deep-swe/tasks). */
 export function taskListsDir(): string {
-	return path.join(evalsPackageDir(), "datasets", "deep-swe", "tasks");
+	return suiteDatasetDir("deep-swe", "tasks");
 }
 
 /** Task definitions corpus directory (packages/evals/datasets/deep-swe/corpus/tasks or corpus). */
 export function taskCorpusDir(): string {
-	const nested = path.join(evalsPackageDir(), "datasets", "deep-swe", "corpus", "tasks");
+	const nested = suiteDatasetDir("deep-swe", "corpus", "tasks");
 	if (fs.existsSync(nested)) return nested;
-	return path.join(evalsPackageDir(), "datasets", "deep-swe", "corpus");
+	return suiteDatasetDir("deep-swe", "corpus");
 }
 
 /** Dictionary datasets directory (packages/evals/datasets/dicts). */
 export function dictsDir(): string {
-	return path.join(evalsPackageDir(), "datasets", "dicts");
+	return path.join(datasetsDir(), "dicts");
 }
 
 /** Fixtures directory (packages/evals/datasets/deep-swe/fixtures). */
 export function fixturesDir(): string {
-	return path.join(evalsPackageDir(), "datasets", "deep-swe", "fixtures");
+	return suiteDatasetDir("deep-swe", "fixtures");
 }
 
 /** In-container Pier agents directory (packages/evals/agents/pier). */
@@ -61,24 +96,27 @@ export function cacheDir(): string {
 	return path.join(evalsPackageDir(), ".cache");
 }
 
-/** TerminalBench dataset directory for a specific tag (packages/evals/.cache/datasets/terminal-bench/<tag>). */
-export function terminalBenchDatasetDir(tag: string): string {
-	return path.join(cacheDir(), "datasets", "terminal-bench", tag);
+/** Datasets directory shared by every suite (packages/evals/datasets). */
+export function datasetsDir(): string {
+	return path.join(evalsPackageDir(), "datasets");
 }
 
-/** TerminalBench curated task lists directory (packages/evals/datasets/terminal-bench/tasks). */
-export function terminalBenchTaskListsDir(): string {
-	return path.join(evalsPackageDir(), "datasets", "terminal-bench", "tasks");
+/**
+ * Committed dataset directory for one suite (packages/evals/datasets/<suite>/...).
+ *
+ * Every segment is validated, so a suite name or a dataset tag read from a config file or a CLI
+ * flag cannot escape the datasets directory.
+ */
+export function suiteDatasetDir(suite: string, ...segments: readonly string[]): string {
+	return path.join(datasetsDir(), requirePathSegment(suite, "suite name"), ...checkedSegments(segments));
 }
 
-/** Path to bundled TypeScript edit benchmark fixtures archive (packages/evals/datasets/typescript-edit/fixtures.tar.gz). */
-export function typescriptEditFixturesArchive(): string {
-	return path.join(evalsPackageDir(), "datasets", "typescript-edit", "fixtures.tar.gz");
-}
-
-/** TypeScript edit benchmark dataset cache directory (packages/evals/.cache/datasets/typescript-edit). */
-export function typescriptEditCacheDir(): string {
-	return path.join(cacheDir(), "datasets", "typescript-edit");
+/**
+ * Downloaded or extracted dataset cache for one suite
+ * (packages/evals/.cache/datasets/<suite>/...). Segments are validated as in `suiteDatasetDir`.
+ */
+export function suiteCacheDir(suite: string, ...segments: readonly string[]): string {
+	return path.join(cacheDir(), "datasets", requirePathSegment(suite, "suite name"), ...checkedSegments(segments));
 }
 
 /** Repository workspace internal scratch directory (.internal at repository root). */

@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { errorMessage } from "@veyyon/utils";
-import { typescriptEditCacheDir, typescriptEditFixturesArchive } from "../../paths";
+import { typescriptEditCacheDir, typescriptEditFixturesArchive } from "./paths";
 
 export interface FixturesArchiveInfo {
 	readonly ok: true;

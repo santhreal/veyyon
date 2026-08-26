@@ -13,9 +13,10 @@ import type {
 	TrialCell,
 	TrialScore,
 } from "../../core/types";
-import { typescriptEditFixturesArchive } from "../../paths";
+
 import { ensureFixturesExtracted, readFixturesArchive } from "./extract";
-import { computeTypescriptEditProvenance, TYPESCRIPT_EDIT_SUITE_NAME, TYPESCRIPT_EDIT_VERSION } from "./provenance";
+import { TYPESCRIPT_EDIT_SUITE_NAME, typescriptEditFixturesArchive } from "./paths";
+import { computeTypescriptEditProvenance, TYPESCRIPT_EDIT_VERSION } from "./provenance";
 import { type EditTask, loadTasksFromDir } from "./tasks";
 import { verifyExpectedFileSubset } from "./verify";
 

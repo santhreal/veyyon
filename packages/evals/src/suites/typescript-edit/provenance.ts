@@ -4,10 +4,11 @@ import * as path from "node:path";
 import { listFiles } from "../../core/fs-walk";
 import type { SuiteProvenance } from "../../core/types";
 import { readFixturesArchive } from "./extract";
+import { TYPESCRIPT_EDIT_SUITE_NAME, typescriptEditFixturesArchiveRelative } from "./paths";
 
 export const TYPESCRIPT_EDIT_VERSION = "1.0.0";
-export const TYPESCRIPT_EDIT_SUITE_NAME = "typescript-edit";
-export const DEFAULT_FIXTURES_ARCHIVE_RELATIVE = "datasets/typescript-edit/fixtures.tar.gz";
+
+const DEFAULT_FIXTURES_ARCHIVE_RELATIVE = typescriptEditFixturesArchiveRelative();
 
 export interface TypescriptEditProvenanceOptions {
 	readonly archivePath?: string;
