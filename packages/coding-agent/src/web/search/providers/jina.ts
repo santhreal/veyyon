@@ -5,7 +5,8 @@
  * cleaned content.
  */
 
-import type { AuthStorage, FetchImpl } from "@veyyon/ai";
+import type { ApiKey, AuthStorage, FetchImpl } from "@veyyon/ai";
+import { withAuth } from "@veyyon/ai/auth-retry";
 import { getEnvApiKey } from "@veyyon/ai/env-api-key";
 import { resolveProviderTextTransform } from "../../../provider-boundary";
 import type { SearchResponse, SearchSource } from "../../../web/search/types";
@@ -24,6 +25,8 @@ export interface JinaSearchParams {
 	signal?: AbortSignal;
 	fetch?: FetchImpl;
 	resolveProviderTextTransform?: SearchParams["resolveProviderTextTransform"];
+	authStorage?: AuthStorage;
+	sessionId?: string;
 }
 
 interface JinaSearchResult {
@@ -67,12 +70,14 @@ async function callJinaSearch(apiKey: string, params: JinaSearchParams): Promise
 
 /** Execute Jina web search. */
 export async function searchJina(params: JinaSearchParams): Promise<SearchResponse> {
-	const apiKey = findApiKey();
-	if (!apiKey) {
-		throw new Error("JINA_API_KEY not found. Set it in environment or .env file.");
-	}
+	const keyOrResolver: ApiKey | undefined = params.authStorage
+		? params.authStorage.resolver("jina", { sessionId: params.sessionId })
+		: (findApiKey() ?? undefined);
 
-	const response = await callJinaSearch(apiKey, params);
+	const response = await withAuth(keyOrResolver, key => callJinaSearch(key, params), {
+		signal: params.signal,
+		missingKeyMessage: 'Jina credentials not found. Set JINA_API_KEY or configure an API key for provider "jina".',
+	});
 	const sources: SearchSource[] = [];
 
 	for (const result of response) {
@@ -95,8 +100,8 @@ export class JinaProvider extends SearchProvider {
 	readonly id = "jina";
 	readonly label = "Jina";
 
-	isAvailable(_authStorage: AuthStorage): boolean {
-		return !!findApiKey();
+	isAvailable(authStorage: AuthStorage): boolean {
+		return authStorage.hasAuth("jina") || !!findApiKey();
 	}
 
 	search(params: SearchParamsWithFetch): Promise<SearchResponse> {
@@ -108,6 +113,8 @@ export class JinaProvider extends SearchProvider {
 			signal: params.signal,
 			fetch: fetchImpl,
 			resolveProviderTextTransform: params.resolveProviderTextTransform,
+			authStorage: params.authStorage,
+			sessionId: params.sessionId,
 		});
 	}
 }
