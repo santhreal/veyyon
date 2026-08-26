@@ -69,11 +69,12 @@
 			"!**/devin-gen/**/*",
 			"!.worktrees/**/*",
 			"!.wt/**/*",
-			"!packages/deepswe-bench/repo-cache/**/*",
-			"!packages/deepswe-bench/runs/**/*",
+			"!packages/evals/datasets/repo-cache/**/*",
+			"!packages/evals/.cache/**/*",
+			"!packages/evals/runs/**/*",
 			"!runs/**/*",
-			"!packages/deepswe-bench/deep-swe/**/*",
-			"!packages/deepswe-bench/assets/**/*"
+			"!packages/evals/datasets/deep-swe/corpus/**/*",
+			"!packages/evals/assets/**/*"
 		]
 	},
 	"assist": {

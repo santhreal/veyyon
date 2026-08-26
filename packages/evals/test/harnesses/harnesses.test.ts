@@ -1,0 +1,75 @@
+import { describe, expect, it } from "bun:test";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { HarnessRegistry, hasHarness, requireHarness } from "../../src/core/harness-registry";
+import { registerBuiltinHarnesses } from "../../src/harnesses";
+import { factoryAdapter } from "../../src/harnesses/adapters/factory";
+import { hermesAdapter } from "../../src/harnesses/adapters/hermes";
+import { ompAdapter } from "../../src/harnesses/adapters/omp";
+import { veyyonAdapter } from "../../src/harnesses/adapters/veyyon";
+
+const builtinHarnesses = [veyyonAdapter, ompAdapter, factoryAdapter, hermesAdapter] as const;
+
+describe("HarnessRegistry & Built-in Harnesses", () => {
+	const adaptersDir = path.resolve(import.meta.dirname, "../../src/harnesses/adapters");
+
+	it("dynamically registers every harness adapter found in src/harnesses/adapters", () => {
+		expect(fs.existsSync(adaptersDir)).toBe(true);
+		const adapterFiles = fs
+			.readdirSync(adaptersDir)
+			.filter(file => file.endsWith(".ts") && !file.endsWith(".test.ts") && !file.endsWith(".d.ts"))
+			.map(file => path.basename(file, ".ts"));
+
+		expect(adapterFiles.length).toBeGreaterThan(0);
+
+		// Every file in adapters/ must be registered in defaultHarnessRegistry
+		for (const adapterName of adapterFiles) {
+			expect(hasHarness(adapterName)).toBe(true);
+			const harness = requireHarness(adapterName);
+			expect(harness.name).toBe(adapterName);
+		}
+	});
+
+	it("registerBuiltinHarnesses is idempotent and populates custom registries", () => {
+		const custom = new HarnessRegistry();
+		expect(custom.list().length).toBe(0);
+
+		registerBuiltinHarnesses(custom);
+		expect(custom.list().length).toBe(builtinHarnesses.length);
+
+		// Second call must not throw
+		expect(() => registerBuiltinHarnesses(custom)).not.toThrow();
+		expect(custom.list().length).toBe(builtinHarnesses.length);
+	});
+
+	it("each built-in harness implements the HarnessAdapter contract with pier backend binding", () => {
+		for (const harness of builtinHarnesses) {
+			expect(typeof harness.name).toBe("string");
+			expect(typeof harness.displayName).toBe("string");
+			expect(typeof harness.description).toBe("string");
+			expect(harness.capabilities).toBeDefined();
+
+			// Pier backend binding must be defined
+			const pierBinding = harness.backends.pier;
+			expect(pierBinding).toBeDefined();
+			expect(typeof pierBinding?.agentImportPath).toBe("string");
+			expect(pierBinding?.agentImportPath?.length).toBeGreaterThan(0);
+			expect(typeof pierBinding?.containerAssetsDir).toBe("string");
+			expect(pierBinding?.containerAssetsDir?.startsWith("/")).toBe(true);
+
+			// preflight and stageAssets methods exist
+			expect(typeof harness.preflight).toBe("function");
+			expect(typeof harness.stageAssets).toBe("function");
+		}
+	});
+
+	it("preflight returns a valid PreflightVerdict for built-in harnesses", async () => {
+		for (const harness of builtinHarnesses) {
+			const verdict = await harness.preflight({ backend: "pier" });
+			expect(typeof verdict.ok).toBe("boolean");
+			if (!verdict.ok) {
+				expect(Array.isArray(verdict.missingRequirements)).toBe(true);
+			}
+		}
+	});
+});

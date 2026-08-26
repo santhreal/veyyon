@@ -796,6 +796,7 @@ These keys are not in `/settings`. Some are state veyyon writes for itself (a sc
 | `disabledProviders` | array | `[]` |  |
 | `edit.modelVariants` | record | `{}` |  |
 | `enabledModels` | array | `[]` |  |
+| `eval.pyWorkspace` | boolean | `false` |  |
 | `extensions` | array | `[]` |  |
 | `gc.archive` | boolean | `true` |  |
 | `gc.blobs` | boolean | `true` |  |
@@ -878,9 +879,10 @@ These keys are not in `/settings`. Some are state veyyon writes for itself (a sc
 | `thinkingBudgets.medium` | number | `8192` |  |
 | `thinkingBudgets.minimal` | number | `1024` |  |
 | `thinkingBudgets.xhigh` | number | `32768` |  |
+| `tools.unifiedRuntime` | boolean | `false` |  |
 | `ttsr.experimentalRules` | array | `[]` |  |
 | `tui.maxInlineImageColumns` | number | `100` |  |
 | `tui.maxInlineImageRows` | number | `20` |  |
 | `tui.maxInlineImages` | number | `8` |  |
 
-348 settings in /settings, 119 configuration-file keys, 467 in all.
+348 settings in /settings, 121 configuration-file keys, 469 in all.

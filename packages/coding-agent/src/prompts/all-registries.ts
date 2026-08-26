@@ -16,7 +16,7 @@
  * to 528, and `a-launch-does-not-build-every-prompt-registry.test.ts` fails if an edge to
  * this file returns.
  *
- * `@veyyon/metaharness`'s benchmark prompts are deliberately NOT here. They are asked
+ * `@veyyon/evals`'s benchmark prompts are deliberately NOT here. They are asked
  * by a measurement harness, not by the agent, and the agent must not depend on the
  * harness that scores it.
  */

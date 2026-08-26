@@ -178,7 +178,7 @@ function enclosingPackage(relFile: string): string | undefined {
  * Paths the repository itself declares are generated, asked of `.gitignore`.
  *
  * A doc that names a build output names something no clean checkout contains:
- * `packages/deepswe-bench/runs/` appears on the first benchmark run,
+ * `packages/evals/runs/` appears on the first benchmark run,
  * `packages/natives/native/.build/` when napi-rs compiles, and
  * `tool-views.generated.js` when `bun run gen:tool-views` does. The gate reported
  * all of them as rot, and they are the opposite: a doc telling you where the

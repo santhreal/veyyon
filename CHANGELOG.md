@@ -4,10 +4,6 @@
 
 ## [Unreleased]
 
-### Breaking Changes
-
-- The model-facing workspace search surface is now one mandatory `search` tool taking ordered required `type` (`"files" | "text" | "structure"`) and `input`, replacing the separate `glob`, `grep`, and `ast_grep` tool IDs. Retired per-engine and `search.enabled` values are discarded while text-context values and persisted tool inventories migrate.
-
 ### Added
 
 - `prewalk.cheapModel` and `prewalk.strongModel` configure the cheap model prewalk switches into at the first edit and the strong model it starts on.
@@ -43,6 +39,23 @@
 - `ProviderWireCapabilities.anthropicMessages` declares how a provider serves the Anthropic Messages API — its endpoint, credential placement, rejected request features and retryable model errors — and `declaredProviders()` and `declaredCapabilityNames()` derive the declaring sets from the table.
 - Bundled model resolution persists a content-verified enriched snapshot, and a registry cache stamp moves on every row-content write, and on a row crossing the freshness window it is read under, without treating SQLite sidecar churn or a provider re-verifying models it already had as a change.
 - Added `supportsServerCompaction` capability data for ChatGPT Codex backend models on the Responses API.
+- `@veyyon/evals` is the single package holding every evaluation in this repository, replacing `@veyyon/deepswe-bench`, `@veyyon/metaharness` and `@veyyon/typescript-edit-benchmark`.
+- `evals --suite <name>` runs any suite across five axes (suite × harness × config × prompt variant × model) with `--tasks`, `--repeats`, `--jobs`, `--dry-run` and `--list`.
+- `src/run/plan.ts` decides every trial cell before anything executes, task-major with variants innermost, and refuses an empty selection, an unknown task id or a non-integer repeat count.
+- `src/run/execute.ts` drives a plan through one execution backend with a bounded worker pool, records results in plan order rather than completion order, and runs cleanup for a cell whose trial threw.
+- A trial that throws records `reward: null` with the error text, so a broken container is no longer indistinguishable from an agent that scored zero.
+- Terminal-Bench 3.0 is an eval suite: `src/suites/terminal-bench/` with the dataset pinned at tag `v3.0.0` (`2b0442c3c583b710ca8da14c8e601b99f2f1f244`, 74 tasks), Harbor task-config parsing, provenance, and the committed `smoke.txt` and `pilot.txt` task lists.
+- `src/core/` holds the shared contracts (`EvalSuite`, `HarnessAdapter`, `ExecutionBackend`), the three registries, the variant matrix with deterministic variant naming and collision detection, and the suite-tagged run record model.
+- Pier, Harbor and in-process are registered execution backends: `pierBackend`, `harborBackend`, `inProcessBackend`, each with a preflight verdict naming what is missing.
+- The harness adapters (veyyon, omp, factory, hermes) are shared across suites at `src/harnesses/`, registered by `registerBuiltinHarnesses()`.
+- `agents/harbor/veyyon_agent.py` runs the veyyon harness inside a Harbor container.
+- Folded the TypeScript-edit mutation, verification, and benchmark suite into `src/suites/typescript-edit/`.
+- Added in-process `AgentSession` execution client at `src/backends/in-process/client.ts`.
+- Moved TypeScript-edit benchmark fixtures and datasets to `datasets/typescript-edit/`.
+- Moved the Harbor execution backend to `src/backends/harbor/` and local Harbor agent to `agents/harbor/veyyon_local.py`.
+- Moved the SQLite run store, experiment grouping layer, and REST/SSE manager server into `src/manager/` and `src/server/`.
+- Moved the React live evaluation dashboard into `src/web/`.
+- Moved benchmark and trace reporting tools into `src/report/`.
 - `Image` accepts an `onDisplayed` callback and reports the cause each time an image starts or stops falling back to a placeholder.
 - `MOTION.reflow` states the curve for a row that reflows its content sideways: 320ms, symmetric, where `expand` is 180ms and front-loaded.
 - `run()` accepts verified command summaries for root help and falls back to loading the full registry when any summary is absent.
@@ -50,16 +63,15 @@
 
 ### Changed
 
+- The eval prompt-override registry, the system-prompt eval hooks, the argot cache and the reroot hint name `@veyyon/evals` paths instead of the retired `@veyyon/metaharness`, `@veyyon/typescript-edit-benchmark` and `@veyyon/deepswe-bench` packages. No behavior change.
 - `veyyon --help` renders its command list from registry summaries verified against command statics and loads only the hidden default command for its flag table, reducing a measured warm Windows invocation from 1.2 seconds to 0.13 seconds.
 - The default launch command imports the session runtime and ACP terminal authentication only when it runs, so loading its flag table no longer imports the runtime graph.
 - Classified runner output (cargo, bun, Go, ctest, dotnet, clippy, golangci-lint, Gradle lint, pytest, and tsc/eslint-family) now opens with a result-contract header: `[clean] <command>` or `[errors]` / `[errors N] <command>`. The header is the verdict and the body contains retained diagnostics.
 - The vibe screens, the image-inspection call and an LSP hover code block draw no border of their own inside a tool block, so a block keeps one left edge; a tree connector remains only where a row belongs to the row above it, in the eval value tree, the search line gutter, the job tree and the LSP reference tree.
 - A picture a terminal will not draw now leaves a row naming the file, the media type, the pixel size and the cause, in place of `[Image: image/png]`, including when a Kitty session cannot convert it to PNG.
-- Broad multi-file text searches now keep only deterministic representative matches inline and save the complete formatted result behind an `artifact://` reference. The preview budget follows the turn-aware output curve from an 8 KiB search ceiling (~2 KiB early at turn 0), emitting up to two representative matches per file while preserving counts and warnings; explicit single-file and line-range searches retain their full output, and only visible representative lines are recorded as seen for anchored edits.
 - Files → LSP is one enterable row whose nested page independently controls language servers, the agent tool, diagnostics after write or edit, format after write, lazy startup, and diagnostics deduplication; `--no-lsp` still disables the full stack.
 - Startup paints the composer itself instead of an empty reservation. The first frame used to reserve eight blank rows where the prompt would live and left them empty until the mode finished initializing — slash-command discovery, recent-session reads — so on a cold launch the composer arrived seconds late and read as it sliding up into place. The first frame now paints the resting composer (real hairline, ghost prompt, exact row count) from one static component shared with the mounted zone: the prompt is on screen from the first paint, and the handover swaps text, never position.
 - Multi-target `ast_grep` searches now execute concurrently while preserving globally ordered paging, totals, parse errors, cancellation, and target-order failures.
-- The vibe screens, the image-inspection call and an LSP hover code block draw no border of their own inside a tool block, so a block keeps one left edge; a tree connector remains only where a row belongs to the row above it, in the eval value tree, the grep line gutter, the job tree and the LSP reference tree.
 - Session creation overlaps two serial file reads with neighboring startup work instead of paying them back to back. Rules discovery starts as soon as the session context loads rather than after the skills await, so its directory scan runs under model resolution and prompt assembly; and inside the secrets runtime the vault key read starts before the secrets/env/vault entry loads instead of after all three.
 - `ModelRegistry` persists its static bundled, cached-standard, and cached-discovery layers to a content-verified `resolved-models.json`, so a warm launch restores resolved records and provider discovery state instead of rebuilding them. Catalog, cache-row and custom-model content changes invalidate it, as does a cached row crossing its 24 h freshness window; SQLite sidecar churn and a provider re-verifying models it already had do not.
 - A failed MCP tool call decides on a reconnect from the shared socket vocabulary plus this layer's own stale-session rules, so an unreachable or unresolvable host reconnects the server the way a refused connection already did, while a live server answering 500 or holding a request past its deadline stays a failed call.
@@ -71,6 +83,7 @@
 - Superseded and useless tool results are now pruned as a batch whose combined size pays for the prompt-cache rewrite it forces, instead of only when a single result sits within 8,000 tokens of the end of the conversation.
 - Compaction's directory-list documentation now uses canonical `search` `files` terminology instead of the retired `find` tool name. No runtime behavior changed.
 - A tool that blocks on only some of its operations declares interruptibility per call, so an interrupt arriving beside a non-blocking or malformed call no longer replaces that call's own result with a skipped placeholder.
+- The assistant-text extractor's one-owner check names the consolidated evals package path instead of the retired metaharness path. No behavior change.
 - Formatted tool-call loop guard whitespace; behavior is unchanged.
 - The Anthropic provider reads its endpoint, credential placement, rejected betas and retry policy from the catalog's wire-capability table instead of comparing provider ids at seventeen call sites.
 - `ToolCall.arguments` is a `Readonly<Record<string, unknown>>`, so a producer replaces the object instead of writing into one a streaming snapshot already shares.
@@ -78,14 +91,26 @@
 - The OpenAI-family, pi-native and Codex request builders serialize the request body once instead of deep-cloning the request graph, which took attempt preparation on a 32MiB context from 82ms to 9ms.
 - A message that names a dead socket reads the same everywhere: `namesDeadSocket` in `@veyyon/ai/error/flags` is the one list of errnos and phrases, and `ENETUNREACH`, `EHOSTUNREACH` and `EAI_AGAIN` now count as transient transport failures like the rest of them.
 - Formatted source files for Biome compliance.
+- The dictionary generator and its constants name the `packages/evals/datasets/dicts/` corpus path instead of the retired deepswe-bench path. No behavior change.
+- Parameterized the Harbor backend default dataset and upgraded the run store schema to version 2 with explicit suite and backend identities, so rows from two suites cannot be aggregated into one pass rate.
+- The run store is `assets/evals.sqlite`, and the manager server, dashboard and report renderers are named for the evals package rather than the retired metaharness.
+- The DeepSWE runner keeps its suite-specific flags at `src/suites/deep-swe/run.ts`; its harness registry, Pier execution and reporting are now the shared ones.
+- `bench:gen-fixtures` generates TypeScript-edit fixtures from `datasets/typescript-edit/typescript-source` instead of a path under `/tmp`.
+- The React dashboard is its own TypeScript project (`src/web/tsconfig.json`), the only DOM-typed project in the package, so the rest of the package typechecks against the harness's own DOM shims.
+- Every test lives under `test/`, mirroring the `src/` tree, and `bunfig.toml` `pathIgnorePatterns` keeps test discovery out of the gitignored data trees (`runs/`, `datasets/repo-cache/`, `datasets/deep-swe/corpus/`, `.cache/`).
+- `src/paths.ts` is the single owner of the package's directory layout, replacing the DeepSWE-scoped `paths.ts` and the manager's second copy.
+- The search benches write their scratch corpora to the repository's `.internal/` directory instead of creating a stray `packages/.internal/`.
+- Record and config parsing calls `isRecord` and `errorMessage` from `@veyyon/utils` instead of eight local copies.
 - `MNEMOPI_NO_EMBEDDINGS=0`, `false`, `no` or `off` now leaves embeddings on everywhere instead of disabling them on the API path.
 - Every `MNEMOPI_*` value is read by `config.ts` alone; the local-model, extraction and embedding modules ask it instead of parsing the variable again.
 - `getDiagnostics` is now `extractionDiagnostics` in `core/extraction/diagnostics` and `recallDiagnostics` in `core/recall-diagnostics`, so the two registries are no longer reached by one name.
 - Swarm's documented agent tool inventory now names the canonical `search` and `eval` tools instead of retired workspace-search names. No runtime behavior changed.
 - Unified `search` renderer handles canonical `{ type, input }` schemas across files, text, and structure search with nested `{ type, result }` metrics and malformed-input guards. Retired search tool aliases and registry entries for glob, grep, find, and ast_grep are removed.
+- The ANSI owner check scans `packages/evals/src/backends/harbor` instead of the retired metaharness package path. No behavior change.
 - `imageFallback` takes the file name, media type, pixel size and cause of an undrawn image and returns a row naming all four; `ImageFallbackReason` states the cause.
 - The fuzzy-match benchmark fixture now names the canonical text-search source path instead of the retired grep-tool path. No benchmark behavior changed.
 - Settings rows can open nested panels, used by Files → LSP to keep its dependent switches behind one parent row.
+- The prompt registry and the eval prompt-override loader read benchmark prompts from `packages/evals/src/suites/typescript-edit/adapter/prompts/`, the path the consolidated evals package holds them at. No behavior change.
 - The `prompt-variables` documentation examples name the `search` tool, which is the workspace-search tool that now exists, instead of the retired `grep` tool. No behavior change.
 - `bestEffort` and `optionalResult` are imported from `@veyyon/utils/discarded-fault`. The barrel does not re-export them, so a consumer reaching them through `@veyyon/utils` names the module instead.
 - `relativePathWithinRoot` returns the candidate's own spelling instead of the case-folded copy the containment check used, so on Windows a path under `C:\Users\dev\Projects` no longer comes back lowercased, and a root configured in a different case than the directory on disk resolves to the tail rather than to a `..` walk.
@@ -95,7 +120,6 @@
 - An explicit `--model` pointing at a dynamically-discovered model (a provider`s `/v1/models` entry or models.dev overlay absent from the bundled catalog) no longer fails with "not found among N models" when the background discovery refresh has not completed before model resolution. The deferred pattern path does a synchronous cache-aware discovery pass when none of the patterns resolve against the static catalog, mirroring the fallback already present for default-role models.
 - Unified search now preserves purpose-specific field semantics through the Antigravity tool-schema adapter, replaces primitive search tools in explicit tool lists, keeps plan/subagent/bash guidance aligned with the active tool, and redirects intercepted shell searches to `search`.
 - Bundled edit and write guidance now uses TTSR's deferred reminder path instead of inheriting the global interrupt policy and aborting the active model response. Every bundled tool-scoped rule must now declare its interrupt policy explicitly.
-- A setting the system prompt depends on rebuilds that prompt whoever writes it. Two owners decided that: the settings screen asked the prompt-gate registry, and the session asked a private table of eight paths that never restated six of the registry's live gates. So writing `personality`, `tools.format`, `inlineToolDescriptors`, `includeModelInPrompt`, `tui.renderMermaid` or `tools.intentTracing` from anywhere but the settings screen — a slash command, an SDK or ACP host, a plugin — changed the configuration and left the model reading a prompt that described the previous one, with nothing logged; and flipping one of the five paths both lists held rebuilt the prompt twice for one change. The trigger now lives once, with the prompt, in the session's effective-setting listener, and reads the registry for which settings reach the model. The session's own table keeps only the three that gate no prompt text at all (`async.enabled`, `subagent.isolation.mode`, `subagent.maxNestedSpawnDepth`, which decide the `task` tool's description and schema), and a failed rebuild is logged as a warning rather than at debug, because the settings screen is no longer there to report it.
 - Brave and Jina web search honor an API key held in the credential store, instead of reporting themselves unconfigured unless the key was also exported as an environment variable.
 - A JSON-RPC header field whose name merely ends in `Content-Length`, or a server log line that mentions it, no longer sets the frame length and parks the language-server connection on a byte count the stream never reaches.
 - A grep over an archive member removes its extracted scratch directory when extraction fails partway, instead of leaving it behind for the life of the host.
@@ -168,11 +192,6 @@
 - IRC broadcasts no longer wake completed idle peers; direct messages still wake the addressed peer.
 - ImageMagick pixel caches used by proof capture and HD demo scripts stay inside an owned scoped directory that the parent removes after child failure without deleting concurrent or inherited unrelated directories.
 - An indented row inside a tool block keeps its indent when it wraps at a narrow width, instead of continuing at the block's left edge.
-- Unified search approval preflight now covers every multi-target syntax execution accepts; search also excludes byte-truncated context from editable seen lines, unions ranged and unrestricted text scopes, orders equal-mtime file results by path, suppresses pattern errors from unrelated structure languages, and distinguishes exhausted structure pages from a search with no matches.
-- Unified search now keeps warning-heavy text results within the inline byte budget, preserves semicolon path lists longer than one filename component, excludes matches hidden by generic truncation from editable seen lines, classifies every SSH path-list encoding at the execution approval tier, matches native Unicode tie ordering, and reports exhausted text pages with their totals.
-- Unified search no longer broadens or misroutes malformed calls: files-mode rejects a `path` owned by other modes while retaining the historical `/`-means-workspace alias, structure search rejects unsupported `ssh://` scopes without an approval prompt for work it cannot execute, immutable internal or fetched sources never receive editable hashline anchors, and the Bash interceptor no longer redirects mutating or otherwise non-equivalent `find` commands to a read-only file search.
-- The plan-mode extension example now keeps canonical `search` available both while planning and after restoring normal tools. It previously advertised retired `grep`/`find` identities, requested a nonexistent `find` tool, and dropped search when plan mode ended.
-- Memory summarization now retains canonical `search` results from session rollouts. It previously allowlisted the retired `grep` tool name but discarded every result emitted by unified search before Stage 1 summarization.
 - The finalization reminder counts the files a multi-file edit actually wrote: a call that reports overall failure after writing some of its files is now unverified evidence, and a file a per-file entry skipped is no longer named as affected.
 - A mutated path is XML-escaped before it reaches the hidden finalization reminder, so a file name spelling `</system-reminder>` cannot end the reminder envelope early, and a relative `ast_edit` path is resolved against the call's working directory before duplicate paths are collapsed.
 - A colour or title escape sequence a command writes in two pieces no longer leaves part of itself in tool output: the sink holds a sequence its chunk ended inside until the piece that finishes it arrives, and drops one the stream never completes.
@@ -188,7 +207,6 @@
 - Side requests derive a stable conversation ID per oneshot kind, preventing compaction, handoff, and branch summaries from overwriting live Cursor and Devin conversation state.
 - Aborting while paused rejects the pause wait and prevents the agent loop from starting another provider turn or paused tool.
 - A branch-summary reserve at or above the model's context window now falls back to the proportional 15% reserve instead of leaving a non-positive budget, which the entry preparation read as "no limit" and which sent the whole branch.
-- Anthropic strict-tool planning now recognizes the unified `search` tool instead of the retired `find` identity, so canonical workspace search receives strict schema enforcement without reviving a legacy tool name.
 - A persisted 400/413 request dump redacts `x-goog-api-key`, so a rejected Google Generative AI or Vertex request no longer writes the operator's plaintext API key into `logs/http-400-requests/`.
 - A failed Amazon Bedrock turn reports its elapsed duration again, instead of carrying time-to-first-token with no total while a successful turn reported both.
 - Normalized cumulative tool-call argument delta snapshots for OpenAI Codex streams while preserving true incremental deltas on standard OpenAI Responses streams via declared per-provider wire shapes.

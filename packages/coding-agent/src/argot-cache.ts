@@ -270,7 +270,7 @@ export function unloadArgotFolder(argot: ArgotSession, folder: string): { root: 
  * with the vocabulary the dictionary produced — INCLUDING an empty one. That empty
  * case is the whole point: a repo with no repeated-token mass generates an empty
  * dictionary, so the model has nothing to encode and the prompt is never refreshed
- * (the size gate below). Downstream instruments (the deepswe-bench argot telemetry)
+ * (the size gate below). Downstream instruments (the DeepSWE argot telemetry)
  * need to see it to tell "the corpus had nothing to compress" apart from "the model
  * ignored available handles"; without it, a null encode result is uninterpretable.
  *

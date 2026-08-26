@@ -53,8 +53,8 @@ import {
 } from "./loading";
 import { wrapToolWithMetaNotice } from "./output-meta";
 import { RerootDetector, wrapToolWithRerootHint } from "./reroot-hint";
-import type { TodoPhase } from "./todo";
 import { RuntimeTool } from "./runtime";
+import type { TodoPhase } from "./todo";
 
 // Builtin implementation modules remain lazy so the CLI boot path does not
 // parse tools this session never activates.

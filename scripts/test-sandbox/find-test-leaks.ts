@@ -43,7 +43,7 @@ const SKIP_DIRS = new Set(["node_modules", "fixtures"]);
 /**
  * True when git ignores the path, so it is not ours to check.
  *
- * This matters at the top of a tree: `packages/deepswe-bench/repo-cache` is a gitignored
+ * This matters at the top of a tree: `packages/evals/datasets/repo-cache` is a gitignored
  * cache of CLONED EXTERNAL REPOSITORIES and it holds 3,332 `.test.ts` files — more than
  * twice the whole veyyon suite. Walking it would spend hours running other projects'
  * tests and report their leaks as ours. Asking git rather than growing a name list means

@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-6dc876ce.js";
+            window.path_to_searchindex_js = "searchindex-1cdd7ee7.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-a2abefc1.js"></script>
@@ -6424,6 +6424,7 @@ operational failure modes.</p>
 <li>both backends (<code>eval.py=true</code>, <code>eval.js=true</code>, or <code>VEYYON_PY=1 VEYYON_JS=1</code>)</li>
 </ul>
 <p><code>VEYYON_PY</code> and <code>VEYYON_JS</code> use normal boolean flag parsing. Each flag, when set, overrides only its own setting; an unset flag falls back to its setting (<code>eval.py</code> / <code>eval.js</code>, both default <code>true</code>).</p>
+<p><code>eval.pyWorkspace</code> defaults to <code>false</code>. When enabled, the model-facing <code>eval</code> description tells the agent to retain large <code>tool.*</code> results in Python variables, transform them in the kernel, reuse helper functions, and display only compact conclusions. It adds guidance only; it does not add Python APIs or change cell execution.</p>
 <p>If Python preflight fails and <code>eval.js</code> is enabled, <code>eval</code> remains available for <code>js</code> cells; <code>py</code> cells fail with a Python-backend availability error.</p>
 <p>Python prelude helpers include <code>agent(prompt, *, agent="deep", model=None, label=None, schema=None, handle=False, isolated=None, apply=None, merge=None)</code>. It synchronously calls the host bridge, runs one subagent through the task executor, and returns the final text. When <code>schema</code> is supplied, the helper parses the subagent’s JSON output and returns the object. When <code>handle=True</code>, it instead returns a DAG node dict (<code>{"text", "output", "handle", "id", "agent"}</code>) whose <code>handle</code> is the spawned agent’s recoverable <code>agent://&lt;id&gt;</code> URI (the parsed object lands under <code>"data"</code> when <code>schema</code> is also set), so a downstream <code>pipeline</code>/<code>parallel</code> stage can reference the transcript by handle instead of re-inlining it.</p>
 <h3 id="persisted-helper-state"><a class="header" href="#persisted-helper-state">Persisted helper state</a></h3>
@@ -11563,6 +11564,7 @@ veyyon config get compaction.threshold
 <tr><td><code>disabledProviders</code></td><td>array</td><td><code>[]</code></td><td></td></tr>
 <tr><td><code>edit.modelVariants</code></td><td>record</td><td><code>{}</code></td><td></td></tr>
 <tr><td><code>enabledModels</code></td><td>array</td><td><code>[]</code></td><td></td></tr>
+<tr><td><code>eval.pyWorkspace</code></td><td>boolean</td><td><code>false</code></td><td></td></tr>
 <tr><td><code>extensions</code></td><td>array</td><td><code>[]</code></td><td></td></tr>
 <tr><td><code>gc.archive</code></td><td>boolean</td><td><code>true</code></td><td></td></tr>
 <tr><td><code>gc.blobs</code></td><td>boolean</td><td><code>true</code></td><td></td></tr>
@@ -11645,6 +11647,7 @@ veyyon config get compaction.threshold
 <tr><td><code>thinkingBudgets.medium</code></td><td>number</td><td><code>8192</code></td><td></td></tr>
 <tr><td><code>thinkingBudgets.minimal</code></td><td>number</td><td><code>1024</code></td><td></td></tr>
 <tr><td><code>thinkingBudgets.xhigh</code></td><td>number</td><td><code>32768</code></td><td></td></tr>
+<tr><td><code>tools.unifiedRuntime</code></td><td>boolean</td><td><code>false</code></td><td></td></tr>
 <tr><td><code>ttsr.experimentalRules</code></td><td>array</td><td><code>[]</code></td><td></td></tr>
 <tr><td><code>tui.maxInlineImageColumns</code></td><td>number</td><td><code>100</code></td><td></td></tr>
 <tr><td><code>tui.maxInlineImageRows</code></td><td>number</td><td><code>20</code></td><td></td></tr>
@@ -11652,7 +11655,7 @@ veyyon config get compaction.threshold
 </tbody>
 </table>
 </div>
-<p>348 settings in /settings, 119 configuration-file keys, 467 in all.</p>
+<p>348 settings in /settings, 121 configuration-file keys, 469 in all.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="model-and-provider-configuration-modelsyml--modelsyaml"><a class="header" href="#model-and-provider-configuration-modelsyml--modelsyaml">Model and Provider Configuration (<code>models.yml</code> / <code>models.yaml</code>)</a></h1>
 <p>How the coding agent loads models, applies overrides, resolves credentials, and chooses models at runtime.</p>
@@ -17785,7 +17788,7 @@ understand why the parts are split where they are, and where a new part would be
 <tr><td><code>@veyyon/agent-core</code></td><td><code>packages/agent/src/prompts/</code></td><td>compaction: summarizing a session, branch summaries, handoff documents</td></tr>
 <tr><td><code>@veyyon/ai</code></td><td><code>packages/ai/src/prompts/</code></td><td>one format guide per tool-call dialect, plus the tool-catalog template that contains them</td></tr>
 <tr><td><code>@veyyon/hashline</code></td><td><code>packages/hashline/src/</code></td><td>the hashline patch language, which is the edit tool’s description</td></tr>
-<tr><td><code>@veyyon/metaharness</code></td><td><code>packages/metaharness/adapters/edit/prompts/</code></td><td>the edit benchmark’s task, system, and retry prompts</td></tr>
+<tr><td><code>@veyyon/evals</code></td><td><code>packages/evals/src/suites/typescript-edit/adapter/prompts/</code></td><td>the edit benchmark’s task, system, and retry prompts</td></tr>
 </tbody>
 </table>
 </div>

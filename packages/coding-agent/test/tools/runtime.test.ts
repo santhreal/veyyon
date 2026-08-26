@@ -75,9 +75,9 @@ describe("RuntimeTool", () => {
 		it("rejects launch operations during execution when launch is disabled", async () => {
 			const session = makeSession({ launchEnabled: false });
 			const tool = new RuntimeTool(session);
-			await expect(
-				tool.execute("call_1", { op: "start", name: "test", application: "echo" }),
-			).rejects.toThrow(/Process supervision \(start\) is disabled/);
+			await expect(tool.execute("call_1", { op: "start", name: "test", application: "echo" })).rejects.toThrow(
+				/Process supervision \(start\) is disabled/,
+			);
 		});
 	});
 
@@ -114,9 +114,9 @@ describe("RuntimeTool", () => {
 				},
 			});
 			const tool = new RuntimeTool(session);
-			await expect(
-				tool.execute("call_1", { op: "exec", language: "py", code: "print(1)" }),
-			).rejects.toThrow(/Kernel execution \(exec\) is disabled/);
+			await expect(tool.execute("call_1", { op: "exec", language: "py", code: "print(1)" })).rejects.toThrow(
+				/Kernel execution \(exec\) is disabled/,
+			);
 		});
 	});
 
@@ -136,13 +136,13 @@ describe("RuntimeTool", () => {
 			expect(ops).toEqual(["disabled"]);
 			expect(tool.examples.length).toBe(0);
 
-			await expect(
-				tool.execute("call_1", { op: "exec", language: "py", code: "print(1)" }),
-			).rejects.toThrow(/Kernel execution \(exec\) is disabled/);
+			await expect(tool.execute("call_1", { op: "exec", language: "py", code: "print(1)" })).rejects.toThrow(
+				/Kernel execution \(exec\) is disabled/,
+			);
 
-			await expect(
-				tool.execute("call_2", { op: "start", name: "test", application: "echo" }),
-			).rejects.toThrow(/Process supervision \(start\) is disabled/);
+			await expect(tool.execute("call_2", { op: "start", name: "test", application: "echo" })).rejects.toThrow(
+				/Process supervision \(start\) is disabled/,
+			);
 		});
 	});
 
@@ -187,15 +187,23 @@ describe("RuntimeTool", () => {
 			const tool = new RuntimeTool(session);
 
 			await expect(
-				tool.execute("call_1", { op: "exec", code: "print(1)" } as unknown as { op: "exec"; language: "py"; code: string }),
+				tool.execute("call_1", { op: "exec", code: "print(1)" } as unknown as {
+					op: "exec";
+					language: "py";
+					code: string;
+				}),
 			).rejects.toThrow(/exec requires language/);
 
-			await expect(
-				tool.execute("call_2", { op: "exec", language: "rb" as "py", code: "puts 1" }),
-			).rejects.toThrow(/Language "rb" is not enabled/);
+			await expect(tool.execute("call_2", { op: "exec", language: "rb" as "py", code: "puts 1" })).rejects.toThrow(
+				/Language "rb" is not enabled/,
+			);
 
 			await expect(
-				tool.execute("call_3", { op: "exec", language: "py" } as unknown as { op: "exec"; language: "py"; code: string }),
+				tool.execute("call_3", { op: "exec", language: "py" } as unknown as {
+					op: "exec";
+					language: "py";
+					code: string;
+				}),
 			).rejects.toThrow(/exec requires code/);
 		});
 	});
@@ -224,7 +232,9 @@ describe("RuntimeTool", () => {
 
 			const runtimeTool = tools.find(t => t.name === "runtime");
 			expect(runtimeTool).toBeDefined();
-			expect(runtimeTool?.description).toContain("Execute persistent code evaluation cells or supervise long-running background processes");
+			expect(runtimeTool?.description).toContain(
+				"Execute persistent code evaluation cells or supervise long-running background processes",
+			);
 			expect(runtimeTool?.description).toContain("Kernel Evaluation");
 			expect(runtimeTool?.description).toContain("Process Supervision");
 		});
