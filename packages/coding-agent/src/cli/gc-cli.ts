@@ -37,22 +37,14 @@ const JSONL_GZ_GLOB = new Bun.Glob(`**/*${SESSION_FILE_EXTENSION}.gz`);
 const JSONL_BACKUP_GLOB = new Bun.Glob(`**/*${SESSION_FILE_EXTENSION}.*${SESSION_BACKUP_EXTENSION}`);
 const ACTIVE_STATUSES: ReadonlySet<SessionStatus> = new Set(["pending", "interrupted", "unknown"]);
 /**
- * Smallest write-grace window an operator may configure.
- *
- * The grace exists so GC never deletes a blob or archives a session that a running veyyon is still
- * writing to. A zero window removes that protection entirely, so a configured value below this floor is
- * clamped and reported rather than honoured: the setting is a tuning knob, not a way to turn the safety
- * margin off.
+ * Smallest write-grace window an operator may configure. A zero window removes the protection that
+ * keeps GC from deleting blobs a running veyyon is still writing. Clamped and reported, not honoured.
  */
 const MIN_GC_WRITE_GRACE_MS = MINUTE_MS;
 
 /**
- * How old a GC lock file must be before another run breaks it.
- *
- * Deliberately NOT the write-grace window, even though both were 5 minutes and shared one constant.
- * They answer different questions: the grace is "might a process still be writing this file", and this
- * is "is the process that took this lock gone". Tying them together would mean shortening the grace also
- * made GC steal live locks from other runs.
+ * How old a GC lock file must be before another run breaks it. Not the write-grace window: grace is
+ * "might a process still be writing"; this is "is the lock-holder gone". Tying them steals live locks.
  */
 const GC_LOCK_STALE_MS = 5 * MINUTE_MS;
 // The extension comes from its owner, and the compressed form is that extension plus `.gz`, so moving

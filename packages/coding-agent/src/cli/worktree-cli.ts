@@ -230,16 +230,9 @@ async function scanWorktrees(): Promise<WorktreeEntry[]> {
 }
 
 /**
- * Stat a path, distinguishing "not there" from "could not look".
- *
- * This distinction decides whether files get DELETED. `veyyon worktree clear` removes every entry that
- * carries an `orphanReason`, and each orphan verdict below is reached by failing to stat something: a
- * missing `.git`, a parent repo that no longer tracks the worktree, a parent repo that is gone. When a
- * blanket `.catch(() => null)` collapsed both cases, a stat that failed for any other reason -- EACCES on
- * the parent repo, or a network volume that was briefly unreachable, which is the normal state of a repo
- * living on a mount -- read as "missing", and a LIVE worktree was reported as "parent repo missing" and
- * then deleted. Returning `undefined` for the unreadable case lets each caller fail closed toward keeping
- * the user's files.
+ * Stat a path, distinguishing "not there" from "could not look". This distinction decides whether files
+ * get deleted: a blanket `.catch(() => null)` made EACCES or an unreachable mount read as "missing",
+ * deleting live worktrees. `undefined` for unreadable lets callers fail closed toward keeping files.
  */
 async function statPath(target: string): Promise<{ found: Stats | null } | undefined> {
 	try {

@@ -51,14 +51,8 @@ function normalizeAdapterConfig(config: unknown): DapAdapterConfig | null {
 }
 
 /**
- * One debug-adapter config file, or null when this path contributes nothing.
- *
- * Six filenames are probed in each of several directories, so an ABSENT file is the overwhelmingly common
- * answer and stays silent. A file that EXISTS and cannot be read or parsed used to reach the same null,
- * which meant a `dap.json` with a trailing comma was indistinguishable from no `dap.json` at all: the
- * adapters the user configured simply were not there, and the debugger fell back to its defaults without
- * a word. That is now reported with the path, and null is still returned so the remaining sources are
- * still consulted.
+ * One debug-adapter config file, or null. Absent files stay silent (common). A file that exists but
+ * can't parse is now reported with the path (was indistinguishable from absent — adapters silently missing).
  */
 function readConfigFile(filePath: string): NormalizedConfig | null {
 	let content: string;
