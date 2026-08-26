@@ -235,6 +235,31 @@ describe("composer defect oracle mutation gates", () => {
 		expect(ansiFailure?.oracle).toBe("composerCardPadsAreUnpaintedAir");
 	});
 
+	it("9b. composerCardPadsAreUnpaintedAir reads background from SGR parameters, not text shape", () => {
+		const base = createBaselineFrameState();
+		const withPadEscape = (raw: string): ComposerOracleFrameState => {
+			const rawViewportLines = [...base.rawViewportLines];
+			rawViewportLines[6] = `${raw}   \x1b[0m`;
+			const viewportLines = [...base.viewportLines];
+			viewportLines[6] = "";
+			return { ...base, rawViewportLines, viewportLines };
+		};
+
+		// A background is painted: standard, bright, and truecolor in both subparameter spellings.
+		for (const fill of ["\x1b[41m", "\x1b[101m", "\x1b[48;2;255;0;0m", "\x1b[48:2:255:0:0m"]) {
+			expect(checkComposerCardPadsAreUnpaintedAir(withPadEscape(fill))?.oracle).toBe(
+				"composerCardPadsAreUnpaintedAir",
+			);
+		}
+
+		// No background is painted: underline and background-reset both begin with `4`, and an
+		// extended foreground carries a subparameter that reads as background 41 unless the
+		// parameter list is walked rather than matched.
+		for (const bare of ["\x1b[4m", "\x1b[49m", "\x1b[38;5;41m", "\x1b[38;2;0;41;0m"]) {
+			expect(checkComposerCardPadsAreUnpaintedAir(withPadEscape(bare))).toBeNull();
+		}
+	});
+
 	it("10. composerHairlineSpanAndPlacement goes red when hairline row count is corrupted", () => {
 		const base = createBaselineFrameState();
 		// Mutate: hairline segment has rowCount 2
