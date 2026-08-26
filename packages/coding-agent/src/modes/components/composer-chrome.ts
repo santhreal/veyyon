@@ -14,6 +14,10 @@ import { groundHairlineHex, groundTintFgAnsi } from "../theme/ground-tints";
 import { theme } from "../theme/theme";
 import { EMBER } from "./sun";
 
+/** Pre-computed truecolor SGR prefixes for each EMBER band, so the per-frame
+ *  ember tick avoids `EMBER[band].join(";")` + template allocation. */
+const EMBER_SGR: readonly string[] = EMBER.map(([r, g, b]) => `\x1b[38;2;${r};${g};${b}m`);
+
 /**
  * Left inset of the composer zone's content (the `›` gutter and the metadata
  * footline), in columns — the terminal realization of the design mockups'
@@ -224,7 +228,7 @@ export function emberTick(trueColor: boolean, cells = 3): string {
 	let out = "";
 	for (let i = 0; i < cells; i++) {
 		const band = Math.max(0, 6 - i * 2);
-		out += `\x1b[38;2;${EMBER[band].join(";")}m${rule}`;
+		out += `${EMBER_SGR[band]}${rule}`;
 	}
 	return out;
 }
