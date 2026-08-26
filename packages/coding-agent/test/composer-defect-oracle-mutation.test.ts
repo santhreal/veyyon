@@ -36,7 +36,7 @@ import {
 	type ComposerOracleGuarantee,
 	checkComposerCardPadsAreUnpaintedAir,
 	evaluateAllComposerOracles,
-} from "../src/modes/components/composer-defect-oracle";
+} from "../src/modes/components/defect-oracles";
 
 function createBaselineFrameState(): ComposerOracleFrameState {
 	const width = 80;

@@ -10,7 +10,7 @@
 
 import { sgrSequence } from "@veyyon/tui/ansi";
 import { visibleWidth } from "@veyyon/tui/utils";
-import { COMPOSER_INSET_COLS } from "./composer-chrome";
+import { COMPOSER_INSET_COLS } from "../composer-chrome";
 import { type DefectEvaluation, evaluateOracleRegistry, type OracleProbe } from "./defect-oracle-registry";
 
 export const COMPOSER_ORACLE_GUARANTEES = [

@@ -26,7 +26,7 @@ import {
 	OVERLAY_ORACLE_GUARANTEES,
 	type OverlayOracleFrameState,
 	type OverlayOracleGuarantee,
-} from "../src/modes/components/overlay-defect-oracle";
+} from "../src/modes/components/defect-oracles";
 
 const CARD = ["┌── card ──┐", "│ line one │", "│ line two │", "└──────────┘"] as const;
 const CARD_WIDTH = 12;

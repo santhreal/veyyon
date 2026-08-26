@@ -26,7 +26,7 @@ import {
 	type ToolRenderOracleFrameState,
 	type ToolRenderSnapshot,
 	type ToolRenderSurface,
-} from "../../src/modes/components/tool-render-defect-oracle";
+} from "../../src/modes/components/defect-oracles";
 import type { Theme } from "../../src/modes/theme/theme";
 import { toolRenderers } from "../../src/tools/renderers";
 

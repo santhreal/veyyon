@@ -25,19 +25,15 @@ import {
 	COMPOSER_ORACLE_GUARANTEES,
 	type ComposerOracleGuarantee,
 	type OracleFailure,
-} from "../../src/modes/components/composer-defect-oracle";
-import {
 	OVERLAY_ORACLE_GUARANTEES,
 	type OverlayOracleFailure,
 	type OverlayOracleGuarantee,
-} from "../../src/modes/components/overlay-defect-oracle";
-import {
 	TOOL_RENDER_ORACLE_GUARANTEES,
 	type ToolRenderEvaluationResult,
 	type ToolRenderOracleFailure,
 	type ToolRenderOracleGuarantee,
 	type ToolRenderSurface,
-} from "../../src/modes/components/tool-render-defect-oracle";
+} from "../../src/modes/components/defect-oracles";
 import type { Theme } from "../../src/modes/theme/theme";
 import { type RunnerOptions, type RunnerResult, runComposerOracleScenario } from "./composer-oracle-runner";
 import { type OverlayRunnerResult, type OverlaySpec, runOverlayOracleScenario } from "./overlay-oracle-runner";
@@ -195,16 +191,95 @@ export interface ToolRenderCorpusCase extends CorpusCaseFields {
 export type CorpusCase = ComposerCorpusCase | OverlayCorpusCase | ToolRenderCorpusCase;
 
 /**
- * The guarantees a case of each family may name.
+ * Which state shape each family records.
  *
- * A `Record` over the family union: a third family does not compile until it says which registry its
- * oracle ids come from, and a case naming an id outside its family's registry is rejected on load.
+ * Extends a `Record` over the family union, so a family added to `CORPUS_FAMILIES` does not compile
+ * until it names the state it records.
  */
-export const CORPUS_FAMILY_GUARANTEES: Readonly<Record<CorpusFamily, readonly string[]>> = {
-	composer: COMPOSER_ORACLE_GUARANTEES,
-	overlay: OVERLAY_ORACLE_GUARANTEES,
-	toolRender: TOOL_RENDER_ORACLE_GUARANTEES,
+interface CorpusStateByFamily extends Record<CorpusFamily, AnyCorpusCaseState> {
+	composer: CorpusCaseState;
+	overlay: OverlayCorpusCaseState;
+	toolRender: ToolRenderCorpusCaseState;
+}
+
+/** What a replay produces, in the terms every family reports: a verdict, the rows, and a teardown. */
+export interface CorpusReplay {
+	evaluation: {
+		passed: boolean;
+		failures: readonly { oracle: string; message: string }[];
+		skipped: readonly string[];
+		inspected: readonly string[];
+		blind: readonly string[];
+	};
+	frameState: { viewportLines: readonly string[] };
+	cleanUp: () => void;
+}
+
+/** What a family cannot build for itself. A renderer takes a theme as an argument; a mount does not. */
+export interface ReplayDeps {
+	theme?: Theme;
+}
+
+/**
+ * Everything the corpus needs to know about one oracle family.
+ *
+ * One row per family, rather than a guarantee table, a validator table, a replay dispatch and a case
+ * builder that each had to be edited in step. Three of those four were separate `Record`s and the
+ * fourth was a chain of `if`s, so a family could declare its guarantees, be rejected by a validator it
+ * never registered, and replay through the composer runner.
+ */
+interface OracleFamily<State extends AnyCorpusCaseState> {
+	/** The registry whose guarantee ids a case of this family may name. */
+	guarantees: readonly string[];
+	/** Validate the state as written on disk, or throw with the corrective action. */
+	readState: (fields: Record<string, unknown>, label: string) => State;
+	/** Rebuild the recorded scenario and re-judge it. */
+	replay: (state: State, deps: ReplayDeps, label: string) => Promise<CorpusReplay>;
+}
+
+const ORACLE_FAMILIES: { readonly [F in CorpusFamily]: OracleFamily<CorpusStateByFamily[F]> } = {
+	composer: {
+		guarantees: COMPOSER_ORACLE_GUARANTEES,
+		readState: composerCorpusStateFrom,
+		replay: state => replayCorpusCase(state),
+	},
+	overlay: {
+		guarantees: OVERLAY_ORACLE_GUARANTEES,
+		readState: overlayCorpusStateFrom,
+		replay: state => replayOverlayCorpusCase(state),
+	},
+	toolRender: {
+		guarantees: TOOL_RENDER_ORACLE_GUARANTEES,
+		readState: toolRenderCorpusStateFrom,
+		replay: (state, deps, label) => {
+			if (!deps.theme) {
+				throw new Error(
+					`${label}: a tool-render case replays through a renderer, which takes a theme as an argument. Pass one in deps.theme.`,
+				);
+			}
+			return Promise.resolve(replayToolRenderCorpusCase(state, deps.theme));
+		},
+	},
 };
+
+/**
+ * The family's row, for a family known only at run time.
+ *
+ * The one cast in the family axis. A caller holding a `CorpusFamily` variable cannot call through the
+ * mapped table, because the parameter types intersect; widening the row to the state union is sound
+ * here because the state a caller passes came back from this row's own `readState`.
+ */
+function familyRow(family: CorpusFamily): OracleFamily<AnyCorpusCaseState> {
+	return ORACLE_FAMILIES[family] as OracleFamily<AnyCorpusCaseState>;
+}
+
+/** The guarantees a case of each family may name. */
+export const CORPUS_FAMILY_GUARANTEES: Readonly<Record<CorpusFamily, readonly string[]>> = Object.freeze(
+	Object.fromEntries(CORPUS_FAMILIES.map(family => [family, ORACLE_FAMILIES[family].guarantees])) as Record<
+		CorpusFamily,
+		readonly string[]
+	>,
+);
 
 export const CORPUS_DIR = path.resolve(import.meta.dirname, "../corpus/renderer-defect-oracle");
 
@@ -462,21 +537,6 @@ function composerCorpusStateFrom(value: Record<string, unknown>, label: string):
 }
 
 /**
- * Which validator reads a family's state.
- *
- * A `Record` over the family union: a family added to `CORPUS_FAMILIES` does not compile until it says
- * how its state is validated, which is the check that keeps a case from being replayed as a scenario
- * of a shape nobody recorded.
- */
-const STATE_READERS: Readonly<
-	Record<CorpusFamily, (fields: Record<string, unknown>, label: string) => AnyCorpusCaseState>
-> = {
-	composer: composerCorpusStateFrom,
-	overlay: overlayCorpusStateFrom,
-	toolRender: toolRenderCorpusStateFrom,
-};
-
-/**
  * Read a committed case and reject anything that would replay as a different scenario than the one
  * recorded: a stale schema, an unknown status or kind, an exemption with no reason, an oracle that no
  * longer exists in the registry, or a state edited without recomputing the id.
@@ -510,7 +570,8 @@ export function loadCorpusCase(filePath: string): CorpusCase {
 		throw new Error(`${label}: family ${String(family)} is not one of ${CORPUS_FAMILIES.join(", ")}.`);
 	}
 	const oracle = fields.oracle;
-	if (typeof oracle !== "string" || !CORPUS_FAMILY_GUARANTEES[family as CorpusFamily].includes(oracle)) {
+	const row = familyRow(family as CorpusFamily);
+	if (typeof oracle !== "string" || !row.guarantees.includes(oracle)) {
 		throw new Error(
 			`${label}: oracle ${String(oracle)} is not a guarantee of the ${family} registry. An oracle was renamed or removed; re-record the case or exempt it.`,
 		);
@@ -522,7 +583,7 @@ export function loadCorpusCase(filePath: string): CorpusCase {
 	if (typeof fields.message !== "string" || fields.message.trim() === "" || !Array.isArray(fields.observedGrid)) {
 		throw new Error(`${label}: message or observedGrid is missing.`);
 	}
-	const state = STATE_READERS[family as CorpusFamily](fields, label);
+	const state = row.readState(fields, label);
 	const id = computeCaseHash(family as CorpusFamily, state, oracle, kind as CorpusCaseKind);
 	if (fields.id !== id) {
 		throw new Error(
@@ -540,26 +601,12 @@ export function loadCorpusCase(filePath: string): CorpusCase {
  */
 export async function replayCorpusFile(
 	filePath: string,
-	deps?: { theme?: Theme },
-): Promise<
-	| { corpusCase: ComposerCorpusCase; result: RunnerResult }
-	| { corpusCase: OverlayCorpusCase; result: OverlayRunnerResult }
-	| { corpusCase: ToolRenderCorpusCase; result: ToolRenderReplayResult }
-> {
+	deps: ReplayDeps = {},
+): Promise<{ corpusCase: CorpusCase; result: CorpusReplay }> {
 	const corpusCase = loadCorpusCase(filePath);
-	if (corpusCase.family === "overlay") {
-		return { corpusCase, result: await replayOverlayCorpusCase(corpusCase.state) };
-	}
-	if (corpusCase.family === "toolRender") {
-		const theme = deps?.theme;
-		if (!theme) {
-			throw new Error(
-				`${path.basename(filePath)}: a tool-render case is replayed with a theme, which a renderer takes as an argument. Pass one in deps.theme.`,
-			);
-		}
-		return { corpusCase, result: replayToolRenderCorpusCase(corpusCase.state, theme) };
-	}
-	return { corpusCase, result: await replayCorpusCase(corpusCase.state) };
+	const label = path.basename(filePath);
+	const result = await familyRow(corpusCase.family).replay(corpusCase.state, deps, label);
+	return { corpusCase, result };
 }
 
 /**
@@ -623,28 +670,10 @@ function caseOf(
 	state: AnyCorpusCaseState,
 	oracle: CorpusObservation["oracle"],
 ): CorpusCase {
-	if (family === "overlay") {
-		return {
-			...fields,
-			family: "overlay",
-			state: state as OverlayCorpusCaseState,
-			oracle: oracle as OverlayOracleGuarantee,
-		};
-	}
-	if (family === "toolRender") {
-		return {
-			...fields,
-			family: "toolRender",
-			state: state as ToolRenderCorpusCaseState,
-			oracle: oracle as ToolRenderOracleGuarantee,
-		};
-	}
-	return {
-		...fields,
-		family: "composer",
-		state: state as CorpusCaseState,
-		oracle: oracle as ComposerOracleGuarantee,
-	};
+	// The union's arms pair a family with its own state and oracle types, and TypeScript cannot see
+	// that pairing through three variables. The promotion helpers are typed per family, so the caller
+	// supplied a matching triple; a case read from disk is validated by the family's own row instead.
+	return { ...fields, family, state, oracle } as CorpusCase;
 }
 
 /** Record a failure the evaluator reported. */

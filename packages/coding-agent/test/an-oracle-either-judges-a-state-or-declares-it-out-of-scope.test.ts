@@ -59,7 +59,7 @@ import {
 	COMPOSER_ORACLES,
 	type ComposerOracleGuarantee,
 	subjectSize,
-} from "../src/modes/components/composer-defect-oracle";
+} from "../src/modes/components/defect-oracles";
 import { initTheme } from "../src/modes/theme/theme";
 import { runComposerOracleScenario } from "./helpers/composer-oracle-runner";
 import { contentLines, FLAVOR_MARK, FLAVORS, ISOLATION, MODE_STATES } from "./helpers/renderer-differential";

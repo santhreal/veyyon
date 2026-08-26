@@ -43,7 +43,7 @@ import {
 	locateOverlayBlock,
 	OVERLAY_ORACLE_GUARANTEES,
 	type OverlayOracleGuarantee,
-} from "../src/modes/components/overlay-defect-oracle";
+} from "../src/modes/components/defect-oracles";
 import { initTheme } from "../src/modes/theme/theme";
 import type { RunnerOptions } from "./helpers/composer-oracle-runner";
 import { type OverlaySpec, runOverlayOracleScenario } from "./helpers/overlay-oracle-runner";

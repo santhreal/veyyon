@@ -64,9 +64,11 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { Settings } from "../src/config/settings";
-import type { ComposerOracleGuarantee } from "../src/modes/components/composer-defect-oracle";
-import type { OverlayOracleGuarantee } from "../src/modes/components/overlay-defect-oracle";
-import type { ToolRenderOracleGuarantee } from "../src/modes/components/tool-render-defect-oracle";
+import type {
+	ComposerOracleGuarantee,
+	OverlayOracleGuarantee,
+	ToolRenderOracleGuarantee,
+} from "../src/modes/components/defect-oracles";
 import { getThemeByName, initTheme, setThemeInstance, type Theme } from "../src/modes/theme/theme";
 import {
 	CORPUS_CASE_KINDS,

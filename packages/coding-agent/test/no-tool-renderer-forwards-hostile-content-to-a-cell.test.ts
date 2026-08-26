@@ -52,10 +52,7 @@
 
 import { beforeAll, describe, expect, it } from "bun:test";
 import { Settings } from "../src/config/settings";
-import {
-	TOOL_RENDER_ORACLE_GUARANTEES,
-	type ToolRenderOracleGuarantee,
-} from "../src/modes/components/tool-render-defect-oracle";
+import { TOOL_RENDER_ORACLE_GUARANTEES, type ToolRenderOracleGuarantee } from "../src/modes/components/defect-oracles";
 import { getThemeByName, setThemeInstance, type Theme } from "../src/modes/theme/theme";
 import { toolRenderers } from "../src/tools/renderers";
 import { promoteToolRenderFailureToCorpus } from "./helpers/renderer-defect-corpus";

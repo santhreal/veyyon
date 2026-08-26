@@ -41,7 +41,7 @@ import {
 	type ToolRenderOracleFrameState,
 	type ToolRenderOracleGuarantee,
 	type ToolRenderSnapshot,
-} from "../src/modes/components/tool-render-defect-oracle";
+} from "../src/modes/components/defect-oracles";
 
 const HOME = "/home/oracle-operator";
 const INJECTED = "\x1b[2J";

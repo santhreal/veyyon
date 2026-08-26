@@ -21,7 +21,7 @@ import {
 	type OverlayEvaluationResult,
 	type OverlayOracleFrameState,
 	type OverlaySnapshot,
-} from "../../src/modes/components/overlay-defect-oracle";
+} from "../../src/modes/components/defect-oracles";
 import { type RunnerOptions, type RunnerResult, runComposerOracleScenario } from "./composer-oracle-runner";
 
 /**

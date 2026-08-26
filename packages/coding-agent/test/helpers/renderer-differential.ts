@@ -20,7 +20,7 @@ import type { Component, OverlayHandle } from "@veyyon/tui";
 import { stripAnsi } from "@veyyon/utils/strip-ansi";
 import { WHEEL_DOWN, WHEEL_UP } from "../../../tui/test/helpers/sgr-mouse";
 import type { ComposerAccentState } from "../../src/modes/components/composer-chrome";
-import { isComposerPromptLine, isHairlineLine } from "../../src/modes/components/composer-defect-oracle";
+import { isComposerPromptLine, isHairlineLine } from "../../src/modes/components/defect-oracles";
 import { runComposerOracleScenario } from "./composer-oracle-runner";
 
 // The wheel reports themselves are a TUI-level fact, owned by the tui package's test helpers and

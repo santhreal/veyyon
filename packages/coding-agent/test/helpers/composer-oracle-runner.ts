@@ -25,7 +25,7 @@ import {
 	evaluateAllComposerOracles,
 	type FrameSegmentSnapshot,
 	type OracleEvaluationResult,
-} from "../../src/modes/components/composer-defect-oracle";
+} from "../../src/modes/components/defect-oracles";
 import { getEditorTheme } from "../../src/modes/theme/theme";
 
 /** Transcript content component */

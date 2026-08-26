@@ -34,7 +34,7 @@ import {
 	COMPOSER_ORACLE_GUARANTEES,
 	type ComposerOracleGuarantee,
 	type OracleFailure,
-} from "../src/modes/components/composer-defect-oracle";
+} from "../src/modes/components/defect-oracles";
 import { initTheme } from "../src/modes/theme/theme";
 import { runComposerOracleScenario } from "./helpers/composer-oracle-runner";
 import {
