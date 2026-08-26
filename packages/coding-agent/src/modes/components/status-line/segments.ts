@@ -79,7 +79,7 @@ function stripDisplayRoot(pwd: string): string {
 }
 
 const SCRATCH_ROOTS: readonly string[] = (() => {
-	const roots = new Set<string>([os.tmpdir(), path.join(os.homedir(), "tmp")]);
+	const roots = new Set<string>([os.tmpdir(), path.join(HOME_DIR, "tmp")]);
 	if (process.platform === "win32") {
 		const { TEMP, TMP, SystemRoot } = process.env;
 		if (TEMP) roots.add(TEMP);
