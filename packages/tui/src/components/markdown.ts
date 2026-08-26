@@ -2572,7 +2572,8 @@ function walkInlineTokens(tokens: Token[], ctx: InlineWalkContext): string {
 				// (token.text) not styled text (linkText) since linkText has ANSI codes.
 				// For mailto: links, strip the prefix before comparing (autolinked emails
 				// have text="foo@bar.com" but href="mailto:foo@bar.com").
-				const hrefForComparison = token.href.startsWith("mailto:") ? token.href.slice(7) : token.href;
+			const href = token.href;
+			const hrefForComparison = href.startsWith("mailto:") ? href.slice(7) : href;
 				if (token.text === token.href || token.text === hrefForComparison) {
 					result += clickableLinkText + ctx.stylePrefix;
 				} else {
