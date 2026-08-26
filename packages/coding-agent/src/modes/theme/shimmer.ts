@@ -591,6 +591,8 @@ const LAVA_PERIOD_MS = 5500;
 const LAVA_CELL_PHASE = 0.09;
 /** How far the trough dips below the ember stop toward black (deep ember). */
 const LAVA_DEEP_FACTOR = 0.45;
+const LAVA_DEEP_INV = 1 - LAVA_DEEP_FACTOR;
+const CHANNEL_STR: readonly string[] = Array.from({ length: 256 }, (_, i) => String(i));
 
 type LavaTheme = Pick<Theme, "getColorHex" | "fg">;
 
@@ -651,6 +653,13 @@ export function lavaAnsi(theme: LavaTheme, trueColor: boolean, now = Date.now(),
  */
 export function lavaText(text: string, theme: LavaTheme, trueColor: boolean, now = Date.now()): string {
 	if (!trueColor) return theme.fg("borderAccent", text);
+	const emberRgb = hexToRgb(theme.getColorHex("borderAccent"));
+	const goldRgb = hexToRgb(theme.getColorHex("matchHighlight"));
+	const er0 = emberRgb[0], eg0 = emberRgb[1], eb0 = emberRgb[2];
+	const gr0 = goldRgb[0], gg0 = goldRgb[1], gb0 = goldRgb[2];
+	const dr0 = Math.round(er0 * LAVA_DEEP_INV);
+	const dg0 = Math.round(eg0 * LAVA_DEEP_INV);
+	const db0 = Math.round(eb0 * LAVA_DEEP_INV);
 	let out = "";
 	let cell = 0;
 	for (const ch of text) {
@@ -659,21 +668,17 @@ export function lavaText(text: string, theme: LavaTheme, trueColor: boolean, now
 		const clamped = 1 - Math.abs(2 * f - 1);
 		let r: number, g: number, b: number;
 		if (clamped < 0.5) {
-			const dk = 1 - LAVA_DEEP_FACTOR;
-			const dr = Math.round(emberRgb[0] * dk);
-			const dg = Math.round(emberRgb[1] * dk);
-			const db = Math.round(emberRgb[2] * dk);
 			const k = clamp01(clamped / 0.5);
-			r = Math.round(dr + (emberRgb[0] - dr) * k);
-			g = Math.round(dg + (emberRgb[1] - dg) * k);
-			b = Math.round(db + (emberRgb[2] - db) * k);
+			r = Math.round(dr0 + (er0 - dr0) * k);
+			g = Math.round(dg0 + (eg0 - dg0) * k);
+			b = Math.round(db0 + (eb0 - db0) * k);
 		} else {
 			const k2 = clamp01((clamped - 0.5) / 0.5);
-			r = Math.round(emberRgb[0] + (goldRgb[0] - emberRgb[0]) * k2);
-			g = Math.round(emberRgb[1] + (goldRgb[1] - emberRgb[1]) * k2);
-			b = Math.round(emberRgb[2] + (goldRgb[2] - emberRgb[2]) * k2);
+			r = Math.round(er0 + (gr0 - er0) * k2);
+			g = Math.round(eg0 + (gg0 - eg0) * k2);
+			b = Math.round(eb0 + (gb0 - eb0) * k2);
 		}
-		out += "\x1b[38;2;" + r + ";" + g + ";" + b + "m" + ch;
+		out += "\x1b[38;2;" + CHANNEL_STR[r] + ";" + CHANNEL_STR[g] + ";" + CHANNEL_STR[b] + "m" + ch;
 		cell++;
 	}
 	return out + SGR_FG_RESET;
