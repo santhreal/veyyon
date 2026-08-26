@@ -184,6 +184,9 @@ export function compactSgrCarry(carry: string): string {
 
 /** Re-open `background` after every SGR reset in `text` so a painted ground survives inner styling resets. */
 export function reopenBackgroundAfterResets(text: string, background: string): string {
+	// All three reset sequences start with ESC. Skip the three replaceAll
+	// scans when the text carries no escape at all — the common case for plain rows.
+	if (text.indexOf(ESC) === -1) return text;
 	return text
 		.replaceAll(SGR_RESET, `${SGR_RESET}${background}`)
 		.replaceAll(SGR_RESET_SHORT, `${SGR_RESET_SHORT}${background}`)
