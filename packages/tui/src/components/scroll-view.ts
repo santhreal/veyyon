@@ -1,6 +1,6 @@
 import { matchesKey } from "../keys";
 import type { Component } from "../tui";
-import { clamp, Ellipsis, replaceTabs, truncateToWidth, visibleWidth } from "../utils";
+import { clamp, Ellipsis, getSegmenter, replaceTabs, truncateToWidth, visibleWidth } from "../utils";
 
 const DEFAULT_TRACK = "│";
 const DEFAULT_THUMB = "█";
@@ -42,7 +42,7 @@ function normalizeScrollbarMode(scrollbar: ScrollViewOptions["scrollbar"]): Scro
 }
 
 function firstCellGlyph(value: string, fallback: string): string {
-	const glyph = [...value][0] ?? fallback;
+	const glyph = getSegmenter().segment(value)[Symbol.iterator]().next().value?.segment ?? fallback;
 	return visibleWidth(glyph) === 1 ? glyph : fallback;
 }
 
