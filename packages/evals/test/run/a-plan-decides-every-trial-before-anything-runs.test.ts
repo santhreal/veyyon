@@ -123,6 +123,9 @@ function probeBackend(options: ProbeBackendOptions = {}): ProbeBackend {
 
 	const backend: ExecutionBackend = {
 		id: "in-process",
+		// The plans here vary a config and a prompt overlay, and a backend that declared
+		// neither would be refused before `executeRun` reached what these cases assert.
+		appliesVariantAxes: ["config", "promptVariant"],
 		async preflight(): Promise<PreflightVerdict> {
 			return options.preflight ?? { ok: true };
 		},

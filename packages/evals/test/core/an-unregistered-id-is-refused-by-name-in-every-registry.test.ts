@@ -94,8 +94,10 @@ function createMockHarness(name: string): HarnessAdapter {
 		flags: [],
 		defaultModel: "anthropic/claude-3-7-sonnet",
 		capabilities: {
-			armAttachments: true,
+			replay: false,
 			compaction: true,
+			armAttachments: true,
+			promptOverrides: false,
 		},
 		backends: {
 			pier: {
@@ -112,6 +114,7 @@ function createMockHarness(name: string): HarnessAdapter {
 function createMockBackend(id: string): ExecutionBackend {
 	return {
 		id,
+		appliesVariantAxes: [],
 		async preflight() {
 			return { ok: true };
 		},

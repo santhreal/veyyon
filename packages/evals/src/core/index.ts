@@ -19,3 +19,4 @@ export * from "./suite-registry";
 export * from "./trial-model";
 export * from "./types";
 export * from "./variant-matrix";
+export * from "./variant-support";

@@ -334,6 +334,7 @@ describe("a real run", () => {
 function recordingBackend(seen: string[]): ExecutionBackend {
 	return {
 		id: "in-process",
+		appliesVariantAxes: [],
 		async preflight(): Promise<PreflightVerdict> {
 			seen.push("backend.preflight");
 			return { ok: true };

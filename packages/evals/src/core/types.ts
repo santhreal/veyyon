@@ -17,6 +17,14 @@
 export type BackendId = "pier" | "harbor" | "in-process" | (string & {});
 
 /**
+ * One axis of the variant matrix that needs an applier: a config overlay, a prompt-variant
+ * overlay, or an arm attachment. The harness and the model reach every backend and are not
+ * on this list. `core/variant-support.ts` owns the labels, the harness capability each axis
+ * needs, and the refusal.
+ */
+export type VariantAxis = "config" | "promptVariant" | "attachments";
+
+/**
  * Result of a preflight check before commencing a run or trial.
  */
 export interface PreflightVerdict {
@@ -140,10 +148,10 @@ export interface EvalSuite {
  * Capabilities supported by a harness adapter.
  */
 export interface HarnessCapabilities {
-	readonly replay?: boolean;
-	readonly compaction?: boolean;
-	readonly armAttachments?: boolean;
-	readonly promptOverrides?: boolean;
+	readonly replay: boolean;
+	readonly compaction: boolean;
+	readonly armAttachments: boolean;
+	readonly promptOverrides: boolean;
 	readonly extra?: Readonly<Record<string, unknown>>;
 }
 
@@ -272,6 +280,13 @@ export interface RunContext {
  */
 export interface ExecutionBackend {
 	readonly id: BackendId;
+	/**
+	 * The variant axes this backend reads. An axis absent here is dropped, so a run that
+	 * varies it is refused rather than reporting one trial under several arm names. Every
+	 * backend states the whole list, so a new axis turns each declaration into a decision
+	 * instead of a silent default.
+	 */
+	readonly appliesVariantAxes: readonly VariantAxis[];
 	preflight(context: RunContext): Promise<PreflightVerdict>;
 	prepare(context: RunContext): Promise<void>;
 	runTrial(cell: TrialCell, context: RunContext): Promise<TrialArtifacts>;

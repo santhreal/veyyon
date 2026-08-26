@@ -29,7 +29,7 @@ bun run evals --suite deep-swe --model google-antigravity/gemini-3.5-flash \
 	--config arms/baseline.yml --config arms/candidate-unified-runtime.yml --dry-run
 ```
 
-`--dry-run` prints the plan and every preflight verdict — paths, suite, harness, backend, and
+`--dry-run` prints the plan and every preflight verdict — paths, axes, suite, harness, backend, and
 `resume` when `--resume` is passed — and starts no container, and builds nothing: a missing or stale
 artifact is reported with the command that produces it. `--repeats N` runs each cell N times; results
 are recorded in plan order, so two runs of one plan diff cell by cell.
@@ -41,6 +41,13 @@ exist, and `--dataset-dir`, which must exist as a directory or, for `typescript-
 rather than a preflight that passes and a run that dies at its first write. A `--tasks` value holding
 a path separator or a `.txt`, `.jsonl`, `.list` or `.tasks` extension names a file: when it cannot be
 read the refusal names the path, instead of reading it as one unknown task id.
+
+The `axes` verdict covers the axes a variant carries beyond the harness and the model: `--config`,
+`--prompts`, and arm attachments. A backend states which of the three it reads and a harness states
+whether it applies prompt overrides and arm attachments, and an axis this run varies that neither
+applies is rejected by name. Harbor reads none of the three, so `--prompts a.json,b.json` against a
+harbor suite is rejected instead of expanding the matrix, naming the cells apart and running the
+same trial twice under two arm names.
 
 `--resume` continues the run named by `--run-id` from its `trials.jsonl` journal, skipping every
 trial that already settled. A run id with no journal is rejected rather than started, so a typo

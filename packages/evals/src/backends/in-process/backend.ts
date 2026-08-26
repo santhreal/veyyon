@@ -15,6 +15,7 @@ import type {
 	TrialArtifacts,
 	TrialCell,
 	TrialUsage,
+	VariantAxis,
 } from "../../core/types";
 import { runsDir as defaultRunsDir } from "../../paths";
 import {
@@ -75,6 +76,8 @@ export interface InProcessBackendOptions {
 
 export class InProcessBackend implements ExecutionBackend {
 	readonly id: BackendId = "in-process";
+	/** A settings overlay and a prompt overlay are both read below; attachments are not. */
+	readonly appliesVariantAxes: readonly VariantAxis[] = ["config", "promptVariant"];
 	#sharedInfra: SharedInfra | null = null;
 	readonly #clientFactory: InProcessClientFactory | undefined;
 

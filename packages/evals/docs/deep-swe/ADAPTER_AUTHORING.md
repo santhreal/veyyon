@@ -106,7 +106,7 @@ export const myHarnessAdapter = new MyHarnessAdapter();
 | `displayName` | `string` | Label used in reports |
 | `description` | `string` | One-line description |
 | `defaultModel` | `string \| null` | Model used when a run names none; `null` requires `--model` |
-| `capabilities` | `HarnessCapabilities` | `replay`, `compaction`, `armAttachments`, `promptOverrides` |
+| `capabilities` | `HarnessCapabilities` | `replay`, `compaction`, `armAttachments`, `promptOverrides`; all four are stated, and `armAttachments`/`promptOverrides` decide whether a run may vary those axes |
 | `backends` | `Partial<Record<BackendId, HarnessBackendBinding>>` | The backends this harness runs on |
 | `preflight` | `(HarnessPreflightContext) => Promise<PreflightVerdict>` | Refuses before a run when the harness is not runnable |
 | `stageAssets` | `(HarnessStageContext \| SystemStageContext) => void` | Writes binaries, configs and credentials the container reads |

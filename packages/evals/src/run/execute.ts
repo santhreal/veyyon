@@ -20,7 +20,13 @@ import type {
 	TrialResultRecord,
 	TrialScore,
 } from "../core";
-import { createRunRecord, preflightHarnesses } from "../core";
+import {
+	createRunRecord,
+	preflightHarnesses,
+	requireHarness,
+	requireVariantSupport,
+	variantSupportQuery,
+} from "../core";
 import { requireRunDirectories } from "./directories";
 import {
 	cellKey,
@@ -156,6 +162,11 @@ export async function executeRun(options: ExecuteRunOptions): Promise<EvalRunRec
 	if (options.resume && !(await journalExists(options.runsDir, plan.runId))) {
 		throw new ResumeWithoutJournalError(journalPathFor(options.runsDir, plan.runId), plan.runId);
 	}
+
+	// An axis nobody applies is refused before a preflight can say `ok`. A dropped
+	// `--prompts` path otherwise runs the whole matrix and reports two identical arms as a
+	// comparison.
+	requireVariantSupport(variantSupportQuery(backend, plan.variants, harness => requireHarness(harness).capabilities));
 
 	const suiteVerdict = await plan.suite.preflight(plan.context);
 	if (!suiteVerdict.ok) {
