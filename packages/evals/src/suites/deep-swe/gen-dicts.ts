@@ -85,6 +85,14 @@ export interface DictRow {
 	 * ceiling; the one above is about seventy times larger.
 	 */
 	expectedSavings: number;
+	/**
+	 * The repository and base commit the tree was read at, `null` when the task's
+	 * `task.toml` could not be read. A dictionary measured against a later commit of
+	 * the same repository is a different measurement, and without these two fields a
+	 * row cannot be told apart from one generated a year earlier.
+	 */
+	repoUrl: string | null;
+	baseCommit: string | null;
 	error: string | null;
 }
 
@@ -141,8 +149,10 @@ function collectFiles(dir: string): Array<{ path: string; content: string }> {
 }
 
 async function genOne(task: string): Promise<DictRow> {
+	let url: string | null = null;
+	let sha: string | null = null;
 	try {
-		const { url, sha } = taskRepoInfo(task);
+		({ url, sha } = taskRepoInfo(task));
 		const dir = await ensureCheckout(task, url, sha);
 		const files = collectFiles(dir);
 		const { toml, handles, dictTokens, estimatedSavings } = generateDictFromRepo(files, {});
@@ -159,6 +169,8 @@ async function genOne(task: string): Promise<DictRow> {
 			structureHandles: handles.filter(handle => handle.expansion.startsWith("\n")).length,
 			typeableSavings: mass.savingPerEmission,
 			expectedSavings: mass.expectedSavingPerEmission,
+			repoUrl: url,
+			baseCommit: sha,
 			error: toml ? null : "no dictionary generated",
 		};
 	} catch (err) {
@@ -171,6 +183,8 @@ async function genOne(task: string): Promise<DictRow> {
 			structureHandles: 0,
 			typeableSavings: 0,
 			expectedSavings: 0,
+			repoUrl: url,
+			baseCommit: sha,
 			error: String(err).slice(0, 200),
 		};
 	}
@@ -232,6 +246,16 @@ export function renderDictReport(rows: readonly DictRow[], generatedAt: string):
 				? `| ${r.task} | — | — | — | — | — | — | ERROR: ${r.error} |`
 				: `| ${r.task} | ${r.handles} | ${r.structureHandles} | ${r.typeableHandles} | ${r.typeableSavings} | ${r.expectedSavings} | ${r.dictTokens} | ${r.estimatedSavings} |`,
 		),
+		"",
+		"## Source revisions",
+		"",
+		"Each row was measured against one tree. A later commit of the same repository is a",
+		"different measurement, so a row whose revision is unknown cannot be compared with",
+		"one that states it.",
+		"",
+		"| task | repository | base commit |",
+		"|---|---|---|",
+		...ranked.map(r => `| ${r.task} | ${r.repoUrl ?? "—"} | ${r.baseCommit ?? "—"} |`),
 		"",
 	];
 	return lines.join("\n");
