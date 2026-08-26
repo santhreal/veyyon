@@ -29,7 +29,7 @@ import * as path from "node:path";
 import { errorMessage } from "@veyyon/utils";
 import { discoverSharedInfra, InProcessClient, type SharedInfra } from "../backends/in-process/client";
 import { flagNumber, parseFlags, requireFlag } from "../core/flags";
-import { extractBenchmarkFixtures } from "../suites/typescript-edit/argot-bench";
+import { extractBenchmarkFixtures } from "../suites/typescript-edit/extract";
 import { type EditTask, loadTasksFromDir } from "../suites/typescript-edit/tasks";
 import { verifyExpectedFileSubset } from "../suites/typescript-edit/verify";
 

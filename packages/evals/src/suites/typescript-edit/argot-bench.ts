@@ -37,8 +37,6 @@ import type { EditTask } from "./tasks";
 import { loadTasksFromDir } from "./tasks";
 import { verifyExpectedFileSubset } from "./verify";
 
-export { extractBenchmarkFixtures };
-
 const reproBarrelTemplate = Handlebars.compile(reproBarrelPromptText, { noEscape: true });
 const reproFeatureTemplate = Handlebars.compile(reproFeaturePromptText, { noEscape: true });
 const sigilEmissionTemplate = Handlebars.compile(sigilEmissionPromptText, { noEscape: true });

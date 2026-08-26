@@ -30,7 +30,6 @@ import { captureDirOverrides, type DirOverridesSnapshot, restoreDirOverrides } f
 import {
 	type ArgotBenchOutcome,
 	applyArgotPhaseSettings,
-	extractBenchmarkFixtures,
 	measureForcedAdoption,
 	measureSigilEmission,
 	prepareArgotWorkdir,
@@ -42,6 +41,7 @@ import {
 	assertArgotCertified,
 	EDIT_TASK_TRUTHS,
 } from "../../../src/suites/typescript-edit/argot-certify";
+import { extractBenchmarkFixtures } from "../../../src/suites/typescript-edit/extract";
 import { loadTasksFromDir } from "../../../src/suites/typescript-edit/tasks";
 import { verifyExpectedFileSubset } from "../../../src/suites/typescript-edit/verify";
 

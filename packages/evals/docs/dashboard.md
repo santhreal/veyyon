@@ -1,6 +1,6 @@
 # Dashboard and wire contract
 
-The dashboard is a React app served by the manager server over the same process that owns the run
+The dashboard is a React app served by the manager server in the same process as the run
 store. `docs/manager.md` documents the API endpoints and the store. This page documents the contract
 between them and the rules the UI follows when a number was never measured.
 
