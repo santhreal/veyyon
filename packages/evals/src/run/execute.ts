@@ -20,8 +20,7 @@ import type {
 	TrialResultRecord,
 	TrialScore,
 } from "../core";
-import { createRunRecord } from "../core";
-import { preflightHarnesses } from "../harnesses";
+import { createRunRecord, preflightHarnesses } from "../core";
 import { cellKey, openRunJournal, readRunJournal, sanitizeTrialRecord } from "./journal";
 import type { RunPlan } from "./plan";
 export class BackendPreflightError extends Error {

@@ -183,6 +183,41 @@ export interface HarnessStageContext {
 	readonly options?: Readonly<Record<string, unknown>>;
 }
 
+export interface SystemStageContext {
+	readonly system: string;
+	readonly assetsDir: string;
+	readonly outRoot: string;
+	readonly binarySha: string;
+	readonly args: Readonly<Record<string, unknown>>;
+	readonly model: string;
+}
+
+export interface SystemJobConfigContext {
+	readonly system: string;
+	readonly task: string;
+	readonly repeat: number;
+	readonly model: string;
+	readonly assetsDir: string;
+	readonly binarySha?: string | null;
+	readonly replayPath?: string | null;
+	readonly promptTemplatePath?: string | null;
+	readonly armName?: string | null;
+	readonly comparisonMode?: boolean;
+}
+
+export interface SystemPreflightContext {
+	readonly system: string;
+	readonly model: string;
+	readonly args: Readonly<Record<string, unknown>>;
+	readonly dryRun: boolean;
+}
+
+export interface SystemPreflightResult {
+	readonly valid: boolean;
+	readonly errors: readonly string[];
+	readonly warnings: readonly string[];
+}
+
 /**
  * One member of the harness axis: an agent system that can execute tasks.
  */
@@ -194,7 +229,13 @@ export interface HarnessAdapter {
 	readonly capabilities: HarnessCapabilities;
 	readonly backends: Readonly<Partial<Record<BackendId, HarnessBackendBinding>>>;
 	preflight(context: HarnessPreflightContext): Promise<PreflightVerdict>;
-	stageAssets(context: HarnessStageContext): Promise<void>;
+	stageAssets(context: HarnessStageContext | SystemStageContext): Promise<void> | void;
+	validatePreflight?(context: SystemPreflightContext): Promise<SystemPreflightResult> | SystemPreflightResult;
+	buildJobConfigKwargs?(context: SystemJobConfigContext): Record<string, unknown>;
+}
+
+export function sanitizeVariantName(name: string): string {
+	return name.trim().replace(/[^a-zA-Z0-9._-]/g, "_") || "default";
 }
 
 /**

@@ -28,7 +28,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { AuthStorage } from "@veyyon/ai";
 import { listHarnesses, type Variant } from "../../src/core";
-import { preflightHarnesses, registerBuiltinHarnesses, sanitizeVariantName } from "../../src/harnesses";
+import { preflightHarnesses } from "../../src/core/harness-preflight";
+import { registerBuiltinHarnesses, sanitizeVariantName } from "../../src/harnesses";
 import { internalScratchDir } from "../../src/paths";
 
 registerBuiltinHarnesses();

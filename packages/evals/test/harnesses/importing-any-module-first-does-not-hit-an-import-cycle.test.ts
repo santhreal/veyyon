@@ -75,7 +75,7 @@ describe("importing any harness or suite module first", () => {
 		const files = await moduleFiles();
 		// A broken glob would otherwise pass this suite with nothing to prove.
 		expect(files).toContain("src/harnesses/index.ts");
-		expect(files).toContain("src/harnesses/registry.ts");
+		expect(files).toContain("src/harnesses/system-comparison.ts");
 		expect(files).toContain("src/suites/deep-swe/src/runner/executor.ts");
 		expect(files).toContain("src/suites/deep-swe/replay-manifest.ts");
 		expect(files.length).toBeGreaterThan(40);

@@ -9,7 +9,6 @@ import type {
 	PreflightVerdict,
 } from "../../core/types";
 import {
-	type SystemAdapter,
 	type SystemJobConfigContext,
 	type SystemPreflightContext,
 	type SystemPreflightResult,
@@ -17,7 +16,7 @@ import {
 	sanitizeVariantName,
 } from "../types";
 
-export class FactoryAdapter implements HarnessAdapter, SystemAdapter {
+export class FactoryAdapter implements HarnessAdapter {
 	readonly name = "factory";
 	readonly displayName = "Factory";
 	readonly description = "Factory CLI (droid) execution and compaction replay.";
@@ -36,13 +35,6 @@ export class FactoryAdapter implements HarnessAdapter, SystemAdapter {
 			containerAssetsDir: "/opt/factory-assets",
 		},
 	} as const;
-
-	// Backward compatibility with legacy SystemAdapter
-	readonly pierAgentImport = "factory_agent:FactoryAgent";
-	readonly containerAssetsDir = "/opt/factory-assets";
-	readonly supportsReplay = true;
-	readonly supportsCompaction = true;
-	readonly supportsArmAttachments = false;
 
 	async preflight(context: HarnessPreflightContext): Promise<PreflightVerdict> {
 		const options = context.options ?? {};

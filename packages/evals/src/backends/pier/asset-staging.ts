@@ -11,7 +11,6 @@ import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import YAML from "yaml";
-import type { Variant } from "../../core/types";
 import {
 	ARM_ATTACHMENT_KINDS,
 	type ArmAttachmentManifestEntry,
@@ -20,7 +19,8 @@ import {
 	readArmAttachment,
 	stageArmAttachment,
 	writeArmAttachmentManifest,
-} from "../../suites/deep-swe/arm-attachments";
+} from "../../core/arm-attachments";
+import type { Variant } from "../../core/types";
 
 export interface StagedPierAssets {
 	readonly binarySha: string;

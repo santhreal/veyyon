@@ -117,6 +117,28 @@ describe("every harness states which backends it runs on", () => {
 		]);
 	});
 
+	/**
+	 * The pier job config states one agent import path per harness, and `backends.pier` is the
+	 * only place it is declared. A harness that builds pier job kwargs and states no pier import
+	 * path used to interpolate `undefined` into the YAML; the executor now rejects it, so the
+	 * declaration must exist for every harness that reaches that path.
+	 */
+	it("declares a pier agent import path exactly where the pier job config reads it", () => {
+		const withKwargs = defaultHarnessRegistry.list().filter(harness => harness.buildJobConfigKwargs);
+		expect(withKwargs.length).toBeGreaterThanOrEqual(4);
+
+		const unbound = withKwargs
+			.filter(harness => !harness.backends.pier?.agentImportPath)
+			.map(harness => harness.name);
+		expect(unbound).toEqual([]);
+
+		for (const harness of defaultHarnessRegistry.list()) {
+			const pier = harness.backends.pier;
+			if (!pier) continue;
+			expect(pier.agentImportPath).toMatch(/^[a-z_][a-z0-9_]*:[A-Za-z_][A-Za-z0-9_]*$/);
+		}
+	});
+
 	it("turns red if a new unrecorded harness is added to the registry", async () => {
 		const customHarnessRegistry = new HarnessRegistry();
 		registerBuiltinHarnesses(customHarnessRegistry);

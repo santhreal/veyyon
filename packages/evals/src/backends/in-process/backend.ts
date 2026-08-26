@@ -4,6 +4,7 @@ import type { Settings } from "@veyyon/coding-agent";
 import { clamp, errorMessage } from "@veyyon/utils";
 import { type BackendRegistry, defaultBackendRegistry } from "../../core/backend-registry";
 import { resolveCellVariant } from "../../core/cell-variant";
+import { listFiles } from "../../core/fs-walk";
 import { requireHarness } from "../../core/harness-registry";
 import { resolveTrialModel } from "../../core/trial-model";
 import type {
@@ -16,7 +17,6 @@ import type {
 	TrialUsage,
 } from "../../core/types";
 import { runsDir as defaultRunsDir } from "../../paths";
-import { listFiles } from "../../suites/typescript-edit/shared";
 import {
 	type DiscoverSharedInfraOptions,
 	discoverSharedInfra,

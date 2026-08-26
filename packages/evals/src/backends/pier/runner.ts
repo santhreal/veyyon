@@ -4,7 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { readPipeText } from "@veyyon/utils";
 import type { PreflightVerdict, TrialArtifacts } from "../../core/types";
-import { MINIMUM_DEEPSWE_PIER_VERSION, pierSupportsSeparateVerifierCollect } from "../../suites/deep-swe/pier-version";
+import { MINIMUM_DEEPSWE_PIER_VERSION, pierSupportsSeparateVerifierCollect } from "./version";
 
 export interface PierJobConfigOptions {
 	readonly jobName: string;

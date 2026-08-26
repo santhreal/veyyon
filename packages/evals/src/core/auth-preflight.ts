@@ -1,3 +1,6 @@
+import * as os from "node:os";
+import * as path from "node:path";
+import { AuthStorage, SqliteAuthCredentialStore } from "@veyyon/ai";
 import {
 	bareModelId,
 	getBundledModelReferenceIndex,
@@ -20,85 +23,38 @@ import {
 	resolveModelReference,
 } from "@veyyon/catalog/identity";
 import { CATALOG_PROVIDERS } from "@veyyon/catalog/provider-models/descriptors";
+import { authDbPath as defaultAuthDbPath } from "../paths";
 
-/**
- * Deciding, before a single container starts, whether the staged credential
- * store can actually serve a token.
- *
- * WHY THIS EXISTS. The bench copies the operator's `agent.db` into
- * `assets/auth-agent.db` and mounts it into every task container. Nothing
- * checked that the copy still works, so a dead credential was discovered one
- * container at a time: each trial paid full setup, failed to authenticate, and
- * reported a task failure. Worse, the message the agent produced blamed the
- * model id rather than the credential (BACKLOG AUTH-FAILURE-BLAMES-MODEL-ID), so
- * a burned 40-trial run was misdiagnosed as an unservable model and led to an
- * allowlist gate against a model that worked fine.
- *
- * `AuthStorage.checkCredentials` already does the real probe: OAuth
- * refresh-on-expiry followed by the provider's auth-verifying endpoint, per
- * credential, without swallowing errors. This module is the decision made from
- * its results, kept pure so the reasoning is testable without a network or a
- * SQLite file.
- *
- * The three outcomes are deliberately distinct, because collapsing them is how
- * the original failure stayed invisible. "No credential works" and "no credential
- * could be checked" are not the same claim, and neither may be reported as
- * success.
- */
+export const AUTH_DB_SOURCES = [
+	path.join(os.homedir(), ".veyyon", "shared-auth", "agent.db"),
+	path.join(os.homedir(), ".veyyon", "profiles", "default", "shared-auth", "agent.db"),
+	path.join(os.homedir(), ".veyyon", "profiles", "work", "shared-auth", "agent.db"),
+];
 
 /**
  * One usage pool a provider meters separately, as reported by its usage probe.
- *
- * The nesting is the provider's, not a choice made here, and it is spelled out
- * because getting it wrong is silent. A first version of this read `limit.resetsAt`
- * and `probe.limits`, which type-checked against hand-written fixtures and matched
- * NOTHING on real data, so the check quietly never fired. The shapes below are
- * copied from a live `checkCredentials()` result.
  */
 export interface CredentialLimit {
-	/** Provider-scoped pool id, e.g. `google-antigravity:google:default:daily`. */
 	readonly id: string;
-	/** `exhausted` means this pool is spent; anything else is usable. */
 	readonly status?: string;
-	/** The metering window, whose `resetsAt` is epoch milliseconds. */
 	readonly window?: { readonly resetsAt?: number };
 }
 
 /** The subset of `CredentialHealthResult` this decision reads. */
 export interface CredentialProbe {
 	readonly provider: string;
-	/** `true` served a token, `false` failed, `null` no probe is configured. */
 	readonly ok: boolean | null;
-	/** Why it failed; present when `ok === false`. */
 	readonly reason?: string;
-	/** OAuth identity, used only to make the operator's message specific. */
 	readonly email?: string;
-	/** The usage probe's result. Absent when the provider has no usage probe. */
 	readonly report?: { readonly limits?: readonly CredentialLimit[] };
 }
 
 export type AuthPreflightVerdict =
-	/** At least one credential served a token. Proceed. */
 	| { readonly kind: "ok"; readonly usable: number }
-	/** The staged store holds no credentials at all. Fatal. */
 	| { readonly kind: "empty" }
-	/** Every credential that could be probed failed. Fatal. */
 	| { readonly kind: "dead"; readonly failures: readonly { provider: string; reason: string }[] }
-	/** No credential could be probed either way. Report loudly, then proceed. */
 	| { readonly kind: "unverifiable"; readonly providers: readonly string[] };
 
-/**
- * Read a set of credential probes into one verdict.
- *
- * A single working credential is enough: the bench needs one usable token, and
- * an operator with several accounts routinely has stale rows alongside a live
- * one. Requiring all of them to pass would block runs that can succeed.
- *
- * `unverifiable` exists so an unprobeable provider is never silently treated as
- * healthy. It is the one outcome that proceeds despite proving nothing, and it
- * has to say so out loud: a quiet pass here would recreate exactly the failure
- * this module was written to catch.
- */
 export function decideAuthPreflight(probes: readonly CredentialProbe[]): AuthPreflightVerdict {
 	if (probes.length === 0) return { kind: "empty" };
 
@@ -116,21 +72,6 @@ export function decideAuthPreflight(probes: readonly CredentialProbe[]): AuthPre
 	return { kind: "unverifiable", providers: [...new Set(probes.map(probe => probe.provider))] };
 }
 
-/**
- * The vendor a single id segment names, or null when the segment names none.
- *
- * A gateway provider meters each upstream vendor SEPARATELY. On
- * `google-antigravity` there are three daily pools, `:google:`, `:openai:` and
- * `:anthropic:`, and they empty independently: the Gemini pool can be spent to
- * the last token while the other two sit untouched at 100%. So "the credential
- * serves a token" is true and useless. The question that matters is whether the
- * pool THIS model draws from has anything left, which is a question about a
- * vendor rather than about a provider.
- *
- * Segments arrive from a router-namespaced id (`openrouter/mistralai/…`), from a
- * provider descriptor id, and from a bare model id, so the same normalization
- * serves all three.
- */
 function normalizeVendorSegment(segment: string): string | null {
 	const s = segment.toLowerCase().trim();
 	if (
@@ -204,32 +145,10 @@ function normalizeVendorSegment(segment: string): string | null {
 	return null;
 }
 
-/**
- * The vendor whose pool a model draws from, or null when the id cannot be placed.
- *
- * Resolution walks four sources: the qualifier segments of a router-namespaced
- * id, the identity classifiers in `@veyyon/catalog/identity`, the bundled model
- * reference index, and the provider descriptor table. A hand written substring
- * table covered three families and read every other real id — Mistral, DeepSeek,
- * Llama, Qwen, an OpenRouter path — as unplaceable, which the pool check then
- * reported as "not checked".
- *
- * Segments are read RIGHT TO LEFT, because the rightmost names the model and the
- * leftmost names the gateway that serves it. Reading left to right placed
- * `google-antigravity/claude-sonnet-5` with the Google pool, which is the exact
- * confusion this check exists to remove: that credential's Gemini pool empties
- * while its Anthropic pool sits untouched, so a left-to-right reading refuses a
- * Claude run that would have succeeded.
- *
- * This is a query and it never throws: a caller that must have an answer asks
- * `requireModelVendor`.
- */
 export function modelVendor(modelId: string): string | null {
 	const id = modelId.toLowerCase().trim();
 	if (!id) return null;
 
-	// 1. Qualifier segments, most specific first (openrouter/mistralai/mistral-large,
-	//    google-antigravity/claude-sonnet-5).
 	if (id.includes("/")) {
 		const parts = id.split("/");
 		for (let index = parts.length - 1; index >= 0; index -= 1) {
@@ -238,7 +157,6 @@ export function modelVendor(modelId: string): string | null {
 		}
 	}
 
-	// 2. Identity classifiers from @veyyon/catalog/identity
 	const known = parseKnownModel(modelId);
 	if (known.family === "gemini") return "google";
 	if (known.family === "anthropic") return "anthropic";
@@ -255,7 +173,6 @@ export function modelVendor(modelId: string): string | null {
 	if (isMinimaxM2FamilyModelId(modelId) || isMinimaxM3FamilyModelId(modelId)) return "minimax";
 	if (isGrokReasoningEffortCapable(modelId) || id.includes("grok")) return "xai";
 
-	// 3. Bundled reference lookup
 	try {
 		const ref = resolveModelReference(modelId, getBundledModelReferenceIndex());
 		if (ref?.provider) {
@@ -266,7 +183,6 @@ export function modelVendor(modelId: string): string | null {
 		// Ignore reference resolution errors and proceed to descriptor check
 	}
 
-	// 4. Descriptor provider table lookup by ID or defaultModel
 	const providerMatch = CATALOG_PROVIDERS.find(
 		p => p.id === id || id.startsWith(`${p.id}/`) || p.defaultModel === modelId,
 	);
@@ -274,20 +190,10 @@ export function modelVendor(modelId: string): string | null {
 		return normalizeVendorSegment(providerMatch.id) ?? providerMatch.id;
 	}
 
-	// 5. Bare model id segment heuristics
 	const bare = bareModelId(modelId).toLowerCase();
 	return normalizeVendorSegment(bare);
 }
 
-/**
- * The vendor a model draws from, refusing when it cannot be placed.
- *
- * The preflight calls this: an id whose vendor no catalog source recognises is a
- * typo or a model the catalog has not learned yet, and either way the quota pool
- * behind it cannot be checked. Proceeding produces a run that dies on
- * RESOURCE_EXHAUSTED after paying for container setup, so the refusal names the
- * model and where to verify it.
- */
 export function requireModelVendor(modelId: string): string {
 	const vendor = modelVendor(modelId);
 	if (!vendor) {
@@ -298,23 +204,6 @@ export function requireModelVendor(modelId: string): string {
 	return vendor;
 }
 
-/**
- * Whether the pool the requested model draws from is already spent, and when it
- * refills.
- *
- * WHY THIS IS A SEPARATE CHECK. The token probe above passes whenever ANY
- * credential authenticates, which stays true after a pool empties. Run
- * `2026-07-25T20-46-08-607Z` started on a healthy preflight, scored ten trials,
- * then hit `RESOURCE_EXHAUSTED` and produced twenty-six consecutive zero-token
- * trials. The mid-run abort in `run.ts` catches that case now, but catching it at
- * the START is strictly better: it costs nothing instead of an hour of container
- * setup, and it cannot produce a half-finished run whose missing samples read as
- * data.
- *
- * Matching is by vendor segment inside the pool id, so a provider that reports a
- * single unsegmented pool still matches when its id names the vendor. Returns
- * null when nothing matched, which means "not checked" and never "fine".
- */
 export function exhaustedPoolFor(
 	probes: readonly CredentialProbe[],
 	modelId: string,
@@ -334,14 +223,6 @@ export function exhaustedPoolFor(
 	return null;
 }
 
-/**
- * The operator-facing sentence for a spent pool, naming the pool and when it
- * refills.
- *
- * The reset time is the only actionable part. An operator told merely that quota
- * ran out reruns immediately and hits the same wall; one told the refill time
- * either waits or switches models, and the message names both ways out.
- */
 export function describeExhaustedPool(pool: { pool: string; resetsAt?: number }, modelId: string): string {
 	const when = pool.resetsAt ? ` It refills at ${new Date(pool.resetsAt).toISOString()}.` : "";
 	return (
@@ -353,13 +234,6 @@ export function describeExhaustedPool(pool: { pool: string; resetsAt?: number },
 	);
 }
 
-/**
- * The operator-facing sentence for a verdict that stops the run.
- *
- * Deliberately never names the model id. The whole point of the preflight is
- * that the previous failure path blamed `--model` for a credential problem and
- * sent a real investigation down the wrong road for a day.
- */
 export function describeAuthPreflightFailure(verdict: AuthPreflightVerdict, stagedPath: string): string {
 	switch (verdict.kind) {
 		case "empty":
@@ -376,28 +250,60 @@ export function describeAuthPreflightFailure(verdict: AuthPreflightVerdict, stag
 			);
 		}
 		default:
-			// `ok` and `unverifiable` both proceed, so neither has a failure message.
-			// Returning "" rather than throwing keeps the caller's branch simple.
 			return "";
 	}
 }
 
-/**
- * Whether a spent quota pool should stop the run, or only be reported.
- *
- * A REAL RUN MUST STOP. Every trial would fail with `RESOURCE_EXHAUSTED` and
- * produce no tokens, and a run whose samples are missing reads as data rather than
- * as an outage, which is the confusion the check exists to prevent.
- *
- * A DRY RUN MUST NOT. `--dry-run` answers "is my arm wired correctly" without
- * paying for a container, and the moment that answer is most wanted is while
- * waiting for a spent pool to refill so the real run can start the instant it does.
- * Exiting made the flag unusable in exactly that window: the one time validation is
- * free, it refused to run. Quota is a property of the model rather than of the
- * configuration, so it belongs with what a dry run cannot check, not with the
- * guards it exists to apply. It is still printed either way.
- */
 export function spentQuotaShouldAbort(spent: { pool: string } | null, dryRun: boolean): boolean {
 	if (spent === null) return false;
 	return !dryRun;
+}
+
+export async function requireStagedAuthCanServeToken(
+	model: string,
+	dryRun = false,
+	dbPath = defaultAuthDbPath(),
+): Promise<void> {
+	const store = await SqliteAuthCredentialStore.open(dbPath);
+	let probes: CredentialProbe[];
+	try {
+		const storage = new AuthStorage(store);
+		await storage.reload();
+		probes = await storage.checkCredentials();
+	} finally {
+		store.close();
+	}
+
+	if (modelVendor(model) === null) {
+		const message =
+			`cannot resolve the upstream vendor for model "${model}", so its quota pool cannot be ` +
+			`checked. Verify the model id against @veyyon/catalog.`;
+		console.error(message);
+		if (!dryRun) throw new Error(message);
+		console.error("continuing anyway because this is a --dry-run; no trial will be started.\n");
+	}
+
+	const spent = exhaustedPoolFor(probes, model);
+	if (spent) {
+		console.error(describeExhaustedPool(spent, model));
+		if (spentQuotaShouldAbort(spent, dryRun)) {
+			throw new Error(describeExhaustedPool(spent, model));
+		}
+		console.error("continuing anyway because this is a --dry-run; no trial will be started.\n");
+	}
+
+	const verdict = decideAuthPreflight(probes);
+	if (verdict.kind === "ok") {
+		return;
+	}
+	if (verdict.kind === "unverifiable") {
+		console.warn(
+			`WARNING the staged auth DB could NOT be verified. No probe is configured for: ` +
+				`${verdict.providers.join(", ")}. Proceeding UNVERIFIED; an auth failure will now surface per trial.`,
+		);
+		return;
+	}
+	const failureMessage = describeAuthPreflightFailure(verdict, dbPath);
+	console.error(failureMessage);
+	throw new Error(failureMessage);
 }

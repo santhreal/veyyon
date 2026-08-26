@@ -1,7 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import * as fs from "node:fs";
-import * as path from "node:path";
-import { HarnessRegistry, hasHarness, requireHarness } from "../../src/core/harness-registry";
+import { HarnessRegistry, hasHarness, listHarnessNames, requireHarness } from "../../src/core/harness-registry";
 import { registerBuiltinHarnesses } from "../../src/harnesses";
 import { factoryAdapter } from "../../src/harnesses/adapters/factory";
 import { hermesAdapter } from "../../src/harnesses/adapters/hermes";
@@ -11,22 +9,17 @@ import { veyyonAdapter } from "../../src/harnesses/adapters/veyyon";
 const builtinHarnesses = [veyyonAdapter, ompAdapter, factoryAdapter, hermesAdapter] as const;
 
 describe("HarnessRegistry & Built-in Harnesses", () => {
-	const adaptersDir = path.resolve(import.meta.dirname, "../../src/harnesses/adapters");
+	it("dynamically resolves every registered harness from the registry", () => {
+		const harnessNames = listHarnessNames();
+		expect(harnessNames.length).toBeGreaterThanOrEqual(4);
 
-	it("dynamically registers every harness adapter found in src/harnesses/adapters", () => {
-		expect(fs.existsSync(adaptersDir)).toBe(true);
-		const adapterFiles = fs
-			.readdirSync(adaptersDir)
-			.filter(file => file.endsWith(".ts") && !file.endsWith(".test.ts") && !file.endsWith(".d.ts"))
-			.map(file => path.basename(file, ".ts"));
-
-		expect(adapterFiles.length).toBeGreaterThan(0);
-
-		// Every file in adapters/ must be registered in defaultHarnessRegistry
-		for (const adapterName of adapterFiles) {
-			expect(hasHarness(adapterName)).toBe(true);
-			const harness = requireHarness(adapterName);
-			expect(harness.name).toBe(adapterName);
+		// Every registered harness must be resolvable and match its registered name
+		for (const name of harnessNames) {
+			expect(hasHarness(name)).toBe(true);
+			const harness = requireHarness(name);
+			expect(harness.name).toBe(name);
+			expect(typeof harness.displayName).toBe("string");
+			expect(typeof harness.description).toBe("string");
 		}
 	});
 

@@ -12,7 +12,6 @@ import type {
 } from "../../core/types";
 import { veyBinaryPath } from "../../paths";
 import {
-	type SystemAdapter,
 	type SystemJobConfigContext,
 	type SystemPreflightContext,
 	type SystemPreflightResult,
@@ -90,7 +89,7 @@ function buildModelsYml(refreshJson: string, modelSelector: string, apiKey: stri
 	return null;
 }
 
-export class OmpAdapter implements HarnessAdapter, SystemAdapter {
+export class OmpAdapter implements HarnessAdapter {
 	readonly name = "omp";
 	readonly displayName = "Oh My Pi (omp)";
 	readonly description = "Oh My Pi (omp) CLI agent headlessly executing DeepSWE benchmark tasks.";
@@ -109,13 +108,6 @@ export class OmpAdapter implements HarnessAdapter, SystemAdapter {
 			containerAssetsDir: "/opt/omp-assets",
 		},
 	} as const;
-
-	// Backward compatibility with legacy SystemAdapter
-	readonly pierAgentImport = "omp_agent:OmpAgent";
-	readonly containerAssetsDir = "/opt/omp-assets";
-	readonly supportsReplay = false;
-	readonly supportsCompaction = false;
-	readonly supportsArmAttachments = false;
 
 	async preflight(context: HarnessPreflightContext): Promise<PreflightVerdict> {
 		const options = context.options ?? {};

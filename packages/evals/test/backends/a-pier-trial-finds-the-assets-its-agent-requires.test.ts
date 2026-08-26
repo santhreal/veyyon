@@ -24,6 +24,11 @@ import { stagePierAssets } from "../../src/backends/pier/asset-staging";
 import { PierExecutionBackend } from "../../src/backends/pier/backend";
 import { registerPierBackend } from "../../src/backends/pier/register";
 import * as pierRunner from "../../src/backends/pier/runner";
+import {
+	ARM_ATTACHMENT_KINDS,
+	ARM_ATTACHMENT_MANIFEST_VERSION,
+	type ArmAttachmentManifest,
+} from "../../src/core/arm-attachments";
 import type {
 	EvalSuite,
 	PreflightVerdict,
@@ -36,11 +41,6 @@ import type {
 } from "../../src/core/types";
 import { registerBuiltinHarnesses } from "../../src/harnesses/index";
 import { evalsPackageDir } from "../../src/paths";
-import {
-	ARM_ATTACHMENT_KINDS,
-	ARM_ATTACHMENT_MANIFEST_VERSION,
-	type ArmAttachmentManifest,
-} from "../../src/suites/deep-swe/arm-attachments";
 
 const SCRATCH_BASE = path.join(evalsPackageDir(), ".internal", "test-pier-assets");
 

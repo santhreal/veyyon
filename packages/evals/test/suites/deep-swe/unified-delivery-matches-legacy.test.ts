@@ -15,13 +15,13 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { internalScratchDir } from "../../../src/paths";
 import {
 	ARM_ATTACHMENT_KINDS,
 	ARM_ATTACHMENT_MANIFEST_FILE,
 	type ArmAttachmentManifest,
-} from "../../../src/suites/deep-swe/arm-attachments";
-import { knownPromptIds } from "../../../src/suites/deep-swe/arm-prompts";
+} from "../../../src/core/arm-attachments";
+import { knownPromptIds } from "../../../src/core/prompt-overrides";
+import { internalScratchDir } from "../../../src/paths";
 import { stageAllArms } from "../../../src/suites/deep-swe/src/runner/arm-staging";
 
 function createScratchDir(prefix: string): string {

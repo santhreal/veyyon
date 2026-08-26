@@ -28,7 +28,8 @@ import type {
 	VariantMatrixSelection,
 } from "./core";
 import { requireBackend, requireSuite, summarizeRunCells } from "./core";
-import { preflightHarnesses, registerBuiltinHarnesses } from "./harnesses";
+import { preflightHarnesses } from "./core/harness-preflight";
+import { registerBuiltinHarnesses } from "./harnesses";
 import { runsDir as defaultRunsDir } from "./paths";
 import { buildRunPlan, describeRunPlan, executeRun, type RunPlan } from "./run";
 import { builtinSuites, registerAllSuites } from "./suites";
