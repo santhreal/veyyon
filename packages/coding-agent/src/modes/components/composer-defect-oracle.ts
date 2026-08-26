@@ -25,7 +25,7 @@ export const COMPOSER_ORACLE_GUARANTEES = [
 	"composerHairlineSpanAndPlacement",
 	"footerHeightMatchesComposedSegmentLedger",
 	"virtualScrollPreservesFooterStability",
-	"noSgrLeftOpenAtRowEnd",
+	"noStyleBleedPastPaintedText",
 ] as const;
 
 export type ComposerOracleGuarantee = (typeof COMPOSER_ORACLE_GUARANTEES)[number];
@@ -36,6 +36,13 @@ export interface FrameSegmentSnapshot {
 	componentName: string;
 }
 
+/** The columns of one screen row whose cells carry a non-default style. */
+export interface RowStyledColumns {
+	background: readonly number[];
+	foreground: readonly number[];
+	underline: readonly number[];
+}
+
 export interface ComposerOracleFrameState {
 	/** Viewport width in columns */
 	width: number;
@@ -43,8 +50,23 @@ export interface ComposerOracleFrameState {
 	height: number;
 	/** Visible lines on the terminal screen (ANSI stripped) */
 	viewportLines: readonly string[];
-	/** Raw visible lines with ANSI escape sequences */
+	/**
+	 * Visible lines as the emulator's cell grid spells them.
+	 *
+	 * Named for the byte stream it once held. The Ghostty-backed test terminal reconstructs a row from
+	 * its cells, which carry style as attributes rather than as escape sequences, so these rows are
+	 * the same text as `viewportLines` under that harness. A caller that does have the byte stream
+	 * still supplies it here, and the checks that read escape sequences still read them.
+	 */
 	rawViewportLines: readonly string[];
+	/**
+	 * Per screen row, the columns whose cell carries a non-default style.
+	 *
+	 * Read from the emulator's cell grid, which is where style survives: an escape sequence is consumed
+	 * into cell attributes, so a check looking for one in a row's text finds nothing and passes. That
+	 * is how the padding oracle's background clause came to judge a property no mount could express.
+	 */
+	styledColumns: readonly RowStyledColumns[];
 	/** Terminal cursor position (0-based screen coordinates) */
 	cursor: { row: number; col: number } | null;
 	/** Total composed frame length across all root components */
@@ -501,8 +523,12 @@ export function checkComposerCardPadsAreUnpaintedAir(state: ComposerOracleFrameS
 			if (segmentScreenRow !== null && segmentScreenRow < state.rawViewportLines.length) {
 				const rawLine = state.rawViewportLines[segmentScreenRow] ?? "";
 				const plainLine = state.viewportLines[segmentScreenRow] ?? "";
-				// Padding must be blank air: no painted background and no glyphs.
-				if (paintsBackground(rawLine) || plainLine.trim().length > 0) {
+				// Padding must be blank air: no painted background and no glyphs. The background is read
+				// from the cell grid as well as from the escape sequences, because a harness whose rows
+				// come back as cell text carries the fill in the cells and nowhere else.
+				const styled = state.styledColumns[segmentScreenRow];
+				const filled = (styled?.background.length ?? 0) > 0;
+				if (paintsBackground(rawLine) || filled || plainLine.trim().length > 0) {
 					return {
 						oracle: "composerCardPadsAreUnpaintedAir",
 						message: `CardPadRow at screen row ${segmentScreenRow} has non-blank content or background styling: '${rawLine}'.`,
@@ -612,32 +638,35 @@ export function checkVirtualScrollPreservesFooterStability(state: ComposerOracle
 }
 
 /**
- * Guarantee 13: noSgrLeftOpenAtRowEnd
- * Every painted row closes the colours and attributes it opened.
+ * Guarantee 13: noStyleBleedPastPaintedText
+ * No cell beyond a row's painted text carries a style.
  *
- * A terminal carries SGR state across a line break, so a row that ends with a foreground colour or a
- * background fill still in effect paints whatever the next row happens to write, and the last row of
- * a frame paints the shell prompt after the process exits. The defect is invisible in a stripped grid
- * and invisible in a screenshot of a frame whose next row happens to open its own colour, which is
- * why it is judged on the raw rows over the whole matrix rather than by looking at one.
+ * This is what an escape sequence the renderer never closed looks like once a terminal has parsed it.
+ * The sequence itself is gone by then, consumed into cell attributes, so nothing in a row's text
+ * reveals it; what remains is a colour on cells the row never wrote to, and on the rows after it. The
+ * effect is a stripe of background across the blank right-hand side of a row, or a coloured shell
+ * prompt after the process exits, and neither is visible in a stripped grid.
  */
-export function checkNoSgrLeftOpenAtRowEnd(state: ComposerOracleFrameState): OracleFailure | null {
-	for (let row = 0; row < state.rawViewportLines.length; row += 1) {
-		const raw = state.rawViewportLines[row] ?? "";
-		let open: string | null = null;
-		const pattern = /\u001b\[([0-9;]*)m/g;
-		for (let match = pattern.exec(raw); match !== null; match = pattern.exec(raw)) {
-			const params = match[1] ?? "";
-			// An empty parameter list is `ESC [ m`, which the standard reads as a reset.
-			const resets = params === "" || params.split(";").every(part => part === "" || part === "0");
-			open = resets ? null : params;
-		}
-		if (open !== null) {
-			return {
-				oracle: "noSgrLeftOpenAtRowEnd",
-				message: `Row ${row} ends with SGR ${open} still in effect, which bleeds into the row painted after it.`,
-				details: { row, sgr: open, raw },
-			};
+export function checkNoStyleBleedPastPaintedText(state: ComposerOracleFrameState): OracleFailure | null {
+	for (let row = 0; row < state.styledColumns.length; row += 1) {
+		const styled = state.styledColumns[row];
+		if (!styled) continue;
+		// The painted text is the row's own content. `viewportLines` arrives with trailing blanks
+		// trimmed, so its length is the first column the row did not write to.
+		const painted = (state.viewportLines[row] ?? "").length;
+		for (const [attribute, columns] of [
+			["background", styled.background],
+			["foreground", styled.foreground],
+			["underline", styled.underline],
+		] as const) {
+			const past = columns.filter(column => column >= painted);
+			if (past.length > 0) {
+				return {
+					oracle: "noStyleBleedPastPaintedText",
+					message: `Row ${row} paints ${painted} columns of text and carries ${attribute} on column(s) ${past.join(", ")} past it, which is an unclosed style bleeding into blank cells.`,
+					details: { row, attribute, painted, columns: past },
+				};
+			}
 		}
 	}
 
@@ -851,14 +880,14 @@ export const COMPOSER_ORACLES: Readonly<Record<ComposerOracleGuarantee, Composer
 		}),
 		run: checkVirtualScrollPreservesFooterStability,
 	},
-	noSgrLeftOpenAtRowEnd: {
-		id: "noSgrLeftOpenAtRowEnd",
-		description: "Every painted row closes the colours and attributes it opened, so none bleeds into the next.",
+	noStyleBleedPastPaintedText: {
+		id: "noStyleBleedPastPaintedText",
+		description: "No cell beyond a row's painted text carries a background, foreground or underline.",
 		appliesTo: () => true,
-		// Every raw row, because the terminator is a property of each one independently and a row with
-		// no escape sequence at all is still a row that leaves nothing open.
+		// Every row, because the absence of style past the text is the property: a row with no styled
+		// cell at all is a row this read and found clean, not a row it could not judge.
 		subject: state => ({ kind: "rows", rows: allRows(state) }),
-		run: checkNoSgrLeftOpenAtRowEnd,
+		run: checkNoStyleBleedPastPaintedText,
 	},
 };
 

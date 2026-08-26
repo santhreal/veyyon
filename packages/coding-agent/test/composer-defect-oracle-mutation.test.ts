@@ -62,6 +62,10 @@ function createBaselineFrameState(): ComposerOracleFrameState {
 		height,
 		viewportLines,
 		rawViewportLines,
+		// A control frame carries no style, so nothing bleeds. The style-bleed defects below add
+		// columns to one row rather than starting from a coloured frame, which keeps every other
+		// guarantee's baseline untouched.
+		styledColumns: viewportLines.map(() => ({ background: [], foreground: [], underline: [] })),
 		cursor: { row: 7, col: 15 },
 		totalFrameRows: 10,
 		windowTopRow: 0,
@@ -102,6 +106,19 @@ function withRow(state: ComposerOracleFrameState, row: number, line: string): Co
 	const rawViewportLines = [...state.rawViewportLines];
 	rawViewportLines[row] = line;
 	return { ...state, viewportLines, rawViewportLines };
+}
+
+/** Give one row a run of styled columns, as the cell grid reports them. */
+function withStyle(
+	state: ComposerOracleFrameState,
+	row: number,
+	attribute: "background" | "foreground" | "underline",
+	columns: readonly number[],
+): ComposerOracleFrameState {
+	const styledColumns = state.styledColumns.map((entry, index) =>
+		index === row ? { ...entry, [attribute]: [...columns] } : entry,
+	);
+	return { ...state, styledColumns };
 }
 
 /** Paint a background into the pad row while leaving it blank once the escapes are stripped. */
@@ -237,33 +254,21 @@ const DEFECTS: Readonly<Record<ComposerOracleGuarantee, readonly DefectCase[]>> 
 			}),
 		},
 	],
-	noSgrLeftOpenAtRowEnd: [
+	noStyleBleedPastPaintedText: [
 		{
-			name: "a row opens a foreground colour and never closes it",
-			says: "still in effect",
-			break: base => {
-				const rawViewportLines = [...base.rawViewportLines];
-				rawViewportLines[2] = "\x1b[31mred text with no reset";
-				return { ...base, rawViewportLines };
-			},
+			name: "a background fill runs past the end of the row's text",
+			says: "background on column(s)",
+			break: base => withStyle(base, 2, "background", [70, 71, 72]),
 		},
 		{
-			name: "a row resets its colour and then opens a background fill on the way out",
-			says: "still in effect",
-			break: base => {
-				const rawViewportLines = [...base.rawViewportLines];
-				rawViewportLines[4] = "\x1b[31mred\x1b[0m plain \x1b[48;5;236m";
-				return { ...base, rawViewportLines };
-			},
+			name: "a foreground colour is left on the blank cells after the text",
+			says: "foreground on column(s)",
+			break: base => withStyle(base, 4, "foreground", [60]),
 		},
 		{
-			name: "a row closes only some of the attributes it opened",
-			says: "still in effect",
-			break: base => {
-				const rawViewportLines = [...base.rawViewportLines];
-				rawViewportLines[5] = "\x1b[1;31mbold red\x1b[22m still red";
-				return { ...base, rawViewportLines };
-			},
+			name: "an underline extends one column past the text",
+			says: "underline on column(s)",
+			break: base => withStyle(base, 5, "underline", [(base.viewportLines[5] ?? "").length]),
 		},
 	],
 };

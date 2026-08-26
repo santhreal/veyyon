@@ -367,6 +367,13 @@ export function captureComposerFrameState(ctx: ComposerCaptureContext): Composer
 
 	const rawViewportLines = term.getViewport();
 	const viewportLines = rawViewportLines.map(l => stripVTControlCharacters(stripAnsi(l)));
+	// Style lives in the cell grid, not in these rows: the emulator consumed every escape sequence
+	// into cell attributes before the text was reconstructed. Read it from the cells or not at all.
+	const styledColumns = viewportLines.map((_line, row) => ({
+		background: term.getViewportRowBackgroundColumns(row),
+		foreground: term.getViewportRowForegroundColumns(row),
+		underline: term.getViewportRowUnderlineColumns(row),
+	}));
 	const cursor = term.getCursor();
 	const virtualScrollTop = tui.virtualScrollActive ? ctx.scrolledNotches || 1 : null;
 
@@ -408,6 +415,7 @@ export function captureComposerFrameState(ctx: ComposerCaptureContext): Composer
 		height,
 		viewportLines,
 		rawViewportLines,
+		styledColumns,
 		cursor,
 		totalFrameRows,
 		windowTopRow,

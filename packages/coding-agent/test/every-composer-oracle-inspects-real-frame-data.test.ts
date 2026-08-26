@@ -122,9 +122,9 @@ const REQUIREMENTS: Record<ComposerOracleGuarantee, InputRequirement> = {
 		hasInputs: state => state.virtualScrollTop !== null && (state.liveFooterLines?.length ?? 0) > 0,
 		mount: "scrolledBack",
 	},
-	noSgrLeftOpenAtRowEnd: {
-		vacuousWhen: "the raw grid is empty, so there is no row whose escape sequences could be unbalanced",
-		hasInputs: state => state.rawViewportLines.length > 0,
+	noStyleBleedPastPaintedText: {
+		vacuousWhen: "no row is recorded, so there is no cell past a row's text to look at",
+		hasInputs: state => state.styledColumns.length > 0,
 		mount: "liveTail",
 	},
 };
@@ -197,6 +197,28 @@ describe("every composer oracle inspects real frame data", () => {
 			}
 		});
 	}
+
+	/**
+	 * The frame state carried no style at all until it read the cell grid. `rawViewportLines` comes
+	 * back from the emulator as text reconstructed from cells, with every escape sequence already
+	 * consumed into attributes, so the padding oracle's background clause was judging a property no
+	 * mount could express and the style-bleed oracle would have been born vacuous. A mount whose rows
+	 * carry no styled cell anywhere means the style readback is broken again, and every oracle that
+	 * reads style is passing on absence.
+	 */
+	it("reads the style the composer actually paints, not an escape sequence the terminal ate", async () => {
+		const result = await runComposerOracleScenario(MOUNTS.liveTail);
+		try {
+			const styledRows = result.frameState.styledColumns.filter(
+				row => row.background.length + row.foreground.length + row.underline.length > 0,
+			);
+			expect(styledRows.length).toBeGreaterThan(0);
+			// The same rows carry no escape sequence, which is the reason the cell grid has to be read.
+			expect(result.frameState.rawViewportLines.some(line => line.includes("\u001b["))).toBe(false);
+		} finally {
+			result.cleanUp();
+		}
+	});
 
 	/**
 	 * A written case is only useful if it can be turned back into the mount that produced it.
