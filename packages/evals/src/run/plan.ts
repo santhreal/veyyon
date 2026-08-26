@@ -18,6 +18,7 @@ import type {
 	VariantMatrixSelection,
 } from "../core";
 import { defaultHarnessRegistry, expandVariantMatrix } from "../core";
+import { requirePathSegment } from "../paths";
 
 export class EmptyTaskSelectionError extends Error {
 	readonly suiteName: string;
@@ -102,6 +103,11 @@ export async function buildRunPlan(request: RunPlanRequest): Promise<RunPlan> {
 	if (!Number.isInteger(repeats) || repeats < 1) {
 		throw new InvalidRepeatsError(repeats);
 	}
+
+	// The run id becomes a directory name under the runs directory, so a caller's own id is
+	// refused here rather than joined: it reaches this module from a flag, a job name or a
+	// stored record, and `../..` in any of them writes a run outside the tree it belongs to.
+	if (request.runId !== undefined) requirePathSegment(request.runId, "run id");
 
 	const suite = request.suite;
 	const context: SuiteContext = request.context ?? {};

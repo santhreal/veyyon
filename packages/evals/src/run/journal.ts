@@ -14,6 +14,8 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { TrialArtifacts, TrialCell, TrialResultRecord } from "../core";
+import { requirePathSegment } from "../paths";
+
 export const MAX_RAW_OUTPUT_CHARS = 65_536; // 64 KiB character ceiling
 
 /** Marks a file as this journal rather than any other JSONL a run directory holds. */
@@ -79,9 +81,13 @@ export class ResumeWithoutJournalError extends Error {
 
 /**
  * Returns the canonical path to the trials.jsonl journal for a run.
+ *
+ * The run id is a single directory name. It arrives from a CLI flag, a job name or a stored
+ * record, so it is validated here rather than joined as given: `--run-id ../../etc` otherwise
+ * resolved a journal outside the runs directory and a real run created it there.
  */
 export function journalPathFor(runsDir: string, runId: string): string {
-	return path.join(runsDir, runId, "trials.jsonl");
+	return path.join(runsDir, requirePathSegment(runId, "run id"), "trials.jsonl");
 }
 
 /**

@@ -2,13 +2,13 @@
  * WHY:
  * The manager server previously bound 0.0.0.0 with no auth and no CSRF protection,
  * exposing endpoints that launch processes and delete runs. Furthermore, job names were
- * not validated with assertSafeJobName (allowing directory traversal), and server error
+ * not validated as one path segment (allowing directory traversal), and server error
  * bodies leaked raw host filesystem paths to clients.
  *
  * This suite closes the class by proving:
  *  1. The server binds loopback (127.0.0.1) by default.
  *  2. Mutating requests (POST, PUT, DELETE) are refused (401) without the auth token.
- *  3. Traversal job names are rejected with a 400 status naming the invalid name.
+ *  3. A job name that is not one directory name is rejected with a 400 naming the name.
  *  4. Error responses return a stable { error } shape with absolute host paths redacted.
  */
 
@@ -131,6 +131,11 @@ describe("ManagerServer loopback binding, auth token, and input safety", () => {
 			"a\\b",
 			".",
 			"..",
+			// Admitted by the manager's own regex before one rule answered the question: a name of
+			// only spaces, a trailing space, and a NUL byte all became directory names.
+			" ",
+			"trailing ",
+			"nul\u0000byte",
 		];
 
 		for (const badName of traversalNames) {
@@ -148,7 +153,7 @@ describe("ManagerServer loopback binding, auth token, and input safety", () => {
 
 			expect(res.status).toBe(400);
 			const body = (await res.json()) as { error: string };
-			expect(body.error).toContain("invalid job name");
+			expect(body.error).toContain("Unsafe job name");
 		}
 	});
 
