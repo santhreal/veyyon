@@ -59,6 +59,7 @@ const FIXTURES: Readonly<Record<BenchmarkKind, PartialFixture>> = {
 				agent_result: { cost_usd: 0.5, n_input_tokens: 10, n_output_tokens: 2 },
 			});
 			writeJson(path.join(dir, "b__2", "result.json"), {
+				verifier_result: { rewards: { reward: 0 } },
 				agent_result: { cost_usd: 0.1, n_input_tokens: 4, n_output_tokens: 1 },
 			});
 			fs.mkdirSync(path.join(dir, "c__3"), { recursive: true });

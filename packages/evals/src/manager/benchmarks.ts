@@ -2,7 +2,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { errorMessage, isRecord } from "@veyyon/utils";
-import { aggregate, type JobInfo, type Trial } from "../backends/harbor/runner/results";
+import { aggregate, type JobInfo } from "../backends/harbor/runner/results";
 import { sumOfMeasured } from "../core/scoring";
 import type { BackendId } from "../core/types";
 import { pathSegmentFrom } from "../paths";
@@ -587,7 +587,13 @@ function parseHarborTrialFromJson(raw: unknown, name: string, tracePath: string 
 	if (exc) {
 		status = "error";
 		detail = typeof exc.exception_type === "string" ? exc.exception_type : "error";
-	} else if (reward !== null && reward >= 1 - 1e-9) {
+	} else if (reward === null) {
+		// A verifier that recorded no reward graded nothing. Reading that as a fail states a result the
+		// run never produced, and puts it in the denominator of the pass rate. The runner's own reader
+		// of the same result.json calls it an error; both readers of one file report the same thing.
+		status = "error";
+		detail = "missing or unparsable reward";
+	} else if (reward >= 1 - 1e-9) {
 		status = "pass";
 	} else {
 		status = "fail";
@@ -713,12 +719,7 @@ function readHarborSnapshot(jobDir: string): BenchmarkSnapshot {
 		}
 	} catch {}
 
-	const runnerTrials: Trial[] = trials.map(t => ({
-		...t,
-		costUsd: t.costUsd ?? 0,
-		tokCache: t.tokCache ?? 0,
-	}));
-	const totals = aggregate(runnerTrials, job, job?.nTotal ?? trials.length);
+	const totals = aggregate(trials, job, job?.nTotal ?? trials.length);
 	return {
 		traces: trials.map(trial => ({
 			name: trial.name,
@@ -736,10 +737,12 @@ function readHarborSnapshot(jobDir: string): BenchmarkSnapshot {
 		fail: totals.fail,
 		error: totals.error,
 		running: totals.running,
-		costUsd: sumOfMeasured(trials.map(t => t.costUsd)),
-		tokIn: totals.tokIn,
-		tokOut: totals.tokOut,
-		tokCache: sumOfMeasured(trials.map(t => t.tokCache)),
+		costUsd: totals.costUsd,
+		// Every harbor trial this reader parses counts its own tokens, so an absent sum means it read
+		// no trial at all — and no trial is a measured zero, unlike an unpriced one.
+		tokIn: totals.tokIn ?? 0,
+		tokOut: totals.tokOut ?? 0,
+		tokCache: totals.tokCache,
 		score: totals.done > 0 ? totals.pass / totals.done : null,
 		metrics: { success_rate: totals.done > 0 ? totals.pass / totals.done : null },
 	};

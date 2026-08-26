@@ -5,6 +5,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { tryParseJson } from "@veyyon/utils";
+import { sumOfMeasured } from "../../../core/scoring";
 import { harborAgentLogPath } from "../backend";
 import { dropCostProbe, probeTrialCost } from "./cost-probe";
 
@@ -14,10 +15,14 @@ export interface Trial {
 	name: string;
 	status: TrialStatus;
 	reward: number | null;
-	costUsd: number;
-	tokIn: number;
-	tokOut: number;
-	tokCache: number;
+	/** Spend measured for this trial, or null when nothing priced it. Unknown spend is not $0. */
+	costUsd: number | null;
+	/** Input tokens measured for this trial, or null when nothing counted them. */
+	tokIn: number | null;
+	/** Output tokens measured for this trial, or null when nothing counted them. */
+	tokOut: number | null;
+	/** Cache-read tokens measured for this trial, or null when nothing counted them. */
+	tokCache: number | null;
 	durationMs: number;
 	/** Detail string: exception type, or empty on success. */
 	detail: string;
@@ -30,8 +35,8 @@ interface AgentCtxLike {
 	n_cache_tokens?: number;
 }
 
-function num(v: unknown): number {
-	return typeof v === "number" && Number.isFinite(v) ? v : 0;
+function finite(v: unknown): number | null {
+	return typeof v === "number" && Number.isFinite(v) ? v : null;
 }
 
 function resolveReward(rewards: Record<string, number> | null): number | null {
@@ -64,20 +69,18 @@ export function parseTrial(dir: string, name: string, agentName = "veyyon"): Tri
 
 		// Realtime cost from the live agent log, parsed incrementally.
 		const relAgentLog = harborAgentLogPath(agentName);
+		// A trial nobody priced yet reports absent spend, never $0: the transcript may hold no usage
+		// event yet, may carry counts from a provider that reports no price, or may not exist at all.
 		const probe = probeTrialCost(path.join(dir, relAgentLog));
-		const costUsd = probe?.costUsd ?? 0;
-		const tokIn = probe?.tokIn ?? 0;
-		const tokOut = probe?.tokOut ?? 0;
-		const tokCache = probe?.tokCache ?? 0;
 
 		return {
 			name,
 			status: "running",
 			reward: null,
-			costUsd,
-			tokIn,
-			tokOut,
-			tokCache,
+			costUsd: probe?.costUsd ?? null,
+			tokIn: probe?.tokIn ?? null,
+			tokOut: probe?.tokOut ?? null,
+			tokCache: probe?.tokCache ?? null,
 			durationMs: Date.now() - started,
 			detail: "",
 		};
@@ -99,16 +102,12 @@ export function parseTrial(dir: string, name: string, agentName = "veyyon"): Tri
 			}
 		}
 	}
-	let costUsd = 0;
-	let tokIn = 0;
-	let tokOut = 0;
-	let tokCache = 0;
-	for (const ctx of ctxs) {
-		costUsd += num(ctx.cost_usd);
-		tokIn += num(ctx.n_input_tokens);
-		tokOut += num(ctx.n_output_tokens);
-		tokCache += num(ctx.n_cache_tokens);
-	}
+	// A result.json that recorded no agent context, or one whose provider reported no price, leaves
+	// the field absent. Summing it as 0 would report a trial that cost money as free.
+	const costUsd = sumOfMeasured(ctxs.map(ctx => finite(ctx.cost_usd)));
+	const tokIn = sumOfMeasured(ctxs.map(ctx => finite(ctx.n_input_tokens)));
+	const tokOut = sumOfMeasured(ctxs.map(ctx => finite(ctx.n_output_tokens)));
+	const tokCache = sumOfMeasured(ctxs.map(ctx => finite(ctx.n_cache_tokens)));
 
 	// rewards: top-level verifier_result, else step_results last verifier
 	let rewards: Record<string, number> | null = null;
@@ -202,10 +201,11 @@ export interface Totals {
 	error: number;
 	running: number;
 	pending: number;
-	costUsd: number;
-	tokIn: number;
-	tokOut: number;
-	tokCache: number;
+	/** Spend summed over the trials that measured it, or null when none did. */
+	costUsd: number | null;
+	tokIn: number | null;
+	tokOut: number | null;
+	tokCache: number | null;
 }
 
 export function aggregate(trials: Trial[], job: JobInfo | null, fallbackExpected: number): Totals {
@@ -217,16 +217,12 @@ export function aggregate(trials: Trial[], job: JobInfo | null, fallbackExpected
 		error: 0,
 		running: 0,
 		pending: fallbackExpected,
-		costUsd: 0,
-		tokIn: 0,
-		tokOut: 0,
-		tokCache: 0,
+		costUsd: sumOfMeasured(trials.map(tr => tr.costUsd)),
+		tokIn: sumOfMeasured(trials.map(tr => tr.tokIn)),
+		tokOut: sumOfMeasured(trials.map(tr => tr.tokOut)),
+		tokCache: sumOfMeasured(trials.map(tr => tr.tokCache)),
 	};
 	for (const tr of trials) {
-		t.costUsd += tr.costUsd;
-		t.tokIn += tr.tokIn;
-		t.tokOut += tr.tokOut;
-		t.tokCache += tr.tokCache;
 		switch (tr.status) {
 			case "pass":
 				t.pass++;

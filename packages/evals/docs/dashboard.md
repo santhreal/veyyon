@@ -41,6 +41,18 @@ varies by surface — a dashboard cell and the harbor summary read `—`, the ma
 `formatEta(etaMs, now)` renders `—` for an unknown ETA rather than `~0m`, which claimed a run was
 about to finish. `formatMinutes(ms)` renders a measured duration.
 
+An absent value has to survive the reader that produced it. A harbor trial's spend and token counts
+are `null` until something measures them: the live transcript probe reports absent until it reads a
+usage event, and reports absent spend beside measured tokens when the provider priced nothing; a
+finished trial's `result.json` that recorded no agent context, or a field that is not a finite
+number, sums to `null` rather than 0. Job totals sum only the trials that measured a field. A
+measured `0` still renders as `$0.000` and `0`, which is what distinguishes a free trial from an
+unpriced one.
+
+A trial whose verifier recorded no reward graded nothing, so both readers of that `result.json` —
+the runner's report and the manager snapshot — call it an error with `missing or unparsable reward`,
+not a fail.
+
 ## Live updates
 
 `GET /api/events` is a Server-Sent Events stream carrying run row updates. The dashboard applies each
