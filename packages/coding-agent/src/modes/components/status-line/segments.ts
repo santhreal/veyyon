@@ -790,6 +790,8 @@ const costSegment: StatusLineSegment = {
 /** The context bar's fixed cell count — small enough to whisper, wide enough
  *  that one cell is a meaningful 12.5% step. */
 const CONTEXT_BAR_CELLS = 8;
+const CONTEXT_BAR_SOLIDS: readonly string[] = Array.from({ length: CONTEXT_BAR_CELLS + 1 }, (_, i) => "▰".repeat(i));
+const CONTEXT_BAR_EMPTIES: readonly string[] = Array.from({ length: CONTEXT_BAR_CELLS + 1 }, (_, i) => "▱".repeat(i));
 /** Live-tip pulse cadence; past the error threshold the pulse doubles — the
  *  bar visibly quickens as compaction nears. */
 const CONTEXT_BAR_TIP_STEP_MS = 1000;
@@ -819,19 +821,20 @@ export function renderContextBar(ratio: number, level: ContextUsageLevel, nowMs:
 	const clamped = Math.min(1, Math.max(0, Number.isFinite(ratio) ? ratio : 0));
 	const filled = Math.min(CONTEXT_BAR_CELLS, Math.round(clamped * CONTEXT_BAR_CELLS));
 	const levelColor = getContextUsageThemeColor(level);
-	let bar = "";
-	for (let cell = 0; cell < CONTEXT_BAR_CELLS; cell++) {
-		if (live && cell === filled - 1) {
-			const stepMs = level === "error" ? CONTEXT_BAR_TIP_STEP_URGENT_MS : CONTEXT_BAR_TIP_STEP_MS;
-			const tipOn = Math.floor(nowMs / stepMs) % 2 === 0;
-			bar += tipOn ? theme.fg(levelColor, "▰") : theme.fg("dim", "▱");
-		} else if (cell < filled) {
-			bar += theme.fg(levelColor, "▰");
-		} else {
-			bar += theme.fg("dim", "▱");
-		}
-	}
-	return bar;
+	const emptyCount = CONTEXT_BAR_CELLS - filled;
+	// When live, the last filled cell pulses: on phase keeps the level hue, off
+	// phase drops to dim. When the tip is off it joins the empty cells, so the
+	// whole bar is two runs — one solid, one dim — instead of eight per-cell fg() calls.
+	const tipOff =
+		live &&
+		filled > 0 &&
+		Math.floor(nowMs / (level === "error" ? CONTEXT_BAR_TIP_STEP_URGENT_MS : CONTEXT_BAR_TIP_STEP_MS)) % 2 !== 0;
+	const solidCount = tipOff ? filled - 1 : filled;
+	const dimCount = tipOff ? emptyCount + 1 : emptyCount;
+	return (
+		(solidCount > 0 ? theme.fg(levelColor, CONTEXT_BAR_SOLIDS[solidCount]!) : "") +
+		(dimCount > 0 ? theme.fg("dim", CONTEXT_BAR_EMPTIES[dimCount]!) : "")
+	);
 }
 
 /**
