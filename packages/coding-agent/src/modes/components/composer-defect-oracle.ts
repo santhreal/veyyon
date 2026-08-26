@@ -8,6 +8,7 @@
  * packages/coding-agent/src/modes/components/composer-chrome.ts).
  */
 
+import { sgrSequence } from "@veyyon/tui/ansi";
 import { visibleWidth } from "@veyyon/tui/utils";
 import { COMPOSER_INSET_COLS } from "./composer-chrome";
 
@@ -89,9 +90,37 @@ export interface OracleEvaluationResult {
 
 const PROMPT_GLYPHS = ["›", "!", "$", "◈", ">"] as const;
 
-/** Strip ANSI escapes and normalize */
-export function stripAnsiCodes(str: string): string {
-	return str.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "").replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, "");
+const SGR = sgrSequence("g");
+
+/**
+ * Whether a raw terminal line paints a background anywhere in it.
+ *
+ * Walks the SGR parameter list instead of pattern-matching its text. The `4`-prefixed spelling
+ * this replaced read `ESC [ 4 m` (underline) and `ESC [ 49 m` (background reset) as fills, missed
+ * the bright backgrounds 100-107, and missed a truecolor background written with colon
+ * subparameters, because a background is a parameter value rather than a text shape.
+ */
+function paintsBackground(rawLine: string): boolean {
+	SGR.lastIndex = 0;
+	for (let match = SGR.exec(rawLine); match !== null; match = SGR.exec(rawLine)) {
+		const params = match[1] ?? "";
+		const parts = params.length > 0 ? params.split(";") : [];
+		for (let index = 0; index < parts.length; index += 1) {
+			const part = parts[index] ?? "";
+			const code = Number(part.split(":")[0]);
+			if (code === 48 || (code >= 40 && code <= 47) || (code >= 100 && code <= 107)) return true;
+			// Skip an extended foreground or underline colour so its subparameters are not
+			// misread as background codes: `38;5;41` selects a foreground, not background 41.
+			if (code === 38 || code === 58) {
+				if (part.includes(":")) continue;
+				const selector = Number(parts[index + 1]);
+				if (selector === 2) index += 4;
+				else if (selector === 5) index += 2;
+				else index += 1;
+			}
+		}
+	}
+	return false;
 }
 
 /** Check if a line is a composer prompt row */
@@ -421,8 +450,8 @@ export function checkComposerCardPadsAreUnpaintedAir(state: ComposerOracleFrameS
 			if (segmentScreenRow >= 0 && segmentScreenRow < state.rawViewportLines.length) {
 				const rawLine = state.rawViewportLines[segmentScreenRow] ?? "";
 				const plainLine = state.viewportLines[segmentScreenRow] ?? "";
-				// Check for background color escape \x1b[4...m or non-space characters
-				if (/\x1b\[4[0-9;]*m/.test(rawLine) || plainLine.trim().length > 0) {
+				// Padding must be blank air: no painted background and no glyphs.
+				if (paintsBackground(rawLine) || plainLine.trim().length > 0) {
 					return {
 						oracle: "composerCardPadsAreUnpaintedAir",
 						message: `CardPadRow at screen row ${segmentScreenRow} has non-blank content or background styling: '${rawLine}'.`,
