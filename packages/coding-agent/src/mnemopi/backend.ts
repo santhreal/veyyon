@@ -471,16 +471,10 @@ async function openrouterKeyResolver(
 }
 
 /**
- * A memory credential the operator configured, read through the ONE config-value grammar.
- *
- * `mnemopi.llmApiKey` and `mnemopi.embeddingApiKey` were handed to Mnemopi as raw setting text while every
- * other configured credential in the product -- provider keys, MCP headers, the auth broker -- went
- * through `resolveConfigValue`. So `llmApiKey: ${OPENAI_API_KEY}`, which is the spelling the memory
- * backend's own documentation shows, sent the seven characters of the variable's name to the endpoint as
- * the key, and `!op read ...` sent the command text. The failure arrived as a 401 from the memory host
- * with nothing naming the setting.
- *
- * Not a string means an `ApiKeyResolver` the caller already built, which resolves itself.
+ * A memory credential the operator configured, read through the ONE config-value grammar. Memory keys
+ * were handed to Mnemopi as raw setting text while every other credential went through
+ * `resolveConfigValue`, so `${OPENAI_API_KEY}` sent the variable's NAME as the key. Not a string means
+ * an `ApiKeyResolver` the caller built, which resolves itself.
  */
 async function resolveMemoryCredential(
 	configured: MnemopiProviderOptions["embeddingApiKey"],

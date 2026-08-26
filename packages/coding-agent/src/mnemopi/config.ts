@@ -8,15 +8,10 @@ import type { Settings } from "../config/settings";
 export type MnemopiLlmMode = "none" | "smol" | "remote";
 
 /**
- * What the operator asked for, as the settings state it: the mode and the three remote fields.
- *
- * This is the REQUEST, not the LLM. The live client is built in one place --
- * `resolveMnemopiProviderOptions` in `backend.ts` -- because that is the only layer that can apply the
- * three things a request does not carry: the `providers.memoryModel` on-device override, a credential
- * resolver that refreshes and rotates, and `obfuscateProviderText`, which keeps secrets out of the text a
- * memory prompt sends. This module used to answer the same question a second time, building a remote
- * client straight from these settings into `providerOptions.llm`; every session overwrote it, so the
- * duplicate was invisible while being wrong in exactly the way that matters: no sanitizer.
+ * What the operator asked for: the mode and three remote fields. This is the REQUEST, not the LLM. The
+ * live client is built in `resolveMnemopiProviderOptions` in `backend.ts` — the only layer that can apply
+ * the `providers.memoryModel` override, a credential resolver, and `obfuscateProviderText`. This module
+ * used to build a remote client too; the duplicate had no sanitizer.
  */
 export interface MnemopiLlmRequest {
 	mode: MnemopiLlmMode;
