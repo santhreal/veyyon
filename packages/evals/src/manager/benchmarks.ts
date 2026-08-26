@@ -3,6 +3,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { isRecord } from "@veyyon/utils";
 import { aggregate, type JobInfo, type Trial } from "../backends/harbor/runner";
+import { sumOfMeasured } from "../core/scoring";
 import type { BenchmarkKind } from "./store";
 
 /** Describes a benchmark metric so storage and UI do not hard-code benchmark semantics. */
@@ -51,7 +52,7 @@ export interface BenchmarkTrace {
 	task: string;
 	status: "pass" | "fail" | "error" | "running";
 	reward: number | null;
-	costUsd: number;
+	costUsd: number | null;
 	durationMs: number;
 	detail: string;
 	tracePath: string | null;
@@ -66,10 +67,10 @@ export interface BenchmarkSnapshot {
 	fail: number;
 	error: number;
 	running: number;
-	costUsd: number;
+	costUsd: number | null;
 	tokIn: number;
 	tokOut: number;
-	tokCache: number;
+	tokCache: number | null;
 	score: number | null;
 	metrics: Record<string, number | null>;
 }
@@ -87,7 +88,7 @@ export function resetFilesParsedCount(): void {
 interface CachedTrial {
 	mtimeMs: number;
 	size: number;
-	trial: Trial;
+	trial: HarborParsedTrial;
 }
 
 interface CachedJobResult {
@@ -119,7 +120,8 @@ interface EditRun {
 	success: boolean;
 	error?: string;
 	duration: number;
-	tokens: { input: number; output: number; reasoning: number };
+	tokens: { input: number; output: number; reasoning?: number; cache?: number };
+	costUsd?: number | null;
 	toolCalls?: { read: number; edit: number; write: number };
 }
 
@@ -149,10 +151,10 @@ function emptySnapshot(): BenchmarkSnapshot {
 		fail: 0,
 		error: 0,
 		running: 0,
-		costUsd: 0,
+		costUsd: null,
 		tokIn: 0,
 		tokOut: 0,
-		tokCache: 0,
+		tokCache: null,
 		score: null,
 		metrics: {},
 	};
@@ -171,17 +173,22 @@ function readEditSnapshot(jobDir: string): BenchmarkSnapshot {
 		const traces: BenchmarkTrace[] = [];
 		let tokIn = 0;
 		let tokOut = 0;
+		const caches: (number | null)[] = [];
 		for (const task of result.tasks) {
 			for (const run of task.runs) {
 				tokIn += run.tokens.input;
 				tokOut += run.tokens.output;
+				if (typeof run.tokens?.cache === "number" && Number.isFinite(run.tokens.cache)) {
+					caches.push(run.tokens.cache);
+				}
 				const runNumber = run.runIndex + 1;
+				const costUsd = typeof run.costUsd === "number" && Number.isFinite(run.costUsd) ? run.costUsd : null;
 				traces.push({
 					name: `${task.id}__${runNumber}`,
 					task: task.id,
 					status: run.success ? "pass" : run.error ? "error" : "fail",
 					reward: run.success ? 1 : 0,
-					costUsd: 0,
+					costUsd,
 					durationMs: run.duration,
 					detail: JSON.stringify({ name: task.name, error: run.error ?? null, tools: run.toolCalls ?? null }),
 					tracePath: path.join("result.dump", task.id.replace(/[^a-zA-Z0-9._-]/g, "_"), `run-${runNumber}.md`),
@@ -198,10 +205,10 @@ function readEditSnapshot(jobDir: string): BenchmarkSnapshot {
 			fail: traces.length - pass - error,
 			error,
 			running: Math.max(0, result.summary.totalRuns - traces.length),
-			costUsd: 0,
+			costUsd: sumOfMeasured(traces.map(t => t.costUsd)),
 			tokIn,
 			tokOut,
-			tokCache: 0,
+			tokCache: sumOfMeasured(caches),
 			score: result.summary.taskSuccessRate,
 			metrics: {
 				task_success_rate: result.summary.taskSuccessRate,
@@ -256,15 +263,11 @@ function readDeepsweSnapshot(jobDir: string): BenchmarkSnapshot {
 		filesParsedCount++;
 		let tokIn = 0;
 		let tokOut = 0;
-		let tokCache = 0;
-		let costUsd = 0;
 		let partialSum = 0;
 		let partialCount = 0;
 		const traces: BenchmarkTrace[] = result.results.map(row => {
 			tokIn += row.inputTokens ?? 0;
 			tokOut += row.outputTokens ?? 0;
-			tokCache += row.cacheTokens ?? 0;
-			costUsd += row.costUsd ?? 0;
 			if (row.partial !== null) {
 				partialSum += row.partial;
 				partialCount++;
@@ -275,7 +278,7 @@ function readDeepsweSnapshot(jobDir: string): BenchmarkSnapshot {
 				task: row.task,
 				status,
 				reward: row.reward,
-				costUsd: row.costUsd ?? 0,
+				costUsd: row.costUsd ?? null,
 				durationMs: Math.round((row.agentSeconds ?? 0) * 1000),
 				detail: JSON.stringify({ arm: row.arm, partial: row.partial, error: row.error, tools: row.toolCalls }),
 				tracePath: null,
@@ -293,10 +296,10 @@ function readDeepsweSnapshot(jobDir: string): BenchmarkSnapshot {
 			fail: done - pass - error,
 			error,
 			running: Math.max(0, total - done),
-			costUsd,
+			costUsd: sumOfMeasured(result.results.map(r => r.costUsd)),
 			tokIn,
 			tokOut,
-			tokCache,
+			tokCache: sumOfMeasured(result.results.map(r => r.cacheTokens)),
 			score: done > 0 ? pass / done : null,
 			metrics: {
 				reward_rate: done > 0 ? pass / done : null,
@@ -310,7 +313,19 @@ function readDeepsweSnapshot(jobDir: string): BenchmarkSnapshot {
 	}
 }
 
-function parseHarborTrialFromJson(raw: unknown, name: string): Trial | null {
+interface HarborParsedTrial {
+	name: string;
+	status: "pass" | "fail" | "error" | "running";
+	reward: number | null;
+	costUsd: number | null;
+	tokIn: number;
+	tokOut: number;
+	tokCache: number | null;
+	durationMs: number;
+	detail: string;
+}
+
+function parseHarborTrialFromJson(raw: unknown, name: string): HarborParsedTrial | null {
 	if (!isRecord(raw)) return null;
 	const ctxs: Array<Record<string, unknown>> = [];
 	if (isRecord(raw.agent_result)) {
@@ -323,18 +338,26 @@ function parseHarborTrialFromJson(raw: unknown, name: string): Trial | null {
 			}
 		}
 	}
-	let costUsd = 0;
 	let tokIn = 0;
 	let tokOut = 0;
-	let tokCache = 0;
+	const costs: (number | null)[] = [];
+	const caches: (number | null)[] = [];
 	for (const ctx of ctxs) {
-		if (typeof ctx.cost_usd === "number" && Number.isFinite(ctx.cost_usd)) costUsd += ctx.cost_usd;
-		if (typeof ctx.n_input_tokens === "number" && Number.isFinite(ctx.n_input_tokens)) tokIn += ctx.n_input_tokens;
+		if (typeof ctx.cost_usd === "number" && Number.isFinite(ctx.cost_usd)) {
+			costs.push(ctx.cost_usd);
+		}
+		if (typeof ctx.n_input_tokens === "number" && Number.isFinite(ctx.n_input_tokens)) {
+			tokIn += ctx.n_input_tokens;
+		}
 		if (typeof ctx.n_output_tokens === "number" && Number.isFinite(ctx.n_output_tokens)) {
 			tokOut += ctx.n_output_tokens;
 		}
-		if (typeof ctx.n_cache_tokens === "number" && Number.isFinite(ctx.n_cache_tokens)) tokCache += ctx.n_cache_tokens;
+		if (typeof ctx.n_cache_tokens === "number" && Number.isFinite(ctx.n_cache_tokens)) {
+			caches.push(ctx.n_cache_tokens);
+		}
 	}
+	const costUsd = sumOfMeasured(costs);
+	const tokCache = sumOfMeasured(caches);
 
 	let rewards: Record<string, number> | null = null;
 	if (isRecord(raw.verifier_result) && isRecord(raw.verifier_result.rewards)) {
@@ -374,7 +397,7 @@ function parseHarborTrialFromJson(raw: unknown, name: string): Trial | null {
 	return { name, status, reward, costUsd, tokIn, tokOut, tokCache, durationMs, detail };
 }
 
-function parseRunningHarborTrial(dir: string, name: string): Trial {
+function parseRunningHarborTrial(dir: string, name: string): HarborParsedTrial {
 	let started = Date.now();
 	try {
 		started = fs.statSync(dir).mtimeMs;
@@ -383,10 +406,10 @@ function parseRunningHarborTrial(dir: string, name: string): Trial {
 		name,
 		status: "running",
 		reward: null,
-		costUsd: 0,
+		costUsd: null,
 		tokIn: 0,
 		tokOut: 0,
-		tokCache: 0,
+		tokCache: null,
 		durationMs: Math.max(0, Date.now() - started),
 		detail: "",
 	};
@@ -413,7 +436,7 @@ function readHarborSnapshot(jobDir: string): BenchmarkSnapshot {
 	} catch {
 		return emptySnapshot();
 	}
-	const trials: Trial[] = [];
+	const trials: HarborParsedTrial[] = [];
 	for (const e of entries) {
 		if (!e.isDirectory()) continue;
 		const trialDir = path.join(jobDir, e.name);
@@ -452,7 +475,12 @@ function readHarborSnapshot(jobDir: string): BenchmarkSnapshot {
 		}
 	} catch {}
 
-	const totals = aggregate(trials, job, job?.nTotal ?? trials.length);
+	const runnerTrials: Trial[] = trials.map(t => ({
+		...t,
+		costUsd: t.costUsd ?? 0,
+		tokCache: t.tokCache ?? 0,
+	}));
+	const totals = aggregate(runnerTrials, job, job?.nTotal ?? trials.length);
 	return {
 		traces: trials.map(trial => ({
 			name: trial.name,
@@ -470,10 +498,10 @@ function readHarborSnapshot(jobDir: string): BenchmarkSnapshot {
 		fail: totals.fail,
 		error: totals.error,
 		running: totals.running,
-		costUsd: totals.costUsd,
+		costUsd: sumOfMeasured(trials.map(t => t.costUsd)),
 		tokIn: totals.tokIn,
 		tokOut: totals.tokOut,
-		tokCache: totals.tokCache,
+		tokCache: sumOfMeasured(trials.map(t => t.tokCache)),
 		score: totals.done > 0 ? totals.pass / totals.done : null,
 		metrics: { success_rate: totals.done > 0 ? totals.pass / totals.done : null },
 	};
