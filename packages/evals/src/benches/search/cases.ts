@@ -16,6 +16,7 @@ export interface SearchCaseSuite {
 	/** The corpus id the answers were derived against. */
 	readonly corpusId: string;
 	readonly cases: readonly SearchBenchmarkCase[];
+	readonly limitations?: readonly string[];
 }
 
 export const UNIFIED_SEARCH_SUITE: SearchCaseSuite = {
@@ -369,6 +370,28 @@ export const MONOREPO_SCOPING_SUITE: SearchCaseSuite = {
 			},
 			expect: {
 				mustMatchPaths: ["packages/alpha/src/deep/nested/handler.ts"],
+			},
+		},
+	],
+};
+
+export const DISCLOSURE_SUITE: SearchCaseSuite = {
+	id: "disclosure",
+	description: "Progressive disclosure benchmark suite verifying needle discovery across the disclosure corpus.",
+	corpusId: "disclosure",
+	cases: [
+		{
+			id: "disclosure_text_needles",
+			type: "text",
+			description: "Find DISCLOSURE_NEEDLE occurrences across all 20 generated files",
+			input: {
+				type: "text",
+				input: "DISCLOSURE_NEEDLE",
+				path: ".",
+			},
+			expect: {
+				exactMatchedPaths: 20,
+				minMatchedPaths: 20,
 			},
 		},
 	],

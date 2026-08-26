@@ -12,10 +12,17 @@ import {
 	requireSearchCaseSuite,
 	requireSearchCorpus,
 	searchArmIds,
+	searchArms,
 	searchCaseSuiteIds,
+	searchCaseSuites,
+	searchCorpora,
 	searchCorpusIds,
 } from "../../../src/benches/search/registry";
-import { runSearchBench, runSearchCaseSuite } from "../../../src/benches/search/runner";
+import {
+	collectSearchBenchmarkLimitations,
+	runSearchBench,
+	runSearchCaseSuite,
+} from "../../../src/benches/search/runner";
 
 /**
  * WHY: the bench used to carry one corpus, one literal case list and exactly two arms named
@@ -40,6 +47,7 @@ const TEST_CORPUS: SearchCorpusSpec = {
 		"nested/beta.ts": "export function beta(): number {\n\treturn 2;\n}\n",
 		"notes.md": "alpha and beta are both exported\n",
 	},
+	limitations: ["Test-only corpus exercises custom limitation propagation into the reported union."],
 };
 
 const TEST_SUITE: SearchCaseSuite = {
@@ -121,7 +129,7 @@ describe("a lookup for something nobody registered", () => {
 		registerBuiltinSearchBench();
 
 		expect(() => requireSearchCorpus("nope")).toThrow(
-			`Unknown search bench corpus "nope". Registered corpuss: ${searchCorpusIds().join(", ")}`,
+			`Unknown search bench corpus "nope". Registered corpora: ${searchCorpusIds().join(", ")}`,
 		);
 		expect(() => requireSearchCaseSuite("nope")).toThrow(/Unknown search bench case suite "nope"/);
 		expect(() => requireSearchArm("nope")).toThrow(/Unknown search bench arm "nope"/);
@@ -136,6 +144,44 @@ describe("a lookup for something nobody registered", () => {
 		expect(() =>
 			registerSearchArm({ id: "unified-tool", description: "impostor", prepare: UNIFIED_TOOL_ARM.prepare }),
 		).toThrow(DuplicateSearchBenchMemberError);
+	});
+
+	it("refuses duplicate registrations on any axis with a message naming the registered ids", () => {
+		registerBuiltinSearchBench();
+
+		const corpusIds = searchCorpusIds();
+		expect(() =>
+			registerSearchCorpus({
+				id: "typescript-project",
+				description: "impostor",
+				files: {},
+			}),
+		).toThrowError(
+			`A different search bench corpus is already registered as "typescript-project". Registered corpora: ${corpusIds.join(", ")}`,
+		);
+
+		const armIds = searchArmIds();
+		expect(() =>
+			registerSearchArm({
+				id: "unified-tool",
+				description: "impostor",
+				prepare: UNIFIED_TOOL_ARM.prepare,
+			}),
+		).toThrowError(
+			`A different search bench arm is already registered as "unified-tool". Registered arms: ${armIds.join(", ")}`,
+		);
+
+		const suiteIds = searchCaseSuiteIds();
+		expect(() =>
+			registerSearchCaseSuite({
+				id: "unified-search",
+				description: "impostor",
+				corpusId: "typescript-project",
+				cases: [],
+			}),
+		).toThrowError(
+			`A different search bench case suite is already registered as "unified-search". Registered case suites: ${suiteIds.join(", ")}`,
+		);
 	});
 });
 
@@ -178,6 +224,14 @@ describe("a corpus, a case suite and an arm defined outside the package", () => 
 		}
 		// The third arm's per-corpus state was released rather than leaked.
 		expect(disposals.length).toBeGreaterThan(0);
+
+		// Registered corpus limitations propagate into the reported limitations union.
+		expect(report.limitations).toContain(
+			"Test-only corpus exercises custom limitation propagation into the reported union.",
+		);
+		expect(collectSearchBenchmarkLimitations()).toContain(
+			"Test-only corpus exercises custom limitation propagation into the reported union.",
+		);
 	}, 120_000);
 });
 
@@ -208,4 +262,37 @@ describe("an arm that answers differently from the reference arm", () => {
 			/Search arm disagreement on case "test_only_files_ts" \(files\): test-only-dropping/,
 		);
 	}, 120_000);
+});
+
+describe("the disclosure corpus and runtime registry enumeration", () => {
+	it("reaches the disclosure corpus through the same registry as the other corpora", () => {
+		registerBuiltinSearchBench();
+
+		const registeredCorpora = searchCorpora();
+		const registeredCorpusIds = searchCorpusIds();
+		const registeredSuites = searchCaseSuites();
+		const registeredSuiteIds = searchCaseSuiteIds();
+		const registeredArms = searchArms();
+		const registeredArmIds = searchArmIds();
+
+		expect(registeredCorpusIds).toContain("disclosure");
+		expect(registeredCorpora.some(corpus => corpus.id === "disclosure")).toBe(true);
+		expect(registeredSuiteIds).toContain("disclosure");
+		expect(registeredSuites.some(suite => suite.id === "disclosure")).toBe(true);
+
+		const disclosureCorpus = requireSearchCorpus("disclosure");
+		expect(disclosureCorpus.id).toBe("disclosure");
+		expect(Object.keys(disclosureCorpus.files).length).toBe(20);
+		expect(disclosureCorpus.limitations?.length).toBeGreaterThan(0);
+
+		const disclosureSuite = requireSearchCaseSuite("disclosure");
+		expect(disclosureSuite.id).toBe("disclosure");
+		expect(disclosureSuite.corpusId).toBe("disclosure");
+		expect(disclosureSuite.cases.length).toBeGreaterThan(0);
+
+		// Runtime enumeration covers every registered member on every axis.
+		expect(registeredCorpusIds).toEqual(registeredCorpora.map(corpus => corpus.id));
+		expect(registeredSuiteIds).toEqual(registeredSuites.map(suite => suite.id));
+		expect(registeredArmIds).toEqual(registeredArms.map(arm => arm.id));
+	});
 });

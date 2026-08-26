@@ -12,23 +12,34 @@
  * collision the run should not silently resolve.
  */
 import { DIRECT_ENGINE_ARM, type SearchArm, UNIFIED_TOOL_ARM } from "./arms";
-import { MONOREPO_SCOPING_SUITE, type SearchCaseSuite, UNIFIED_SEARCH_SUITE } from "./cases";
-import { MONOREPO_CORPUS, type SearchCorpusSpec, TYPESCRIPT_PROJECT_CORPUS } from "./corpus";
+import { DISCLOSURE_SUITE, MONOREPO_SCOPING_SUITE, type SearchCaseSuite, UNIFIED_SEARCH_SUITE } from "./cases";
+import { DISCLOSURE_CORPUS, MONOREPO_CORPUS, type SearchCorpusSpec, TYPESCRIPT_PROJECT_CORPUS } from "./corpus";
 
 /** What kind of member a refusal is about, so the message names the axis. */
 export type SearchBenchAxis = "corpus" | "case suite" | "arm";
 
+/** English, not `${axis}s`: the plural of corpus is corpora, and a message that says "corpuss" reads as a bug. */
+const AXIS_PLURAL: Record<SearchBenchAxis, string> = {
+	corpus: "corpora",
+	"case suite": "case suites",
+	arm: "arms",
+};
+
 export class SearchBenchMemberNotFoundError extends Error {
 	constructor(axis: SearchBenchAxis, id: string, available: readonly string[]) {
 		const formatted = available.length > 0 ? available.join(", ") : "(none)";
-		super(`Unknown search bench ${axis} "${id}". Registered ${axis}s: ${formatted}`);
+		super(`Unknown search bench ${axis} "${id}". Registered ${AXIS_PLURAL[axis]}: ${formatted}`);
 		this.name = "SearchBenchMemberNotFoundError";
 	}
 }
 
 export class DuplicateSearchBenchMemberError extends Error {
-	constructor(axis: SearchBenchAxis, id: string) {
-		super(`A different search bench ${axis} is already registered as "${id}".`);
+	constructor(axis: SearchBenchAxis, id: string, available: readonly string[] = []) {
+		const formatted = available.length > 0 ? available.join(", ") : "(none)";
+		super(
+			`A different search bench ${axis} is already registered as "${id}". ` +
+				`Registered ${AXIS_PLURAL[axis]}: ${formatted}`,
+		);
 		this.name = "DuplicateSearchBenchMemberError";
 	}
 }
@@ -44,7 +55,7 @@ class SearchBenchAxisRegistry<T extends { readonly id: string }> {
 	register(member: T): void {
 		const existing = this.#members.get(member.id);
 		if (existing === member) return;
-		if (existing) throw new DuplicateSearchBenchMemberError(this.#axis, member.id);
+		if (existing) throw new DuplicateSearchBenchMemberError(this.#axis, member.id, this.listIds());
 		this.#members.set(member.id, member);
 	}
 
@@ -132,8 +143,10 @@ export function searchArmIds(): readonly string[] {
 export function registerBuiltinSearchBench(): void {
 	registerSearchCorpus(TYPESCRIPT_PROJECT_CORPUS);
 	registerSearchCorpus(MONOREPO_CORPUS);
+	registerSearchCorpus(DISCLOSURE_CORPUS);
 	registerSearchCaseSuite(UNIFIED_SEARCH_SUITE);
 	registerSearchCaseSuite(MONOREPO_SCOPING_SUITE);
+	registerSearchCaseSuite(DISCLOSURE_SUITE);
 	registerSearchArm(UNIFIED_TOOL_ARM);
 	registerSearchArm(DIRECT_ENGINE_ARM);
 }

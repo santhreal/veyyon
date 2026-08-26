@@ -8,6 +8,7 @@ export interface SearchCorpusSpec {
 	readonly description: string;
 	/** Corpus-relative path -> exact file bytes. Parents are created for each entry. */
 	readonly files: Readonly<Record<string, string>>;
+	readonly limitations?: readonly string[];
 }
 
 export interface MaterializedCorpus {
@@ -328,4 +329,26 @@ export function testBetaClient(): void {
 }
 `,
 	},
+};
+
+function generateDisclosureFiles(): Record<string, string> {
+	const files: Record<string, string> = {};
+	for (let fileIndex = 0; fileIndex < 20; fileIndex++) {
+		const lines = Array.from(
+			{ length: 8 },
+			(_, lineIndex) =>
+				`export const disclosure_${fileIndex}_${lineIndex} = "DISCLOSURE_NEEDLE_${fileIndex}_${lineIndex}_${"x".repeat(56)}";`,
+		);
+		files[`disclosure-${fileIndex}.ts`] = `${lines.join("\n")}\n`;
+	}
+	return files;
+}
+
+export const DISCLOSURE_CORPUS: SearchCorpusSpec = {
+	id: "disclosure",
+	description: "Progressive disclosure fixture generating 160 needles across 20 files to trigger artifact spill.",
+	files: generateDisclosureFiles(),
+	limitations: [
+		"Progressive disclosure measurements exercise text search output compaction and artifact spill, not semantic ranking.",
+	],
 };
