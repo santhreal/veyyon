@@ -226,6 +226,7 @@
 - Side requests derive a stable conversation ID per oneshot kind, preventing compaction, handoff, and branch summaries from overwriting live Cursor and Devin conversation state.
 - Aborting while paused rejects the pause wait and prevents the agent loop from starting another provider turn or paused tool.
 - A branch-summary reserve at or above the model's context window now falls back to the proportional 15% reserve instead of leaving a non-positive budget, which the entry preparation read as "no limit" and which sent the whole branch.
+- An auth-broker snapshot containing an API key stored by an interactive login validates again; its `source` field made every client reject the whole credential pool.
 - A persisted 400/413 request dump redacts `x-goog-api-key`, so a rejected Google Generative AI or Vertex request no longer writes the operator's plaintext API key into `logs/http-400-requests/`.
 - A failed Amazon Bedrock turn reports its elapsed duration again, instead of carrying time-to-first-token with no total while a successful turn reported both.
 - Normalized cumulative tool-call argument delta snapshots for OpenAI Codex streams while preserving true incremental deltas on standard OpenAI Responses streams via declared per-provider wire shapes.
