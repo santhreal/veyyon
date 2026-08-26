@@ -1624,8 +1624,7 @@ function parseResponseReasoningReplayItem(signature: string | undefined): Respon
 		if (!("id" in parsed) || typeof parsed.id !== "string") return undefined;
 		return parsed as ResponseReasoningItem;
 	} catch {
-		// A signature that is not a reasoning-item envelope cannot be replayed, which is the same undefined
-		// the three shape checks above return, and the caller then replays the turn without it.
+		// Non-reasoning signature: caller replays without it.
 		return undefined;
 	}
 }
@@ -2145,17 +2144,8 @@ export async function processResponsesStream<TApi extends Api>(
 		contentIndex: number;
 	}
 
-	// Multiple items (parallel function_calls in particular) can be open at the same
-	// time. OpenAI's spec routes every per-item event by `output_index`/`item_id`.
-	// llama.cpp emits parallel function_call deltas interleaved, and a singleton
-	// `current` reference would
-	// fold them into the wrong block and drop arguments on every call but the last.
-	//
-	// OpenAI-compatible hosts can compound this by omitting `item.id` and
-	// `output_index` on `output_item.added` while routing later argument deltas to
-	// either the bare `call_id` or a synthesized `fc_<call_id>` item id. Register
-	// both keys so each delta reaches its own block instead of falling back to the
-	// most recently added parallel call.
+	// Parallel function_calls can be open simultaneously. Route by `output_index`/`item_id` to avoid
+	// folding sibling calls into one block. Lossy hosts omit ids; register prefixed call-id aliases too.
 	const openItemsByOutputIndex = new Map<number, StreamingItem>();
 	const openItemsByItemId = new Map<string, StreamingItem>();
 	const openItemsByPrefixedCallId = new Map<string, StreamingItem>();
@@ -2195,9 +2185,7 @@ export async function processResponsesStream<TApi extends Api>(
 			const found = openItemsByItemId.get(event.item_id);
 			if (found) return found;
 		}
-		// Keyed events whose item already closed are stale; drop them instead of
-		// routing to a sibling. Only fully identifierless mock/proxy events use the
-		// legacy singleton fallback.
+		// Stale keyed events (item already closed) are dropped; only identifierless events use the fallback.
 		return hasKey ? undefined : (lastOpenItem ?? undefined);
 	};
 	const hasOpenItemKey = (event: { output_index?: number; item_id?: string }): boolean =>
@@ -2261,17 +2249,10 @@ export async function processResponsesStream<TApi extends Api>(
 		if (typeof event.output_index === "number") {
 			const byOutputIndex = openItemsByOutputIndex.get(event.output_index);
 			if (byOutputIndex) return byOutputIndex;
-			// A lossy host (llama.cpp/Ollama, issue #2015) can omit `output_index` on
-			// `output_item.added` while still stamping the spec-required field on the
-			// delta. The index was never registered, so fall through to the prefixed
-			// alias / exact item-id maps instead of dropping to `lastOpenItem`.
+			// Lossy host (llama.cpp/Ollama, #2015) omits `output_index` on `output_item.added` but stamps it on deltas; fall through.
 		}
 		if (event.item_id) {
-			// Prefixed call-id aliases share the same wire namespace as real call ids.
-			// Argument/input events can use the prefixed form, while final
-			// output_item.done events below use exact call ids; keep aliases in a
-			// separate map so a real `call_id: "fc_x"` cannot overwrite the alias
-			// for `call_id: "x"`.
+			// Prefixed call-id aliases share wire namespace with real call ids; keep separate maps so `fc_x` can't overwrite alias for `x`.
 			const alias = openItemsByPrefixedCallId.get(event.item_id);
 			if (alias?.item.type === type) return alias;
 			const exact = openItemsByItemId.get(event.item_id);
@@ -2630,13 +2611,7 @@ export async function processResponsesStream<TApi extends Api>(
 			}
 			promoteResponsesToolUseStopReason(output, (response as { end_turn?: boolean } | undefined)?.end_turn);
 			options?.onCompleted?.();
-			// `response.completed`/`response.incomplete`/`response.done` is the last event of a
-			// Responses stream. Stop pulling instead of waiting for the server to
-			// close the connection: misbehaving providers keep the socket open
-			// after the terminal event, which would park this loop until the idle
-			// watchdog converts an already-successful turn into a timeout error.
-			// Breaking unwinds the iterator chain (the consumer's `.return()`
-			// reaches the SDK stream), actively releasing the connection.
+			// Terminal event: break to release the connection; misbehaving providers keep sockets open after terminal events.
 			break;
 		} else if (event.type === "error") {
 			// Error events carry either a nested `error` object or the code/message
@@ -2950,10 +2925,7 @@ export function populateResponsesUsageFromResponse(
 		accounting.totalTokens = reportedTotalTokens ?? accounting.totalTokens + orchestrationTotal;
 	}
 
-	// Wholesale replacement must not drop what the object already carried (Copilot
-	// premium-request accounting, the spend of discarded attempts): the
-	// failed/cancelled paths throw right after this call with no later chance to
-	// re-apply it.
+	// Preserve existing carryovers (Copilot premium-request accounting, discarded attempt spend).
 	output.usage = inheritUsageCarryovers(output.usage, {
 		...accounting,
 		cost: emptyCost(),
@@ -2961,25 +2933,10 @@ export function populateResponsesUsageFromResponse(
 }
 
 /**
- * Structural equality for the chain prefix/option check, equivalent to the
- * default {@link Bun.deepEquals} (own enumerable keys, `absent ≡ own-undefined`)
- * except for two deliberate exclusions:
- *  - **symbol-keyed properties are ignored** — `for…in` walks enumerable
- *    *string* keys only (never symbols); these are plain wire items whose
- *    prototype contributes no enumerable keys, so iteration is effectively
- *    own-string-keyed. That is how the transient streaming symbols
- *    (`block-symbols.ts`) stamped onto live request items are excluded (the
- *    deep-cloned baseline never carries them). Do NOT add an
- *    `Object.getOwnPropertySymbols` pass, or those symbols resurface and break
- *    chaining.
- *  - keys listed in `omitKeys` are skipped (the option compare omits `input`
- *    and the per-turn `client_metadata`). The omit lookup is an own-property
- *    check, not `omitKeys[key]`: a bare index would read `Object.prototype`
- *    members, so a key literally named `toString`/`valueOf`/`constructor` would
- *    resolve to the inherited method (truthy) and be silently omitted from the
- *    comparison even though it is not in the omit list.
- * A defined value differing across sides IS a difference; a key undefined or
- * absent on both stays equal. Nested values use full {@link Bun.deepEquals}.
+ * Structural equality for the chain prefix/option check. Like `Bun.deepEquals` (own enumerable keys,
+ * `absent ≡ own-undefined`) but: (1) symbol-keyed properties ignored (excludes transient streaming
+ * symbols), (2) keys in `omitKeys` skipped (own-property check, not index, to avoid prototype members
+ * matching keys named `toString`/`valueOf`/etc).
  */
 function deepEqualsWithout(a: unknown, b: unknown, omitKeys?: Record<string, boolean>): boolean {
 	if (!a || !b || typeof a !== "object" || typeof b !== "object") return Bun.deepEquals(a, b);
@@ -2993,11 +2950,7 @@ function deepEqualsWithout(a: unknown, b: unknown, omitKeys?: Record<string, boo
 	}
 	for (const key in bo) {
 		if (omitKeys && Object.hasOwn(omitKeys, key) && omitKeys[key]) continue;
-		// Own-property test, not `key in ao`: the model here is own enumerable keys
-		// (see the doc above). `key in ao` also matches inherited Object.prototype
-		// members, so a `b` that owns a defined key named after one (`toString`,
-		// `constructor`, …) that `a` does not own would be treated as present on `a`
-		// and the extra key would not break equality — a false chain match.
+		// Own-property test (not `key in ao`) to avoid inherited prototype members causing false chain matches.
 		if (bo[key] !== undefined && !Object.hasOwn(ao, key)) return false;
 	}
 	return true;
