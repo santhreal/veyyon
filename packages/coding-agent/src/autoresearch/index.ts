@@ -523,12 +523,8 @@ function bestKeptResult(
 }
 
 /**
- * The current branch name, or null when there is not one.
- *
- * Null is the ordinary answer and not a swallowed failure: a detached HEAD has no branch, and a directory
- * that is not a repository has none either, which is the state autoresearch checks for before deciding
- * whether a session applies. The caller treats null as "no autoresearch session for this branch", which
- * is the conservative direction: nothing is started or logged against a branch that could not be named.
+ * The current branch name, or null. Null is ordinary (detached HEAD, not a repo), not a swallowed
+ * failure. Caller treats null as "no session for this branch" — conservative: nothing started or logged.
  */
 async function tryReadBranch(cwd: string): Promise<string | null> {
 	try {

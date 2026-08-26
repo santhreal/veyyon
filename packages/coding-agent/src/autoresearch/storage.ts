@@ -663,13 +663,8 @@ function parseStatus(value: string | null): ExperimentStatus | null {
 }
 
 /**
- * A JSON string array out of a storage column, or `[]` when the column does not hold one.
- *
- * Empty is what an experiment with no scope paths, no off-limits paths and no pre-run dirty paths
- * legitimately stores, so `[]` is a real value here rather than a failure signal. This storage is written
- * only by the same module -- the columns are serialized by `insertRun` and friends, never by a user or a
- * remote -- so unparseable JSON would mean the database was corrupted underneath us, and there is no
- * better answer available at this layer than the empty set the schema allows.
+ * A JSON string array from a storage column, or `[]`. Empty is a real value (no scope/off-limits/dirty
+ * paths). Written only by this module, so unparseable JSON means DB corruption — `[]` is the best answer.
  */
 function parseStringArray(json: string): string[] {
 	try {

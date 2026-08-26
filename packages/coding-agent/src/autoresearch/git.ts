@@ -123,12 +123,8 @@ export function relativizeGitPathToWorkDir(repoRelativePath: string, workDirPref
 }
 
 /**
- * The prefix from the repository root to `workDir`.
- *
- * `""` is a real value here -- it is what a work directory that IS the repository root returns -- so a
- * failure answering `""` claims exactly that, and every status path is then resolved against the wrong
- * directory. Reported for that reason; the value is still returned, because the caller's path filtering
- * degrades to repository-relative paths rather than failing outright.
+ * The prefix from the repository root to `workDir`. `""` is real (workDir IS root), so a failure
+ * answering `""` resolves paths against the wrong directory. Reported; value still returned.
  */
 async function readGitWorkDirPrefix(api: ExtensionAPI, workDir: string): Promise<string> {
 	void api;
