@@ -31,6 +31,7 @@ import {
 	formatMoreItems,
 	formatParseErrors,
 	formatParseErrorsCountLabel,
+	formatScopeMeta,
 	PREVIEW_LIMITS,
 } from "./render-utils";
 import { queueResolveHandler } from "./resolve";
@@ -587,7 +588,7 @@ export const astEditToolRenderer = {
 	inline: true,
 	renderCall(args: AstEditRenderArgs, _options: RenderResultOptions, uiTheme: Theme): Component {
 		const meta: string[] = [];
-		if (args.paths?.length) meta.push(`in ${args.paths.join(", ")}`);
+		if (args.paths?.length) meta.push(formatScopeMeta(args.paths));
 		const rewriteCount = args.ops?.length ?? 0;
 		if (rewriteCount > 1) meta.push(`${rewriteCount} rewrites`);
 
@@ -627,7 +628,7 @@ export const astEditToolRenderer = {
 			const rewriteCount = args?.ops?.length ?? 0;
 			const description = rewriteCount === 1 ? patternPreview(args?.ops?.[0]?.pat) : undefined;
 			const meta = ["0 replacements"];
-			if (details?.scopePath) meta.push(`in ${details.scopePath}`);
+			if (details?.scopePath) meta.push(formatScopeMeta(details.scopePath));
 			if (filesSearched > 0) meta.push(`searched ${filesSearched}`);
 			const header = renderStatusLine({ icon: "warning", title: "AST Edit", description, meta }, uiTheme);
 			// The "0 replacements" count already rides on the status line; only parse
@@ -646,7 +647,7 @@ export const astEditToolRenderer = {
 
 		const summaryParts = [formatCount("replacement", totalReplacements), formatCount("file", filesTouched)];
 		const meta = [...summaryParts];
-		if (details?.scopePath) meta.push(`in ${details.scopePath}`);
+		if (details?.scopePath) meta.push(formatScopeMeta(details.scopePath));
 		meta.push(`searched ${filesSearched}`);
 		if (limitReached) meta.push(uiTheme.fg("warning", "limit reached"));
 		const rewriteCount = args?.ops?.length ?? 0;

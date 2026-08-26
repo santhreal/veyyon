@@ -38,7 +38,15 @@ import {
 	resolveToCwd,
 	toPathList,
 } from "./path-utils";
-import { formatCount, formatEmptyMessage, formatErrorMessage, formatMoreItems, PREVIEW_LIMITS } from "./render-utils";
+import {
+	formatCount,
+	formatEmptyMessage,
+	formatErrorMessage,
+	formatMoreItems,
+	formatScopeMeta,
+	formatScopePaths,
+	PREVIEW_LIMITS,
+} from "./render-utils";
 import { ToolError, throwIfAborted, toolAbort } from "./tool-errors";
 import { toolResult } from "./tool-result";
 
@@ -517,7 +525,7 @@ interface GlobRenderArgs {
 
 function formatGlobRenderPaths(args: GlobRenderArgs | undefined): string | undefined {
 	const list = toPathList(args?.path ?? args?.paths);
-	return list.length > 0 ? list.join(", ") : undefined;
+	return list.length > 0 ? formatScopePaths(list) : undefined;
 }
 
 const COLLAPSED_LIST_LIMIT = PREVIEW_LIMITS.COLLAPSED_ITEMS;
@@ -633,7 +641,7 @@ export const globToolRenderer = {
 			return new Text(lines.join("\n"), 1, 0);
 		}
 		const meta: string[] = [formatCount("file", fileCount)];
-		if (details?.scopePath) meta.push(`in ${details.scopePath}`);
+		if (details?.scopePath) meta.push(formatScopeMeta(details.scopePath));
 		if (truncated) meta.push(uiTheme.fg("warning", "truncated"));
 		const header = renderStatusLine(
 			{

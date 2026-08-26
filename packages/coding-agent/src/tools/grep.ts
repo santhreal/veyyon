@@ -69,6 +69,7 @@ import {
 	formatEmptyMessage,
 	formatErrorMessage,
 	formatMoreItems,
+	formatScopeMeta,
 	PREVIEW_LIMITS,
 	replaceTabs,
 } from "./render-utils";
@@ -1810,7 +1811,7 @@ export const grepToolRenderer = {
 	renderCall(args: GrepRenderArgs, _options: RenderResultOptions, uiTheme: Theme): Component {
 		const paths = toPathList(args.path ?? args.paths);
 		const meta: string[] = [];
-		if (paths.length) meta.push(`in ${paths.join(", ")}`);
+		if (paths.length) meta.push(formatScopeMeta(paths));
 		if (args.case === false) meta.push("case:insensitive");
 		if (args.gitignore === false) meta.push("gitignore:false");
 		if (args.skip !== undefined && args.skip > 0) meta.push(`skip:${args.skip}`);
