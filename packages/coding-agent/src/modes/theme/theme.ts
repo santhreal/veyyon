@@ -986,6 +986,7 @@ const BAND_LIFT = 0.4;
 
 /** Regex matching ANSI escape sequences (CSI, OSC, and 2-byte forms) for column-aware slicing. */
 const BAND_ESCAPE_PATTERN = "\\x1b(?:\\[[0-9;:?]*[ -/]*[@-~]|\\][\\s\\S]*?(?:\\x07|\\x1b\\\\)|[@-Z\\\\-_])";
+const BAND_ESCAPE_RE = new RegExp(BAND_ESCAPE_PATTERN, "g");
 
 /** Background reset. Spelled out rather than imported for the same reason `Theme` spells it out. */
 const BAND_BG_RESET = "\x1b[49m";
@@ -998,8 +999,8 @@ const BAND_FG_RESET = "\x1b[39m";
  */
 function spliceAtColumns(text: string, inserts: ReadonlyMap<number, string>): string {
 	const columns = [...inserts.keys()].sort((a, b) => a - b);
-	const escapes = new RegExp(BAND_ESCAPE_PATTERN, "g");
-	let ansi = escapes.exec(text);
+	BAND_ESCAPE_RE.lastIndex = 0;
+	let ansi = BAND_ESCAPE_RE.exec(text);
 	let out = "";
 	let column = 0;
 	let cursor = 0;
@@ -1011,7 +1012,7 @@ function spliceAtColumns(text: string, inserts: ReadonlyMap<number, string>): st
 			next += 1;
 		}
 		if (cursor >= text.length) break;
-		while (ansi !== null && ansi.index < cursor) ansi = escapes.exec(text);
+		while (ansi !== null && ansi.index < cursor) ansi = BAND_ESCAPE_RE.exec(text);
 		if (ansi !== null && ansi.index === cursor) {
 			out += ansi[0];
 			cursor += ansi[0].length;
