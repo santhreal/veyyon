@@ -1696,10 +1696,10 @@ export class Markdown implements Component {
 
 	#renderEmptyPaddingLines(signature: RenderSignature): string[] {
 		const emptyLine = padding(signature.width);
-		const emptyLines: string[] = [];
 		const bgFn = this.#defaultTextStyle?.bgColor;
+		const line = bgFn ? applyBackgroundToLine(emptyLine, signature.width, bgFn) : emptyLine;
+		const emptyLines: string[] = [];
 		for (let i = 0; i < signature.paddingY; i++) {
-			const line = bgFn ? applyBackgroundToLine(emptyLine, signature.width, bgFn) : emptyLine;
 			emptyLines.push(line);
 		}
 		return emptyLines;
