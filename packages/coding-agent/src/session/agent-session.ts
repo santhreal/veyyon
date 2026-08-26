@@ -5423,9 +5423,7 @@ export class AgentSession {
 			);
 			return undefined;
 		} catch (error) {
-			// BACKSTOP, not a live path: the display codec is documented never to throw. Kept because
-			// this is the one seam every display path funnels through, and the cost of that contract
-			// changing under us is the unwound TUI this lane exists to prevent.
+			// BACKSTOP: display codec shouldn't throw, but this is the one seam every display path funnels through.
 			this.#noteDegradedSecretDisplay(
 				"A secret placeholder is shown unexpanded because the expansion was refused.",
 				"Refused a secret expansion on a display path; rendering the placeholder literally",
@@ -5736,15 +5734,9 @@ export class AgentSession {
 		const messageEndPersistence =
 			event.type === "message_end" ? this.#createMessageEndPersistenceSlot(event.message) : undefined;
 
-		// Deobfuscate assistant message content for display emission — the LLM echoes back
-		// obfuscated placeholders, but listeners (TUI, extensions, exporters) must see real
-		// values. The original event.message stays obfuscated so the persistence path below
-		// writes `#HASH#` tokens to the session file; convertToLlm re-obfuscates outbound
-		// traffic on the next turn. Walks text, thinking, and toolCall arguments/intent.
-		// Argot expansion composes on top of secret deobfuscation on the same
-		// display copy: the model echoes cheap handles in history, listeners must
-		// see full text. The original event.message keeps the handles so the
-		// persistence path and next-turn context stay cheap (the token win).
+		// Deobfuscate assistant content for display: LLM echoes `#HASH#` placeholders, listeners need real
+		// values. Original event.message stays obfuscated for persistence; convertToLlm re-obfuscates next
+		// turn. Argot expansion composes on the same display copy.
 		let displayEvent: AgentEvent = event;
 		if (event.type === "message_start" && event.message.role === "assistant") {
 			// Start a fresh per-message argot stream decoder (seam 3): the live
@@ -6710,10 +6702,9 @@ export class AgentSession {
 		const argotEnabled = this.settings.get("argot.enabled") === true;
 		return prompt.render(rule.content, {
 			argot: argotEnabled,
-			// Whether the nudge to LOAD shorthand still applies, which is a different question from
-			// whether the feature is on: telling a model to load a dictionary it already loaded is
-			// advice it cannot act on. `unless` does not exist in the template language, so the
-			// condition a rule wants to gate on has to be passed already inverted.
+			// Whether the nudge to LOAD shorthand still applies — not the same as feature on. Telling
+			// a model to load a dictionary it already loaded is advice it can't act on. No `unless` in
+			// the template language, so pass the condition already inverted.
 			argotUnloaded: argotEnabled && this.#argot?.loaded !== true,
 			cwd: this.sessionManager.getCwd(),
 			matchedPath: this.#ttsrManager?.lastMatchedPath(rule.name),
@@ -6721,18 +6712,10 @@ export class AgentSession {
 	}
 
 	/**
-	 * Keep only matches that will actually say something to the model.
-	 *
-	 * A rule body may be entirely wrapped in a `{{#if}}` gate — `argot-load-nudge` is, because its
-	 * advice is to call a tool that only exists when argot is enabled. When the gate is closed the
-	 * body renders to nothing, and delivering that is worse than not firing: an empty
-	 * `<system-reminder>` spends tokens, interrupts a stream on the interrupting path, marks the rule
-	 * as injected so it cannot fire when the gate later opens, and tells the model that a rule was
-	 * violated without saying which behaviour to change.
-	 *
-	 * Dropped here rather than at either delivery site, so the decision is made once, before the
-	 * claim is taken and before `ttsr_triggered` is emitted. The drop is LOGGED at warn: a bundled
-	 * rule that can never say anything is a packaging bug, and it must not be silent.
+	 * Keep only matches that render non-empty. A `{{#if}}`-gated body (e.g. `argot-load-nudge`) renders
+	 * to nothing when closed; delivering that wastes tokens, interrupts the stream, and marks the rule
+	 * injected. Dropped here once, before the claim and `ttsr_triggered`. Logged at warn: a rule that
+	 * can never say anything is a packaging bug.
 	 */
 	#deliverableTtsrMatches(matches: Rule[]): Rule[] {
 		const deliverable: Rule[] = [];
@@ -6741,10 +6724,7 @@ export class AgentSession {
 				deliverable.push(rule);
 				continue;
 			}
-			// A body wrapped in a `{{#if}}` gate rendering empty is the gate WORKING, and it happens on
-			// every match for as long as the gate is closed, so it is reported at debug. A body with no
-			// gate that renders empty cannot ever say anything: that is a packaging bug in the rule and
-			// it is reported at warn, where an operator will see it.
+			// `{{#if}}`-gated body rendering empty is the gate working (debug). No gate + empty = packaging bug (warn).
 			const gated = rule.content.includes("{{#if");
 			const message = "TTSR rule matched but its body renders empty, not delivering";
 			const fields = { ruleName: rule.name, path: rule.path, gated };
@@ -8567,23 +8547,15 @@ export class AgentSession {
 		if (!evalExecutionsSettled) {
 			logger.warn("Detaching retained eval-kernel ownership during dispose while eval execution is still active");
 		}
-		// Every owner-scoped subsystem that registered a disposer: the Python, Ruby and Julia
-		// kernels, and the JS eval contexts, which are owner-scoped like the kernels and leaked the
-		// eval subprocess across sessions for the life of the parent before they were reaped
-		// (GRAN-11). This used to be four `await`s naming those four functions, which meant the
-		// first one to throw skipped the rest AND the browser-tab release below. The registry runs
-		// all of them and reports the failures together; see `session/owned-resources.ts`.
+		// Owner-scoped disposers (Python/Ruby/Julia kernels, JS eval contexts). The registry runs all
+		// and reports failures together, so one throw can't skip the rest; see `session/owned-resources.ts`.
 		try {
 			await disposeOwnedResources("eval-kernel-owner", this.#evalKernelOwnerId);
 		} catch (error) {
 			logger.warn("Some owner-scoped resources failed to release during dispose", { error: String(error) });
 		}
-		// Everything keyed by the SESSION id rather than the eval-kernel owner id. Today that is the
-		// browser tool's headless / spawned Chromium and worker tabs: its `tabs`/`browsers` maps are
-		// module-global, shared with subagents and future sessions, so release walks by
-		// `ownerSessionId` (stamped at `acquireTab` creation, never on reuse) and touches only what
-		// THIS session created. The registry carries the 3s bound that keeps a broken CDP close from
-		// stalling `/exit` (issue #3963).
+		// Session-id-scoped resources: browser tool's Chromium/tabs (module-global maps, released by
+		// `ownerSessionId`). Registry carries the 3s bound so a broken CDP close can't stall `/exit` (#3963).
 		const browserOwnerId = this.sessionManager.getSessionId();
 		if (browserOwnerId) {
 			try {
@@ -8986,24 +8958,9 @@ export class AgentSession {
 	}
 
 	/**
-	 * Rebuild the prompt for a model switch, when the switch actually moved a
-	 * prompt input.
-	 *
-	 * EVERY caller of this method has just switched models, so every reason it
-	 * records names that switch. It used to record a bare `edit-mode-change`
-	 * whenever the edit variant differed, which describes a trigger no session can
-	 * produce: nothing re-resolves the edit mode except a model switch, because
-	 * `edit.mode` is not a prompt gate (see `system-prompt-builder/gate-registry`)
-	 * and the only reads of `#resolveActiveEditMode` for this purpose are the four
-	 * `setModel`/`cycleModel` paths. So a reader triaging `cacheRead: 0` turns off
-	 * the invalidation record chased a phantom settings flip, when the entry
-	 * actually describes the ONE invalidation that is unavoidable: a different
-	 * model is a different provider cache namespace, so the prefix was already
-	 * dead and the rebuild cost nothing extra.
-	 *
-	 * Which inputs moved is still recorded, because that is the actionable half:
-	 * `edit-mode` means the two models share a prompt cohort and only the edit
-	 * variant forced the rebuild.
+	 * Rebuild the prompt for a model switch. Every caller just switched models, so every reason names
+	 * that switch. A different model is a different provider cache namespace, so the prefix was already
+	 * dead and the rebuild cost nothing extra. Which inputs moved is recorded as the actionable half.
 	 */
 	async #syncAfterModelChange(previousEditMode: EditMode): Promise<void> {
 		const currentEditMode = this.#resolveActiveEditMode();
