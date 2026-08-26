@@ -55,6 +55,11 @@ could not be read reports `sha: null` rather than a digest of nothing.
 `src/suites/typescript-edit/mutations` plus the archive digest make generation reproducible: the same
 archive and the same seed produce the same 80 tasks.
 
+`bun src/suites/typescript-edit/generate.ts` cuts a new corpus. It reads the package flag grammar,
+so `--count-per-type` and every other count must be a positive integer, an undeclared flag refuses
+the invocation with exit code 2 and the usage text, and `--help` prints that text. `--dry-run`
+reports what would be generated and writes nothing.
+
 ## Prompts
 
 Every prompt is a `.md` file imported with `{ type: "text" }` and rendered with Handlebars — none is

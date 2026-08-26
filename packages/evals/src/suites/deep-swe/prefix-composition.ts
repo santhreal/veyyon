@@ -5,6 +5,8 @@
  * cache efficiency, and lever simulations from a run's `jobs/` directory.
  */
 
+import { errorMessage } from "@veyyon/utils";
+import { type FlagGrammar, type ParsedArgv, parseArgv } from "../../core/flags";
 import { cacheEfficiency, cacheHitRate, freshTokens, rebilledCostShare } from "./cache-efficiency";
 import { costShares, priceTokens, REFERENCE_RATE_CARD } from "./cost-model";
 import {
@@ -27,14 +29,37 @@ import {
 import { measureRunPrefix } from "./prefix-run";
 import { type PrefixLever, prefixStability } from "./prefix-stability";
 
+/** What this decomposition accepts: the jobs directory, and optionally which arm to read. */
+export const PREFIX_COMPOSITION_FLAGS = {
+	valued: {},
+	valueless: { help: true },
+	positionals: { max: 2 },
+} as const satisfies FlagGrammar;
+
+const PREFIX_COMPOSITION_USAGE = `usage: bun prefix-composition.ts <run>/jobs [arm-prefix]
+
+  Decomposes what cache-read tokens are spent on, and what eliding each part would buy.
+`;
+
 if (import.meta.main) {
-	const jobsRoot = process.argv[2];
-	if (!jobsRoot) {
-		console.error("usage: bun prefix-composition.ts <run>/jobs [arm-prefix]");
-		console.error("  Decomposes what cache-read tokens are spent on, and what eliding each part would buy.");
+	let parsed: ParsedArgv;
+	try {
+		parsed = parseArgv(process.argv.slice(2), PREFIX_COMPOSITION_FLAGS);
+	} catch (error) {
+		console.error(errorMessage(error));
+		console.error(PREFIX_COMPOSITION_USAGE);
 		process.exit(2);
 	}
-	const armPrefix = process.argv[3] ?? "baseline__";
+	if (parsed.flags.help !== undefined) {
+		console.log(PREFIX_COMPOSITION_USAGE);
+		process.exit(0);
+	}
+	const [jobsRoot, armArg] = parsed.positionals;
+	if (jobsRoot === undefined) {
+		console.error(PREFIX_COMPOSITION_USAGE);
+		process.exit(2);
+	}
+	const armPrefix = armArg ?? "baseline__";
 	const { mass, sessions, usage, caps, observations, perSession } = measureRunPrefix(jobsRoot, armPrefix);
 	const total = totalPrefixMass(mass);
 	const shares = prefixShares(mass);

@@ -29,14 +29,15 @@
 
 import * as fs from "node:fs/promises";
 import { setTimeout } from "node:timers/promises";
-import { parseArgs } from "node:util";
 import { type Api, AuthStorage, completeSimple, type Model, SqliteAuthCredentialStore } from "@veyyon/ai";
 import { type GeneratedProvider, getBundledModel } from "@veyyon/catalog/models";
-import { collapseWhitespace, getAgentDbPath } from "@veyyon/utils";
+import { collapseWhitespace, errorMessage, getAgentDbPath } from "@veyyon/utils";
+import { type FlagGrammar, flagCount, parseArgv } from "../core/flags";
 
 const DEFAULT_TINY = "openrouter/inclusionai/ling-2.6-flash";
 const DEFAULT_SYNTH = "openrouter/openai/gpt-oss-120b";
 const DEFAULT_BASE = "http://localhost:4700";
+const DEFAULT_CONCURRENCY = 8;
 
 // --------------------------------------------------------------------------
 // Trace API types (mirror packages/evals/src/manager/store.ts normalization)
@@ -302,24 +303,53 @@ function usageLine(opened: OpenedModel): string {
 	return `${opened.spec}: ${opened.usage.calls} calls, ${opened.usage.input} in / ${opened.usage.output} out tokens${costText}`;
 }
 
-async function main(): Promise<void> {
-	const { values, positionals } = parseArgs({
-		args: process.argv.slice(2),
-		allowPositionals: true,
-		options: {
-			base: { type: "string", default: DEFAULT_BASE },
-			tiny: { type: "string", default: DEFAULT_TINY },
-			synth: { type: "string", default: DEFAULT_SYNTH },
-			focus: { type: "string" },
-			out: { type: "string" },
-			concurrency: { type: "string", default: "8" },
-		},
-	});
+/** What the report accepts: the run and the trace, plus which endpoint and models to read them with. */
+export const TRACE_REPORT_FLAGS = {
+	valued: { base: true, tiny: true, synth: true, focus: true, out: true, concurrency: true },
+	valueless: { help: true },
+	positionals: { max: 2 },
+} as const satisfies FlagGrammar;
 
+const TRACE_REPORT_USAGE = `usage: bun trace-report.ts <run> <trace>   (or "<run>|<trace>")
+
+  --base <url>          manager to read the trace from (default ${DEFAULT_BASE})
+  --tiny <model>        model that summarizes each turn (default ${DEFAULT_TINY})
+  --synth <model>       model that writes the story arc (default ${DEFAULT_SYNTH})
+  --focus <text>        question the story arc answers
+  --out <file>          write the report here instead of stdout
+  --concurrency <n>     turns summarized at once (default ${DEFAULT_CONCURRENCY})
+`;
+
+async function main(): Promise<void> {
+	let flags: Record<string, string>;
+	let positionals: string[];
+	let concurrency: number;
+	try {
+		({ flags, positionals } = parseArgv(process.argv.slice(2), TRACE_REPORT_FLAGS));
+		concurrency = flagCount(flags, "concurrency") ?? DEFAULT_CONCURRENCY;
+	} catch (error) {
+		console.error(errorMessage(error));
+		console.error(TRACE_REPORT_USAGE);
+		process.exit(2);
+	}
+	if (flags.help !== undefined) {
+		console.log(TRACE_REPORT_USAGE);
+		return;
+	}
+	const values = {
+		base: flags.base ?? DEFAULT_BASE,
+		tiny: flags.tiny ?? DEFAULT_TINY,
+		synth: flags.synth ?? DEFAULT_SYNTH,
+		focus: flags.focus,
+		out: flags.out,
+	};
+
+	// One argument holding both names ("run|trace") is accepted, because that is how the
+	// dashboard's trace link spells them.
 	const joined = positionals.join(" ").trim();
 	const match = joined.match(/^(\S+?)[|/\s]+(\S+)$/);
 	if (!match) {
-		console.error('usage: bun scripts/trace-report.ts <run> <trace>   (or "<run>|<trace>")');
+		console.error(TRACE_REPORT_USAGE);
 		process.exit(2);
 	}
 	const [, run, trace] = match;
@@ -363,7 +393,7 @@ async function main(): Promise<void> {
 
 	// Map: one grounded sentence per assistant turn.
 	let completed = 0;
-	const sentences = await mapPool(items, Number(values.concurrency), async item => {
+	const sentences = await mapPool(items, concurrency, async item => {
 		if (item.kind !== "turn") return undefined;
 		try {
 			const sentence = await ask(tiny, TINY_SYSTEM, turnPrompt(item), 300);

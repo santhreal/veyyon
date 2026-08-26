@@ -43,6 +43,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { errorMessage } from "@veyyon/utils";
 import { generateDictFromRepo } from "argot";
 import { type FlagGrammar, flagCount, parseFlags } from "../../core/flags";
 import { dictsDir, evalsPackageDir, resolvePackagePath, taskCorpusDir } from "../../paths";
@@ -267,9 +268,20 @@ export const GEN_DICTS_FLAGS = {
 	valueless: { all: true },
 } as const satisfies FlagGrammar;
 
+const GEN_DICTS_USAGE = "usage: bun gen-dicts.ts (--tasks <file> | --all) [--jobs <n>]\n";
+
 async function main(): Promise<void> {
-	const args = parseFlags(process.argv.slice(2), GEN_DICTS_FLAGS);
-	const jobs = flagCount(args, "jobs") ?? 8;
+	let args: Record<string, string>;
+	let jobs: number;
+	try {
+		args = parseFlags(process.argv.slice(2), GEN_DICTS_FLAGS);
+		jobs = flagCount(args, "jobs") ?? 8;
+	} catch (error) {
+		// No dictionary was generated, so the command line is the failure.
+		console.error(errorMessage(error));
+		console.error(GEN_DICTS_USAGE);
+		process.exit(2);
+	}
 	let tasks: string[];
 	if (args.all) {
 		tasks = fs
@@ -283,8 +295,9 @@ async function main(): Promise<void> {
 			.map(l => l.trim())
 			.filter(l => l && !l.startsWith("#"));
 	} else {
-		console.error("pass --tasks <file> or --all");
-		process.exit(1);
+		// Nothing was generated, so this is the same exit as a wrong flag rather than a failed run.
+		console.error(GEN_DICTS_USAGE);
+		process.exit(2);
 	}
 	fs.mkdirSync(REPO_CACHE, { recursive: true });
 	fs.mkdirSync(DICTS_DIR, { recursive: true });

@@ -23,6 +23,12 @@
  * A grammar declares every key it accepts, so a misspelled flag refuses the invocation
  * instead of running with the default the caller was trying to change, and a stray argument
  * that names no flag refuses rather than being read by nothing.
+ *
+ * An entry point whose inputs are positional (`<corpus.json> [dict-source.json]`) declares how
+ * many it takes and reads them from `parseArgv`. Declaring the count is what makes an extra
+ * argument a refusal: the analysis scripts read `process.argv[2]` and `process.argv[3]` directly,
+ * so a misspelled flag became the path they measured, and `--holdout` misspelled ran the
+ * in-sample sweep and printed it under the same headings as the holdout one.
  */
 
 /** A flag the grammar does not declare, or a stray argument that names no flag. */
@@ -55,11 +61,27 @@ export interface FlagGrammar {
 	aliases?: Readonly<Record<string, string>>;
 	/** Keys accepted beyond `valued`, contributed by a plugin the entry point resolves. */
 	extraValued?: readonly string[];
+	/**
+	 * How many arguments this entry point names positionally. Absent means none, and any bare
+	 * argument refuses. `max: Number.POSITIVE_INFINITY` accepts a variadic list.
+	 */
+	positionals?: { max: number };
 }
 
-/** Parse `argv` (already stripped of the runtime and script path) into flag values. */
-export function parseFlags(argv: string[], grammar: FlagGrammar): Record<string, string> {
-	const { valued, valueless = {}, aliases = {}, extraValued = [] } = grammar;
+/** An invocation split into the flags it set and the arguments it named positionally. */
+export interface ParsedArgv {
+	flags: Record<string, string>;
+	positionals: string[];
+}
+
+/**
+ * Parse `argv` (already stripped of the runtime and script path) into flag values and the
+ * arguments the grammar accepts positionally.
+ */
+export function parseArgv(argv: string[], grammar: FlagGrammar): ParsedArgv {
+	const { valued, valueless = {}, aliases = {}, extraValued = [], positionals: shape } = grammar;
+	const maxPositionals = shape?.max ?? 0;
+	const positionals: string[] = [];
 	const canonical = (name: string): string => (Object.hasOwn(aliases, name) ? aliases[name] : name);
 	const accepted = [...new Set([...Object.keys(valued), ...extraValued, ...Object.keys(valueless)])].sort();
 	const known = new Set(accepted);
@@ -69,7 +91,15 @@ export function parseFlags(argv: string[], grammar: FlagGrammar): Record<string,
 		if (arg === undefined) continue;
 		const dashed = arg.startsWith("--") ? arg.slice(2) : arg.startsWith("-") ? arg.slice(1) : null;
 		if (dashed === null) {
-			throw new UnknownFlagError(`Unexpected argument "${arg}": every input is named by a flag`, accepted);
+			if (positionals.length >= maxPositionals) {
+				const reason =
+					maxPositionals === 0
+						? "every input is named by a flag"
+						: `this command takes at most ${maxPositionals} argument${maxPositionals === 1 ? "" : "s"}`;
+				throw new UnknownFlagError(`Unexpected argument "${arg}": ${reason}`, accepted);
+			}
+			positionals.push(arg);
+			continue;
 		}
 		if (dashed === "") continue;
 		const eq = dashed.indexOf("=");
@@ -93,7 +123,24 @@ export function parseFlags(argv: string[], grammar: FlagGrammar): Record<string,
 			out[key] = "true";
 		}
 	}
-	return out;
+	return { flags: out, positionals };
+}
+
+/** Parse `argv` for an entry point whose every input is named by a flag. */
+export function parseFlags(argv: string[], grammar: FlagGrammar): Record<string, string> {
+	return parseArgv(argv, grammar).flags;
+}
+
+/**
+ * Read a string flag, or refuse when it arrived without the value it names. `--sessions` at the
+ * end of the argument list parses as `"true"`, which the analysis scripts passed on as a directory
+ * path and then reported as "no transcript tree at true".
+ */
+export function flagText(flags: Record<string, string>, key: string): string | undefined {
+	const raw = flags[key];
+	if (raw === undefined) return undefined;
+	if (raw === "" || raw === "true") throw new FlagValueError(`--${key} expects a value`);
+	return raw;
 }
 
 /** Read a numeric flag, or reject the invocation by name. Absent stays absent. */

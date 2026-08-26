@@ -36,7 +36,9 @@
 
 import * as fs from "node:fs";
 import { countTokens as nativeCountTokens } from "@veyyon/natives";
+import { errorMessage } from "@veyyon/utils";
 import { generateDict } from "argot";
+import { type FlagGrammar, type ParsedArgv, parseArgv } from "../../core/flags";
 import { REFERENCE_RATE_CARD, retainedTokenCost } from "./cost-model";
 
 const countTokens = (text: string): number => nativeCountTokens(text);
@@ -118,14 +120,39 @@ export function measureBudget(corpus: readonly string[], dictSource: readonly st
 	};
 }
 
+/** What this sweep accepts: two paths, and the one flag that changes what it measures. */
+export const CONTEXT_ENCODE_FLAGS = {
+	valued: {},
+	valueless: { holdout: true, help: true },
+	positionals: { max: 2 },
+} as const satisfies FlagGrammar;
+
+const CONTEXT_ENCODE_USAGE = `usage: bun context-encode-ceiling.ts <corpus.json> [dict-source.json] [--holdout]
+
+  --holdout    build the dictionary from the first half of the corpus and score the second,
+               instead of building from the text it then compresses
+`;
+
 if (import.meta.main) {
-	const corpusPath = process.argv[2];
-	if (!corpusPath) {
-		console.error("usage: bun context-encode-ceiling.ts <corpus.json> [dict-source.json]");
+	let parsed: ParsedArgv;
+	try {
+		parsed = parseArgv(process.argv.slice(2), CONTEXT_ENCODE_FLAGS);
+	} catch (error) {
+		console.error(errorMessage(error));
+		console.error(CONTEXT_ENCODE_USAGE);
+		process.exit(2);
+	}
+	if (parsed.flags.help !== undefined) {
+		console.log(CONTEXT_ENCODE_USAGE);
+		process.exit(0);
+	}
+	const [corpusPath, dictPath] = parsed.positionals;
+	if (corpusPath === undefined) {
+		console.error(CONTEXT_ENCODE_USAGE);
 		process.exit(2);
 	}
 	const corpus: string[] = JSON.parse(fs.readFileSync(corpusPath, "utf8"));
-	const dictSourcePath = process.argv[3] && !process.argv[3].startsWith("--") ? process.argv[3] : corpusPath;
+	const dictSourcePath = dictPath ?? corpusPath;
 	const dictSource: string[] = JSON.parse(fs.readFileSync(dictSourcePath, "utf8"));
 	const inSample = dictSourcePath === corpusPath;
 
@@ -134,7 +161,7 @@ if (import.meta.main) {
 	// session that produces this output exists. `--holdout` splits the session in
 	// half, builds from the first half only, and scores the second, which is the
 	// generalization question actually at issue.
-	const holdout = process.argv.includes("--holdout");
+	const holdout = parsed.flags.holdout !== undefined;
 	if (holdout) {
 		const cut = Math.floor(corpus.length / 2);
 		const train = corpus.slice(0, cut);

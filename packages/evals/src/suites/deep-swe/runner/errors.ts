@@ -6,6 +6,8 @@
  * inspect, format, and map failures to appropriate exit codes.
  */
 
+import { FlagValueError, UnknownFlagError } from "../../../core/flags";
+
 export class DeepSweRunnerError extends Error {
 	readonly exitCode: number;
 
@@ -84,6 +86,11 @@ export type DeepSweRunnerErrorClass = (typeof DEEPSWE_RUNNER_ERRORS)[number];
 export function resolveExitCode(error: unknown): number {
 	if (error instanceof DeepSweRunnerError) {
 		return error.exitCode;
+	}
+	// A wrong command line means no trial ran, which is the same exit as every other entry point's
+	// refusal. A run that happened and failed is the taxonomy above, which keeps its own codes.
+	if (error instanceof UnknownFlagError || error instanceof FlagValueError) {
+		return 2;
 	}
 	return 1;
 }

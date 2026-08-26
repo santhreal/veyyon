@@ -31,7 +31,9 @@
  */
 
 import * as fs from "node:fs";
+import { errorMessage } from "@veyyon/utils";
 import { estimateTokens } from "argot";
+import { type FlagGrammar, flagText, parseFlags } from "../../core/flags";
 import {
 	defaultSessionsDir,
 	type Emission,
@@ -150,16 +152,42 @@ function percent(value: number): string {
 	return `${(value * 100).toFixed(2)}%`;
 }
 
-function main(argv: string[]): void {
-	const sessionsFlag = argv.indexOf("--sessions");
-	const root = sessionsFlag === -1 ? defaultSessionsDir() : argv[sessionsFlag + 1];
-	if (!root || !fs.existsSync(root)) {
+/** What this instrument accepts. A misspelled flag used to be dropped, so it measured the default tree. */
+export const CHANNEL_SPLIT_FLAGS = {
+	valued: { sessions: true },
+	valueless: { json: true, help: true },
+} as const satisfies FlagGrammar;
+
+const CHANNEL_SPLIT_USAGE = "usage: bun measure-channel-split.ts [--sessions <dir>] [--json]\n";
+
+export function main(argv: string[]): void {
+	let flags: Record<string, string>;
+	try {
+		flags = parseFlags(argv, CHANNEL_SPLIT_FLAGS);
+	} catch (error) {
+		console.error(errorMessage(error));
+		console.error(CHANNEL_SPLIT_USAGE);
+		process.exit(2);
+	}
+	if (flags.help !== undefined) {
+		console.log(CHANNEL_SPLIT_USAGE);
+		return;
+	}
+	let root: string;
+	try {
+		root = flagText(flags, "sessions") ?? defaultSessionsDir();
+	} catch (error) {
+		console.error(errorMessage(error));
+		process.exit(2);
+	}
+	if (!fs.existsSync(root)) {
+		// Nothing was measured, so this is the same class of exit as a wrong flag.
 		console.error(`measure-channel-split: no transcript tree at ${root}`);
-		process.exit(1);
+		process.exit(2);
 	}
 
 	const { split, files } = measureSessionsDir(root);
-	if (argv.includes("--json")) {
+	if (flags.json !== undefined) {
 		console.log(JSON.stringify({ root, files, ...split }, null, 2));
 		return;
 	}
