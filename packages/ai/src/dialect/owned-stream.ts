@@ -18,14 +18,8 @@ import type { Dialect, InbandScanEvent, InbandScanner, InbandTool } from "./type
 import { TOOL_RESPONSE_OPEN } from "./wire-tags";
 
 /**
- * Where the host's own tool-result text begins, per dialect, so a model that keeps generating past its call can
- * be cut off before it hallucinates the result.
- *
- * Seven of these rows are the SHARED `<tool_response>` opener, which `rendering.ts` is what actually writes.
- * They were bare literals here, which made this table look like a list of independent per-dialect facts when
- * most of it is one fact restated: change the renderer's tag and these seven stop matching, silently, and the
- * model's invented continuation of the tool output reaches the transcript looking like real output. The rows
- * that are genuinely that model's own token stay spelled out.
+ * Where the host's own tool-result text begins, per dialect, so a model generating past its call can be cut
+ * off. Seven rows share the `RESPONSE_OPEN` tag from `rendering.ts`; per-dialect tokens stay spelled out.
  */
 const RESPONSE_OPEN_TOKENS: Record<Dialect, readonly string[]> = {
 	glm: [TOOL_RESPONSE_OPEN],

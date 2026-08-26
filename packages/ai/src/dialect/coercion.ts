@@ -150,19 +150,10 @@ function excerptArgs(text: string): string {
 }
 
 /**
- * Parse a tool call's raw `arguments` text into a record, reporting text that will not parse.
- *
- * Three streaming dialects (DeepSeek, Harmony, Kimi) and the GitLab Duo provider each had their own copy
- * of this, and each copy
- * caught the parse failure and returned `{}`. Empty is also what a call that legitimately takes no
- * arguments produces, so a model that emitted arguments the repair pass could not salvage had them
- * SILENTLY DROPPED: the tool then ran with no arguments at all, which is a different call from the one
- * the model made, and nothing in the transcript said so.
- *
- * Empty is still returned, because a dialect parser cannot abort a stream mid-tool-call and the tool's
- * own argument validation is the right place to refuse. What is new is that the loss is reported with
- * the source, the tool name, and a bounded excerpt of the text that would not parse, so the dropped
- * arguments can be told apart from a call that never had any.
+ * Parse a tool call's raw `arguments` text into a record, reporting text that won't parse. Three dialects
+ * and GitLab Duo each had a copy that caught failure and returned `{}` — silently dropping arguments the
+ * model made. Empty is still returned (parser can't abort a stream), but the loss is now reported with
+ * source, tool name, and a bounded excerpt.
  */
 export function parseToolArgsText(raw: string, context: { source: string; tool?: string }): Record<string, unknown> {
 	const trimmed = raw.trim();
