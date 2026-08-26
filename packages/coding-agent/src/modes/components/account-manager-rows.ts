@@ -1,24 +1,9 @@
 /**
- * Row shaping for the account manager card: an {@link AccountInventory} in, the mockup's
- * display lines out.
- *
- * WHY THIS IS ITS OWN MODULE. The card that hosts these lines owns a viewport, a focus model,
- * a rename input and mouse routing, and none of that has an opinion about what an account row
- * SAYS. Splitting the wording out means the wording can be asserted against fixed inventories
- * with no terminal, no theme and no geometry, and it means the one place that decides "a failed
- * row prints its upstream reason verbatim underneath" is a function rather than a branch buried
- * in a render loop.
- *
- * WHAT IT DOES NOT DO. No theme, no ANSI of its own, no width. Glyphs are named by
- * {@link accountGlyphKind} and resolved by the caller through `theme.status.*`, because the
- * glyph a terminal can actually draw is a theme decision (the ascii preset has no `●`), and a
- * pure module that hard-coded `●` would be wrong on exactly the terminals that need help most.
- * Widths belong to the caller too: it is the one that knows the pane it is painting into.
- *
- * Every string that crosses this module from upstream (an OAuth error body, a provider's window
- * label, an account name a user typed) is put through {@link sanitizeAccountText} first. A tab
- * or a newline in an upstream failure reason tears a card open, and those strings arrive from
- * the network.
+ * Row shaping for the account manager card: an {@link AccountInventory} in, display lines out. Split
+ * from the card's viewport/focus/mouse logic so wording can be asserted against fixed inventories with
+ * no terminal or theme. No ANSI, no width — glyphs named by {@link accountGlyphKind}, resolved by the
+ * caller through `theme.status.*`. Every upstream string (OAuth error, provider label, account name)
+ * goes through {@link sanitizeAccountText} first; a tab or newline in a failure reason tears the card.
  */
 import { countWhere, partition } from "@veyyon/utils";
 import {

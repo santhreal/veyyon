@@ -1,24 +1,9 @@
 /**
- * The `/providers` account manager: a fullscreen ModalShell LARGE card whose sidebar lists every
- * provider and whose body lists that provider's ACCOUNTS.
- *
- * WHY A NEW CARD. `/providers` used to open the onboarding wizard's provider scene, which shows
- * one row per provider and a bare `logged in` tag. The store has always held several credentials
- * per provider, so that scene could not say which of your three Anthropic accounts the session
- * is actually routed to, whether one of them is failing, or how much of each account's quota is
- * gone. This card is one row per CREDENTIAL, which is the thing you switch, name and log out.
- *
- * WHY SWITCHING IS PER PROVIDER. Several providers serve one session at once (main model,
- * subagent roles, web search), so there is no single "current account" to pick. `enter` uses the
- * selected account FOR ITS PROVIDER and the footer says so by name, because a key labelled just
- * `use` reads as a global switch and is not one. Moving from Anthropic to Google is a model
- * decision and lives in `/models`.
- *
- * WHAT IT OWNS AND WHAT IT DOES NOT. Geometry, focus, the rename input, the logout confirm and
- * mouse routing live here. The wording of every line lives in `account-manager-rows.ts`, and the
- * account model itself in `session/account-inventory.ts`. This card never reads `AuthStorage`
- * and never prints a token byte: it is given an inventory of identities and status, and that is
- * all it can show.
+ * The `/providers` account manager: a fullscreen ModalShell LARGE card whose sidebar lists every provider
+ * and whose body lists that provider's ACCOUNTS. One row per CREDENTIAL (not provider) — the thing you
+ * switch, name and log out. Switching is per-provider (main model, subagent roles, web search all serve
+ * one session). Geometry/focus/rename/logout/mouse live here; wording in `account-manager-rows.ts`,
+ * account model in `session/account-inventory.ts`. Never reads `AuthStorage`, never prints a token.
  */
 import { getOAuthProviders } from "@veyyon/ai/oauth";
 import {
