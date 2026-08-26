@@ -45,6 +45,21 @@ export function parsedNativeCompaction(value: unknown): NativeCompactionEvidence
 	};
 }
 
+/**
+ * Whether the trial's agent reached a provider at all.
+ *
+ * Token counts come from the session transcript when there is one and from pier's own
+ * `agent_result` otherwise, so both sources are consulted; a counted agent step covers
+ * a provider that reports no usage. All three absent means the container never got as
+ * far as a request, which is an infrastructure failure and not a score.
+ */
+function agentProducedWork(result: ComparisonArmResult, agent: Record<string, unknown>): boolean {
+	if ((result.outputTokens ?? 0) > 0 || (result.inputTokens ?? 0) > 0 || (result.cacheTokens ?? 0) > 0) {
+		return true;
+	}
+	return typeof agent.n_agent_steps === "number" && agent.n_agent_steps > 0;
+}
+
 export function parseTrialResult(
 	arm: string,
 	task: string,
@@ -182,7 +197,13 @@ export function parseTrialResult(
 	}
 
 	const jobLog = readIfPresent(path.join(jobDir, "job.log"));
-	if (trial.exception_info && finishedWithoutPatch(jobLog)) {
+	// An exception plus "no model.patch in the container" is an honest 0 only when the
+	// agent actually ran and produced nothing. A trial that died in agent setup also
+	// leaves that line behind, because the artifact download runs after the failure, so
+	// scoring it 0 reported an infrastructure failure as a task the model could not
+	// solve. Spent tokens or a counted step are the evidence; without either this falls
+	// through to the error branch and the trial is reported with no reward at all.
+	if (trial.exception_info && finishedWithoutPatch(jobLog) && agentProducedWork(result, agent)) {
 		result.reward = 0;
 		result.partial = 0;
 		result.f2p = 0;
