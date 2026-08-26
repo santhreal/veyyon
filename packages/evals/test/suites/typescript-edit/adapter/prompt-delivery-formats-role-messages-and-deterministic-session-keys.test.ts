@@ -107,9 +107,7 @@ describe("buildBenchmarkSystemPrompt", () => {
 		expect(promptText).toContain("a single edit task");
 		expect(promptText).not.toContain("multiple unrelated files");
 		expect(promptText).not.toContain("Only modify the file(s) referenced by the task or follow-up messages");
-		expect(promptText).toContain(
-			"Read the relevant files first, then use the edit or vim tool to apply the fix.",
-		);
+		expect(promptText).toContain("Read the relevant files first, then use the edit or vim tool to apply the fix.");
 		expect(promptText).toContain("This benchmark is scored on exactness. Get the edit right.");
 		expect(promptText).toContain("Make the minimum change necessary.");
 		expect(promptText).toContain("Treat the first user message as the task definition.");
@@ -145,7 +143,8 @@ describe("buildInitialBenchmarkPrompt", () => {
 
 	it("renders task prompt with authoritative guided fix when guidedContext is provided", () => {
 		const taskPrompt = "Fix issue with integer overflow in calculator.ts";
-		const guidedContext = "Target file: `src/calculator.ts`.\nApply this patch:\n```diff\n- a + b\n+ safeAdd(a, b)\n```";
+		const guidedContext =
+			"Target file: `src/calculator.ts`.\nApply this patch:\n```diff\n- a + b\n+ safeAdd(a, b)\n```";
 		const promptText = buildInitialBenchmarkPrompt({ taskPrompt, guidedContext });
 
 		expect(promptText).toContain(taskPrompt);
