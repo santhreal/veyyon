@@ -598,12 +598,12 @@ export class AssistantMessageComponent extends Container {
 	setToolResultImages(toolCallId: string, images: ImageContent[]): void {
 		if (!toolCallId) return;
 		const validImages = images.filter(img => img.type === "image" && img.data && img.mimeType);
-		for (const key of Array.from(this.#convertedKittyImages.keys())) {
+		for (const key of [...this.#convertedKittyImages.keys()]) {
 			if (key.startsWith(`${toolCallId}:`)) {
 				this.#convertedKittyImages.delete(key);
 			}
 		}
-		for (const key of Array.from(this.#kittyConversionsInFlight)) {
+		for (const key of [...this.#kittyConversionsInFlight]) {
 			if (key.startsWith(`${toolCallId}:`)) {
 				this.#kittyConversionsInFlight.delete(key);
 			}
@@ -649,7 +649,7 @@ export class AssistantMessageComponent extends Container {
 	}
 
 	#renderToolImages(): void {
-		const imageEntries = Array.from(this.#toolImagesByCallId.entries()).flatMap(([toolCallId, images]) =>
+		const imageEntries = [...this.#toolImagesByCallId.entries()].flatMap(([toolCallId, images]) =>
 			images.map((image, index) => ({ image, key: `${toolCallId}:${index}` })),
 		);
 		if (imageEntries.length === 0) return;

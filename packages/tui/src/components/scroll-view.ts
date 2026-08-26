@@ -42,7 +42,7 @@ function normalizeScrollbarMode(scrollbar: ScrollViewOptions["scrollbar"]): Scro
 }
 
 function firstCellGlyph(value: string, fallback: string): string {
-	const glyph = Array.from(value)[0] ?? fallback;
+	const glyph = [...value][0] ?? fallback;
 	return visibleWidth(glyph) === 1 ? glyph : fallback;
 }
 

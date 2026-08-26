@@ -414,7 +414,7 @@ function mergeDynamicModels<TApi extends Api>(
 		}
 		merged.set(dynamicModel.id, mergeDynamicModel(existingModel, dynamicModel));
 	}
-	return Array.from(merged.values());
+	return [...merged.values()];
 }
 
 function retainModelIds<TApi extends Api>(

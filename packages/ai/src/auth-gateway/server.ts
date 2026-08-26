@@ -763,7 +763,7 @@ async function handleCredentialsCheck(storage: AuthStorage, signal: AbortSignal)
 }
 
 function handleModelsList(opts: AuthGatewayBootOptions): Response {
-	const list = opts.listModels ? Array.from(opts.listModels()) : [];
+	const list = opts.listModels ? [...opts.listModels()] : [];
 	const seen = new Set<string>();
 	const data = [];
 	for (const model of list) {

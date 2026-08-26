@@ -126,9 +126,7 @@ export abstract class OAuthCallbackFlow {
 	generateState(): string {
 		const bytes = new Uint8Array(16);
 		crypto.getRandomValues(bytes);
-		return Array.from(bytes)
-			.map(value => value.toString(16).padStart(2, "0"))
-			.join("");
+		return [...bytes].map(value => value.toString(16).padStart(2, "0")).join("");
 	}
 
 	#loginCancelledError(): AIError.LoginCancelledError {

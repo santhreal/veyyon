@@ -100,7 +100,7 @@ function entryIsDirectory(dir: string, entry: fs.Dirent): boolean {
 function printableInput(data: string): string {
 	const withoutPasteEnvelope = data.replaceAll("\x1b[200~", "").replaceAll("\x1b[201~", "");
 	if (withoutPasteEnvelope.includes("\x1b")) return "";
-	return Array.from(withoutPasteEnvelope)
+	return [...withoutPasteEnvelope]
 		.filter(ch => {
 			const code = ch.codePointAt(0);
 			return code !== undefined && code >= 32 && code !== 0x7f;

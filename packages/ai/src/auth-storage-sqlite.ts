@@ -1411,7 +1411,7 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 		for (const row of rows) {
 			providers.add(row.provider);
 		}
-		return Array.from(providers);
+		return [...providers];
 	}
 
 	/**

@@ -1737,7 +1737,7 @@ export class StatusLineComponent implements Component {
 			return [];
 		}
 
-		const sortedStatuses = Array.from(this.#hookStatuses.entries())
+		const sortedStatuses = [...this.#hookStatuses.entries()]
 			.sort(([a], [b]) => a.localeCompare(b))
 			.map(([, text]) => sanitizeStatusText(text));
 		const hookLine = sortedStatuses.join(" ");

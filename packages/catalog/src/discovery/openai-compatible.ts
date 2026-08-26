@@ -255,7 +255,7 @@ export async function fetchOpenAICompatibleModels<TApi extends Api>(
 		deduped.set(mapped.id, mapped);
 	}
 
-	return Array.from(deduped.values()).sort((left, right) => left.id.localeCompare(right.id));
+	return [...deduped.values()].sort((left, right) => left.id.localeCompare(right.id));
 }
 
 function extractModelEntries(payload: unknown): ParsedOpenAICompatibleModelRecord[] | null {

@@ -108,12 +108,12 @@ export function getBundledProviders(): GeneratedProvider[] {
 	// snapshot hit answers without parsing the catalog text. JSON round-trips
 	// preserve insertion order for non-numeric keys, so provider order matches
 	// `Object.keys` on the source either way.
-	return Array.from(getModelRegistry().keys());
+	return [...getModelRegistry().keys()];
 }
 
 export function getBundledModels(provider: GeneratedProvider): Model<Api>[] {
 	const models = getModelRegistry().get(provider);
-	return models ? (Array.from(models.values()) as Model<Api>[]) : [];
+	return models ? ([...models.values()] as Model<Api>[]) : [];
 }
 
 /**

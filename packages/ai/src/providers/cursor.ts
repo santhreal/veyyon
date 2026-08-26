@@ -638,7 +638,7 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 				rejectH2 = undefined;
 				void (async () => {
 					if (pendingMessagePromises.size > 0) {
-						await Promise.allSettled(Array.from(pendingMessagePromises));
+						await Promise.allSettled([...pendingMessagePromises]);
 					}
 					await closeDebugLog();
 					if (refusedStatus !== undefined) {
@@ -775,7 +775,7 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 						// false success or orphan the handler.
 						if (isTurnEnded) {
 							turnCompleted = true;
-							void Promise.allSettled(Array.from(pendingMessagePromises)).then(async () => {
+							void Promise.allSettled([...pendingMessagePromises]).then(async () => {
 								// Give already-arrived protocol terminal events (e.g. HTTP/2 trailers)
 								// one event-loop turn to be dispatched and set endStreamError before resolving success.
 								await yieldToProtocolEvents();
@@ -2292,7 +2292,7 @@ export function buildGrepResultFromToolResult(
 			}
 		}
 
-		const matches = Array.from(matchMap.entries()).map(([file, matches]) =>
+		const matches = [...matchMap.entries()].map(([file, matches]) =>
 			create(GrepFileMatchSchema, {
 				file,
 				matches: matches.map(entry =>

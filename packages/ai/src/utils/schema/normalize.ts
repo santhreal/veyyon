@@ -814,7 +814,7 @@ function normalizeNullablePropertiesForCloudCodeAssist(
 		}
 		normalized.properties = nextProperties;
 		if (Array.isArray(normalized.required)) {
-			normalized.required = Array.from(required);
+			normalized.required = [...required];
 		}
 	}
 

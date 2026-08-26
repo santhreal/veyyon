@@ -1,18 +1,11 @@
 /**
- * The last stop for a `${VAR}` that nothing resolved.
- *
- * A discovered MCP config is expanded once at load time (`expandEnvVarsDeep` in
- * `discovery/env-expansion.ts`): `${VAR}` becomes the variable's value, `${VAR:-default}` falls
- * back to the default, and an unset variable with no default is reported to that call's sink and
- * left as the literal text `${VAR}`. That literal is what this module rejects, and the grammar it
- * matches (`UNRESOLVED_ENV_REFERENCE`) is imported from the expansion so the two cannot disagree. Credential-bearing `env` and `headers` values are
- * resolved again through the config-value grammar at connect and already fail closed there
- * (`MCPUnresolvedEnvReferenceError`), so their bytes are a resolved secret by the time a transport
- * sees them and are never scanned here: a password may contain `${`.
- *
- * The fields below are the ones that become a process or a hostname. Left alone, `${VAR}` reaches
- * `Bun.spawn` as an argument, a working directory that does not exist, or a URL whose host is the
- * text of a variable name.
+ * The last stop for a `${VAR}` that nothing resolved. An MCP config is expanded once at load time;
+ * an unset variable with no default is left as the literal `${VAR}`, which this module rejects. The
+ * grammar (`UNRESOLVED_ENV_REFERENCE`) is imported from the expansion so the two cannot disagree.
+ * Credential `env`/`headers` values are resolved at connect and fail closed there, so their bytes are
+ * a resolved secret by the time a transport sees them — a password may contain `${`. The fields below
+ * become a process or hostname; left alone, `${VAR}` reaches `Bun.spawn` as an argument or a URL whose
+ * host is a variable name.
  */
 
 import { UNRESOLVED_ENV_REFERENCE } from "../discovery/env-expansion";

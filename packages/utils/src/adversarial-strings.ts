@@ -420,7 +420,7 @@ function mix32(value: number): number {
  */
 function shrink(input: string, error: unknown, check: (input: string) => void): ShrinkResult {
 	let best: ShrinkResult = { input, error };
-	let units = Array.from(best.input);
+	let units = [...best.input];
 
 	const fails = (candidate: string): unknown | undefined => {
 		if (candidate === best.input) return undefined;
@@ -444,7 +444,7 @@ function shrink(input: string, error: unknown, check: (input: string) => void): 
 				const thrown = fails(candidate);
 				if (thrown === undefined) continue;
 				best = { input: candidate, error: thrown };
-				units = Array.from(candidate);
+				units = [...candidate];
 				progressed = true;
 				break;
 			}

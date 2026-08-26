@@ -130,7 +130,7 @@ function getMacosToolPaths(): Map<string, string> {
 
 	// Deduplicate (e.g. devDir may already be CommandLineTools)
 	macosToolPaths = new Map<string, string>();
-	for (const dir of Array.from(new Set(paths))) {
+	for (const dir of [...new Set(paths)]) {
 		try {
 			for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
 				if (entry.isFile() || entry.isSymbolicLink()) {

@@ -193,7 +193,7 @@ export async function fetchGeminiModels(
 		nextPageToken = token;
 	}
 
-	return Array.from(modelsById.values()).sort((left, right) => left.id.localeCompare(right.id));
+	return [...modelsById.values()].sort((left, right) => left.id.localeCompare(right.id));
 }
 
 function buildModelsUrl(baseUrl: string, apiKey: string, pageSize: number, pageToken?: string): URL {

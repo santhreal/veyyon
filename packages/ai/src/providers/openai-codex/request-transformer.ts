@@ -468,7 +468,7 @@ export async function transformRequestBody(
 
 	const include = Array.isArray(options.include) ? [...options.include] : [];
 	include.push("reasoning.encrypted_content");
-	body.include = Array.from(new Set(include));
+	body.include = [...new Set(include)];
 
 	delete body.max_output_tokens;
 	delete body.max_completion_tokens;

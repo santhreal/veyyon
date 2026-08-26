@@ -2000,7 +2000,7 @@ async function fetchFireworksServerlessModels(options: {
 		if (!next) break;
 		pageToken = next;
 	}
-	return Array.from(collected.values());
+	return [...collected.values()];
 }
 
 function createModelsDevReferenceMap<TApi extends Api>(
@@ -3986,7 +3986,7 @@ async function fetchLiteLLMRichEndpoint<TApi extends Api>(
 		return null;
 	}
 	return {
-		models: Array.from(deduped.values()).sort((left, right) => left.model.id.localeCompare(right.model.id)),
+		models: [...deduped.values()].sort((left, right) => left.model.id.localeCompare(right.model.id)),
 		incompleteVisionMetadata,
 	};
 }
@@ -4046,9 +4046,7 @@ export async function fetchLiteLLMRichModels<TApi extends Api>(
 		if (deduped.size === 0) {
 			return null;
 		}
-		return Array.from(deduped.values())
-			.map(entry => entry.model)
-			.sort((left, right) => left.id.localeCompare(right.id));
+		return [...deduped.values()].map(entry => entry.model).sort((left, right) => left.id.localeCompare(right.id));
 	};
 	if (options.signal !== undefined) {
 		return fetchModels(options.signal);

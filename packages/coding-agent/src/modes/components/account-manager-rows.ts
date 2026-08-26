@@ -121,7 +121,7 @@ export function buildSidebarEntries(
 			hasFailure: false,
 		});
 	}
-	const [populatedEntries, emptyEntries] = partition(Array.from(entries.values()), entry => entry.accountCount > 0);
+	const [populatedEntries, emptyEntries] = partition([...entries.values()], entry => entry.accountCount > 0);
 	const populated = populatedEntries.sort((a, b) => a.label.localeCompare(b.label));
 	const empty = emptyEntries.sort((a, b) => a.label.localeCompare(b.label));
 	return [...populated, ...empty];
