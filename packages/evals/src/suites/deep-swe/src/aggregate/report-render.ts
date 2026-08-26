@@ -84,8 +84,9 @@ export function renderReferenceCostSection(results: readonly ArmResult[], arms: 
 	if (unmeasurable.length > 0) {
 		lines.push(
 			`> Not computed for ${unmeasurable.join(", ")}: these runs predate the cache read/write split, so ` +
-				"their cache tokens cannot be priced (a read costs 0.075/M, a write 0.3833/M, and the older " +
-				"records carry only the sum). Re-run to get a priced comparison.",
+				`their cache tokens cannot be priced (a read costs ${REFERENCE_RATE_CARD.cacheRead}/M, a write ` +
+				`${REFERENCE_RATE_CARD.cacheWrite}/M, and the older records carry only the sum). Re-run to get a ` +
+				"priced comparison.",
 		);
 		lines.push("");
 	}
