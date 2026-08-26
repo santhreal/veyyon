@@ -36,7 +36,7 @@ an em dash in the UI. Three surfaces reached that decision separately and one of
 value renders at 0 decimal places at or above `$100`, 2 at or above `$1`, and 3 below it. The marker
 varies by surface — a dashboard cell and the harbor summary read `—`, the markdown report reads
 `n/a` — and the tiers and the never-zero rule do not. `src/report/bench-report.ts` and
-`src/backends/harbor/runner.ts` both delegate to it.
+`src/backends/harbor/runner/ui.ts` both delegate to it.
 
 `formatEta(etaMs, now)` renders `—` for an unknown ETA rather than `~0m`, which claimed a run was
 about to finish. `formatMinutes(ms)` renders a measured duration.

@@ -24,7 +24,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { HarborBackend, NO_MODEL_AGENTS } from "../../src/backends/harbor/backend";
-import { parseArgs, resolveResumeConfig } from "../../src/backends/harbor/runner";
+import { parseArgs, resolveResumeConfig } from "../../src/backends/harbor/runner/cli";
 import { InProcessBackend } from "../../src/backends/in-process/backend";
 import { builtinBackends } from "../../src/backends/index";
 import { PierExecutionBackend } from "../../src/backends/pier/backend";

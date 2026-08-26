@@ -8,7 +8,8 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import { gatewayHealthOk, parseArgs } from "../../../src/backends/harbor/runner";
+import { parseArgs } from "../../../src/backends/harbor/runner/cli";
+import { gatewayHealthOk } from "../../../src/backends/harbor/runner/gateway";
 
 describe("a failed gateway healthcheck refuses the runner", () => {
 	it("reports gatewayHealthOk as false for an unreachable local port", () => {

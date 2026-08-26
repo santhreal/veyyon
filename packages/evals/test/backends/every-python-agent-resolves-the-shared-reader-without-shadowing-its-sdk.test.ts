@@ -153,7 +153,7 @@ describe("every python agent resolves the shared reader without shadowing its sd
 	const modules = agentModules();
 
 	it("finds an agent module under every backend directory in the agents root", () => {
-		const backends = [...new Set(modules.map((m) => m.backend))].sort();
+		const backends = [...new Set(modules.map(m => m.backend))].sort();
 		expect(backends).toEqual(["harbor", "pier"]);
 		expect(modules.length).toBeGreaterThanOrEqual(backends.length);
 	});
@@ -190,7 +190,7 @@ describe("every python agent resolves the shared reader without shadowing its sd
 			const ownDir = path.join(AGENTS_ROOT, backend);
 			const commonDir = path.join(AGENTS_ROOT, "common");
 			const foreign = report.files.filter(
-				(f) => f.startsWith(AGENTS_ROOT) && !f.startsWith(ownDir) && !f.startsWith(commonDir),
+				f => f.startsWith(AGENTS_ROOT) && !f.startsWith(ownDir) && !f.startsWith(commonDir),
 			);
 			expect(foreign).toEqual([]);
 		});

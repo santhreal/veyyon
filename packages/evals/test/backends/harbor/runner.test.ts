@@ -3,20 +3,17 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import {
-	buildHarborEnv,
-	buildResumeArgs,
 	cleanupHarborTrialContainers,
-	collectForwardEnv,
 	DEFAULT_GRACE_PERIOD_MS,
 	DEFAULT_TRIAL_TIMEOUT_SEC,
 	HARD_CEILING_TIMEOUT_SEC,
-	parseArgs,
 	RAW_OUTPUT_MAX_BYTES,
-	readTrials,
-	resolveResumeConfig,
 	terminateProcessTree,
 	truncateRawOutput,
-} from "../../../src/backends/harbor/runner";
+} from "../../../src/backends/harbor/runner/cleanup";
+import { parseArgs, resolveResumeConfig } from "../../../src/backends/harbor/runner/cli";
+import { buildHarborEnv, buildResumeArgs, collectForwardEnv } from "../../../src/backends/harbor/runner/config";
+import { readTrials } from "../../../src/backends/harbor/runner/results";
 
 describe("generic agent-arg / env passthrough", () => {
 	it("forwards repeated --agent-arg as a JSON array the in-container agent can parse", () => {
