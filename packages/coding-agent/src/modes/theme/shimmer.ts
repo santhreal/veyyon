@@ -646,10 +646,18 @@ function lavaRgbAt(ember: string, gold: string, p: number): [number, number, num
  * `theme.fg("borderAccent", …)` — a loud, documented degrade (no animation
  * hardware, no animation), never a different color.
  */
-export function lavaAnsi(theme: LavaTheme, trueColor: boolean, now = Date.now(), cell = 0): string | undefined {
+export function lavaAnsi(
+	theme: LavaTheme,
+	trueColor: boolean,
+	now = Date.now(),
+	cell = 0,
+	resolved?: { ember: string; gold: string },
+): string | undefined {
 	if (!trueColor) return undefined;
 	const p = now / LAVA_PERIOD_MS + cell * LAVA_CELL_PHASE;
-	const [r, g, b] = lavaRgbAt(theme.getColorHex("borderAccent"), theme.getColorHex("matchHighlight"), p);
+	const ember = resolved?.ember ?? theme.getColorHex("borderAccent");
+	const gold = resolved?.gold ?? theme.getColorHex("matchHighlight");
+	const [r, g, b] = lavaRgbAt(ember, gold, p);
 	return `\x1b[38;2;${r};${g};${b}m`;
 }
 
@@ -661,10 +669,11 @@ export function lavaAnsi(theme: LavaTheme, trueColor: boolean, now = Date.now(),
  */
 export function lavaText(text: string, theme: LavaTheme, trueColor: boolean, now = Date.now()): string {
 	if (!trueColor) return theme.fg("borderAccent", text);
+	const resolved = { ember: theme.getColorHex("borderAccent"), gold: theme.getColorHex("matchHighlight") };
 	let out = "";
 	let cell = 0;
 	for (const ch of text) {
-		out += `${lavaAnsi(theme, true, now, cell)}${ch}`;
+		out += `${lavaAnsi(theme, true, now, cell, resolved)}${ch}`;
 		cell++;
 	}
 	return `${out}${SGR_FG_RESET}`;
