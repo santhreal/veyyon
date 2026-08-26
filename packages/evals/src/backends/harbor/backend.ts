@@ -4,12 +4,14 @@ import * as path from "node:path";
 import { promisify } from "node:util";
 import { $which, errorMessage, isRecord, readPipeText } from "@veyyon/utils";
 import { type BackendRegistry, defaultBackendRegistry } from "../../core/backend-registry";
-import { requireBackendBinding, resolveCellVariant } from "../../core/cell-variant";
-import { requireHarness } from "../../core/harness-registry";
+import { resolveCellVariant } from "../../core/cell-variant";
+import { getHarness, listHarnesses, requireHarness } from "../../core/harness-registry";
 import { resolveTrialModel } from "../../core/trial-model";
 import type {
 	BackendId,
 	ExecutionBackend,
+	HarnessAdapter,
+	HarnessBackendBinding,
 	PreflightVerdict,
 	RunContext,
 	TaskDescriptor,
@@ -44,6 +46,43 @@ const execFileAsync = promisify(execFile);
  * model's tokens, spend and pass rate as this arm's.
  */
 export const NO_MODEL_AGENTS: ReadonlySet<string> = new Set(["nop", "oracle"]);
+
+export class HarborBindingNotFoundError extends Error {
+	readonly harnessName: string;
+	readonly harborCapableHarnesses: readonly string[];
+
+	constructor(harnessName: string, harborCapableHarnesses: readonly string[]) {
+		const formatted = harborCapableHarnesses.length > 0 ? harborCapableHarnesses.join(", ") : "none";
+		super(
+			`Harness "${harnessName}" declares no binding for backend "harbor". Registered harbor-capable harnesses: ${formatted}`,
+		);
+		this.name = "HarborBindingNotFoundError";
+		this.harnessName = harnessName;
+		this.harborCapableHarnesses = [...harborCapableHarnesses];
+	}
+}
+export function requireHarborBinding(harnessOrName: HarnessAdapter | string): HarnessBackendBinding {
+	const harness = typeof harnessOrName === "string" ? requireHarness(harnessOrName) : harnessOrName;
+	const binding = harness.backends.harbor;
+	if (!binding) {
+		const harborCapable = listHarnesses()
+			.filter(h => Boolean(h.backends.harbor))
+			.map(h => h.name);
+		throw new HarborBindingNotFoundError(harness.name, harborCapable);
+	}
+	if (!binding.agentName || typeof binding.agentName !== "string" || binding.agentName.trim() === "") {
+		throw new Error(`Harness "${harness.name}" declares a harbor backend binding with no agentName.`);
+	}
+	return binding;
+}
+
+export function harborAgentLogPath(agentNameOrHarness: string | HarnessAdapter): string {
+	if (typeof agentNameOrHarness === "string") {
+		return `agent/${agentNameOrHarness}.txt`;
+	}
+	const binding = requireHarborBinding(agentNameOrHarness);
+	return `agent/${binding.agentName}.txt`;
+}
 
 export type WhichLookup = (bin: string) => string | null;
 export type CommandExecutor = (file: string, args: readonly string[]) => Promise<{ stdout: string; stderr: string }>;
@@ -288,11 +327,15 @@ export class HarborBackend implements ExecutionBackend {
 		// container, so the linux deps tree has to exist before the first trial. A failure
 		// here is fatal: without the mount every trial dies in agent setup with
 		// "bun mount missing", which is how a whole run used to report 100% errors.
-		const agent = typeof context.options?.agent === "string" ? context.options.agent : undefined;
+		const agentOption = typeof context.options?.agent === "string" ? context.options.agent : undefined;
+		const variantHarness = context.options?.variants?.[0]?.harness;
+		const harnessName = agentOption ?? variantHarness ?? "veyyon";
+		const harness = getHarness(harnessName);
+		const binding = harness?.backends.harbor;
 		const installMode = typeof context.options?.install === "string" ? context.options.install : "source";
-		if ((!agent || agent === "veyyon") && installMode === "source") {
+		if (binding?.sourceMount && installMode === "source") {
 			const cfg = this.#harborConfig(context, {
-				agent: "veyyon",
+				agent: binding.agentName ?? harnessName,
 				model: null,
 				task: null,
 				jobsDir: runsDir,
@@ -326,10 +369,12 @@ export class HarborBackend implements ExecutionBackend {
 		// harbor imports to drive it.
 		let agent: string;
 		let agentImportPath: string | null = null;
+		let binding: HarnessBackendBinding | undefined;
 		if (optionAgent) {
 			agent = optionAgent;
+			binding = harness.backends.harbor;
 		} else {
-			const binding = requireBackendBinding(harness, this.id);
+			binding = requireHarborBinding(harness);
 			agent = binding.agentName ?? harness.name;
 			agentImportPath = binding.agentImportPath ?? null;
 		}
@@ -421,7 +466,7 @@ export class HarborBackend implements ExecutionBackend {
 		// providers file: its contents follow this trial's model.
 		const modelsYaml = cfg.gateway ? writeModelsYaml(jobDir, cfg) : "";
 		const harborEnv: Record<string, string> =
-			agent === "veyyon"
+			binding?.sourceMount || binding?.authGateway
 				? buildHarborEnv(cfg, modelsYaml, null, "latest", this.#sourceMount)
 				: {
 						...(process.env as Record<string, string>),
@@ -525,10 +570,9 @@ export class HarborBackend implements ExecutionBackend {
 
 		if (trialDir) {
 			// Scan for key log files and artifacts inside trialDir
+			const relAgentLog = harborAgentLogPath(agent);
 			const candidateLogFiles = [
-				"agent/oracle.txt",
-				"agent/veyyon.txt",
-				"agent/nop.txt",
+				relAgentLog,
 				"verifier/reward.txt",
 				"verifier/reward.json",
 				"logs/verifier/reward.txt",
@@ -554,7 +598,8 @@ export class HarborBackend implements ExecutionBackend {
 		// A trial whose agent never reached a provider produced no attempt at the task,
 		// and its verifier's 0 is a measurement of the infrastructure, not of the
 		// harness. Report it as an error so the run records `reward: null`.
-		const agentLog = fileMap["agent/veyyon.txt"];
+		const relAgentLog = harborAgentLogPath(agent);
+		const agentLog = fileMap[relAgentLog];
 		if (agentLog) {
 			const setupFailure = await agentSetupFailure(agentLog);
 			if (setupFailure) {
