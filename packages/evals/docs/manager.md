@@ -49,6 +49,14 @@ the reason, and changes nothing.
 
 State is stored in `<jobs-dir>/_manager/evals.sqlite`.
 
+A run with no owning process — one the CLI started, or one a previous manager left behind — takes its
+status from its own job directory. A job result that states a finish time settles it. Otherwise the
+newest write across the directory and its `result.json` decides: written within the last 30 minutes
+the run stays `running`, since an orphaned runner may still be producing trials, and older than that
+it becomes `complete` when its trial count reached the job's total and `failed` when it did not. The
+recorded finish time is that write, never the time of the sync, and a directory carrying no usable
+timestamp is not read as a live run.
+
 ## Harbor runner options
 
 | Option | Default | Description |
