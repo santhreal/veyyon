@@ -62,6 +62,7 @@
 - Daemon completion parsing and eval-store serialization errors use shared type guards; behavior is unchanged.
 - Streaming `message_update` snapshots share tool-call arguments by reference instead of deep-cloning them on every delta, cutting a large structured tool call's per-delta snapshot cost from ~0.5 s to ~8 ms, while terminal messages and the authoritative tool call a `toolcall_end` carries keep the sanitizing deep clone.
 - Superseded and useless tool results are now pruned as a batch whose combined size pays for the prompt-cache rewrite it forces, instead of only when a single result sits within 8,000 tokens of the end of the conversation.
+- The tokenizer takes `estimateTokensFromText` from `@veyyon/utils/tokens` rather than the package barrel, cutting the modules a token estimate loads from 92 to 10.
 - Formatted tool-call loop guard whitespace; behavior is unchanged.
 - The Anthropic provider reads its endpoint, credential placement, rejected betas and retry policy from the catalog's wire-capability table instead of comparing provider ids at seventeen call sites.
 - `ToolCall.arguments` is a `Readonly<Record<string, unknown>>`, so a producer replaces the object instead of writing into one a streaming snapshot already shares.
@@ -79,6 +80,9 @@
 ### Fixed
 
 - Launch daemon teardown and browser process cleanup no longer throw on a host where the native addon cannot load; a daemon falls back to ending its PTY and a browser scan reports no candidates, instead of the failure ending the session ([#917](https://github.com/santhreal/veyyon/issues/917)).
+- `ctrl+g` passes a GUI editor the flag that makes it block, so an edit made in VS Code, Cursor, Zed or Sublime is read back into the composer instead of the editor forking and the composer keeping the text it already held.
+- A `/guided` goal turn survives a model that wraps its JSON in prose, a code fence or a brace run that is not JSON, instead of ending the interview with a parse error.
+- A `/guided` goal turn shows a spinner while it runs, so the screen between an answer and the next question no longer looks inert.
 - A streaming answer no longer composes a frame one row taller than the viewport on every chunk, which moved the window down to fit and back up on the next frame and shook the screen for as long as the answer kept arriving.
 - Mounting a chat block no longer routes home-anchor slack for rows the content has already taken, which composed a frame taller than the viewport and moved the window on that frame and back on the next.
 - An `irc send` with `await` ends as soon as its recipient is terminated or leaves the roster, instead of blocking for the full timeout, or forever at `timeoutMs: 0`, on a reply that can no longer arrive; a recipient that is merely idle or parked is still woken by the delivery and given the full timeout to answer.
@@ -175,6 +179,7 @@
 - Aborting while paused rejects the pause wait and prevents the agent loop from starting another provider turn or paused tool.
 - A branch-summary reserve at or above the model's context window now falls back to the proportional 15% reserve instead of leaving a non-positive budget, which the entry preparation read as "no limit" and which sent the whole branch.
 - A tool that blocks on only some of its operations declares interruptibility per call, so an interrupt arriving beside a non-blocking or malformed call no longer replaces that call's own result with a skipped placeholder.
+- A first-event stall is retried once on every provider that does not run its own stall ladder, so a single silent connect on OpenAI completions, OpenAI Responses, Azure Responses or Ollama no longer ends the turn unretried.
 - A persisted 400/413 request dump redacts `x-goog-api-key`, so a rejected Google Generative AI or Vertex request no longer writes the operator's plaintext API key into `logs/http-400-requests/`.
 - A failed Amazon Bedrock turn reports its elapsed duration again, instead of carrying time-to-first-token with no total while a successful turn reported both.
 - Normalized cumulative tool-call argument delta snapshots for OpenAI Codex streams while preserving true incremental deltas on standard OpenAI Responses streams via declared per-provider wire shapes.
