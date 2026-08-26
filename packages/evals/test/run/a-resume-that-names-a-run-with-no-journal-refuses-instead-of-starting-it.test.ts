@@ -39,6 +39,9 @@ import {
 } from "../../src/run";
 import { registerAllSuites } from "../../src/suites";
 
+/** Any journal these cases open belongs to one plan; the digest itself is not the subject. */
+const PLAN_DIGEST = "0123456789abcdef";
+
 // The registries are process-wide, and a chunk of the test bucket may hold no other file
 // that populates them.
 registerAllSuites();
@@ -55,7 +58,7 @@ async function runsDir(): Promise<string> {
 
 /** A journal with a header and no trial: the shape a run interrupted before its first trial leaves. */
 async function emptyJournal(dir: string, runId: string): Promise<string> {
-	const journal = await openRunJournal(dir, runId);
+	const journal = await openRunJournal(dir, runId, PLAN_DIGEST);
 	await journal.close();
 	return journalPathFor(dir, runId);
 }
@@ -114,7 +117,7 @@ describe("a resume of a run with no journal", () => {
 
 	it("is the verdict a dry run states, so both paths agree", async () => {
 		const dir = await runsDir();
-		expect(await describeResume(dir, "typo-in-the-run-id")).toBe(
+		expect(await describeResume(dir, "typo-in-the-run-id", PLAN_DIGEST)).toBe(
 			`REFUSED — no trial journal at ${journalPathFor(dir, "typo-in-the-run-id")}: there is nothing to resume`,
 		);
 	});
@@ -122,7 +125,7 @@ describe("a resume of a run with no journal", () => {
 	it("states an existing journal as resumable, with the count it would skip", async () => {
 		const dir = await runsDir();
 		await emptyJournal(dir, "started-then-died");
-		expect(await describeResume(dir, "started-then-died")).toBe(
+		expect(await describeResume(dir, "started-then-died", PLAN_DIGEST)).toBe(
 			`ok — 0 settled trial(s) in ${journalPathFor(dir, "started-then-died")} would be skipped`,
 		);
 	});
@@ -133,10 +136,15 @@ describe("a resume of a run with no journal", () => {
 		await fs.mkdir(path.dirname(journalPath), { recursive: true });
 		await fs.writeFile(
 			journalPath,
-			`${JSON.stringify({ journal: RUN_JOURNAL_KIND, version: RUN_JOURNAL_VERSION + 1, runId: "written-by-a-later-build" })}\n`,
+			`${JSON.stringify({
+				journal: RUN_JOURNAL_KIND,
+				version: RUN_JOURNAL_VERSION + 1,
+				runId: "written-by-a-later-build",
+				plan: PLAN_DIGEST,
+			})}\n`,
 		);
 
-		const verdict = await describeResume(dir, "written-by-a-later-build");
+		const verdict = await describeResume(dir, "written-by-a-later-build", PLAN_DIGEST);
 		expect(verdict).toStartWith("REFUSED — ");
 		expect(verdict).toContain("Start a new run id instead of resuming this one");
 	});

@@ -27,6 +27,10 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { TrialResultRecord } from "../../src/core";
+
+/** Any journal these cases open belongs to one plan; the digest itself is not the subject. */
+const PLAN_DIGEST = "0123456789abcdef";
+
 import {
 	CorruptRunJournalError,
 	journalPathFor,
@@ -66,12 +70,12 @@ async function writeJournal(lines: readonly string[]): Promise<string> {
 }
 
 function headerLine(version: number): string {
-	return JSON.stringify({ journal: RUN_JOURNAL_KIND, version, runId: RUN_ID });
+	return JSON.stringify({ journal: RUN_JOURNAL_KIND, version, runId: RUN_ID, plan: PLAN_DIGEST });
 }
 
 describe("a journal of another shape is refused instead of resumed", () => {
 	it("opens a new journal with a header stating the record shape, before any trial", async () => {
-		const journal = await openRunJournal(runsDir, RUN_ID);
+		const journal = await openRunJournal(runsDir, RUN_ID, PLAN_DIGEST);
 		await journal.append(trial("t1"));
 		await journal.close();
 
@@ -80,13 +84,14 @@ describe("a journal of another shape is refused instead of resumed", () => {
 			journal: RUN_JOURNAL_KIND,
 			version: RUN_JOURNAL_VERSION,
 			runId: RUN_ID,
+			plan: PLAN_DIGEST,
 		});
 		expect(JSON.parse(lines[1]).cell.task).toBe("t1");
 		expect(lines).toHaveLength(2);
 	});
 
 	it("reads back every appended trial in the order it settled", async () => {
-		const journal = await openRunJournal(runsDir, RUN_ID);
+		const journal = await openRunJournal(runsDir, RUN_ID, PLAN_DIGEST);
 		for (const task of ["t1", "t2", "t3"]) await journal.append(trial(task));
 		await journal.close();
 
@@ -95,7 +100,7 @@ describe("a journal of another shape is refused instead of resumed", () => {
 	});
 
 	it("reads a header-only journal as no settled trials", async () => {
-		const journal = await openRunJournal(runsDir, RUN_ID);
+		const journal = await openRunJournal(runsDir, RUN_ID, PLAN_DIGEST);
 		await journal.close();
 		expect(await readRunJournal(runsDir, RUN_ID)).toEqual([]);
 	});
@@ -105,11 +110,11 @@ describe("a journal of another shape is refused instead of resumed", () => {
 	});
 
 	it("reopens its own journal and appends without a second header", async () => {
-		const first = await openRunJournal(runsDir, RUN_ID);
+		const first = await openRunJournal(runsDir, RUN_ID, PLAN_DIGEST);
 		await first.append(trial("t1"));
 		await first.close();
 
-		const second = await openRunJournal(runsDir, RUN_ID);
+		const second = await openRunJournal(runsDir, RUN_ID, PLAN_DIGEST);
 		await second.append(trial("t2"));
 		await second.close();
 
@@ -141,10 +146,10 @@ describe("a journal of another shape is refused instead of resumed", () => {
 
 	it("refuses to append to a journal of another shape rather than mixing shapes", async () => {
 		await writeJournal([headerLine(RUN_JOURNAL_VERSION + 1), JSON.stringify(trial("t1")), ""]);
-		await expect(openRunJournal(runsDir, RUN_ID)).rejects.toThrow(StaleRunJournalError);
+		await expect(openRunJournal(runsDir, RUN_ID, PLAN_DIGEST)).rejects.toThrow(StaleRunJournalError);
 
 		await writeJournal([JSON.stringify(trial("t1")), ""]);
-		await expect(openRunJournal(runsDir, RUN_ID)).rejects.toThrow(StaleRunJournalError);
+		await expect(openRunJournal(runsDir, RUN_ID, PLAN_DIGEST)).rejects.toThrow(StaleRunJournalError);
 	});
 
 	it("absorbs a torn final line and keeps the trials that settled before it", async () => {

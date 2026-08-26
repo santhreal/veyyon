@@ -53,6 +53,14 @@ same trial twice under two arm names.
 trial that already settled. A run id with no journal is rejected rather than started, so a typo
 cannot bill a fresh run of every task under a name that looked half finished.
 
+A run id names one plan. The journal header records a digest of the suite version, dataset sha,
+backend, and every variant's harness, overlay paths, model and attachments, and an invocation that
+plans anything else under that run id is rejected — with or without `--resume`. A settled trial is
+matched by suite, task, variant name and repeat, and a variant name carries the model only when a
+run varies more than one, so without the digest `--resume --model b` skipped the trials run against
+model a and reported them as b's. Narrowing `--tasks` or raising `--repeats` is the same plan
+reaching fewer or more cells, and resumes.
+
 A `--suite` list runs each suite in turn and writes one run record per suite, because a record is
 suite-tagged and two suites' trials are never comparable. A `--tasks` entry carrying a `<suite>=`
 prefix belongs to that suite alone; an unprefixed entry applies to every suite. `--dataset-dir` can

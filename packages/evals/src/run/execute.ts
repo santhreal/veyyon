@@ -35,9 +35,11 @@ import {
 	openRunJournal,
 	ResumeWithoutJournalError,
 	readRunJournal,
+	requireJournalPlan,
 	sanitizeTrialRecord,
 } from "./journal";
 import type { RunPlan } from "./plan";
+import { planIdentity } from "./plan-identity";
 
 export class BackendPreflightError extends Error {
 	readonly backendId: string;
@@ -163,6 +165,11 @@ export async function executeRun(options: ExecuteRunOptions): Promise<EvalRunRec
 		throw new ResumeWithoutJournalError(journalPathFor(options.runsDir, plan.runId), plan.runId);
 	}
 
+	// A run id names one plan. The cell key does not carry the model of a single-model run,
+	// so resuming under a different --model matched the prior model's trials as settled and
+	// reported them as this arm's; a rerun without --resume appended to the same journal.
+	await requireJournalPlan(options.runsDir, plan.runId, planIdentity(plan));
+
 	// An axis nobody applies is refused before a preflight can say `ok`. A dropped
 	// `--prompts` path otherwise runs the whole matrix and reports two identical arms as a
 	// comparison.
@@ -196,7 +203,7 @@ export async function executeRun(options: ExecuteRunOptions): Promise<EvalRunRec
 
 	await backend.prepare(context);
 
-	const journal = await openRunJournal(options.runsDir, plan.runId);
+	const journal = await openRunJournal(options.runsDir, plan.runId, planIdentity(plan));
 
 	const results = new Array<TrialResultRecord | undefined>(plan.cells.length);
 	let nextIndex = 0;

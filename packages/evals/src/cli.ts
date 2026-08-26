@@ -16,7 +16,7 @@
 
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { errorMessage } from "@veyyon/utils";
+import { errorMessage, logger } from "@veyyon/utils";
 import { registerAllBackends } from "./backends";
 import type {
 	BackendId,
@@ -52,8 +52,10 @@ import {
 	executeRun,
 	journalExists,
 	journalPathFor,
+	planIdentity,
 	type RunPlan,
 	readRunJournal,
+	requireJournalPlan,
 } from "./run";
 import { registerAllSuites } from "./suites";
 
@@ -443,12 +445,13 @@ export function describeRegistries(
  * before its first trial is resumable, and reporting it as missing would send an operator
  * to a new run id for nothing.
  */
-export async function describeResume(runsDir: string, runId: string): Promise<string> {
+export async function describeResume(runsDir: string, runId: string, planDigest: string): Promise<string> {
 	const journal = journalPathFor(runsDir, runId);
 	if (!(await journalExists(runsDir, runId))) {
 		return `REFUSED — no trial journal at ${journal}: there is nothing to resume`;
 	}
 	try {
+		await requireJournalPlan(runsDir, runId, planDigest);
 		const prior = await readRunJournal(runsDir, runId);
 		return `ok — ${prior.length} settled trial(s) in ${journal} would be skipped`;
 	} catch (error) {
@@ -666,7 +669,9 @@ async function runOneSuite(args: EvalsCliArgs, suite: EvalSuite, running: readon
 		// What --resume would find. A dry run that reported nothing about it let a mistyped
 		// --run-id read as a plan for a fresh run, which is what the real invocation then
 		// paid for.
-		const resumeLine = args.resume ? `  resume     ${await describeResume(runsDir, plan.runId)}` : null;
+		const resumeLine = args.resume
+			? `  resume     ${await describeResume(runsDir, plan.runId, planIdentity(plan))}`
+			: null;
 		const verdicts = [
 			// Reached only when the directories and the axes checked out above, which is why these
 			// state `ok` rather than checking again: a dry run names the same verdicts the real run
@@ -725,6 +730,14 @@ async function runOneSuite(args: EvalsCliArgs, suite: EvalSuite, running: readon
 				process.stdout.write(`[${index + 1}/${total}] ${trial.cell.variant} ${trial.cell.task} — ${outcome}\n`);
 			},
 		});
+	} catch (error) {
+		// Every refusal `executeRun` states — a journal of another plan, a preflight that said
+		// no, a directory it cannot use — arrived here as an unhandled rejection: Bun printed a
+		// stack trace over the message, and in a multi-suite run it killed the suites after this
+		// one, which this file documents as independent.
+		process.stderr.write(`${errorMessage(error)}\n`);
+		logger.error("evals run failed", { runId: plan.runId, suite: suite.name, error });
+		return 1;
 	} finally {
 		process.removeListener("SIGINT", onSigInt);
 		process.removeListener("SIGTERM", onSigTerm);

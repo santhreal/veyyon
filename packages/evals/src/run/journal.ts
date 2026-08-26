@@ -15,6 +15,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { TrialArtifacts, TrialCell, TrialResultRecord } from "../core";
 import { requirePathSegment } from "../paths";
+import { PlanChangedError } from "./plan-identity";
 
 export const MAX_RAW_OUTPUT_CHARS = 65_536; // 64 KiB character ceiling
 
@@ -25,12 +26,19 @@ export const RUN_JOURNAL_KIND = "veyyon-evals-trials";
  * The trial record shape the journal writes. Bump this whenever a reader of a settled trial
  * starts depending on a field or a meaning the previous shape did not carry.
  */
-export const RUN_JOURNAL_VERSION = 1;
+export const RUN_JOURNAL_VERSION = 2;
 
 export interface RunJournalHeader {
 	readonly journal: string;
 	readonly version: number;
 	readonly runId: string;
+	/**
+	 * The digest of the plan these trials belong to (`planIdentity`). A cell key does not
+	 * distinguish the model of a single-model run, nor two overlays sharing a basename, so
+	 * without this a resume matched another plan's settled trials as its own. Null when the
+	 * journal states none, which resumes as no plan rather than as any plan.
+	 */
+	readonly plan: string | null;
 }
 
 /** A journal written before this shape existed, or by a build that writes another one. */
@@ -118,7 +126,14 @@ function parseHeader(line: string): RunJournalHeader | null {
 	const header = parsed as Record<string, unknown>;
 	if (header.journal !== RUN_JOURNAL_KIND) return null;
 	if (typeof header.version !== "number") return null;
-	return { journal: RUN_JOURNAL_KIND, version: header.version, runId: String(header.runId ?? "") };
+	return {
+		journal: RUN_JOURNAL_KIND,
+		version: header.version,
+		runId: String(header.runId ?? ""),
+		// Absent in a journal of this version written wrong, and in one written by a build with
+		// no plan digest at all. Either way it names no plan, so nothing resumes from it.
+		plan: typeof header.plan === "string" ? header.plan : null,
+	};
 }
 
 /**
@@ -192,20 +207,43 @@ export interface RunJournal {
 }
 
 /**
+ * Refuses when a journal on disk belongs to another plan, and says nothing when there is no
+ * journal yet. Called before a preflight so a plan change costs a second rather than a
+ * staged container, and again inside `openRunJournal`, which is the seam that would append
+ * the mismatched line.
+ */
+export async function requireJournalPlan(runsDir: string, runId: string, planDigest: string): Promise<void> {
+	const journalPath = journalPathFor(runsDir, runId);
+	const existing = await requireReadableJournal(journalPath);
+	if (existing !== null && existing.header.plan !== planDigest) {
+		throw new PlanChangedError(journalPath, existing.header.plan, planDigest);
+	}
+}
+
+/**
  * Opens or creates an append-only JSONL journal for a run.
  * Concurrent appends are serialized and fsynced to disk per line.
- * A journal already on disk must state the record shape this build writes.
+ * A journal already on disk must state the record shape this build writes and the plan this
+ * invocation runs, so one run id never holds trials from two plans.
  */
-export async function openRunJournal(runsDir: string, runId: string): Promise<RunJournal> {
+export async function openRunJournal(runsDir: string, runId: string, planDigest: string): Promise<RunJournal> {
 	const journalPath = journalPathFor(runsDir, runId);
 	await fs.mkdir(path.dirname(journalPath), { recursive: true });
 
 	const existing = await requireReadableJournal(journalPath);
+	if (existing !== null && existing.header.plan !== planDigest) {
+		throw new PlanChangedError(journalPath, existing.header.plan, planDigest);
+	}
 	const handle = await fs.open(journalPath, "a");
 	let writeQueue = Promise.resolve();
 
 	if (existing === null) {
-		const header: RunJournalHeader = { journal: RUN_JOURNAL_KIND, version: RUN_JOURNAL_VERSION, runId };
+		const header: RunJournalHeader = {
+			journal: RUN_JOURNAL_KIND,
+			version: RUN_JOURNAL_VERSION,
+			runId,
+			plan: planDigest,
+		};
 		writeQueue = writeQueue.then(async () => {
 			await handle.write(`${JSON.stringify(header)}\n`);
 			await handle.sync();
