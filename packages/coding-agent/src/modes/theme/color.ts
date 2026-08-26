@@ -484,6 +484,8 @@ const BASIC_COLORS = [
 	"#00ffff",
 	"#ffffff",
 ] as const;
+const CUBE_HEX = ["00", "5f", "87", "af", "d7", "ff"];
+const HEX_CHARS = "0123456789abcdef";
 
 export function ansi256ToHex(index: number): string {
 	if (index < 16) {
@@ -496,12 +498,11 @@ export function ansi256ToHex(index: number): string {
 		const r = Math.floor(cubeIndex / 36);
 		const g = Math.floor((cubeIndex % 36) / 6);
 		const b = cubeIndex % 6;
-		const toHex = (n: number) => (n === 0 ? 0 : 55 + n * 40).toString(16).padStart(2, "0");
-		return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+		return `#${CUBE_HEX[r]}${CUBE_HEX[g]}${CUBE_HEX[b]}`;
 	}
 
 	// Grayscale (232-255): 24 shades
 	const gray = 8 + (index - 232) * 10;
-	const grayHex = gray.toString(16).padStart(2, "0");
+	const grayHex = `${HEX_CHARS[gray >> 4]}${HEX_CHARS[gray & 0xf]}`;
 	return `#${grayHex}${grayHex}${grayHex}`;
 }
