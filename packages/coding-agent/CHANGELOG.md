@@ -44,6 +44,7 @@
 - Daemon completion parsing and eval-store serialization errors use shared type guards; behavior is unchanged.
 ### Fixed
 
+- Brave and Jina web search honor an API key held in the credential store, instead of reporting themselves unconfigured unless the key was also exported as an environment variable.
 - A JSON-RPC header field whose name merely ends in `Content-Length`, or a server log line that mentions it, no longer sets the frame length and parks the language-server connection on a byte count the stream never reaches.
 - A grep over an archive member removes its extracted scratch directory when extraction fails partway, instead of leaving it behind for the life of the host.
 - Waiting for a language server's project load removes its abort listener, instead of leaving one on the turn's signal for every feature request made during that turn.
