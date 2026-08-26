@@ -1,5 +1,5 @@
 import { countTokens as countTokensNat } from "@veyyon/natives";
-import { estimateTokensFromText } from "@veyyon/utils";
+import { estimateTokensFromText } from "@veyyon/utils/tokens";
 
 const accurate = process.env.VEYYON_TOKENIZER_ACCURATE === "1" && Bun.env.NODE_ENV !== "test";
 
