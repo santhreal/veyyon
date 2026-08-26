@@ -93,6 +93,7 @@ const HTML_TAG_REGEX = /<\/?(?:br|p|ol|ul|li|span|summary|text|code|hr|blockquot
 // `<hr>` becomes a rule and balanced `<blockquote>…</blockquote>` renders with
 // quote styling. Group 1 captures blockquote inner content; it is undefined for hr.
 const BLOCK_HTML_REGEX = /<hr\b[^>]*\/?>|<blockquote\b[^>]*>([\s\S]*?)<\/blockquote>/gi;
+const HEADING_PREFIXES = ["# ", "## ", "### ", "#### ", "##### ", "###### "];
 
 function htmlTagName(tag: string): string {
 	const match = /^<\/?\s*([A-Za-z][A-Za-z0-9:-]*)/.exec(tag);
@@ -1845,7 +1846,6 @@ export class Markdown implements Component {
 		switch (token.type) {
 			case "heading": {
 				const headingLevel = token.depth;
-				const headingPrefix = `${"#".repeat(headingLevel)} `;
 				const headingText = this.#renderInlineTokens(token.tokens || [], styleContext);
 				const headingPlainText = plainInlineTokens(token.tokens || []);
 				let styledHeading: string;
@@ -1866,7 +1866,7 @@ export class Markdown implements Component {
 				} else if (headingLevel === 2) {
 					styledHeading = this.#theme.heading(this.#theme.bold(headingText));
 				} else {
-					styledHeading = this.#theme.heading(this.#theme.bold(headingPrefix + headingText));
+					styledHeading = this.#theme.heading(this.#theme.bold((HEADING_PREFIXES[headingLevel - 1] ?? "#".repeat(headingLevel) + " ") + headingText));
 				}
 				lines.push(styledHeading);
 				if (nextTokenType && nextTokenType !== "space") {
