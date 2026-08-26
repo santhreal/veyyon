@@ -116,10 +116,14 @@ describe("AsyncJobManager singleton across concurrent top-level sessions", () =>
 			const primaryManager = AsyncJobManager.instance();
 			expect(primaryManager).toBeDefined();
 
-			// Register a long-running job on the primary's manager under the
-			// MAIN_AGENT_ID owner — the same owner the secondary would inherit by
-			// default. The secondary's dispose-time `cancelOwnAsyncJobs` must NOT
-			// cancel this job (issue #1923).
+			// Register a long-running job under the primary's OWN owner id, read
+			// from the session rather than typed here: every interactive driver is
+			// keyed `main:<sessionId>`, so a literal name matches whichever session
+			// happened to claim it and the test would assert nothing once two
+			// sessions exist. The secondary's dispose-time `cancelOwnAsyncJobs`
+			// must not reach this job (issue #1923).
+			const primaryOwner = primary.getAgentId();
+			expect(primaryOwner).toBeTruthy();
 			const release = Promise.withResolvers<string>();
 			const jobId = primaryManager!.register(
 				"bash",
@@ -130,12 +134,18 @@ describe("AsyncJobManager singleton across concurrent top-level sessions", () =>
 					await Promise.race([release.promise, aborted.promise]);
 					return signal.aborted ? "aborted" : "completed";
 				},
-				{ ownerId: "Main" },
+				{ ownerId: primaryOwner ?? undefined },
 			);
 			expect(primary.getAsyncJobSnapshot()?.running.some(job => job.id === jobId)).toBe(true);
 
 			const secondary = await spawnTopLevelSession();
 			try {
+				// The reason the isolation holds is structural rather than lucky:
+				// two top-level sessions are two conversations and carry two owner
+				// ids, so `cancelAll({ ownerId })` cannot reach across them. A
+				// build that keys both drivers the same makes the assertion below
+				// pass only until one of them cancels.
+				expect(secondary.getAgentId()).not.toBe(primaryOwner);
 				expect(secondary.getAsyncJobSnapshot()).toBeNull();
 			} finally {
 				await secondary.dispose();
