@@ -2763,7 +2763,7 @@ const streamOpenAICodexResponsesOnce = (
  * Retries Codex terminal completions that contain no visible assistant output.
  */
 export const streamOpenAICodexResponses: StreamFunction<"openai-codex-responses"> = (model, context, options) =>
-	withEmptyCompletionRetry(model, context, options, streamOpenAICodexResponsesOnce);
+	withEmptyCompletionRetry(model, context, options, streamOpenAICodexResponsesOnce, { providerRetriesStalls: true });
 
 export async function prewarmOpenAICodexResponses(
 	model: Model<"openai-codex-responses">,

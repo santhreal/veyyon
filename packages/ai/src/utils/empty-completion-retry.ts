@@ -16,11 +16,20 @@
  * Mirrors the Gemini empty-response policy in `google-shared` (which keeps its
  * own integrated loop) and is shared by the OpenAI-completions and
  * Anthropic-messages providers.
+ *
+ * A PRE-RESPONSE STALL is the second member of the same class: the turn
+ * delivered nothing, not because the provider answered emptily but because it
+ * never answered at all. A first connect that produces no first event is
+ * common, and retrying it once is what keeps a turn alive; a second
+ * consecutive stall is a dead endpoint. Providers that already run their own
+ * bounded stall ladder (Anthropic, Codex) declare `providerRetriesStalls` so
+ * the two ladders never multiply.
  */
 import { scheduler } from "node:timers/promises";
 import { discardAttemptUsage } from "@veyyon/catalog/models";
 import type { Api, AssistantMessage, AssistantMessageEvent, Context, Model } from "../types";
 import { AssistantMessageEventStream } from "./event-stream";
+import { isPreResponseStallMessage, openStallLadderBudget, PRE_RESPONSE_STALL_ATTEMPTS } from "./first-event-budget";
 
 export const MAX_EMPTY_COMPLETION_RETRIES = 2;
 export const EMPTY_COMPLETION_BASE_DELAY_MS = 500;
@@ -73,12 +82,24 @@ function isMeaningfulCompletionEvent(event: AssistantMessageEvent): boolean {
 interface EmptyCompletionRetryOptions {
 	signal?: AbortSignal;
 	providerRetryWait?: (delayMs: number, signal?: AbortSignal) => Promise<void>;
+	/** The caller's declared per-attempt first-event deadline, when it set one. */
+	streamFirstEventTimeoutMs?: number;
+}
+
+/** How a provider divides stall-retry responsibility with this wrapper. */
+export interface TurnRetryPolicy {
+	/**
+	 * True when the provider runs its own bounded pre-response stall ladder, so
+	 * this wrapper must not add a second one on top of it.
+	 */
+	providerRetriesStalls?: boolean;
 }
 
 /**
- * Wrap a single-attempt provider stream with bounded empty-completion retries.
+ * Wrap a single-attempt provider stream with bounded retries for a turn that
+ * delivered nothing: an empty completion, or a pre-response stall.
  * `attempt` MUST create a fresh request (and its own output message) on each
- * call so a retry never inherits stale metadata from an empty attempt.
+ * call so a retry never inherits stale metadata from a discarded attempt.
  *
  * A discarded attempt's spend is not stale metadata: the provider billed the
  * whole prompt (cache write included) for the empty answer it returned, so each
@@ -89,6 +110,7 @@ export function withEmptyCompletionRetry<TApi extends Api, O extends EmptyComple
 	context: Context,
 	options: O | undefined,
 	attempt: (model: Model<TApi>, context: Context, options?: O) => AssistantMessageEventStream,
+	policy?: TurnRetryPolicy,
 ): AssistantMessageEventStream {
 	const outer = new AssistantMessageEventStream();
 	const signal = options?.signal;
@@ -98,8 +120,14 @@ export function withEmptyCompletionRetry<TApi extends Api, O extends EmptyComple
 		discardedUsages.length = 0;
 		return delivered;
 	};
+	// The declared first-event timeout is one attempt's deadline; the whole
+	// pre-first-event phase is that deadline times the stall allowance, so a
+	// retry can never push a turn past a multiple of the caller's own number.
+	const stallBudget = openStallLadderBudget(options?.streamFirstEventTimeoutMs);
+	let stallAttempt = 0;
+	let emptyAttempt = 0;
 	void (async () => {
-		for (let emptyAttempt = 0; ; emptyAttempt++) {
+		while (true) {
 			const inner = attempt(model, context, options);
 			const buffered: AssistantMessageEvent[] = [];
 			let committed = false;
@@ -142,10 +170,28 @@ export function withEmptyCompletionRetry<TApi extends Api, O extends EmptyComple
 				message.stopReason === "stop" &&
 				!message.errorMessage &&
 				(message.usage?.output ?? 0) <= 1 &&
-				!hasVisibleAssistantContent(message);
+				!hasVisibleAssistantContent(message) &&
+				emptyAttempt < MAX_EMPTY_COMPLETION_RETRIES;
 
-			if (isRetryableEmpty && emptyAttempt < MAX_EMPTY_COMPLETION_RETRIES) {
-				const delayMs = EMPTY_COMPLETION_BASE_DELAY_MS * 2 ** emptyAttempt;
+			// A turn that never reached its first event is the other way a turn
+			// delivers nothing, and the one a provider without its own ladder
+			// used to surface unretried. Only an uncommitted attempt qualifies:
+			// once a delta is out, replaying the request would duplicate it.
+			const failure = terminal?.type === "error" ? terminal.error : undefined;
+			const isRetryableStall =
+				!committed &&
+				policy?.providerRetriesStalls !== true &&
+				failure !== undefined &&
+				failure.stopReason !== "aborted" &&
+				signal?.aborted !== true &&
+				isPreResponseStallMessage(failure.errorMessage ?? "") &&
+				stallAttempt < PRE_RESPONSE_STALL_ATTEMPTS - 1 &&
+				!stallBudget.spent();
+
+			if (isRetryableEmpty || isRetryableStall) {
+				// A stalled attempt already spent the whole first-event deadline;
+				// the backoff that paces an empty completion adds nothing to it.
+				const delayMs = isRetryableStall ? 0 : EMPTY_COMPLETION_BASE_DELAY_MS * 2 ** emptyAttempt;
 				try {
 					signal?.throwIfAborted();
 					if (options?.providerRetryWait) await options.providerRetryWait(delayMs, signal);
@@ -158,9 +204,15 @@ export function withEmptyCompletionRetry<TApi extends Api, O extends EmptyComple
 					outer.fail(signal?.aborted ? signal.reason : waitError);
 					return;
 				}
-				// The buffered `start` from this empty attempt is dropped, but the
-				// prompt it billed is not: keep its usage for the delivered message.
-				if (message?.usage) discardedUsages.push(message.usage);
+				// The buffered `start` from this discarded attempt is dropped, but
+				// the prompt it billed is not: keep its usage for the delivered
+				// message. A stall bills nothing, so it usually carries none.
+				const discardedUsage = isRetryableStall ? failure?.usage : message?.usage;
+				if (discardedUsage) discardedUsages.push(discardedUsage);
+				// The two ladders are separate budgets: a stall must not consume
+				// the allowance an empty completion gets, or vice versa.
+				if (isRetryableStall) stallAttempt++;
+				else emptyAttempt++;
 				continue;
 			}
 
