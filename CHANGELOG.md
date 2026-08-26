@@ -6,6 +6,7 @@
 
 ### Added
 
+- The terminal renderer composer zone gains a formal defect oracle and automated invariant sweep suite covering prompt counts, output bleed, row mixing, footer alignment, mouse click routing, caret positioning, overflow, pad transparency, hairline integrity, and virtual scroll stability.
 - `prewalk.cheapModel` and `prewalk.strongModel` configure the cheap model prewalk switches into at the first edit and the strong model it starts on.
 - `/prewalk` accepts an optional model argument to arm a per-session target model override.
 - `edit.critiqueCodeMutations` prompts a bounded self-review before finalization after one turn modifies at least two distinct code files.
