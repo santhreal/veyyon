@@ -28,6 +28,7 @@ import { CombinedAutocompleteProvider } from "@veyyon/tui/autocomplete";
 import { Editor } from "@veyyon/tui/components/editor";
 import { parseSgrMouse } from "@veyyon/tui/mouse";
 import { type Component, Container, TUI } from "@veyyon/tui/tui";
+import { wheelDownAt } from "./helpers/sgr-mouse";
 import { defaultEditorTheme } from "./test-themes";
 import { VirtualTerminal } from "./virtual-terminal";
 
@@ -65,10 +66,6 @@ function motionAt(row: number, col: number): string {
 }
 
 /** SGR wheel-down notch at 0-based (row, col). */
-function wheelDownAt(row: number, col: number): string {
-	return `\x1b[<65;${col + 1};${row + 1}M`;
-}
-
 interface Harness {
 	tui: TUI;
 	term: VirtualTerminal;

@@ -16,15 +16,16 @@
  */
 
 import { ThinkingLevel } from "@veyyon/agent-core";
+import type { Component, OverlayHandle } from "@veyyon/tui";
 import { stripAnsi } from "@veyyon/utils/strip-ansi";
+import { WHEEL_DOWN, WHEEL_UP } from "../../../tui/test/helpers/sgr-mouse";
 import type { ComposerAccentState } from "../../src/modes/components/composer-chrome";
 import { isComposerPromptLine, isHairlineLine } from "../../src/modes/components/composer-defect-oracle";
 import { runComposerOracleScenario } from "./composer-oracle-runner";
 
-/** SGR wheel-up report at row 5, col 5. Scrolls back into history. */
-export const WHEEL_UP = "\x1b[<64;5;5M";
-/** SGR wheel-down report at row 5, col 5. Walks forward toward the live tail. */
-export const WHEEL_DOWN = "\x1b[<65;5;5M";
+// The wheel reports themselves are a TUI-level fact, owned by the tui package's test helpers and
+// re-exported here so a differential suite has one import rather than two.
+export { WHEEL_DOWN, WHEEL_UP } from "../../../tui/test/helpers/sgr-mouse";
 
 /**
  * Upper bound on notches needed to walk back to the tail. Far more than any case needs; a loop
@@ -76,12 +77,59 @@ export function contentLines(flavor: Flavor, count: number): string[] {
 	return Array.from({ length: count }, (_v, i) => contentLine(flavor, i));
 }
 
-/** One driven step. */
+/**
+ * One driven step.
+ *
+ * `overlay-open`/`overlay-close` and `scroll`/`return` are TRANSIENT: a sequence that closes every
+ * overlay it opened and walks back to the live tail ends in a state a cold mount can reproduce, so
+ * it stays comparable. A sequence that leaves an overlay up, or leaves the view frozen, has no cold
+ * equivalent and must be judged by an absolute invariant instead. `balanced` says which it is.
+ */
 export type Op =
 	| { kind: "append"; count: number }
 	| { kind: "shrink"; count: number }
 	| { kind: "resize"; width: number; height: number }
-	| { kind: "editor"; text: string };
+	| { kind: "editor"; text: string }
+	| { kind: "overlay-open"; rows: number; fullscreen?: boolean }
+	| { kind: "overlay-close" }
+	| { kind: "scroll"; notches: number }
+	| { kind: "return" };
+
+/**
+ * True when `ops` ends where a cold mount can meet it: every overlay closed, and the view back on
+ * the live tail. A suite comparing against `paintCold` must only drive balanced sequences.
+ */
+export function balanced(ops: readonly Op[]): boolean {
+	let open = 0;
+	let frozen = false;
+	for (const op of ops) {
+		if (op.kind === "overlay-open") open += 1;
+		else if (op.kind === "overlay-close") open = Math.max(0, open - 1);
+		else if (op.kind === "scroll") frozen = true;
+		else if (op.kind === "return") frozen = false;
+	}
+	return open === 0 && !frozen;
+}
+
+/**
+ * An overlay with a fixed row count and recognisable content.
+ *
+ * The engine treats a visible overlay as a reason to abandon a frozen scroll view and resume the
+ * live tail, and a `fullscreen` overlay borrows the alternate screen, where the engine paints only
+ * the modal and emits no scrollback bytes. Neither path had a driver before this component existed.
+ */
+export class OverlayMock implements Component {
+	constructor(readonly rows: number) {}
+
+	invalidate(): void {}
+
+	render(width: number): string[] {
+		return Array.from({ length: this.rows }, (_v, i) => `[overlay-row-${i}]`.slice(0, Math.max(1, width)));
+	}
+}
+
+/** A row of overlay content, for a suite asserting an overlay is or is not on screen. */
+export const OVERLAY_MARK = "[overlay-row-";
 
 /** Everything a cold mount needs to reproduce a state reached incrementally. */
 export interface State {
@@ -155,6 +203,7 @@ export async function paintIncrementally(
 ): Promise<Painted> {
 	const scenario = await mount(start, scrollIsolation);
 	const state: State = { ...start };
+	const overlays: OverlayHandle[] = [];
 	try {
 		for (const op of ops) {
 			if (op.kind === "append") {
@@ -171,10 +220,32 @@ export async function paintIncrementally(
 			} else if (op.kind === "editor") {
 				state.editor = op.text;
 				scenario.editor.setText(op.text);
-			} else {
+			} else if (op.kind === "resize") {
 				state.width = op.width;
 				state.height = op.height;
 				scenario.terminal.resize(state.width, state.height);
+			} else if (op.kind === "overlay-open") {
+				overlays.push(
+					scenario.tui.showOverlay(new OverlayMock(op.rows), {
+						fullscreen: op.fullscreen ?? false,
+					}),
+				);
+			} else if (op.kind === "overlay-close") {
+				overlays.pop()?.hide();
+				scenario.tui.requestRender();
+			} else if (op.kind === "scroll") {
+				// A wheel notch is only honoured once the frame it acts on has landed, so each
+				// notch settles even under `coalesced`: coalescing INPUT would test the terminal's
+				// input buffer, not the renderer.
+				for (let i = 0; i < op.notches; i += 1) {
+					scenario.terminal.sendInput(WHEEL_UP);
+					await scenario.advance();
+				}
+			} else {
+				for (let i = 0; i < MAX_RETURN_NOTCHES && scenario.tui.virtualScrollActive; i += 1) {
+					scenario.terminal.sendInput(WHEEL_DOWN);
+					await scenario.advance();
+				}
 			}
 			if (timing === "per-step") await scenario.advance();
 		}
@@ -210,6 +281,10 @@ export function describeOps(ops: readonly Op[]): string {
 			if (op.kind === "append") return `+${op.count}`;
 			if (op.kind === "shrink") return `-${op.count}`;
 			if (op.kind === "resize") return `${op.width}x${op.height}`;
+			if (op.kind === "overlay-open") return `overlay${op.rows}${op.fullscreen ? "-full" : ""}`;
+			if (op.kind === "overlay-close") return "overlay-close";
+			if (op.kind === "scroll") return `up${op.notches}`;
+			if (op.kind === "return") return "tail";
 			return `editor:${op.text.split("\n").length}`;
 		})
 		.join(" ");

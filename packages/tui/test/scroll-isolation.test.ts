@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { type Component, CURSOR_MARKER, type Focusable, TUI } from "@veyyon/tui";
+import { WHEEL_DOWN, WHEEL_UP } from "./helpers/sgr-mouse";
 import { StressRenderScheduler } from "./render-stress-scheduler";
 import { VirtualTerminal } from "./virtual-terminal";
 
@@ -41,9 +42,6 @@ class Editor implements Component, Focusable {
 function rows(prefix: string, n: number): string[] {
 	return Array.from({ length: n }, (_, i) => `${prefix}${i}`);
 }
-
-const WHEEL_UP = "\x1b[<64;5;5M";
-const WHEEL_DOWN = "\x1b[<65;5;5M";
 
 interface Rig {
 	term: VirtualTerminal;

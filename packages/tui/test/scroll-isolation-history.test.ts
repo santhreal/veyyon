@@ -8,6 +8,7 @@ import {
 	type NativeScrollbackReplay,
 	TUI,
 } from "@veyyon/tui";
+import { WHEEL_DOWN, WHEEL_UP } from "./helpers/sgr-mouse";
 import { StressRenderScheduler } from "./render-stress-scheduler";
 import { VirtualTerminal } from "./virtual-terminal";
 
@@ -27,8 +28,6 @@ import { VirtualTerminal } from "./virtual-terminal";
 
 const WIDTH = 40;
 const HEIGHT = 10;
-const WHEEL_UP = "\x1b[<64;5;5M";
-const WHEEL_DOWN = "\x1b[<65;5;5M";
 
 /**
  * A transcript that drops committed rows from its frame, mirroring

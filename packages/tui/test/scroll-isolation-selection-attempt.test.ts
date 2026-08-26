@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { type Component, CURSOR_MARKER, type Focusable, TUI } from "@veyyon/tui";
+import { pressAt, WHEEL_UP } from "./helpers/sgr-mouse";
 import { StressRenderScheduler } from "./render-stress-scheduler";
 import { VirtualTerminal } from "./virtual-terminal";
 
@@ -22,10 +23,7 @@ import { VirtualTerminal } from "./virtual-terminal";
 
 const WIDTH = 30;
 const HEIGHT = 8;
-const WHEEL_UP = "\x1b[<64;5;5M";
 
-/** SGR press/release reports. Wire coordinates are 1-based; rows/cols here are 0-based. */
-const press = (row: number, col: number) => `\x1b[<0;${col + 1};${row + 1}M`;
 const release = (row: number, col: number) => `\x1b[<0;${col + 1};${row + 1}m`;
 
 class Body implements Component {
@@ -83,7 +81,7 @@ describe("a drag the engine swallowed is reported to the host", () => {
 		const { term, tui, scheduler, count } = await rig();
 		try {
 			expect(tui.scrollIsolation).toBe(true);
-			term.sendInput(press(2, 4));
+			term.sendInput(pressAt(2, 4));
 			term.sendInput(release(2, 17));
 			await scheduler.drain(term);
 			expect(count()).toBe(1);
@@ -98,7 +96,7 @@ describe("a drag the engine swallowed is reported to the host", () => {
 		// changes; a column-only comparison would miss it entirely.
 		const { term, tui, scheduler, count } = await rig();
 		try {
-			term.sendInput(press(1, 6));
+			term.sendInput(pressAt(1, 6));
 			term.sendInput(release(4, 6));
 			await scheduler.drain(term);
 			expect(count()).toBe(1);
@@ -113,7 +111,7 @@ describe("a drag the engine swallowed is reported to the host", () => {
 		// there is nothing to explain, and a notice here would fire constantly.
 		const { term, tui, scheduler, count } = await rig();
 		try {
-			term.sendInput(press(3, 9));
+			term.sendInput(pressAt(3, 9));
 			term.sendInput(release(3, 9));
 			await scheduler.drain(term);
 			expect(count()).toBe(0);
@@ -129,7 +127,7 @@ describe("a drag the engine swallowed is reported to the host", () => {
 		const { term, tui, scheduler, count } = await rig();
 		try {
 			const footerRow = HEIGHT - 1;
-			term.sendInput(press(footerRow, 2));
+			term.sendInput(pressAt(footerRow, 2));
 			term.sendInput(release(footerRow, 12));
 			await scheduler.drain(term);
 			expect(count()).toBe(0);
@@ -151,7 +149,7 @@ describe("a drag the engine swallowed is reported to the host", () => {
 			// mouse rather than a terminal that never reported anything.
 			expect(tui.virtualScrollActive).toBe(true);
 
-			term.sendInput(press(2, 3));
+			term.sendInput(pressAt(2, 3));
 			term.sendInput(WHEEL_UP);
 			term.sendInput(release(5, 20));
 			await scheduler.drain(term);
@@ -168,9 +166,9 @@ describe("a drag the engine swallowed is reported to the host", () => {
 		// each attempt can have one. Two drags, two reports.
 		const { term, tui, scheduler, count } = await rig();
 		try {
-			term.sendInput(press(2, 4));
+			term.sendInput(pressAt(2, 4));
 			term.sendInput(release(2, 15));
-			term.sendInput(press(3, 4));
+			term.sendInput(pressAt(3, 4));
 			term.sendInput(release(3, 15));
 			await scheduler.drain(term);
 			expect(count()).toBe(2);
@@ -187,7 +185,7 @@ describe("a drag the engine swallowed is reported to the host", () => {
 		try {
 			tui.setScrollIsolation(false);
 			await scheduler.drain(term);
-			term.sendInput(press(2, 4));
+			term.sendInput(pressAt(2, 4));
 			term.sendInput(release(2, 15));
 			await scheduler.drain(term);
 			expect(count()).toBe(0);

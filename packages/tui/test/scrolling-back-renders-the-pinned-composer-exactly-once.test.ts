@@ -23,6 +23,7 @@
 import { describe, expect, it } from "bun:test";
 import { type Component, CURSOR_MARKER, type Focusable, TUI } from "@veyyon/tui";
 import { settleFrames } from "./helpers/settle-frames";
+import { WHEEL_DOWN, WHEEL_UP } from "./helpers/sgr-mouse";
 import { VirtualTerminal } from "./virtual-terminal";
 
 class Transcript implements Component {
@@ -53,9 +54,6 @@ class PinnedComposer implements Component, Focusable {
 		return this.lines;
 	}
 }
-
-const WHEEL_UP = "\x1b[<64;5;5M";
-const WHEEL_DOWN = "\x1b[<65;5;5M";
 
 function makeTranscriptRows(count: number, start = 0): string[] {
 	return Array.from({ length: count }, (_, i) => `transcript-line-${String(start + i).padStart(4, "0")}`);

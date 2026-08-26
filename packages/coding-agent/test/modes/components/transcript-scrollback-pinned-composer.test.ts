@@ -4,6 +4,7 @@ import { TranscriptContainer } from "@veyyon/coding-agent/modes/components/trans
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { type Component, CURSOR_MARKER, type Focusable, TUI } from "@veyyon/tui";
 import { settleFrames } from "../../../../tui/test/helpers/settle-frames";
+import { WHEEL_UP } from "../../../../tui/test/helpers/sgr-mouse";
 import { VirtualTerminal } from "../../../../tui/test/virtual-terminal";
 
 /**
@@ -20,7 +21,6 @@ import { VirtualTerminal } from "../../../../tui/test/virtual-terminal";
 
 const WIDTH = 60;
 const HEIGHT = 12;
-const WHEEL_UP = "\x1b[<64;5;5M";
 
 beforeAll(async () => {
 	await initTheme(false, "unicode", false, "titanium", "dark");

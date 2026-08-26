@@ -12,6 +12,7 @@ import { type Component, Container, Editor, Spacer, TUI } from "@veyyon/tui";
 import type { MouseRoutable, SgrMouseEvent } from "@veyyon/tui/mouse";
 import { stripAnsi } from "@veyyon/utils";
 import { settleFrames } from "../../../tui/test/helpers/settle-frames";
+import { pressAt, releaseAt, WHEEL_UP } from "../../../tui/test/helpers/sgr-mouse";
 import { VirtualTerminal } from "../../../tui/test/virtual-terminal";
 import {
 	CardPadRow,
@@ -97,16 +98,6 @@ export interface RunnerResult {
 	editor: Editor;
 	advance: () => Promise<void>;
 	cleanUp: () => void;
-}
-
-/** SGR left-click press report at 0-based (row, col) */
-function pressAt(row: number, col = 0): string {
-	return `\x1b[<0;${col + 1};${row + 1}M`;
-}
-
-/** SGR left-click release report at 0-based (row, col) */
-function releaseAt(row: number, col = 0): string {
-	return `\x1b[<0;${col + 1};${row + 1}m`;
 }
 
 /**
@@ -238,8 +229,7 @@ export async function runComposerOracleScenario(options: RunnerOptions): Promise
 	// If scrollOffset requested, scroll back
 	if (options.scrollOffset && options.scrollOffset > 0) {
 		for (let i = 0; i < options.scrollOffset; i++) {
-			// SGR wheel up
-			term.sendInput("\x1b[<64;5;5M");
+			term.sendInput(WHEEL_UP);
 			await settleFrames(term, tui);
 		}
 	}

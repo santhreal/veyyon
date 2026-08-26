@@ -33,6 +33,7 @@ import { afterEach, describe, expect, it } from "bun:test";
 import type { Component } from "@veyyon/tui";
 import type { MouseRoutable, SgrMouseEvent } from "@veyyon/tui/mouse";
 import { TUI } from "@veyyon/tui/tui";
+import { WHEEL_UP } from "./helpers/sgr-mouse";
 import { VirtualTerminal } from "./virtual-terminal";
 
 /** SGR left-button press report at 0-based (row, col). */
@@ -44,8 +45,6 @@ function pressAt(row: number, col = 0): string {
 function releaseAt(row: number, col = 0): string {
 	return `\x1b[<0;${col + 1};${row + 1}m`;
 }
-
-const WHEEL_UP = "\x1b[<64;5;5M";
 
 /** Fixed-height transcript filler component. */
 class Filler implements Component {
