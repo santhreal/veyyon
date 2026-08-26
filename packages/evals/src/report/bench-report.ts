@@ -115,12 +115,23 @@ export const BENCH_REPORT_FLAGS = {
 	valued: { run: true, doc: true, key: true, "jobs-dir": true },
 } as const satisfies FlagGrammar;
 
+const BENCH_REPORT_USAGE =
+	"Usage: bun src/bench-report.ts --run <jobName> --doc <page.md> [--key <key>] [--jobs-dir <dir>]";
+
 if (import.meta.main) {
-	const args = parseFlags(process.argv.slice(2), BENCH_REPORT_FLAGS);
+	let args: Record<string, string>;
+	try {
+		args = parseFlags(process.argv.slice(2), BENCH_REPORT_FLAGS);
+	} catch (error) {
+		// A wrong command line wrote nothing, so it exits 2 rather than 1.
+		console.error(errorMessage(error));
+		console.error(BENCH_REPORT_USAGE);
+		process.exit(2);
+	}
 	const runName = args.run;
 	const docPath = args.doc;
 	if (!runName || !docPath) {
-		console.error("Usage: bun src/bench-report.ts --run <jobName> --doc <page.md> [--key <key>] [--jobs-dir <dir>]");
+		console.error(BENCH_REPORT_USAGE);
 		process.exit(2);
 	}
 	if (args.key !== undefined) {

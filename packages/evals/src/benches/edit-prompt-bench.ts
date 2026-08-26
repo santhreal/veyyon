@@ -147,8 +147,20 @@ export function summarizeBenchOutcomes(
 	};
 }
 
+const EDIT_PROMPT_USAGE =
+	"usage: bun edit-prompt-bench.ts --model <id> [--label <name>] [--limit <n>] [--json <file>]\n";
+
 async function main(): Promise<void> {
-	const { model, label, json, limit } = parseBenchArgs(process.argv.slice(2));
+	let parsed: EditPromptBenchArgs;
+	try {
+		parsed = parseBenchArgs(process.argv.slice(2));
+	} catch (error) {
+		// Nothing was measured, so the command line is the failure rather than the run.
+		console.error(errorMessage(error));
+		console.error(EDIT_PROMPT_USAGE);
+		process.exit(2);
+	}
+	const { model, label, json, limit } = parsed;
 	const fixtures = await extractBenchmarkFixtures();
 	try {
 		const all = await loadTasksFromDir(fixtures.dir);

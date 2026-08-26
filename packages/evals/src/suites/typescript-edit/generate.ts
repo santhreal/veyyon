@@ -22,10 +22,10 @@ import * as childProcess from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as util from "node:util";
-import { parseArgs } from "node:util";
 import { clampLow, errorMessage, TempDir } from "@veyyon/utils";
 import { diffLines } from "diff";
 import Handlebars from "handlebars";
+import { type FlagGrammar, flagCount, flagNumber, flagText, parseFlags } from "../../core/flags";
 import { formatContent } from "./formatter";
 import { allMutations, type Mutation, type MutationInfo, mutationCategoryMap } from "./mutations";
 import { typescriptEditFixturesArchive } from "./paths";
@@ -43,6 +43,9 @@ const execFile = util.promisify(childProcess.execFile);
 const SUPPORTED_EXTENSIONS = new Set([".js", ".jsx", ".ts", ".tsx"]);
 using DEFAULT_SOURCE_REPO_DIR = TempDir.createSync("@pi-mono-source");
 const DEFAULT_OUTPUT = typescriptEditFixturesArchive();
+const DEFAULT_COUNT_PER_TYPE = 20;
+const DEFAULT_SEED = 42;
+const DEFAULT_DIFFICULTY = "easy,medium,hard,nightmare";
 /** Default when no `--typescript-dir` is passed: clone this repo and checkout pinned commit. */
 export const DEFAULT_SOURCE_REPO_URL = "https://github.com/badlogic/pi-mono.git";
 export const DEFAULT_SOURCE_COMMIT_SHA = "8fa7eebd235355522c8104166b4f1f959b4e2f10";
@@ -107,35 +110,58 @@ export interface Args {
 	dryRun: boolean;
 	sourceRepoUrl: string;
 	sourceCommitSha: string;
+	help: boolean;
 }
 
-export function parseArguments(): Args {
-	const { values } = parseArgs({
-		options: {
-			"typescript-dir": { type: "string", default: DEFAULT_SOURCE_REPO_DIR.path() },
-			output: { type: "string", default: DEFAULT_OUTPUT },
-			"count-per-type": { type: "string", default: "20" },
-			seed: { type: "string", default: "42" },
-			categories: { type: "string" },
-			difficulty: { type: "string", default: "easy,medium,hard,nightmare" },
-			"min-score": { type: "string" },
-			"dry-run": { type: "boolean", default: false },
-			"source-repo": { type: "string", default: DEFAULT_SOURCE_REPO_URL },
-			"source-commit": { type: "string", default: DEFAULT_SOURCE_COMMIT_SHA },
-		},
-	});
+/** Flags the case generator accepts. */
+export const GENERATE_FLAGS = {
+	valued: {
+		"typescript-dir": true,
+		output: true,
+		"count-per-type": true,
+		seed: true,
+		categories: true,
+		difficulty: true,
+		"min-score": true,
+		"source-repo": true,
+		"source-commit": true,
+	},
+	valueless: { "dry-run": true, help: true },
+} as const satisfies FlagGrammar;
+
+export const GENERATE_USAGE = `usage: bun generate.ts [options]
+
+  --typescript-dir <dir>   checkout the cases are cut from (default ${DEFAULT_SOURCE_REPO_DIR.path()})
+  --output <file>          where the generated cases are written (default ${DEFAULT_OUTPUT})
+  --count-per-type <n>     cases per mutation type (default ${DEFAULT_COUNT_PER_TYPE})
+  --seed <n>               seed for the mutation sampler (default ${DEFAULT_SEED})
+  --categories <list>      comma-separated mutation names, default every registered one
+  --difficulty <list>      comma-separated difficulties (default ${DEFAULT_DIFFICULTY})
+  --min-score <n>          drop cases scoring below this
+  --dry-run                report what would be generated, write nothing
+  --source-repo <url>      provenance recorded with the cases (default ${DEFAULT_SOURCE_REPO_URL})
+  --source-commit <sha>    provenance recorded with the cases
+`;
+
+/**
+ * Counts go through the one grammar: `--count-per-type abc` used to reach the sampler as NaN
+ * through `parseInt`, which generates no case for any mutation and still reports a written file.
+ */
+export function parseArguments(argv: string[] = process.argv.slice(2)): Args {
+	const flags = parseFlags(argv, GENERATE_FLAGS);
 
 	return {
-		typescriptDir: values["typescript-dir"] ?? DEFAULT_SOURCE_REPO_DIR.path(),
-		output: values.output ?? DEFAULT_OUTPUT,
-		countPerType: parseInt(values["count-per-type"] ?? "20", 10),
-		seed: parseInt(values.seed ?? "42", 10),
-		categories: values.categories ?? null,
-		difficulty: values.difficulty ?? "easy,medium,hard,nightmare",
-		minScore: values["min-score"] ? parseInt(values["min-score"], 10) : null,
-		dryRun: values["dry-run"] ?? false,
-		sourceRepoUrl: values["source-repo"] ?? DEFAULT_SOURCE_REPO_URL,
-		sourceCommitSha: values["source-commit"] ?? DEFAULT_SOURCE_COMMIT_SHA,
+		typescriptDir: flagText(flags, "typescript-dir") ?? DEFAULT_SOURCE_REPO_DIR.path(),
+		output: flagText(flags, "output") ?? DEFAULT_OUTPUT,
+		countPerType: flagCount(flags, "count-per-type") ?? DEFAULT_COUNT_PER_TYPE,
+		seed: flagNumber(flags, "seed") ?? DEFAULT_SEED,
+		categories: flagText(flags, "categories") ?? null,
+		difficulty: flagText(flags, "difficulty") ?? DEFAULT_DIFFICULTY,
+		minScore: flagNumber(flags, "min-score") ?? null,
+		dryRun: flags["dry-run"] !== undefined,
+		sourceRepoUrl: flagText(flags, "source-repo") ?? DEFAULT_SOURCE_REPO_URL,
+		sourceCommitSha: flagText(flags, "source-commit") ?? DEFAULT_SOURCE_COMMIT_SHA,
+		help: flags.help !== undefined,
 	};
 }
 
@@ -932,7 +958,19 @@ export async function generateCases(options: GenerateCasesOptions): Promise<Case
 }
 
 async function main(): Promise<number> {
-	const args = parseArguments();
+	let args: Args;
+	try {
+		args = parseArguments();
+	} catch (error) {
+		// Nothing was generated, so a wrong command line exits 2 rather than 1.
+		console.error(errorMessage(error));
+		console.error(GENERATE_USAGE);
+		return 2;
+	}
+	if (args.help) {
+		console.log(GENERATE_USAGE);
+		return 0;
+	}
 	const typescriptDir = args.typescriptDir;
 
 	await ensureSourceRepo(typescriptDir);

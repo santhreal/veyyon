@@ -44,7 +44,9 @@
 import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { errorMessage } from "@veyyon/utils";
 import { generateDictFromRepo } from "argot";
+import { type FlagGrammar, flagText, parseFlags } from "../../core/flags";
 import { defaultSessionsDir, readEmissions } from "./transcript-corpus";
 
 /** One handle, with what the generator predicted and what the agent really did. */
@@ -201,20 +203,39 @@ export function measureRetype(repo: string, sessionsRoot: string): RetypeReport 
 	};
 }
 
-function main(argv: string[]): void {
-	const flag = (name: string): string | undefined => {
-		const at = argv.indexOf(name);
-		return at === -1 ? undefined : argv[at + 1];
-	};
-	const repo = flag("--repo") ?? process.cwd();
-	const sessionsRoot = flag("--sessions") ?? defaultSessionsDir();
+/** What this instrument accepts. `--repo --json` used to read the next flag as the repository path. */
+export const RETYPE_LIKELIHOOD_FLAGS = {
+	valued: { repo: true, sessions: true },
+	valueless: { json: true, help: true },
+} as const satisfies FlagGrammar;
+
+const RETYPE_LIKELIHOOD_USAGE = "usage: bun measure-retype-likelihood.ts [--repo <dir>] [--sessions <dir>] [--json]\n";
+
+export function main(argv: string[]): void {
+	let flags: Record<string, string>;
+	let repo: string;
+	let sessionsRoot: string;
+	try {
+		flags = parseFlags(argv, RETYPE_LIKELIHOOD_FLAGS);
+		repo = flagText(flags, "repo") ?? process.cwd();
+		sessionsRoot = flagText(flags, "sessions") ?? defaultSessionsDir();
+	} catch (error) {
+		console.error(errorMessage(error));
+		console.error(RETYPE_LIKELIHOOD_USAGE);
+		process.exit(2);
+	}
+	if (flags.help !== undefined) {
+		console.log(RETYPE_LIKELIHOOD_USAGE);
+		return;
+	}
 	if (!fs.existsSync(sessionsRoot)) {
+		// Nothing was measured, so this is the same class of exit as a wrong flag.
 		console.error(`measure-retype-likelihood: no transcript tree at ${sessionsRoot}`);
-		process.exit(1);
+		process.exit(2);
 	}
 
 	const report = measureRetype(repo, sessionsRoot);
-	if (argv.includes("--json")) {
+	if (flags.json !== undefined) {
 		console.log(JSON.stringify(report, null, 2));
 		return;
 	}

@@ -34,6 +34,8 @@
 
 import * as fs from "node:fs";
 import { countTokens as nativeCountTokens } from "@veyyon/natives";
+import { errorMessage } from "@veyyon/utils";
+import { type FlagGrammar, type ParsedArgv, parseArgv } from "../../core/flags";
 import { REFERENCE_RATE_CARD, retainedTokenCost } from "./cost-model";
 
 const countTokens = (text: string): number => nativeCountTokens(text);
@@ -155,10 +157,31 @@ export function simulateOnline(chunks: readonly string[], minLength = 24, minRep
 	};
 }
 
+/** What this sweep accepts: a variadic list of chunk files, and nothing else. */
+export const ONLINE_CODEC_FLAGS = {
+	valued: {},
+	valueless: { help: true },
+	positionals: { max: Number.POSITIVE_INFINITY },
+} as const satisfies FlagGrammar;
+
+const ONLINE_CODEC_USAGE = "usage: bun online-codec-ceiling.ts <chunks.json> [more.json ...]\n";
+
 if (import.meta.main) {
-	const paths = process.argv.slice(2).filter(a => !a.startsWith("--"));
+	let parsed: ParsedArgv;
+	try {
+		parsed = parseArgv(process.argv.slice(2), ONLINE_CODEC_FLAGS);
+	} catch (error) {
+		console.error(errorMessage(error));
+		console.error(ONLINE_CODEC_USAGE);
+		process.exit(2);
+	}
+	if (parsed.flags.help !== undefined) {
+		console.log(ONLINE_CODEC_USAGE);
+		process.exit(0);
+	}
+	const paths = parsed.positionals;
 	if (paths.length === 0) {
-		console.error("usage: bun online-codec-ceiling.ts <chunks.json> [more.json ...]");
+		console.error(ONLINE_CODEC_USAGE);
 		process.exit(2);
 	}
 	const chunks: string[] = [];

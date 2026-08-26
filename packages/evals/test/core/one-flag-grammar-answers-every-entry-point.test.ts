@@ -24,6 +24,7 @@
 
 import { describe, expect, it, test } from "bun:test";
 import { EDIT_PROMPT_BENCH_FLAGS } from "../../src/benches/edit-prompt-bench";
+import { GOAL_BUDGET_CONTEXT_FLAGS } from "../../src/benches/goal-budget-context-bench";
 import { DISCLOSURE_BENCH_FLAGS } from "../../src/benches/search/disclosure";
 import { SEARCH_BENCH_FLAGS } from "../../src/benches/search/runner";
 import {
@@ -38,10 +39,17 @@ import {
 } from "../../src/core/flags";
 import { registerBuiltinHarnesses } from "../../src/harnesses";
 import { BENCH_REPORT_FLAGS } from "../../src/report/bench-report";
+import { TRACE_REPORT_FLAGS } from "../../src/report/trace-report";
 import { parseServerArgs, SERVER_FLAGS } from "../../src/server/main";
+import { CONTEXT_ENCODE_FLAGS } from "../../src/suites/deep-swe/context-encode-ceiling";
 import { GEN_DICTS_FLAGS } from "../../src/suites/deep-swe/gen-dicts";
+import { CHANNEL_SPLIT_FLAGS } from "../../src/suites/deep-swe/measure-channel-split";
+import { RETYPE_LIKELIHOOD_FLAGS } from "../../src/suites/deep-swe/measure-retype-likelihood";
+import { ONLINE_CODEC_FLAGS } from "../../src/suites/deep-swe/online-codec-ceiling";
+import { PREFIX_COMPOSITION_FLAGS } from "../../src/suites/deep-swe/prefix-composition";
 import { parseArgs, VALUED_FLAGS, VALUELESS_FLAGS } from "../../src/suites/deep-swe/runner/cli-args";
 import { EDIT_ADAPTER_FLAGS } from "../../src/suites/typescript-edit/adapter/cli";
+import { GENERATE_FLAGS } from "../../src/suites/typescript-edit/generate";
 
 /** Every grammar an evals entry point reads its invocation through. */
 const GRAMMARS: Readonly<Record<string, FlagGrammar>> = {
@@ -53,6 +61,14 @@ const GRAMMARS: Readonly<Record<string, FlagGrammar>> = {
 	"dictionary generator": GEN_DICTS_FLAGS,
 	"manager server": SERVER_FLAGS,
 	"edit adapter": EDIT_ADAPTER_FLAGS,
+	"case generator": GENERATE_FLAGS,
+	"goal-budget context bench": GOAL_BUDGET_CONTEXT_FLAGS,
+	"trace report": TRACE_REPORT_FLAGS,
+	"context-encode ceiling": CONTEXT_ENCODE_FLAGS,
+	"online-codec ceiling": ONLINE_CODEC_FLAGS,
+	"prefix composition": PREFIX_COMPOSITION_FLAGS,
+	"channel split": CHANNEL_SPLIT_FLAGS,
+	"retype likelihood": RETYPE_LIKELIHOOD_FLAGS,
 };
 
 /**
@@ -71,6 +87,14 @@ const COUNT_FLAGS: Readonly<Record<string, readonly string[]>> = {
 	"dictionary generator": ["jobs"],
 	"manager server": [],
 	"edit adapter": ["max-tasks", "task-concurrency", "runs"],
+	"case generator": ["count-per-type"],
+	"goal-budget context bench": [],
+	"trace report": ["concurrency"],
+	"context-encode ceiling": [],
+	"online-codec ceiling": [],
+	"prefix composition": [],
+	"channel split": [],
+	"retype likelihood": [],
 };
 
 /** Every flag each grammar declares, valued and valueless together, sorted. */
@@ -113,6 +137,26 @@ const DECLARED_FLAGS: Readonly<Record<string, readonly string[]>> = {
 		"task-concurrency",
 		"tasks",
 	],
+	"case generator": [
+		"categories",
+		"count-per-type",
+		"difficulty",
+		"dry-run",
+		"help",
+		"min-score",
+		"output",
+		"seed",
+		"source-commit",
+		"source-repo",
+		"typescript-dir",
+	],
+	"goal-budget context bench": ["help"],
+	"trace report": ["base", "concurrency", "focus", "help", "out", "synth", "tiny"],
+	"context-encode ceiling": ["help", "holdout"],
+	"online-codec ceiling": ["help"],
+	"prefix composition": ["help"],
+	"channel split": ["help", "json", "sessions"],
+	"retype likelihood": ["help", "json", "repo", "sessions"],
 };
 
 const REFUSED_COUNTS: readonly string[] = ["abc", "0", "-1", "2.5", "1e400"];

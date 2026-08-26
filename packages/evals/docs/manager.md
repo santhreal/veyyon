@@ -113,7 +113,14 @@ Flags:
 - `--base <url>`: Evaluation manager server base URL (default: `http://localhost:4700`).
 - `--tiny <model>`: Per-turn summary model override.
 - `--synth <model>`: Run-level synthesis model override.
-- `--concurrency <N>`: Parallel generation workers (default: 8).
+- `--concurrency <N>`: Parallel generation workers (default: 8). A value that is not a positive
+  integer ends the invocation with exit code 2 before the trace is fetched.
+- `--out <file>`: Write the report here instead of stdout.
+- `--focus <text>`: Question the synthesis answers.
+
+The run and the trace are positional, and one argument holding both (`"<run>|<trace>"`) is accepted
+because that is how the dashboard spells a trace link. A third positional, an undeclared flag, or a
+valued flag given without its value ends the invocation with exit code 2 and the usage text.
 
 ## Runtime notes
 

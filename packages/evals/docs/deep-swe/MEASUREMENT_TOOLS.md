@@ -11,6 +11,19 @@ Auxiliary measurement, telemetry, and vocabulary generation tools in the DeepSWE
 | `prefix-composition` | `src/suites/deep-swe/prefix-composition.ts` | Prefix caching efficiency, prompt categories, and mid-session cache invalidations |
 | `context-encode-ceiling` | `src/suites/deep-swe/context-encode-ceiling.ts` | Theoretical and empirical token-saving ceiling for vocabulary encoding |
 | `gen-dicts` | `src/suites/deep-swe/gen-dicts.ts` | Repository vocabulary dictionaries (`.AGENTS.dict`) from git history and source trees |
+| `online-codec-ceiling` | `src/suites/deep-swe/online-codec-ceiling.ts` | Token and cost saving an append-only online codec could reach on a recorded stream |
+
+## Arguments
+
+Every tool reads the package flag grammar (`src/core/flags.ts`) and declares the flags it accepts.
+A flag the grammar does not declare, a count that is not a positive integer, a valued flag given
+without its value, and an argument past the number the tool takes positionally each end the
+invocation with exit code 2 and the usage text on stderr. Exit 2 states that nothing was measured;
+exit 1 states that the measurement ran and failed. `--help` prints the usage text and exits 0.
+
+`context-encode-ceiling` takes up to two paths, `prefix-composition` takes the jobs directory and
+an optional arm prefix, and `online-codec-ceiling` takes any number of chunk files. The rest name
+every input by a flag.
 
 ## Channel Split Analysis
 
