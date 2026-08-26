@@ -35,6 +35,8 @@ export type { SegmentContext } from "./types";
 
 /** Hostname is fixed for the process lifetime; cache the short form once. */
 const SHORT_HOSTNAME = os.hostname().split(".")[0]!;
+/** Home Projects directory — `os.homedir()` is a syscall, hoist the join. */
+const HOME_PROJECTS = path.join(os.homedir(), "Projects");
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Helpers
@@ -66,9 +68,8 @@ function thinkingGlyph(display: string): string {
 	const space = display.indexOf(" ");
 	return space === -1 ? display : display.slice(0, space);
 }
-
 function stripDisplayRoot(pwd: string): string {
-	for (const root of [path.join(os.homedir(), "Projects"), "/work"]) {
+	for (const root of [HOME_PROJECTS, "/work"]) {
 		const relative = relativePathWithinRoot(root, pwd);
 		if (relative) return relative;
 	}
