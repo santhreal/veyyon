@@ -74,6 +74,13 @@ built by string concatenation in code.
 bun packages/evals/src/suites/typescript-edit/adapter/cli.ts --help
 ```
 
+`--model` and `--output` are required. `--max-tasks`, `--task-concurrency` and `--runs` take an
+integer >= 1 and refuse anything else, so a typo cannot reach the scheduler as NaN runs per task or
+as a run with no workers. `--tasks` takes task ids and names the ones the corpus does not hold.
+`--fixtures-archive` measures a regenerated archive instead of the bundled one. `--list` prints the
+task ids and names as JSON. Every refusal happens before the archive is unpacked, prints the usage
+text, and exits 2; a run that failed exits 1.
+
 `src/suites/typescript-edit/adapter/runner/scheduler.ts` drives the trials across workers,
 `adapter/runner/session.ts` runs one task against the harness, and `adapter/report.ts` renders the
 result table.
