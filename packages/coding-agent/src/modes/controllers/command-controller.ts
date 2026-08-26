@@ -408,7 +408,7 @@ export class CommandController {
 			info += `\n${theme.bold("Running Jobs")}\n`;
 			for (const job of snapshot.running) {
 				info += `${renderJobLine(job, now)}\n`;
-				info += `  ${theme.fg("dim", truncateJobLabel(job.label, lineWidth))}\n`;
+				info += `  ${theme.fg("dim", truncateToWidth(job.label, lineWidth))}\n`;
 			}
 		}
 
@@ -416,7 +416,7 @@ export class CommandController {
 			info += `\n${theme.bold("Recent Jobs")}\n`;
 			for (const job of snapshot.recent) {
 				info += `${renderJobLine(job, now)}\n`;
-				info += `  ${theme.fg("dim", truncateJobLabel(job.label, lineWidth))}\n`;
+				info += `  ${theme.fg("dim", truncateToWidth(job.label, lineWidth))}\n`;
 			}
 		}
 
@@ -1356,20 +1356,6 @@ function formatJobStatus(status: AsyncJobSnapshotItem["status"]): string {
 	return theme.fg("error", "failed");
 }
 
-function truncateJobLabel(label: string, maxWidth: number): string {
-	if (visibleWidth(label) <= maxWidth) return label;
-	if (maxWidth <= 1) return "…";
-
-	let out = "";
-	for (const char of label) {
-		const next = `${out}${char}`;
-		if (visibleWidth(`${next}…`) > maxWidth) break;
-		out = next;
-	}
-
-	return `${out}…`;
-}
-
 function formatDecimal(value: number, maxFractionDigits = 1): string {
 	return new Intl.NumberFormat("en-US", { maximumFractionDigits: maxFractionDigits }).format(value);
 }
@@ -1492,13 +1478,13 @@ function formatAccountHeaderRow(
 	if (prefixBudget < 2) {
 		return parts.map(p => {
 			const full = p.suffix ? `${p.label} ${p.suffix}` : p.label;
-			const cell = padColumn(truncateJobLabel(full, columnWidth), columnWidth);
+			const cell = padColumn(truncateToWidth(full, columnWidth), columnWidth);
 			return p.active ? uiTheme.fg("accent", cell) : cell;
 		});
 	}
 
 	return parts.map(p => {
-		const prefix = truncateJobLabel(p.label, prefixBudget);
+		const prefix = truncateToWidth(p.label, prefixBudget);
 		const prefixCell = prefix + " ".repeat(prefixBudget - visibleWidth(prefix));
 		const styledPrefix = p.active ? uiTheme.fg("accent", prefixCell) : prefixCell;
 		if (!p.suffix) return styledPrefix + " ".repeat(maxSuffixWidth + gap);
