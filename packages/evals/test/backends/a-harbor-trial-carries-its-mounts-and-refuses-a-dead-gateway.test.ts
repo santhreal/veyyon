@@ -23,7 +23,8 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { agentSetupFailure, HarborBackend } from "../../src/backends/harbor/backend";
-import type { Config, SourceMount } from "../../src/backends/harbor/runner";
+import type { Config } from "../../src/backends/harbor/runner/config";
+import type { SourceMount } from "../../src/backends/harbor/runner/deps";
 import type { EvalSuite, RunContext, TaskDescriptor, TrialCell, TrialScore, Variant } from "../../src/core/types";
 import { registerBuiltinHarnesses } from "../../src/harnesses/index";
 

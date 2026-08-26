@@ -2,7 +2,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { isRecord } from "@veyyon/utils";
-import { aggregate, type JobInfo, type Trial } from "../backends/harbor/runner";
+import { aggregate, type JobInfo, type Trial } from "../backends/harbor/runner/results";
 import { sumOfMeasured } from "../core/scoring";
 import type { BackendId } from "../core/types";
 import type { BenchmarkDefinition, BenchmarkKind, MetricDefinition } from "../wire";

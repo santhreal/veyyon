@@ -22,7 +22,7 @@ import {
 	requireHarborBinding,
 } from "../../src/backends/harbor/backend";
 import { buildHarborArgs } from "../../src/backends/harbor/launch-args";
-import { buildHarborEnv, type Config } from "../../src/backends/harbor/runner";
+import { buildHarborEnv, type Config } from "../../src/backends/harbor/runner/config";
 import { listHarnesses, requireHarness } from "../../src/core/harness-registry";
 import type { HarnessAdapter, HarnessCapabilities, PreflightVerdict } from "../../src/core/types";
 import { registerBuiltinHarnesses } from "../../src/harnesses/index";

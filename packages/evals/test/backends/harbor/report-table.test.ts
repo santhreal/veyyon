@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { renderTrialRow, type Trial } from "../../../src/backends/harbor/runner";
+import type { Trial } from "../../../src/backends/harbor/runner/results";
+import { renderTrialRow } from "../../../src/backends/harbor/runner/ui";
 
 /**
  * Locks FINDING-METAHARNESS-REPORT-TABLE-UNESCAPED-DETAIL. The benchmark report

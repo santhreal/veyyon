@@ -343,7 +343,9 @@ describe("primitive ownership", () => {
 		}
 		expect(offenders).toEqual([]);
 		// Non-vacuity: the harbor backend really does declare the introducer, under the right name.
-		const runner = await Bun.file(path.resolve(import.meta.dir, "../../evals/src/backends/harbor/runner.ts")).text();
+		const runner = await Bun.file(
+			path.resolve(import.meta.dir, "../../evals/src/backends/harbor/runner/ui.ts"),
+		).text();
 		expect(runner).toContain('const CSI = "\\x1b[";');
 	});
 });
