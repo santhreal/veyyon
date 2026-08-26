@@ -1,6 +1,7 @@
 import type { Api, ApiKey, AssistantMessage, Context, Model, SimpleStreamOptions } from "@veyyon/ai";
 import { completeSimple } from "@veyyon/ai/stream";
 import { validateToolCall } from "@veyyon/ai/utils/validation";
+import { isRecord } from "@veyyon/utils/type-guards";
 // The owners, not the barrel. `type` is `@veyyon/ai`'s re-export of arktype, so
 // naming arktype is naming the same module; `validateToolCall` is one function
 // over a tool list. Together they were costing the whole streaming stack.
@@ -100,6 +101,21 @@ interface ParsedConventionalAnalysis {
 }
 
 /**
+ * The shape the text fallback has to find.
+ *
+ * `normalizeAnalysis` maps over `details`, so an answer without one — a refusal,
+ * an `{"error": …}`, a model's own reasoning object — used to reach it as a cast
+ * and raise `Cannot read properties of undefined (reading 'map')` from inside
+ * commit analysis. Only `details` is load-bearing; the rest is normalized or
+ * defaulted downstream, and a guard stricter than the code that follows it would
+ * reject answers that already work.
+ */
+function isParsedConventionalAnalysis(value: unknown): value is ParsedConventionalAnalysis {
+	if (!isRecord(value) || !Array.isArray(value.details)) return false;
+	return value.details.every(detail => isRecord(detail) && typeof detail.text === "string");
+}
+
+/**
  * Extract a {@link ConventionalAnalysis} from an assistant response, preferring
  * a structured tool call and falling back to JSON embedded in text content.
  */
@@ -114,6 +130,6 @@ export function parseConventionalAnalysisResponse(
 		return normalizeAnalysis(parsed);
 	}
 	const text = extractTextContent(message);
-	const parsed = parseJsonPayload(text) as ParsedConventionalAnalysis;
+	const parsed = parseJsonPayload(text, isParsedConventionalAnalysis);
 	return normalizeAnalysis(parsed);
 }

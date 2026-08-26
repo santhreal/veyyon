@@ -56,20 +56,16 @@ export async function buildDirectoryTree(cwd: string, options: BuildDirectoryTre
 	const perDirLimit = options.perDirLimit === undefined ? null : options.perDirLimit;
 	const rootLimit = options.rootLimit === undefined ? perDirLimit : options.rootLimit;
 
-	let entries: readonly GlobMatch[];
-	let nativeTruncated: boolean;
-	try {
-		const result = await listWorkspace({
-			path: rootPath,
-			maxDepth,
-			hidden: true,
-			gitignore: false,
-		});
-		entries = result.entries;
-		nativeTruncated = result.truncated;
-	} catch {
-		return emptyTree(rootPath);
-	}
+	// A failed scan is not an empty directory. Swallowing the error here reported
+	// EACCES on the working directory as "(empty directory)", which reads as a
+	// fact about the tree rather than a permission the caller has to fix, so the
+	// error travels to whoever can name the path in it.
+	const { entries, truncated: nativeTruncated } = await listWorkspace({
+		path: rootPath,
+		maxDepth,
+		hidden: true,
+		gitignore: false,
+	});
 
 	return assembleTree(rootPath, entries, {
 		perDirLimit,
@@ -107,20 +103,14 @@ export async function buildTopLevelDirectoryListing(
 	const rootPath = path.resolve(cwd);
 	const entryLimit = options.entryLimit === undefined ? null : options.entryLimit;
 
-	let entries: readonly GlobMatch[];
-	let nativeTruncated: boolean;
-	try {
-		const result = await listWorkspace({
-			path: rootPath,
-			maxDepth: 2,
-			hidden: true,
-			gitignore: false,
-		});
-		entries = result.entries;
-		nativeTruncated = result.truncated;
-	} catch {
-		return { ...emptyTree(rootPath), omittedTopLevel: 0 };
-	}
+	// Same reason as `buildDirectoryTree`: an unreadable root is a permission the
+	// caller has to fix, not a directory with nothing in it.
+	const { entries, truncated: nativeTruncated } = await listWorkspace({
+		path: rootPath,
+		maxDepth: 2,
+		hidden: true,
+		gitignore: false,
+	});
 
 	// Direct-child count per top-level directory, from the same depth-2 scan.
 	const childCounts = new Map<string, number>();

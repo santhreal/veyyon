@@ -54,15 +54,25 @@ function* balancedObjectsIn(text: string): Generator<string> {
  * brace run that is not JSON at all. Every one of those used to reach
  * `JSON.parse` unguarded and raise a `SyntaxError` at the caller.
  */
-export function parseJsonPayload(text: string): unknown {
+export function parseJsonPayload<T>(text: string, isPayload: (value: unknown) => value is T): T;
+export function parseJsonPayload(text: string): unknown;
+export function parseJsonPayload(text: string, isPayload?: (value: unknown) => boolean): unknown {
+	let sawJson = false;
 	for (const candidate of balancedObjectsIn(text.trim())) {
+		let parsed: unknown;
 		try {
-			return JSON.parse(candidate) as unknown;
+			parsed = JSON.parse(candidate) as unknown;
 		} catch {
 			// Prose contains brace runs that are not JSON; keep looking.
+			continue;
 		}
+		sawJson = true;
+		// With a shape to match, a model that reasons in JSON before answering no
+		// longer decides the result: the scan walks past an object of the wrong
+		// shape instead of returning it and failing somewhere further in.
+		if (isPayload === undefined || isPayload(parsed)) return parsed;
 	}
-	throw new Error("No JSON payload found in response");
+	throw new Error(sawJson ? "No JSON payload of the expected shape in response" : "No JSON payload found in response");
 }
 
 export function normalizeAnalysis(parsed: {
