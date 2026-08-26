@@ -14,10 +14,9 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { TrialArtifacts, TrialCell, TrialResultRecord } from "../core";
+import { boundRawOutput } from "../core/trial-deadline";
 import { requirePathSegment } from "../paths";
 import { PlanChangedError } from "./plan-identity";
-
-export const MAX_RAW_OUTPUT_CHARS = 65_536; // 64 KiB character ceiling
 
 /** Marks a file as this journal rather than any other JSONL a run directory holds. */
 export const RUN_JOURNAL_KIND = "veyyon-evals-trials";
@@ -178,10 +177,8 @@ export function cellKey(cell: TrialCell): string {
 export function sanitizeArtifacts(artifacts: TrialArtifacts | undefined): TrialArtifacts | undefined {
 	if (!artifacts) return undefined;
 
-	let rawOutput = artifacts.rawOutput;
-	if (typeof rawOutput === "string" && rawOutput.length > MAX_RAW_OUTPUT_CHARS) {
-		rawOutput = rawOutput.slice(-MAX_RAW_OUTPUT_CHARS);
-	}
+	const rawOutput =
+		typeof artifacts.rawOutput === "string" ? boundRawOutput(artifacts.rawOutput) : artifacts.rawOutput;
 
 	return { ...artifacts, rawOutput };
 }

@@ -4,17 +4,7 @@
  */
 import { spawnSync } from "node:child_process";
 import { errorMessage } from "@veyyon/utils";
-
-export const DEFAULT_TRIAL_TIMEOUT_SEC = 1800;
-export const HARD_CEILING_TIMEOUT_SEC = 3600;
-export const DEFAULT_GRACE_PERIOD_MS = 5000;
-export const RAW_OUTPUT_MAX_BYTES = 65536;
-
-export function truncateRawOutput(output: string | null | undefined, maxBytes = RAW_OUTPUT_MAX_BYTES): string {
-	if (!output) return "";
-	if (output.length <= maxBytes) return output;
-	return output.slice(-maxBytes);
-}
+import { DEFAULT_GRACE_PERIOD_MS } from "../../../core/trial-deadline";
 
 export interface TerminableProcess {
 	readonly pid?: number;

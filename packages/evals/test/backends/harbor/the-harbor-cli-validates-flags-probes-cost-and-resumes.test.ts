@@ -2,18 +2,17 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import {
-	cleanupHarborTrialContainers,
-	DEFAULT_GRACE_PERIOD_MS,
-	DEFAULT_TRIAL_TIMEOUT_SEC,
-	HARD_CEILING_TIMEOUT_SEC,
-	RAW_OUTPUT_MAX_BYTES,
-	terminateProcessTree,
-	truncateRawOutput,
-} from "../../../src/backends/harbor/runner/cleanup";
+import { cleanupHarborTrialContainers, terminateProcessTree } from "../../../src/backends/harbor/runner/cleanup";
 import { parseArgs, resolveResumeConfig } from "../../../src/backends/harbor/runner/cli";
 import { buildHarborEnv, buildResumeArgs, collectForwardEnv } from "../../../src/backends/harbor/runner/config";
 import { readTrials } from "../../../src/backends/harbor/runner/results";
+import {
+	boundRawOutput,
+	DEFAULT_GRACE_PERIOD_MS,
+	DEFAULT_TRIAL_TIMEOUT_SEC,
+	HARD_CEILING_TRIAL_TIMEOUT_SEC,
+	RAW_OUTPUT_MAX_BYTES,
+} from "../../../src/core/trial-deadline";
 import { registerBuiltinHarnesses } from "../../../src/harnesses";
 
 // The harbor seams resolve their agent through the process-wide harness registry, so a
@@ -396,23 +395,23 @@ describe("reward parsing and error handling in parseTrial / readTrials", () => {
 	});
 });
 
-describe("truncateRawOutput helper and constants", () => {
+describe("boundRawOutput helper and constants", () => {
 	it("exports expected watchdog and grace period bounds", () => {
 		expect(DEFAULT_TRIAL_TIMEOUT_SEC).toBe(1800);
-		expect(HARD_CEILING_TIMEOUT_SEC).toBe(3600);
+		expect(HARD_CEILING_TRIAL_TIMEOUT_SEC).toBe(3600);
 		expect(DEFAULT_GRACE_PERIOD_MS).toBe(5000);
 		expect(RAW_OUTPUT_MAX_BYTES).toBe(65536);
 	});
 
 	it("leaves small output untouched", () => {
-		expect(truncateRawOutput("short string")).toBe("short string");
+		expect(boundRawOutput("short string")).toBe("short string");
 	});
 
-	it("truncates output exceeding maxBytes keeping tail", () => {
+	it("bounds output exceeding maxBytes keeping tail", () => {
 		const big = "A".repeat(100) + "B".repeat(50);
-		const truncated = truncateRawOutput(big, 50);
-		expect(truncated.length).toBe(50);
-		expect(truncated).toBe("B".repeat(50));
+		const bounded = boundRawOutput(big, 50);
+		expect(bounded?.length).toBe(50);
+		expect(bounded).toBe("B".repeat(50));
 	});
 });
 

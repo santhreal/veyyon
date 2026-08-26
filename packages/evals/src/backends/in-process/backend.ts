@@ -1,11 +1,12 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { Settings } from "@veyyon/coding-agent";
-import { clamp, errorMessage } from "@veyyon/utils";
+import { errorMessage } from "@veyyon/utils";
 import { type BackendRegistry, defaultBackendRegistry } from "../../core/backend-registry";
 import { resolveCellVariant } from "../../core/cell-variant";
 import { listFiles } from "../../core/fs-walk";
 import { requireHarness } from "../../core/harness-registry";
+import { boundRawOutput, trialTimeoutFromOptions } from "../../core/trial-deadline";
 import { resolveTrialModel } from "../../core/trial-model";
 import type {
 	BackendId,
@@ -51,20 +52,6 @@ export interface InProcessClientLike {
 	getState?(): Promise<InProcessSessionState>;
 	abort?(): void;
 	dispose(): Promise<void>;
-}
-
-export const DEFAULT_TRIAL_TIMEOUT_SEC = 1800;
-export const HARD_CEILING_TRIAL_TIMEOUT_SEC = 7200;
-export const RAW_OUTPUT_TAIL_CAP_BYTES = 64 * 1024;
-
-/**
- * Returns a bounded tail of rawOutput up to capBytes (defaults to 64 KiB).
- */
-export function capRawOutputTail(text: string | null | undefined, capBytes = RAW_OUTPUT_TAIL_CAP_BYTES): string | null {
-	if (!text) return null;
-	const buf = Buffer.from(text, "utf-8");
-	if (buf.byteLength <= capBytes) return text;
-	return buf.subarray(buf.byteLength - capBytes).toString("utf-8");
 }
 
 export type InProcessClientFactory = (options: InProcessClientOptions) => InProcessClientLike;
@@ -232,19 +219,7 @@ export class InProcessBackend implements ExecutionBackend {
 		const startTime = Date.now();
 		const client = this.#clientFactory ? this.#clientFactory(clientOptions) : new InProcessClient(clientOptions);
 
-		const baseBudget = descriptor.timeBudgetSec > 0 ? descriptor.timeBudgetSec : DEFAULT_TRIAL_TIMEOUT_SEC;
-		const overrideTimeout =
-			typeof context.options?.trialTimeout === "number" && context.options.trialTimeout > 0
-				? context.options.trialTimeout
-				: typeof context.options?.trialTimeoutSec === "number" && context.options.trialTimeoutSec > 0
-					? context.options.trialTimeoutSec
-					: undefined;
-		const multiplier =
-			typeof context.options?.timeoutMultiplier === "number" && context.options.timeoutMultiplier > 0
-				? context.options.timeoutMultiplier
-				: 1;
-		const rawBudget = (overrideTimeout ?? baseBudget) * multiplier;
-		const timeoutSec = clamp(rawBudget, 1, HARD_CEILING_TRIAL_TIMEOUT_SEC);
+		const timeoutSec = trialTimeoutFromOptions(descriptor.timeBudgetSec, context.options);
 
 		let sessionStats: InProcessSessionStats | null = null;
 		let lastAssistantText: string | null = null;
@@ -339,7 +314,7 @@ export class InProcessBackend implements ExecutionBackend {
 		return {
 			trialDir,
 			logPaths: [],
-			rawOutput: capRawOutputTail(lastAssistantText),
+			rawOutput: boundRawOutput(lastAssistantText),
 			filePaths: filePathsMap,
 			usage,
 			extra: {

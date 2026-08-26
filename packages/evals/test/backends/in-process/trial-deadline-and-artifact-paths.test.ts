@@ -1,14 +1,15 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { TempDir } from "@veyyon/utils";
+import { InProcessBackend } from "../../../src/backends/in-process/backend";
 import {
-	capRawOutputTail,
+	boundRawOutput,
 	DEFAULT_TRIAL_TIMEOUT_SEC,
 	HARD_CEILING_TRIAL_TIMEOUT_SEC,
-	InProcessBackend,
-	RAW_OUTPUT_TAIL_CAP_BYTES,
-} from "../../../src/backends/in-process/backend";
+	RAW_OUTPUT_MAX_BYTES,
+} from "../../../src/core/trial-deadline";
 import type {
 	EvalSuite,
 	RunContext,
@@ -150,6 +151,62 @@ describe("InProcessBackend — trial deadline and artifact paths", () => {
 		}
 	});
 
+	it("runs a trial under a tiny timeout multiplier instead of timing out at 0s", async () => {
+		const tempDir = await TempDir.create("@evals-test-timeout-floor-");
+		try {
+			const suite = createDeadlineProbeSuite(1800);
+			const backend = new InProcessBackend({
+				clientFactory: () => ({
+					async start() {},
+					async prompt() {
+						// A deadline of 0 seconds fires on the next timer tick, so the trial has to
+						// reach one to observe it at all.
+						await delay(25);
+					},
+					async getSessionStats() {
+						return { tokens: { input: 0, output: 0, total: 0 }, assistantMessages: 1, cost: 0 };
+					},
+					async getLastAssistantText() {
+						return "done";
+					},
+					abort() {},
+					async dispose() {},
+				}),
+			});
+
+			const variants: readonly Variant[] = [
+				{
+					name: "default",
+					harness: "veyyon",
+					configPath: null,
+					promptVariantPath: null,
+					model: "anthropic/claude-sonnet-4-6",
+					attachments: [],
+				},
+			];
+
+			const context: RunContext = {
+				runId: "timeout-floor-run",
+				suite,
+				workDir: tempDir.absolute(),
+				runsDir: tempDir.join("runs"),
+				// 1800 * 0.0001 rounds to 0; a deadline of 0 fires before the trial starts.
+				options: { variants, timeoutMultiplier: 0.0001 },
+			};
+
+			const artifacts = await backend.runTrial(
+				{ suite: "deadline-probe-suite", variant: "default", task: "deadline-task", repeat: 0 },
+				context,
+			);
+
+			expect(artifacts.extra?.timedOut).toBeFalsy();
+			expect(artifacts.extra?.error).toBeFalsy();
+			expect(artifacts.extra?.infrastructureError).toBeFalsy();
+		} finally {
+			await tempDir.remove();
+		}
+	});
+
 	it("returns disk paths for files and caps raw output tail at 64 KiB", async () => {
 		const tempDir = await TempDir.create("@evals-test-artifact-paths-");
 		try {
@@ -217,7 +274,7 @@ describe("InProcessBackend — trial deadline and artifact paths", () => {
 			// 2. rawOutput is capped to <= 64 KiB and contains the tail
 			expect(artifacts.rawOutput).toBeDefined();
 			const rawOutputBytes = Buffer.from(artifacts.rawOutput!, "utf-8").byteLength;
-			expect(rawOutputBytes).toBeLessThanOrEqual(RAW_OUTPUT_TAIL_CAP_BYTES);
+			expect(rawOutputBytes).toBeLessThanOrEqual(RAW_OUTPUT_MAX_BYTES);
 			expect(artifacts.rawOutput).toContain(expectedTail);
 			// The start of the large prefix was trimmed away
 			expect(artifacts.rawOutput?.length).toBeLessThan(fullOutput.length);
@@ -226,19 +283,18 @@ describe("InProcessBackend — trial deadline and artifact paths", () => {
 		}
 	});
 
-	it("capRawOutputTail helper bounds strings correctly", () => {
-		expect(capRawOutputTail(null)).toBeNull();
-		expect(capRawOutputTail(undefined)).toBeNull();
-		expect(capRawOutputTail("short text", 64)).toBe("short text");
+	it("boundRawOutput helper bounds strings correctly", () => {
+		expect(boundRawOutput(null)).toBeNull();
+		expect(boundRawOutput(undefined)).toBeNull();
+		expect(boundRawOutput("short text", 64)).toBe("short text");
 
 		const longText = "A".repeat(100) + "B".repeat(100);
-		const capped = capRawOutputTail(longText, 50);
-		expect(capped).toBe("B".repeat(50));
+		expect(boundRawOutput(longText, 50)).toBe("B".repeat(50));
 	});
 
 	it("defines observable timeout defaults and ceilings", () => {
 		expect(DEFAULT_TRIAL_TIMEOUT_SEC).toBe(1800);
-		expect(HARD_CEILING_TRIAL_TIMEOUT_SEC).toBe(7200);
-		expect(RAW_OUTPUT_TAIL_CAP_BYTES).toBe(65536);
+		expect(HARD_CEILING_TRIAL_TIMEOUT_SEC).toBe(3600);
+		expect(RAW_OUTPUT_MAX_BYTES).toBe(65536);
 	});
 });
