@@ -26,6 +26,20 @@ runtime value, so a contract suite enumerates it instead of restating a list tha
 `test/web/a-wire-contract-governs-all-endpoints-and-renders-unmeasured-spend-as-null.test.ts` sweeps
 it and fails when an endpoint has no wire contract.
 
+## Action outcomes
+
+Every mutating action — launch, add arm, cancel, resume, delete — goes through `mutate` in
+`src/web/api.ts`, which returns `{ data, error }` and never throws at a click handler. On a rejection
+the error is the manager's own `error` field, or `<route>: the manager answered <status>` when the
+answer carries no readable body; a successful answer that cannot be parsed reports
+`<route>: the manager's answer could not be read` rather than success. A cancel that signalled
+nothing (`cancelled: false`) says so, because the row keeps running either way.
+
+`getAuthToken` states why a session token could not be obtained instead of sending the request
+unauthenticated. The token is cached, and a 401 drops the cached copy and re-issues exactly once:
+a manager that restarted minted a new token, and a second rejection is the manager's answer rather
+than a stale token.
+
 ## Absent is not zero
 
 A cost, a token count or an ETA that nothing measured is `null` on the wire, `NULL` in the store, and

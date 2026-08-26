@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
-import type { AddArmRequest, ApiErrorResponse, LaunchResponse, RunRole } from "../../wire";
-import { authedFetch } from "../api";
+import type { AddArmRequest, LaunchResponse, RunRole } from "../../wire";
+import { mutate } from "../api";
 import { INPUT_CLASS } from "./ui";
 
 /**
@@ -23,7 +23,7 @@ export function AddArmForm({ experimentId, onDone }: { experimentId: string; onD
 				body.prewalk = f.get("prewalkInto") ? { into: String(f.get("prewalkInto")) } : {};
 			}
 			setMsg("launching…");
-			const res = await authedFetch(
+			const out = await mutate<LaunchResponse>(
 				"POST",
 				"/api/experiments/:id/arms",
 				{ id: experimentId },
@@ -32,9 +32,8 @@ export function AddArmForm({ experimentId, onDone }: { experimentId: string; onD
 					body: JSON.stringify(body),
 				},
 			);
-			const out = (await res.json()) as Partial<LaunchResponse & ApiErrorResponse>;
-			setMsg(res.ok ? `launched ${out.jobName}` : `error: ${out.error}`);
-			if (res.ok) setTimeout(onDone, 900);
+			setMsg(out.error ? `error: ${out.error}` : `launched ${out.data?.jobName}`);
+			if (!out.error) setTimeout(onDone, 900);
 		},
 		[experimentId, onDone],
 	);
