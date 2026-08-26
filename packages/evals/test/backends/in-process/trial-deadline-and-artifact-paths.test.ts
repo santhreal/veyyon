@@ -84,7 +84,7 @@ describe("InProcessBackend — trial deadline and artifact paths", () => {
 						await neverResolves;
 					},
 					async getSessionStats() {
-						return { tokens: { input: 0, output: 0, total: 0 }, assistantMessages: 0 };
+						return { tokens: { input: 0, output: 0, total: 0 }, assistantMessages: 0, cost: 0 };
 					},
 					async getLastAssistantText() {
 						return null;
@@ -162,7 +162,7 @@ describe("InProcessBackend — trial deadline and artifact paths", () => {
 					},
 					async prompt() {},
 					async getSessionStats() {
-						return { tokens: { input: 100, output: 50, total: 150 }, assistantMessages: 1 };
+						return { tokens: { input: 100, output: 50, total: 150 }, assistantMessages: 1, cost: 0.004 };
 					},
 					async getLastAssistantText() {
 						return fullOutput;

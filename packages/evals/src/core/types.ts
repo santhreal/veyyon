@@ -99,6 +99,12 @@ export interface TrialArtifacts {
 	 * is what forced a reader to guess which it held.
 	 */
 	readonly filePaths?: Readonly<Record<string, string>>;
+	/**
+	 * Token, spend and latency the backend observed for this trial. A suite that
+	 * parses richer numbers from its own artifacts reports those instead; a suite
+	 * with no other source reports this, so a run's spend is never silently zero.
+	 */
+	readonly usage?: TrialUsage | null;
 	/** Lightweight trial metadata and exit statistics. */
 	readonly extra?: Readonly<Record<string, unknown>>;
 }

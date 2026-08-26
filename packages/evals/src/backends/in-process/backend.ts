@@ -1,7 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { Settings } from "@veyyon/coding-agent";
-import { errorMessage } from "@veyyon/utils";
+import { clamp, errorMessage } from "@veyyon/utils";
 import { type BackendRegistry, defaultBackendRegistry } from "../../core/backend-registry";
 import { resolveCellVariant } from "../../core/cell-variant";
 import type {
@@ -35,6 +35,8 @@ export interface InProcessSessionStats {
 		total: number;
 	};
 	assistantMessages: number;
+	/** Provider spend the session accumulated; 0 when the model carries no pricing. */
+	cost: number;
 }
 
 export interface InProcessClientLike {
@@ -240,7 +242,7 @@ export class InProcessBackend implements ExecutionBackend {
 				? context.options.timeoutMultiplier
 				: 1;
 		const rawBudget = (overrideTimeout ?? baseBudget) * multiplier;
-		const timeoutSec = Math.min(Math.max(1, rawBudget), HARD_CEILING_TRIAL_TIMEOUT_SEC);
+		const timeoutSec = clamp(rawBudget, 1, HARD_CEILING_TRIAL_TIMEOUT_SEC);
 
 		let sessionStats: InProcessSessionStats | null = null;
 		let lastAssistantText: string | null = null;
@@ -325,6 +327,9 @@ export class InProcessBackend implements ExecutionBackend {
 					cacheTokens: (sessionStats.tokens.cacheRead ?? 0) + (sessionStats.tokens.cacheWrite ?? 0),
 					cacheReadTokens: sessionStats.tokens.cacheRead ?? null,
 					cacheWriteTokens: sessionStats.tokens.cacheWrite ?? null,
+					// A provider with no pricing metadata reports 0, which is not a $0 trial:
+					// report it absent so a run's spend never reads as free when it is unknown.
+					costUsd: sessionStats.cost > 0 ? sessionStats.cost : null,
 					durationSec,
 				}
 			: { durationSec };
@@ -334,13 +339,13 @@ export class InProcessBackend implements ExecutionBackend {
 			logPaths: [],
 			rawOutput: capRawOutputTail(lastAssistantText),
 			filePaths: filePathsMap,
+			usage,
 			extra: {
 				cell,
 				variant: cell.variant,
 				trialDir,
 				durationSec,
 				sessionStats,
-				usage,
 				error: trialError,
 				timedOut,
 				infrastructureError: timedOut ? trialError : undefined,
