@@ -18,7 +18,14 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import type { SearchType } from "@veyyon/coding-agent/tools/search";
 import { errorMessage } from "@veyyon/utils";
-import { type FlagGrammar, flagChoice, flagCount, parseFlags, UnknownFlagError } from "../../core/flags";
+import {
+	type FlagGrammar,
+	FlagValueError,
+	flagChoice,
+	flagCount,
+	parseFlags,
+	UnknownFlagError,
+} from "../../core/flags";
 import type { SearchArm, SearchArmResult, SearchArmRunner } from "./arms";
 import type { SearchBenchmarkCase, SearchCaseSuite } from "./cases";
 import { materializeCorpus } from "./corpus";
@@ -28,13 +35,45 @@ import {
 	requireSearchArm,
 	requireSearchCaseSuite,
 	requireSearchCorpus,
+	SearchBenchMemberNotFoundError,
 	searchArms,
 	searchCaseSuites,
 	searchCorpora,
 } from "./registry";
 
+/**
+ * A run described in a way the bench cannot measure: no suite, no arm, no case of the requested
+ * type, a reference arm the run does not measure, an iteration count the loop cannot run. Nothing
+ * was measured, so an entry point reports it as a wrong invocation rather than as a failed bench.
+ */
+export class SearchRunSelectionError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = "SearchRunSelectionError";
+	}
+}
+
 /** The arm every other arm is compared against unless a run names a different one. */
 export const DEFAULT_REFERENCE_ARM_ID = "unified-tool";
+
+/** Timed repetitions per case when a run states none. */
+export const DEFAULT_ITERATIONS_PER_CASE = 5;
+
+/**
+ * The one reading of how many timed repetitions a case gets, so the loop that measures and the
+ * report that states the count cannot disagree. A fractional or non-positive count is refused
+ * rather than clamped: the loop would run a different number of iterations than the report
+ * states, and a count of zero leaves every arm with no samples at all.
+ */
+export function resolveIterations(iterations: number | undefined): number {
+	if (iterations === undefined) return DEFAULT_ITERATIONS_PER_CASE;
+	if (!Number.isInteger(iterations) || iterations < 1) {
+		throw new SearchRunSelectionError(
+			`Search bench iterations must be an integer >= 1, got ${JSON.stringify(iterations)}.`,
+		);
+	}
+	return iterations;
+}
 
 export interface SearchArmMeasurement {
 	armId: string;
@@ -74,7 +113,8 @@ export interface SearchCaseMeasurement {
 
 export interface SearchArmAverage {
 	armId: string;
-	avgDurationMs: number;
+	/** null when no case of this type ran, since 0 ms would read as the fastest arm. */
+	avgDurationMs: number | null;
 	totalBytes: number;
 }
 
@@ -234,6 +274,21 @@ interface PreparedArm {
 
 const byteLength = (value: string): number => Buffer.byteLength(value, "utf8");
 
+/**
+ * The fastest and slowest of a case's samples, folded in one pass. `Math.min(...samples)` puts
+ * every sample on the call stack, so a run with a large `--iterations` — an accepted count —
+ * died with a RangeError in the middle of a measurement instead of reporting one.
+ */
+export function sampleExtremes(samples: readonly number[]): { min: number; max: number } {
+	let min = samples[0] ?? 0;
+	let max = samples[0] ?? 0;
+	for (const sample of samples) {
+		if (sample < min) min = sample;
+		if (sample > max) max = sample;
+	}
+	return { min, max };
+}
+
 function armResultBytes(result: SearchArmResult): { contentBytes: number; detailsBytes: number } {
 	const contentBytes = byteLength(canonicalizeResultContent(result.content));
 	const detailsBytes = result.details ? byteLength(JSON.stringify(result.details)) : 0;
@@ -306,11 +361,13 @@ export async function measureSearchCase(
 			}
 		}
 
+		const { min, max } = sampleExtremes(samples);
+
 		measurements.push({
 			armId,
 			meanDurationMs: Number(mean.toFixed(3)),
-			minDurationMs: Number(Math.min(...samples).toFixed(3)),
-			maxDurationMs: Number(Math.max(...samples).toFixed(3)),
+			minDurationMs: Number(min.toFixed(3)),
+			maxDurationMs: Number(max.toFixed(3)),
 			contentBytes,
 			detailsBytes,
 			totalBytes: contentBytes + detailsBytes,
@@ -364,10 +421,13 @@ function summarize(
 		const expectationPassed = typeCases.filter(measurement => measurement.expectationSatisfied).length;
 		const armAverages = armIds.map(armId => {
 			const arms = typeCases.flatMap(measurement => measurement.arms.filter(arm => arm.armId === armId));
-			const avg = arms.length > 0 ? arms.reduce((acc, arm) => acc + arm.meanDurationMs, 0) / arms.length : 0;
+			const avg =
+				arms.length > 0
+					? Number((arms.reduce((acc, arm) => acc + arm.meanDurationMs, 0) / arms.length).toFixed(3))
+					: null;
 			return {
 				armId,
-				avgDurationMs: Number(avg.toFixed(3)),
+				avgDurationMs: avg,
 				totalBytes: arms.reduce((acc, arm) => acc + arm.totalBytes, 0),
 			};
 		});
@@ -390,15 +450,27 @@ export async function runSearchCaseSuite(
 	arms: readonly SearchArm[],
 	options: SearchBenchOptions = {},
 ): Promise<SearchSuiteReport> {
-	const iterations = Math.max(1, options.iterations ?? 5);
+	const iterations = resolveIterations(options.iterations);
 	const filterType = options.filterType ?? "all";
 	const referenceArmId = options.referenceArmId ?? DEFAULT_REFERENCE_ARM_ID;
 	const strictParity = options.strictParity ?? true;
 	const strictExpectations = options.strictExpectations ?? true;
 
+	if (arms.length === 0) {
+		throw new SearchRunSelectionError(`Case suite "${suite.id}" was given no arms to measure.`);
+	}
 	if (!arms.some(arm => arm.id === referenceArmId)) {
-		throw new Error(
-			`Reference arm "${referenceArmId}" is not among the arms this run measures (${arms.map(arm => arm.id).join(", ") || "none"}).`,
+		throw new SearchRunSelectionError(
+			`Reference arm "${referenceArmId}" is not among the arms this run measures (${arms.map(arm => arm.id).join(", ")}).`,
+		);
+	}
+
+	const casesToRun = suite.cases.filter(benchCase => filterType === "all" || benchCase.type === filterType);
+	if (casesToRun.length === 0) {
+		const held = [...new Set(suite.cases.map(benchCase => benchCase.type))].sort();
+		throw new SearchRunSelectionError(
+			`Case suite "${suite.id}" holds no ${filterType === "all" ? "cases" : `"${filterType}" case`} to measure` +
+				`${held.length > 0 ? ` (it holds: ${held.join(", ")})` : ""}.`,
 		);
 	}
 
@@ -410,7 +482,6 @@ export async function runSearchCaseSuite(
 			prepared.push({ arm, runner: arm.prepare({ session, corpusDir: corpus.corpusDir }) });
 		}
 
-		const casesToRun = suite.cases.filter(benchCase => filterType === "all" || benchCase.type === filterType);
 		const measurements: SearchCaseMeasurement[] = [];
 		for (const benchCase of casesToRun) {
 			measurements.push(
@@ -459,6 +530,19 @@ export async function runSearchBench(options: SearchBenchOptions = {}): Promise<
 	const arms = options.armIds ? options.armIds.map(requireSearchArm) : [...searchArms()];
 	const referenceArmId = options.referenceArmId ?? DEFAULT_REFERENCE_ARM_ID;
 
+	// A run that measures nothing would report agreement and answers as PASS, so an empty
+	// selection is refused by name instead of exiting 0 on an empty report.
+	if (suites.length === 0) {
+		throw new SearchRunSelectionError(
+			`This run selected no case suite. Registered case suites: ${[...searchCaseSuites()].map(suite => suite.id).join(", ")}.`,
+		);
+	}
+	if (arms.length === 0) {
+		throw new SearchRunSelectionError(
+			`This run selected no arm. Registered arms: ${[...searchArms()].map(arm => arm.id).join(", ")}.`,
+		);
+	}
+
 	const suiteReports: SearchSuiteReport[] = [];
 	for (const suite of suites) {
 		suiteReports.push(await runSearchCaseSuite(suite, arms, { ...options, referenceArmId }));
@@ -469,7 +553,7 @@ export async function runSearchBench(options: SearchBenchOptions = {}): Promise<
 
 	return {
 		timestamp: new Date().toISOString(),
-		iterationsPerCase: Math.max(1, options.iterations ?? 5),
+		iterationsPerCase: resolveIterations(options.iterations),
 		referenceArmId,
 		armIds: arms.map(arm => arm.id),
 		suites: suiteReports,
@@ -512,7 +596,8 @@ export function formatSearchBenchReport(report: SearchBenchReport): string {
 			if (summary.totalCases === 0) continue;
 			const cells = suite.armIds.map(armId => {
 				const average = summary.armAverages.find(entry => entry.armId === armId);
-				return (average ? average.avgDurationMs.toFixed(3) : "-").padStart(20);
+				const value = average?.avgDurationMs;
+				return (value === undefined || value === null ? "-" : value.toFixed(3)).padStart(20);
 			});
 			lines.push(
 				`${summary.type.padEnd(10)} | ${String(summary.totalCases).padStart(5)} | ` +
@@ -581,11 +666,16 @@ Flags:
 `;
 
 if (import.meta.main) {
-	const listValue = (value: string): string[] =>
-		value
+	// A list flag that is present and names nothing is a wrong command line, so it refuses with
+	// the usage code rather than reaching the run and refusing there as a failed bench.
+	const listValue = (key: string, value: string): string[] => {
+		const items = value
 			.split(",")
 			.map(entry => entry.trim())
 			.filter(Boolean);
+		if (items.length === 0) throw new FlagValueError(`--${key} names nothing, got ${JSON.stringify(value)}`);
+		return items;
+	};
 
 	try {
 		const flags = parseFlags(process.argv.slice(2), SEARCH_BENCH_FLAGS);
@@ -596,8 +686,8 @@ if (import.meta.main) {
 
 		const iterations = flagCount(flags, "iterations") ?? 5;
 		const filterType = flagChoice(flags, "type", ["files", "text", "structure", "all"] as const) ?? "all";
-		const caseSuiteIds = flags.suite === undefined ? undefined : listValue(flags.suite);
-		const armIds = flags.arms === undefined ? undefined : listValue(flags.arms);
+		const caseSuiteIds = flags.suite === undefined ? undefined : listValue("suite", flags.suite);
+		const armIds = flags.arms === undefined ? undefined : listValue("arms", flags.arms);
 		const referenceArmId = flags.reference;
 		// `--json` with no path writes to stdout; the grammar hands back "true" for a valueless use.
 		const jsonStdout = flags.json === "true" || flags.json === "";
@@ -639,7 +729,17 @@ if (import.meta.main) {
 		}
 	} catch (err) {
 		process.stderr.write(`Search bench error: ${errorMessage(err)}\n`);
-		if (err instanceof UnknownFlagError) process.stderr.write(`\n${SEARCH_BENCH_USAGE}`);
+		// A wrong command line is not a failed bench: a caller reads 2 as "nothing ran, fix the
+		// invocation" and 1 as "the bench ran and the arms disagreed".
+		if (
+			err instanceof UnknownFlagError ||
+			err instanceof FlagValueError ||
+			err instanceof SearchBenchMemberNotFoundError ||
+			err instanceof SearchRunSelectionError
+		) {
+			process.stderr.write(`\n${SEARCH_BENCH_USAGE}`);
+			process.exit(2);
+		}
 		process.exit(1);
 	}
 }
