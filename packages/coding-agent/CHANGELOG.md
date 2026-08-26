@@ -44,6 +44,8 @@
 - Daemon completion parsing and eval-store serialization errors use shared type guards; behavior is unchanged.
 ### Fixed
 
+- Ollama discovery keeps a configured base URL's path, so an endpoint mounted at a subpath behind a reverse proxy is found instead of reporting no models.
+- The write tool and the hashline parser agree on what a numeric-keyed mapping looks like, so a body of `true`, `false` or `null` values is accepted by both instead of one each way.
 - Cancelling an LSP request while a project is still loading returns on every language server, instead of returning on most and throwing `AbortError` on rust-analyzer alone.
 - Reading a directory the process cannot open reports the permission error instead of rendering it as `(empty directory)`.
 - A commit-analysis or changelog reply that a model writes as text is matched against the shape the caller needs, so a refusal, an error object or a reasoning object no longer crashes the parse or fills a changelog with one bullet per character.
