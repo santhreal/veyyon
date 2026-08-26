@@ -772,7 +772,7 @@ function rowsEquivalent(a: string, b: string): boolean {
 	return a.replace(SGR_SEQUENCE, "") === b.replace(SGR_SEQUENCE, "");
 }
 
-function isBlankRow(row: string): boolean {
+export function isBlankRow(row: string): boolean {
 	if (row.length === 0) return true;
 	// Fast path: no escape sequences means no SGR to strip — just check for
 	// non-whitespace directly, avoiding the regex+trim allocation.

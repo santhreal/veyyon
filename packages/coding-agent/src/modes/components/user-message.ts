@@ -1,6 +1,5 @@
-import { Container, Markdown } from "@veyyon/tui";
+import { Container, isBlankRow, Markdown } from "@veyyon/tui";
 import { SGR_FG_RESET } from "@veyyon/tui/ansi";
-import { stripAnsi } from "@veyyon/utils";
 import { getMarkdownTheme } from "../../modes/theme/markdown-theme";
 import { theme } from "../../modes/theme/theme";
 import { imageReferenceHyperlink, renderPlaceholders } from "../image-references";
@@ -93,7 +92,7 @@ export class UserMessageComponent extends Container {
 		const wrapped = lines.map(line => {
 			// ANSI-aware blankness: padding rows carry color codes, so a raw
 			// trim() would mistake them for content and misplace the gutter.
-			if (!gutterPlaced && stripAnsi(line).trim().length > 0) {
+			if (!gutterPlaced && !isBlankRow(line)) {
 				gutterPlaced = true;
 				return gutter + line;
 			}
