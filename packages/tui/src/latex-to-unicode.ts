@@ -1150,7 +1150,10 @@ export function latexColorScope(model: string | null, spec: string): ((text: str
 	const color = ansiColor(model, spec);
 	if (color === null) return null;
 	const { foreground } = color;
-	return text => foreground + text.replaceAll(SGR_FG_RESET, foreground) + SGR_FG_RESET;
+	return text => {
+		const body = text.indexOf(SGR_FG_RESET) === -1 ? text : text.replaceAll(SGR_FG_RESET, foreground);
+		return `${foreground}${body}${SGR_FG_RESET}`;
+	};
 }
 
 function restoreAnsi(
