@@ -253,15 +253,8 @@ export async function smokeTestJsEvalWorker(): Promise<void> {
 }
 
 /**
- * Terminate a JS eval worker, in one place.
- *
- * Every caller is tearing the session down: the startup smoke test in its `finally`, a forced kill, and the
- * graceful path's fallback after `close()` declined. None of them can throw, because each either raises its
- * own error (the smoke test's "fell back from the isolated subprocess") or is killing a session that is
- * already marked dead and whose pending calls have already been rejected.
- *
- * A terminate that fails is still worth a line: a subprocess-mode worker that will not stop keeps a
- * JavaScript runtime alive for the rest of the session, holding its cwd and any file handles it opened.
+ * Terminate a JS eval worker. Every caller is tearing down; none can throw. A failed terminate keeps a
+ * JS runtime alive for the rest of the session, holding cwd and file handles — worth a log line.
  */
 async function terminateJsWorker(worker: Pick<WorkerHandle, "terminate">, context: string): Promise<void> {
 	try {

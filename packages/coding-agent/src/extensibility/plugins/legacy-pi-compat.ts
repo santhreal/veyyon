@@ -624,12 +624,8 @@ function toGraphImportSpecifier(resolvedPath: string, mtimeTag: string | null): 
 }
 
 /**
- * Whether anything exists at `p`.
- *
- * A throwing `stat` is how "absent" arrives, which is the question being asked, and the callers treat
- * false as "keep looking" rather than as a fact about the filesystem: every use is a candidate path in
- * a resolution walk that tries several. A permission error also lands here and reaches the same place,
- * because a path this process cannot examine is one it cannot load from either.
+ * Whether anything exists at `p`. A throwing `stat` is how "absent" arrives; callers treat false as
+ * "keep looking". A permission error also lands here (can't examine → can't load from).
  */
 /**
  * Why every path probe in this file is silent about a fault.
@@ -912,15 +908,8 @@ async function readPackageManifest(packageRoot: string): Promise<Record<string, 
 }
 
 /**
- * A package's manifest, or null when this directory is not a package.
- *
- * Null for an ABSENT `package.json` is the ordinary answer and stays silent: resolution walks up
- * through directories that are not packages, so warning there would fire constantly. A `package.json`
- * that exists and cannot be PARSED is a different thing entirely -- a broken package -- and it used to
- * reach the same null, so dependency resolution gave up and the import failed with "cannot resolve
- * <specifier>", which sends the reader hunting a missing dependency instead of the malformed manifest
- * sitting in front of them. That case is now reported, once per package root because the caller caches
- * this promise.
+ * A package's manifest, or null. Absent `package.json` stays silent (resolution walks through non-package
+ * dirs). A `package.json` that exists but can't parse is a broken package — now reported, once per root.
  */
 async function readPackageManifestUncached(packageRoot: string): Promise<Record<string, unknown> | null> {
 	const manifestPath = path.join(packageRoot, "package.json");

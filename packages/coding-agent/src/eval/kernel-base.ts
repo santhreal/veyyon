@@ -247,18 +247,9 @@ export interface SessionKernel<TExecuteOptions extends KernelExecuteOptions = Ke
 }
 
 /**
- * Shut a kernel down while tearing a session down, in one place.
- *
- * Every teardown path reaches this: a session being replaced, a session evicted for idleness, a startup
- * that failed after the subprocess was already running, a shutdown of the whole executor. None of them can
- * usefully throw. The paths that replace a session go on to start the new one, and the startup-failure path
- * rethrows the error that made it give up, which is the error the operator needs rather than the shutdown
- * that followed it.
- *
- * Both ways it can go wrong are reported, because both leave a language runtime running. A throw means the
- * shutdown could not be attempted, and an unconfirmed result means the runner never acknowledged it and did
- * not exit within its grace period, so the subprocess outlives the session that owned it. Discarding either
- * one leaks a Python, Ruby or Julia process per session with nothing in the log to explain the memory.
+ * Shut a kernel down during teardown. Every teardown path reaches this; none can usefully throw. Both
+ * failure modes are reported: a throw (shutdown not attempted) and unconfirmed (runner didn't exit in
+ * grace). Discarding either leaks a language process per session.
  */
 export async function releaseKernel(
 	kernel: Pick<SessionKernel, "shutdown">,
