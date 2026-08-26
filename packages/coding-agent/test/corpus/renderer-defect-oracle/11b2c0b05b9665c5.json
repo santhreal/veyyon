@@ -1,0 +1,58 @@
+{
+	"schemaVersion": 3,
+	"id": "11b2c0b05b9665c5",
+	"status": "exempted",
+	"reason": "A card whose every rendered line is blank cannot be located from its own content, so every placement guarantee reads nothing rather than guessing a row. The boundary is the locator's, not the compositor's.",
+	"recordedAt": "2026-08-26T10:01:44.377Z",
+	"template": "overlay-boundary",
+	"seed": 0,
+	"kind": "blind",
+	"message": "overlayRowsPaintContiguouslyInOrder, everyOverlayRowReachesTheScreen, overlayLeavesTheBaseFrameOutsideItsColumns, overlayBlockStaysInsideTheViewport",
+	"observedGrid": [
+		"transcript-output-line-0000",
+		"transcript-output-line-0001",
+		"transcript-output-line-0002",
+		"transcript-output-line-0003",
+		"transcript-output-line-0004",
+		"transcript-output-line-0005",
+		"transcript-output-line-0006",
+		"transcript-output-line-0007",
+		"transcript-output-line-0008",
+		"transcript-output-line-0009",
+		"transcript-output-line-0010",
+		"",
+		"",
+		"",
+		"  › run the build",
+		"",
+		"location: ~/project · model: test-model",
+		"/ menu · ^c exit",
+		"",
+		"",
+		"",
+		"",
+		"",
+		""
+	],
+	"family": "overlay",
+	"state": {
+		"width": 80,
+		"height": 24,
+		"modeState": {},
+		"editorText": "run the build",
+		"transcriptLines": 12,
+		"scrollIsolation": true,
+		"scrollOffset": 0,
+		"focused": true,
+		"overlays": [
+			{
+				"name": "blank",
+				"lines": [
+					"   ",
+					"   "
+				]
+			}
+		]
+	},
+	"oracle": "everyOverlayRowReachesTheScreen"
+}

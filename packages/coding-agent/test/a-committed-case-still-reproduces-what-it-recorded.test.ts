@@ -12,18 +12,26 @@
  * an oracle that applies to a state and reads nothing, which the two defects found in this module
  * both were, and which a corpus that could only record a failure could not hold at all.
  *
+ * The corpus holds one case shape per oracle registry, not one store per registry. A composer case
+ * records a mount; an overlay case records the same mount plus the modals shown over it. The reader
+ * dispatches on `family`, so a case is replayed by the runner that recorded it and judged against
+ * the registry that owns its oracle. A second copy of the round trip is how the two stores drift.
+ *
  * WHAT IT ASSERTS:
  * Every file in the corpus loads through the validating reader, and every case replays into the
  * verdict its status and kind claim. A `resolved` case is the strict one: the oracle has to be in
  * `inspected` and out of `failures` and `blind`, so a "fix" that consists of the oracle quietly
  * ceasing to apply to the state does not pass for one. The status and kind pairs are a `Record` over
  * both unions, so adding a status or a kind without deciding what it means is a compile error, and
- * every case is asserted to resolve to an entry in it.
+ * every case is asserted to resolve to an entry in it. Every family in `CORPUS_FAMILIES` carries at
+ * least one committed case, so adding a registry without a reproduction for it turns this red.
  *
  * The negative controls drive the reader against a stale schema version, a hand-edited state, an
- * unknown status, an unknown kind, an exemption with no reason and an oracle that is no longer in the
- * registry. Each has to be rejected with the corrective action, because a case silently replayed
- * under the wrong shape is worse than no case: it reports success for a scenario nobody recorded.
+ * unknown status, an unknown kind, an exemption with no reason, an oracle that is no longer in the
+ * registry, an unknown family, an overlay case naming a composer oracle, an overlay case with no
+ * overlays, and an overlay case recording the one option a file cannot hold. Each has to be rejected
+ * with the corrective action, because a case silently replayed under the wrong shape is worse than no
+ * case: it reports success for a scenario nobody recorded.
  *
  * WHAT THIS SUITE DOES NOT CATCH:
  * - A defect in a state nobody recorded. The corpus is a set of examples, and the sweep is the gate
@@ -41,41 +49,61 @@
  * 2. Returning the runner's transcript markers to the hardcoded `["transcript-output-line-"]` turns
  *    the bleed case red: the wide-glyph rows match no marker, so that oracle appears in `blind`.
  * 3. Deleting the id check from `loadCorpusCase` turns the hand-edited negative control red.
+ * 4. Dropping the `family` dispatch from the oracle check in `loadCorpusCase` (always reading the
+ *    composer registry) turns nine of these red, the committed overlay case among them: its oracle is
+ *    not a composer guarantee.
+ * 5. Dropping the `family` dispatch from the state check (always parsing a composer state) turns the
+ *    three overlay controls red: an overlay case with no overlays, an overlay entry with no rendered
+ *    lines and an overlay recording the `visible` option are all accepted.
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import {
-	COMPOSER_ORACLE_GUARANTEES,
-	type ComposerOracleGuarantee,
-	type OracleEvaluationResult,
-} from "../src/modes/components/composer-defect-oracle";
+import type { ComposerOracleGuarantee } from "../src/modes/components/composer-defect-oracle";
+import type { OverlayOracleGuarantee } from "../src/modes/components/overlay-defect-oracle";
 import { initTheme } from "../src/modes/theme/theme";
 import {
 	CORPUS_CASE_KINDS,
 	CORPUS_CASE_STATUSES,
 	CORPUS_DIR,
+	CORPUS_FAMILIES,
+	CORPUS_FAMILY_GUARANTEES,
 	CORPUS_SCHEMA_VERSION,
+	type ComposerCorpusCase,
 	type CorpusCase,
 	type CorpusCaseKind,
 	type CorpusCaseStatus,
 	computeCaseHash,
 	listCorpusFiles,
 	loadCorpusCase,
-	replayCorpusCase,
+	type OverlayCorpusCase,
+	replayCorpusFile,
 } from "./helpers/renderer-defect-corpus";
 
 const files = listCorpusFiles();
 
+/**
+ * What a replay of a case reduces to, in the terms both registries report.
+ *
+ * The two evaluators return their own guarantee unions. A claim reads the same four buckets out of
+ * either one, so the claim table is written once rather than once per family.
+ */
+interface ReplayVerdict {
+	failures: readonly { oracle: string; message: string }[];
+	skipped: readonly string[];
+	inspected: readonly string[];
+	blind: readonly string[];
+}
+
 /** What a status and kind pair claims a replay will find, and the assertion that claim reduces to. */
 interface CaseClaim {
 	claim: string;
-	assert: (corpusCase: CorpusCase, evaluation: OracleEvaluationResult) => void;
+	assert: (corpusCase: CorpusCase, verdict: ReplayVerdict) => void;
 }
 
-function failuresFor(evaluation: OracleEvaluationResult, oracle: ComposerOracleGuarantee): readonly string[] {
-	return evaluation.failures.filter(failure => failure.oracle === oracle).map(failure => failure.message);
+function failuresFor(verdict: ReplayVerdict, oracle: string): readonly string[] {
+	return verdict.failures.filter(failure => failure.oracle === oracle).map(failure => failure.message);
 }
 
 /**
@@ -86,34 +114,34 @@ const CLAIMS: Readonly<Record<CorpusCaseStatus, Readonly<Record<CorpusCaseKind, 
 	recorded: {
 		failed: {
 			claim: "the oracle still fails on this state",
-			assert: (corpusCase, evaluation) => {
-				expect(failuresFor(evaluation, corpusCase.oracle)).not.toEqual([]);
-				expect(evaluation.inspected).toContain(corpusCase.oracle);
+			assert: (corpusCase, verdict) => {
+				expect(failuresFor(verdict, corpusCase.oracle)).not.toEqual([]);
+				expect(verdict.inspected).toContain(corpusCase.oracle);
 			},
 		},
 		blind: {
 			claim: "the oracle still reads nothing on this state",
-			assert: (corpusCase, evaluation) => {
-				expect(evaluation.blind).toContain(corpusCase.oracle);
+			assert: (corpusCase, verdict) => {
+				expect(verdict.blind).toContain(corpusCase.oracle);
 			},
 		},
 	},
 	resolved: {
 		failed: {
 			claim: "the oracle reads this state and no longer fails on it",
-			assert: (corpusCase, evaluation) => {
-				expect(failuresFor(evaluation, corpusCase.oracle)).toEqual([]);
-				expect(evaluation.inspected).toContain(corpusCase.oracle);
-				expect(evaluation.blind).not.toContain(corpusCase.oracle);
+			assert: (corpusCase, verdict) => {
+				expect(failuresFor(verdict, corpusCase.oracle)).toEqual([]);
+				expect(verdict.inspected).toContain(corpusCase.oracle);
+				expect(verdict.blind).not.toContain(corpusCase.oracle);
 			},
 		},
 		blind: {
 			claim: "the oracle now reads this state instead of walking away from it",
-			assert: (corpusCase, evaluation) => {
-				expect(evaluation.blind).not.toContain(corpusCase.oracle);
-				expect(evaluation.skipped).not.toContain(corpusCase.oracle);
-				expect(evaluation.inspected).toContain(corpusCase.oracle);
-				expect(failuresFor(evaluation, corpusCase.oracle)).toEqual([]);
+			assert: (corpusCase, verdict) => {
+				expect(verdict.blind).not.toContain(corpusCase.oracle);
+				expect(verdict.skipped).not.toContain(corpusCase.oracle);
+				expect(verdict.inspected).toContain(corpusCase.oracle);
+				expect(failuresFor(verdict, corpusCase.oracle)).toEqual([]);
 			},
 		},
 	},
@@ -123,16 +151,16 @@ const CLAIMS: Readonly<Record<CorpusCaseStatus, Readonly<Record<CorpusCaseKind, 
 	exempted: {
 		failed: {
 			claim: "the oracle still reports the failure the exemption documents",
-			assert: (corpusCase, evaluation) => {
+			assert: (corpusCase, verdict) => {
 				expect(corpusCase.reason?.trim()).toBeTruthy();
-				expect(failuresFor(evaluation, corpusCase.oracle)).not.toEqual([]);
+				expect(failuresFor(verdict, corpusCase.oracle)).not.toEqual([]);
 			},
 		},
 		blind: {
 			claim: "the oracle still reads nothing, which is the boundary the exemption documents",
-			assert: (corpusCase, evaluation) => {
+			assert: (corpusCase, verdict) => {
 				expect(corpusCase.reason?.trim()).toBeTruthy();
-				expect(evaluation.blind).toContain(corpusCase.oracle);
+				expect(verdict.blind).toContain(corpusCase.oracle);
 			},
 		},
 	},
@@ -163,11 +191,18 @@ describe("the corpus directory", () => {
 		}
 	});
 
-	it("records every case against an oracle the registry still declares", () => {
-		const oracles = files.map(file => loadCorpusCase(file).oracle);
-		for (const oracle of oracles) {
-			expect(COMPOSER_ORACLE_GUARANTEES).toContain(oracle);
+	it("records every case against an oracle the registry of its own family still declares", () => {
+		for (const file of files) {
+			const corpusCase = loadCorpusCase(file);
+			expect(CORPUS_FAMILY_GUARANTEES[corpusCase.family], `${corpusCase.id} names ${corpusCase.oracle}`).toContain(
+				corpusCase.oracle,
+			);
 		}
+	});
+
+	it("carries at least one case for every family the corpus can hold", () => {
+		const recorded = new Set(files.map(file => loadCorpusCase(file).family));
+		expect([...recorded].sort()).toEqual([...CORPUS_FAMILIES].sort());
 	});
 });
 
@@ -179,9 +214,8 @@ describe("replaying a committed case", () => {
 	it.each(files.map(file => [path.basename(file), file] as const))(
 		"reproduces the verdict it recorded: %s",
 		async (_name, file) => {
-			const corpusCase = loadCorpusCase(file);
+			const { corpusCase, result } = await replayCorpusFile(file);
 			const claim = CLAIMS[corpusCase.status][corpusCase.kind];
-			const result = await replayCorpusCase(corpusCase.state);
 			try {
 				claim.assert(corpusCase, result.evaluation);
 				// The frame is part of the reproduction. A case that mounts the same state and paints a
@@ -197,30 +231,53 @@ describe("replaying a committed case", () => {
 
 const INVALID_DIR = path.resolve(CORPUS_DIR, "../renderer-defect-oracle-invalid");
 
-/** A case that validates, as the base every negative control breaks in one way. */
-function validCase(): CorpusCase {
-	const state = {
-		width: 80,
-		height: 24,
-		modeState: {},
-		editorText: "run the build",
-		transcriptLines: 12,
-		scrollIsolation: true,
-		scrollOffset: 0,
-		focused: true,
-	};
+const CONTROL_STATE = {
+	width: 80,
+	height: 24,
+	modeState: {},
+	editorText: "run the build",
+	transcriptLines: 12,
+	scrollIsolation: true,
+	scrollOffset: 0,
+	focused: true,
+} as const;
+
+/** A composer case that validates, as the base a negative control breaks in one way. */
+function composerValidCase(): ComposerCorpusCase {
+	const state = { ...CONTROL_STATE };
 	const oracle: ComposerOracleGuarantee = "noHorizontalOverflow";
 	return {
 		schemaVersion: CORPUS_SCHEMA_VERSION,
-		id: computeCaseHash(state, oracle, "failed"),
+		id: computeCaseHash("composer", state, oracle, "failed"),
 		status: "recorded",
 		recordedAt: "2026-01-01T00:00:00.000Z",
 		template: "negative-control",
 		seed: 0,
+		family: "composer",
 		state,
 		oracle,
 		kind: "failed",
 		message: "a row was wider than the terminal",
+		observedGrid: ["row"],
+	};
+}
+
+/** An overlay case that validates. Its state is the composer state plus the modals shown over it. */
+function overlayValidCase(): OverlayCorpusCase {
+	const state = { ...CONTROL_STATE, overlays: [{ name: "card", lines: ["one", "two"] }] };
+	const oracle: OverlayOracleGuarantee = "everyOverlayRowReachesTheScreen";
+	return {
+		schemaVersion: CORPUS_SCHEMA_VERSION,
+		id: computeCaseHash("overlay", state, oracle, "failed"),
+		status: "recorded",
+		recordedAt: "2026-01-01T00:00:00.000Z",
+		template: "negative-control",
+		seed: 0,
+		family: "overlay",
+		state,
+		oracle,
+		kind: "failed",
+		message: "a row of the card was painted nowhere",
 		observedGrid: ["row"],
 	};
 }
@@ -234,31 +291,90 @@ describe("a case the reader has to reject", () => {
 		fs.rmSync(INVALID_DIR, { recursive: true, force: true });
 	});
 
-	const controls: readonly (readonly [string, (base: CorpusCase) => CorpusCase, RegExp])[] = [
-		["a stale schema version", base => ({ ...base, schemaVersion: (CORPUS_SCHEMA_VERSION - 1) as 2 }), /schema 1/],
+	const controls: readonly (readonly [string, () => CorpusCase, RegExp])[] = [
+		[
+			"a stale schema version",
+			() => ({ ...composerValidCase(), schemaVersion: (CORPUS_SCHEMA_VERSION - 1) as 3 }),
+			/schema 2/,
+		],
 		[
 			"a state edited without recomputing the id",
-			base => ({ ...base, state: { ...base.state, width: 120 } }),
+			() => {
+				const base = composerValidCase();
+				return { ...base, state: { ...base.state, width: 120 } };
+			},
 			/does not hash its own state/,
 		],
-		["an unknown status", base => ({ ...base, status: "wontfix" as CorpusCaseStatus }), /status wontfix/],
-		["an unknown kind", base => ({ ...base, kind: "slow" as CorpusCaseKind }), /kind slow/],
-		["an exemption with no reason", base => ({ ...base, status: "exempted" }), /has to say why/],
+		[
+			"an unknown status",
+			() => ({ ...composerValidCase(), status: "wontfix" as CorpusCaseStatus }),
+			/status wontfix/,
+		],
+		["an unknown kind", () => ({ ...composerValidCase(), kind: "slow" as CorpusCaseKind }), /kind slow/],
+		["an exemption with no reason", () => ({ ...composerValidCase(), status: "exempted" }), /has to say why/],
 		[
 			"an oracle the registry no longer declares",
-			base => ({ ...base, oracle: "theOldName" as ComposerOracleGuarantee }),
-			/not a member of COMPOSER_ORACLE_GUARANTEES/,
+			() => ({ ...composerValidCase(), oracle: "theOldName" as ComposerOracleGuarantee }),
+			/not a guarantee of the composer registry/,
 		],
-		["a message that says nothing", base => ({ ...base, message: "   " }), /message or observedGrid/],
+		["a message that says nothing", () => ({ ...composerValidCase(), message: "   " }), /message or observedGrid/],
 		[
 			"a state field of the wrong type",
-			base => ({ ...base, state: { ...base.state, height: "24" as unknown as number } }),
+			() => {
+				const base = composerValidCase();
+				return { ...base, state: { ...base.state, height: "24" as unknown as number } };
+			},
 			/state fields are missing or the wrong type/,
+		],
+		[
+			"a family no registry answers for",
+			() => ({ ...composerValidCase(), family: "footer" }) as unknown as CorpusCase,
+			/family footer is not one of/,
+		],
+		[
+			"an overlay case naming a composer oracle",
+			() => ({ ...overlayValidCase(), oracle: "noHorizontalOverflow" as unknown as OverlayOracleGuarantee }),
+			/not a guarantee of the overlay registry/,
+		],
+		[
+			"an overlay case with no overlays",
+			() => {
+				const base = overlayValidCase();
+				return { ...base, state: { ...base.state, overlays: [] } };
+			},
+			/records at least one overlay/,
+		],
+		[
+			"an overlay entry with no rendered lines",
+			() => {
+				const base = overlayValidCase();
+				return {
+					...base,
+					state: { ...base.state, overlays: [{ name: "card" } as unknown as { name: string; lines: string[] }] },
+				};
+			},
+			/needs a name and a lines array/,
+		],
+		[
+			"an overlay option a file cannot round-trip",
+			() => {
+				const base = overlayValidCase();
+				return {
+					...base,
+					state: {
+						...base.state,
+						overlays: [
+							{ name: "card", lines: ["one"], options: { visible: true } as unknown as Record<string, never> },
+						],
+					},
+				};
+			},
+			/cannot round-trip through a file/,
 		],
 	];
 
-	it.each(controls)("rejects %s", (_name, mutate, expected) => {
-		const corpusCase = mutate(validCase());
+	it.each(controls)("rejects %s", (_name, build, expected) => {
+		const corpusCase = build();
 		// Written under the id the case carries, so the file name is not what the reader trips on
 		// except in the control that edits the state.
 		const file = path.join(INVALID_DIR, `${corpusCase.id}.json`);
@@ -266,8 +382,11 @@ describe("a case the reader has to reject", () => {
 		expect(() => loadCorpusCase(file)).toThrow(expected);
 	});
 
-	it("accepts the base the controls are built from", () => {
-		const corpusCase = validCase();
+	it.each([
+		["a composer case", composerValidCase],
+		["an overlay case", overlayValidCase],
+	] as const)("accepts %s the controls are built from", (_name, build) => {
+		const corpusCase = build();
 		const file = path.join(INVALID_DIR, `${corpusCase.id}.json`);
 		fs.writeFileSync(file, `${JSON.stringify(corpusCase, null, "\t")}\n`, "utf-8");
 		expect(loadCorpusCase(file)).toEqual(corpusCase);

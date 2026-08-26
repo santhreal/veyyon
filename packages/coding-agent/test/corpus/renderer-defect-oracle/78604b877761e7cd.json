@@ -1,11 +1,12 @@
 {
-	"schemaVersion": 2,
-	"id": "436d2d94400e23c0",
+	"schemaVersion": 3,
+	"id": "78604b877761e7cd",
 	"status": "exempted",
 	"reason": "A terminal this short leaves no room above the composer, so reading no transcript row is the correct outcome rather than a hole. The case pins the boundary: an oracle that starts reading this state means the exemption is stale.",
 	"recordedAt": "2026-08-26T08:29:13.945Z",
 	"template": "hand-recorded",
 	"seed": 0,
+	"family": "composer",
 	"state": {
 		"width": 80,
 		"height": 4,

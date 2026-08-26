@@ -45,7 +45,13 @@ import {
 	type OverlayOracleGuarantee,
 } from "../src/modes/components/overlay-defect-oracle";
 import { initTheme } from "../src/modes/theme/theme";
+import type { RunnerOptions } from "./helpers/composer-oracle-runner";
 import { type OverlaySpec, runOverlayOracleScenario } from "./helpers/overlay-oracle-runner";
+import {
+	overlaySpecsToCorpus,
+	promoteOverlayFailureToCorpus,
+	runnerOptionsToCorpusState,
+} from "./helpers/renderer-defect-corpus";
 
 const CARD = ["┌─ card ─┐", "│ line 1 │", "│ line 2 │", "└────────┘"] as const;
 const TALL = Array.from({ length: 14 }, (_, i) => `│ tall row ${String(i).padStart(2, "0")} │`);
@@ -188,17 +194,34 @@ interface ArmOutcome {
 
 const outcomes: ArmOutcome[] = [];
 
+/**
+ * One case per oracle, not one per arm: a single compositor defect fails most of the arms below, and
+ * a corpus of one copy per arm is a dump rather than a reproduction. The first arm that reaches an
+ * oracle is the one recorded.
+ */
+const promotedOracles = new Set<OverlayOracleGuarantee>();
+
 beforeAll(async () => {
 	await initTheme(false);
 	for (const arm of ARMS) {
-		const run = await runOverlayOracleScenario({
+		const options: RunnerOptions = {
 			width: arm.width,
 			height: arm.height,
 			transcriptLines: arm.transcriptLines,
 			editorText: "overlay sweep",
-			overlays: arm.overlays,
-		});
+		};
+		const run = await runOverlayOracleScenario({ ...options, overlays: arm.overlays });
 		try {
+			for (const failure of run.evaluation.failures) {
+				if (promotedOracles.has(failure.oracle)) continue;
+				promotedOracles.add(failure.oracle);
+				promoteOverlayFailureToCorpus(
+					{ ...runnerOptionsToCorpusState(options), overlays: overlaySpecsToCorpus(arm.overlays) },
+					failure,
+					run.frameState.viewportLines,
+					{ template: "overlay-sweep" },
+				);
+			}
 			outcomes.push({
 				arm: arm.name,
 				anchor: arm.overlays[0]?.options?.anchor,

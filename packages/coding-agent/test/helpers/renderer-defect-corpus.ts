@@ -20,12 +20,19 @@ import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { ThinkingLevel } from "@veyyon/agent-core";
+import type { OverlayOptions } from "@veyyon/tui";
 import {
 	COMPOSER_ORACLE_GUARANTEES,
 	type ComposerOracleGuarantee,
 	type OracleFailure,
 } from "../../src/modes/components/composer-defect-oracle";
+import {
+	OVERLAY_ORACLE_GUARANTEES,
+	type OverlayOracleFailure,
+	type OverlayOracleGuarantee,
+} from "../../src/modes/components/overlay-defect-oracle";
 import { type RunnerOptions, type RunnerResult, runComposerOracleScenario } from "./composer-oracle-runner";
+import { type OverlayRunnerResult, type OverlaySpec, runOverlayOracleScenario } from "./overlay-oracle-runner";
 
 /**
  * Option keys that cannot round-trip through CorpusCaseState JSON serialisation.
@@ -41,7 +48,18 @@ export type CorpusExcludedOptionKey = (typeof CORPUS_EXCLUDED_OPTION_KEYS)[numbe
  * version is rejected on load, because a state whose fields have moved replays as a different scenario
  * than the one that failed.
  */
-export const CORPUS_SCHEMA_VERSION = 2;
+export const CORPUS_SCHEMA_VERSION = 3;
+
+/**
+ * The oracle families the corpus holds a case for.
+ *
+ * One corpus, two registries. The round trip, the validation on load and the promotion path are the
+ * same work for both, and a second copy of them for overlays would drift the way the two mode axes
+ * did. Keyed tables below make a new family a compile error until it declares its guarantees, its
+ * state validator and its replay.
+ */
+export const CORPUS_FAMILIES = ["composer", "overlay"] as const;
+export type CorpusFamily = (typeof CORPUS_FAMILIES)[number];
 
 /**
  * - `recorded`: the oracle still gets this state wrong. The case is an open defect.
@@ -63,7 +81,7 @@ export type CorpusCaseKind = (typeof CORPUS_CASE_KINDS)[number];
 
 /** What one oracle did with one state, as the corpus records it. */
 export interface CorpusObservation {
-	oracle: ComposerOracleGuarantee;
+	oracle: ComposerOracleGuarantee | OverlayOracleGuarantee;
 	kind: CorpusCaseKind;
 	message: string;
 }
@@ -89,7 +107,29 @@ export interface CorpusCaseState {
 	transcriptLineMarkers?: readonly string[];
 }
 
-export interface CorpusCase {
+/**
+ * One overlay of an overlay case, as JSON holds it.
+ *
+ * `OverlayOptions.visible` is a predicate and cannot survive serialisation, so it is not recorded and
+ * a state that needs it cannot be a corpus case. `CORPUS_EXCLUDED_OVERLAY_OPTION_KEYS` names it.
+ */
+export interface OverlayCaseSpec {
+	name: string;
+	lines: string[];
+	options?: Omit<OverlayOptions, "visible">;
+	caret?: { line: number; col: number };
+	hideBeforeCapture?: boolean;
+}
+
+export const CORPUS_EXCLUDED_OVERLAY_OPTION_KEYS = ["visible"] as const;
+export type CorpusExcludedOverlayOptionKey = (typeof CORPUS_EXCLUDED_OVERLAY_OPTION_KEYS)[number];
+
+/** An overlay case is a composer state plus the modals shown over it. */
+export interface OverlayCorpusCaseState extends CorpusCaseState {
+	overlays: OverlayCaseSpec[];
+}
+
+interface CorpusCaseFields {
 	schemaVersion: typeof CORPUS_SCHEMA_VERSION;
 	id: string;
 	status: CorpusCaseStatus;
@@ -97,8 +137,6 @@ export interface CorpusCase {
 	recordedAt: string;
 	template: string;
 	seed: number;
-	state: CorpusCaseState;
-	oracle: ComposerOracleGuarantee;
 	kind: CorpusCaseKind;
 	message: string;
 	/**
@@ -109,11 +147,43 @@ export interface CorpusCase {
 	observedGrid: string[];
 }
 
+export interface ComposerCorpusCase extends CorpusCaseFields {
+	family: "composer";
+	state: CorpusCaseState;
+	oracle: ComposerOracleGuarantee;
+}
+
+export interface OverlayCorpusCase extends CorpusCaseFields {
+	family: "overlay";
+	state: OverlayCorpusCaseState;
+	oracle: OverlayOracleGuarantee;
+}
+
+/** Discriminated on `family`, so a reader that handles one cannot silently be handed the other. */
+export type CorpusCase = ComposerCorpusCase | OverlayCorpusCase;
+
+/**
+ * The guarantees a case of each family may name.
+ *
+ * A `Record` over the family union: a third family does not compile until it says which registry its
+ * oracle ids come from, and a case naming an id outside its family's registry is rejected on load.
+ */
+export const CORPUS_FAMILY_GUARANTEES: Readonly<Record<CorpusFamily, readonly string[]>> = {
+	composer: COMPOSER_ORACLE_GUARANTEES,
+	overlay: OVERLAY_ORACLE_GUARANTEES,
+};
+
 export const CORPUS_DIR = path.resolve(import.meta.dirname, "../corpus/renderer-defect-oracle");
 
 /** Compute the deterministic case id: the file name a state and observation are recorded under. */
-export function computeCaseHash(state: CorpusCaseState, oracle: string, kind: CorpusCaseKind): string {
+export function computeCaseHash(
+	family: CorpusFamily,
+	state: CorpusCaseState,
+	oracle: string,
+	kind: CorpusCaseKind,
+): string {
 	const normalized = JSON.stringify({
+		family,
 		state,
 		oracle,
 		kind,
@@ -185,6 +255,31 @@ export function corpusStateToRunnerOptions(state: CorpusCaseState): RunnerOption
 	return options;
 }
 
+/** Record the overlays of an overlay scenario, dropping the one option a file cannot hold. */
+export function overlaySpecsToCorpus(overlays: readonly OverlaySpec[]): OverlayCaseSpec[] {
+	return overlays.map(spec => {
+		const recorded: OverlayCaseSpec = { name: spec.name, lines: [...spec.lines] };
+		if (spec.options) {
+			const { visible: _dropped, ...rest } = spec.options;
+			recorded.options = rest;
+		}
+		if (spec.caret) recorded.caret = { ...spec.caret };
+		if (spec.hideBeforeCapture !== undefined) recorded.hideBeforeCapture = spec.hideBeforeCapture;
+		return recorded;
+	});
+}
+
+/** Rebuild the overlays of an overlay scenario from a recorded case. */
+export function corpusStateToOverlaySpecs(state: OverlayCorpusCaseState): OverlaySpec[] {
+	return state.overlays.map(spec => {
+		const rebuilt: OverlaySpec = { name: spec.name, lines: [...spec.lines] };
+		if (spec.options) rebuilt.options = { ...spec.options };
+		if (spec.caret) rebuilt.caret = { ...spec.caret };
+		if (spec.hideBeforeCapture !== undefined) rebuilt.hideBeforeCapture = spec.hideBeforeCapture;
+		return rebuilt;
+	});
+}
+
 /**
  * Replay a corpus state by mounting it in the runner and re-evaluating all defect oracles.
  *
@@ -193,6 +288,14 @@ export function corpusStateToRunnerOptions(state: CorpusCaseState): RunnerOption
 export async function replayCorpusCase(state: CorpusCaseState): Promise<RunnerResult> {
 	const options = corpusStateToRunnerOptions(state);
 	return await runComposerOracleScenario(options);
+}
+
+/** Replay an overlay case: the same composer mount, with the recorded modals shown over it. */
+export async function replayOverlayCorpusCase(state: OverlayCorpusCaseState): Promise<OverlayRunnerResult> {
+	return await runOverlayOracleScenario({
+		...corpusStateToRunnerOptions(state),
+		overlays: corpusStateToOverlaySpecs(state),
+	});
 }
 
 /** Absolute paths of every committed case, in file-name order so a run is reproducible. */
@@ -207,7 +310,41 @@ export function listCorpusFiles(): readonly string[] {
 		.map(name => path.join(CORPUS_DIR, name));
 }
 
-function corpusStateFrom(value: Record<string, unknown>, label: string): CorpusCaseState {
+function overlayCorpusStateFrom(value: Record<string, unknown>, label: string): OverlayCorpusCaseState {
+	const state = composerCorpusStateFrom(value, label);
+	const overlays = (state as unknown as Record<string, unknown>).overlays;
+	if (!Array.isArray(overlays) || overlays.length === 0) {
+		throw new Error(`${label}: an overlay case records at least one overlay in state.overlays.`);
+	}
+	for (const entry of overlays) {
+		if (
+			typeof entry !== "object" ||
+			entry === null ||
+			typeof (entry as Record<string, unknown>).name !== "string" ||
+			!Array.isArray((entry as Record<string, unknown>).lines)
+		) {
+			throw new Error(`${label}: every recorded overlay needs a name and a lines array.`);
+		}
+		if ((entry as Record<string, unknown>).options !== undefined) {
+			const options = (entry as Record<string, unknown>).options;
+			if (typeof options !== "object" || options === null) {
+				throw new Error(`${label}: a recorded overlay's options must be an object.`);
+			}
+			for (const key of CORPUS_EXCLUDED_OVERLAY_OPTION_KEYS) {
+				if (key in (options as Record<string, unknown>)) {
+					throw new Error(
+						`${label}: overlay option '${key}' cannot round-trip through a file, so a case cannot record it.`,
+					);
+				}
+			}
+		}
+	}
+	// The parsed object itself, not a rebuild: the id hashes the state as written, so a copy whose
+	// keys land in another order would hash differently than the file it came from.
+	return state as OverlayCorpusCaseState;
+}
+
+function composerCorpusStateFrom(value: Record<string, unknown>, label: string): CorpusCaseState {
 	const state = value.state;
 	if (typeof state !== "object" || state === null) {
 		throw new Error(`${label}: no state object.`);
@@ -263,10 +400,14 @@ export function loadCorpusCase(filePath: string): CorpusCase {
 	if (status === "exempted" && (typeof fields.reason !== "string" || fields.reason.trim() === "")) {
 		throw new Error(`${label}: an exempted case has to say why in "reason".`);
 	}
+	const family = fields.family;
+	if (typeof family !== "string" || !(CORPUS_FAMILIES as readonly string[]).includes(family)) {
+		throw new Error(`${label}: family ${String(family)} is not one of ${CORPUS_FAMILIES.join(", ")}.`);
+	}
 	const oracle = fields.oracle;
-	if (typeof oracle !== "string" || !(COMPOSER_ORACLE_GUARANTEES as readonly string[]).includes(oracle)) {
+	if (typeof oracle !== "string" || !CORPUS_FAMILY_GUARANTEES[family as CorpusFamily].includes(oracle)) {
 		throw new Error(
-			`${label}: oracle ${String(oracle)} is not a member of COMPOSER_ORACLE_GUARANTEES. An oracle was renamed or removed; re-record the case or exempt it.`,
+			`${label}: oracle ${String(oracle)} is not a guarantee of the ${family} registry. An oracle was renamed or removed; re-record the case or exempt it.`,
 		);
 	}
 	const kind = fields.kind;
@@ -276,8 +417,8 @@ export function loadCorpusCase(filePath: string): CorpusCase {
 	if (typeof fields.message !== "string" || fields.message.trim() === "" || !Array.isArray(fields.observedGrid)) {
 		throw new Error(`${label}: message or observedGrid is missing.`);
 	}
-	const state = corpusStateFrom(fields, label);
-	const id = computeCaseHash(state, oracle, kind as CorpusCaseKind);
+	const state = family === "overlay" ? overlayCorpusStateFrom(fields, label) : composerCorpusStateFrom(fields, label);
+	const id = computeCaseHash(family as CorpusFamily, state, oracle, kind as CorpusCaseKind);
 	if (fields.id !== id) {
 		throw new Error(
 			`${label}: id ${String(fields.id)} does not hash its own state, oracle and kind (${id}). The case was edited by hand; re-record it.`,
@@ -292,10 +433,17 @@ export function loadCorpusCase(filePath: string): CorpusCase {
 /**
  * Load and replay a committed corpus case from disk.
  */
-export async function replayCorpusFile(filePath: string): Promise<{ corpusCase: CorpusCase; result: RunnerResult }> {
+export async function replayCorpusFile(
+	filePath: string,
+): Promise<
+	| { corpusCase: ComposerCorpusCase; result: RunnerResult }
+	| { corpusCase: OverlayCorpusCase; result: OverlayRunnerResult }
+> {
 	const corpusCase = loadCorpusCase(filePath);
-	const result = await replayCorpusCase(corpusCase.state);
-	return { corpusCase, result };
+	if (corpusCase.family === "overlay") {
+		return { corpusCase, result: await replayOverlayCorpusCase(corpusCase.state) };
+	}
+	return { corpusCase, result: await replayCorpusCase(corpusCase.state) };
 }
 
 /**
@@ -303,13 +451,14 @@ export async function replayCorpusFile(filePath: string): Promise<{ corpusCase: 
  * Returns the written file path.
  */
 export function promoteCaseToCorpus(
+	family: CorpusFamily,
 	state: CorpusCaseState,
 	observation: CorpusObservation,
 	observedGrid: readonly string[],
 	options?: { template?: string; seed?: number; status?: CorpusCaseStatus; reason?: string },
 ): string {
 	fs.mkdirSync(CORPUS_DIR, { recursive: true });
-	const id = computeCaseHash(state, observation.oracle, observation.kind);
+	const id = computeCaseHash(family, state, observation.oracle, observation.kind);
 	const filePath = path.join(CORPUS_DIR, `${id}.json`);
 
 	// A re-promotion of a case already on disk keeps its status, its reason and the timestamp it was
@@ -328,20 +477,32 @@ export function promoteCaseToCorpus(
 		}
 	}
 
-	const corpusCase: CorpusCase = {
+	const fields: CorpusCaseFields = {
 		schemaVersion: CORPUS_SCHEMA_VERSION,
 		id,
 		status,
 		reason,
 		recordedAt,
-		template: options?.template ?? "composer-sweep",
+		template: options?.template ?? `${family}-sweep`,
 		seed: options?.seed ?? 0,
-		state,
-		oracle: observation.oracle,
 		kind: observation.kind,
 		message: observation.message,
 		observedGrid: [...observedGrid],
 	};
+	const corpusCase: CorpusCase =
+		family === "overlay"
+			? {
+					...fields,
+					family: "overlay",
+					state: state as OverlayCorpusCaseState,
+					oracle: observation.oracle as OverlayOracleGuarantee,
+				}
+			: {
+					...fields,
+					family: "composer",
+					state,
+					oracle: observation.oracle as ComposerOracleGuarantee,
+				};
 
 	fs.writeFileSync(filePath, `${JSON.stringify(corpusCase, null, "\t")}\n`, "utf-8");
 	return filePath;
@@ -355,6 +516,23 @@ export function promoteFailureToCorpus(
 	options?: { template?: string; seed?: number; status?: CorpusCaseStatus; reason?: string },
 ): string {
 	return promoteCaseToCorpus(
+		"composer",
+		state,
+		{ oracle: failure.oracle, kind: "failed", message: failure.message },
+		observedGrid,
+		options,
+	);
+}
+
+/** Record an overlay failure the evaluator reported. */
+export function promoteOverlayFailureToCorpus(
+	state: OverlayCorpusCaseState,
+	failure: OverlayOracleFailure,
+	observedGrid: readonly string[],
+	options?: { template?: string; seed?: number; status?: CorpusCaseStatus; reason?: string },
+): string {
+	return promoteCaseToCorpus(
+		"overlay",
 		state,
 		{ oracle: failure.oracle, kind: "failed", message: failure.message },
 		observedGrid,
