@@ -5,6 +5,7 @@
 	"type": "module",
 	"description": "Every model and agent evaluation in this repository: suites, harnesses, execution backends, run store, and dashboard.",
 	"author": "santhreal",
+	"license": "MIT",
 	"bin": {
 		"evals": "src/cli.ts",
 		"evals-server": "src/server/main.ts"
