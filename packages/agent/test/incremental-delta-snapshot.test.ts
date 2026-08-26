@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { agentLoop } from "@veyyon/agent-core/agent-loop";
 import type { AgentContext, AgentEvent, AgentLoopConfig } from "@veyyon/agent-core/types";
-import type { AssistantMessage } from "@veyyon/ai";
+import type { AssistantMessage, Message } from "@veyyon/ai";
 import { createMockModel } from "@veyyon/ai/providers/mock";
 import { AssistantMessageEventStream } from "@veyyon/ai/utils/event-stream";
 import { createAssistantMessage, createUserMessage } from "./helpers";
@@ -21,10 +21,10 @@ import { createAssistantMessage, createUserMessage } from "./helpers";
 // touches finished blocks again, so this is safe. A test for that provider
 // invariant lives with the provider tests, not here.
 
-function identityConverter(messages: Parameters<AgentLoopConfig["convertToLlm"]>[0]) {
-	return messages.filter(m => m.role === "user" || m.role === "assistant" || m.role === "toolResult") as Parameters<
-		AgentLoopConfig["convertToLlm"]
-	>[0];
+function identityConverter(messages: Parameters<AgentLoopConfig["convertToLlm"]>[0]): Message[] {
+	return messages.filter(
+		(m): m is Message => m.role === "user" || m.role === "assistant" || m.role === "toolResult",
+	) as Message[];
 }
 
 describe("incremental delta snapshot with contentIndex", () => {
