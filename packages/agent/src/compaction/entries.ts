@@ -213,19 +213,7 @@ export function getToolResultMessage(entry: SessionEntry): ToolResultMessage | u
 	return message as ToolResultMessage;
 }
 
-/**
- * `firstKeptEntryId` for a compaction that keeps no pre-compaction entry at all.
- *
- * A range can be one unbreakable oversized turn: a tool result is never a valid
- * cut point, because cutting there would separate it from the call it answers,
- * so a single enormous result leaves the assistant message in front of it as the
- * newest usable boundary, and keeping from there keeps everything. Summarizing
- * the whole range and keeping nothing is then the only way to free anything.
- *
- * Readers resolve the id against the entries in the path and there is
- * deliberately no entry with this one, so every reader that walks until it finds
- * the first kept entry keeps nothing, which is what this means.
- */
+/** `firstKeptEntryId` for a compaction that keeps no pre-compaction entry. An oversized unbreakable turn (e.g. a single enormous tool result) can only be freed by summarizing the whole range and keeping nothing. No entry has this id, so readers that walk to the first kept entry keep nothing. */
 export const KEEP_NOTHING_ENTRY_ID = "compaction:keep-nothing";
 
 /**
