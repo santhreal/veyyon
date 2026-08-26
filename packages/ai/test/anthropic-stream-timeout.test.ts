@@ -330,7 +330,7 @@ describe("anthropic first-event timeout retries", () => {
 			requestMaxRetries.push(requestOptions?.maxRetries);
 			return createAnthropicMockStream({
 				signal: requestOptions?.signal,
-				connectDelayMs: 400,
+				connectDelayMs: 4_000,
 				events: createSuccessfulAnthropicEvents("too late"),
 			}) as never;
 		}) as unknown as AnthropicMessagesClientLike["messages"]["create"];
@@ -340,25 +340,28 @@ describe("anthropic first-event timeout retries", () => {
 		const result = await streamAnthropic(model, context, {
 			client,
 			// A real-timer arm, so the numbers have to clear scheduler noise. The
-			// phase is the declared budget times the stall allowance of two, and a
-			// declared 1ms made that 2ms: on a loaded runner the first stall's
-			// retry decision landed after the fence was already spent, so the
-			// ladder stopped at one attempt and this arm failed on the machine and
-			// not on the code. 50ms leaves 50ms of slack before the retry is
-			// refused, and the connect above never completes inside the phase.
-			streamFirstEventTimeoutMs: 50,
+			// phase is the declared budget times the stall allowance of two, and
+			// the first attempt spends its own deadline plus whatever the runtime
+			// costs to abort and report. A declared 1ms made the phase 2ms and a
+			// declared 50ms made it 100ms; both were inside the noise of a loaded
+			// CI runner, so the retry decision landed after the fence was spent,
+			// the ladder stopped at one attempt, and the arm failed on the machine
+			// rather than on the code. 500ms leaves 500ms of slack before the
+			// retry is refused, and the 4s connect above never completes inside
+			// the 1s phase.
+			streamFirstEventTimeoutMs: 500,
 			providerRetryWait,
 		}).result();
 
-		// The declared 1ms is ONE attempt's deadline; the pre-first-event phase
-		// is that deadline times the stall allowance of two. So the first stall
-		// is retried — a flaky connect still recovers — and the second ends the
-		// phase. Before the budget existed this ladder ran PROVIDER_MAX_RETRIES
+		// The declared number is ONE attempt's deadline; the pre-first-event
+		// phase is that deadline times the stall allowance of two. So the first
+		// stall is retried — a flaky connect still recovers — and the second ends
+		// the phase. Before the budget existed this ladder ran PROVIDER_MAX_RETRIES
 		// deep and spent the caller's declared number eleven times over, which
 		// is why the counts here are literals and not derived from the source.
 		expect(attempt).toBe(2);
 		expect(providerRetryWait).toHaveBeenCalledTimes(1);
-		expect(requestTimeouts).toEqual([50, 50]);
+		expect(requestTimeouts).toEqual([500, 500]);
 		expect(requestMaxRetries).toEqual([0, 0]);
 		expect(result.stopReason).toBe("error");
 		expect(result.errorMessage).toBe("Anthropic stream timed out while waiting for the first event");
