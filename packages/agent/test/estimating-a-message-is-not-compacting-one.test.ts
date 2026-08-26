@@ -58,24 +58,23 @@ function runtimeImportsOf(relative: string): string[] {
 }
 
 /**
- * Measured at 85, then 86 once the estimator took `LEGACY_FRAME_TOKEN_ESTIMATE` from
- * `legacy-snapcompact-archive.ts`. Almost all of it is `../tokenizer` (83), which is the native tokenizer
- * binding and is the one thing an estimate genuinely needs. The rest is `@veyyon/utils/json` for
- * `stringifyJson`, named as the owner subpath rather than the `@veyyon/utils` barrel, which would have cost
- * 74 modules for one function, plus the archive module, which imports nothing at all — the test below pins
- * that, so the constant's home cannot grow a graph behind this ceiling.
+ * RE-MEASURED 2026-08-26 at 10, down from 92. `tokenizer.ts` took `estimateTokensFromText` from the
+ * `@veyyon/utils` barrel, which put all 85 of that barrel's modules behind an estimate; it names
+ * `@veyyon/utils/tokens` now. What remains is the native tokenizer binding, `@veyyon/utils/json` for
+ * `stringifyJson`, and the archive module, which imports nothing at all — the test below pins that, so the
+ * constant's home cannot grow a graph behind this ceiling.
  */
-const TOKEN_ESTIMATE_CEILING = 91;
+const TOKEN_ESTIMATE_CEILING = 12;
 
-/** Measured at 88, down from 398. Its own graph is the estimator plus a handful of local modules. */
-const SHAKE_CEILING = 95;
+/** RE-MEASURED 2026-08-26 at 13, down from 88. Its own graph is the estimator plus a handful of local modules. */
+const SHAKE_CEILING = 16;
 
 /**
- * Measured at 204, down from 398. It does not reach the ceiling above because it genuinely uses more of the
- * directory: the entry helpers, the message shapes and the read-selector split. 204 is that work, not a
- * leftover edge into the engine, which is why this ceiling is not "the same as shake".
+ * RE-MEASURED 2026-08-26 at 187, down from 204. It does not reach the ceiling above because it genuinely uses
+ * more of the directory: the entry helpers, the message shapes and the read-selector split. 187 is that work,
+ * not a leftover edge into the engine, which is why this ceiling is not "the same as shake".
  */
-const PRUNING_CEILING = 215;
+const PRUNING_CEILING = 195;
 
 describe("the estimator is a leaf", () => {
 	it(`token-estimate reaches at most ${TOKEN_ESTIMATE_CEILING} modules`, () => {
@@ -98,14 +97,15 @@ describe("the estimator is a leaf", () => {
 
 	/**
 	 * NON-VACUITY for the absences above: the walk really resolved this module, so "reaches none of those" is
-	 * an answer about the graph and not what an empty set gives for free. The tokenizer is the edge an
-	 * estimator must have, and it is the bulk of the 85.
+	 * an answer about the graph and not what an empty set gives for free. The edges are named rather than
+	 * counted, because a magnitude proxy stops meaning anything the moment the graph legitimately shrinks.
 	 */
 	it("still reaches the tokenizer, which is what an estimate is made of", () => {
 		const reached = reachedNames("compaction/token-estimate.ts");
 
 		expect(reached).toContain(path.join("packages", "agent", "src", "tokenizer.ts"));
-		expect(reached.length).toBeGreaterThan(50);
+		expect(reached).toContain(path.join("packages", "utils", "src", "tokens.ts"));
+		expect(reached).toContain(path.join("packages", "natives", "native", "index.js"));
 	});
 
 	/**
