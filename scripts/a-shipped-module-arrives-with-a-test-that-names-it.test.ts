@@ -190,7 +190,6 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/ai/src/registry/xiaomi-token-plan-cn.ts",
 	"packages/ai/src/registry/xiaomi-token-plan-sgp.ts",
 	"packages/ai/src/utils/deterministic-id.ts",
-	"packages/ai/src/utils/first-event-budget.ts",
 	"packages/ai/src/utils/github-copilot-http.ts",
 	"packages/ai/src/utils/openrouter-headers.ts",
 	"packages/ai/src/utils/parse-bind.ts",
