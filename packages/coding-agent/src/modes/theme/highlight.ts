@@ -122,6 +122,9 @@ export function highlightCode(code: string, lang?: string, highlightTheme: Theme
 	// crossing the native UTF-8 boundary and can drop lines), the styled output
 	// is untrustworthy: fall back to the raw code so the block renders complete
 	// rather than silently missing lines.
-	const rawLines = code.split("\n");
-	return lines.length === rawLines.length ? lines : rawLines;
+	let rawLineCount = 1;
+	for (let i = 0; i < code.length; i++) {
+		if (code.charCodeAt(i) === 0x0a) rawLineCount++;
+	}
+	return lines.length === rawLineCount ? lines : code.split("\n");
 }
