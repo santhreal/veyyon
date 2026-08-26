@@ -469,11 +469,11 @@ export class AsyncJobManager {
 	}
 
 	async waitForAll(): Promise<void> {
-		await Promise.all(Array.from(this.#jobs.values()).map(job => job.promise));
+		await Promise.all([...this.#jobs.values()].map(job => job.promise));
 	}
 
 	async #waitForAllUntil(deadline: number): Promise<boolean> {
-		const promises = Array.from(this.#jobs.values()).map(job => job.promise);
+		const promises = [...this.#jobs.values()].map(job => job.promise);
 		if (promises.length === 0) return true;
 		if (deadline === Number.POSITIVE_INFINITY) {
 			await Promise.all(promises);

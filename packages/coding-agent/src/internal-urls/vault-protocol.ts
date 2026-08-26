@@ -751,7 +751,7 @@ export class VaultProtocolHandler implements ProtocolHandler {
 		const vaults = await this.#loadVaultDirectory(context);
 		const root = vaults.get(ref.vault);
 		if (!root) {
-			const available = Array.from(vaults.keys()).sort().join(", ") || "none";
+			const available = [...vaults.keys()].sort().join(", ") || "none";
 			throw new Error(`Unknown Obsidian vault: ${ref.vault}\nAvailable: ${available}`);
 		}
 		return path.resolve(root);
@@ -766,7 +766,7 @@ export class VaultProtocolHandler implements ProtocolHandler {
 		context?: ResolveContext,
 	): Promise<InternalResource> {
 		const vaults = await this.#loadVaultDirectory(context);
-		const entries = Array.from(vaults.keys()).sort((a, b) => a.localeCompare(b));
+		const entries = [...vaults.keys()].sort((a, b) => a.localeCompare(b));
 		const listing =
 			entries.length === 0
 				? "(none)"

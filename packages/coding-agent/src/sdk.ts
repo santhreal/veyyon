@@ -3110,7 +3110,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		// that consumes `resolve { action: "apply" }` to submit the plan for approval (issue #1428).
 		// Dropping it on read-only sessions (e.g. plan-mode toolset `read`, `search`, `find`,
 		// `web_search`) leaves plan mode unable to exit through the intended path.
-		const hasDeferrableTools = Array.from(toolRegistry.values()).some(tool => tool.deferrable === true);
+		const hasDeferrableTools = [...toolRegistry.values()].some(tool => tool.deferrable === true);
 		const planModeAvailable = settings.get("plan.enabled");
 		const needsResolveTool = hasDeferrableTools || planModeAvailable;
 		if (!needsResolveTool) {
@@ -3354,7 +3354,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			const activeToolNames = new Set(toolNames);
 			const discoverableLocalTools: DiscoverableTool[] =
 				effectiveDiscoveryMode === "all"
-					? Array.from(tools.values()).flatMap(tool => {
+					? [...tools.values()].flatMap(tool => {
 							if (tool.loadMode !== "discoverable" || activeToolNames.has(tool.name)) return [];
 							return collectDiscoverableTools([tool], {
 								source: builtInRegistryToolNames.has(tool.name) ? "builtin" : "custom",
@@ -3500,7 +3500,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			};
 		};
 
-		const toolNamesFromRegistry = Array.from(toolRegistry.keys());
+		const toolNamesFromRegistry = [...toolRegistry.keys()];
 		const explicitlyRequestedToolNames = options.toolNames ? normalizeToolNames(options.toolNames) : undefined;
 		// When `requireYieldTool` is set, the subagent's prompts and idle-reminders demand a
 		// `yield` call to terminate. The tool registry already includes `yield` (see

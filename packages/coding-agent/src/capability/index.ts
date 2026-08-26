@@ -323,7 +323,7 @@ export function initializeWithSettings(activeSettings: Settings): void {
  */
 function persistDisabledProviders(): void {
 	if (settings) {
-		settings.set("disabledProviders", Array.from(disabledProviders));
+		settings.set("disabledProviders", [...disabledProviders]);
 	}
 }
 
@@ -359,14 +359,14 @@ export function isForeignConfigImportEnabled(): boolean {
 
 /** The provider IDs gated behind `discovery.importForeignConfig`. */
 export function getForeignProviderIds(): string[] {
-	return Array.from(FOREIGN_PROVIDER_IDS);
+	return [...FOREIGN_PROVIDER_IDS];
 }
 
 /**
  * Get list of all disabled provider IDs.
  */
 export function getDisabledProviders(): string[] {
-	return Array.from(disabledProviders);
+	return [...disabledProviders];
 }
 
 /**
@@ -395,7 +395,7 @@ export function getCapability<T>(id: string): Capability<T> | undefined {
  * List all registered capability IDs.
  */
 export function listCapabilities(): string[] {
-	return Array.from(capabilities.keys());
+	return [...capabilities.keys()];
 }
 
 /**
@@ -450,7 +450,7 @@ export function getProviderInfo(providerId: string): ProviderInfo | undefined {
 		displayName: meta.displayName,
 		description: meta.description,
 		priority,
-		capabilities: Array.from(caps),
+		capabilities: [...caps],
 		enabled: isProviderEnabled(providerId),
 	};
 }
@@ -551,7 +551,7 @@ export function captureRegistryForTests(): RegistrySnapshot {
  * replaced wholesale.
  */
 export function restoreRegistryForTests(snapshot: RegistrySnapshot): void {
-	for (const id of Array.from(capabilities.keys())) {
+	for (const id of [...capabilities.keys()]) {
 		const captured = snapshot.capabilityProviders.get(id);
 		if (!captured) {
 			capabilities.delete(id);

@@ -15,7 +15,7 @@ export async function detectChangelogBoundaries(cwd: string, stagedFiles: string
 		boundaries.set(changelogPath, list);
 	}
 
-	return Array.from(boundaries.entries()).map(([changelogPath, files]) => ({
+	return [...boundaries.entries()].map(([changelogPath, files]) => ({
 		changelogPath,
 		files,
 	}));

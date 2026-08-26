@@ -76,7 +76,7 @@ export class RpcHostUriBridge {
 	}
 
 	getSchemes(): string[] {
-		return Array.from(this.#definitions.keys());
+		return [...this.#definitions.keys()];
 	}
 
 	/**
@@ -111,7 +111,7 @@ export class RpcHostUriBridge {
 			this.#router.register(new RpcHostUriProtocolHandler(definition, this));
 		}
 		this.#definitions = normalized;
-		return Array.from(normalized.keys());
+		return [...normalized.keys()];
 	}
 
 	/**
@@ -138,7 +138,7 @@ export class RpcHostUriBridge {
 
 	rejectAllPending(message: string): void {
 		const error = new Error(message);
-		const pending = Array.from(this.#pending.values());
+		const pending = [...this.#pending.values()];
 		this.#pending.clear();
 		for (const entry of pending) {
 			entry.reject(error);

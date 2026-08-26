@@ -232,7 +232,7 @@ async function loadEnabledPlugins(cwd: string, home?: string, pluginsRoot?: stri
 	const merged = new Map<string, ScopedInstalledPlugin>();
 	for (const plugin of userPlugins) merged.set(plugin.name, plugin);
 	for (const plugin of projectPlugins) merged.set(plugin.name, plugin);
-	return Array.from(merged.values());
+	return [...merged.values()];
 }
 
 // =============================================================================

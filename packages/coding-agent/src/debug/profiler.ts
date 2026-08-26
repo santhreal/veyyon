@@ -76,7 +76,7 @@ function formatProfileAsMarkdown(profileJson: string): string {
 		}
 
 		// Sort by self time and get top functions
-		const sorted = Array.from(nodeMap.values())
+		const sorted = [...nodeMap.values()]
 			.filter(n => n.selfTime > 0 && n.functionName !== "(root)" && n.functionName !== "(idle)")
 			.sort((a, b) => b.selfTime - a.selfTime)
 			.slice(0, 30);

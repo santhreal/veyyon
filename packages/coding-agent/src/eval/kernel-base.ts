@@ -498,7 +498,7 @@ export abstract class BaseKernel<TExecuteOptions extends KernelExecuteOptions = 
 
 	#abortPendingExecutions(reason: string, options?: { kernelKilled?: boolean }): void {
 		if (this.#pending.size === 0) return;
-		const pending = Array.from(this.#pending.values());
+		const pending = [...this.#pending.values()];
 		this.#pending.clear();
 		const kernelKilledDefault = options?.kernelKilled ?? false;
 		for (const entry of pending) {

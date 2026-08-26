@@ -109,9 +109,7 @@ export class InternalUrlRouter {
 		const handler = this.#handlers.get(scheme);
 
 		if (!handler) {
-			const available = Array.from(this.#handlers.keys())
-				.map(s => `${s}://`)
-				.join(", ");
+			const available = [...this.#handlers.keys()].map(s => `${s}://`).join(", ");
 			throw new Error(`Unknown protocol: ${scheme}://\nSupported: ${available || "none"}`);
 		}
 

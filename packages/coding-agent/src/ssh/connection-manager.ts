@@ -669,7 +669,7 @@ export async function closeConnection(hostName: string): Promise<void> {
 }
 
 export async function closeAllConnections(): Promise<void> {
-	for (const [name, host] of Array.from(activeHosts.entries())) {
+	for (const [name, host] of [...activeHosts.entries()]) {
 		await closeConnectionInternal(host);
 		activeHosts.delete(name);
 	}

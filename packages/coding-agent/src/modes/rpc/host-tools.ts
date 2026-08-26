@@ -82,7 +82,7 @@ export class RpcHostToolBridge {
 	}
 
 	getToolNames(): string[] {
-		return Array.from(this.#definitions.keys());
+		return [...this.#definitions.keys()];
 	}
 
 	setTools(tools: RpcHostToolDefinition[]): AgentTool[] {
@@ -182,7 +182,7 @@ export class RpcHostToolBridge {
 
 	rejectAllPending(message: string): void {
 		const error = new Error(message);
-		const pendingCalls = Array.from(this.#pendingCalls.values());
+		const pendingCalls = [...this.#pendingCalls.values()];
 		this.#pendingCalls.clear();
 		for (const pending of pendingCalls) {
 			pending.reject(error);
@@ -192,7 +192,7 @@ export class RpcHostToolBridge {
 	/** Reject active and future host tool requests after the RPC client disconnects. */
 	close(message: string): void {
 		if (!this.#closedError) this.#closedError = new Error(message);
-		const pendingCalls = Array.from(this.#pendingCalls.values());
+		const pendingCalls = [...this.#pendingCalls.values()];
 		this.#pendingCalls.clear();
 		for (const pending of pendingCalls) {
 			pending.reject(this.#closedError);

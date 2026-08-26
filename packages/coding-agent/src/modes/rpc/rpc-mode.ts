@@ -77,7 +77,7 @@ export class RpcPendingExtensionRequests extends Map<string, PendingExtensionReq
 	/** Reject every active and future extension UI request. */
 	rejectAll(message: string): void {
 		if (!this.#closedError) this.#closedError = new Error(message);
-		const requests = Array.from(this.values());
+		const requests = [...this.values()];
 		this.clear();
 		for (const request of requests) {
 			request.reject(this.#closedError);
@@ -197,7 +197,7 @@ export class RpcExtensionUserMessageTracker {
 
 	async #waitForAgentMessageTasks(scope: RpcExtensionUserMessageScope): Promise<void> {
 		while (scope.pendingAgentMessageTasks.size > 0) {
-			await Promise.allSettled(Array.from(scope.pendingAgentMessageTasks));
+			await Promise.allSettled([...scope.pendingAgentMessageTasks]);
 		}
 	}
 
@@ -386,7 +386,7 @@ export class RpcInputDispatcher {
 	/** Await every accepted serial command, including commands queued before EOF. */
 	async drain(): Promise<void> {
 		while (this.#tasks.size > 0) {
-			await Promise.allSettled(Array.from(this.#tasks));
+			await Promise.allSettled([...this.#tasks]);
 		}
 	}
 
@@ -445,7 +445,7 @@ export class RpcShutdownCoordinator {
 	/** Await every tracked task, including tasks tracked while draining. */
 	async drain(): Promise<void> {
 		while (this.#tasks.size > 0) {
-			await Promise.allSettled(Array.from(this.#tasks));
+			await Promise.allSettled([...this.#tasks]);
 		}
 	}
 

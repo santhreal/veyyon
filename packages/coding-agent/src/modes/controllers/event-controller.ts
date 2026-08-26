@@ -1424,7 +1424,7 @@ export class EventController {
 			this.ctx.streamingMessage = undefined;
 		}
 		await this.ctx.flushPendingModelSwitch();
-		for (const toolCallId of Array.from(this.ctx.pendingTools.keys())) {
+		for (const toolCallId of [...this.ctx.pendingTools.keys()]) {
 			if (!this.#backgroundTaskCallIds.has(toolCallId)) {
 				// A foreground tool still pending at turn end never delivered a result;
 				// seal it so it freezes (and stops animating) rather than lingering in

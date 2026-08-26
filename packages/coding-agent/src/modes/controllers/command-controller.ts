@@ -1594,7 +1594,7 @@ export function renderUsageReports(
 		list.push(report);
 		grouped.set(report.provider, list);
 	}
-	const providerEntries = Array.from(grouped.entries())
+	const providerEntries = [...grouped.entries()]
 		.map(([provider, providerReports]) => ({
 			provider,
 			providerReports,
@@ -1688,7 +1688,7 @@ export function renderUsageReports(
 			for (const line of resetAccountLines) lines.push(uiTheme.fg("dim", line));
 		}
 
-		const renderableGroups = Array.from(limitGroups.values()).map(group => {
+		const renderableGroups = [...limitGroups.values()].map(group => {
 			const entries = group.limits.map((limit, index) => ({
 				limit,
 				report: group.reports[index],

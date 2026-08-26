@@ -275,7 +275,7 @@ export class DapSessionManager {
 	}
 
 	listSessions(): DapSessionSummary[] {
-		return Array.from(this.#sessions.values()).map(buildSummary);
+		return [...this.#sessions.values()].map(buildSummary);
 	}
 
 	getCapabilities(): DapCapabilities | null {
