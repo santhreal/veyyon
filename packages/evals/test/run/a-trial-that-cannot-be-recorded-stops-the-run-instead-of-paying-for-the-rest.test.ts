@@ -27,7 +27,6 @@ import type {
 	EvalSuite,
 	ExecutionBackend,
 	PreflightVerdict,
-	RunContext,
 	SuiteProvenance,
 	TaskDescriptor,
 	TrialArtifacts,
