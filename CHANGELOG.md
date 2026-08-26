@@ -78,6 +78,7 @@
 
 ### Fixed
 
+- Launch daemon teardown and browser process cleanup no longer throw on a host where the native addon cannot load; a daemon falls back to ending its PTY and a browser scan reports no candidates, instead of the failure ending the session ([#917](https://github.com/santhreal/veyyon/issues/917)).
 - A streaming answer no longer composes a frame one row taller than the viewport on every chunk, which moved the window down to fit and back up on the next frame and shook the screen for as long as the answer kept arriving.
 - Mounting a chat block no longer routes home-anchor slack for rows the content has already taken, which composed a frame taller than the viewport and moved the window on that frame and back on the next.
 - An `irc send` with `await` ends as soon as its recipient is terminated or leaves the roster, instead of blocking for the full timeout, or forever at `timeoutMs: 0`, on a reply that can no longer arrive; a recipient that is merely idle or parked is still woken by the delivery and given the full timeout to answer.
@@ -189,6 +190,7 @@
 - An API-key login for a provider that declares `storeCredentialsAs` now stores the credential under that provider id, as an OAuth login already did, instead of filing it under the login mechanism's id where nothing reads it.
 - A wide line clipped in the unseen-line reveal is cut at a code point rather than a UTF-16 code unit, so an emoji or rare CJK character sitting at the column limit is no longer split into an invalid lone surrogate.
 - Mnemopi cost log SQLite database (`cost_log.db`) manages schema migrations via `PRAGMA user_version` and dynamically backfills missing columns on legacy databases.
+- A native addon load that fails is reported once instead of once per native call; the failed pipeline is memoized, so a run that reached a hundred native calls no longer prints a hundred copies of the candidate report ([#917](https://github.com/santhreal/veyyon/issues/917)).
 - Fixed stock Windows AVX2 detection by trying PowerShell 7 before an isolated modern-addon trial; only explicit shell answers or illegal-instruction exits become verdicts, while missing, incompatible, timed-out, and unexpectedly crashing addons remain unknown.
 - Persisted AVX2 verdicts are schema-versioned and keyed by platform, architecture, and CPU model, so copied or stale caches cannot select a native variant for different hardware.
 - The AVX2 trial load answers from the addon loader's first import and exits, so a compiled host, whose `process.execPath` is the product binary rather than a JavaScript runtime, reports a verdict instead of booting the whole CLI and spawning a trial child of its own at every level.
@@ -200,6 +202,7 @@
 - Nested optional-argument LaTeX constructs parse in linear time without character-by-character concatenation allocations.
 - Exclude pinned footer rows from the scroll-isolation snapshot and scroll space so the composer does not duplicate inside scrolled-back history.
 - Extract LaTeX argument text by slicing the source rather than appending one character at a time, so a deeply nested optional-argument chain degrades linearly instead of quadratically.
+- Ending a child process no longer throws on a host where the native addon cannot load, such as a container whose glibc predates the modern build; the direct child is terminated through the runtime and process liveness falls back to signal 0, so the tree walk is the only capability lost ([#917](https://github.com/santhreal/veyyon/issues/917)).
 - `splitTrailingPartialEscape` lets a streaming reader hold back an escape sequence a chunk ended inside, so a sequence divided across two reads is stripped whole instead of losing its head and leaking its tail as text.
 - `discarded-fault.ts`: `bestEffort` and `optionalResult` state which contract discarded a promise's failure, one for a step nobody waits on and one for a probe whose failure is the answer, each taking a mandatory reason.
 - `relativePathWithinRoot` returns the candidate's own spelling instead of the case-folded copy the containment check used, so on Windows a path under `C:\Users\dev\Projects` no longer comes back lowercased, and a root configured in a different case than the directory on disk resolves to the tail rather than to a `..` walk.
