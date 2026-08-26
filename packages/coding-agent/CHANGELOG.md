@@ -44,6 +44,7 @@
 - Daemon completion parsing and eval-store serialization errors use shared type guards; behavior is unchanged.
 ### Fixed
 
+- Cancelling an LSP request while a project is still loading returns on every language server, instead of returning on most and throwing `AbortError` on rust-analyzer alone.
 - Reading a directory the process cannot open reports the permission error instead of rendering it as `(empty directory)`.
 - A commit-analysis or changelog reply that a model writes as text is matched against the shape the caller needs, so a refusal, an error object or a reasoning object no longer crashes the parse or fills a changelog with one bullet per character.
 - Launch daemon teardown and browser process cleanup no longer throw on a host where the native addon cannot load; a daemon falls back to ending its PTY and a browser scan reports no candidates, instead of the failure ending the session ([#917](https://github.com/santhreal/veyyon/issues/917)).
