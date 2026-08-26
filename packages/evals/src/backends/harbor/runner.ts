@@ -136,7 +136,7 @@ Commands:
   cleanup                        Force-remove ALL leftover Harbor containers + networks, then exit
 
 Model / agent:
-  -m, --model <provider/model>   Model (repeatable). Default anthropic/claude-sonnet-4-6
+  -m, --model <provider/model>   Model (repeatable, required)
       --agent <name>             veyyon (default) | oracle | nop | any harbor agent
       --install <source|local|published> veyyon install mode (default: source).
                                  source = mount /work/veyyon read-only + prebuilt linux deps tree; TS changes
@@ -362,7 +362,13 @@ export function parseArgs(argv: string[], options?: { defaultDataset?: string })
 				throw new Error(`unknown flag: ${arg} (see --help)`);
 		}
 	}
-	if (cfg.models.length === 0) cfg.models = ["anthropic/claude-sonnet-4-6"];
+	// No model default: this CLI reports token counts, spend and a pass rate, and every
+	// one of those belongs to a specific model. Substituting one produces a report about
+	// a model the caller never named. `--resume` names no model because the recorded
+	// launch config carries it; `resolveResumeConfig` enforces the same rule there.
+	if (cfg.models.length === 0 && !cfg.resume) {
+		throw new Error("--model <provider/model-id> is required (see --help)");
+	}
 	if (cfg.envType === "apple-container") {
 		if (cfg.hostNetwork) throw new Error("--host-network is docker-only (compose overlay)");
 		// host.docker.internal doesn't exist on vmnet; containers reach the host at the bridge address.
@@ -419,6 +425,14 @@ export function resolveResumeConfig(cli: Config): Config {
 	cfg.jobsDir = jobsDir;
 	cfg.jobName = jobName;
 	cfg.resume = spec;
+	// A recorded config with no model is unresumable: the resumed trials would run
+	// whatever the container defaults to and be reported as the original run's model.
+	if (cfg.models.length === 0) {
+		throw new Error(
+			`--resume: the recorded launch config for ${jobName} names no model, so the resumed trials would ` +
+				`report an unnamed model's result. Relaunch with --model <provider/model-id>.`,
+		);
+	}
 	// The recorded backend wins over any reconstruction-time preference
 	// (e.g. apple-container auto-detection added after the original run).
 	const recorded = jobConfig.environment?.type;

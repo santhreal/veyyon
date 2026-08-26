@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { beforeAll, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { TempDir } from "@veyyon/utils";
@@ -19,6 +19,7 @@ import type {
 	TrialScore,
 	Variant,
 } from "../../../src/core/types";
+import { registerBuiltinHarnesses } from "../../../src/harnesses/index";
 
 function createDeadlineProbeSuite(timeBudgetSec = 1): EvalSuite {
 	return {
@@ -70,6 +71,13 @@ function createDeadlineProbeSuite(timeBudgetSec = 1): EvalSuite {
 }
 
 describe("InProcessBackend — trial deadline and artifact paths", () => {
+	// The in-process backend resolves the trial's model through the harness the variant
+	// names, so the harness registry has to be populated. Registration is idempotent and
+	// process-wide; clearing it would poison every later file in this worker.
+	beforeAll(() => {
+		registerBuiltinHarnesses();
+	});
+
 	it("terminates a wedged trial at deadline and reports infrastructure error, not reward 0", async () => {
 		const tempDir = await TempDir.create("@evals-test-trial-deadline-");
 		try {

@@ -31,7 +31,6 @@ import { parseSectionOverridesJson } from "@veyyon/coding-agent/system-prompt-bu
 import { parseStatementOverridesJson } from "@veyyon/coding-agent/system-prompt-builder/statement-registry";
 import YAML from "yaml";
 import { getAllRegisteredSystemNames } from "../../../src/harnesses/registry";
-import { DEFAULT_MODEL } from "../../../src/harnesses/system-comparison";
 import { armsDir, deepSweSuiteDir, evalsPackageDir, repoRootDir, taskListsDir } from "../../../src/paths";
 import {
 	ARM_ATTACHMENT_KINDS,
@@ -223,50 +222,43 @@ describe("every flag the runner accepts is documented", () => {
 	});
 });
 
-describe("the documented model agrees with the code and the arms", () => {
-	/** Imported from the module that owns it, not pattern-matched out of run.ts:
-	 * the old regex pinned the exact expression shape and broke the moment the
-	 * default moved behind a ternary, silently reading "" and taking every
-	 * assertion below with it. */
-	const defaultModel = DEFAULT_MODEL;
+describe("the documented model agrees with the arms", () => {
+	/**
+	 * The document is the anchor now, not a constant in the code. The runner has no
+	 * default model — a run names one or refuses — so "the default model" is no longer a
+	 * thing to agree with. What can still drift is the documented command: it must be
+	 * runnable as written, and the arms it exercises must allowlist the model it names.
+	 *
+	 * Anchored on the `provider/model` shape so this reads the runnable command block and
+	 * not the `- \`--model <id>\`:` flag-reference line above it, which is prose and has
+	 * no model in it. Getting that wrong made this compare against the literal "<id>".
+	 */
+	const documentedModel = SKILL ? (/--model\s+(\S+\/\S+)/.exec(SKILL)?.[1] ?? null) : null;
 	/** The bare logical id, which is what an arm allowlist matches on. */
-	const defaultLogicalId = defaultModel.slice(defaultModel.lastIndexOf("/") + 1);
+	const documentedLogicalId = documentedModel ? documentedModel.slice(documentedModel.lastIndexOf("/") + 1) : null;
 
-	it("the default model is a provider-qualified id", () => {
-		expect(defaultLogicalId).not.toBe("");
-		expect(defaultLogicalId).not.toBe(defaultModel);
-	});
-
-	/**
-	 * THE guard against the most expensive drift of the three. The SKILL's
-	 * copy-paste command passed a model that no encode arm allowlisted, so the
-	 * pre-run treatment guard refused it. The documented command must be runnable
-	 * as written.
-	 */
-	it("the SKILL's example command passes the default model", () => {
+	it("the SKILL's example command names a provider-qualified model", () => {
 		if (!SKILL) return;
-		// Anchored on the `provider/model` shape so this reads the runnable command
-		// block and not the `- \`--model <id>\`:` flag-reference line above it, which
-		// is prose and has no model in it. Getting that wrong made this test compare
-		// against the literal string "<id>".
-		const commandModel = /--model\s+(\S+\/\S+)/.exec(SKILL)?.[1];
-		expect(commandModel).toBe(defaultModel);
+		expect(documentedModel).not.toBeNull();
+		expect(documentedLogicalId).not.toBe("");
+		expect(documentedLogicalId).not.toBe(documentedModel);
 	});
 
 	/**
-	 * Every arm that enables encoding must allowlist the default model, or a run
-	 * using the documented defaults silently degrades to decode-only and measures
-	 * the wrong condition. The runner refuses that at preflight; this catches it at
-	 * test time, which is cheaper.
+	 * Every arm that enables encoding must allowlist the model the documented command
+	 * passes, or that command silently degrades to decode-only and measures the wrong
+	 * condition. The runner refuses that at preflight; this catches it at test time,
+	 * which is cheaper.
 	 */
-	it("every encode arm allowlists the default model", () => {
+	it("every encode arm allowlists the documented model", () => {
+		if (!documentedLogicalId) return;
 		const offenders: string[] = [];
 		for (const arm of ARMS) {
 			const text = fs.readFileSync(path.join(ARMS_DIR, `${arm}.yml`), "utf8");
 			// An encode arm is one with a non-empty `models:` list. `models: []` is a
 			// deliberate decode-only control and is correct as is.
 			if (!/models:\s*\n(\s+#[^\n]*\n)*\s+-\s/.test(text)) continue;
-			if (!text.includes(defaultLogicalId)) offenders.push(arm);
+			if (!text.includes(documentedLogicalId)) offenders.push(arm);
 		}
 		expect(offenders).toEqual([]);
 	});

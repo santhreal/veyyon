@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { $which, errorMessage, logger } from "@veyyon/utils";
+import { parseModelId } from "../../core/trial-model";
 import type {
 	HarnessAdapter,
 	HarnessCapabilities,
@@ -138,10 +139,8 @@ export class OmpAdapter implements HarnessAdapter, SystemAdapter {
 			}
 		}
 
-		const model =
-			typeof options.model === "string" ? options.model : (this.defaultModel ?? "opencode-go/deepseek-v4-flash");
-		const slashIndex = model.indexOf("/");
-		const provider = slashIndex > 0 ? model.slice(0, slashIndex) : model;
+		const model = typeof options.model === "string" ? options.model : this.defaultModel;
+		const provider = parseModelId(model).provider;
 		const authEnvVar = `${provider.toUpperCase().replace(/[^A-Z0-9]/g, "_")}_API_KEY`;
 		const explicitKey =
 			typeof options["omp-api-key"] === "string"
@@ -211,8 +210,7 @@ export class OmpAdapter implements HarnessAdapter, SystemAdapter {
 			}
 
 			const model = context.variant.model || (typeof options.model === "string" ? options.model : this.defaultModel);
-			const slashIndex = model.indexOf("/");
-			const provider = slashIndex > 0 ? model.slice(0, slashIndex) : model;
+			const provider = parseModelId(model).provider;
 			const authEnvVar = `${provider.toUpperCase().replace(/[^A-Z0-9]/g, "_")}_API_KEY`;
 			const apiKey =
 				(typeof options["omp-api-key"] === "string" ? options["omp-api-key"] : null) ??

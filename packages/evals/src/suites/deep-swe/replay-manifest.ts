@@ -2,7 +2,6 @@ import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { isRecord } from "@veyyon/utils";
-import { COMPARISON_MODEL } from "../../harnesses/system-comparison";
 
 export interface ReplayUserTurn {
 	id: string;
@@ -11,7 +10,7 @@ export interface ReplayUserTurn {
 
 export interface ReplayManifest {
 	schema_version: 1;
-	model: typeof COMPARISON_MODEL;
+	model: string;
 	source_session_id: string;
 	source_session_artifacts: string[];
 	repository_checkpoint: string;
@@ -118,7 +117,7 @@ function validateTurn(value: unknown, label: string, issues: string[]): ReplayUs
  * intentionally stricter than a permissive parser: role/assistant/tool fields,
  * relative checkpoint paths, model fallbacks, and ambiguous boundaries fail loud.
  */
-export function loadReplayManifest(file: string): LoadedReplayManifest {
+export function loadReplayManifest(file: string, expectedModel: string): LoadedReplayManifest {
 	const absolute = path.resolve(file);
 	const issues: string[] = [];
 	if (!path.isAbsolute(file)) issues.push("manifest path must be absolute so every adapter receives the same file");
@@ -134,7 +133,15 @@ export function loadReplayManifest(file: string): LoadedReplayManifest {
 	if (root) {
 		requireExactKeys(root, ROOT_KEYS, "manifest", issues);
 		if (root.schema_version !== 1) issues.push("schema_version must be 1");
-		if (root.model !== COMPARISON_MODEL) issues.push(`model must be exactly ${COMPARISON_MODEL}`);
+		// A replay is a recording, and the recording names the model that produced it. The
+		// run's model has to equal it, or the replay measures a different model's prefix
+		// against this one's continuation. Which model that is belongs to the manifest and
+		// to `--model`; pinning one id in code allowed exactly one model to be replayed.
+		if (typeof root.model !== "string" || root.model.indexOf("/") <= 0) {
+			issues.push("model must be a provider-qualified id (<provider>/<model-id>)");
+		} else if (root.model !== expectedModel) {
+			issues.push(`model must be exactly ${expectedModel}, the model this run requested, not ${root.model}`);
+		}
 		requireText(root.source_session_id, "source_session_id", issues);
 		if (!Array.isArray(root.source_session_artifacts) || root.source_session_artifacts.length === 0) {
 			issues.push("source_session_artifacts must be a non-empty array");

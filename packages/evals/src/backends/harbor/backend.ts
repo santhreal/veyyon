@@ -6,6 +6,7 @@ import { $which, errorMessage, isRecord, readPipeText } from "@veyyon/utils";
 import { type BackendRegistry, defaultBackendRegistry } from "../../core/backend-registry";
 import { requireBackendBinding, resolveCellVariant } from "../../core/cell-variant";
 import { requireHarness } from "../../core/harness-registry";
+import { resolveTrialModel } from "../../core/trial-model";
 import type {
 	BackendId,
 	ExecutionBackend,
@@ -35,6 +36,14 @@ import {
 } from "./runner";
 
 const execFileAsync = promisify(execFile);
+
+/**
+ * harbor's own agents that reach no provider: `oracle` replays the reference solution
+ * and `nop` does nothing. Every other agent runs a named model or the trial refuses,
+ * because a trial that silently used the container's built-in default reports that
+ * model's tokens, spend and pass rate as this arm's.
+ */
+export const NO_MODEL_AGENTS: ReadonlySet<string> = new Set(["nop", "oracle"]);
 
 export type WhichLookup = (bin: string) => string | null;
 export type CommandExecutor = (file: string, args: readonly string[]) => Promise<{ stdout: string; stderr: string }>;
@@ -324,8 +333,7 @@ export class HarborBackend implements ExecutionBackend {
 			agent = binding.agentName ?? harness.name;
 			agentImportPath = binding.agentImportPath ?? null;
 		}
-		const optionModel = typeof context.options?.model === "string" ? context.options.model : undefined;
-		const model = variant.model || optionModel || harness.defaultModel || undefined;
+		const model = NO_MODEL_AGENTS.has(agent) ? undefined : resolveTrialModel(variant, harness, context).id;
 
 		const started = Date.now();
 		const runsDir = context.runsDir || defaultRunsDir();
@@ -377,7 +385,8 @@ export class HarborBackend implements ExecutionBackend {
 			concurrency: 1,
 			attempts: 1,
 			tasks: 1,
-			models: model && agent !== "oracle" && agent !== "nop" ? [model] : [],
+			// `model` is already absent for a no-model agent; nothing re-derives that here.
+			models: model ? [model] : [],
 			agent,
 			agentImportPath,
 			include: descriptor.path ? undefined : [cell.task],

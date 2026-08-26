@@ -270,7 +270,7 @@ describe("harness preflight fails closed and keys staged variant paths", () => {
 						? (fixture.options["factory-settings"] as string)
 						: null,
 				promptVariantPath: null,
-				model: "test-model",
+				model: "vendor/test-model",
 				attachments: [],
 			};
 
@@ -282,7 +282,7 @@ describe("harness preflight fails closed and keys staged variant paths", () => {
 						? (fixture.options["factory-settings"] as string)
 						: null,
 				promptVariantPath: null,
-				model: "test-model",
+				model: "vendor/test-model",
 				attachments: [],
 			};
 
@@ -336,7 +336,7 @@ describe("harness preflight fails closed and keys staged variant paths", () => {
 					harness: "veyyon",
 					configPath: null,
 					promptVariantPath: null,
-					model: "test-model",
+					model: "vendor/test-model",
 					attachments: [],
 				},
 				{
@@ -344,7 +344,7 @@ describe("harness preflight fails closed and keys staged variant paths", () => {
 					harness: "veyyon",
 					configPath: null,
 					promptVariantPath: null,
-					model: "test-model",
+					model: "vendor/test-model",
 					attachments: [],
 				},
 				{
@@ -352,7 +352,7 @@ describe("harness preflight fails closed and keys staged variant paths", () => {
 					harness: "omp",
 					configPath: null,
 					promptVariantPath: null,
-					model: "test-model",
+					model: "vendor/test-model",
 					attachments: [],
 				},
 				{
@@ -360,7 +360,7 @@ describe("harness preflight fails closed and keys staged variant paths", () => {
 					harness: "nonexistent-harness-xyz",
 					configPath: null,
 					promptVariantPath: null,
-					model: "test-model",
+					model: "vendor/test-model",
 					attachments: [],
 				},
 			];
@@ -430,7 +430,7 @@ describe("harness preflight fails closed and keys staged variant paths", () => {
 					harness: "veyyon",
 					configPath: null,
 					promptVariantPath: null,
-					model: "test-model",
+					model: "vendor/test-model",
 					attachments: [],
 				});
 				variants.push({
@@ -438,7 +438,7 @@ describe("harness preflight fails closed and keys staged variant paths", () => {
 					harness: "omp",
 					configPath: null,
 					promptVariantPath: null,
-					model: "test-model",
+					model: "vendor/test-model",
 					attachments: [],
 				});
 			}

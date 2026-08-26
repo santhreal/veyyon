@@ -16,11 +16,9 @@ import {
 } from "../../../../harnesses/registry";
 import {
 	aggregateSystemComparison,
-	COMPARISON_MODEL,
 	COMPARISON_TASK_LIST,
 	type ComparisonSystem,
 	comparisonTrialsFromArmResults,
-	DEFAULT_MODEL,
 	renderSystemComparison,
 } from "../../../../harnesses/system-comparison";
 import type { ComparisonArmResult, ComparisonExecution, SystemComparison } from "../../../../harnesses/types";
@@ -456,7 +454,14 @@ export async function runBench(argv: string[]): Promise<void> {
 		}
 	}
 
-	const model = args.model ?? (pureSystemComparison ? COMPARISON_MODEL : DEFAULT_MODEL);
+	// No model default: the run's tokens, spend and pass rate all belong to whichever
+	// model ran, and a substituted one reports another model's numbers under this run's
+	// name.
+	if (!args.model) {
+		console.error("error: --model <provider/model-id> is required.");
+		process.exit(1);
+	}
+	const model = args.model;
 	const repeats = args.repeats ?? 1;
 	const jobParallel = args.jobs ?? 2;
 
@@ -555,7 +560,7 @@ export async function runBench(argv: string[]): Promise<void> {
 	if (hasSystemArms && args.raw["replay-root"]) {
 		const replayRoot = path.resolve(args.raw["replay-root"]);
 		for (const task of tasks) {
-			const loaded = loadReplayManifest(path.join(replayRoot, `${task}.json`));
+			const loaded = loadReplayManifest(path.join(replayRoot, `${task}.json`), model);
 			replayManifests.set(task, loaded);
 		}
 	}

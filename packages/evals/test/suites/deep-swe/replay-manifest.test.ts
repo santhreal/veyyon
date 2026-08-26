@@ -2,8 +2,11 @@ import { afterEach, describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { COMPARISON_MODEL } from "../../../src/harnesses/system-comparison";
 import { loadReplayManifest } from "../../../src/suites/deep-swe/replay-manifest";
+
+/** The model this run requested. A replay is pinned against it, not against a constant
+ * in the code: the runner has no default model, so every run names its own. */
+const RUN_MODEL = "openrouter/example-model-1";
 
 const roots: string[] = [];
 
@@ -19,7 +22,7 @@ function manifestFile(change: Record<string, unknown> = {}): string {
 	fs.mkdirSync(path.join(root, "worktree"));
 	const manifest = {
 		schema_version: 1,
-		model: COMPARISON_MODEL,
+		model: RUN_MODEL,
 		source_session_id: "real-session-1",
 		source_session_artifacts: [path.join(root, "source.jsonl")],
 		repository_checkpoint: path.join(root, "worktree"),
@@ -44,7 +47,7 @@ function manifestFile(change: Record<string, unknown> = {}): string {
 describe("real-session replay manifest", () => {
 	test("loads exact absolute-path bytes and a 1-based compaction boundary", () => {
 		const file = manifestFile();
-		const loaded = loadReplayManifest(file);
+		const loaded = loadReplayManifest(file, RUN_MODEL);
 
 		expect(loaded.path).toBe(file);
 		expect(loaded.bytes).toEqual(fs.readFileSync(file));
@@ -64,13 +67,13 @@ describe("real-session replay manifest", () => {
 			},
 		});
 
-		expect(() => loadReplayManifest(file)).toThrow(/unsupported key "role"/);
-		expect(() => loadReplayManifest(file)).toThrow(/unsupported key "tool_calls"/);
+		expect(() => loadReplayManifest(file, RUN_MODEL)).toThrow(/unsupported key "role"/);
+		expect(() => loadReplayManifest(file, RUN_MODEL)).toThrow(/unsupported key "tool_calls"/);
 	});
 
-	test("rejects relative artifacts, model fallback, and a non-boundary checkpoint", () => {
+	test("rejects relative artifacts, another model's recording, and a non-boundary checkpoint", () => {
 		const file = manifestFile({
-			model: "fallback-model",
+			model: "anthropic/some-other-model",
 			source_session_artifacts: ["relative/session.jsonl"],
 			repository_checkpoint: "relative/worktree",
 			compaction_checkpoint: {
@@ -81,9 +84,15 @@ describe("real-session replay manifest", () => {
 			},
 		});
 
-		expect(() => loadReplayManifest(file)).toThrow(/model must be exactly/);
-		expect(() => loadReplayManifest(file)).toThrow(/absolute path/);
-		expect(() => loadReplayManifest(file)).toThrow(/meet or exceed the actual compaction threshold/);
-		expect(() => loadReplayManifest(file)).toThrow(/must equal the frozen replay prefix length/);
+		expect(() => loadReplayManifest(file, RUN_MODEL)).toThrow(/model must be exactly openrouter\/example-model-1/);
+		expect(() => loadReplayManifest(file, RUN_MODEL)).toThrow(/absolute path/);
+		expect(() => loadReplayManifest(file, RUN_MODEL)).toThrow(/meet or exceed the actual compaction threshold/);
+		expect(() => loadReplayManifest(file, RUN_MODEL)).toThrow(/must equal the frozen replay prefix length/);
+	});
+
+	test("rejects a manifest model that is not provider-qualified", () => {
+		const file = manifestFile({ model: "example-model-1" });
+
+		expect(() => loadReplayManifest(file, RUN_MODEL)).toThrow(/provider-qualified/);
 	});
 });
