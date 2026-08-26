@@ -1450,10 +1450,10 @@ function formatAccountHeaderRow(
 
 	return parts.map(p => {
 		const prefix = truncateJobLabel(p.label, prefixBudget);
-		const prefixCell = prefix + " ".repeat(prefixBudget - visibleWidth(prefix));
+		const prefixCell = prefix + padding(prefixBudget - visibleWidth(prefix));
 		const styledPrefix = p.active ? uiTheme.fg("accent", prefixCell) : prefixCell;
-		if (!p.suffix) return styledPrefix + " ".repeat(maxSuffixWidth + gap);
-		const suffixPad = " ".repeat(maxSuffixWidth - visibleWidth(p.suffix));
+		if (!p.suffix) return styledPrefix + padding(maxSuffixWidth + gap);
+		const suffixPad = padding(maxSuffixWidth - visibleWidth(p.suffix));
 		return `${styledPrefix} ${suffixPad}${uiTheme.fg("dim", p.suffix)}`;
 	});
 }

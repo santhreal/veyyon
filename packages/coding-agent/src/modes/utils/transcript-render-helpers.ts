@@ -6,7 +6,7 @@
  */
 import type { AgentMessage } from "@veyyon/agent-core";
 import { TOOL_BATCH_LEDGER_HEADLINE_PREFIX } from "@veyyon/agent-core/tool-batch-ledger";
-import { type Component, Text } from "@veyyon/tui";
+import { type Component, padding, Text } from "@veyyon/tui";
 import { collapseWhitespace, formatBytes, formatDuration } from "@veyyon/utils";
 import type { AsyncJobType } from "../../async";
 import {
@@ -272,5 +272,5 @@ export function ledgerMarkerLine(text: string): string | null {
 	if (!text.startsWith(TOOL_BATCH_LEDGER_HEADLINE_PREFIX)) return null;
 	const headline = text.split("\n", 1)[0]!.replace(/\.$/, "");
 	const summary = headline.slice(TOOL_BATCH_LEDGER_HEADLINE_PREFIX.length - 1);
-	return theme.fg("dim", `${" ".repeat(COMPOSER_INSET_COLS)}${theme.status.warning} batch cut short ${summary}.`);
+	return theme.fg("dim", `${padding(COMPOSER_INSET_COLS)}${theme.status.warning} batch cut short ${summary}.`);
 }

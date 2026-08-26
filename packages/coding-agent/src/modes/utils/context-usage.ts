@@ -16,6 +16,7 @@ const GRID_COLS = 20;
 const GRID_ROWS = 10;
 const GRID_CELLS = GRID_COLS * GRID_ROWS;
 const GRID_GUTTER = "   ";
+const GRID_BLANK = " ".repeat(GRID_COLS * 2 - 1);
 
 const CELL_FILLED = "⛁";
 const CELL_FILLED_MESSAGES = "⛃";
@@ -203,8 +204,7 @@ export function renderContextUsage(breakdown: ContextBreakdown, theme: typeof Th
 		} else {
 			// Pad with blanks the same visible width as a grid row so legend lines
 			// past the grid stay aligned with their column.
-			const blank = " ".repeat(GRID_COLS * 2 - 1);
-			gridSegment = blank;
+			gridSegment = GRID_BLANK;
 		}
 
 		const legendSegment = legend[row] ?? "";
