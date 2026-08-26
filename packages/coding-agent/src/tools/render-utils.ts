@@ -372,7 +372,10 @@ export function formatMeta(meta: string[], theme: Theme): string {
 
 function sanitizeErrorText(message: string | undefined): string {
 	const clean = (message ?? "").replace(/^Error:\s*/, "").trim();
-	return clean ? replaceTabs(truncateToWidth(clean, TRUNCATE_LENGTHS.LINE)) : "Unknown error";
+	if (!clean) return "Unknown error";
+	// Shorten before truncating: an error that opens with an absolute home path would otherwise
+	// spend the whole line budget on the prefix and leak the home directory into the error card.
+	return replaceTabs(truncateToWidth(shortenEmbeddedPaths(clean), TRUNCATE_LENGTHS.LINE));
 }
 
 export function formatErrorMessage(message: string | undefined, theme: Theme): string {
