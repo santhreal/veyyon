@@ -334,7 +334,6 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/coding-agent/src/web/search/providers/jina.ts",
 	"packages/coding-agent/src/web/search/providers/synthetic.ts",
 	"packages/collab-web/src/lib/use-guest.ts",
-	"packages/evals/src/report/trace-report.ts",
 	"packages/evals/src/suites/deep-swe/runner/session-transcript.ts",
 	"packages/evals/src/suites/typescript-edit/formatter.ts",
 	"packages/mnemopi/src/util/ids.ts",

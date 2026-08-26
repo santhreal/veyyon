@@ -44,10 +44,11 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { generateDictFromRepo } from "argot";
+import { parseFlags } from "../../core/flags";
 import { dictsDir, evalsPackageDir, resolvePackagePath, taskCorpusDir } from "../../paths";
 import { OBSERVED_TYPEABLE_EMISSION_RATE, typeableHandleMass } from "./aggregate";
 
-interface DictRow {
+export interface DictRow {
 	task: string;
 	handles: number;
 	dictTokens: number;
@@ -92,26 +93,8 @@ const TASKS_ROOT = taskCorpusDir();
 const REPO_CACHE = path.join(BENCH_DIR, "datasets", "repo-cache");
 const DICTS_DIR = dictsDir();
 
-function parseArgs(argv: string[]): Record<string, string | boolean> {
-	const out: Record<string, string | boolean> = {};
-	for (let i = 0; i < argv.length; i++) {
-		const arg = argv[i]!;
-		if (arg.startsWith("--")) {
-			const key = arg.slice(2);
-			const next = argv[i + 1];
-			if (next === undefined || next.startsWith("--")) {
-				out[key] = true;
-			} else {
-				out[key] = next;
-				i++;
-			}
-		}
-	}
-	return out;
-}
-
-function taskRepoInfo(task: string): { url: string; sha: string } {
-	const toml = fs.readFileSync(path.join(TASKS_ROOT, task, "task.toml"), "utf8");
+export function taskRepoInfo(task: string, tasksRoot: string = TASKS_ROOT): { url: string; sha: string } {
+	const toml = fs.readFileSync(path.join(tasksRoot, task, "task.toml"), "utf8");
 	const url = toml.match(/^repository_url\s*=\s*"([^"]+)"/m)?.[1];
 	const sha = toml.match(/^base_commit_hash\s*=\s*"([^"]+)"/m)?.[1];
 	if (!url || !sha) throw new Error(`task.toml missing repository_url/base_commit_hash: ${task}`);
@@ -193,52 +176,19 @@ async function genOne(task: string): Promise<DictRow> {
 	}
 }
 
-async function main(): Promise<void> {
-	const args = parseArgs(process.argv.slice(2));
-	const jobs = Number(args.jobs ?? "8");
-	let tasks: string[];
-	if (args.all) {
-		tasks = fs
-			.readdirSync(TASKS_ROOT)
-			.filter(d => fs.existsSync(path.join(TASKS_ROOT, d, "task.toml")))
-			.sort();
-	} else if (args.tasks) {
-		tasks = fs
-			.readFileSync(resolvePackagePath(String(args.tasks)), "utf8")
-			.split("\n")
-			.map(l => l.trim())
-			.filter(l => l && !l.startsWith("#"));
-	} else {
-		console.error("pass --tasks <file> or --all");
-		process.exit(1);
-	}
-	fs.mkdirSync(REPO_CACHE, { recursive: true });
-	fs.mkdirSync(DICTS_DIR, { recursive: true });
-
-	const queue = [...tasks];
-	const rows: DictRow[] = [];
-	await Promise.all(
-		Array.from({ length: jobs }, async () => {
-			for (;;) {
-				const task = queue.shift();
-				if (!task) return;
-				const row = await genOne(task);
-				rows.push(row);
-				console.log(
-					`[${rows.length}/${tasks.length}] ${task}: ${row.error ?? `handles=${row.handles} (${row.structureHandles} structure, ${row.typeableHandles} typeable) typeable-saving=${row.typeableSavings}ch raw~${row.estimatedSavings}tok`}`,
-				);
-			}
-		}),
-	);
-
+/**
+ * The savings table, ranked and rendered. Exported because the table is the
+ * task-selection instrument: which task tops it decides where run hours go.
+ */
+export function renderDictReport(rows: readonly DictRow[], generatedAt: string): string {
 	// Rank on TYPEABLE savings. The raw SDK estimate counts prose that repeats in
 	// the repo but that no agent ever writes, so ranking on it selects tasks that
 	// cannot show an effect. See the header for the measurement behind this.
-	rows.sort((a, b) => b.typeableSavings - a.typeableSavings);
+	const ranked = [...rows].sort((a, b) => b.typeableSavings - a.typeableSavings);
 	const lines = [
 		"# Argot dictionary savings per DeepSWE task",
 		"",
-		`Generated ${new Date().toISOString()} by gen-dicts.ts (SDK generateDictFromRepo, default token budget).`,
+		`Generated ${generatedAt} by gen-dicts.ts (SDK generateDictFromRepo, default token budget).`,
 		"",
 		"Ranked by `typeable saving`: characters saved per emission across handles whose",
 		"expansion contains no whitespace. Prose handles (license text, fixture YAML, doc",
@@ -277,16 +227,60 @@ async function main(): Promise<void> {
 		"",
 		"| task | handles | structure | typeable handles | typeable saving (ch/emission) | expected saving (ch/emission) | dict tokens | raw SDK estimate (output tok) |",
 		"|---|---|---|---|---|---|---|---|",
-		...rows.map(r =>
+		...ranked.map(r =>
 			r.error
 				? `| ${r.task} | — | — | — | — | — | — | ERROR: ${r.error} |`
 				: `| ${r.task} | ${r.handles} | ${r.structureHandles} | ${r.typeableHandles} | ${r.typeableSavings} | ${r.expectedSavings} | ${r.dictTokens} | ${r.estimatedSavings} |`,
 		),
 		"",
 	];
-	fs.writeFileSync(path.join(DICTS_DIR, "report.md"), lines.join("\n"));
+	return lines.join("\n");
+}
+
+async function main(): Promise<void> {
+	const args = parseFlags(process.argv.slice(2));
+	const jobs = Number(args.jobs ?? "8");
+	let tasks: string[];
+	if (args.all) {
+		tasks = fs
+			.readdirSync(TASKS_ROOT)
+			.filter(d => fs.existsSync(path.join(TASKS_ROOT, d, "task.toml")))
+			.sort();
+	} else if (args.tasks) {
+		tasks = fs
+			.readFileSync(resolvePackagePath(args.tasks), "utf8")
+			.split("\n")
+			.map(l => l.trim())
+			.filter(l => l && !l.startsWith("#"));
+	} else {
+		console.error("pass --tasks <file> or --all");
+		process.exit(1);
+	}
+	fs.mkdirSync(REPO_CACHE, { recursive: true });
+	fs.mkdirSync(DICTS_DIR, { recursive: true });
+
+	const queue = [...tasks];
+	const rows: DictRow[] = [];
+	await Promise.all(
+		Array.from({ length: jobs }, async () => {
+			for (;;) {
+				const task = queue.shift();
+				if (!task) return;
+				const row = await genOne(task);
+				rows.push(row);
+				console.log(
+					`[${rows.length}/${tasks.length}] ${task}: ${row.error ?? `handles=${row.handles} (${row.structureHandles} structure, ${row.typeableHandles} typeable) typeable-saving=${row.typeableSavings}ch raw~${row.estimatedSavings}tok`}`,
+				);
+			}
+		}),
+	);
+
+	const report = renderDictReport(rows, new Date().toISOString());
+	fs.writeFileSync(path.join(DICTS_DIR, "report.md"), report);
 	fs.writeFileSync(path.join(DICTS_DIR, "report.json"), JSON.stringify(rows, null, 2));
 	console.log(`\nwrote ${path.join(DICTS_DIR, "report.md")}`);
 }
 
-await main();
+if (import.meta.main) {
+	await main();
+}

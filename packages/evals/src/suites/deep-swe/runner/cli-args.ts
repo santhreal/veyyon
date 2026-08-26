@@ -2,6 +2,8 @@
  * CLI argument parsing and help definitions for the DeepSWE bench runner.
  */
 
+import { parseFlags } from "../../../core/flags";
+
 export interface BenchCliArgs {
 	tasksFile?: string;
 	tasksRoot?: string;
@@ -27,37 +29,13 @@ export interface BenchCliArgs {
  * alone rather than swallowing it, and the registry is what the invariant suite
  * sweeps, so a new valueless flag is covered the moment it is declared here.
  */
-export const VALUELESS_FLAGS = { "dry-run": true, list: true } as const satisfies Record<string, true>;
+export const VALUELESS_FLAGS = { "dry-run": true, help: true, list: true } as const satisfies Record<string, true>;
+
+/** Short spellings the runner accepts, mapped onto the long key. */
+const ALIASES = { h: "help" } as const satisfies Record<string, string>;
 
 export function parseArgs(argv: string[]): Record<string, string> {
-	const out: Record<string, string> = {};
-	for (let i = 0; i < argv.length; i++) {
-		const arg = argv[i]!;
-		if (arg === "--help" || arg === "-h") {
-			out.help = "true";
-			continue;
-		}
-		if (arg.startsWith("--")) {
-			const eq = arg.indexOf("=");
-			if (eq !== -1) {
-				out[arg.slice(2, eq)] = arg.slice(eq + 1);
-				continue;
-			}
-			const name = arg.slice(2);
-			if (Object.hasOwn(VALUELESS_FLAGS, name)) {
-				out[name] = "";
-				continue;
-			}
-			const next = argv[i + 1];
-			if (next !== undefined && !next.startsWith("--")) {
-				out[name] = next;
-				i++;
-			} else {
-				out[name] = "true";
-			}
-		}
-	}
-	return out;
+	return parseFlags(argv, { valueless: VALUELESS_FLAGS, aliases: ALIASES });
 }
 
 export function parseBenchCliArgs(argv: string[]): BenchCliArgs {
@@ -86,7 +64,7 @@ export function parseBenchCliArgs(argv: string[]): BenchCliArgs {
 		reaggregate: Boolean(raw.reaggregate || raw["run-dir"]),
 		dryRun: raw["dry-run"] === "true" || raw["dry-run"] === "",
 		trialTimeout: raw["trial-timeout"],
-		help: raw.help === "true",
+		help: raw.help !== undefined,
 		list: raw.list === "true" || raw.list === "",
 		comparisonSystems: raw.systems
 			? raw.systems

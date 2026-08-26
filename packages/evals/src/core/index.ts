@@ -8,6 +8,7 @@ export * from "./auth-preflight";
 export * from "./auth-seed";
 export * from "./backend-registry";
 export * from "./cell-variant";
+export * from "./flags";
 export * from "./fs-walk";
 export * from "./harness-preflight";
 export * from "./harness-registry";

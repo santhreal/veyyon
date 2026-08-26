@@ -19,6 +19,7 @@
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { parseFlags } from "../core/flags";
 import { type BenchmarkSnapshot, readBenchmarkSnapshot, requireBenchmark } from "../manager/benchmarks";
 import { type RunRow, RunStore } from "../manager/store";
 import { harborJobsDir } from "../paths";
@@ -74,17 +75,8 @@ export function upsertBenchResultsBlock(docText: string, key: string, block: str
 	return `${base}\n${heading}\n\n${block}\n`;
 }
 
-function parseArgs(argv: string[]): Record<string, string> {
-	const out: Record<string, string> = {};
-	for (let i = 0; i < argv.length; i++) {
-		const arg = argv[i];
-		if (arg?.startsWith("--")) out[arg.slice(2)] = argv[++i] ?? "";
-	}
-	return out;
-}
-
 if (import.meta.main) {
-	const args = parseArgs(process.argv.slice(2));
+	const args = parseFlags(process.argv.slice(2));
 	const runName = args.run;
 	const docPath = args.doc;
 	if (!runName || !docPath) {
