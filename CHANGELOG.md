@@ -10,6 +10,9 @@
 - The composer's fifteen accent modes are each checked to paint the prompt cell they declare, so a mode that stops reaching the screen fails a test instead of rendering as the default.
 - Overlay rendering gains its own defect oracle registry covering block placement, lost rows, base-frame preservation, viewport bounds, caret handover and stack order, swept over real modal mounts across nine anchors and three terminal geometries.
 - The renderer defect corpus records overlay reproductions as well as composer ones, replaying each committed case through the runner and oracle registry that recorded it.
+- Tool renderers gain their own defect oracle registry covering row width, embedded line breaks, raw tabs, content-supplied escape sequences, painted home-directory paths and stray control characters, swept over every registered renderer on both surfaces against eight hostile fixtures at three widths.
+- Every oracle registry sorts its guarantees through one shared evaluator, so composer, overlay and tool-render verdicts cannot diverge in shape.
+- The renderer defect corpus records tool-render reproductions alongside composer and overlay ones, replaying each committed case against the registry that owns its oracle.
 - `prewalk.cheapModel` and `prewalk.strongModel` configure the cheap model prewalk switches into at the first edit and the strong model it starts on.
 - `/prewalk` accepts an optional model argument to arm a per-session target model override.
 - `edit.critiqueCodeMutations` prompts a bounded self-review before finalization after one turn modifies at least two distinct code files.
