@@ -1,0 +1,62 @@
+{
+	"schemaVersion": 2,
+	"id": "436d2d94400e23c0",
+	"status": "exempted",
+	"reason": "A terminal this short leaves no room above the composer, so reading no transcript row is the correct outcome rather than a hole. The case pins the boundary: an oracle that starts reading this state means the exemption is stale.",
+	"recordedAt": "2026-08-26T08:29:13.945Z",
+	"template": "hand-recorded",
+	"seed": 0,
+	"state": {
+		"width": 80,
+		"height": 4,
+		"modeState": {},
+		"editorText": "run the build",
+		"transcriptLines": [
+			"transcript-output-line-0000",
+			"transcript-output-line-0001",
+			"transcript-output-line-0002",
+			"transcript-output-line-0003",
+			"transcript-output-line-0004",
+			"transcript-output-line-0005",
+			"transcript-output-line-0006",
+			"transcript-output-line-0007",
+			"transcript-output-line-0008",
+			"transcript-output-line-0009",
+			"transcript-output-line-0010",
+			"transcript-output-line-0011",
+			"transcript-output-line-0012",
+			"transcript-output-line-0013",
+			"transcript-output-line-0014",
+			"transcript-output-line-0015",
+			"transcript-output-line-0016",
+			"transcript-output-line-0017",
+			"transcript-output-line-0018",
+			"transcript-output-line-0019",
+			"transcript-output-line-0020",
+			"transcript-output-line-0021",
+			"transcript-output-line-0022",
+			"transcript-output-line-0023",
+			"transcript-output-line-0024",
+			"transcript-output-line-0025",
+			"transcript-output-line-0026",
+			"transcript-output-line-0027",
+			"transcript-output-line-0028",
+			"transcript-output-line-0029"
+		],
+		"scrollIsolation": true,
+		"scrollOffset": 0,
+		"focused": true,
+		"transcriptLineMarkers": [
+			"transcript-output-line-"
+		]
+	},
+	"oracle": "noOutputBleedPastComposer",
+	"kind": "blind",
+	"message": "The composer fills a four-row terminal, so there is no screen row above it for a transcript row to be painted on and the bleed oracle matches none.",
+	"observedGrid": [
+		"",
+		"location: ~/project · model: test-model",
+		"/ menu · ^c exit",
+		""
+	]
+}

@@ -1,0 +1,34 @@
+{
+	"schemaVersion": 2,
+	"id": "0577933ecb793a21",
+	"status": "resolved",
+	"reason": "Recorded after the fix. Before it, this oracle applied to this state and read nothing.",
+	"recordedAt": "2026-08-26T08:03:59.339Z",
+	"template": "hand-recorded",
+	"seed": 0,
+	"state": {
+		"width": 80,
+		"height": 10,
+		"modeState": {},
+		"editorText": "run the build",
+		"transcriptLines": 30,
+		"scrollIsolation": true,
+		"scrollOffset": 5,
+		"focused": true
+	},
+	"oracle": "composerCardPadsAreUnpaintedAir",
+	"kind": "blind",
+	"message": "A frame this far scrolled back mapped its CardPadRow past the end of the viewport, so the padding oracle dropped the row on the bounds check and inspected nothing.",
+	"observedGrid": [
+		"transcript-output-line-0000                                                    █",
+		"transcript-output-line-0001                                                    │",
+		"transcript-output-line-0002                                                    │",
+		"────────────────────────────────────────────────────────────────────────────────",
+		"",
+		"  › run the build",
+		"",
+		"location: ~/project · model: test-model",
+		"/ menu · ^c exit",
+		""
+	]
+}

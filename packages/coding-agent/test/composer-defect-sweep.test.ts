@@ -38,7 +38,7 @@ import {
 } from "../src/modes/components/composer-defect-oracle";
 import { initTheme } from "../src/modes/theme/theme";
 import { type RunnerOptions, runComposerOracleScenario } from "./helpers/composer-oracle-runner";
-import { promoteFailingCaseToCorpus, runnerOptionsToCorpusState } from "./helpers/renderer-defect-corpus";
+import { promoteFailureToCorpus, runnerOptionsToCorpusState } from "./helpers/renderer-defect-corpus";
 
 /**
  * An accent field whose value is a flag, so one sweep variant can turn it on.
@@ -129,6 +129,9 @@ function tally(id: ComposerOracleGuarantee): OracleTally {
 	return fresh;
 }
 
+/** Oracles already written to the corpus by this run, so one defect does not promote thousands of files. */
+const promotedOracles = new Set<ComposerOracleGuarantee>();
+
 beforeAll(async () => {
 	await initTheme(false);
 
@@ -157,11 +160,16 @@ beforeAll(async () => {
 							for (const failure of result.evaluation.failures) {
 								failures.push(`${name}: [${failure.oracle}] ${failure.message}`);
 							}
-							if (result.evaluation.failures.length > 0) {
-								promoteFailingCaseToCorpus(
+							// One case per oracle, not one per state: a single defect fails thousands of the
+							// states below and a corpus of thousands of copies of it is a dump, not a
+							// reproduction. The first state that reaches an oracle is the one recorded.
+							for (const failure of result.evaluation.failures) {
+								if (promotedOracles.has(failure.oracle)) continue;
+								promotedOracles.add(failure.oracle);
+								promoteFailureToCorpus(
 									runnerOptionsToCorpusState(options),
-									result.evaluation.failures[0]!,
-									[...result.frameState.viewportLines],
+									failure,
+									result.frameState.viewportLines,
 								);
 							}
 						} finally {

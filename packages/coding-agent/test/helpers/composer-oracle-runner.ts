@@ -430,6 +430,10 @@ export function captureComposerFrameState(ctx: ComposerCaptureContext): Composer
  * Every footer row is probed, not only the boundaries: a click offset shows up as a row in the middle
  * of the footer dispatching to the transcript, and an oracle that sees only the first and last footer
  * row never looks at the rows between them.
+ *
+ * The rows above the footer are sampled rather than swept, because every state this runner mounts is
+ * probed and a click is a terminal round trip. Per-row routing across the whole screen is owned by
+ * `every-row-routes-its-click-to-the-component-under-it.test.ts`, which sweeps it directly.
  */
 function probeClickRouting(
 	ctx: ComposerCaptureContext,
