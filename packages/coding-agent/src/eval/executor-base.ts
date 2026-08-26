@@ -29,16 +29,9 @@ export type { KernelEnvPatch } from "./kernel-base";
  * interfaces structurally extend this; the base executor only reads these.
  */
 /**
- * Whether a language's kernel outlives one eval call.
- *
- * `session` keeps one kernel per session, so a later cell sees variables an earlier one defined, which
- * is what makes eval feel like a notebook. `per-call` starts a kernel, runs the cell and shuts it down,
- * so nothing carries over: the choice a user makes when they want a run to be reproducible rather than
- * cumulative, or when leftover state from an earlier cell is what is confusing them.
- *
- * One type for every language, because it is one user-facing concept. Python owned a
- * `PythonKernelMode` alias of exactly this shape while Ruby and Julia had no concept at all, so the
- * setting existed for one language out of three.
+ * Whether a kernel outlives one eval call. `session` keeps one kernel (later cells see earlier
+ * variables — notebook feel). `per-call` starts, runs, shuts down (reproducible, no leftover state).
+ * One type for every language; Python had a `PythonKernelMode` alias, Ruby and Julia had nothing.
  */
 export type KernelMode = "session" | "per-call";
 
