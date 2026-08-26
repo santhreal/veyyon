@@ -67,6 +67,7 @@ import * as path from "node:path";
 import { Settings } from "../src/config/settings";
 import type {
 	ComposerOracleGuarantee,
+	DiffRenderOracleGuarantee,
 	MarkdownOracleGuarantee,
 	OverlayOracleGuarantee,
 	TextPrimitiveOracleGuarantee,
@@ -85,6 +86,7 @@ import {
 	type CorpusCaseKind,
 	type CorpusCaseStatus,
 	computeCaseHash,
+	type DiffRenderCorpusCase,
 	listCorpusFiles,
 	loadCorpusCase,
 	type MarkdownCorpusCase,
@@ -371,6 +373,26 @@ function markdownValidCase(): MarkdownCorpusCase {
 	};
 }
 
+/** A diff-render case that validates: which diff fixture, through which of the file paths. */
+function diffRenderValidCase(): DiffRenderCorpusCase {
+	const state = { fixture: "tabIndent", filePath: 1 } as const;
+	const oracle: DiffRenderOracleGuarantee = "aStreamedPrefixRendersByteIdentically";
+	return {
+		schemaVersion: CORPUS_SCHEMA_VERSION,
+		id: computeCaseHash("diffRender", state, oracle, "failed"),
+		status: "recorded",
+		recordedAt: "2026-01-01T00:00:00.000Z",
+		template: "negative-control",
+		seed: 0,
+		family: "diffRender",
+		state,
+		oracle,
+		kind: "failed",
+		message: "streaming 2 of 4 rows renders row 1 differently",
+		observedGrid: ["  1\u2502if (x) {"],
+	};
+}
+
 describe("a case the reader has to reject", () => {
 	beforeAll(() => {
 		fs.mkdirSync(INVALID_DIR, { recursive: true });
@@ -518,6 +540,30 @@ describe("a case the reader has to reject", () => {
 			/cannot round-trip through a file/,
 		],
 		[
+			"a diff-render case naming a fixture the runner does not drive",
+			() => {
+				const base = diffRenderValidCase();
+				return { ...base, state: { ...base.state, fixture: "the old fixture" } };
+			},
+			/is not one the runner drives/,
+		],
+		[
+			"a diff-render case naming a file path index the runner does not drive",
+			() => {
+				const base = diffRenderValidCase();
+				return { ...base, state: { ...base.state, filePath: 9 } };
+			},
+			/is not an index into the file paths the sweep drives/,
+		],
+		[
+			"a diff-render case naming a markdown oracle",
+			() => ({
+				...diffRenderValidCase(),
+				oracle: "aFrozenPrefixRendersAsAPrefix" as unknown as DiffRenderOracleGuarantee,
+			}),
+			/not a guarantee of the diffRender registry/,
+		],
+		[
 			"a markdown case naming a fixture the runner does not drive",
 			() => {
 				const base = markdownValidCase();
@@ -566,6 +612,7 @@ describe("a case the reader has to reject", () => {
 		["a tool-render case", toolRenderValidCase],
 		["a text-primitive case", textPrimitiveValidCase],
 		["a markdown case", markdownValidCase],
+		["a diff-render case", diffRenderValidCase],
 	] as const)("accepts %s the controls are built from", (_name, build) => {
 		const corpusCase = build();
 		const file = path.join(INVALID_DIR, `${corpusCase.id}.json`);

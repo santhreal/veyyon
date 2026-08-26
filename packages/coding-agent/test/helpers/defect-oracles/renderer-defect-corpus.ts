@@ -25,6 +25,8 @@ import {
 	type ComposerOracleGuarantee,
 	DEFECT_ORACLE_REGISTRIES,
 	DEFECT_ORACLE_REGISTRY_NAMES,
+	type DiffRenderOracleFailure,
+	type DiffRenderOracleGuarantee,
 	type MarkdownOracleFailure,
 	type MarkdownOracleGuarantee,
 	type OracleFailure,
@@ -40,6 +42,13 @@ import {
 } from "../../../src/modes/components/defect-oracles";
 import type { Theme } from "../../../src/modes/theme/theme";
 import { type RunnerOptions, type RunnerResult, runComposerOracleScenario } from "./composer-oracle-runner";
+import {
+	DIFF_FILE_PATHS,
+	DIFF_FIXTURES,
+	type DiffRenderCase,
+	diffStateFor,
+	evaluateDiffRenderCase,
+} from "./diff-render-oracle-runner";
 import {
 	evaluateMarkdownCase,
 	MARKDOWN_FIXTURES,
@@ -117,7 +126,8 @@ export interface CorpusObservation {
 		| OverlayOracleGuarantee
 		| ToolRenderOracleGuarantee
 		| TextPrimitiveOracleGuarantee
-		| MarkdownOracleGuarantee;
+		| MarkdownOracleGuarantee
+		| DiffRenderOracleGuarantee;
 	kind: CorpusCaseKind;
 	message: string;
 }
@@ -195,13 +205,22 @@ export type TextPrimitiveCorpusCaseState = TextPrimitiveCase;
  */
 export type MarkdownCorpusCaseState = MarkdownCase;
 
+/**
+ * What a diff-render case records: which diff fixture, and which of the file paths the sweep drives.
+ *
+ * The file path is recorded as its index rather than as a string, because one of the three is
+ * `undefined` and a JSON object cannot hold the difference between an absent key and an absent value.
+ */
+export type DiffRenderCorpusCaseState = DiffRenderCase;
+
 /** Any family's state, for the id hash and the promotion path that are shared across families. */
 export type AnyCorpusCaseState =
 	| CorpusCaseState
 	| OverlayCorpusCaseState
 	| ToolRenderCorpusCaseState
 	| TextPrimitiveCorpusCaseState
-	| MarkdownCorpusCaseState;
+	| MarkdownCorpusCaseState
+	| DiffRenderCorpusCaseState;
 
 interface CorpusCaseFields {
 	schemaVersion: typeof CORPUS_SCHEMA_VERSION;
@@ -251,13 +270,20 @@ export interface MarkdownCorpusCase extends CorpusCaseFields {
 	oracle: MarkdownOracleGuarantee;
 }
 
+export interface DiffRenderCorpusCase extends CorpusCaseFields {
+	family: "diffRender";
+	state: DiffRenderCorpusCaseState;
+	oracle: DiffRenderOracleGuarantee;
+}
+
 /** Discriminated on `family`, so a reader that handles one cannot silently be handed the other. */
 export type CorpusCase =
 	| ComposerCorpusCase
 	| OverlayCorpusCase
 	| ToolRenderCorpusCase
 	| TextPrimitiveCorpusCase
-	| MarkdownCorpusCase;
+	| MarkdownCorpusCase
+	| DiffRenderCorpusCase;
 
 /**
  * Which state shape each family records.
@@ -271,6 +297,7 @@ interface CorpusStateByFamily extends Record<CorpusFamily, AnyCorpusCaseState> {
 	toolRender: ToolRenderCorpusCaseState;
 	textPrimitive: TextPrimitiveCorpusCaseState;
 	markdown: MarkdownCorpusCaseState;
+	diffRender: DiffRenderCorpusCaseState;
 }
 
 /** What a replay produces, in the terms every family reports: a verdict, the rows, and a teardown. */
@@ -333,6 +360,10 @@ const ORACLE_FAMILIES: { readonly [F in CorpusFamily]: OracleFamily<CorpusStateB
 	markdown: {
 		readState: markdownCorpusStateFrom,
 		replay: state => Promise.resolve(replayMarkdownCorpusCase(state)),
+	},
+	diffRender: {
+		readState: diffRenderCorpusStateFrom,
+		replay: state => Promise.resolve(replayDiffRenderCorpusCase(state)),
 	},
 };
 
@@ -558,6 +589,42 @@ export function replayMarkdownCorpusCase(state: MarkdownCorpusCaseState): Corpus
 	return {
 		evaluation: evaluateMarkdownCase(state),
 		frameState: { viewportLines: markdownStateFor(state).rows },
+		cleanUp: () => {},
+	};
+}
+
+function diffRenderCorpusStateFrom(value: Record<string, unknown>, label: string): DiffRenderCorpusCaseState {
+	const state = value.state;
+	if (typeof state !== "object" || state === null) {
+		throw new Error(`${label}: no state object.`);
+	}
+	const fields = state as Record<string, unknown>;
+	if (typeof fields.fixture !== "string" || typeof fields.filePath !== "number") {
+		throw new Error(`${label}: a diff-render case records fixture and filePath. Re-record the case with the sweep.`);
+	}
+	if (DIFF_FIXTURES[fields.fixture] === undefined) {
+		throw new Error(
+			`${label}: fixture ${String(fields.fixture)} is not one the runner drives. A fixture was renamed or removed; re-record the case.`,
+		);
+	}
+	if (!Number.isInteger(fields.filePath) || fields.filePath < 0 || fields.filePath >= DIFF_FILE_PATHS.length) {
+		throw new Error(
+			`${label}: filePath ${String(fields.filePath)} is not an index into the file paths the sweep drives. Re-record the case.`,
+		);
+	}
+	return state as DiffRenderCorpusCaseState;
+}
+
+/**
+ * Replay a diff-render case by rendering the same diff through the same file path.
+ *
+ * The renderer reads the bound theme, which `initTheme` supplies in the suite; nothing is mounted, so
+ * there is nothing to tear down.
+ */
+export function replayDiffRenderCorpusCase(state: DiffRenderCorpusCaseState): CorpusReplay {
+	return {
+		evaluation: evaluateDiffRenderCase(state),
+		frameState: { viewportLines: diffStateFor(state).rows },
 		cleanUp: () => {},
 	};
 }
@@ -918,6 +985,22 @@ export function promoteMarkdownFailureToCorpus(
 ): string {
 	return promoteCaseToCorpus(
 		"markdown",
+		state,
+		{ oracle: failure.oracle, kind: "failed", message: failure.message },
+		observedGrid,
+		options,
+	);
+}
+
+/** Record a diff-render failure the evaluator reported. */
+export function promoteDiffRenderFailureToCorpus(
+	state: DiffRenderCorpusCaseState,
+	failure: DiffRenderOracleFailure,
+	observedGrid: readonly string[],
+	options?: { template?: string; seed?: number; status?: CorpusCaseStatus; reason?: string },
+): string {
+	return promoteCaseToCorpus(
+		"diffRender",
 		state,
 		{ oracle: failure.oracle, kind: "failed", message: failure.message },
 		observedGrid,

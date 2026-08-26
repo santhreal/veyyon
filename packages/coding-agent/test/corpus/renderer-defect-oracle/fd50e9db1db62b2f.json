@@ -1,0 +1,22 @@
+{
+	"schemaVersion": 3,
+	"id": "fd50e9db1db62b2f",
+	"status": "recorded",
+	"recordedAt": "2026-08-26T11:32:44.697Z",
+	"template": "diff-render-sweep",
+	"seed": 0,
+	"kind": "failed",
+	"message": "tabIndent: streaming 2 of 4 rows renders row 1 as \"  -2│ →  → return 1;\", the finished diff renders it as \"  -2│······return 1;\"",
+	"observedGrid": [
+		"   1│\u001b[2m → \u001b[22mif (x) {",
+		"  -2│\u001b[2m·\u001b[22m\u001b[2m·\u001b[22m\u001b[2m·\u001b[22m\u001b[2m·\u001b[22m\u001b[2m·\u001b[22m\u001b[2m·\u001b[22mreturn 1;",
+		"   +│\u001b[2m·\u001b[22m\u001b[2m·\u001b[22m\u001b[2m·\u001b[22m\u001b[2m·\u001b[22m\u001b[2m·\u001b[22m\u001b[2m·\u001b[22mreturn 2;",
+		"   3│\u001b[2m → \u001b[22m}"
+	],
+	"family": "diffRender",
+	"state": {
+		"fixture": "tabIndent",
+		"filePath": 0
+	},
+	"oracle": "aStreamedPrefixRendersByteIdentically"
+}
