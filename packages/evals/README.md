@@ -60,17 +60,26 @@ bun run deepswe --arms baseline,candidate-python-workspace --jobs 4
 corpus, run production code paths against it, and exit non-zero when a claim stops holding.
 
 ```sh
-bun run bench:search              # unified search: engine parity, declared answers, dispatch cost
+bun run bench:search              # unified search: arm agreement, declared answers, dispatch cost
+bun run bench:search --list       # the registered corpora, case suites and arms
 bun run bench:search:disclosure   # inline bytes a broad search costs on later turns
 ```
 
-The search parity bench runs each case twice, once through `SearchTool` and once through the engine
-the tool dispatches to, and compares the bytes of both arms. That comparison is satisfied by
-construction, so each case also declares the answer the corpus has for it: the files it must find,
-the files it must not, and a count where a cap or pagination decides the set. An engine regression
-that moves both arms together — a glob that stops recursing, a gitignore rule read the wrong way
-round, a structural pattern that matches no node — fails the declared answer while parity still
-passes. `expect` is required on every case, so a new case cannot be added without one.
+The search bench is extended by registration, not by editing the runner. Three axes are registered
+in `src/benches/search/registry.ts`: a **corpus** (a file tree the bench materializes), a **case
+suite** (cases over one named corpus, each declaring the answer that corpus has), and an **arm** (a
+way to reach the search engines). `--suite`, `--arms` and `--reference` select which registered
+members a run measures; with none given it measures every registered case suite through every
+registered arm. A lookup for an unregistered id refuses and prints the ids that exist.
+
+A run answers two separate questions. **Arm agreement** compares every arm's bytes against the
+reference arm (`unified-tool` by default), which catches a wrapper that diverges from the engine it
+dispatches to. That comparison is satisfied by construction for the shipped arms, so each case also
+declares the answer the corpus has for it: the files it must find, the files it must not, and a
+count where a cap or pagination decides the set. An engine regression that moves every arm together
+— a glob that stops recursing, a gitignore rule read the wrong way round, a structural pattern that
+matches no node — fails the declared answer while agreement still passes. `expect` is required on
+every case, so a new case cannot be added without one.
 
 ## Layout
 
