@@ -9,15 +9,25 @@ import type { SystemAdapter } from "./types";
 
 const REGISTRY = new Map<string, SystemAdapter>();
 
-REGISTRY.set(veyyonAdapter.name, veyyonAdapter);
-REGISTRY.set(factoryAdapter.name, factoryAdapter);
-REGISTRY.set(hermesAdapter.name, hermesAdapter);
-REGISTRY.set(ompAdapter.name, ompAdapter);
+// Populated on first access rather than at module load. This module sits inside an
+// import cycle (a harness adapter reaches into the deep-swe suite, which reaches back
+// here), and reading `veyyonAdapter.name` while that module is still initializing
+// throws a TDZ ReferenceError that surfaces as an unhandled error between tests.
+let builtinsRegistered = false;
+
+function ensureBuiltins(): void {
+	if (builtinsRegistered) return;
+	builtinsRegistered = true;
+	for (const adapter of [veyyonAdapter, factoryAdapter, hermesAdapter, ompAdapter]) {
+		REGISTRY.set(adapter.name, adapter);
+	}
+}
 
 /**
  * Register a custom system adapter in the global registry.
  */
 export function registerSystemAdapter(adapter: SystemAdapter): void {
+	ensureBuiltins();
 	if (REGISTRY.has(adapter.name)) {
 		throw new Error(`System adapter "${adapter.name}" is already registered`);
 	}
@@ -28,6 +38,7 @@ export function registerSystemAdapter(adapter: SystemAdapter): void {
  * Look up a registered system adapter by name, or undefined if not found.
  */
 export function getSystemAdapter(name: string): SystemAdapter | undefined {
+	ensureBuiltins();
 	return REGISTRY.get(name);
 }
 
@@ -35,6 +46,7 @@ export function getSystemAdapter(name: string): SystemAdapter | undefined {
  * Look up a registered system adapter by name, throwing an informative error if not found.
  */
 export function requireSystemAdapter(name: string): SystemAdapter {
+	ensureBuiltins();
 	const adapter = REGISTRY.get(name);
 	if (!adapter) {
 		const available = Array.from(REGISTRY.keys()).sort().join(", ");
@@ -47,6 +59,7 @@ export function requireSystemAdapter(name: string): SystemAdapter {
  * Check if a system name is registered.
  */
 export function isRegisteredSystem(name: string): boolean {
+	ensureBuiltins();
 	return REGISTRY.has(name);
 }
 
@@ -56,6 +69,7 @@ export const hasSystemAdapter = isRegisteredSystem;
  * Get all registered system adapters.
  */
 export function getAllSystemAdapters(): readonly SystemAdapter[] {
+	ensureBuiltins();
 	return Array.from(REGISTRY.values());
 }
 
@@ -63,6 +77,7 @@ export function getAllSystemAdapters(): readonly SystemAdapter[] {
  * Get all registered system names.
  */
 export function getAllRegisteredSystemNames(): readonly string[] {
+	ensureBuiltins();
 	return Array.from(REGISTRY.keys());
 }
 

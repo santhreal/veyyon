@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { isRecord } from "@veyyon/utils";
-import { COMPARISON_MODEL } from "../../harnesses";
+import { COMPARISON_MODEL } from "../../harnesses/system-comparison";
 
 export interface ReplayUserTurn {
 	id: string;
