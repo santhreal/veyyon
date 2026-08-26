@@ -806,10 +806,8 @@ const streamOpenAICompletionsOnce = (
 			}
 			stream.push({ type: "start", partial: output });
 
-			// Some OpenAI-compatible DeepSeek hosts (including NVIDIA NIM and DeepSeek's
-			// native API) leak chat-template tool-call markers in `delta.content` even
-			// though tool calls are also surfaced structurally. Strip the leaked markers
-			// so users don't see raw `<｜...｜>` tokens.
+			// DeepSeek hosts (NVIDIA NIM, native API) leak chat-template tool-call markers in `delta.content`.
+			// Strip them so users don't see raw `<｜...｜>` tokens.
 			const stripDeepseekChatTemplateTokens = policy.stream.stripSpecialTokens === "deepseek";
 			type ToolCallStreamBlock = ToolCall & {
 				partialArgs?: string | Record<string, unknown>;
@@ -819,10 +817,7 @@ const streamOpenAICompletionsOnce = (
 			type OpenAIStreamBlock = TextContent | ThinkingContent | ToolCallStreamBlock;
 			const pendingToolCallBlocks: ToolCallStreamBlock[] = [];
 			const toolCallBlockByIndex = new Map<number, ToolCallStreamBlock>();
-			// Blocks born from an unkeyed multi-entry `tool_calls` array (no `id`,
-			// no `index`), tracked by array offset so continuation chunks that omit
-			// the entry name still route back to the sibling created earlier
-			// instead of collapsing onto `currentBlock`.
+			// Unkeyed multi-entry `tool_calls` (no `id`, no `index`), tracked by array offset for chunk routing.
 			const unkeyedBatchBlocks: (ToolCallStreamBlock | undefined)[] = [];
 			const clearUnkeyedBatchSlot = (block: ToolCallStreamBlock): void => {
 				for (let index = 0; index < unkeyedBatchBlocks.length; index++) {
@@ -857,14 +852,8 @@ const streamOpenAICompletionsOnce = (
 				if (block.partialArgs === undefined) return;
 				const contentIndex = blockIndex(block);
 				if (contentIndex < 0) return;
-				// Object-shaped `partialArgs` came from MiniMax-compatible hosts that stream
-				// `function.arguments` as an object. The per-chunk handler holds them with an
-				// empty wire delta (see the object branch below) because emitting each chunk's
-				// `JSON.stringify(rawArgs)` would feed concat-based downstream consumers
-				// (proxy.ts, openai-chat-server, openai-responses-server, anthropic-messages-server)
-				// an invalid concatenation like `{"input":"a"}{"input":"b"}`. Flush the final
-				// merged object as one concat-safe delta now so those consumers reconstruct the
-				// args correctly before observing `toolcall_end`.
+				// Object-shaped `partialArgs` (MiniMax hosts streaming `function.arguments` as object). Flush final
+				// merged object as one concat-safe delta so concat-based consumers don't get `{"a":1}{"b":2}`.
 				if (typeof block.partialArgs === "object" && !Array.isArray(block.partialArgs)) {
 					const fullJson = JSON.stringify(block.partialArgs);
 					if (fullJson.length > 0 && fullJson !== "{}") {
@@ -874,9 +863,7 @@ const streamOpenAICompletionsOnce = (
 				block.arguments =
 					typeof block.partialArgs === "string" ? parseStreamingJson(block.partialArgs) : block.partialArgs;
 				delete block.partialArgs;
-				// The published mirror has to go with the accumulator: a marker left
-				// holding text is how `agent-loop.ts` tells a call whose arguments
-				// never finished from one that closed normally.
+				// Keep the accumulator marker so `agent-loop.ts` can detect unfinished args.
 				clearStreamingPartialJson(block);
 				if (block.streamIndex !== undefined) {
 					toolCallBlockByIndex.delete(block.streamIndex);
@@ -943,8 +930,7 @@ const streamOpenAICompletionsOnce = (
 					currentBlock?.type !== "thinking" ||
 					(signature !== undefined && currentBlock.thinkingSignature !== signature)
 				) {
-					// Same as appendText: leave toolCall blocks pending so index-only
-					// continuation deltas can still find them.
+					// Leave toolCall blocks pending for index-only continuation deltas.
 					if (currentBlock?.type !== "toolCall") finishCurrentBlock(currentBlock);
 					currentBlock = { type: "thinking", thinking: "", thinkingSignature: signature };
 					currentBlockIndex = message.content.push(currentBlock) - 1;
@@ -971,13 +957,8 @@ const streamOpenAICompletionsOnce = (
 				if (!firstTokenTime) firstTokenTime = performance.now();
 				appendText(output, stream, text);
 			};
-			// Tracks the last full cumulative reasoning snapshot per signature (the
-			// reasoning field name) so dedup survives block transitions. Required
-			// for MiniMax-M3: once `</think>` and visible text arrive, currentBlock
-			// flips to "text", but later chunks keep carrying the same cumulative
-			// `reasoning_content` snapshot. Without an external tracker the guard
-			// below misses and the snapshot gets re-emitted as a fresh thinking
-			// block after the answer has started.
+			// Last cumulative reasoning snapshot per signature. MiniMax-M3 keeps sending cumulative `reasoning_content`
+			// after currentBlock flips to text; without this tracker the snapshot re-emits as a fresh thinking block.
 			const lastCumulativeReasoningBySignature = new Map<string, string>();
 			const appendThinkingDelta = (
 				thinking: string,
@@ -1069,12 +1050,7 @@ const streamOpenAICompletionsOnce = (
 				for (const call of calls) emitHealedToolCall(call);
 			};
 
-			// Terminal-chunk bookkeeping for the post-finish grace window below.
-			// `streamFinishedAt` flips when a chunk carries `finish_reason`;
-			// `sawUsagePayload` flips when a usage payload was parsed. Some
-			// OpenAI-compatible servers send basic usage with `finish_reason` and
-			// cache-read details in a trailing usage-only chunk, so only the
-			// no-choice terminal path may break while those details are pending.
+			// Post-finish grace: some servers send cache-read details in a trailing usage-only chunk after `finish_reason`.
 			let streamFinishedAt: number | undefined;
 			let sawUsagePayload = false;
 			let awaitTrailingUsageDetails = false;
@@ -1105,14 +1081,10 @@ const streamOpenAICompletionsOnce = (
 			for await (const chunk of terminalAwareStream) {
 				if (!chunk || typeof chunk !== "object") continue;
 
-				// OpenAI documents ChatCompletionChunk.id as the unique chat completion identifier,
-				// and each chunk in a streamed completion carries the same id.
+				// Each chunk carries the same chat completion id.
 				output.responseId ||= chunk.id;
 
-				// Aggregators (OpenRouter, Vercel AI Gateway, …) report the upstream
-				// provider that actually served the request via a top-level `provider`
-				// field present on every chunk. Capture the first non-empty value so
-				// callers can attribute routing without re-parsing the raw stream.
+				// Aggregators (OpenRouter, Vercel AI Gateway) report upstream provider via `provider` field.
 				if (!output.upstreamProvider) {
 					const upstreamProvider = (chunk as ProviderAttributedChatCompletionChunk).provider;
 					output.upstreamProvider =
@@ -1125,12 +1097,8 @@ const streamOpenAICompletionsOnce = (
 
 				const choice = Array.isArray(chunk.choices) ? chunk.choices[0] : undefined;
 				if (!choice) {
-					// A trailing usage-only frame is emitted after generation. A few
-					// OpenAI-compatible gateways omit both `finish_reason` and `[DONE]`
-					// after a tool batch, but still send this accounting frame. Accept
-					// that alternate terminal signal only when every streamed call has
-					// an id, a name, and strictly complete JSON-object arguments. Text
-					// and partial-call EOFs remain errors below.
+					// Trailing usage-only frame: some gateways omit `finish_reason` and `[DONE]` after a tool batch.
+					// Accept it as terminal only when every streamed call has id, name, and complete JSON args.
 					if (sawUsagePayload && hasCompleteToolCallBatch()) {
 						output.stopReason = "toolUse";
 						streamFinishedAt ??= Date.now();
@@ -1205,10 +1173,7 @@ const streamOpenAICompletionsOnce = (
 							const toolCall = toolCalls[toolCallOffset]!;
 							const streamIndex = typeof toolCall.index === "number" ? toolCall.index : undefined;
 							const incomingName = toolCall.function?.name || "";
-							// Multi-entry `tool_calls` arrays without `id`/`index` — either the
-							// opening chunk that carries per-entry names, or a continuation whose
-							// entries are argument-only. Either way, route by array offset so
-							// sibling calls stay isolated.
+							// Multi-entry `tool_calls` without `id`/`index`: route by array offset to keep siblings isolated.
 							const unkeyedBatchedArrayEntry = toolCalls.length > 1 && streamIndex === undefined && !toolCall.id;
 							let block = streamIndex !== undefined ? toolCallBlockByIndex.get(streamIndex) : undefined;
 							if (!block && toolCall.id) {
@@ -1250,8 +1215,7 @@ const streamOpenAICompletionsOnce = (
 								});
 								if (unkeyedBatchedArrayEntry) unkeyedBatchBlocks[toolCallOffset] = block;
 							} else {
-								// Resuming a pending call after interleaved text/thinking:
-								// close the text/thinking block we drifted into.
+								// Resuming a pending call after interleaved text/thinking: close the drifted block.
 								if (currentBlock !== block && currentBlock && currentBlock.type !== "toolCall") {
 									finishCurrentBlock(currentBlock);
 								}
@@ -1266,19 +1230,15 @@ const streamOpenAICompletionsOnce = (
 							if (toolCall.id) block.id = toolCall.id;
 							if (incomingName) block.name = incomingName;
 							let delta = "";
-							// The OpenAI SDK types `function.arguments` as a JSON string, but MiniMax-compatible
-							// hosts stream a fully-formed object instead. Model both shapes so the branches below
-							// narrow honestly rather than widening through `unknown`.
+							// MiniMax-compatible hosts stream `function.arguments` as object instead of string.
 							const rawArgs = toolCall.function?.arguments as string | Record<string, unknown> | undefined;
 							if (typeof rawArgs === "string") {
 								if (rawArgs.length > 0) {
 									delta = rawArgs;
 									const prev = typeof block.partialArgs === "string" ? block.partialArgs : "";
 									block.partialArgs = prev + rawArgs;
-									// Mirror the accumulation onto the block so live renderers see the
-									// stream. `arguments` is re-parsed only every
-									// STREAMING_JSON_PARSE_MIN_GROWTH bytes, so a preview reading it
-									// alone stays empty for the whole call and pops in at the end.
+									// Mirror accumulation so live renderers see the stream; `arguments` is re-parsed only every
+									// STREAMING_JSON_PARSE_MIN_GROWTH bytes to avoid a preview that stays empty until the end.
 									setStreamingPartialJson(block, block.partialArgs);
 									const throttled = parseStreamingJsonThrottled(
 										block.partialArgs,
@@ -1290,19 +1250,8 @@ const streamOpenAICompletionsOnce = (
 									}
 								}
 							} else if (isRecord(rawArgs)) {
-								// MiniMax-compatible hosts stream `function.arguments` as an object instead of the
-								// OpenAI JSON-string contract. Most chunks carry the complete object in one delta,
-								// but cannot rely on that: replacing per-chunk drops earlier keys (and earlier
-								// string content for the same key) when the host fragments the args across deltas.
-								// Deep-merge into the accumulated object. Strings and arrays detect
-								// cumulative-vs-delta semantics by prefix, nested objects merge by key, and
-								// prototype-polluting keys are ignored before storing or comparing values.
-								//
-								// `delta` stays empty here: emitting `JSON.stringify(rawArgs)` per chunk feeds
-								// downstream concat-based accumulators (proxy.ts, openai-chat-server,
-								// openai-responses-server, anthropic-messages-server) an invalid sequence like
-								// `{"input":"a"}{"input":"b"}`. The merged object is flushed as a single
-								// concat-safe delta in `finishToolCallBlock` before `toolcall_end` instead.
+								// Deep-merge fragmented object args (MiniMax hosts). `delta` stays empty: per-chunk `JSON.stringify`
+								// would feed concat-based consumers `{"a":1}{"b":2}`. Flushed as one concat-safe delta in `finishToolCallBlock`.
 								const prev =
 									block.partialArgs !== null &&
 									typeof block.partialArgs === "object" &&
@@ -1339,9 +1288,7 @@ const streamOpenAICompletionsOnce = (
 					}
 				}
 
-				// If usage arrived on the finish chunk without cache-read fields,
-				// keep draining through the grace window for vLLM-style trailing
-				// usage details instead of finalizing the incomplete accounting.
+				// Drain through grace window for vLLM-style trailing usage details.
 				if (streamFinishedAt !== undefined && sawUsagePayload && !awaitTrailingUsageDetails) break;
 			}
 			const localAbortReason = abortTracker.getLocalAbortReason();
@@ -1351,12 +1298,7 @@ const streamOpenAICompletionsOnce = (
 			if (abortTracker.wasCallerAbort()) {
 				throw new AIError.RequestAbortError();
 			}
-
-			// Reaching the end of the async iterator without an exception is a
-			// clean HTTP body EOF, not a dropped transport, so the accumulated
-			// shape decides what it was. `stopReasonForTerminallessEof` owns that
-			// judgement for every dialect; see its header for why rejecting or
-			// accepting unconditionally are both wrong.
+			// Clean HTTP body EOF: `stopReasonForTerminallessEof` decides the stop reason.
 			if (streamFinishedAt === undefined) {
 				const stopReason = stopReasonForTerminallessEof(output.content, hasCompleteToolCallBatch());
 				if (stopReason === undefined) {
@@ -1394,14 +1336,8 @@ const streamOpenAICompletionsOnce = (
 				finishPendingToolCallBlocks();
 			}
 
-			// Some OpenAI-compatible hosts stream structured `tool_calls` but report
-			// `finish_reason: "stop"` instead of `"tool_calls"`. In the OpenAI contract a
-			// tool call always means "execute and continue", so promote that
-			// natural-completion finish to `toolUse` whenever the turn produced tool-call
-			// blocks — the agent loop gates execution on the stop reason. `error`,
-			// `length`, and `aborted` are intentionally left untouched. (Anthropic's
-			// distinct `end_turn`-with-tool-calls "abandon" semantics live in its own
-			// provider and correctly keep `stop`.)
+			// Some OpenAI-compatible hosts report `finish_reason: "stop"` even when tool_calls were streamed.
+			// Promote to `toolUse` so the agent loop executes them. Leave `error`/`length`/`aborted` untouched.
 			if (output.stopReason === "stop" && output.content.some(b => b.type === "toolCall")) {
 				output.stopReason = "toolUse";
 			}
