@@ -18,7 +18,7 @@ export function renderSetupOutro(width: number, height: number, elapsedMs: numbe
 	const subtitle = theme.fg("dim", "setup saved");
 	const content = [...sunset, "", wordmark, subtitle];
 	const start = Math.max(0, Math.floor((height - content.length) / 2));
-	const lines: string[] = Array.from({ length: height }, () => "");
+	const lines: string[] = Array(height).fill("");
 	for (let i = 0; i < content.length && start + i < lines.length; i++) {
 		lines[start + i] = centerLine(content[i] ?? "", width);
 	}
