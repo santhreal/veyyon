@@ -107,9 +107,9 @@ function getPrunedToolResultContent(message: ToolResultMessage): (TextContent | 
 	if (message.prunedAt === undefined) {
 		return message.content;
 	}
-	const textBlocks = message.content.filter((content): content is TextContent => content.type === "text");
-	const text = textBlocks.map(block => block.text).join("") || "[Output truncated]";
-	return [{ type: "text", text }];
+	let text = "";
+	for (const block of message.content) if (block.type === "text") text += block.text;
+	return [{ type: "text", text: text || "[Output truncated]" }];
 }
 
 export function renderBranchSummaryContext(summary: string): string {

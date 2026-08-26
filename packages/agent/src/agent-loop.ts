@@ -1935,7 +1935,8 @@ function disambiguateToolCallIds(message: AssistantMessage, takenIds: ReadonlySe
 
 	const seen = new Set<string>();
 	let content: AssistantMessage["content"] | undefined;
-	for (const [index, block] of message.content.entries()) {
+	for (let index = 0; index < message.content.length; index++) {
+		const block = message.content[index]!;
 		if (block.type !== "toolCall") continue;
 		if (!seen.has(block.id) && !takenIds.has(block.id)) {
 			seen.add(block.id);
