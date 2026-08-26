@@ -1,18 +1,32 @@
 /**
- * BackgroundSessions - keeps a handed-off AgentSession running after the UI
- * has moved on to a new one.
+ * The set of conversations this process is running that no screen is showing.
  *
- * `/new` used to abort the turn in flight: the session object the UI displays
- * is the same object that runs the turn, and starting a new session reset that
- * object in place. Handing the old object to this keeper instead lets its turn
- * run to completion while the UI attaches to a freshly created session.
+ * A session object both holds a conversation and runs its turn, so a screen that
+ * stopped displaying one ended the turn with it. Registering the session here
+ * separates the two: the turn runs to completion against a session the UI no
+ * longer draws.
  *
- * A kept session is flushed, never disposed. Disposal is what tears down the
- * process-wide singletons a top-level session owns (its MCP manager, its async
- * job manager, its eval kernel), and the session the UI moved to inherits
- * those. So the kept session keeps its ownership until the process exits, and
- * this keeper only waits for the turn to settle and then persists the
- * transcript. `drain()` is the shutdown seam: it waits for every kept turn.
+ * Four callers, none of which is the owner of this registry:
+ * - `/new` registers the displayed session and attaches the screen to a new one,
+ *   when `session.newKeepsBackground` is on.
+ * - `/resume` calls {@link BackgroundSessions.take} to reclaim a registered
+ *   session by its transcript, so it re-attaches the live object instead of
+ *   replaying that file as finished text.
+ * - The status line subscribes to the count, because a conversation spending
+ *   tokens off-screen has no other surface.
+ * - Shutdown calls {@link BackgroundSessions.drain}.
+ *
+ * A registered session is flushed, never disposed. Disposal tears down the
+ * process-wide singletons a top-level session owns — its MCP manager, its async
+ * job manager, its eval kernel — and the session the UI moved to inherits them,
+ * so ownership stays with the registered session until the process exits. This
+ * registry waits for the turn to settle and then persists the transcript.
+ *
+ * Stopping a conversation is deliberately not a verb here. Ending a turn closes
+ * a provider stream and settles a transcript, which is the responsibility of the
+ * session running it and is what `session.newKeepsBackground` selects.
+ * `/process-manager` reports that rather than offering a kill that would only
+ * half-work.
  */
 
 import * as path from "node:path";
@@ -28,9 +42,10 @@ import type { AgentSession } from "./agent-session";
 export const SHUTDOWN_DRAIN_TIMEOUT_MS = 5_000;
 
 /**
- * Creates the session the UI moves to when the displayed one is handed off.
- * Built once from the options the process launched with, so a session started
- * this way carries the same model, prompts, tools and extensions.
+ * Creates the session a screen attaches to when the one it was displaying is
+ * registered as running in the background. Built once from the options the
+ * process launched with, so a session started this way carries the same model,
+ * prompts, tools and extensions.
  */
 export type InteractiveSessionFactory = () => Promise<AgentSession>;
 
@@ -144,13 +159,28 @@ export class BackgroundSessions {
 	async drain(timeoutMs: number = SHUTDOWN_DRAIN_TIMEOUT_MS): Promise<void> {
 		if (this.#kept.size === 0) return;
 		const snapshot = [...this.#kept.values()];
-		const settled = Promise.all(snapshot.map(entry => entry.settled));
+		const unsettled = new Set(snapshot);
+		const settled = Promise.all(
+			snapshot.map(async entry => {
+				await entry.settled;
+				unsettled.delete(entry);
+			}),
+		);
 		const timeout = Promise.withResolvers<void>();
 		const timer = setTimeout(timeout.resolve, timeoutMs);
 		try {
 			await Promise.race([settled, timeout.promise]);
 		} finally {
 			clearTimeout(timer);
+			// An abandoned entry is a transcript that stopped short of its flush.
+			// Name them: the only other trace of the loss is a file that ends
+			// earlier than the conversation did.
+			if (unsettled.size > 0) {
+				logger.warn("Background conversations abandoned at shutdown before their transcript flushed", {
+					timeoutMs,
+					sessions: [...unsettled].map(entry => ({ sessionId: entry.sessionId, sessionFile: entry.sessionFile })),
+				});
+			}
 			for (const entry of snapshot) {
 				this.#discard(entry.session, entry.handoff);
 			}

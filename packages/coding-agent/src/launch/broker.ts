@@ -1067,6 +1067,11 @@ class DaemonBroker {
 			this.#persist(record);
 			await record.log?.close();
 			record.log = undefined;
+			// No completion is queued here. `#settle` already queued one for this
+			// execution generation when the process crashed and armed the restart, so
+			// a second write put two deaths for one run into `completions.json`. The
+			// operator-stop attribution reaches `list` through the persisted snapshot
+			// above.
 			this.#scheduleCleanup(record);
 			return;
 		}
@@ -1229,8 +1234,18 @@ class DaemonBroker {
 					snapshot.pid = undefined;
 					snapshot.state = "exited";
 					snapshot.exitedAt = Date.now();
-					snapshot.terminatedBy = "broker-recovery";
-					snapshot.exitReason = "the previous broker exited; its replacement terminated this non-detached daemon";
+					if (spec.detached) {
+						// A detached daemon outlives its broker by design, so one that is
+						// already gone was not terminated by this replacement. Recording
+						// `broker-recovery` here asserted both that the replacement killed
+						// it and that it was non-detached, and neither is true.
+						snapshot.terminatedBy = "process-exit";
+						snapshot.exitReason = "exited while no broker was supervising it";
+					} else {
+						snapshot.terminatedBy = "broker-recovery";
+						snapshot.exitReason =
+							"the previous broker exited; its replacement terminated this non-detached daemon";
+					}
 				} else if (wasTerminal) {
 					snapshot.pid = undefined;
 				}

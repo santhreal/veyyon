@@ -20469,6 +20469,12 @@ export class AgentSession {
 		// pink/purple), matching share.veyyon.dev — not the host's terminal theme.
 		// Callers who want a themed export can pass `palette: "theme"` with
 		// `themeName` directly to `exportSessionToHtml`.
+		// Lazy by necessity, not by oversight. `export/html` text-imports the
+		// gitignored `tool-views.generated.js`, and Bun resolves that text import
+		// when an importer merely parses, so a static import here turns a missing
+		// generated file into a boot failure rather than an export failure
+		// (source-install launch failure, 2026-07-24). This is the one carve-out
+		// from the no-inline-import rule and it stays.
 		const { exportSessionToHtml } = await import("../export/html");
 		return exportSessionToHtml(this.sessionManager, this.state, {
 			outputPath,
