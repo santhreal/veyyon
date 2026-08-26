@@ -879,9 +879,14 @@ export function coalesceAdjacentSgr(line: string): string {
 			i = j;
 			continue;
 		}
+		// Peek ahead: is there a second adjacent SGR? If not, skip the merge.
+		let k = j + 1;
+		if (k >= n || line.charCodeAt(k) !== CC_ESC || line.charCodeAt(k + 1) !== CC_BRACKET) {
+			i = k;
+			continue;
+		}
 		// Collect the run of adjacent SGR sequences starting here.
 		const params: string[] = [line.slice(i + 2, j)];
-		let k = j + 1;
 		while (k < n && line.charCodeAt(k) === CC_ESC && line.charCodeAt(k + 1) === CC_BRACKET) {
 			let p = k + 2;
 			while (p < n && isSgrParamByte(line.charCodeAt(p))) p++;
