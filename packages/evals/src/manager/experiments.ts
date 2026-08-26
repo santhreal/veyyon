@@ -5,57 +5,10 @@
  */
 import { isRecord } from "@veyyon/utils";
 import { sumOfMeasured } from "../core/scoring";
+import type { ArmProjection, ArmSummary, ExperimentDetail, ExperimentSummary } from "../wire";
 import type { RunRow, RunStore, TraceRow } from "./store";
 
-/** Linear extrapolation of a running arm to its full task count. */
-export interface ArmProjection {
-	/** Expected finish timestamp (ms epoch), from observed completion rate. */
-	etaMs: number | null;
-	passPct: number;
-	costPerTask: number | null;
-	totalCostUsd: number | null;
-	meanTrialMs: number;
-}
-
-export interface ArmSummary {
-	run: RunRow;
-	/** Arm label: job name minus the experiment prefix. */
-	arm: string;
-	/** Human config line: models plus prewalk description when known. */
-	config: string;
-	/** Observed pass% over decided trials. */
-	passPct: number | null;
-	costPerTask: number | null;
-	meanTrialMs: number | null;
-	/** Present only while the arm is running with at least one decided trial. */
-	projected: ArmProjection | null;
-}
-
-export interface ExperimentSummary {
-	id: string;
-	goal: string;
-	arms: number;
-	runningArms: number;
-	datasets: string[];
-	nTotal: number;
-	done: number;
-	pass: number;
-	fail: number;
-	error: number;
-	costUsd: number | null;
-	createdAt: number;
-	updatedAt: number;
-}
-
-export interface ExperimentDetail {
-	id: string;
-	goal: string;
-	arms: ArmSummary[];
-	/** Union of task ids across arms, sorted. */
-	tasks: string[];
-	/** arm label → task → cell. */
-	matrix: Record<string, Record<string, { status: string; reward: number | null }>>;
-}
+export type { ArmProjection, ArmSummary, ExperimentDetail, ExperimentSummary };
 
 export interface RunCoordinates {
 	experiment: string;

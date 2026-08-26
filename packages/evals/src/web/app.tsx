@@ -11,32 +11,40 @@
 import { errorMessage, formatCount } from "@veyyon/utils";
 import { type RefObject, useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import type { ArmProjection, ArmSummary, ExperimentDetail, ExperimentSummary } from "../manager/experiments";
-import type { BenchmarkKind, RunRole, RunRow, RunStatus, TraceRow } from "../manager/store";
+import {
+	type ArmProjection,
+	type ArmSummary,
+	type BenchmarkKind,
+	type ExperimentDetail,
+	type ExperimentSummary,
+	formatEta as fmtEta,
+	formatMinutes as fmtMin,
+	formatUsd as fmtUsd,
+	type RunRole,
+	type RunRow,
+	type RunStatus,
+	type TraceRow,
+	type TranscriptEntry,
+} from "../wire";
 
 // ── api types (mirrors server modules) ──────────────────────────────────────
 
-export type { BenchmarkKind, RunRole, RunRow, RunStatus, TraceRow };
-
-interface TranscriptEntry {
-	kind: string;
-	model?: string;
-	tool?: string;
-	isError?: boolean;
-	text?: string;
-	tools?: string[];
-}
+export type {
+	ArmProjection,
+	ArmSummary,
+	BenchmarkKind,
+	ExperimentDetail,
+	ExperimentSummary,
+	RunRole,
+	RunRow,
+	RunStatus,
+	TraceRow,
+	TranscriptEntry,
+};
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
-const fmtUsd = (v: number | null) =>
-	v === null ? "—" : v >= 100 ? `$${v.toFixed(0)}` : v >= 1 ? `$${v.toFixed(2)}` : `$${v.toFixed(3)}`;
-const fmtMin = (ms: number) => `${(ms / 60000).toFixed(1)}m`;
-const fmtEta = (etaMs: number | null) => {
-	if (etaMs === null) return "—";
-	const mins = Math.max(0, Math.round((etaMs - Date.now()) / 60000));
-	return mins >= 90 ? `~${(mins / 60).toFixed(1)}h` : `~${mins}m`;
-};
+export { fmtEta, fmtMin, fmtUsd };
 
 let cachedAuthToken = "";
 async function getAuthToken(): Promise<string> {
