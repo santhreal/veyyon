@@ -116,10 +116,14 @@ const READ_STATUS_RANK: Record<ReadEntry["status"], number> = {
 
 function getDisplayReadTargets(details: ReadToolResultDetails | undefined): string[] | undefined {
 	if (!Array.isArray(details?.displayReadTargets)) return undefined;
-	const targets = details.displayReadTargets
-		.filter((target): target is string => typeof target === "string")
-		.map(target => target.trim())
-		.filter(target => target.length > 0);
+	const targets: string[] = [];
+	for (let i = 0; i < details.displayReadTargets.length; i++) {
+		const target = details.displayReadTargets[i];
+		if (typeof target === "string") {
+			const trimmed = target.trim();
+			if (trimmed.length > 0) targets.push(trimmed);
+		}
+	}
 	return targets.length > 0 ? targets : undefined;
 }
 
