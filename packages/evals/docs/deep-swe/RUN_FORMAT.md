@@ -122,7 +122,7 @@ The rendered Markdown report contains these sections:
 Re-parse trial results and regenerate `results.json` and `report.md` without re-executing trials:
 
 ```bash
-bun run.ts --reaggregate runs/2026-08-25T09-10-52-052Z
+bun src/suites/deep-swe/run.ts --reaggregate runs/2026-08-25T09-10-52-052Z
 ```
 
 ## Merging runs
@@ -130,7 +130,7 @@ bun run.ts --reaggregate runs/2026-08-25T09-10-52-052Z
 Pool multiple run directories into a combined report:
 
 ```bash
-bun run.ts --merge runs/day1,runs/day2 --out runs/merged
+bun src/suites/deep-swe/run.ts --merge runs/day1,runs/day2 --out runs/merged
 ```
 
 The merged directory contains a combined `results.json` and `report.md` with all trials from all input runs.

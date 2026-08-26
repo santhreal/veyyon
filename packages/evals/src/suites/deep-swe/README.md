@@ -120,12 +120,13 @@ Before and during execution:
 | Command | What it does |
 |---|---|
 | `bun run list` | List arms, systems, and task sets |
-| `bun run smoke` | 1-task smoke test |
-| `bun run smoke:dry` | Dry-run the smoke test |
-| `bun run pilot` | 10-task pilot with baseline vs full |
-| `bun run pilot:dry` | Dry-run the pilot |
-| `bun run compare` | Cross-system veyyon vs omp |
-| `bun run compare:dry` | Dry-run the comparison |
+| `bun run deepswe` | Run the suite with explicit flags |
+| `bun run deepswe:smoke` | 1-task smoke test |
+| `bun run deepswe:smoke:dry` | Dry-run the smoke test |
+| `bun run deepswe:pilot` | 10-task pilot with baseline vs full |
+| `bun run deepswe:compare` | Cross-system veyyon vs omp |
+
+Append `--dry-run` to any of them to plan a run without starting a trial.
 
 ## Task Sets
 

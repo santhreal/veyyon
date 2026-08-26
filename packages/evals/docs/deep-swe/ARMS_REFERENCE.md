@@ -83,11 +83,11 @@ Decode arm with a 16k token dictionary budget.
 
 ### candidate-bash-trim
 
-Overrides the `tools/bash` prompt description to a trimmed version. The `.yml` file is intentionally identical to `baseline.yml`; the experiment lives in `candidate-bash-trim.prompts.yml`.
+Overrides the `tools/bash` prompt description to a trimmed version. The `.yml` file is identical to `baseline.yml`; the experiment is defined in `candidate-bash-trim.prompts.yml`.
 
 ### candidate-delivery-terse
 
-Overrides the delivery prompt section to a terse version. The `.yml` file is intentionally identical to `baseline.yml`; the experiment lives in `candidate-delivery-terse.sections.yml`.
+Overrides the delivery prompt section to a terse version. The `.yml` file is identical to `baseline.yml`; the experiment is defined in `candidate-delivery-terse.sections.yml`.
 
 ### candidate-ablate-delegation-gates
 
@@ -130,6 +130,6 @@ Arms prefixed with `spill` or `sig` control context window management:
 
 ### Single-variable principle
 
-Each arm changes exactly one variable. If an arm flips a feature flag AND changes a prompt section, the delta has two causes and is unattributable. The `.yml` files for prompt-only arms are intentionally identical to `baseline.yml` — the experiment lives in the companion file.
+Each arm changes exactly one variable. If an arm flips a feature flag AND changes a prompt section, the delta has two causes and is unattributable. The `.yml` files for prompt-only arms are identical to `baseline.yml`; the experiment is defined in the companion file.
 
 The runner's zero-variable collision check rejects two arms with identical fingerprints. The fingerprint covers all files (config, sections, statements, prompts, rule), so arms with identical `.yml` but different companion files are distinct.

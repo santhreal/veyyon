@@ -1,129 +1,147 @@
-# Authoring DeepSWE System Adapters
+# Authoring a harness adapter
 
-This guide specifies how to author and register a new agent system adapter in the DeepSWE suite of `@veyyon/evals`.
+A harness is one member of the harness axis: an agent system that executes tasks. Adding one means
+writing a TypeScript adapter, registering it, and — for a harness that runs on the Pier or Harbor
+backend — writing the Python agent class that backend imports inside the container.
 
-## Architecture
-
-A system adapter bridges two layers:
-
-1. **TypeScript Runner Layer (`src/systems/`)**: Handles CLI dispatch, preflight verification, asset staging, and Pier configuration generation.
-2. **Python Container Layer (`pier_agent/`)**: Runs inside the Docker container spawned by Pier, translates task instructions into agent executions, and collects metadata.
+## The two layers
 
 ```
 +-------------------------------------------------------------+
-| TypeScript Runner (src/systems/ & src/runner/)             |
-|  - validatePreflight({ system, model, args, dryRun })       |
-|  - stageAssets({ system, assetsDir, outRoot, binarySha })   |
-|  - buildJobConfigKwargs({ system, task, repeat, ... })      |
+| TypeScript adapter (src/harnesses/adapters/<name>.ts)       |
+|  - preflight(HarnessPreflightContext) -> PreflightVerdict   |
+|  - stageAssets(HarnessStageContext | SystemStageContext)    |
+|  - backends: which backends it runs on, and how             |
 +------------------------------+------------------------------+
                                |
-                               | mounts assets & invokes Pier
+                               | stages assets, writes the job config
                                v
 +-------------------------------------------------------------+
-| Pier Container Execution (pier_agent/)                      |
-|  - SystemAgentClass(BaseAgent)                              |
-|    - run(task) -> executes agent CLI/runtime                |
-|    - extract_patch() -> saves /logs/artifacts/model.patch   |
-|    - populate_context_post_run() -> records session metrics |
+| Container agent (agents/pier/<name>_agent.py)               |
+|  - run(instruction, environment, context)                   |
+|  - populate_context_post_run(context)                       |
 +-------------------------------------------------------------+
 ```
 
-## Existing adapters
+`packages/evals/src/core/types.ts` declares `HarnessAdapter`. `packages/evals/src/harnesses/index.ts`
+holds the registration list. `packages/evals/agents/pier/` and `packages/evals/agents/harbor/` hold
+the container agents.
 
-| Adapter | Binary | Pier agent | Replay | Compaction | Arm attachments |
-|---|---|---|---|---|---|
-| veyyon | `vey` | `veyyon_agent:VeyyonAgent` | yes | yes | yes |
-| omp | `cli.js` | `omp_agent:OmpAgent` | no | no | no |
-| factory | `droid` | `factory_agent:FactoryAgent` | yes | yes | no |
-| hermes | (native) | `hermes_agent:HermesAgent` | yes | yes | no |
+## Registered harnesses
 
-## Step 1: Implement the TypeScript Adapter
+| Harness | Capabilities | Pier import path | Harbor agent |
+|---|---|---|---|
+| `veyyon` | replay, compaction, arm attachments, prompt overrides | `veyyon_agent:VeyyonAgent` | `veyyon` |
+| `omp` | none | `omp_agent:OmpAgent` | — |
+| `factory` | replay, compaction | `factory_agent:FactoryAgent` | — |
+| `hermes` | replay, compaction | `hermes_agent:HermesAgent` | — |
 
-Create `src/systems/adapters/<name>.ts` implementing the `SystemAdapter` interface from `src/systems/types.ts`:
+## Step 1: the TypeScript adapter
+
+Create `packages/evals/src/harnesses/adapters/<name>.ts`:
 
 ```typescript
-import * as fs from "node:fs";
-import * as path from "node:path";
 import type {
-    SystemAdapter,
-    SystemJobConfigContext,
-    SystemPreflightContext,
-    SystemPreflightResult,
-    SystemStageContext,
-} from "../types";
+	HarnessAdapter,
+	HarnessCapabilities,
+	HarnessPreflightContext,
+	HarnessStageContext,
+	PreflightVerdict,
+} from "../../core/types";
+import { type SystemJobConfigContext, type SystemStageContext, sanitizeVariantName } from "../types";
 
-export class MySystemAdapter implements SystemAdapter {
-    readonly name = "mysystem";
-    readonly displayName = "My System";
-    readonly pierAgentImport = "mysystem_agent:MySystemAgent";
-    readonly description = "Adapter for MySystem evaluation";
-    readonly supportsReplay = false;
-    readonly supportsCompaction = false;
-    readonly supportsArmAttachments = false;
-    readonly defaultModel = "my-provider/my-model";
-    readonly containerAssetsDir = "/opt/mysystem-assets";
+export class MyHarnessAdapter implements HarnessAdapter {
+	readonly name = "myharness";
+	readonly displayName = "My Harness";
+	readonly description = "MyHarness CLI execution in an isolated container.";
+	readonly defaultModel = "my-provider/my-model";
 
-    validatePreflight(context: SystemPreflightContext): SystemPreflightResult {
-        const errors: string[] = [];
-        const warnings: string[] = [];
-        // Check required binaries or environment credentials
-        return { valid: errors.length === 0, errors, warnings };
-    }
+	readonly capabilities: HarnessCapabilities = {
+		replay: false,
+		compaction: false,
+		armAttachments: false,
+		promptOverrides: false,
+	};
 
-    stageAssets(context: SystemStageContext): void {
-        // Copy binary, config, or credential files into context.assetsDir
-    }
+	readonly backends = {
+		pier: {
+			agentImportPath: "myharness_agent:MyHarnessAgent",
+			containerAssetsDir: "/opt/myharness-assets",
+		},
+	} as const;
 
-    buildJobConfigKwargs(context: SystemJobConfigContext): Record<string, unknown> {
-        const kwargs: Record<string, unknown> = {
-            assets_dir: context.assetsDir,
-            binary_sha: context.binarySha ?? "nosha",
-        };
-        if (context.replayPath) {
-            kwargs.replay_path = context.replayPath;
-        }
-        if (context.promptTemplatePath) {
-            kwargs.prompt_template_path = context.promptTemplatePath;
-        }
-        return kwargs;
-    }
+	async preflight(context: HarnessPreflightContext): Promise<PreflightVerdict> {
+		const missing: string[] = [];
+		// Resolve binaries and credentials the harness needs; name each one that is absent.
+		if (missing.length > 0) {
+			return { ok: false, reason: `myharness is not runnable: ${missing.join(", ")}`, missingRequirements: missing };
+		}
+		return { ok: true };
+	}
+
+	async stageAssets(context: HarnessStageContext | SystemStageContext): Promise<void> {
+		// A HarnessStageContext carries `targetDir` and a variant; keep staged paths variant-keyed
+		// so two variants of the same harness never overwrite each other.
+		if ("targetDir" in context) {
+			const destDir = path.join(context.targetDir, sanitizeVariantName(context.variant.name));
+			fs.mkdirSync(destDir, { recursive: true });
+			return;
+		}
+		// A SystemStageContext carries the DeepSWE run's `assetsDir`, `outRoot` and `binarySha`.
+	}
+
+	buildJobConfigKwargs(context: SystemJobConfigContext): Record<string, unknown> {
+		return { assets_dir: context.assetsDir, binary_sha: context.binarySha ?? "nosha" };
+	}
 }
 
-export const mySystemAdapter = new MySystemAdapter();
+export const myHarnessAdapter = new MyHarnessAdapter();
 ```
 
-### SystemAdapter interface fields
+### HarnessAdapter
 
-| Field | Type | Purpose |
+| Member | Type | Purpose |
 |---|---|---|
-| `name` | `string` | Unique identifier used in `--arms` |
-| `displayName` | `string` | Human-readable name for reports |
-| `pierAgentImport` | `string` | Python import path (`module:Class`) |
+| `name` | `string` | Identifier used in `--arms` and `--harnesses` |
+| `displayName` | `string` | Label used in reports |
 | `description` | `string` | One-line description |
-| `supportsReplay` | `boolean` | Whether the adapter supports replay manifests |
-| `supportsCompaction` | `boolean` | Whether the adapter supports compaction replay |
-| `supportsArmAttachments` | `boolean` | Whether the adapter accepts arm attachment files |
-| `defaultModel` | `string` | Default model if `--model` is not specified |
-| `containerAssetsDir` | `string` | Path inside the container where assets are mounted |
+| `defaultModel` | `string \| null` | Model used when a run names none; `null` requires `--model` |
+| `capabilities` | `HarnessCapabilities` | `replay`, `compaction`, `armAttachments`, `promptOverrides` |
+| `backends` | `Partial<Record<BackendId, HarnessBackendBinding>>` | The backends this harness runs on |
+| `preflight` | `(HarnessPreflightContext) => Promise<PreflightVerdict>` | Refuses before a run when the harness is not runnable |
+| `stageAssets` | `(HarnessStageContext \| SystemStageContext) => void` | Writes binaries, configs and credentials the container reads |
+| `validatePreflight` | optional `(SystemPreflightContext) => SystemPreflightResult` | The DeepSWE runner's per-arm preflight |
+| `buildJobConfigKwargs` | optional `(SystemJobConfigContext) => Record<string, unknown>` | kwargs written into the Pier job config |
 
-### SystemStageContext fields
+A harness that declares no `defaultModel` refuses a run that names no model rather than measuring an
+unstated one.
 
-| Field | Type | Purpose |
-|---|---|---|
-| `assetsDir` | `string` | Host directory for staged assets |
-| `outRoot` | `string` | Run output root directory |
-| `binarySha` | `string \| null` | SHA256 of the pinned binary |
-| `args` | `Record<string, unknown>` | CLI arguments |
-| `model` | `string` | Model selector (e.g. `opencode-go/deepseek-v4-flash`) |
+### HarnessBackendBinding
 
-## Step 2: Implement the Python Pier Agent
+| Field | Purpose |
+|---|---|
+| `agentImportPath` | `module:Class` the backend imports. Required for the Pier backend: the DeepSWE runner rejects a Pier run of a harness that states none |
+| `agentName` | Name a backend's CLI selects the harness by (`harbor run --agent <name>`); defaults to `name` |
+| `containerAssetsDir` | Path inside the container where staged assets are mounted |
+| `envVars`, `cliFlags`, `extra` | Backend-specific extras |
 
-Create `pier_agent/<name>_agent.py` subclassing `BaseInstalledAgent`:
+The binding is the only declaration of these facts. A run plan for a (harness, suite) pair whose
+backend is absent from `backends` fails with `UnboundHarnessBackendError` naming all three.
+
+### Staging contexts
+
+`HarnessStageContext` is the generic path: `variant`, `targetDir`, `backend`, `options`.
+`SystemStageContext` is the DeepSWE runner's path: `system`, `assetsDir`, `outRoot`, `binarySha`,
+`args`, `model`. Discriminate on `"targetDir" in context`.
+
+## Step 2: the container agent
+
+Create `packages/evals/agents/pier/<name>_agent.py` subclassing `BaseInstalledAgent`:
 
 ```python
 from __future__ import annotations
+
 import shlex
-from pathlib import Path
 from typing import ClassVar
 
 from model_catalog_bootstrap import build_status_preserving_tee_command
@@ -133,15 +151,15 @@ from pier.environments.base import BaseEnvironment
 from pier.models.agent.context import AgentContext
 from pier.models.agent.install import AgentInstallSpec, InstallStep
 
-CONTAINER_ASSETS_DIR = "/opt/mysystem-assets"
+CONTAINER_ASSETS_DIR = "/opt/myharness-assets"
 
 
-class MySystemAgent(BaseInstalledAgent):
+class MyHarnessAgent(BaseInstalledAgent):
     SUPPORTS_ATIF: ClassVar[bool] = False
 
     @staticmethod
     def name() -> str:
-        return "mysystem"
+        return "myharness"
 
     def __init__(self, *args, assets_dir: str = "", binary_sha: str = "nosha", **kwargs):
         self._assets_dir = assets_dir
@@ -150,8 +168,8 @@ class MySystemAgent(BaseInstalledAgent):
 
     def install_spec(self) -> AgentInstallSpec:
         return AgentInstallSpec(
-            agent_name="mysystem",
-            cache_key=f"mysystem-{self._binary_sha[:16]}",
+            agent_name=self.name(),
+            cache_key=f"myharness-{self._binary_sha[:16]}",
             steps=[InstallStep(user="agent", run="true")],
         )
 
@@ -160,52 +178,60 @@ class MySystemAgent(BaseInstalledAgent):
 
     async def run(self, instruction: str, environment: BaseEnvironment, context: AgentContext) -> None:
         if not self.model_name:
-            raise ValueError("MySystemAgent requires --model (provider/model-id)")
+            raise ValueError("MyHarnessAgent requires --model (provider/model-id)")
         instruction = self.render_instruction(instruction)
-        await environment.exec(command=f"mkdir -p {CONTAINER_ASSETS_DIR}", user="root")
-        # Upload assets, invoke agent CLI, capture session
-        agent_command = f"{CONTAINER_ASSETS_DIR}/myagent --model {shlex.quote(self.model_name)} --print {shlex.quote(instruction)}"
-        logged = build_status_preserving_tee_command(agent_command, "/logs/agent/mysystem.txt")
+        command = f"{CONTAINER_ASSETS_DIR}/myharness --model {shlex.quote(self.model_name)} --print {shlex.quote(instruction)}"
+        logged = build_status_preserving_tee_command(command, "/logs/agent/myharness.txt")
         await self.exec_as_agent(environment, command=logged)
 
     def populate_context_post_run(self, context: AgentContext) -> None:
-        # Parse session JSONL for token usage, cost, and tool calls
-        # Set context.n_input_tokens, context.n_output_tokens, context.cost_usd, context.metadata
-        pass
+        # Parse the session log for token usage, cost and tool calls, then set
+        # context.n_input_tokens, context.n_output_tokens, context.cost_usd and context.metadata.
+        ...
 ```
+
+The kwargs the constructor accepts are exactly the keys `buildJobConfigKwargs` returns.
 
 ### Network allowlists
 
-Agents run inside Docker containers with egress proxies. The `network_allowlist()` method returns a list of allowed domains. Common patterns:
+Agents run inside containers behind an egress proxy. `network_allowlist()` returns the allowed
+domains. The ones already in use:
 
 - `.opencode.ai` — OpenCode API and models.dev metadata
-- `.models.dev` — Model metadata overlay
-- `.github.com` — Git operations (clone, fetch)
-- `public.ecr.aws` — Docker image pulls for task environments
+- `.models.dev` — model metadata overlay
+- `.github.com` — git clone and fetch
+- `public.ecr.aws` — container image pulls for task environments
 
 ### Model resolution
 
-For dynamically-discovered models not in the agent's bundled catalog, the adapter's `stageAssets()` method can generate a static model definition file. The omp adapter demonstrates this pattern: it uses the veyvon binary's `models refresh --json` output (which includes the models.dev overlay) to generate a `models.yml` with full metadata (contextWindow, maxTokens, reasoning), then stages it into the container. See `src/systems/adapters/omp.ts` `buildModelsYml()` for the implementation.
+A model the harness's bundled catalog does not carry is supplied as a staged file. `stageAssets` in
+`src/harnesses/adapters/omp.ts` runs `vey models refresh --json`, which includes the models.dev
+overlay, and writes a `models.yml` carrying `contextWindow`, `maxTokens` and reasoning metadata into
+the container assets directory. `buildModelsYml` in that file is the implementation.
 
-## Step 3: Register the Adapter
+## Step 3: registration
 
-Register in `src/systems/registry.ts`:
-
-```typescript
-import { mySystemAdapter } from "./adapters/mysystem";
-
-REGISTRY.set(mySystemAdapter.name, mySystemAdapter);
-```
-
-Also export it from `src/systems/index.ts`:
+Add the adapter to `packages/evals/src/harnesses/index.ts`:
 
 ```typescript
-export * from "./adapters/mysystem";
+import { myHarnessAdapter } from "./adapters/myharness";
+
+export * from "./adapters/myharness";
+
+export const builtinHarnesses = [veyyonAdapter, ompAdapter, factoryAdapter, hermesAdapter, myHarnessAdapter] as const;
 ```
 
-## Step 4: Verification
+`registerBuiltinHarnesses()` registers every entry of `builtinHarnesses` in the shared registry, and
+is idempotent. Registration is a list in source, never a directory scan.
 
-1. Run TypeScript unit tests: `bash scripts/test-sandbox/run.sh bun test packages/evals/src/suites/deep-swe`
-2. Run Python unit tests: `python3 -m unittest discover -s packages/evals/agents -p "*_test.py"`
-3. Execute dry run: `bun run.ts --arms veyyon,mysystem --dry-run`
-4. Run a smoke test: `bun run.ts --arms mysystem --tasks tasks/smoke.txt --jobs 1`
+## Step 4: verification
+
+```sh
+bash scripts/test-sandbox/run.sh bun test packages/evals/test/harnesses
+python3 -m unittest discover -s packages/evals/agents/pier -p "*_test.py"
+bun packages/evals/src/suites/deep-swe/run.ts --arms veyyon,myharness --dry-run
+bun packages/evals/src/suites/deep-swe/run.ts --arms myharness --tasks datasets/deep-swe/tasks/pilot-10.txt --jobs 1
+```
+
+`test/harnesses/every-harness-states-which-backends-it-runs-on.test.ts` sweeps the registry at run
+time: a new harness turns it red until its (harness, suite) backend decisions are recorded there.

@@ -1,6 +1,6 @@
 # Terminal-Bench 3.0 Suite Specification & Operator Guide
 
-`packages/evals` provides first-class support for **Terminal-Bench 3.0** via the `terminal-bench` `EvalSuite`.
+`packages/evals` runs **Terminal-Bench 3.0** through the `terminal-bench` `EvalSuite`.
 
 ## Overview
 
@@ -9,19 +9,23 @@
 - **Canonical Git Remote**: `https://github.com/harbor-framework/terminal-bench.git`
 - **Pinned Git Tag**: `refs/tags/v3.0.0`
 - **Pinned Commit SHA**: `2b0442c3c583b710ca8da14c8e601b99f2f1f244` (74 tasks, 866M)
-- **Execution Backend**: `harbor` (resolved via `backend-registry.ts`)
+- **Execution Backend**: `harbor` (resolved through `src/core/backend-registry.ts`)
 - **Default Cache Location**: `packages/evals/.cache/datasets/terminal-bench/v3.0.0`
 
 ## Suite Registration & Discovery
 
-The suite registers with the global `defaultSuiteRegistry`:
+The suite registers itself in `defaultSuiteRegistry` when its register module is imported:
 
 ```typescript
 import { requireSuite } from "@veyyon/evals/core/suite-registry";
-import "@veyyon/evals/suites/terminal-bench";
+import { registerTerminalBenchSuite } from "@veyyon/evals/suites/terminal-bench/register";
 
+registerTerminalBenchSuite();
 const suite = requireSuite("terminal-bench");
 ```
+
+`registerTerminalBenchSuite()` is idempotent and takes a registry, so a test may register into its
+own. Importing the module registers into the default registry as a side effect.
 
 ## Task List Selection & Provenance
 

@@ -36,14 +36,14 @@ cell N times; results are recorded in plan order, so two runs of one plan diff c
 A `--suite` list runs each suite in turn and writes one run record per suite, because a record is
 suite-tagged and two suites' trials are never comparable. A `--tasks` entry carrying a `<suite>=`
 prefix belongs to that suite alone; an unprefixed entry applies to every suite. `--dataset-dir` can
-only mean one suite's dataset, so a multi-suite run refuses it. The exit code is the worst any suite
-earned, and a suite whose preflight refuses does not stop the ones after it.
+only mean one suite's dataset, so a multi-suite run rejects it. The exit code is the worst any suite
+earned, and a failed preflight in one suite does not stop the ones after it.
 
-A `--config` file is a settings overlay: its keys are settings paths, and an unknown key is refused
+A `--config` file is a settings overlay: its keys are settings paths, and an unknown key is rejected
 by name before the first trial. A `--prompts` file maps a prompt id to the text that replaces it,
-carried to the agent by `VEYYON_EVAL_PROMPTS`; an id no registry holds is refused with the nearest
+carried to the agent by `VEYYON_EVAL_PROMPTS`; an id no registry holds is rejected with the nearest
 real ids, so a typo costs a second rather than a container. Each harness declares which backends it
-runs on, and a suite whose backend a harness is not bound to is refused during planning instead of
+runs on, and a suite whose backend a harness is not bound to is rejected during planning instead of
 at the first trial.
 
 DeepSWE also keeps its own runner for the flags that are specific to it (arm overlays, attachment
@@ -70,13 +70,13 @@ in `src/benches/search/registry.ts`: a **corpus** (a file tree the bench materia
 suite** (cases over one named corpus, each declaring the answer that corpus has), and an **arm** (a
 way to reach the search engines). `--suite`, `--arms` and `--reference` select which registered
 members a run measures; with none given it measures every registered case suite through every
-registered arm. A lookup for an unregistered id refuses and prints the ids that exist.
+registered arm. A lookup for an unregistered id fails and prints the ids that exist.
 
 A run answers two separate questions. **Arm agreement** compares every arm's bytes against the
 reference arm (`unified-tool` by default), which catches a wrapper that diverges from the engine it
 dispatches to. That comparison is satisfied by construction for the shipped arms, so each case also
 declares the answer the corpus has for it: the files it must find, the files it must not, and a
-count where a cap or pagination decides the set. An engine regression that moves every arm together
+count where a cap or pagination determines the set. An engine regression that moves every arm together
 — a glob that stops recursing, a gitignore rule read the wrong way round, a structural pattern that
 matches no node — fails the declared answer while agreement still passes. `expect` is required on
 every case, so a new case cannot be added without one.
@@ -86,7 +86,7 @@ every case, so a new case cannot be added without one.
 ```
 src/
 ├── core/        contracts, the three registries, variant matrix, run record model
-├── run/         plan.ts decides every cell; execute.ts drives them through one backend
+├── run/         plan.ts computes every cell; execute.ts drives them through one backend
 ├── suites/      deep-swe/, terminal-bench/, typescript-edit/
 ├── backends/    pier/, harbor/, in-process/
 ├── benches/     offline micro-benchmarks that consume no provider quota: search/
@@ -100,7 +100,7 @@ src/
 test/            every test, mirroring the src/ tree
 datasets/        task lists, corpora, fixtures, dictionaries
 agents/          Python container agents (pier/, harbor/)
-docs/            deep-swe/, terminal-bench.md, manager.md
+docs/            per-suite and per-layer reference (see docs/ below)
 runs/            trial output, gitignored
 .cache/          vendored datasets, gitignored
 ```
@@ -114,8 +114,8 @@ complete list, and a member missing from them is invisible to the CLI, the store
 1. Implement `EvalSuite` (`src/core/types.ts`): `discoverTasks`, `describeTask`, `provenance`,
    `scoreTrial`, `preflight`, and the `backend` it needs.
 2. Export `<name>Suite` from `src/suites/<name>/suite.ts` and `register<Name>Suite(registry?)` from
-   `src/suites/<name>/register.ts`. A suite directory carries no barrel: three suites collide on
-   names like `TaskMetadata`, so every importer names the module it wants.
+   `src/suites/<name>/register.ts`. A suite directory carries no barrel: three suites declare types
+   with colliding names such as `TaskMetadata`, so every import states its module path.
 3. Add it to `builtinSuites` in `src/suites/index.ts`.
 4. Commit a task list under `datasets/<name>/tasks/` with a provenance header.
 
@@ -128,8 +128,23 @@ thrown trial records `reward: null` with the error text, never a zero), cleanup,
 bun run serve            # REST + SSE over the run store, dashboard at /
 ```
 
-The store is `assets/evals.sqlite`, schema v2: every row carries the suite and backend identity, so
-rows from two suites cannot be aggregated into one pass rate. `docs/manager.md` covers the API.
+The store is `<runs-dir>/_manager/evals.sqlite`, schema v2. Every row carries the suite and backend
+identity, so rows from two suites cannot be aggregated into one pass rate, and the experiment and
+arm a launch stated, so grouping never re-parses a job name. An unmeasured cost or token count is
+stored as NULL and reported as absent, never as zero. `docs/manager.md` covers the API.
+
+## Documentation
+
+|Document|Covers|
+|---|---|
+|[`docs/harnesses.md`](docs/harnesses.md)|The harness axis: adapters, registry, backend bindings|
+|[`docs/backends.md`](docs/backends.md)|The `ExecutionBackend` contract and the three backends|
+|[`docs/typescript-edit.md`](docs/typescript-edit.md)|The TypeScript-edit suite, its mutations and corpus|
+|[`docs/terminal-bench.md`](docs/terminal-bench.md)|The Terminal-Bench suite on the Harbor backend|
+|[`docs/search-bench.md`](docs/search-bench.md)|The offline search bench: corpora, case suites, arms|
+|[`docs/manager.md`](docs/manager.md)|The run store, REST/SSE API and launch parameters|
+|[`docs/dashboard.md`](docs/dashboard.md)|The wire contract and how unmeasured values render|
+|[`docs/deep-swe/`](docs/deep-swe/)|The DeepSWE suite: eval guide, arms, run format, measurement tools, adapter authoring|
 
 ## Gates
 
