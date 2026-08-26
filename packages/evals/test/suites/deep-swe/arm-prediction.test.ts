@@ -24,10 +24,10 @@ import {
 } from "../../../src/suites/deep-swe/arm-prediction";
 import {
 	accumulatePrefixMass,
-	SKIP_SIGNATURE_CHARS,
 	sessionPrefixSteps,
 	type TranscriptRecord,
-} from "../../../src/suites/deep-swe/prefix-composition";
+} from "../../../src/suites/deep-swe/prefix-mass";
+import { SKIP_SIGNATURE_CHARS } from "../../../src/suites/deep-swe/prefix-stability";
 
 /** An assistant turn carrying one tool call with a signature of the given length. */
 const sig = (chars: number): TranscriptRecord =>

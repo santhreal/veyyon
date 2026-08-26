@@ -25,16 +25,9 @@
 
 import { isRecord } from "@veyyon/utils";
 import { costShares, priceTokens, type RateCard, REFERENCE_RATE_CARD, type TokenMix } from "./cost-model";
-import {
-	type PrefixMass,
-	prefixStability,
-	type SignatureLever,
-	simulateSignatureLever,
-	simulateThinkingRetention,
-	simulateToolResultCap,
-	type TranscriptRecord,
-	totalPrefixMass,
-} from "./prefix-composition";
+import { simulateSignatureLever, simulateThinkingRetention, simulateToolResultCap } from "./lever-simulation";
+import { type PrefixMass, type TranscriptRecord, totalPrefixMass } from "./prefix-mass";
+import { prefixStability, type SignatureLever } from "./prefix-stability";
 
 /** One lever inside an arm, and what it is predicted to do on its own. */
 export interface LeverPrediction {
