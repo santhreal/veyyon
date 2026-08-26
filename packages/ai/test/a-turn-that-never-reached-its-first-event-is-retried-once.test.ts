@@ -33,8 +33,17 @@ import { AssistantMessageEventStream } from "@veyyon/ai/utils/event-stream";
 import { PRE_RESPONSE_STALL_ATTEMPTS } from "@veyyon/ai/utils/first-event-budget";
 import { buildModel } from "@veyyon/catalog/build";
 
-/** Short enough that two stalled attempts cost a fifth of a second. */
-const STALL_DEADLINE_MS = 60;
+/**
+ * The ladder's budget is this deadline times the attempt allowance, and the
+ * first attempt spends its own deadline plus whatever the transport costs to
+ * abort and report. At 60ms a loaded runner spent the whole multiple on
+ * attempt one and the retry this suite exists to prove was correctly refused,
+ * so the case measured the host rather than the ladder. A second is far above
+ * that overhead and still an order of magnitude under the case timeout; the
+ * opposite branch — an attempt that outlives the multiple — is pinned
+ * deterministically at the bottom of this file with a 5ms deadline.
+ */
+const STALL_DEADLINE_MS = 1_000;
 
 const MODEL: Model<"openai-completions"> = buildModel({
 	id: "test-model",
