@@ -1,6 +1,6 @@
 // WHY THIS SUITE EXISTS
 // --------------------
-// When `grep` searches inside zip archives (e.g. `archive.zip:member.ts`),
+// When a text search reaches inside zip archives (e.g. `archive.zip:member.ts`),
 // `resolveArchiveSearchPaths` extracts archive members to a temporary scratch
 // directory (`veyyon-search-archive-...`) before handing them to ripgrep.
 //
@@ -28,7 +28,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { GrepTool } from "@veyyon/coding-agent/tools/grep";
+import { SearchTool } from "@veyyon/coding-agent/tools/search";
 import { removeWithRetries } from "@veyyon/utils";
 
 function crc32(bytes: Uint8Array): number {
@@ -110,13 +110,13 @@ function createTestSession(cwd: string): ToolSession {
 		getSessionFile: () => path.join(cwd, "session.jsonl"),
 		getSessionSpawns: () => "*",
 		getArtifactsDir: () => artifactsDir,
-		getSessionId: () => "grep-test-session",
+		getSessionId: () => "archive-scratch-test-session",
 		allocateOutputArtifact: async () => ({ id: "art-1", path: path.join(cwd, "art-1.log") }),
 		settings: Settings.isolated(),
 	};
 }
 
-describe("grep archive search scratch cleanup", () => {
+describe("text search archive scratch cleanup", () => {
 	let tmpDir: string;
 	let zipPath: string;
 
@@ -151,16 +151,17 @@ describe("grep archive search scratch cleanup", () => {
 		}) as typeof fs.mkdtemp);
 
 		const session = createTestSession(tmpDir);
-		const tool = new GrepTool(session);
+		const tool = new SearchTool(session);
 
-		const result = await tool.execute("call-grep-zip", {
-			pattern: "computeValue",
+		const result = await tool.execute("call-search-zip", {
+			type: "text",
+			input: "computeValue",
 			path: `${zipPath}:src/alpha.ts`,
 		});
 
 		const text = result.content.find(c => c.type === "text")?.text ?? "";
 		expect(text).toContain("computeValue");
-		expect(result.details?.matchCount).toBe(1);
+		expect(result.details?.type === "text" ? result.details.result.matchCount : undefined).toBe(1);
 		// Temp directory was created for extraction
 		expect(createdScratchDir).toBeDefined();
 		// And deleted after search completed
@@ -196,12 +197,13 @@ describe("grep archive search scratch cleanup", () => {
 		});
 
 		const session = createTestSession(tmpDir);
-		const tool = new GrepTool(session);
+		const tool = new SearchTool(session);
 
 		let caught: unknown;
 		try {
 			await tool.execute("call-multi-member", {
-				pattern: "compute",
+				type: "text",
+				input: "compute",
 				path: `${zipPath}:src/alpha.ts; ${zipPath}:src/beta.ts`,
 			});
 		} catch (error) {
@@ -232,10 +234,11 @@ describe("grep archive search scratch cleanup", () => {
 		await fs.writeFile(binaryZipPath, zipBytes);
 
 		const session = createTestSession(tmpDir);
-		const tool = new GrepTool(session);
+		const tool = new SearchTool(session);
 
-		const result = await tool.execute("call-bin-grep", {
-			pattern: "validUtf8",
+		const result = await tool.execute("call-bin-search", {
+			type: "text",
+			input: "validUtf8",
 			path: `${binaryZipPath}:data.bin; ${binaryZipPath}:code.ts`,
 		});
 
