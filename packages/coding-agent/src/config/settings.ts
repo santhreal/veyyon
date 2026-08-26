@@ -1,14 +1,6 @@
 /**
  * Settings singleton with sync get/set and background persistence.
- *
- * Usage:
- *   import { settings } from "./settings";
- *
- *   const enabled = settings.get("compaction.enabled");  // sync read
- *   settings.set("theme.dark", "titanium");               // sync write, saves in background
- *
- * For tests:
- *   const isolated = Settings.isolated({ "compaction.enabled": false });
+ * Use `Settings.isolated()` in tests for isolated state.
  */
 
 import * as fs from "node:fs";
@@ -158,13 +150,8 @@ const SETTING_PATH_SEGMENTS: Record<SettingPath, readonly string[]> = Object.fro
 ) as unknown as Record<SettingPath, readonly string[]>;
 
 /**
- * The paths that used to store `-1` to mean "unset". Unset is an absent key now (see
- * {@link Settings.unset}); this list exists only so the load migration can drop the old
- * sentinel, and it is derived from the schema so a new optional numeric setting is covered
- * without being registered anywhere else. The number itself is {@link UNSET_NUMBER}, owned
- * by `config/optional-number.ts` -- this file used to declare its own `-1` beside it, which
- * is two names for one encoding and exactly the duplication that made the sentinel hard to
- * remove in the first place.
+ * Dotted paths previously storing `-1` for unset, derived from schema.
+ * Used during load migration to strip legacy unset sentinels.
  */
 
 /**
@@ -176,32 +163,16 @@ export const SETTINGS_MIGRATION_VERSION_UNSET_ABSENT_KEY = 1;
 export const SETTINGS_MIGRATION_VERSION = SETTINGS_MIGRATION_VERSION_UNSET_ABSENT_KEY;
 
 /**
- * The config file is there, but this process could not read it.
- *
- * Distinct from absent and from empty, because the three want different
- * answers. Startup treats an unreadable file as empty so a transient fault does
- * not stop the CLI from running. A save must not: the writer deletes every key
- * the in-memory view no longer has, so saving one setting against a view built
- * from a failed read empties the whole file, and a read failure is not
- * quarantined the way a parse failure is, so there is no copy to restore from.
+ * Represents an existing config file that could not be read.
+ * Treated as empty at startup, but blocked from saving to prevent data loss.
  */
 class UnreadableConfig {
 	constructor(readonly cause: unknown) {}
 }
 
 /**
- * The migrations that may run only ONCE, applied to the global config in place
- * and recorded with a stamp.
- *
- * Every other migration here is idempotent and runs on every read of every
- * source. This one is not: it deletes the `-1` that used to mean "unset", and
- * `-1` is now a value a user can mean (a legal presence penalty). Without the
- * stamp the next load would delete it again — which is precisely what happened
- * in dogfooding, one minute after the change landed, on a value set through the
- * shipped CLI.
- *
- * Exported so its contract can be driven directly: the stamp, the fixed point,
- * and the values it must not touch.
+ * Version tracking for one-shot migrations (e.g. deleting legacy `-1` unset sentinels).
+ * Stamped so subsequent loads do not delete valid `-1` values.
  */
 function appliedMigrationVersion(raw: RawSettings): number {
 	return typeof raw.settingsMigrationVersion === "number" ? raw.settingsMigrationVersion : 0;
@@ -225,31 +196,8 @@ export function stripLegacyUnsetSentinels(raw: RawSettings): string[] {
 }
 
 /**
- * Commit the one-shot migrations to the owned config: strip the old sentinels and
- * record that it happened. Returns every path that changed, for the caller to mark
- * modified so the save path actually writes them.
- *
- * Called when a value on one of those paths is written, NOT on every load, for two
- * reasons that pull in opposite directions:
- *
- *  - The stamp must be on disk before a `-1` can be trusted, or the next load
- *    deletes a value the user just set.
- *  - Stamping at load time would add a line to every config in existence,
- *    including ones that have never touched a sampling knob.
- *
- * Writing one of these paths is exactly the moment both concerns are satisfied:
- * the file is being rewritten anyway, and the stamp is what makes the new value
- * survivable. Anything still holding a legacy `-1` is stripped in the same write,
- * so the stamp can never certify a config the migration has not finished.
- *
- * The stamp only ever moves FORWARD. Two versions of veyyon share a config
- * directory more often than it looks (an installed binary beside a source
- * checkout, or a downgrade after a bad release), and a stamp of 2 rewritten to
- * 1 by the older build tells the newer one that a one-shot migration has not
- * run yet. It then runs a second time, on values the user set in between, which
- * is the exact deletion the stamp exists to prevent. `stripLegacyUnsetSentinels`
- * already reads the stamp as "at least this far", so anything below would
- * disagree with it.
+ * Commit one-shot migrations to raw settings and update the migration version stamp.
+ * Runs on write to ensure the stamp is persisted before legacy sentinels are stripped.
  */
 export function stampOwnedConfigMigrations(raw: RawSettings): string[] {
 	const changed = stripLegacyUnsetSentinels(raw);
@@ -280,11 +228,7 @@ function setByPath(obj: RawSettings, segments: string[], value: unknown): void {
 }
 
 /**
- * Delete a nested value by path segments, leaving the objects around it alone.
- *
- * The counterpart to {@link setByPath}, and the shape a migration needs: fold the
- * old key's value onto the new key, then remove the old one so the file has one
- * owner per value and the migration is a fixed point on its own output.
+ * Delete a nested value by path segments, leaving surrounding objects intact.
  */
 function deleteByPath(obj: RawSettings, segments: readonly string[]): void {
 	const parent = segments.length > 1 ? getByPath(obj, segments.slice(0, -1)) : obj;
@@ -322,15 +266,7 @@ export function validateProviderMaxInFlightRequests(value: unknown): Record<stri
 const PATH_SCOPED_ARRAY_SETTINGS = new Set<SettingPath>(["enabledModels", "disabledProviders"]);
 
 /**
- * Largest `ask.timeout` read as seconds. Anything above it is taken to be a
- * millisecond value from the config format that predates the switch to seconds.
- *
- * There is no marker on disk saying which format a file uses, so the magnitude
- * is the only signal available. 1000 seconds is a bit under 17 minutes: far
- * longer than any timeout the settings UI offers, and far shorter than the
- * 15000-120000 that a millisecond-era file actually contained. The cost of the
- * guess falls on a user who wanted a longer wait than that, which is why the
- * rewrite is reported rather than applied quietly.
+ * Maximum `ask.timeout` in seconds. Values above this are treated as legacy millisecond values.
  */
 export const MAX_ASK_TIMEOUT_SECONDS = 1000;
 type PathScopedStringArrayEntry = {
@@ -605,28 +541,14 @@ export class Settings {
 	}
 
 	/**
-	 * Settings files that could not be parsed during this session's load.
-	 *
-	 * Empty in the normal case. A non-empty list means the session is running
-	 * without those files' settings, and a caller with a user-visible surface
-	 * should say so: the log alone is not somewhere anyone looks.
+	 * Settings files that could not be parsed during session load.
 	 */
 	get quarantinedFiles(): readonly QuarantinedSettingsFile[] {
 		return this.#quarantined;
 	}
 
 	/**
-	 * The save failure the user needs to hear about, or undefined when saves are landing.
-	 *
-	 * A save that cannot write the file used to be swallowed into a `logger.warn` and the
-	 * paths re-queued for retry. Nothing reached the operator: the UI reported the setting
-	 * as changed, the in-memory value WAS changed, and the file on disk was not, so the
-	 * setting silently reverted on the next launch. On a read-only home, a full disk, or a
-	 * config path that became a directory, the retry never succeeds and the user got no
-	 * signal at any point (Law 10).
-	 *
-	 * Only reported once the retries are spent, because a single failure under a concurrent
-	 * writer is normal and self-healing. Cleared by the next save that succeeds.
+	 * Active save failure reported to the user after exhausted retries, or undefined.
 	 */
 	get saveFailure(): SettingsSaveFailure | undefined {
 		if (!this.#saveFailure) return undefined;
@@ -636,13 +558,7 @@ export class Settings {
 	}
 
 	/**
-	 * The last save error on this instance, with no retry threshold applied.
-	 *
-	 * {@link saveFailure} deliberately waits for a run of failures, because in a live
-	 * session one failure is a lost race that the retry fixes. A ONE-SHOT command has no
-	 * retry future: `veyyon config set` writes once and exits, so the first failure is the
-	 * whole story and it has to be able to report it and exit non-zero rather than print
-	 * a success it did not achieve. Cleared by the next save that lands.
+	 * The last save error on this instance without waiting for retry threshold.
 	 */
 	get lastSaveError(): { path: string; reason: string } | undefined {
 		if (!this.#saveFailure) return undefined;
@@ -650,11 +566,7 @@ export class Settings {
 	}
 
 	/**
-	 * Be told when a save has failed too many times, since a save happens mid-session.
-	 *
-	 * Startup-only reporting (the shape {@link quarantinedFiles} uses) cannot cover this:
-	 * the failure happens when the user changes a setting, which is exactly when they are
-	 * looking. Returns an unsubscribe.
+	 * Subscribe to save failures exceeding the retry threshold. Returns an unsubscribe function.
 	 */
 	onSaveFailure(listener: (failure: SettingsSaveFailure) => void): () => void {
 		this.#saveFailureListeners.add(listener);
@@ -677,15 +589,7 @@ export class Settings {
 	}
 
 	/**
-	 * Configured settings whose value does not match the schema's declared type.
-	 *
-	 * Empty in the normal case. A non-empty list means the config on disk says
-	 * something the app cannot honor, and the user has to be told: a wrong type is
-	 * usually silently WRONG rather than obviously broken. `autoUpdate: "no"` is a
-	 * truthy string, so a setting the user plainly meant to turn off stays on and
-	 * nothing explains why. Surfacing this is what keeps that from being invisible
-	 * (Law 10); the values themselves are left exactly as written, because quietly
-	 * substituting the default would hide the broken config instead of reporting it.
+	 * Configured settings whose values do not match the schema's declared type.
 	 */
 	get invalidValues(): readonly InvalidSettingValue[] {
 		return this.#invalidValues;
@@ -778,17 +682,7 @@ export class Settings {
 	}
 
 	/**
-	 * Return a setting to its default by REMOVING the key, rather than writing a
-	 * value that stands for "unset".
-	 *
-	 * This is what "Default" means for an optional setting. Encoding it as a
-	 * magic number instead made that number unreachable as a real value: with
-	 * `-1` meaning unset, `presencePenalty: -1` — which the provider accepts —
-	 * could not be configured at all. An absent key has no such collision, and
-	 * `get` already falls back to the schema default.
-	 *
-	 * Fires the same hooks and change signals as {@link set}, because from every
-	 * reader's point of view the effective value changed.
+	 * Return a setting to its schema default by removing its key from config.
 	 */
 	unset(path: SettingPath): void {
 		const prev = this.get(path);
@@ -948,16 +842,7 @@ export class Settings {
 	}
 
 	/**
-	 * Re-scope this instance to a new working directory *in place*: re-resolve
-	 * path-scoped settings against it and re-fire side-effect hooks (theme,
-	 * symbols, tab width, …). Every configured layer is preserved, because none
-	 * of them is sourced from the working tree.
-	 *
-	 * Unlike {@link cloneForCwd}, this mutates the live instance, so every holder
-	 * (the `settings` proxy, the active session, controllers) observes the new
-	 * scope without swapping references — used when the process changes
-	 * directory mid-run (`/move`, cross-project resume). No-op when `cwd` is
-	 * already the current scope.
+	 * Re-scope this instance to a new working directory in place and re-fire side-effect hooks.
 	 */
 	async reloadForCwd(cwd: string): Promise<void> {
 		const normalized = path.normalize(cwd);
@@ -1015,14 +900,7 @@ export class Settings {
 	}
 
 	/**
-	 * Resolve every known setting to its effective value, keyed by dotted path.
-	 *
-	 * This is the complete config that governed a run — compaction strategy,
-	 * reserve tokens, advisor/subagent config, tool config, and every other
-	 * Tier-A knob — captured as one flat map. A session records this at start so a
-	 * later study/backtest can reproduce the exact configuration the run used,
-	 * not merely guess it from current defaults. Keys are sorted for stable,
-	 * diffable output.
+	 * Resolve all known settings to their effective values as a flat sorted map.
 	 */
 	getEffectiveSnapshot(): Record<string, unknown> {
 		const result: Record<string, unknown> = {};
@@ -1254,12 +1132,7 @@ export class Settings {
 	}
 
 	/**
-	 * Report a config file that exists but is ignored because a higher-precedence
-	 * one exists too.
-	 *
-	 * `dirs` finds these but cannot report them: it sits below the logger, which
-	 * imports it. This is the layer that has somewhere to say it, so it says it
-	 * here rather than letting a whole settings file be silently dead.
+	 * Warn about lower-precedence config files shadowed by higher-precedence files.
 	 */
 	#reportShadowedConfigFiles(): void {
 		for (const shadowed of findShadowedGlobalConfigFiles()) {
@@ -1272,14 +1145,7 @@ export class Settings {
 	}
 
 	/**
-	 * Check every configured value in `tree` against the schema and record the
-	 * mismatches, naming `file` so the user knows where to edit.
-	 *
-	 * Walked from the schema rather than from the tree on purpose: iterating the
-	 * file's keys would also flag keys this build does not know, which are
-	 * deliberately preserved (see the unknown-key preservation suite) and are not
-	 * errors. Only paths the schema actually declares can be judged against a
-	 * declared type.
+	 * Validate configured settings in `tree` against the schema and record type mismatches.
 	 */
 	#collectInvalidValues(tree: RawSettings, file: string): void {
 		if (!file) return;
@@ -1304,13 +1170,7 @@ export class Settings {
 	}
 
 	/**
-	 * Re-read for a save. Refuses on anything but a clean read or a genuinely
-	 * absent file, so the caller's retry path runs instead of a write built on a
-	 * view of the file that is known to be wrong.
-	 *
-	 * The original error is what propagates, not a summary of it: the operator's
-	 * only clue about why saving stopped working is the filesystem's own reason,
-	 * and the save-failure report puts that reason in front of them.
+	 * Re-read YAML file before saving, ensuring clean read or absent file before writing.
 	 */
 	async #loadYamlForSave(filePath: string): Promise<RawSettings> {
 		const loaded = await this.#loadYamlIfPresent(filePath);
@@ -1360,11 +1220,7 @@ export class Settings {
 	}
 
 	/**
-	 * Preserve a settings file we could not parse, and remember it for the UI.
-	 *
-	 * The preserving itself lives in `@veyyon/utils` because keybindings has the
-	 * same hazard; what is specific here is recording the file so
-	 * {@link quarantinedFiles} can report it at startup.
+	 * Preserve unparseable settings file via quarantine and track in quarantinedFiles.
 	 */
 	async #quarantineUnparseableSettings(filePath: string, content: string, error: unknown): Promise<void> {
 		const quarantinePath = await quarantineUnparseableFile(filePath, content, error);
@@ -1509,33 +1365,10 @@ export class Settings {
 	}
 
 	/**
-	 * Say once that `ask.timeout` was rewritten from milliseconds to seconds.
-	 *
-	 * The conversion is a guess (see the call site), so the one case it gets
-	 * wrong is a user who genuinely wanted a timeout longer than
-	 * {@link MAX_ASK_TIMEOUT_SECONDS}. Without this they would only find out by
-	 * watching an ask auto-select in two seconds and having no idea why. Once per
-	 * process, because the migration runs on every read of the file.
+	 * Log a one-time warning when `ask.timeout` is converted from milliseconds to seconds.
 	 */
 	/**
-	 * Expand every top-level dotted key that names a registered setting into the
-	 * nested tree it belongs in.
-	 *
-	 * `subagent.model: openai/gpt-5` at the top level of `config.yml` is the same
-	 * setting as `subagent: { model: openai/gpt-5 }` to anyone reading the file, and
-	 * people write it that way. It was parsed, merged, and then never read: {@link
-	 * get} walks nested segments, so the value sat in the tree under a literal
-	 * `"subagent.model"` key that nothing looked at, and the setting silently did
-	 * nothing (Law 10). It affected every setting, not one — the shape was found
-	 * while migrating the subagent keys, where a migration writing this spelling made
-	 * every legacy config revert to defaults with no signal.
-	 *
-	 * Only paths the schema declares are expanded. An unknown dotted key is left
-	 * exactly as written: it belongs to a newer build or another tool, preserving it
-	 * verbatim is a documented contract, and guessing at its shape would corrupt it.
-	 *
-	 * A fixed point, like every migration here: after one pass no registered dotted
-	 * key remains, so a second pass changes nothing.
+	 * Expand registered dotted top-level keys into nested objects in the raw settings tree.
 	 */
 	#expandDottedSettingKeys(raw: RawSettings): void {
 		for (const key of Object.keys(raw)) {
@@ -1603,20 +1436,7 @@ export class Settings {
 	}
 
 	/**
-	 * Fold every retired subagent key onto the `subagent.*` area, in place.
-	 *
-	 * Runs on every read of a settings source, so it must be a FIXED POINT:
-	 * applying it to its own output changes nothing. That holds because each
-	 * legacy key is deleted after it is folded, and an already-present new value
-	 * always wins (an operator who has set the new key is never overwritten by a
-	 * stale legacy one).
-	 *
-	 * `task.eager` mapped three values onto delegation strength; the new
-	 * `subagent.delegation` adds `off` at the bottom, so `default` becomes
-	 * `allowed` and `always` becomes `required`. `task.disabledAgents` becomes one
-	 * row per agent in `subagent.agents`; `task.agentModelOverrides` named a per-agent
-	 * model, which no longer exists as a concept, so it is dropped with a report
-	 * rather than folded into a row nothing reads.
+	 * Migrate legacy subagent/task settings keys to the `subagent.*` namespace in place.
 	 */
 	#migrateSubagentSettings(raw: RawSettings): void {
 		// Every value in a settings source is NESTED — the loader builds the tree
@@ -1759,14 +1579,7 @@ export class Settings {
 
 	/** Apply schema migrations to raw settings */
 	/**
-	 * Apply every field-level migration to one raw settings tree.
-	 *
-	 * Runs on EVERY load of EVERY source (global, project, `--config` overlays,
-	 * runtime overrides), so every migration here must be a fixed point on its own
-	 * output. A migration that CANNOT be — one that cannot distinguish an old
-	 * encoding from a value the user typed — does not belong here: it goes in
-	 * {@link migrateOwnedConfigOnce}, which runs once against the config this
-	 * instance owns.
+	 * Apply idempotent field-level migrations to a raw settings tree across all sources.
 	 */
 	#migrateRawSettings(raw: RawSettings): RawSettings {
 		// Both spellings of a key mean the same thing, and only the nested one used
@@ -2384,15 +2197,7 @@ export class Settings {
 	// ─────────────────────────────────────────────────────────────────────────
 
 	/**
-	 * The ONE place settings are written to disk.
-	 *
-	 * It edits the existing file as a document rather than re-serializing the settings
-	 * object, so the comments, blank lines, key order and quoting the user chose survive a
-	 * setting change. `config.yml` is a file people edit by hand; a save that silently
-	 * reformatted it was deleting their work.
-	 *
-	 * The settings object stays the authority on content, so migrations and resets land
-	 * exactly as they did when this was a `YAML.stringify` call.
+	 * Write settings to disk preserving user formatting, comments, and structure via yaml-sync.
 	 */
 	async #writeConfigPreservingText(configPath: string, settings: RawSettings): Promise<void> {
 		let existing = "";
@@ -2427,11 +2232,7 @@ export class Settings {
 	}
 
 	/**
-	 * Count a failed save, and tell the operator once the retries are spent.
-	 *
-	 * The first failures stay quiet on purpose: a lost race with a concurrent writer is
-	 * normal and the retry fixes it. A run of them is a broken filesystem or a config path
-	 * that is not writable, and that has to reach the user rather than a debug log.
+	 * Record a save failure and notify listeners once retries are exhausted.
 	 */
 	#recordSaveFailure(configPath: string, error: unknown): void {
 		const reason = errorMessage(error);
@@ -2444,19 +2245,7 @@ export class Settings {
 	}
 
 	/**
-	 * A refused write to the machine-wide `~/.veyyon/config.yml`, told to the same
-	 * listeners a refused profile save reaches.
-	 *
-	 * Announced on the FIRST failure rather than after a run of them, because a
-	 * global binding writes synchronously under its own lock and nothing retries
-	 * it: there is no later attempt to be quieter about, and the caller has
-	 * already given up. It swallowed the error and logged instead, so a machine
-	 * that could not persist `onboardingVersion` re-ran the whole setup wizard on
-	 * every launch and said nothing about why.
-	 *
-	 * Announced once per file: a caller that writes the same value twice after a
-	 * failure (the setup wizard marks completion again in its `finally`) reports
-	 * one message, not one per attempt.
+	 * Record and notify listeners of a write failure to global machine-wide config.
 	 */
 	#recordGlobalWriteFailure(error: unknown): void {
 		const filePath = getGlobalConfigFilePath();
@@ -2603,35 +2392,19 @@ export class Settings {
 type SettingHook<P extends SettingPath> = (value: SettingValue<P>, prev: SettingValue<P>) => void;
 
 /**
- * Minimal change-notification primitive backing the exported `on*Changed`
- * subscriptions. Holds a listener set, hands out unsubscribe closures, and
- * isolates errors so a single throwing listener can't abort the rest or bubble
- * out of `Settings.set()`.
+ * Minimal change-notification primitive backing exported `on*Changed` subscriptions.
  *
  * @typeParam A - argument tuple forwarded to each listener on `fire`.
  */
 /**
- * Every signal declared in this module, in declaration order.
- *
- * The registry exists so there is ONE place that knows the full set. Without it, clearing the
- * signals meant naming all nine at the reset site, and a tenth signal added later would silently
- * not be cleared -- which is the failure mode this whole mechanism was leaking through.
+ * Registry of all declared SettingSignal instances for bulk reset during tests.
  */
 const SETTING_SIGNALS: SettingSignal<never[]>[] = [];
 
 class SettingSignal<A extends unknown[] = []> {
 	#listeners = new Set<(...args: A) => void>();
 	/**
-	 * Subscribers registered once at module import, which `clear` deliberately keeps.
-	 *
-	 * WHY THE TWO SETS ARE NOT ONE. Clearing every listener on `resetSettingsForTest` fixed a real
-	 * leak -- a subscription made in one test file stayed alive for the whole process -- and broke
-	 * something else in the same move: `modes/theme/theme` subscribes at ITS OWN IMPORT and never
-	 * unsubscribes, because there is nothing to unsubscribe from a module. Clearing that one meant
-	 * the first reset in a process permanently disconnected the theme engine from settings, so
-	 * `symbolPreset` and `colorBlindMode` stopped applying for every later file. Import-time
-	 * subscribers therefore say so, and only per-instance subscriptions -- the ones an owner is
-	 * expected to release -- are the leak the reset is guarding against.
+	 * Subscribers registered at module import that survive `resetSettingsForTest`.
 	 */
 	#permanent = new Set<(...args: A) => void>();
 
@@ -2679,11 +2452,7 @@ class SettingSignal<A extends unknown[] = []> {
 	}
 
 	/**
-	 * Invoke every listener with `args`. Iterates a snapshot so a listener may
-	 * (un)subscribe mid-fire without re-entrancy — the Hindsight backend
-	 * re-registers the fresh state's listener on every rebuild — and wraps each
-	 * call so a throwing listener is logged and skipped instead of aborting the
-	 * rest.
+	 * Invoke all listeners with args, isolating errors and snapshotting listeners for re-entrancy.
 	 */
 	fire(...args: A): void {
 		for (const cb of [...this.#permanent, ...this.#listeners]) {
@@ -2741,23 +2510,8 @@ const SETTING_HOOKS: Partial<Record<SettingPath, SettingHook<any>>> = {
 	},
 };
 /**
- * Fires when `theme.dark` or `theme.light` changes at runtime, with the slot that
- * changed and the theme name now in it.
- *
- * WHY THESE FOUR THEME SETTINGS GO THROUGH SIGNALS. This file used to call
- * `setAutoThemeMapping`, `setSymbolPreset` and `setColorBlindMode` directly, which
- * meant settings imported `modes/theme/theme`, which imports `./shimmer`, which
- * imports this file again. That cycle is one strongly connected component, so
- * every module in it had to be instantiated as a unit: importing `config/settings`
- * anywhere cost 51 MB, and since the test runner gives each test file a fresh
- * realm, a full run rebuilt the component about 1,800 times and ran out of memory.
- * The edge was also backwards. Settings is domain configuration and the theme
- * engine is the terminal UI, and domain code does not import UI.
- *
- * NOTHING IS DROPPED WHEN NOBODY IS LISTENING. A hook here only applies a value
- * LIVE to a loaded theme engine; the value itself is written and persisted by
- * `Settings.set` regardless. If the theme module was never imported there is no
- * engine to update, and it reads the committed settings when it does load.
+ * Fires when `theme.dark` or `theme.light` changes at runtime with slot and theme name.
+ * Uses signals to avoid circular module dependencies between settings and UI themes.
  */
 const autoThemeMappingSignal = new SettingSignal<[slot: "dark" | "light", themeName: string]>("theme mapping");
 
@@ -2815,14 +2569,7 @@ export const onStatusLineSessionAccentChanged = (cb: () => void) => statusLineSe
 const hindsightScopeSignal = new SettingSignal("hindsight scope");
 
 /**
- * Subscribe to changes in the Hindsight bank-scoping settings. Lets the
- * Hindsight backend rebuild the active `HindsightSessionState` when the
- * operator switches `hindsight.bankId`, `hindsight.bankIdPrefix`, or
- * `hindsight.scoping` mid-session so subsequent retain/recall calls land in
- * the new bank instead of the one selected at session start.
- *
- * Returns an unsubscribe function. The callback receives no arguments — the
- * caller is expected to re-read the relevant settings via `Settings.get`.
+ * Subscribe to changes in Hindsight bank-scoping settings. Returns an unsubscribe function.
  */
 export const onHindsightScopeChanged = (cb: () => void) => hindsightScopeSignal.on(cb);
 
@@ -2831,32 +2578,13 @@ export const onHindsightScopeChanged = (cb: () => void) => hindsightScopeSignal.
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * Teardown a downstream module asks `resetSettingsForTest` to run.
- * Registry lives in `./settings-instance.ts` with the slot, re-exported here as the name callers import.
- * Modules that only register should import the leaf directly.
- *
+ * Re-export test reset hook registration for downstream modules.
  * @internal
  */
 export { registerSettingsTestResetHook } from "./settings-instance";
 
 /**
- * Reset the global singleton for testing.
- *
- * The signal listeners go too, and that is the point rather than a detail. A `SettingSignal`
- * subscription lives at module scope, so it outlives the `Settings` instance it was made against
- * and outlives the test file that made it. Anything that subscribed and did not unsubscribe stayed
- * attached for the rest of the process, and the next write to that setting called it -- a callback
- * closed over a torn-down instance, still free to write to the theme, the symbol preset or the
- * colour-blind flag, all of which are module-scope state of their own.
- *
- * That is cumulative rather than order-dependent, which is why it looked like nothing: a suite
- * passes alone and passes after two hundred predecessors, then fails somewhere past a thousand,
- * with a different case each run. The mermaid renderer producing NO output at all in a large run is
- * the recognisable shape of it, since what it renders depends on exactly this state.
- *
- * A listener that outlives its owner is a leak in a long session too, not only under a test runner;
- * `settingSignalListenerCounts` exists so a guard test can prove the set returns to empty.
- *
+ * Reset global singleton and clear non-permanent signal listeners for testing.
  * @internal
  */
 export function resetSettingsForTest(): void {
@@ -2868,11 +2596,7 @@ export function resetSettingsForTest(): void {
 }
 
 /**
- * How many listeners each setting signal currently holds, keyed by signal name.
- *
- * For the leak guard: a suite that subscribes and tears down should leave every count at zero, and
- * a non-zero count names the signal rather than leaving the reader to find it.
- *
+ * Returns listener counts for each setting signal, used by test leak guards.
  * @internal
  */
 export function settingSignalListenerCounts(): Record<string, number> {

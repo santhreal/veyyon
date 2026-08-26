@@ -1,55 +1,6 @@
 /**
- * AgentDashboard - the Agent Control Center. THE agent surface.
- *
- * Two views, one card, both about a run in progress:
- * - Live: every agent that exists right now, what TYPE of agent each one is,
- *   and what it is doing. Enter hands the main view over to that agent's live
- *   session, where you read it and talk to it; Esc there returns you to your
- *   own session.
- * - Comms: the agent-to-agent traffic, streaming, oldest first, with a summary
- *   line above it. Each message says who spoke to whom, what it answers when it
- *   is a reply, and how it landed when that was not the ordinary live hand-off.
- *   Ctrl+O expands the messages the stream folded; f narrows the stream to one
- *   agent's traffic.
- *
- * BOTH VIEWS ARE SCOPED TO ONE CONVERSATION. The registry and the bus are
- * process-global, and this card is not: `deps.scope` is the session id the card
- * was opened for, and the roster and the stream are filtered to it. Without
- * that, `/resume` in a long-lived process listed the subagents of every
- * conversation the process had ever driven, and the stream opened on their
- * chatter.
- *
- * WHY ONE CARD. This surface was FOUR. `/agents` carried a configuration list
- * that duplicated the Subagents settings table. `/cockpit` (alias `/hub`, and
- * the `app.agents.hub` key, and the `←←` gesture) opened a separate "Agent Hub"
- * overlay with its own roster, its own ordering, its own status glyphs and its
- * own drill-in. A third roster, the "subagent inbox", sat behind a
- * `display.subagentInbox` flag with a fourth drill-in. Three of them showed the
- * same registry through three different renderings, and only one of them opened
- * something you could reply to, so "which agents are running" had three answers
- * that could disagree and the operator had to know which screen they were on.
- * They are one component now, and every entry point opens it.
- *
- * What each of the folded surfaces contributed, and where it went:
- * - The hub's persisted-subagent scan (agents from previous runs, registered
- *   `parked` so they survive a restart) is now `registry/persisted-subagents.ts`,
- *   called here.
- * - The hub's model badge is `agent-model-badge.ts`, shared with the task widget.
- * - The hub's kill (`x`) is here. Its revive (`r`) is gone as a separate key:
- *   opening a parked agent revives it, so a key that only revived was a second
- *   way to do the same thing badly.
- * - The hub's in-overlay transcript viewer is still mounted, but only for the
- *   two cases with no live session to hand over: an advisor transcript, and a
- *   collab guest whose sessions live on the host.
- *
- * Controls:
- * - Up/Down or j/k: move selection (Live) or scroll (Comms)
- * - Tab / Shift+Tab or Left/Right: switch view
- * - Enter: open the selected agent (Live)
- * - x: confirm termination of the selected agent (Live)
- * - Ctrl+O: expand folded messages (Comms)
- * - f: cycle the stream through each agent's traffic (Comms)
- * - Esc, or the key that opened it: close
+ * AgentDashboard: unified control center providing Live (agent roster and focus handoff)
+ * and Comms (inter-agent message stream) views scoped to the active conversation.
  */
 import type { AgentTool } from "@veyyon/agent-core";
 import {
@@ -124,13 +75,7 @@ const VIEW_ORDER: readonly ViewId[] = ["live", "comms"];
 
 /**
  * ModalShell footer chips for the Live roster.
- *
- * The three roster chips are dropped when the roster is empty, for the same
- * reason the Comms expand chip is dropped when nothing is bound to it: a chip
- * names an action you can take, and with no rows there is nothing to navigate,
- * open or kill. The empty state already explains what will appear here, so
- * offering three keys that do nothing under it reads as a broken panel rather
- * than an idle one.
+ * Drops action chips when the roster is empty.
  */
 function liveShortcuts(rosterRows: number): readonly ModalShortcut[] {
 	return [
@@ -143,14 +88,7 @@ function liveShortcuts(rosterRows: number): readonly ModalShortcut[] {
 }
 
 /**
- * ModalShell footer chips for the Comms stream.
- *
- * The expand chip is built from the keys the host injected rather than written
- * out, because `app.tools.expand` is remappable and the handler already reads it:
- * a hardcoded `ctrl+o` chip told a user who had rebound the action about a key
- * that no longer unfolds anything, next to a key that does. When no expand key
- * reaches the card at all the chip is dropped rather than shown, since a chip for
- * a gesture nothing can trigger is worse than one fewer chip.
+ * ModalShell footer chips for the Comms stream with remapped key hints.
  */
 function commsShortcuts(expandHint: string, canFilter: boolean): readonly ModalShortcut[] {
 	return [
@@ -166,22 +104,12 @@ function commsShortcuts(expandHint: string, canFilter: boolean): readonly ModalS
 }
 
 /**
- * Lines of one message shown in the stream before it is folded.
- *
- * Agents send each other paragraphs. Rendered whole, two of them fill the card
- * and the stream stops being a stream, so the tail is folded away and Ctrl+O
- * unfolds it. The fold is always announced with the count it hid: a silently
- * clipped message reads as a short message.
+ * Lines of a message shown in the stream before folding the tail.
  */
 const COMMS_PREVIEW_LINES = 3;
 
 /**
- * Seconds between two epoch-millisecond stamps, for {@link formatAge}.
- *
- * `formatAge` takes SECONDS and appends " ago" itself. Handing it milliseconds
- * showed a four-second-old agent as "1h ago" and a two-minute-old one as "1d
- * ago", and appending a second " ago" at the call site read as "51m ago ago".
- * One helper so both surfaces convert once and neither restates the unit.
+ * Seconds between two epoch-millisecond timestamps for {@link formatAge}.
  */
 function ageSeconds(now: number, at: number): number {
 	// At least one second, because `formatAge` reads 0 as UNKNOWN and returns
@@ -209,13 +137,7 @@ interface RosterExtras {
 }
 
 /**
- * The Live roster: one row per agent that exists, including the ones parked on
- * disk from previous runs.
- *
- * Deliberately NOT a configuration list. It only ever shows agents that exist,
- * which means a disabled specialist cannot appear in it at all: not by a filter
- * that could drift, but because a disabled agent is never spawned and so never
- * registers.
+ * The Live roster: one row per existing or parked agent in this conversation.
  */
 /**
  * Narrowest a model badge is worth drawing.
@@ -226,13 +148,7 @@ interface RosterExtras {
 const MIN_MODEL_BADGE = 10;
 
 /**
- * Frame a failure for the notice line, in the operator's terms.
- *
- * `errorMessage(error)` on its own put the program's internal words on screen:
- * a kill whose session had no `abort` announced "ref.session.abort is not a
- * function. (In 'ref.session.abort({ reason: USER_INTERRUPT_LABEL })', ...)",
- * which names no agent, no action, and nothing to do next. The reason still
- * rides along at the end, where it is evidence rather than the whole message.
+ * Format an action failure notice for the dashboard notice line.
  */
 function actionFailedNotice(action: string, callSign: string, error: unknown): string {
 	return `Could not ${action} ${callSign}: ${errorMessage(error)}`;
@@ -250,11 +166,7 @@ const PART_GAP = "  ";
 const MIN_NAME_COLUMN = 8;
 
 /**
- * Widths the roster's fixed columns are padded to, measured over every agent.
- *
- * One object rather than four positional numbers: the row builder took them in
- * an order only its own call site knew, and a fifth column would have meant a
- * fifth positional argument to thread through.
+ * Column widths for formatted roster rows across all displayed agents.
  */
 interface RosterColumns {
 	sign: number;
@@ -273,25 +185,11 @@ class LiveRosterPane implements Component {
 		private readonly scrollOffset: number,
 		private readonly maxVisible: number,
 		/**
-		 * Read at RENDER time, not captured at construction.
-		 *
-		 * The age ticker repaints the card every five seconds to advance this
-		 * column, and the layout is only rebuilt when the terminal geometry
-		 * changes. A pane holding the `Date.now()` of its construction therefore
-		 * redrew the same "3m ago" forever: the ticker paid for a repaint on a
-		 * fixed cadence and the label it existed to update never moved.
+		 * Current timestamp supplier evaluated at render time to keep age labels fresh.
 		 */
 		private readonly now: () => number,
 		/**
-		 * The width the rows were actually drawn at, reported back after the
-		 * ScrollView has decided whether to take its gutter.
-		 *
-		 * The hit test for the row-local `[x]` used to re-derive this from
-		 * `agents.length > maxVisible`, which is a GUESS at what ScrollView does.
-		 * The two disagreed at the boundary where the roster exactly fills its
-		 * window: the view still reserved a gutter, the guess said it had not, and
-		 * the click target sat one column right of the `[x]` the operator could
-		 * see. Reporting the real width keeps one source of truth.
+		 * Callback reporting drawn row width after gutter allocation for accurate hit testing.
 		 */
 		private readonly onContentWidth: (width: number) => void,
 	) {}
@@ -469,11 +367,7 @@ const TERMINATION_SHORTCUTS: readonly ModalShortcut[] = [
 ];
 
 /**
- * Destructive-action guard mounted over the roster.
- *
- * The selected agent stays visible behind this small card, while both decisions
- * are explicit clickable actions. Enter confirms because focus is already inside
- * the dialog; Escape, the close glyph and click-outside all dismiss.
+ * Confirmation dialog for agent termination mounted over the roster.
  */
 class AgentTerminationDialog implements Component {
 	#shellGeometry: ModalShellGeometry | null = null;
@@ -565,14 +459,7 @@ class AgentTerminationDialog implements Component {
 }
 
 /**
- * How a delivery landed, when that is worth a word on the row.
- *
- * `injected` is the ordinary case (the recipient was live and took it at its
- * next step boundary) and gets nothing: a badge on every single row is a badge
- * nobody reads. The other two say something the body cannot. `woken` means the
- * message started a turn in an agent that had stopped, and `revived` means it
- * brought a parked agent back from disk, which is the difference between "they
- * were listening" and "your message is why they are running".
+ * Display badge labels for non-default delivery outcomes (`woken`, `revived`).
  */
 const OUTCOME_BADGE: Partial<Record<IrcLogEntry["outcome"], string>> = {
 	woken: "woke",
@@ -583,38 +470,18 @@ const OUTCOME_BADGE: Partial<Record<IrcLogEntry["outcome"], string>> = {
 interface CommsPaneOptions {
 	entries: readonly IrcLogEntry[];
 	/**
-	 * Agent id to the name the Live roster shows for it.
-	 *
-	 * The two views must name the same agent the same way. The bus records raw
-	 * ids, and a spawn-scoped id (`task-3f2a…`) is exactly what call signs
-	 * exist to replace: a conversation is followed by who is speaking, and
-	 * `Kestrel → Otter` is followable where two hashes are not. An id with no
-	 * roster row prints as itself rather than as a placeholder, since an agent
-	 * that has been released still said what it said.
+	 * Resolves an agent ID to its display call sign matching the Live roster.
 	 */
 	nameFor: (id: string) => string;
 	/**
-	 * Rows scrolled past, or `"tail"` for "stay on the newest".
-	 *
-	 * `"tail"` is a state, not the number that happens to mean the bottom right
-	 * now. How many rows the stream occupies depends on the width it wraps at
-	 * and the height it is measured against, and both are only final at RENDER
-	 * time, so the tail resolves here, where the rows exist.
+	 * Rows scrolled past, or `"tail"` to anchor to newest messages at render time.
 	 */
 	scrollOffset: number | "tail";
 	maxVisible: number;
 	/** Ctrl+O: show every line of every message instead of the first few. */
 	expanded: boolean;
 	/**
-	 * How the fold line names the expand gesture, or `""` to name no key.
-	 *
-	 * The gesture is `app.tools.expand`, which is remappable, so the hint comes
-	 * from the keys the card was given rather than being written out here. A
-	 * hardcoded `ctrl+o` told a user who had rebound the action to press a key
-	 * that no longer unfolds anything. Empty means no expand key reached the
-	 * card, and then the fold still announces its count: a silently clipped
-	 * message reads as a short message, which is the thing this line exists to
-	 * prevent.
+	 * Keybinding hint for expanding folded message previews, or `""` if unbound.
 	 */
 	expandHint: string;
 	/** Report the resolved start row back, so scrolling up has a number to leave from. */
@@ -628,24 +495,8 @@ interface CommsPaneOptions {
 }
 
 /**
- * The Comms stream: agent-to-agent traffic as it happens.
- *
- * The bus is the source, not the session files. A subagent's transcript shows
- * what IT received; only {@link IrcBus} sees every leg, including the ones that
- * failed to land, and only it keeps them after delivery has consumed the
- * mailbox. Reading anything else here would show a partial conversation and
- * call it the conversation.
- *
- * Three things ride on the head line besides who spoke, and each earns its
- * space by answering a question the body cannot:
- *  - the DELIVERY, when it was not the ordinary live hand-off, because a
- *    message that woke or revived its recipient changed what that agent is
- *    doing, and a message that failed changes what YOU do next;
- *  - the REPLY link, because `replyTo` is recorded on every answered message
- *    and was previously shown nowhere, leaving an interleaved four-agent stream
- *    to be untangled by reading bodies;
- *  - and nothing else. Latency and route are telemetry, gated on an
- *    instrumentation level, and absent in the configuration most people run.
+ * The Comms stream: displays inter-agent IRC message traffic from {@link IrcBus},
+ * including sender, recipient, delivery outcome badges, and reply links.
  */
 class CommsPane implements Component {
 	constructor(private readonly options: CommsPaneOptions) {}
@@ -793,11 +644,7 @@ export interface AgentDashboardDeps {
 	/** Current main session file; seeds parked agents from previous runs. */
 	sessionFile?: string | null;
 	/**
-	 * Conversation this card is rendered for (`SessionManager.getSessionId()`).
-	 *
-	 * The registry is process-global; a roster is not. Omitted only where there
-	 * is no conversation to attribute the card to (collab guest, render-only
-	 * tests), and an omitted scope shows everything rather than nothing.
+	 * Conversation ID to scope the dashboard to (`SessionManager.getSessionId()`).
 	 */
 	scope?: string;
 	/** Collab guest: route transcript reads and actions to the host. */
@@ -840,14 +687,7 @@ export class AgentDashboard extends Container {
 	#commsResolvedStart = 0;
 	#commsExpanded = false;
 	/**
-	 * Agent id the stream is narrowed to, or `undefined` for every message.
-	 *
-	 * A four-agent run interleaves four conversations into one column, and the
-	 * question an operator actually has is almost never "what was said" but "what
-	 * did Kestrel say and hear". Cycled with `f` over the agents that appear in
-	 * the log rather than over the roster, because an agent that has since been
-	 * released still said what it said and its half of the exchange is exactly
-	 * what you go looking for after it is gone.
+	 * Agent ID the Comms stream is filtered to, or `undefined` for all messages.
 	 */
 	#commsFilter: string | undefined;
 
@@ -974,24 +814,14 @@ export class AgentDashboard extends Container {
 	}
 
 	/**
-	 * Whether the roster has nothing worth opening the card for.
-	 *
-	 * The driving session is always registered, so it does not count: a card
-	 * raised by the `←←` gesture must stay inert until there is a SUBAGENT to
-	 * look at. Agents persisted by previous runs arrive later; callers that need
-	 * those included wait for {@link persistedSubagentsReady} first.
+	 * True when no subagents exist beyond the main driving session.
 	 */
 	get isEmpty(): boolean {
 		return this.#liveAgents.every(agent => agent.id === MAIN_AGENT_ID);
 	}
 
 	/**
-	 * Drop every subscription, timer and child overlay.
-	 *
-	 * The registry and the bus are process-global and outlive every card opened
-	 * against them, so a card that closed without unsubscribing would keep
-	 * rebuilding a layout nobody is looking at for the rest of the session, once
-	 * per agent event and once per message.
+	 * Dispose subscriptions, timers, and overlay components.
 	 */
 	dispose(): void {
 		this.#disposed = true;
@@ -1030,19 +860,7 @@ export class AgentDashboard extends Container {
 	}
 
 	/**
-	 * The bus log, minus the traffic of other conversations sharing this process.
-	 *
-	 * The bus is process-global, so an ACP or cmux host driving several sessions
-	 * at once, or a session resumed over a previous one, had every one of them
-	 * reading the same stream. Filtered on the scope the BUS stamped on the line
-	 * when it recorded it, not on who is in the registry now.
-	 *
-	 * That distinction is the whole fix. Filtering by current membership got both
-	 * directions wrong: an agent released moments ago is unregistered, so its
-	 * last words dropped off the pane that promises to keep them, and a stranger
-	 * whose conversation had run an agent of the same name showed up under a live
-	 * local id. A recorded stamp answers "whose line is this" once, at the only
-	 * moment both endpoints were still addressable.
+	 * Inter-agent message log filtered to the active conversation's scope.
 	 */
 	#scopedComms(): IrcLogEntry[] {
 		const scope = this.#deps.scope;
@@ -1055,11 +873,7 @@ export class AgentDashboard extends Container {
 	}
 
 	/**
-	 * The name the roster shows for an agent id, for the Comms stream to reuse.
-	 *
-	 * Recomputed from the current roster rather than cached, because call signs
-	 * are assigned from the roster order and an agent registered since the last
-	 * lookup shifts nothing but adds a name that was not there before.
+	 * Resolve an agent ID to its display call sign based on current roster state.
 	 */
 	#callSignFor(id: string): string {
 		return this.#liveAgents.find(agent => agent.id === id)?.callSign ?? id;
@@ -1100,11 +914,7 @@ export class AgentDashboard extends Container {
 	}
 
 	/**
-	 * Every agent that appears in the log, in the order they first appear.
-	 *
-	 * Order matters because `f` cycles through this list: an order that shuffled
-	 * as messages arrived would move the filter under a repeated keypress, and
-	 * first-appearance is stable for a log that only ever grows at the end.
+	 * Unique agent IDs in the message log in order of first appearance.
 	 */
 	#commsParticipants(): string[] {
 		const seen: string[] = [];
@@ -1117,14 +927,7 @@ export class AgentDashboard extends Container {
 	}
 
 	/**
-	 * `f`: advance the filter one agent, wrapping through "everything".
-	 *
-	 * Cycling rather than opening a picker: the list is the handful of agents in
-	 * this run, and a modal over a modal to choose one of three is more ceremony
-	 * than the choice is worth. Returning to the stream's top is deliberate — a
-	 * filter change replaces what is on screen, and holding a scroll offset from
-	 * the previous set lands you in the middle of a conversation you did not ask
-	 * to enter.
+	 * Cycle the Comms filter to the next participant, wrapping back to all messages.
 	 */
 	#cycleCommsFilter(): void {
 		const participants = this.#commsParticipants();
@@ -1154,13 +957,7 @@ export class AgentDashboard extends Container {
 	}
 
 	/**
-	 * The line above the stream: how much traffic there is, how much of it never
-	 * landed, and what the stream is narrowed to.
-	 *
-	 * The undelivered count is the reason this line exists. A failure is stated
-	 * on its own row, but a failed message five screens up is invisible, and "did
-	 * anything not arrive" is the question you ask when a run has stalled and you
-	 * are looking for why.
+	 * Summary line for the Comms view showing message count, undelivered count, and filter.
 	 */
 	#commsSummary(): string {
 		const shown = this.#filteredComms();
@@ -1177,11 +974,7 @@ export class AgentDashboard extends Container {
 	}
 
 	/**
-	 * Tab strip labels and counts.
-	 *
-	 * Live counts what is RUNNING rather than what is registered, because an idle
-	 * or parked agent is history, and a count that includes history never returns
-	 * to zero once the session has spawned anything.
+	 * Build tab strip definitions with running agent counts and message totals.
 	 */
 	#viewTabs(): ViewTab[] {
 		return [
@@ -1201,14 +994,7 @@ export class AgentDashboard extends Container {
 	}
 
 	/**
-	 * Rows the pane actually draws, which is also the height scrolling and click
-	 * hit-testing measure against, so all three agree.
-	 *
-	 * The Live roster hugs its content: it is a LIST whose length is known, and a
-	 * roster padded to the full budget is the empty space under one agent that
-	 * this card kept drawing. The Comms stream takes the whole budget instead,
-	 * because it is a feed whose rows depend on the width it wraps at, and a feed
-	 * that resizes its own frame as messages arrive is jitter.
+	 * Height in rows allocated to the active pane content, matching scroll and hit-test boundaries.
 	 */
 	#computeBodyHeight(): number {
 		// Chrome inside the card: tab bar + spacer, plus the notice line when one is
@@ -1309,11 +1095,7 @@ export class AgentDashboard extends Container {
 	}
 
 	/**
-	 * Move the cursor (Live) or the stream (Comms) by `delta` rows.
-	 *
-	 * Signed row count rather than a direction, because a page is the same
-	 * gesture as a step with a bigger number, and two code paths that both know
-	 * how to clamp a roster index is how they come to disagree about the ends.
+	 * Move selection cursor (Live) or scroll offset (Comms) by a signed delta.
 	 */
 	#moveSelection(delta: number): void {
 		if (this.#activeView === "live") {
@@ -1341,12 +1123,7 @@ export class AgentDashboard extends Container {
 	}
 
 	/**
-	 * Jump by one bodyful of rows.
-	 *
-	 * A page is what fits on screen, which is what every other selector in the
-	 * TUI pages by, so the distance the key travels matches what you just read.
-	 * Without it a roster of sixty agents, or a stream of five hundred messages,
-	 * could only be crossed one row at a time.
+	 * Page selection up or down by one body height.
 	 */
 	#movePage(direction: -1 | 1): void {
 		this.#moveSelection(direction * Math.max(1, this.#computeBodyHeight()));
@@ -1357,17 +1134,8 @@ export class AgentDashboard extends Container {
 	// ========================================================================
 
 	/**
-	 * Enter on a row: hand the main view to that agent's live session.
-	 *
-	 * Focusing retargets the transcript, the editor and the status line at the
-	 * agent (`SessionFocusController`), which is the whole point: you read what it
-	 * is doing and then answer it, and `esc` there returns you to your own
-	 * session. Parked agents revive on the way in (`ensureLive`), so an agent from
-	 * an earlier run opens the same way a running one does.
-	 *
-	 * Two cases have no live session to hand over and fall back to the read-only
-	 * transcript viewer: an advisor transcript (observability-only, never a peer)
-	 * and a collab guest, whose sessions live on the host.
+	 * Hand the main view over to the selected agent's session, reviving parked agents
+	 * or falling back to the transcript viewer if no live session exists.
 	 */
 	openSelectedAgent(): void {
 		const agent = this.#liveAgents[this.#liveSelectedIndex];
@@ -1391,15 +1159,7 @@ export class AgentDashboard extends Container {
 	}
 
 	/**
-	 * Mount the read-only transcript viewer over the card, for agents with no
-	 * live session to hand over. No-op without a real TUI (render-only tests).
-	 *
-	 * Refuses an agent outside this card's conversation. The roster it is
-	 * normally driven from is already scoped, but this is a public method taking
-	 * a bare id, and the id is the whole authorization: a transcript is the most
-	 * complete record an agent leaves, so opening one from a conversation this
-	 * card does not belong to hands over the entire contents of somebody else's
-	 * session.
+	 * Open the read-only transcript viewer for an agent in this conversation.
 	 */
 	openTranscript(id: string): void {
 		const ref = this.#registry.get(id);
@@ -1450,12 +1210,7 @@ export class AgentDashboard extends Container {
 	}
 
 	/**
-	 * `x`: ask before terminating the selected agent.
-	 *
-	 * The main session owns this dashboard and cannot terminate itself here. An
-	 * advisor is a read-only transcript rather than a running peer. Every real
-	 * subagent opens the same focused confirmation card whether the request came
-	 * from the keyboard or the row-local [x].
+	 * Prompt for confirmation before terminating the selected subagent.
 	 */
 	killSelectedAgent(): void {
 		const agent = this.#liveAgents[this.#liveSelectedIndex];
@@ -1517,11 +1272,7 @@ export class AgentDashboard extends Container {
 	}
 
 	/**
-	 * Apply a confirmed termination.
-	 *
-	 * A running agent is aborted first, then released, because releasing a
-	 * session mid-turn leaves the provider request in flight with nothing to
-	 * receive it. A parked agent has no turn to abort and is released directly.
+	 * Terminate an agent, aborting active turns before releasing session resources.
 	 */
 	#terminateAgent(agent: LiveAgent): void {
 		const remote = this.#deps.remote;
@@ -1547,14 +1298,7 @@ export class AgentDashboard extends Container {
 	// ========================================================================
 
 	/**
-	 * The view strip, styled by the SHARED overlay tab theme rather than a local
-	 * pair of colours.
-	 *
-	 * Two reasons. It is the same control the settings and extension overlays
-	 * draw, and a second styling of it is how two fullscreen cards end up
-	 * disagreeing about what an active tab looks like. The shared active style
-	 * is bold as well as tinted, and this strip also brackets the active label,
-	 * so the active view stays legible when a dumb terminal suppresses every SGR.
+	 * Render the view selector tab strip using shared overlay tab theme styles.
 	 */
 	#renderTabBar(): string {
 		const tabTheme = getTabBarTheme();
@@ -1628,37 +1372,12 @@ export class AgentDashboard extends Container {
 	}
 
 	/**
-	 * Roster rows the card keeps room for even when fewer agents exist.
-	 *
-	 * This floor stops the first spawns from resizing the card under the cursor.
-	 * The card is CENTRED, so a resize moves it at both edges at once: a roster
-	 * that grew a row would shift the whole card up half a row while you read it.
-	 *
-	 * It was eight, on the reasoning that a resize while you read is worse than
-	 * some empty space. That reasoning does not survive the common case. The card
-	 * already grows past the floor as agents register, so it already resizes
-	 * during a run; the floor only prevented SHRINKING below eight. It bought no
-	 * stability where jitter actually happens and charged for it in the session
-	 * shape most people have, one agent, which drew a single row and then six
-	 * rows of bordered nothing.
-	 *
-	 * Four is the smallest floor that still buys the stability the floor is FOR:
-	 * a one-agent card and a four-agent card are the same card, so the batch of
-	 * subagents a run usually spawns lands without moving the panel. Below four
-	 * the card twitches on the second spawn; above four it pays in empty rows for
-	 * agents that are not there.
+	 * Minimum roster rows reserved to prevent modal resizing jitter during initial spawns.
 	 */
 	static readonly #MIN_ROSTER_ROWS = 4;
 
 	/**
-	 * Body rows to ask the card for, which is the content it has plus the roster
-	 * floor when the Live view has less than the floor to show.
-	 *
-	 * The floor cannot come from the pane: {@link #computeBodyHeight} is a CAP on
-	 * what the roster may draw, and a roster of one agent draws one row whatever
-	 * the cap is. Asking the shell for the taller body is what actually reserves
-	 * the space, and it pads with blank rows inside the card rather than leaving
-	 * the card to hug a single row and jump on the next spawn.
+	 * Preferred body height padding to the minimum roster floor in Live view.
 	 */
 	#preferredBodyRows(bodyRows: number): number {
 		if (this.#activeView !== "live") return bodyRows;
@@ -1671,11 +1390,7 @@ export class AgentDashboard extends Container {
 	}
 
 	/**
-	 * The roster index under a screen row, or -1.
-	 *
-	 * Reads the same scroll offset and page height the pane was built with, so a
-	 * click lands on the row the operator can see rather than on the row that
-	 * would be there if the roster had not been scrolled.
+	 * Calculate roster row index at a given screen row, accounting for scroll offset.
 	 */
 	#rosterIndexAt(row: number): number {
 		const geometry = this.#shellGeometry;
@@ -1715,13 +1430,7 @@ export class AgentDashboard extends Container {
 	}
 
 	/**
-	 * Route an SGR mouse report against the last render's ModalShell geometry:
-	 * the chrome (close glyph, click-outside, footer chips), view tabs, roster
-	 * rows, and each terminable row's hover-only [x].
-	 *
-	 * Clicking a row still opens it. Clicking its [x] selects that same row and
-	 * opens the confirmation guard instead, so no pointer gesture can terminate
-	 * immediately.
+	 * Route SGR mouse events to tabs, roster rows, close actions, and termination dialogs.
 	 */
 	#handleMouse(data: string): void {
 		routeSgrMouseInput(data, event => {

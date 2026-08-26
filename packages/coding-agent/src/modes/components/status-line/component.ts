@@ -44,43 +44,8 @@ const SESSION_CLOCK_GAP = "      ";
 type QuietPart = { id: string; content: string };
 
 /**
- * Shed order for the right group, as a rank rather than a boolean. Higher survives longer;
- * everything unlisted ranks 0 and sheds first, right to left, which is the ordinary case.
- *
- * A rank rather than a flag because "protected" cannot be absolute. When every remaining part
- * was protected the shed had nothing legal to drop, fell through to truncating the joined
- * group, and a one-cell budget rendered a bare `…` — destroying all four at once, including
- * the one the oldest contract here says must be the last thing standing. The ranking makes the
- * degradation ordered instead: the weakest ranked part goes, then the next, and the persistent
- * count is alone on the line before anything clips it.
- *
- * Why each of the four outranks a badge:
- *
- * `subagents` (4) is the persistent running count. It is the last thing standing by an older
- * contract than any of the rest: `status-line-running-subagents.test.ts` narrows the footline
- * to exactly the chip's width and requires the number to be what survives.
- *
- * `location_right` (3) is the owner-supplied zone holding the composer's draft token readout.
- * It is pushed LAST and the shed walks from the end, so without a rank it is always the FIRST
- * casualty however important it is. That is how the always-visible approval rung silently
- * evicted the draft counter at 100 columns: nothing removed the counter, the rung widened the
- * right group by one label and the counter fell off the end. Losing the count while the
- * operator is actively typing is a worse trade than dropping a badge they can re-read.
- *
- * `mode` (2) carries the approval rung — the one place that says whether the next command will
- * ask before it runs. The rule protecting it survived only in dead code: the deleted
- * `#buildStatusLine` refused to shed it ahead of the model name or the profile chip on exactly
- * that ground ("safety state outranks identity"), and that method had no production callers,
- * so the footline, which is what renders, shed `mode` first of the three.
- *
- * `context_pct` (1) is how much room is left before compaction fires — the footline's one live
- * value. `#gatherQuietSegments` appends it AFTER the right group on purpose, so it reads as the
- * line's last word, and the shed walks from the end: the deliberate placement made it the first
- * thing dropped at every width that did not fit, while `session_name`, a fixed string, was kept
- * ahead of it. On the DEFAULT preset at 80 columns that meant no gauge at all, and on `full` at
- * 160 it meant a cache-hit percentage on screen while the number that says when the session
- * ends was gone. It ranks lowest of the four because it is the only one that still reads as a
- * whole thought after the others are gone.
+ * Shed order rank for the right group (higher survives longer; unlisted ranks 0).
+ * Ordered degradation ensures essential items like subagents and draft tokens outlive badges.
  */
 const RIGHT_PART_SHED_RANK: Record<string, number> = {
 	context_pct: 1,
@@ -101,12 +66,8 @@ export interface QuietSegmentBounds {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * Allocation-free structural size of a tool call's arguments: the sum of every
- * nested string length plus a fixed weight per primitive and per key. Tool-call
- * arguments come from JSON (acyclic), so a plain recursive walk is safe. This
- * replaces a per-redraw `JSON.stringify` of the full arguments object — a
- * streaming Write with a 100KB file body was re-serialized on every render
- * tick just to detect in-place growth of the tail.
+ * Allocation-free structural size of tool arguments (nested strings + weights).
+ * Replaces expensive per-redraw JSON serialization to detect streaming growth.
  */
 function structuralTextSize(value: unknown): number {
 	if (typeof value === "string") return value.length;
@@ -128,11 +89,8 @@ function structuralTextSize(value: unknown): number {
 }
 
 /**
- * Cheap structural fingerprint of a message's tokenizable content. O(blocks) —
- * only reads string `.length` and primitives, never copies or serializes.
- * Detects in-place growth of the streaming tail (and other in-place mutations)
- * so the cached `getContextUsage()` result is recomputed when — and only when —
- * the numbers it depends on change. Exported for its dedicated test suite.
+ * Cheap O(blocks) structural fingerprint of a message's tokenizable content.
+ * Detects in-place streaming growth to invalidate context usage cache.
  */
 export function messageFingerprint(msg: AgentMessage): string {
 	const role = (msg as { role?: string }).role ?? "";
@@ -284,21 +242,8 @@ function resolveWorktreeContext(cwd: string): WorktreeContext | null {
 }
 
 /**
- * Per-{@link AgentSession} active-processing meter for the `time_spent`
- * segment. `activeMs` is the union of every completed `agent_start`→
- * `agent_end` window; `activeStartedAt` is the start timestamp of the
- * currently-running window, or `null` when idle.
- *
- * `sessionFile` snapshots the loaded session-file path at meter-creation
- * time. `AgentSession.switchSession` (/resume, /move, ACP fork, RPC
- * `switch_session`, extension `switchSession`) mutates the loaded file
- * under the same {@link AgentSession} ref, so the WeakMap key alone
- * cannot tell two conversations apart. `#meter()` compares this snapshot
- * against the live `session.sessionFile`, and a real-to-real change
- * starts the meter fresh instead of crediting the new conversation with
- * the previous one's accumulated active time. The undefined → real
- * first-save transition does not reset, since the session identity has
- * not changed.
+ * Per-session active-processing meter for `time_spent`.
+ * Tracks completed and in-flight run windows; resets across distinct session files.
  */
 interface ActiveMeter {
 	activeMs: number;
@@ -354,22 +299,8 @@ export class StatusLineComponent implements Component {
 	#hookStatuses: Map<string, string> = new Map();
 	#subagentCount: number = 0;
 	/**
-	 * Active-processing accounting for the `time_spent` segment, keyed per
-	 * {@link AgentSession} so the focus-controller mid-turn attach path
-	 * cannot leak an unmatched synthesized `agent_start` from a subagent
-	 * into the main session's meter.
-	 *
-	 * Each meter is `{ activeMs, activeStartedAt }`: `activeMs` is the union
-	 * of every completed `agent_start`→`agent_end` window since
-	 * {@link resetActiveTime} last reset it; `activeStartedAt` is the start
-	 * timestamp of the currently-running window (or `null` when idle).
-	 * `getActiveMs()` returns `activeMs + (now - activeStartedAt)` for the
-	 * currently-attached session, so the counter ticks live during a turn
-	 * and freezes the instant the agent yields.
-	 *
-	 * WeakMap so meters die with their session (e.g. a parked subagent
-	 * dropped from the registry); the main session's meter survives focus
-	 * round-trips because the same {@link AgentSession} ref is reused.
+	 * Active-processing meters keyed per {@link AgentSession}.
+	 * Tracks running and completed durations without leaking across subagents or focus switches.
 	 */
 	#activeMeters: WeakMap<AgentSession, ActiveMeter> = new WeakMap();
 	#planModeStatus: { enabled: boolean; paused: boolean } | null = null;
@@ -406,13 +337,8 @@ export class StatusLineComponent implements Component {
 	#usageInFlight = false;
 	#usageStartTimer: Timer | null = null;
 	/**
-	 * Serving-account memo. The label ladder has ONE owner ({@link accountDisplayLabel} over the
-	 * account inventory), and reaching it means reading every stored credential plus the
-	 * failed-refresh list, which is far too much work for a line that redraws on every spinner
-	 * tick. The key holds the cheap facts that can change the answer — the provider, how many
-	 * credentials it stores, which one routing says is serving, and that account's stored name — so
-	 * the rebuild happens when one of them moves and not otherwise. The name is in the key because
-	 * renaming an account from the card must change this line, not the line after next.
+	 * Memoized serving-account label and stored count.
+	 * Keyed on provider, count, routing state, and name to avoid full inventory walks on redraw.
 	 */
 	#cachedServingAccount: {
 		key: string;
@@ -480,14 +406,8 @@ export class StatusLineComponent implements Component {
 	}
 
 	/**
-	 * Drop a meter's in-flight window when the newly-attached session is no
-	 * longer streaming. Handles the case where the focus controller
-	 * synthesized an `agent_start` on a mid-turn attach but the matching
-	 * real `agent_end` never reached us — the user detached before it
-	 * fired, and re-focusing later (after the agent finished) would
-	 * otherwise tick over the entire detached gap. Crediting that gap to
-	 * `activeMs` would be wrong (the agent finished at some point we never
-	 * observed), so the window is dropped rather than folded in.
+	 * Drop a meter's in-flight window when the attached session is no longer streaming.
+	 * Prevents unobserved detached time from inflating active duration.
 	 */
 	#closeStaleActiveWindow(): void {
 		const meter = this.#meter();
@@ -520,12 +440,8 @@ export class StatusLineComponent implements Component {
 	}
 
 	/**
-	 * Reset the currently-attached session's active-time accumulators so
-	 * the `time_spent` segment starts from zero. Called from `/clear`,
-	 * fresh-session, and joined-collab paths; both the completed
-	 * accumulator and any in-flight window are dropped, so a reset
-	 * mid-turn ignores the running window (the matching `markActivityEnd`
-	 * will see an idle meter and no-op).
+	 * Reset active-time accumulators to zero for the currently-attached session.
+	 * Clears completed time and in-flight windows for `/clear` or session reset.
 	 */
 	resetActiveTime(): void {
 		const meter = this.#meter();
@@ -535,11 +451,8 @@ export class StatusLineComponent implements Component {
 	}
 
 	/**
-	 * Mark the currently-attached session as having started a unit of
-	 * active processing. Idempotent: a second start while a window is
-	 * already open is a no-op, so reentrant `agent_start` events (e.g.
-	 * nested auto-compaction loops, focus-controller mid-turn attach onto
-	 * an already-running window) do not double-count.
+	 * Idempotently mark the attached session as starting active processing.
+	 * Reentrant starts within an open window are no-ops.
 	 */
 	markActivityStart(): void {
 		const meter = this.#meter();
@@ -587,14 +500,8 @@ export class StatusLineComponent implements Component {
 	}
 
 	/**
-	 * Return (lazily creating) the meter for the currently-attached
-	 * session. Detects an in-place session-file swap under the same
-	 * {@link AgentSession} ref (`switchSession` paths: `/resume`, `/move`,
-	 * ACP fork/load, RPC `switch_session`, extension `switchSession`):
-	 * a real-to-real change starts the meter fresh so the new
-	 * conversation does not inherit the previous one's accumulated active
-	 * time. The undefined → real first-save transition only refreshes the
-	 * snapshot — the conversation identity has not changed.
+	 * Lazily return or create the meter for the attached session.
+	 * Resets when the backing session file changes across `/resume` or forks.
 	 */
 	#meter(): ActiveMeter {
 		const currentFile = this.session.sessionFile;
@@ -919,20 +826,8 @@ export class StatusLineComponent implements Component {
 	}
 
 	/**
-	 * Which stored credential is serving the active provider, and how many it stores.
-	 *
-	 * Reports the fact only; whether one account is worth naming on the line is the segment's
-	 * decision. Prefers what routing says is ACTIVE over what the user selected, because those
-	 * differ exactly when the interesting thing happened — a chosen account was rate-limit blocked
-	 * or revoked and traffic moved — and the line has to name what is being spent, not what was
-	 * picked. Falls back to the first stored credential, which is what an unselected provider uses.
-	 *
-	 * Carries whether the answer is a PREDICTION. Routing answers with the account the next request
-	 * would use even before one has gone out, so this resolver has a label to report from the first
-	 * frame; the flag is what stops the line from wording that as an account already being spent.
-	 * It joins the memo key, because the flip from predicted to observed happens on the first
-	 * request with everything else about the account unchanged, and a key that could not see it
-	 * would pin the opening wording for the rest of the cache's life.
+	 * Resolve the serving credential and count for the active provider.
+	 * Prefers active routing over selections, noting predicted vs observed states.
 	 */
 	#servingAccount(session: AgentSession): { label: string; storedCount: number; isPrediction: boolean } | null {
 		// Read here rather than in the segment, so the whole inventory walk below is skipped as well as
@@ -1117,14 +1012,8 @@ export class StatusLineComponent implements Component {
 	}
 
 	/**
-	 * Used-tokens / context-window totals for the status-line context% segment,
-	 * memoized so the per-event redraw stays O(1) when nothing changed.
-	 *
-	 * The numerator comes from `session.getContextUsage()`, which anchors on the
-	 * last assistant's real prompt-token count — so the bar matches the provider
-	 * and the `/context` panel — and reports `null` while that count is unknown
-	 * (right after compaction, before the next response). Exposed (non-private)
-	 * for unit tests and the collab host's state broadcast.
+	 * Memoized used-tokens and context-window totals for context% segment.
+	 * Anchors on prompt tokens from `session.getContextUsage()`.
 	 */
 	getCachedContextBreakdown(): { usedTokens: number | null; contextWindow: number } {
 		const messages = this.session.messages ?? EMPTY_MESSAGES;
@@ -1348,13 +1237,8 @@ export class StatusLineComponent implements Component {
 	}
 
 	/**
-	 * Running background jobs the SUBAGENT badge does not already stand for.
-	 *
-	 * A `task` spawn registers an async job (`type: "task"`, see `task/index.ts`) AND counts as a
-	 * running subagent, so counting every job here printed the same three agents twice: the bar
-	 * read `3 · 3`, two badges whose numbers moved together and neither of which said what it
-	 * was counting. Async bash, debug and launch jobs are real background work with no subagent
-	 * behind them, and those are what this badge is for.
+	 * Running background jobs excluding subagent tasks (e.g. bash, debug, launch).
+	 * Avoids double-counting background jobs already shown in the subagent badge.
 	 */
 	#backgroundJobBadgeCount(): number {
 		const running = this.session.getAsyncJobSnapshot()?.running;
@@ -1363,20 +1247,8 @@ export class StatusLineComponent implements Component {
 	}
 
 	/**
-	 * Quiet composer chrome: the segment set split across two whisper lines with
-	 * free space between them, instead of one crammed bar. Location (path · git)
-	 * lives above the composer's hairline; capability (model · mode) and budget
-	 * (context, session) sit below it, split left/right. Honors the configured
-	 * segments — a segment renders in its zone iff it appears in the preset.
-	 * `extras.locationRight` pins owner-supplied content (MCP health, the ghost
-	 * sun) at the location line's right edge.
-	 */
-	/**
-	 * Gather the quiet-zone segments into their three groups: location (path ·
-	 * git · pr), capability-left (model · mode …), and capability-right
-	 * (context, badges, background jobs). ONE owner for the grouping logic —
-	 * both the two-line selector layout ({@link renderQuietLines}) and the
-	 * composer's single footline ({@link renderQuietLine}) read from here.
+	 * Gather quiet-zone segments into location, capability-left, and capability-right groups.
+	 * Shared grouping logic for two-line layout and single footline rendering.
 	 */
 	#gatherQuietSegments(width: number): { location: QuietPart[]; capLeft: QuietPart[]; capRight: QuietPart[] } {
 		const effectiveSettings = this.#resolveSettings();
@@ -1495,23 +1367,8 @@ export class StatusLineComponent implements Component {
 	}
 
 	/**
-	 * The composer's ONE metadata footline: location (path · git) on the left,
-	 * capability (model · mode · badges · context, then MCP health via
-	 * `extras.locationRight`) on the right. On narrow widths the right group
-	 * sheds parts from the end before the middle gap closes; returns null when
-	 * there is nothing to say (no empty chrome rows).
-	 */
-	/**
-	 * Join the location group and append the MODEL RUN clock with a roomy gap.
-	 * The clock is model runtime from the ONE active-processing meter (the
-	 * same accounting behind `time_spent`), never wall time since launch:
-	 * ONE clock, two states — while the agent runs it ticks the current run
-	 * (`0:42`); once the run finishes it freezes as a quiet receipt of the
-	 * completed run (`✓ 0:21`); before the model has ever started it says
-	 * nothing at all. Chrome, not a configurable segment — it rides the
-	 * location line whenever one renders (approved placement: next to the git
-	 * branch, with a decent amount of space). Dim; the mode's 1s heartbeat
-	 * keeps the running form ticking between agent events.
+	 * Join location segments and append the active-processing run clock.
+	 * Formats running time or last completed run receipt.
 	 */
 	#locationWithRunClock(location: string[], sep: string, gap: string = SESSION_CLOCK_GAP): string {
 		const left = location.join(sep);
@@ -1523,17 +1380,8 @@ export class StatusLineComponent implements Component {
 	}
 
 	/**
-	 * The focus badge on its own, with no segments: the footline row a composer renders while
-	 * `statusLine.enabled` is off. Null when nothing is proxied, so the zone drops the row.
-	 *
-	 * Esc means "leave this view" while the view is proxied onto an agent and "clear the line"
-	 * everywhere else, and this badge is the only persistent thing on screen that says which one
-	 * you are in. Turning standing status off must therefore not be able to strip the exit sign
-	 * off a view whose edge is otherwise invisible, so the badge is outside the setting.
-	 *
-	 * The recorded footline layout is cleared, not kept: with no segments on the row there is
-	 * nothing to hit-test, and stale bounds from an earlier render would resolve a click to a
-	 * segment that is no longer there.
+	 * Standalone focus badge rendered when `statusLine.enabled` is false.
+	 * Ensures exit hint remains visible while proxied onto an agent view.
 	 */
 	renderFocusBadge(width: number): string | null {
 		this.#quietLineBounds = [];
@@ -1670,12 +1518,8 @@ export class StatusLineComponent implements Component {
 	}
 
 	/**
-	 * Resolve a 0-based column of the LAST rendered quiet footline to the id of
-	 * the segment occupying it, or null for gaps/padding. This is the one
-	 * hit-test surface for status-line mouse routing (GMI-2b): the footline
-	 * records its layout as it renders, so the answer is always in sync with
-	 * what is actually on screen. Non-segment chrome reports as synthetic ids
-	 * ("badges", "location_right"); the run clock is unaddressable chrome.
+	 * Resolve a 0-based column of the last rendered quiet footline to its segment id.
+	 * Used for status-line mouse routing and hit testing.
 	 */
 	quietSegmentAt(col: number): string | null {
 		for (const entry of this.#quietLineBounds) {

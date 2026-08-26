@@ -1,18 +1,6 @@
 /**
- * Model resolution, scoping, and initial selection.
- *
- * Layering:
- * - `matchModel` is the single matching engine. Order: exact `provider/id`
- *   reference (with variant-alias and OpenRouter routed/date fallbacks) →
- *   exact bare id → retired variant alias → provider-scoped fuzzy → substring
- *   with alias-vs-dated pick.
- * - `parseModelPatternWithContext`/`parseModelPattern` layer the selector
- *   grammar on top: trailing `:level` thinking suffixes (`splitThinkingSuffix`)
- *   and `@upstream` provider routing (`splitUpstreamRouting`).
- * - Everything else (`resolveModelFromString`, `resolveModelOverride*`,
- *   `resolveRoleSelection`, `resolveModelScope`, `resolveCliModel`,
- *   `findSmolModel`/`findSlowModel`) adapts inputs — roles, settings patterns,
- *   CLI flags, scope globs — onto that pipeline.
+ * Model resolution, scoping, and selection pipeline: matches patterns to models,
+ * extracts thinking/routing selectors, and resolves role/override chains.
  */
 
 // The owner, not the barrel: see the note in `../thinking.ts`.
@@ -53,11 +41,8 @@ function isKnownProvider(provider: string): provider is KnownProvider {
 }
 
 /**
- * Pick the first provider-default model in availability order.
- *
- * If multiple providers expose that same default id, rank only that shared-id
- * group by canonical provider priority so native/OAuth transports beat mirrors
- * without changing unrelated provider fallback precedence.
+ * Selects the first available provider-default model, ranking shared default IDs
+ * by canonical provider priority.
  */
 export function pickDefaultAvailableModel(availableModels: Model<Api>[]): Model<Api> | undefined {
 	const firstDefault = availableModels.find(
@@ -110,14 +95,8 @@ function parseThinkingSuffix(value: string, options?: ThinkingSuffixOptions): Co
 }
 
 /**
- * Split a trailing `:<level>` thinking selector off a model pattern.
- *
- * `level` is set when the suffix parses as a concrete thinking level (or, when
- * the caller opts in via `allowMaxSuffix`/`allowAutoAlias`, the guarded `:max`
- * level / `:auto` sentinel); `base` then has the suffix stripped. Otherwise
- * `base` is the input.
- * `minColonIndex` requires the colon to appear strictly after that index —
- * role-alias callers pass the matched alias prefix length.
+ * Splits a trailing `:<level>` thinking suffix off a model pattern, returning the
+ * parsed thinking level and stripped base pattern.
  */
 function splitThinkingSuffix(
 	pattern: string,
@@ -345,25 +324,8 @@ function resolveBedrockInferenceProfileReference(
 const UPSTREAM_ROUTING_SLUG = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i;
 
 /**
- * Split a trailing `@<upstream>` provider-routing selector off a model pattern.
- *
- * This is a purely SYNTACTIC split: `openrouter/z-ai/glm-4.7@cerebras` -> base
- * `openrouter/z-ai/glm-4.7`, upstream `cerebras`. A `:thinking` suffix after the
- * slug is kept on the base (`...@cerebras:high` -> base `...:high`). Returns
- * undefined only when there is no `@`, the `@` is at position 0, or the suffix
- * after `@` is not a bare provider slug (so `workers-ai/@cf/meta/llama` is not
- * split because `cf/meta/llama` contains a slash).
- *
- * It does NOT know which ids legitimately end in `@<slug>`: a Vertex id like
- * `anthropic/claude-opus-4-8@default` IS split here (into base
- * `anthropic/claude-opus-4-8`, upstream `default`) because `default` is a valid
- * slug. Honoring that split is the CALLER's decision: both call sites only apply
- * the routing when the base resolves to an aggregator model that supports
- * per-request upstream routing (OpenRouter / Vercel Gateway, see
- * {@link supportsUpstreamRouting}). For every other provider the split result is
- * discarded and the `@` stays part of the id. Keep this function syntactic; do
- * not special-case slugs like `default` here, or aggregator routing to an
- * upstream named `default` would break.
+ * Syntactically splits a trailing `@<upstream>` provider-routing selector off a
+ * model pattern (e.g. `openrouter/z-ai/glm-4.7@cerebras`), preserving thinking suffixes on base.
  */
 export function splitUpstreamRouting(pattern: string): { base: string; upstream: string } | undefined {
 	const at = pattern.lastIndexOf("@");
@@ -652,14 +614,8 @@ function findExactModelReferenceMatch(
 	return undefined;
 }
 /**
- * The single model-matching engine. Tries, in order:
- * 1. exact `provider/id` reference (variant-alias and OpenRouter routed/date
- *    fallbacks included),
- * 2. exact bare id (preference-ranked),
- * 3. retired effort-tier variant alias (collapsed catalog entries),
- * 4. provider-scoped fuzzy match,
- * 5. substring match with the alias-vs-dated pick.
- * Returns the matched model or undefined if no match found.
+ * Matches a pattern against available models by trying exact `provider/id`, bare ID,
+ * variant aliases, provider fuzzy matching, and substring search in order.
  */
 function matchModel(
 	modelPattern: string,
@@ -784,16 +740,7 @@ export interface ParsedModelResult {
 }
 
 /**
- * Parse a pattern to extract model and thinking level.
- * Handles models with colons in their IDs (e.g., OpenRouter's :exacto suffix).
- *
- * Algorithm:
- * 1. Try to match full pattern as a model
- * 2. If found, return it with undefined thinking level
- * 3. If not found and has colons, split on last colon:
- *    - If suffix is valid thinking level, use it and recurse on prefix
- *    - If suffix is invalid, warn and recurse on prefix
- *
+ * Parses a pattern to resolve its model and thinking level, handling IDs with colons.
  * @internal Exported for testing
  */
 function parseModelPatternWithContext(
@@ -900,11 +847,7 @@ function isModelRole(role: string): role is ModelRole {
 }
 
 /**
- * Minimum colon index for splitting a `:<level>` suffix off a role alias, or
- * `undefined` when `value` is not role-alias shaped. Doubles as the slice
- * offset of the role name for prefixed aliases (`@role`, `pi/role`); the bare
- * `*` default alias returns 0 because its colon sits immediately after the
- * one-character token (`*:xhigh`).
+ * Returns the prefix length for role aliases (`@role`, `pi/role`, `*`) for suffix splitting.
  */
 function modelRoleAliasPrefixLength(value: string): number | undefined {
 	if (value === DEFAULT_MODEL_ROLE_ALIAS || value.startsWith(`${DEFAULT_MODEL_ROLE_ALIAS}:`)) return 0;
@@ -922,13 +865,7 @@ function getModelRoleAlias(value: string, settings?: Settings): string | undefin
 }
 
 /**
- * Split a configured model value into its ordered chain of patterns.
- *
- * `"opus,sonnet"` and `["opus", "sonnet"]` are the same chain. This is the ONE
- * splitter: the settings chain picker reads and writes through it, so what the
- * picker shows as entry two is exactly what compaction and the subagent spawner
- * try second. Role aliases are left alone here; expansion happens in
- * {@link resolveConfiguredModelPatterns}.
+ * Normalizes a model string or array into an ordered list of pattern strings.
  */
 export function normalizeModelPatternList(value: string | string[] | undefined): string[] {
 	if (!value) return [];
@@ -937,22 +874,8 @@ export function normalizeModelPatternList(value: string | string[] | undefined):
 }
 
 /**
- * Expand one configured pattern, resolving a `@role` alias to the model the role
- * is configured with.
- *
- * An UNSET role resolves to `undefined`, never to a built-in chain. That is the
- * product contract stated on {@link MODEL_ROLES} and owned by
- * {@link resolveRoleSelectionWithInherit}: an unset role inherits the live main
- * model, so pattern expansion must report "this role names no model of its own"
- * and let the caller apply inherit.
- *
- * Returning `priority.json` defaults here instead is the bug this shape exists
- * to prevent: `@smol` / `@slow` / `@designer` resolved to concrete — and
- * different — models even though every role picker showed "inherit (follows main
- * model)". Subagents took this path (agent frontmatter carried role aliases), so
- * a stock install silently fanned out across several models and no subagent
- * model setting could hold. `priority.json` is for FIRST-RUN model selection
- * ({@link findSmolModel} / {@link findSlowModel}), not for role expansion.
+ * Expands a configured pattern or `@role` alias, resolving unset roles to `undefined`
+ * so callers can apply inherit semantics.
  */
 function resolveConfiguredRolePattern(
 	value: string,
@@ -1041,15 +964,7 @@ export function resolveConfiguredModelPatterns(value: string | string[] | undefi
  */
 
 /**
- * Resolve the configured compaction model chain from settings
- * (`compaction.model`), in the order compaction should try them.
- *
- * Both encodings are the same chain and both are valid: the setting is
- * schema-typed `modelChain`, which admits a comma-separated string
- * (`"opus,sonnet"`) and a YAML list alike, and `normalizeModelPatternList` is
- * where they meet. Only the string form needs trimming, and `.trim()` on the
- * list form used to throw a TypeError from inside compaction rather than saying
- * anything useful.
+ * Resolves the configured `compaction.model` pattern list from settings in fallback order.
  */
 export function resolveCompactionModelPatterns(settings?: Settings): string[] {
 	const configured = settings?.get("compaction.model");
@@ -1242,30 +1157,8 @@ export function resolveModelOverride(
 }
 
 /**
- * Resolve a list of override patterns to the first matching model, with an
- * auth-aware fallback to the parent session's active model.
- *
- * If the resolved subagent model has no working credentials (provider has no
- * usable auth), and the parent's active model resolves with working auth,
- * use the parent's model instead. This prevents subagent dispatch from
- * silently routing to a provider the user can't actually call (e.g.
- * `modelRoles.task` pointing at an unqualified id whose only available
- * provider variant has no configured credentials — see #985).
- *
- * `sessionId` is forwarded to `getApiKey` so that session-sticky OAuth
- * credentials resolve correctly during the pre-flight auth check. Without it,
- * providers with multiple OAuth accounts may return `undefined` even though
- * the credential is usable once the subagent session starts — see #5325.
- *
- * Keyless-by-design providers (llama.cpp, ollama, lm-studio) advertise the
- * `kNoAuth` sentinel from `getApiKey` to signal that they do not require
- * credentials. Those are treated as authenticated here so an explicitly
- * configured local model is never silently rerouted to the parent's remote
- * provider (see #1008).
- *
- * If neither the subagent nor the parent has working auth, returns the
- * primary resolution unchanged so the existing error path still surfaces
- * a meaningful failure downstream.
+ * Resolves override patterns to the first matching model, falling back to the parent
+ * session's active model if the override has no valid credentials.
  */
 export async function resolveModelOverrideWithAuthFallback(
 	modelPatterns: string[],
@@ -1313,14 +1206,8 @@ interface RoleChainWalk {
 }
 
 /**
- * Walk a role chain in order, returning the first role that resolves plus every
- * role that was CONFIGURED yet matched no available model.
- *
- * The second half is what keeps "unset" and "set to something broken" apart. A
- * chain is a preference list, so a broken role does not stop the walk, but the
- * caller must be able to tell a deliberate blank (inherit the main model) from a
- * typo'd or unauthenticated override (report it) instead of silently running a
- * model the operator never chose.
+ * Walks a role chain in order, returning the first resolved role and recording any
+ * configured roles that failed to match available models.
  */
 function walkRoleChain(
 	roles: readonly string[],
@@ -1352,17 +1239,8 @@ export function resolveRoleSelection(
 }
 
 /**
- * Role resolution with the inherit default: configured roles win; when every
- * role in the chain is UNSET the live main model is inherited. Headless contexts
- * (no session) pass no `liveModel` and inherit the persisted `default` role
- * instead. This is the single owner of the "unset role follows the main model"
- * product contract — role consumers must not hand-roll their own unset fallback.
- *
- * A role that IS configured but resolves to no available model (typo, retired
- * id, unauthenticated provider) returns `undefined` rather than inheriting. The
- * operator asked for a specific model, so quietly running a different one is the
- * silent fallback this contract exists to prevent; callers surface the miss
- * instead (an advisor reports itself inactive, titling skips and logs).
+ * Resolves a role chain with inheritance: configured roles win, unset roles inherit
+ * `liveModel` (or default role), and broken configurations return undefined.
  */
 export function resolveRoleSelectionWithInherit(
 	roles: readonly string[],
@@ -1382,13 +1260,7 @@ export function resolveRoleSelectionWithInherit(
 }
 
 /**
- * Single owner of the "configured default model is unavailable" substitution:
- * when the persisted `default` role points at a model whose provider has no
- * stored credentials (or that no longer exists), every surface (interactive
- * session, print mode, commit, …) substitutes the SAME model and surfaces the
- * SAME operator warning. Callers MUST print the returned warning — silently
- * swallowing it recreates the silent-fallback bug this exists to kill.
- * Returns undefined only when no model is available at all.
+ * Determines fallback model and warning message when the configured default model is unavailable.
  */
 export function fallbackForUnavailableDefault(
 	configuredDefault: string | undefined,
@@ -1419,16 +1291,8 @@ export function fallbackForUnavailableDefault(
 }
 
 /**
- * Resolve the model for the `advisor` role. A configured `modelRoles.advisor`
- * wins outright (a bad override surfaces as no model rather than silently
- * running something else); when unset the advisor inherits the live main model
- * like every other role, via the one owner {@link resolveRoleSelectionWithInherit}.
- *
- * The advisor used to be the single role that resolved a built-in `slow`
- * priority chain when unset. It is off by default and every model — including
- * inherit — is a valid choice once it is turned on, so a hidden chain only
- * decided a model the operator never picked. Returns undefined only when no
- * model is available at all.
+ * Resolves the model for `advisor` role, respecting explicit configuration and
+ * inheriting live main model when unset.
  */
 export function resolveAdvisorRoleSelection(
 	settings: Settings,
@@ -1439,15 +1303,8 @@ export function resolveAdvisorRoleSelection(
 }
 
 /**
- * Resolve model patterns to actual Model objects with optional thinking levels
- * Format: "pattern:level" where :level is optional
- * For each pattern, finds all matching models and picks the best version:
- * 1. Prefer alias (e.g., claude-sonnet-4-5) over dated versions (claude-sonnet-4-5-20250929)
- * 2. If no alias, pick the latest dated version
- *
- * Supports models with colons in their IDs (e.g., OpenRouter's model:exacto).
- * The algorithm tries to match the full pattern first, then progressively
- * strips colon-suffixes to find a match.
+ * Resolves model pattern strings to Model objects with optional thinking levels,
+ * preferring aliased over dated versions and handling colons in IDs.
  */
 export async function resolveModelScope(
 	patterns: string[],
@@ -1538,16 +1395,8 @@ export async function resolveModelScope(
 }
 
 /**
- * Resolve the set of models a session is allowed to use, given the active
- * settings. Starts from `modelRegistry.getAvailable()` (so disabled providers
- * and providers without credentials are already filtered out) and, when
- * `enabledModels` is configured for the current path scope, further restricts
- * the result to models matching those patterns.
- *
- * Returns the unfiltered available list when `enabledModels` is empty.
- * Returns an empty list when `enabledModels` is configured but no model matches
- * any pattern — callers MUST treat this as "no usable model" rather than
- * falling back to the global default (see issue #1022).
+ * Resolves allowed models from registry for active settings, filtering available models
+ * by `enabledModels` scope patterns if configured.
  */
 export async function resolveAllowedModels(
 	modelRegistry: Pick<ModelRegistry, "getAvailable">,
@@ -1570,20 +1419,8 @@ export async function resolveAllowedModels(
 }
 
 /**
- * Synchronous subset of {@link resolveAllowedModels} for contexts where async is unavailable
- * (e.g. `getAvailableModels()` which is called from the ACP model-list advertisement, RPC
- * `get_available_models`, and the `/model` slash command). Uses the same effective
- * `enabledModels` scope semantics as startup resolution:
- *
- * - Glob selectors match `provider/modelId` and bare model id
- * - Exact `provider/modelId`, bare ids, provider-scoped fuzzy, and substring selectors
- *   resolve through the shared model-pattern matcher
- * - Optional `:thinkingLevel` suffixes are stripped only when valid
- *
- * When no pattern resolves to any model (misconfiguration / typo) an empty list is returned,
- * consistent with the empty-list contract of {@link resolveAllowedModels}. Callers that render
- * a UI picker should treat an empty list as "hide the picker entry", matching how the SDK
- * surfaces the same misconfiguration during session initialization.
+ * Synchronously filters available models by `enabledModels` patterns (globs, IDs, fuzzy),
+ * returning an empty list if no patterns match.
  */
 export function filterAvailableModelsByEnabledPatterns(
 	available: Model<Api>[],
@@ -1790,12 +1627,7 @@ export function resolveCliModel(options: {
 }
 
 /**
- * Find a smol/fast model using the priority chain.
- * Tries exact matches first, then fuzzy matches.
- *
- * @param modelRegistry The model registry to search
- * @param savedModel Optional saved model string from settings (provider/modelId)
- * @returns The best available smol model, or undefined if none found
+ * Finds a fast/smol model from available registry models using the priority chain.
  */
 export async function findSmolModel(
 	modelRegistry: ModelLookupRegistry,
@@ -1830,12 +1662,7 @@ export async function findSmolModel(
 }
 
 /**
- * Find a slow/comprehensive model using the priority chain.
- * Prioritizes reasoning and codex models for thorough analysis.
- *
- * @param modelRegistry The model registry to search
- * @param savedModel Optional saved model string from settings (provider/modelId)
- * @returns The best available slow model, or undefined if none found
+ * Finds a slow/reasoning model from available registry models using the priority chain.
  */
 export async function findSlowModel(
 	modelRegistry: ModelLookupRegistry,

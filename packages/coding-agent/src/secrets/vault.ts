@@ -1,23 +1,6 @@
 /**
- * The secret vault: named credentials, encrypted at rest, that expire.
- *
- * A vault entry is a credential you hand veyyon once. The model never sees its value, only
- * its placeholder (`#GITHUB_TOKEN#`), and veyyon substitutes the real value into a command
- * just before it runs. See `vault-crypto.ts` for the at-rest story and its threat model,
- * and `placeholder.ts` for the token format both halves share.
- *
- * WHAT EXPIRY MEANS, because the wrong reading is dangerous. An expired secret is DELETED
- * and any surviving reference to it FAILS. It does not simply stop being obfuscated: that
- * would send the value to the model provider in plain text at the moment its protection
- * lapsed, making the feature's failure mode the exact harm it exists to prevent. Expiry is
- * evaluated when a secret is USED, not only when a timer fires, so a session that sits idle
- * past an expiry cannot spend a dead credential on the next command.
- *
- * SCOPE IS A SECURITY BOUNDARY, not a convenience. A vault entry belongs to one scope and
- * is invisible from the others. `profile` is the default because that is the boundary people
- * actually want: credentials for one line of work should not be reachable from a session
- * opened in another profile. `project` covers a repository, and `global` is the deliberate
- * "everywhere" choice.
+ * Secret vault: named credentials encrypted at rest with automatic expiry.
+ * Placeholders (`#TOKEN#`) are substituted at command execution; expired entries are deleted.
  */
 import { createHash, randomUUID } from "node:crypto";
 import * as fsSync from "node:fs";
@@ -63,15 +46,7 @@ export type VaultScope = "profile" | "project" | "global";
 export const VAULT_SCOPES: readonly VaultScope[] = ["global", "profile", "project"];
 
 /**
- * Every scope, narrowest first. The order for acting on a single named entry.
- *
- * WHY BOTH ORDERS EXIST, because having two is exactly what caused the bug they now prevent.
- * `load` reads widest first so a later scope overwrites an earlier one and the NARROWEST
- * entry is the one in effect. `remove` and `extend` therefore have to walk the other way, or
- * they act on an entry the user cannot see: with the same name in `project` and `profile`,
- * removing widest first deleted the `profile` copy and left the `project` one still
- * shadowing it, so `/secret rm` appeared to do nothing at all. Acting on the effective entry
- * is the only behaviour that matches what `list` shows.
+ * Scopes in narrowest-first order for operations on a single named entry.
  */
 export const VAULT_SCOPES_NARROWEST_FIRST: readonly VaultScope[] = [...VAULT_SCOPES].reverse();
 
@@ -82,12 +57,7 @@ export const VAULT_FILENAME = "vault.json";
 export const MAX_VAULT_FILE_BYTES = 8 * 1024 * 1024;
 
 /**
- * Largest plaintext that can possibly fit in the outer envelope.
- *
- * The GCM ciphertext is the same byte length as the plaintext and base64 expands it to
- * `4 * ceil(n / 3)`. Checking this bound before JSON construction or encryption prevents a
- * caller-controlled value from causing several large transient allocations only to be rejected
- * after sealing.
+ * Bound on plaintext size before envelope base64 expansion.
  */
 const SEALED_VAULT_FIXED_BYTES = Buffer.byteLength(
 	JSON.stringify({ v: 2, iv: "A".repeat(16), tag: "A".repeat(24), ct: "" }),
@@ -104,11 +74,7 @@ export interface VaultEntry {
 	/** Epoch milliseconds when this was added. */
 	createdAt: number;
 	/**
-	 * Epoch milliseconds when this stops being usable, or `null` for a secret that never
-	 * expires.
-	 *
-	 * `null` rather than a sentinel far-future number, so "never" cannot be mistaken for
-	 * "expires in the year 10000" by arithmetic that forgets to check.
+	 * Expiry timestamp in epoch ms, or `null` if the secret never expires.
 	 */
 	expiresAt: number | null;
 }
@@ -119,13 +85,7 @@ export interface ScopedVaultEntry extends VaultEntry {
 }
 
 /**
- * What {@link SecretVault.add} stored, and whether it took the place of an entry that was
- * already there.
- *
- * `add` replaces a same-name entry in the same scope, which is what makes rotating a credential
- * work. The caller has to be able to SAY that happened. Reporting the same "stored" sentence for
- * a new entry and for one that overwrote a working credential means a mistyped name that collides
- * with an existing secret destroys it with no operator-visible signal at all.
+ * Vault entry addition result, indicating whether an existing entry was replaced.
  */
 export interface AddedVaultEntry extends ScopedVaultEntry {
 	/** True when an entry of the same name in the same scope was overwritten. */
@@ -150,18 +110,7 @@ function isVaultEntry(value: unknown): value is VaultEntry {
 }
 
 /**
- * Name a failure to parse vault bytes WITHOUT repeating any of them.
- *
- * A parser quotes the token it choked on: `JSON Parse error: Unexpected identifier "ghp_live_..."`.
- * That token is content from a credential store, and an adversarial test caught it travelling from
- * the file into an operator notice, which puts it on screen and into the transcript. There is no
- * way to tell which parts of a parser's message came from its input, so the message is dropped
- * whole and only the error's TYPE survives.
- *
- * Nothing actionable is lost. The vault is encrypted, so an operator cannot hand-repair it from a
- * byte offset anyway; the repair is to move the file aside. The distinction that does matter, "not
- * JSON at all" versus "JSON of the wrong shape", is preserved because the wrong-shape case is a
- * separate branch with its own message.
+ * Formats a parse failure message without echoing input bytes to avoid leaking credentials.
  */
 function safeParseFailure(error: unknown): string {
 	if (!(error instanceof Error) || error.name.length === 0) return "unrecognised parse failure";
@@ -169,19 +118,8 @@ function safeParseFailure(error: unknown): string {
 }
 
 /**
- * A vault that cleared every provenance and integrity check and still would not parse.
- *
- * A distinct class because {@link SecretVault.load} degrades past exactly this failure and must
- * stay fatal on all the others. That distinction is load-bearing, not stylistic. An earlier version
- * of the degrade caught every error, which quietly converted the refusals for a hardlinked vault, a
- * symlink crossing scopes, a sealed vault copied into another scope, a world-readable vault, an
- * oversized vault, unknowable legacy provenance, and a TOCTOU replacement between the pathname and
- * descriptor checks into "that scope simply has no secrets". Each of those is an attacker signal,
- * and dropping the scope also drops its values out of the obfuscator, so a credential the operator
- * later pastes is no longer redacted on its way to the provider. A boot refusal became a silent
- * disclosure path.
- *
- * NEVER widen what throws this, and never catch it where that distinction is not the whole point.
+ * Thrown when a vault payload is unparseable despite valid envelope integrity and provenance.
+ * Allowed to degrade in `load()` without ignoring security validation failures.
  */
 class UnparseableVaultPayloadError extends Error {}
 
@@ -256,18 +194,7 @@ const TTL_UNITS: Record<string, number> = {
 };
 
 /**
- * The SHAPE of a lifetime word, owned here because two callers now depend on it.
- *
- * `parseSecretCommand` has to decide whether a trailing word on a `/secret` line IS a lifetime
- * before it can parse one, now that a lifetime is a plain word rather than the value of a flag.
- * A second regex over there would drift from this one the moment a unit is added, and the drift is
- * silent in the worse direction: a `3y` that {@link parseTtl} learned to read would be refused as an
- * unknown extra word, and the operator would be told the grammar has no lifetime at all.
- *
- * SHAPE, NOT VALIDITY, and the distinction is load-bearing. `0d` matches this and is then REFUSED
- * by {@link parseTtl} for expiring immediately, which is the message that mistake deserves. A
- * recogniser that answered "valid lifetime" instead would drop `0d` through to the extra-word
- * refusal and explain nothing.
+ * Regex recognizing TTL word shapes (e.g. `30m`, `12h`, `7d`, `2w`).
  */
 const TTL_WORD = /^([0-9]+)([mhdw])$/;
 
@@ -296,11 +223,7 @@ function expiryFrom(now: number, ttl: number | null): number | null {
 }
 
 /**
- * Parse a lifetime such as `30m`, `12h`, `7d`, `2w`, or `never`.
- *
- * Returns milliseconds, or `null` for `never`. Throws on anything else rather than falling
- * back to the default, because a typo like `7dd` silently becoming one day is how a
- * credential outlives the window its owner thought they had chosen.
+ * Parses a lifetime specifier (`30m`, `12h`, `7d`, `2w`, `never`) into ms or `null`.
  */
 export function parseTtl(spec: string): number | null {
 	if (spec.length > 64) {
@@ -384,12 +307,7 @@ export function warningThresholdCrossed(entry: VaultEntry, now: number): number 
 }
 
 /**
- * Human phrase for a remaining lifetime in milliseconds.
- *
- * ONE OWNER FOR THE WORDING, because two surfaces say it: the `/secret list` EXPIRES column, and the
- * composer's secrets chip, which reports the SOONEST deadline of everything spendable in this
- * directory. A chip that rounded differently from the table would have the two disagree about the
- * same credential on the same screen.
+ * Formats a remaining duration in milliseconds into a concise human-readable phrase.
  */
 export function describeMsLeft(left: number): string {
 	if (left <= 0) return "expired";
@@ -435,11 +353,7 @@ export function normaliseSecretName(raw: string): string {
 }
 
 /**
- * Invent a name that is not already taken.
- *
- * Used when the user gives a value and no name. Every entry still gets a NAME rather than
- * falling back to an index placeholder, so the model always has something it can refer to
- * on purpose, and `/secret list` always has something to show.
+ * Generates an untaken placeholder name for secrets stored without an explicit label.
  */
 export function generateSecretName(taken: ReadonlySet<string>): string {
 	for (let n = 1; n < 10_000; n++) {
@@ -464,12 +378,7 @@ export interface VaultLocations {
 }
 
 /**
- * Where the vaults live for a given working directory.
- *
- * ONE OWNER for this arithmetic, because the startup path and the `/secret` command must
- * agree byte for byte about which files they are looking at. If they disagreed, a secret
- * added by the command would be invisible to the session that added it, which is the sort of
- * bug that looks like "the vault randomly does not work".
+ * Resolves filesystem paths for global, profile, and project vaults for a working directory.
  */
 export function resolveVaultLocations(options: {
 	globalConfigRoot: string;
@@ -496,12 +405,7 @@ export function vaultPathFor(locations: VaultLocations, scope: VaultScope): stri
 }
 
 /**
- * What veyyon writes into a project's `.veyyon/` so the vault cannot be committed.
- *
- * ONLY the vault, never the directory. A project `.veyyon/` also holds things a repo is SUPPOSED to
- * track (skills, project settings), so `.veyyon/` or `*` here would quietly stop those being
- * committed and look like git losing files. The `.unreadable-*` sibling is what `/secret discard`
- * renames a broken vault to, and it still holds the sealed entries.
+ * Gitignore content preventing `.veyyon/vault.json` from being committed to version control.
  */
 const PROJECT_VAULT_GITIGNORE = `# Written by veyyon, and safe to keep.
 #
@@ -513,22 +417,7 @@ ${VAULT_FILENAME}.unreadable-*
 `;
 
 /**
- * Keep a project vault out of the user's version control, on the way to creating one.
- *
- * WHY THIS EXISTS. `project` is the one scope whose file lands inside the repository the operator is
- * working in, and nothing stopped it being committed: a real `.veyyon/vault.json` was found untracked
- * in this repo, one `git add -A` away from being published. It is ciphertext rather than plaintext, so
- * the immediate harm is bounded, but a committed vault is a credential store in the history that no
- * clone can decrypt, which then breaks `/secret` for whoever cloned it.
- *
- * An existing file is APPENDED to, never rewritten, and only when it does not already ignore the
- * vault. That case is the upgrade path and it is the one that matters: a vault created before this
- * shipped, in a directory that has since acquired a `.gitignore` for some other reason, is left
- * committable by a create-only guard, and the operator is never told. Appending is defensible here in
- * a way that editing their root `.gitignore` would not be, because `.veyyon/` is veyyon's own
- * directory. Their existing lines are untouched. A failure is reported rather than swallowed: the
- * vault write that follows will usually fail too, and a protection that quietly did not happen is
- * worse than one that says so.
+ * Ensures project-level `.veyyon/vault.json` is ignored by git before writing.
  */
 async function ensureProjectVaultIgnored(scope: VaultScope, directory: string): Promise<void> {
 	if (scope !== "project") return;
@@ -673,13 +562,7 @@ function snapshotOf(stat: Stats, contentHash = ""): VaultFileSnapshot {
 }
 
 /**
- * Metadata identity only: is the file at this path still the same file, unchanged.
- *
- * Callers that hold no bytes. Five of the seven reach here before the vault has been read at all,
- * so `contentHash` on the incoming snapshot is `""` and there is nothing to verify content
- * against. The AEAD envelope is the integrity witness on those paths: an attacker without the key
- * cannot produce a vault that opens, so metadata identity is asked to catch a SWAPPED INODE, not a
- * forged payload. See {@link sameDisplacedSnapshot} for the case that does hold a path.
+ * Checks metadata identity to detect if a vault file was modified or swapped.
  */
 function sameSnapshot(left: VaultFileSnapshot, right: Stats): boolean {
 	return (
@@ -694,14 +577,7 @@ function sameSnapshot(left: VaultFileSnapshot, right: Stats): boolean {
 }
 
 /**
- * Identity AND content, for the one caller that holds a path to read.
- *
- * Compares the same metadata set as {@link sameSnapshot} and then verifies sha256, which is why the
- * two must be kept in step: they answered different metadata questions once, `ctimeMs` in one and
- * not the other, and that drift is what produced the false "the vault changed" report. The only
- * legitimate difference is the content witness, permitted here because a path is in hand. The
- * `contentHash.length === 0` guard refuses rather than skipping, so a snapshot taken before any
- * read can never silently pass a content check it never had the data for.
+ * Verifies metadata identity and content hash for a displaced vault file path.
  */
 async function sameDisplacedSnapshot(
 	expected: VaultFileSnapshot,
@@ -728,32 +604,14 @@ async function sameDisplacedSnapshot(
 }
 
 /**
- * What a sealed vault is bound to: its scope and the exact path it was written for.
- *
- * DELIBERATELY NOT THE DIRECTORY'S DEVICE AND INODE. Those were in this binding for two days and the
- * result was that every vault written by a shipped build became permanently undecryptable, because
- * the authenticated data changed while the envelope stayed at version 2. The deeper problem is that
- * an inode is not a property of the scope, it is a property of where the bytes physically sit today.
- * It changes on a backup restore, a `cp -a`, a profile moved to another disk, a container bind
- * mount, and any filesystem that reassigns inodes. Ciphertext bound to it does not survive any of
- * those, and a credential store that cannot be restored from a backup is worse than one that was
- * never encrypted, because the loss is silent until the day you need it.
- *
- * The protection dev/ino genuinely provides is against the directory being swapped underneath a
- * live operation, and that is a RUNTIME question. It stays where it belongs, in {@link pinVaultScope}
- * and {@link assertExpectedVaultPath}, which pin and re-check the inode across every read, lock, and
- * replace. Nothing is weakened by keeping it out of the ciphertext.
+ * Returns authenticated AEAD binding data (scope and canonical path) for sealed vaults.
  */
 function vaultBinding(scope: VaultScope, pin: VaultScopePin): string {
 	return `${scope}\0${pin.canonicalVaultPath}`;
 }
 
 /**
- * The binding builds between 2026-07-27 23:52 and this change wrote, kept so those vaults still open.
- *
- * Read-only and second in line. A vault that authenticates under it is re-sealed with the binding
- * above on its next write, so the form disappears from disk on its own rather than becoming a
- * permanent second format.
+ * Historical binding format for backward-compatible migration of older vaults.
  */
 function physicalVaultBinding(scope: VaultScope, pin: VaultScopePin): string {
 	return `${scope}\0${pin.canonicalVaultPath}\0${pin.directoryDev}\0${pin.directoryIno}`;
@@ -774,15 +632,7 @@ function noteSupersededVaultBinding(scope: VaultScope, vaultPath: string): void 
 }
 
 /**
- * Open a sealed vault under the current binding, falling back to the superseded one.
- *
- * NOT A SILENT FALLBACK. The second attempt is a one-way format migration with a bounded lifetime,
- * not a degraded path: it is tried only after the current binding fails, it can only succeed on a
- * vault this product itself wrote, it cannot weaken authentication (a forged or corrupt file fails
- * both), and when it succeeds the operator is told and the vault is re-sealed under the current
- * binding on its next write. The alternative is what dogfooding actually found: a hard startup
- * failure telling the operator their key was wrong, their file was modified, or their vault had
- * moved, when in truth the product had changed its own authenticated data underneath them.
+ * Opens a sealed vault under the current binding, falling back to legacy binding if needed.
  */
 function openSealedVaultAcrossBindings(
 	key: Buffer,
@@ -978,23 +828,7 @@ async function vaultPathStat(scope: VaultScope, vaultPath: string, pin: VaultSco
 }
 
 /**
- * The gate immediately before the vault is overwritten: is the file still the one we read.
- *
- * VERIFIES CONTENT WHEN IT CAN. Five of the seven callers reach here before the vault has been
- * read, so their snapshot carries `contentHash: ""` and metadata identity is all there is to check.
- * The two write-path callers build `expected` from bytes they already hold, and that hash used to be
- * DEAD DATA: `sameSnapshot` compares metadata only, so the field was carried to precisely the gate
- * that needed it and then ignored. Metadata alone cannot tell a substituted target from the original
- * here, because `mtimeMs` and `size` are settable by anyone who can write the file, so this gate was
- * WEAKER THAN INTENDED at the one moment it guards: the instant before a replace.
- *
- * NOT AN AUTHENTICATION QUESTION. An attacker cannot produce a vault that opens, because the
- * envelope is AES-GCM with the scope and canonical path as associated data. The risk this closes is
- * the write path clobbering or rolling back entries that changed underneath the transaction, which
- * is lost data rather than leaked data. The read path is a different question and the tag answers it.
- *
- * The `contentHash.length === 0` guard is the same one {@link sameDisplacedSnapshot} uses, so a
- * pre-read snapshot skips a check it never had the bytes for instead of failing one it cannot pass.
+ * Verifies that the vault file on disk matches expected state before performing an overwrite.
  */
 async function assertExpectedVaultPath(
 	scope: VaultScope,
@@ -1262,15 +1096,7 @@ function sameVaultEntries(left: readonly VaultEntry[], right: readonly VaultEntr
 }
 
 /**
- * Refuse a value the vault cannot store, or that the obfuscator could not protect.
- *
- * ONE OWNER for the rule, because more than one path writes this field: `add` stores a new
- * credential and `replaceValue` corrects one. A limit enforced on the first and not the second is a
- * value that is refused when it is stored and accepted when it is edited, and the second write is
- * the one nobody tests by hand.
- *
- * The obfuscation floor is the load-bearing one: accepting a value under it produces an entry that
- * looks stored and is sent to the provider verbatim, for the reason spelled out in `policy.ts`.
+ * Validates that a secret value meets length and obfuscation requirements before storing.
  */
 function assertStorableValue(value: string): void {
 	if (!isWellFormedUtf16(value)) {
@@ -1335,11 +1161,7 @@ function revisionStat(pathname: string): string {
 }
 
 /**
- * How many vault paths to track identities for before evicting the oldest.
- *
- * One entry per distinct vault path this process has looked at, so three per working directory.
- * Eviction can only make a state this process wrote look externally changed again, which costs
- * one refresh; it can never make an external change look self-inflicted.
+ * Max tracked vault paths before LRU eviction.
  */
 const MAX_TRACKED_VAULT_PATHS = 64;
 
@@ -1351,21 +1173,12 @@ interface VaultIdentityRecord {
 }
 
 /**
- * Per-path identity of each vault file, as seen by THIS process.
- *
- * Keyed by comparable path rather than by stat, so a file that disappears is still known to be
- * a path we had written: "created from nothing" and "externally deleted" both stat as `absent`,
- * and only the path record can tell them apart.
+ * Process-local identity records per vault path to detect external modifications.
  */
 const vaultIdentities = new Map<string, VaultIdentityRecord>();
 
 /**
- * Source of never-reused identity tokens.
- *
- * Monotonic rather than derived from the state, because a derived identity can repeat: an
- * external actor who deletes a vault returns it to the one state that carries no distinguishing
- * metadata. A strictly increasing counter cannot collide with any identity already handed out,
- * so a deletion is always a change even when it restores an earlier-looking state.
+ * Monotonic counter generating distinct vault revision tokens.
  */
 let vaultIdentityCounter = 0;
 
@@ -1380,12 +1193,7 @@ function rememberVaultIdentity(key: string, record: VaultIdentityRecord): void {
 }
 
 /**
- * The identity of a vault file, held stable across changes THIS process made.
- *
- * Answers "has anybody else touched this file", which is the only question
- * {@link SecretVault.revision} exists to ask. Observing is what advances the identity: a state
- * that differs from the last one this process saw or wrote is, by elimination, somebody else's
- * work, and earns a fresh token that can never equal a previous one.
+ * Computes vault identity token, advancing it when external modification is detected.
  */
 function externalVaultIdentity(pathname: string): string {
 	const key = comparableVaultPath(pathname);
@@ -1399,16 +1207,7 @@ function externalVaultIdentity(pathname: string): string {
 }
 
 /**
- * Re-anchor a path to the state this process just published, keeping its identity.
- *
- * This is what stops a session invalidating itself. Publishing genuinely changes the file, but
- * it is not an external change, and a session that treated its own `/secret add` as tampering
- * could never spend the secret it had just stored. Call while the scope lock is held, so the
- * state being recorded is still the one that was written.
- *
- * Both the lexical and the canonical path are re-anchored because {@link vaultRevision} hashes
- * the file under both names, and leaving either behind would reintroduce the self-invalidation
- * through the alias.
+ * Updates recorded state after a self-write so internal updates do not trigger external change warnings.
  */
 function recordSelfWrittenVault(pathname: string): void {
 	const written = revisionStat(pathname);
@@ -1429,44 +1228,12 @@ function recordSelfWrittenVault(pathname: string): void {
 }
 
 /**
- * The unreadable state each vault path was last reported for, keyed by comparable path.
- *
- * A notice fires once per DISTINCT broken state rather than once per read. {@link load} runs on
- * every runtime refresh, so an unconditional notice would repeat the same warning several times a
- * minute and train the operator to ignore the one message that tells them how to recover.
- *
- * An entry is REMOVED the moment the path reads successfully, and that removal is what makes the
- * dedupe safe rather than merely quiet. Comparing against the last state we REPORTED is not enough
- * on its own: break a vault, repair it, break it the same way again, and the remembered state still
- * matches, so the second break would be silenced by a memory of the first. Nothing about the stat
- * rules that out either, since a rewrite can land on the same inode with the same size inside one
- * timestamp tick. Forgetting on success removes the whole collision class instead of betting on
- * timestamp granularity, because a warning that shows once per process and then never again is how
- * a broken vault ships unnoticed.
+ * Tracks reported unreadable vault states to deduplicate operator warnings.
  */
 const reportedUnreadableVaults = new Map<string, string>();
 
 /**
- * Report a vault scope that exists but could not be read, once per distinct broken state.
- *
- * A vault whose bytes are present but do not parse used to be FATAL: the throw escaped `load()`,
- * escaped the secret-runtime build, and took the process down before the TUI drew a frame. That is
- * the worst available outcome, because the repair for a broken vault lives inside the product the
- * error prevents from starting. The operator was locked out at exactly the moment they needed
- * `/secret` most, with no reachable path to the fix.
- *
- * Degrading here does not weaken masking, and the reason is stronger than "redaction is
- * independent of the vault". In `loadSecretRuntime`, the `secrets.yml` entries and the env-keyword
- * entries are both collected BEFORE the vault is constructed, so the old throw did not merely fail
- * to load vault secrets: it discarded redaction that had ALREADY been built and would have worked.
- * Degrading strictly INCREASES masking coverage in the corrupt case, from none because the session
- * is dead, to env plus `secrets.yml` live. What is lost is expansion of that scope's placeholders,
- * which is refused at the spend seam rather than passed through.
- *
- * The message never includes bytes from the file. It is a credential store, and a parser's
- * complaint about unexpected input is a natural place for a fragment of ciphertext, or of
- * plaintext, to reach a transcript. The underlying reason goes LAST: parser messages end in their
- * own punctuation, and continuing the sentence after one produced a doubled period on screen.
+ * Logs a warning for an unreadable vault scope and records deduplication state.
  */
 function noteUnreadableVault(scope: VaultScope, vaultPath: string, error: unknown): void {
 	const key = comparableVaultPath(vaultPath);
@@ -1485,18 +1252,7 @@ function noteUnreadableVault(scope: VaultScope, vaultPath: string, error: unknow
 }
 
 /**
- * Report a vault that could not be loaded at all, and say how to repair it from where you are.
- *
- * SEPARATE FROM {@link noteUnreadableVault} because the two conditions differ in what still works.
- * That one skips ONE scope and keeps the rest, so it can promise the other scopes loaded normally.
- * This one is the whole vault: nothing stored is available, every placeholder is refused, and the
- * only thing still masking is what came from the environment and `secrets.yml`. Promising more than
- * that would be wrong, and saying less would leave the operator thinking their secrets are still
- * covering the session.
- *
- * It names the scopes that actually have a file, so the repair it prints is one the operator can run.
- * The refusal that produced this used to be fatal, which meant the message recommending
- * `/secret discard` was printed by a surface that then exited before the command could be typed.
+ * Logs a message when a vault fails to load completely, directing the user to recovery commands.
  */
 function noteFailedVaultLoad(locations: VaultLocations, unreadable: readonly VaultScope[], error: unknown): void {
 	const repair =
@@ -1525,21 +1281,7 @@ function forgetUnreadableVault(vaultPath: string): void {
 }
 
 /**
- * Fingerprint of every configured vault FILE, excluding changes this process made.
- *
- * Deliberately does NOT stat the containing directories. It used to, and that made the feature
- * unusable: the three scope directories are `~/.veyyon`, the profile agent directory, and
- * `<cwd>/.veyyon`, the busiest state directories in the product. A directory's mtime and ctime
- * move whenever ANY entry is created or removed in it, so a SQLite `-wal` file, a session file,
- * a cache entry, or the vault's own `<vault>.lock` sibling all changed this fingerprint while
- * the vault itself sat untouched. Every secret expansion was then refused as though another
- * process had tampered with the vault.
- *
- * Nothing is lost by dropping it. A vault appearing, disappearing, or being replaced by
- * `replaceWithRollback` all land on the FILE, and {@link revisionStat} reports "absent" for a
- * missing path and pins dev, inode, and ctime for a present one. Swapping the directory moves
- * the file with it, which the file's own stat sees. The directory stat only ever added the
- * dirents of unrelated software.
+ * Generates a fingerprint of configured vault files to detect external modifications.
  */
 function vaultRevision(locations: VaultLocations): string {
 	const hash = createHash("sha256");
@@ -1565,11 +1307,7 @@ function vaultRevision(locations: VaultLocations): string {
 }
 
 /**
- * Read, write, and expire the vaults.
- *
- * Deliberately not a singleton: tests build one per temporary directory, and a session
- * builds one from its own resolved paths. `now` is injected for the same reason, so expiry
- * can be tested without waiting.
+ * Secret vault manager handling storage, encryption, scoping, and lifecycle expiration.
  */
 interface VaultReadResult {
 	readonly entries: VaultEntry[];
@@ -1589,11 +1327,7 @@ export class SecretVault {
 	}
 
 	/**
-	 * Synchronous fingerprint of every configured scope boundary and vault inode.
-	 *
-	 * SDK runtimes capture this after loading named secrets and compare it immediately before
-	 * expansion. A different process replacing a vault or its parent therefore revokes the
-	 * captured expansion rights without waiting for an asynchronous watcher.
+	 * Returns a synchronous fingerprint of configured vault file inodes and timestamps.
 	 */
 	revision(): string {
 		return vaultRevision(this.#locations);
@@ -1619,13 +1353,7 @@ export class SecretVault {
 	}
 
 	/**
-	 * Every live entry, nearest scope last.
-	 *
-	 * Project overrides profile overrides global on a name clash, matching how the rest of
-	 * veyyon resolves configuration: the more specific location wins.
-	 *
-	 * Expired entries are REMOVED from disk here rather than merely filtered out, so reading
-	 * the vault is also what prunes it and a value cannot linger on disk after its lifetime.
+	 * Loads all active entries across scopes, pruning expired secrets and applying scope precedence.
 	 */
 	async load(): Promise<ScopedVaultEntry[]> {
 		const byName = new Map<string, ScopedVaultEntry>();
@@ -1639,14 +1367,7 @@ export class SecretVault {
 	}
 
 	/**
-	 * Every live entry in every scope, INCLUDING a name that a narrower scope shadows.
-	 *
-	 * {@link load} collapses a repeated name to the narrowest holder, which is right for spending:
-	 * one placeholder resolves to one value. It is wrong for any question ABOUT the scopes, and
-	 * planning a move between them is exactly that. Asked through `load`, "does the destination
-	 * already hold this name" is unanswerable, because the entry that would collide is the one
-	 * `load` dropped. The planner would then see no conflict, the move would overwrite a live
-	 * credential and delete the one being moved, and both would be gone.
+	 * Loads entries from all scopes without collapsing shadowed names across scopes.
 	 */
 	async loadEverywhere(): Promise<ScopedVaultEntry[]> {
 		return await this.#loadEveryScope();
@@ -1698,36 +1419,14 @@ export class SecretVault {
 	}
 
 	/**
-	 * Scopes whose vault file existed but could not be read during the most recent {@link load}.
-	 *
-	 * Empty until the first load, and empty in the ordinary case of a vault that is simply absent.
-	 * The spend seam consults this to tell "you have no secret by that name" apart from "the file
-	 * holding your secret is broken", so a placeholder that cannot be resolved is refused with the
-	 * repair rather than handed to a command as the literal text `#NAME#`.
+	 * Returns scopes whose vault files existed but failed to load.
 	 */
 	unreadableScopes(): readonly VaultScope[] {
 		return [...this.#unreadableScopes];
 	}
 
 	/**
-	 * Record that a whole {@link load} failed, so the session can start without the vault.
-	 *
-	 * WHY THIS IS NOT A WIDER CATCH IN `load()`. The narrow catch there is correct and must stay:
-	 * skipping a scope that failed a provenance or integrity check turns each of this file's security
-	 * refusals into "that scope has no secrets", and an attacker who tampers with a vault gets its
-	 * entries silently dropped from the obfuscator. So `load()` still refuses, and the failure is
-	 * absorbed one level up, where the answer is different: the ENTIRE vault is unavailable, and no
-	 * caller can mistake that for a vault that is merely empty.
-	 *
-	 * The distinction is the whole point, and it is why this marks scopes UNREADABLE rather than
-	 * returning nothing. An unreadable scope makes the spend seam refuse every placeholder it owns,
-	 * with the repair; a scope believed empty makes `#NAME#` resolve to nothing and pass through. The
-	 * failure aborts `load()`'s loop, so scopes that had already read cleanly are discarded too and
-	 * must be marked alongside the one that threw: their entries are equally absent from the
-	 * obfuscator, and leaving them unmarked is exactly the silent hole this avoids.
-	 *
-	 * Only scopes with a file present are named, so every `/secret discard X` the operator is
-	 * told to run has a file to move aside. A scope with no vault would refuse that command.
+	 * Records a whole-vault load failure so the session can proceed without stored secrets.
 	 */
 	async noteFailedLoad(error: unknown): Promise<readonly VaultScope[]> {
 		const unreadable = new Set<VaultScope>();
@@ -1747,20 +1446,7 @@ export class SecretVault {
 	}
 
 	/**
-	 * Move an unreadable scope's vault file aside so that scope can be used again.
-	 *
-	 * The in-product repair for a vault that exists and cannot be read. `load()` degrades past such
-	 * a file and `remove()` deliberately refuses to touch it, which leaves the operator able to
-	 * start and unable to fix, so this is the one operation that resolves it from inside veyyon.
-	 *
-	 * MOVES rather than deletes. The file still holds real credentials, sealed with a key that is
-	 * still on disk, so the damage may be a truncated tail with recoverable entries behind it.
-	 * Destroying it to make the product usable again is a trade the operator has not agreed to, and
-	 * a rename costs nothing. The new path is returned so it can be reported.
-	 *
-	 * Refuses a scope that reads normally, checked HERE under the lock rather than trusting an
-	 * earlier {@link load}: the file may have been repaired in between, and `remove()` can name what
-	 * it removed while this cannot. It is not a second delete path.
+	 * Moves an unreadable vault file aside to allow the scope to be recreated.
 	 */
 	async discardUnreadableScope(scope: VaultScope): Promise<{ readonly movedTo: string }> {
 		const vaultPath = vaultPathFor(this.#locations, scope);
@@ -2060,15 +1746,7 @@ export class SecretVault {
 	}
 
 	/**
-	 * Store a secret, replacing any entry of the same name in the same scope.
-	 *
-	 * Reports whether it replaced one, because the caller has to be able to say so. Rotating a
-	 * credential and destroying one by mistyping its name are the same write, and the only thing
-	 * that distinguishes them for the operator is being told which happened.
-	 *
-	 * Refuses a value the obfuscator could not protect, for the reason spelled out in
-	 * `policy.ts`: accepting it here would produce an entry that looks stored and is sent to
-	 * the provider verbatim.
+	 * Stores a secret in the specified scope, replacing any same-named entry.
 	 */
 	async add(options: {
 		name?: string;
@@ -2108,13 +1786,7 @@ export class SecretVault {
 	}
 
 	/**
-	 * Remove one entry by name. Returns the scope it was removed from, or `null`.
-	 *
-	 * `scope` restricts the search to a single vault instead of walking narrowest first. A move
-	 * between scopes needs that: it writes the credential to the destination and then deletes the
-	 * source, and an unrestricted delete would find whichever copy is narrower. When the
-	 * destination is the narrower one that is the copy just written, so the move would report
-	 * success having deleted the new entry and left the old one in place.
+	 * Removes an entry by name, optionally constrained to a specific scope.
 	 */
 	async remove(name: string, scope?: VaultScope): Promise<VaultScope | null> {
 		const wanted = normaliseSecretName(name);
@@ -2136,21 +1808,7 @@ export class SecretVault {
 	}
 
 	/**
-	 * Empty one scope's vault, returning the names it removed.
-	 *
-	 * WHY THIS EXISTS AS A VAULT OPERATION rather than as `list` piped into `remove`. A loop over
-	 * `remove` takes and releases the scope lock once per entry, so a credential stored between two
-	 * iterations survives a command the operator was told emptied the vault, and a failure halfway
-	 * leaves a vault neither full nor empty with nothing saying which entries went. One locked
-	 * transaction cannot report a partial result as success.
-	 *
-	 * NAMES, NOT A COUNT. The names are already the safe half of an entry -- `list` prints them and
-	 * the placeholder is built from them -- and a count alone cannot tell an operator whether the
-	 * credential they were worried about was in the scope they emptied.
-	 *
-	 * EXPIRED ENTRIES ARE REMOVED AND NOT REPORTED. They cannot expand, so naming them would pad
-	 * the report with credentials the session had already stopped honouring; the write still drops
-	 * them, because leaving them behind is what makes a cleared vault non-empty on disk.
+	 * Empties a vault scope in a single locked transaction, returning removed names.
 	 */
 	async clear(scope: VaultScope): Promise<readonly string[]> {
 		const now = this.#now();
@@ -2200,21 +1858,7 @@ export class SecretVault {
 	}
 
 	/**
-	 * Replace a live entry's VALUE, keeping its name, its scope, its creation time and its expiry.
-	 *
-	 * THE GAP THIS CLOSES. A credential pasted with a character missing, or rotated at the provider,
-	 * could only be revoked and stored again. That loses the name, which is the handle every prompt
-	 * in the session already spends, and it re-dates the entry, so a secret with two days left comes
-	 * back with the default lifetime. Correcting a value is the most ordinary thing an operator wants
-	 * from a vault and it was the one write with no path to it.
-	 *
-	 * NOT `add`. `add` overwrites a same-name entry, which is how a credential is rotated from the
-	 * command line, and it restarts the lifetime from now and needs the scope named. Both are wrong
-	 * for a correction: the entry keeps the window it was given, and the scope is wherever it already
-	 * lives.
-	 *
-	 * Walks narrowest first and edits the first holder, exactly as `extend` and `rename` do, so the
-	 * entry that is edited is the one a placeholder would have spent.
+	 * Updates the secret value for an existing entry while preserving name, scope, and TTL.
 	 */
 	async replaceValue(name: string, value: string): Promise<ScopedVaultEntry | null> {
 		// Both the name and the value are validated BEFORE the lock, so a refusal costs no contention
@@ -2245,17 +1889,7 @@ export class SecretVault {
 	}
 
 	/**
-	 * Rename an entry in place, keeping its value, creation time and expiry.
-	 *
-	 * REFUSES a target name that is already taken rather than overwriting it. `add` deliberately
-	 * overwrites, because storing a new value under an existing name is how a credential is
-	 * rotated, and it reports the replacement so the operator can tell a rotation from a typo. A
-	 * rename has no such legitimate reading: it carries no new value, so landing on an occupied
-	 * name could only destroy the credential already there in exchange for nothing. Removing the
-	 * occupant first is the only way to mean it.
-	 *
-	 * The lifetime is carried across untouched rather than restarted from now, so relabelling a
-	 * secret cannot quietly lengthen or shorten how long it lives.
+	 * Renames an existing secret entry in place, preserving its value and remaining TTL.
 	 */
 	async rename(from: string, to: string): Promise<{ scope: VaultScope; name: string } | null> {
 		// Both names are validated BEFORE the lock, so a bad name fails fast without contending.

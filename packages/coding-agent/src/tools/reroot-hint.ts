@@ -1,27 +1,6 @@
 /**
- * Noticing that the session is working somewhere other than its working
- * directory, and saying so once.
- *
- * WHY THIS EXISTS. `set_cwd` re-roots the session, which makes read/edit headers
- * relative instead of absolute and loads the destination project's `AGENTS.md`.
- * Both matter, and neither happens unless something calls the tool. Nothing did,
- * reliably: the only text describing when to re-root lived in the tool's own
- * description, and `set_cwd` is a `discoverable` tool, so it is not in the initial
- * toolset. A model that has not gone looking for the tool has never read the
- * advice, and a model that has not read the advice does not go looking. Asking it
- * to notice on its own is asking it to infer a policy from an absence.
- *
- * So the harness notices instead. Every filesystem tool call already declares its
- * targets for the cwd boundary; this watches those targets and, once a directory
- * outside cwd has been touched enough times to be the real subject of the session,
- * appends one short line to that tool's result. Deterministic input, deterministic
- * trigger, delivered where the model is already reading.
- *
- * IT MUST NOT NAG. A hint that repeats is worse than no hint: it burns context on
- * every call and trains the model to skim past it. Each directory is mentioned at
- * most once, the session emits at most {@link MAX_HINTS} in total, and a directory
- * the model has already re-rooted into can never be suggested because it stops
- * being outside cwd.
+ * Monitors filesystem tool targets and emits a one-time suggestion to re-root
+ * via `set_cwd` when activity concentrates in an external directory.
  */
 
 import type { Dirent } from "node:fs";
@@ -35,45 +14,22 @@ import { hasFilesystemTargets } from "./cwd-boundary";
 import { isPathWithinCwd, resolveToCwd, splitPathAndSel } from "./path-utils";
 
 /**
- * Distinct files under one directory before it is worth mentioning.
- *
- * Two is a coincidence: reading a config file and a type declaration from another
- * project while working here is ordinary and re-rooting for it would be wrong.
- * Three files in one place is a pattern, and by then the absolute paths in every
- * header have already cost more than the hint will.
+ * Distinct files touched under one directory before emitting a re-root hint.
  */
 export const REROOT_FILE_THRESHOLD = 3;
 
 /**
- * Distinct files under one directory before it is worth mentioning, when the session is rooted
- * somewhere that is not a project at all.
- *
- * One, because the evidence the normal threshold is gathering has already been supplied. Three
- * files exist to tell "the work has moved" apart from "a file was read in passing", and that is a
- * real question when the session is properly rooted in a project. It is not a question when the
- * session is sitting in `$HOME` or on a mount point: there is no project here for the read to be
- * incidental TO, so the first file touched anywhere else is the work. Waiting for two more means
- * the first several calls are all paid at full absolute-path price for nothing.
+ * File threshold when the session is rooted in a non-project launch directory.
  */
 export const MISROOTED_FILE_THRESHOLD = 1;
 
 /**
- * The name of the re-root tool, owned here because this is the module that has to
- * NAME it in prose and ACTIVATE it, and `set-cwd.ts` is far too heavy to import
- * from a leaf that every tool call passes through. `SetCwdTool.name` and the
- * renderer read it from here, so the string the hint prints and the string the
- * model can call are the same string by construction.
+ * The name of the re-root tool (`set_cwd`), declared here to avoid heavy imports.
  */
 export const SET_CWD_TOOL_NAME = "set_cwd";
 
 /**
- * Ancestors credited for each touched file.
- *
- * A file at `<root>/packages/thing/src/a.ts` should be able to nominate `<root>`,
- * not only its immediate directory, because the project root is what a user means
- * by "work over there". The cap keeps a deeply nested path from nominating `/`,
- * which is never a useful suggestion and would let files from unrelated trees
- * accumulate against the same bucket.
+ * Maximum ancestor directory levels credited for each touched file.
  */
 const MAX_ANCESTOR_DEPTH = 6;
 
@@ -81,16 +37,7 @@ const MAX_ANCESTOR_DEPTH = 6;
 export const MAX_HINTS = 2;
 
 /**
- * Entries that mark a directory as the root of a project.
- *
- * `.git` is listed first and treated as decisive by {@link resolveProjectRoot}, because a
- * repository boundary is the strongest available statement that everything inside it is one
- * project. The manifests are the answer for a directory that is not itself a repository, most often
- * a checkout inside a larger tree.
- *
- * `AGENTS.md` earns its place for the same reason the hint mentions it: the payoff of re-rooting is
- * that the destination's rules load, so a directory carrying rules is a project boundary by this
- * agent's own definition even when it carries no manifest.
+ * Marker entry that definitively indicates a repository root (`.git`).
  */
 export const REPOSITORY_MARKER = ".git";
 
@@ -113,35 +60,13 @@ export const MANIFEST_MARKERS = [
 /** Every marker, repository boundary first, so callers have one list to iterate. */
 export const PROJECT_ROOT_MARKERS = [REPOSITORY_MARKER, ...MANIFEST_MARKERS] as const;
 
-/**
- * How far below a repository root to look for nested repositories.
- *
- * Four, because that is where a container tree puts them. A directory organising work as
- * `<category>/<group>/<project>` holds its repositories at depth three or four and NOTHING
- * shallower, so a shorter scan reports a container as a clean project. Measured on the tree that
- * prompted this: zero nested repositories within two levels, twenty-nine within three, forty-one
- * within four.
- */
+/** Directory recursion depth when scanning for nested repositories in container trees. */
 const CONTAINER_SCAN_DEPTH = 4;
 
-/**
- * Nested repositories to collect before deciding.
- *
- * The decision needs only ONE nested repository the outer tree does not ignore, but the ignore
- * question is asked in a single batched call, so the scan collects a bounded sample rather than
- * asking once per repository. A tree with hundreds of them answers the same as a tree with this
- * many.
- */
+/** Maximum sample size of nested repositories collected during container detection. */
 const CONTAINER_SAMPLE_LIMIT = 64;
-
 /**
- * Directories that never count as evidence of a container.
- *
- * A dependency vendored WITH its `.git` intact, or a checkout sitting in `node_modules`, says
- * nothing about whether the parent is a container: it is one project that happens to carry another
- * project's files. Without this list an ordinary project that vendors a dependency would be
- * classified as a container and could never be suggested, which is the opposite of the bug being
- * fixed here.
+ * Directory names excluded when scanning for nested repository containers.
  */
 const CONTAINER_SCAN_SKIP = new Set([
 	"node_modules",
@@ -155,31 +80,8 @@ const CONTAINER_SCAN_SKIP = new Set([
 ]);
 
 /**
- * Whether a repository root is really a CONTAINER of projects rather than a project.
- *
- * WHY A REPOSITORY BOUNDARY IS NOT ENOUGH. `.git` was treated as decisive, on the reasoning that a
- * repository boundary settles what counts as one project. It does not, because a tree can be under
- * version control for a reason that has nothing to do with being a project: a whole working tree
- * mirrored for disaster recovery is one repository holding dozens of unrelated projects, and
- * re-rooting a session there is worse than never re-rooting at all. Every path in the project the
- * session actually cares about stays long, and the rules that load are the container's, not the
- * project's.
- *
- * WHAT DOES NOT SEPARATE THEM: counting nested repositories. That was the first answer here and it
- * is wrong, because a perfectly ordinary project can carry many. The project that prompted this
- * carries a benchmark corpus of forty-odd checkouts under `packages/deepswe-bench/repo-cache/`, so
- * a count classifies it as a container, which is exactly backwards. Neither manifests nor child
- * count separate them either: the container and the project inside it both carry `AGENTS.md` and
- * `Cargo.toml` at their roots and have 59 and 47 direct children.
- *
- * WHAT DOES SEPARATE THEM: whether the outer repository IGNORES the nested one. That is not a
- * statistical signal, it is the maintainer's own statement. A project that vendors, caches, or
- * fixtures another repository gitignores it, saying "this is not part of me" -- both of the nested
- * repositories in the project above are ignored, by `repo-cache/` and `deep-swe/` entries. A tree
- * that merely HOLDS other projects ignores none of them, because they are not its content in the
- * first place: not one of the container's forty-one is ignored. So one unignored nested repository
- * is enough, and it costs a bounded directory scan plus a single batched `git check-ignore`, at
- * most {@link MAX_HINTS} times in a session.
+ * Whether a repository root is a multi-project container rather than a single project.
+ * Detected by finding unignored nested `.git` repositories beneath the root.
  */
 export async function isRepositoryContainer(directory: string): Promise<boolean> {
 	const root = path.resolve(directory);
@@ -268,12 +170,7 @@ async function readDirectoryOrEmpty(directory: string): Promise<Dirent[]> {
 const MAX_ROOT_WALK = 12;
 
 /**
- * Directories that are launch points rather than projects, spelled without a home prefix.
- *
- * These are where a shell puts you, not where work lives. `/media`, `/mnt` and `/Volumes` hold
- * mount points; their DIRECT CHILDREN are the mounts themselves, which are equally not projects,
- * and that is handled in {@link isNonProjectDirectory} rather than by listing every possible
- * device name here.
+ * Common non-project shell launch points (roots, user directories, temp, mount parents).
  */
 const LAUNCH_DIRECTORIES = ["/", "/home", "/Users", "/media", "/mnt", "/Volumes", "/tmp", "/var/tmp", "/opt", "/srv"];
 
@@ -281,25 +178,8 @@ const LAUNCH_DIRECTORIES = ["/", "/home", "/Users", "/media", "/mnt", "/Volumes"
 const LAUNCH_PARENTS = ["/home", "/Users", "/media", "/mnt", "/Volumes"];
 
 /**
- * Whether a directory is a place a session gets STARTED rather than a project.
- *
- * WHY THIS IS THE SIGNAL WORTH HAVING. Everything else in this file waits for evidence to
- * accumulate: three files under one foreign directory before anything is said. That is the right
- * shape for detecting that work has DRIFTED, and the wrong shape for the far more common failure,
- * which is that the session was never rooted anywhere sensible to begin with. A session launched
- * from `$HOME`, from a mount point, or from `/` is misrooted from its first message, and waiting
- * for three files of evidence means the first several tool calls are all paid at full absolute-path
- * price and the project's own `AGENTS.md` never loads at all. The `<working-directory>` prompt block
- * has listed "the working directory is a home, temp, or launch directory" as a re-root case since it
- * was written, and nothing anywhere ever checked it.
- *
- * Purely lexical and synchronous: no filesystem access, so it is safe to ask anywhere, including on
- * every tool call. The question "does this directory look like a project" needs the filesystem and
- * is {@link isNonProjectRoot}.
- *
- * Windows drive roots (`C:\`) and the Windows user directories are recognised on their own terms
- * rather than by translating them to POSIX shapes, because a session on Windows launched from
- * `C:\Users\someone` has exactly the problem this is looking for.
+ * Synchronous lexical check for directories where sessions start rather than live
+ * (home, root, temp, mounts, drive roots).
  */
 export function isNonProjectDirectory(directory: string, options: { home?: string; tmp?: string } = {}): boolean {
 	// The Windows spellings are matched on the RAW text, before any resolution. `path.resolve` on a
@@ -336,21 +216,8 @@ export function isNonProjectDirectory(directory: string, options: { home?: strin
 }
 
 /**
- * Whether the session's working directory is a bad place to be rooted, and why.
- *
- * Three independent reasons, cheapest first, each of which alone means the same thing: the paths
- * this session works with will stay long and the project's rules will not load.
- *
- * 1. It is a launch directory. Lexical, free, and catches the common case outright.
- * 2. It carries no project marker at all. A directory with no `.git`, no manifest and no
- *    `AGENTS.md` is not the root of anything, whatever its path looks like. This is what catches a
- *    disk root like `/media/<user>/<volume>` that no name list would have predicted.
- * 3. It is a repository that holds other projects. The case that needs the most work to detect,
- *    and the one a marker check actively gets wrong: a container tree can carry a root manifest
- *    and an `AGENTS.md` exactly as a project does.
- *
- * Returns null when the directory is a fine place to be, so a caller can treat the reason as the
- * thing worth saying rather than re-deriving it.
+ * Check whether a directory is an unsuitable project root: a launch directory,
+ * a directory lacking project markers, or a multi-project container.
  */
 export async function isNonProjectRoot(directory: string): Promise<NonProjectReason | null> {
 	if (isNonProjectDirectory(directory)) return "launch-directory";
@@ -373,11 +240,7 @@ export async function isNonProjectRoot(directory: string): Promise<NonProjectRea
 export type NonProjectReason = "launch-directory" | "no-project-marker" | "holds-other-projects";
 
 /**
- * How each reason is said to the model, owned here beside the reason it explains.
- *
- * In the prompt rather than in the enum name because the model reads the sentence, and one place
- * rather than a branch in the template because the template language has no equality helper and
- * adding one to spell three phrases would put the wording somewhere the type cannot reach.
+ * Explanatory text provided to the model for each non-project root reason.
  */
 export const NON_PROJECT_REASON_TEXT: Record<NonProjectReason, string> = {
 	"launch-directory": "it is a home, temp, mount, or root directory that a shell starts in",
@@ -386,31 +249,8 @@ export const NON_PROJECT_REASON_TEXT: Record<NonProjectReason, string> = {
 };
 
 /**
- * The project root a qualifying directory belongs to.
- *
- * WHY THIS EXISTS. {@link RerootDetector} ranks candidates deepest-first, and that is right for
- * choosing WHICH activity to report: every ancestor of a busy directory is credited the same
- * evidence, so an evidence-first rule would name the common ancestor of two unrelated projects.
- * It is wrong for choosing WHERE TO POINT. Three reads under
- * `keyhog/crates/cli/src/subcommands/` made that directory the winner, and the hint then advised
- * re-rooting five levels inside a project the user thinks of as one thing. Re-rooting there is
- * actively worse than not re-rooting: every other file in the same project becomes an absolute
- * path again, and the project's own root `AGENTS.md` is no longer the nearest rule file. The rule
- * markdown had said "re-root to that project's ROOT, not the directory the file happens to sit in"
- * since it was written; the detector simply never did it.
- *
- * So the deepest directory decides WHAT to report and this decides WHERE. The walk stops at the
- * first `.git`, because a repository boundary settles the question, and otherwise returns the
- * OUTERMOST manifest-bearing directory found: in a workspace, the member manifests are the deep
- * answer and the workspace manifest is the one the user means.
- *
- * A directory containing `cwd` is never returned. Re-rooting to an ancestor of the working
- * directory widens the session's reach rather than moving it, and turns every path that is
- * currently relative into an absolute one.
- *
- * Returns `directory` unchanged when nothing above it is marked, which is a real answer and not a
- * fallback: an unmarked tree has no root to prefer, and the observed directory is still where the
- * work is.
+ * Find the enclosing project root by climbing ancestors to find the first `.git`
+ * (skipping containers) or outermost manifest marker.
  */
 export async function resolveProjectRoot(directory: string, cwd: string): Promise<string> {
 	let current = path.resolve(directory);
@@ -466,26 +306,8 @@ function depthOf(directory: string): number {
 }
 
 /**
- * True when `candidate` is the better thing to suggest than `incumbent`.
- *
- * DEEPEST FIRST, because the deepest qualifying directory is the specific answer.
- * Every ancestor of a qualifying directory also qualifies (it was credited the same
- * evidence keys), and a common ancestor of two unrelated projects accumulates the sum
- * of both, so it would win any comparison that ranked by evidence first -- and
- * `/srv` is never the useful answer when the work is under `/srv/a`.
- *
- * Depth is counted in path SEGMENTS. It used to be compared as string LENGTH, which
- * within one ancestor chain is accidentally equivalent (a child's path is always
- * longer than its parent's) and between two unrelated trees is arbitrary: it made the
- * winner a function of how long the directory names happened to be, so
- * `/srv/averyverylongprojectname` outranked `/srv/a/b/c/d` while being four levels
- * shallower.
- *
- * At equal depth the trees are unrelated and evidence decides, which is the honest
- * answer to "the session worked in two places at once": name the one it spent more of
- * itself in. The final lexicographic tie-break makes a full tie deterministic instead
- * of a function of `Map` insertion order, which is a function of the order files
- * happened to be read.
+ * Compare two candidate directories: deepest path first, then highest file count,
+ * then lexicographical tie-break.
  */
 function outranks(
 	candidate: { directory: string; fileCount: number },
@@ -508,11 +330,8 @@ export interface RerootHint {
 }
 
 /**
- * Tracks out-of-cwd filesystem activity for one session and reports when a
- * directory has become the session's real subject.
- *
- * Session-scoped by construction: one instance per `createTools` call, so counts
- * never leak between sessions and a subagent starts clean.
+ * Tracks out-of-cwd filesystem activity for one session and suggests re-rooting
+ * when activity clusters under another project directory.
  */
 export class RerootDetector {
 	/** Candidate directory to the distinct evidence keys seen under it. */
@@ -520,13 +339,7 @@ export class RerootDetector {
 	/** Directories already mentioned, so each is suggested at most once. */
 	readonly #announced = new Set<string>();
 	/**
-	 * Project roots already advised about, so a second busy directory in the SAME project cannot
-	 * earn a second identical hint.
-	 *
-	 * The ancestor suppression below cannot do this on its own: it silences the ancestors of the
-	 * winner, and two sibling subtrees of one project are ancestors of neither. Reading three files
-	 * under `keyhog/crates/a/src` and then three under `keyhog/crates/b/src` produced two
-	 * candidates, and once both resolve to `keyhog` they are the same advice printed twice.
+	 * Project roots already advised about, preventing duplicate hints for sibling subtrees.
 	 */
 	readonly #announcedRoots = new Set<string>();
 	#hintsEmitted = 0;
@@ -534,13 +347,7 @@ export class RerootDetector {
 	#workingDirectoryCalls = 0;
 
 	/**
-	 * Record the paths a tool call touched and return a hint if one is now due.
-	 *
-	 * `targets` are raw path strings as the tool declared them, resolved here
-	 * against `cwd` exactly as the boundary resolves them. Resolution is lexical
-	 * on purpose: this is a suggestion, not a permission decision, so it must not
-	 * pay for a `realpath` on every call to reach a conclusion a symlink could
-	 * only make marginally more accurate.
+	 * Record paths touched by a tool call and return a re-root hint if one is due.
 	 */
 	observe(targets: readonly string[], cwd: string, workingDirectory?: string): RerootHint | undefined {
 		if (!cwd || this.#hintsEmitted >= MAX_HINTS) return undefined;
@@ -609,12 +416,7 @@ export class RerootDetector {
 	}
 
 	/**
-	 * Count one piece of evidence against `startDirectory` and each ancestor
-	 * within the cap.
-	 *
-	 * `key` is what makes the count a count of DISTINCT evidence: a file path for a
-	 * file, so three paged reads of one file count once, and a per-call token for a
-	 * working directory, so three commands run in one place count three times.
+	 * Credit evidence against `startDirectory` and its ancestors within `MAX_ANCESTOR_DEPTH`.
 	 */
 	#credit(key: string, startDirectory: string, cwd: string): void {
 		let directory = startDirectory;
@@ -636,12 +438,7 @@ export class RerootDetector {
 	}
 
 	/**
-	 * The deepest not-yet-announced directory at or over threshold.
-	 *
-	 * Deepest wins because it is the most specific answer. Every ancestor of a
-	 * qualifying directory also qualifies (it was credited the same files), and
-	 * suggesting `/home/user` when the work is in `/home/user/code/thing` would be
-	 * technically true and useless.
+	 * Find the deepest unannounced directory meeting the file threshold.
 	 */
 	#dueHint(cwd: string): RerootHint | undefined {
 		// A session rooted somewhere that is not a project needs no evidence that the work is
@@ -681,12 +478,7 @@ export class RerootDetector {
 	}
 
 	/**
-	 * Record the project root a hint actually pointed at.
-	 *
-	 * Called by the wrapper after {@link resolveProjectRoot}, because that resolution touches the
-	 * filesystem and this class is deliberately synchronous and lexical everywhere else: it runs on
-	 * every tool call, and a hint is not worth a `stat` per call. The resolution happens at most
-	 * {@link MAX_HINTS} times in a session, on the calls that already earned a hint.
+	 * Record the resolved project root that was advised to prevent duplicate hints.
 	 */
 	recordAnnouncedRoot(root: string): void {
 		this.#announcedRoots.add(path.resolve(root));
@@ -694,13 +486,7 @@ export class RerootDetector {
 }
 
 /**
- * The hint sentence.
- *
- * It states the observation, the concrete call, and what the call buys, then
- * gives explicit permission to ignore it. The last part is load-bearing: a
- * directive the model cannot decline turns every incidental cross-project read
- * into a re-root, and re-rooting away from the user's project is worse than the
- * absolute paths it saves.
+ * Format the user-visible re-root hint sentence, including tool call advice and opt-out.
  */
 export function formatRerootHint(
 	directory: string,
@@ -736,12 +522,7 @@ export function formatRerootHint(
 }
 
 /**
- * The session state the wrapper needs: the live cwd, and enough of the discovery
- * surface to make the tool it recommends actually callable.
- *
- * Both discovery members are optional because a plain tool session (tests, the
- * SDK's pre-session window) has neither, and a hint is not worth a hard dependency
- * on machinery that may not be wired.
+ * Session context required by `wrapToolWithRerootHint` to check and activate tools.
  */
 export interface RerootHintSession {
 	readonly cwd: string;
@@ -752,25 +533,8 @@ export interface RerootHintSession {
 }
 
 /**
- * Put `set_cwd` in the model's toolset, and report whether it is now callable.
- *
- * WHY THIS EXISTS, AND WHY THE HINT WAS USELESS WITHOUT IT. `set_cwd` is a
- * `discoverable` tool, so under `tools.discoveryMode: all` it is deliberately
- * absent from the initial toolset: most sessions never re-root, and the slot is not
- * free. The hint then told the model to call `set_cwd`, the model tried, and there
- * was no such tool in the request. That is not a hint that lands badly, it is a hint
- * that CANNOT be followed, and it is why re-rooting appeared to work in some
- * sessions and not others: it worked exactly where something else had already
- * activated the tool.
- *
- * The evidence that fires the hint is also the evidence that this session needs the
- * tool, so the harness activates it rather than asking the model to go find it. That
- * spends one tool slot in the sessions that have demonstrably wandered out of cwd,
- * and nothing in the sessions that have not.
- *
- * Returns false when the session cannot make it callable. The caller must then say
- * so in the hint: naming a tool that is not there is the bug this function exists to
- * end, and printing the same confident sentence anyway would only hide it again.
+ * Ensure `set_cwd` is in the active toolset, activating it if discoverable.
+ * Returns false if the tool cannot be made callable.
  */
 export async function ensureSetCwdCallable(session: RerootHintSession): Promise<boolean> {
 	// No activation tracking at all means the toolset is fixed: `set_cwd` is either
@@ -786,14 +550,7 @@ export async function ensureSetCwdCallable(session: RerootHintSession): Promise<
 }
 
 /**
- * The directory a tool call was told to run in, when it names one.
- *
- * Read from the arguments by SHAPE rather than from a list of tool names. Any
- * tool taking a `cwd` argument means the same thing by it in this codebase, so a
- * name list would be a second place to update every time one is added, and it
- * would be wrong the first time somebody forgot. `bash` is the case that
- * matters today: it declares no filesystem targets, so without this the entire
- * build/test/grep half of a session is invisible to the detector.
+ * Extract `cwd` string argument from tool arguments if present.
  */
 export function workingDirectoryArg(args: unknown): string | undefined {
 	if (typeof args !== "object" || args === null) return undefined;
@@ -804,22 +561,7 @@ export function workingDirectoryArg(args: unknown): string | undefined {
 const kRerootWrapped = Symbol.for("veyyon.rerootHintWrapped");
 
 /**
- * Wrap a tool so its result carries a re-root hint when one becomes due.
- *
- * Two signals feed it. Tools that declare `filesystemTargets` contribute the
- * paths they read or write, which is the same set the cwd boundary governs; and
- * any tool called with a `cwd` argument contributes that directory, which is how
- * `bash` is seen at all. Unlike the boundary, this runs in EVERY approval mode:
- * `cwdEscapingTargets` is skipped under yolo, and yolo is where a session is most
- * likely to wander out of cwd without ever being asked about it.
- *
- * Every tool is wrapped rather than only the filesystem ones, because the second
- * signal can come from any of them. The added work for a tool that contributes
- * neither is one property read on a call that has already done real IO.
- *
- * The hint is appended to the result rather than replacing anything, and only on
- * a successful call. A failed call is the model's problem to solve first;
- * stacking advice onto an error is how a result becomes unreadable.
+ * Wrap a tool to append a re-root hint to successful execution results when due.
  */
 export function wrapToolWithRerootHint<T extends AgentTool<any, any, any>>(
 	tool: T,

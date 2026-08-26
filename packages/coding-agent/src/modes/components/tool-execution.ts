@@ -70,12 +70,8 @@ import { renderDiff } from "./diff";
 import { reportRendererFailure } from "./renderer-failure";
 
 /**
- * Drop trailing removal/hunk-header lines that appear in a streaming diff
- * before the matching `+added` lines have arrived. Without this, a partial
- * apply_patch / hashline preview shows `-old` first and then visibly grows
- * the `+new` block beneath it — the "removals first, additions catching up"
- * jitter. Once the next streaming tick brings the additions in, the trailing
- * block reappears alongside them.
+ * Drops trailing removal and hunk-header lines from streaming diff previews
+ * until matching additions arrive, preventing preview jitter.
  */
 function stripTrailingUnbalancedRemoval(diff: string | undefined): string | undefined {
 	if (!diff) return diff;
@@ -144,14 +140,7 @@ function isEditLikeToolName(toolName: string): boolean {
  */
 const ROW_INDENT_PATTERN = /^((?:\x1b\[[0-9;]*m)*)( *)/;
 
-/**
- * Take the indent every row shares off all of them.
- *
- * An inline renderer draws its rows one cell in from the margin, which is the
- * gutter a framed block draws itself. Without this a bash row sits one cell
- * right of a read row inside the same frame. Only the SHARED indent goes, so a
- * continuation row keeps the depth it was drawn at.
- */
+/** Removes the common leading indentation shared by all rows while preserving relative indents. */
 function dedent(rows: readonly string[]): string[] {
 	let shared = Number.POSITIVE_INFINITY;
 	for (const row of rows) {
@@ -244,12 +233,7 @@ export interface ToolExecutionHandle extends Component {
 	seal(): void;
 }
 
-/** Redraw live tool blocks at the spinner's glyph-advance rate. Rendering more
- * often produced identical frames — the previous 30fps cadence emitted ~2.4
- * paints per glyph step, and although the terminal I/O layer dedupes those, the
- * compose pipeline still ran end-to-end per frame (issue #4353). Matching the
- * render tick to the glyph tick halves the paints during tool execution with no
- * visible change. */
+/** Redraw live tool blocks at the spinner's glyph-advance rate to avoid redundant paints. */
 export const SPINNER_RENDER_INTERVAL_MS = 80;
 /** Advance the spinner glyph at its classic ~12.5fps step (mirrors `Loader`). */
 export const SPINNER_GLYPH_ADVANCE_MS = 80;
@@ -265,18 +249,8 @@ export function sharedSpinnerFrame(frameCount: number, now: number = performance
 let toolExecutionInstanceSeq = 0;
 
 /**
- * The result a transcript rebuild gives a tool call whose TURN ended in an
- * error and which therefore has no result of its own.
- *
- * Four rebuild sites used to fabricate `{ content: [error text], isError: true }`
- * with no details at all, which says the TOOL failed. It did not: the turn did,
- * and the call never reached a tool. That bare shape is indistinguishable from a
- * command that ran and exited non-zero, so the operator got failure chrome, the
- * provider's error as the tool's own output, and no statement that nothing had
- * run, which is the one fact that mattered. Carrying the loop's own
- * `assistant_stop_error` discriminator makes the card render exactly like the
- * live path already does: the call, and one warning line naming the provider
- * error as the reason nothing ran.
+ * Generates a synthetic tool result for transcript rebuilds when a turn ended in error
+ * before the tool call could execute.
  */
 export function turnFailedToolResult(errorMessage: string): {
 	content: Array<{ type: string; text: string }>;
@@ -291,26 +265,8 @@ export function turnFailedToolResult(errorMessage: string): {
 }
 
 /**
- * Why a tool call produced no work, in the operator's words.
- *
- * Three shapes reach the transcript and none of them used to say anything. The
- * loop synthesizes a placeholder result for a call the assistant emitted but
- * never dispatched, tagging it `__synthetic` with an `executed: false` and a
- * `source` naming the assistant-side stop (`agent-loop.ts`
- * `SyntheticToolResultDetails`, added by #4321 so that "UI, telemetry, and
- * history consumers can key on `__synthetic === true` to render or classify
- * these as 'call emitted, not executed' instead of a real local tool failure").
- * Nothing in the transcript ever read it, so those placeholders rendered with
- * the same red `failed` chrome as a command that ran and exited non-zero.
- *
- * The second is `__skipped`: a call an interrupt cut short. It is the same claim
- * as the first and was read here for the same reason, one release later, which
- * is the recurring shape of this defect: the branch gets written for the
- * discriminator someone had in mind and its sibling keeps rendering as a
- * failure. It is also by far the more common of the two.
- *
- * The third is a block the turn `seal()`ed with no result at all, which rendered
- * byte-identically to a call still in flight.
+ * Returns a human-readable explanation when a tool call produced no work
+ * (e.g. skipped, synthetic stop, or sealed without result).
  */
 function notExecutedReason(result: { details?: unknown } | undefined, sealed: boolean): string | undefined {
 	if (result === undefined) {
@@ -357,20 +313,7 @@ function notExecutedReason(result: { details?: unknown } | undefined, sealed: bo
 	}
 }
 
-/**
- * Whether this result is a placeholder for a call that never reached the tool.
- *
- * The card renders the CALL and nothing else when it is. The placeholder's text is written for the
- * model — "Tool call was not executed because the provider stream ended with an error before the
- * tool could run", and for a truncated one a paragraph telling the model to split its payload — and
- * putting it through the tool's own result renderer drew a red `✗ failed` frame around it, so a call
- * that touched nothing looked exactly like a command that ran and exited non-zero, with the reason
- * stated twice in two registers. {@link notExecutedReason} says it once, in the operator's words.
- *
- * The rule itself lives in {@link toolResultNeverRan}, next to the two placeholder shapes the agent
- * loop writes, because the session reads it too: it decides whether a failed turn is safe to discard
- * and replay. Two copies could disagree about whether work happened.
- */
+/** Returns whether this result is a placeholder for a call that never reached the tool. */
 function isNeverRanResult(result: { details?: unknown } | undefined): boolean {
 	return toolResultNeverRan(result?.details);
 }
@@ -580,26 +523,14 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 		this.#schedulePreviewDiff();
 	}
 
-	/**
-	 * Await the streaming diff recompute kicked off by the most recent
-	 * `updateArgs`/`setArgsComplete`. The recompute reads the file and re-runs the
-	 * whole-file Myers diff off the render path, signalling completion only via a
-	 * throttled `requestRender`. Tests await this to sample a *settled* preview
-	 * deterministically instead of racing the spinner's render ticks.
-	 */
+	/** Awaits in-flight streaming diff recomputations to sample a settled preview. */
 	async whenPreviewSettled(): Promise<void> {
 		await this.#editDiffInFlight;
 	}
 
 	/**
-	 * Schedule a streaming diff preview recompute, coalescing bursts of
-	 * `updateArgs` into one compute at a time: run the current compute to
-	 * completion and re-run only after it settles when newer args arrived, never
-	 * cancelling an in-flight compute on a fresh tick. The reveal controller pushes
-	 * args ~30fps and a whole-file hashline/large-file diff can outlast a frame, so
-	 * cancel-per-tick would starve every compute and no preview would land until
-	 * args complete. Coalescing lets each diff land, so the preview tracks the
-	 * stream at the rate the diffs can sustain.
+	 * Schedules a streaming diff recompute, coalescing rapid argument updates
+	 * into sequential computations without cancelling in-flight diffs.
 	 */
 	#schedulePreviewDiff(): void {
 		this.#editDiffDirty = true;
@@ -912,11 +843,8 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 	}
 
 	/**
-	 * Freeze a detached (`async.state === "running"`) task block once it leaves
-	 * the transcript's live region. Past that seam its rows are commit-eligible
-	 * native-scrollback history: repaint the progress rows static gray and drop
-	 * further partial snapshots. One-way — blocks never re-enter the live
-	 * region. Returns whether the block is frozen.
+	 * Freezes a background task block once it leaves the transcript live region,
+	 * converting progress rows to static history.
 	 */
 	#maybeFreezeBackgroundTask(): boolean {
 		if (this.#backgroundTaskFrozen) return true;
@@ -932,19 +860,8 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 	}
 
 	/**
-	 * Drive the rail's own motion (see `tui/rail-motion.ts`).
-	 *
-	 * The spinner is not a substitute for this and cannot be widened into it: it
-	 * exists only for renderers that declare they DRAW `options.spinnerFrame`, and
-	 * the tools an operator watches longest — bash, ssh's result, read, fetch —
-	 * declare nothing, so their block gets no tick at all and the rail beside a
-	 * four-second command never moves. This is the rail's own repaint, and it is
-	 * bounded on both ends: the idle interval lives exactly as long as the block is
-	 * live, and the settle interval is `RAIL_SETTLE_FRAMES` ticks and then gone.
-	 *
-	 * `display.transitions: off` is the reduced-motion switch for chrome, so with it
-	 * the intervals are never armed and every rail is the flat colour the renderer
-	 * drew.
+	 * Drives the rail border animation while the tool is running or settling,
+	 * respecting the reduced-motion transition setting.
 	 */
 	#updateRailMotion(): void {
 		if (!transitionsEnabled()) {
@@ -1017,21 +934,7 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 		this.#stopRailSettle();
 	}
 
-	/**
-	 * A call row on the rail.
-	 *
-	 * A renderer's `renderCall` hands back a bare status row while its
-	 * `renderResult` hands back a framed block, so the same title sat two columns
-	 * left of the block that replaced it and stepped right the instant the result
-	 * landed — and until it landed, the card had no rail for the light to travel
-	 * down. The rows are framed here, once, rather than in each of thirty
-	 * renderers: the first non-blank row is the card's title and the rest is its
-	 * body, and a renderer that already frames itself is handed back untouched.
-	 *
-	 * The inner component renders at {@link outputBlockContentWidth}, so a row it
-	 * budgeted against the width it was given still fits inside the frame instead
-	 * of soft-wrapping out of it.
-	 */
+	/** Wraps a bare status call row in a rail frame matching the result block layout. */
 	#onRail(component: Component): Component {
 		if (isFramedBlockComponent(component)) return component;
 		const block = new CachedOutputBlock();
@@ -1083,26 +986,8 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 	}
 
 	/**
-	 * Where this block's still-changing rows begin, for the engine's native
-	 * scrollback contract. `undefined` means "every row of mine is history".
-	 *
-	 * Standalone harnesses may mount a tool component directly under `TUI`
-	 * instead of inside `TranscriptContainer`. In that shape the component must
-	 * report its own live-region seam while unfinalized, or the core renderer
-	 * treats it like shell output and commits still-mutating preview rows to
-	 * immutable native scrollback before the result replaces them.
-	 *
-	 * A finalized block reports no live region — except while one of its two
-	 * bounded animations is running. Rows below the live-region start are declared
-	 * FINAL, which puts them in the engine's AUDITED committed prefix: a byte that
-	 * changes there is read as a component re-laying-out history and repaired with
-	 * an erase-and-replay of the whole screen. A result lands, the assistant
-	 * starts streaming under it, the block's rows scroll above the window inside
-	 * the settle's 630 ms or the board's 910 ms, and the next animation frame is a
-	 * full-screen repaint. Reporting those rows as live for the length of the
-	 * envelope keeps them audit-exempt; `isTranscriptBlockFinalized` is
-	 * deliberately NOT touched, because displacement and sealing read it and a
-	 * block that un-finalizes changes what may still be retracted.
+	 * Returns the starting row index of actively mutating content for native scrollback management.
+	 * Returns 0 while unfinalized or animating, otherwise undefined.
 	 */
 	getNativeScrollbackLiveRegionStart(): number | undefined {
 		if (!this.isTranscriptBlockFinalized()) return 0;
@@ -1111,12 +996,8 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 	}
 
 	/**
-	 * Whether this block has reached a terminal state for transcript freezing.
-	 * Reports `false` while it can still visually change so the
-	 * {@link TranscriptContainer} keeps it inside the repaintable live region:
-	 * a foreground tool awaiting its result, or one streaming partial output.
-	 * A final (non-partial) result, a background-async tool the agent has moved
-	 * past, or an explicit {@link seal} flips it to `true`.
+	 * Returns whether this block has reached a terminal state for transcript freezing,
+	 * indicating it can be committed to native scrollback history.
 	 */
 	isTranscriptBlockFinalized(): boolean {
 		if (this.#sealed) return true;
@@ -1233,12 +1114,8 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 	}
 
 	/**
-	 * True while the last painted pending-call shape opted into a full viewport
-	 * repaint at the first result (`forceFirstResultViewportRepaint`) — e.g. the
-	 * streamed SSH placeholder (`⏳ SSH: […]` / `$ …`) or a collapsed write tail
-	 * window, both of which the first result render re-anchors instead of
-	 * preserving. Kept as a per-paint fact so a topology-changing update that
-	 * lands before the pending rows reach the terminal skips the reset.
+	 * Returns whether the pending call opted into a full viewport repaint on the first result
+	 * due to layout/topology re-anchoring.
 	 */
 	#needsFirstResultViewportRepaintAtRender(): boolean {
 		if (this.#result !== undefined) return false;

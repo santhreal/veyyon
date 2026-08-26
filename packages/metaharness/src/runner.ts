@@ -443,12 +443,8 @@ export function resolveResumeConfig(cli: Config): Config {
 const isTTY = Boolean(process.stdout.isTTY);
 const useColor = isTTY && !process.env.NO_COLOR;
 /**
- * Control Sequence Introducer, `ESC [`, named for what it actually is.
- *
- * This was called `ESC`, while `packages/tui/src/ansi.ts` uses that name for the escape byte `\x1b` alone. One
- * name for two byte sequences across two packages, and the shorter reading is the wrong one: `${CSI}0m` is a
- * complete SGR reset, not an escape byte followed by the text "0m". Kept local rather than imported because this
- * package does not depend on `@veyyon/tui` and one string is not a reason to add a dependency.
+ * Control Sequence Introducer, `ESC [`. Kept local (not imported from `@veyyon/tui`) because this package
+ * does not depend on it and one string is not a reason to add a dependency.
  */
 const CSI = "\x1b[";
 function c(code: string, s: string): string {

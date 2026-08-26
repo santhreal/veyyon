@@ -131,28 +131,8 @@ const DECIMAL_NUMBER = /^-?\d+(?:\.\d+)?$/;
 export const UNSET_NUMBER_INPUT = "unset";
 
 /**
- * What a typed number does to the setting: store this value, clear it, or refuse.
- *
- * A text input hands back a string and these settings are numbers with meaning: retry
- * delays, cache TTLs, a concurrency cap, line thresholds. The write path used to do
- * `Number(value)` and store the result, so `"abc"` became NaN and `""` became 0. A
- * threshold that quietly becomes zero is worse than a row the operator could not see,
- * because the invisible row was at least honest about being absent. So an unreadable
- * value is refused where it was typed: the thrown message renders in red under the
- * input and the submenu stays open, rather than closing over a stored surprise.
- *
- * An empty box is the one string that is not a refusal. The input's own footer says
- * "Clear field to unset", and for a number the honest reading of that is to remove the
- * key so the schema default applies again. Storing 0 for it would be the exact silent
- * coercion this function exists to stop.
- *
- * Bounds come from the schema (`ui.min` / `ui.max`) and nowhere else. A setting that
- * declares none accepts any decimal: the job is to enforce what was written down, not
- * to invent a range at the input and refuse a value that was legal. Today every bound
- * in the schema is a `min`; no number setting declares a `max`.
- *
- * Exported because it IS the contract. Left private it could only be tested by driving
- * the whole selector, which is how "`Number(value)` and hope" survived this long.
+ * Validates and parses user-typed text into a number setting, `UNSET_NUMBER_INPUT`
+ * on empty string, or throws on invalid decimal input. Bounds are enforced from schema.
  */
 export function parseNumberSetting(path: SettingPath, text: string): number | typeof UNSET_NUMBER_INPUT {
 	if (text.trim() === "") return UNSET_NUMBER_INPUT;
@@ -418,11 +398,8 @@ function thresholdModeOf(raw: string): { mode: ThresholdMode; invalidRaw?: strin
 }
 
 /**
- * Short display form for a stored threshold: `200000` renders `200k`,
- * `1000000` renders `1M`, a percent normalizes to `<n>%` (`85 %` renders
- * `85%`); `auto` and anything unparseable pass through untouched. Used by the
- * outer settings row and the mode rows' current markers, so both always spell
- * one value the same way.
+ * Formats a stored compaction threshold into short display form (e.g. `200k`, `1M`, `85%`),
+ * passing `auto` and unparseable values through untouched.
  */
 function formatThresholdShort(raw: string): string {
 	const spec = parseCompactionThreshold(raw);
@@ -436,17 +413,8 @@ function formatThresholdShort(raw: string): string {
 }
 
 /**
- * Two-level picker for `compaction.threshold`: mode first (Auto / Percent /
- * Tokens), then the mode's values. The flat submenu listed all 19 presets in
- * one list, which hid that the setting has three semantics — auto follows the
- * model's window, a percent scales with it, a token amount is fixed across
- * models. The active mode carries the green check and its current value, so
- * the mode view alone answers "what will trigger compaction".
- *
- * The schema's `ui.options` stay the single source of presets; they are
- * partitioned by unit at render time. A stored value no preset spells (a
- * hand-edited `170000`, a legacy fold-in) appears as a marked custom row in
- * its mode's list, never silently presented as a preset pick.
+ * Two-level picker for `compaction.threshold`: selects mode (Auto / Percent / Tokens)
+ * then mode presets or custom values, partitioned from schema `ui.options`.
  */
 class CompactionThresholdSubmenu extends MouseRoutedSubmenu {
 	#selectList: SelectList | undefined;
@@ -782,12 +750,8 @@ class ProviderLimitsSubmenu extends MouseRoutedSubmenu {
 }
 
 /**
- * Bare `provider/id` for picker preselection from a stored value that may
- * carry a `:effort` suffix (`provider/id:high`) — the encoding
- * {@link renderEffortStep} persists. Without this the picker cannot match the
- * current row, so selection lands on the pinned (inherit) row and a quick
- * Enter clears instead of re-picking. Falls back to the raw string when the
- * value does not resolve, so an unmatched selector still shows as typed.
+ * Strips effort suffix (`:level`) from a stored model selector for picker preselection,
+ * falling back to the raw string if unresolved.
  */
 export function barePickerSelector(raw: string | undefined, models: ReadonlyArray<Model<Api>>): string | undefined {
 	if (!raw) return undefined;
@@ -967,14 +931,8 @@ class ModelRolesSubmenu extends MouseRoutedSubmenu {
 const RULE_LIST_MAX_ROWS = 12;
 
 /**
- * Section order on the rule screen, and what each heading says.
- *
- * A rule the project itself supplies comes first: it is the one the reader
- * wrote, and it outranks a bundled rule of the same name anyway. Then the
- * bundled sections in the order the bundle declares them, so the file tree and
- * the screen cannot disagree about order. Experimental is last on purpose —
- * anything above it ships on, and a reader scanning downward should meet the
- * opt-in rules only after everything that is actually running.
+ * Section ordering for rules: project rules first, bundled sections in declaration
+ * order, and experimental rules last.
  */
 const BUNDLED_SECTION_ORDER: readonly BuiltinRuleSection[] = Object.keys(BUILTIN_RULE_SECTIONS) as BuiltinRuleSection[];
 
@@ -996,21 +954,8 @@ function ruleSectionLabel(rule: Rule): string {
 }
 
 /**
- * The rule list: every rule this project loads, each on or off.
- *
- * Backed by `ttsr.disabledRules`, which stores exceptions only. The list itself is
- * DISCOVERED rather than read from that setting, for the same reason the agents table is
- * discovered: a setting that holds only what you turned off describes an empty list on a
- * stock install, so a settings-driven list would show nothing at all while thirty rules
- * were quietly running. Discovery is also the only way to learn the names, and a name is
- * what the old comma-separated text box demanded before it would let you disable
- * anything.
- *
- * Two levels. The index is one row per section; entering a section lists the rules
- * under it, where Enter toggles in place. Thirty-one rules in one flat list made the
- * first screen a wall the reader had to scroll before learning what kinds of rule
- * even exist, and the section a rule sits in is the fact that decides whether it
- * ships on — so the section is worth being a screen rather than a heading.
+ * Two-level submenu for toggling project rules by section, backed by discovered
+ * rules and exception lists (`ttsr.disabledRules`, `ttsr.experimentalRules`).
  */
 class RulesSubmenu extends MouseRoutedSubmenu {
 	#selectList: SelectList | undefined;
@@ -1073,13 +1018,8 @@ class RulesSubmenu extends MouseRoutedSubmenu {
 	}
 
 	/**
-	 * Flip one rule, writing to whichever list expresses "off" for it.
-	 *
-	 * An experimental rule ships off, so its on-state lives in an opt-in list and
-	 * `disabledRules` — which stores exceptions to on — cannot represent it. One
-	 * row, one Enter, two backing lists: the operator is told which rules are
-	 * experimental by the section they are under, not by having to know which
-	 * setting their answer lands in.
+	 * Toggles a rule on/off, updating `experimentalRules` (for experimental opt-in)
+	 * or `disabledRules` (for standard rules).
 	 */
 	#toggle(name: string): void {
 		const rule = this.#rules.find(candidate => candidate.name === name);
@@ -1135,12 +1075,7 @@ class RulesSubmenu extends MouseRoutedSubmenu {
 	}
 
 	/**
-	 * What a section row says about itself without being opened.
-	 *
-	 * A two-level list buys a short first screen and costs the at-a-glance answer,
-	 * so the count pays it back: an operator scanning the index still learns that
-	 * something below is off, and which section to open to find it. Without it the
-	 * only way to know would be to enter every one.
+	 * Summary label for a section row showing total rule count and off/experimental state.
 	 */
 	#sectionSummary(rules: readonly Rule[], off: number): string {
 		const total = `${rules.length} rule${rules.length === 1 ? "" : "s"}`;
@@ -1171,14 +1106,8 @@ class RulesSubmenu extends MouseRoutedSubmenu {
 	}
 
 	/**
-	 * Build the list plus the footer that describes it.
-	 *
-	 * The filter hint is conditional because the filter is: `SelectList` accepts a
-	 * typed query only while the list overflows its visible rows, and splitting
-	 * thirty-one rules across five sections took every one of these lists below
-	 * that line. A footer reading "type to filter" over five rows that ignore
-	 * every key you press is worse than no hint, so the hint appears exactly when
-	 * the list will answer it.
+	 * Builds the rule select list and footer, showing the filter hint only when
+	 * the item count exceeds visible row bounds.
 	 */
 	#finishList(items: SelectItem[], focused: string | undefined, action: string, back: string): void {
 		const visible = clamp(items.length, 1, RULE_LIST_MAX_ROWS);
@@ -1312,14 +1241,7 @@ const AGENT_ROW_OFFERED = "\u0000agent-offered";
 const AGENT_ROW_NESTED = "\u0000agent-nested";
 const AGENT_ROW_RESET = "\u0000agent-reset";
 
-/**
- * Row ids for the two settings the roster edits beside the agents themselves:
- * the model and the effort every subagent runs. They appear at the top of the
- * roster list and again inside a per-subagent page, and both spellings write
- * the same setting — the screen that shows what a lane runs is the screen that
- * changes it, because the previous shape showed it and then named a different
- * screen to go and change it on.
- */
+/** Row ids for blanket subagent model and effort settings in the roster. */
 const AGENT_ROW_MODEL = "\u0000subagent-model";
 const AGENT_ROW_EFFORT = "\u0000subagent-effort";
 
@@ -1327,25 +1249,8 @@ const AGENT_ROW_EFFORT = "\u0000subagent-effort";
 type SubagentRosterPath = "subagent.agents" | "subagent.model" | "subagent.thinkingLevel";
 
 /**
- * What `subagent.thinkingLevel` narrows against, as three distinct answers
- * rather than one nullable model.
- *
- * `model` — a model is named and resolved: the chain head, or the session's own
- * model when no chain is set, because unset means every subagent inherits it.
- * `unresolved` — a model is named and this session has no catalog entry for it
- * (an unauthenticated provider, a pattern matching nothing). Offering a ladder
- * here invents one: the picker says which pattern it cannot read instead.
- * `blanket` — nothing is named at all, so the row spans the catalog and the
- * honest list is the union of what the catalog declares.
- *
- * The three used to be one `Model | undefined`, and undefined fell through to
- * the full vocabulary: `minimal` on a row whose endpoint declares `low, high,
- * max`, and an invented ladder for an id like `cursor-grok-4.6-medium` whose id
- * IS its effort.
- *
- * ONE owner, because two screens narrow the same ladder: the tab's Subagent
- * Effort row and the roster's Effort row. Two copies would drift into offering
- * different levels for one setting.
+ * Scope for narrowing `subagent.thinkingLevel`: resolved model, unresolved pattern,
+ * or catalog-wide blanket union.
  */
 type SubagentEffortScope =
 	| { kind: "model"; model: Model }
@@ -1411,18 +1316,8 @@ function subagentEffortOptions(
 }
 
 /**
- * Whether a lane at `depth` may run, with the default applied.
- *
- * `depth` is the lane's index in the chain, and lane index `i` is the process
- * at task depth `i + 1`, so a lane runs exactly when the level above it may
- * spawn — {@link canSpawnAtDepth} against the cap that governs this agent.
- * Unset is NOT off: it is the blanket ceiling still answering, which is why a
- * stock roster shows the nested level off and a config that raised the ceiling
- * shows it on without anything being written per agent.
- *
- * Stated once here because the page, the summary row and the resolver all need
- * the same answer, and a hardcoded "off below the first level" gave the page a
- * different one than the spawn gate.
+ * Determines whether a subagent lane at `depth` is allowed to spawn, defaulting
+ * to {@link canSpawnAtDepth} against `resolvedMax` when unset.
  */
 function laneSpawnEnabled(lane: SubagentLaneSettings, depth: number, resolvedMax: number): boolean {
 	return lane.enabled ?? canSpawnAtDepth(resolvedMax, depth);
@@ -1434,12 +1329,8 @@ function lanePath(name: string, depth: number): string {
 }
 
 /**
- * One lane with its empty fields dropped, or undefined when nothing is left.
- *
- * A lane that stores only `{}` — or only `{ subagents: {} }` — is a row that
- * reads as configured to everything that checks for one, while deciding nothing.
- * Pruning bottom-up is what lets a page be opened, looked at, and left without
- * writing anything.
+ * Recursively removes empty fields and subagent maps from a lane, returning
+ * undefined if the lane has no remaining configuration.
  */
 function pruneLane(lane: SubagentLaneSettings): SubagentLaneSettings | undefined {
 	const cleaned: SubagentLaneSettings = {};
@@ -1463,30 +1354,8 @@ function pruneLane(lane: SubagentLaneSettings): SubagentLaneSettings | undefined
 }
 
 /**
- * The `subagent.agents` table: the discovered agents, each with what it runs and
- * what it may spawn.
- *
- * Every answer comes from `task/subagent-settings.ts` — the enable default, the
- * state wording, the model precedence and the layer that decided it — so this and
- * `/agents` cannot describe the same row differently. It edits settings rows only;
- * writing an agent FILE stays in `/agents`, which is why the footer points there.
- *
- * A lane is RECURSIVE and every page has the same shape: Enabled, Model, Effort,
- * and a door to what this lane may spawn. Open `deep`, and you are setting what
- * `deep` runs; open its `Subagents` row and you are setting what `deep` spawns,
- * with `inherit` meaning the page you came from. There is no ceiling: the chain
- * goes as deep as levels are turned on, and `Subagents → Enabled` IS the depth
- * limit, which is why no numeric row sits beside it.
- *
- * The hazard this shape has to keep answering: a per-agent model once outranked
- * the blanket setting from a screen that did not show it, and two screens gave
- * different answers for one agent. The rule that fixes it is not "no per-agent
- * layer" but "the page that SHOWS a value CHANGES that value" — every row here
- * edits the lane it is drawn on, and the badge names the exact path that decided.
- *
- * The list is discovered rather than read off the stored table: a row exists only
- * once something is overridden, so a table-driven list would be empty on a stock
- * install and would hide exactly the specialists the operator came to turn on.
+ * Submenu for configuring `subagent.agents`: recursively edits enabled state,
+ * model chain, and thinking effort for discovered agents and spawn depths.
  */
 class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 	#selectList: SelectList | undefined;
@@ -1544,12 +1413,7 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 	}
 
 	/**
-	 * The lane a page is showing: `[]` is the agent's own page, `["subagents"]`
-	 * the page for what it may spawn, and one more step per level below that.
-	 *
-	 * A level the operator has not opened yet does not exist in the file, so this
-	 * answers with an empty lane rather than undefined: the page renders the
-	 * defaults, and nothing is written until something is chosen.
+	 * Returns the subagent lane settings at `depth`, defaulting to `{}` if not yet configured.
 	 */
 	#lane(name: string, depth: number): SubagentLaneSettings {
 		let lane: SubagentLaneSettings = this.#row(name);
@@ -1558,12 +1422,7 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 	}
 
 	/**
-	 * Write one lane back into its agent's row, rebuilding the chain above it.
-	 *
-	 * Empty fields and empty lanes are dropped on the way up, and a row left with
-	 * nothing is deleted: an empty row and no row must not be distinguishable,
-	 * because a bare `{}` in the file reads as "configured" to anything checking
-	 * for a row.
+	 * Writes updated lane settings at `depth` back into the agent table, pruning empty parents.
 	 */
 	#writeLane(name: string, depth: number, next: SubagentLaneSettings): void {
 		const chain: SubagentLaneSettings[] = [];
@@ -1614,11 +1473,7 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 	}
 
 	/**
-	 * One lane's Model row: what it stores, or the level it inherits from.
-	 *
-	 * The stored value rather than the resolved one, because this row EDITS the
-	 * stored value — a row showing a resolved answer it does not own is how a
-	 * screen comes to look configured when it has not been.
+	 * Summary string for a lane's Model row showing stored pattern or inherited level.
 	 */
 	#laneModelSummary(lane: SubagentLaneSettings, depth: number): string {
 		const chain = lane.model;
@@ -2079,13 +1934,7 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 	}
 
 	/**
-	 * The blanket effort, narrowed by the same scope helper the tab row uses, so
-	 * the two lists cannot offer different levels — and neither offers a level
-	 * nothing in scope declares.
-	 *
-	 * The catalog comes from `models`, not from the chain picker's context: that
-	 * context also needs a registry, and gating the ladder on it made the effort
-	 * list fall back to a vocabulary in a session whose models were right there.
+	 * Displays the thinking effort picker for `subagent.thinkingLevel`, scoped to the model catalog.
 	 */
 	#showEffortPicker(back: () => void): void {
 		this.clear();
@@ -2153,15 +2002,7 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 	}
 }
 
-/**
- * Submenu rows whose options are efforts, filled from the model in scope rather
- * than the schema.
- *
- * ONE owner, because two places read it: the row's option list and the sentence
- * that explains a one-row list. Those disagreeing is exactly how this screen came
- * to narrow correctly and then say nothing about why, so a row added here gets
- * both behaviours or neither.
- */
+/** Submenu paths whose options are thinking efforts resolved from model scope. */
 const EFFORT_SUBMENU_PATHS: Readonly<Record<string, true>> = { "subagent.thinkingLevel": true };
 
 /** Synthetic list id for the "add a model" row: not a settings key, and never a
@@ -2178,15 +2019,7 @@ const CHAIN_ADD_ROW = "\u0000chain-add-row";
 const CHAIN_CLEAR_ROW = "\u0000chain-clear-row";
 
 /**
- * The profile's Default Effort list: rows of model to effort, plus one "any
- * model" row that covers every model without its own.
- *
- * This is the ONE persisted effort surface. Effort used to be split across a
- * profile-wide `defaultThinkingLevel` enum and a `:level` suffix on each role's
- * selector, so two settings wrote one axis and neither said which won.
- * `config/effort-resolver.ts` owns the ordering; this owns the editing. Adding a
- * row reuses the same searchable model picker and the same effort list the role
- * slots use, so a third effort vocabulary cannot appear here.
+ * Submenu for configuring profile-wide default thinking effort per model and fallback.
  */
 class DefaultEffortSubmenu extends MouseRoutedSubmenu {
 	#selectList: SelectList | undefined;
@@ -2360,12 +2193,7 @@ class DefaultEffortSubmenu extends MouseRoutedSubmenu {
 }
 
 /**
- * Single-slot picker for the profile's DEFAULT model, the model each new
- * session starts on. Opens straight to the model picker because there is only
- * one slot, then persists a bare selector to the `default` model-role slot via
- * {@link Settings.setPersistedModelRole}. Default Effort is the one persisted
- * effort surface for the main model; this picker must not create a competing
- * suffix. Del clears the saved pin without rewriting a session override.
+ * Single-slot picker for the profile default model, persisted to `modelRoles.default`.
  */
 class DefaultModelSubmenu extends MouseRoutedSubmenu {
 	constructor(
@@ -2424,40 +2252,15 @@ class DefaultModelSubmenu extends MouseRoutedSubmenu {
 }
 
 /**
- * Where a chain the picker edits actually lives, when it is not a settings key.
- *
- * `subagent.model` and `compaction.model` are keys, and `settings.set` addresses
- * them directly. A per-agent lane is a field inside the `subagent.agents`
- * record, whose owner rebuilds and prunes the whole chain of lanes above it on
- * every write, so the picker hands the value over instead of storing it: two
- * writers for one record is how an empty lane comes to persist as `{}` and read
- * as configuration nobody entered.
+ * Target slot for {@link ModelChainSubmenu} to write an updated model pattern chain.
  */
 export interface ModelChainSlot {
 	write: (chain: string[] | undefined) => void;
 }
 
 /**
- * Ordered-chain picker for a model settings slot (`compaction.model`,
- * `subagent.model`).
- *
- * Both slots have always accepted a CHAIN rather than one model: the stored
- * value goes through {@link normalizeModelPatternList}, which splits on commas,
- * and each consumer tries the entries in order until one works (compaction skips
- * a candidate that is unauthenticated or whose window is too small; a subagent
- * retries on the next entry when its model errors). Only the picker was
- * single-slot, so the feature existed and was unreachable.
- *
- * The list is the chain, in order. Entry one is the choice; the rest are
- * fallbacks. Adding an entry runs the same two steps as before, pick a model
- * then pick a thinking effort, and the effort rides the stored selector as a
- * `:level` suffix (via {@link renderEffortStep}), which is the encoding the
- * compaction candidate resolver and the subagent spawner already parse back out.
- * Models with no supported efforts skip the second step and store the bare
- * selector.
- *
- * Persisted as a string array so the ordered choices survive YAML save/reload
- * without being reparsed from a display-oriented comma string.
+ * Submenu for editing ordered model fallback chains (`compaction.model`, `subagent.model`),
+ * supporting model selection, thinking effort suffixes, and reordering.
  */
 export class ModelChainSubmenu extends MouseRoutedSubmenu {
 	#selectList: SelectList | undefined;
@@ -2653,18 +2456,7 @@ export class ModelChainSubmenu extends MouseRoutedSubmenu {
 const DEPTH_ADD_ROW = "\u0000depth-add-row";
 
 /**
- * The `subagent.modelByDepth` map: one row per configured spawn depth, plus an
- * "Add depth…" row for the next unused one.
- *
- * Every row opens the SAME ordered-chain picker {@link ModelChainSubmenu} that
- * `subagent.model` uses, bound to that depth's dotted row path — a parallel
- * picker here is how the two chain editors would drift apart. The map itself
- * is read and cleared through `task/subagent-settings.ts`, the one owner of
- * the `subagent.*` area; this screen never restates the key.
- *
- * A row is only an entry in a map, so deleting one is Del on the list, and
- * clearing the last row removes the map itself (the unset state), done by
- * {@link clearSubagentModelByDepthRow} rather than here.
+ * Submenu for managing `subagent.modelByDepth` fallback chains per spawn depth.
  */
 class SubagentModelByDepthSubmenu extends MouseRoutedSubmenu {
 	#selectList: SelectList | undefined;
@@ -2900,21 +2692,9 @@ export interface SettingsCallbacks {
 	onPluginsChanged?: () => void | Promise<void>;
 	/** Called when settings panel is closed */
 	onCancel: () => void;
-	/**
-	 * Opens a URL in the operator's browser.
-	 *
-	 * Supplied by the host because a component has no business spawning a
-	 * process. Absent means the rollback row's changelog key does nothing rather
-	 * than crashing, which is the right degrade for a convenience affordance.
-	 */
+	/** Opens a URL in the operator's browser if supported by host. */
 	onOpenUrl?: (url: string) => void;
-	/**
-	 * Moves the install to another published version.
-	 *
-	 * The ROW IS ONLY OFFERED WHEN THIS IS SUPPLIED. A "Roll back version" row
-	 * that opened a picker and then could not install anything would be worse
-	 * than no row: it would look like the feature is there and broken.
-	 */
+	/** Switches the installation to a specified published version. */
 	onRollback?: (version: string) => Promise<void>;
 	/** Reports a failure that happens after the panel closes. */
 	onError?: (message: string) => void;
@@ -3276,11 +3056,7 @@ export class SettingsSelectorComponent implements Component {
 	}
 
 	/**
-	 * Route an SGR mouse report against the frame geometry of the last render.
-	 * Wheel scrolls the focused list, motion drives the hover highlights (tabs
-	 * and rows), and a left click activates: tabs switch (or jump, while
-	 * searching), a row click selects, and a click on the already-selected row
-	 * activates it (toggle / open submenu).
+	 * Routes SGR mouse input for scrolling, hovering, and tab/row activation.
 	 */
 	#handleMouse(data: string): boolean {
 		return routeSgrMouseInput(data, event => this.#routeMouseEvent(event));
@@ -3843,11 +3619,7 @@ export class SettingsSelectorComponent implements Component {
 	}
 
 	/**
-	 * Create a chooser submenu for a bare enum setting (one with no option
-	 * labels). Options are the enum's allowed values, labelled by their own text.
-	 * Selection reports through `done(value)` only — the list's onChange dispatch
-	 * (`#onSettingChange` / `#onSearchSettingChange`) owns the single persist for
-	 * enum values, so this submenu must not write the value a second time.
+	 * Creates a chooser submenu for enum settings without custom option labels.
 	 */
 	#createEnumSubmenu(
 		def: SettingDef & { type: "enum" },
@@ -3866,12 +3638,7 @@ export class SettingsSelectorComponent implements Component {
 	}
 
 	/**
-	 * The rows a submenu setting offers, including the ones only the runtime knows.
-	 *
-	 * ONE owner, because the picker and the row's own value label each used to
-	 * decide: a runtime-populated row (a theme, a personality) labelled its value
-	 * from an empty schema list and printed the raw stored string, while the picker
-	 * showed the real rows.
+	 * Resolves available option items for a submenu setting, including runtime sources.
 	 */
 	#submenuOptions(def: SettingDef & { type: "submenu" }): OptionList {
 		if (def.path === "theme.dark" || def.path === "theme.light") {
@@ -4163,11 +3930,7 @@ export class SettingsSelectorComponent implements Component {
 	}
 
 	/**
-	 * The roster opens with or without a model catalog: which lanes are offered and
-	 * how deeply they may spawn need none, and the model it SHOWS is a resolved
-	 * settings value. The catalog is passed when the host has one so the Model row
-	 * can open the same chain picker the tab row does; without it that row says so
-	 * instead of refusing the whole screen, which is what it used to do.
+	 * Creates the subagent agents editor container with available catalog and active model context.
 	 */
 	#createSubagentAgentsInput(done: (value?: string) => void): Container {
 		const active = this.context.model ? `${this.context.model.provider}/${this.context.model.id}` : undefined;
@@ -4219,14 +3982,7 @@ export class SettingsSelectorComponent implements Component {
 	}
 
 	/**
-	 * Row summary: how many rules are turned off, since that is the whole of what this
-	 * setting stores. It deliberately does NOT say how many rules exist — discovery is
-	 * async, and a synchronous "29 rules" printed on the settings row would be a guess.
-	 *
-	 * Opted-in experiments are counted separately rather than folded into "off",
-	 * because they are the one thing here the operator turned ON deliberately, and
-	 * a summary reading "all on" while an experiment sits enabled underneath it
-	 * would hide the only non-default state on the screen.
+	 * Formats the summary text for the rules setting row, indicating disabled and experimental rules.
 	 */
 	#formatRulesValue(): string {
 		const stored = settings.get("ttsr.disabledRules");
@@ -4466,16 +4222,8 @@ export class SettingsSelectorComponent implements Component {
 	}
 
 	/**
-	 * Map a definition list to UI items, dropping any whose condition is false.
-	 * Inserts a heading row whenever the (group-sorted) definition list crosses
-	 * into a new group; groups whose items are all condition-hidden emit none.
-	 *
-	 * `advanced` defs are pulled out of the normal group flow and rendered
-	 * after a single collapsible "▸ Advanced (N)" row appended at the end of
-	 * the tab: hidden while collapsed unless their value differs from default
-	 * (changed values always surface), shown in full once expanded. The count
-	 * in the heading always reflects every advanced def, not just the hidden
-	 * ones, so it doesn't shift as changed values get surfaced.
+	 * Maps setting definitions to UI items, filtering by condition, grouping by section,
+	 * and isolating advanced settings into a collapsible section.
 	 */
 	#buildItemsForDefs(defs: SettingDef[], tabId: SettingTab): SettingItem[] {
 		const items: SettingItem[] = [];

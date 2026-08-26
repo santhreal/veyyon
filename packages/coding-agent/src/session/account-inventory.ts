@@ -1,19 +1,6 @@
 /**
- * The account model every account surface reads: one row per stored CREDENTIAL, grouped by
- * provider, with the session's routing folded in.
- *
- * WHY THIS EXISTS AS ITS OWN MODULE. Three surfaces need the same answer and used to derive
- * their own: the account manager card, the inline `/account status` block, and the ACP text
- * form of the same command. Each of them asking `AuthStorage` directly is how the three
- * drifted before, with the provider list showing one row per PROVIDER while `/usage` showed
- * one per account. Building the model once, here, is what keeps them agreeing.
- *
- * WHAT IT DOES NOT DO. No network, no clock, no theme, no ANSI. `buildAccountInventory` is a
- * synchronous read of what is already on disk, so a card can paint immediately; the two
- * enrichment passes ({@link applyCredentialHealth}, {@link applyUsageReports}) fold in the
- * slow answers when they arrive. That split is what lets the manager render in one frame and
- * fill in health and usage without blocking, and it is what lets tests assert exact rows
- * against fixed inputs with no probes running.
+ * Unified account model read by all account surfaces: one row per credential grouped by provider.
+ * Synchronously reads stored state on disk; async health and usage passes enrich rows when available.
  */
 // The barrel would add the streaming engine and every transport for one constant, so the
 // disable-cause prefix comes from the module that declares it and the rest are types, erased.
@@ -33,11 +20,7 @@ import { formatDurationCoarse, formatProviderName } from "../slash-commands/help
 /** One usage window as an account row shows it. */
 export interface AccountUsageWindow {
 	/**
-	 * What the row calls this window, unique within the account.
-	 *
-	 * The provider's window label alone is NOT unique: Antigravity reports one daily counter per
-	 * backend and Codex reports a plan window beside a per-model one, so three limits arrive whose
-	 * `window.label` is the same word. See {@link usageWindowLabel} for how the qualifier is added.
+	 * Display label for this limit window, qualified to be unique within the account.
 	 */
 	label: string;
 	/** 0..1 consumed, or undefined when the provider reported no figure. */
@@ -72,61 +55,32 @@ export interface AccountRow {
 	/** Epoch ms this credential becomes usable again while rate-limit blocked. */
 	blockedUntilMs?: number;
 	/**
-	 * The plan this account is on ("Max 20x", "Pro"), when the provider says so.
-	 *
-	 * Reported by the usage probe as `limit.scope.tier`, so it is absent until usage lands and
-	 * absent for providers that do not tier their limits. It is never guessed from the quota
-	 * size: two accounts on different plans can show the same remaining fraction, and a
-	 * confidently wrong plan label is worse than none.
+	 * Subscription plan reported by the usage probe (`limit.scope.tier`), or undefined if unavailable.
 	 */
 	planTier?: string;
 	usage: AccountUsageWindow[];
 	/** True when this credential serves the session's next request for its provider. */
 	activeForSession: boolean;
 	/**
-	 * True when {@link activeForSession} is a prediction rather than an observation.
-	 *
-	 * No request has gone out on this session yet, or the one that had cannot serve another, so the
-	 * routing was answered by replaying the selection the next request would make. Surfaces say
-	 * `serves next` instead of `serving` for it: the account is right, but nothing has been spent
-	 * through it, and a provider that ranks accounts by remaining quota can still land elsewhere.
+	 * True when active status is predicted based on routing rules rather than observed request traffic.
 	 */
 	activeIsPrediction: boolean;
 	/**
-	 * True when this is the account the user chose for this provider.
-	 *
-	 * GLOBAL and durable, not session state: the choice is stored beside the credentials, so it
-	 * holds for every session and every profile on this machine until the user changes it. The
-	 * card says so, because a per-session choice that silently reverted on the next launch is
-	 * exactly what this replaced.
+	 * True when this credential is the globally persisted active choice for this provider.
 	 */
 	selectedForProvider: boolean;
 	/**
-	 * Epoch ms this credential's access token stops being accepted.
-	 *
-	 * OAuth only: an api key carries no expiry, and a row without this field is not "expired
-	 * unknown", it is a credential whose lifetime has no clock. Read straight off the stored
-	 * credential, never from a probe, so it is available in the first synchronous frame.
+	 * Expiry timestamp in epoch milliseconds for OAuth access tokens, read directly from storage.
 	 */
 	tokenExpiresAtMs?: number;
 	/**
-	 * True when a refresh token is stored, so {@link tokenExpiresAtMs} passing costs nothing.
-	 *
-	 * This is the difference between the two expiries a user can meet. A renewable token that
-	 * expired renews on the next request and needs no action at all; a token with no refresh
-	 * beside it is a login that has ended. Rendering both as "expired" is how a working account
-	 * gets signed in again for no reason, and how a dead one gets waited on.
+	 * True when a refresh token is present, allowing expired access tokens to renew automatically.
 	 */
 	renewable?: boolean;
 }
 
 /**
- * Compact tag for each leg of the credential cascade, as every account surface prints it.
- *
- * ONE owner, because the distinction it draws is load-bearing rather than cosmetic: an env var
- * that happens to alias a provider must never render like a deliberate login, or a user cannot
- * tell why unsetting a shell variable logged them out. It lives here, in the pure seam, so the
- * inline `/account status` renderer can use it without importing a TUI component.
+ * Compact origin labels for credential sources across all account surfaces.
  */
 export const CREDENTIAL_ORIGIN_LABELS: Record<CredentialOriginKind, string> = {
 	runtime: "--api-key",
@@ -151,17 +105,7 @@ export interface ProviderAccounts {
 	label: string;
 	rows: AccountRow[];
 	/**
-	 * Why this provider's most recent login was torn down, when a failed refresh did it.
-	 *
-	 * NOT a row: a disabled credential cannot be pinned, named or logged out, so putting it in the
-	 * account list would add an entry most keys do nothing to. It is a note about the provider.
-	 *
-	 * It is here because a disabled credential is invisible everywhere else. `listAuthCredentials`
-	 * filters disabled rows, so a provider whose only login died reads as one you never signed into,
-	 * and the user is told to log in without being told that the login they had was thrown away or
-	 * why. `AuthStorage.disabledCredentialCause` already narrows this to refresh failures, which are
-	 * the disables the user did not perform and has not been told about; a logout or a superseded
-	 * duplicate stays silent because they already know.
+	 * Reason why the provider's credential was automatically disabled (e.g. rejected refresh token).
 	 */
 	disabledCause?: string;
 }
@@ -185,14 +129,8 @@ export interface BuildAccountInventoryOptions {
 }
 
 /**
- * What to call an account, in the order a user recognises it.
- *
- * The chosen name wins because it is the only label the user authored. Everything after it
- * is the account identifying itself: the email is what a person recognises, the org
- * disambiguates two subscriptions that share one email, and the opaque ids are last because
- * they identify the account without describing it. The final fallback names the provider and
- * row so a label is never empty, which matters most for api-key rows that carry no identity
- * at all.
+ * Returns a display label for an account in precedence order:
+ * user-assigned name, email, organization, account ID, or provider fallback.
  */
 export function accountDisplayLabel(row: AccountRow): string {
 	if (row.name) return row.name;
@@ -205,13 +143,7 @@ export function accountDisplayLabel(row: AccountRow): string {
 }
 
 /**
- * The identity line under an account's label: everything that tells two accounts apart
- * which the label did not already say.
- *
- * Deliberately skips whatever `accountDisplayLabel` used, so a named account reads
- * "work / first@example.com" and an unnamed one does not read "first@example.com /
- * first@example.com". Two subscriptions on one email differ only by org, which is why the
- * org survives even when it was the label.
+ * Returns secondary identity details (email, org, account ID) omitting whatever was used in the primary label.
  */
 export function accountIdentityDetail(row: AccountRow): string[] {
 	const parts: string[] = [];
@@ -236,18 +168,8 @@ export function accountIdentityDetail(row: AccountRow): string[] {
 }
 
 /**
- * Read every stored credential into rows, with this session's routing applied.
- *
- * Synchronous and network-free by contract: callers paint from this immediately, and the card
- * re-builds through it on every probe that lands.
- *
- * REQUIRES A LOADED `AuthStorage`, which is why {@link loadAccountInventory} exists and is what
- * every entry point should call. `AuthStorage` keeps its credentials in an in-memory map that
- * only `reload()` fills, and `AuthStorage.create()` does NOT reload, so this function returns
- * ZERO rows against a freshly constructed instance whose database holds ten accounts. That is
- * not hypothetical: a live run against a real store reported "0 active credential rows" while
- * the health probe, which reads the store directly, found nine. An account manager that shows a
- * multi-account user no accounts is the worst failure this surface has, and it is silent.
+ * Synchronously constructs the account inventory from a loaded AuthStorage with session routing applied.
+ * Callers should use {@link loadAccountInventory} to ensure stored credentials are reloaded first.
  */
 export function buildAccountInventory(
 	authStorage: AuthStorage,
@@ -339,14 +261,7 @@ export function buildAccountInventory(
 }
 
 /**
- * What state one credential is in, on the one axis a user can act on.
- *
- * `valid` is the only state that needs nothing. The other four each have exactly one remedy, and
- * naming them apart is the whole point: a rate-limited account comes back on its own, a renewable
- * token that expired renews itself on the next request, a token with no refresh beside it needs a
- * login, and a refresh the provider rejected needs a login AND will keep failing until it gets
- * one. Collapsing any two of those into "expired" is how a healthy account gets re-authenticated
- * for nothing.
+ * Actionable lifecycle state for a credential (valid, expiring, expired, blocked, or refresh-failed).
  */
 export type AccountCredentialState = "valid" | "expiring" | "expired" | "blocked" | "refresh-failed";
 
@@ -364,28 +279,13 @@ export interface AccountCredentialStatus {
 }
 
 /**
- * How close to expiry a token has to be before the card says so, in ms.
- *
- * Wider than the 60s refresh skew `AuthStorage` uses on purpose. The skew is when the runtime
- * decides to renew; this is when a reader is told, and a warning that appears one minute before
- * it matters is one nobody sees. Five minutes is long enough to read the card and act, short
- * enough that a token with an hour left is not flagged.
+ * Threshold (5 minutes) before token expiration when a warning state is surfaced in the UI.
  */
 export const CREDENTIAL_EXPIRY_WARN_MS = 5 * 60_000;
 
 /**
- * The state one row is in, highest remedy first.
- *
- * PRECEDENCE, and why it is this order. A refresh the provider REJECTED outranks everything: the
- * credential is finished, and no clock running down changes that. A rate-limit block outranks
- * expiry because the row is unusable right now however fresh its token is. Only then does the
- * token's own clock matter, and a token whose expiry has passed is reported ahead of one merely
- * approaching it.
- *
- * A row whose health is `failed` for a reason that is NOT a refresh failure stays `valid` here.
- * Its glyph and its verbatim reason already say a probe failed, and a probe failure is not a
- * statement about the credential's lifetime: an outage would otherwise read as an expired login.
- * `unverifiable` says the same thing more weakly and is likewise not a credential state.
+ * Evaluates actionable credential status in priority order:
+ * rejected refresh, rate-limit block, expired token, and expiring token.
  */
 export function accountCredentialStatus(row: AccountRow, nowMs: number): AccountCredentialStatus {
 	const renewable = row.renewable === true;
@@ -405,18 +305,8 @@ export function accountCredentialStatus(row: AccountRow, nowMs: number): Account
 }
 
 /**
- * The one sentence both account surfaces print about a credential's lifetime, or nothing.
- *
- * ONE OWNER because the card and the inline `/account status` block used to derive every row fact
- * separately, and that is what let them disagree. The remedy is deliberately NOT in it: the card
- * offers `press a`, the inline block offers `/providers`, and a shared sentence naming the wrong
- * one is worse than two sentences agreeing on the fact.
- *
- * SILENT for every state a user cannot act on, which is most of them. A renewable token renews
- * itself, so its expiry is bookkeeping and printing it would put a warning under a working
- * account; a rate-limit block and a rejected refresh already have their own line on both
- * surfaces. What is left is the case with no other voice: a token running out with no refresh
- * token stored, which ends the login when it lands.
+ * Returns a user-facing notice for non-renewable expiring/expired credentials,
+ * remaining silent for auto-renewing or already-reported error states.
  */
 export function credentialStateNote(row: AccountRow, nowMs: number): string | undefined {
 	const status = accountCredentialStatus(row, nowMs);
@@ -430,12 +320,7 @@ export function credentialStateNote(row: AccountRow, nowMs: number): string | un
 }
 
 /**
- * Load the credential store, then read it into rows. The entry point every surface uses.
- *
- * One `reload()` in one place, rather than a precondition each caller has to remember. It also
- * buys a second thing worth having: a login completed in another process, or by `veyyon
- * auth-broker login` in a shell, is on disk but not in this process's map, so opening the manager
- * picks it up instead of showing a stale account list.
+ * Reloads the AuthStorage from disk and builds the account inventory, picking up external logins.
  */
 export async function loadAccountInventory(
 	authStorage: AuthStorage,
@@ -446,12 +331,7 @@ export async function loadAccountInventory(
 }
 
 /**
- * Fold probe results into an inventory, matching by credential row id.
- *
- * Matched by id and nothing else: a probe result carries an email and an account id, and
- * matching on those would attribute one account's failure to another whenever two rows share
- * an email, which is exactly the Anthropic two-subscription case. The id is the only
- * identifier that is unique per row.
+ * Folds asynchronous credential health probe results into inventory rows, matching strictly by credential ID.
  */
 export function applyCredentialHealth(
 	inventory: AccountInventory,
@@ -484,14 +364,7 @@ export function applyCredentialHealth(
 }
 
 /**
- * What tells two limits of one account apart, beyond the window they share.
- *
- * Providers put this in three different places and none of them is `window.label`:
- * Antigravity names the backend counter in the limit label (`Usage (Google)`), Codex names the
- * model tier the same way (`7 days (Spark)`), Claude names the model family (`Claude 7 Day
- * (Opus)`), and GitHub Copilot gives three limits one reset window and distinguishes them only by
- * the limit label (`Premium Requests`). A trailing parenthetical is the qualifier when there is
- * one; otherwise the limit's own label is, unless it merely restates the window.
+ * Extracts a distinguishing qualifier (e.g. model tier, parenthetical backend) from a usage limit label.
  */
 function usageWindowQualifier(limit: UsageLimit, windowLabel: string): string | undefined {
 	const own = limit.label.trim();
@@ -504,14 +377,7 @@ function usageWindowQualifier(limit: UsageLimit, windowLabel: string): string | 
 }
 
 /**
- * The label one usage bar wears.
- *
- * WHY THIS IS NOT `limit.window.label`. It used to be, and that is the whole single-window bug:
- * an Antigravity account reports three daily counters and rendered three bars all reading
- * `Daily`, a Codex account reports its plan window and a Spark window and rendered `7 days`
- * twice. Bars that cannot be told apart read as one window repeated, which is exactly what was
- * reported — "usage shows one window when the account has more". The window still leads the
- * label, because that is what a user scans for; the qualifier follows it.
+ * Formats the display label for a usage bar, combining the window duration with its qualifier.
  */
 function usageWindowLabel(limit: UsageLimit): string {
 	const windowLabel = limit.window?.label?.trim() || limit.scope.windowId?.trim();
@@ -534,17 +400,7 @@ function usageWindowsFor(limits: readonly UsageLimit[]): AccountUsageWindow[] {
 }
 
 /**
- * Every window of one account, each shown once, shortest window first.
- *
- * ORDERING is by the window's own length, not by the order the provider listed its limits in:
- * `5 Hour` before `7 Day`, `Daily` before `Weekly`. Antigravity sorts its limits by remaining
- * fraction and Claude emits the umbrella windows before the model-scoped ones, so provider order
- * puts a weekly bar above an hourly one for no reason the reader can see. A window whose length
- * the provider never stated sorts last, because there is nothing to place it against.
- *
- * DEDUPING is by label, keeping the freshest reading. Two reports for the same account reach here
- * routinely — the header-ingested snapshot and the endpoint fetch are separate cache rows — and
- * without this the card showed `5 Hour, 7 Day, 5 Hour, 7 Day`.
+ * Deduplicates usage windows by label (keeping freshest) and sorts them shortest duration first.
  */
 function orderUsageWindows(
 	windows: readonly { window: AccountUsageWindow; fetchedAt: number }[],
@@ -568,21 +424,8 @@ function orderUsageWindows(
 }
 
 /**
- * Fold usage reports into an inventory.
- *
- * Attribution reuses `limitMatchesActiveAccount`, the same predicate `/usage` uses, rather
- * than a second rule: it is the one place that knows an org gates an email match, so two
- * Anthropic subscriptions sharing a login do not both claim each other's limits. Only the
- * limit COLUMNS that match a row are attached to it, because one report can carry limits for
- * several accounts at once.
- *
- * EXCEPT when the provider holds exactly one credential, where identity matching is skipped
- * entirely. Matching exists to arbitrate between siblings, and a provider with no sibling has
- * nothing to arbitrate: the usage fan-out builds one request per stored credential, so a report
- * for a single-credential provider can only be that credential's. Requiring a match there is how
- * an account whose stored credential carries no email or account id (Cursor, Kimi and xAI store
- * none) showed no usage at all, and how an Anthropic row carrying an `orgId` the report's
- * metadata omits lost every window it had.
+ * Folds usage reports into inventory rows using account attribution matching,
+ * attaching usage unconditionally when a provider has only a single credential.
  */
 export function applyUsageReports(inventory: AccountInventory, reports: readonly UsageReport[]): AccountInventory {
 	const providers = inventory.providers.map(entry => {
@@ -633,19 +476,7 @@ export function accountsForProvider(inventory: AccountInventory, provider: strin
 }
 
 /**
- * Every provider actively routed for a session, which is what `/account` reports.
- *
- * A provider with credentials the session has never used is NOT in use: several providers
- * serve one session at once (main model, subagent roles, web search), so the honest answer
- * to "which account am I on" is one row per provider that has actually routed, not a list of
- * everything configured.
- *
- * `selectedForProvider` is deliberately NOT consulted. The choice an operator makes on the
- * account card is persisted for good and shared by every profile on the machine, so reading it
- * here would report a provider chosen months ago in another session as one this session is
- * spending, and would hand `/account refresh` and `/account name` an account the operator never
- * routed. A standing choice is a prediction about the NEXT request; `selectedButRotated` is where
- * it earns a mention, and only once something else is actually serving.
+ * Returns accounts for providers that have actively routed requests in the current session.
  */
 export function activeSessionAccounts(inventory: AccountInventory): AccountRow[] {
 	const active: AccountRow[] = [];
@@ -658,11 +489,7 @@ export function activeSessionAccounts(inventory: AccountInventory): AccountRow[]
 }
 
 /**
- * The account a user chose for a provider whose traffic has since moved elsewhere.
- *
- * Returns the chosen row only when a DIFFERENT row is serving, which is the condition worth
- * reporting: the account changed without the user asking. Both rows are returned so the
- * caller can name what it swapped to.
+ * Returns the user-selected account when a different account is currently serving traffic for the provider.
  */
 export function selectedButRotated(
 	inventory: AccountInventory,

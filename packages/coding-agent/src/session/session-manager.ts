@@ -86,14 +86,8 @@ import { type SessionTitleUpdate, serializeTitleSlot } from "./session-title-slo
 const DRAFT_ONLY_SESSION_MARKER = ".draft-only-session";
 
 /**
- * How much text a session rewrite hands the filesystem at a time. Big enough
- * that a whole-file write is a handful of syscalls rather than one per line,
- * small enough that the transient copy is bounded no matter how large the
- * transcript is, and that the async writer yields to the loop while it works.
- *
- * Counted in characters, which is what a JS string charges for; a chunk of
- * multibyte text reaches the filesystem as a few times this many bytes, and
- * bounded is bounded either way.
+ * Target chunk size in characters for session rewrites, balancing syscall count
+ * against bounded transient memory and event loop yielding.
  */
 const CHUNK_TARGET_CHARS = 1 << 20;
 
@@ -114,13 +108,8 @@ function artifactsDirectoryFor(sessionFile: string | undefined): string | null {
 }
 
 /**
- * Resolve a breadcrumb's recorded session file to its interactive root. Subagent
- * (and other artifact) sessions live inside a parent session's artifacts dir —
- * `<parent>.jsonl` strips its suffix to `<parent>/`, and a child writes
- * `<parent>/<agentId>.jsonl`. A breadcrumb that points at such a child — a
- * pre-fix poisoned crumb left by a subagent that opened in the parent's TTY, or
- * any nested artifact — must resolve back up to the top-level session so
- * `--continue` resumes the real conversation instead of a subagent transcript.
+ * Resolves a breadcrumb's recorded session file to its interactive root so
+ * `--continue` resumes the top-level conversation instead of a nested subagent transcript.
  */
 function resolveBreadcrumbToInteractiveRoot(sessionFile: string): string {
 	let current = path.resolve(sessionFile);
@@ -204,18 +193,8 @@ function isDraftOnlyMetadataEntry(entry: SessionEntry): boolean {
 }
 
 /**
- * Whether this journal holds nothing worth resuming, so the file it materialized
- * for a draft may be dropped once the draft is gone.
- *
- * A GOAL IS NOT SELECTOR STATE, which is why this is a question about the list
- * and not about one entry. The `mode_change` that records a goal carries the
- * objective text, and it is the whole record of the goal: dropping the file
- * dropped the objective, so a goal set before the first turn — the ordinary way
- * one is set — came back unset with nothing saying why. A goal the operator
- * dropped leaves `mode_change("none")` behind it and is selector state again, so
- * the test is whether the LAST mode change still holds one. Plan mode keeps the
- * old ruling either way: its entry can be written by a startup default nobody
- * chose.
+ * Returns whether this journal holds nothing worth resuming, allowing draft files to be dropped.
+ * Checks the last mode change because live goals carry objective text and must not be discarded.
  */
 function holdsOnlyDraftMetadata(entries: readonly SessionEntry[]): boolean {
 	let goalIsLive = false;
@@ -455,17 +434,8 @@ function nextSessionSequence(entries: readonly SessionEntry[]): number {
 }
 
 /**
- * Stores and navigates an append-only conversation journal.
- *
- * A session is a JSONL file: one header line followed by entries. Entries form a
- * tree by `(id, parentId)`, and the mutable leaf pointer selects which path is
- * active for future appends and for LLM context construction.
- *
- * Durability is software-crash safe but not power-loss safe: appends are handed
- * to the OS synchronously in-body (so an entry survives an OOM/SIGKILL the
- * instant `appendMessage` returns) but never `fsync`'d. Full-file rewrites go
- * through the storage layer's atomic temp-write+rename so a crash mid-rewrite
- * cannot truncate the prior good file.
+ * Stores and navigates an append-only conversation journal as a tree of JSONL entries.
+ * Provides software-crash durable synchronous appends and atomic full-file rewrites.
  */
 export class SessionManager {
 	#cwd: string;
@@ -478,11 +448,8 @@ export class SessionManager {
 
 	#sessionId = "";
 	/**
-	 * Notified whenever the session id changes, which is every `/new`, `/resume`,
-	 * fork, and branch. Per-session machinery registered against an id at
-	 * construction (the CPU budget group) is orphaned by that change otherwise:
-	 * it keeps enforcing under a name nothing resolves any more, and the
-	 * conversation the operator is now in has no limiter at all.
+	 * Notified whenever the session id changes (/new, /resume, fork, branch) so
+	 * per-session machinery registered against the previous id is updated.
 	 */
 	readonly #sessionIdListeners = new Set<(sessionId: string) => void>();
 	#sessionName: string | undefined;
@@ -538,32 +505,15 @@ export class SessionManager {
 	#lastBodyBytes = 0;
 	/**
 	 * Epoch of the in-flight atomic rewrite, or `null` when no rewrite is running.
-	 * The fence in {@link #appendToSessionFile} only applies while this matches
-	 * `#diskEpoch`: once a synchronous rewrite (`flushSync` → `#rewriteSynchronously`)
-	 * bumps the epoch, the pending atomic publish is guaranteed to abandon via
-	 * its `commitGuard`, and appends can safely take the hot path against the
-	 * freshly-published file.
+	 * Fences appends until the matching epoch finishes or is superseded by a synchronous rewrite.
 	 */
 	#atomicRewriteFenceEpoch: number | null = null;
 	/** Set by synchronous appends that land while an atomic replacement is active. */
 	#atomicRewriteDirty = false;
 
 	/**
-	 * Every entry id this manager has ever held for the CURRENT session file:
-	 * what it loaded, plus everything it appended since.
-	 *
-	 * A full-file publish writes only the entries this manager holds, so a line
-	 * some OTHER process appended after we read the file is deleted by our next
-	 * rewrite. Two terminals on one session (`--continue` twice, or `/resume` on
-	 * a session another instance still has open) is enough: the second process
-	 * compacts, drops images, or dedupes, and the first process's turns are gone
-	 * from disk and from every later reader. Nothing surfaces it, because the
-	 * process that lost the work is not the process that wrote the file.
-	 *
-	 * So a line is foreign only when its id was never ours. An entry we loaded and
-	 * then deliberately dropped (incarnation telemetry, a branch compacted to its
-	 * path) stays in this set, which is what stops the merge below from
-	 * resurrecting it.
+	 * Tracks all entry IDs held for the current session file to distinguish our own entries
+	 * from foreign lines appended by concurrent processes during full-file rewrites.
 	 */
 	#idsEverSeen = new Set<string>();
 	/**
@@ -575,18 +525,8 @@ export class SessionManager {
 	/** One warning per file: a foreign writer stays foreign for the whole session. */
 	#reportedForeignWriter = false;
 	/**
-	 * What this manager believes is at {@link #sessionFile}: the object the path
-	 * named when it last published (`identity`, where the backend reports one) and
-	 * how many bytes it has written to it. `null` means it has published nothing
-	 * yet and cannot tell.
-	 *
-	 * An append goes through a writer HANDLE, and a full-file publish by anyone is
-	 * a temp write plus a rename, so a second window's publish leaves this
-	 * window's handle pointing at an unlinked inode. Appends through it then
-	 * report success, are visible to nothing, and disappear when the last handle
-	 * closes. Comparing this against a `statSync` is what makes that detectable
-	 * without reading the file: a different inode means someone republished the
-	 * path, whether or not the body they wrote is the same length as ours.
+	 * Published file identity and byte length at {@link #sessionFile} to detect if another process
+	 * replaced the file under our open write handle.
 	 */
 	#publishedFileState: { size: number; identity?: string } | null = null;
 
@@ -601,17 +541,8 @@ export class SessionManager {
 	#cwdChangedCallbacks = new Set<(previous: string, next: string) => void>();
 
 	/**
-	 * True when the caller passed an explicit `sessionDir` rather than letting one
-	 * be derived. {@link moveTo} honours a pinned directory instead of relocating
-	 * storage on a cwd change.
-	 *
-	 * This is recorded rather than inferred. `moveTo` used to guess at the same
-	 * question by checking whether the directory's basename was the encoded form
-	 * of the cwd, which cannot tell "the caller pinned this path" apart from "this
-	 * session was opened from a file that happens to live somewhere arbitrary".
-	 * The two want opposite things, and the guess silently gave the first one the
-	 * second one's answer: a pinned directory was abandoned for the global
-	 * sessions root.
+	 * True when `sessionDir` was explicitly passed so {@link moveTo} keeps storage pinned
+	 * rather than relocating on cwd changes.
 	 */
 	#sessionDirPinned: boolean;
 
@@ -649,23 +580,8 @@ export class SessionManager {
 	}
 
 	/**
-	 * Give a latched persistence fault one attempt to heal, and say whether there
-	 * was one to heal.
-	 *
-	 * A failed write latches `#diskFailure`, and every later persist refused on the
-	 * strength of that latch: the next append threw the OLD error at a caller doing
-	 * nothing wrong, the disk chain refused to run the work, and `close()` rethrew
-	 * instead of publishing. A fault is a moment, not a property of the session. A
-	 * disk that fills and is emptied, a network mount that blips, a directory whose
-	 * permissions are fixed while the session is open: after any of those the
-	 * conversation is still whole in memory and cannot reach the file again, so
-	 * every turn from the fault onwards is lost with a healthy disk underneath it.
-	 *
-	 * The attempt needs no schedule and no backoff, because a full-file publish is
-	 * self-sufficient: it writes every entry this manager holds, so ONE successful
-	 * rewrite makes the file whole again however many appends were refused before
-	 * it. It costs one serialization of the transcript, entries arrive at the pace
-	 * of a conversation, and a fault that is still there simply latches again.
+	 * Attempts to heal a latched persistence fault on the next write since a single full-file
+	 * publish can restore the complete journal once transient disk issues clear.
 	 */
 	#retryPersistenceAfterFailure(): boolean {
 		if (!this.#diskFailure) return false;
@@ -788,19 +704,8 @@ export class SessionManager {
 	}
 
 	/**
-	 * The whole file as this manager would publish it: the title slot, the header,
-	 * our entries, and finally any line another writer appended (see
-	 * {@link #idsEverSeen}). The foreign tail goes last because its entries hang
-	 * off ids we already emitted, so parents still precede children.
-	 *
-	 * A factory over chunks rather than one string, because the joined body is a
-	 * second copy of the entire transcript on top of the lines it is made of: a
-	 * 253MiB session rewrote at a peak of 684MiB above baseline and held the loop
-	 * for 554ms in one stretch. Each pass records its own byte total in
-	 * {@link #lastBodyBytes}, so `#notePublishedFile` costs no second
-	 * serialization, and the total resets per pass so a body written twice (the
-	 * EPERM fallback re-writes it at the target path) still reports one file's
-	 * size. Read it only after the write returns.
+	 * Returns a chunk factory for the full session file (title slot, header, entries, and foreign tail)
+	 * to stream publishes without duplicating large transcripts in memory.
 	 */
 	#fileBody(): SessionFileBody {
 		return () => this.#fileChunks();
@@ -836,13 +741,8 @@ export class SessionManager {
 	}
 
 	/**
-	 * Start foreign tracking over for the file this manager now owns: another
-	 * file's foreign tail is not ours to publish, and everything we hold at this
-	 * moment is ours in the new file.
-	 *
-	 * The reseed is what keeps a fork or a branch from duplicating its own
-	 * history: those paths carry the source entries into a fresh file, and an id
-	 * that is not marked ours reads back as foreign on the next publish.
+	 * Resets foreign entry tracking when switching to a new session file so previous entries
+	 * are treated as native and not duplicated as foreign lines.
 	 */
 	#forgetForeignWriter(): void {
 		this.#idsEverSeen.clear();
@@ -856,14 +756,8 @@ export class SessionManager {
 	}
 
 	/**
-	 * True when what is at {@link #sessionFile} is exactly what this manager put
-	 * there: same object, same length. Nothing else has written to it, so a
-	 * read-back can only report the lines we already know about.
-	 *
-	 * Both halves are required. Equal length alone does not rule out a same-size
-	 * replacement, and matching identity alone does not rule out an append, so an
-	 * unknown identity (a backend that reports none) answers `false` and pays for
-	 * the read.
+	 * Checks whether {@link #sessionFile} matches our last published identity and size,
+	 * skipping expensive foreign line re-reads when unchanged.
 	 */
 	#fileIsExactlyAsPublished(): boolean {
 		const expected = this.#publishedFileState;
@@ -879,18 +773,8 @@ export class SessionManager {
 	}
 
 	/**
-	 * Re-read the session file and record any line this manager never wrote, so
-	 * the publish that follows carries it instead of deleting it.
-	 *
-	 * A read failure leaves the previous knowledge in place rather than blocking
-	 * the publish: losing the elision a rewrite was asked for is worse than
-	 * carrying a slightly stale foreign tail, and an unreadable file is reported
-	 * by the read paths already.
-	 *
-	 * The read is skipped when the file is still byte-for-byte the one we
-	 * published, which is the ordinary case: a second writer is rare, and reading
-	 * a large transcript back to learn nothing is the single most expensive step
-	 * of a rewrite (246ms and 322MiB of a 253MiB session's 778ms and 1056MiB).
+	 * Re-reads the session file to preserve lines appended by concurrent writers across rewrites,
+	 * skipping the read when the file state matches our last publish.
 	 */
 	async #refreshForeignLines(): Promise<void> {
 		if (!this.#persist || !this.#sessionFile) return;
@@ -906,15 +790,8 @@ export class SessionManager {
 	}
 
 	/**
-	 * The same refresh for the synchronous publish, which is the one that runs on
-	 * the way out (`flushSync`, exit) and as the fallback when an append finds the
-	 * file not current.
-	 *
-	 * The loss is at its worst here precisely because the process is leaving: no
-	 * later atomic publish will carry back a line this one deletes. A backend that
-	 * can read without yielding says so by implementing `readTextSync`; one that
-	 * cannot leaves the previous knowledge in place, which is all this path could
-	 * ever do.
+	 * Synchronous foreign line refresh for exit and `flushSync` paths to preserve concurrent
+	 * appends without yielding to the event loop.
 	 */
 	#refreshForeignLinesSync(): void {
 		if (!this.#persist || !this.#sessionFile) return;
@@ -930,14 +807,8 @@ export class SessionManager {
 	}
 
 	/**
-	 * Record which of a file's lines were never ours, and tell the operator once
-	 * that something else is writing the file.
-	 *
-	 * `split("\n")` and not an index walk over the text. The walk looks like the
-	 * cheaper shape and measures worse: on a 253MiB transcript it costs 482MiB of
-	 * peak RSS against 325MiB for the split, because JSC hands out substrings that
-	 * share the parent buffer while `indexOf`/`slice` over a string that size
-	 * materializes copies.
+	 * Identifies lines never written by this manager and alerts the operator when foreign
+	 * concurrent writers are detected.
 	 */
 	#adoptForeignLines(text: string): void {
 		const foreign: string[] = [];
@@ -977,16 +848,8 @@ export class SessionManager {
 	}
 
 	/**
-	 * Synchronously rewrite the whole file (header + entries) and keep no open
-	 * writer; the next append re-opens one. `writeTextSync` returns with the
-	 * bytes in the kernel page cache, so the file is software-crash durable.
-	 *
-	 * This path runs on exit and on the `flushSync` fallback, so it re-reads the
-	 * file first through {@link #refreshForeignLinesSync}: a second writer's tail
-	 * deleted here is deleted for good, since the process is on its way out and no
-	 * later atomic publish will carry it back. A backend that cannot read without
-	 * yielding carries only the foreign lines the last atomic publish learned
-	 * about, which is all a synchronous path can do there.
+	 * Synchronously rewrites the whole session file and closes the writer, refreshing foreign lines
+	 * first for crash-durable exit and `flushSync` execution.
 	 */
 	#rewriteSynchronously(): void {
 		if (!this.#persist || !this.#sessionFile || !this.#shouldHaveSessionFile()) return;
@@ -1011,14 +874,8 @@ export class SessionManager {
 	}
 
 	/**
-	 * Rewrite the whole file atomically (temp-write + rename, EPERM-safe) on the
-	 * disk chain. The body is serialized after the writer is closed. The fence
-	 * is enabled BEFORE `#closeWriterHandle()` and stays active until the last
-	 * atomic publish returns, so a sync append landing in the close-yield window
-	 * cannot open a fresh writer that the pending replacement would then detach
-	 * from the current JSONL path. A `commitGuard` also prevents a superseding
-	 * synchronous rewrite from being overwritten by the stale body serialized
-	 * before it ran.
+	 * Rewrites the session file atomically via temp-write and rename on the disk chain,
+	 * using fences and commit guards to prevent writer detachment or stale overwrite races.
 	 */
 	async #rewriteAtomically(): Promise<void> {
 		if (!this.#persist || !this.#sessionFile) return;
@@ -1039,13 +896,8 @@ export class SessionManager {
 	}
 
 	/**
-	 * Shared fenced atomic-rewrite loop used by `#rewriteAtomically` and the
-	 * `#persistTitleChangeEntry` fallback. Holds `#atomicRewriteActive` across
-	 * the writer close and the full-file replace, and loops on
-	 * `#atomicRewriteDirty` so any fenced append that lands during the rewrite
-	 * is captured before the task resolves. Returns `false` when the disk epoch
-	 * moved (a superseding synchronous rewrite has taken over) so callers skip
-	 * their post-publish state updates.
+	 * Shared fenced atomic rewrite loop that captures concurrent appends landing during
+	 * writer close/replace, returning false if superseded by a synchronous rewrite.
 	 */
 	async #runFencedAtomicRewrite(epoch: number): Promise<boolean> {
 		this.#atomicRewriteFenceEpoch = epoch;
@@ -1154,17 +1006,8 @@ export class SessionManager {
 	}
 
 	/**
-	 * True when the bytes at the session path are not the bytes this manager
-	 * wrote, which means someone else published a whole file over it (or removed
-	 * it) and the append handle no longer addresses it.
-	 *
-	 * Identity is the real test where the backend reports one: a full-file publish
-	 * renames a temp file over the path, so the inode changes even when the body
-	 * is byte-identical to ours, which is the ordinary case (the other window
-	 * republished the same history it loaded from us). Size is the fallback for a
-	 * backend that addresses by path and therefore cannot strand a handle at all;
-	 * there it only catches another writer's growth, and reading as replaced
-	 * costs one merging rewrite.
+	 * Checks whether the session file was replaced or removed under our open write handle,
+	 * using file identity (or size as fallback) to detect stranded handles.
 	 */
 	#fileReplacedUnderWriter(): boolean {
 		const expected = this.#publishedFileState;
@@ -1857,13 +1700,7 @@ export class SessionManager {
 	}
 
 	/**
-	 * True when the session file holds a line this manager never wrote.
-	 *
-	 * The question every full-file operation has to ask before it destroys what is
-	 * there, and a delete is the widest of those. It re-reads, so the answer is
-	 * about the bytes on disk now rather than about the last publish, and the
-	 * re-read is what tells the operator once that a second session is writing this
-	 * file.
+	 * Returns true if the session file on disk contains entries not written by this manager.
 	 */
 	async holdsForeignEntries(): Promise<boolean> {
 		await this.#refreshForeignLines();
@@ -1942,29 +1779,14 @@ export class SessionManager {
 	}
 
 	/**
-	 * The session's working directory, ALWAYS as an absolute path.
-	 *
-	 * The constructor resolves its seed, but nothing kept the field resolved after that, and every
-	 * caller in the process reads the cwd through here: the two `ToolSession.cwd` getters in `sdk.ts`
-	 * return this directly, so a relative value reached every tool at once. It surfaced as `set_cwd`
-	 * answering `Session cwd is now . (previously .)` on a successful re-root, which tells the model
-	 * nothing and reads as a failure, and it is the harmless-looking half of a worse one: a relative
-	 * cwd makes `resolveToCwd(target, session.cwd)` rebase silently on `process.cwd()`, so the tools
-	 * and the session disagree about where the session is the moment those two differ.
-	 *
-	 * Resolved on the way OUT as well as on the way in, so no assignment anywhere in this class can
-	 * reintroduce it. `path.resolve` on an already-absolute path is a normalization, not a change.
+	 * Returns the session's working directory, always resolved to an absolute path.
 	 */
 	getCwd(): string {
 		return path.resolve(this.#cwd);
 	}
 
 	/**
-	 * Attach the operator-visible channel used by later session loads.
-	 *
-	 * Hosts that supply an already-constructed manager call this once their
-	 * shared UI channel exists. Repeating the attachment is harmless and simply
-	 * makes the most recent host channel authoritative.
+	 * Attaches the operator-visible notification channel for session load notices.
 	 */
 	setOperatorNotices(operatorNotices?: OperatorNotices): void {
 		this.#operatorNotices = operatorNotices;
@@ -1992,11 +1814,7 @@ export class SessionManager {
 	}
 
 	/**
-	 * Re-root this session's working directory in place.
-	 *
-	 * Unlike {@link moveTo}, this does NOT relocate session storage or artifacts —
-	 * only the live session cwd (and header) change. Profile settings are never
-	 * written. Validation (exists + isDirectory) is on by default.
+	 * Re-roots this session's working directory in place without relocating session storage.
 	 */
 	async setCwd(newCwd: string, options?: { validate?: boolean }): Promise<string> {
 		// ONE cwd authority. A relative target resolves against THIS session's cwd,
@@ -2420,12 +2238,7 @@ export class SessionManager {
 	}
 
 	/**
-	 * Append a custom message entry (for extensions) that participates in LLM context.
-	 * @param customType Hook identifier for filtering on reload
-	 * @param content Message content (string or TextContent/ImageContent array)
-	 * @param display Whether to show in TUI (true = styled display, false = hidden)
-	 * @param details Optional extension-specific metadata (not sent to LLM)
-	 * @param attribution Who initiated this message for billing/attribution semantics
+	 * Appends a custom message entry for extensions that participates in LLM context.
 	 */
 	appendCustomMessageEntry<T = unknown>(
 		customType: string | undefined,
@@ -2758,13 +2571,7 @@ export class SessionManager {
 	 * @param sessionDir Optional session directory; defaults to the cwd-derived dir.
 	 */
 	/**
-	 * Start a fresh session at `cwd`.
-	 *
-	 * `sessionDir` pins where this session's files live. It is honoured for the
-	 * life of the session: {@link moveTo} re-derives a cwd-encoded directory only
-	 * when the current one sits inside a sessions root, so a pinned directory
-	 * stays pinned across a cwd change rather than being redirected to the global
-	 * sessions root.
+	 * Starts a fresh session at `cwd`, optionally pinning the session storage directory.
 	 */
 	static create(
 		cwd: string,
@@ -2810,13 +2617,7 @@ export class SessionManager {
 	}
 
 	/**
-	 * Fork a session into the current project directory: copy history from another
-	 * session file while creating a fresh session file in this sessionDir.
-	 *
-	 * `options.sessionFile` pins the new session's file path (default: an
-	 * auto-named `<timestamp>_<id>.jsonl` in `sessionDir`). Callers that register
-	 * the fork as a named agent (e.g. `/tan`) pass `<agentId>.jsonl` so the
-	 * persisted-subagent scan keys the agent by the same id the live ref uses.
+	 * Forks a session into the target directory, copying history into a new session file.
 	 */
 	static async forkFrom(
 		sourcePath: string,
@@ -2924,14 +2725,8 @@ export class SessionManager {
 	}
 
 	/**
-	 * Lock-free peek for cold subagent revival: returns the recorded working
-	 * directory (session header) and the latest `session_init` contract (system
-	 * prompt / tools / output schema) WITHOUT taking the single-writer lock that
-	 * {@link open} acquires — the caller re-opens for the actual revive. Returns
-	 * null when the file can't be read, and reports it first unless the file is
-	 * simply absent, so an unreadable session is not silently a missing one;
-	 * `init` is null for files written before `session_init` was recorded (no
-	 * faithful contract to rebuild from).
+	 * Lock-free peek for cold subagent revival, returning the session header cwd
+	 * and latest `session_init` contract without acquiring the single-writer lock.
 	 */
 	static async peekSessionInit(
 		filePath: string,

@@ -131,14 +131,8 @@ export type { YieldItem } from "./types";
 const MCP_CALL_TIMEOUT_MS = 60_000;
 
 /**
- * Soft per-agent request budgets (assistant requests per run). Crossing the
- * budget injects a wrap-up steering notice (`task.softRequestBudgetNotice`,
- * on by default). At 1.5x the budget the free-running turn is stopped and the
- * agent is driven to one forced final `yield` so partial findings come back
- * as a real report; only if it still refuses to yield within
- * {@link BUDGET_STOP_GRACE_REQUESTS} more requests is the run hard-aborted.
- * The `default` key applies to agents without an explicit entry and can be
- * overridden via the `task.softRequestBudget` setting (0 disables the guard).
+ * Soft per-agent request budgets. Crossing the budget injects a wrap-up steering
+ * notice, and at 1.5x the turn is stopped to force a final yield before hard abort.
  */
 export const SOFT_REQUEST_BUDGET: Record<string, number> = {
 	scout: 100,
@@ -160,22 +154,8 @@ function formatSalvageSnippet(text: string, maxLength = 500): string {
 }
 
 /**
- * The thinking effort a dispatched subagent runs at, by precedence:
- *
- * 1. an explicit `:level` suffix on the resolved model pattern (e.g.
- *    `subagent.model = "anthropic/claude-sonnet-4-5:high"`) always wins;
- * 2. otherwise `configuredThinkingLevel`, the level the CALLER already resolved;
- * 3. otherwise the level derived from the pattern match itself.
- *
- * `explicitThinkingLevel` is set by the model resolver when it stripped a
- * concrete `:level` suffix off the pattern; in that case `resolvedThinkingLevel`
- * carries that level and it is authoritative, so the caller's level is ignored.
- *
- * `configuredThinkingLevel` is NOT the agent definition's frontmatter, though it
- * was named and documented as if it were. Every caller passes the output of
- * `resolveSubagentThinkingLevel` (row, then blanket, then frontmatter), and this
- * function must not re-apply any of those layers — resolving frontmatter a second
- * time behind the caller is how the same axis came to have two answers.
+ * Resolve the thinking effort a dispatched subagent runs at.
+ * Precedence: explicit `:level` suffix on model pattern > resolved caller level > pattern-derived level.
  */
 export function resolveEffectiveSubagentThinkingLevel(
 	explicitThinkingLevel: boolean,
@@ -397,12 +377,8 @@ export interface ExecutorOptions {
 	signal?: AbortSignal;
 	onProgress?: (progress: AgentProgress) => void;
 	/**
-	 * Epochs (ms, `Date.now()`) bracketing the concurrency-semaphore wait:
-	 * `invokedAt` is stamped at the spawn boundary before `acquire()`,
-	 * `acquiredAt` immediately after. {@link runSubprocess} reports true queue
-	 * wait (`acquiredAt - invokedAt`) and pre-run setup (`startTime - acquiredAt`)
-	 * separately in the launch-timing debug log. Undefined for callers that
-	 * bypass the semaphore path.
+	 * Epochs (ms) bracketing the concurrency-semaphore wait (`invokedAt` before
+	 * acquire, `acquiredAt` after) for launch-timing logging.
 	 */
 	invokedAt?: number;
 	acquiredAt?: number;
@@ -435,12 +411,8 @@ export interface ExecutorOptions {
 	modelRegistry?: ModelRegistry;
 	settings?: Settings;
 	/**
-	 * Parent session's live `/yolo` full-bypass state. The bypass is session
-	 * scoped and never written to settings, so the settings fork that carries
-	 * every other inherited rung cannot see it: without this the child resolved
-	 * `tools.approvalMode` from settings alone, got the `auto` default, and
-	 * prompted while the parent was running unasked. A spawn carries the
-	 * parent's rung, and the bypass is part of that rung.
+	 * Parent session's live `/yolo` full-bypass state, forwarded so subagents
+	 * inherit the active runtime approval bypass rather than default settings.
 	 */
 	bypassAllApprovals?: boolean;
 	/**
@@ -471,12 +443,8 @@ export interface ExecutorOptions {
 	/** Parent agent's eval executor session id. Subagents reuse it so eval state is shared. */
 	parentEvalSessionId?: string;
 	/**
-	 * Parent agent's OpenTelemetry configuration. When defined, the subagent's
-	 * loop is started with the same tracer/hooks but its own agent identity
-	 * stamped, so its `invoke_agent` / `chat` / `execute_tool` spans appear as
-	 * a sub-tree under the parent's active `execute_tool task` span. A
-	 * `handoff` span is emitted on dispatch to mark the parent → subagent
-	 * transition explicitly.
+	 * Parent agent's OpenTelemetry configuration, forwarded so subagent spans
+	 * appear under the parent's active tool span with a `handoff` marker.
 	 */
 	parentTelemetry?: AgentTelemetryConfig;
 	/**
@@ -492,15 +460,8 @@ export interface ExecutorOptions {
 	 */
 	parentAgentId?: string;
 	/**
-	 * The SPAWNING session's id, so this subagent's own session registers as an
-	 * alias of the spawner's budget group instead of creating a second one. See
-	 * `withInheritedBudgetGroup`: a subagent that opens its own group multiplies
-	 * every resource limit the operator set by the number of live subagents.
-	 *
-	 * An id that is itself an alias resolves to the same root owner, which is
-	 * what makes the inheritance work at unbounded depth. Omitted falls back to
-	 * the process's root session, because a subagent always belongs to some
-	 * tree and no tree is a better guess than the first one.
+	 * Spawning session id used to register this subagent as an alias of the
+	 * spawner's budget group, preventing resource limit multiplication.
 	 */
 	parentSessionId?: string;
 	/**
@@ -534,11 +495,8 @@ function previewOffendingData(value: unknown, maxLength = 500): string {
 }
 
 /**
- * A task's output as JSON, or undefined when it is not JSON.
- *
- * Undefined is a real answer rather than a swallowed failure: a task's output is whatever its command
- * printed, and prose is the common case. The caller keeps the raw text either way and only uses the
- * parsed form when there is one, so nothing is dropped for failing to parse.
+ * Parse a task's output as JSON, returning undefined if unparseable so raw
+ * output is preserved without treating non-JSON prose as an error.
  */
 function tryParseJsonOutput(text: string): unknown | undefined {
 	const trimmed = text.trim();
@@ -560,18 +518,8 @@ function extractCompletionData(parsed: unknown): unknown {
 }
 
 /**
- * Resolve the final yielded payload, optionally splicing collected
- * `report_finding` entries into a top-level `findings` array.
- *
- * Injection is suppressed when an active validator would reject the augmented
- * payload (e.g. a caller-supplied schema with `additionalProperties: false`
- * that does not declare `findings`). That keeps the in-tool yield validator
- * (which only sees the raw, pre-injection data) in lockstep with this
- * post-mortem validator — honoring the "accepted in-tool ⇒ accepted
- * post-mortem" guarantee documented in `output-schema-validator.ts`. The
- * dropped findings are still preserved verbatim in the agent's progress
- * stream and JSONL artifact, so no information is lost when injection is
- * suppressed.
+ * Resolve the final yielded payload, optionally splicing collected findings
+ * unless validator schemas (e.g. `additionalProperties: false`) would reject them.
  */
 function normalizeCompleteData(
 	data: unknown,
@@ -818,14 +766,7 @@ function firstNumberField(record: Record<string, unknown>, keys: string[]): numb
 
 /**
  * Tokens for progress display: input + output + cacheWrite per turn.
- *
- * Deliberately excludes cacheRead. With prompt caching, cacheRead in each turn
- * equals the full cached context (potentially hundreds of KB), so summing it
- * across all turns produces a cumulative total that is N×context_size — far
- * larger than the context window and misleading as a "work done" metric.
- * cacheWrite is kept because each byte is written once, not repeated per turn.
- * The cost segment handles billing; dedicated cache_read/cache_write segments
- * handle cache-specific monitoring.
+ * Deliberately excludes cacheRead to avoid misleading cumulative totals with prompt caching.
  */
 function getUsageTokens(usage: unknown): number {
 	if (!usage || typeof usage !== "object") return 0;
@@ -843,17 +784,8 @@ function getUsageTokens(usage: unknown): number {
 }
 
 /**
- * Create proxy tools that reuse the parent's MCP connections.
- *
- * Each proxy delegates to the current source `MCPTool`/`DeferredMCPTool` rather
- * than rebuilding a raw `tools/call` request, so the Task/subagent path shares
- * the source tool's authoritative outbound boundary: harness-intent (`i`)
- * stripping, optional-placeholder pruning, local-URL resolution, reconnect
- * retry, abort handling, and result/provider metadata. The source tool is
- * re-resolved on every call by raw MCP server/tool metadata (not the normalized
- * display name), so a reconnect that swaps the instance in `getTools()` is
- * always honored. The proxy adds only the Task-specific 60s call timeout,
- * combining its abort signal with the caller's around source execution.
+ * Create proxy tools that reuse the parent's MCP connections, preserving
+ * intent stripping, URL resolution, retry, and abort handling with a 60s timeout.
  */
 export function createMCPProxyTools(mcpManager: MCPManager): CustomTool[] {
 	return mcpManager.getTools().map(tool => {
@@ -955,26 +887,8 @@ export function createSubagentSettings(
 }
 
 /**
- * Bind a subagent's settings to the directory it will run in.
- *
- * The destination contributes the cwd and nothing else. `cloneForCwd` copies
- * every configured layer verbatim and re-resolves only path-scoped values, so a
- * checked-in `.veyyon/settings.json` in a repo the operator merely cloned
- * decides nothing about the agent spawned into it.
- *
- * That is the fix for a real hole, not an incidental property. `tools.approvalMode`
- * was once an ordinary project-scoped setting: parent pinned to `ask`,
- * destination containing `{"tools.approvalMode":"yolo"}`, child resolved `yolo`,
- * which short-circuits the working-directory boundary and the secret-use
- * boundary in the tool wrapper. A clamp pinning the child back to the parent's
- * rung was built and then discarded on the ruling that a repository may
- * contribute nothing but `AGENTS.md` / `CLAUDE.md` context: narrowing the door
- * was the wrong fix, so the door went. Project scope is gone from every layer
- * (settings, rules, hooks, MCP, slash commands, custom tools, extension
- * modules, SSH hosts).
- *
- * `test/task/subagent-settings-cwd-provenance.test.ts` writes a hostile
- * `settings.json` into each destination and asserts it changes nothing.
+ * Bind subagent settings to destination cwd without loading project-scoped
+ * settings from destination repo, ensuring untrusted repos cannot alter approval rungs.
  */
 export async function createSubagentSettingsForCwd(
 	baseSettings: Settings,
@@ -1903,18 +1817,8 @@ function createSubagentRunMonitor(args: RunMonitorArgs): SubagentRunMonitor {
 }
 
 /**
- * What ONE turn of a subagent DID, as facts rather than as a verdict.
- *
- * The run's outcome is not decided here. It is decided once, by {@link resolveRunVerdict}, from
- * these facts plus what `finalizeSubprocessOutput` extracted from the child's yields. The split
- * matters because the two halves know different things: this function watched the turn, and only the
- * finalizer knows whether a result was actually delivered.
- *
- * Before this shape existed, four sites inside `driveSessionToYield` and a fifth inside
- * `runSubprocess` each classified the run themselves, and `finalizeRunResult` then re-derived the
- * same conclusion and silently overrode them. The copies did not agree, and the disagreement was
- * invisible because the last one to run won: mutating the flag they keyed on so it could never be
- * true left the whole lane green.
+ * Factual outcome of one subagent turn, separating turn-level observations
+ * from the final verdict decided by {@link resolveRunVerdict}.
  */
 interface DriveOutcome {
 	/**
@@ -1923,12 +1827,8 @@ interface DriveOutcome {
 	 */
 	failure?: string;
 	/**
-	 * The turn did not end on its own: a signal fired, the model reported the turn aborted, or a soft
-	 * budget stop cut it short without a yield.
-	 *
-	 * Kept separate from {@link DriveOutcome.turnAborted} because they answer different questions. A
-	 * turn cut short cannot be reported as a clean success, even when the cut is an internal teardown
-	 * the operator should see as a failure rather than as a cancellation.
+	 * True if the turn did not end on its own (signal, model abort, or budget stop),
+	 * distinguishing incomplete turns from clean successes even during teardown.
 	 */
 	turnCutShort: boolean;
 	/** The cut was a real cancellation of this run (caller signal, wall clock, or budget stop). */
@@ -1940,11 +1840,8 @@ interface DriveOutcome {
 const MAX_YIELD_RETRIES = 3;
 
 /**
- * Drive one assignment through a live session: send the prompt, wait for idle,
- * remind the agent to `yield` (up to {@link MAX_YIELD_RETRIES} times), then
- * classify the terminal assistant state. A soft-budget stop short-circuits the
- * reminder ladder into a single forced final yield so partial findings still
- * come back as a real report.
+ * Drive one assignment through a live session, handling prompts, idle waits,
+ * yield reminders (up to {@link MAX_YIELD_RETRIES}), and soft-budget forced yields.
  */
 async function driveSessionToYield(
 	session: AgentSession,
@@ -2130,27 +2027,8 @@ interface FinalizeRunArgs {
 }
 
 /**
- * The text that goes in a settled run's `error` field, or `undefined` when the
- * run did not fail.
- *
- * This is the one channel a parent reads to learn what went wrong, and it used
- * to be left EMPTY for the worst case. A crashed subagent settles with a
- * non-zero exit code, no stderr, and no output: an out-of-memory kill and a
- * native crash both look exactly like that. The old condition
- * (`exitCode !== 0 && stderr`) produced no error text for it, so a child that
- * died was indistinguishable from a child that simply had nothing to report,
- * precisely when the difference mattered most.
- *
- * The synthesized message is not a diagnosis. It states that no diagnosis was
- * available and what that usually means, which is the useful fact: it tells the
- * parent to stop waiting for a reason and to suspect resources rather than to
- * retry the same prompt.
- *
- * An ABORTED run is excluded on purpose. Its explanation lives on `abortReason`
- * (a cancellation, a budget stop, a runtime limit), and `error` is deliberately
- * left empty there so callers read the reason rather than a second, vaguer copy
- * of it. Guessing "it most likely crashed or ran out of memory" for a run the
- * parent itself cancelled would be actively wrong.
+ * Resolve error text for a settled run, providing a helpful fallback when a child
+ * crashes with non-zero exit and no stderr while omitting error on intentional aborts.
  */
 export function resolveSubagentErrorText(
 	exitCode: number,
@@ -2167,28 +2045,8 @@ export function resolveSubagentErrorText(
 }
 
 /**
- * THE run verdict: exit code, aborted, and why, decided in ONE place.
- *
- * Everything upstream reports facts. `driveSessionToYield` says what the turn did
- * ({@link DriveOutcome}); `finalizeSubprocessOutput` says what was delivered (whether any yield
- * landed, whether the child yielded an abort, and the exit code that follows from the payload). This
- * function is the only thing that turns those into an outcome, so there is exactly one place to read
- * and one place to change.
- *
- * THE RULES, stated once:
- *
- * - A delivered yield means the subagent's work exists and belongs to the caller, so an abort around
- *   it does not fail the run. This is why `hasYield` gates the abort terms rather than being weighed
- *   against them.
- * - A blown wall clock overrides everything, including a yield that landed while the session was
- *   being torn down: a run that exceeded its runtime is not one whose result you want to trust.
- * - A yielded abort is the child reporting its own cancellation. It keeps exit code 0, because the
- *   child answered, and it still reports as aborted, because the answer was "I stopped".
- * - A turn cut short with nothing delivered cannot report success, even when the cut was an internal
- *   teardown rather than a cancellation. That case fails without being called aborted.
- *
- * Both halves of the first two rules are pinned by `test/task/executor-yield-versus-caller-abort.test.ts`,
- * `test/task/executor-wall-clock.test.ts`, and the verdict matrix in `test/task/run-verdict.test.ts`.
+ * Determine the single run verdict (exit code, aborted state, reason) based on
+ * turn facts, delivered yields, and wall-clock limits.
  */
 export interface RunVerdictInputs {
 	/** The exit code `finalizeSubprocessOutput` arrived at from the payload. */
@@ -2385,41 +2243,8 @@ async function finalizeRunResult(args: FinalizeRunArgs): Promise<SingleResult> {
 }
 
 /**
- * Whether an agent's sign-off says it stopped to wait on another agent, which earns
- * it the longer close budget.
- *
- * WHAT IT IS GIVEN. Callers pass {@link subagentSignOffText}, which is the agent's
- * LAST assistant message when that message carried text, and the run's accumulated
- * assistant text only when it did not. This comment used to say "last message" while
- * every caller handed it `monitor.rawOutput()`, which is every assistant message of
- * the run concatenated. That was a false description of what the matcher reads, and
- * it made the position rules below read as if they applied to a sign-off when they
- * were being applied to a whole transcript.
- *
- * The scan is cheap either way and never reaches a model, so it costs no tokens:
- * measured at roughly 11 microseconds per KiB, 4.6 ms on 424 KiB, and 2.4 ms on a
- * 203 KiB string built entirely from "The fix was worth waiting for", which is the
- * adversarial shape for this pattern and shows no backtracking blowup. Cost is not
- * the reason to prefer the sign-off; accuracy is.
- *
- * The phrase alone is not enough. "waiting for" carries two unrelated meanings and
- * the surface form is identical: "waiting for the audit to finish" is a self-report,
- * "worth waiting for the rebuild to prove" is a comment about something else. So the
- * match requires the report POSITION as well as the words. The clause has to open a
- * sentence ("Waiting on SourceLfsGates"), follow a label ("Blocked: waits for X"), or
- * follow a subject that makes the agent the one waiting ("I am waiting on the
- * reviewer", "still waiting for review").
- *
- * A line's leading list or quote marker counts as the start of the clause, because a
- * bulleted status line ("- Waiting on ReviewBot") is the single most common way an
- * agent writes this and is exactly the self-report shape. The marker class only ever
- * lets the clause begin a line: anything else between the marker and the verb, as in
- * "- The fix was worth waiting for", still fails to match.
- *
- * A false positive only lengthens the grace and a false negative only shortens it to
- * the ordinary one, so the failure direction is a ref that lingers rather than one
- * that vanishes while still needed. That asymmetry is why a phrase match is
- * acceptable here at all; nothing about correctness depends on it.
+ * Check if an agent's sign-off text reports that it stopped to wait on a peer,
+ * qualifying it for a longer close budget.
  */
 const WAITING_ON_PEER =
 	/(?:^[\s>*\-+\d.)\]]*|[.!?:;]\s+|\b(?:i am|i'm|am|is|are|still|currently|now)\s+)wait(?:ing|s)\s+(?:on|for)\b/im;
@@ -2429,31 +2254,16 @@ export function saysItIsWaitingOnAPeer(signOff: string | undefined): boolean {
 }
 
 /**
- * The text a finished agent signed off with, for {@link saysItIsWaitingOnAPeer}.
- *
- * `monitor.rawOutput()` is not that. It is `finalOutputChunks` joined, filled from
- * the `agent_end` event's `messages`, which the agent loop supplies as every message
- * the run produced: on a long run it is the whole transcript's assistant prose, so a
- * "waiting on X" line written forty turns earlier and long since resolved reads as
- * the agent's current state. `captureSalvage` has already recorded the LAST assistant
- * message's text by the time either caller runs, and that is the sign-off.
- *
- * The fallback matters and is deliberately the broad one. An agent whose final
- * message was a bare `yield` tool call left no salvage text, and reading nothing
- * there would deny the longer grace to exactly the agents that stopped to wait,
- * which is the harmful direction: a peer the operator is about to message gets
- * dropped. Over-matching only makes a ref linger.
+ * Extract sign-off text from the final assistant message (or raw output fallback)
+ * for peer-waiting detection in {@link saysItIsWaitingOnAPeer}.
  */
 function subagentSignOffText(monitor: SubagentRunMonitor): string | undefined {
 	return monitor.lastAssistantSalvageText() ?? monitor.rawOutput();
 }
 
 /**
- * Settle a subagent's registry lifecycle after a run: terminal teardown for
- * hard aborts, unregister for one-shot helpers, park for isolated runs, and
- * idle + lifecycle adoption for kept-alive agents. A soft-budget abort on a
- * kept-alive, revivable agent is treated as a self-inflicted stop rather than
- * a kill — the agent stays interrogable and resumable (irc wake / revival).
+ * Settle subagent lifecycle after a run: terminal teardown for hard aborts,
+ * unregister for one-shots, park for isolated runs, or idle adoption for kept-alive peers.
  */
 export async function finalizeSubagentLifecycle(args: {
 	id: string;
@@ -2571,15 +2381,8 @@ export interface FollowUpTurnOptions {
 }
 
 /**
- * Continue a previously spawned (keep-alive) subagent with one more monitored
- * turn: revive it if parked, send `message` as a real prompt, drive it to
- * `yield`, and finalize a {@link SingleResult} exactly like a first run.
- *
- * The session's full conversation history is retained (live session, or JSONL
- * replay through the lifecycle reviver), so the turn sees all prior context.
- * Unlike {@link runSubprocess}, the session is NOT torn down afterwards — it
- * stays adopted by the {@link AgentLifecycleManager} (idle → TTL park →
- * revive), and an aborted turn only aborts the in-flight turn.
+ * Continue a kept-alive subagent with another monitored turn, reviving from park
+ * if needed and retaining full conversation history under {@link AgentLifecycleManager}.
  */
 export async function runSubagentFollowUpTurn(options: FollowUpTurnOptions): Promise<SingleResult> {
 	const { id, agent, message, signal } = options;
@@ -2672,30 +2475,8 @@ export async function runSubagentFollowUpTurn(options: FollowUpTurnOptions): Pro
 }
 
 /**
- * The interactive surface a spawned agent's approval prompts are presented on:
- * the one belonging to the ROOT session of its conversation.
- *
- * Without this a subagent has no surface at all. `initialize` takes a
- * `uiContext` as its fourth parameter and the spawner never passed one, so the
- * runner kept its no-op default, `hasUI()` was false for every child, and any
- * call that needed permission threw "requires approval but no interactive UI
- * available" instead of asking anyone. That was survivable only while every
- * subagent was forced to `yolo` and therefore never asked; once children inherit
- * the operator's rung, the same path is a hard failure on an ordinary call.
- *
- * Resolution is by {@link AgentRef.scope}, not by walking `parentId`. Scope is
- * inherited transitively at registration, so a child at ANY depth already
- * carries the root's identity and the request goes straight there. A
- * parent-to-parent chain is the thing this avoids: every intermediate is an
- * agent that can be parked, aborted or simply busy, and each one is another
- * place the request can be dropped, which is the abandonment being fixed.
- *
- * Returns undefined when the root itself has no UI (ACP, `-p` with no terminal)
- * or when no root is resolvable. That is deliberate and is NOT a fallback to
- * silence: the runner then reports `hasUI()` false and the wrapper refuses the
- * call with an explanation, which is the correct answer for a run where nobody
- * can be asked. Auto-approving instead would make a non-interactive root the
- * most permissive configuration in the product.
+ * Resolve the root session UI context for child approval prompts so subagents
+ * present prompts to the interactive root rather than failing with no UI.
  */
 export function resolveRootUIContext(childId: string): ExtensionUIContext | undefined {
 	const registry = AgentRegistry.global();
@@ -2710,24 +2491,8 @@ export function resolveRootUIContext(childId: string): ExtensionUIContext | unde
 }
 
 /**
- * The ONE way a subagent's session is created, and therefore the one place the
- * tree's budget group is pinned.
- *
- * A subagent opens its own `SessionManager`, so `AgentSession`'s constructor
- * registers a budget group of its own unless it is told to borrow the tree's.
- * That is not cosmetic: an operator who caps a session at four cores otherwise
- * gets four cores PER LIVE SUBAGENT, and the write budget, the process cap and
- * the memory cap all multiply the same way.
- *
- * The pin is an AsyncLocalStorage scope rather than a parameter because the
- * constructor calls `initSessionCpuLimit` synchronously, several layers below
- * this module, and `agent-session.ts` cannot take an argument for it.
- *
- * Creation and pinning live in ONE function on purpose. They were two wrappers
- * around two call sites, and the suite covering the registry helpers stayed
- * green when both wrappers were deleted, which is precisely how the
- * multiplication would come back unnoticed. Now the only way to build a
- * subagent session is the way that joins the tree.
+ * Create a subagent session scoped to the parent's budget group via AsyncLocalStorage,
+ * preventing subagents from multiplying CPU/memory limits.
  */
 export function createSubagentSession(
 	parentSessionId: string | undefined,

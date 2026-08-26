@@ -158,11 +158,7 @@ interface CreateThemeOptions {
 const COLORBLIND_ADJUSTMENT = { h: 60, s: 0.71 };
 
 /**
- * Defaults for the optional identity/state accent tokens, keyed by the token,
- * valued by the required token whose resolved color it inherits when a theme
- * does not declare it. Session/mode identity fall back to the theme's accent,
- * share to its link color, info to muted, and match highlights to warning
- * (the closest "look here" hue every theme already has).
+ * Fallback defaults for optional accent tokens, mapping each to a required base color token.
  */
 const QUIET_TOKEN_DEFAULTS: Partial<Record<ThemeColor, ThemeColor>> = {
 	sessionAccent: "accent",
@@ -366,24 +362,13 @@ interface ApplyThemeOptions {
 	/** Start the custom-theme file watcher once the theme loads. */
 	enableWatcher?: boolean;
 	/**
-	 * Record `name` as the committed theme on success, and the fallback name if
-	 * it falls back.
-	 *
-	 * `currentThemeName` means "the theme the user chose", not "the theme
-	 * currently rendering" — the two deliberately diverge. A preview renders
-	 * another theme while leaving the committed name alone so cancelling can
-	 * restore it (`settings-selector.ts` captures `getCurrentThemeName()` for
-	 * exactly that). A preset/color-blind reload keeps the committed name too:
-	 * if the user's theme is mid-edit and broken, holding their name means the
-	 * next toggle retries it and picks the file back up once they fix it, rather
-	 * than permanently kicking them onto the fallback.
+	 * Records `name` as the committed user choice on success, or fallback name on failure.
+	 * Previews leave this false to allow restoration on cancel.
 	 */
 	commitName?: boolean;
 	/**
-	 * Leave the active theme untouched when the load fails, instead of falling
-	 * back. Previewing is browsing: failing to render a candidate is not a reason
-	 * to throw away the theme the user is actually on. The error still surfaces
-	 * through the result, so the degrade stays visible either way.
+	 * Leaves active theme untouched on load failure instead of falling back.
+	 * Used for safe theme previewing.
 	 */
 	keepCurrentOnError?: boolean;
 	/** Result message when a newer request superseded this one. */
@@ -391,14 +376,8 @@ interface ApplyThemeOptions {
 }
 
 /**
- * The one owner of "load a theme and make it active".
- *
- * Every entry point (init, explicit set, preview, symbol preset, color-blind
- * mode) routes through here so the request-ordering guard, the fallback, and
- * the change notification cannot drift apart. They previously hand-rolled this
- * sequence four times over and had already drifted: two copies swallowed the
- * load failure entirely, so a broken theme silently swapped what you were
- * looking at with nothing said (Law 10).
+ * Loads a theme and activates it, coordinating fallbacks, file watching,
+ * and change notifications across all entry points.
  */
 async function applyTheme(name: string, options: ApplyThemeOptions = {}): Promise<ThemeLoadResult> {
 	const {
@@ -573,22 +552,8 @@ export function getColorBlindMode(): boolean {
 // ============================================================================
 
 /**
- * Apply `theme.dark`, `theme.light`, `symbolPreset` and `colorBlindMode` to the
- * running engine when an operator changes them mid-session.
- *
- * THE SUBSCRIPTION LIVES HERE, NOT IN SETTINGS. `config/settings` used to call the
- * three setters above directly, which made domain configuration import the
- * terminal UI and closed the cycle settings -> theme -> shimmer -> settings. That
- * component cost 51 MB every time any part of it was imported, and the test runner
- * gives each test file its own realm, so a full run paid it about 1,800 times and
- * ran out of memory. Settings now fires a signal and this module listens, which
- * reverses the edge and leaves settings free of the theme engine.
- *
- * These run at import, so a program that never loads the theme engine simply has
- * no listener. That is correct rather than a dropped update: `Settings.set` writes
- * and persists the value either way, and there is no rendered theme to re-apply
- * until this module is loaded, at which point `applyTheme` reads the committed
- * settings.
+ * Subscribes to live theme, symbol preset, and color-blind setting changes,
+ * avoiding direct cycles between domain settings and terminal UI.
  */
 onAutoThemeMappingChanged(
 	(slot, themeName) => {
@@ -598,22 +563,7 @@ onAutoThemeMappingChanged(
 );
 
 /**
- * Put this module's ambient state back to what a freshly started process has.
- *
- * WHY IT EXISTS. `currentSymbolPresetOverride` and `currentColorBlindMode` are module scope and
- * survive `resetSettingsForTest`, so one suite writing `symbolPreset: "ascii"` changed what every
- * later suite in the same process rendered. That is how the mermaid suite came to assert on box
- * borders and receive a diagram drawn with `+` and `|` -- zero lines matching, and a failure that
- * reads as "the renderer produced nothing" rather than as "someone else chose ASCII". The hook fires
- * asynchronously off a settings signal, which is why it looked timing-dependent as well.
- *
- * `markdownMermaidRendering` was the third variable here and is the same class with a harsher
- * outcome. It moved to `./markdown-theme` with the function that owns it, and that module registers
- * its own hook: a module resets its own ambient state, and a suite that never loads the markdown
- * adapter has none of that state to restore.
- *
- * Registered rather than exported for tests to call, so a suite that resets settings gets this for
- * free and cannot forget it.
+ * Resets ambient module overrides (symbol preset, colorblind mode) when settings are reset in tests.
  */
 registerSettingsTestResetHook(() => {
 	currentSymbolPresetOverride = undefined;
@@ -668,11 +618,7 @@ export function onThemeChange(callback: (event: ThemeChangeEvent) => void): () =
 }
 
 /**
- * Monotonic counter bumped on any theme-affecting change that should invalidate
- * cached renders: theme swaps and reloads (including the invalid-theme dark
- * fallback), theme previews, symbol-preset changes, and color-blind-mode
- * changes — everything that routes through {@link notifyThemeChange}. Consumers
- * key cached renders on it so the next render re-shapes their output.
+ * Monotonic counter bumped on any theme change to invalidate cached renders.
  */
 export function getThemeEpoch(): number {
 	return themeEpoch;
@@ -829,11 +775,7 @@ var macObserver: { stop(): void } | undefined;
 type MacAppearanceObserverStarter = (callback: (err: Error | null, appearance: string) => void) => { stop(): void };
 
 /**
- * Seam over `MacAppearanceObserver.start`. The native export is a lazy Proxy
- * whose property access loads the platform addon, so tests can neither spy on
- * it (`defineProperty` lands on the proxy's dummy target while `get` keeps
- * returning the real binding) nor run where the darwin addon does not exist.
- * Production always uses the real native class; tests install a fake starter.
+ * Test seam over `MacAppearanceObserver.start` to avoid native platform addon loading in tests.
  */
 let macAppearanceObserverStarter: MacAppearanceObserverStarter | undefined;
 
@@ -1011,45 +953,18 @@ export async function getThemeExportColors(themeName?: string): Promise<{
 // TUI Helpers
 // ============================================================================
 
-/**
- * The symbol reader lives in `./symbol-theme`, a leaf beside the theme binding, and is re-exported here so
- * the modules that already reach this engine keep taking it from one place.
- *
- * It moved because `./markdown-theme` took it from here for one field, and this module is 144 marginal
- * modules on that graph: the whole presentation layer arrived in every rendered code cell and, through
- * `tools/read.ts`, in every file read. `symbol-theme.ts` needs the live binding and a type.
- */
+/** Re-exported symbol reader from `./symbol-theme`. */
 export { getSymbolTheme } from "./symbol-theme";
 
 /**
- * The color an animation resolves a row OUT OF: the ground that is actually on
- * screen behind it.
- *
- * The theme's own declared ground is the wrong answer whenever the terminal was
- * not painted with it, and the default theme is exactly that case: titanium
- * declares black, `tui.paintGround: auto` refuses to paint black onto a grey
- * terminal, and the row therefore sits on the operator's grey. Mixing out of the
- * declared black made every arriving band and every unfolding card dip through
- * black first — a dark flash on a light-grey terminal, which is the same class of
- * fault as the absolute dark fills that shipped as black slabs on 2026-07-22.
- * Recorded off a real xterm at 60fps, the leaving row read `#090401` between a
- * `#1c1f26` ground and a `#231310` band.
- *
- * Falls back to the theme's declared ground only when nothing painted and the
- * terminal answered no OSC 11 — there is no better guess then, and it is the
- * pre-detection rendering.
+ * Returns the hex color of the visible background ground behind rendered rows,
+ * accounting for terminal ground detection and theme defaults.
  */
 export function visibleGroundHex(): string {
 	return theme.visibleGroundHex();
 }
 
-/**
- * How many columns one span of the ramp covers. A span is a single `48;2;r;g;b`, so this is the
- * knob that trades bytes for smoothness: a per-cell ramp is ~19 bytes of SGR per column on a row
- * that repaints on every keystroke, and at terminal cell size the eye cannot resolve the step
- * between adjacent cells anyway. Eight columns puts a 40-column row at 5 spans and a 110-column
- * one at the ceiling, for ~200 bytes instead of ~2000.
- */
+/** Number of columns covered by a single span in the background gradient ramp. */
 const BAND_COLUMNS_PER_SPAN = 8;
 /** Fewest spans worth calling a ramp: below three there is no middle and the band reads as two blocks. */
 const BAND_MIN_SPANS = 3;
@@ -1069,13 +984,7 @@ const BAND_LIFT_SPAN = 1 / 3;
 /** How far the lifted label is pushed toward the theme's own contrast extreme. */
 const BAND_LIFT = 0.4;
 
-/**
- * Every escape shape a rendered row can carry: a CSI (colour, cursor), an OSC (hyperlink, kitty
- * text sizing) with either terminator, and the two-byte forms. Splitting a row on this leaves runs
- * of pure cells, which is the only thing the native column slicer cuts as a plain prefix — handed a
- * run with an escape in it, it appends the SGR carry it thinks the caller needs and the result is
- * no longer a prefix of the input, so byte offsets computed from it are wrong.
- */
+/** Regex matching ANSI escape sequences (CSI, OSC, and 2-byte forms) for column-aware slicing. */
 const BAND_ESCAPE_PATTERN = "\\x1b(?:\\[[0-9;:?]*[ -/]*[@-~]|\\][\\s\\S]*?(?:\\x07|\\x1b\\\\)|[@-Z\\\\-_])";
 
 /** Background reset. Spelled out rather than imported for the same reason `Theme` spells it out. */
@@ -1084,16 +993,8 @@ const BAND_BG_RESET = "\x1b[49m";
 const BAND_FG_RESET = "\x1b[39m";
 
 /**
- * Splice `inserts` into `text` at the visible COLUMN each is keyed by, copying every original byte
- * through untouched.
- *
- * The row's printed width is the invariant: hit-testing and layout are computed from column
- * positions elsewhere, so a treatment that adds or drops a cell breaks mouse routing. Nothing here
- * emits a cell — only zero-width escapes — and the walk never re-encodes a grapheme.
- *
- * A boundary landing inside a double-width grapheme takes the whole grapheme to the FAR side of
- * the boundary rather than emitting half of it, so a span can come out one column wide of nominal.
- * That is a colour boundary off by a cell, not a width change.
+ * Splices escape sequences into formatted text at specific visible column positions
+ * without modifying visible text or character width.
  */
 function spliceAtColumns(text: string, inserts: ReadonlyMap<number, string>): string {
 	const columns = [...inserts.keys()].sort((a, b) => a - b);
@@ -1139,26 +1040,8 @@ function spliceAtColumns(text: string, inserts: ReadonlyMap<number, string>): st
 }
 
 /**
- * The band under a selected or pointed-at row: a directional gradient with a hard accent leading
- * edge, at a strength an animation decided.
- *
- * A flat rectangle of `selectedBg` reads as a rectangle somebody drew rather than as a surface the
- * cursor is resting on, because nothing in it says which end the cursor came from. So the first
- * cell is the accent at full strength — one cell, the row's own character kept — and the body ramps
- * from `selectedBg` at the leading side toward a 75% mix into the ground at the trailing side,
- * eased so the colour lives in the first third.
- *
- * At full strength this is the band a switched row paints, and the first body span is the switched
- * band's own bytes. Below full strength every colour in the ramp is mixed out of the ground the row
- * sits on — the same ground a card unfolds out of — so the band arrives from the page instead of
- * appearing on it. At 0 there is no band at all: a band mixed all the way out is still an escape
- * pair around a row that is supposed to be untouched.
- *
- * A theme running in 256-color mode gets the flat switched band at half strength instead, exactly
- * what it had. It cannot show a ramp: every intermediate color quantizes onto the nearest palette
- * entry, which reads as the band changing hue rather than as a direction. The mode is the THEME's,
- * not the terminal's reported capability — the theme is what decides which color space it paints
- * in, and a mix computed for a space the theme is not using is quantized right back.
+ * Renders a directional gradient band under a selected or highlighted row,
+ * with a leading accent edge and eased fade to visible ground.
  */
 export function paintBand(text: string, background: ThemeBg, strength: number): string {
 	if (strength <= 0) return text;

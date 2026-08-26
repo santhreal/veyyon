@@ -337,9 +337,8 @@ type SkippedLine = JsonlByteSkip;
 /**
  * Walk the session entries in a byte buffer whose tail may be a partial line.
  *
- * The byte-level walk itself lives in `@veyyon/utils` as `visitJsonlBytes`; this is the session-shaped
- * wrapper over it. It used to be a fourth hand-written JSONL loop here, which is how it came to drop a
- * malformed line with no report while the two string-based readers in utils both had one.
+ * The byte-level walk lives in `@veyyon/utils` as `visitJsonlBytes`; this is the session-shaped wrapper.
+ * Replaces a fourth hand-written JSONL loop that dropped malformed lines with no report.
  */
 function visitSessionEntriesLenient(
 	bytes: Uint8Array,

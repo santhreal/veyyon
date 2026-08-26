@@ -268,20 +268,8 @@ type McpNotificationEntry = {
 };
 
 /**
- * The operator-facing text for a session that cannot initialize secret protection.
- *
- * Starting anyway was considered and rejected. Degrading to a no-secrets session
- * reads like the kind option, but it is fail-OPEN on a security control: without a
- * placeholder key there is no obfuscator, and the obfuscator is what REDACTS. Stored
- * secrets would merely be unavailable, which is survivable, but env-derived values
- * that this session would have redacted reach the model, the transcript and the
- * session file in the clear. The operator turned protection on deliberately; quietly
- * running without it is worse than not starting, because nothing on screen would say
- * the guarantee had lapsed.
- *
- * So the failure stays fatal and becomes a decision instead of a stack trace: it names
- * the key path, the causes worth checking, and the one command that starts veyyon
- * without protection if that is genuinely what the operator wants.
+ * Operator-facing error message when secret protection cannot be initialized.
+ * Fails closed to prevent unredacted secrets from reaching transcripts or providers.
  */
 function secretProtectionUnavailableMessage(globalConfigRoot: string): string {
 	return [
@@ -495,12 +483,8 @@ export interface CreateAgentSessionOptions {
 	/** Already-loaded text appended through the bundled system prompt templates. */
 	appendSystemPrompt?: string;
 	/**
-	 * Already-loaded title-generation system prompt override (typically
-	 * {@link discoverTitleSystemPromptFile} → {@link resolvePromptInput}). When
-	 * set, every automatic session-title generation path on this session — the
-	 * first-input title and the replan-driven refresh — uses this prompt
-	 * instead of the bundled default. Refresh on cwd change via
-	 * {@link AgentSession.setTitleSystemPrompt}.
+	 * Title-generation system prompt override for automatic session titles.
+	 * When set, replaces the bundled default title generation prompt.
 	 */
 	titleSystemPrompt?: string;
 	/** Optional provider-facing session identifier for prompt caches and sticky auth selection.
@@ -522,48 +506,24 @@ export interface CreateAgentSessionOptions {
 	/** Disable extension discovery (explicit paths still load). */
 	disableExtensionDiscovery?: boolean;
 	/**
-	 * Pre-loaded extensions (skips file discovery and the per-session factory
-	 * call). Used by the CLI when extensions are loaded early to parse custom
-	 * flags — the same process owns the returned instances, so reusing them is
-	 * safe.
-	 *
-	 * NEVER pass this across session boundaries (e.g. parent → subagent).
-	 * `Extension` instances close over a parent-bound `ExtensionAPI` (cwd,
-	 * eventBus, runtime), and reusing them would route tools/handlers/commands
-	 * back through the parent. For subagents, forward
-	 * {@link preloadedExtensionPaths} instead.
-	 *
+	 * Pre-loaded extensions for same-session reuse. Never forward across session
+	 * boundaries (use {@link preloadedExtensionPaths} for subagents).
 	 * @internal
 	 */
 	preloadedExtensions?: LoadExtensionsResult;
 	/**
-	 * Pre-discovered extension source paths. When provided, the filesystem-scan
-	 * inside `discoverExtensionPaths()` is skipped — the session still calls
-	 * `loadExtensions()` itself so each `Extension` is bound to THIS session's
-	 * `ExtensionAPI` (cwd, eventBus, runtime).
-	 *
-	 * This is the safe pass-through for parent → subagent forwarding.
+	 * Pre-discovered extension paths to skip filesystem scanning.
+	 * Safe for parent → subagent forwarding so each session binds its own API.
 	 */
 	preloadedExtensionPaths?: string[];
 	/**
-	 * The operator-named subset of {@link preloadedExtensionPaths}: the parent's `--extension`
-	 * flags and `extensions:` entries.
-	 *
-	 * The project-trust gate exempts a path the operator named and withholds one the project scan
-	 * found. A subagent inherits the parent's path list and cannot tell those apart, so without
-	 * this it re-gated the operator's own file and started without it.
+	 * Operator-named subset of {@link preloadedExtensionPaths} (`--extension` / `extensions:`).
+	 * Preserves project-trust exemption when forwarding to subagents.
 	 */
 	preloadedNamedExtensionPaths?: string[];
 	/**
-	 * Pre-discovered custom-tool source paths from `.veyyon/tools/`, `.claude/tools/`,
-	 * plugins, etc. When provided, the filesystem-scan inside
-	 * `discoverCustomToolPaths()` is skipped — subagents inherit the parent's
-	 * scan result and call `loadCustomTools()` themselves so each session binds
-	 * tools to its OWN `CustomToolAPI` (cwd, exec, pushPendingAction, UI).
-	 *
-	 * Forwarding the loaded `LoadedCustomTool[]` instances directly would reuse
-	 * the parent's session-bound API and route tool execution back through the
-	 * parent — wrong for isolated tasks and for pending-action routing.
+	 * Pre-discovered custom tool paths to skip filesystem scanning.
+	 * Allows subagents to bind tools to their own `CustomToolAPI` instance.
 	 */
 	preloadedCustomToolPaths?: ToolPathWithSource[];
 
@@ -571,12 +531,8 @@ export interface CreateAgentSessionOptions {
 	eventBus?: EventBus;
 
 	/**
-	 * Where non-fatal problems the operator must see are delivered.
-	 *
-	 * Pass one built by the surface that can render it: a TUI constructs it with no sink and
-	 * attaches its own once the screen exists, so warnings raised during session startup are
-	 * buffered rather than lost. Default: a collector that writes to stderr as notices arrive,
-	 * which is loud in the wrong place rather than silent (Law 10).
+	 * Collector for non-fatal problems that must be surfaced to the operator.
+	 * Defaults to a stderr collector if unconfigured.
 	 */
 	operatorNotices?: OperatorNotices;
 
@@ -638,11 +594,8 @@ export interface CreateAgentSessionOptions {
 	/** Parent task ID prefix for nested artifact naming (e.g., "Extensions") */
 	parentTaskPrefix?: string;
 	/**
-	 * Registry id of the spawning agent, recorded as this subagent's parent in
-	 * the agent registry. Distinct from `parentTaskPrefix`, which is this agent's
-	 * own artifact/output-id prefix (the executor passes the child's own id
-	 * there, so it must never double as the parent link). Undefined for the
-	 * top-level "Main" session, which has no parent.
+	 * Registry ID of the spawning parent agent. Undefined for the top-level
+	 * session which has no parent.
 	 */
 	parentAgentId?: string;
 	/** Inherited eval executor session id for subagents sharing parent eval state. */
@@ -666,23 +619,14 @@ export interface CreateAgentSessionOptions {
 	hasUI?: boolean;
 
 	/**
-	 * Opt-in OpenTelemetry instrumentation forwarded to the underlying Agent.
-	 * Passing `{}` enables the loop's GenAI-semantic-convention spans. See
-	 * {@link AgentTelemetryConfig} for the full surface (hooks, content capture,
-	 * cost estimator, agent identity).
-	 *
-	 * Safe to enable without an OTEL SDK registered in the host: the
-	 * `@opentelemetry/api` package returns a no-op tracer in that case.
+	 * OpenTelemetry instrumentation config for the underlying Agent.
+	 * Safe to pass without an active SDK (no-op tracer is used).
 	 */
 	telemetry?: AgentTelemetryConfig;
 
 	/**
-	 * Fired once, when the agent loop hands its first request to the provider
-	 * transport (i.e. the `streamFn` wrapper is first invoked). Used to measure
-	 * subagent launch latency — the boundary between "session built" and "model
-	 * call dispatched". This is the loop's dispatch point, slightly before the
-	 * actual provider HTTP call (per-request prep, identical across all
-	 * requests, follows it), which is the right granularity for launch timing.
+	 * Fired once when the agent loop dispatches its first request to the provider.
+	 * Used to measure subagent launch latency.
 	 */
 	onFirstChatDispatch?: () => void;
 
@@ -697,62 +641,23 @@ export interface CreateAgentSessionOptions {
 	bypassAllApprovals?: boolean;
 
 	/**
-	 * A subagent's live view of its parent's bypass. `bypassAllApprovals` above
-	 * is a snapshot taken at spawn, so without this a parent that turns `/yolo`
-	 * off leaves an already-running child bypassing approvals to the end of its
-	 * run. Consulted on every check, and it can only narrow: a child whose own
-	 * bypass is off is never granted one by its parent.
+	 * Live view of parent's approval bypass state to track `/yolo` toggles dynamically.
+	 * Can only narrow permissions, never broaden.
 	 */
 	parentApprovalBypassed?: () => boolean;
 }
 
 /**
- * Whether these options describe a SUBAGENT: a session another session spawned
- * inside this same process, rather than the top-level session the process was
- * started for.
- *
- * Both signals are needed. `taskDepth` counts task recursion and is what the task
- * executor sets; `parentTaskPrefix` names the spawning agent's artifact prefix and
- * is what the IRC and registry path sets. A session can arrive carrying one and
- * not the other, so asking about either alone misses a real subagent.
- *
- * ONE owner because the answer decides four separate things: which Argot policy
- * the session follows, whether it is displayed as "sub", whether it is given the
- * vibe tools, and whether re-rooting it may move the PROCESS working directory.
- * Those were four inline copies of this expression, which is three chances for
- * them to disagree about what a subagent is. The last of the four is the one with
- * teeth, because a subagent that re-roots the process moves the working directory
- * out from under its parent and every sibling sharing the process.
+ * Check whether options describe a subagent session spawned inside this process.
+ * Checks both `taskDepth` and `parentTaskPrefix` to cover all spawn paths.
  */
 export function isSubagentSession(options: Pick<CreateAgentSessionOptions, "taskDepth" | "parentTaskPrefix">): boolean {
 	return (options.taskDepth ?? 0) > 0 || Boolean(options.parentTaskPrefix);
 }
 
 /**
- * Whether another session in THIS process spawned this one, and therefore already
- * owns the process-global singletons it should inherit rather than replace.
- *
- * Deliberately NOT `isSubagentSession`, and the difference is the point. That
- * predicate answers "is this a subagent", and takes `taskDepth` into account
- * because a session can be one without carrying a parent's prefix. This one
- * answers a narrower question about OWNERSHIP, and only a `parentTaskPrefix` can
- * answer it: the prefix is what names the spawning agent, so it is the only signal
- * that says a live parent exists in this process to inherit from. A `taskDepth`
- * greater than zero says the session sits at some recursion depth, which does not
- * imply anyone here owns anything.
- *
- * Swapping in `isSubagentSession` here would change behaviour for a session
- * carrying depth but no prefix. It would stop installing the skills, rules and
- * MCP singletons, and it would take `AsyncJobManager.instance()` as its scoped
- * manager, which is `undefined` when nothing installed one. That session would
- * then refuse async work with no parent to route to instead.
- *
- * No in-tree caller constructs that shape today: the task executor and
- * `persisted-revive` both set the two together, and the eval bridge reaches the
- * executor, which sets `parentTaskPrefix` at the spawn. `createAgentSession` is a
- * public SDK export, though, so an outside caller can pass depth alone, which is
- * exactly why the two questions get two named predicates rather than one shared
- * expression that happens to read the same today.
+ * Check whether an in-process parent exists to inherit singletons from (`parentTaskPrefix`).
+ * Distinct from `isSubagentSession` which also checks `taskDepth`.
  */
 export function isInProcessChildSession(options: Pick<CreateAgentSessionOptions, "parentTaskPrefix">): boolean {
 	return Boolean(options.parentTaskPrefix);
@@ -810,24 +715,8 @@ export {
 // Discovery Functions
 
 /**
- * Create an AuthStorage instance.
- *
+ * Create or discover AuthStorage for credentials (local SQLite or remote auth-broker).
  * Default: local SQLite store at `<agentDir>/agent.db`.
- *
- * Broker mode: when `VEYYON_AUTH_BROKER_URL` is set, credentials are pulled from
- * a remote auth-broker over the wire. Refresh tokens never leave the broker;
- * the client receives access tokens with `refresh = "__remote__"` and calls
- * back into the broker through the {@link AuthStorageOptions.refreshOAuthCredential}
- * override to re-mint access tokens when needed.
- *
- * RE-EXPORTED, NOT REDEFINED. This was a wrapper that called the function below
- * and added nothing: `session/auth-broker-config` already defaults `agentDir` to
- * `getAgentDir()`, so the two were the same function under one name in two
- * places. Callers that only wanted credential discovery had to import this
- * module, which is the whole application, and one of them (`web/search`) sat in a
- * 49-module import cycle because of it. Anything inside the package should import
- * it from `./session/auth-broker-config`; this export exists because it is part
- * of the published SDK surface.
  */
 export { discoverAuthStorage };
 
@@ -841,15 +730,8 @@ export async function discoverExtensions(cwd?: string): Promise<LoadExtensionsRe
 }
 
 /**
- * Path-only counterpart of {@link loadSessionExtensions}: the FS-heavy scan
- * without the per-session module load. Subagents reuse the parent's path list
- * (cached on {@link ToolSession.extensionPaths}) and rebuild Extension
- * instances themselves so each session's `ExtensionAPI` (cwd, eventBus,
- * runtime) is its own.
- *
- * `agentDir` names the profile whose hooks and extension modules load. Omitting
- * it resolves the process-booted profile, which is only correct when the caller
- * genuinely has no session profile to speak of.
+ * Scan extension paths without loading modules.
+ * Subagents reuse discovered paths to construct isolated `ExtensionAPI` instances.
  */
 export async function discoverSessionExtensionPaths(
 	options: Pick<CreateAgentSessionOptions, "disableExtensionDiscovery" | "additionalExtensionPaths">,
@@ -866,13 +748,8 @@ export async function discoverSessionExtensionPaths(
 }
 
 /**
- * Load the discovered/configured extensions for a session — everything {@link
- * createAgentSession} would load except the inline factory extensions it appends
- * itself. Extracted so the CLI can resolve extension-registered flags (and thus
- * classify `@file` arguments extension-aware) *before* a session — and its
- * terminal breadcrumb — is created, then hand the result back through
- * {@link CreateAgentSessionOptions.preloadedExtensions} so the work is not
- * repeated. Keep this the single source of the discovery branch logic.
+ * Load discovered and configured extensions for a session.
+ * Used early by the CLI to parse extension-contributed flags before session creation.
  */
 export async function loadSessionExtensions(
 	options: Pick<CreateAgentSessionOptions, "disableExtensionDiscovery" | "additionalExtensionPaths">,
@@ -892,20 +769,7 @@ export async function loadSessionExtensions(
 }
 
 /**
- * Say out loud that an extension the user asked for is not running.
- *
- * `logger.error` alone was the whole report, and the default transport set is
- * `{ file: true }` with no console transport — see the header of
- * `session/operator-notices.ts`, which names this exact channel as the one that
- * reaches nobody. So an extension with a syntax error, a bad import, or a
- * throwing factory was dropped, the session started clean, and the operator's
- * only symptom was that its tools, commands and flags were absent with no
- * explanation. Skill-loading failures three hundred lines below already go to
- * the operator channel; this is the same failure of the same kind and now
- * reports the same way.
- *
- * The file log keeps the record either way: raising a notice adds reach and
- * never removes it.
+ * Surface extension load failures to the operator via notices and logging.
  */
 function reportExtensionLoadFailures(result: LoadExtensionsResult, operatorNotices?: OperatorNotices): void {
 	for (const { path, error } of result.errors) {
@@ -923,15 +787,8 @@ function reportExtensionLoadFailures(result: LoadExtensionsResult, operatorNotic
 }
 
 /**
- * Load discovered/configured extensions and register their providers into
- * `modelRegistry`, then discover the dynamic provider catalogs. One-shot CLIs
- * (`veyyon bench`, dry-balance) build a bare {@link ModelRegistry} that only knows
- * built-in catalog providers; without this, providers contributed by an
- * extension (e.g. a custom OpenAI-compatible provider under
- * `~/.veyyon/profiles/<name>/agent/extensions/`) never reach model resolution. Mirrors the
- * session / `veyyon models` path: drain the queued provider registrations, then
- * `refreshRuntimeProviders` so dynamically-discovered models exist before
- * selectors are resolved.
+ * Load extensions and register their custom model providers into the registry.
+ * Ensures dynamic provider catalogs are populated for CLI commands.
  */
 export async function loadCliExtensionProviders(
 	modelRegistry: ModelRegistry,
@@ -957,17 +814,8 @@ export async function loadCliExtensionProviders(
 }
 
 /**
- * Discover the skills for a session: the authored `<agentDir>/skills`, the
- * auto-learn `<agentDir>/managed-skills`, and any skills shipped by plugin packages
- * configured for the session.
- *
- * `agentDir` defaults to {@link getAgentDir} exactly the way
- * {@link discoverPromptTemplates} does, and it is FORWARDED. It used to be accepted
- * and dropped, which pinned the skill set to whichever profile the process booted
- * with: an agent rooted in another agent dir silently got a stranger's skills, or
- * none. Do not reintroduce that by widening the signature without threading the
- * value. {@link loadSkillsInternal} forwards it as `LoadOptions.agentDir`, which lands
- * on the `LoadContext` all three profile-rooted skill providers read.
+ * Discover skills for a session across authored, managed, and plugin sources.
+ * `agentDir` defaults to {@link getAgentDir} and is forwarded to skill loaders.
  */
 export async function discoverSkills(
 	cwd?: string,
@@ -982,19 +830,8 @@ export async function discoverSkills(
 }
 
 /**
- * Discover the rules for a session: the profile's `<agentDir>/RULES.md` and
- * `<agentDir>/rules/`, the bundled defaults, and every foreign-config and plugin
- * rule source. All of them are user-scope: a repository's own `.veyyon/rules/`
- * was dropped as a source, because a cloned repo cannot be a standing
- * instruction on every request.
- *
- * `agentDir` defaults to {@link getAgentDir} and is FORWARDED, exactly like
- * {@link discoverSkills} and {@link discoverContextFiles}. Rules were the one
- * discovered layer with no wrapper: both session call sites reached
- * `loadCapability` directly with `{ cwd }` and no agent dir, so a session rooted
- * in another profile got that profile's instructions and skills alongside the
- * BOOTED profile's rules. This wrapper exists so the default lives in one place
- * and cannot be forgotten at a call site again.
+ * Discover rules for a session from profile rules, defaults, and plugin sources.
+ * `agentDir` defaults to {@link getAgentDir} and is forwarded to rule loaders.
  */
 export async function discoverRules(cwd?: string, agentDir?: string): Promise<CapabilityResult<Rule>> {
 	return await loadCapability<Rule>(ruleCapability.id, {
@@ -1004,21 +841,8 @@ export async function discoverRules(cwd?: string, agentDir?: string): Promise<Ca
 }
 
 /**
- * Discover the context files (AGENTS.md / CLAUDE.md) for a session.
- *
- * Resolves all three scopes, in resolution order global (`<config root>/AGENTS.md`)
- * → profile (`agentDir`'s own instruction file) → project (the walk up from `cwd`).
- * The array is returned in AUTHORITY order, least authoritative first so the
- * strongest file holds the last and highest-recency slot: project (farther from
- * cwd first) → profile → global, which is last and therefore wins. See
- * {@link loadProjectContextFilesWithWarnings} for why those two axes differ.
- *
- * `agentDir` defaults to {@link getAgentDir} exactly the way
- * {@link discoverPromptTemplates} does, and it is FORWARDED. It used to be
- * accepted and dropped, which silently pinned the profile scope to whichever
- * profile the process booted with: an agent rooted in another agent dir got
- * someone else's profile file, or none. Do not reintroduce that by widening the
- * signature without threading the value.
+ * Discover context files (AGENTS.md / CLAUDE.md) across global, profile, and project scopes.
+ * Returned in ascending authority order (project -> profile -> global).
  */
 export async function discoverContextFiles(cwd?: string, agentDir?: string): Promise<ContextFileEntry[]> {
 	return await loadContextFilesInternal({
@@ -1038,13 +862,8 @@ export async function discoverPromptTemplates(cwd?: string, agentDir?: string): 
 }
 
 /**
- * Discover file-based slash commands from commands/ directories.
- *
- * `agentDir` defaults to {@link getAgentDir} exactly the way
- * {@link discoverPromptTemplates} does, and it is FORWARDED. Without it the
- * user scope came from whichever profile the process booted with, so a session
- * rooted in another agent dir got that profile's AGENTS.md, skills and prompt
- * templates but the booted profile's slash commands.
+ * Discover file-based slash commands from project and profile command directories.
+ * `agentDir` defaults to {@link getAgentDir} and is forwarded.
  */
 export async function discoverSlashCommands(cwd?: string, agentDir?: string): Promise<FileSlashCommand[]> {
 	return loadSlashCommandsInternal({ cwd: cwd ?? getProjectDir(), agentDir: agentDir ?? getAgentDir() });
@@ -1364,34 +1183,7 @@ function buildMCPPromptCommands(manager: MCPManager): LoadedCustomCommand[] {
 }
 /**
  * Create an AgentSession with the specified options.
- *
- * @example
- * ```typescript
- * // Minimal - uses defaults
- * const { session } = await createAgentSession();
- *
- * // With explicit model
- * import { getBundledModel } from '@veyyon/catalog';
- * const { session } = await createAgentSession({
- *   model: getBundledModel('anthropic', 'claude-opus-4-5'),
- *   thinkingLevel: 'high',
- * });
- *
- * // Continue previous session
- * const { session, modelFallbackMessage } = await createAgentSession({
- *   continueSession: true,
- * });
- *
- * // Full control
- * const { session } = await createAgentSession({
- *   model: myModel,
- *   getApiKey: async () => Bun.env.MY_KEY,
- *   systemPrompt: ['You are helpful.'],
- *   tools: codingTools({ cwd: getProjectDir() }),
- *   skills: [],
- *   sessionManager: SessionManager.inMemory(),
- * });
- * ```
+ * Initializes model, storage, tools, extensions, and context.
  */
 export async function createAgentSession(options: CreateAgentSessionOptions = {}): Promise<CreateAgentSessionResult> {
 	const cwd = options.cwd ?? getProjectDir();
@@ -1764,16 +1556,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		const vaultBySecretLease = new WeakMap<object, SecretVault>();
 
 		/**
-		 * Schedule the reload a stale lease needs, honouring the two rules that keep
-		 * refreshes from fighting each other.
-		 *
-		 * A lease may outlive a cwd transition because one admitted request keeps its
-		 * immutable authority. Such an old lease must not supersede the destination
-		 * refresh by scheduling work for the directory being left. And once the
-		 * committed lease already answers correctly there is nothing left to fix: a
-		 * revision that moved because THIS session wrote the vault therefore cannot
-		 * feed a reload storm, because the write is already reflected in the lease
-		 * every later request reads.
+		 * Schedule a vault lease reload for stale authority without racing cwd transitions.
 		 */
 		const scheduleStaleSecretRefresh = (normalizedCwd: string): void => {
 			if (path.resolve(sessionManager.getCwd()) !== normalizedCwd) return;
@@ -1788,15 +1571,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		};
 
 		/**
-		 * The lease that may expand right now, or undefined when no fresh authority
-		 * exists yet.
-		 *
-		 * A request pins one immutable lease so that a disable or a scope move cannot
-		 * change what an already-admitted request uses. That rule protects redaction.
-		 * For EXPANSION a reload that already landed on the same directory is strictly
-		 * better authority: it resolves the placeholder against the vault as it is now
-		 * instead of against a snapshot a rotation has moved past. Preferring it is how
-		 * a stale revision recovers instead of refusing.
+		 * Resolve the current fresh expansion authority lease, preferring reloaded vault state.
 		 */
 		const resolveFreshExpansionAuthority = (requested: SecretRuntimeLease): SecretRuntimeLease | undefined => {
 			if (requested.isFreshForExpansion()) return requested;
@@ -1807,12 +1582,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		};
 
 		/**
-		 * Whether any string inside a tool call's arguments would actually be expanded.
-		 *
-		 * The same bounded JSON walk `deobfuscateToolArguments` uses, with the mapper
-		 * replaced by the non-throwing predicate that mirrors `deobfuscate`'s rule. The
-		 * identity return keeps the walk allocation-free: `mapJsonStrings` hands back
-		 * the original reference when no string changed.
+		 * Check whether any string in tool call arguments contains an expandable placeholder.
 		 */
 		const toolArgumentsCarryLivePlaceholder = (
 			expansion: SecretObfuscator,
@@ -1827,19 +1597,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		};
 
 		/**
-		 * The first placeholder-shaped token in a tool call's arguments that this
-		 * runtime cannot resolve, or `undefined` when every one of them resolves.
-		 *
-		 * Only consulted while a vault scope is unreadable. An unparseable vault never
-		 * says which names it held, so there is no list to check a token against and
-		 * the shape is the only signal available. `isSecretPlaceholder` is the gate
-		 * rather than the looser `PLACEHOLDER_RE` alone, so a four-character token
-		 * like `#TODO#` is not mistaken for a name (names start with a letter and run
-		 * at least five characters).
-		 *
-		 * A private regex, not the shared `PLACEHOLDER_RE`: that one is global and
-		 * carries `lastIndex` across every module that touches it, so borrowing it
-		 * here would couple this walk to whether some other caller reset it.
+		 * Find the first unresolved placeholder token in tool arguments when a vault is unreadable.
 		 */
 		const firstUnresolvedPlaceholder = (
 			expansion: SecretObfuscator | undefined,
@@ -1875,13 +1633,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		}
 
 		/**
-		 * The unreadable scopes that currently speak for `requested`'s directory, and the words that
-		 * tell an operator how to fix them.
-		 *
-		 * Split out from its one caller so the repair is worded in ONE place. The same condition is
-		 * also reported by `noteUnreadableVault` in vault.ts, and an operator hitting a corrupt vault
-		 * sees both within a minute of each other; two descriptions of one repair is how someone
-		 * concludes there are two problems. Keep this clause and that notice's in step.
+		 * Report unreadable vault scopes and remediation advice for the requested directory.
 		 */
 		const unreadableVaultReport = (requested: SecretRuntimeLease): UnreadableVaultReport | undefined => {
 			// A repaired vault stops refusing the moment its reload lands: the live lease
@@ -1905,29 +1657,8 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		};
 
 		/**
-		 * THE FOURTH REFUSAL CONDITION: an unreadable vault scope plus a placeholder
-		 * nothing can resolve.
-		 *
-		 * A vault whose bytes exist but do not parse is skipped by `load()` so launch
-		 * survives, which leaves this hole: `revision()` fingerprints file STATS and
-		 * never parses, so the corrupt file's revision matches the captured one and the
-		 * freshness conditions are all satisfied. `containsLivePlaceholder` is false
-		 * too, because the obfuscator never learned the name the file held. Every guard
-		 * says yes and `bash echo #TOKEN#` RUNS, passing the literal characters
-		 * `#TOKEN#` where a credential belongs. That is worse than the crash it
-		 * replaced: a dead TUI is loud, a command that quietly executes against a live
-		 * endpoint with a placeholder for its credential is not.
-		 *
-		 * The rule cannot be name-specific. An unparseable vault never says which names
-		 * it held, so there is no list to check against; while ANY scope is unreadable,
-		 * a placeholder-shaped token that does not resolve is refused instead of passed
-		 * through. With every scope healthy this does nothing at all, so an unknown
-		 * `#WORD#` keeps behaving exactly as it does today.
-		 *
-		 * Deliberately OUTSIDE the `hasSecrets()` gate that guards the rest of the spend
-		 * seam. In the case this exists for, the corrupt scope is often the only source
-		 * of secrets, so the obfuscator holds nothing, `hasSecrets()` is false, and a
-		 * check placed inside that gate would never run.
+		 * Refuse tool execution if a placeholder cannot be resolved while a vault scope is unreadable.
+		 * Prevents literal placeholder strings from leaking to execution environments.
 		 */
 		const assertNoOrphanPlaceholderWhileVaultUnreadable = (
 			requested: SecretRuntimeLease,
@@ -1953,15 +1684,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		): SecretRuntimeLease => {
 			const normalizedCwd = path.resolve(runtimeCwd);
 			/**
-			 * Nothing this lease could get wrong about `text`.
-			 *
-			 * A moved vault revision is a cache miss, not a security event, and it is
-			 * only a miss at all for text carrying a placeholder this snapshot would
-			 * substitute. `deobfuscate` leaves every other string byte-identical, so a
-			 * payload without a live placeholder is safe whatever the vault did on
-			 * disk. The payload gate runs BEFORE the revision compare because
-			 * `revision()` costs a stat per vault path and almost every payload
-			 * expands to itself.
+			 * Check if text is settled for expansion without requiring a vault revision reload.
 			 */
 			const settledForExpansion = (text: string | undefined): boolean => {
 				if (!vault || vaultRevision === undefined) return true;
@@ -2478,18 +2201,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			}
 		};
 		/**
-		 * Move the session working directory before an `AgentSession` exists.
-		 *
-		 * Only reachable in the window where a tool runs during construction. Once
-		 * `session` is assigned, both tool sessions delegate to `AgentSession.setCwd`,
-		 * which owns the re-scope and does considerably more than this.
-		 *
-		 * ONE copy, because there were two: the agent's tool session and the
-		 * advisor's held byte-identical bodies, and the `setProjectDir` below is
-		 * exactly the kind of line that gets fixed in one of a pair and not the other.
-		 * It is guarded for the same reason `AgentSession.rescopeToCwd` guards its
-		 * process-global half: a subagent shares this process with its parent and its
-		 * siblings, and may not move their working directory.
+		 * Update session working directory before `AgentSession` construction completes.
 		 */
 		const setCwdBeforeSessionExists: NonNullable<ToolSession["setCwd"]> = async (resolvedPath, options) => {
 			const previous = sessionManager.getCwd();

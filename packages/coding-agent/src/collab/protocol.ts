@@ -1,10 +1,6 @@
 /**
  * Collab live-session wire protocol.
- *
- * Hub topology: the host is authoritative, guests never peer. All session
- * payloads (`CollabFrame`) travel AES-256-GCM sealed; the relay only sees the
- * plaintext envelope (`[4B uint32 BE peerId][sealed payload]`) plus TEXT JSON
- * control messages that carry no session data.
+ * Hub topology: host is authoritative, payloads are AES-256-GCM sealed, relay sees only plaintext envelopes.
  */
 
 import type { Usage as AgentUsage, ImageContent, Model } from "@veyyon/ai";
@@ -59,12 +55,8 @@ export type CollabParticipant = Participant;
 export type AgentSnapshot = WireAgentSnapshot;
 
 /**
- * Project the host's session header onto the four fields the wire contract declares.
- *
- * Every field the host adds to its header would otherwise reach every guest and be persisted in
- * their replica session file, because assignability runs the permissive way: the host's header
- * satisfies the wire type while carrying more. Written out field by field rather than as a
- * destructuring rest, so adding a field to the host's header does NOT silently start shipping it.
+ * Project host session header to explicit wire fields, preventing undeclared host
+ * fields from leaking to guest replicas.
  */
 export function toWireSessionHeader(header: SessionHeader): WireSessionHeader {
 	return { type: "session", id: header.id, title: header.title, timestamp: header.timestamp, cwd: header.cwd };
@@ -88,18 +80,8 @@ function toWireUsage(usage: AgentUsage): WireUsage {
 }
 
 /**
- * Project one of the host's messages onto the shape the wire contract declares.
- *
- * The assistant arm is the one that matters. The host's `AssistantMessage` carries
- * `providerPayload` (transport-native history used to replay the turn upstream), `request` (the
- * sampling and reasoning parameters exactly as sent), `contextSnapshot`, `retryRecovery`,
- * `turnMetrics`, `stopDetails`, `errorId`, `errorStatus`, `responseId`, `upstreamProvider`,
- * `disabledFeatures`, `toolCallAbortMessages`, `api`, `provider`, `duration` and `ttft`. None of
- * them is drawn by a guest, several are large, and guests persist what they receive into their own
- * replica session file, so an undeclared field lands on another machine's disk.
- *
- * `steering` and `attribution` come off the user and developer arms for the same reason, and
- * `prunedAt`, `useless` and `metrics` off tool results.
+ * Project host messages onto declared wire shapes, stripping internal provider
+ * payloads, turn metrics, steering, and attribution before broadcast.
  */
 function toWireMessage(message: SessionMessageEntry["message"]): WireMessage {
 	switch (message.role) {
@@ -212,15 +194,8 @@ function toWireMessage(message: SessionMessageEntry["message"]): WireMessage {
 }
 
 /**
- * Project one stored session entry onto the wire variant a guest renders.
- *
- * Same reason as {@link toWireSessionHeader}, one frame over, and the same discipline: written out
- * field by field rather than as a destructuring rest, so a field added to a host entry does NOT
- * start shipping on its own. `isWireSessionEntry` in `host.ts` narrows the TYPE and leaves the
- * VALUE alone, which is what let every extra field through.
- *
- * Returns `undefined` for an entry type no guest renders, so callers filter and project in one
- * step and cannot broadcast an entry that was never projected.
+ * Project a stored session entry onto its wire variant, returning undefined for
+ * unrendered entry types to prevent undeclared fields reaching guests.
  */
 export function toWireSessionEntry(entry: SessionEntry): WireSessionEntry | undefined {
 	const base = { id: entry.id, parentId: entry.parentId, timestamp: entry.timestamp };
@@ -259,27 +234,8 @@ export function toWireSessionEntry(entry: SessionEntry): WireSessionEntry | unde
 }
 
 /**
- * Project one host session event onto the event the wire contract declares.
- *
- * The third door of the same defect, and the widest one. `agent_end` carries the host's ENTIRE
- * message array; the wire declares `{ type: "agent_end" }` with no payload at all, and the host was
- * broadcasting the whole conversation, every provider payload in it included, at the end of every
- * run. `turn_end` carries the turn's message and every tool result and declares neither.
- * `message_start`, `message_update` and `message_end` carry a full host message, and
- * `message_update` fires once per streaming delta, which makes it the highest-frequency frame there
- * is. All of that crossed a relay somebody else runs and reached read-only viewers.
- *
- * The three message arms delegate to {@link toWireMessage} rather than repeating it: one projection
- * per shape, so an entry and an event cannot disagree about what a guest receives for the same
- * message.
- *
- * The `tool_execution_*` arms pass `args`, `partialResult` and `result` through, and that is the
- * contract rather than an omission: the wire declares them `unknown` because a tool's arguments and
- * result are the tool's own shape, and a guest renders them by asking the tool how. So the tool
- * result fields a projection would otherwise strip (`prunedAt`, `useless`, `metrics`) are permitted
- * here, not leaked. Widening them silently would be the mistake; saying so is the point.
- *
- * Returns `undefined` for an event no guest renders, so filtering and projecting are one step.
+ * Project host session events onto wire events, delegating message shapes to
+ * {@link toWireMessage} and returning undefined for unrendered event types.
  */
 export function toWireAgentEvent(event: AgentSessionEvent): WireAgentEvent | undefined {
 	switch (event.type) {
@@ -364,19 +320,8 @@ export function toWireAgentEvent(event: AgentSessionEvent): WireAgentEvent | und
 }
 
 /**
- * Widen a received wire entry back into the host entry shape a guest's replica session is made of.
- *
- * The counterpart to {@link toWireSessionEntry}, and the reason it is a real function rather than a
- * cast: a guest does not merely display what it receives, it writes the entries into its own
- * replica session file and pushes assistant turns into the agent's message array, which is typed as
- * the host's own message. Before the projection existed the guest got the host's `api` field for
- * free, as part of the leak this function's counterpart closed.
- *
- * `api` is the one field that has to be invented, and it is filled with a marker that says so
- * rather than with a plausible endpoint name. `api` is the transport endpoint the host's request
- * went to; a guest has no way to know it and nothing it draws depends on it, so guessing a real
- * value would put a wrong answer in a replica that other tooling reads. `provider` is NOT invented,
- * because the wire contract declares it: a replica that cannot say what answered is not faithful.
+ * Widen received wire entries back into host entry shapes for guest replica sessions,
+ * populating unbroadcast transport fields like `api` with placeholder markers.
  */
 export function fromWireSessionEntry(entry: WireSessionEntry): SessionEntry {
 	if (entry.type === "message" && entry.message.role === "fileMention") {
@@ -412,13 +357,8 @@ export function fromWireSessionEntry(entry: WireSessionEntry): SessionEntry {
 export const WIRE_API_UNREPORTED = "unreported-over-wire";
 
 /**
- * Widen a received wire event back into the host event shape a guest's controller expects.
- *
- * The counterpart to {@link toWireAgentEvent}, and the same trade {@link fromWireSessionEntry}
- * makes: a guest hands events to a controller typed against the host's own union, so the assistant
- * arms need an `api` the host does not send. It is filled with {@link WIRE_API_UNREPORTED} rather
- * than an endpoint name, because a plausible-looking value would be a fabrication that a guest then
- * renders and persists.
+ * Widen received wire events into host event shapes for guest controllers,
+ * using {@link WIRE_API_UNREPORTED} for omitted assistant `api` fields.
  */
 export function fromWireAgentEvent(event: WireAgentEvent): AgentSessionEvent {
 	if (event.type !== "message_start" && event.type !== "message_update" && event.type !== "message_end") {
@@ -432,38 +372,19 @@ export function fromWireAgentEvent(event: WireAgentEvent): AgentSessionEvent {
 }
 
 /**
- * The `baseUrl` of a model a guest received over the wire.
- *
- * A guest's replica agent state wants a `Model`, and `Model.baseUrl` is required, so the field has
- * to hold something. It holds a scheme nothing dials rather than a plausible URL: the host's real
- * endpoint is the field this projection exists to keep off the wire, and an empty string or a
- * default endpoint would be a silent fallback that turns "we never send this" into "we quietly send
- * you somewhere else". Anything that tried to open it fails immediately and says why.
+ * Placeholder `baseUrl` for guest wire models to satisfy required model fields
+ * without exposing real host provider endpoints.
  */
 export const WIRE_MODEL_NO_ENDPOINT = "collab-guest://no-provider-endpoint";
 
 /**
- * The `api` of a model a guest received over the wire.
- *
- * Same trade as {@link WIRE_API_UNREPORTED} one level up, for the same reason: `Model.api` selects
- * a request dialect, a guest never issues a request, and a real dialect name here would be a guess
- * recorded as fact.
+ * Placeholder `api` dialect string for models received over the wire.
  */
 export const WIRE_MODEL_API_UNREPORTED = "unreported-over-wire";
 
 /**
- * Project the host's catalog model onto the four-to-six fields a guest draws.
- *
- * Written out field by field, not spread. The host's `Model` has 34 fields and the ones that matter
- * most here are the ones a reader would never think to check: `baseUrl` is the provider endpoint,
- * which on a gateway-routed or self-hosted configuration is an internal host, and the state frame
- * re-broadcasts every couple of seconds while streaming, to every guest including read-only
- * viewers. `cost`, `headers`, `requestModelId` and `compat` ride along the same way.
- *
- * The thinking config is narrowed rather than passed through for the same reason: `efforts` and
- * `defaultLevel` are what the status line and the level picker read, while `effortMap`,
- * `effortRouting` and the per-effort budgets exist to encode an effort into a provider wire field,
- * which only the host ever does.
+ * Project host catalog models onto wire model shapes, stripping internal endpoints,
+ * headers, pricing, and provider-specific thinking maps.
  */
 export function toWireModel(model: Model): WireModel {
 	return {
@@ -483,14 +404,8 @@ export function toWireModel(model: Model): WireModel {
 }
 
 /**
- * Widen a received wire model back into the `Model` a guest's replica agent state holds.
- *
- * The counterpart to {@link toWireModel}. Every field the host did not send is filled with a value
- * that is inert rather than plausible: {@link WIRE_MODEL_NO_ENDPOINT} for the endpoint,
- * {@link WIRE_MODEL_API_UNREPORTED} for the dialect, zero pricing marked `"unknown"` so nothing
- * reads the zeros as "free", and an empty compat record. None of them is reachable, because a guest
- * forwards prompts to the host and never builds a request; they exist so the type is satisfied
- * honestly instead of by a cast.
+ * Widen received wire models into `Model` objects for replica state, filling
+ * unbroadcast provider endpoints and pricing with inert placeholder values.
  */
 export function fromWireModel(model: WireModel): Model {
 	return {
@@ -519,14 +434,8 @@ export function fromWireModel(model: WireModel): Model {
 /** Debounced footer snapshot broadcast by the host. */
 export type CollabSessionState = SessionState & {
 	/**
-	 * The wire model, not the host's catalog model. Build it with {@link toWireModel}.
-	 *
-	 * This used to be typed `Model` on purpose, so a guest could apply the host's real model to its
-	 * replica and get native display and context-window numbers. The intent was right and the type
-	 * was wrong: the catalog `Model` carries the provider endpoint, the pricing table and the
-	 * compatibility record, none of which a guest draws, and the wire contract already declared a
-	 * four-field `WireModel`, so the contract and the value disagreed. Typing the field as the wire
-	 * model is what makes the compiler ask for the projection.
+	 * Wire model representation (narrowed via {@link toWireModel}) for guest status
+	 * lines and replica state.
 	 */
 	model?: WireModel;
 	/** Host status-line context numbers (guest system prompt/tools differ, so local estimates drift). */
@@ -534,13 +443,8 @@ export type CollabSessionState = SessionState & {
 };
 
 /**
- * Project the status line's context breakdown into the wire shape a guest reads.
- *
- * One owner, because the host and the host's own footline have to agree about a
- * fact with three states: a real count, a real zero, and no anchor yet. The last
- * one is why every field here is nullable — right after a compaction the session
- * has no last assistant to anchor on, and a host that flattened that to zero told
- * every guest `100% left` at the moment it knew least.
+ * Project status-line context usage into wire format, preserving nulls when no
+ * assistant turn exists to anchor token counts.
  */
 export function contextUsageFrame(breakdown: { usedTokens: number | null; contextWindow: number }): WireContextUsage {
 	const { usedTokens, contextWindow } = breakdown;
@@ -568,15 +472,8 @@ export type CollabFrame =
 			t: "welcome";
 			proto: number;
 			/**
-			 * The wire header, not the host's. Build it with {@link toWireSessionHeader}.
-			 *
-			 * The host's own `SessionHeader` is assignable to the wire one, so this used to be typed
-			 * as the host's and `snapshot.header` went out verbatim -- carrying `titleSource`,
-			 * `parentSession` and `providerPromptCacheKey`, three fields the wire contract does not
-			 * declare, to every guest including read-only viewers. The guest writes the header it
-			 * received straight into its replica session file, so the host's provider prompt-cache
-			 * identity was being persisted on other people's machines. Naming the narrow type here
-			 * makes the projection the compiler's business rather than a thing to remember.
+			 * Wire header projected via {@link toWireSessionHeader} to prevent leaking
+			 * host cache keys or internal parent session IDs.
 			 */
 			header: WireSessionHeader;
 			state: CollabSessionState;
@@ -592,20 +489,11 @@ export type CollabFrame =
 			readOnly?: boolean;
 	  }
 	/**
-	 * Targeted snapshot fragment delivered after `welcome`. Splits a large
-	 * transcript across many small frames so the guest's per-chunk progress
-	 * timeout resets each time the relay delivers another batch; without
-	 * chunking, a multi-MB session has to fit one giant frame inside the
-	 * 30 s first-welcome budget. The last chunk carries `final: true` so the
-	 * guest can finalize the replica session.
+	 * Targeted snapshot fragment delivering large transcripts in chunks so guest
+	 * timeouts reset per batch; `final: true` marks completion.
 	 */
 	/**
-	 * Wire entries, not the host's. Build them with {@link toWireSessionEntry}.
-	 *
-	 * Typed as the narrower shape on purpose. Declaring the host's `SessionEntry` here is what let
-	 * every undeclared field reach every guest: assignability runs the permissive way, so a host
-	 * entry satisfies a wire type while carrying twenty more fields, and the guest persists what it
-	 * receives into its own replica session file.
+	 * Projected wire entries (narrowed via {@link toWireSessionEntry}).
 	 */
 	| { t: "snapshot-chunk"; entries: WireSessionEntry[]; final: boolean }
 	| { t: "entry"; entry: WireSessionEntry }
@@ -689,19 +577,8 @@ function normalizeRelayOrigin(relayUrl: string): { origin: string } | { error: s
 }
 
 /**
- * Render the payload half of a link: `<roomId>.<key>` for the default relay,
- * `host[:port]/r/<roomId>.<key>` for another wss relay, and a full URL for a
- * localhost ws:// relay so parsing cannot mis-infer wss.
- *
- * The room secret is dot-joined rather than `#`-joined because this text gets
- * nested inside the fragment of the browser deep link: RFC 3986 forbids a raw
- * `#` inside a fragment, so strict URL stacks (macOS Foundation behind
- * terminal click-to-open) percent-encode a second `#` to `%23` and break the
- * link. Parsers accept the `#` form and the mangled `%23` form too.
- *
- * Full links append the write token to the key
- * (`base64url(key ∥ writeToken)`); read-only (view) links carry the bare
- * 32-byte key, which is also the pre-token link format.
+ * Format collab link payload (`<roomId>.<key>`), using dot separators to avoid
+ * raw `#` characters that get percent-encoded in browser deep links.
  */
 function formatCollabLinkPayload(
 	relayUrl: string,
@@ -726,20 +603,8 @@ function formatCollabLinkPayload(
 }
 
 /**
- * Render the shareable link a human sees and pastes.
- *
- * When the link names a relay host, the secret rides in the fragment
- * (`host/r/<roomId>#<key>`) and never in the path. Terminals linkify
- * `host/r/…` and open it as `https://…`; with the secret dot-joined into the
- * path, one click on your own link puts the AES-256-GCM room key and the
- * write token in the relay's HTTP request line, and from there into its
- * access log and any TLS-terminating proxy in front of it. A fragment is
- * never sent to the server, so a click discloses only `/r/<roomId>`, which
- * the WebSocket handshake reveals anyway. That is what
- * `collab/crypto.ts` means by "the relay sees opaque bytes".
- *
- * Only one `#` appears here, so the nested-fragment escaping problem that
- * forces the dot-joined payload form does not apply.
+ * Render shareable collab link with secrets placed in the URL fragment (`#<key>`)
+ * so room keys never leak into relay HTTP request lines or server access logs.
  */
 export function formatCollabLink(relayUrl: string, roomId: string, key: Uint8Array, writeToken?: Uint8Array): string {
 	return formatCollabLinkPayload(relayUrl, roomId, key, writeToken, "#");
@@ -775,12 +640,8 @@ function normalizeCollabWebBaseUrl(relayUrl: string, webUrl?: string): string {
 }
 
 /**
- * Render the browser deep link. The browser UI may be hosted separately from
- * the relay; the fragment always carries the relay-specific collab link, so
- * room secrets stay out of HTTP path and query bytes.
- *
- * It nests the dot-joined payload, not the `#`-joined display link: a second
- * raw `#` inside a fragment is what strict URL stacks mangle to `%23`.
+ * Render browser deep link with dot-joined collab payload in the fragment so room
+ * secrets stay out of HTTP request paths.
  */
 export function formatCollabWebLink(
 	relayUrl: string,
