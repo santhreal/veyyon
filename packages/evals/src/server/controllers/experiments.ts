@@ -4,7 +4,14 @@
  */
 import { buildExperiments, experimentDetail, experimentOf, knownExperimentIdsWith } from "../../manager/experiments";
 import type { RunRow, RunStore } from "../../manager/store";
-import type { AddArmRequest, CreateExperimentRequest, ExperimentMetaUpdate, LaunchRequest } from "../../wire";
+import {
+	ADD_ARM_SPEC,
+	type AddArmRequest,
+	CREATE_EXPERIMENT_SPEC,
+	EXPERIMENT_META_UPDATE_SPEC,
+	type LaunchRequest,
+	parseRequestBody,
+} from "../../wire";
 import type { ServerContext } from "../context";
 
 /**
@@ -90,11 +97,8 @@ export async function createExperimentController(
 	_params: Record<string, string>,
 	request: Request,
 ): Promise<Response> {
-	const body = (await request.json()) as CreateExperimentRequest;
-	const id = body.id?.trim() ?? "";
-	if (!/^[A-Za-z0-9_.]+$/.test(id)) {
-		throw new Error("experiment id must be a non-empty token of [A-Za-z0-9_.] (runs group as `<id>-<arm>`)");
-	}
+	const body = parseRequestBody(await request.json().catch(() => null), CREATE_EXPERIMENT_SPEC);
+	const id = body.id.trim();
 	const goal = body.goal ?? ctx.store.getExperimentMeta(id)?.goal ?? "";
 	ctx.store.setExperimentGoal(id, goal);
 	return Response.json({ id, goal }, { status: 201 });
@@ -114,7 +118,7 @@ export async function updateExperimentMetaController(
 	request: Request,
 ): Promise<Response> {
 	const id = params.id;
-	const body = (await request.json()) as ExperimentMetaUpdate;
+	const body = parseRequestBody(await request.json().catch(() => null), EXPERIMENT_META_UPDATE_SPEC);
 	if (body.goal !== undefined) ctx.store.setExperimentGoal(id, body.goal);
 	const updatedRuns: string[] = [];
 	for (const jobName in body.runs) {
@@ -149,7 +153,7 @@ export async function addArmController(
 	request: Request,
 ): Promise<Response> {
 	const id = params.id;
-	const body = (await request.json()) as AddArmRequest;
+	const body = parseRequestBody(await request.json().catch(() => null), ADD_ARM_SPEC);
 	const launchRequest = resolveArmLaunch(ctx.store, id, body);
 	const result = ctx.runner.launch(launchRequest);
 	return Response.json(result, { status: 201 });

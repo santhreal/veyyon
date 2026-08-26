@@ -265,26 +265,150 @@ export interface LaunchRequest {
 	extraArgs?: string[];
 }
 
-/** A launch body that does not describe a run this server can start. */
-export class InvalidLaunchRequestError extends Error {
-	constructor(reason: string) {
-		super(`Launch request rejected: ${reason}`);
-		this.name = "InvalidLaunchRequestError";
+/** A request body that does not describe an operation this server can perform. */
+export class InvalidRequestBodyError extends Error {
+	constructor(what: string, reason: string) {
+		super(`${what} rejected: ${reason}`);
+		this.name = "InvalidRequestBodyError";
 	}
 }
 
-/** The kinds of value a launch field takes. */
-export type LaunchFieldKind = "string" | "strings" | "count" | "ratio" | "boolean" | "prewalk";
+/** The kinds of value a request-body field takes. */
+export type BodyFieldKind = "string" | "strings" | "count" | "ratio" | "boolean" | "object" | "map";
+
+/** A field table: every field a body accepts, by name, and the kind of value it takes. */
+export type BodyFields<T> = Readonly<Record<keyof T, BodyFieldKind>>;
+
+/**
+ * What one request body accepts.
+ *
+ * `fields` is keyed by `keyof T`, so a field added to the interface and not to the table is a
+ * type error: the checker cannot drift from the contract it checks.
+ */
+export interface BodySpec<T> {
+	/** Names the boundary in a refusal, e.g. `"Launch request"`. */
+	what: string;
+	fields: BodyFields<T>;
+	/** Values a string field is pinned to, by field name. */
+	enums?: Readonly<Record<string, readonly string[]>>;
+	/** Field table for an `"object"` field's value, or for every value of a `"map"` field. */
+	nested?: Readonly<Record<string, Readonly<Record<string, BodyFieldKind>>>>;
+	/** Shape a string field must match, by field name at any depth, with the shape stated in prose. */
+	patterns?: Readonly<Record<string, { regex: RegExp; describe: string }>>;
+	/** Fields that must be present, and non-blank when they take a string. */
+	required?: readonly string[];
+}
+
+function checkFields(
+	what: string,
+	raw: Record<string, unknown>,
+	fields: Readonly<Record<string, BodyFieldKind>>,
+	where: string,
+	spec: {
+		enums?: BodySpec<unknown>["enums"];
+		nested?: BodySpec<unknown>["nested"];
+		patterns?: BodySpec<unknown>["patterns"];
+	},
+): void {
+	const stray = Object.keys(raw).filter(key => !(key in fields));
+	if (stray.length > 0) {
+		throw new InvalidRequestBodyError(
+			what,
+			`unknown field(s) ${stray.map(key => `"${key}"`).join(", ")} in ${where}. Known fields: ${Object.keys(fields).sort().join(", ")}`,
+		);
+	}
+
+	for (const [key, value] of Object.entries(raw)) {
+		if (value === undefined || value === null) continue;
+		const at = where === "the body" ? `"${key}"` : `"${where}.${key}"`;
+		const kind = fields[key];
+		if (kind === "string") {
+			if (typeof value !== "string") throw new InvalidRequestBodyError(what, `${at} must be a string`);
+			const allowed = spec.enums?.[key];
+			if (allowed && !allowed.includes(value)) {
+				throw new InvalidRequestBodyError(
+					what,
+					`${at} must be one of ${allowed.map(option => `"${option}"`).join(", ")}, got "${value}"`,
+				);
+			}
+			const pattern = spec.patterns?.[key];
+			if (pattern && !pattern.regex.test(value)) {
+				throw new InvalidRequestBodyError(what, `${at} must be ${pattern.describe}, got "${value}"`);
+			}
+		} else if (kind === "strings") {
+			if (!Array.isArray(value) || value.some(item => typeof item !== "string" || item.length === 0)) {
+				throw new InvalidRequestBodyError(what, `${at} must be an array of non-empty strings`);
+			}
+		} else if (kind === "count") {
+			if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
+				throw new InvalidRequestBodyError(what, `${at} must be an integer >= 1, got ${JSON.stringify(value)}`);
+			}
+		} else if (kind === "ratio") {
+			if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+				throw new InvalidRequestBodyError(what, `${at} must be a number > 0, got ${JSON.stringify(value)}`);
+			}
+		} else if (kind === "boolean") {
+			if (typeof value !== "boolean") throw new InvalidRequestBodyError(what, `${at} must be true or false`);
+		} else {
+			if (typeof value !== "object" || Array.isArray(value)) {
+				throw new InvalidRequestBodyError(what, `${at} must be an object`);
+			}
+			const inner = spec.nested?.[key];
+			if (!inner) continue;
+			if (kind === "object") {
+				checkFields(what, value as Record<string, unknown>, inner, key, spec);
+				continue;
+			}
+			for (const [entryKey, entry] of Object.entries(value as Record<string, unknown>)) {
+				if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
+					throw new InvalidRequestBodyError(what, `"${key}.${entryKey}" must be an object`);
+				}
+				checkFields(what, entry as Record<string, unknown>, inner, `${key}.${entryKey}`, spec);
+			}
+		}
+	}
+}
+
+/**
+ * Reads an HTTP body against a spec, rejecting anything the operation behind it would mis-parse.
+ *
+ * Every mutating endpoint cast its JSON body to the interface it documents and used it, so a body
+ * the caller got wrong still took effect: `concurrency: "lots"` and `tasks: -5` reached the runner
+ * as command-line values, and a misspelled key -- `models` for `model`, `kind` for `benchmark` --
+ * was dropped in silence and the run started on the defaults, costing a job directory, a store row
+ * and a container before anything reported the mistake. A refusal names the boundary, the field and
+ * the reason, and the router maps it to 400.
+ */
+export function parseRequestBody<T>(body: unknown, spec: BodySpec<T>): T {
+	if (!body || typeof body !== "object" || Array.isArray(body)) {
+		throw new InvalidRequestBodyError(spec.what, "the body is not a JSON object");
+	}
+	const raw = body as Record<string, unknown>;
+	checkFields(
+		spec.what,
+		raw,
+		spec.fields as Readonly<Record<string, BodyFieldKind>>,
+		"the body",
+		spec as BodySpec<unknown>,
+	);
+
+	for (const field of spec.required ?? []) {
+		const value = raw[field];
+		const blank = typeof value === "string" && value.trim().length === 0;
+		if (value === undefined || value === null || blank) {
+			throw new InvalidRequestBodyError(spec.what, `"${field}" is required`);
+		}
+	}
+	return raw as T;
+}
 
 /**
  * Every field of a launch body, by name and by the kind of value it takes.
  *
- * `"strings"` is an array of non-empty strings, `"count"` an integer >= 1, `"ratio"` a
- * finite number > 0. A field absent from this table is not a field of a launch request; the
- * `keyof LaunchRequest` key type makes a field added to the interface and not to this table
- * a type error, so the two cannot drift.
+ * `"strings"` is an array of non-empty strings, `"count"` an integer >= 1, `"ratio"` a finite
+ * number > 0.
  */
-export const LAUNCH_REQUEST_FIELDS: Readonly<Record<keyof LaunchRequest, LaunchFieldKind>> = {
+export const LAUNCH_REQUEST_FIELDS: BodyFields<LaunchRequest> = {
 	suite: "string",
 	backend: "string",
 	benchmark: "string",
@@ -301,7 +425,7 @@ export const LAUNCH_REQUEST_FIELDS: Readonly<Record<keyof LaunchRequest, LaunchF
 	arm: "string",
 	webSearch: "boolean",
 	environment: "string",
-	prewalk: "prewalk",
+	prewalk: "object",
 	role: "string",
 	note: "string",
 	goal: "string",
@@ -310,83 +434,95 @@ export const LAUNCH_REQUEST_FIELDS: Readonly<Record<keyof LaunchRequest, LaunchF
 };
 
 /** Every field of a nested prewalk config, so a stray key there is rejected by name too. */
-const PREWALK_FIELDS: Readonly<Record<keyof PrewalkConfig, LaunchFieldKind>> = { into: "string" };
+const PREWALK_FIELDS: BodyFields<PrewalkConfig> = { into: "string" };
 
-/** The values `environment` and `role` accept, pinned so a typo cannot reach the runner. */
-const LAUNCH_ENUMS: Readonly<Record<string, readonly string[]>> = {
+/** A prewalk names the model it walks into, so an empty id is a mistake rather than a default. */
+const PREWALK_PATTERNS = { into: { regex: /\S/, describe: "a non-empty model id" } } as const;
+
+/** Per-run metadata an experiment update may set. */
+const RUN_META_FIELDS: Readonly<Record<string, BodyFieldKind>> = { role: "string", note: "string", label: "string" };
+
+/** The values a run's `environment` and `role` accept, pinned so a typo cannot reach the runner. */
+const RUN_ENUMS: Readonly<Record<string, readonly string[]>> = {
 	environment: ["docker", "apple-container"],
 	role: ["baseline", "variant", ""],
 };
 
+/** POST /api/runs. */
+export const LAUNCH_REQUEST_SPEC: BodySpec<LaunchRequest> = {
+	what: "Launch request",
+	fields: LAUNCH_REQUEST_FIELDS,
+	enums: RUN_ENUMS,
+	nested: { prewalk: PREWALK_FIELDS },
+	patterns: PREWALK_PATTERNS,
+	required: ["model"],
+};
+
+/** POST /api/experiments. */
+export const CREATE_EXPERIMENT_SPEC: BodySpec<CreateExperimentRequest> = {
+	what: "Create experiment request",
+	fields: { id: "string", goal: "string" },
+	patterns: {
+		id: {
+			regex: /^[A-Za-z0-9_.]+$/,
+			describe: "a token of [A-Za-z0-9_.] (runs group as `<id>-<arm>`)",
+		},
+	},
+	required: ["id"],
+};
+
+/** PUT /api/experiments/:id. */
+export const EXPERIMENT_META_UPDATE_SPEC: BodySpec<ExperimentMetaUpdate> = {
+	what: "Experiment update",
+	fields: { goal: "string", runs: "map" },
+	enums: RUN_ENUMS,
+	nested: { runs: RUN_META_FIELDS },
+};
+
+/** POST /api/experiments/:id/arms. */
+export const ADD_ARM_SPEC: BodySpec<AddArmRequest> = {
+	what: "Add arm request",
+	fields: {
+		arm: "string",
+		model: "string",
+		prewalk: "object",
+		include: "strings",
+		role: "string",
+		note: "string",
+		extraArgs: "strings",
+	},
+	enums: RUN_ENUMS,
+	nested: { prewalk: PREWALK_FIELDS },
+	patterns: PREWALK_PATTERNS,
+	required: ["arm", "model"],
+};
+
+/** POST /api/runs/:name/resume. */
+export const RESUME_RUN_SPEC: BodySpec<ResumeRunRequest> = {
+	what: "Resume request",
+	fields: { filterErrorTypes: "strings" },
+};
+
 /**
- * Reads an HTTP body as a launch request, rejecting anything the runner would mis-parse.
+ * The spec that checks each mutating route's body, or null for a route that takes no body.
  *
- * The launch endpoint cast its JSON body to `LaunchRequest` and forwarded it, so
- * `concurrency: "lots"` and `tasks: -5` reached the runner as command-line values, and an
- * unknown key -- `models` for `model`, `kind` for `benchmark` -- was dropped in silence and
- * the run started with the default instead. Both cost a job directory, a store row and a
- * container before anything reported the mistake, so every field is checked here, before
- * the child process exists.
+ * A mutating route added without an entry here has no checked body, so a contract suite sweeps
+ * `SERVER_ROUTES` against this table and fails until the new route records its decision.
  */
+export const BODY_SPEC_BY_ROUTE: Readonly<Record<string, BodySpec<never> | null>> = {
+	"POST /api/experiments": CREATE_EXPERIMENT_SPEC as BodySpec<never>,
+	"PUT /api/experiments/:id": EXPERIMENT_META_UPDATE_SPEC as BodySpec<never>,
+	"DELETE /api/experiments/:id": null,
+	"POST /api/experiments/:id/arms": ADD_ARM_SPEC as BodySpec<never>,
+	"POST /api/runs": LAUNCH_REQUEST_SPEC as BodySpec<never>,
+	"DELETE /api/runs/:name": null,
+	"POST /api/runs/:name/cancel": null,
+	"POST /api/runs/:name/resume": RESUME_RUN_SPEC as BodySpec<never>,
+};
+
+/** Reads a launch body, rejecting anything the runner would mis-parse. */
 export function parseLaunchRequest(body: unknown): LaunchRequest {
-	if (!body || typeof body !== "object" || Array.isArray(body)) {
-		throw new InvalidLaunchRequestError("the body is not a JSON object");
-	}
-	const raw = body as Record<string, unknown>;
-
-	const unknown = Object.keys(raw).filter(key => !(key in LAUNCH_REQUEST_FIELDS));
-	if (unknown.length > 0) {
-		throw new InvalidLaunchRequestError(
-			`unknown field(s) ${unknown.map(key => `"${key}"`).join(", ")}. Known fields: ${Object.keys(LAUNCH_REQUEST_FIELDS).sort().join(", ")}`,
-		);
-	}
-
-	for (const [key, value] of Object.entries(raw)) {
-		if (value === undefined || value === null) continue;
-		const kind = LAUNCH_REQUEST_FIELDS[key as keyof LaunchRequest];
-		if (kind === "string") {
-			if (typeof value !== "string") throw new InvalidLaunchRequestError(`"${key}" must be a string`);
-			const allowed = LAUNCH_ENUMS[key];
-			if (allowed && !allowed.includes(value)) {
-				throw new InvalidLaunchRequestError(
-					`"${key}" must be one of ${allowed.map(option => `"${option}"`).join(", ")}, got "${value}"`,
-				);
-			}
-		} else if (kind === "strings") {
-			if (!Array.isArray(value) || value.some(item => typeof item !== "string" || item.length === 0)) {
-				throw new InvalidLaunchRequestError(`"${key}" must be an array of non-empty strings`);
-			}
-		} else if (kind === "count") {
-			if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
-				throw new InvalidLaunchRequestError(`"${key}" must be an integer >= 1, got ${JSON.stringify(value)}`);
-			}
-		} else if (kind === "ratio") {
-			if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
-				throw new InvalidLaunchRequestError(`"${key}" must be a number > 0, got ${JSON.stringify(value)}`);
-			}
-		} else if (kind === "boolean") {
-			if (typeof value !== "boolean") throw new InvalidLaunchRequestError(`"${key}" must be true or false`);
-		} else if (typeof value !== "object" || Array.isArray(value)) {
-			throw new InvalidLaunchRequestError(`"${key}" must be an object`);
-		} else {
-			const nested = value as Record<string, unknown>;
-			const strayKeys = Object.keys(nested).filter(inner => !(inner in PREWALK_FIELDS));
-			if (strayKeys.length > 0) {
-				throw new InvalidLaunchRequestError(
-					`"${key}" has unknown field(s) ${strayKeys.map(inner => `"${inner}"`).join(", ")}. Known fields: ${Object.keys(PREWALK_FIELDS).sort().join(", ")}`,
-				);
-			}
-			if (nested.into !== undefined && (typeof nested.into !== "string" || nested.into.length === 0)) {
-				throw new InvalidLaunchRequestError(`"${key}.into" must be a non-empty string`);
-			}
-		}
-	}
-
-	if (typeof raw.model !== "string" || raw.model.trim().length === 0) {
-		throw new InvalidLaunchRequestError('"model" is required');
-	}
-
-	return raw as unknown as LaunchRequest;
+	return parseRequestBody(body, LAUNCH_REQUEST_SPEC);
 }
 
 /** Standard launch response returned by run and arm launch endpoints. */
