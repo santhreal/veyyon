@@ -5,6 +5,14 @@
  * from different evaluation suites may never share a table or aggregate run.
  */
 
+import {
+	classifyTrialOutcome,
+	countOutcomes,
+	meanOfScored,
+	meanWithTimeoutsAsZero,
+	rateOf,
+	sumOfMeasured,
+} from "./scoring";
 import type { RunProvenance, TrialArtifacts, TrialCell, TrialScore, Variant } from "./types";
 
 export interface SuiteTag {
@@ -37,15 +45,24 @@ export interface EvalRunRecord {
 
 export interface CellSummary {
 	readonly variant: string;
+	/** Every trial that settled, whatever the outcome. */
 	readonly total: number;
 	readonly passes: number;
+	/** Trials that never reached a grade. Excluded from every rate and mean below. */
 	readonly errors: number;
+	/** Trials that exhausted the agent budget. Graded as failures. */
+	readonly timedOut: number;
+	/** Trials the grader scored. */
+	readonly scored: number;
+	/** The denominator of `passRate` and `meanReward`: `scored + timedOut`. */
+	readonly denominator: number;
 	readonly passRate: number | null;
 	readonly meanReward: number | null;
 	readonly meanPartial: number | null;
 	readonly totalCostUsd: number | null;
-	readonly totalInputTokens: number;
-	readonly totalOutputTokens: number;
+	/** `null` when no trial reported a token count: unmeasured, not zero. */
+	readonly totalInputTokens: number | null;
+	readonly totalOutputTokens: number | null;
 }
 
 export interface RunComparisonTable {
@@ -185,6 +202,17 @@ export function assertSameSuite(runs: readonly EvalRunRecord[]): void {
 }
 
 /**
+ * Reads the timeout flag a backend records on a trial.
+ *
+ * Backends that stop an over-budget agent instead of failing it set `extra.timedOut`
+ * on the score or the artifacts. Such a trial reached the grader with no work to grade,
+ * so it counts as a graded failure rather than an infrastructure error.
+ */
+function timedOutOf(result: TrialResultRecord): boolean {
+	return result.score.extra?.timedOut === true || result.artifacts?.extra?.timedOut === true;
+}
+
+/**
  * Summarizes trial results grouped by variant for a single run.
  */
 export function summarizeRunCells(run: EvalRunRecord): readonly CellSummary[] {
@@ -205,51 +233,31 @@ export function summarizeRunCells(run: EvalRunRecord): readonly CellSummary[] {
 
 	const summaries: CellSummary[] = [];
 	for (const [variantName, results] of byVariant) {
-		const total = results.length;
-		let passes = 0;
-		let errors = 0;
-		let sumReward = 0;
-		let sumPartial = 0;
-		let sumCost: number | null = null;
-		let sumInputTokens = 0;
-		let sumOutputTokens = 0;
+		const outcomes = results.map(res => classifyTrialOutcome(res.score.error, timedOutOf(res)));
+		const counts = countOutcomes(outcomes);
 
-		for (const res of results) {
-			if (res.score.error !== null) {
-				errors++;
-			} else if (res.score.reward === 1) {
-				passes++;
-			}
-
-			if (res.score.reward !== null) {
-				sumReward += res.score.reward;
-			}
-			if (res.score.partial !== null) {
-				sumPartial += res.score.partial;
-			}
-
-			if (res.score.usage?.costUsd != null) {
-				sumCost = (sumCost ?? 0) + res.score.usage.costUsd;
-			}
-			if (res.score.usage?.inputTokens != null) {
-				sumInputTokens += res.score.usage.inputTokens;
-			}
-			if (res.score.usage?.outputTokens != null) {
-				sumOutputTokens += res.score.usage.outputTokens;
-			}
-		}
+		const graded = results.filter((_, index) => outcomes[index] === "scored");
+		const passes = graded.filter(res => res.score.reward === 1).length;
 
 		summaries.push({
 			variant: variantName,
-			total,
+			total: counts.total,
 			passes,
-			errors,
-			passRate: total > 0 ? passes / total : null,
-			meanReward: total > 0 ? sumReward / total : null,
-			meanPartial: total > 0 ? sumPartial / total : null,
-			totalCostUsd: sumCost,
-			totalInputTokens: sumInputTokens,
-			totalOutputTokens: sumOutputTokens,
+			errors: counts.errors,
+			timedOut: counts.timedOut,
+			scored: counts.scored,
+			denominator: counts.denominator,
+			passRate: rateOf(passes, counts.denominator),
+			meanReward: meanWithTimeoutsAsZero(
+				graded.map(res => res.score.reward),
+				counts.timedOut,
+			),
+			meanPartial: meanOfScored(graded.map(res => res.score.partial)),
+			// Spend and tokens come from every trial that measured them, including the ones
+			// that errored: the provider billed for the work before the trial fell over.
+			totalCostUsd: sumOfMeasured(results.map(res => res.score.usage?.costUsd)),
+			totalInputTokens: sumOfMeasured(results.map(res => res.score.usage?.inputTokens)),
+			totalOutputTokens: sumOfMeasured(results.map(res => res.score.usage?.outputTokens)),
 		});
 	}
 

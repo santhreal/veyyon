@@ -166,7 +166,11 @@ describe("Cross-suite comparison refusal invariant", () => {
 });
 
 describe("summarizeRunCells", () => {
-	it("correctly computes pass rate, mean reward, tokens, and errors", () => {
+	// This block previously pinned the defect: a trial that never reached the grader sat in the
+	// denominator of passRate and meanReward, so a run whose trials crashed reported a low score
+	// instead of an unmeasured one, and unmeasured tokens read as 0. The expectations below are
+	// the corrected contract from core/scoring.ts.
+	it("excludes an infrastructure error from every rate and reports it beside them", () => {
 		const results: TrialResultRecord[] = [
 			{
 				cell: { variant: "v1", suite: "suite-a", task: "t1", repeat: 1 },
@@ -193,27 +197,72 @@ describe("summarizeRunCells", () => {
 				score: {
 					reward: null,
 					partial: null,
-					error: "Task timed out",
-					usage: null,
+					error: "container exited before the grader ran",
+					usage: { costUsd: 0.02, inputTokens: 5, outputTokens: 7 },
 					extra: {},
 				},
 			},
 		];
 
 		const run = createSampleRun("run-summ", "suite-a", "1.0", ["v1"], results);
-		const summaries = summarizeRunCells(run);
+		const s = summarizeRunCells(run)[0];
 
-		expect(summaries.length).toBe(1);
-		const s = summaries[0];
 		expect(s.variant).toBe("v1");
 		expect(s.total).toBe(3);
-		expect(s.passes).toBe(1);
+		expect(s.scored).toBe(2);
+		expect(s.timedOut).toBe(0);
 		expect(s.errors).toBe(1);
-		expect(s.passRate).toBeCloseTo(1 / 3, 4);
-		expect(s.meanReward).toBeCloseTo(1 / 3, 4);
-		expect(s.meanPartial).toBeCloseTo(1.0 / 3, 4);
-		expect(s.totalCostUsd).toBeCloseTo(0.25, 4);
-		expect(s.totalInputTokens).toBe(110);
-		expect(s.totalOutputTokens).toBe(220);
+		expect(s.denominator).toBe(2);
+		expect(s.passes).toBe(1);
+		expect(s.passRate).toBeCloseTo(1 / 2, 6);
+		expect(s.meanReward).toBeCloseTo(1 / 2, 6);
+		expect(s.meanPartial).toBeCloseTo(1 / 2, 6);
+		// Spend and tokens cover the errored trial too: the provider billed for the work it did.
+		expect(s.totalCostUsd).toBeCloseTo(0.27, 6);
+		expect(s.totalInputTokens).toBe(115);
+		expect(s.totalOutputTokens).toBe(227);
+	});
+
+	it("grades a timed-out trial as a zero inside the denominator", () => {
+		const results: TrialResultRecord[] = [
+			{
+				cell: { variant: "v1", suite: "suite-a", task: "t1", repeat: 1 },
+				score: { reward: 1, partial: 1, error: null, usage: null, extra: {} },
+			},
+			{
+				cell: { variant: "v1", suite: "suite-a", task: "t2", repeat: 1 },
+				score: { reward: null, partial: null, error: "agent budget exhausted", usage: null, extra: {} },
+				artifacts: { extra: { timedOut: true } },
+			},
+		];
+
+		const run = createSampleRun("run-timeout", "suite-a", "1.0", ["v1"], results);
+		const s = summarizeRunCells(run)[0];
+
+		expect(s.timedOut).toBe(1);
+		expect(s.errors).toBe(0);
+		expect(s.scored).toBe(1);
+		expect(s.denominator).toBe(2);
+		expect(s.passes).toBe(1);
+		expect(s.passRate).toBeCloseTo(0.5, 6);
+		expect(s.meanReward).toBeCloseTo(0.5, 6);
+		// Nothing measured a cost, so the cell reports no spend rather than free work.
+		expect(s.totalCostUsd).toBeNull();
+		expect(s.totalInputTokens).toBeNull();
+	});
+
+	it("reports no rate at all when every trial failed before the grader", () => {
+		const results: TrialResultRecord[] = [1, 2].map(n => ({
+			cell: { variant: "v1", suite: "suite-a", task: `t${n}`, repeat: 1 },
+			score: { reward: null, partial: null, error: "backend refused the trial", usage: null, extra: {} },
+		}));
+
+		const run = createSampleRun("run-dead", "suite-a", "1.0", ["v1"], results);
+		const s = summarizeRunCells(run)[0];
+
+		expect([s.total, s.errors, s.denominator]).toEqual([2, 2, 0]);
+		expect(s.passRate).toBeNull();
+		expect(s.meanReward).toBeNull();
+		expect(s.meanPartial).toBeNull();
 	});
 });
