@@ -23,7 +23,7 @@
  * filesystem configuration.
  */
 import * as path from "node:path";
-import { truncate } from "@veyyon/utils";
+import { truncate } from "@veyyon/utils/format";
 import { applyEdits, collectRewrittenAnchorLines } from "./apply";
 import { hasAnchorScopedEdit, hasBlockEdit, resolveBlockEdits } from "./block";
 import { computeFileHash, formatHashlineHeader } from "./format";
