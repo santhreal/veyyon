@@ -29,10 +29,18 @@ bun run evals --suite deep-swe --model google-antigravity/gemini-3.5-flash \
 	--config arms/baseline.yml --config arms/candidate-unified-runtime.yml --dry-run
 ```
 
-`--dry-run` prints the plan and every preflight verdict — suite, harness, backend, and `resume` when
-`--resume` is passed — and starts no container, and builds nothing: a missing or stale artifact is
-reported with the command that produces it. `--repeats N` runs each cell N times; results are
-recorded in plan order, so two runs of one plan diff cell by cell.
+`--dry-run` prints the plan and every preflight verdict — paths, suite, harness, backend, and
+`resume` when `--resume` is passed — and starts no container, and builds nothing: a missing or stale
+artifact is reported with the command that produces it. `--repeats N` runs each cell N times; results
+are recorded in plan order, so two runs of one plan diff cell by cell.
+
+The `paths` verdict covers the three directories a run reaches: `--runs-dir`, which is created when
+absent and must not be a regular file or an unwritable directory, `--work-dir`, which must already
+exist, and `--dataset-dir`, which must exist as a directory or, for `typescript-edit`, as a `.tar` or
+`.tar.gz` archive. Each is checked before the plan is built, so a mistyped directory costs a second
+rather than a preflight that passes and a run that dies at its first write. A `--tasks` value holding
+a path separator or a `.txt`, `.jsonl`, `.list` or `.tasks` extension names a file: when it cannot be
+read the refusal names the path, instead of reading it as one unknown task id.
 
 `--resume` continues the run named by `--run-id` from its `trials.jsonl` journal, skipping every
 trial that already settled. A run id with no journal is rejected rather than started, so a typo

@@ -299,6 +299,9 @@ describe("executeRun", () => {
 		tempDir = await TempDir.create("@evals-test-plan-execute-");
 		workDir = tempDir.join("work");
 		runsDir = tempDir.join("runs");
+		// `executeRun` refuses a work directory that is not there, which is what an operator
+		// naming one gets, so the directory these trials execute in exists here too.
+		await fs.mkdir(workDir, { recursive: true });
 	});
 
 	afterEach(async () => {
