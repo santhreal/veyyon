@@ -20,6 +20,10 @@
 
 import { COMPOSER_ORACLE_GUARANTEES, COMPOSER_ORACLES } from "./composer-defect-oracle";
 import { DIFF_RENDER_ORACLE_GUARANTEES, DIFF_RENDER_ORACLES } from "./diff-render-defect-oracle";
+import {
+	INLINE_MARKDOWN_ORACLE_GUARANTEES,
+	INLINE_MARKDOWN_ORACLES,
+} from "./inline-markdown-defect-oracle";
 import { MARKDOWN_ORACLE_GUARANTEES, MARKDOWN_ORACLES } from "./markdown-defect-oracle";
 import { OVERLAY_ORACLE_GUARANTEES, OVERLAY_ORACLES } from "./overlay-defect-oracle";
 import { TEXT_PRIMITIVE_ORACLE_GUARANTEES, TEXT_PRIMITIVE_ORACLES } from "./text-primitive-defect-oracle";
@@ -65,6 +69,11 @@ export const DEFECT_ORACLE_REGISTRIES = {
 		guarantees: DIFF_RENDER_ORACLE_GUARANTEES,
 		entryIds: Object.keys(DIFF_RENDER_ORACLES),
 		subject: "the rows the diff renderer returns",
+	},
+	inlineMarkdown: {
+		guarantees: INLINE_MARKDOWN_ORACLE_GUARANTEES,
+		entryIds: Object.keys(INLINE_MARKDOWN_ORACLES),
+		subject: "the fragment the inline markdown renderer returns for one label",
 	},
 } as const satisfies Readonly<Record<string, DefectOracleRegistry>>;
 

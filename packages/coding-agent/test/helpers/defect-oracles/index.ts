@@ -17,6 +17,7 @@
 
 export * from "./composer-oracle-runner";
 export * from "./diff-render-oracle-runner";
+export * from "./inline-markdown-oracle-runner";
 export * from "./markdown-oracle-runner";
 export * from "./overlay-oracle-runner";
 export * from "./renderer-defect-corpus";

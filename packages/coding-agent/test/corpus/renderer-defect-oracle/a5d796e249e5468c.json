@@ -1,0 +1,19 @@
+{
+	"schemaVersion": 3,
+	"id": "a5d796e249e5468c",
+	"status": "recorded",
+	"recordedAt": "2026-08-26T11:45:53.849Z",
+	"template": "inline-markdown-sweep",
+	"seed": 0,
+	"kind": "failed",
+	"message": "tab@based: the fragment forwards a raw tab at 17: \"\\u001b[38;5;250mbefore\\tafter\\u001b[39m\"",
+	"observedGrid": [
+		"\u001b[38;5;250mbefore\tafter\u001b[39m"
+	],
+	"family": "inlineMarkdown",
+	"state": {
+		"fixture": "tab",
+		"shape": "based"
+	},
+	"oracle": "theRenderedFragmentForwardsNoRawTab"
+}

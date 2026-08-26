@@ -1,0 +1,19 @@
+{
+	"schemaVersion": 3,
+	"id": "6069f060ea4e3771",
+	"status": "recorded",
+	"recordedAt": "2026-08-26T11:45:53.851Z",
+	"template": "inline-markdown-sweep",
+	"seed": 0,
+	"kind": "failed",
+	"message": "table@based: the fragment drops [\"alpha\",\"beta\",\"one\",\"two\"] from \"| alpha | beta |\\n| - | - |\\n| one | two |\"",
+	"observedGrid": [
+		""
+	],
+	"family": "inlineMarkdown",
+	"state": {
+		"fixture": "table",
+		"shape": "based"
+	},
+	"oracle": "noWordOfTheSourceIsDroppedFromTheFragment"
+}

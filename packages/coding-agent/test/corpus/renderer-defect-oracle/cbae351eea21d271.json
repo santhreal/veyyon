@@ -1,0 +1,19 @@
+{
+	"schemaVersion": 3,
+	"id": "cbae351eea21d271",
+	"status": "recorded",
+	"recordedAt": "2026-08-26T11:45:53.849Z",
+	"template": "inline-markdown-sweep",
+	"seed": 0,
+	"kind": "failed",
+	"message": "contentOscLink@based: the fragment severs an escape sequence at 15: \"\\u001b]8;;\\u001b[39m\\u001b[38;5;250mhttp://ex\"",
+	"observedGrid": [
+		"\u001b[38;5;250mosc \u001b]8;;\u001b[39m\u001b[38;5;250mhttp://example.com\u0007link\u001b]8;;\u0007\u001b[39m\u001b[38;5;250m\u001b[39m\u001b[38;5;250m tail\u001b[39m"
+	],
+	"family": "inlineMarkdown",
+	"state": {
+		"fixture": "contentOscLink",
+		"shape": "based"
+	},
+	"oracle": "everyEscapeInTheFragmentIsComplete"
+}

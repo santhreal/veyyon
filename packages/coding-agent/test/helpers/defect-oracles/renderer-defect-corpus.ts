@@ -27,6 +27,8 @@ import {
 	DEFECT_ORACLE_REGISTRY_NAMES,
 	type DiffRenderOracleFailure,
 	type DiffRenderOracleGuarantee,
+	type InlineMarkdownOracleFailure,
+	type InlineMarkdownOracleGuarantee,
 	type MarkdownOracleFailure,
 	type MarkdownOracleGuarantee,
 	type OracleFailure,
@@ -49,6 +51,13 @@ import {
 	diffStateFor,
 	evaluateDiffRenderCase,
 } from "./diff-render-oracle-runner";
+import {
+	evaluateInlineMarkdownCase,
+	INLINE_CALLER_SHAPES,
+	INLINE_SOURCES,
+	type InlineMarkdownCase,
+	inlineMarkdownStateFor,
+} from "./inline-markdown-oracle-runner";
 import {
 	evaluateMarkdownCase,
 	MARKDOWN_FIXTURES,
@@ -127,7 +136,8 @@ export interface CorpusObservation {
 		| ToolRenderOracleGuarantee
 		| TextPrimitiveOracleGuarantee
 		| MarkdownOracleGuarantee
-		| DiffRenderOracleGuarantee;
+		| DiffRenderOracleGuarantee
+		| InlineMarkdownOracleGuarantee;
 	kind: CorpusCaseKind;
 	message: string;
 }
@@ -213,6 +223,14 @@ export type MarkdownCorpusCaseState = MarkdownCase;
  */
 export type DiffRenderCorpusCaseState = DiffRenderCase;
 
+/**
+ * What an inline-markdown case records: the source fixture and the caller shape.
+ *
+ * The shape is recorded as its name rather than as a boolean, because the two shapes are the two
+ * kinds of call site rather than a flag, and a name is what a failure message has to say.
+ */
+export type InlineMarkdownCorpusCaseState = InlineMarkdownCase;
+
 /** Any family's state, for the id hash and the promotion path that are shared across families. */
 export type AnyCorpusCaseState =
 	| CorpusCaseState
@@ -220,7 +238,8 @@ export type AnyCorpusCaseState =
 	| ToolRenderCorpusCaseState
 	| TextPrimitiveCorpusCaseState
 	| MarkdownCorpusCaseState
-	| DiffRenderCorpusCaseState;
+	| DiffRenderCorpusCaseState
+	| InlineMarkdownCorpusCaseState;
 
 interface CorpusCaseFields {
 	schemaVersion: typeof CORPUS_SCHEMA_VERSION;
@@ -276,6 +295,12 @@ export interface DiffRenderCorpusCase extends CorpusCaseFields {
 	oracle: DiffRenderOracleGuarantee;
 }
 
+export interface InlineMarkdownCorpusCase extends CorpusCaseFields {
+	family: "inlineMarkdown";
+	state: InlineMarkdownCorpusCaseState;
+	oracle: InlineMarkdownOracleGuarantee;
+}
+
 /** Discriminated on `family`, so a reader that handles one cannot silently be handed the other. */
 export type CorpusCase =
 	| ComposerCorpusCase
@@ -283,7 +308,8 @@ export type CorpusCase =
 	| ToolRenderCorpusCase
 	| TextPrimitiveCorpusCase
 	| MarkdownCorpusCase
-	| DiffRenderCorpusCase;
+	| DiffRenderCorpusCase
+	| InlineMarkdownCorpusCase;
 
 /**
  * Which state shape each family records.
@@ -298,6 +324,7 @@ interface CorpusStateByFamily extends Record<CorpusFamily, AnyCorpusCaseState> {
 	textPrimitive: TextPrimitiveCorpusCaseState;
 	markdown: MarkdownCorpusCaseState;
 	diffRender: DiffRenderCorpusCaseState;
+	inlineMarkdown: InlineMarkdownCorpusCaseState;
 }
 
 /** What a replay produces, in the terms every family reports: a verdict, the rows, and a teardown. */
@@ -364,6 +391,10 @@ const ORACLE_FAMILIES: { readonly [F in CorpusFamily]: OracleFamily<CorpusStateB
 	diffRender: {
 		readState: diffRenderCorpusStateFrom,
 		replay: state => Promise.resolve(replayDiffRenderCorpusCase(state)),
+	},
+	inlineMarkdown: {
+		readState: inlineMarkdownCorpusStateFrom,
+		replay: state => Promise.resolve(replayInlineMarkdownCorpusCase(state)),
 	},
 };
 
@@ -625,6 +656,45 @@ export function replayDiffRenderCorpusCase(state: DiffRenderCorpusCaseState): Co
 	return {
 		evaluation: evaluateDiffRenderCase(state),
 		frameState: { viewportLines: diffStateFor(state).rows },
+		cleanUp: () => {},
+	};
+}
+
+function inlineMarkdownCorpusStateFrom(value: Record<string, unknown>, label: string): InlineMarkdownCorpusCaseState {
+	const state = value.state;
+	if (typeof state !== "object" || state === null) {
+		throw new Error(`${label}: no state object.`);
+	}
+	const fields = state as Record<string, unknown>;
+	if (typeof fields.fixture !== "string" || typeof fields.shape !== "string") {
+		throw new Error(
+			`${label}: an inline-markdown case records fixture and shape. Re-record the case with the sweep.`,
+		);
+	}
+	if (INLINE_SOURCES[fields.fixture] === undefined) {
+		throw new Error(
+			`${label}: fixture ${String(fields.fixture)} is not one the runner drives. A fixture was renamed or removed; re-record the case.`,
+		);
+	}
+	if (!INLINE_CALLER_SHAPES.some(shape => shape === fields.shape)) {
+		throw new Error(
+			`${label}: shape ${String(fields.shape)} is not a caller shape the sweep drives. The shapes are ${INLINE_CALLER_SHAPES.join(", ")}.`,
+		);
+	}
+	return state as InlineMarkdownCorpusCaseState;
+}
+
+/**
+ * Replay an inline-markdown case by rendering the same source through the same caller shape.
+ *
+ * The renderer reads the markdown theme, which `initTheme` supplies in the suite; nothing is mounted,
+ * so there is nothing to tear down. The fragment is one line, and the corpus records rows, so it is
+ * recorded as a single row.
+ */
+export function replayInlineMarkdownCorpusCase(state: InlineMarkdownCorpusCaseState): CorpusReplay {
+	return {
+		evaluation: evaluateInlineMarkdownCase(state),
+		frameState: { viewportLines: [inlineMarkdownStateFor(state).fragment] },
 		cleanUp: () => {},
 	};
 }
@@ -1001,6 +1071,22 @@ export function promoteDiffRenderFailureToCorpus(
 ): string {
 	return promoteCaseToCorpus(
 		"diffRender",
+		state,
+		{ oracle: failure.oracle, kind: "failed", message: failure.message },
+		observedGrid,
+		options,
+	);
+}
+
+/** Record an inline-markdown failure the evaluator reported. */
+export function promoteInlineMarkdownFailureToCorpus(
+	state: InlineMarkdownCorpusCaseState,
+	failure: InlineMarkdownOracleFailure,
+	observedGrid: readonly string[],
+	options?: { template?: string; seed?: number; status?: CorpusCaseStatus; reason?: string },
+): string {
+	return promoteCaseToCorpus(
+		"inlineMarkdown",
 		state,
 		{ oracle: failure.oracle, kind: "failed", message: failure.message },
 		observedGrid,

@@ -1,0 +1,19 @@
+{
+	"schemaVersion": 3,
+	"id": "f56e0ab5dc61a134",
+	"status": "recorded",
+	"recordedAt": "2026-08-26T11:45:53.849Z",
+	"template": "inline-markdown-sweep",
+	"seed": 0,
+	"kind": "failed",
+	"message": "contentSgr@based: the fragment carries 2 escape sequences an escape-free source does not produce, starting with \"\\u001b[31m\"",
+	"observedGrid": [
+		"\u001b[38;5;250mcontent \u001b[31mred\u001b[0m bytes\u001b[39m"
+	],
+	"family": "inlineMarkdown",
+	"state": {
+		"fixture": "contentSgr",
+		"shape": "based"
+	},
+	"oracle": "noContentSuppliedEscapeSurvivesIntoTheFragment"
+}

@@ -1,0 +1,19 @@
+{
+	"schemaVersion": 3,
+	"id": "7e41e20f9930df1a",
+	"status": "recorded",
+	"recordedAt": "2026-08-26T11:45:53.848Z",
+	"template": "inline-markdown-sweep",
+	"seed": 0,
+	"kind": "failed",
+	"message": "twoLines@based: the fragment carries a line break at 21: \"\\u001b[38;5;250mfirst line\\nsecond line\\u001b[39m\"",
+	"observedGrid": [
+		"\u001b[38;5;250mfirst line\nsecond line\u001b[39m"
+	],
+	"family": "inlineMarkdown",
+	"state": {
+		"fixture": "twoLines",
+		"shape": "based"
+	},
+	"oracle": "theRenderedFragmentIsASingleLine"
+}

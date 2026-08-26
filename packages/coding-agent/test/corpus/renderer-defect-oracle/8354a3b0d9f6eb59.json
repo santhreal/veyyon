@@ -1,0 +1,19 @@
+{
+	"schemaVersion": 3,
+	"id": "8354a3b0d9f6eb59",
+	"status": "recorded",
+	"recordedAt": "2026-08-26T11:45:53.849Z",
+	"template": "inline-markdown-sweep",
+	"seed": 0,
+	"kind": "failed",
+	"message": "contentSgrUnterminated@based: the fragment leaves 1 style attributes open: \"\\u001b[38;5;250mcontent \\u001b[31m unterminated\\u001b[39m\"",
+	"observedGrid": [
+		"\u001b[38;5;250mcontent \u001b[31m unterminated\u001b[39m"
+	],
+	"family": "inlineMarkdown",
+	"state": {
+		"fixture": "contentSgrUnterminated",
+		"shape": "based"
+	},
+	"oracle": "theFragmentClosesEveryStyleItOpens"
+}

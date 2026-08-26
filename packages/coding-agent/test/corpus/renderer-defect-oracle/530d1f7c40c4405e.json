@@ -1,0 +1,19 @@
+{
+	"schemaVersion": 3,
+	"id": "530d1f7c40c4405e",
+	"status": "recorded",
+	"recordedAt": "2026-08-26T11:45:53.850Z",
+	"template": "inline-markdown-sweep",
+	"seed": 0,
+	"kind": "failed",
+	"message": "contentBell@based: the fragment carries control byte 0x07 at 13: \"\\u001b[38;5;250ma \\u0007 bell\\u001b[39m\"",
+	"observedGrid": [
+		"\u001b[38;5;250ma \u0007 bell\u001b[39m"
+	],
+	"family": "inlineMarkdown",
+	"state": {
+		"fixture": "contentBell",
+		"shape": "based"
+	},
+	"oracle": "theRenderedFragmentCarriesNoC0Control"
+}

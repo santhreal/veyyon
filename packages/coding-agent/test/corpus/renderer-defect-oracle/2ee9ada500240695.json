@@ -1,0 +1,19 @@
+{
+	"schemaVersion": 3,
+	"id": "2ee9ada500240695",
+	"status": "recorded",
+	"recordedAt": "2026-08-26T11:45:53.848Z",
+	"template": "inline-markdown-sweep",
+	"seed": 0,
+	"kind": "failed",
+	"message": "code@based: the cell at 18 paints with no style open: \"50ma \\u001b[39mcode\\u001b[38;5;250m\\u001b[39m\"",
+	"observedGrid": [
+		"\u001b[38;5;250ma \u001b[39mcode\u001b[38;5;250m\u001b[39m\u001b[38;5;250m span\u001b[39m"
+	],
+	"family": "inlineMarkdown",
+	"state": {
+		"fixture": "code",
+		"shape": "based"
+	},
+	"oracle": "everyPaintedCellSitsInsideAStyle"
+}
