@@ -7,7 +7,7 @@ import type {
 	AgentToolUpdateCallback,
 	ToolTier,
 } from "@veyyon/agent-core";
-import { formatHashlineHeader } from "@veyyon/hashline";
+import { BARE_LITERAL_VALUE_RE, formatHashlineHeader } from "@veyyon/hashline";
 import type { Component } from "@veyyon/tui";
 import {
 	atomicWriteFileWith,
@@ -108,7 +108,6 @@ const APPLY_PATCH_MARKER_RE = /^\*\*\*\s+(?:Update File|Add File|Delete File|Mov
 const READ_TRUNCATION_NOTICE_RE = /^\[(?:Showing lines \d+-\d+ of \d+|\d+ more lines? in (?:file|\S+))\b.*\bUse :L?\d+/;
 const SEARCH_PREFIX_RE = /^\s*(?:\*\d+:|\s\d+:|>>>\s*\d+:)/;
 const LINE_PREFIX_RE = /^\s*(\d+):/;
-const BARE_LITERAL_VALUE_RE = /^\s*(?:"[^"]*"|'[^']*'|[-+]?\d+(?:\.\d+)?|true|false|null)\s*,?\s*$/;
 const EXECUTABLE_NOTICE = "[Notice: Made executable via chmod +x]";
 
 const BULK_DIRECTIVE_RE = /^#?(\d+)\s*[:=]\s*(@ours|@theirs|@base|@both)$/;

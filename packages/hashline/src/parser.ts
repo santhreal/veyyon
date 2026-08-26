@@ -38,11 +38,16 @@ function isSkippableCommentLine(line: string): boolean {
 }
 
 /**
- * Stripped remainder of a bare `N: <value>` row that is a lone quoted or
- * numeric literal (optionally comma-terminated) — the shape of a numeric-keyed
- * dict/YAML body rather than read-output paste.
+ * Stripped remainder of a bare `N: <value>` row that is a lone literal — a quoted string, a number,
+ * or one of the JSON keywords `true`/`false`/`null` — optionally comma-terminated. That is the shape
+ * of a numeric-keyed dict/JSON/YAML body rather than read-output paste.
+ *
+ * Exported because the write tool asks the same question of a whole-file payload. Two copies of this
+ * shape disagreed: the copy here rejected `true`/`false`/`null`, so a numeric-keyed JSON body of
+ * keywords had its `N:` keys stripped as if it were a read paste, while the write tool accepted the
+ * identical body.
  */
-const BARE_LITERAL_VALUE_RE = /^\s*(?:"[^"]*"|'[^']*'|[-+]?\d+(?:\.\d+)?)\s*,?\s*$/;
+export const BARE_LITERAL_VALUE_RE = /^\s*(?:"[^"]*"|'[^']*'|[-+]?\d+(?:\.\d+)?|true|false|null)\s*,?\s*$/;
 
 function detectApplyPatchContamination(text: string, _hasPending: boolean): string | null {
 	const trimmed = text.trimStart();
