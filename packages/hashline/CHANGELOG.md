@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- A wide line clipped in the unseen-line reveal is cut at a code point rather than a UTF-16 code unit, so an emoji or rare CJK character sitting at the column limit is no longer split into an invalid lone surrogate.
+
 ## [1.2.0] - 2026-08-23
 
 ### Breaking Changes
