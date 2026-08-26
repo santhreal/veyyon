@@ -143,7 +143,10 @@ class VeyyonAgentContractTest(unittest.IsolatedAsyncioTestCase):
         arms_dir = self.assets_dir / "arms"
         arms_dir.mkdir(parents=True, exist_ok=True)
         (arms_dir / "default.yml").write_text("settings:\n  test: true\n", encoding="utf-8")
-
+        (self.assets_dir / "attachments.json").write_text(
+            json.dumps({"version": 1, "arms": {"default": []}}),
+            encoding="utf-8",
+        )
         self.env = FakeEnvironment()
 
     def tearDown(self) -> None:
@@ -343,7 +346,7 @@ class VeyyonAgentContractTest(unittest.IsolatedAsyncioTestCase):
         ]
         self.assertTrue(len(run_calls) >= 1)
         self.assertIn(
-            "VEYYON_EVAL_PROMPTS=$(cat /opt/veyyon-assets/prompts/custom.json)",
+            'VEYYON_EVAL_PROMPTS="$(cat /opt/veyyon-assets/prompts/custom.json)"',
             run_calls[0].command,
         )
 
@@ -353,7 +356,7 @@ class VeyyonAgentContractTest(unittest.IsolatedAsyncioTestCase):
         ]
         self.assertTrue(len(setup_calls) >= 1)
         self.assertIn(
-            "cp /opt/veyyon-assets/rules/guidelines.md ~/.veyyon/rules/guidelines.md",
+            "cp /opt/veyyon-assets/rules/guidelines.md ~/.veyyon/rules/",
             setup_calls[0].command,
         )
 
@@ -635,6 +638,16 @@ class ManifestAndHelperFunctionsTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             parse_arm_attachments(escaping_path, "arm_a")
 
+        # Missing arm raises ValueError (fail-closed)
+        missing_arm_manifest = json.dumps(
+            {
+                "version": 1,
+                "arms": {"arm_a": []},
+            }
+        )
+        with self.assertRaises(ValueError) as ctx:
+            parse_arm_attachments(missing_arm_manifest, "arm_b")
+        self.assertIn("does not name arm 'arm_b'", str(ctx.exception))
     def test_model_catalog_refresh_command_construction(self) -> None:
         cmd = build_model_catalog_refresh_command(
             binary="/opt/veyyon-assets/vey",

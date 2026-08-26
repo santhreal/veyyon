@@ -562,8 +562,10 @@ export class HarborBackend implements ExecutionBackend {
 			}
 		}
 
-		if (exitCode !== 0 && !trialDir) {
-			throw new Error(`Harbor run failed with exit code ${exitCode}: ${stderr || stdout}`);
+		const allowPartial = context.options?.allowPartialResults === true;
+		if (exitCode !== 0 && !allowPartial) {
+			const outputTail = truncateRawOutput(stderr || stdout);
+			throw new Error(`Harbor run failed with exit code ${exitCode}${outputTail ? `: ${outputTail}` : ""}`);
 		}
 
 		const rawOutput = truncateRawOutput(stdout || stderr);
