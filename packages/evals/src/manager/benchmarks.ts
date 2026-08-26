@@ -4,47 +4,173 @@ import * as path from "node:path";
 import { isRecord } from "@veyyon/utils";
 import { aggregate, type JobInfo, type Trial } from "../backends/harbor/runner";
 import { sumOfMeasured } from "../core/scoring";
-import type { BenchmarkKind } from "./store";
+import type { BackendId } from "../core/types";
+import type { BenchmarkDefinition, BenchmarkKind, MetricDefinition } from "../wire";
 
-/** Describes a benchmark metric so storage and UI do not hard-code benchmark semantics. */
-export interface MetricDefinition {
-	key: string;
-	label: string;
-	format: "percent" | "number" | "usd";
-	higherIsBetter: boolean;
+/** Adapter for a benchmark system, declaring its wire metadata, backend binding, and snapshot reader. */
+export interface BenchmarkAdapter {
+	readonly kind: BenchmarkKind;
+	readonly label: string;
+	readonly backend: BackendId;
+	readonly metrics: readonly MetricDefinition[];
+	readSnapshot(jobDir: string): BenchmarkSnapshot;
 }
 
-/** Adapter metadata exposed to launch clients and the dashboard. */
-export interface BenchmarkDefinition {
-	kind: BenchmarkKind;
-	label: string;
-	metrics: MetricDefinition[];
+export class BenchmarkNotFoundError extends Error {
+	constructor(kind: string, available: readonly string[]) {
+		const formatted = available.length > 0 ? available.join(", ") : "(none)";
+		super(`Unknown benchmark adapter "${kind}". Registered benchmarks: ${formatted}`);
+		this.name = "BenchmarkNotFoundError";
+	}
 }
 
-/** Built-in benchmark adapters and their native score definitions. */
-export const BENCHMARK_DEFINITIONS: BenchmarkDefinition[] = [
+export class DuplicateBenchmarkRegistrationError extends Error {
+	constructor(kind: string) {
+		super(`Benchmark adapter "${kind}" is already registered.`);
+		this.name = "DuplicateBenchmarkRegistrationError";
+	}
+}
+
+export class BenchmarkRegistry {
+	#benchmarks = new Map<string, BenchmarkAdapter>();
+
+	register(benchmark: BenchmarkAdapter): void {
+		if (this.#benchmarks.has(benchmark.kind)) {
+			throw new DuplicateBenchmarkRegistrationError(benchmark.kind);
+		}
+		this.#benchmarks.set(benchmark.kind, benchmark);
+	}
+
+	get(kind: string): BenchmarkAdapter | undefined {
+		return this.#benchmarks.get(kind);
+	}
+
+	getByBackend(backend: BackendId): BenchmarkAdapter | undefined {
+		for (const adapter of this.#benchmarks.values()) {
+			if (adapter.backend === backend) return adapter;
+		}
+		return undefined;
+	}
+
+	has(kind: string): boolean {
+		return this.#benchmarks.has(kind);
+	}
+
+	list(): readonly BenchmarkAdapter[] {
+		return [...this.#benchmarks.values()];
+	}
+
+	listKinds(): readonly BenchmarkKind[] {
+		return [...this.#benchmarks.keys()];
+	}
+
+	listDefinitions(): readonly BenchmarkDefinition[] {
+		return [...this.#benchmarks.values()].map(b => ({
+			kind: b.kind,
+			label: b.label,
+			metrics: [...b.metrics],
+		}));
+	}
+
+	require(kind: string): BenchmarkAdapter {
+		const benchmark = this.#benchmarks.get(kind);
+		if (!benchmark) {
+			throw new BenchmarkNotFoundError(kind, this.listKinds());
+		}
+		return benchmark;
+	}
+
+	unregister(kind: string): boolean {
+		return this.#benchmarks.delete(kind);
+	}
+
+	clear(): void {
+		this.#benchmarks.clear();
+	}
+}
+
+export const defaultBenchmarkRegistry = new BenchmarkRegistry();
+
+export function registerBenchmark(adapter: BenchmarkAdapter): void {
+	defaultBenchmarkRegistry.register(adapter);
+}
+
+export function getBenchmark(kind: string): BenchmarkAdapter | undefined {
+	return defaultBenchmarkRegistry.get(kind);
+}
+
+export function getBenchmarkByBackend(backend: BackendId): BenchmarkAdapter | undefined {
+	return defaultBenchmarkRegistry.getByBackend(backend);
+}
+
+export function hasBenchmark(kind: string): boolean {
+	return defaultBenchmarkRegistry.has(kind);
+}
+
+export function listBenchmarks(): readonly BenchmarkAdapter[] {
+	return defaultBenchmarkRegistry.list();
+}
+
+export function listBenchmarkKinds(): readonly BenchmarkKind[] {
+	return defaultBenchmarkRegistry.listKinds();
+}
+
+export function listBenchmarkDefinitions(): readonly BenchmarkDefinition[] {
+	return defaultBenchmarkRegistry.listDefinitions();
+}
+
+export function requireBenchmark(kind: string): BenchmarkAdapter {
+	return defaultBenchmarkRegistry.require(kind);
+}
+
+export function unregisterBenchmark(kind: string): boolean {
+	return defaultBenchmarkRegistry.unregister(kind);
+}
+
+export function clearBenchmarkRegistry(): void {
+	defaultBenchmarkRegistry.clear();
+}
+
+export const BUILTIN_BENCHMARKS: readonly BenchmarkAdapter[] = [
 	{
 		kind: "harbor",
 		label: "Harbor",
+		backend: "harbor",
 		metrics: [{ key: "success_rate", label: "Success rate", format: "percent", higherIsBetter: true }],
+		readSnapshot: readHarborSnapshot,
 	},
 	{
 		kind: "edit",
 		label: "TypeScript edit",
+		backend: "in-process",
 		metrics: [
 			{ key: "task_success_rate", label: "Task success", format: "percent", higherIsBetter: true },
 			{ key: "edit_success_rate", label: "Edit success", format: "percent", higherIsBetter: true },
 		],
+		readSnapshot: readEditSnapshot,
 	},
 	{
 		kind: "deepswe",
 		label: "DeepSWE arms",
+		backend: "pier",
 		metrics: [
 			{ key: "reward_rate", label: "Full reward", format: "percent", higherIsBetter: true },
 			{ key: "mean_partial", label: "Mean partial", format: "percent", higherIsBetter: true },
 		],
+		readSnapshot: readDeepsweSnapshot,
 	},
 ];
+
+export function registerBuiltinBenchmarks(registry?: BenchmarkRegistry): void {
+	const target = registry ?? defaultBenchmarkRegistry;
+	for (const adapter of BUILTIN_BENCHMARKS) {
+		if (!target.has(adapter.kind)) {
+			target.register(adapter);
+		}
+	}
+}
+
+registerBuiltinBenchmarks();
 
 /** A normalized trace emitted by any benchmark adapter. */
 export interface BenchmarkTrace {
@@ -509,7 +635,5 @@ function readHarborSnapshot(jobDir: string): BenchmarkSnapshot {
 
 /** Read and normalize the latest artifacts for a benchmark run. */
 export function readBenchmarkSnapshot(benchmark: BenchmarkKind, jobDir: string): BenchmarkSnapshot {
-	if (benchmark === "edit") return readEditSnapshot(jobDir);
-	if (benchmark === "deepswe") return readDeepsweSnapshot(jobDir);
-	return readHarborSnapshot(jobDir);
+	return requireBenchmark(benchmark).readSnapshot(jobDir);
 }

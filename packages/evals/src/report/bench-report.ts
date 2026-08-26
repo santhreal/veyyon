@@ -19,7 +19,7 @@
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { BENCHMARK_DEFINITIONS, type BenchmarkSnapshot, readBenchmarkSnapshot } from "../manager/benchmarks";
+import { type BenchmarkSnapshot, readBenchmarkSnapshot, requireBenchmark } from "../manager/benchmarks";
 import { type RunRow, RunStore } from "../manager/store";
 import { harborJobsDir } from "../paths";
 import { formatUsd } from "../wire";
@@ -33,8 +33,7 @@ function formatMetric(value: number | null, format: "percent" | "number" | "usd"
 
 /** Render the canonical results block (markers included) for one run. */
 export function renderBenchResultsBlock(run: RunRow, snapshot: BenchmarkSnapshot, key: string): string {
-	const definition = BENCHMARK_DEFINITIONS.find(d => d.kind === run.benchmark);
-	if (!definition) throw new Error(`No benchmark definition for kind ${run.benchmark}`);
+	const definition = requireBenchmark(run.benchmark);
 	const finished = run.finishedAt ? new Date(run.finishedAt).toISOString().slice(0, 10) : "unfinished";
 	const metricCells = definition.metrics.map(
 		m => `| ${m.label} | ${formatMetric(snapshot.metrics[m.key] ?? null, m.format)} |`,
