@@ -1521,52 +1521,50 @@ export class Markdown implements Component {
 			renderedLines.push(...this.#renderToken(token, contentWidth, nextToken?.type));
 		}
 
-		const wrappedLines: string[] = [];
-		for (const line of renderedLines) {
-			// Skip wrapping for image protocol lines and OSC 66 sized headings
-			// (would corrupt escape sequences / split the indivisible sized span).
-			if (TERMINAL.isImageLine(line) || isOsc66Line(line)) {
-				wrappedLines.push(line);
-			} else {
-				wrappedLines.push(...wrapTextWithAnsi(line, contentWidth));
-			}
-		}
-
 		const leftMargin = padding(signature.paddingX);
 		const rightMargin = padding(signature.paddingX);
 		const bgFn = this.#defaultTextStyle?.bgColor;
 		const contentLines: string[] = [];
 		let previousLineWasOsc66 = false;
 
-		for (const line of wrappedLines) {
-			// The first empty row after a scale>1 OSC 66 heading is structural:
-			// it reserves the lower cells occupied by the multicell glyphs. Do
-			// not pad or background-fill it, because real spaces on that row can
-			// interact with Kitty's multicell overwrite rules during the first
-			// paint. Leave it as a cursor-only newline.
-			if (previousLineWasOsc66 && line === "") {
-				contentLines.push("");
+		for (const line of renderedLines) {
+			// Skip wrapping for image protocol lines and OSC 66 sized headings
+			// (would corrupt escape sequences / split the indivisible sized span).
+			const isOsc66 = isOsc66Line(line);
+			const isImageOrOsc66 = TERMINAL.isImageLine(line) || isOsc66;
+			const wrapped = isImageOrOsc66 ? undefined : wrapTextWithAnsi(line, contentWidth);
+			const lines = isImageOrOsc66 ? 1 : wrapped.length;
+			for (let wi = 0; wi < lines; wi++) {
+				const wLine = isImageOrOsc66 ? line : wrapped[wi]!;
+				// The first empty row after a scale>1 OSC 66 heading is structural:
+				// it reserves the lower cells occupied by the multicell glyphs. Do
+				// not pad or background-fill it, because real spaces on that row can
+				// interact with Kitty's multicell overwrite rules during the first
+				// paint. Leave it as a cursor-only newline.
+				if (previousLineWasOsc66 && wLine === "") {
+					contentLines.push("");
+					previousLineWasOsc66 = false;
+					continue;
+				}
+
+				// Image lines and OSC 66 sized headings must be output raw - no margins or background
+				if (isImageOrOsc66) {
+					contentLines.push(wLine);
+					previousLineWasOsc66 = isOsc66;
+					continue;
+				}
+
 				previousLineWasOsc66 = false;
-				continue;
-			}
+				const lineWithMargins = leftMargin + wLine + rightMargin;
 
-			// Image lines and OSC 66 sized headings must be output raw - no margins or background
-			if (TERMINAL.isImageLine(line) || isOsc66Line(line)) {
-				contentLines.push(line);
-				previousLineWasOsc66 = isOsc66Line(line);
-				continue;
-			}
-
-			previousLineWasOsc66 = false;
-			const lineWithMargins = leftMargin + line + rightMargin;
-
-			if (bgFn) {
-				contentLines.push(applyBackgroundToLine(lineWithMargins, signature.width, bgFn));
-			} else {
-				// No background - just pad to width
-				const visibleLen = visibleWidth(lineWithMargins);
-				const paddingNeeded = Math.max(0, signature.width - visibleLen);
-				contentLines.push(lineWithMargins + padding(paddingNeeded));
+				if (bgFn) {
+					contentLines.push(applyBackgroundToLine(lineWithMargins, signature.width, bgFn));
+				} else {
+					// No background - just pad to width
+					const visibleLen = visibleWidth(lineWithMargins);
+					const paddingNeeded = Math.max(0, signature.width - visibleLen);
+					contentLines.push(lineWithMargins + padding(paddingNeeded));
+				}
 			}
 		}
 
