@@ -9,6 +9,7 @@
 
 import type {
 	EvalSuite,
+	HarnessRegistry,
 	SuiteContext,
 	SuiteProvenance,
 	TaskDescriptor,
@@ -16,7 +17,7 @@ import type {
 	Variant,
 	VariantMatrixSelection,
 } from "../core";
-import { expandVariantMatrix } from "../core";
+import { defaultHarnessRegistry, expandVariantMatrix } from "../core";
 
 export class EmptyTaskSelectionError extends Error {
 	readonly suiteName: string;
@@ -49,6 +50,19 @@ export class InvalidRepeatsError extends Error {
 		this.name = "InvalidRepeatsError";
 	}
 }
+export class UnboundHarnessBackendError extends Error {
+	readonly harness: string;
+	readonly suite: string;
+	readonly backend: string;
+
+	constructor(harness: string, suite: string, backend: string) {
+		super(`Harness "${harness}" has no binding for backend "${backend}" (required by suite "${suite}").`);
+		this.name = "UnboundHarnessBackendError";
+		this.harness = harness;
+		this.suite = suite;
+		this.backend = backend;
+	}
+}
 
 export interface RunPlanRequest {
 	readonly suite: EvalSuite;
@@ -60,6 +74,7 @@ export interface RunPlanRequest {
 	/** Overrides the generated id, so a caller can name a run after its job directory. */
 	readonly runId?: string;
 	readonly now?: () => Date;
+	readonly harnessRegistry?: HarnessRegistry;
 }
 
 export interface RunPlan {
@@ -91,6 +106,13 @@ export async function buildRunPlan(request: RunPlanRequest): Promise<RunPlan> {
 	const suite = request.suite;
 	const context: SuiteContext = request.context ?? {};
 	const variants = expandVariantMatrix(request.selection);
+	const harnessRegistry = request.harnessRegistry ?? defaultHarnessRegistry;
+	for (const variant of variants) {
+		const harness = harnessRegistry.require(variant.harness);
+		if (!harness.backends[suite.backend]) {
+			throw new UnboundHarnessBackendError(variant.harness, suite.name, suite.backend);
+		}
+	}
 
 	const discovered = await suite.discoverTasks(context);
 	const requested = request.tasks && request.tasks.length > 0 ? request.tasks : discovered;

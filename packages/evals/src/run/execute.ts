@@ -96,7 +96,10 @@ export async function executeRun(options: ExecuteRunOptions): Promise<EvalRunRec
 		workDir: options.workDir,
 		runsDir: options.runsDir,
 		signal: options.signal,
-		options: options.options,
+		options: {
+			...options.options,
+			variants: plan.variants,
+		},
 	};
 
 	const suiteVerdict = await plan.suite.preflight(plan.context);

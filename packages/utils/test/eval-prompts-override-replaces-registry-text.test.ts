@@ -24,7 +24,7 @@
 import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import { $env } from "../src/env";
 import { parseEvalPromptOverridesJson, unclaimedEvalPromptOverrideIds } from "../src/eval-prompt-overrides";
-import { definePromptRegistry, type PromptEntry } from "../src/prompt-registry";
+import { definePromptRegistry, definePromptRows, type PromptEntry } from "../src/prompt-registry";
 
 const SAMPLE_PROMPTS = {
 	"tools/bash": {
@@ -218,5 +218,96 @@ describe("definePromptRegistry with VEYYON_EVAL_PROMPTS", () => {
 		} finally {
 			warnSpy.mockRestore();
 		}
+	});
+});
+
+/**
+ * WHY: the variable is set per ARM, and two arms can share one process. The eval
+ * harness's in-process backend builds a session without spawning, so it sets
+ * `VEYYON_EVAL_PROMPTS` long after every rows module and registry was imported. An
+ * override applied once at import then serves the first arm's text to every later arm:
+ * the run reports a prompt variant that never reached the model, which is the
+ * zero-independent-variable comparison this whole seam exists to prevent.
+ *
+ * The class: any accessor that closes over the table it was built with. Both entry
+ * points are swept here, and both directions of the change are asserted — an override
+ * arriving, and the shipped text coming back when it is withdrawn.
+ *
+ * What it does not catch: a consumer that destructures an entry once at module load and
+ * keeps the string. Nothing in this tree does; a read of `rows[id].text` per assembly is
+ * the convention, and `an-eval-prompt-override-must-reach-the-model-or-be-refused.test.ts`
+ * checks the assembled prompt end to end.
+ */
+describe("a prompt override set after import", () => {
+	let originalEnv: string | undefined;
+
+	beforeEach(() => {
+		originalEnv = $env.VEYYON_EVAL_PROMPTS;
+		delete $env.VEYYON_EVAL_PROMPTS;
+	});
+
+	afterEach(() => {
+		if (originalEnv === undefined) {
+			delete $env.VEYYON_EVAL_PROMPTS;
+		} else {
+			$env.VEYYON_EVAL_PROMPTS = originalEnv;
+		}
+	});
+
+	it("reaches a rows table built before it was set, and every id it names", () => {
+		const rows = definePromptRows(SAMPLE_PROMPTS);
+		expect(rows["tools/bash"]).toBe(SAMPLE_PROMPTS["tools/bash"]);
+
+		$env.VEYYON_EVAL_PROMPTS = JSON.stringify({ "tools/bash": "ARM ONE BASH", "tools/read": "ARM ONE READ" });
+
+		expect(rows["tools/bash"].text).toBe("ARM ONE BASH");
+		expect(rows["tools/read"].text).toBe("ARM ONE READ");
+		// Everything a row declares besides its text still describes the shipped prompt.
+		expect(rows["tools/bash"].purpose).toBe(SAMPLE_PROMPTS["tools/bash"].purpose);
+		expect(rows["tools/bash"].sections).toBe(SAMPLE_PROMPTS["tools/bash"].sections);
+		expect(rows["dialect/anthropic"].text).toBe(SAMPLE_PROMPTS["dialect/anthropic"].text);
+	});
+
+	it("replaces the second arm's text and does not leave the first arm's behind", () => {
+		const rows = definePromptRows(SAMPLE_PROMPTS);
+		const reg = definePromptRegistry("packages/test/prompts", SAMPLE_PROMPTS);
+
+		$env.VEYYON_EVAL_PROMPTS = JSON.stringify({ "tools/bash": "ARM ONE" });
+		expect(rows["tools/bash"].text).toBe("ARM ONE");
+		expect(reg.text("tools/bash")).toBe("ARM ONE");
+
+		$env.VEYYON_EVAL_PROMPTS = JSON.stringify({ "tools/bash": "ARM TWO" });
+		expect(rows["tools/bash"].text).toBe("ARM TWO");
+		expect(reg.text("tools/bash")).toBe("ARM TWO");
+
+		delete $env.VEYYON_EVAL_PROMPTS;
+		expect(rows["tools/bash"].text).toBe(SAMPLE_PROMPTS["tools/bash"].text);
+		expect(reg.text("tools/bash")).toBe(SAMPLE_PROMPTS["tools/bash"].text);
+	});
+
+	it("reaches every registry accessor, not only the one the arm happened to read", () => {
+		const reg = definePromptRegistry("packages/test/prompts", SAMPLE_PROMPTS);
+
+		$env.VEYYON_EVAL_PROMPTS = JSON.stringify({ "tools/read": "LATE READ" });
+
+		expect(reg.text("tools/read")).toBe("LATE READ");
+		expect(reg.prompts["tools/read"].text).toBe("LATE READ");
+		expect(reg.require("tools/read").text).toBe("LATE READ");
+		expect(reg.has("tools/read")).toBe(true);
+		// The view hands back the WHOLE table, not only the row an override named.
+		expect(Object.keys(reg.prompts)).toEqual(Object.keys(SAMPLE_PROMPTS));
+		expect(reg.fileFor("tools/read")).toBe("packages/test/prompts/tools/read.md");
+	});
+
+	it("leaves a sibling registry's id for that sibling, whenever it arrives", () => {
+		const reg = definePromptRegistry("packages/test/prompts", SAMPLE_PROMPTS);
+		const sibling = definePromptRegistry("packages/sibling/prompts", SIBLING_PROMPTS);
+
+		$env.VEYYON_EVAL_PROMPTS = JSON.stringify({ "compaction/summarize": "LATE SUMMARY" });
+
+		expect(() => reg.text("tools/bash")).not.toThrow();
+		expect(reg.text("tools/bash")).toBe(SAMPLE_PROMPTS["tools/bash"].text);
+		expect(sibling.text("compaction/summarize")).toBe("LATE SUMMARY");
+		expect(unclaimedEvalPromptOverrideIds()).toEqual([]);
 	});
 });

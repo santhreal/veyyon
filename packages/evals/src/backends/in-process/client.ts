@@ -16,8 +16,34 @@ import {
 	SessionManager,
 	Settings,
 } from "@veyyon/coding-agent";
+import { applyPromptOverrides, loadAndValidatePromptOverlay } from "./overlays";
 
 export type InProcessEventListener = (event: AgentEvent) => void;
+
+/**
+ * One tool as a session reports it, for a conversation dump or a description-token
+ * measurement.
+ *
+ * Declared once here because five call sites had written the same four fields inline —
+ * the client, the execution backend, the benchmark runner's two dump types and the
+ * prompt bench — and an inline shape is what lets one of them drift a field.
+ */
+export interface DumpedTool {
+	readonly name: string;
+	readonly description: string;
+	readonly parameters: unknown;
+	readonly examples?: readonly ToolExample[];
+}
+
+/** What a live in-process session reports about itself. */
+export interface InProcessSessionState {
+	readonly sessionFile?: string;
+	readonly systemPrompt?: string[];
+	readonly model?: Model;
+	readonly thinkingLevel?: ThinkingLevel | undefined;
+	readonly dumpTools?: readonly DumpedTool[];
+	readonly settings?: Settings;
+}
 
 export interface InProcessClientOptions {
 	cwd: string;
@@ -32,6 +58,14 @@ export interface InProcessClientOptions {
 	editFuzzyThreshold?: number | "auto";
 	/** Shared infra (pass to avoid re-discovery per task) */
 	shared?: SharedInfra;
+	/** Path to config overlay file */
+	configPath?: string | null;
+	/** Path to prompt variant overlay file */
+	promptVariantPath?: string | null;
+	/** Pre-loaded prompt overrides map */
+	promptOverrides?: Record<string, string> | null;
+	/** Pre-constructed settings instance */
+	settings?: Settings;
 }
 
 /** Shared infrastructure that can be reused across tasks. */
@@ -82,6 +116,7 @@ export class InProcessClient {
 	#sessionResult: CreateAgentSessionResult | null = null;
 	#eventListeners: InProcessEventListener[] = [];
 	#unsubscribe: (() => void) | null = null;
+	#restorePrompts: (() => void) | null = null;
 	#options: InProcessClientOptions;
 
 	constructor(options: InProcessClientOptions) {
@@ -91,11 +126,44 @@ export class InProcessClient {
 	async start(): Promise<void> {
 		const shared = this.#options.shared;
 
+		// Build settings instance with config overlay and edit overrides if applicable
+		let sessionSettings = this.#options.settings;
+		if (!sessionSettings) {
+			const overrides: Record<string, unknown> = {};
+			if (this.#options.editVariant && this.#options.editVariant !== "auto") {
+				overrides["edit.mode"] = this.#options.editVariant;
+			}
+			if (this.#options.editFuzzy !== undefined && this.#options.editFuzzy !== "auto") {
+				overrides["edit.fuzzyMatch"] = this.#options.editFuzzy;
+			}
+			if (this.#options.editFuzzyThreshold !== undefined && this.#options.editFuzzyThreshold !== "auto") {
+				overrides["edit.fuzzyThreshold"] = this.#options.editFuzzyThreshold;
+			}
+
+			const configFiles = this.#options.configPath ? [this.#options.configPath] : undefined;
+			sessionSettings = await Settings.loadIsolated({
+				cwd: this.#options.cwd,
+				configFiles,
+				overrides,
+			});
+		}
+
+		// Apply prompt overrides if configured
+		let promptOverrides = this.#options.promptOverrides;
+		if (!promptOverrides && this.#options.promptVariantPath) {
+			const loaded = await loadAndValidatePromptOverlay(this.#options.promptVariantPath, this.#options.cwd);
+			promptOverrides = loaded.overrides;
+		}
+		if (promptOverrides && Object.keys(promptOverrides).length > 0) {
+			this.#restorePrompts = applyPromptOverrides(promptOverrides);
+		}
+
 		const result = await createAgentSession({
 			cwd: this.#options.cwd,
 			modelPattern: this.#options.model,
 			authStorage: shared?.authStorage,
 			modelRegistry: shared?.modelRegistry,
+			settings: sessionSettings,
 			sessionManager: SessionManager.inMemory(this.#options.cwd),
 			systemPrompt: this.#options.appendSystemPrompt
 				? (defaultPrompt: string[]) => [...defaultPrompt, this.#options.appendSystemPrompt!]
@@ -164,13 +232,11 @@ export class InProcessClient {
 		return this.#session!.messages;
 	}
 
-	async getState(): Promise<{
-		sessionFile?: string;
-		systemPrompt?: string[];
-		model?: Model;
-		thinkingLevel?: ThinkingLevel | undefined;
-		dumpTools?: Array<{ name: string; description: string; parameters: unknown; examples?: readonly ToolExample[] }>;
-	}> {
+	async getSettings(): Promise<Settings | undefined> {
+		return this.#session?.settings;
+	}
+
+	async getState(): Promise<InProcessSessionState> {
 		const session = this.#session!;
 		return {
 			sessionFile: undefined,
@@ -183,6 +249,7 @@ export class InProcessClient {
 				parameters: tool.parameters,
 				examples: tool.examples,
 			})),
+			settings: session.settings,
 		};
 	}
 
@@ -198,6 +265,8 @@ export class InProcessClient {
 		}
 		this.#sessionResult = null;
 		this.#eventListeners = [];
+		this.#restorePrompts?.();
+		this.#restorePrompts = null;
 	}
 
 	[Symbol.dispose](): void {

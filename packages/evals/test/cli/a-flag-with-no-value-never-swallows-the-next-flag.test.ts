@@ -68,8 +68,16 @@ describe("axis flags", () => {
 	});
 
 	it("accepts both --flag value and --flag=value", () => {
-		expect(parseEvalsArgs(["--suite", "terminal-bench"]).suite).toBe("terminal-bench");
-		expect(parseEvalsArgs(["--suite=terminal-bench"]).suite).toBe("terminal-bench");
+		expect(parseEvalsArgs(["--suite", "terminal-bench"]).suites).toEqual(["terminal-bench"]);
+		expect(parseEvalsArgs(["--suite=terminal-bench"]).suites).toEqual(["terminal-bench"]);
+	});
+
+	it("takes the suite axis as a list, so one invocation runs several eval sets", () => {
+		expect(parseEvalsArgs(["--suite", "deep-swe,terminal-bench"]).suites).toEqual(["deep-swe", "terminal-bench"]);
+		expect(parseEvalsArgs(["--suite=deep-swe", "--suite=typescript-edit"]).suites).toEqual([
+			"deep-swe",
+			"typescript-edit",
+		]);
 	});
 });
 

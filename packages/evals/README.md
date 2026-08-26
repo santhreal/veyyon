@@ -7,7 +7,7 @@ report renderers and the live dashboard. A run is a point in five axes:
 
 |Axis|Flag|Members|
 |---|---|---|
-|Suite|`--suite`|`deep-swe`, `terminal-bench`, `typescript-edit`|
+|Suite|`--suite`|`deep-swe`, `terminal-bench`, `typescript-edit`; a list runs each of them|
 |Harness|`--harness`|`veyyon`, `omp`, `factory`, `hermes`|
 |Config|`--config`|any overlay file, one variant per file|
 |Prompt variant|`--prompts`|any prompt-override file, one variant per file|
@@ -23,12 +23,28 @@ bun run list                                    # suites, their backends and des
 bun run evals --list --suite terminal-bench     # the tasks of one suite
 bun run evals --suite terminal-bench --model anthropic/claude-sonnet-4-6 \
 	--tasks datasets/terminal-bench/tasks/smoke.txt --jobs 2
+bun run evals --suite terminal-bench,typescript-edit --model anthropic/claude-sonnet-4-6 \
+	--tasks terminal-bench=datasets/terminal-bench/tasks/smoke.txt
 bun run evals --suite deep-swe --model google-antigravity/gemini-3.5-flash \
 	--config arms/baseline.yml --config arms/candidate-unified-runtime.yml --dry-run
 ```
 
-`--dry-run` prints the plan and both preflight verdicts and starts no container. `--repeats N` runs
-each cell N times; results are recorded in plan order, so two runs of one plan diff cell by cell.
+`--dry-run` prints the plan and both preflight verdicts and starts no container, and builds nothing:
+a missing or stale artifact is reported with the command that produces it. `--repeats N` runs each
+cell N times; results are recorded in plan order, so two runs of one plan diff cell by cell.
+
+A `--suite` list runs each suite in turn and writes one run record per suite, because a record is
+suite-tagged and two suites' trials are never comparable. A `--tasks` entry carrying a `<suite>=`
+prefix belongs to that suite alone; an unprefixed entry applies to every suite. `--dataset-dir` can
+only mean one suite's dataset, so a multi-suite run refuses it. The exit code is the worst any suite
+earned, and a suite whose preflight refuses does not stop the ones after it.
+
+A `--config` file is a settings overlay: its keys are settings paths, and an unknown key is refused
+by name before the first trial. A `--prompts` file maps a prompt id to the text that replaces it,
+carried to the agent by `VEYYON_EVAL_PROMPTS`; an id no registry holds is refused with the nearest
+real ids, so a typo costs a second rather than a container. Each harness declares which backends it
+runs on, and a suite whose backend a harness is not bound to is refused during planning instead of
+at the first trial.
 
 DeepSWE also keeps its own runner for the flags that are specific to it (arm overlays, attachment
 staging, replay manifests):

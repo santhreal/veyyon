@@ -77,6 +77,8 @@ import {
 import { stageAllArms } from "./arm-staging";
 import { parseBenchCliArgs, printHelp } from "./cli-args";
 import {
+	AUTH_DB_SOURCES,
+	checkBinaryBuildNeeded,
 	ensureAuthDbSeeded,
 	ensureBinaryUpToDate,
 	getAuthDbPath,
@@ -515,14 +517,26 @@ export async function runBench(argv: string[]): Promise<void> {
 	if (pinnedBinary) {
 		requireFile(pinnedBinary, "point --binary at a previous run's assets/vey");
 		console.log(`binary PINNED to ${pinnedBinary} (sha256 ${sha256File(pinnedBinary).slice(0, 12)}).`);
-	} else {
+	} else if (!args.dryRun) {
 		await ensureBinaryUpToDate();
+	} else {
+		const status = checkBinaryBuildNeeded();
+		if (status.needsBuild) {
+			console.log(
+				`deep-swe: [dry-run] binary build needed (${status.reason === "missing" ? "missing binary" : "stale binary"} at ${status.binaryPath}). Build command: ${status.buildCommand}`,
+			);
+		}
 	}
 
-	ensureAuthDbSeeded();
-	await requireStagedAuthCanServeToken(model, Boolean(args.dryRun));
-	requireFile(pinnedBinary ?? getVeyBinaryPath(), "build it: cd ../coding-agent && bun scripts/build-binary.ts");
-
+	if (!args.dryRun) {
+		ensureAuthDbSeeded();
+	}
+	const authDbToProbe =
+		args.dryRun && !fs.existsSync(getAuthDbPath()) ? (AUTH_DB_SOURCES[0] ?? getAuthDbPath()) : getAuthDbPath();
+	await requireStagedAuthCanServeToken(model, Boolean(args.dryRun), authDbToProbe);
+	if (!args.dryRun) {
+		requireFile(pinnedBinary ?? getVeyBinaryPath(), "build it: cd ../coding-agent && bun scripts/build-binary.ts");
+	}
 	const trialTimeouts = new Map<string, ResolvedTrialTimeout>();
 	for (const task of tasks) {
 		const taskToml = path.join(tasksRoot, task, "task.toml");
