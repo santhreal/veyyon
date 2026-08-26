@@ -3,7 +3,9 @@ import type { AgentToolContext } from "@veyyon/agent-core";
 import { validateToolArguments } from "@veyyon/ai/utils/validation";
 import { type BashInterceptorRule, DEFAULT_BASH_INTERCEPTOR_RULES } from "@veyyon/coding-agent/config/settings-schema";
 import { BashTool, type BashToolInput } from "@veyyon/coding-agent/tools/bash";
-import { checkBashInterception } from "@veyyon/coding-agent/tools/bash-interceptor";
+import { checkBashInterception, UNIFIED_SEARCH_REDIRECTS } from "@veyyon/coding-agent/tools/bash-interceptor";
+import { normalizeToolName } from "@veyyon/coding-agent/tools/builtin-names";
+import { searchSchema } from "@veyyon/coding-agent/tools/search";
 import { useIsolatedGlobalSettings } from "../helpers/isolated-global-settings";
 import { makeToolSession } from "../helpers/tool-session";
 
@@ -64,22 +66,56 @@ describe("BashTool interception", () => {
 	});
 });
 
+// WHY: the redirect messages once told the model to pass `purpose: "match"`, a
+// field the ablation-era search facade took and the shipped `search` tool does
+// not. A message naming a field the schema rejects costs a refused call, and the
+// old suite pinned the retired word, so it went red on the cutover instead of
+// catching it. These cases read the accepted vocabulary out of `searchSchema`
+// and sweep every entry of the retired-primitive table, so adding a redirect in
+// a vocabulary the tool does not take fails here. Not covered: whether the
+// patterns match the right commands, which the rule-specific describes below do.
+const SEARCH_TYPES: string[] = searchSchema.shape.type.options;
+
 describe("default unified-search redirects", () => {
 	it.each([
-		["grep -R needle src", "match"],
-		["find src -name '*.ts'", "locate"],
-	])("routes %s to search purpose %s", (command, purpose) => {
+		["grep -R needle src", "text"],
+		["find src -name '*.ts'", "files"],
+	])("routes %s to search type %s", (command, type) => {
 		const result = checkBashInterception(command, ["search"], DEFAULT_BASH_INTERCEPTOR_RULES);
 		expect(result.block).toBe(true);
 		expect(result.suggestedTool).toBe("search");
-		expect(result.message).toContain(`purpose: "${purpose}"`);
+		expect(result.message).toContain(`type: "${type}"`);
 	});
 
-	it("preserves primitive redirects when unified search is absent", () => {
-		const result = checkBashInterception("grep -R needle src", ["grep"], DEFAULT_BASH_INTERCEPTOR_RULES);
+	it("names an accepted search type in every default rule that routes to search", () => {
+		const searchRules = DEFAULT_BASH_INTERCEPTOR_RULES.filter(rule => rule.tool === "search");
+		expect(searchRules.length).toBeGreaterThan(0);
+		for (const rule of searchRules) {
+			const named = SEARCH_TYPES.filter(type => rule.message.includes(`type: "${type}"`));
+			expect(named).toHaveLength(1);
+			expect(rule.message).not.toContain("purpose:");
+		}
+	});
+
+	it.each(Object.keys(UNIFIED_SEARCH_REDIRECTS))("redirects a rule still naming %s to search", primitive => {
+		expect(normalizeToolName(primitive)).toBe("search");
+		const rules: BashInterceptorRule[] = [
+			{ pattern: "^\\s*probe\\s+", tool: primitive, message: "unused: the primitive is gone" },
+		];
+		const result = checkBashInterception("probe needle", ["search"], rules);
 		expect(result.block).toBe(true);
-		expect(result.suggestedTool).toBe("grep");
-		expect(result.message).toContain("Use the `grep` tool");
+		expect(result.suggestedTool).toBe("search");
+		expect(result.message).toContain(UNIFIED_SEARCH_REDIRECTS[primitive]);
+		const named = SEARCH_TYPES.filter(type => result.message?.includes(`type: "${type}"`));
+		expect(named).toHaveLength(1);
+		expect(result.message).not.toContain("purpose:");
+	});
+
+	it("does not redirect a retired primitive when search itself is inactive", () => {
+		const rules: BashInterceptorRule[] = [
+			{ pattern: "^\\s*probe\\s+", tool: "grep", message: "unused: the primitive is gone" },
+		];
+		expect(checkBashInterception("probe needle", ["bash"], rules).block).toBe(false);
 	});
 
 	it("does not block when no replacement tool is active", () => {

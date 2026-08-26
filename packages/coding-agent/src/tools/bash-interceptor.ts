@@ -7,9 +7,17 @@
  */
 import { type BashInterceptorRule, DEFAULT_BASH_INTERCEPTOR_RULES } from "../config/settings-schema";
 
-const UNIFIED_SEARCH_REDIRECTS: Record<string, string> = {
-	glob: 'Use `search` with `purpose: "locate"` instead of find/fd.',
-	grep: 'Use `search` with `purpose: "match"` instead of grep/rg.',
+/**
+ * A rule that still names a retired primitive is answered with `search`, in the
+ * vocabulary the shipped tool takes: a `type`, not the `purpose` the ablation
+ * facade used. A rule naming a field the tool does not have costs the model a
+ * refused call to find out.
+ */
+export const UNIFIED_SEARCH_REDIRECTS: Record<string, string> = {
+	ast_grep: 'Use `search` with `type: "structure"` instead of shell pattern matching.',
+	find: 'Use `search` with `type: "files"` instead of find/fd.',
+	glob: 'Use `search` with `type: "files"` instead of find/fd.',
+	grep: 'Use `search` with `type: "text"` instead of grep/rg.',
 };
 
 export interface InterceptionResult {
