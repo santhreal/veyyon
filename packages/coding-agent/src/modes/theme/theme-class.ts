@@ -14,6 +14,7 @@ import { bgAnsi, type ColorMode, colorToAnsi, fgAnsi, resolveToHex, type ThemeBg
 import { getVisibleGround } from "./ground-tints";
 import {
 	BAR_RAMPS,
+	type BoxChars,
 	SPINNER_FRAMES,
 	type SpinnerType,
 	SYMBOL_PRESETS,
@@ -141,19 +142,7 @@ export class Theme {
 	/** Resolved hex strings for background colors — populated at construction. */
 	readonly #hexBgColors: Record<ThemeBg, string>;
 	#symbols: SymbolMap;
-	#boxSharpCache: {
-		readonly topLeft: string;
-		readonly topRight: string;
-		readonly bottomLeft: string;
-		readonly bottomRight: string;
-		readonly horizontal: string;
-		readonly vertical: string;
-		readonly cross: string;
-		readonly teeDown: string;
-		readonly teeUp: string;
-		readonly teeRight: string;
-		readonly teeLeft: string;
-	};
+	#boxSharpCache: BoxChars;
 	#spinnerFramesOverrides: Partial<Record<SpinnerType, string[]>>;
 	/**
 	 * Perceptual luma (0..1) of the status-line background used to classify the theme as light/dark.

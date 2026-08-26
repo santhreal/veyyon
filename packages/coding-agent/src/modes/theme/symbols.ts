@@ -242,6 +242,21 @@ export type SymbolKey =
 
 export type SymbolMap = Record<SymbolKey, string>;
 
+/** Box-drawing character set used by `theme.boxSharp` and `theme.boxRound`. */
+export type BoxChars = {
+	readonly topLeft: string;
+	readonly topRight: string;
+	readonly bottomLeft: string;
+	readonly bottomRight: string;
+	readonly horizontal: string;
+	readonly vertical: string;
+	readonly cross: string;
+	readonly teeDown: string;
+	readonly teeUp: string;
+	readonly teeRight: string;
+	readonly teeLeft: string;
+};
+
 export const UNICODE_SYMBOLS: SymbolMap = {
 	// Status
 	"status.success": "✓",
