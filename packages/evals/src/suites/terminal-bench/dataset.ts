@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import { terminalBenchDatasetDir } from "../../paths";
+import { terminalBenchDatasetDir } from "./paths";
 
 const execFileAsync = promisify(execFile);
 

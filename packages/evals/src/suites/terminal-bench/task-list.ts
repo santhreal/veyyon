@@ -1,6 +1,6 @@
 import { readdir, readFile } from "node:fs/promises";
 import { isAbsolute, join, resolve } from "node:path";
-import { terminalBenchTaskListsDir } from "../../paths";
+import { terminalBenchTaskListsDir } from "./paths";
 
 export interface TaskSetProvenance {
 	readonly marked: boolean;

@@ -27,6 +27,7 @@ import {
 	TERMINAL_BENCH_GIT_REMOTE,
 	TERMINAL_BENCH_TAG,
 } from "./dataset";
+import { TERMINAL_BENCH_SUITE_NAME } from "./paths";
 import { computeTerminalBenchProvenance } from "./provenance";
 import { loadTaskConfig, type MultiStepRewardStrategy } from "./task-config";
 import { loadTaskList } from "./task-list";
@@ -70,7 +71,7 @@ export interface TerminalBenchSuiteOptions {
 }
 
 export class TerminalBenchSuite implements EvalSuite {
-	readonly name = "terminal-bench";
+	readonly name = TERMINAL_BENCH_SUITE_NAME;
 	readonly version = TERMINAL_BENCH_TAG;
 	readonly displayName = "Terminal-Bench 3.0";
 	readonly description = "Terminal-Bench 3.0 benchmark suite for terminal and tool-use evaluation";
