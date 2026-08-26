@@ -1,6 +1,6 @@
 # Execution backends
 
-A backend owns how a trial starts, stays isolated, and is torn down. Three are registered — `pier`,
+A backend is the single definition of how a trial starts, stays isolated, and is torn down. Three are registered — `pier`,
 `harbor`, `in-process` — and a suite states the one it needs in `EvalSuite.backend`. A run resolves
 that id through `src/core/backend-registry.ts`; a suite naming an unregistered backend is rejected
 before any trial starts.

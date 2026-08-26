@@ -113,7 +113,7 @@ export const myHarnessAdapter = new MyHarnessAdapter();
 | `validatePreflight` | optional `(SystemPreflightContext) => SystemPreflightResult` | The DeepSWE runner's per-arm preflight |
 | `buildJobConfigKwargs` | optional `(SystemJobConfigContext) => Record<string, unknown>` | kwargs written into the Pier job config |
 
-A harness that declares no `defaultModel` refuses a run that names no model rather than measuring an
+A harness that declares no `defaultModel` rejects a run that names no model rather than measuring an
 unstated one.
 
 ### HarnessBackendBinding
