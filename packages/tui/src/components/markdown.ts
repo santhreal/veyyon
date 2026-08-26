@@ -60,11 +60,11 @@ function normalizeHtmlEntitiesForTerminal(raw: string): string {
 			case "amp":
 				return "&";
 			default: {
-				if (lower.startsWith("#x")) {
-					return parseCodePoint(Number.parseInt(lower.slice(2), 16));
+				if (lower.charCodeAt(0) === 0x23 && lower.charCodeAt(1) === 0x78) {
+					return parseHtmlEntityCodePoint(Number.parseInt(lower.slice(2), 16));
 				}
-				if (lower.startsWith("#")) {
-					return parseCodePoint(Number(lower.slice(1)));
+				if (lower.charCodeAt(0) === 0x23) {
+					return parseHtmlEntityCodePoint(Number(lower.slice(1)));
 				}
 				return match;
 			}
@@ -480,19 +480,19 @@ const mathExtension: TokenizerAndRendererExtension = {
 		return m ? m.index : undefined;
 	},
 	tokenizer(src) {
-		if (src.startsWith("$$")) {
+		if (src.charCodeAt(0) === 0x24 && src.charCodeAt(1) === 0x24) {
 			const end = src.indexOf("$$", 2);
 			if (end !== -1 && src.slice(2, end).trim().length > 0) {
 				return { type: "math", raw: src.slice(0, end + 2), text: src.slice(2, end), display: true };
 			}
 			return undefined;
 		}
-		if (src.startsWith("\\[")) {
+		if (src.charCodeAt(0) === 0x5c && src.charCodeAt(1) === 0x5b) {
 			const end = src.indexOf("\\]", 2);
 			if (end !== -1) return { type: "math", raw: src.slice(0, end + 2), text: src.slice(2, end), display: true };
 			return undefined;
 		}
-		if (src.startsWith("\\(")) {
+		if (src.charCodeAt(0) === 0x5c && src.charCodeAt(1) === 0x28) {
 			const end = src.indexOf("\\)", 2);
 			if (end !== -1) return { type: "math", raw: src.slice(0, end + 2), text: src.slice(2, end), display: false };
 			return undefined;
