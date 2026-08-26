@@ -163,6 +163,7 @@ export class Theme {
 	#radioCache: RadioChars;
 	#formatCache: FormatChars;
 	#mdCache: MdChars;
+	#contrastFgAnsiCache: Map<ThemeColor, string>;
 	#spinnerFramesOverrides: Partial<Record<SpinnerType, string[]>>;
 	/**
 	 * Perceptual luma (0..1) of the status-line background used to classify the theme as light/dark.
@@ -355,6 +356,7 @@ export class Theme {
 			bullet: this.#symbols["md.bullet"],
 			colorSwatch: this.#symbols["md.colorSwatch"],
 		};
+		this.#contrastFgAnsiCache = new Map();
 		this.#spinnerFramesOverrides = spinnerFramesOverrides;
 	}
 
@@ -545,11 +547,17 @@ export class Theme {
 	 * High-contrast foreground ANSI for text drawn on top of a solid fill color.
 	 */
 	getContrastFgAnsi(fillColor: ThemeColor): string {
+		const cached = this.#contrastFgAnsiCache.get(fillColor);
+		if (cached !== undefined) return cached;
 		const ansi = this.#fgColors[fillColor];
 		const match = ansi ? /38;2;(\d+);(\d+);(\d+)/.exec(ansi) : null;
-		if (!match) return this.#fgColors.text;
-		const luma = 0.299 * Number(match[1]) + 0.587 * Number(match[2]) + 0.114 * Number(match[3]);
-		return luma > 140 ? "\x1b[38;2;0;0;0m" : "\x1b[38;2;255;255;255m";
+		const result = !match
+			? this.#fgColors.text
+			: 0.299 * Number(match[1]) + 0.587 * Number(match[2]) + 0.114 * Number(match[3]) > 140
+				? "\x1b[38;2;0;0;0m"
+				: "\x1b[38;2;255;255;255m";
+		this.#contrastFgAnsiCache.set(fillColor, result);
+		return result;
 	}
 
 	getColorMode(): ColorMode {
