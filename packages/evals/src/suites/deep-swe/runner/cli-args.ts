@@ -2,7 +2,7 @@
  * CLI argument parsing and help definitions for the DeepSWE bench runner.
  */
 
-import { parseFlags } from "../../../core/flags";
+import { flagCount, parseFlags } from "../../../core/flags";
 
 export interface BenchCliArgs {
 	tasksFile?: string;
@@ -82,9 +82,12 @@ export function parseBenchCliArgs(argv: string[], harnessFlags: readonly string[
 					.filter(Boolean)
 			: undefined,
 		model: raw.model,
-		limit: raw.limit ? Number(raw.limit) : undefined,
-		repeats: raw.repeats ? Number(raw.repeats) : undefined,
-		jobs: raw.jobs ? Number(raw.jobs) : undefined,
+		// Counts go through the grammar rather than `Number(...)`: `--limit abc` used to read as
+		// NaN, which compares false against the task count and ran the whole list while the flag
+		// said otherwise; `--repeats 0` queued no trial; `--jobs abc` sized the worker pool NaN.
+		limit: flagCount(raw, "limit"),
+		repeats: flagCount(raw, "repeats"),
+		jobs: flagCount(raw, "jobs"),
 		outDir: raw.out,
 		runDir: raw["run-dir"] || raw.reaggregate,
 		mergeDirs: raw.merge

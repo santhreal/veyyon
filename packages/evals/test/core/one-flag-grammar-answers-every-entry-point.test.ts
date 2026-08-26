@@ -28,6 +28,7 @@ import { DISCLOSURE_BENCH_FLAGS } from "../../src/benches/search/disclosure";
 import { SEARCH_BENCH_FLAGS } from "../../src/benches/search/runner";
 import {
 	type FlagGrammar,
+	FlagValueError,
 	flagChoice,
 	flagCount,
 	flagNumber,
@@ -40,6 +41,7 @@ import { BENCH_REPORT_FLAGS } from "../../src/report/bench-report";
 import { parseServerArgs, SERVER_FLAGS } from "../../src/server/main";
 import { GEN_DICTS_FLAGS } from "../../src/suites/deep-swe/gen-dicts";
 import { parseArgs, VALUED_FLAGS, VALUELESS_FLAGS } from "../../src/suites/deep-swe/runner/cli-args";
+import { EDIT_ADAPTER_FLAGS } from "../../src/suites/typescript-edit/adapter/cli";
 
 /** Every grammar an evals entry point reads its invocation through. */
 const GRAMMARS: Readonly<Record<string, FlagGrammar>> = {
@@ -50,7 +52,70 @@ const GRAMMARS: Readonly<Record<string, FlagGrammar>> = {
 	"bench-report writer": BENCH_REPORT_FLAGS,
 	"dictionary generator": GEN_DICTS_FLAGS,
 	"manager server": SERVER_FLAGS,
+	"edit adapter": EDIT_ADAPTER_FLAGS,
 };
+
+/**
+ * Which flag of each grammar counts something. A count read through `Number(...)` reached a run as
+ * NaN — a worker pool of NaN trials, a task limit that compared false against every total, a
+ * repeat count that queued nothing — so each one is read through `flagCount`, which refuses.
+ * `DECLARED_FLAGS` pins every grammar's whole flag list, so a flag added anywhere turns this suite
+ * red until someone records whether it counts something.
+ */
+const COUNT_FLAGS: Readonly<Record<string, readonly string[]>> = {
+	"deep-swe runner": ["limit", "repeats", "jobs"],
+	"search bench": ["iterations"],
+	"search disclosure bench": [],
+	"edit-prompt bench": ["limit"],
+	"bench-report writer": [],
+	"dictionary generator": ["jobs"],
+	"manager server": [],
+	"edit adapter": ["max-tasks", "task-concurrency", "runs"],
+};
+
+/** Every flag each grammar declares, valued and valueless together, sorted. */
+const DECLARED_FLAGS: Readonly<Record<string, readonly string[]>> = {
+	"deep-swe runner": [
+		"arms",
+		"binary",
+		"dry-run",
+		"help",
+		"jobs",
+		"limit",
+		"list",
+		"merge",
+		"model",
+		"out",
+		"reaggregate",
+		"repeats",
+		"replay-root",
+		"run-dir",
+		"system-comparison",
+		"systems",
+		"tasks",
+		"tasks-root",
+		"trial-timeout",
+	],
+	"search bench": ["arms", "help", "iterations", "json", "list", "reference", "suite", "type"],
+	"search disclosure bench": ["help"],
+	"edit-prompt bench": ["json", "label", "limit", "model"],
+	"bench-report writer": ["doc", "jobs-dir", "key", "run"],
+	"dictionary generator": ["all", "jobs", "tasks"],
+	"manager server": ["host", "jobs-dir", "port", "token"],
+	"edit adapter": [
+		"fixtures-archive",
+		"help",
+		"list",
+		"max-tasks",
+		"model",
+		"output",
+		"runs",
+		"task-concurrency",
+		"tasks",
+	],
+};
+
+const REFUSED_COUNTS: readonly string[] = ["abc", "0", "-1", "2.5", "1e400"];
 
 const MODEL: FlagGrammar = { valued: { model: true, jobs: true, limit: true, offset: true, rate: true } };
 
@@ -212,6 +277,35 @@ describe.each(Object.entries(GRAMMARS))("the %s grammar", (_name, grammar) => {
 		expect(Object.keys(parsed)).toContain(flag);
 		expect(parsed[flag]).toBe(valueless ? "" : "value");
 	});
+});
+
+describe("every count an entry point accepts", () => {
+	it("is recorded for every grammar, and no grammar is missing from either record", () => {
+		expect(Object.keys(COUNT_FLAGS).sort()).toEqual(Object.keys(GRAMMARS).sort());
+		expect(Object.keys(DECLARED_FLAGS).sort()).toEqual(Object.keys(GRAMMARS).sort());
+	});
+
+	test.each(Object.entries(GRAMMARS))("%s declares exactly the flags recorded here", (name, grammar) => {
+		const declared = [...Object.keys(grammar.valued), ...Object.keys(grammar.valueless ?? {})].sort();
+		expect(declared).toEqual([...DECLARED_FLAGS[name]]);
+		// A recorded count has to be a flag the grammar actually takes a value for.
+		for (const flag of COUNT_FLAGS[name]) expect(Object.keys(grammar.valued)).toContain(flag);
+	});
+
+	test.each(Object.entries(COUNT_FLAGS).filter(([, flags]) => flags.length > 0))(
+		"%s refuses a count it could not act on",
+		(name, flags) => {
+			const grammar = GRAMMARS[name];
+			for (const flag of flags) {
+				for (const value of REFUSED_COUNTS) {
+					const attempt = () => flagCount(parseFlags([`--${flag}`, value], grammar), flag);
+					expect(attempt).toThrow(FlagValueError);
+					expect(attempt).toThrow(new RegExp(`--${flag} expects`));
+				}
+				expect(flagCount(parseFlags([`--${flag}`, "4"], grammar), flag)).toBe(4);
+			}
+		},
+	);
 });
 
 describe("the manager server reads that grammar", () => {
