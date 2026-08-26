@@ -318,9 +318,10 @@ mod two_questions_about_an_equals_sign_keep_two_names {
 		);
 	}
 
-	/// The engine's half, through its public entry point. `command 1=2 exec
-	/// >out` must stay opaque: the scan steps over the assignment-shaped word
-	/// and still reaches `exec`, which segmented execution cannot preserve.
+	/// The engine's half, through its public entry point. A command wrapper in
+	/// front of `1=2 exec >out` must stay opaque: the scan steps over the
+	/// assignment-shaped word and still reaches `exec`, which segmented
+	/// execution cannot preserve.
 	#[test]
 	fn the_wrapper_scan_still_reaches_a_mutator_behind_an_odd_word() {
 		let config = enabled();
