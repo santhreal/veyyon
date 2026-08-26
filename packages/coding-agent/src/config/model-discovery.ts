@@ -15,10 +15,12 @@ import {
 	stripBracketedModelIdAffixes,
 } from "@veyyon/catalog/identity";
 import {
+	normalizeOllamaBaseUrl as catalogNormalizeOllamaBaseUrl,
 	fetchLiteLLMRichModels,
 	fetchLmStudioNativeModelMetadata,
 	OPENAI_COMPAT_DISCOVERY_DEFAULT_CONTEXT_WINDOW,
 	OPENAI_COMPAT_DISCOVERY_DEFAULT_MAX_TOKENS,
+	toOllamaNativeBaseUrl,
 } from "@veyyon/catalog/provider-models/openai-compat";
 import type { ModelSpec, OpenAICompat } from "@veyyon/catalog/types";
 import { isRecord, trimTrailingSlashes } from "@veyyon/utils";
@@ -917,12 +919,14 @@ export function normalizeOpenAIModelsListBaseUrl(baseUrl?: string): string {
 	}
 }
 
+/**
+ * The native-API base URL for an Ollama endpoint.
+ *
+ * This used to return `${protocol}//${host}`, which discards the path. An Ollama behind a reverse
+ * proxy is mounted at a subpath, so a configured `http://gateway:11434/ollama` was discovered at
+ * `http://gateway:11434/api/tags` here and at `http://gateway:11434/ollama/api/tags` by the
+ * catalog's own discovery, and only the second one answered. The catalog owns both spellings now.
+ */
 function normalizeOllamaBaseUrl(baseUrl?: string): string {
-	const raw = baseUrl || DEFAULT_OLLAMA_BASE_URL;
-	try {
-		const parsed = new URL(raw);
-		return `${parsed.protocol}//${parsed.host}`;
-	} catch {
-		return DEFAULT_OLLAMA_BASE_URL;
-	}
+	return toOllamaNativeBaseUrl(catalogNormalizeOllamaBaseUrl(baseUrl || DEFAULT_OLLAMA_BASE_URL));
 }
