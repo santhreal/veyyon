@@ -7,8 +7,8 @@
  * - Convenience helpers: captureText / execText, AbortSignal, timeouts.
  */
 
-import { Process } from "@veyyon/natives";
 import type { Spawn, Subprocess } from "bun";
+import { processHandle } from "./native-process";
 import { readPipeText } from "./stream";
 import { errorMessage } from "./type-guards";
 
@@ -244,10 +244,20 @@ export class ChildProcess<In extends InMask = InMask> {
 
 	kill(reason?: Exception) {
 		if (reason && !this.#exitReasonPending) this.#exitReasonPending = reason;
-		if (!this.proc.killed)
-			void Process.fromPid(this.proc.pid)
-				?.terminate()
-				?.catch(e => void e);
+		if (this.proc.killed) return;
+		const handle = processHandle(this.proc.pid);
+		if (handle) {
+			void handle.terminate()?.catch(e => void e);
+			return;
+		}
+		// No addon means no tree walk, so a descendant that outlived its parent
+		// is not reached. Ending the direct child is what the runtime still
+		// offers, and it is what the exit handlers below wait on.
+		try {
+			this.proc.kill();
+		} catch {
+			// Already gone, which is the state this asked for.
+		}
 	}
 
 	// ── Output helpers ───────────────────────────────────────────────────
