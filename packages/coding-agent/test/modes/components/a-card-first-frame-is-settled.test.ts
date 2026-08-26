@@ -160,7 +160,6 @@ const OVERLAY_SPECS: readonly OverlaySpec[] = [
 					onLogout: () => {},
 					onShowUsage: () => {},
 					onAddAccount: () => {},
-					onToggleLoadBalancing: () => false,
 					onClearRateLimitBlock: () => {},
 					onCancel: () => {},
 				},

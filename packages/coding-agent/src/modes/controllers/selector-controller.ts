@@ -1782,24 +1782,6 @@ export class SelectorController {
 					done();
 					void this.#loginThenReopenAccountManager(provider);
 				},
-				onToggleLoadBalancing: () => {
-					const next = !this.ctx.session.settings.get("accounts.loadBalancing");
-					this.ctx.session.settings.set("accounts.loadBalancing", next);
-					// Read back rather than trusting `next`: the card paints from what the settings
-					// object actually holds, so a refused or coerced write cannot leave the footer
-					// advertising a state the config does not have.
-					const stored = this.ctx.session.settings.get("accounts.loadBalancing") === true;
-					// A settings write is permanent, and a repainted two-word chip is a thin receipt
-					// for one. Say what changed, what it now does, and that it outlives the session,
-					// from the value that was actually stored.
-					this.ctx.showStatus(
-						stored
-							? "Account load balancing on: an exhausted account moves to another account of the same provider. Saved for this profile."
-							: "Account load balancing off: an exhausted account waits for its own quota window. Saved for this profile.",
-						{ dim: false },
-					);
-					return stored;
-				},
 				onClearRateLimitBlock: row => {
 					authStorage.clearCredentialBlocks(row.provider, row.credentialId);
 					// Re-probe the one account, so the row's countdown is replaced by what the provider
