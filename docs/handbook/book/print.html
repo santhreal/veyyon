@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-050fd420.js";
+            window.path_to_searchindex_js = "searchindex-c2256a25.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-a2abefc1.js"></script>
@@ -3162,11 +3162,27 @@ with <code>e</code> in <code>/secret</code> still helps; a deadline further out 
 <tr><td><code>/fork</code></td><td>Duplicate the current session into a new file</td></tr>
 <tr><td><code>/session info</code></td><td>Session metadata and stats</td></tr>
 <tr><td><code>/agents</code></td><td>Agent Control Center: the live roster (agent type, status, activity; Enter opens one agent’s session) and the Comms stream of agent-to-agent messages</td></tr>
+<tr><td><code>/process-manager</code></td><td>The same Agent Control Center, opened across every conversation this process is running</td></tr>
 <tr><td><code>/jobs</code></td><td>List background async tool jobs</td></tr>
 </tbody>
 </table>
 </div>
 <p><code>/cockpit</code> and <code>/hub</code> are aliases of <code>/agents</code>, as is the <code>app.agents.hub</code> keybinding and a double-tap of the left arrow on an empty composer. They used to open a separate screen with its own roster and its own drill-in, which meant “which agents are running” had two answers that could disagree with each other. They all open the one card now.</p>
+<h3 id="one-conversation-or-every-conversation"><a class="header" href="#one-conversation-or-every-conversation">One conversation, or every conversation</a></h3>
+<p>A process runs more than one conversation at a time. <code>/new</code> leaves the previous one
+streaming unless <code>session.newKeepsBackground</code> is off, and an ACP client keeps every
+open session in the same process.</p>
+<p><code>/agents</code> opens on the conversation on screen. <code>/process-manager</code> opens on all of
+them. Press <code>a</code> in either card to switch: the roster, the Comms stream and the
+transcripts you can open all move together, and the title reads
+<code>Agent Control Center — all conversations</code> at the wider scope. A card with no
+conversation of its own, which is what a collab guest has, already shows everything
+it can reach, so <code>a</code> does nothing there and no chip offers it.</p>
+<p>Regenerate the capture pair for this behavior with:</p>
+<pre><code class="language-sh">SCENE_COMMAND='bun /repo/packages/coding-agent/src/cli.ts --model local/qwen2.5-1.5b --no-tools' \
+  PROOF_LLM_BASE_URL=http://veyyon-proof-llm:8080/v1 SCENE_MOTION_FLOOR=1 \
+  proof/docker/record-x11.sh proof/scenes/process-manager-scope.sh
+</code></pre>
 <h3 id="the-live-roster"><a class="header" href="#the-live-roster">The Live roster</a></h3>
 <p>Each row is one agent that exists right now: a status glyph, its call sign, the TYPE of agent it was spawned from (<code>reviewer</code>, <code>scout</code>), its status, how long since it last did anything, and what it is doing. Rows sit in spawn order, oldest first, with your own session at the top. The row you are on is marked two ways, a cursor glyph in the first column and a band across the whole row, so it stays readable on a terminal that renders no colour. Agents from earlier runs of the same session appear too, marked <code>parked</code>, because their transcripts are still on disk even though this process never started them.</p>
 <p>Press Enter on a row and the main view becomes that agent’s session: the transcript, the composer, and the status line all point at it, so you read what it is doing and then answer it. Press Esc there to come back to your own session. While you are focused on an agent, the composer footline contains a persistent <code>&lt;agent-id&gt; · esc to go back</code> badge at the left, and the inline <code>Subagents</code> block above the composer lists that session’s own spawns, so inside a leaf agent with no spawns of its own the block disappears. Opening a parked agent revives it on the way in.</p>
@@ -8229,6 +8245,7 @@ act on a bare invocation: <code>/yolo</code>, <code>/fast</code>, and <code>/bro
 <tr><td><code>/plugins …</code></td><td>Plugin browser</td></tr>
 <tr><td><code>/extensions</code>, <code>/status</code></td><td>Extension Control Center dashboard. <code>/status</code> is an alias for it, not a session-status view</td></tr>
 <tr><td><code>/agents</code> (aliases <code>/cockpit</code>, <code>/hub</code>)</td><td>Open the Agent Control Center: live agent roster and the agent-to-agent comms stream</td></tr>
+<tr><td><code>/process-manager</code></td><td>Open the Agent Control Center across every conversation this process is running, not only the one on screen. Press <code>a</code> in the card to switch between the two scopes</td></tr>
 <tr><td><code>/ssh …</code></td><td>SSH host setup. <code>add</code> takes the name and host by position, then <code>user &lt;user&gt;</code>, a plain port, and <code>key &lt;keyPath&gt;</code> in any order: see <a href="#every-argument-is-a-plain-word-1">Every argument is a plain word</a></td></tr>
 <tr><td><code>/hotkeys</code></td><td>Active keybinding chords</td></tr>
 <tr><td><code>/collab …</code>, <code>/join</code>, <code>/leave</code></td><td>Live collab sessions</td></tr>
