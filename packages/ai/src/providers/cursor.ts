@@ -155,11 +155,7 @@ import { createRequestDebugSession, isRequestDebugEnabled, type RequestDebugResp
 import { toolWireSchema } from "../utils/schema/wire";
 
 /**
- * Cursor's API host.
- *
- * Re-exported from `@veyyon/catalog/provider-endpoints`, which owns it, rather than declared here: this
- * package's usage reader and `catalog`'s discovery reader both need the same fallback, and this name is the
- * one callers already import.
+ * Cursor's API host. Re-exported from `@veyyon/catalog/provider-endpoints` (shared with `catalog`'s discovery reader).
  */
 export const CURSOR_API_URL = CURSOR_API_ENDPOINT;
 export const CURSOR_CLIENT_VERSION = "cli-2026.01.09-231024f";

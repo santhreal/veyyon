@@ -7301,10 +7301,7 @@ export {
 } from "./auth-credential-rows";
 
 /**
- * The sqlite store, which moved to `auth-storage-sqlite.ts` and is re-exported here.
- *
- * Every existing importer names this module or the package barrel, so the re-export is what makes the
- * move invisible to them. A caller that wants ONLY the store, and not the OAuth machinery in this file,
- * should import `@veyyon/ai/auth-storage-sqlite` directly: that is 213 modules cheaper.
+ * The sqlite store, moved to `auth-storage-sqlite.ts` and re-exported here. Callers wanting only the
+ * store should import `@veyyon/ai/auth-storage-sqlite` directly (213 modules cheaper).
  */
 export { SqliteAuthCredentialStore };

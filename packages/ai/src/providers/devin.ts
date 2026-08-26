@@ -63,11 +63,8 @@ import { AssistantMessageEventStream } from "../utils/event-stream";
 import { toolWireSchema } from "../utils/schema/wire";
 
 /**
- * Base host for Codeium/Windsurf's Cascade chat API (Connect protocol over HTTP/1.1).
- *
- * Re-exported from `@veyyon/catalog/provider-endpoints`, not declared here. It used to be `DEVIN_CASCADE_ENDPOINT`, which
- * was the same name the OAuth flow in `../registry/oauth/devin.ts` used for `https://api.devin.ai`: two hosts,
- * one name, one package, and this one exported.
+ * Base host for Codeium/Windsurf's Cascade chat API. Re-exported from `@veyyon/catalog/provider-endpoints`;
+ * was `DEVIN_CASCADE_ENDPOINT` (same name as the OAuth flow's `api.devin.ai` — two hosts, one name).
  */
 export { DEVIN_CASCADE_ENDPOINT } from "@veyyon/catalog/provider-endpoints";
 
