@@ -137,7 +137,13 @@ Execute the progressive disclosure artifact compaction benchmark:
 bun run bench:search:disclosure
 ```
 
-The progressive disclosure benchmark evaluates `SearchTool` output compaction on large result sets, measuring inline reduction and verifying exact artifact recovery.
+The progressive disclosure benchmark measures `SearchTool` output compaction on large result sets:
+inline bytes with full context, inline bytes once the result spills to an artifact, and whether the
+artifact recovers the full result byte for byte. Every other number it prints is derived from those,
+so it refuses a measurement none of them backs: a search that reported no file or match count, a
+corpus that produced no match, and a full-context search that inlined no bytes each end the bench
+instead of reporting `0 matches across 0 files` or `NaN%` saved. A compact result that grew is
+reported as the negative saving it is, and exits 1.
 
 ## Parity vs Correctness
 

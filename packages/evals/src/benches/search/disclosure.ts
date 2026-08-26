@@ -70,27 +70,71 @@ export async function runSearchDisclosureBenchmark(baseDir?: string): Promise<Se
 		} catch (err) {
 			throw new Error(`Failed to read disclosure artifact at ${artifactPath}: ${errorMessage(err)}`);
 		}
-		const fullInlineBytes = Buffer.byteLength(fullText, "utf8");
-		const compactInlineBytes = Buffer.byteLength(compactText, "utf8");
-		const artifactBytes = Buffer.byteLength(artifactText, "utf8");
-		const inlineReductionBytes = fullInlineBytes - compactInlineBytes;
-		const estimatedByteTurnsAvoided = inlineReductionBytes * ASSUMED_LATER_TURNS;
-		return {
-			fileCount: compactResult.details.result.fileCount ?? 0,
-			matchCount: compactResult.details.result.matchCount ?? 0,
-			fullInlineBytes,
-			compactInlineBytes,
-			artifactBytes,
-			exactRecovery: artifactText === fullText,
-			inlineReductionBytes,
-			inlineReductionPercent: Number(((inlineReductionBytes / fullInlineBytes) * 100).toFixed(2)),
-			assumedLaterTurns: ASSUMED_LATER_TURNS,
-			estimatedByteTurnsAvoided,
-			estimatedTokensAvoided: Math.round(estimatedByteTurnsAvoided / 4),
-		};
+		return buildSearchDisclosureReport(
+			{
+				fileCount: compactResult.details.result.fileCount ?? null,
+				matchCount: compactResult.details.result.matchCount ?? null,
+				fullInlineBytes: Buffer.byteLength(fullText, "utf8"),
+				compactInlineBytes: Buffer.byteLength(compactText, "utf8"),
+				artifactBytes: Buffer.byteLength(artifactText, "utf8"),
+				exactRecovery: artifactText === fullText,
+			},
+			corpus.corpusDir,
+		);
 	} finally {
 		await Promise.all([corpus.cleanup(), fs.rm(artifactDir, { recursive: true, force: true })]);
 	}
+}
+
+/** What one disclosure run measured, before any ratio or projection is derived from it. */
+export interface SearchDisclosureMeasurement {
+	/** Files the search reported, or null when it reported no count. */
+	fileCount: number | null;
+	/** Matches the search reported, or null when it reported no count. */
+	matchCount: number | null;
+	fullInlineBytes: number;
+	compactInlineBytes: number;
+	artifactBytes: number;
+	exactRecovery: boolean;
+}
+
+/**
+ * Derive the report from one measurement, or refuse it.
+ *
+ * Every derived number is a saving over what the full search inlined, so a measurement that read
+ * nothing cannot produce one: a reduction over zero bytes is NaN rather than a percentage, and a
+ * count the search never reported is not "0 matches across 0 files". A bench that measured nothing
+ * refuses instead of printing a number nothing backs.
+ */
+export function buildSearchDisclosureReport(
+	measured: SearchDisclosureMeasurement,
+	corpusLabel: string,
+): SearchDisclosureBenchmarkReport {
+	const { fileCount, matchCount, fullInlineBytes, compactInlineBytes } = measured;
+	if (fileCount === null || matchCount === null) {
+		throw new Error("Search disclosure bench: the search tool reported no file or match count");
+	}
+	if (matchCount === 0) {
+		throw new Error(`Search disclosure bench: the corpus at ${corpusLabel} produced no matches`);
+	}
+	if (fullInlineBytes <= 0) {
+		throw new Error("Search disclosure bench: the full-context search inlined no bytes, so there is no reduction");
+	}
+	const inlineReductionBytes = fullInlineBytes - compactInlineBytes;
+	const estimatedByteTurnsAvoided = inlineReductionBytes * ASSUMED_LATER_TURNS;
+	return {
+		fileCount,
+		matchCount,
+		fullInlineBytes,
+		compactInlineBytes,
+		artifactBytes: measured.artifactBytes,
+		exactRecovery: measured.exactRecovery,
+		inlineReductionBytes,
+		inlineReductionPercent: Number(((inlineReductionBytes / fullInlineBytes) * 100).toFixed(2)),
+		assumedLaterTurns: ASSUMED_LATER_TURNS,
+		estimatedByteTurnsAvoided,
+		estimatedTokensAvoided: Math.round(estimatedByteTurnsAvoided / 4),
+	};
 }
 
 export function formatSearchDisclosureBenchmark(report: SearchDisclosureBenchmarkReport): string {
