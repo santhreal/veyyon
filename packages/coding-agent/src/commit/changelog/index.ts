@@ -285,7 +285,7 @@ function normalizeEntries(entries: Record<string, string[]>): Record<string, str
 	for (const [section, items] of Object.entries(entries)) {
 		const trimmed = items.map(item => item.trim().replace(/\.$/, "")).filter(item => item.length > 0);
 		if (trimmed.length === 0) continue;
-		result[section] = Array.from(new Set(trimmed.map(item => item.trim())));
+		result[section] = [...new Set(trimmed.map(item => item.trim()))];
 	}
 	return result;
 }

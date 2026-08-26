@@ -552,8 +552,8 @@ export class DapClient {
 	}
 
 	async #dispatchEvent(message: DapEventMessage): Promise<void> {
-		const handlers = Array.from(this.#eventHandlers.get(message.event) ?? []);
-		const anyHandlers = Array.from(this.#anyEventHandlers);
+		const handlers = [...(this.#eventHandlers.get(message.event) ?? [])];
+		const anyHandlers = [...this.#anyEventHandlers];
 		for (const handler of [...handlers, ...anyHandlers]) {
 			try {
 				await handler(message.body, message);

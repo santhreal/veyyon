@@ -149,7 +149,7 @@ function normalizeRuleField(value: unknown): string[] | undefined {
 		return undefined;
 	}
 
-	return Array.from(new Set(tokens));
+	return [...new Set(tokens)];
 }
 
 function splitScopeTokens(value: string): string[] {
@@ -232,7 +232,7 @@ function normalizeScopeField(value: unknown): string[] | undefined {
 	if (tokens.length === 0) {
 		return undefined;
 	}
-	return Array.from(new Set(tokens));
+	return [...new Set(tokens)];
 }
 
 function isLikelyFileGlob(value: string): boolean {
@@ -278,9 +278,9 @@ export function parseRuleConditionAndScope(
 
 	const scope = [...(parsedScope ?? []), ...inferredScope];
 	return {
-		condition: condition.length > 0 ? Array.from(new Set(condition)) : undefined,
+		condition: condition.length > 0 ? [...new Set(condition)] : undefined,
 		astCondition,
-		scope: scope.length > 0 ? Array.from(new Set(scope)) : undefined,
+		scope: scope.length > 0 ? [...new Set(scope)] : undefined,
 	};
 }
 

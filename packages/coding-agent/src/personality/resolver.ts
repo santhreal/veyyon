@@ -126,7 +126,7 @@ function availableNames(tiers: PersonalityTiers): string[] {
 	const names = new Set<string>(Object.keys(BUILTIN_PERSONALITIES));
 	for (const name of tiers.user.keys()) names.add(name);
 	for (const name of tiers.project.keys()) names.add(name);
-	return Array.from(names).sort((a, b) => a.localeCompare(b));
+	return [...names].sort((a, b) => a.localeCompare(b));
 }
 
 /**

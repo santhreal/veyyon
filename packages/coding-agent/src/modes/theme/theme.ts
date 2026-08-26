@@ -76,7 +76,7 @@ export async function getAvailableThemes(): Promise<string[]> {
 	} catch {
 		// Directory doesn't exist or isn't readable
 	}
-	return Array.from(themes).sort();
+	return [...themes].sort();
 }
 
 export interface ThemeInfo {

@@ -44,7 +44,7 @@ export async function scanForeignConfig(cwd?: string, home?: string): Promise<Im
 	const options = {
 		...(cwd ? { cwd } : {}),
 		...(home ? { home } : {}),
-		providers: Array.from(FOREIGN_PROVIDER_IDS),
+		providers: [...FOREIGN_PROVIDER_IDS],
 	};
 	const [skills, contextFiles] = await Promise.all([
 		loadCapability<DiscoveredSkill>(skillCapability.id, options),

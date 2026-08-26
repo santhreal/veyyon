@@ -472,7 +472,7 @@ function createObjectValidator(properties: Record<string, ArkSchema>, opts?: Obj
 
 		const additionalProperties = opts?.additionalProperties;
 		if (additionalProperties === false) {
-			if (keys.size > 0) return validationFailure(`Unexpected properties: ${Array.from(keys).join(", ")}`);
+			if (keys.size > 0) return validationFailure(`Unexpected properties: ${[...keys].join(", ")}`);
 		} else if (additionalProperties === true || additionalProperties === undefined) {
 			for (const key of keys) result[key] = obj[key];
 		} else {

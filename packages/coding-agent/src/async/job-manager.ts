@@ -152,7 +152,7 @@ export class AsyncJobManager {
 
 	#filterJobs(jobs: Iterable<AsyncJob>, filter?: AsyncJobFilter): AsyncJob[] {
 		const ownerId = filter?.ownerId;
-		if (!ownerId) return Array.from(jobs);
+		if (!ownerId) return [...jobs];
 		const out: AsyncJob[] = [];
 		for (const job of jobs) {
 			if (job.ownerId === ownerId) out.push(job);
@@ -327,7 +327,7 @@ export class AsyncJobManager {
 	}
 
 	watchJobs(jobIds: string[]): number {
-		const uniqueJobIds = Array.from(new Set(jobIds.map(id => id.trim()).filter(id => id.length > 0)));
+		const uniqueJobIds = [...new Set(jobIds.map(id => id.trim()).filter(id => id.length > 0))];
 		for (const jobId of uniqueJobIds) {
 			this.#watchedJobs.add(jobId);
 		}
@@ -353,7 +353,7 @@ export class AsyncJobManager {
 	 * the order backwards and the operator sees the same report twice.
 	 */
 	unwatchJobs(jobIds: string[]): number {
-		const uniqueJobIds = Array.from(new Set(jobIds.map(id => id.trim()).filter(id => id.length > 0)));
+		const uniqueJobIds = [...new Set(jobIds.map(id => id.trim()).filter(id => id.length > 0))];
 		let removed = 0;
 		for (const jobId of uniqueJobIds) {
 			if (!this.#watchedJobs.delete(jobId)) continue;
@@ -412,7 +412,7 @@ export class AsyncJobManager {
 	}
 
 	acknowledgeDeliveries(jobIds: string[]): number {
-		const uniqueJobIds = Array.from(new Set(jobIds.map(id => id.trim()).filter(id => id.length > 0)));
+		const uniqueJobIds = [...new Set(jobIds.map(id => id.trim()).filter(id => id.length > 0))];
 		if (uniqueJobIds.length === 0) return 0;
 
 		for (const jobId of uniqueJobIds) {

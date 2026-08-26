@@ -707,7 +707,7 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		logger.warn(resolvedPersonality.warning, { cwd: resolvedCwd, requested: personality });
 		process.stderr.write(`Warning: ${resolvedPersonality.warning}\n`);
 	}
-	const agentsMdFiles = Array.from(new Set(workspaceTree.agentsMdFiles)).sort().slice(0, AGENTS_MD_LIMIT);
+	const agentsMdFiles = [...new Set(workspaceTree.agentsMdFiles)].sort().slice(0, AGENTS_MD_LIMIT);
 
 	if (timedOut.length > 0) {
 		logger.warn("System prompt preparation steps timed out; using minimal fallback for those steps", {

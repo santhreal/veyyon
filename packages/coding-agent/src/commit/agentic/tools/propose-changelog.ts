@@ -64,7 +64,7 @@ export function createProposeChangelogTool(
 					}
 					const items = values.map(value => value.trim().replace(/\.$/, "")).filter(value => value.length > 0);
 					if (items.length > 0) {
-						cleaned[category] = Array.from(new Set(items));
+						cleaned[category] = [...new Set(items)];
 					}
 				}
 
@@ -83,7 +83,7 @@ export function createProposeChangelogTool(
 						}
 						const items = values.map(value => value.trim()).filter(value => value.length > 0);
 						if (items.length > 0) {
-							cleanedDeletions[category] = Array.from(new Set(items));
+							cleanedDeletions[category] = [...new Set(items)];
 						}
 					}
 					if (Object.keys(cleanedDeletions).length === 0) {

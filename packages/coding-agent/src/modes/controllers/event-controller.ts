@@ -1444,7 +1444,7 @@ export class EventController {
 			}
 		}
 		this.#backgroundTaskCallIds = new Set(
-			Array.from(this.#backgroundTaskCallIds).filter(toolCallId => this.ctx.pendingTools.has(toolCallId)),
+			[...this.#backgroundTaskCallIds].filter(toolCallId => this.ctx.pendingTools.has(toolCallId)),
 		);
 		this.#readToolCallArgs.clear();
 		this.#readToolCallAssistantComponents.clear();

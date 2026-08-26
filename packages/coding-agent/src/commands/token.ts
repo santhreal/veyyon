@@ -147,7 +147,7 @@ export default class Token extends Command {
 				// its actual environment variable and login command rather than a
 				// surface the reader cannot open.
 				if (activeProviders.size > 0) {
-					process.stderr.write(`Configured providers: ${Array.from(activeProviders).sort().join(", ")}\n`);
+					process.stderr.write(`Configured providers: ${[...activeProviders].sort().join(", ")}\n`);
 				}
 				process.stderr.write(`${credentialRemedySentence(providerName)}\n`);
 				process.exitCode = 1;

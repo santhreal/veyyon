@@ -286,7 +286,7 @@ export async function runGalleryCommand(args: GalleryCommandArgs): Promise<void>
 	// Renderer-registry tools plus fixture-only tools (no dedicated renderer,
 	// e.g. `report_tool_issue` / custom extension tools) so the gallery covers
 	// the generic fallback + custom-tool branches too.
-	const allNames = Array.from(new Set([...Object.keys(toolRenderers), ...Object.keys(galleryFixtures)])).sort();
+	const allNames = [...new Set([...Object.keys(toolRenderers), ...Object.keys(galleryFixtures)])].sort();
 	const names = args.tool ? allNames.filter(name => name === args.tool) : allNames;
 	if (args.tool && names.length === 0) {
 		process.stderr.write(`Unknown tool '${args.tool}'. Known tools: ${allNames.join(", ")}\n`);

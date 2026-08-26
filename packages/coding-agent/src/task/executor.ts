@@ -2615,7 +2615,7 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 		const expanded = toolNames.filter(name => name !== "exec");
 		if (backends.python || backends.js || backends.ruby || backends.julia) expanded.push("eval");
 		expanded.push("bash");
-		toolNames = Array.from(new Set(expanded));
+		toolNames = [...new Set(expanded)];
 	}
 
 	// The caller resolved this through `resolveSubagentModel`, the one owner of
