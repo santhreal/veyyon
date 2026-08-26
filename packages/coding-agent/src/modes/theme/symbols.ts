@@ -257,6 +257,17 @@ export type BoxChars = {
 	readonly teeLeft: string;
 };
 
+/** Navigation glyphs used by `theme.nav`. */
+export type NavChars = {
+	readonly cursor: string;
+	readonly selected: string;
+	readonly expand: string;
+	readonly collapse: string;
+	readonly back: string;
+	readonly prev: string;
+	readonly next: string;
+};
+
 export const UNICODE_SYMBOLS: SymbolMap = {
 	// Status
 	"status.success": "✓",

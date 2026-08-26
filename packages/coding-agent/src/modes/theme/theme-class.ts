@@ -15,6 +15,7 @@ import { getVisibleGround } from "./ground-tints";
 import {
 	BAR_RAMPS,
 	type BoxChars,
+	type NavChars,
 	SPINNER_FRAMES,
 	type SpinnerType,
 	SYMBOL_PRESETS,
@@ -143,6 +144,7 @@ export class Theme {
 	readonly #hexBgColors: Record<ThemeBg, string>;
 	#symbols: SymbolMap;
 	#boxSharpCache: BoxChars;
+	#navCache: NavChars;
 	#spinnerFramesOverrides: Partial<Record<SpinnerType, string[]>>;
 	/**
 	 * Perceptual luma (0..1) of the status-line background used to classify the theme as light/dark.
@@ -211,6 +213,15 @@ export class Theme {
 			teeUp: this.#symbols["boxSharp.teeUp"],
 			teeRight: this.#symbols["boxSharp.teeRight"],
 			teeLeft: this.#symbols["boxSharp.teeLeft"],
+		};
+		this.#navCache = {
+			cursor: this.#symbols["nav.cursor"],
+			selected: this.#symbols["nav.selected"],
+			expand: this.#symbols["nav.expand"],
+			collapse: this.#symbols["nav.collapse"],
+			back: this.#symbols["nav.back"],
+			prev: this.#symbols["nav.prev"],
+			next: this.#symbols["nav.next"],
 		};
 		this.#spinnerFramesOverrides = spinnerFramesOverrides;
 	}
@@ -502,15 +513,7 @@ export class Theme {
 	}
 
 	get nav() {
-		return {
-			cursor: this.#symbols["nav.cursor"],
-			selected: this.#symbols["nav.selected"],
-			expand: this.#symbols["nav.expand"],
-			collapse: this.#symbols["nav.collapse"],
-			back: this.#symbols["nav.back"],
-			prev: this.#symbols["nav.prev"],
-			next: this.#symbols["nav.next"],
-		};
+		return this.#navCache;
 	}
 
 	get tree() {
