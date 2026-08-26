@@ -268,6 +268,23 @@ export type NavChars = {
 	readonly next: string;
 };
 
+/** Status glyphs used by `theme.status`. */
+export type StatusChars = {
+	readonly success: string;
+	readonly error: string;
+	readonly warning: string;
+	readonly info: string;
+	readonly pending: string;
+	readonly disabled: string;
+	readonly enabled: string;
+	readonly running: string;
+	readonly connecting: string;
+	readonly active: string;
+	readonly shadowed: string;
+	readonly aborted: string;
+	readonly done: string;
+};
+
 export const UNICODE_SYMBOLS: SymbolMap = {
 	// Status
 	"status.success": "✓",

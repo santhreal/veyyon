@@ -18,6 +18,7 @@ import {
 	type NavChars,
 	SPINNER_FRAMES,
 	type SpinnerType,
+	type StatusChars,
 	SYMBOL_PRESETS,
 	type SymbolKey,
 	type SymbolMap,
@@ -145,6 +146,7 @@ export class Theme {
 	#symbols: SymbolMap;
 	#boxSharpCache: BoxChars;
 	#navCache: NavChars;
+	#statusCache: StatusChars;
 	#spinnerFramesOverrides: Partial<Record<SpinnerType, string[]>>;
 	/**
 	 * Perceptual luma (0..1) of the status-line background used to classify the theme as light/dark.
@@ -222,6 +224,21 @@ export class Theme {
 			back: this.#symbols["nav.back"],
 			prev: this.#symbols["nav.prev"],
 			next: this.#symbols["nav.next"],
+		};
+		this.#statusCache = {
+			success: this.#symbols["status.success"],
+			error: this.#symbols["status.error"],
+			warning: this.#symbols["status.warning"],
+			info: this.#symbols["status.info"],
+			pending: this.#symbols["status.pending"],
+			disabled: this.#symbols["status.disabled"],
+			enabled: this.#symbols["status.enabled"],
+			running: this.#symbols["status.running"],
+			connecting: this.#symbols["status.connecting"],
+			active: this.#symbols["status.active"],
+			shadowed: this.#symbols["status.shadowed"],
+			aborted: this.#symbols["status.aborted"],
+			done: this.#symbols["status.done"],
 		};
 		this.#spinnerFramesOverrides = spinnerFramesOverrides;
 	}
@@ -495,21 +512,7 @@ export class Theme {
 	// ============================================================================
 
 	get status() {
-		return {
-			success: this.#symbols["status.success"],
-			error: this.#symbols["status.error"],
-			warning: this.#symbols["status.warning"],
-			info: this.#symbols["status.info"],
-			pending: this.#symbols["status.pending"],
-			disabled: this.#symbols["status.disabled"],
-			enabled: this.#symbols["status.enabled"],
-			running: this.#symbols["status.running"],
-			connecting: this.#symbols["status.connecting"],
-			active: this.#symbols["status.active"],
-			shadowed: this.#symbols["status.shadowed"],
-			aborted: this.#symbols["status.aborted"],
-			done: this.#symbols["status.done"],
-		};
+		return this.#statusCache;
 	}
 
 	get nav() {
