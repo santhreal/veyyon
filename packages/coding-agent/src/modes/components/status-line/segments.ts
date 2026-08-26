@@ -942,9 +942,8 @@ const cacheHitSegment: StatusLineSegment = {
 		const rate = (cacheRead / total) * 100;
 		const rateStr = rate.toFixed(2);
 
-		const parts: string[] = [theme.icon.cache];
-		parts.push(theme.fg("statusLineSpend", `${rateStr}%`));
-		return { content: parts.join(" "), visible: true };
+		const content = withIcon(theme.icon.cache, theme.fg("statusLineSpend", `${rateStr}%`));
+		return { content, visible: true };
 	},
 };
 
