@@ -67,7 +67,7 @@ New here? Read [onboarding](onboarding.md) and [testing](testing.md) first.
 | --- | --- |
 | [tui-core-renderer.md](tui-core-renderer.md) | The append-only renderer contract. |
 | [tui-runtime-internals.md](tui-runtime-internals.md) | TUI runtime internals. |
-| [renderer-defect-oracle.md](renderer-defect-oracle.md) | Why rendering defects reach operators as screenshots, and the composer-zone oracles and corpus that replace that loop. |
+| [renderer-defect-oracle.md](renderer-defect-oracle.md) | Terminal renderer composer-zone defect oracles and corpus replay. |
 
 ## Tools and runtime
 
