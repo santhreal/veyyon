@@ -79,12 +79,21 @@ export function outputBlockContentWidth(width: number, contentPaddingLeft?: numb
 /**
  * How far apart two `#rrggbb` colours are on their worst channel.
  */
+function hexDigitAt(s: string, pos: number): number {
+	const code = s.charCodeAt(pos);
+	if (code >= 0x30 && code <= 0x39) return code - 0x30;
+	if (code >= 0x61 && code <= 0x66) return code - 0x61 + 10;
+	if (code >= 0x41 && code <= 0x46) return code - 0x41 + 10;
+	return -1;
+}
+
 function channelDistance(a: string, b: string): number {
 	let worst = 0;
 	for (let i = 0; i < 3; i++) {
-		const ca = Number.parseInt(a.slice(1 + i * 2, 3 + i * 2), 16);
-		const cb = Number.parseInt(b.slice(1 + i * 2, 3 + i * 2), 16);
-		if (Number.isNaN(ca) || Number.isNaN(cb)) return Number.POSITIVE_INFINITY;
+		const base = 1 + i * 2;
+		const ca = (hexDigitAt(a, base) << 4) | hexDigitAt(a, base + 1);
+		const cb = (hexDigitAt(b, base) << 4) | hexDigitAt(b, base + 1);
+		if (ca < 0 || cb < 0) return Number.POSITIVE_INFINITY;
 		worst = Math.max(worst, Math.abs(ca - cb));
 	}
 	return worst;
