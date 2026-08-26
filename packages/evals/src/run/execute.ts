@@ -21,7 +21,15 @@ import type {
 	TrialScore,
 } from "../core";
 import { createRunRecord, preflightHarnesses } from "../core";
-import { cellKey, openRunJournal, readRunJournal, sanitizeTrialRecord } from "./journal";
+import {
+	cellKey,
+	journalExists,
+	journalPathFor,
+	openRunJournal,
+	ResumeWithoutJournalError,
+	readRunJournal,
+	sanitizeTrialRecord,
+} from "./journal";
 import type { RunPlan } from "./plan";
 export class BackendPreflightError extends Error {
 	readonly backendId: string;
@@ -128,6 +136,14 @@ export async function executeRun(options: ExecuteRunOptions): Promise<EvalRunRec
 			variants: plan.variants,
 		},
 	};
+
+	// A resume names a prior run. When that run has no journal, the honest outcome is a
+	// refusal: a mistyped --run-id otherwise reads as a fresh run and pays for every task
+	// the operator believed was already settled. Checked before any preflight, because
+	// nothing about this invocation can be fixed by staging assets.
+	if (options.resume && !(await journalExists(options.runsDir, plan.runId))) {
+		throw new ResumeWithoutJournalError(journalPathFor(options.runsDir, plan.runId), plan.runId);
+	}
 
 	const suiteVerdict = await plan.suite.preflight(plan.context);
 	if (!suiteVerdict.ok) {
