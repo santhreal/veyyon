@@ -294,16 +294,9 @@ export function extractOAuthTokenIdentifiers(token: string | undefined): string[
 }
 
 /**
- * Staleness tolerance for a cached usage report, in milliseconds.
- *
- * Five minutes, because Anthropic and OpenAI rate-limit their usage endpoints at the IP level: every
- * credential cannot be re-fetched every cycle, so a long cache keeps each one's last known value
- * visible while its peers retry. The figures a user reads (5h / 7d / monthly limits) are fine a few
- * minutes stale.
- *
- * HERE RATHER THAN IN `auth-storage.ts` because both halves of the split read it: the OAuth-side report
- * cache and the sqlite store's persisted reconcile window. Two copies would drift, and the store would
- * then persist a window the cache had already decided was stale.
+ * Staleness tolerance for a cached usage report (5 min). Rate-limited at IP level, so a long cache keeps
+ * each credential's last known value visible while peers retry. Here (not `auth-storage.ts`) because both
+ * halves of the split read it; two copies would drift.
  */
 export const USAGE_REPORT_TTL_MS = 5 * 60_000;
 
