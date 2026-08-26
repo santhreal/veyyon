@@ -6,8 +6,16 @@
  * is received, the dashboard will leak open HTTP streaming connections to the server, consume
  * unbounded background sockets, or break the entire UI runtime upon encountering corrupted SSE frames.
  *
+ * A second defect this now covers: the frame payload was cast to RunRow[] without a check, so a
+ * frame carrying an object, a string, null, or a list of things that are not runs reached
+ * `runs.map` in RunsPage and blanked the page. A frame the page cannot use leaves the last run list
+ * in place and states why, and a dropped connection says the list is the last update it received,
+ * so a stale table is never read as a live one.
+ *
  * WHAT THIS DOES NOT CATCH:
- * This suite does not test backend SSE keep-alive heartbeats or HTTP chunked transport buffering.
+ * This suite does not test backend SSE keep-alive heartbeats or HTTP chunked transport buffering,
+ * and it does not check that every field of an accepted row is well formed — only that the payload
+ * is a list of rows carrying a job name.
  */
 
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
@@ -38,6 +46,12 @@ class MockEventSource {
 	emitMessage(data: string): void {
 		if (this.onmessage && !this.closed) {
 			this.onmessage({ data });
+		}
+	}
+
+	emitError(): void {
+		if (this.onerror && !this.closed) {
+			this.onerror({ type: "error" });
 		}
 	}
 }
@@ -158,8 +172,11 @@ afterEach(async () => {
 describe("useRunsSse connects to /api/events, applies payloads, and closes on unmount", () => {
 	it("subscribes once on mount to the declared /api/events route", async () => {
 		let currentRuns: RunRow[] | null = null;
+		let currentError: string | null = null;
 		function SseConsumer() {
-			currentRuns = useRunsSse();
+			const subscription = useRunsSse();
+			currentRuns = subscription.runs;
+			currentError = subscription.error;
 			return null;
 		}
 
@@ -174,6 +191,7 @@ describe("useRunsSse connects to /api/events, applies payloads, and closes on un
 		});
 
 		expect(currentRuns).toBeNull();
+		expect<string | null>(currentError).toBeNull();
 		expect(MockEventSource.instances.length).toBe(1);
 
 		const instance = MockEventSource.instances[0];
@@ -184,8 +202,11 @@ describe("useRunsSse connects to /api/events, applies payloads, and closes on un
 
 	it("applies incoming valid RunRow[] event payloads to state", async () => {
 		let currentRuns: RunRow[] | null = null;
+		let currentError: string | null = null;
 		function SseConsumer() {
-			currentRuns = useRunsSse();
+			const subscription = useRunsSse();
+			currentRuns = subscription.runs;
+			currentError = subscription.error;
 			return null;
 		}
 
@@ -210,12 +231,16 @@ describe("useRunsSse connects to /api/events, applies payloads, and closes on un
 		});
 
 		expect<RunRow[] | null>(currentRuns).toEqual(sampleRuns);
+		expect<string | null>(currentError).toBeNull();
 	});
 
 	it("handles malformed JSON payloads gracefully without throwing or closing the stream", async () => {
 		let currentRuns: RunRow[] | null = null;
+		let currentError: string | null = null;
 		function SseConsumer() {
-			currentRuns = useRunsSse();
+			const subscription = useRunsSse();
+			currentRuns = subscription.runs;
+			currentError = subscription.error;
 			return null;
 		}
 
@@ -244,6 +269,8 @@ describe("useRunsSse connects to /api/events, applies payloads, and closes on un
 		});
 		expect(instance.closed).toBe(false);
 		expect<RunRow[] | null>(currentRuns).toEqual(initialRuns); // Retains prior valid data
+		// The retained table is stale, and the page says so rather than presenting it as live.
+		expect<string | null>(currentError).toBe("the manager sent a frame this page could not read");
 
 		// Next valid message arrives successfully
 		const nextRuns: RunRow[] = [makeRunRow({ jobName: "run-recovered", pass: 9 })];
@@ -251,6 +278,87 @@ describe("useRunsSse connects to /api/events, applies payloads, and closes on un
 			instance.emitMessage(JSON.stringify(nextRuns));
 		});
 		expect<RunRow[] | null>(currentRuns).toEqual(nextRuns);
+		expect<string | null>(currentError).toBeNull();
+	});
+
+	// WHY: the payload was cast to RunRow[] with no check, so a frame carrying an object — an error
+	// body, a wrapped envelope, a single row — reached `runs.map` in RunsPage and blanked the page on
+	// the first render after it arrived.
+	it.each([
+		['{"error":"no store"}', "an object where a list belongs"],
+		['[{"notARun":true}]', "a list of things that are not runs"],
+		['"a string"', "a bare string"],
+		["null", "a null payload"],
+	] as [string, string][])("keeps the last run list when a frame carries %s", async (payload, _what) => {
+		let currentRuns: RunRow[] | null = null;
+		let currentError: string | null = null;
+		function SseConsumer() {
+			const subscription = useRunsSse();
+			currentRuns = subscription.runs;
+			currentError = subscription.error;
+			return null;
+		}
+
+		const g = globalThis as unknown as GlobalDomEnv;
+		const container = g.document?.createElement("div") as unknown as HTMLElement;
+		g.document?.body.appendChild(container as unknown as FakeElement);
+		const root = createRoot(container);
+		activeRoots.push(root);
+
+		await act(async () => {
+			root.render(createElement(SseConsumer));
+		});
+
+		const instance = MockEventSource.instances[0];
+		const good: RunRow[] = [makeRunRow({ jobName: "run-good", pass: 3 })];
+		await act(async () => {
+			instance.emitMessage(JSON.stringify(good));
+		});
+
+		await act(async () => {
+			instance.emitMessage(payload);
+		});
+
+		expect<RunRow[] | null>(currentRuns).toEqual(good);
+		expect<string | null>(currentError).toBe("the manager sent something other than a run list");
+		expect(instance.closed).toBe(false);
+	});
+
+	it("says the list is stale when the connection drops", async () => {
+		let currentRuns: RunRow[] | null = null;
+		let currentError: string | null = null;
+		function SseConsumer() {
+			const subscription = useRunsSse();
+			currentRuns = subscription.runs;
+			currentError = subscription.error;
+			return null;
+		}
+
+		const g = globalThis as unknown as GlobalDomEnv;
+		const container = g.document?.createElement("div") as unknown as HTMLElement;
+		g.document?.body.appendChild(container as unknown as FakeElement);
+		const root = createRoot(container);
+		activeRoots.push(root);
+
+		await act(async () => {
+			root.render(createElement(SseConsumer));
+		});
+
+		const instance = MockEventSource.instances[0];
+		const good: RunRow[] = [makeRunRow({ jobName: "run-good", pass: 3 })];
+		await act(async () => {
+			instance.emitMessage(JSON.stringify(good));
+		});
+		expect<string | null>(currentError).toBeNull();
+
+		await act(async () => {
+			instance.emitError();
+		});
+
+		expect<string | null>(currentError).toBe(
+			"the connection to the manager dropped; this list is the last update it sent",
+		);
+		expect<RunRow[] | null>(currentRuns).toEqual(good);
 	});
 
 	it("closes the EventSource connection when the component unmounts", async () => {

@@ -14,8 +14,9 @@ export function usePolled<T>(
 	template: string | null,
 	intervalMs: number,
 	options?: PolledOptions,
-): [T | null, () => void] {
+): [T | null, () => void, string | null] {
 	const [data, setData] = useState<T | null>(null);
+	const [error, setError] = useState<string | null>(null);
 	const [nonce, setNonce] = useState(0);
 	const paramsKey = JSON.stringify(options?.params);
 	const query = options?.query;
@@ -25,10 +26,18 @@ export function usePolled<T>(
 		if (!template) return;
 		let live = true;
 		const parsedParams = paramsKey ? (JSON.parse(paramsKey) as Record<string, string>) : undefined;
+		// A swallowed failure left the last good payload on screen for as long as the manager stayed
+		// down, so a dead pane read as a live one.
 		const load = () =>
 			getJson<T>(template, parsedParams, query)
-				.then(d => live && setData(d))
-				.catch(() => {});
+				.then(d => {
+					if (!live) return;
+					setData(d);
+					setError(null);
+				})
+				.catch((reason: unknown) => {
+					if (live) setError(reason instanceof Error ? reason.message : String(reason));
+				});
 		load();
 		const timer = setInterval(load, intervalMs);
 		return () => {
@@ -38,5 +47,5 @@ export function usePolled<T>(
 	}, [template, intervalMs, nonce, paramsKey, query]);
 
 	const refresh = useCallback(() => setNonce(n => n + 1), []);
-	return [data, refresh];
+	return [data, refresh, error];
 }

@@ -13,8 +13,8 @@ import { useRunsSse } from "../hooks/use-runs-sse";
 import { Chip, Progress } from "./ui";
 
 export function RunsPage({ selected }: { selected: string | null }) {
-	const runs = useRunsSse();
-	const [detail] = usePolled<RunDetailResponse>(selected ? "/api/runs/:name" : null, 2500, {
+	const { runs, error: runsError } = useRunsSse();
+	const [detail, , detailError] = usePolled<RunDetailResponse>(selected ? "/api/runs/:name" : null, 2500, {
 		params: selected ? { name: selected } : undefined,
 	});
 	const [trace, setTrace] = useState<string | null>(null);
@@ -38,10 +38,21 @@ export function RunsPage({ selected }: { selected: string | null }) {
 		if (!res.ok) alert((await res.json().catch(() => null))?.error ?? `resume failed (${res.status})`);
 	}, []);
 
-	if (!runs) return <div className="p-10 text-zinc-500">loading…</div>;
+	if (!runs) {
+		return (
+			<div className="p-10 text-zinc-500">
+				{runsError ? <span className="text-amber-500">{runsError}</span> : "loading…"}
+			</div>
+		);
+	}
 	return (
 		<div className="grid h-[calc(100vh-49px)] grid-cols-[minmax(420px,44%)_1fr]">
 			<section className="overflow-auto border-r border-zinc-800">
+				{runsError && (
+					<div className="border-b border-amber-900/60 bg-amber-950/40 px-3 py-1.5 text-xs text-amber-400">
+						{runsError}
+					</div>
+				)}
 				<table className="w-full text-sm">
 					<thead className="sticky top-0 bg-zinc-900 text-xs text-zinc-500">
 						<tr>
@@ -115,6 +126,11 @@ export function RunsPage({ selected }: { selected: string | null }) {
 				</table>
 			</section>
 			<section className="flex flex-col overflow-hidden">
+				{detailError && (
+					<div className="border-b border-amber-900/60 bg-amber-950/40 px-4 py-1.5 text-xs text-amber-400">
+						{detailError}
+					</div>
+				)}
 				{detail ? (
 					<>
 						<div className="border-b border-zinc-800 px-4 py-2 text-sm">
@@ -179,7 +195,9 @@ export function RunsPage({ selected }: { selected: string | null }) {
 						)}
 					</>
 				) : (
-					<div className="p-10 text-zinc-500">select a run</div>
+					<div className="p-10 text-zinc-500">
+						{detailError && selected ? `${selected} could not be read` : "select a run"}
+					</div>
 				)}
 			</section>
 		</div>
