@@ -2,6 +2,7 @@ const SEC = 1_000;
 const MIN = 60 * SEC;
 const HOUR = 60 * MIN;
 const DAY = 24 * HOUR;
+const BYTE_UNITS = ["KB", "MB", "GB"] as const;
 
 /**
  * Format a duration in milliseconds to a short human-readable string.
@@ -88,14 +89,13 @@ export function formatBytes(bytes: number): string {
 	// Promote while the 1-decimal render would round up to a full 1024 of the
 	// current unit (e.g. 1_048_575 is 1023.999 KB → "1.0MB", not "1024.0KB"),
 	// capping at GB. Negatives already returned above, so `value` is positive.
-	const units = ["KB", "MB", "GB"];
 	let value = bytes / 1024;
 	let unit = 0;
-	while (unit < units.length - 1 && value >= 1023.95) {
+	while (unit < BYTE_UNITS.length - 1 && value >= 1023.95) {
 		value /= 1024;
 		unit++;
 	}
-	return `${value.toFixed(1)}${units[unit]}`;
+	return `${value.toFixed(1)}${BYTE_UNITS[unit]}`;
 }
 
 /**
