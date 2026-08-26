@@ -207,6 +207,7 @@ export function parseTrialResult(
 		result.reward = 0;
 		result.partial = 0;
 		result.f2p = 0;
+		result.exceptionInfo = isRecord(trial.exception_info) ? trial.exception_info : { detail: trial.exception_info };
 		return result;
 	}
 

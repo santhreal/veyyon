@@ -1,18 +1,24 @@
 /**
  * Statistical analysis and hypothesis testing for DeepSWE benchmark evaluations.
  */
+import {
+	classifyTrialOutcome,
+	countOutcomes,
+	meanOfScored as mean,
+	meanOfScored,
+	meanWithTimeoutsAsZero,
+	rateOf,
+	sumOfMeasured,
+} from "../../../../core/scoring";
+
+export { mean };
+
 import { priceTokens } from "../shared";
 import { isAgentTimeout } from "./error-classification";
 import type { ArmResult, CellSummary } from "./types";
 
 /** z for a two-sided 95% interval (standard normal 0.975 quantile). */
 export const Z_95 = 1.959963984540054;
-
-export function mean(values: Array<number | null>): number | null {
-	const nums = values.filter((v): v is number => v !== null && v !== undefined);
-	if (nums.length === 0) return null;
-	return nums.reduce((a, v) => a + v, 0) / nums.length;
-}
 
 /**
  * Wilson score confidence interval for a binomial proportion (passes out of n).
@@ -181,40 +187,46 @@ export function pairwiseMetricDeltas(
 }
 
 export function summarizeCell(rows: readonly ArmResult[]): CellSummary {
-	const ok = rows.filter(r => !r.error);
-	const timedOut = rows.filter(r => isAgentTimeout(r.error)).length;
-	const n = ok.length + timedOut;
+	const outcomes = rows.map(r => classifyTrialOutcome(r.error, isAgentTimeout(r.error)));
+	const counts = countOutcomes(outcomes);
+	const ok = rows.filter((_, idx) => outcomes[idx] === "scored");
 	const passes = ok.filter(r => r.reward === 1).length;
-	const passRate = n > 0 ? passes / n : null;
-	const stdErr = passRate === null ? null : Math.sqrt((passRate * (1 - passRate)) / n);
-	const wilson = wilsonInterval(passes, n);
-	const sum = (f: (r: ArmResult) => number | null) => ok.reduce((a, r) => a + (f(r) ?? 0), 0);
+	const passRate = rateOf(passes, counts.denominator);
+	const stdErr =
+		passRate === null || counts.denominator === 0
+			? null
+			: Math.sqrt((passRate * (1 - passRate)) / counts.denominator);
+	const wilson = counts.denominator > 0 ? wilsonInterval(passes, counts.denominator) : { low: null, high: null };
+
 	return {
-		total: rows.length,
-		errors: rows.length - ok.length - timedOut,
-		timedOut,
-		n,
+		total: counts.total,
+		errors: counts.errors,
+		timedOut: counts.timedOut,
+		n: counts.denominator,
 		passes,
 		passRate,
 		stdErr,
 		wilsonLow: wilson.low,
 		wilsonHigh: wilson.high,
-		meanReward: mean([...ok.map(r => r.reward), ...Array.from({ length: timedOut }, () => 0)]),
-		meanPartial: mean(ok.map(r => r.partial ?? null)),
-		meanOutputTokens: mean(ok.map(r => r.outputTokens)),
-		meanInputTokens: mean(ok.map(r => r.inputTokens)),
-		meanCostUsd: mean(ok.map(r => r.costUsd)),
-		sumOutputTokens: sum(r => r.outputTokens),
-		sumCostUsd: sum(r => r.costUsd),
-		sumInputTokens: sum(r => r.inputTokens),
-		sumCacheTokens: sum(r => r.cacheTokens),
-		sumAgentSeconds: sum(r => r.agentSeconds),
+		meanReward: meanWithTimeoutsAsZero(
+			ok.map(r => r.reward),
+			counts.timedOut,
+		),
+		meanPartial: meanOfScored(ok.map(r => r.partial ?? null)),
+		meanOutputTokens: meanOfScored(ok.map(r => r.outputTokens)),
+		meanInputTokens: meanOfScored(ok.map(r => r.inputTokens)),
+		meanCostUsd: meanOfScored(ok.map(r => r.costUsd)),
+		sumOutputTokens: sumOfMeasured(ok.map(r => r.outputTokens)) ?? 0,
+		sumCostUsd: sumOfMeasured(ok.map(r => r.costUsd)) ?? 0,
+		sumInputTokens: sumOfMeasured(ok.map(r => r.inputTokens)) ?? 0,
+		sumCacheTokens: sumOfMeasured(ok.map(r => r.cacheTokens)) ?? 0,
+		sumAgentSeconds: sumOfMeasured(ok.map(r => r.agentSeconds)) ?? 0,
 		costPriced: ok.some(r => (r.costUsd ?? 0) > 0),
 		refCost: priceTokens({
-			inputTokens: sum(r => r.inputTokens),
-			cacheReadTokens: sum(r => r.cacheReadTokens),
-			cacheWriteTokens: sum(r => r.cacheWriteTokens),
-			outputTokens: sum(r => r.outputTokens),
+			inputTokens: sumOfMeasured(ok.map(r => r.inputTokens)) ?? 0,
+			cacheReadTokens: sumOfMeasured(ok.map(r => r.cacheReadTokens)) ?? 0,
+			cacheWriteTokens: sumOfMeasured(ok.map(r => r.cacheWriteTokens)) ?? 0,
+			outputTokens: sumOfMeasured(ok.map(r => r.outputTokens)) ?? 0,
 		}),
 		refCostMeasurable: ok.length > 0 && ok.every(r => r.cacheReadTokens != null && r.cacheWriteTokens != null),
 	};
