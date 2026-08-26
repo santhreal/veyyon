@@ -57,10 +57,15 @@ function buildWireSchemas() {
 		"orgName?": "string",
 	});
 
+	// `source` records that the key came from an interactive `/login` rather than a
+	// pasted value. It is part of ApiKeyCredential, and the arm rejects unknown keys,
+	// so omitting it here made every snapshot containing a logged-in API key fail
+	// validation — the broker served it and no client could read it.
 	const apiKeyCredentialSchema = type({
 		"+": "reject",
 		type: "'api_key'",
 		key: type("string").atLeastLength(1),
+		"source?": "'login'",
 	});
 
 	/** Discriminated union accepted on POST /v1/credential (writes). */
