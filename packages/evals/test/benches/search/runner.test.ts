@@ -14,10 +14,10 @@ import {
 } from "../../../src/benches/search/registry";
 import {
 	canonicalizeResultContent,
+	collectSearchBenchmarkLimitations,
 	compareArmResult,
 	formatSearchBenchReport,
 	runSearchBench,
-	SEARCH_BENCHMARK_LIMITATIONS,
 } from "../../../src/benches/search/runner";
 
 describe("the search bench corpus", () => {
@@ -156,7 +156,7 @@ describe("a run over every registered axis", () => {
 		expect(report.totalMismatches).toBe(0);
 		expect(report.armIds).toEqual(armIds);
 		expect(report.referenceArmId).toBe("unified-tool");
-		expect(report.limitations).toEqual(SEARCH_BENCHMARK_LIMITATIONS);
+		expect(report.limitations).toEqual(collectSearchBenchmarkLimitations());
 
 		for (const suite of report.suites) {
 			expect(suite.armIds).toEqual(armIds);

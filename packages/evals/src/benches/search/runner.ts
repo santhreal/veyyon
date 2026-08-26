@@ -143,15 +143,37 @@ export const SEARCH_BENCHMARK_LIMITATIONS: readonly string[] = [
 	"A declared answer is only as good as the corpus it was derived against: an answer that is wrong in the same direction as the engine is invisible here.",
 ];
 
+export interface SearchBenchmarkSessionOptions {
+	settings?: Record<string, unknown>;
+	getTurnIndex?: () => number;
+	allocateOutputArtifact?: (toolType: string) => Promise<{ id?: string; path?: string }>;
+}
+
 /** An isolated tool session bound to one corpus directory. */
-export function createSearchBenchmarkSession(cwd: string): ToolSession {
+export function createSearchBenchmarkSession(cwd: string, options: SearchBenchmarkSessionOptions = {}): ToolSession {
 	return {
 		cwd,
 		hasUI: false,
 		getSessionFile: () => null,
 		getSessionSpawns: () => "*",
-		settings: Settings.isolated(),
+		...(options.getTurnIndex ? { getTurnIndex: options.getTurnIndex } : {}),
+		settings: Settings.isolated(options.settings),
+		...(options.allocateOutputArtifact ? { allocateOutputArtifact: options.allocateOutputArtifact } : {}),
 	};
+}
+
+/**
+ * The deduplicated union of static benchmark limitations and contributions
+ * from all registered corpora, case suites, and arms, in a stable order.
+ */
+export function collectSearchBenchmarkLimitations(): readonly string[] {
+	const all = [
+		...SEARCH_BENCHMARK_LIMITATIONS,
+		...searchCorpora().flatMap(corpus => corpus.limitations ?? []),
+		...searchCaseSuites().flatMap(suite => suite.limitations ?? []),
+		...searchArms().flatMap(arm => arm.limitations ?? []),
+	];
+	return Array.from(new Set(all));
 }
 
 /** Canonical text of a tool result, line endings normalized. */
@@ -455,7 +477,7 @@ export async function runSearchBench(options: SearchBenchOptions = {}): Promise<
 		totalMismatches,
 		expectationsPassed: totalExpectationFailures === 0,
 		totalExpectationFailures,
-		limitations: SEARCH_BENCHMARK_LIMITATIONS,
+		limitations: collectSearchBenchmarkLimitations(),
 	};
 }
 

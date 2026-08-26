@@ -37,6 +37,7 @@ export interface SearchArmContext {
 export interface SearchArm {
 	readonly id: string;
 	readonly description: string;
+	readonly limitations?: readonly string[];
 	prepare(context: SearchArmContext): SearchArmRunner;
 }
 
