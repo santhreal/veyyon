@@ -170,6 +170,9 @@ const SGR_SEQUENCE_GLOBAL = sgrSequence("g");
  * code history.
  */
 export function compactSgrCarry(carry: string): string {
+	// Both reset spellings start with ESC. Skip the two lastIndexOf scans
+	// when the carry has no escape at all — the common case between plain rows.
+	if (carry.indexOf(ESC) === -1) return carry;
 	// Both spellings of the reset, and the cut is measured from each constant's own length
 	// rather than from a literal 3 and 4. The lengths were inline next to inline bytes, so
 	// changing either spelling meant remembering to change a number three lines away.
