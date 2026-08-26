@@ -1158,10 +1158,8 @@ const streamOpenAICompletionsOnce = (
 				}
 
 				if (choice.delta) {
-					// Some endpoints return reasoning in reasoning_content (llama.cpp),
-					// or reasoning (other openai compatible endpoints). Use the first
-					// non-empty reasoning field to avoid duplication when a chunk carries
-					// multiple aliases for the same reasoning text.
+					// Some endpoints return reasoning in reasoning_content (llama.cpp) or reasoning (other compat endpoints).
+					// Use the first non-empty field to avoid duplication when a chunk carries multiple aliases.
 					const deltaRecord = choice.delta as Record<string, unknown>;
 					let foundReasoningField: string | undefined;
 					let foundReasoningDelta = "";
