@@ -599,10 +599,10 @@ function hexChannel(hex: string, i: number): number {
 }
 
 function mixHex(a: string, b: string, t: number): [number, number, number] {
-	return [0, 1, 2].map(i => Math.round(hexChannel(a, i) + (hexChannel(b, i) - hexChannel(a, i)) * t)) as [
-		number,
-		number,
-		number,
+	return [
+		Math.round(hexChannel(a, 0) + (hexChannel(b, 0) - hexChannel(a, 0)) * t),
+		Math.round(hexChannel(a, 1) + (hexChannel(b, 1) - hexChannel(a, 1)) * t),
+		Math.round(hexChannel(a, 2) + (hexChannel(b, 2) - hexChannel(a, 2)) * t),
 	];
 }
 
