@@ -54,6 +54,24 @@ bun run deepswe:smoke:dry
 bun run deepswe --arms baseline,candidate-python-workspace --jobs 4
 ```
 
+## Offline benches
+
+`src/benches/` holds measurements that need no provider and no container. They build their own
+corpus, run production code paths against it, and exit non-zero when a claim stops holding.
+
+```sh
+bun run bench:search              # unified search: engine parity, declared answers, dispatch cost
+bun run bench:search:disclosure   # inline bytes a broad search costs on later turns
+```
+
+The search parity bench runs each case twice, once through `SearchTool` and once through the engine
+the tool dispatches to, and compares the bytes of both arms. That comparison is satisfied by
+construction, so each case also declares the answer the corpus has for it: the files it must find,
+the files it must not, and a count where a cap or pagination decides the set. An engine regression
+that moves both arms together — a glob that stops recursing, a gitignore rule read the wrong way
+round, a structural pattern that matches no node — fails the declared answer while parity still
+passes. `expect` is required on every case, so a new case cannot be added without one.
+
 ## Layout
 
 ```
@@ -62,6 +80,7 @@ src/
 ├── run/         plan.ts decides every cell; execute.ts drives them through one backend
 ├── suites/      deep-swe/, terminal-bench/, typescript-edit/
 ├── backends/    pier/, harbor/, in-process/
+├── benches/     offline micro-benchmarks that consume no provider quota: search/
 ├── harnesses/   adapters for veyyon, omp, factory, hermes
 ├── manager/     SQLite run store, benchmark and experiment grouping
 ├── server/      REST + SSE API over the store

@@ -31,6 +31,8 @@
 		"dev": "bun --hot src/server/main.ts",
 		"evals": "bun src/cli.ts",
 		"list": "bun src/cli.ts --list",
+		"bench:search": "bun src/benches/search/parity.ts",
+		"bench:search:disclosure": "bun src/benches/search/disclosure.ts",
 		"deepswe": "bun src/suites/deep-swe/run.ts",
 		"deepswe:smoke": "bun src/suites/deep-swe/run.ts --tasks datasets/deep-swe/tasks/smoke.txt --arms baseline --jobs 1",
 		"deepswe:smoke:dry": "bun src/suites/deep-swe/run.ts --tasks datasets/deep-swe/tasks/smoke.txt --arms baseline --dry-run",
