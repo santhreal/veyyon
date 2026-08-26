@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+	type CancelRunResponse,
 	formatMinutes,
 	formatUsd,
 	type RunDetailResponse,
@@ -7,7 +8,7 @@ import {
 	type TraceRow,
 	type TranscriptEntry,
 } from "../../wire";
-import { authedFetch } from "../api";
+import { mutate } from "../api";
 import { usePolled } from "../hooks/use-polled";
 import { useRunsSse } from "../hooks/use-runs-sse";
 import { Chip, Progress } from "./ui";
@@ -30,12 +31,19 @@ export function RunsPage({ selected }: { selected: string | null }) {
 		if (el) el.scrollTop = el.scrollHeight;
 	}, [traceData]);
 	const cancel = useCallback(async (name: string) => {
-		if (confirm(`stop ${name}?`)) await authedFetch("POST", "/api/runs/:name/cancel", { name });
+		if (!confirm(`stop ${name}?`)) return;
+		const out = await mutate<CancelRunResponse>("POST", "/api/runs/:name/cancel", { name });
+		// The manager reports whether it signalled anything. A cancel it could not perform used to
+		// leave the row running with nothing said, which reads as a cancel that worked.
+		if (out.error) alert(`stop ${name} failed: ${out.error}`);
+		else if (out.data && !out.data.cancelled) {
+			alert(`${name}: nothing was signalled — its process is already gone, and its status is read from disk`);
+		}
 	}, []);
 	const resume = useCallback(async (name: string) => {
 		if (!confirm(`resume ${name}? completed trials are kept; interrupted, pending, and errored ones re-run`)) return;
-		const res = await authedFetch("POST", "/api/runs/:name/resume", { name });
-		if (!res.ok) alert((await res.json().catch(() => null))?.error ?? `resume failed (${res.status})`);
+		const out = await mutate("POST", "/api/runs/:name/resume", { name });
+		if (out.error) alert(`resume ${name} failed: ${out.error}`);
 	}, []);
 
 	if (!runs) {

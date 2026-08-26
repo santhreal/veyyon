@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
-import type { ApiErrorResponse, BenchmarkKind, LaunchRequest, LaunchResponse, RunRole } from "../../wire";
-import { authedFetch } from "../api";
+import type { BenchmarkKind, LaunchRequest, LaunchResponse, RunRole } from "../../wire";
+import { mutate } from "../api";
 import { INPUT_CLASS } from "./ui";
 
 export function LaunchForm({ onDone }: { onDone: () => void }) {
@@ -31,13 +31,12 @@ export function LaunchForm({ onDone }: { onDone: () => void }) {
 				body.prewalk = f.get("prewalkInto") ? { into: String(f.get("prewalkInto")) } : {};
 			}
 			setMsg("launching…");
-			const res = await authedFetch("POST", "/api/runs", undefined, {
+			const out = await mutate<LaunchResponse>("POST", "/api/runs", undefined, {
 				headers: { "content-type": "application/json" },
 				body: JSON.stringify(body),
 			});
-			const out = (await res.json()) as Partial<LaunchResponse & ApiErrorResponse>;
-			setMsg(res.ok ? `launched ${out.jobName}` : `error: ${out.error}`);
-			if (res.ok) setTimeout(onDone, 800);
+			setMsg(out.error ? `error: ${out.error}` : `launched ${out.data?.jobName}`);
+			if (!out.error) setTimeout(onDone, 800);
 		},
 		[onDone],
 	);
