@@ -65,7 +65,6 @@ function harness(rows: AccountRow[]) {
 		onLogout: row => recorded.loggedOut.push(row.credentialId),
 		onShowUsage: () => {},
 		onAddAccount: provider => recorded.added.push(provider),
-		onToggleLoadBalancing: () => false,
 		onClearRateLimitBlock: () => {},
 		onCancel: () => {},
 	};
@@ -211,7 +210,7 @@ describe("the add-account entry is part of the list", () => {
 	 * The other three chips have to go the same way `enter` did. `n`, `u` and `x` each read the
 	 * selected ACCOUNT, so on this row all three were painted, made clickable, and answered with
 	 * nothing: pressing an advertised key and getting no response teaches the operator that the card
-	 * is broken rather than that the row is different. `r`, `a` and `b` are provider or profile
+	 * is broken rather than that the row is different. `r`, `a` and the filter are provider or card
 	 * scoped and still act from here, so they stay: the claim is that the footer lists what works,
 	 * not that it shrinks.
 	 */
@@ -230,7 +229,7 @@ describe("the add-account entry is part of the list", () => {
 		expect(onAdd).not.toContain("x logout");
 		expect(onAdd).toContain("r refresh");
 		expect(onAdd).toContain("a add");
-		expect(onAdd).toContain("b balancing");
+		expect(onAdd).toContain("ctrl+s search");
 	});
 
 	/** Arrowing back onto an account brings them back, so the pruning is per row and not one-way. */

@@ -224,7 +224,6 @@ function makeAccountManager(requestRender?: () => void): AccountManagerComponent
 			onLogout: () => {},
 			onShowUsage: () => {},
 			onAddAccount: () => {},
-			onToggleLoadBalancing: () => false,
 			onClearRateLimitBlock: () => {},
 			onCancel: () => {},
 		},
