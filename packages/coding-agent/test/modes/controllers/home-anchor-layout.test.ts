@@ -76,8 +76,10 @@ describe("HomeAnchorLayout.sync — home-screen slack", () => {
 
 	test("prefers the composed frame height when one exists, subtracting its own fills", () => {
 		// Steady state: composedFrameRows (12) includes the current fills (0+0
-		// on first sync), so content = 12 and slack = 30-12 = 18.
-		const { layout } = makeHarness({ rows: 30, contentRows: 99, composedFrameRows: 12 });
+		// on first sync), so content = 12 and slack = 30-12 = 18. The composed
+		// frame outranks the child walk (8 rows here) because it counts the
+		// wrapping the walk cannot see.
+		const { layout } = makeHarness({ rows: 30, contentRows: 8, composedFrameRows: 12 });
 		layout.sync();
 		expect(rowsOf(layout.bottomFill)).toBe(18);
 	});
@@ -100,7 +102,7 @@ describe("HomeAnchorLayout — stateless re-anchor, no latch-off", () => {
 		// composer stranded mid-screen above a blank slab. The anchor is
 		// stateless now: fills vanish at slack zero and return the moment the
 		// frame shrinks, so the composer hugs the bottom in every state.
-		const { layout, state } = makeHarness({
+		const { layout, state, children } = makeHarness({
 			rows: 20,
 			contentRows: 25,
 			composedFrameRows: 25,
@@ -111,6 +113,7 @@ describe("HomeAnchorLayout — stateless re-anchor, no latch-off", () => {
 		expect(rowsOf(layout.bottomFill)).toBe(0);
 		// The spike collapses: slack returns, and the conversation hug routing
 		// puts ALL of it above the transcript (composer stays on the bottom).
+		children[1] = block(12);
 		state.composedFrameRows = 12;
 		layout.sync();
 		expect(rowsOf(layout.topFill)).toBe(8);
@@ -121,7 +124,7 @@ describe("HomeAnchorLayout — stateless re-anchor, no latch-off", () => {
 		// A tiny terminal where the welcome card fills every row: fills are
 		// zero while there is no slack, and return the moment there is — the
 		// anchor never disengages permanently.
-		const { layout, state } = makeHarness({
+		const { layout, state, children } = makeHarness({
 			rows: 10,
 			contentRows: 15,
 			composedFrameRows: 15,
@@ -130,6 +133,7 @@ describe("HomeAnchorLayout — stateless re-anchor, no latch-off", () => {
 		});
 		layout.sync();
 		expect(rowsOf(layout.topFill)).toBe(0);
+		children[1] = block(4);
 		state.composedFrameRows = 4;
 		layout.sync();
 		// Hero centring: 2/5 of the 6 slack rows above, the rest below.
@@ -157,7 +161,7 @@ describe("HomeAnchorLayout.onFrameComposed — the drift correction", () => {
 		// overflowing frame, so a later collapse never re-anchored (the stranded
 		// composer glitch). The correction must stay live: a shrink re-fills and
 		// requests the repaint.
-		const { layout, state } = makeHarness({
+		const { layout, state, children } = makeHarness({
 			rows: 20,
 			contentRows: 25,
 			composedFrameRows: 25,
@@ -165,6 +169,7 @@ describe("HomeAnchorLayout.onFrameComposed — the drift correction", () => {
 		});
 		layout.sync();
 		expect(rowsOf(layout.topFill)).toBe(0);
+		children[1] = block(12);
 		state.composedFrameRows = 12;
 		layout.onFrameComposed();
 		expect(rowsOf(layout.topFill)).toBe(8);
@@ -242,5 +247,67 @@ describe("HomeAnchorLayout.sync — conversation slack routing", () => {
 		layout.sync(true);
 		expect(rowsOf(layout.topFill)).toBe(0);
 		expect(rowsOf(layout.bottomFill)).toBe(0);
+	});
+});
+
+describe("HomeAnchorLayout — the anchor never routes slack the children have taken", () => {
+	/**
+	 * THE DEFECT. Sending a message made the composer jump and the screen
+	 * oscillate while the answer streamed. `sync` sizes the fill from
+	 * `composedFrameRows`, which is one frame old, so a transcript child mounted
+	 * since that frame was not counted: the slack routed above it was sized for
+	 * rows the content had already taken, the frame composed past the viewport,
+	 * and the engine scrolled the window to fit and back again.
+	 *
+	 * THE CLASS. Not "submit overflows". Any `sync` whose composed frame predates
+	 * the live children, which is every `#mountChatChild` call in
+	 * `interactive-mode.ts`: it syncs immediately after `addChild`, so the frame
+	 * it reads can never contain the child just mounted.
+	 *
+	 * THE RULE. The content estimate is never below what the live children
+	 * render, so the routed fill never exceeds the true slack and the anchor
+	 * cannot compose a frame past the viewport. Under-filling is allowed and
+	 * self-corrects on the next frame; over-filling is the defect.
+	 *
+	 * WHAT IT DOES NOT CATCH. A component that grows in place between a frame
+	 * composing and the next `onFrameComposed`: no `sync` runs in that gap, so
+	 * the fill is a frame behind by construction and no assertion here can see
+	 * it. Wrapping is invisible to the child walk, which is why the composed
+	 * frame still wins when it is the larger of the two.
+	 */
+	test("a child mounted since the composed frame is counted, not treated as free slack", () => {
+		// The frame composed at 30 rows: 8 of content under 22 of top fill. A
+		// chat child mounts 6 more rows and syncs before any frame contains it.
+		const { layout, children } = makeHarness({
+			rows: 30,
+			contentRows: 8,
+			composedFrameRows: 30,
+			transcriptChildren: 1,
+		});
+		layout.topFill.setLines(22);
+		children[1] = block(14);
+		layout.sync();
+		// 30 - 14 = 16. The stale frame implies 22, which composes 36 rows into
+		// a 30-row viewport.
+		expect(rowsOf(layout.topFill)).toBe(16);
+		expect(rowsOf(layout.bottomFill)).toBe(0);
+	});
+
+	test("no reachable content height routes a fill that overflows the viewport", () => {
+		// The mount arm swept across every content height around the viewport
+		// edge, with the stale frame frozen at the pre-mount height throughout.
+		const rows = 30;
+		for (let content = 1; content <= 40; content++) {
+			const { layout, children } = makeHarness({
+				rows,
+				contentRows: content,
+				composedFrameRows: 12,
+				transcriptChildren: 1,
+			});
+			children[1] = block(content);
+			layout.sync();
+			const composed = content + rowsOf(layout.topFill) + rowsOf(layout.bottomFill);
+			expect({ content, overflowed: composed > Math.max(content, rows) }).toEqual({ content, overflowed: false });
+		}
 	});
 });
