@@ -111,7 +111,7 @@ function extractPermissions(app: FlathubAppStream): string[] {
 		}
 	}
 
-	return Array.from(new Set(permissions));
+	return [...new Set(permissions)];
 }
 
 function screenshotArea(size?: FlathubScreenshotSize): number {

@@ -166,9 +166,9 @@ export const handleSnapcraft: SpecialHandler = async (
 
 		if (channels.size > 0) {
 			md += "## Channels\n\n";
-			const sortedChannels = Array.from(channels.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+			const sortedChannels = [...channels.entries()].sort((a, b) => a[0].localeCompare(b[0]));
 			for (const [channelName, info] of sortedChannels) {
-				const arches = Array.from(info.architectures).sort();
+				const arches = [...info.architectures].sort();
 				const versionSuffix = info.version ? `: ${info.version}` : "";
 				const archSuffix = arches.length > 0 ? ` (${arches.join(", ")})` : "";
 				md += `- ${channelName}${versionSuffix}${archSuffix}\n`;

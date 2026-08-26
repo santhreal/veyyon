@@ -71,7 +71,7 @@ function extractParameterSizes(html: string): string[] {
 		match = pattern.exec(html);
 	}
 
-	return Array.from(sizes);
+	return [...sizes];
 }
 
 function extractTagsFromHtml(html: string, baseRef: string): string[] {
@@ -89,7 +89,7 @@ function extractTagsFromHtml(html: string, baseRef: string): string[] {
 		match = pattern.exec(html);
 	}
 
-	return Array.from(tags);
+	return [...tags];
 }
 
 function buildModelPath(parts: string[]): string {
@@ -157,7 +157,7 @@ function collectParameterSizes(models: OllamaTagModel[], htmlSizes: string[]): s
 	for (const size of htmlSizes) {
 		sizes.add(size);
 	}
-	return Array.from(sizes);
+	return [...sizes];
 }
 
 export const handleOllama: SpecialHandler = async (
@@ -198,9 +198,9 @@ export const handleOllama: SpecialHandler = async (
 		const availableTagsRaw = matchingModels
 			.map(model => model.model ?? model.name ?? "")
 			.filter(tag => tag.length > 0);
-		const availableTags = sortTags(Array.from(new Set(availableTagsRaw)));
+		const availableTags = sortTags([...new Set(availableTagsRaw)]);
 
-		const fallbackTags = sortTags(Array.from(new Set(htmlTags)));
+		const fallbackTags = sortTags([...new Set(htmlTags)]);
 		const tagsToUse = availableTags.length > 0 ? availableTags : fallbackTags;
 
 		const parameterSizes = collectParameterSizes(selectedTag ? [selectedTag] : matchingModels, htmlParameterSizes);

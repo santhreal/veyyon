@@ -45,7 +45,7 @@ function collectAntiFeatures(data: FdroidPackage): string[] {
 	for (const pkg of data.packages ?? []) {
 		for (const feature of pkg.antiFeatures ?? []) values.add(feature);
 	}
-	return Array.from(values);
+	return [...values];
 }
 
 function resolveSuggestedVersion(data: FdroidPackage): string | undefined {

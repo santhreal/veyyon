@@ -219,5 +219,5 @@ function extractCpes(configurations?: Configuration[]): string[] {
 			}
 		}
 	}
-	return Array.from(new Set(cpes));
+	return [...new Set(cpes)];
 }

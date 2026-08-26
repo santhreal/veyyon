@@ -37,20 +37,20 @@ export const handleIacr: SpecialHandler = async (
 		const title =
 			doc.querySelector("h3.mb-3")?.textContent?.trim() ||
 			doc.querySelector('meta[name="citation_title"]')?.getAttribute("content");
-		const authors = Array.from(
-			doc.querySelectorAll('meta[name="citation_author"]') as Iterable<{
+		const authors = [
+			...(doc.querySelectorAll('meta[name="citation_author"]') as Iterable<{
 				getAttribute: (name: string) => string | null;
-			}>,
-		)
+			}>),
+		]
 			.map(m => m.getAttribute("content"))
 			.filter((author): author is string => Boolean(author));
 		// Abstract is in <p> after <h5>Abstract</h5>
-		const abstractHeading = Array.from(
-			doc.querySelectorAll("h5") as Iterable<{
+		const abstractHeading = [
+			...(doc.querySelectorAll("h5") as Iterable<{
 				textContent: string | null;
 				parentElement?: { querySelector: (selector: string) => { textContent: string | null } | null } | null;
-			}>,
-		).find(h => h.textContent?.includes("Abstract"));
+			}>),
+		].find(h => h.textContent?.includes("Abstract"));
 		const abstract =
 			abstractHeading?.parentElement?.querySelector("p")?.textContent?.trim() ||
 			doc.querySelector('meta[name="description"]')?.getAttribute("content");

@@ -70,7 +70,7 @@ export const handleTwitter: SpecialHandler = async (
 			if (stats) md += `---\n${stats.replace(/\s+/g, " ")}\n`;
 
 			// Check for replies/thread
-			const replies = Array.from(doc.querySelectorAll(".timeline-item .tweet-content")) as HTMLElement[];
+			const replies = [...doc.querySelectorAll(".timeline-item .tweet-content")] as HTMLElement[];
 			if (replies.length > 1) {
 				md += `\n---\n\n## Thread/Replies\n\n`;
 				for (const reply of replies.slice(1, 10)) {

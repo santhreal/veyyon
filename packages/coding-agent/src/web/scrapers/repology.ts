@@ -182,10 +182,10 @@ export const handleRepology: SpecialHandler = async (
 		let md = `# ${packageName}\n\n`;
 		if (summary) md += `${summary}\n\n`;
 
-		md += `**Newest Version:** ${Array.from(newestVersions).join(", ") || "unknown"}\n`;
+		md += `**Newest Version:** ${[...newestVersions].join(", ") || "unknown"}\n`;
 		md += `**Repositories:** ${packages.length}\n`;
 		if (licenses.length) md += `**License:** ${licenses.join(", ")}\n`;
-		if (categories.size) md += `**Categories:** ${Array.from(categories).join(", ")}\n`;
+		if (categories.size) md += `**Categories:** ${[...categories].join(", ")}\n`;
 		md += "\n";
 
 		// Status summary

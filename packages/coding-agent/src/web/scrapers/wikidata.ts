@@ -152,7 +152,7 @@ export const handleWikidata: SpecialHandler = async (
 			}
 
 			// Fetch labels for referenced entities (limit to 50)
-			const entityLabels = await resolveEntityLabels(Array.from(entityIdsToResolve).slice(0, 50), timeout, signal);
+			const entityLabels = await resolveEntityLabels([...entityIdsToResolve].slice(0, 50), timeout, signal);
 
 			// Group claims by property
 			const processedProperties: string[] = [];

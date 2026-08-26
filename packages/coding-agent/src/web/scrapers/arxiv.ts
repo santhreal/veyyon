@@ -39,13 +39,13 @@ export const handleArxiv: SpecialHandler = async (
 
 		const title = entry.querySelector("title")?.textContent?.trim()?.replace(/\s+/g, " ");
 		const summary = entry.querySelector("summary")?.textContent?.trim();
-		const authors = Array.from(entry.querySelectorAll("author name") as Iterable<{ textContent: string | null }>)
+		const authors = [...(entry.querySelectorAll("author name") as Iterable<{ textContent: string | null }>)]
 			.map(n => n.textContent?.trim())
 			.filter((name): name is string => Boolean(name));
 		const published = entry.querySelector("published")?.textContent?.trim()?.split("T")[0];
-		const categories = Array.from(
-			entry.querySelectorAll("category") as Iterable<{ getAttribute: (name: string) => string | null }>,
-		)
+		const categories = [
+			...(entry.querySelectorAll("category") as Iterable<{ getAttribute: (name: string) => string | null }>),
+		]
 			.map(c => c.getAttribute("term"))
 			.filter((term): term is string => Boolean(term));
 		const pdfLink = entry.querySelector('link[title="pdf"]')?.getAttribute("href");

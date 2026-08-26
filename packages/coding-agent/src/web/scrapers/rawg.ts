@@ -117,5 +117,5 @@ function collectNames(values?: Array<string | undefined>): string[] {
 		const trimmed = value?.trim();
 		if (trimmed) names.add(trimmed);
 	}
-	return Array.from(names);
+	return [...names];
 }

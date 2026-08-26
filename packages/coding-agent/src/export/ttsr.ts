@@ -809,7 +809,7 @@ export class TtsrManager {
 
 	/** Get names of all injected rules (for persistence). */
 	getInjectedRuleNames(): string[] {
-		return Array.from(this.#injectionRecords.keys());
+		return [...this.#injectionRecords.keys()];
 	}
 
 	/** Restore injected state from a list of rule names. */
