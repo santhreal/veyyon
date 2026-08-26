@@ -20,8 +20,9 @@
  *   suites are what prove the oracles catch a renderer defect rather than a hand-built one.
  * - Over-triggering. A crafted frame may fail several guarantees, and only the one under test is
  *   asserted. The sweep is what proves a correct frame fails nothing.
- * - A guarantee with exactly one crafted defect is proven able to fail, not proven to cover its whole
- *   statement.
+ * - A check's branches are not enumerable at run time, so no claim here proves every branch of every
+ *   check has a craft. What is enforced is that no guarantee gets away with a single one: the set of
+ *   single-craft guarantees is pinned empty, so a new oracle with one defect has to be argued for.
  *
  * MUTATION GATE:
  * Setting any entry's `appliesTo` to `() => false` in the registry turns that guarantee's cases red
@@ -156,12 +157,44 @@ const DEFECTS: Readonly<Record<ComposerOracleGuarantee, readonly DefectCase[]>> 
 			says: "Expected 1 composer prompt row(s)",
 			break: base => withRow(base, 7, "  just plain text without prompt"),
 		},
+		{
+			// A frozen view shows the footer's tail. A footer whose prompt sits above that tail must
+			// paint no prompt row at all, so a painted one is a leak from the live composer.
+			name: "a frozen view paints a prompt the visible footer tail does not contain",
+			says: "Expected 0 composer prompt row(s)",
+			break: base => ({
+				...base,
+				virtualScrollTop: 2,
+				liveFooterLines: [
+					"  › hello world",
+					"filler 1",
+					"filler 2",
+					"filler 3",
+					"filler 4",
+					"filler 5",
+					"filler 6",
+					"filler 7",
+					"filler 8",
+					"filler 9",
+				],
+			}),
+		},
 	],
 	noOutputBleedPastComposer: [
 		{
 			name: "a transcript row is painted inside the footer zone",
 			says: "inside the composer footer zone",
 			break: base => withRow(base, 7, "transcript-output-line-0099 bleed past composer"),
+		},
+		{
+			// Below the live content and above the footer: a row the engine has stopped owning, which
+			// the footer-zone clause cannot see because it is outside the footer bounds.
+			name: "a transcript row is painted past the last content row",
+			says: "beyond contentBottom",
+			break: base => ({
+				...withRow(base, 4, "transcript-output-line-0042 past the content"),
+				screenBounds: { ...base.screenBounds, contentBottom: 3 },
+			}),
 		},
 	],
 	noMixedTranscriptAndChromeRows: [
@@ -170,6 +203,13 @@ const DEFECTS: Readonly<Record<ComposerOracleGuarantee, readonly DefectCase[]>> 
 			says: "mixes transcript content with composer chrome",
 			break: base => withRow(base, 7, "  › transcript-output-line-0012 hello"),
 		},
+		{
+			// The chrome half of the clause is the hairline, not only the prompt. A caller whose
+			// transcript rows are box art reaches it, and the prompt defect above never does.
+			name: "the hairline row is also a transcript row",
+			says: "mixes transcript content with composer chrome",
+			break: base => ({ ...base, transcriptLineMarkers: ["────"] }),
+		},
 	],
 	footerOccupiesBottomPhysicalRows: [
 		{
@@ -177,12 +217,35 @@ const DEFECTS: Readonly<Record<ComposerOracleGuarantee, readonly DefectCase[]>> 
 			says: "does not reach terminal bottom",
 			break: base => ({ ...base, screenBounds: { ...base.screenBounds, footerBottom: 8 } }),
 		},
+		{
+			name: "the footer reaches the bottom but starts a row too high for its height",
+			says: "does not match expected top",
+			break: base => ({ ...base, screenBounds: { ...base.screenBounds, footerTop: 4 } }),
+		},
+		{
+			// A frame shorter than the screen pins nothing to the bottom: the footer follows the
+			// content, so the clause that governs it is a different one from the full-frame case.
+			name: "in a short frame the footer does not follow the content",
+			says: "must match content bottom",
+			break: base => ({
+				...base,
+				totalFrameRows: 7,
+				screenBounds: { ...base.screenBounds, footerBottom: 6, contentBottom: 4 },
+			}),
+		},
 	],
 	noFooterRowsAboveFooterRegion: [
 		{
 			name: "composer chrome is painted above the footer region",
 			says: "Composer prompt row found at row 2",
 			break: base => withRow(base, 2, "  › leaked prompt in transcript"),
+		},
+		{
+			// The row directly above the footer is allowed to be a hairline, so this has to land
+			// higher than that to reach the clause at all.
+			name: "a second hairline is painted in the transcript",
+			says: "Composer hairline row found at row 2",
+			break: base => withRow(base, 2, "─".repeat(80)),
 		},
 	],
 	mouseClickRoutesToRenderedZone: [
@@ -193,6 +256,30 @@ const DEFECTS: Readonly<Record<ComposerOracleGuarantee, readonly DefectCase[]>> 
 				const mouseRouting = new Map(base.mouseRouting ?? []);
 				mouseRouting.set(7, { routedTo: "transcript", localLine: null, col: null });
 				return { ...base, mouseRouting };
+			},
+		},
+		{
+			name: "a click on a transcript row is dispatched to a footer child",
+			says: "but routed to footer",
+			break: base => {
+				const mouseRouting = new Map(base.mouseRouting ?? []);
+				mouseRouting.set(2, { routedTo: "footer:editor", localLine: 0, col: 0 });
+				return { ...base, mouseRouting };
+			},
+		},
+		{
+			// Below the last content row and above the footer nothing is painted, so a click there
+			// belongs to no component. Routing it to the footer hands the editor a phantom click.
+			name: "a click below the last content row is dispatched to a footer child",
+			says: "outside active content bounds",
+			break: base => {
+				const mouseRouting = new Map(base.mouseRouting ?? []);
+				mouseRouting.set(4, { routedTo: "footer:editor", localLine: 0, col: 0 });
+				return {
+					...base,
+					mouseRouting,
+					screenBounds: { ...base.screenBounds, contentBottom: 3 },
+				};
 			},
 		},
 	],
@@ -207,12 +294,24 @@ const DEFECTS: Readonly<Record<ComposerOracleGuarantee, readonly DefectCase[]>> 
 			says: "outside footer screen row bounds",
 			break: base => ({ ...base, cursor: { row: 2, col: 5 } }),
 		},
+		{
+			name: "the caret sits at a negative column",
+			says: "outside terminal width",
+			break: base => ({ ...base, cursor: { row: 7, col: -1 } }),
+		},
 	],
 	noHorizontalOverflow: [
 		{
 			name: "a row is painted wider than the terminal",
 			says: "exceeding terminal width 80",
 			break: base => withRow(base, 3, "x".repeat(95)),
+		},
+		{
+			// Forty-one wide glyphs are forty-one characters and eighty-two columns. A check counting
+			// characters passes this row; the terminal wraps it.
+			name: "a row of wide glyphs fits by character count and overflows by column",
+			says: "has visible width 82",
+			break: base => withRow(base, 3, "漢".repeat(41)),
 		},
 	],
 	composerCardPadsAreUnpaintedAir: [
@@ -236,12 +335,25 @@ const DEFECTS: Readonly<Record<ComposerOracleGuarantee, readonly DefectCase[]>> 
 				segments: base.segments.map(s => (s.componentName === "ComposerHairline" ? { ...s, rowCount: 2 } : s)),
 			}),
 		},
+		{
+			name: "the hairline claims no row",
+			says: "ComposerHairline segment rowCount is 0",
+			break: base => ({
+				...base,
+				segments: base.segments.map(s => (s.componentName === "ComposerHairline" ? { ...s, rowCount: 0 } : s)),
+			}),
+		},
 	],
 	footerHeightMatchesComposedSegmentLedger: [
 		{
 			name: "the pinned footer height disagrees with its children's rows",
 			says: "does not match segment ledger sum",
 			break: base => ({ ...base, pinnedFooterRows: 7 }),
+		},
+		{
+			name: "the footer has rows but no children to account for them",
+			says: "pinnedFooterChildCount is 0",
+			break: base => ({ ...base, pinnedFooterChildCount: 0 }),
 		},
 	],
 	virtualScrollPreservesFooterStability: [
@@ -251,6 +363,15 @@ const DEFECTS: Readonly<Record<ComposerOracleGuarantee, readonly DefectCase[]>> 
 			break: base => ({
 				...withRow(base, 7, "  › corrupted virtual scroll footer row"),
 				virtualScrollTop: 2,
+			}),
+		},
+		{
+			name: "a frozen view paints more footer rows than the live footer has",
+			says: "live footer expected 3 rows",
+			break: base => ({
+				...base,
+				virtualScrollTop: 2,
+				liveFooterLines: (base.liveFooterLines ?? []).slice(0, 3),
 			}),
 		},
 	],
@@ -285,10 +406,25 @@ describe("the baseline frame is the control", () => {
 	});
 });
 
+/**
+ * Guarantees allowed to carry a single crafted defect.
+ *
+ * Empty, and pinned by exact equality rather than by a count: a check states several ways to fail and
+ * one craft exercises one of them, so a guarantee proven able to fail once is not a guarantee proven
+ * to cover its statement. A new oracle arriving with one defect turns this red, which is where the
+ * second one gets written or the exemption gets argued for.
+ */
+const SINGLE_CRAFT_EXEMPTIONS: readonly ComposerOracleGuarantee[] = [];
+
 describe("every guarantee has a defect that makes it fail", () => {
 	it("files at least one crafted defect for every guarantee", () => {
 		const missing = COMPOSER_ORACLE_GUARANTEES.filter(id => DEFECTS[id].length === 0);
 		expect([...missing].sort()).toEqual([]);
+	});
+
+	it("files more than one for every guarantee, or records why not", () => {
+		const single = COMPOSER_ORACLE_GUARANTEES.filter(id => DEFECTS[id].length === 1);
+		expect([...single].sort()).toEqual([...SINGLE_CRAFT_EXEMPTIONS].sort());
 	});
 
 	for (const id of COMPOSER_ORACLE_GUARANTEES) {

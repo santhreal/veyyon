@@ -31,7 +31,6 @@
 
 import { beforeAll, describe, expect, it } from "bun:test";
 import { ThinkingLevel } from "@veyyon/agent-core";
-import type { ComposerAccentState } from "../src/modes/components/composer-chrome";
 import {
 	COMPOSER_ORACLE_GUARANTEES,
 	type ComposerOracleGuarantee,
@@ -39,63 +38,15 @@ import {
 import { initTheme } from "../src/modes/theme/theme";
 import { type RunnerOptions, runComposerOracleScenario } from "./helpers/composer-oracle-runner";
 import { promoteFailureToCorpus, runnerOptionsToCorpusState } from "./helpers/renderer-defect-corpus";
+import {
+	ACCENT_FLAGS,
+	ACCENT_VARIANTS,
+	type BooleanAccentFlag,
+	type ModeVariant,
+	THINKING_LEVELS,
+} from "./helpers/renderer-differential";
 
-/**
- * An accent field whose value is a flag, so one sweep variant can turn it on.
- *
- * Derived from the interface rather than listed, so a new flag joins `ACCENT_FLAGS` by existing.
- */
-type BooleanAccentFlag = {
-	[K in keyof ComposerAccentState]-?: NonNullable<ComposerAccentState[K]> extends boolean ? K : never;
-}[keyof ComposerAccentState];
-
-/**
- * Every accent field with a value.
- *
- * `Required` is the fail-by-default mechanism for the mode axis: a field added to
- * `ComposerAccentState` and not given a value here does not compile, so it cannot quietly go
- * unswept the way a hand-written list of eight mode names did.
- */
-const ACCENT_CANON: Required<ComposerAccentState> = {
-	bypass: false,
-	bashMode: false,
-	pythonMode: false,
-	planMode: false,
-	focusedSubagent: false,
-	sessionAccentAnsi: "\x1b[38;2;255;100;50m",
-	thinkingLevel: ThinkingLevel.Off,
-};
-
-const ACCENT_FLAGS: readonly BooleanAccentFlag[] = (Object.keys(ACCENT_CANON) as (keyof ComposerAccentState)[]).filter(
-	(key): key is BooleanAccentFlag => typeof ACCENT_CANON[key] === "boolean",
-);
-
-const THINKING_LEVELS: readonly ThinkingLevel[] = Object.values(ThinkingLevel);
-
-interface ModeVariant {
-	name: string;
-	state: Partial<ComposerAccentState>;
-}
-
-/** One variant per accent flag, one per thinking level, one for a session accent, plus the default. */
-function modeVariants(): ModeVariant[] {
-	const variants: ModeVariant[] = [{ name: "default", state: { thinkingLevel: ThinkingLevel.Off } }];
-	for (const flag of ACCENT_FLAGS) {
-		const state: Partial<ComposerAccentState> = { thinkingLevel: ThinkingLevel.Off };
-		state[flag] = true;
-		variants.push({ name: flag, state });
-	}
-	variants.push({
-		name: "session-accent",
-		state: { sessionAccentAnsi: ACCENT_CANON.sessionAccentAnsi, thinkingLevel: ThinkingLevel.Off },
-	});
-	for (const level of THINKING_LEVELS) {
-		variants.push({ name: `thinking-${level}`, state: { thinkingLevel: level } });
-	}
-	return variants;
-}
-
-const MODES: readonly ModeVariant[] = modeVariants();
+const MODES: readonly ModeVariant[] = ACCENT_VARIANTS;
 
 const WIDTHS = [10, 20, 40, 80, 120] as const;
 const HEIGHTS = [4, 6, 8, 12, 24] as const;

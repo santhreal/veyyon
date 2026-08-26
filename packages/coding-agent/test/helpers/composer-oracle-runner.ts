@@ -212,10 +212,10 @@ export async function runComposerOracleScenario(options: RunnerOptions): Promise
 		[hookWidgetsBelow, "hookWidgetsBelow"],
 	]);
 
-	let expectedPromptGlyph = "›";
-	if (accentState.bypass) expectedPromptGlyph = "!";
-	else if (accentState.bashMode) expectedPromptGlyph = "$";
-	else if (accentState.planMode) expectedPromptGlyph = "◈";
+	// The mode-to-glyph mapping has one owner, `resolveComposerAccents`, and this reads it rather than
+	// restating it. The copy that used to live here covered bypass, bash and plan and had never heard
+	// of python mode, so a state the sweep varies was judged against the default glyph.
+	const expectedPromptGlyph = stripVTControlCharacters(resolveComposerAccents(accentState).promptGutter).trim();
 
 	// The live footer has to be read before anything freezes the view, because it is the baseline the
 	// frozen-view oracle compares the painted footer against.

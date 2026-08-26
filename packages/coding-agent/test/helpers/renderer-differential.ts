@@ -360,12 +360,78 @@ export function countChrome(rows: readonly string[]): { hairlines: number; promp
 	return { hairlines, prompts };
 }
 
-/** Composer accent states worth sweeping, each changing the chrome's colours or gutter. */
-export const MODE_STATES: readonly (Partial<ComposerAccentState> | undefined)[] = [
-	undefined,
-	{ bashMode: true },
-	{ planMode: true },
-	{ bypass: true },
-	{ focusedSubagent: true },
-	{ thinkingLevel: ThinkingLevel.High },
-];
+/**
+ * An accent field whose value is a flag, so one variant can turn it on.
+ *
+ * Derived from the interface rather than listed, so a new flag joins `ACCENT_FLAGS` by existing.
+ */
+export type BooleanAccentFlag = {
+	[K in keyof ComposerAccentState]-?: NonNullable<ComposerAccentState[K]> extends boolean ? K : never;
+}[keyof ComposerAccentState];
+
+/**
+ * Every accent field with a value.
+ *
+ * `Required` is the fail-by-default mechanism for the mode axis: a field added to
+ * `ComposerAccentState` and not given a value here does not compile, so it cannot quietly go unswept
+ * the way a hand-written list of mode names did. This list owns the axis: the sweep derived its own
+ * fifteen variants from a private copy while the helper exported a hand-written six, so two suites
+ * swept different mode spaces and neither knew.
+ */
+export const ACCENT_CANON: Required<ComposerAccentState> = {
+	bypass: false,
+	bashMode: false,
+	pythonMode: false,
+	planMode: false,
+	focusedSubagent: false,
+	sessionAccentAnsi: "\x1b[38;2;255;100;50m",
+	thinkingLevel: ThinkingLevel.Off,
+};
+
+export const ACCENT_FLAGS: readonly BooleanAccentFlag[] = (
+	Object.keys(ACCENT_CANON) as (keyof ComposerAccentState)[]
+).filter((key): key is BooleanAccentFlag => typeof ACCENT_CANON[key] === "boolean");
+
+/** Every thinking level the enum declares, so a new one is swept by existing. */
+export const THINKING_LEVELS: readonly ThinkingLevel[] = Object.values(ThinkingLevel);
+
+/**
+ * The name of every accent state worth mounting.
+ *
+ * Spelled as a union rather than a string so a table keyed by it is total: a new accent flag or a new
+ * thinking level widens this type, and a `Record<AccentVariantName, ...>` that has not been given a
+ * row for it does not compile. That is the fail-by-default mechanism for the mode axis.
+ */
+export type AccentVariantName = "default" | BooleanAccentFlag | "session-accent" | `thinking-${ThinkingLevel}`;
+
+/** One accent state worth mounting, and the name to report it under. */
+export interface ModeVariant {
+	name: AccentVariantName;
+	state: Partial<ComposerAccentState>;
+}
+
+/** One variant per accent flag, one per thinking level, one for a session accent, plus the default. */
+function modeVariants(): ModeVariant[] {
+	const variants: ModeVariant[] = [{ name: "default", state: { thinkingLevel: ThinkingLevel.Off } }];
+	for (const flag of ACCENT_FLAGS) {
+		const state: Partial<ComposerAccentState> = { thinkingLevel: ThinkingLevel.Off };
+		state[flag] = true;
+		variants.push({ name: flag, state });
+	}
+	variants.push({
+		name: "session-accent",
+		state: { sessionAccentAnsi: ACCENT_CANON.sessionAccentAnsi, thinkingLevel: ThinkingLevel.Off },
+	});
+	for (const level of THINKING_LEVELS) {
+		variants.push({ name: `thinking-${level}` as AccentVariantName, state: { thinkingLevel: level } });
+	}
+	return variants;
+}
+
+/** Every accent state worth mounting, derived once. */
+export const ACCENT_VARIANTS: readonly ModeVariant[] = modeVariants();
+
+/** The accent states alone, for a sweep that cycles them by index. */
+export const MODE_STATES: readonly (Partial<ComposerAccentState> | undefined)[] = ACCENT_VARIANTS.map(
+	variant => variant.state,
+);

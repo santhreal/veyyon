@@ -403,6 +403,25 @@ export class VirtualTerminal implements Terminal {
 	}
 
 	/**
+	 * Packed `0xRRGGBB` foreground of each column in a viewport row, `null` where the cell carries the
+	 * default. The column lists above answer whether a cell is styled; this answers which colour, which
+	 * is what distinguishes one accent mode's frame from another's. A mode whose colour never differs
+	 * from the default's is a setting that does not reach the screen.
+	 */
+	getViewportRowForegroundRgb(row: number): (number | null)[] {
+		const cells = this.#presentedRowCells(row);
+		if (!cells) return [];
+		const colors: (number | null)[] = [];
+		for (let col = 0; col < cells.length; col++) {
+			const cell = cells[col];
+			colors.push(
+				cell && !this.#isDefaultFg(cell) ? ((cell.fg_r << 16) | (cell.fg_g << 8) | cell.fg_b) >>> 0 : null,
+			);
+		}
+		return colors;
+	}
+
+	/**
 	 * Columns in a viewport row whose cells carry underline.
 	 * Used with unreset-SGR regressions to ensure style attributes do not bleed
 	 * into later rows or erased blanks.
