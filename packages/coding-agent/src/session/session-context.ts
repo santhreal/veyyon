@@ -8,14 +8,9 @@ import { KEEP_NOTHING_ENTRY_ID, resolveCompactionBoundaryIndex } from "@veyyon/a
 // not the compaction barrel. `legacy-provider-native.ts` imports nothing, so this
 // edge adds exactly one module to every graph this file is on.
 import { hasLegacyProviderNativeCompaction } from "@veyyon/agent-core/compaction/legacy-provider-native";
-// The owner, not the `compaction` subpath barrel. That barrel re-exports the compaction ENGINE, which
-// imports the `@veyyon/ai` barrel to summarize a conversation; this module is a self-contained reader for a
-// retired archive format and imports nothing at all. The edge cost 238 modules, and it was on the graph of
-// `internal-urls/index.ts` (the URL router) and `tools/read.ts` through `session/session-loader.ts`.
+// Owner, not the `compaction` barrel: this is a self-contained reader; the barrel pulls the compaction engine (+238 modules).
 import { legacyArchiveSourceText } from "@veyyon/agent-core/compaction/legacy-snapcompact-archive";
-// The remote-compaction entry reader is a leaf beside the legacy one: it turns a
-// server-side compaction's stored window back into the provider payload the
-// Responses-family request builder replays, and names who compacted for display.
+// Remote-compaction entry reader: turns a server-side compaction's stored window back into provider payload.
 import {
 	getRemoteCompactionPreserveData,
 	remoteCompactionAttribution,
@@ -338,17 +333,8 @@ export function buildSessionContext(
 		}
 	};
 
-	// A recovered assistant turn is dropped from the model's context below, and the tool
-	// results paired to it have to go with it. A retried transport death pairs every call
-	// it never ran with a placeholder result, and those placeholders outlive the turn on
-	// disk: replaying them alone handed a resumed session tool results whose `tool_use` is
-	// no longer in the context, one of them carrying the batch ledger that asks the model
-	// to reissue calls the retry had already reissued and run. Re-running a migration
-	// because the transcript was reopened is the cost of that.
-	//
-	// Only the run of results IMMEDIATELY after the dropped turn goes with it. The retried
-	// turn can reissue the same call ids, so a set held for the rest of the walk would take
-	// the replay's real results as well and hand the model a `tool_use` with no answer.
+	// Drop tool results paired to a recovered (dropped) assistant turn. Only the run immediately after
+	// the dropped turn goes with it; holding a set for the whole walk would take the replay's real results too.
 	let orphanedCallIds: Set<string> | undefined;
 
 	const appendMessage = (entry: SessionEntry) => {
@@ -464,24 +450,8 @@ export function buildSessionContext(
 		// Find compaction index in path
 		const compactionIdx = path.findIndex(e => e.type === "compaction" && e.id === compaction.id);
 
-		// Emit the kept pre-compaction entries, starting at the compaction's keep marker.
-		//
-		// The marker names the first pre-compaction entry the compaction kept verbatim, and
-		// it is resolved through the reader every other pass uses rather than by a private
-		// walk. There are three cases and this loop used to collapse them into one. An
-		// ordinary id keeps from that entry. `KEEP_NOTHING_ENTRY_ID` deliberately names no
-		// entry at all, which is how a compaction of one unbreakable oversized turn says it
-		// kept nothing. An id that named a real entry which is no longer on the path is
-		// damage: the loader drops a record it cannot parse rather than refusing the
-		// session, and the v1 migration left the field unset whenever the old numeric index
-		// pointed at the header. A walk that only asks "have I seen the id yet" answers
-		// "keep nothing" to all three, so one unreadable line silently removed every kept
-		// turn from the model's context and from the transcript while the summary made the
-		// session look whole. The prune and shake passes read the same field through the
-		// shared reader, which treats an id that resolves to nothing as "the whole branch is
-		// live", so they were rewriting entries this rebuild had already refused to send.
-		// Damage now costs only the record that was lost: the span is re-expanded, which
-		// overlaps the summary by a few turns and loses nothing.
+		// Emit kept pre-compaction entries from the compaction's keep marker. Three cases (ordinary id,
+		// KEEP_NOTHING_ENTRY_ID, damaged/unset id) are distinguished so damage costs only the lost record.
 		const keptFrom = usableCompaction ? resolveCompactionBoundaryIndex(path, compaction.firstKeptEntryId) : 0;
 		if (
 			usableCompaction &&
@@ -520,29 +490,9 @@ export function buildSessionContext(
 		}
 	}
 
-	// Strip dangling tool_use blocks — a tool_use with no matching tool_result on the
-	// resolved leaf→root path — from ANY assistant turn, not just the trailing one.
-	// This happens whenever the leaf (or a branch point) lands such that an assistant
-	// turn's tool results are off the selected path: its result children live on a
-	// sibling branch, or it is the leaf itself (results are children below it). Left
-	// in place, `transformMessages` fabricates one synthetic "aborted"/"No result
-	// provided" result per dangling call, which render as phantom failed calls and
-	// re-inject the failed batch into the model's
-	// context — the rewind/restore loop.
-	//
-	// Stripping is necessary but not sufficient: a *modified* assistant turn that still
-	// carries signed `thinking`/`redacted_thinking` is rejected by Anthropic — "thinking
-	// blocks in the latest assistant message cannot be modified", and signed thinking
-	// replayed out of its original turn shape can also fail signature validation (this
-	// bites the handoff/branch-summary request). So when we rewrite a turn we also
-	// neutralize its protected reasoning: drop `redactedThinking` (encrypted, no
-	// plaintext to keep) and clear `thinking` signatures so the provider encoder
-	// downgrades them to plain text (verified accepted by the live API), preserving the
-	// visible reasoning while removing the immutability/invalid-signature hazard. Drop a
-	// turn left with no content. (Live turns only qualify mid-turn: a transcript rebuild
-	// while the tool still executes sees the persisted assistant turn without its result.
-	// Those callers pass `keepDanglingToolCalls` so the in-flight call stays visible as
-	// a pending block instead of vanishing from the chat.)
+	// Strip dangling tool_use blocks (no matching tool_result on the path) from any assistant turn.
+	// Also neutralize signed thinking on rewritten turns: drop `redactedThinking`, clear `thinking`
+	// signatures so the provider downgrades to plain text. `keepDanglingToolCalls` preserves in-flight calls.
 	const keepDangling = options?.transcript === true && options.keepDanglingToolCalls === true;
 	if (!keepDangling) {
 		const pairedToolResultIds = new Set<string>();
