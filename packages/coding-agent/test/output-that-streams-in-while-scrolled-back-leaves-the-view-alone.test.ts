@@ -41,56 +41,16 @@
  */
 
 import { beforeAll, describe, expect, it } from "bun:test";
-import { stripAnsi } from "@veyyon/utils/strip-ansi";
-import { isComposerPromptLine, isHairlineLine } from "../src/modes/components/composer-defect-oracle";
 import { initTheme } from "../src/modes/theme/theme";
 import { runComposerOracleScenario } from "./helpers/composer-oracle-runner";
-
-/** SGR wheel-up report at row 5, col 5. */
-const WHEEL_UP = "\x1b[<64;5;5M";
-/** SGR wheel-down report at row 5, col 5. */
-const WHEEL_DOWN = "\x1b[<65;5;5M";
-
-/**
- * Upper bound on notches needed to walk back to the tail. Far more than any case requires; the loop
- * stops as soon as the view resumes following, and the bound only keeps a defect from hanging.
- */
-const MAX_RETURN_NOTCHES = 200;
-
-/** The runner's own spelling for a generated transcript row. */
-function transcriptLine(index: number): string {
-	return `transcript-output-line-${String(index).padStart(4, "0")}`;
-}
-
-/** Count composer chrome on screen. Counts, never presence: a duplicate is two of a row. */
-function countChrome(rows: readonly string[]): { hairlines: number; prompts: number } {
-	let hairlines = 0;
-	let prompts = 0;
-	for (const row of rows) {
-		const bare = stripAnsi(row);
-		if (isHairlineLine(bare)) hairlines += 1;
-		if (isComposerPromptLine(bare)) prompts += 1;
-	}
-	return { hairlines, prompts };
-}
-
-/** Report every row on which two grids disagree. */
-function compareGrids(
-	into: string[],
-	label: string,
-	leftName: string,
-	left: readonly string[],
-	rightName: string,
-	right: readonly string[],
-): void {
-	for (let row = 0; row < Math.max(left.length, right.length); row += 1) {
-		const a = left[row] ?? "<missing row>";
-		const b = right[row] ?? "<missing row>";
-		if (a !== b) {
-			into.push(`${label}: row ${row} ${leftName}=${JSON.stringify(a)} ${rightName}=${JSON.stringify(b)}`);
-		}
-	}
-}
+import {
+	compareGrids,
+	contentLine,
+	countChrome,
+	MAX_RETURN_NOTCHES,
+	WHEEL_DOWN,
+	WHEEL_UP,
+} from "./helpers/renderer-differential";
 
 /** One streaming-while-scrolled-back scenario. */
 interface Case {
@@ -159,7 +119,7 @@ describe("output that streams in while scrolled back leaves the view alone", () 
 
 					for (let batch = 0; batch < testCase.appendBatches; batch += 1) {
 						for (let i = 0; i < testCase.perBatch; i += 1) {
-							scenario.transcript.lines.push(transcriptLine(total + i));
+							scenario.transcript.lines.push(contentLine("plain", total + i));
 						}
 						total += testCase.perBatch;
 						scenario.transcript.invalidate();

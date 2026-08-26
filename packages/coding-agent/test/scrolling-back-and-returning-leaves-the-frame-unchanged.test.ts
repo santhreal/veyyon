@@ -37,11 +37,7 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import { initTheme } from "../src/modes/theme/theme";
 import { runComposerOracleScenario } from "./helpers/composer-oracle-runner";
-
-/** SGR wheel-up report at row 5, col 5. */
-const WHEEL_UP = "\x1b[<64;5;5M";
-/** SGR wheel-down report at row 5, col 5. */
-const WHEEL_DOWN = "\x1b[<65;5;5M";
+import { ISOLATION, WHEEL_DOWN, WHEEL_UP } from "./helpers/renderer-differential";
 
 /** A terminal size and transcript depth, and whether that depth can scroll at all. */
 interface Geometry {
@@ -70,15 +66,6 @@ const GEOMETRIES: readonly Geometry[] = [
 
 /** Notch counts: one wheel event, a short drag, and a long one. */
 const STEP_COUNTS: readonly number[] = [1, 3, 8];
-
-/**
- * Scroll isolation off and on.
- *
- * On is the production default and is what hands the wheel to the TUI's virtual scroll tape. Off
- * leaves scrolling to the terminal's own scrollback, which never moves the composed viewport, so
- * those cases pin that gating rather than the round trip.
- */
-const ISOLATION: readonly boolean[] = [false, true];
 
 /** Ceiling for the whole sweep: every case mounts once and settles per notch, twice over. */
 const SWEEP_BUDGET_MS = 120_000;
