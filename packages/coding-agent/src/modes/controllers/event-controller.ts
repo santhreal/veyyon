@@ -35,7 +35,7 @@ import type { ResolveToolDetails } from "../../tools/resolve";
 import { nextActionableTask } from "../../tools/todo";
 import { SpeechEnhancer } from "../../tts/speech-enhancer";
 import { vocalizer } from "../../tts/vocalizer";
-import { canonicalizeMessage } from "../../utils/thinking-display";
+import { hasVisibleContent } from "../../utils/thinking-display";
 import { formatRetryLine, formatRetrySummary, type RetryTrace, retryReason } from "../retry-display";
 import { interruptHint } from "../shared";
 import { createAssistantMessageComponent } from "../utils/interactive-context-helpers";
@@ -890,8 +890,8 @@ export class EventController {
 			let visibleBlockCount = 0;
 			for (const content of this.ctx.streamingMessage.content) {
 				if (
-					(content.type === "text" && canonicalizeMessage(content.text)) ||
-					(content.type === "thinking" && canonicalizeMessage(content.thinking))
+					(content.type === "text" && hasVisibleContent(content.text)) ||
+					(content.type === "thinking" && hasVisibleContent(content.thinking))
 				) {
 					visibleBlockCount++;
 				}

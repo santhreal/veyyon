@@ -87,6 +87,8 @@
 - `AgentSession.#emitSessionEvent` skips the `#queueExtensionEvent` promise chain for `message_update` events when no extension handlers are registered for that event type, avoiding a closure and two promise allocations per streamed token in the common no-extensions case.
 - `StreamingRevealController.setTarget` accepts a `hasToolCalls` flag from the caller, replacing a per-token `message.content.some(block => block.type === "toolCall")` scan with an O(1) boolean check during streaming.
 
+- The streaming `message_update` visible-block count uses `hasVisibleContent`, a zero-allocation boolean scan, instead of `canonicalizeMessage` with its `.trim()` string allocation, avoiding one string allocation per content block per streamed token in the TUI event handler.
+
 ### Added
 
 - `edit.critiqueCodeMutations` prompts a bounded self-review before finalization after one turn modifies at least two distinct code files.

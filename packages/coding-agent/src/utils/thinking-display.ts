@@ -24,6 +24,32 @@ export function canonicalizeMessage(text: string | null | undefined): string {
 	return "";
 }
 
+/**
+ * Boolean counterpart of {@link canonicalizeMessage} for hot paths that only
+ * need to know whether a block has visible content. Avoids the `.trim()`
+ * string allocation by scanning characters in place: skip leading whitespace,
+ * then return true on the first character that is not a dot, ellipsis, or
+ * whitespace. Equivalent to `canonicalizeMessage(text) !== ""` but zero-allocation.
+ */
+export function hasVisibleContent(text: string | null | undefined): boolean {
+	if (!text) return false;
+	const len = text.length;
+	let i = 0;
+	while (i < len) {
+		const code = text.charCodeAt(i);
+		if (code !== 0x20 && code !== 0x09 && code !== 0x0a && code !== 0x0d) break;
+		i++;
+	}
+	while (i < len) {
+		const code = text.charCodeAt(i);
+		if (code !== 0x2e && code !== 0x2026 && code !== 0x20 && code !== 0x09 && code !== 0x0a && code !== 0x0d) {
+			return true;
+		}
+		i++;
+	}
+	return false;
+}
+
 // gpt-5.x reasoning summaries pad every summary part with an empty HTML
 // comment (`**Headline**\n\n<!-- -->`), streamed as a `<!--` delta followed by
 // ` -->`. Comments with actual content are left untouched.

@@ -1,6 +1,10 @@
 import { describe, expect, it } from "bun:test";
 import type { AgentMessage } from "@veyyon/agent-core";
-import { canonicalizeMessage, messageHasDisplayableThinking } from "@veyyon/coding-agent/utils/thinking-display";
+import {
+	canonicalizeMessage,
+	hasVisibleContent,
+	messageHasDisplayableThinking,
+} from "@veyyon/coding-agent/utils/thinking-display";
 
 describe("canonicalizeMessage", () => {
 	it("returns empty string for undefined, empty, or whitespace-only", () => {
@@ -23,6 +27,59 @@ describe("canonicalizeMessage", () => {
 		expect(canonicalizeMessage("hello.")).toBe("hello.");
 		expect(canonicalizeMessage(". hello .")).toBe(". hello .");
 		expect(canonicalizeMessage("a")).toBe("a");
+	});
+});
+
+describe("hasVisibleContent", () => {
+	// WHY: hasVisibleContent is the zero-allocation boolean counterpart of
+	// canonicalizeMessage used in the per-token visibleBlockCount loop. It must
+	// agree with `canonicalizeMessage(text) !== ""` on every input, including
+	// edge cases that distinguish "dot-only" from "real prose" content.
+	it("returns false for undefined, empty, or whitespace-only", () => {
+		expect(hasVisibleContent(undefined)).toBe(false);
+		expect(hasVisibleContent("")).toBe(false);
+		expect(hasVisibleContent("   ")).toBe(false);
+		expect(hasVisibleContent("\n\n")).toBe(false);
+	});
+
+	it("returns false for dot-only content", () => {
+		expect(hasVisibleContent(".")).toBe(false);
+		expect(hasVisibleContent("...")).toBe(false);
+		expect(hasVisibleContent(" . ")).toBe(false);
+		expect(hasVisibleContent("\n.")).toBe(false);
+		expect(hasVisibleContent("…")).toBe(false);
+	});
+
+	it("returns true for actual prose", () => {
+		expect(hasVisibleContent("hello")).toBe(true);
+		expect(hasVisibleContent("hello.")).toBe(true);
+		expect(hasVisibleContent(". hello .")).toBe(true);
+		expect(hasVisibleContent("a")).toBe(true);
+	});
+
+	it("agrees with canonicalizeMessage on a range of inputs", () => {
+		const cases = [
+			"",
+			"   ",
+			"\n\n",
+			".",
+			"...",
+			" . ",
+			"\n.",
+			"…",
+			"hello",
+			"hello.",
+			". hello .",
+			"a",
+			"  hello  ",
+			"  .  ",
+			"hello world",
+			"…hello",
+			".\n.\n.",
+		];
+		for (const text of cases) {
+			expect(hasVisibleContent(text)).toBe(canonicalizeMessage(text) !== "");
+		}
 	});
 });
 
