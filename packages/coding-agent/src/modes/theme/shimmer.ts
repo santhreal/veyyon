@@ -641,8 +641,10 @@ function lavaRgbAt(theme: LavaTheme, p: number): [number, number, number] {
 export function lavaAnsi(theme: LavaTheme, trueColor: boolean, now = Date.now(), cell = 0): string | undefined {
 	if (!trueColor) return undefined;
 	const p = now / LAVA_PERIOD_MS + cell * LAVA_CELL_PHASE;
-	const [r, g, b] = lavaRgbAt(theme, p);
-	return `\x1b[38;2;${r};${g};${b}m`;
+	const emberRgb = resolvedRgb?.emberRgb ?? hexToRgb(resolved?.ember ?? theme.getColorHex("borderAccent"));
+	const goldRgb = resolvedRgb?.goldRgb ?? hexToRgb(resolved?.gold ?? theme.getColorHex("matchHighlight"));
+	const [r, g, b] = lavaRgbAtResolved(emberRgb, goldRgb, p);
+	return `\x1b[38;2;${CHANNEL_STR[r]};${CHANNEL_STR[g]};${CHANNEL_STR[b]}m`;
 }
 
 /**
