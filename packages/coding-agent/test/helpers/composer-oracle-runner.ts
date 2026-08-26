@@ -36,8 +36,15 @@ export class TranscriptMock implements Component {
 
 	invalidate(): void {}
 
+	// A fresh array per render. The engine caches the rows a child returns as
+	// the previous frame, so a double that hands back its own mutable buffer
+	// makes an append rewrite that cache retroactively: the differential diff
+	// then compares new rows against new rows, reports them unchanged, and
+	// skips the repaint. Growing the transcript that way paints a second
+	// composer and never paints the appended lines at all - a defect in the
+	// double, not the renderer.
 	render(): readonly string[] {
-		return this.lines;
+		return [...this.lines];
 	}
 }
 
@@ -85,6 +92,8 @@ export interface RunnerResult {
 	tui: TUI;
 	frameState: ComposerOracleFrameState;
 	evaluation: OracleEvaluationResult;
+	transcript: TranscriptMock;
+	advance: () => Promise<void>;
 	cleanUp: () => void;
 }
 
@@ -394,6 +403,11 @@ export async function runComposerOracleScenario(options: RunnerOptions): Promise
 		tui,
 		frameState,
 		evaluation,
+		transcript,
+		advance: async () => {
+			tui.requestRender();
+			await settleFrames(term, tui);
+		},
 		cleanUp: () => {
 			tui.stop();
 		},
