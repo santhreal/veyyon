@@ -228,6 +228,7 @@ export class IrcTool implements AgentTool<typeof ircSchema, IrcDetails> {
 			? bus
 					.wait(senderId, { from: to }, timeoutMs ?? DEFAULT_IRC_TIMEOUT_MS, awaitAbort?.signal, {
 						drainPending: false,
+						liveness: { registry, senderId, mode: "revivable" },
 					})
 					.then(
 						message => ({ message, error: null as Error | null }),
