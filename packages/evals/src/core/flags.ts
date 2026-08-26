@@ -33,6 +33,19 @@ export class UnknownFlagError extends Error {
 	}
 }
 
+/**
+ * A declared flag whose value the invocation cannot use: a count that is not one, a spelling
+ * outside the accepted set, a required flag left off. It is the same class of mistake as an
+ * unknown flag — the command line is wrong, nothing ran — so an entry point maps both to the
+ * usage exit code instead of the one a failed run returns.
+ */
+export class FlagValueError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = "FlagValueError";
+	}
+}
+
 export interface FlagGrammar {
 	/** Keys that take a value: `{ model: true }`. */
 	valued: Readonly<Record<string, true>>;
@@ -88,7 +101,7 @@ export function flagNumber(flags: Record<string, string>, key: string): number |
 	const raw = flags[key];
 	if (raw === undefined || raw === "" || raw === "true") return undefined;
 	const value = Number(raw);
-	if (!Number.isFinite(value)) throw new Error(`--${key} expects a number, got ${JSON.stringify(raw)}`);
+	if (!Number.isFinite(value)) throw new FlagValueError(`--${key} expects a number, got ${JSON.stringify(raw)}`);
 	return value;
 }
 
@@ -97,7 +110,7 @@ export function flagCount(flags: Record<string, string>, key: string): number | 
 	const value = flagNumber(flags, key);
 	if (value === undefined) return undefined;
 	if (!Number.isInteger(value) || value < 1) {
-		throw new Error(`--${key} expects an integer >= 1, got ${JSON.stringify(flags[key])}`);
+		throw new FlagValueError(`--${key} expects an integer >= 1, got ${JSON.stringify(flags[key])}`);
 	}
 	return value;
 }
@@ -111,7 +124,7 @@ export function flagChoice<T extends string>(
 	const raw = flags[key];
 	if (raw === undefined || raw === "" || raw === "true") return undefined;
 	if (!(choices as readonly string[]).includes(raw)) {
-		throw new Error(`--${key} expects one of ${choices.join(", ")}, got ${JSON.stringify(raw)}`);
+		throw new FlagValueError(`--${key} expects one of ${choices.join(", ")}, got ${JSON.stringify(raw)}`);
 	}
 	return raw as T;
 }
@@ -119,6 +132,7 @@ export function flagChoice<T extends string>(
 /** Read a flag that the invocation cannot proceed without. */
 export function requireFlag(flags: Record<string, string>, key: string, usage: string): string {
 	const value = flags[key];
-	if (value === undefined || value === "" || value === "true") throw new Error(`--${key} is required (${usage})`);
+	if (value === undefined || value === "" || value === "true")
+		throw new FlagValueError(`--${key} is required (${usage})`);
 	return value;
 }

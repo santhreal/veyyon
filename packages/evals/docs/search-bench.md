@@ -117,9 +117,19 @@ bun packages/evals/src/benches/search/runner.ts --json report.json
 ```
 
 `--help` prints the accepted flags. A flag the bench does not declare, an `--iterations` value that
-is not an integer >= 1, and a `--type` outside `files`, `text`, `structure` and `all` each refuse
-the invocation and print the usage text, so a misspelled knob never runs with the default it was
-passed to change. The disclosure bench takes no inputs and accepts only `--help`.
+is not an integer >= 1, a `--type` outside `files`, `text`, `structure` and `all`, a `--suite` or
+`--arms` list that names nothing or names an unregistered id, and a `--reference` arm the run does
+not measure each refuse the invocation, print the usage text and exit 2, so a misspelled knob never
+runs with the default it was passed to change. Exit 1 means the bench ran and the arms disagreed or
+a declared answer was not produced. The disclosure bench takes no inputs and accepts only `--help`.
+
+A selection that would measure nothing is a refusal, not a pass: an empty suite or arm list, a
+suite registered with no cases, and a `--type` no case in the suite carries all refuse before a
+corpus is written to disk. Both verdicts the bench prints are booleans over the cases it measured,
+and over an empty set they would read PASS.
+
+An arm that ran no case of a type reports its average as absent (`null` in the JSON report, `-` in
+the table), since 0 ms would read as the fastest arm.
 
 Execute the progressive disclosure artifact compaction benchmark:
 

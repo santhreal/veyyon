@@ -123,7 +123,8 @@ if (import.meta.main) {
 		flags = parseFlags(process.argv.slice(2), DISCLOSURE_BENCH_FLAGS);
 	} catch (err) {
 		process.stderr.write(`${errorMessage(err)}\n\n${DISCLOSURE_BENCH_USAGE}`);
-		process.exit(1);
+		// Nothing ran, so this is the usage code, not the code a failed measurement returns.
+		process.exit(2);
 	}
 	if (flags.help !== undefined) {
 		process.stdout.write(DISCLOSURE_BENCH_USAGE);
