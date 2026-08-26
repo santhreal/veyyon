@@ -130,7 +130,7 @@ async function loadHosts(session: ToolSession): Promise<{
 			hostsByName.set(host.name, host);
 		}
 	}
-	const hostNames = Array.from(hostsByName.keys()).sort();
+	const hostNames = [...hostsByName.keys()].sort();
 	return { hostNames, hostsByName };
 }
 

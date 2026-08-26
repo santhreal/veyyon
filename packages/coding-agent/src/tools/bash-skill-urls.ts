@@ -138,7 +138,7 @@ async function resolveInternalUrlToPath(
 export async function expandInternalUrls(command: string, options: InternalUrlExpansionOptions): Promise<string> {
 	if (!command.includes("://") && !command.includes("local:/")) return command;
 
-	const matches = Array.from(command.matchAll(INTERNAL_URL_PATTERN_INCLUDING_NORMALIZED_LOCAL));
+	const matches = [...command.matchAll(INTERNAL_URL_PATTERN_INCLUDING_NORMALIZED_LOCAL)];
 	if (matches.length === 0) return command;
 	const internalRouter = options.internalRouter ?? InternalUrlRouter.instance();
 

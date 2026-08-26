@@ -575,14 +575,14 @@ async function askSingleQuestion(
 			});
 
 			if (arrowNavigation) {
-				return { selectedOptions: Array.from(selected), customInput, note, timedOut, navigation: arrowNavigation };
+				return { selectedOptions: [...selected], customInput, note, timedOut, navigation: arrowNavigation };
 			}
 			if (choice === undefined) {
 				if (selectTimedOut) {
 					timedOut = true;
 					break;
 				}
-				return { selectedOptions: Array.from(selected), customInput, note, timedOut, cancelled: true };
+				return { selectedOptions: [...selected], customInput, note, timedOut, cancelled: true };
 			}
 			if (choice === doneLabel) break;
 
@@ -619,7 +619,7 @@ async function askSingleQuestion(
 				break;
 			}
 		}
-		selectedOptions = Array.from(selected);
+		selectedOptions = [...selected];
 	} else {
 		while (true) {
 			const displayOptions = addRecommendedSuffix(questionOptions, recommended);

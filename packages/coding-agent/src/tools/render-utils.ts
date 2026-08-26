@@ -529,7 +529,7 @@ export function formatDiagnostics(
 	const maxDiags = expanded ? diag.messages.length : 5;
 	let diagsShown = 0;
 
-	const files = Array.from(byFile.entries());
+	const files = [...byFile.entries()];
 
 	// Count total diagnostics for "... X more" calculation
 	const totalDiags = files.reduce((n, [, diags]) => n + diags.length, 0) + unparsed.length;
