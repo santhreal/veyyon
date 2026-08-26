@@ -62,13 +62,7 @@ import { theme } from "../theme/theme";
 import type { InteractiveModeContext } from "../types";
 import { groupBySource, showCommandMessage } from "./command-controller-shared";
 
-/**
- * The slice of the interactive context this controller uses: 12 members of the
- * 215 `InteractiveModeContext` requires. Naming the slice keeps the dependency
- * legible and lets a test build one without the `as unknown as
- * InteractiveModeContext` cast the full interface forces (see
- * `CollabHostContext`).
- */
+/** Context slice required by {@link MCPCommandController}. */
 export type McpCommandControllerContext = Pick<
 	InteractiveModeContext,
 	| "editor"
@@ -139,22 +133,7 @@ function wrapUrlRows(label: string, url: string, width: number): string[] {
 }
 
 /**
- * Renders the MCP OAuth fallback URL. Always shows the full authorization URL
- * as the primary `Copy URL:` target — that works from any machine, including
- * SSH/WSL/headless sessions where the Veyyon-hosted `/launch` loopback URL would
- * resolve against the user's local browser and fail.
- *
- * The render is `width`-aware: on any viewport narrower than the composed row
- * ({@link TUI#prepareLine} truncates anything wider with `Ellipsis.Omit`, no
- * marker), the URL is hard-wrapped into width-fitted rows so the primary copy
- * target can never silently lose trailing OAuth parameters — the failure mode
- * that motivated #4418 in the first place. Browsers strip whitespace when a
- * multi-row selection is pasted into the address bar, so the reassembled URL
- * is byte-identical to what we rendered.
- *
- * When the flow's callback server hosts a short `launchUrl`, it is offered
- * as an additional local shortcut for wide-terminal local users. The OSC 8
- * hyperlink continues to carry the full URL for terminals that support it.
+ * Renders the MCP OAuth authorization URL with width-aware line wrapping.
  */
 export class MCPAuthorizationLinkPrompt implements Component {
 	readonly #fullUrl: string;
@@ -217,16 +196,7 @@ class McpConnectingBlock extends ChatBlock {
 	}
 }
 
-/**
- * Outcome of {@link MCPCommandController}'s OAuth handler.
- *
- * `credentialId` is deterministic per server URL when the URL was supplied, so
- * every profile resolves its own credential row under the same id. Refresh
- * material (token URL, client id/secret) is embedded in the stored credential;
- * the returned `clientId` may be folded into `mcp.json` for pre-auth reuse.
- * DCR-issued client secrets stay embedded in the stored credential and are
- * deliberately not surfaced here, so they cannot leak into config files.
- */
+/** Outcome of {@link MCPCommandController}'s OAuth authentication handler. */
 interface OAuthFlowResult {
 	credentialId: string;
 	clientId?: string;
@@ -257,14 +227,7 @@ const MCP_SEARCH_USAGE = "Usage: /mcp smithery-search <keyword...> [<limit 1-100
 
 const MCP_REMOVE_USAGE = "Usage: /mcp remove <name>";
 
-/**
- * The option spellings `/mcp add` no longer has, keyed by bare name. The empty key
- * is the separator that used to mean "everything after this is a command to run",
- * which is what the `run` keyword means now. The scope words are keys too, so a
- * plain `project` is refused with the reason rather than read as something else;
- * that reason is {@link MCP_SCOPE_REMOVED_REPLACEMENT}, which the text/ACP
- * handler delivers word for word from the same constant.
- */
+/** Deprecated `/mcp add` option names mapped to helpful error guidance. */
 const MCP_ADD_REMOVED_OPTIONS: Record<string, string> = {
 	"": "write `run <command...>`, which takes the whole rest of the line",
 	scope: MCP_SCOPE_REMOVED_REPLACEMENT,
@@ -412,22 +375,7 @@ export class MCPCommandController {
 		this.#showMessage(helpText);
 	}
 
-	/**
-	 * Parse the argument tail of `/mcp add`.
-	 *
-	 * Every argument is a plain word, disambiguated two ways and no others. The
-	 * name is POSITION: token 1 is the name whatever it spells, so a server called
-	 * `url` or `run` is named without ceremony. Everything after it is either a
-	 * CLOSED SET word that is its own value (`http|sse`, the transport) or a
-	 * leading keyword introducing text no set could describe (`url <url>`,
-	 * `token <token>`, `run <command...>`).
-	 *
-	 * Those token sets cannot overlap, which is what makes reading a word by its
-	 * own shape sound here: the closed set and the three keywords are five literal
-	 * spellings, all distinct, and a keyword's value is consumed by position rather
-	 * than examined. `run` takes the whole remainder, so a command's own arguments
-	 * are never read as this grammar's words.
-	 */
+	/** Parse the argument tail of `/mcp add`. */
 	#parseAddCommand(text: string): MCPAddParsed {
 		const prefixMatch = text.match(/^\/mcp\s+add\b\s*(.*)$/i);
 		const tokens = parseCommandArgs(prefixMatch?.[1]?.trim() ?? "");
@@ -510,24 +458,7 @@ export class MCPCommandController {
 		};
 	}
 
-	/**
-	 * Parse the argument tail of `/mcp smithery-search`.
-	 *
-	 * The keyword is arbitrary text and the two options are words, so the keyword
-	 * is required FIRST and the options are read from the END. Token 1 is always
-	 * part of the keyword, which is what keeps a one-word search for `semantic` or
-	 * for a number searching for it; scanning backwards then stops at the first
-	 * word that belongs to no option, and everything up to there is the keyword.
-	 *
-	 * The two cannot be confused: `semantic` is one literal word and the limit is
-	 * the only integer the command reads. A trailing scope word is refused there
-	 * rather than joined to the keyword, because a scope is what an operator who
-	 * writes one means, and this surface has none.
-	 *
-	 * What this does NOT resolve, because no rule can: a keyword whose LAST word is
-	 * `semantic` or an integer in range has that word read as the option. Put it
-	 * anywhere but last, or search for the single word alone.
-	 */
+	/** Parse the argument tail of `/mcp smithery-search`. */
 	#parseSearchCommand(text: string): MCPSearchParsed {
 		const prefixMatch = text.match(/^\/mcp\s+smithery-search\b\s*(.*)$/i);
 		const tokens = parseCommandArgs(prefixMatch?.[1]?.trim() ?? "");
@@ -737,13 +668,7 @@ export class MCPCommandController {
 			registrationUrl?: string;
 			resource?: string;
 			stripSameOriginResource?: boolean;
-			/**
-			 * External cancellation source: when this signal aborts, the in-flight
-			 * OAuth flow is torn down and {@link MCPOAuthCancelledError} is thrown.
-			 * Wizards (which own focus and absorb Esc themselves) pass their own
-			 * controller here; editor-focused callers rely on the Esc hook
-			 * installed below instead.
-			 */
+			/** Optional abort signal to cancel in-flight OAuth flow. */
 			abortSignal?: AbortSignal;
 		},
 	): Promise<OAuthFlowResult> {
@@ -945,14 +870,7 @@ export class MCPCommandController {
 		}
 	}
 
-	/**
-	 * Fold a completed OAuth flow back into a server config. Owns the
-	 * persistence policy in one place: the auth block records the credential
-	 * pointer plus refresh material, the oauth block echoes the client id for
-	 * pre-auth reuse, and only a user-supplied client secret is ever written —
-	 * DCR-issued secrets stay embedded in the stored credential so they cannot
-	 * leak into (possibly shared/committed) config files.
-	 */
+	/** Fold completed OAuth flow credentials back into server configuration. */
 	#persistOAuthResult(
 		config: MCPServerConfig,
 		result: OAuthFlowResult,
@@ -1004,19 +922,7 @@ export class MCPCommandController {
 		await disconnectServer(connection);
 	}
 
-	/**
-	 * Find `name` in the one MCP config file `/mcp` owns: the active profile's
-	 * `<agentDir>/mcp.json`.
-	 *
-	 * Three working-tree candidates used to sit behind that file —
-	 * `<cwd>/.veyyon/mcp.json`, `<cwd>/mcp.json` and `<cwd>/.mcp.json`, matching
-	 * the since-deleted project-scope discovery providers. Nothing loads them at
-	 * boot any more, but this function still resolved them, so `/mcp test` and
-	 * `/mcp reauth` would have CONNECTED to a server a repository declared and
-	 * `/mcp enable` would have written `enabled: true` into a repository file.
-	 * Operator-initiated is not consent: typing `/mcp test` is not agreement to
-	 * reach a server the operator never configured.
-	 */
+	/** Look up server in user-level `mcp.json` config. */
 	async #findConfiguredServer(
 		name: string,
 	): Promise<{ filePath: string; scope: "user"; config: MCPServerConfig } | null> {
@@ -1028,20 +934,7 @@ export class MCPCommandController {
 	}
 
 	/**
-	 * Resolve a server for an auth/test operation.
-	 *
-	 * Unlike {@link #findConfiguredServer} (which only reads writable Veyyon config
-	 * files), this also recognizes runtime-discovered servers that `/mcp list`
-	 * surfaces but that live in no writable config — e.g. servers from a Claude
-	 * Code marketplace plugin (`cloudflare:cloudflare-api`), `.cursor/mcp.json`,
-	 * etc. Without this, `/mcp reauth|test|unauth` reports "not found" for a
-	 * server the list just showed.
-	 *
-	 * For a discovered server, any persisted change is written into the *user*
-	 * config under the same (namespaced) name; the native provider (priority 100)
-	 * shadows the discovered entry on the next reload, so an OAuth `auth` block
-	 * persisted by `/mcp reauth` takes effect. `discovered` lets callers tailor
-	 * messaging and skip pointless writes when there is nothing to persist.
+	 * Resolve server for auth/testing, including runtime-discovered servers.
 	 */
 	async #resolveServerForAuth(name: string): Promise<{
 		filePath: string;
@@ -1264,13 +1157,7 @@ export class MCPCommandController {
 	/**
 	 * Handle /mcp list - Show all configured servers
 	 */
-	/**
-	 * One server's rows in `/mcp list`: the name + status glyph, and — when the
-	 * server is not connected and the manager retained a failure — an indented
-	 * dim line with the actual error. This is the honest home for the detail the
-	 * compact startup banner deliberately omits (Law 10: don't hide failures,
-	 * surface them where the operator looks).
-	 */
+	/** Format a single server's status and error rows for `/mcp list`. */
 	#serverStatusRows(name: string, state: string, type?: string): string[] {
 		const status =
 			state === "inactive"

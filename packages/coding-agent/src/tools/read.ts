@@ -173,17 +173,7 @@ const MAX_ARTIFACT_RAW_INLINE_BYTES = DEFAULT_MAX_BYTES;
 const PROSE_SUMMARY_EXTENSIONS = new Set([".md", ".txt"]);
 
 /**
- * The one materialization of a file a read is allowed to make.
- *
- * A bounded range read used to touch the same file three times: the streamer scanned it for
- * the window and the total line count, bracket context read and split all of it, and the
- * snapshot read and normalized all of it again. Measured on a 3.5MiB, 100k-line source,
- * `read path:50000-50019` read 3.08x the file's bytes and cost 463ms.
- *
- * `windowLines` is the same split the streamer produces, and is present only when the file
- * has no CR: byte accounting (`outputBytes`, `totalBytes`, the byte-limit decisions) counts
- * source bytes, and a CRLF file's raw lines carry a byte the normalized ones do not. A file
- * with CRLF therefore keeps the streaming path for its window and shares only the text.
+ * Single in-memory materialization of a file for range reads, bracket context, and snapshots.
  */
 interface MaterializedFile {
 	/** Every line ending normalized to LF; what the snapshot tag fingerprints. */
@@ -324,11 +314,7 @@ const BRACE_PAIRS: Record<string, string> = { "{": "}", "(": ")", "[": "]" };
 const BRACE_TAIL_TRAILING_RE = /^[;,)\]}]*$/;
 
 /**
- * Decide whether the kept lines surrounding an elided range collapse to a
- * single brace-pair line in the rendered summary. Returns true when the head
- * line ends with `{` / `(` / `[` and the tail line is the matching closer
- * (optionally followed by terminating punctuation like `;`, `,`, or further
- * closers — e.g. `};`, `})`, `]);`).
+ * Decide whether kept lines surrounding an elision collapse to a single brace pair.
  */
 function canMergeBracePair(headLine: string, tailLine: string): boolean {
 	const head = headLine.trimEnd();
@@ -417,12 +403,7 @@ interface ElidedRange {
 const FOOTER_RANGE_SAMPLES = 2;
 
 /**
- * Footer appended to summarized reads telling the model how to recover the
- * elided body. Without this hint, agents either ignore the `…`/`{ … }`
- * markers or burn a turn guessing the right selector (see issue #1046). The
- * footer demonstrates the multi-range selector syntax with concrete sample
- * ranges drawn from the actual elision so the model re-reads only what it
- * needs instead of falling back to `:raw` or whole-file reads.
+ * Footer appended to summarized reads demonstrating multi-range syntax to recover elisions.
  */
 function formatSummaryElisionFooter(
 	readPath: string,
@@ -442,29 +423,13 @@ function formatSummaryElisionFooter(
 const READ_CHUNK_SIZE = 8 * 1024;
 
 /**
- * Context lines added around an explicit range read. Anchor-stale failures
- * cluster on edits whose anchors land just outside the most recent read
- * window, but the data (`scripts/session-stats/analyze_selector_reads.py`)
- * shows most follow-up reads are disjoint hops, not adjacent extensions —
- * so symmetric padding rarely pays for itself.
- *
- * Leading=1 catches accidental single-line reads where the anchor is the
- * line immediately above the requested start. Trailing=3 buffers the
- * common case where the agent asks for a narrow range and then needs the
- * next few lines to disambiguate an anchor.
+ * Context lines added around explicit range reads (1 leading, 3 trailing).
  */
 const RANGE_LEADING_CONTEXT_LINES = 1;
 const RANGE_TRAILING_CONTEXT_LINES = 3;
 
 /**
- * How many context lines a range read gets on each side. The one owner of that
- * arithmetic: the in-memory range path and both streaming range paths (plain
- * file, artifact) each need the same two numbers, and each used to derive them
- * from the two constants itself.
- *
- * A start of 0 (no explicit offset) gets no leading context — that is already
- * an open-ended read from the top — and leading padding never runs past the
- * top of the file.
+ * Calculate leading and trailing context lines for a range read request.
  */
 function rangeContextLines(
 	requestedStart: number,
@@ -496,18 +461,7 @@ function expandRangeWithContext(
 }
 
 /**
- * Say, in the result itself, that some of the returned lines are padding.
- *
- * A bounded selector returns more lines than it asked for: `read file:1-3`
- * answers with six lines, three requested and three of trailing context. The
- * expansion is deliberate (it saves the follow-up read that a one-line-off
- * anchor would need), and documenting it in `docs/tools/read.md` was not
- * enough: the surprise happens at CALL TIME, where the result looked like the
- * selector had been ignored. A dogfooder flagged the same read twice for that
- * reason, which is what this notice answers.
- *
- * Returns `undefined` when nothing was padded, so an exact read stays exact
- * and unannotated. Line numbers are 1-indexed and inclusive, as displayed.
+ * Format a notice indicating that extra leading or trailing context lines were added.
  */
 function formatContextPaddingNotice(options: {
 	requestedFirstLine: number;
@@ -543,13 +497,7 @@ interface CollectedWindow {
 }
 
 /**
- * The same window {@link streamLinesFromFile} collects, taken from lines already in memory.
- *
- * The byte accounting is deliberately the streamer's, rule for rule: a line is dropped when it
- * alone exceeds the budget, the separator counts as one byte from the second line on, and the
- * first line's length is recorded whether or not it was kept. It is written twice because the
- * two sources are different shapes -- one decodes byte segments as it goes, the other has every
- * line already -- and a caller cannot tell which one answered it.
+ * Collect a window of lines from memory matching {@link streamLinesFromFile} byte accounting.
  */
 function collectWindowFromLines(
 	lines: readonly string[],
@@ -831,11 +779,7 @@ const MAX_IMAGE_SIZE = MAX_IMAGE_INPUT_BYTES;
 const GLOB_TIMEOUT_MS = 5000;
 
 /**
- * Escape glob metacharacters so a literal path (e.g. `foo[1].ts`) interpolated
- * into a suffix-glob pattern matches itself. Each metachar is wrapped in a
- * character class (the native glob engine rewrites `\` to `/`, so backslash
- * escaping is unavailable). `]`/`}` need no escaping once their openers are
- * neutralized — unmatched closers are literal.
+ * Escape glob metacharacters so a literal path matches itself in suffix-glob patterns.
  */
 function escapeGlobMetachars(value: string): string {
 	return value.replace(/[*?[{]/g, "[$&]");
@@ -899,15 +843,7 @@ async function findUniqueSuffixMatch(
 }
 
 /**
- * Whether a failed summarize attempt is worth reporting, and what to say about it.
- *
- * Summarizing a read is optional: when it fails you get the whole file where you would have got an
- * outline, which is still a correct read, so the failure must not propagate. It used to be swallowed
- * entirely, and a file that could not be parsed then looked like a file with nothing to fold.
- *
- * Cancellation is the one case that stays quiet, because it is not a failure of summarizing: the
- * caller asked for the read to stop, and the read path reports that itself. Returns the message to
- * log, or null when there is nothing to report.
+ * Determine whether a summarize failure should be reported (ignores cancellation/abort).
  */
 export function summarizeFailureReport(error: unknown): string | null {
 	if (isAbortError(error) || isTimeoutError(error) || isCancellation(error)) return null;
@@ -1000,11 +936,7 @@ export interface ReadToolDetails {
 	/** Paths recovered from a delimited read argument; used only by the TUI to render one call as multiple read rows. */
 	displayReadTargets?: string[];
 	/**
-	 * Set when the tool could not deliver the target's content as text (a binary
-	 * file or archive entry, or a failed document conversion). The result is left
-	 * non-`isError` on purpose so the agent gets the bracketed guidance (for
-	 * example the `:raw` hint) without a retry storm; this marker lets the
-	 * `veyyon read` CLI exit non-zero instead of reporting the refusal as success.
+	 * Set when content could not be delivered as text (binary or conversion failure).
 	 */
 	contentUnavailable?: { reason: "binary" | "conversion-failed" };
 }
@@ -1110,14 +1042,7 @@ interface ResolvedSqliteReadPath {
 type SuffixMatchCache = Map<string, { absolutePath: string; displayPath: string } | null>;
 
 /**
- * Filesystem path(s) a read call targets, for the cwd boundary (cwd-boundary.ts).
- * A selector suffix stays attached (it cannot introduce `../` traversal), and
- * URL/ssh/internal targets are filtered by the boundary.
- *
- * A semicolon-delimited argument reads every entry it names, so every entry is
- * measured, the way the search tools measure theirs. Measuring the joint string
- * instead resolves `a.md;/etc/passwd` to one path inside the working directory
- * that no read ever opens, and the entry outside it is never gated.
+ * Extract filesystem path targets from read tool arguments for cwd boundary checks.
  */
 export function readFilesystemTargets(args: unknown): string[] {
 	if (!args || typeof args !== "object" || !("path" in args)) return [];
@@ -1234,12 +1159,7 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 	}
 
 	/**
-	 * One internal URL, or a semicolon-delimited list of them.
-	 *
-	 * An internal resource cannot be probed on disk the way a file can, so the
-	 * literal URL is resolved first and the list only after it fails: a resource
-	 * whose own name contains a semicolon still resolves, and
-	 * `skill://a/one.md;two.md` fans out into one read per entry.
+	 * Read an internal URL or fan out a semicolon-delimited list of internal URLs.
 	 */
 	async #readInternalUrlOrList(
 		rawPath: string,
@@ -1266,11 +1186,7 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 	}
 
 	/**
-	 * Memoized {@link findUniqueSuffixMatch} for a single read call. A missing
-	 * path with archive/sqlite extensions probes the workspace once per stage
-	 * (archive candidates, sqlite candidates, plain path) — each glob carries a
-	 * 5s timeout, so repeated lookups of the same string stack into a long
-	 * stall before erroring. The cache collapses repeats within one execute().
+	 * Memoized {@link findUniqueSuffixMatch} to avoid duplicate glob sweeps within one execute.
 	 */
 	async #findSuffixMatchCached(
 		cache: SuffixMatchCache,
@@ -1492,11 +1408,7 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 	}
 
 	/**
-	 * Build content blocks for an on-disk image file: an `inspect_image`
-	 * metadata note when inspection is enabled, otherwise the decoded image
-	 * block. Shared by the plain-file read path and the `local://` image fast
-	 * path so both honor `inspect_image.enabled`, the size cap, and auto-resize
-	 * identically. Too-large / unsupported images surface as {@link ToolError}.
+	 * Build content blocks for an on-disk image file, respecting inspect_image settings and limits.
 	 */
 	async #loadImageContent(options: {
 		readPath: string;
@@ -1768,11 +1680,7 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 	}
 
 	/**
-	 * Render a multi-range read against in-memory text. Each range emits a
-	 * formatted block with its own anchors / line numbers, blocks are joined
-	 * with an elision separator, and ranges past EOF surface as `[…]` notices
-	 * so the model can correct the next call. No leading/trailing context is
-	 * added — multi-range callers always specify exact bounds.
+	 * Render a multi-range read against in-memory text with separate line numbers and elisions.
 	 */
 	#buildInMemoryMultiRangeResult(
 		text: string,
@@ -3538,15 +3446,7 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 	}
 
 	/**
-	 * Fast path for `local://` image files. Resolves the URL to its real
-	 * on-disk path with the same realpath + containment checks as
-	 * {@link LocalProtocolHandler.resolve} (via {@link resolveLocalUrlToFile}),
-	 * and — only when the target is a genuine image — emits a decoded image
-	 * block. Returns null for non-images, directories, listings, or any
-	 * resolution failure (not-found, symlink escape) so the caller falls back to
-	 * normal text resolution, which reproduces the router's errors. Errors from
-	 * a confirmed image (too large / unsupported) propagate rather than
-	 * degrading into a corrupted text read.
+	 * Fast path for `local://` image files, resolving on-disk paths and decoding image blocks.
 	 */
 	async #tryReadLocalImage(url: InternalUrl, signal?: AbortSignal): Promise<AgentToolResult<ReadToolDetails> | null> {
 		let file: { path: string; size: number } | null;

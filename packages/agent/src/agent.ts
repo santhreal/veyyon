@@ -252,23 +252,12 @@ export interface AgentOptions {
 	getToolContext?: (toolCall?: ToolCallContext) => AgentToolContext | undefined;
 
 	/**
-	 * Optional transform applied to tool call arguments before execution. Use for
-	 * deobfuscating secrets or rewriting arguments.
-	 *
-	 * Returns the arguments split by audience — see {@link ToolCallArgumentTransform}.
-	 * An expansion whose result must not be shown belongs in `execution` only.
+	 * Optional transform applied to tool call arguments before execution (e.g. for secret deobfuscation).
 	 */
 	transformToolCallArguments?: (args: Record<string, unknown>, toolName: string) => ToolCallArgumentTransform;
 
 	/**
-	 * Enable intent tracing schema injection/stripping in the harness.
-	 *
-	 * A FUNCTION when the value can change mid-session, which is what a settings-backed flag is. Both
-	 * places the agent reads it -- the provider context it builds per request and the loop config it
-	 * builds per turn -- call the resolver then, so flipping `tools.intentTracing` takes effect on the
-	 * next turn instead of at the next process start. A plain boolean is still accepted for a caller
-	 * whose answer genuinely cannot change; it is normalized to a resolver once, in the constructor, so
-	 * nothing downstream has to know which form arrived.
+	 * Enable intent tracing schema injection/stripping. Function form is re-evaluated per turn.
 	 */
 	intentTracing?: boolean | (() => boolean);
 	/**
@@ -277,13 +266,7 @@ export interface AgentOptions {
 	 */
 	instrumentation?: InstrumentationLevel;
 	/**
-	 * Strip tool descriptions from provider-bound tool specs (top-level + nested
-	 * schema annotations). Use when the full catalog is rendered into the system
-	 * prompt so descriptions are not duplicated on the wire. Native tool calling only.
-	 *
-	 * A function is resolved against the active model for every request, so a
-	 * model switch can move descriptors between the prompt and native schemas
-	 * without retaining the previous model's less efficient representation.
+	 * Strip tool descriptions from provider-bound tool specs. Function form is resolved per request.
 	 */
 	pruneToolDescriptions?: boolean | ((model: Model) => boolean);
 	/**
@@ -313,23 +296,14 @@ export interface AgentOptions {
 	cursorOnToolResult?: CursorToolResultHandler;
 
 	/**
-	 * Operator-owned instruction files for Cursor's `requestContext.rules` channel,
-	 * resolved once per turn so a mid-session context-file reload (`/reload`, `/move`)
-	 * reaches the next request. The provider adds the session system prompt itself;
-	 * these are the file-backed units (the operator's global and profile AGENTS.md),
-	 * and repository content must never appear in them (see `CursorRuleInput`).
+	 * Operator-owned instruction files for Cursor's `requestContext.rules` channel, resolved per turn.
 	 */
 	cursorRulesResolver?: () => CursorRuleInput[];
 
 	/** Current working directory used by local tool execution. */
 	cwd?: string;
 	/**
-	 * Resolver for the live working directory, re-read on every turn. When set, it
-	 * overrides the static {@link cwd} at config-build time so a session move
-	 * (`/move`, which updates the host's cwd without reconstructing the Agent) is
-	 * reflected in provider options — e.g. GitLab Duo Agent namespace/project
-	 * discovery keys off this cwd's git remote. Falls back to `cwd` when it returns
-	 * `undefined`.
+	 * Resolver for live working directory, re-evaluated per turn to reflect session moves (`/move`).
 	 */
 	cwdResolver?: () => string | undefined;
 	/**
@@ -575,13 +549,7 @@ export class Agent {
 	}
 
 	/**
-	 * Static metadata forwarded to every API request when no resolver is installed
-	 * (e.g. `metadata.user_id` for Anthropic session attribution). Setting this
-	 * clears any installed resolver.
-	 *
-	 * For live/provider-aware metadata (e.g. Anthropic OAuth `account_uuid` that
-	 * must reflect the credential selected per-request), use
-	 * {@link setMetadataResolver} and read via {@link metadataForProvider}.
+	 * Static metadata forwarded to every API request when no resolver is installed.
 	 */
 	get metadata(): Record<string, unknown> | undefined {
 		return this.#metadata;
@@ -593,11 +561,7 @@ export class Agent {
 	}
 
 	/**
-	 * Resolve request metadata for the given provider at call time. When a
-	 * resolver is installed via {@link setMetadataResolver}, it is invoked with
-	 * the provider string so the result can be scoped (e.g. `account_uuid` is
-	 * only included for `"anthropic"` requests). Falls back to the static
-	 * {@link metadata} value when no resolver is set.
+	 * Resolve request metadata for a provider at call time using the installed resolver or static fallback.
 	 */
 	metadataForProvider(provider: string): Record<string, unknown> | undefined {
 		if (this.#metadataResolver) return this.#metadataResolver(provider);
@@ -605,12 +569,7 @@ export class Agent {
 	}
 
 	/**
-	 * Install a function that resolves request metadata at call time. The
-	 * resolver receives the target provider string and can gate provider-specific
-	 * fields (e.g. `account_uuid` only for `"anthropic"`). Invoked per LLM
-	 * request by `agent-loop` after `getApiKey` selects the session-sticky
-	 * credential. Pass `undefined` to clear and revert to the static
-	 * {@link metadata} value.
+	 * Install a function to resolve provider-scoped request metadata at call time. Pass `undefined` to clear.
 	 */
 	setMetadataResolver(resolver: ((provider: string) => Record<string, unknown> | undefined) | undefined): void {
 		this.#metadataResolver = resolver;
@@ -777,17 +736,7 @@ export class Agent {
 	}
 
 	/**
-	 * Assemble the provider Context for a side-channel (no-loop) request, mirroring
-	 * the main loop's prefix (system + normalized tools) so it shares the prompt
-	 * cache. Never touches the append-only log or the tool-choice queue. Owned/
-	 * in-band dialect sessions stay tools-less (matching their no-native-tools wire
-	 * shape and avoiding tool-markup leakage). `llmMessages` is already converted
-	 * (and, in production, obfuscated) by the caller.
-	 *
-	 * `systemPrompt` defaults to the live agent prompt so the side request hits the
-	 * same cached prefix as the main loop. Callers that must pin a different prompt
-	 * (e.g. handoff generation, which uses the base prompt rather than a per-turn
-	 * `before_agent_start` hook override) pass it explicitly.
+	 * Assemble provider Context for side-channel requests, mirroring the main loop's system and tools prefix.
 	 */
 	async buildSideRequestContext(
 		llmMessages: Message[],
@@ -1454,19 +1403,7 @@ export class Agent {
 	}
 
 	/**
-	 * Emit a Cursor assistant message with buffered exec-channel toolResults.
-	 *
-	 * Since the Cursor provider now synthesizes `toolCall` content blocks at the
-	 * point each exec tool starts (issue #4348), the assistant message content
-	 * already interleaves text/thinking with toolCall blocks in execution order.
-	 * We emit the message as-is and let the buffered toolResults follow — the
-	 * transcript rebuild in `renderSessionContext` pairs them by `toolCallId`.
-	 *
-	 * Historical note: this used to split the assistant message at
-	 * `textLengthAtCall` to interpose toolResults between preamble and
-	 * continuation. That workaround existed because native cursor tools had no
-	 * toolCall blocks; it also copied `preambleText` into every text block on
-	 * multi-text turns, producing duplicated text on replay.
+	 * Emit a Cursor assistant message followed by buffered exec-channel tool results.
 	 */
 	#emitCursorSplitAssistantMessage(assistantMessage: AssistantMessage): void {
 		const buffer = this.#cursorToolResultBuffer;

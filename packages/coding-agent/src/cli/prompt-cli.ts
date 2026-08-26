@@ -1,16 +1,6 @@
 /**
- * `veyyon prompt` — print the system prompt this configuration would send.
- *
- * See `system-prompt-builder/prompt-inspect.ts` for why an inspection surface
- * is needed at all. This module is the operator-facing half: it resolves the
- * same inputs a real session resolves, hands them to the one assembler, and
- * renders the result.
- *
- * THE TOOL SET IS RESOLVED FOR REAL, not stubbed, because it is the single
- * biggest source of variance in the output. Roughly half the shipped template's
- * conditionals are `{{#has tools "..."}}`, so a prompt inspected against an
- * imagined tool list is a prompt nobody will ever be sent. `createTools` is the
- * same call the session makes, on a session shape built from the same settings.
+ * `veyyon prompt` — print the system prompt for the active configuration.
+ * Resolves live settings and tool definitions to produce accurate prompt inspection.
  */
 import { toolWireSchema } from "@veyyon/ai/utils/schema/wire";
 import { estimateTokensFromText, type PromptEntry, type PromptRegistryView, type PromptSection } from "@veyyon/utils";
@@ -31,54 +21,19 @@ export interface PromptCommandFlags {
 	json?: boolean;
 	/** Print only the per-section cost table, not the prompt text. */
 	sections?: boolean;
-	/**
-	 * Print the per-STATEMENT cost table.
-	 *
-	 * A section is too coarse to act on: TOOL POLICY is one row of that table and 9KB of prompt, so
-	 * the answer it gives is "tool policy is large". A statement is one rule, which is the level at
-	 * which someone decides a rule is not earning its tokens, and the level an ablation operates on.
-	 */
+	/** Print the per-statement token cost table. */
 	statements?: boolean;
 	/** Print only this section's text. */
 	section?: string;
-	/**
-	 * Print what the tool definitions cost, which no other view here can show.
-	 *
-	 * The system prompt is only half of what a turn pays before its first user
-	 * message: every active tool's description and parameter schema is sent
-	 * beside it, and none of that appears in the section or statement tables. A
-	 * reader asking why a session starts expensive was shown the smaller half and
-	 * nothing said so.
-	 */
+	/** Print token costs for active tool definitions and parameter schemas. */
 	tools?: boolean;
-	/**
-	 * Print only this statement's text, by id.
-	 *
-	 * The counterpart to `--section` at the granularity a rule actually has. `--statements` says what
-	 * each rule costs and which are off; this is how you read one, which is the next thing anybody
-	 * wants after seeing a row they do not recognise.
-	 */
+	/** Print only this statement's text by ID. */
 	statement?: string;
 	/** Working directory to resolve context files, skills and the tree from. */
 	cwd?: string;
-	/**
-	 * Assemble with no tools at all.
-	 *
-	 * The baseline for "what does the prompt cost before tools", and the way to
-	 * see which regions are tool-gated: diff it against the default run and every
-	 * line that disappears was behind a `{{#has tools ...}}`.
-	 */
+	/** Assemble prompt with no tools enabled to measure baseline cost. */
 	noTools?: boolean;
-	/**
-	 * Which prompt to inspect. Defaults to the main system prompt.
-	 *
-	 * The other registered prompts are not assembled from live session state the
-	 * way the system prompt is, so they are inspected as the TEMPLATE they ship:
-	 * their sections, their variable contract, and their sizes. That is the
-	 * question worth answering about them, because until now the subagent prompt
-	 * in particular could not be examined at all without reading the file and
-	 * simulating its conditionals by eye.
-	 */
+	/** Which registered prompt template to inspect (defaults to system prompt). */
 	prompt?: string;
 	/** List every registered prompt instead of inspecting one. */
 	prompts?: boolean;
@@ -90,16 +45,7 @@ export interface PromptCommandResult {
 }
 
 /**
- * Which view of a prompt this invocation asked for, with the id the view needs.
- *
- * ONE OWNER FOR PRECEDENCE, and the reason is that `--json` used to be dropped in silence.
- * The command was a chain of early returns in flag order, and five of the six views
- * returned their text table before the `flags.json` line was ever reached: `--prompts
- * --json`, `--prompt <id> --json`, `--tools --json`, `--section <id> --json` and
- * `--statement <id> --json` all printed a human table and exited 0, so a consumer that
- * asked for JSON got padded columns and a parse error, with nothing saying the flag had
- * been ignored. Selecting the view in one function separates "which view" from "in which
- * format", which is what makes the second question answerable for every view.
+ * Requested view kind and associated identifiers for the prompt command.
  */
 export type PromptView =
 	| { readonly kind: "prompts" }
@@ -109,13 +55,7 @@ export type PromptView =
 	| { readonly kind: "section"; readonly id: string }
 	| { readonly kind: "inspection" };
 
-/**
- * Every view kind, for a sweep that has to cover all of them.
- *
- * A union cannot be enumerated at run time, so this is the runtime half of it, and
- * `a-prompt-view-that-was-asked-for-json-returns-json.test.ts` keys a total `Record` off
- * this list: a kind added to the union without a row there stops compiling.
- */
+/** All supported prompt view kinds for exhaustive runtime checks. */
 export const PROMPT_VIEW_KINDS = ["prompts", "prompt", "statement", "tools", "section", "inspection"] as const;
 
 /** Resolve the view from the flags, in the order the flags have always been read in. */
@@ -128,13 +68,7 @@ export function selectPromptView(flags: PromptCommandFlags): PromptView {
 	return { kind: "inspection" };
 }
 
-/**
- * Build the inspection for `flags` and render it.
- *
- * Returns the text rather than printing it so tests can assert the bytes, and
- * so an unknown `--section` can be reported as a non-zero exit with the valid
- * list rather than an empty stdout that reads like an empty section.
- */
+/** Build and render the prompt inspection based on provided command flags. */
 export async function runPromptCommand(flags: PromptCommandFlags = {}): Promise<PromptCommandResult> {
 	const view = selectPromptView(flags);
 	const asJson = flags.json === true;
@@ -214,16 +148,7 @@ async function resolveTools(cwd: string, settings: Settings): Promise<Tool[]> {
 }
 
 /**
- * What the tool definitions cost, beside what the system prompt costs.
- *
- * Every active tool ships a description and a parameter schema on every
- * request, and neither is part of the prompt this command otherwise measures,
- * so the answer to "why does a turn start expensive" was missing its larger
- * half. Both halves are priced from the bytes actually sent: the rendered
- * description string, and the wire schema the provider receives.
- *
- * Sorted by total cost, because the question a reader has is which description
- * is not earning its tokens.
+ * Format token cost breakdown for active tool descriptions and parameter schemas.
  */
 function formatToolCostTable(tools: readonly Tool[], promptTokens: number, asJson: boolean): PromptCommandResult {
 	const rows = tools
@@ -273,26 +198,12 @@ function formatToolCostTable(tools: readonly Tool[], promptTokens: number, asJso
 	return { output: lines.join("\n"), exitCode: 0 };
 }
 
-/**
- * The registry that holds an id, or the coding agent's as the place to complain from.
- *
- * Ids are unique across the registries (`prompt-cli-registry.test.ts` pins that), so the
- * first hit is the only hit and an operator does not have to know which package owns a
- * prompt before asking about it. A miss reports against the largest registry, whose ids
- * are the ones an operator is most likely to have been typing, so the near-miss
- * suggestion is drawn from 160 candidates rather than from fourteen format guides.
- */
+/** Find the prompt registry owning an ID, falling back to default registry. */
 function ownerOf(id: string): PromptRegistryView {
 	return REGISTRIES.find(registry => registry.has(id)) ?? REGISTRIES[0];
 }
 
-/**
- * List every prompt a model can be sent.
- *
- * This is the answer to the question that had none: before the registry, "which
- * prompts does this thing send" could only be reconstructed by grepping for
- * `systemPrompt` and following each template import by hand.
- */
+/** List every registered prompt in the system. */
 function listRegisteredPrompts(asJson: boolean): PromptCommandResult {
 	if (asJson) {
 		// The synthetic `system` row below is a pointer to another command, not data, so the
@@ -337,14 +248,7 @@ function listRegisteredPrompts(asJson: boolean): PromptCommandResult {
 	return { output: lines.join("\n"), exitCode: 0 };
 }
 
-/**
- * Describe a registered prompt other than the system prompt.
- *
- * Reports the declared sections with whether each is optional, so a reader can
- * tell a prompt that renders three of five sections from one that lost two.
- * Falls back to a loud error naming the known ids, because a silent empty
- * result would read as "this prompt has nothing in it".
- */
+/** Describe a non-system registered prompt and its declared sections. */
 function describeRegisteredPrompt(id: string, asJson: boolean): PromptCommandResult {
 	const owner = ownerOf(id);
 	let entry: PromptEntry;

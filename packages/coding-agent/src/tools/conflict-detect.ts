@@ -1,21 +1,6 @@
 /**
- * Detect and resolve unresolved git merge conflicts that surface in `read`
- * output.
- *
- * Workflow:
- *   1. `read` collects lines from disk as usual.
- *   2. `scanConflictLines` inspects those lines (no extra I/O) for
- *      well-formed `<<<<<<<` / `=======` / `>>>>>>>` blocks.
- *   3. Each completed block is registered with the session's
- *      `ConflictHistory`, which assigns it a stable id.
- *   4. The read output is returned verbatim with a short footer naming
- *      every conflict id surfaced, and the agent calls
- *      `write({ path: "conflict://<id>", content })` to splice the
- *      recorded region with the chosen content.
- *
- * Marker shape is strict: only column-0 markers of the exact prefix length
- * followed by either EOL or a single space + label count. Lines that
- * merely start with `<` or `=` never match.
+ * Detect and resolve unresolved git merge conflicts surfaced in `read` output.
+ * Assigns stable conflict IDs and enables resolution via `conflict://<id>`.
  */
 
 // Owners, not the `@veyyon/utils` barrel: 1 module against 74.
@@ -46,14 +31,7 @@ export interface ConflictBlock {
 }
 
 /**
- * Scan an already-collected array of file lines for completed conflict
- * blocks. `firstLineNumber` is the 1-indexed line number of `lines[0]`
- * (so a windowed read starting at line 200 passes `firstLineNumber: 200`).
- *
- * Only fully-closed blocks (opener + separator + closer all present in
- * the window) are returned. A block whose closer is past the window's
- * tail is dropped — the agent will see the open marker and can widen
- * the read.
+ * Scan an array of file lines for complete conflict blocks within the window.
  */
 export function scanConflictLines(lines: readonly string[], firstLineNumber: number): ConflictBlock[] {
 	const blocks: ConflictBlock[] = [];
@@ -142,12 +120,7 @@ export function scanConflictLines(lines: readonly string[], firstLineNumber: num
 const SCAN_FILE_DEFAULT_MAX_BYTES = 10 * 1024 * 1024;
 
 /**
- * Scan a whole file for unresolved conflict blocks.
- *
- * Reads at most `maxBytes` (default 10 MB) so this stays cheap on
- * pathological files. Files truncated by the cap report
- * `scanTruncated: true`; only complete blocks within the scanned prefix
- * are returned, so trailing partial markers never invent fake blocks.
+ * Scan a file on disk for unresolved conflict blocks up to `maxBytes`.
  */
 export async function scanFileForConflicts(
 	absolutePath: string,
@@ -194,11 +167,7 @@ export class ConflictHistory {
 	#entries = new Map<number, ConflictEntry>();
 
 	/**
-	 * Register a conflict block. Returns the (possibly pre-existing) entry
-	 * — if the same `absolutePath`+`startLine` was registered before, the
-	 * earlier id is reused so a re-read does not inflate the counter or
-	 * orphan the prior id. The recorded region is overwritten on re-read
-	 * so the splice always reflects the current marker positions on disk.
+	 * Register a conflict block, reusing prior ID on identical path and start line.
 	 */
 	register(input: Omit<ConflictEntry, "id">): ConflictEntry {
 		for (const existing of this.#entries.values()) {
@@ -270,15 +239,7 @@ const CONFLICT_URI_RE = /^(?:(.+):)?conflict:\/\/(.+)$/;
 
 /**
  * Parse a `conflict://<N>`, `conflict://<N>/<scope>`, or `conflict://*` URI.
- *
- * Returns `null` for non-conflict paths; throws `ToolError` for a
- * well-formed scheme with an invalid id or scope so the agent gets a
- * clear actionable message rather than a confusing "not found" later.
- *
- * `*` is the bulk-write wildcard — only valid as `conflict://*` (no
- * scope segment). Use it with `write({ path: "conflict://*", content })`
- * to apply `content` (with optional `@ours` / `@theirs` / `@base` /
- * `@both` shorthand) to every currently-registered conflict in one shot.
+ * @throws ToolError on malformed IDs or unrecognized scopes
  */
 export function parseConflictUri(raw: string): ParsedConflictUri | null {
 	const match = raw.match(CONFLICT_URI_RE);
@@ -331,22 +292,8 @@ export interface ConflictSplice {
 }
 
 /**
- * Splice the conflict region recorded in `entry` out of `originalText`
- * and replace it with `replacement` (markers and all sides included).
- *
- * Works like the edit tool's patch infra: locates the recorded marker
- * block by content (anchored to `entry.startLine` as the preferred
- * match), so out-of-band edits earlier in the file that shift line
- * numbers don't break resolution. Throws clearly when the marker block
- * has actually been altered or removed.
- *
- * Boundary-echo repair (same philosophy as the edit tool's hashline
- * keeper repair): models frequently paste the "whole resolved function"
- * including the lines that live directly before/after the marker block,
- * which the verbatim splice would duplicate. Replacement lines that
- * exactly echo the adjacent context are dropped when the echo is
- * unambiguous — two or more consecutive lines, or a single line whose
- * removal fixes a delimiter-balance mismatch against the recorded sides.
+ * Splice a recorded conflict region out of `originalText` and insert `replacement`.
+ * Performs boundary-echo repair to drop duplicate context lines.
  */
 export function spliceConflict(originalText: string, entry: ConflictEntry, replacement: string): ConflictSplice {
 	const lines = originalText.split("\n");
@@ -394,13 +341,7 @@ function delimiterBalance(lines: readonly string[]): number {
 }
 
 /**
- * Drop replacement lines that exactly echo the file lines adjacent to the
- * located region. A multi-line echo is trimmed unconditionally (a correct
- * resolution ending with the exact lines that already follow the region
- * would mean intentionally duplicated code — vanishingly unlikely, and the
- * untrimmed splice produces exactly that duplication). A single-line echo
- * is trimmed only when the recorded sides agree on the region's delimiter
- * balance and dropping the echo is what restores it.
+ * Drop replacement lines that duplicate context directly adjacent to the conflict region.
  */
 function trimBoundaryEcho(
 	replacement: string[],
@@ -462,13 +403,7 @@ function buildRecordedRegion(entry: ConflictBlock): string[] {
 	return out;
 }
 
-/**
- * True when two registered blocks record the same marker-block content
- * (labels and all sides). Out-of-band edits can shift a block's line
- * numbers between reads, registering a fresh id while the stale one
- * persists; callers use content identity to treat a locate-miss for the
- * stale twin as "already resolved" instead of a hard failure.
- */
+/** Check whether two registered conflict blocks have identical marker content. */
 export function conflictRegionsEqual(a: ConflictBlock, b: ConflictBlock): boolean {
 	const ra = buildRecordedRegion(a);
 	const rb = buildRecordedRegion(b);
@@ -479,13 +414,7 @@ export function conflictRegionsEqual(a: ConflictBlock, b: ConflictBlock): boolea
 	return true;
 }
 
-/**
- * True when the entry's recorded marker block still occurs in `content`
- * (LF-normalized — recorded sections are stored LF). Distinguishes a stale
- * re-registration of a just-resolved region (no longer present) from a
- * DISTINCT conflict block that happens to be byte-identical (still present
- * elsewhere in the file and must stay addressable).
- */
+/** Check whether an entry's recorded marker block is still present in content. */
 export function conflictRegionPresent(content: string, entry: ConflictBlock): boolean {
 	const region = buildRecordedRegion(entry).join("\n");
 	const normalized = content.includes("\r") ? content.replace(/\r\n/g, "\n") : content;
@@ -542,16 +471,7 @@ function normalizeTrailingNewline(replacement: string): string {
 }
 
 /**
- * Expand `@ours` / `@theirs` / `@base` / `@both` line tokens against the
- * recorded sections of `entry`. A token only triggers when it is the
- * entire content of a line (after CRLF normalisation), so `@ours` inside
- * actual code is left alone. Other lines pass through verbatim.
- *
- * - `@ours`    → expands to the recorded `oursLines` (in order).
- * - `@theirs`  → expands to the recorded `theirsLines` (in order).
- * - `@base`    → expands to `baseLines`; throws if no base section was
- *               recorded (i.e. the conflict was 2-way, not diff3).
- * - `@both`    → expands to `oursLines` then `theirsLines`.
+ * Expand `@ours`, `@theirs`, `@base`, and `@both` shorthand tokens against conflict sides.
  */
 export function expandContentTokens(content: string, entry: ConflictEntry): string {
 	const inputLines = content.split("\n");
@@ -590,18 +510,7 @@ function markerLine(prefix: string, label: string | undefined): string {
 }
 
 /**
- * Materialise a conflict block for `conflict://<N>` reads (and their
- * `/ours` / `/theirs` / `/base` scopes).
- *
- * Returns:
- * - `lines`: the lines to render, ordered top-to-bottom.
- * - `startLine`: the 1-indexed file line number `lines[0]` corresponds
- *   to, so the read formatter can label hashline anchors with the
- *   original file positions.
- *
- * Bare (no scope) returns the full block including marker lines. A
- * scoped view returns only that side's body — `base` throws when the
- * recorded conflict is a 2-way merge with no base section.
+ * Materialize a conflict block or scoped side for `conflict://<N>` reads.
  */
 export function renderConflictRegion(
 	entry: ConflictEntry,
@@ -637,26 +546,7 @@ export function renderConflictRegion(
 const PREVIEW_SIDE_LINES = 6;
 
 /**
- * Build a compact diff-style footer describing the conflicts registered
- * during a read. Designed to be appended after the file content.
- *
- * Format:
- *
- *     warn N unresolved conflicts detected
- *     - ours = HEAD
- *     - theirs = feature/x
- *     NOTICE: …
- *
- *     ──── #1  L42-48 ────
- *     <<< ours
- *     …ours body…
- *     === base ≡ ours
- *     >>> theirs
- *     …theirs body…
- *
- * Labels are aggregated once at the top from the first entry that has
- * them; when a section body equals another section's body the redundant
- * body is collapsed to `≡ <other>`.
+ * Options for formatting the compact diff-style footer of registered conflicts.
  */
 export interface FormatConflictWarningOptions {
 	/**

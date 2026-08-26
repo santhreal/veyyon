@@ -1,13 +1,6 @@
 /**
  * Context-reducing surgical compaction ("shake").
- *
- * `shake` drops heavy content out of the live context mechanically: whole
- * tool-call results and large fenced/XML blocks are replaced with short
- * placeholders. This module is the pure layer — region detection and in-place
- * mutation only. Artifact offload, persistence, and provider-session teardown
- * are orchestrated by the caller (`AgentSession.shake`).
- *
- * Layering mirrors `pruning.ts`: no I/O here.
+ * Pure layer for region detection and in-place replacement of heavy content.
  */
 
 import type { TextContent, ToolResultMessage } from "@veyyon/ai";
@@ -33,11 +26,7 @@ export interface ShakeConfig {
 	/** Minimum token size for a fenced/XML block to be eligible. */
 	fenceMinTokens: number;
 	/**
-	 * Compaction boundary (`firstKeptEntryId` of the latest compaction). Entries
-	 * before it are summarized away and never sent, so they are skipped — shaking
-	 * them only churns persisted history. Undefined = no compaction (whole branch
-	 * is sent). Note: shake still elides the warm cached prefix at/after the
-	 * boundary — that is its job as a compaction-class reducer.
+	 * Compaction boundary (`firstKeptEntryId`). Entries before it are already summarized and skipped.
 	 */
 	keepBoundaryId?: string;
 }
@@ -115,12 +104,7 @@ function entryTokens(entry: SessionEntry): number {
 
 /**
  * Locate fenced code blocks and top-level XML element spans inside `text`.
- * Returns character ranges `[start, end)` covering the full block (including the
- * opening and closing fence/tag lines, excluding the trailing newline).
- *
- * Conservative: unterminated fences/tags yield no range, and XML detection is
- * suppressed inside fences. Mirrors the toggling logic in
- * `@veyyon/utils` `format()` so behavior stays aligned with prompt rendering.
+ * Returns character ranges `[start, end)` covering the full block.
  */
 function scanTextForBlockRanges(text: string): Array<{ start: number; end: number }> {
 	const ranges: Array<{ start: number; end: number }> = [];
@@ -264,18 +248,8 @@ function scanContentBlocks(
 }
 
 /**
- * Pure detection: locate every eligible shake region on a branch.
- *
- * Walks the protect-recent window (most recent `protectTokens` of context is
- * kept intact), collects whole tool-result messages (honoring `protectedTools`
- * and skipping already-pruned results) and large fenced/XML blocks inside
- * user/developer/assistant/custom messages. Tool results flagged contextually
- * useless by their tool bypass the protect window — there is nothing recent
- * worth keeping in them. Returns regions in document order.
- *
- * `toolCall` blocks are never touched (tool-call/result pairing is preserved)
- * and regions never span a message boundary. When the combined estimated
- * savings is below `minSavings`, returns `[]` (no-op).
+ * Locate eligible shake regions (large tool results and code/XML blocks) on a branch,
+ * keeping the recent `protectTokens` window intact. Returns `[]` if below `minSavings`.
  */
 export function collectShakeRegions(entries: SessionEntry[], config: ShakeConfig): ShakeRegion[] {
 	const n = entries.length;
@@ -333,11 +307,7 @@ export function collectShakeRegions(entries: SessionEntry[], config: ShakeConfig
 }
 
 /**
- * Stable signature of a tool-result for redundancy matching: tool name, the
- * paired call's arguments (key-sorted so argument order never splits a match),
- * and the verbatim output text. Two results with the same signature carry the
- * same information — re-reading an unchanged file or re-running the same command
- * produces byte-identical output, and only the newest copy needs to stay live.
+ * Stable signature of a tool-result for redundancy matching: (tool, sorted args, output text).
  */
 function redundancySignature(toolName: string, call: AgentToolCall | undefined, outputText: string): string {
 	const args = call?.arguments;
@@ -346,24 +316,8 @@ function redundancySignature(toolName: string, call: AgentToolCall | undefined, 
 }
 
 /**
- * Locate earlier tool-result messages whose (tool, arguments, output) is
- * byte-identical to a LATER tool-result on the same branch.
- *
- * Re-reading an unchanged file or re-running the same command leaves several
- * identical results in context; every copy but the newest is pure redundancy.
- * This returns the earlier copies as tool-result regions (the newest copy of
- * each signature is always kept), in document order. The caller offloads their
- * text through the same artifact path as {@link collectShakeRegions}, so the
- * bytes stay recoverable even if the surviving copy is later elided too.
- *
- * Unlike {@link collectShakeRegions} this ignores the protect-recent window and
- * the savings gate: a duplicate carries no unique recent information, so it is
- * eligible however recent it is, and dedup is meant to run proactively rather
- * than only under context pressure. Protected tools, error results, empty
- * results, and already-pruned results are never deduped — an identical error may
- * still be worth re-reading in place, and protection/prune state is
- * authoritative. `keepBoundaryId` still applies: entries summarized away by a
- * prior compaction are never sent, so shaking them only churns history.
+ * Locate earlier tool-result messages byte-identical to a later tool-result on the same branch.
+ * Keeps only the newest copy of each signature.
  */
 export function collectRedundantToolResultRegions(entries: SessionEntry[], config: ShakeConfig): ShakeRegion[] {
 	const n = entries.length;
@@ -461,13 +415,7 @@ function getBlockTextSlot(entry: SessionMessageEntry | CustomMessageEntry, block
 }
 
 /**
- * Pure mutation: replace a single region's content in place.
- *
- * Tool-result: replaces the message content with the placeholder text and
- * stamps `prunedAt`. Block: splices `replacement` over `[start, end)` of the
- * target text block. When several block regions share one text block they MUST
- * be applied highest-start-first so earlier offsets stay valid — use
- * {@link applyShakeRegions}, which orders them correctly.
+ * Replace a single region's content in place with placeholder text.
  */
 export function applyShakeRegion(region: ShakeRegion, replacement: string): void {
 	if (region.kind === "toolResult") {

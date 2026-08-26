@@ -307,12 +307,8 @@ function getOpenAIResponsesServiceTierCostMultiplier(tier: string | null | undef
 }
 
 /**
- * Adjust resolved cost by the service tier OpenAI actually billed — parity with
- * Codex (`applyCodexServiceTierPricing`), but with the standard (non-Codex)
- * multipliers. The served tier comes from the response echo, falling back to the
- * resolved request tier. Scoped to `provider: "openai"` (the only standard
- * Responses biller) so an echoed `service_tier` from an Azure/OpenRouter/Copilot
- * proxy can never skew those costs.
+ * Adjust resolved cost by the billed service tier for `provider: "openai"`.
+ * Uses standard multipliers with response echo fallback to request tier.
  */
 export function applyOpenAIResponsesServiceTierCost(
 	model: Pick<Model, "provider">,
@@ -510,22 +506,8 @@ export interface ResolveOpenAIOutputTokenInput {
 }
 
 /**
- * Resolve the single output-token wire parameter shared by Chat Completions
- * (`max_tokens`/`max_completion_tokens`) and the Responses family
- * (`max_output_tokens`). Centralizes the provider exceptions that previously
- * lived inline in both `buildParams`:
- *  - `alwaysSendMaxTokens`: Kimi-family endpoints derive TPM limits from the
- *    cap and require one on every call, so default from the model cap (or
- *    {@link OPENAI_MAX_OUTPUT_TOKENS}) when the caller omitted it.
- *  - `routedUpstreamSelfCaps` omission: multi-upstream routers (OpenRouter,
- *    the HF Inference Providers router) fan out to upstreams whose output caps
- *    differ from the catalog value, so a catalog default above the routed
- *    upstream's cap makes OpenRouter skip that upstream or the HF router 400
- *    ("max_tokens exceeds maximum"). Omit catalog defaults (explicit caller
- *    caps still win) so routing and per-upstream caps are honored.
- *  - model/provider clamp: never exceed `model.maxTokens` or the provider clamp
- *    (`OPENAI_MAX_OUTPUT_TOKENS`, raised for GLM-5.2 reasoning by the caller).
- *  - `omitMaxOutputTokens`: proxies (Ollama) with unknown upstream caps drop it.
+ * Resolve the output-token wire parameter for Chat Completions and Responses.
+ * Handles Kimi TPM requirements, multi-upstream router omission, and provider clamps.
  */
 export function resolveOpenAIOutputTokenParam(
 	input: ResolveOpenAIOutputTokenInput,
@@ -557,11 +539,7 @@ export interface OpenAIGatewayRoutingCompat {
 }
 
 /**
- * Apply gateway routing preferences to the request body. OpenRouter routes via
- * the top-level `provider` field; the Vercel AI Gateway routes via
- * `providerOptions.gateway`. Both Chat Completions and Responses call this; the
- * Vercel branch is inert for Responses, whose resolved compat never sets
- * `isVercelGatewayHost`.
+ * Apply gateway routing preferences (`provider` or `providerOptions.gateway`) to request body.
  */
 export function applyOpenAIGatewayRouting(
 	params: OpenAIGatewayRoutingParams,
@@ -610,11 +588,7 @@ export function applyOpenAIExtraBody<P extends object>(
 }
 
 /**
- * Chat Completions streaming request body shaped by the OpenAI-family providers.
- * Extends the vendored SDK params with the compat dialect fields pi-ai emits
- * (binary `thinking`, Qwen `enable_thinking`/`chat_template_kwargs`, nested
- * `reasoning`, gateway `provider`/`providerOptions`, sampling extras). Lives in
- * the shared module beside the request-shaping helpers that mutate it.
+ * Chat Completions streaming request body extending SDK params with compat dialect fields.
  */
 export type OpenAICompletionsParams = Omit<ChatCompletionCreateParamsStreaming, "reasoning_effort" | "service_tier"> & {
 	top_k?: number;
@@ -982,12 +956,8 @@ export function disableChatCompletionsReasoningForDialect(
 }
 
 /**
- * Z.AI/GLM-5.2 reasoning-effort dialect predicate. GLM-5.2 models served on a
- * Z.AI-format host (thinkingFormat "zai") accept `reasoning_effort`, stream tool
- * calls via `tool_stream`, and clamp output to the model cap. Moonshot Kimi and
- * Xiaomi MiMo also resolve to thinkingFormat "zai" with supportsReasoningEffort
- * true but are NOT GLM-5.2, so the model-id check is load-bearing — never swap it
- * for `compat.supportsReasoningEffort`.
+ * Predicate for Z.AI/GLM-5.2 reasoning-effort dialect.
+ * Specifically checks model ID because non-GLM models share the Z.AI format.
  */
 function isZaiReasoningEffortDialect(model: Model<"openai-completions">, compat: ResolvedOpenAICompat): boolean {
 	return compat.thinkingFormat === "zai" && isGlm52ReasoningEffortModelId(model.id);
@@ -1184,27 +1154,8 @@ export function collectCustomCallIds(messages: ResponseInput): Set<string> {
 }
 
 /**
- * Convert orphan `function_call_output` / `custom_tool_call_output` items —
- * those whose `call_id` has no matching preceding `function_call` /
- * `custom_tool_call` in the same input — into assistant text notes.
- *
- * The Responses API rejects unpaired outputs with
- * `400 No tool call found for function call output with call_id …`. Orphans
- * sneak in through two paths today:
- *
- * - A previous turn's `providerPayload` snapshot replaces the input array via
- *   the `dt: false` splice (see {@link convertConversationMessages}), wiping
- *   the matching `function_call` while leaving the matching
- *   `function_call_output` queued in a later `toolResult`.
- * - A locally-rejected tool call (argument-validation failure, hook reject,
- *   aborted turn before the call streamed) produces a tool result without a
- *   `function_call` ever landing in any persisted provider payload.
- *
- * Dropping the result loses information the model needs to recover; sending
- * it as-is 400s the request. Folding it into an assistant `message` preserves
- * the payload (call_id + truncated output) while staying within the Responses
- * input grammar. Matches the behavior of {@link transformRequestBody} in the
- * codex provider — issue #1351 / regression of #472.
+ * Convert orphan tool output items lacking a matching preceding call into assistant text notes
+ * to prevent Responses 400 errors while preserving context for recovery.
  */
 export function repairOrphanResponsesToolOutputs(input: ResponseInput): ResponseInput {
 	const knownCallIds = new Set<string>();
@@ -1263,18 +1214,8 @@ export const ORPHAN_TOOL_CALL_PLACEHOLDER =
 	"[No tool output recorded: the tool call was interrupted before it produced a result.]";
 
 /**
- * Synthesize a placeholder `function_call_output` / `custom_tool_call_output`
- * for every `function_call` / `custom_tool_call` whose `call_id` has no matching
- * output later in the same input. The Responses API rejects an unpaired call
- * with `400 No tool output found for function call …`.
- *
- * Orphan calls surface when the user branches/navigates the session tree to a
- * node that ends on a tool call (the tool-result child is excluded from the
- * reconstructed history) or when a turn is aborted/crashes after the call
- * streamed but before its result persisted. Dropping the call would erase the
- * assistant's action; a placeholder output keeps the call visible so the model
- * can recover (e.g. re-issue the call). Symmetric to
- * {@link repairOrphanResponsesToolOutputs}.
+ * Synthesize placeholder tool outputs for orphan calls lacking following outputs
+ * to avoid Responses 400 errors when session history branches or turns abort.
  */
 export function repairOrphanResponsesToolCalls(input: ResponseInput): ResponseInput {
 	const outputCallIds = new Set<string>();
@@ -1812,15 +1753,7 @@ export function appendResponsesToolResultMessages<TApi extends Api>(
 }
 
 /**
- * Per-block accumulation helpers shared by the two Responses decode loops —
- * {@link processResponsesStream} (generic Responses) and the Codex stream
- * handler in `openai-codex-responses.ts`. Each endpoint keeps its own
- * item-routing, terminal handling, and transport bookkeeping; these own only
- * the leaf mutations on an already-resolved open block, so the
- * append/parse/finalize logic lives in exactly one place. The caller passes the
- * `contentIndex` its router resolved (generic uses `output.content.indexOf`;
- * Codex uses the open item's recorded index) so the emitted stream events match
- * each decoder's existing behavior byte-for-byte.
+ * Per-block accumulation helpers shared by generic Responses and Codex stream decoders.
  */
 type ResponsesToolCallBlock = ToolCall & { [kStreamingPartialJson]: string; [kStreamingLastParseLen]?: number };
 
@@ -1833,13 +1766,7 @@ export function appendReasoningSummaryPart(
 }
 
 /**
- * Response-global accumulator for the sequential-cutoff summary contract.
- *
- * Summary indices are cumulative across ALL reasoning items in a response:
- * each new reasoning item replays the previous item's last completed section
- * (`.done` at index N-1) before streaming its own, and replay-only items may
- * add nothing new. Folding per item would re-emit every replayed section, so
- * the canonical summary and the emitted text span items and live here.
+ * Response-global accumulator for sequential-cutoff reasoning summary across stream items.
  */
 export interface SequentialCutoffSummaryState {
 	/** Latest full text per response-global summary index. */
@@ -1936,14 +1863,7 @@ export function appendReasoningSummaryPartDone(
 }
 
 /**
- * Applies an atomic `response.reasoning_summary_text.done` snapshot.
- *
- * Sequential-cutoff summary indices are response-global: later reasoning items
- * replay earlier sections, resend the accumulated summary as one part, or
- * complete without new sections. The canonical summary is rebuilt in `state`
- * (spanning items) and only its append-only suffix is emitted into the current
- * block. Divergent corrections stay buffered until finalization so delta
- * consumers never receive suffixes based on unseen replacement text.
+ * Apply an atomic reasoning summary done snapshot, emitting only the append-only suffix.
  */
 export function applyReasoningSummaryDone(
 	state: SequentialCutoffSummaryState,
@@ -2016,11 +1936,7 @@ export function finalizeMessageText(item: ResponseOutputMessage, streamedText: s
 }
 
 /**
- * Merge one Responses function-argument event into the live buffer.
- *
- * The wire contract calls the payload a delta, but gateways may replay the
- * complete prefix. Treat a value that extends the current buffer as an
- * authoritative cumulative snapshot; otherwise preserve true delta semantics.
+ * Merge Responses function-argument payload into the live buffer, handling cumulative replays.
  */
 function mergeToolCallArgumentsDelta(current: string, delta: string): { buffer: string; appended: string } {
 	if (!delta.startsWith(current)) {
@@ -2101,12 +2017,8 @@ export interface ProcessResponsesStreamOptions {
 	onFirstToken?: () => void;
 	onOutputItemDone?: (item: ResponseOutputItem) => void;
 	/**
-	 * Called when a terminal `response.completed`, `response.incomplete`, or
-	 * `response.done` event is successfully processed. Only invoked on the
-	 * successful-completion path; thrown failure (`response.failed`) and
-	 * cancellation paths never call this.
-	 * Used by callers to detect premature stream closure (i.e. the stream ended
-	 * without a recognized terminal event).
+	 * Invoked when a terminal response event completes successfully.
+	 * Used to detect premature stream closure.
 	 */
 	onCompleted?: () => void;
 	/**
@@ -2658,12 +2570,7 @@ export function mapOpenAIResponsesStopReason(status: ResponseStatus | undefined)
 }
 
 /**
- * Finalize any streamed toolCall block whose `output_item.done` never arrived
- * (lossy proxy, or a terminal event that raced the per-item done): parse the
- * accumulated `partialJson` into authoritative arguments and strip the transient
- * streaming fields so they never persist. Shared by the chat-Responses decoder
- * and the Codex decoder. Closed blocks already cleared these fields, so walking
- * the full content list leaves them untouched.
+ * Finalize unclosed streamed toolCall blocks by parsing partialJson and stripping transient fields.
  */
 export function finalizePendingResponsesToolCalls(output: AssistantMessage): void {
 	for (const block of output.content) {
@@ -2684,11 +2591,7 @@ export function finalizePendingResponsesToolCalls(output: AssistantMessage): voi
 }
 
 /**
- * Apply the Responses terminal stop-reason invariants shared by the chat-Responses
- * and Codex decoders: a turn that produced tool calls becomes `toolUse`, and a
- * Codex-lineage `end_turn: false` marker pauses the turn so the agent loop
- * re-samples instead of ending. Callers set `output.stopReason` from the wire
- * status first via {@link mapOpenAIResponsesStopReason}.
+ * Apply terminal stop-reason invariants: map tool calls to `toolUse` and handle `end_turn: false`.
  */
 export function promoteResponsesToolUseStopReason(output: AssistantMessage, endTurn: boolean | undefined): void {
 	if (output.content.some(block => block.type === "toolCall") && output.stopReason === "stop") {
@@ -2947,13 +2850,8 @@ const TOP_LEVEL_EXCLUDE_MAP = {
 };
 
 /**
- * Strict-prefix delta for stateful `previous_response_id` chaining (used by the
- * platform Responses provider and the Codex provider on both transports):
- * returns the input items the current request appends beyond the previous
- * request's input plus the previous response's output items, or null when the
- * request options differ or history mutated (the chain must break). Per-turn
- * `client_metadata` (e.g. rotating turn ids) is excluded from the option
- * comparison; codex-rs excludes it from the same check.
+ * Strict-prefix delta calculation for `previous_response_id` chaining.
+ * Returns appended input items or null if options or history diverge.
  */
 export function buildResponsesDeltaInput<TItem extends ResponseInputItem | InputItem>(
 	previous: { input?: TItem[] } | undefined,
@@ -2984,12 +2882,7 @@ export function buildResponsesDeltaInput<TItem extends ResponseInputItem | Input
 }
 
 /**
- * The OpenAI-compatible error envelope, shared by the OpenAI Responses and
- * Chat Completions server modules — both emit byte-identical `{ error: {
- * message, type } }` bodies, so the shape lives here once to keep the two
- * `formatError` implementations from drifting. Anthropic and pi-native use
- * their own envelopes (top-level `type: "error"`, no-store cache header) and
- * deliberately do NOT share this.
+ * OpenAI-compatible error envelope shared by Responses and Chat Completions modules.
  */
 export function formatOpenAiError(status: number, type: string, message: string): Response {
 	return new Response(JSON.stringify({ error: { message, type } }), {

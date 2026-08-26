@@ -78,27 +78,7 @@ export interface AlwaysApplyRule {
 }
 
 /**
- * Compile-time proof that every option key the registry declares is a REAL
- * `BuildSystemPromptOptions` field carrying string text.
- *
- * The registry cannot import this interface (that would be a cycle), so it
- * declares keys as strings. This check is what stops that from being a typo
- * channel: renaming or removing an option fails the build here instead of leaving
- * a section reading an undefined field forever.
- *
- * IT DID NOT DO THAT. The previous version mapped the registry's keys through
- * `section.input.key as StringOptionKeys` and annotated the result. A cast
- * asserts a type rather than checking one, so it accepted anything: pointing the
- * shorthand section at a key that existed nowhere compiled clean, and the section
- * would have rendered nothing for good. The comment above it claimed the
- * opposite, which is the part that made it worse than no check — a reader had a
- * stated reason not to look.
- *
- * The version below has no cast. `OptionBackedSectionKey` is a union of literals
- * (the registry keeps them now), so a key that is not a string-valued field of
- * this interface survives the `Exclude` and the initializer stops being
- * assignable. The failure names the offending key inside the expected type rather
- * than pointing at an index expression somewhere else.
+ * Compile-time check ensuring registry option keys map to string-valued `BuildSystemPromptOptions` fields.
  */
 type StringOptionKeys = {
 	[K in keyof BuildSystemPromptOptions]-?: string extends BuildSystemPromptOptions[K] ? K : never;
@@ -159,12 +139,7 @@ export function dedupeAlwaysApplyRules(
 }
 
 /**
- * How long prompt preparation may spend on its slow lookups before falling back.
- *
- * The prompt's budget, and the only place it is stated. The GPU probe is given it as
- * an argument rather than reading it across a module boundary, so the probe's own
- * margin (it must survive its deadline long enough to write the null cache) stays
- * with the probe.
+ * Budget for prompt preparation slow lookups (e.g. GPU probe) before fallback.
  */
 const SYSTEM_PROMPT_PREP_TIMEOUT_MS = 5000;
 
@@ -185,33 +160,8 @@ export function discoverTitleSystemPromptFile(cwd?: string): string | undefined 
 const PROMPT_FILE_EXTENSIONS = ["md", "markdown", "txt", "text", "prompt"] as const;
 
 /**
- * Resolve a prompt option that may be a file path or the prompt text itself.
- *
- * THE BUG THIS FIXES. Any read failure used to return the input unchanged, with
- * `ENOENT` explicitly excluded from the warning, so a missing file said nothing at
- * all. `--system-prompt ./promtps/main.md` with a typo in the directory therefore
- * gave the model a system prompt whose entire content was the string
- * `./promtps/main.md`. That is not a degraded prompt, it is no prompt: every rule,
- * tool policy and workflow the agent depends on is gone, the session behaves nothing
- * like it should, and the only clue is that the run went strangely. The same held for
- * `--append-system-prompt` and `TITLE_SYSTEM.md`.
- *
- * HOW A FAILURE IS JUDGED. The read is still attempted first, because that is the
- * only test that costs nothing when it succeeds and it keeps working for a path
- * containing spaces. What changed is the answer when it fails:
- *
- *   - No whitespace anywhere AND it looks like a path (a separator, or a prompt-file
- *     extension): a path was unmistakably meant, so the failure is raised with the
- *     option, the path and the underlying error. Nothing about `./promtps/main.md`
- *     is a prompt.
- *   - Anything else is prose and is used as prose. A one-line instruction can easily
- *     contain a slash ("write in the style of Strunk/White") or end in a word with a
- *     dot, and refusing those would break a supported way to pass a prompt.
- *
- * Multi-line input is text by definition, since no path contains a newline.
- *
- * `looksLikeFilePath` is shared rather than spelled out here — Anthropic's
- * certificate options ask the same question — with the extension list per domain.
+ * Resolve a prompt option that may be a file path or literal prompt text.
+ * Throws when a path-like string cannot be read, rather than treating it as literal prose.
  */
 export async function resolvePromptInput(input: string | undefined, description: string): Promise<string | undefined> {
 	if (!input) return undefined;
@@ -236,12 +186,6 @@ export interface LoadContextFilesOptions {
 	cwd?: string;
 	/**
 	 * Agent directory whose profile scope is loaded. Default: getAgentDir().
-	 *
-	 * It reaches the providers through `LoadOptions.agentDir` and lands on every
-	 * `LoadContext`, so the profile scope is a function of this value rather than of
-	 * whichever profile the process booted with. A caller running on behalf of an
-	 * agent rooted in a different agent dir used to have no way to say so and
-	 * silently got the active profile's files instead of its own.
 	 */
 	agentDir?: string;
 }
@@ -255,44 +199,12 @@ type ScopedContextFile = {
 };
 
 /**
- * Authority rank of a context-file scope, ascending.
- *
- * ONE table owns both the render order and the dedupe survivor, so the two can
- * no longer disagree. The sort below emits least authoritative first, which puts
- * the strongest file in the last and highest-recency slot; the dedupe keeps the
- * highest-ranked copy of duplicated text.
- *
- * `project` is lowest because a project file is content checked into a repository
- * the operator may not have written. `global` is highest because it is the
- * operator's own cross-profile configuration. `user` is the active profile's own
- * file and sits between them. The model-facing statement of the same ladder lives
- * in `prompts/session/context-file-authority.md`; keep the two in agreement.
+ * Authority rank of context-file scopes (project: 0 < user: 1 < global: 2).
  */
 const CONTEXT_SCOPE_AUTHORITY: Record<ContextFile["level"], number> = { project: 0, user: 1, global: 2 };
 
 /**
- * Drop a context file whose entire normalized paragraph sequence is already
- * contained in a copy that OUTRANKS it.
- *
- * Outranking is AUTHORITY first and position second, and that order is the whole
- * point. The survivor's `<file path=...>` label is what tells the model which
- * rules it is reading, so choosing by position alone re-attributes the operator's
- * global rules to whichever project file happens to quote them: identical bytes,
- * wrong provenance, and a repository's file wearing the authority of the user's
- * own configuration. Inverting the render order silently flipped exactly that,
- * which is why the rank is read from `CONTEXT_SCOPE_AUTHORITY` rather than from
- * where a file landed in the array.
- *
- * Position still breaks ties WITHIN one scope, where it is the real ordering: the
- * project file closest to cwd is the most specific project rule and keeps the
- * copy. Only bytes are dropped, never rewritten, so a longer project file that
- * quotes a shorter global one keeps both: the global copy survives on rank, and
- * the project file is left exactly as its author wrote it.
- *
- * A caller that supplies its own `contextFiles` array has no scope information to
- * give and gets the position-only tie-break for every pair, which is the same
- * contract the rest of that path follows: an explicit array is rendered as handed
- * over.
+ * Drop context files whose content is completely contained in a higher-authority file.
  */
 function dedupeContainedContextFiles<T extends { content: string }>(
 	contextFiles: T[],
@@ -312,43 +224,8 @@ function dedupeContainedContextFiles<T extends { content: string }>(
 }
 
 /**
- * Load the context files for a session, all three scopes, and report what could
- * not be read.
- *
- * SCOPES. Resolution order is global, then profile, then project: profile is
- * resolved after global because it refines it, and project is the cwd walk.
- *
- *   - global  - the cross-profile `<config root>/AGENTS.md`.
- *   - profile - the agent dir's own instruction file, first hit on the ladder
- *               `<agentDir>/AGENTS.md`, `<profileDir>/AGENTS.md`,
- *               `<agentDir>/agent.md`, `<profileDir>/agent.md`. `options.agentDir`
- *               picks WHICH agent dir, so an agent that is not the active profile
- *               gets its own file and exactly one profile file is ever returned.
- *   - project - the repo-root-to-cwd walk, one file per directory. Which file a
- *               directory contributes is owned by `PROJECT_RULE_FILE_NAMES` in
- *               `discovery/builtin.ts`; it is not restated here.
- *
- * AUTHORITY is a different axis and the returned array is sorted by it, LEAST
- * authoritative first so the strongest file holds the last and highest-recency
- * slot: project (descending depth, so the repo root comes first and the file
- * closest to cwd comes last) → profile → GLOBAL LAST. The operator's own
- * cross-profile configuration therefore wins, and a repository that happens to be
- * checked out cannot outrank it. The ranks live in `CONTEXT_SCOPE_AUTHORITY`, which
- * the dedupe reads too. See `ContextFile.level` in capability/context-file.ts.
- *
- * ONE OWNER. All three scopes come from the capability providers, and the native
- * provider resolves global and profile from `LoadContext.agentDir` (fed by
- * `options.agentDir` below), so this function orders and dedupes what it is given
- * and reads no file itself. It used to re-resolve global and profile here and key
- * them by absolute path against the provider results, because the provider read the
- * process-global profile and had to be corrected. That is fixed at the source
- * (discovery/builtin.ts), and the pass was proved to change nothing on 16 fixtures
- * except one case where it was actively wrong: with `native` in `disabledProviders`
- * it re-added veyyon's two scopes anyway, overriding the operator's own setting.
- *
- * A file whose content is nothing but its managed guidance header contributes
- * nothing, by design (that is the seeded, unedited state). It never suppresses
- * another scope. The provider strips that header.
+ * Load and deduplicate context files across project, profile, and global scopes.
+ * Returned array is sorted least-authoritative first (project -> profile -> global).
  */
 export async function loadProjectContextFilesWithWarnings(
 	options: LoadContextFilesOptions = {},
@@ -424,13 +301,7 @@ export async function loadProjectContextFilesWithWarnings(
 }
 
 /**
- * {@link loadProjectContextFilesWithWarnings} for callers that only want the
- * files: the same three scopes resolved the same way and ranked by the same
- * authority ladder, with every warning logged instead of returned.
- *
- * Logging rather than dropping is the point. A context file that exists and
- * cannot be read used to disappear into an empty list, and an empty list renders
- * as nothing at all, so the operator saw a prompt with no rules and no reason.
+ * Load project context files, logging any read warnings to the logger.
  */
 export async function loadProjectContextFiles(options: LoadContextFilesOptions = {}): Promise<ContextFileEntry[]> {
 	const { files, warnings } = await loadProjectContextFilesWithWarnings(options);
@@ -480,17 +351,7 @@ export function buildSystemPromptToolMetadata(
 }
 
 /**
- * Everything `buildSystemPrompt` takes.
- *
- * The SETTINGS-FED gates are not listed here: they are `Partial<GateInputs>`, declared once in
- * `system-prompt-builder/gate-inputs.ts` alongside the resolver that fills them from settings and the
- * table that says what an omitted one is worth. They used to be declared in both places, with two doc
- * comments and two statements of each default; a session and the `veyyon prompt` inspector then read
- * one and the builder read the other.
- *
- * `Partial` because every gate is optional to a caller: omitting one means "no configuration to
- * offer", which {@link OMITTED_GATE_DEFAULTS} answers, and that is deliberately not the same as what a
- * default session resolves. `test/core/prompt-gate-inputs.test.ts` measures the difference.
+ * Options for `buildSystemPrompt`, including gate inputs and custom prompt settings.
  */
 export interface BuildSystemPromptOptions extends Partial<GateInputs> {
 	/** Custom system prompt (replaces default). */
@@ -512,21 +373,7 @@ export interface BuildSystemPromptOptions extends Partial<GateInputs> {
 	/** Agent configuration directory. Default: getAgentDir() */
 	agentDir?: string;
 	/**
-	 * Context files this caller has ALREADY resolved. Presence, not length, is the switch:
-	 *
-	 * - `undefined` means "not resolved": this function runs the discovery walk itself.
-	 * - `[]` means "resolved, and there are genuinely none": discovery is TURNED OFF and the
-	 *   prompt ships with zero context files. That is a real caller intent (the legacy resource
-	 *   loader's `noContextFiles: true` opt-out passes exactly this), which is why an empty array
-	 *   is not quietly re-interpreted as "go look".
-	 *
-	 * So `contextFiles: someArray` at a call site is never harmless data passing. Handing this a
-	 * list that a filter reduced to `[]` disables every scope the operator wrote, which is how
-	 * three spawn sites silently stripped every `AGENTS.md` from every subagent. A caller that
-	 * cannot resolve its own list passes `undefined`, never `[]`; see
-	 * `task/context-inheritance.ts`, which returns `undefined` for exactly this reason. Taking the
-	 * empty branch is logged, so an accidental `[]` is visible in the operator's log instead of
-	 * showing up as a model that stopped following the rules.
+	 * Pre-resolved context files. An empty array disables discovery; undefined triggers discovery.
 	 */
 	contextFiles?: Array<{ path: string; content: string; depth?: number }>;
 	/** Skills provided directly to system prompt construction. */
@@ -542,38 +389,15 @@ export interface BuildSystemPromptOptions extends Partial<GateInputs> {
 	/** Whether secret obfuscation is active. When true, explains the redaction format in the prompt. */
 	secretsEnabled?: boolean;
 	/**
-	 * The rendered AVAILABLE SECRETS body: the credential placeholders this session
-	 * can actually spend, one per name, values never included.
-	 *
-	 * `secretsEnabled` above says only that redaction is running, which is why it was
-	 * not enough on its own: the vault outlives a session, so a fresh one had a live
-	 * `#GITHUB_TOKEN#` it was never told about and could not use. The caller reads the
-	 * names off the live obfuscator AT BUILD TIME (`namedSecretNames()`, which expires
-	 * stale entries while answering) and renders them through
-	 * `system-prompt-builder/secret-inventory.ts`, so a revoked or lapsed name is gone
-	 * from the next build with no extra plumbing.
-	 *
-	 * Undefined when protection is off or the vault is empty; the section is optional,
-	 * so undefined emits no banner at all rather than an empty heading.
+	 * Rendered available secrets inventory block with credential placeholders.
 	 */
 	secretInventory?: string;
 	/**
-	 * The fixed argot notation block (the SDK's `renderPreamble({ tools: true })`),
-	 * injected when the encode gate lets this model write shorthand: the active
-	 * model is on the allowlist and the context is under the cutoff, resolved by
-	 * the caller via the argot SDK's `shouldEncode`. It teaches the notation and
-	 * tells the model to load its project itself through the argot_load tool.
-	 * It gates only teaching; decoding (expansion) is unconditional and handled
-	 * at the seams.
+	 * Argot notation preamble block injected when shorthand encoding is active.
 	 */
 	argotPreamble?: string;
 	/**
-	 * The argot handle table to teach the model: a self-contained block listing
-	 * each `§handle → expansion` for the loaded projects, produced by the SDK's
-	 * `ArgotSession.promptFragment`. Present only when the encode gate is on and
-	 * the model has loaded a project's shorthand; the dictionary lives in a local
-	 * cache outside the repository, so this block is how the model learns the
-	 * handles at all.
+	 * Argot handle table mapping `§handle -> expansion` for loaded projects.
 	 */
 	argotHandles?: string;
 	/** Pre-loaded workspace tree (skips discovery if provided). May be a Promise to allow early kick-off. */
@@ -597,17 +421,7 @@ export interface BuildSystemPromptResult {
 	/** Ordered system prompt blocks. Providers should preserve entries as distinct messages/blocks. */
 	systemPrompt: string[];
 	/**
-	 * The template data these blocks were rendered with.
-	 *
-	 * Returned for `prompt-inspect`, which prices each statement by re-assembling its section one
-	 * statement at a time. Doing that against re-resolved inputs would price a prompt nobody was
-	 * sent, since the resolution is where the settings, the tool set and the model profile all land.
-	 *
-	 * `null` means these blocks did not come from the statement registry: a custom system prompt
-	 * replaced the assembly, or `NULL_PROMPT` suppressed it. Null rather than an empty context on
-	 * purpose. An empty context evaluates every condition as false and reads as a legitimate cost
-	 * breakdown of a minimal prompt, so a consumer would report statement costs for statements this
-	 * prompt does not contain. A consumer has to handle the absence, and cannot mistake it for data.
+	 * Template context used to render prompt blocks, or null if custom/null prompt used.
 	 */
 	statementContext: StatementContext | null;
 	/** Effective per-statement replacements used to assemble the returned blocks. */
@@ -617,24 +431,8 @@ export interface BuildSystemPromptResult {
 }
 
 /**
- * Read the EVAL-ONLY per-section prompt override.
- *
- * WHY AN ENV VAR AND NOT CONFIG: a per-section override is a benchmark
- * instrument, not a product feature. If it lived in the config schema, any
- * `config.yml` — on a developer's machine or in production — could silently
- * swap a section of the system prompt, which is exactly the contamination this
- * must never allow. It is therefore reachable ONLY through
- * `VEYYON_EVAL_SYSTEM_PROMPT_SECTIONS`, an env var the deepswe-bench harness
- * sets around a single arm and nothing else sets. There is no config key, no
- * CLI flag, and no `BuildSystemPromptOptions` field — so a normal run cannot
- * reach this path at all.
- *
- * FAIL-CLOSED + LOUD: when the var is absent or empty the production prompt is
- * used verbatim (returns `{}`). When it IS present the override engages and we
- * `logger.warn` so the operator cannot mistake a benchmark run for a production
- * one; a malformed payload throws (see {@link parseSectionOverridesJson})
- * rather than silently reverting to production, which would invalidate the eval
- * while looking like it succeeded.
+ * Read eval-only section overrides from `VEYYON_EVAL_SYSTEM_PROMPT_SECTIONS`.
+ * Fails closed and logs warnings when active.
  */
 function resolveEvalSectionOverrides(): ReturnType<typeof parseSectionOverridesJson> {
 	const raw = $env.VEYYON_EVAL_SYSTEM_PROMPT_SECTIONS;
@@ -650,18 +448,8 @@ function resolveEvalSectionOverrides(): ReturnType<typeof parseSectionOverridesJ
 }
 
 /**
- * Read the EVAL-ONLY per-STATEMENT override, which is how a single rule is ablated or reworded.
- *
- * Same instrument as {@link resolveEvalSectionOverrides}, one level finer, and deliberately the same
- * shape: env var only, fail closed, warn loudly. A section override answers "is this section pulling
- * its weight", which is too coarse to act on when TOOL POLICY is one section and 34 rules. This
- * answers "is THIS RULE pulling its weight", which is the question an eval can actually attribute a
- * score change to.
- *
- * `VEYYON_EVAL_SYSTEM_PROMPT_STATEMENTS` is a JSON object of statement id to replacement text, or to
- * `null` to remove the rule entirely. There is no config key and no CLI flag, for the reason spelled
- * out above the section reader: a config-reachable prompt override could silently contaminate a
- * production run, and a contaminated eval reports a number that looks valid.
+ * Read eval-only statement overrides from `VEYYON_EVAL_SYSTEM_PROMPT_STATEMENTS`.
+ * Fails closed and logs warnings when active.
  */
 function resolveEvalStatementOverrides(): StatementOverrides {
 	const overrides = parseStatementOverridesJson($env.VEYYON_EVAL_SYSTEM_PROMPT_STATEMENTS);

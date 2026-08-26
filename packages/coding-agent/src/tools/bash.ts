@@ -89,22 +89,7 @@ const DEFAULT_STALL_DETECTION_MS = 30_000;
 
 /**
  * Shape a shell command line for an ACP-conformant `terminal/create` request.
- *
- * ACP's `command` field is documented as the executable and `args` as its
- * argv tail (see https://agentclientprotocol.com/protocol/v1/terminals), so a
- * spec-conformant client `spawn(command, args)`s them directly — no implicit
- * shell. A raw `bash` tool line ("git status && echo x | head") therefore has
- * to be wrapped in an explicit shell invocation, otherwise the client tries
- * to spawn the whole line as argv[0] and fails with `ENOENT` for anything
- * containing a space, pipe, `&&`, redirect, or `$(...)`.
- *
- * The wrap reuses the same shell binary + args the local `bash-executor` would
- * pick via `settings.getShellConfig()` — Git Bash / `bash.exe` on Windows,
- * `$SHELL` (bash/zsh) with the `sh` fallback on POSIX — so the ACP path
- * preserves `bash` tool semantics (`$VAR`, `$(...)`, `source`, POSIX quoting,
- * `-l`) instead of dropping to `cmd.exe` on Windows. The agent host's shell
- * path is used as a proxy for the client's, matching the near-universal
- * ACP deployment shape of an editor spawning veyyon as a co-hosted subprocess.
+ * Reuses the local shell configuration (Git Bash/bash.exe on Windows, $SHELL on POSIX).
  */
 export function wrapShellLineForClientTerminal(
 	line: string,
@@ -117,29 +102,10 @@ export function wrapShellLineForClientTerminal(
 export { FLAGGED_BASH_PATTERNS } from "./bash-guard";
 
 /**
- * How the bash tool classifies one call.
- *
- * A named function rather than an inline class field so it can be exercised
- * without constructing a session. `BashTool.approval` is an instance field, so
- * a test reaching for `BashTool.prototype.approval` silently gets `undefined`
- * and measures the default tier instead of the guard: the suite passes while
- * proving nothing, which is the worst kind of green.
- *
- * The decisions are `critical` rather than `override`, because these are the
- * calls that must still stop in yolo, which is the mode every published
- * home-directory wipe happened in.
+ * Classifies bash calls for approval tiers and critical risks.
  */
 /**
- * The environment a bash call will actually run with: the process environment
- * with the call's own `env` argument spread over it, which is exactly what
- * `buildNonInteractiveEnv` hands the child.
- *
- * Both judgements that read variables (`findCriticalBashRisk` and
- * `bashCredentialTargets`) go through this. Judging against `process.env`
- * alone let a caller hand the guard one value and the shell another, so
- * `bash({command:"rm -rf $LANG", env:{LANG:"/"}})` was approved and deleted the
- * root. Only string values are taken; anything else is not something the child
- * would receive either.
+ * The environment a bash call runs with: process.env merged with call-specific env.
  */
 function bashJudgementEnv(args: unknown): NodeJS.ProcessEnv {
 	const rawEnv = (args as Partial<BashToolInput>).env;
@@ -249,11 +215,7 @@ export interface BashToolDetails {
 	/** Exit code of a command that ran to completion but failed (non-zero). */
 	exitCode?: number;
 	/**
-	 * The signal that killed the command, when it died from one.
-	 *
-	 * Present only for a real signalled death, never for a program that exited
-	 * with `128 + n` itself. Those two produce the same `exitCode`, and the
-	 * difference decides whether a retry can possibly help.
+	 * The signal that killed the command when terminated by a signal.
 	 */
 	signal?: number;
 	terminalId?: string;
@@ -296,14 +258,7 @@ interface ManagedBashJobHandle {
 }
 
 /**
- * The output text for a bash result, with runner and build bookkeeping folded out.
- *
- * The fold lives HERE, in the one function every model-facing bash path reads its text
- * through, rather than at each return. It used to sit on the completed-command path only, so
- * a run that was cancelled, timed out, or came back with no exit status carried its
- * bookkeeping into context in full — and a `go test ./...` that had to be killed at the
- * timeout is exactly the kind of result worth folding. A no-op unless the output holds a real
- * run's worth of bookkeeping, and failures are never folded.
+ * Format output text for a bash result, folding out test/build runner bookkeeping.
  */
 function normalizeResultOutput(result: BashResult | BashInteractiveResult): string {
 	return foldToolOutputBookkeeping(result.output || "").text;
@@ -314,24 +269,7 @@ function isInteractiveResult(result: BashResult | BashInteractiveResult): result
 }
 
 /**
- * Turn an ACP `terminal/output` reply into the size summary the rest of the bash
- * tool reads.
- *
- * TWO THINGS THIS OWNS, both of which were previously written out by hand at
- * each of the bridge's two exits and were wrong in the same way at both.
- *
- * First, byte counts. `text.length` is UTF-16 code units, not bytes, so any
- * non-ASCII output under-reported its own size (a screen of box-drawing
- * characters reported a third of what it actually cost).
- *
- * Second, and this is the one that misleads the agent: the ACP response carries
- * `{output, truncated}` and NO pre-truncation size, so when the client has
- * truncated there is no total to report. Copying the kept length into
- * `totalBytes` made every consumer compute an elision of zero and print
- * "Showing lines 1-N of N" over output that was demonstrably incomplete. The
- * totals are therefore left equal to the kept size deliberately, and
- * `truncationFromSummary` recognises that shape and says the elided amount is
- * unknown rather than deriving a range from it.
+ * Convert ACP `terminal/output` into a size summary with accurate byte counts and truncation flags.
  */
 function summarizeBridgeOutput<T extends { exitCode: number | undefined; cancelled: boolean; timedOut?: boolean }>(
 	output: ClientBridgeTerminalOutput,
@@ -457,12 +395,7 @@ function formatWallTimeSeconds(wallTimeMs: number): string {
 }
 
 /**
- * The wall-time line the tool USED to append to its payload. It is no longer
- * emitted (the footer states wall time once, and the string cost every result
- * tokens), but sessions recorded before that still hold it, so the renderer
- * folds this exact line out of a persisted result instead of printing it beside
- * the footer. Reconstructed from the result's own `wallTimeMs`, so it can only
- * match the line we wrote, never a coincidental line of command output.
+ * Reconstruct legacy wall-time notice string for stripping from persisted results.
  */
 function legacyWallTimeNotice(wallTimeMs: number): string {
 	return `Wall time: ${formatWallTimeSeconds(wallTimeMs)} seconds`;
@@ -510,12 +443,7 @@ function referencesSkillUrl(
 }
 
 /**
- * Strip the trailing occurrence of `notice` (plus a single surrounding newline
- * on each side) so the TUI can echo the value via a styled footer label
- * instead of repeating it verbatim in the output pane. The notice is
- * reconstructed from the same value the result was tagged with, so a literal
- * sub-string match never strips a coincidental in-output token — only the
- * exact line we appended in #buildCompletedResult.
+ * Strip trailing notice text and surrounding newlines so it can render as a footer badge.
  */
 function stripTrailingNotice(text: string, notice: string): string {
 	const idx = text.lastIndexOf(notice);
@@ -545,21 +473,7 @@ function stripBackgroundNotice(text: string, async: BashToolDetails["async"] | u
 }
 
 /**
- * The command text a stream rule should be matched against.
- *
- * A tool without this hook has its rules matched against the RAW streamed argument
- * JSON, which for bash is the wrong text in both directions. `{"command":"grep -rn foo
- * src"}` never satisfies a rule anchored at the start of a command, because the command
- * begins mid-string after `"command":"`; and the `&&` inside a quoted remote command
- * (`ssh box "ls x && grep y"`) reads as a shell operator to a rule that has no idea it is
- * looking at JSON. Both were live: the search nudge fired on remote searches it cannot
- * replace and stayed silent on the plain local search it exists for.
- *
- * Heredoc bodies are dropped because they are DATA the command writes, not commands it
- * runs: a script generated with `cat <<'EOF'` mentions whatever it mentions, and a rule
- * firing on that text is advising the model about a file it is authoring. An unterminated
- * heredoc (the normal state mid-stream) drops everything after the opener for the same
- * reason.
+ * Extract matched command text from tool args for stream rules, stripping heredoc bodies.
  */
 export function bashMatcherDigest(args: unknown): string {
 	const command = (args as Partial<BashToolInput> | undefined)?.command;
@@ -686,18 +600,7 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 	}
 
 	/**
-	 * Bound a bash output body through the SAME artifact-spill path the
-	 * completed-command path uses ({@link enforceInlineByteCap}). A no-op when the
-	 * text already fits the inline budget; otherwise it keeps a head/tail window
-	 * and offloads the full text to a `bash-original` artifact with a recoverable
-	 * `[raw output: artifact://<id>]` footer. Without this, the abort/timeout/
-	 * missing-status error paths returned the full untruncated output (a >50KB
-	 * killed command carried the whole buffer for every later turn), while a
-	 * completed command of the same size was capped.
-	 *
-	 * When the executor sink already spilled (`existingArtifactId`), reuse that
-	 * handle instead of re-saving a possibly middle-elided body as a second
-	 * artifact — the sink's file holds the full pre-truncation stream.
+	 * Enforce inline byte caps on bash output, spilling large buffers to artifacts.
 	 */
 	async #boundBashOutput(text: string, existingArtifactId?: string): Promise<string> {
 		const capped = await enforceInlineByteCap(text, {
@@ -717,15 +620,7 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 	}
 
 	/**
-	 * Throw for outcomes that are *not* a completed command: user/timeout
-	 * aborts and a missing exit status. The foreground and bridge callers plus
-	 * the async job manager rely on these throwing so cancellations surface as
-	 * aborts and jobs are recorded as failed. A definite non-zero exit is a
-	 * completed command that failed; #buildCompletedResult surfaces it as an
-	 * error *result* (carrying execution details) rather than a throw.
-	 *
-	 * Every branch caps the output body first: a killed command can never return
-	 * more than the inline budget, matching the completed path.
+	 * Throw for unfinished outcomes (user abort, timeout, missing exit status).
 	 */
 	async #throwIfUnfinished(
 		result: BashResult | BashInteractiveResult,
@@ -958,15 +853,7 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 	}
 
 	/**
-	 * Foreground-wait on a managed job until one of: it completes/fails, the
-	 * wall-clock threshold elapses (auto-background), the output goes quiet for
-	 * the stall window (stall detection), or the caller aborts.
-	 *
-	 * A `thresholdMs` of `0` disables the wall-clock timer and a `stallMs` of `0`
-	 * disables stall detection. Both may be `0`: with neither lever on, this still
-	 * races completion against the operator's manual key, which is the whole
-	 * reason the key works on a stock install. The `background` result carries the
-	 * reason so the operator notice can name it.
+	 * Foreground-wait on a managed job until completion, threshold timeout, stall, or abort.
 	 */
 	async #waitForManagedBashJob(
 		job: ManagedBashJobHandle,
@@ -1021,11 +908,7 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 	}
 
 	/**
-	 * Resolve to a `stall` background result once the job has produced no new
-	 * output for `stallMs`. Every output chunk pushes `getLastOutputAt()`
-	 * forward, resetting the idle window, so a command that keeps printing never
-	 * stalls. The poll is capped so the loop exits promptly after `signal`
-	 * fires (the race already having a winner).
+	 * Watch for job output stall when no new output is produced for `stallMs`.
 	 */
 	async #watchStall(
 		job: ManagedBashJobHandle,
@@ -1046,11 +929,7 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 	}
 
 	/**
-	 * The foreground wait for a `baseMs` timer, capped just under the hard
-	 * timeout: there is no point backgrounding (or flagging a stall) a second
-	 * before the command would time out anyway. `baseMs <= 0` disables the
-	 * timer (returns `0`). Shared by the auto-background and stall timers so the
-	 * clamp lives in ONE place.
+	 * Clamp foreground wait duration below hard timeout to prevent redundant backgrounding.
 	 */
 	#resolveWaitMs(baseMs: number, timeoutMs: number | undefined): number {
 		if (baseMs <= 0) return 0;
@@ -1605,11 +1484,7 @@ export function getBashEnvForDisplay(args: BashRenderArgs): Record<string, strin
 }
 
 /**
- * Returns the bash command formatted for the result body: the dim `$ cd … &&`
- * prefix joined with syntax-highlighted command lines. The prefix is applied
- * only to the first line so multi-line commands display cleanly — terminals
- * reset SGR state at line boundaries, which made the previous single-string
- * `theme.fg("dim", ...)` form render only the first line as dim.
+ * Format bash command lines for display, prefixing with directory change and env assignments.
  */
 export function formatBashCommandLines(args: BashRenderArgs, uiTheme: Theme): string[] {
 	const command = replaceTabs(args.command || "…");

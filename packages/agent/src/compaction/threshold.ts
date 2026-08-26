@@ -1,11 +1,6 @@
 /**
- * The one owner of "when does auto-compaction trigger?" — settings shape, reserve policy, and threshold.
- * Split from `./compaction.ts` (the engine, 395 modules) so callers needing only the trigger don't pay
- * for the engine. `./compaction.ts` re-exports all of it, so no caller changed.
- *
- * One value whose unit is part of the value: `auto` (window minus reserve), `85%` (percent of window),
- * `170000` (absolute). Two legacy keys (`thresholdTokens`, `thresholdPercent`) are folded in here at
- * one read boundary, like {@link withLegacyDefaultEffort} folds retired `defaultThinkingLevel`.
+ * Auto-compaction trigger management: settings shape, reserve policy, and threshold resolution.
+ * Supports `auto`, percent strings, and absolute token amounts.
  */
 import { clamp, clampLow } from "@veyyon/utils/math";
 
@@ -31,11 +26,7 @@ export interface ResolvedCompactionThreshold {
 	 */
 	configured?: number;
 	/**
-	 * True when the configured amount exceeds the current window, so the
-	 * resolver capped it. Strictly greater only: at equality the amount fits
-	 * the window, and the one-token reduction to `window - 1` is the
-	 * resolver's below-window invariant, not lost headroom — a notice that
-	 * claims "larger than" there is wrong.
+	 * True when the configured amount strictly exceeds the current window and was capped.
 	 */
 	clamped: boolean;
 	/**
@@ -52,13 +43,8 @@ export interface ResolvedCompactionThreshold {
 }
 
 /**
- * Parse a threshold value. Accepts `auto`, a percent (`85%`, `85 %`), or an
- * absolute token amount (`170000`, `170_000`).
- *
- * A non-positive number is `auto`: that is the `-1` sentinel the retired keys
- * used, and `0` means "no budget at all", which is never what an operator wants.
- * Anything else unparseable is `auto` WITH `invalidRaw` set, so the caller can
- * say so out loud instead of quietly compacting at a different point.
+ * Parse a threshold value (`auto`, percentage like `85%`, or absolute token count).
+ * Non-positive numbers default to `auto`. Unparseable strings set `invalidRaw`.
  */
 export function parseCompactionThreshold(raw: string | number | undefined | null): CompactionThresholdSpec {
 	if (raw === undefined || raw === null) return { kind: "auto" };
@@ -91,11 +77,7 @@ export interface LegacyThresholdInputs {
 }
 
 /**
- * Resolve which of the three keys supplies the threshold, preserving the exact
- * precedence the retired resolver had (absolute amount, then percent, then auto)
- * so an existing config keeps compacting at the same point after the collapse.
- *
- * Never mutates its input; the retired keys are read here and nowhere else.
+ * Resolve threshold from current or legacy keys (absolute, then percent, then auto).
  */
 export function withLegacyCompactionThreshold(inputs: LegacyThresholdInputs): {
 	spec: CompactionThresholdSpec;
@@ -120,14 +102,7 @@ const MIN_THRESHOLD_PERCENT = 1;
 const MAX_THRESHOLD_PERCENT = 99;
 
 /**
- * Resolve the threshold to tokens for a given window, reporting WHERE the number
- * came from so callers can print it instead of leaving the operator to guess
- * which of three keys won.
- *
- * `autoTokens` is the auto behavior (window minus reserve), passed in rather than
- * computed here because the reserve rules live with the reserve
- * (`resolveBudgetReserveTokens`) — this module owns the choice between units, not
- * the reserve policy.
+ * Resolve the threshold to token count for a window, reporting provenance origin.
  */
 export function resolveCompactionThreshold(
 	contextWindow: number,
@@ -208,17 +183,7 @@ export function formatCompactionThreshold(resolved: ResolvedCompactionThreshold,
 export interface CompactionSettings {
 	enabled: boolean;
 	/**
-	 * How compaction reduces the context: summarize in place, or hand off to a
-	 * new session. There are exactly two.
-	 *
-	 * It used to admit `"context-full"`, `"shake"` and `"off"` as well. The first
-	 * two are engine actions, not user strategies, and were folded into `summary`
-	 * when the settings enum collapsed to these two; `"off"` was a third way to
-	 * spell `enabled: false`, which meant two fields could disagree about whether
-	 * compaction runs. The host normalizes every stored and legacy value before
-	 * constructing this (`normalizeCompactionStrategy`), and a legacy `"off"`
-	 * migrates to `strategy: "handoff"` plus `enabled: false`, so the off-ness is
-	 * carried by the field that owns it.
+	 * Compaction strategy: `"summary"` (in-place summarization) or `"handoff"` (new session).
 	 */
 	strategy?: "handoff" | "summary";
 	/**
@@ -232,12 +197,7 @@ export interface CompactionSettings {
 	thresholdTokens?: number;
 	midTurnEnabled?: boolean;
 	/**
-	 * Tokens reserved below the context window for the next prompt + response.
-	 *
-	 * Leave unset to use {@link DEFAULT_RESERVE_TOKENS}; the unset state is the
-	 * provenance signal that lets small-window recovery replace the default with
-	 * a proportional reserve (see {@link resolveBudgetReserveTokens}). An
-	 * explicit value — even one equal to the default — is always honored.
+	 * Tokens reserved below the context window. Unset uses {@link DEFAULT_RESERVE_TOKENS}.
 	 */
 	reserveTokens?: number;
 	keepRecentTokens: number;
@@ -277,16 +237,7 @@ export function effectiveReserveTokens(contextWindow: number, settings: Compacti
 }
 
 /**
- * Reserve used when deciding whether a prompt still fits inside the model window.
- *
- * The default absolute reserve predates small bundled windows and can leave no
- * practical budget there; recover a DEFAULTED reserve that is impossible for
- * the window with the 15% proportional reserve (clamped to >= 1 so the derived
- * threshold stays strictly below the window even for tiny test windows).
- * Explicit valid reserves — including one that happens to equal the default —
- * still win, because they intentionally shrink the usable prompt budget;
- * provenance is carried by `settings.reserveTokens` being unset, never by
- * comparing values against the default.
+ * Resolve reserve tokens, substituting a proportional reserve if the default exceeds the window.
  */
 export function resolveBudgetReserveTokens(contextWindow: number, settings: CompactionSettings): number {
 	const reserveTokens = effectiveReserveTokens(contextWindow, settings);
@@ -312,15 +263,7 @@ export function shouldCompact(contextTokens: number, contextWindow: number, sett
 }
 
 /**
- * Resolve the compaction trigger for a window, with its provenance.
- *
- * The choice between units (auto / percent / absolute) and the migration off the
- * two retired keys belong to {@link resolveCompactionThreshold}; what stays here
- * is the RESERVE policy the auto behavior needs. The default absolute reserve can
- * exceed bundled small-context windows, or nearly consume a 16k-class window; in
- * those known-impossible default configurations `resolveBudgetReserveTokens`
- * substitutes the proportional reserve so threshold/recovery-band checks stay
- * usable, while explicit configured reserves still define the usable budget.
+ * Resolve the compaction trigger token threshold with origin provenance for a window.
  */
 export function resolveThresholdWithOrigin(
 	contextWindow: number,

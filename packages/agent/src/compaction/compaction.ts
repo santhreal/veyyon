@@ -171,13 +171,7 @@ function getMessageFromEntry(
 export interface CompactionResult<T = unknown> {
 	summary: string;
 	/**
-	 * Short PR-style summary, display only: it is the session-listing title
-	 * fallback (`title: header.title ?? shortSummary`) and rides the collab and
-	 * share projections. `compact()` no longer produces one, because a second
-	 * model request for display text doubles compaction input cost and veyyon
-	 * titles sessions from its own tiny-model titler instead. Compaction hooks
-	 * and sessions written before that change still supply it, so every reader
-	 * stays.
+	 * Short PR-style display summary for legacy session listing title fallback.
 	 */
 	shortSummary?: string;
 	firstKeptEntryId: string;
@@ -197,11 +191,7 @@ export interface CompactionResult<T = unknown> {
 // ============================================================================
 
 /**
- * Calculate total context tokens from usage.
- * Uses the native totalTokens field when available, falls back to computing from components.
- * Provider-side orchestration tokens are billable but never replay into the
- * conversation prefix, so they are excluded from context sizing to keep
- * auto-compaction and context-promotion thresholds honest.
+ * Calculate total context tokens from usage, excluding provider orchestration tokens.
  */
 export function calculateContextTokens(usage: Usage): number {
 	const orchestration = usage.orchestration;
@@ -249,19 +239,7 @@ export function getLastAssistantUsage(entries: SessionEntry[]): Usage | undefine
 }
 
 /**
- * Context tokens to feed the compaction decision, floored by a local estimate of
- * the stored conversation.
- *
- * The provider-reported usage is normally ground truth, but a
- * `before_provider_request` payload transform — a compression extension (e.g.
- * Headroom) or an obfuscator — can shrink the request below
- * the real stored conversation. The provider then reports deflated prompt
- * tokens, so anchoring compaction purely on that usage lets the real history
- * grow unbounded until it overflows and native compaction can no longer run.
- * Flooring by the agent's own estimate of the stored conversation keeps the
- * compaction trigger honest regardless of on-wire compression. (Display/cost
- * accounting still uses the exact provider usage; only the compaction decision
- * takes the floor.)
+ * Context tokens for compaction decisions, floored by local conversation estimate to prevent overflow under compression.
  */
 export function compactionContextTokens(providerContextTokens: number, storedConversationEstimate: number): number {
 	return Math.max(Math.max(0, providerContextTokens), Math.max(0, storedConversationEstimate));
@@ -282,11 +260,7 @@ function estimateEntriesTokens(entries: SessionEntry[], startIndex: number, endI
 }
 
 /**
- * Find valid cut points: indices of user, assistant, custom, or bashExecution messages.
- * Never cut at tool results (they must follow their tool call).
- * When we cut at an assistant message with tool calls, its tool results follow it
- * and will be kept.
- * BashExecutionMessage is treated like a user message (user-initiated context).
+ * Find valid cut points (indices of user, assistant, custom, or bashExecution messages; never tool results).
  */
 function findValidCutPoints(entries: SessionEntry[], startIndex: number, endIndex: number): number[] {
 	const cutPoints: number[] = [];
@@ -357,20 +331,7 @@ export interface CutPointResult {
 }
 
 /**
- * Find the cut point in session entries that keeps approximately `keepRecentTokens`.
- *
- * Algorithm: Walk backwards from newest, accumulating estimated message sizes.
- * Stop when we've accumulated >= keepRecentTokens. Cut at that point.
- *
- * Can cut at user OR assistant messages (never tool results). When cutting at an
- * assistant message with tool calls, its tool results come after and will be kept.
- *
- * Returns CutPointResult with:
- * - firstKeptEntryIndex: the entry index to start keeping from
- * - turnStartIndex: if cutting mid-turn, the user message that started that turn
- * - isSplitTurn: whether we're cutting in the middle of a turn
- *
- * Only considers entries between `startIndex` and `endIndex` (exclusive).
+ * Find the cut point in session entries that keeps approximately `keepRecentTokens` (cutting at user/assistant messages).
  */
 export function findCutPoint(
 	entries: SessionEntry[],
@@ -515,11 +476,7 @@ function formatAdditionalContext(context: string[] | undefined): string {
 }
 
 /**
- * Maps the non-special `ThinkingLevel` values to their `Effort` counterparts.
- * Exhaustive over the union; throws for `Off`/`Inherit` to surface logic
- * errors in callers that forgot to filter those out. Never use a TS cast for
- * this — `ThinkingLevel` is a string-union over distinct concepts (Off /
- * Inherit are not Efforts), and a cast hides the contract.
+ * Maps non-special `ThinkingLevel` values to their `Effort` counterparts; throws on `Off`/`Inherit`.
  */
 function effortFromThinkingLevel(level: ThinkingLevel): Effort {
 	switch (level) {
@@ -542,19 +499,7 @@ function effortFromThinkingLevel(level: ThinkingLevel): Effort {
 }
 
 /**
- * Resolves the reasoning effort to send on a compaction LLM call.
- *
- * - Explicit `Off` → `undefined` (omit reasoning entirely; the user said no thinking).
- * - `undefined` / `Inherit` → historical `Effort.High` default → clamped per model
- *   (preserves current behavior for users who never touched the dial).
- * - Explicit effort → respect user choice → clamped per model.
- *
- * The clamp routes through `clampThinkingLevelForModel`, which returns
- * `undefined` for reasoning models without a thinking config — the build-time
- * encoding of `compat.supportsReasoningEffort: false` (e.g.
- * `xai-oauth/grok-4.20-0309-reasoning`). That `undefined` then flows through to the
- * openai-responses mapper, which omits the wire param — no
- * `requireSupportedEffort` throw.
+ * Resolves reasoning effort for compaction LLM calls based on thinking level and model compatibility.
  */
 function resolveCompactionEffort(model: Model, level: ThinkingLevel | undefined): Effort | undefined {
 	if (level === ThinkingLevel.Off) return undefined;
@@ -572,13 +517,7 @@ function resolveCompactionEffort(model: Model, level: ThinkingLevel | undefined)
 }
 
 /**
- * Build the error thrown when an LLM summarization call ends with
- * `stopReason === "error"`. Carries the provider's HTTP `errorStatus`
- * onto a top-level `.status` field so callers (notably
- * `AgentSession.#isCompactionAuthFailure`) can branch on 401/403 without
- * regex-scraping `error.message`. The `auth_unavailable` synthetic
- * (pi-native gateway) does not populate `errorStatus`, hence the legacy
- * message-based check is still required upstream — see issue #986.
+ * Build error for failed summarization calls, attaching HTTP `errorStatus` for 401/403 detection (#986).
  */
 function createSummarizationError(prefix: string, response: AssistantMessage, options?: SummaryOptions): Error {
 	const rawDetail = response.errorMessage || "Unknown error";
@@ -613,12 +552,7 @@ export interface SummaryOptions {
 	 */
 	telemetry?: AgentTelemetry;
 	/**
-	 * Active session thinking level. Threaded from `agent-session.ts` so
-	 * compaction honors the user's `/model` thinking selection instead of
-	 * silently overriding it with `Effort.High` (the historical default).
-	 * `undefined` / `ThinkingLevel.Inherit` falls back to that historical
-	 * default; `ThinkingLevel.Off` omits reasoning entirely. See
-	 * `resolveCompactionEffort` for the conversion contract.
+	 * Active session thinking level to honor during compaction.
 	 */
 	thinkingLevel?: ThinkingLevel;
 	/** Session routing key for remote compaction transports with sticky provider sessions. */
@@ -626,11 +560,7 @@ export interface SummaryOptions {
 	/** Prompt-cache key for remote compaction transports that support provider prefix caching. */
 	promptCacheKey?: string;
 	/**
-	 * Service tier for the summarization request, resolved by the host from the
-	 * candidate model's provider family. Compaction sends the largest payload of
-	 * a session, so a host that puts live turns on a cheaper or faster tier and
-	 * omits it here bills (or paces) its biggest request on a tier the operator
-	 * never selected.
+	 * Service tier for the summarization request.
 	 */
 	serviceTier?: ServiceTier;
 	/** Mutable provider state used to keep Codex compaction on the live session identity. */
@@ -640,12 +570,7 @@ export interface SummaryOptions {
 	/** Provider-visible tools for remote compaction transports that replay native tool history. */
 	tools?: Tool[];
 	/**
-	 * The live session's system prompt. Threaded from `agent-session.ts` so the
-	 * summarization request can replay the prefix the provider has already cached
-	 * for this session instead of paying fresh input for a re-serialized copy of
-	 * it. Absent (the default) keeps the historical request shape exactly: a
-	 * standalone `SUMMARIZATION_SYSTEM_PROMPT` request over truncated text. See
-	 * `./cache-aligned-context`.
+	 * Live session system prompt for replaying cached prefixes (see `./cache-aligned-context`).
 	 */
 	sessionSystemPrompt?: string[];
 	/**
@@ -664,12 +589,7 @@ export interface SummaryOptions {
 	 */
 	obfuscateProviderText?: (text: string) => string;
 	/**
-	 * Optional completion transport override for host-level request wrappers
-	 * (e.g. the coding-agent provider-concurrency limiter). When provided,
-	 * every local summarization oneshot (`generateSummary` and
-	 * `generateTurnPrefixSummary`) routes through it
-	 * instead of the default `completeSimple`, so cap policies enforced on
-	 * the live agent turn also bracket compaction HTTP requests.
+	 * Optional completion transport override for host concurrency limiting.
 	 */
 	completeImpl?: <TApi extends Api>(
 		model: Model<TApi>,
@@ -745,18 +665,7 @@ function mergePreviousSummaryWithLegacyArchive(
 const WINDOW_PROPORTIONAL_RESERVE_SHARE = 0.15;
 
 /**
- * Output budget for one summarization request, in tokens.
- *
- * `reserveTokens` is an absolute headroom knob that knows nothing about the
- * model, so on a small window a large share of it is most of the window itself.
- * The candidate admission check in `estimateCompactionRequestTokens` adds this
- * budget to the history it has to send, so an unbounded budget makes the
- * summarization request unsendable on every candidate: the session refuses to
- * compact at all, warns once per turn, and keeps growing past the window. When
- * the reserve is that large for this window, fall back to the proportional
- * reserve the trigger policy already uses (`resolveBudgetReserveTokens`), so a
- * small-window model writes a SHORTER summary instead of no summary. A window
- * the reserve genuinely fits in resolves to the same budget as before.
+ * Output token budget for summarization, falling back to proportional reserve on small windows.
  */
 function summaryOutputBudget(model: Model, reserveTokens: number, share: number): number {
 	const contextWindow = model.contextWindow ?? 0;
@@ -935,12 +844,7 @@ export interface HandoffOptions {
 	initiatorOverride?: MessageAttribution;
 	metadata?: Record<string, unknown>;
 	/**
-	 * File operations to append as a deterministic `<files>` block, exactly as
-	 * the `summary` strategy does. This costs no LLM work and is byte-identical
-	 * across models, so withholding it from handoff only made handoff worse:
-	 * measured on identical input, a handoff carried 9 file paths where the
-	 * summary of the same history carried 15. Omit only when the caller has no
-	 * file operations to report.
+	 * File operations to append as a `<files>` block.
 	 */
 	fileOps?: FileOperations;
 	/**
@@ -985,13 +889,7 @@ export function renderHandoffPrompt(customInstructions?: string): string {
 
 export interface HandoffFromContextOptions {
 	/**
-	 * Stream options mirrored from the live agent turn: `apiKey`, `signal`, the
-	 * `sessionId`/`promptCacheKey` cache-routing pair, `serviceTier`, and the
-	 * session's payload/response hooks. Sending the same routing + payload shape
-	 * the main loop uses is what lets the handoff oneshot READ the provider
-	 * prompt cache the live turn populated instead of cold-missing the whole
-	 * prefix. `reasoning` and `toolChoice` are set internally and override
-	 * anything provided here.
+	 * Stream options mirrored from live agent turn to preserve provider prompt cache hits.
 	 */
 	streamOptions: SimpleStreamOptions;
 	/** Optional completion transport override for host-level request wrappers. */
@@ -1008,16 +906,6 @@ export interface HandoffFromContextOptions {
 
 /**
  * Run the handoff oneshot against a fully-built provider {@link Context}.
- *
- * The caller assembles `context` exactly like a live agent turn — same system
- * prompt, normalized tools, transformed + obfuscated message history, with the
- * trailing handoff-prompt message already appended — and supplies
- * `streamOptions` that mirror the live turn's cache routing. That keeps the
- * cache-preserving context construction in the host (which owns the transform
- * pipeline) while this function centralizes the handoff request contract:
- * cache-first `toolChoice: "none"`, clamped reasoning effort, one retry for
- * auto-only `tool_choice` providers, oneshot telemetry, text-only extraction,
- * and provider-error mapping.
  */
 export async function generateHandoffFromContext(
 	context: Context,
@@ -1133,21 +1021,7 @@ export async function generateHandoff(
 // ============================================================================
 
 /**
- * The narrower span a SERVER-SIDE pass compacts when the branch already holds
- * a server-side window this model can chain in front of it.
- *
- * The two passes need different spans over the same branch, which is why this
- * cannot be folded into the fields above. A local pass must look straight past
- * a remote entry and re-expand everything behind it, because that entry holds
- * no summary text to build on and the local summary it writes replaces the
- * window. A remote pass must do the opposite: chain the window and send only
- * what arrived after it, because the window already carries that history
- * (encrypted reasoning included) and re-sending it as plain messages pays for
- * the same span twice and grows every compaction past the last one.
- *
- * Absent when there is no such entry, or when the cut point falls before it,
- * where the window is still in the retained tail and chaining would double the
- * span it covers.
+ * Narrower span for server-side compaction when chaining a prior server-side window.
  */
 export interface RemoteCompactionChain {
 	/** `preserveData` of the entry whose window is being chained. */
@@ -1180,12 +1054,7 @@ export interface CompactionPreparation {
 	 */
 	remoteChain?: RemoteCompactionChain;
 	/**
-	 * Tool results elided from the retained tail to bring it under
-	 * `keepRecentTokens`, largest first. Always set by `prepareCompaction`
-	 * (empty when the tail already fit); absent only on hand-built fixtures.
-	 * The elision is already applied to the branch entries: the caller
-	 * offloads `originalText` to a recovery artifact, patches the markers
-	 * with the pointer, and persists the rewrite once the pass completes.
+	 * Tool results elided from the retained tail to satisfy `keepRecentTokens`.
 	 */
 	tailElisions?: TailElision[];
 	/** File operations extracted from messagesToSummarize */
@@ -1195,34 +1064,12 @@ export interface CompactionPreparation {
 }
 
 /**
- * Preserve-data keys whose entry carries no summary text a later local pass
- * can build on. Two of them are the DEAD provider-native keys, whose payload
- * is an opaque blob nothing shipping today can read, sitting behind a
- * placeholder summary. The third is the LIVE server-side compaction key, which
- * is not dead at all: its entry simply has no summary, because the window the
- * provider returned is the artifact for that span.
+ * Preserve-data keys whose entry carries no summary text a later local pass can build on.
  */
 const NON_REUSABLE_SUMMARY_KEYS: readonly string[] = [...LEGACY_REMOTE_PRESERVE_KEYS, REMOTE_COMPACTION_PRESERVE_KEY];
 
 /**
- * Whether a prior compaction entry carries summary text a later local pass can
- * actually build on.
- *
- * For a server-side entry the answer is always no, and that is not a defect in
- * the remote path. veyyon never writes a local summary beside a provider
- * compaction window: that would pay a model to re-summarize a span the
- * provider already compacted and leave two accounts of one range free to
- * disagree. It was rejected, not deferred, so the summary is permanently empty.
- *
- * The consequence lands here. Call such an entry reusable and
- * `prepareCompaction` adopts it as the previous compaction with a
- * `previousSummary` of "", so the span behind the window is never re-expanded,
- * and the local pass that follows strips the window on its way out. The span
- * is then neither summarized nor replayable: lost.
- *
- * So all three keys get the same treatment a legacy entry gets. Look straight
- * past the entry, re-expand the original messages behind it, and summarize
- * them locally.
+ * Whether a prior compaction entry carries summary text a later local pass can build on.
  */
 function hasReusableSummary(preserveData: Record<string, unknown> | undefined): boolean {
 	if (!preserveData) return true;
@@ -1233,41 +1080,17 @@ export interface CompactionPreparationOptions {
 	/** Runtime-owned state messages reconstructed separately after compaction. */
 	excludedCustomMessageTypes?: ReadonlySet<string>;
 	/**
-	 * Tokens in the provider's prompt count that belong to no session entry: the
-	 * system prompt, the tool schemas, and anything else the harness prepends.
-	 *
-	 * Compaction scales its recent-token budget by how far the local estimate
-	 * undershoots the provider's count for the same messages, and without this
-	 * figure that comparison silently includes the harness, so growing the tool
-	 * set shrinks how much conversation a compaction keeps. Omit it only when it
-	 * is genuinely unknown; the scaling is then skipped rather than guessed.
+	 * Non-message prompt tokens (system prompt, tools) for proportional recent-token scaling.
 	 */
 	nonMessageTokens?: number;
 	/**
-	 * Context window of the model this session is running on.
-	 *
-	 * Compaction uses it to derive how much conversation the prompt is allowed
-	 * to hold, and caps the recent-token budget there: a configured budget
-	 * larger than that asks compaction to keep more than can ever fit, which is
-	 * how a full session ends up reported as too small to compact. Omit it only
-	 * when the window is genuinely unknown; the cap is then skipped.
+	 * Context window of the active model, used to cap recent-token budget.
 	 */
 	contextWindow?: number;
 }
 
 /**
- * Validate the complete result immediately before a runtime rewrites history.
- * A malformed extension result must fail before its cut point can discard the
- * live tail.
- *
- * A compaction must leave behind an artifact that stands in for the span it
- * discards, and there are exactly two legal artifacts. A local pass leaves
- * summary text. A server-side pass leaves the compacted window the provider
- * returned, and no summary. The empty summary there is correct, not a miss:
- * writing a local summary beside the window would pay a model to re-summarize
- * a span the provider already compacted and store two accounts of one range
- * free to disagree. So an empty summary is checked against the window rather
- * than rejected outright.
+ * Validate compaction result (requires summary text for local pass or remote window for server pass).
  */
 export function assertValidCompactionResult(preparation: CompactionPreparation, result: CompactionResult): void {
 	if (typeof result.summary !== "string" || result.summary.trim().length === 0) {
@@ -1384,13 +1207,6 @@ export function estimateCompactionRequestTokens(
 
 /**
  * One tool result elided from the retained tail to bring it under budget.
- *
- * The elision is already applied to the branch when the caller sees this:
- * `message` is the replacement sitting in the entry. On success the caller
- * offloads `originalText` to a recovery artifact and swaps `message` for a
- * pointered copy; on failure it puts `originalMessage` back (see
- * `rollbackTailElisions`), because until the offload is persisted the
- * preparation is the only place the pre-elision bytes survive.
  */
 export interface TailElision {
 	/** Id of the entry whose tool-result message was replaced. */
@@ -1433,20 +1249,7 @@ export function renderTailElisionArtifact(elisions: readonly TailElision[]): str
 }
 
 /**
- * Undo a preparation's tail elisions on the live branch after the compaction
- * pass that produced them failed. The elision replaced the entry's message
- * with a pointerless marker whose only remaining copy of the original bytes
- * rides on the preparation, so a pass that never reaches the persist step
- * strands the content unless the originals are put back: the `prunedAt`
- * stamp excludes the marker from re-elision, the next summarizer receives
- * the marker text instead of the content, and the next rewriteEntries
- * persists the pointerless marker over the last on-disk copy. Restoring the
- * original message object is exact — no marker, no `prunedAt` — and makes
- * the entry an elision candidate again on the retry.
- *
- * An entry is restored only while it still holds this pass's marker; a
- * different message means the entry moved on after the preparation was made
- * and its bytes are owned elsewhere.
+ * Undo a preparation's tail elisions on the live branch if compaction fails.
  */
 export function rollbackTailElisions(entries: SessionEntry[], elisions: readonly TailElision[]): number {
 	let restored = 0;
@@ -1476,31 +1279,7 @@ function tailToolResultText(message: ToolResultMessage): string {
 }
 
 /**
- * Bring the retained tail within `budgetTokens` by eliding heavy tool output
- * inside it.
- *
- * `findCutPoint` can only cut at a turn boundary, so a kept turn can carry the
- * tail far past the budget on its own — one enormous tool result is enough —
- * and before this pass that bulk survived every compaction: the tail was
- * bounded by what the cut happened to spare, not by the budget. What leaves
- * is chosen by information density, not recency: bulk tool output (file
- * reads, command stdout) is the lowest-information content in a tail and goes
- * first, largest result first. Never candidates at any size: error results
- * (the error IS the information) and skill reads (the agent's live
- * instructions). User messages, assistant text, and the tool calls themselves
- * are never candidates by construction, because only tool-result content is
- * ever replaced.
- *
- * The entry's message object is REPLACED, never mutated: `estimateTokens`
- * caches by message identity, and a mutated message would keep reading its
- * pre-elision size. The replacement is stamped `prunedAt` so the prune and
- * shake passes treat the marker as already handled.
- *
- * The elision is live on the branch before any summarizer runs, and the
- * original message survives only on the returned elisions, so the caller
- * MUST either persist the offload or restore the originals
- * (`rollbackTailElisions`) — a pass that does neither strands the bytes
- * behind a pointerless marker.
+ * Bring retained tail within `budgetTokens` by eliding heavy tool outputs (largest first, excluding errors/skills).
  */
 function elideTailToolResults(
 	entries: SessionEntry[],
@@ -1793,10 +1572,6 @@ const TURN_PREFIX_SUMMARIZATION_PROMPT = prompt.render(AGENT_PROMPTS["compaction
 
 /**
  * Generate summaries for compaction using prepared data.
- * Returns CompactionResult - SessionManager adds id/parentId when saving.
- *
- * @param preparation - Pre-calculated preparation from prepareCompaction()
- * @param customInstructions - Optional custom focus for the summary
  */
 export async function compact(
 	preparation: CompactionPreparation,

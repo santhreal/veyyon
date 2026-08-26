@@ -33,21 +33,11 @@ export interface PruneConfig {
 	/** Useless-flagged results bypass the protect window (see {@link USELESS_NOTICE}). Default true. */
 	pruneUseless?: boolean;
 	/**
-	 * Compaction boundary: the `firstKeptEntryId` of the latest compaction on
-	 * the branch. Entries at indices BEFORE this id are summarized away and never
-	 * sent to the model, so mutating them only churns persisted history without
-	 * shrinking the prompt — they are skipped. Undefined = no compaction (the
-	 * whole branch is sent).
+	 * Compaction boundary (`firstKeptEntryId`). Entries before it are already summarized and skipped.
 	 */
 	keepBoundaryId?: string;
 	/**
-	 * Prompt-cache guard. When set, a tool result whose all-message suffix
-	 * (tokens of every message after it) EXCEEDS this is part of the warm,
-	 * already-sent cache prefix: mutating it forces the provider to re-write the
-	 * whole suffix (cacheWrite premium). Such results — including superseded and
-	 * useless ones, which otherwise bypass {@link protectTokens} — are left for
-	 * compaction/shake (which rebuild the cache anyway) to reclaim. Undefined =
-	 * no cache guard (legacy: superseded/useless prune at any depth).
+	 * Prompt-cache guard. Tool results whose suffix exceeds this are kept to avoid cache write premiums.
 	 */
 	cacheWarmSuffixTokens?: number;
 }
@@ -71,11 +61,7 @@ export const SUPERSEDED_NOTICE = "[Superseded by a newer read of this file]";
 export const USELESS_NOTICE = "[Uneventful result elided]";
 
 /**
- * Maps a tool call to a supersede key. Results sharing a key form a group in
- * which every result except the newest is a supersede candidate. A key `K`
- * additionally supersedes keys with prefix `K + "\u0000"` (selector-free read
- * supersedes selector-carrying reads of the same base path). Return
- * `undefined` to exempt a call from supersede grouping.
+ * Maps a tool call to a supersede key. Results sharing a key supersede older results in that group.
  */
 export type SupersedeKeyFn = (toolName: string, args: Record<string, unknown>) => string | undefined;
 
@@ -94,15 +80,7 @@ export interface SupersedePruneConfig {
 	 */
 	cacheWritePremium?: number;
 	/**
-	 * Turns the reclaimed tokens are assumed to survive if nothing prunes them,
-	 * i.e. how many times they would be re-read before the next compaction drops
-	 * them anyway. This is the other half of the trade: reclaiming M tokens saves
-	 * `M * paybackTurns` reads and costs `cacheWritePremium * suffix` writes.
-	 * Default 30. A backtest over 659 recorded sessions (550k turns) priced the
-	 * sweep at 30, 60 and 120: 60 reclaims more in total but leaves 15 sessions
-	 * worse by up to +8% because their real remaining life was shorter than the
-	 * assumption; 30 leaves 2 sessions worse by at most +1.4% and still nets
-	 * -0.5% of the total bill with a 0.02-point cache-hit change.
+	 * Estimated turns reclaimed tokens would survive before compaction. Default 30.
 	 */
 	paybackTurns?: number;
 	/**
@@ -135,12 +113,7 @@ function createPrunedNotice(tokens: number): string {
 }
 
 /**
- * Generic age-based pruning floor. Below this, blanking a result to
- * `[Output truncated - N tokens]` recovers nothing — the placeholder itself
- * costs ~8 tokens, so a sub-floor result grows the context (and churns the
- * prompt cache) instead of shrinking it. Superseded/useless results keep their
- * own rules: useless already drops no-savings candidates, superseded prunes for
- * correctness regardless of size.
+ * Generic age-based pruning floor. Below this, blanking output saves fewer tokens than the notice costs.
  */
 const MIN_PRUNE_TOKENS = 50;
 
@@ -162,11 +135,7 @@ interface SupersedeCandidate {
 }
 
 /**
- * Collect superseded and useless tool-result candidates in a single backward
- * walk, merging what was two separate O(n) passes into one. A superseded
- * result (an older read whose key a newer read has already claimed) is
- * collected first; a useless result (flagged by its tool) is collected only
- * when it was not already collected as superseded. Returned in message order.
+ * Collect superseded and useless tool-result candidates in a single backward walk in message order.
  */
 function collectPruneCandidates(
 	entries: readonly SessionEntry[],
@@ -236,15 +205,7 @@ function collectPruneCandidates(
 }
 
 /**
- * Deepest batch of victims whose reclaimed tokens pay for the one cache rewrite
- * they force, or an empty array when no batch does.
- *
- * Rewriting a message invalidates every cached token after it, so the price of a
- * sweep is set by its EARLIEST victim and is paid once, while the saving is the
- * whole batch's mass, collected on every later turn. That is why the answer is a
- * batch: `dead * paybackTurns` against `premium * suffix(earliest)`. Candidates
- * arrive in message order, so each prefix of the list is a legal cut and the best
- * one is a single scan from the deep end.
+ * Find the deepest batch of victims whose token savings exceed the cache rewrite cost.
  */
 function chooseWorthwhileSweep(
 	candidates: readonly SupersedeCandidate[],
@@ -268,14 +229,7 @@ function chooseWorthwhileSweep(
 }
 
 /**
- * Prune superseded tool results (e.g. stale `read` outputs replaced by a newer
- * read of the same file) and, when `pruneUseless` is set, results their tool
- * flagged contextually useless. Prompt-cache-aware in three ways: a candidate
- * whose own suffix is small is rewritten on its own (the read→edit→read loop), a
- * deeper BATCH is rewritten when its combined mass pays for the one cache write
- * it forces (see {@link chooseWorthwhileSweep}), and an idle context flushes
- * everything because its cache has expired anyway.
- * Never mutates entries before `keepBoundaryId` (summarized away — not sent).
+ * Prune superseded and useless tool results, taking into account cache rewrite costs and idle context expiration.
  */
 export function pruneSupersededToolResults(entries: SessionEntry[], config: SupersedePruneConfig): PruneResult {
 	const toolCallsById = collectToolCallsById(entries);
@@ -447,14 +401,7 @@ export function pruneToolOutputs(entries: SessionEntry[], config: PruneConfig = 
 }
 
 /**
- * Supersede key for the `read` tool: the file path with the trailing line/raw
- * selector stripped (the read tool's own splitter grammar via
- * {@link splitReadSelector}, e.g. `src/foo.ts:50-200`, `:2-4:raw`).
- * Internal/URL-scheme paths (`skill://…`, `https://…`) are exempt.
- * Selector-free reads key on the bare path; selector-carrying reads key on
- * `path + "\u0000" + selector`, so two reads collide only when the newer is
- * selector-free or the selectors are identical (the pass's prefix rule lets a
- * bare-path read supersede selector-carrying reads of the same file).
+ * Supersede key for the `read` tool: file path stripped of trailing selectors, excluding URL schemes.
  */
 export function readToolSupersedeKey(toolName: string, args: Record<string, unknown>): string | undefined {
 	if (toolName !== "read") return undefined;

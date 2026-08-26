@@ -415,12 +415,8 @@ export function agentLoop(
 }
 
 /**
- * Continue an agent loop from the current context without adding a new message.
- * Used for retries - context already has user message or tool results.
- *
- * **Important:** The last message in context must convert to a `user` or `toolResult` message
- * via `convertToLlm`. If it doesn't, the LLM provider will reject the request.
- * This cannot be validated here since `convertToLlm` is only called once per turn.
+ * Continue an agent loop from the current context without adding a new message (e.g. for retries).
+ * The last message in context must convert to a `user` or `toolResult` message for the LLM.
  */
 export function agentLoopContinue(
 	context: AgentContext,
@@ -513,14 +509,7 @@ export interface AgentLoopDetailedResult {
 }
 
 /**
- * Convenience wrapper over {@link agentLoop} that exposes the run-level
- * summary + coverage alongside the messages. The returned `stream` is the
- * same `EventStream` callers already consume; `detailed()` awaits the
- * stream's `agent_end` event and returns the additive fields.
- *
- * Existing `stream.result()` semantics are preserved — it still resolves to
- * `AgentMessage[]`. Use {@link agentLoopDetailed} when you need the rollup;
- * use {@link agentLoop} when you do not.
+ * Wrapper over {@link agentLoop} exposing run-level telemetry and coverage alongside messages.
  */
 export function agentLoopDetailed(
 	prompts: AgentMessage[],
@@ -1799,33 +1788,7 @@ async function streamAssistantResponse(
 }
 
 /**
- * Whether a tool-call block the loop never saw a `toolcall_end` for nonetheless
- * carries complete arguments, and if so what they parse to.
- *
- * WHY. A missing `toolcall_end` is not evidence the provider stopped mid
- * argument. An abort is decided HERE: the loop checks `requestSignal.aborted`
- * before it processes the event it just pulled, so a steering interrupt drops
- * every event already delivered, including the `toolcall_end` of a call whose
- * every argument byte had arrived. Judging completeness by that event alone
- * therefore deleted complete calls and told the model, in the batch ledger,
- * that their "arguments never finished" and that "no record of them is left in
- * this transcript. Reconstruct their arguments rather than copying them back" —
- * a false statement about a call it had finished writing, and one that destroys
- * the arguments it is describing. Reported by an operator whose two complete
- * `bash` calls came back exactly that way after one interjection.
- *
- * The block itself knows better. Every provider that streams argument deltas
- * accumulates them in `kStreamingPartialJson` and clears the marker when it
- * closes the call, so a marker still holding text means the loop stopped
- * reading mid-call, and whether the provider had finished is answerable: a
- * truncated JSON payload does not parse, a complete one does. Only a payload
- * that parses to an object counts, and its parse becomes the block's arguments,
- * because the arguments already on a streaming block are a tolerant partial
- * parse and must not be run as-is.
- *
- * An absent marker is deliberately NOT read as complete: a provider that never
- * writes one tells us nothing here, and the conservative answer keeps the
- * pre-existing behaviour for it.
+ * Check if a tool-call block carries complete valid JSON arguments even if `toolcall_end` was dropped.
  */
 function completedStreamedArguments(block: StreamingPartialJsonCarrier): Record<string, unknown> | undefined {
 	const accumulated = getStreamingPartialJson(block)?.trim();
@@ -1839,20 +1802,7 @@ function completedStreamedArguments(block: StreamingPartialJsonCarrier): Record<
 }
 
 /**
- * Drop `toolCall` blocks whose arguments never finished streaming, and record
- * their identity on {@link AssistantMessage.incompleteToolCalls}.
- *
- * The blocks have to go: partial arguments are unsafe to run, and an unpaired
- * `tool_use` block breaks the provider's tool_use/tool_result pairing on
- * replay. Deleting them outright was the residual defect, because the call
- * then had no result, no block, and no mention anywhere, so the model saw a
- * turn in which it had never asked for that tool. The id and name arrive with
- * the provider's block header, before any argument delta, so they are known
- * even here and the ledger can name the call as attempted-and-never-run.
- *
- * A call the loop never closed but whose arguments are provably complete is
- * kept, with those arguments, rather than deleted and misreported: see
- * {@link completedStreamedArguments}.
+ * Drop tool calls whose arguments never finished streaming, recording them on `incompleteToolCalls`.
  */
 function retainCompletedToolCalls(
 	message: AssistantMessage,
@@ -2811,23 +2761,8 @@ async function executeToolCalls(
 }
 
 /**
- * Discriminator embedded in {@link AgentToolResult.details} and
- * {@link ToolResultMessage.details} for tool calls that were emitted by the
- * assistant but never actually invoked locally.
- *
- * The synthetic result exists only to preserve the tool_use / tool_result
- * pairing the provider API requires; no `tool.execute()` ran. UI, telemetry,
- * and history consumers can key on `__synthetic === true` to render or
- * classify these as "call emitted, not executed" instead of a real local
- * tool failure — the mislabeling this discriminator was introduced to fix
- * (#4321): a provider-side stream error after tool-call emission (e.g. Codex
- * websocket close) was surfaced by the CLI as if the local tool had failed.
- *
- * `source` names the assistant-side termination state that prevented
- * execution; `upstreamError` is the provider-reported message when the turn
- * ended with `stopReason === "error"`. `batchLedger` is present on exactly one
- * result per cut-short batch and inventories the sibling calls, so a consumer
- * can tell "ran and failed" from "never ran" without replaying the transcript.
+ * Discriminator in tool result details for calls emitted by the assistant but never invoked locally.
+ * Preserves tool_use / tool_result pairing while preventing false tool failure reporting (#4321).
  */
 export interface SyntheticToolResultDetails {
 	__synthetic: true;
@@ -2838,18 +2773,7 @@ export interface SyntheticToolResultDetails {
 }
 
 /**
- * Details for a call an interrupt cut short.
- *
- * Distinct from {@link SyntheticToolResultDetails}, which means the call was
- * never invoked at all. Here the batch was real and the interrupt arrived
- * partway through it, so `entered` carries the part a consumer cannot guess:
- * whether `tool.execute()` had been reached.
- *
- * The discriminator exists for the same reason as the synthetic one (#4321).
- * The headline text is fixed per source, so a consumer that classifies these by
- * reading the message sees two unrelated interrupts as the same failure
- * repeating, and anything that reacts to a repeat then reacts to an event that
- * never happened.
+ * Details for a tool call cut short by an interrupt, tracking whether execution was entered.
  */
 export interface SkippedToolResultDetails {
 	__skipped: true;
@@ -2882,30 +2806,7 @@ function syntheticDetailsFor(
 }
 
 /**
- * Inventory a turn whose stream ended before the tool batch could be
- * dispatched.
- *
- * What is actually knowable here, and nothing beyond it:
- * - A `toolCall` block that survived `retainCompletedToolCalls` has complete
- *   arguments and was never handed to `tool.execute()`: the runnable dispatch
- *   at `executeToolCalls` is reached only on a `toolUse`/`stop` turn, and this
- *   branch returns first. So it is `dropped`, with no side effects.
- * - A block stamped `kCursorExecResolved` was dispatched by Cursor's exec
- *   channel, which runs the tool through a caller-supplied `execHandler` in
- *   this process, inside the provider stream. The block is synthesized before
- *   the handler is awaited, so the call may have finished, may still be
- *   running, or may have applied part of its side effects. Its outcome is
- *   `ok`/`failed` once the buffered result is in the transcript, and
- *   `interrupted` while that result is still pending, because "it ran but you
- *   cannot see the result" is not the same claim as "it never ran".
- * - A call whose arguments were still streaming was deleted from the message
- *   by `retainCompletedToolCalls`, which records its id and name on
- *   `incompleteToolCalls`. It never reached dispatch either, so it is
- *   `dropped` too, flagged `argumentsIncomplete` because there is no block
- *   left in the transcript for the model to copy its arguments back from.
- *
- * Returns `undefined` only when the ledger would restate what the transcript
- * already says; see the lone-entry rule at the end.
+ * Inventory a turn whose stream ended before the tool batch could be dispatched.
  */
 function buildAbortedTurnLedger(
 	cause: ToolBatchLedgerCause,
@@ -2960,11 +2861,7 @@ function buildAbortedTurnLedger(
 }
 
 /**
- * Create a tool result for a tool call that was emitted by the assistant but
- * never invoked locally. Maintains the tool_use / tool_result pairing the
- * provider API requires, and tags {@link SyntheticToolResultDetails} so
- * consumers can distinguish this from a real local tool failure without
- * string-matching the content (#4321).
+ * Create a synthetic tool result for an emitted tool call that was never invoked locally (#4321).
  */
 function createAbortedToolResult(
 	toolCall: Extract<AssistantMessage["content"][number], { type: "toolCall" }>,
@@ -3022,20 +2919,7 @@ function createAbortedToolResult(
 }
 
 /**
- * Placeholder for a call whose signal had already aborted when dispatch reached
- * it: the siblings queued behind the call that cancelled the run.
- *
- * It carries {@link SkippedToolResultDetails} for the same reason
- * {@link createSkippedToolResult} does. The text here is fixed per abort reason,
- * so a whole batch of siblings reaches the model as one byte-identical line
- * repeated, and a consumer that classifies by reading it counts one failure
- * happening over and over. This shipped with an empty details bag, which made it
- * the one skip shape the discriminator could not describe, on the path that
- * produces the longest runs of it.
- *
- * `entered` is always false here (control has not reached `tool.execute()`), but
- * it is read from the record rather than asserted, so the field keeps meaning
- * what it says if the dispatch order ever changes.
+ * Create a skipped tool result for calls whose abort signal fired before dispatch.
  */
 function createToolSignalAbortedResult(
 	signal: AbortSignal,
@@ -3050,24 +2934,7 @@ function createToolSignalAbortedResult(
 }
 
 /**
- * Placeholder for a call the interrupt cut short.
- *
- * `entered` is the difference between two skips that read the same and call for
- * opposite responses. `false`: control never crossed into `tool.execute()` (the
- * call was dropped before dispatch, or was still in `beforeToolCall` waiting on
- * approval), so nothing happened and a verbatim retry is safe. `true`: the tool
- * was running when the abort landed, so it may have applied part of its side
- * effects and a verbatim retry can double-apply them. Telling a model to
- * "retry the skipped tool" for a half-run `bash` is the dangerous direction, so
- * the second case replaces the retry advice with a state check.
- *
- * `"cancelled-run"` is the source with no blocker behind it: the operator hit
- * Esc and the whole run is unwinding, so there is no queued message that gets
- * "handled on the next step" and nothing to retry against. It is also the most
- * common interruption there is, and it used to be the only one that reached the
- * model as the raw thrown `AbortError` message, which is the bare word
- * "aborted": no statement that a command may have half-run, on the exact path
- * where a half-run command is likeliest.
+ * Create a skipped tool result for an interrupted call, advising state check if execution was entered.
  */
 function createSkippedToolResult(
 	source: SteeringInterruptSource | "irc" | "cancelled-run" | undefined,

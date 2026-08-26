@@ -145,13 +145,8 @@ export interface OpenAICodexResponsesOptions extends StreamOptions {
 	preferWebsockets?: boolean;
 	serviceTier?: ServiceTier;
 	/**
-	 * Responses Lite transport override; defaults to the model's catalog
-	 * `useResponsesLite` flag (codex-rs `use_responses_lite`). Sends
-	 * `x-openai-internal-codex-responses-lite: true` on HTTP requests and on the
-	 * WebSocket upgrade (the marker is connection-scoped there, so lite and
-	 * non-lite turns never share a pooled socket), moves instructions/tools
-	 * into input items, strips image detail, and disables parallel tool
-	 * calling — mirroring codex-rs.
+	 * Responses Lite transport override. Sends lite headers, moves instructions/tools
+	 * to input items, strips image detail, and disables parallel tool calling.
 	 */
 	responsesLite?: boolean;
 	/**
@@ -220,34 +215,17 @@ const CODEX_WEBSOCKET_PING_INTERVAL_MS = Number($env.VEYYON_CODEX_WEBSOCKET_PING
 const CODEX_WEBSOCKET_PONG_TIMEOUT_MS = Number($env.VEYYON_CODEX_WEBSOCKET_PONG_TIMEOUT_MS || 60_000);
 const CODEX_WEBSOCKET_MESSAGE_QUEUE_CAPACITY = Number($env.VEYYON_CODEX_WEBSOCKET_MESSAGE_QUEUE_CAPACITY || 4096);
 /**
- * Maximum quiet period (no inbound frames AND no observed pong) we'll trust a
- * reused WebSocket for before forcing a fresh handshake. Codex backends and
- * intermediaries occasionally evict idle sockets server-side without sending a
- * FIN, leaving the local `readyState` as OPEN while the next `send()` becomes a
- * write into a half-open buffer. Reusing such a socket parks the next request
- * at `#nextMessage` until the first-event/idle timeout fires (issue #1450). The
- * heartbeat below also catches dead sockets, but only after `pongTimeoutMs`
- * (default 60s) and only while a request is active — this gate closes the door
- * earlier and even when the gap between requests is purely client-side (tool
- * execution, user typing, etc.). Set `VEYYON_CODEX_WEBSOCKET_MAX_IDLE_REUSE_MS=0`
- * to disable.
+ * Max quiet period before forcing a fresh WebSocket handshake to avoid half-open socket reuse.
+ * Set `VEYYON_CODEX_WEBSOCKET_MAX_IDLE_REUSE_MS=0` to disable.
  */
 const CODEX_WEBSOCKET_MAX_IDLE_REUSE_MS = Number($env.VEYYON_CODEX_WEBSOCKET_MAX_IDLE_REUSE_MS || 30_000);
 /**
- * Steady-state liveness ceiling for the Codex WebSocket transport. Distinct from
- * the Veyyon-wide stream watchdog removed in #1392: a WebSocket can stay TCP-open
- * indefinitely without exchanging frames (server crash after upgrade, half-open
- * network path), so we still need a transport-internal cap to detect those
- * states and trigger the WS→SSE fallback. Only applies AFTER the first event
- * has arrived — slow first-token paths wait as long as the caller permits.
+ * Steady-state liveness ceiling for Codex WebSocket transport after first event arrives.
+ * Detects silent drops and triggers WS→SSE fallback.
  */
 const CODEX_WEBSOCKET_IDLE_TIMEOUT_MS = Number($env.VEYYON_CODEX_WEBSOCKET_IDLE_TIMEOUT_MS || 300_000);
 /**
- * Maximum wait for the first WebSocket event before falling back to SSE.
- * Unlike a stream watchdog, this triggers a transport switch (not a request
- * failure) — the outer retry loop catches the timeout error and re-runs on
- * SSE. Generous default so legitimately slow first-token providers still get
- * a chance on the WS transport before falling through.
+ * Max wait for first WebSocket event before falling back to SSE transport.
  */
 const CODEX_WEBSOCKET_FIRST_EVENT_TIMEOUT_MS = Number($env.VEYYON_CODEX_WEBSOCKET_FIRST_EVENT_TIMEOUT_MS || 60_000);
 const CODEX_WEBSOCKET_RETRY_BUDGET = Number($env.VEYYON_CODEX_WEBSOCKET_RETRY_BUDGET || CODEX_MAX_RETRIES);
@@ -419,12 +397,7 @@ interface CodexProviderSessionState extends ProviderSessionState {
 	webSocketPublicToPrivate: Map<string, string>;
 	metadataSessions: Map<string, CodexMetadataSessionState>;
 	/**
-	 * Prompt-cache observations, per cache identity.
-	 *
-	 * Codex carries the bulk of this repo's recorded prompt-cache loss and had no
-	 * observer at all: the checker was wired into `providers/anthropic.ts` and
-	 * nowhere else, so on this surface the enforcement level resolved and then
-	 * governed nothing.
+	 * Prompt-cache observations per cache identity for enforcement governance.
 	 */
 	cacheTracker: CacheTrackerState;
 }
@@ -646,17 +619,7 @@ export function createOpenAICodexCompatibilityMetadata(
 }
 
 /**
- * URL, credential headers, and canonical client metadata for a direct
- * (non-streaming) Codex HTTP call made outside the turn path — today the
- * server-side compaction route `POST {base}/codex/responses/compact`, which
- * codex-rs drives with the same identity a turn carries.
- *
- * The turn path builds these inside `buildCodexRequestContext`, which also
- * opens websockets, resolves tools, and mutates transport state. A compaction
- * call needs the credential and identity halves only, so they are assembled
- * here rather than reached by faking a turn — and, being here, the codex wire
- * truth (host path, beta header, originator, client version, installation id)
- * stays owned by this module instead of copied into the compaction transport.
+ * URL, credential headers, and canonical client metadata for direct non-streaming Codex HTTP calls.
  */
 export function createOpenAICodexDirectRequest(options: {
 	model: Model<"openai-codex-responses">;
@@ -837,12 +800,7 @@ class CodexStreamRuntime {
 	}
 
 	/**
-	 * Look up the open item a Codex stream event targets. `item_id` wins because it
-	 * uniquely identifies a response item; `output_index` covers idless function
-	 * call items. A keyed event whose target is already closed is dropped instead
-	 * of being routed to a sibling. Only streams that omit both keys fall back to
-	 * {@link currentEntry} — the most recently added item, including fully keyless
-	 * ones that never reached the keyed maps.
+	 * Look up open item targeted by a Codex stream event via `item_id` or `output_index`.
 	 */
 	openItemForEvent(rawEvent: Record<string, unknown>): CodexOpenItem | null {
 		const itemId = typeof rawEvent.item_id === "string" ? rawEvent.item_id : "";
@@ -1793,12 +1751,7 @@ async function handleCodexStreamFailure(context: CodexStreamFailureContext, erro
 }
 
 /**
- * Owns one `streamOpenAICodexResponses` call: the request scaffolding
- * (model/output/stream/options/request context) plus the per-attempt
- * {@link CodexStreamRuntime}. Drives the event loop in {@link process}, applies
- * the transport-fallback / retry recovery ladder, and emits the final message
- * in {@link finalize}. The runtime object is mutated in place across retries
- * (event stream and accumulators are swapped/reset), never reassigned.
+ * Manages a `streamOpenAICodexResponses` call: scaffolding, event loop, retry/fallback, and final message.
  */
 class CodexStreamProcessor {
 	runtime: CodexStreamRuntime;
@@ -2238,16 +2191,8 @@ class CodexStreamProcessor {
 	}
 
 	/**
-	 * Recover from the degenerate whitespace-only tool-call argument loop
-	 * ({@link CodexWhitespaceToolCallLoopError}). The interrupted function call has
-	 * no usable arguments, so drop the partial turn and replay the request from
-	 * scratch — bounded by {@link CODEX_WHITESPACE_LOOP_RETRY_LIMIT}. Sampling
-	 * nondeterminism usually breaks the loop on a fresh attempt; once the budget is
-	 * exhausted the original error is surfaced (now without the junk tool call
-	 * polluting the message). Replay is refused once any visible content was already
-	 * delivered to the consumer — a finished tool call (`canSafelyReplayWebsocketOverSse`),
-	 * or any streamed text/commentary block still in `output.content` after the degenerate
-	 * tool call is dropped — because replaying re-emits already-streamed deltas.
+	 * Recover from degenerate whitespace-only tool argument loop by replaying request from scratch.
+	 * Refuses replay if visible content or completed tool calls were already emitted.
 	 */
 	async #tryRecoverWhitespaceToolCallLoop(error: unknown): Promise<boolean> {
 		if (!(error instanceof CodexWhitespaceToolCallLoopError)) {
@@ -2313,12 +2258,7 @@ class CodexStreamProcessor {
 	}
 
 	/**
-	 * Handles `websocket_connection_limit_reached` errors by closing the stale connection
-	 * and opening a fresh websocket. If content has already been emitted to the caller,
-	 * falls back to SSE replay (same as other WS failures) since we cannot safely
-	 * continue a partial response on a new connection. If a tool call was already
-	 * delivered (`canSafelyReplayWebsocketOverSse` is false), the error surfaces
-	 * instead — replaying would re-emit the same tool calls.
+	 * Handle `websocket_connection_limit_reached` by opening a fresh socket or falling back to SSE.
 	 */
 	async #tryReconnectWebSocketOnConnectionLimit(error: unknown): Promise<boolean> {
 		if (!(error instanceof CodexProviderStreamError) || error.code !== "websocket_connection_limit_reached") {
@@ -2849,20 +2789,7 @@ function resetCodexWebSocketAppendState(state: CodexWebSocketSessionState): void
 }
 
 /**
- * Record a codex websocket failure, and tear the socket down.
- *
- * `activateFallback` is the permanent decision: once it is taken, every
- * remaining turn in this session runs over SSE instead of the websocket
- * transport. That is a real degrade, not a neutral choice, and it used to
- * happen with no output at all: the three call sites logged it through
- * `CODEX_DEBUG && logger.debug(...)`, so on a default install the transport
- * changed underneath the user and nothing anywhere said so. Someone watching
- * their turns get slower had nothing to look at.
- *
- * The report lives here rather than at the call sites because this is the one
- * place the `disableWebsocket` flag flips, so it is announced exactly once per
- * session however the fallback was reached, and the retries that do NOT
- * activate it stay quiet.
+ * Record a Codex WebSocket failure, tear down socket, and activate permanent SSE fallback.
  */
 export function recordCodexWebSocketFailure(
 	state: CodexWebSocketSessionState,
@@ -3226,13 +3153,7 @@ function recordCodexTurnUsageDiagnostics(
 }
 
 /**
- * Shape the next websocket turn's request body: when the session's append
- * baseline is intact (same options, strict history prefix), chain via
- * `previous_response_id` + delta-only `input`; otherwise break the chain and
- * replay the full transcript. SSE requests never chain — the HTTP endpoint's
- * request schema has no `previous_response_id` (codex-rs carries it only on
- * websocket `response.create` frames) and strict gateway validators 400 it
- * with `{"detail":"Unsupported parameter: previous_response_id"}`.
+ * Shape WebSocket request body with `previous_response_id` delta chaining when history matches.
  */
 function buildCodexChainedRequestBody(
 	requestBody: RequestBody,
@@ -3333,16 +3254,8 @@ class CodexWebSocketConnection {
 	}
 
 	/**
-	 * Stricter variant of {@link isOpen} for the connection-pool reuse gate.
-	 * Refuses sockets that have been silent past {@link CODEX_WEBSOCKET_MAX_IDLE_REUSE_MS}.
-	 *
-	 * Bun's `WebSocket` does not always surface server-side eviction (no
-	 * `onclose`, no `onerror`), so a socket can sit in readyState OPEN long
-	 * after the upstream has dropped it. Reusing such a socket sends the next
-	 * `response.create` into a half-open write buffer and parks the reader
-	 * until the first-event / idle timeout fires (issue #1450). Forcing a
-	 * reconnect on any suspect socket trades a sub-second handshake for a
-	 * 60–300 s stall.
+	 * Strict `isOpen` check refusing sockets idle past `CODEX_WEBSOCKET_MAX_IDLE_REUSE_MS`
+	 * to prevent stalls on undetected half-open connections.
 	 */
 	isHealthyForReuse(): boolean {
 		if (!this.isOpen()) return false;
@@ -3784,12 +3697,7 @@ class CodexWebSocketConnection {
 	}
 
 	/**
-	 * Discard data frames from a previous request that remained in `#queue`
-	 * after the consumer broke out on the terminal event. Preserves any queued
-	 * transport error (from `onerror` / `onclose` / `#failQueue`) so the next
-	 * `#nextMessage` surfaces the death signal instead of waiting it out.
-	 *
-	 * Returns the number of frames dropped (test/debug visibility only).
+	 * Discard stale queued data frames from previous requests while preserving queued transport errors.
 	 */
 	#dropStaleFrames(): number {
 		if (this.#queue.length === 0) return 0;
@@ -4336,13 +4244,7 @@ export function convertOpenAICodexResponsesTools(
 }
 
 /**
- * The fields a Codex failure event carries, wherever it nests them.
- *
- * Read field by field. The five schemas this replaced typed every field `unknown` and piped it
- * through a `typeof` check, so the schema library contributed nothing but its 362ms of module
- * evaluation, paid by every launch that loads a provider. The outer schema also could not fail --
- * it fell back to an all-`undefined` event -- so the three `instanceof type.errors` branches
- * below it were unreachable.
+ * Structural representation of fields in a Codex failure event.
  */
 interface CodexErrorDetail {
 	code?: string | undefined;

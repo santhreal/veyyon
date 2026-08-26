@@ -1,21 +1,8 @@
 /**
- * The single registry of every section in the model's system prompt.
+ * Registry of every section in the model's system prompt.
  *
- * Rows declare section identity, order, purpose, source class, and banner name.
- * Statement modules own the static instruction text. Runtime producers own
- * volatile text. `renderBanner` turns every declared name into model-visible
- * bytes, so neither the zero-prose outer template nor an override file owns a
- * banner.
- *
- * The `template` source label means the static provider-cache prefix assembled
- * into the outer template slot. It does not mean prose is read from
- * `prompts/session/system-prompt.md`. The `runtime` label means a separately
- * emitted provider-cache part whose text may change during a session.
- *
- * `buildSystemPrompt` keeps the static prefix in one array entry and emits
- * volatile runtime sections separately. That boundary is a provider caching
- * contract, not a difference in addressability: all bannered sections use the
- * same registry, splitter, override vocabulary, and ordering rules.
+ * Declares section identity, order, purpose, source class, and banner name.
+ * Statement modules provide static text; runtime producers supply volatile text.
  */
 import { kebabToCamel, type PromptSection } from "@veyyon/utils";
 import { hasBanner, renderBanner } from "./banner-grammar";
@@ -25,21 +12,10 @@ export interface TemplateSection extends PromptSection {
 }
 
 /**
- * Where a runtime section's text comes from.
+ * Source origin for a runtime section's text.
  *
- * `option` means the text is handed to `buildSystemPrompt` by its caller, which
- * is how every settings-gated section works: the caller reads the setting and
- * passes rendered text, or passes nothing. Declaring the option key here is what
- * lets the assembler read it THROUGH the registry instead of a hand-written map,
- * and lets a wiring test check that a production caller actually populates it.
- *
- * Without that declaration the chain setting -> option -> caller -> prompt was
- * enforced only at its last link: a section whose option was declared and
- * threaded into the assembly map but never populated from its setting compiled,
- * shipped, and rendered nothing forever.
- *
- * `computed` means the builder produces the text itself, so there is no option
- * to wire and nothing for a caller to forget.
+ * `option` is passed by the caller to `buildSystemPrompt`; `computed` is produced
+ * directly by the builder.
  */
 export type RuntimeSectionInput = { readonly kind: "computed" } | { readonly kind: "option"; readonly key: string };
 
@@ -61,9 +37,7 @@ export type SystemPromptSection = TemplateSection | RuntimeSection;
 /**
  * Static cached-prefix sections in model-visible order.
  *
- * Their bodies come exclusively from statement modules and are inserted into
- * the zero-prose outer template as one complete document. `as const satisfies`
- * preserves literal ids for the unions derived below.
+ * Bodies come from statement modules and are inserted into the outer template.
  */
 export const TEMPLATE_SECTIONS = [
 	{
@@ -105,29 +79,10 @@ export const TEMPLATE_SECTIONS = [
 ] as const satisfies readonly TemplateSection[];
 
 /**
- * The sections assembled from runtime state, in emission order.
+ * Sections assembled from runtime state, in emission order.
  *
- * `project` carries the workstation/environment framing, the discovered context
- * files, the workspace tree, the cwd line, AND the active-repo-context clause.
- * That last one used to be its own block; it is the same concern by every measure
- * that matters — same input (the cwd), same lifetime, same invalidation — and
- * splitting it meant two things to remember on a working-directory change. Exactly
- * one of them got remembered, which is how the prompt kept describing the previous
- * project after a `/cd`.
- *
- * The two shorthand sections stay SEPARATE despite being one feature, because they
- * are separately meaningful: teaching the notation with no handle table is the
- * inert case, and an eval must be able to run it as its own arm to tell "the model
- * ignored available handles" from "there were no handles".
- *
- * `as const satisfies` rather than a `readonly RuntimeSection[]` annotation, and
- * the difference is the whole point: an annotation WIDENS every entry to
- * `RuntimeSection`, so `input.kind` becomes the union `"computed" | "option"` and
- * `input.key` becomes `string`. Everything downstream that wants to know which
- * sections are computed, or which option keys exist, then had to restate it by
- * hand — and both hand-written restatements were wrong (see
- * {@link ComputedRuntimeSectionId} and `system-prompt.ts`'s option-key proof).
- * Keeping the literals means those questions are answered by this array.
+ * Preserves literal types via `as const satisfies` so downstream code can
+ * query computed section IDs and option keys directly from this array.
  */
 export const RUNTIME_SECTIONS = [
 	{
@@ -176,70 +131,25 @@ export type RuntimeSectionEntry = (typeof RUNTIME_SECTIONS)[number];
 export type TemplateSectionId = TemplateSectionEntry["id"];
 export type RuntimeSectionId = RuntimeSectionEntry["id"];
 
-/**
- * The ids of the template's regions, in document order, read off the rows.
- *
- * Declared as its own literal list until now, which made adding a section two
- * edits that had to agree: the `satisfies` above rejects a row whose id is not in
- * the list, but nothing rejected a list entry with no row, so a renamed section
- * could leave a phantom id behind that `section-overrides.ts` still advertised as
- * a valid override target.
- */
+/** Template section IDs in document order, derived from {@link TEMPLATE_SECTIONS}. */
 export const TEMPLATE_SECTION_IDS: readonly TemplateSectionId[] = TEMPLATE_SECTIONS.map(section => section.id);
 
 /** The ids of the runtime sections, in emission order, read off the rows. */
 export const RUNTIME_SECTION_IDS: readonly RuntimeSectionId[] = RUNTIME_SECTIONS.map(section => section.id);
 
 /**
- * The ids of the sections whose text the BUILDER produces, derived from the
- * registry's own `input.kind`.
- *
- * `system-prompt.ts` used to spell this as `Exclude<RuntimeSectionId, "shorthand"
- * | "shorthand-handles">` — a second hand-written list of which sections are
- * option-backed, with no connection to the `input` each row declares. It was
- * wrong in both directions. Registering a new OPTION-backed section made the
- * builder's computed-text map demand an entry for it, so the obvious way through
- * the error was to add a key that is never read and now claims the section is
- * computed. Flipping an existing section from `option` to `computed` did the
- * opposite and was worse: this type kept excluding it, so the map did not require
- * its text, the lookup found nothing, and the section rendered empty forever with
- * a green build.
+ * IDs of sections whose text the builder produces, derived from registry rows
+ * with `input.kind === "computed"`.
  */
 export type ComputedRuntimeSectionId = Extract<RuntimeSectionEntry, { input: { kind: "computed" } }>["id"];
 
-/**
- * Every option key the registry declares, as a union of literals.
- *
- * This is what lets `system-prompt.ts` prove the keys are real fields of
- * `BuildSystemPromptOptions`. The registry cannot import that interface (a
- * cycle), so it names keys as strings; exporting the literals instead of `string`
- * is what makes the check on the other side possible at all.
- */
+/** Option keys declared by the registry as a union of string literals. */
 export type OptionBackedSectionKey = Extract<RuntimeSectionEntry, { input: { kind: "option" } }>["input"]["key"];
 
-/**
- * The banner that introduces the argot handle table, read off the section that
- * owns it rather than restated.
- *
- * Callers that need to ask "did the handle table actually reach this prompt?"
- * (the arm's post-refresh probe in `sdk.ts`, and the bench that reads its record)
- * must test for the same bytes the assembler emits. Spelling the banner out a
- * second time would let the two drift apart silently, and the failure mode of
- * that drift is a probe that reports "no handles taught" on a perfectly armed
- * session.
- */
+/** Banner introducing the argot handle table, derived from the registered section. */
 const SHORTHAND_HANDLES_SECTION = RUNTIME_SECTIONS[2];
 
-/**
- * The positional pick above is the `shorthand-handles` row, proved at build time.
- *
- * `RUNTIME_SECTIONS.find(...)` returns `T | undefined`, and the old code spent an
- * `as string` to get rid of the `undefined` — a cast that would have turned a
- * renamed or deleted row into a banner of literal `"undefined"` rather than a
- * failure. Indexing a const tuple has an exact type instead, so the row can be
- * checked rather than asserted, and this initializer stops being assignable if
- * the rows are ever reordered.
- */
+/** Compile-time assertion that the positional index matches `shorthand-handles`. */
 const _assertHandlesRow: (typeof SHORTHAND_HANDLES_SECTION)["id"] extends "shorthand-handles" ? true : never = true;
 void _assertHandlesRow;
 
@@ -249,11 +159,9 @@ export const ARGOT_HANDLES_BANNER: string = renderBanner(SHORTHAND_HANDLES_SECTI
 export const SYSTEM_PROMPT_SECTIONS: readonly SystemPromptSection[] = [...TEMPLATE_SECTIONS, ...RUNTIME_SECTIONS];
 
 /**
- * Every banner-bearing section, in order — template and runtime alike.
+ * All banner-bearing sections in order (template and runtime).
  *
- * This is what makes the model uniform: the splitter and the reorderer key off
- * THIS list, so a runtime section is as addressable as a template one. Only
- * `conventions` is absent, because it has no banner to find.
+ * Used by splitter and reorderer so all bannered sections are addressable.
  */
 export const BANNERED_SECTIONS: readonly (SystemPromptSection & { name: string })[] =
 	SYSTEM_PROMPT_SECTIONS.filter(hasBanner);
@@ -275,24 +183,14 @@ type KebabToCamelKey<Value extends string> = Value extends `${infer Head}-${infe
 /** Internal camel-case key for one static section. */
 export type TemplateSectionKey = KebabToCamelKey<TemplateSectionId>;
 
-/**
- * The camelCase override keys for the template sections, in document order.
- *
- * Derived, never declared: the override keys and the section ids used to be two
- * hand-written lists, so renaming a section meant editing both and nothing caught
- * a mistake. `kebabToCamel` (@veyyon/utils) owns the conversion itself, so this
- * file does not hand-roll a second copy of it either.
- */
+/** CamelCase override keys for template sections in document order. */
 export const TEMPLATE_SECTION_CAMEL_KEYS: readonly TemplateSectionKey[] = TEMPLATE_SECTION_IDS.map(
 	kebabToCamel,
 ) as TemplateSectionKey[];
 
 /**
  * Prefix assembled section body text with its registered banner.
- *
- * Returns "" for empty text so an absent optional section stays absent rather
- * than becoming a bare banner. The same function serves default and runtime
- * sections, so the registry is the only owner of banner bytes.
+ * Returns empty string if body text is missing or whitespace-only.
  */
 export function withSectionBanner(
 	section: SystemPromptSection & { readonly name: string },
@@ -303,25 +201,10 @@ export function withSectionBanner(
 	return `${renderBanner(section.name)}\n\n${body}`;
 }
 
-/**
- * Runtime sections whose text arrives as a `buildSystemPrompt` option.
- *
- * The wiring contract keys off this list: every entry names an option a
- * production caller must populate, and `system-prompt-wiring.test.ts` fails if
- * one is declared but never set at the real call site.
- */
+/** Runtime sections whose text arrives as a `buildSystemPrompt` option. */
 export type OptionBackedRuntimeSection = Extract<RuntimeSectionEntry, { input: { kind: "option" } }>;
 
-/**
- * Narrow a registry row to the option-backed case.
- *
- * A predicate rather than an inline `section.input.kind === "option"` because
- * TypeScript does not narrow a value from a check on a NESTED property: writing
- * the comparison inline leaves `section` un-narrowed, and the assembler's two
- * branches then need casts to index anything — which is exactly how it silently
- * drifted from the registry before. One predicate, used by the filter below and
- * by `system-prompt.ts`, keeps both branches checked with no cast anywhere.
- */
+/** Type guard narrowing a registry row to option-backed runtime sections. */
 export function isOptionBackedSection(section: RuntimeSectionEntry): section is OptionBackedRuntimeSection {
 	return section.input.kind === "option";
 }

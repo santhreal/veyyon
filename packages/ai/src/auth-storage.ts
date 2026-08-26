@@ -153,14 +153,7 @@ function fingerprintOAuthBearer(bearer: string): string {
 }
 const SESSION_STICKY_CACHE_PREFIX = "session:sticky:";
 /**
- * Where a user's explicit account choice lives, kept apart from the sticky record above.
- *
- * The sticky record is ROUTING's own state: it is rewritten on every resolve and cleared
- * outright when a credential fails auth (`rotateSessionCredential`). A pin is the USER's
- * intent. Storing both in one row means rate-limit rotation silently overwrites the choice
- * the user made, and nothing is left to compare against, so the UI cannot say the account
- * changed under them. Two keys keeps the two facts separable, which is what makes the
- * divergence reportable instead of invisible.
+ * Cache key prefix for explicit user account pins, kept separate from routing-managed stickiness.
  */
 const SESSION_PIN_CACHE_PREFIX = "session:pin:";
 
@@ -188,24 +181,11 @@ export interface SessionCredentialRouting {
 	 */
 	selectedCredentialId?: number;
 	/**
-	 * Credential the next request will use: the pin while it is usable, else the one that last
-	 * served, else the selection this storage would make if the request went out now.
-	 *
-	 * Absent only when the provider holds no credential at all. It used to be absent whenever
-	 * nothing had been spent yet, so a fresh session with three accounts had NOTHING that answered
-	 * which one the next request goes to: the card showed three rows, none tagged, and the operator
-	 * had to send a request to find out.
+	 * Credential the next request will use: active pin, last-served account, or predicted selection.
 	 */
 	activeCredentialId?: number;
 	/**
-	 * True when {@link activeCredentialId} is a PREDICTION rather than an observation.
-	 *
-	 * Set when no pin and no last-used record decided it, so the answer came from replaying the
-	 * selection the next request would make. Surfaces must say which they are showing: "serving"
-	 * describes traffic that has already gone somewhere, and claiming it before the first request
-	 * of a session is a guess wearing the clothes of a fact. The prediction covers stickiness and
-	 * rate-limit ordering, which are deterministic; a provider with an async usage-ranking strategy
-	 * can still land elsewhere, and that is the honest reason the two are distinguished.
+	 * True when {@link activeCredentialId} is predicted from selection rules rather than an observed request.
 	 */
 	activeIsPrediction?: boolean;
 	/** Epoch ms the chosen credential becomes usable again, when it is rate-limit blocked. */
@@ -301,18 +281,7 @@ export interface StoredCredentialBlock {
 
 /**
  * Per-credential health record returned by {@link AuthStorage.checkCredentials}.
- *
- * Use this to identify which credential in a multi-account pool is causing
- * auth errors. `ok` is tri-state:
- *
- * - `true` — credential authenticated against the provider's auth-verifying
- *   probe (today: the usage endpoint). For OAuth this also exercises refresh
- *   when the access token was expired.
- * - `false` — the probe rejected the credential (401/403/refresh failure/etc).
- *   `reason` carries the upstream error string.
- * - `null` — no probe is configured for this provider (or the configured
- *   probe doesn't support this credential type). The credential's auth
- *   status is unverifiable from here.
+ * `ok` is tri-state: true (verified), false (probe failed with `reason`), or null (unsupported/unprobed).
  */
 export interface CredentialHealthResult {
 	/** Database row id (matches {@link StoredAuthCredential.id}). */
@@ -334,12 +303,7 @@ export interface CredentialHealthResult {
 	/** Probe usage report (raw payload stripped) when `ok === true`. */
 	report?: Omit<UsageReport, "raw">;
 	/**
-	 * Result of the optional end-to-end completion probe (see
-	 * {@link CheckCredentialsOptions.completionProbe}). Absent when no probe was
-	 * supplied. The completion probe exercises the provider's chat-completion
-	 * endpoint with the credential's bearer bytes, which is a stricter signal
-	 * than the usage endpoint (some providers happily 200 a `/usage` call while
-	 * the chat endpoint 401s the same bearer).
+	 * Optional end-to-end chat completion probe result, providing a stricter signal than usage probes.
 	 */
 	completion?: CredentialCompletionResult;
 }
@@ -360,15 +324,7 @@ export interface CredentialCompletionResult {
 }
 
 /**
- * Credential payload handed to {@link CompletionProbe}. For API-key
- * credentials only the bytes are exposed; for OAuth, every identity field
- * carried by the refreshed credential is included so the probe can compose
- * provider-specific apiKey shapes (e.g. GitHub Copilot / Google Gemini CLI
- * expect a JSON blob with `token` + `projectId`, not the raw access token).
- *
- * `refreshToken` may be {@link REMOTE_REFRESH_SENTINEL} when the credential
- * lives behind a broker; the chat endpoint never reads it, so the probe can
- * forward it verbatim into the structured shape without harm.
+ * Credential payload handed to {@link CompletionProbe}, exposing raw keys or OAuth identity fields.
  */
 export type CompletionProbeCredential =
 	| { type: "api_key"; apiKey: string }
@@ -404,30 +360,13 @@ export interface CheckCredentialsOptions {
 	/** Per-credential probe timeout (ms). Defaults to the configured usage request timeout. */
 	timeoutMs?: number;
 	/**
-	 * Probe only these credential row ids, instead of every active row.
-	 *
-	 * For a surface that re-probes ONE account: a card with nine accounts open costs nine network
-	 * round-trips per refresh, and a user asking about one row has no reason to pay for the other
-	 * eight or to wait behind them. An id that is not stored (a row a peer logged out between the
-	 * render and the keypress) contributes no result rather than an error, because the caller's
-	 * question about it is already answered: it is gone.
-	 *
-	 * Absent means every active row, which is what the whole-store callers want.
+	 * Optional subset of credential row IDs to probe instead of all active credentials.
 	 */
 	credentialIds?: readonly number[];
 	/** Provider → base URL override, same shape as {@link AuthStorage.fetchUsageReports}. */
 	baseUrlResolver?: (provider: Provider) => string | undefined;
 	/**
-	 * Optional end-to-end probe. When provided, `checkCredentials` invokes it
-	 * for every credential where a usable bearer is available (API key, or
-	 * OAuth access token after refresh-on-expiry succeeded). The result lands
-	 * on {@link CredentialHealthResult.completion}.
-	 *
-	 * The probe runs INDEPENDENTLY of whether a {@link UsageProvider} is
-	 * configured: providers without a usage endpoint still benefit from the
-	 * extra signal. The probe is NOT invoked when OAuth refresh fails — the
-	 * bytes would be stale anyway and the upstream failure is already captured
-	 * on `reason`.
+	 * Optional end-to-end chat completion probe for usable bearers, populated on {@link CredentialHealthResult.completion}.
 	 */
 	completionProbe?: CompletionProbe;
 	/** Per-credential completion probe timeout (ms). Defaults to `timeoutMs`. */
@@ -476,13 +415,7 @@ export interface AuthCredentialSnapshot {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Persistence abstraction consumed by {@link AuthStorage}.
- *
- * Concrete implementations:
- * - {@link SqliteAuthCredentialStore} — local SQLite-backed store (default).
- * - `RemoteAuthCredentialStore` from `./auth-broker` — client-side snapshot of
- *   a remote broker; mutating methods (`replace*`, `upsert*`, `delete*ForProvider`)
- *   throw because login flows route through the broker, not the client.
+ * Cross-process lease fence protecting single-use OAuth refresh token operations.
  */
 export interface CredentialRefreshLeaseFence {
 	owner: string;
@@ -496,32 +429,15 @@ export interface AuthCredentialStore {
 	listAuthCredentials(provider?: string): StoredAuthCredential[];
 	updateAuthCredential(id: number, credential: AuthCredential): void;
 	/**
-	 * Persist a refreshed credential AND clear any `disabled_cause` on the row.
-	 *
-	 * A successful refresh is proof the grant is alive, so a row a peer disabled on
-	 * a now-superseded token must come back. Without this, `updateAuthCredential`
-	 * writes a live token onto a row still flagged disabled, `listAuthCredentials`
-	 * filters it out, and the user is "logged out" with a working token sitting
-	 * right there.
+	 * Persist a refreshed credential and clear any `disabled_cause` on the row.
 	 */
 	updateAuthCredentialEnabling?(id: number, credential: AuthCredential): void;
 	/**
-	 * Read one row by id INCLUDING disabled rows.
-	 *
-	 * `listAuthCredentials` deliberately hides disabled rows, so it cannot answer
-	 * "did a peer already rotate this credential?" during a refresh race — the peer's
-	 * winning row may be exactly the one that got disabled. This is the only reader
-	 * that can see it.
+	 * Read one row by ID, including disabled rows, to detect peer rotations during races.
 	 */
 	readAuthCredentialById?(id: number): StoredAuthCredential | undefined;
 	/**
-	 * List the DISABLED rows for a provider, newest disable first.
-	 *
-	 * `listAuthCredentials` hides them, which is right for resolution: a disabled
-	 * credential must never be handed out. It is wrong for reporting. A user whose
-	 * only credential was disabled by a failed refresh has the same view as a user
-	 * who never signed in, so they are told "no API key found" and sent to log in
-	 * again with nothing saying what happened to the login they had.
+	 * List disabled credential rows for a provider, newest first, for diagnostics and reporting.
 	 */
 	listDisabledAuthCredentials?(provider?: string): StoredAuthCredential[];
 	deleteAuthCredential(id: number, disabledCause: string): void;
@@ -567,14 +483,7 @@ export interface AuthCredentialStore {
 	setAccountName?(identity: string, name: string): void;
 	deleteAccountName?(identity: string): void;
 	/**
-	 * The account chosen for a provider, keyed by the same stable identity as the names table.
-	 *
-	 * GLOBAL and durable by design: the credentials themselves are shared by every profile and
-	 * every session on the machine, so the account you picked has to be too. Keyed by identity
-	 * rather than row id so a re-login, which writes a new row, keeps the choice.
-	 *
-	 * Optional, like the names: the remote-broker store keeps no local table, and a store without
-	 * it simply has no persisted choice, so selection lives for the process and says so.
+	 * Persisted global account choice for a provider, keyed by stable identity.
 	 */
 	getProviderSelection?(provider: string): string | undefined;
 	setProviderSelection?(provider: string, identity: string): void;
@@ -596,15 +505,7 @@ export interface AuthCredentialStore {
 	/** Read recorded usage-limit snapshots, oldest first. */
 	listUsageHistory?(query?: UsageHistoryQuery): UsageHistoryEntry[];
 	/**
-	 * Optional store-supplied OAuth refresh. When present, `AuthStorage` uses
-	 * it before the per-provider local refresh path. `RemoteAuthCredentialStore`
-	 * implements this against the broker; SQLite stores leave it undefined.
-	 *
-	 * Precedence: `AuthStorageOptions.refreshOAuthCredential` > this hook > local.
-	 *
-	 * `signal` propagates the agent's cancel (ESC, request abort, …) all the
-	 * way to the broker fetch so a hung connection can't strand the caller
-	 * for `timeoutMs * (maxRetries + 1)`.
+	 * Optional store-supplied OAuth refresh hook, taking precedence over local refresh.
 	 */
 	refreshOAuthCredential?(
 		provider: Provider,
@@ -620,30 +521,11 @@ export interface AuthCredentialStore {
 	 */
 	prepareForRequest?(credentialId: number, opts?: { signal?: AbortSignal }): Promise<boolean | undefined>;
 	/**
-	 * Optional store-supplied aggregate usage fetch. When present, `AuthStorage`
-	 * routes `fetchUsageReports()` here instead of fanning out per-credential.
-	 * `RemoteAuthCredentialStore` proxies to the broker (whose datacenter IP
-	 * isn't rate-limited like a heavy residential client).
-	 *
-	 * Precedence: `AuthStorageOptions.fetchUsageReports` > this hook > local fan-out.
-	 *
-	 * `signal` propagates the agent's cancel down to the broker fetch.
+	 * Optional store-supplied aggregate usage fetch hook, routing through a shared broker.
 	 */
 	fetchUsageReports?(signal?: AbortSignal): Promise<UsageReport[] | null>;
 	/**
-	 * Optional store-supplied per-credential usage report lookup. When present,
-	 * `AuthStorage` consults this before its own per-credential upstream fetch
-	 * (`#getUsageReport`). `RemoteAuthCredentialStore` implements this against
-	 * the broker's aggregate `/v1/usage` (one coalesced round-trip shared across
-	 * all callers) so multi-credential ranking on the client never hits the
-	 * upstream provider's rate-limited usage endpoint from the laptop IP.
-	 *
-	 * Returning `null` is authoritative — `AuthStorage` does NOT fall back to
-	 * the local fetch path. The store hook owns the decision, since falling
-	 * back would re-introduce the per-IP rate-limit problem the broker exists
-	 * to avoid.
-	 *
-	 * `signal` propagates the agent's cancel down to the broker fetch.
+	 * Optional store-supplied per-credential usage report lookup, bypassing local upstream fetches.
 	 */
 	getUsageReport?(provider: Provider, credential: OAuthCredential, signal?: AbortSignal): Promise<UsageReport | null>;
 	/**
@@ -661,13 +543,7 @@ export interface AuthCredentialStore {
 	 */
 	markCredentialSuspect?(credentialId: number, opts?: { signal?: AbortSignal }): Promise<void>;
 	/**
-	 * Optional async write hook for upserting a single credential. When present,
-	 * `AuthStorage.#upsertOAuthCredential` routes through this instead of the
-	 * sync `upsertAuthCredentialForProvider`. `RemoteAuthCredentialStore` uses
-	 * it to send the upsert to the broker via `POST /v1/credential`.
-	 *
-	 * Implementations MUST update the in-memory snapshot before returning so the
-	 * post-write read path is consistent.
+	 * Optional async write hook for upserting a single credential to a remote store.
 	 */
 	upsertAuthCredentialRemote?(provider: string, credential: AuthCredential): Promise<StoredAuthCredential[]>;
 	/**
@@ -695,14 +571,7 @@ export interface AuthCredentialStore {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Event payload describing a credential that was just soft-disabled.
- *
- * Today the only call site is OAuth refresh failures with a definitive cause
- * (`invalid_grant`, `401/403` not from a network blip, etc.) — the
- * disabled_cause string is the verbatim error captured for forensics.
- *
- * Subscribers can use this to surface a notification, banner, or auto-launch
- * a re-login flow instead of letting the credential silently disappear.
+ * Event payload describing a credential that was soft-disabled due to auth or refresh failures.
  */
 export interface CredentialDisabledEvent {
 	provider: string;
@@ -710,16 +579,7 @@ export interface CredentialDisabledEvent {
 }
 
 /**
- * Event payload describing an automatic move from one account to another.
- *
- * Emitted only for AUTH DEATH — a credential a request cannot be served with at all (revoked
- * token, `invalid_grant`, a row disabled underneath us). Quota and rate-limit movement never
- * emits this, because that movement is gated by the load-balancing setting and, when it is on,
- * is the routine thing the operator asked for rather than news.
- *
- * Both accounts are named: a notice that says only "switched account" leaves the operator unable
- * to tell which credential died or which one is now spending, which is the whole content of the
- * event.
+ * Event payload emitted when auth death forces an automatic move from one account to another.
  */
 export interface CredentialFailoverEvent {
 	provider: string;
@@ -731,19 +591,7 @@ export interface CredentialFailoverEvent {
 }
 
 /**
- * Event payload for the move that did NOT happen: this account's quota window is exhausted and
- * sibling accounts are sitting unblocked, but `accounts.loadBalancing` is off so nothing moved.
- *
- * The exact counterpart of {@link CredentialFailoverEvent}. Auth death moves without asking and
- * says so; quota exhaustion respects the setting and, until now, said nothing at all: the turn
- * simply waited out a window that can be hours long, next to accounts that could have served it.
- * That silence is what makes the setting undiscoverable, because the one moment it is worth
- * knowing about is the moment it costs something.
- *
- * Emitted at most once per exhausted window per account, so a turn that retries does not repeat
- * itself. Never emitted when the setting is ON (the move is the routine thing the operator asked
- * for) and never when no sibling could have served (then the wait is the provider's, not a
- * choice anyone made).
+ * Event payload emitted when quota exhaustion could not fail over because `loadBalancing` is disabled.
  */
 export interface UsageLimitWithheldEvent {
 	provider: string;
@@ -768,11 +616,7 @@ export type AuthStorageOptions = {
 	 */
 	configValueResolver?: (config: string) => Promise<string | undefined>;
 	/**
-	 * Optional callback fired when AuthStorage automatically disables a
-	 * credential because something detected it as no longer usable — today
-	 * that's the OAuth refresh-failure path in `getApiKey`. NOT fired for
-	 * user-initiated `remove()` (the user already knows) or dedup of
-	 * duplicate credentials (uninteresting hygiene).
+	 * Callback fired when a credential is automatically disabled due to auth or refresh failure.
 	 */
 	onCredentialDisabled?: (event: CredentialDisabledEvent) => void | Promise<void>;
 	/**
@@ -786,28 +630,11 @@ export type AuthStorageOptions = {
 	 */
 	onUsageLimitWithheld?: (event: UsageLimitWithheldEvent) => void | Promise<void>;
 	/**
-	 * Whether QUOTA and RATE-LIMIT exhaustion may move a provider to a different account.
-	 *
-	 * Defaults to `true` so every existing embedder — the auth broker, the gateway, the SDK —
-	 * keeps the behaviour it has today. The coding-agent passes the operator's
-	 * `accounts.loadBalancing` setting, which defaults to OFF: spreading one operator's work
-	 * across their accounts is a choice with consequences they must opt into, not a default.
-	 *
-	 * This gates ONLY exhaustion-driven movement. Auth death is never gated: a revoked
-	 * credential cannot serve the request at all, so refusing to move would just fail.
-	 *
-	 * A resolver rather than a plain boolean is accepted because the setting is live-editable;
-	 * reading it per decision means a `/settings` change takes effect without a restart.
+	 * Whether quota and rate-limit exhaustion may move a provider to a different account (default false).
 	 */
 	loadBalancing?: boolean | (() => boolean);
 	/**
-	 * Override OAuth refresh. When set, `AuthStorage` calls this instead of the
-	 * per-provider local refresh function. Receives the credential id so the
-	 * implementation can address remote credentials.
-	 *
-	 * Must return updated {@link OAuthCredentials} with at least `access` and
-	 * `expires`. `refresh` may be an opaque sentinel (e.g. `"__remote__"`) when
-	 * the actual refresh token never leaves the broker.
+	 * Custom OAuth refresh handler overriding local provider refresh functions.
 	 */
 	refreshOAuthCredential?: (
 		provider: Provider,
@@ -816,24 +643,11 @@ export type AuthStorageOptions = {
 		signal?: AbortSignal,
 	) => Promise<OAuthCredentials>;
 	/**
-	 * Human-readable description of the credential store backing this
-	 * AuthStorage instance. Surfaced through {@link AuthStorage.describeCredentialSource}
-	 * so the TUI can show where a token came from (broker URL or local SQLite path).
-	 *
-	 * Examples:
-	 * - `"local ~/.veyyon/agent/agent.db"`
-	 * - `"broker http://veyyon.internal:8765"`
+	 * Human-readable description of the backing credential store (e.g. SQLite path or broker URL).
 	 */
 	sourceLabel?: string;
 	/**
-	 * Override `fetchUsageReports`. When set, `AuthStorage.fetchUsageReports`
-	 * calls this instead of fanning out per-credential. The primary use case is
-	 * routing through a broker that egresses from a less-throttled IP — e.g. a
-	 * residential laptop trips Anthropic's per-IP rate limit on the usage
-	 * endpoint and drops 2-of-5 credentials, while the VPS broker gets all 5.
-	 *
-	 * Implementations may return null when no usage data is available; the
-	 * AuthStorage caller surfaces that to its own consumer unchanged.
+	 * Custom aggregate usage report fetcher overriding per-credential fan-out.
 	 */
 	fetchUsageReports?: (signal?: AbortSignal) => Promise<UsageReport[] | null>;
 };
@@ -884,16 +698,7 @@ const USAGE_REPORT_CACHE_KEY_VERSION_OVERRIDES: Partial<Record<Provider, number>
 };
 const DEFAULT_OAUTH_REFRESH_TIMEOUT_MS = 10_000;
 /**
- * Refresh OAuth access tokens this many ms before their stated expiry. The
- * skew exists so callers downstream of {@link AuthStorage} (stream providers,
- * usage probes, web_search) never observe a credential that is expired or
- * about to expire mid-request — there's a single rotation point and everyone
- * downstream trusts the token they receive.
- *
- * Set to 60s: comfortably absorbs request RTT + a clock-skew window without
- * triggering a refresh on every request. Provider token endpoints typically
- * mint access tokens with 30-60min lifetimes, so refreshing 60s early changes
- * the rotation cadence by <4%.
+ * Buffer in milliseconds before token expiration to trigger preemptive OAuth refresh.
  */
 const OAUTH_REFRESH_SKEW_MS = 60_000;
 const OAUTH_REFRESH_LEASE_TTL_MS = 15_000;
@@ -913,21 +718,7 @@ const MAX_PENDING_DISABLED_EVENTS = 32;
 const MAX_WITHHELD_QUOTA_NOTICES = 64;
 
 /**
- * Outcome of {@link AuthStorage.markUsageLimitReached}.
- *
- * `switched` is `true` when an unblocked same-type sibling credential is
- * available right now, so the caller can retry immediately and the next
- * `getApiKey` will hand it out. When `false`, `retryAtMs` (epoch ms) carries
- * the earliest moment any same-type sibling's temporary block expires —
- * callers should prefer waiting until then over the provider's (often
- * multi-hour) retry-after when it is sooner. `retryAtMs` is `undefined` when
- * no sibling credentials exist at all, or when the session has no tracked
- * credential to rotate away from.
- *
- * A gate-off return carries no sibling count. The fact that idle siblings were
- * withheld is announced through {@link UsageLimitWithheldEvent} instead, which
- * has the one thing a return value cannot: a dedupe key, so a turn that retries
- * into the same exhausted window states it once.
+ * Outcome of {@link AuthStorage.markUsageLimitReached}, reporting sibling availability or retry timestamp.
  */
 export interface UsageLimitMarkResult {
 	switched: boolean;
@@ -972,12 +763,7 @@ type AuthApiKeyOptions = {
 type OAuthResolutionResult = { apiKey: string; credential: OAuthCredential; credentialId?: number };
 
 /**
- * Refreshed OAuth access plus identity metadata returned by
- * {@link AuthStorage.getOAuthAccess}. Callers that authenticate via a bearer
- * AND need the credential's identity (Codex `chatgpt-account-id`, Google
- * `projectId`, GitHub `enterpriseUrl`) consume this shape directly; the
- * refresh slot is deliberately omitted because rotating refresh tokens never
- * leave {@link AuthStorage}.
+ * Refreshed OAuth access token and identity metadata returned by {@link AuthStorage.getOAuthAccess}.
  */
 export interface OAuthAccess {
 	accessToken: string;
@@ -1012,12 +798,7 @@ export interface OAuthLoginIdentity {
 }
 
 /**
- * The row an upsert just wrote, found by the secret it holds.
- *
- * An upsert answers with every row the provider now has, not the one it added, and a login needs the
- * one it added: naming an account is meaningless if it names a sibling. The secret is the only field
- * that is unique per row - two rows can share an email, an account id, an organization, and a
- * creation timestamp, which is exactly the Anthropic two-subscription case.
+ * Resolves the newly written row from an upsert by matching its unique secret.
  */
 function storedCredentialSecret(credential: AuthCredential): string {
 	return credential.type === "api_key" ? credential.key : credential.access;
@@ -1179,11 +960,7 @@ const OPENAI_CODEX_FREE_PLAN_TOKENS: Record<string, true> = {
 };
 
 /**
- * Account tier needed for model-aware Codex OAuth routing.
- *
- * GPT-5.6 Terra (including its local pro-mode alias) remains available on every
- * plan. Sol and Luna pro-mode aliases inherit their base models' paid tier;
- * only Spark currently has a documented Pro-plan preference in Codex.
+ * Resolves the required account tier for model-aware Codex OAuth routing.
  */
 function resolveOpenAICodexPlanRequirement(provider: string, modelId: string | undefined): OpenAICodexPlanRequirement {
 	if (provider !== "openai-codex" || typeof modelId !== "string") return "none";
@@ -1472,20 +1249,11 @@ export class AuthStorage {
 	#sourceLabel?: string;
 	#credentialDisabledListeners: Set<(event: CredentialDisabledEvent) => void | Promise<void>> = new Set();
 	/**
-	 * Buffer for credential_disabled events fired while no listener is subscribed.
-	 * Drained (in insertion order) to the first listener that triggers the empty→non-empty
-	 * transition via {@link AuthStorage.onCredentialDisabled}. Bounded at
-	 * {@link MAX_PENDING_DISABLED_EVENTS}; oldest entries are dropped to keep memory predictable
-	 * if a long-lived AuthStorage somehow accumulates a backlog (provider count is naturally small,
-	 * but a process that runs without subscribers for a long time shouldn't grow this unboundedly).
+	 * Buffer for `credential_disabled` events emitted before subscribers register, bounded by {@link MAX_PENDING_DISABLED_EVENTS}.
 	 */
 	#pendingDisabledEvents: CredentialDisabledEvent[] = [];
 	/**
-	 * Auth-death failover subscribers.
-	 *
-	 * Not buffered the way disable events are: a failover notice is about what is happening to
-	 * the request in flight, so replaying one to a listener that subscribes minutes later would
-	 * announce a move the operator has long since lived through.
+	 * Subscribers notified when auth failure forces an automatic failover to another credential.
 	 */
 	#credentialFailoverListeners: Set<(event: CredentialFailoverEvent) => void | Promise<void>> = new Set();
 	/** Provider → the account auth death just retired, awaiting the resolve that names its replacement. */
@@ -1504,23 +1272,11 @@ export class AuthStorage {
 	 */
 	#withheldQuotaNotices: Set<string> = new Set();
 	/**
-	 * Exhaustion-driven movement between accounts, off unless a host opts in.
-	 *
-	 * {@link AuthStorageOptions.loadBalancing} has documented this as defaulting to off since it
-	 * was added; the field said `true`, so every embedder that did not pass the option got account
-	 * movement it never asked for, and the one host that does pass it masked the disagreement.
+	 * Controls whether quota and rate-limit exhaustion may trigger account failover.
 	 */
 	#loadBalancing: boolean | (() => boolean) = false;
 	/**
-	 * Credential ids whose grant this process watched fail authentication, as opposed to run out of
-	 * quota. Deliberately in memory and deliberately not persisted: the mark exists to stop an
-	 * explicit choice from pinning traffic to an account that cannot authenticate at all, and after
-	 * a restart that account deserves exactly one more attempt — the provider re-marks it in a single
-	 * request if the grant really is gone, and a re-login or a lifted hold retires it.
-	 *
-	 * A quota hold is never recorded here. That distinction is the whole point: a hold is our own
-	 * prediction about a window and must never displace an explicitly chosen account, while a dead
-	 * grant is the provider's verdict and has to move the request or the session cannot proceed.
+	 * In-memory set of credential IDs whose grants failed authentication (not quota holds).
 	 */
 	#authDeadCredentials: Set<number> = new Set();
 	#generation = 1;
@@ -1623,22 +1379,8 @@ export class AuthStorage {
 	}
 
 	/**
-	 * Subscribe to {@link CredentialDisabledEvent}s. Multiple subscribers are supported and
-	 * each fires for every disable event; subscribers are invoked in registration order with
-	 * exceptions and async rejections isolated per-listener so a misbehaving subscriber
-	 * cannot break the disable path or starve the rest of the chain.
-	 *
-	 * If `credential_disabled` events were emitted while no listener was subscribed, they are
-	 * replayed (in insertion order) to the listener that triggers the empty→non-empty
-	 * transition. The drain is one-shot — listeners that subscribe after that no longer see
-	 * past events.
-	 *
-	 * Returns an unsubscribe function. The function is idempotent: calling it more than once
-	 * is a no-op. After every subscriber has unsubscribed, subsequent disable events buffer
-	 * again until the next subscribe.
-	 *
-	 * @param listener Callback invoked with each disable event. May be sync or async.
-	 * @returns A function that removes this listener from the subscriber set.
+	 * Subscribes to credential disabled events, replaying buffered events to the first subscriber.
+	 * @returns An idempotent unsubscribe function.
 	 */
 	onCredentialDisabled(listener: (event: CredentialDisabledEvent) => void | Promise<void>): () => void {
 		const wasEmpty = this.#credentialDisabledListeners.size === 0;
@@ -1747,14 +1489,7 @@ export class AuthStorage {
 	}
 
 	/**
-	 * Register a per-provider API key sourced from user configuration
-	 * (e.g. `models.yml` `providers.<name>.apiKey`). Higher priority than
-	 * stored credentials and OAuth tokens — when the user pins a key in
-	 * config, that key is what authenticates outbound requests, regardless
-	 * of whatever the broker happens to have loaded for that provider.
-	 *
-	 * Lower priority than {@link setRuntimeApiKey} so a CLI `--api-key`
-	 * still wins for the duration of a single invocation.
+	 * Registers a user-configured API key, taking precedence over stored and OAuth credentials.
 	 */
 	setConfigApiKey(provider: string, apiKey: string): void {
 		this.#configOverrides.set(provider, apiKey);
@@ -2090,15 +1825,7 @@ export class AuthStorage {
 	}
 
 	/**
-	 * When a credential's temporary block expires, or `undefined` if it is not
-	 * blocked for the given scope. Resolves the same way the selector does: the
-	 * in-memory and persisted copies of both the global and the scoped block are
-	 * consulted and the LATEST deadline wins.
-	 *
-	 * Public because "why is this account being skipped?" is a question the
-	 * doctor and status surfaces have to answer, and because the resolution rule
-	 * is subtle enough that a second implementation would drift from this one.
-	 * `credentialIndex` is the position in {@link listOAuthAccounts}.
+	 * Returns when a credential's temporary block expires across global and scoped deadlines.
 	 */
 	credentialBlockedUntil(
 		provider: string,
@@ -2196,15 +1923,7 @@ export class AuthStorage {
 	}
 
 	/**
-	 * Emit the auth-death notice at the moment the move is a FACT, not when it was predicted.
-	 *
-	 * `rotateSessionCredential` knows the account that died but not the account that will take
-	 * over: ranking picks that on the next resolve, and with several healthy siblings a guess
-	 * would name the wrong one. So the dying account is parked here and the notice fires from the
-	 * resolve that actually served, which is the only place both names are true.
-	 *
-	 * Landing back on the SAME account (a refresh healed it) drains the entry silently: nothing
-	 * moved, so there is nothing to report.
+	 * Emits a pending failover event once the replacing credential actually serves a request.
 	 */
 	#drainPendingFailover(provider: string, servedCredentialId: number): void {
 		const pending = this.#pendingFailover.get(provider);
@@ -2223,25 +1942,7 @@ export class AuthStorage {
 	}
 
 	/**
-	 * Report a session-stickiness cache failure LOUDLY, once per provider and
-	 * operation, then let the request continue.
-	 *
-	 * All four of these paths used to be `logger.debug` and carry on, which is a
-	 * silent fallback: the request still succeeds, so nothing looks wrong, but
-	 * session stickiness has stopped working. Stickiness is what keeps one session
-	 * pinned to one credential, so losing it means a conversation can hop between
-	 * accounts mid-flight — the same wrong-account routing the index-only cache
-	 * rows are explicitly dropped to prevent, arrived at by a different route. An
-	 * operator debugging "why did this session switch accounts" would find nothing
-	 * above debug level.
-	 *
-	 * Not fail-closed: a cache that cannot be written must not take down a request
-	 * that is otherwise fine. Loud, bounded and recorded instead, which is the form
-	 * of degrade this codebase does allow. Bounded matters here, because the usual
-	 * cause is a store that is broken for the whole process (read-only file, disk
-	 * full), and warning on every request would bury the line it is trying to make
-	 * visible. The first failure per provider and operation warns; the rest are
-	 * debug, so the signal survives without the flood.
+	 * Logs sticky session cache errors loudly once per provider/operation, degrading gracefully.
 	 */
 	#reportStickyCacheFailure(operation: string, provider: string, error: unknown): void {
 		const key = `${operation}:${provider}`;
@@ -2263,11 +1964,7 @@ export class AuthStorage {
 	}
 
 	/**
-	 * Resolve a pin to a live credential index, dropping a pin whose credential is gone.
-	 *
-	 * Stored by row id, resolved to an index on every read, exactly like the sticky
-	 * record: an index alone is meaningless once the row set changes, and honouring a
-	 * stale one routes the session to somebody else's account.
+	 * Resolves a session pin to a live credential index, dropping stale pins.
 	 */
 	#getSessionCredentialPin(
 		provider: string,
@@ -2304,14 +2001,7 @@ export class AuthStorage {
 	}
 
 	/**
-	 * The credential this session prefers: an explicit user pin when one resolves,
-	 * otherwise the last credential routing actually used.
-	 *
-	 * The pin is checked FIRST and this is the only place that decides it, because every
-	 * consumer of session preference goes through here (OAuth selection, account-identity
-	 * display, rotation, usage attribution). Honouring the pin at one chokepoint is what
-	 * makes `/account` switching real rather than cosmetic: a pin the resolver ignored
-	 * would show the new account in the UI while requests kept using the old one.
+	 * Returns the session's preferred credential, checking explicit user pins before routing history.
 	 */
 	#getSessionCredential(
 		provider: string,
@@ -2326,13 +2016,7 @@ export class AuthStorage {
 	}
 
 	/**
-	 * The credential this session LAST ACTUALLY USED, ignoring any pin.
-	 *
-	 * Separate from {@link AuthStorage.#getSessionCredential} because two different questions
-	 * are being asked and answering both with the pin makes one of them un-askable: "what
-	 * should serve the next request" is the pin, but "what served the last one" is this, and
-	 * `sessionCredentialRouting` needs the second to notice the two have diverged. Reading the
-	 * pin for both is how a rate-limit rotation reports itself as the user's own choice.
+	 * Returns the credential last actually used by this session, ignoring user pins.
 	 */
 	#getStickySessionCredential(
 		provider: string,
@@ -2396,15 +2080,7 @@ export class AuthStorage {
 	}
 
 	/**
-	 * Route this session's requests for one provider to one specific credential.
-	 *
-	 * PER PROVIDER, deliberately. Several providers serve one session at the same time
-	 * (the main model, subagent roles, web search), so there is no single "current
-	 * account" to switch: pinning Anthropic must leave the Codex and Gemini routing
-	 * exactly as it was. Cross-provider movement is a MODEL choice, not an account one.
-	 *
-	 * Returns false when `credentialId` is not a live credential of `provider`, so a
-	 * caller cannot record a pin that would silently resolve to nothing.
+	 * Pins this session's requests for a provider to a specific credential ID.
 	 */
 	pinSessionCredential(provider: string, sessionId: string | undefined, credentialId: number): boolean {
 		if (!sessionId) return false;
@@ -2462,13 +2138,7 @@ export class AuthStorage {
 	}
 
 	/**
-	 * The globally selected credential of a provider, resolved against the rows loaded now.
-	 *
-	 * Resolved on every read rather than cached as an index, for the same reason the pin is: an
-	 * index is meaningless once the row set changes, and honouring a stale one routes to somebody
-	 * else's account. A selection naming an account that is no longer stored resolves to nothing
-	 * and is deliberately LEFT in the store — a re-login rewrites the row under the same identity,
-	 * and forgetting the choice in between would silently move the user to a different account.
+	 * Resolves the globally selected credential ID for a provider against current rows.
 	 */
 	#getSelectedCredential(
 		provider: string,
@@ -2488,21 +2158,7 @@ export class AuthStorage {
 	}
 
 	/**
-	 * Index of the account explicitly chosen for this provider, when it is of `type`.
-	 *
-	 * A session pin outranks the global selection: it is the more recent statement of the same kind
-	 * of thing. Both outrank everything automatic, whatever `accounts.loadBalancing` says — the
-	 * setting governs what the product does on its own initiative, never what a caller is
-	 * allowed to ask for. Sticky routing is deliberately NOT a choice: it records which account
-	 * happened to serve last, which is the product's doing and not a statement by anybody.
-	 *
-	 * A pin naming another credential type answers `undefined` rather than deferring to the global
-	 * selection, because the pin is the operative choice and the type asked about simply is not it.
-	 *
-	 * An account whose grant failed authentication answers `undefined` too. Honouring a choice means
-	 * letting the provider decide, and for a revoked grant the provider already has: holding the
-	 * request on it would strand the session rather than serve it. A quota hold is the opposite case
-	 * and never lands here — see {@link #authDeadCredentials}.
+	 * Resolves the candidate index of an explicitly chosen account matching the specified credential type.
 	 */
 	#explicitChoiceIndex(
 		provider: string,
@@ -2518,22 +2174,7 @@ export class AuthStorage {
 	}
 
 	/**
-	 * Choose the account a provider uses, for every session and every profile on this machine.
-	 *
-	 * GLOBAL, not session-scoped, because the credentials are: they live in one shared database
-	 * that every profile reads, so a choice recorded per session evaporates on the next `veyyon`
-	 * and a choice recorded per profile would disagree with the account list it was made from.
-	 *
-	 * PER PROVIDER, deliberately. Several providers serve one session at the same time (the main
-	 * model, subagent roles, web search), so there is no single "current account" to switch:
-	 * choosing an Anthropic account must leave Codex and Gemini exactly as they were.
-	 *
-	 * The session's sticky routing record is dropped as part of the same call, so the next resolve
-	 * re-ranks from the choice instead of reusing whatever served the previous request. Without
-	 * that the card would show the newly chosen account while the old one kept serving.
-	 *
-	 * Returns false when `credentialId` is not a live credential of `provider`, so a caller cannot
-	 * record a choice that would resolve to nothing.
+	 * Persists a global account selection for a provider across all profiles and clears sticky routing.
 	 */
 	selectProviderCredential(provider: string, credentialId: number, options?: { sessionId?: string }): boolean {
 		const entry = this.#getStoredCredentials(provider).find(row => row.id === credentialId);
@@ -2573,15 +2214,7 @@ export class AuthStorage {
 	}
 
 	/**
-	 * What this session is routed to for one provider, and whether that matches what the
-	 * user asked for.
-	 *
-	 * `selectedCredentialId` is the user's choice; `activeCredentialId` is what will actually
-	 * serve the next request. They differ when the pinned account is blocked or was rotated
-	 * away from, and reporting that difference is the whole reason this returns both:
-	 * showing only the active account would present a rate-limit rotation as if the user
-	 * had chosen it, and showing only the pin would claim an account is serving traffic
-	 * that is not.
+	 * Returns the active routing and user-selected credential IDs for a session.
 	 */
 	sessionCredentialRouting(provider: string, sessionId: string | undefined): SessionCredentialRouting | undefined {
 		// No `!sessionId` early return: `selectedCredentialId` now reports the GLOBAL selection when
@@ -2646,21 +2279,7 @@ export class AuthStorage {
 	}
 
 	/**
-	 * Which credential the next request for this provider would pick, WITHOUT moving anything.
-	 *
-	 * PURE BY CONSTRUCTION, and that is the whole difficulty. The real selector reaches
-	 * `#getCredentialOrder`, which calls `#getNextRoundRobinIndex` for a sessionless caller and
-	 * ADVANCES the stored cursor as it answers. Predicting through it would mean that merely
-	 * looking at the account list, or rendering a status chip on a repaint, moved the next request
-	 * onto a different account: a display that changes the thing it reports. This reproduces the
-	 * same arithmetic and stores nothing, so a hundred renders predict the same account and the
-	 * request that eventually goes out is the one that advances the cursor.
-	 *
-	 * Covers the deterministic half of selection: the credential-type cascade (a login before a
-	 * stored key, as `#resolveProviderApiKey` does it), session stickiness, and rate-limit ordering
-	 * through {@link #orderByBlockAvailability}. It does NOT run an async usage-ranking strategy or
-	 * a refresh, so a provider that ranks by remaining quota can still land elsewhere. Callers mark
-	 * the answer as a prediction for exactly that reason.
+	 * Predicts which credential would serve the next request without advancing round-robin state.
 	 */
 	#predictNextCredentialId(provider: string, sessionId: string | undefined): number | undefined {
 		const stored = this.#getStoredCredentials(provider);
@@ -2700,12 +2319,7 @@ export class AuthStorage {
 	}
 
 	/**
-	 * The name a user gave one account, or undefined when they never set one.
-	 *
-	 * A missing name is NOT an error and must not be papered over with a provider label:
-	 * callers fall back to the account's own identity (email, then org, then account id)
-	 * so the row always says WHICH account it is, and the absence of a name stays visible
-	 * as an invitation to set one.
+	 * Returns the custom display name assigned to a credential, or undefined if unset.
 	 */
 	getAccountName(provider: string, credentialId: number): string | undefined {
 		const read = this.#store.getAccountName;
@@ -2716,15 +2330,7 @@ export class AuthStorage {
 	}
 
 	/**
-	 * Name an account, or clear the name with an empty string.
-	 *
-	 * Writes to the names table, never to `auth_credentials`, so renaming an account
-	 * cannot rewrite, reorder or truncate the token bytes it is named after. That is the
-	 * property worth having: a rename is the one credential operation a user will do
-	 * casually and repeatedly, and it must be incapable of costing them a login.
-	 *
-	 * Returns false when the store keeps no names (the remote broker) or the credential is
-	 * unknown, so the caller can tell the user instead of reporting a save that did not happen.
+	 * Assigns or clears a custom display name for a stored credential.
 	 */
 	setAccountName(provider: string, credentialId: number, name: string): boolean {
 		const row = this.#getStoredCredentials(provider).find(entry => entry.id === credentialId);
@@ -2778,29 +2384,7 @@ export class AuthStorage {
 	}
 
 	/**
-	 * Order credential candidates so a usable account always precedes a blocked
-	 * one, and blocked accounts precede each other by how soon they free up.
-	 *
-	 * Selection used to answer a single yes/no question — "is this one blocked?"
-	 * — and fall back to the round-robin head when every answer was yes. Every
-	 * answer IS yes whenever a provider-wide quota wall marks each account as its
-	 * turn comes round, and the round-robin head is then whichever account
-	 * happens to sort first, routinely the one just marked with the LONGEST
-	 * window. Handing that one back means the next request is guaranteed to fail
-	 * the same way, which is the immediate-repeat signature in the error
-	 * telemetry. The soonest-unblocking account is the only choice where the wait
-	 * has a defined end, and by the time the caller's backoff elapses it may
-	 * already be usable.
-	 *
-	 * Unblocked candidates keep their incoming order, so session stickiness and
-	 * round-robin fairness are untouched whenever any account is actually usable.
-	 *
-	 * An explicit choice is NOT handled here. Availability ordering has one job, deciding among
-	 * accounts nobody named, and every path that feeds it promotes the choice afterwards:
-	 * `#leadWithChosenAccount` on the prediction and by-type paths, the lead insert in
-	 * `#resolveOAuthSelection` (which also weighs a session preference and a plan requirement), and
-	 * `#selectApiKeyCredential`, which returns the chosen entry outright. A second exemption inside
-	 * the sort was one more owner of that rule which no behaviour could distinguish from its absence.
+	 * Sorts credential candidates placing unblocked accounts first, followed by earliest unblocking.
 	 */
 	#orderByBlockAvailability<C extends { index: number }>(
 		provider: string,
@@ -2826,12 +2410,7 @@ export class AuthStorage {
 	}
 
 	/**
-	 * Put the explicitly chosen account at the head of an ordered candidate list.
-	 *
-	 * A choice outranks availability: a hold is this library's own prediction of when a provider
-	 * will serve again, and it is not a reason to spend money on an account nobody asked for. So the
-	 * move is unconditional, unlike the session-preference case in `#resolveOAuthSelection`, which
-	 * leads only while it is usable.
+	 * Prioritizes an explicitly chosen account at the head of candidate candidates.
 	 */
 	#leadWithChosenAccount<C extends { index: number }>(ordered: C[], chosenIndex: number | undefined): C[] {
 		if (chosenIndex === undefined) return ordered;
@@ -3034,11 +2613,7 @@ export class AuthStorage {
 	}
 
 	/**
-	 * CAS-style disable used when OAuth refresh definitively fails: only disables
-	 * persisted `data` still matches the credential we attempted to refresh.
-	 * Returns `false` when a peer rotated the row between our pre-check and the
-	 * disable, so the caller can reload and retry instead of clobbering the
-	 * freshly-rotated credential.
+	 * Disables a credential only if stored data still matches expected state (CAS check).
 	 */
 	#tryDisableCredentialAtIfMatches(
 		provider: string,
@@ -3061,27 +2636,7 @@ export class AuthStorage {
 	}
 
 	/**
-	 * Persist a SUCCESSFULLY REFRESHED credential by id, healing a row that a peer
-	 * disabled while our refresh was in flight.
-	 *
-	 * This is the write that closes the "logged out after a rebuild" loop. Two
-	 * processes sharing the credential store can refresh the same credential at
-	 * once; providers that rotate the refresh token on every use hand one process
-	 * the new token and the other an `invalid_grant`, and the loser CAS-disables the
-	 * row it still believes is current. The winner then persists a perfectly LIVE
-	 * token onto a row flagged disabled, `listAuthCredentials` filters it out, and
-	 * the user sees a logout with a working token sitting on disk.
-	 *
-	 * A successful refresh is proof the grant is alive, so the row is re-enabled as
-	 * part of the same write. The guard below is what keeps that from being
-	 * dangerous: only a row disabled BY A REFRESH FAILURE may be healed. A row
-	 * disabled by a logout, a revocation, or supersession by a newer duplicate stays
-	 * disabled, because a successful refresh says nothing about the user's intent to
-	 * have that row back. Resurrecting those was a real regression introduced by an
-	 * earlier, unconditional version of this heal.
-	 *
-	 * Returns the row's current index, or -1 when the row is gone or must not be
-	 * resurrected.
+	 * Persists a refreshed credential by ID and heals rows disabled by transient refresh races.
 	 */
 	#persistRefreshedCredentialById(provider: string, id: number, credential: AuthCredential): number {
 		const readById = this.#store.readAuthCredentialById?.bind(this.#store);
@@ -3512,19 +3067,7 @@ export class AuthStorage {
 	}
 
 	/**
-	 * Why this provider's credential was disabled, if a failed refresh disabled it.
-	 *
-	 * Returns `undefined` when the provider has no disabled credential, or when the
-	 * most recent one was disabled for a reason the user already knows about: a
-	 * logout, or being superseded by a newer login. Only a refresh failure is
-	 * something they did not do and have not been told about.
-	 *
-	 * This exists because a disabled credential is invisible everywhere else.
-	 * `listAuthCredentials` filters disabled rows, so `hasAuth` reports false and a
-	 * user whose login was torn down by a failed refresh gets the same message as
-	 * one who never signed in. Telling someone to log in, without saying that the
-	 * login they had was thrown away or why, is the silent logout in its final
-	 * form: everything worked, nothing was reported, and the account is gone.
+	 * Returns the disable cause if a provider's credential failed refresh.
 	 */
 	disabledCredentialCause(provider: string): string | undefined {
 		const listDisabled = this.#store.listDisabledAuthCredentials?.bind(this.#store);
@@ -3538,17 +3081,7 @@ export class AuthStorage {
 	}
 
 	/**
-	 * Every provider whose latest credential was torn down by a FAILED REFRESH, with the cause.
-	 *
-	 * The per-provider {@link AuthStorage.disabledCredentialCause} can only answer for a provider you
-	 * already know to ask about, and the case that matters most is the one where you do not: a
-	 * provider whose ONLY login died has no active credential, so it appears in no list of stored
-	 * accounts and there is nothing left to prompt the question. That is the silent logout in its
-	 * final form, and this is the reader that makes it enumerable.
-	 *
-	 * Filtered to refresh failures for the same reason as the single-provider form: a logout or a
-	 * superseded duplicate is a disable the user performed and already knows about, and resurrecting
-	 * it as a warning would train them to ignore the warning that matters.
+	 * Lists all providers whose active credential was disabled due to a failed refresh.
 	 */
 	listProvidersWithFailedRefresh(): Array<{ provider: string; cause: string }> {
 		const listDisabled = this.#store.listDisabledAuthCredentials?.bind(this.#store);
@@ -3581,15 +3114,7 @@ export class AuthStorage {
 	}
 
 	/**
-	 * True iff a dedicated, non-env credential source is configured for this
-	 * provider — i.e. anything in the cascade EXCEPT `getEnvApiKey(provider)`.
-	 *
-	 * Mirrors `hasAuth` minus the env-fallback leg. Useful for callers that
-	 * need to distinguish "the user explicitly configured this provider"
-	 * from "an env var happens to alias this provider via the cross-provider
-	 * fallback map" (see e.g. `xai-oauth → XAI_OAUTH_TOKEN || XAI_API_KEY` in
-	 * `stream.ts`). Without that distinction, an `XAI_API_KEY`-only setup
-	 * silently satisfies xai-oauth and routes around `providers.xai.baseUrl`.
+	 * Returns true if a dedicated non-environment credential is configured for the provider.
 	 */
 	hasNonEnvCredential(provider: string): boolean {
 		if (this.#runtimeOverrides.has(provider)) return true;
@@ -3600,12 +3125,7 @@ export class AuthStorage {
 	}
 
 	/**
-	 * Classify where a provider's auth comes from, following the same precedence
-	 * as {@link AuthStorage.getApiKey}: runtime override → config override →
-	 * stored OAuth → login-stored api_key → env var → stored api_key →
-	 * fallback resolver. Returns undefined when no auth is configured.
-	 *
-	 * Compact, structured counterpart to {@link describeCredentialSource}.
+	 * Classifies credential origin following standard precedence rules.
 	 */
 	getCredentialOrigin(provider: string): CredentialOrigin | undefined {
 		if (this.#runtimeOverrides.has(provider)) return { kind: "runtime" };
@@ -3668,11 +3188,7 @@ export class AuthStorage {
 	}
 
 	/**
-	 * Get the OAuth `accountId` for a provider, preferring the credential that is
-	 * session-sticky for `sessionId` when multiple OAuth credentials are configured.
-	 * Falls back to the first OAuth credential when no session preference exists (e.g.
-	 * first call before any `getApiKey` has been issued, or single-credential setups).
-	 * Returns `undefined` when no OAuth credential carries an `accountId`.
+	 * Resolves the OAuth account ID for a provider, respecting session stickiness.
 	 */
 	getOAuthAccountId(provider: string, sessionId?: string): string | undefined {
 		const preferred = this.#resolveActiveOAuthCredential(provider, sessionId);
@@ -4667,11 +4183,7 @@ export class AuthStorage {
 	}
 
 	/**
-	 * The {@link UsageProvider} registered for `provider`, or undefined when the
-	 * provider has no usage endpoint at all. Lets callers tell "a credential we
-	 * could have fetched usage for but didn't" apart from "a provider with no
-	 * usage concept" (web-search keys, local/keyless servers, inference
-	 * providers without a usage API) — the latter never warrants a usage row.
+	 * Returns the registered {@link UsageProvider} for a provider, if supported.
 	 */
 	usageProviderFor(provider: Provider): UsageProvider | undefined {
 		return this.#usageProviderResolver?.(provider);
@@ -4772,30 +4284,7 @@ export class AuthStorage {
 	}
 
 	/**
-	 * Probe each stored credential against its provider's auth-verifying usage
-	 * endpoint and report per-credential auth health.
-	 *
-	 * Surfaces the identity of failing credentials so callers running a
-	 * multi-account pool (e.g. a broker-backed auth-gateway) can tell which
-	 * row is producing 401s. The probe mirrors the per-credential fan-out
-	 * inside {@link AuthStorage.fetchUsageReports} (OAuth refresh-on-expiry,
-	 * then `UsageProvider.fetchUsage`) but does NOT swallow errors — every
-	 * credential gets either `ok: true`, `ok: false` with `reason`, or
-	 * `ok: null` when no probe is configured for the provider.
-	 *
-	 * Iterates sequentially to avoid synchronized N-account fan-out that
-	 * upstream `/usage` rate limiters (per source IP) treat as a burst.
-	 *
-	 * Only inspects active rows from {@link AuthCredentialStore.listAuthCredentials};
-	 * soft-disabled rows are already known-bad and don't need a network probe.
-	 * Environment-variable API keys are not enumerated — the caller's intent
-	 * here is "which of my stored credentials is broken".
-	 *
-	 * Pass {@link CheckCredentialsOptions.completionProbe} to additionally
-	 * exercise each credential against the provider's chat-completion endpoint
-	 * (strict mode). The result lands on
-	 * {@link CredentialHealthResult.completion}; the usage `ok` field is
-	 * unchanged so callers can tell the two signals apart.
+	 * Probes stored credentials against usage endpoints sequentially to report per-account health.
 	 */
 	async checkCredentials(options?: CheckCredentialsOptions): Promise<CredentialHealthResult[]> {
 		options?.signal?.throwIfAborted();
@@ -5001,11 +4490,7 @@ export class AuthStorage {
 	}
 
 	/**
-	 * Marks the current session's credential as temporarily blocked due to usage limits.
-	 * Uses usage reports to determine accurate reset time when available.
-	 * Returns whether a sibling credential is available now; when none is, also
-	 * reports the earliest time a blocked sibling becomes available again so
-	 * callers can wait for the sibling instead of the provider's full window.
+	 * Temporarily blocks the session credential due to usage limits and checks for available siblings.
 	 */
 	async markUsageLimitReached(
 		provider: string,
@@ -5141,12 +4626,7 @@ export class AuthStorage {
 	}
 
 	/**
-	 * Computes the required drain rate: `headroomFraction / remainingHours` —
-	 * how fast the window's remaining quota must be consumed to fully use it
-	 * before it resets and expires. Higher = more headroom at risk of expiring
-	 * unused = ranked first, so selection chases quota that is about to be
-	 * wasted ("use it or lose it"). Without a reset clock the headroom
-	 * fraction alone is returned, degrading to most-headroom-first.
+	 * Calculates required quota drain rate (`headroomFraction / remainingHours`) to prioritize expiring allocations.
 	 */
 	#computeWindowRequiredDrain(limit: UsageLimit | undefined, nowMs: number, fallbackDurationMs: number): number {
 		const headroom = 1 - this.#normalizeUsageFraction(limit);
@@ -5348,22 +4828,7 @@ export class AuthStorage {
 	}
 
 	/**
-	 * Resolves an OAuth credential, trying credentials in priority order.
-	 *
-	 * Resolution ladder — a request in hand always beats "no API key":
-	 * 1. strict: unblocked credentials only, usage limits respected, plan
-	 *    filter enforced (when any account is confirmed eligible);
-	 * 2. plan-fitting last resort: same plan filter, but blocked/exhausted
-	 *    accounts are allowed (blocked candidates rank earliest-unblocking
-	 *    first) so the caller gets real usage-limit semantics from the wire
-	 *    instead of a missing key;
-	 * 3. unfiltered last resort: the plan filter matched nothing usable —
-	 *    skip it and try every account once; the server is the final arbiter
-	 *    of model access.
-	 *
-	 * Returns both the API key bytes for outbound requests AND the refreshed
-	 * {@link OAuthCredential} so callers needing identity metadata (account id,
-	 * project id, etc.) do not have to dereference the snapshot themselves.
+	 * Resolves an OAuth credential through priority ladders: unblocked plan-matching, fallback, and unfiltered.
 	 */
 	async #resolveOAuthSelection(
 		provider: string,
@@ -5589,21 +5054,7 @@ export class AuthStorage {
 	}
 
 	/**
-	 * Run `fn` while holding a refresh lease, renewing it in the background so a
-	 * refresh slower than the lease TTL does not lose ownership mid-flight.
-	 *
-	 * The ownership loss is REPORTED alongside the result, never thrown. By the time
-	 * it is known the provider has usually already spent the single-use refresh token,
-	 * and throwing would discard a rotation that can never be obtained again, which is
-	 * the "logged out after a rebuild" failure the lease exists to prevent. Each caller
-	 * decides what a lost lease means for its own persist.
-	 *
-	 * `credentialId === undefined` means the refresh is not lease-fenced at all (the
-	 * store lacks the durable-lease surface, or the row was never leased), so no
-	 * renewal loop runs and `ownershipLost` is always undefined.
-	 *
-	 * This is the one renewal loop. Both fenced refresh paths, `#leaseFencedRefresh`
-	 * for model providers and `refreshStoredOAuthCredential` for MCP, go through it.
+	 * Executes an operation within a background-renewed refresh lease fence.
 	 */
 	async #withRefreshLeaseRenewal<T>(
 		credentialId: number | undefined,
@@ -5667,29 +5118,7 @@ export class AuthStorage {
 	}
 
 	/**
-	 * The credential a PEER already rotated, if one exists and is usable.
-	 *
-	 * Reads by id including disabled rows, because the peer's winning row may be the
-	 * one a loser disabled. Returns it only when the row still belongs to the provider
-	 * we are refreshing, the refresh token actually differs from what we hold (proof of
-	 * a rotation, not a re-read of our own row), and it is not about to expire, so we
-	 * never hand back a token that would immediately need refreshing again.
-	 *
-	 * The provider check is what makes reading by a bare id safe. Nothing in the
-	 * lookup constrains WHICH provider the returned row belongs to: `readAuthCredentialById`
-	 * is an optional method on the `AuthCredentialStore` interface, so the row comes
-	 * from whatever store is plugged in, and the ids in the shipped SQLite store are
-	 * not the only ones that can appear there — the explicit-id INSERT paths used by
-	 * migration and import write ids chosen elsewhere. A row for another provider is
-	 * a live, unexpired OAuth credential whose refresh token differs from ours, which
-	 * is exactly the signature this function reads as "a peer rotated it", so without
-	 * the check that provider's token would be returned here and sent upstream as
-	 * ours. Refuse, loudly (Law 10), instead of falling through to a credential that
-	 * merely has the right shape.
-	 *
-	 * (The shipped `SqliteAuthCredentialStore` declares `id INTEGER PRIMARY KEY
-	 * AUTOINCREMENT`, so it will not hand a freed id back on its own. This is a
-	 * boundary check on the interface, not a fix for a race in that one store.)
+	 * Reads a peer-rotated credential if valid and unexpired, preventing duplicate refresh cycles.
 	 */
 	#freshRotatedCredential(
 		provider: Provider,
@@ -5717,17 +5146,7 @@ export class AuthStorage {
 	}
 
 	/**
-	 * Merge a rotated credential onto the row and persist it, independently of
-	 * whatever the caller is doing.
-	 *
-	 * This exists because the caller's `await` can be abandoned — a shutdown, a
-	 * rebuild, or an ESC aborts the caller while the refresh itself keeps going and
-	 * resolves a moment later with a rotated, single-use token. If only the caller
-	 * persisted, that token would be lost while the provider had already invalidated
-	 * the old one, and the NEXT run would refresh with a dead token, be told
-	 * `invalid_grant`, and permanently disable a perfectly good login. Committing
-	 * here, inside the single-flight, makes the rotation durable no matter who is
-	 * still listening.
+	 * Persists a rotated OAuth credential independently of caller lifecycle.
 	 */
 	#commitRotatedOAuthCredential(
 		provider: Provider,
@@ -5748,19 +5167,7 @@ export class AuthStorage {
 	}
 
 	/**
-	 * Refresh under a CROSS-PROCESS lease, so a single-use refresh token is spent
-	 * exactly once even when several veyyon processes share one credential store.
-	 *
-	 * The in-process single-flight cannot help here: the racing refreshes live in
-	 * different processes. Whoever takes the lease refreshes; everyone else waits and
-	 * then reads the peer's rotated token instead of burning their own now-dead one.
-	 * That converts the rotation race from something to be healed after the fact into
-	 * something that cannot happen.
-	 *
-	 * Note carefully what `signal` gates: ONLY the wait for ownership. Once the
-	 * refresh is under way it must run to completion and persist, because aborting
-	 * after the provider has rotated the token would strand it — the same loss this
-	 * whole path exists to prevent.
+	 * Refreshes an OAuth credential under a cross-process lease fence to prevent concurrent token use.
 	 */
 	async #leaseFencedRefresh(
 		provider: Provider,
@@ -5978,11 +5385,7 @@ export class AuthStorage {
 			/** When false, a definitive failure of THIS credential returns undefined instead of falling back to the ranked/round-robin selector (target-only resolution). */
 			allowFallback?: boolean;
 			/**
-			 * A DEFINITIVE dead-grant rejection this same call already got from the
-			 * preflight refresh of this credential. Reused instead of replaying the
-			 * token, which could only earn a second identical rejection; the disable
-			 * decision is owned here, so the verdict has to travel rather than the
-			 * request being repeated.
+			 * Reuses a definitive dead-grant error encountered during preflight refresh.
 			 */
 			preflightDefinitiveError?: unknown;
 		},
@@ -6264,15 +5667,7 @@ export class AuthStorage {
 	}
 
 	/**
-	 * Get API key for a provider.
-	 * Priority (first match wins):
-	 * 1. Runtime override (CLI --api-key)
-	 * 2. Config override (models.yml `providers.<name>.apiKey`)
-	 * 3. OAuth token from storage (auto-refreshed)
-	 * 4. API key persisted by a successful `/login`
-	 * 5. Environment variable
-	 * 6. Stored API key (e.g. a broker-migrated copy) — last resort, so an explicit env var wins
-	 * 7. Fallback resolver (models.yml custom providers, last-resort)
+	 * Resolves the API key for a provider following precedence: CLI, config, OAuth, login key, env, stored key, fallback.
 	 */
 	async getApiKey(provider: string, sessionId?: string, options?: AuthApiKeyOptions): Promise<string | undefined> {
 		// Runtime override takes highest priority
@@ -6331,19 +5726,7 @@ export class AuthStorage {
 	}
 
 	/**
-	 * Resolve the OAuth credential for `provider`, refreshing through the same
-	 * pipeline as {@link AuthStorage.getApiKey} but returning the refreshed
-	 * {@link OAuthAccess} (raw access token + identity metadata) instead of
-	 * the API-key bytes.
-	 *
-	 * Use this when the caller needs to inject identity headers alongside the
-	 * bearer (Codex `chatgpt-account-id`, Google `project`, GitHub
-	 * `enterpriseUrl`). For pure "give me the bytes for `Authorization`"
-	 * scenarios, prefer {@link AuthStorage.getApiKey}.
-	 *
-	 * Returns `undefined` when no OAuth credential is available, the
-	 * credential fails to refresh, or runtime/config overrides have replaced
-	 * OAuth with an explicit API key.
+	 * Resolves refreshed OAuth access credentials and metadata for a provider without stripping tokens.
 	 */
 	async getOAuthAccess(
 		provider: string,
@@ -6458,12 +5841,7 @@ export class AuthStorage {
 	}
 
 	/**
-	 * Resolve every stored OAuth credential for `provider` independently.
-	 *
-	 * Refreshes credentials through the same broker/local path as
-	 * {@link AuthStorage.getOAuthAccess}, but does not rank, round-robin, or
-	 * stop after the first usable account. Intended for diagnostics that must
-	 * exercise each stored account exactly once.
+	 * Refreshes and returns all stored OAuth credentials for a provider independently.
 	 */
 	async getOAuthAccesses(provider: string, options?: AuthApiKeyOptions): Promise<OAuthAccessResolution[]> {
 		if (this.#runtimeOverrides.has(provider) || this.#configOverrides.has(provider)) {
@@ -6478,15 +5856,7 @@ export class AuthStorage {
 	}
 
 	/**
-	 * Resolve a single stored OAuth credential by its account position (0-based,
-	 * matching {@link AuthStorage.listOAuthAccounts}). Refreshes ONLY that
-	 * credential ({@link #resolveStoredOAuthAccess} runs with `allowFallback:
-	 * false`), so — unlike {@link AuthStorage.getOAuthAccesses} — a definitive
-	 * failure of the targeted account surfaces as a failed resolution rather than
-	 * silently rotating or rate-tripping a sibling.
-	 *
-	 * Returns `undefined` when `position` is out of range or runtime/config
-	 * overrides have replaced OAuth with an explicit API key.
+	 * Resolves a single stored OAuth credential by its account position without fallback rotation.
 	 */
 	async getOAuthAccessAt(
 		provider: string,
@@ -6503,14 +5873,7 @@ export class AuthStorage {
 	}
 
 	/**
-	 * List saved rate-limit resets for every stored OAuth account of `provider`
-	 * (Codex), fetched LIVE from the dedicated `rate-limit-reset-credits` route.
-	 *
-	 * This deliberately bypasses the usage-report cache: `/wham/usage` is
-	 * IP-rate-limited and may serve stale (or pre-feature) snapshots when many
-	 * accounts are polled, which would hide redeemable credits. One entry per
-	 * account, with the session's active account flagged and unreachable
-	 * accounts carrying an `error`.
+	 * Lists live rate-limit reset credits for stored OAuth accounts.
 	 */
 	async listResetCredits(options?: {
 		provider?: string;
@@ -6550,13 +5913,7 @@ export class AuthStorage {
 	}
 
 	/**
-	 * Redeem one saved rate-limit reset (OpenAI Codex "saved resets") for a
-	 * specific stored account.
-	 *
-	 * Resolves a fresh access token for the target account, picks an available
-	 * credit (the given `creditId`, else the first redeemable one), spends it,
-	 * and invalidates the cached usage report so the next `/usage` reflects the
-	 * reset. Never throws for business outcomes — inspect the returned `code`.
+	 * Redeems a saved rate-limit reset credit for a specific account and invalidates usage cache.
 	 */
 	async redeemResetCredit(options: {
 		target: ResetCreditTarget;
@@ -6675,19 +6032,7 @@ export class AuthStorage {
 	}
 
 	/**
-	 * Lift every temporary rate-limit block on one credential: the persisted rows, and the
-	 * in-memory backoff under the bare `provider:<type>` key and its scoped `\0` derivatives.
-	 *
-	 * Public because a block is OUR prediction, not a fact the provider is holding us to, and it
-	 * outlives the thing that justified it. Two ways that happens: a saved reset is redeemed (the
-	 * window the block described no longer exists), and the provider lifts a limit by some route
-	 * this process never sees — a reset redeemed on the provider's own site, a plan
-	 * change, a support credit. Nothing but time cleared a block in the second case, so an account
-	 * the provider would serve today sat unusable behind a countdown for as long as the stale
-	 * deadline ran, and an explicit choice of account lost to it.
-	 *
-	 * The block is keyed by the credential's OWN type. It read `oauth` unconditionally, so a
-	 * blocked API-key row could not be lifted by anything, including the redeem path.
+	 * Clears temporary in-memory and persisted rate-limit blocks for a credential.
 	 */
 	clearCredentialBlocks(provider: string, credentialId: number): void {
 		try {
@@ -6872,24 +6217,7 @@ export class AuthStorage {
 	}
 
 	/**
-	 * Rotate away from the credential that failed after a retryable auth error —
-	 * step (c) of the auth-retry policy. Prefer the failed stored row id supplied
-	 * in `options.credentialId`, then the failed bearer supplied in
-	 * `options.apiKey`, so overlapping requests cannot redirect rotation through
-	 * stale session stickiness. Fall back to the session-sticky credential only
-	 * when neither explicit target is available. For hard-auth errors, an explicit
-	 * target that no longer matches storage returns `false` without mutation.
-	 * Delayed usage-limit errors may instead recover the durable OAuth row from
-	 * the bearer fingerprint recorded when the request resolved.
-	 *
-	 * - usage-limit / account-rate-limit error → {@link AuthStorage.markUsageLimitReached}
-	 *   (temporary block via its own backoff — default plus server usage-report
-	 *   reset; sticky left intact so the next resolve re-ranks around the block).
-	 * - otherwise (hard 401 / auth failure) → mark the credential suspect (or
-	 *   reload when no broker hook is wired) and block it, then drop matching
-	 *   sticky state.
-	 *
-	 * Returns whether another usable credential of the same type remains.
+	 * Rotates away from a failed credential after auth errors, applying backoff or marking suspect.
 	 */
 	async rotateSessionCredential(
 		provider: string,
@@ -6973,15 +6301,7 @@ export class AuthStorage {
 	}
 
 	/**
-	 * Build an {@link ApiKeyResolver} backed by this storage, implementing the
-	 * central a/b/c auth-retry policy:
-	 *
-	 * - initial (`error: undefined`) → resolve the session credential.
-	 * - step (b) `!lastChance` → force-refresh the SAME session-sticky credential.
-	 * - step (c) `lastChance` → rotate to a sibling and re-resolve, unless quota exhaustion has no sibling.
-	 *
-	 * Used by web-search providers and other consumers that hold an AuthStorage
-	 * directly (no ModelRegistry in scope).
+	 * Constructs an {@link ApiKeyResolver} implementing standard initial, refresh, and rotation retry steps.
 	 */
 	resolver(provider: string, options?: { sessionId?: string; baseUrl?: string; modelId?: string }): ApiKeyResolver {
 		const { sessionId, baseUrl, modelId } = options ?? {};
@@ -7011,12 +6331,7 @@ export class AuthStorage {
 	// ─── Auth Broker integration ────────────────────────────────────────────
 
 	/**
-	 * Build a redacted snapshot of all loaded credentials for the auth-broker
-	 * wire. OAuth refresh tokens are replaced with {@link REMOTE_REFRESH_SENTINEL}
-	 * so clients never see the actual refresh token.
-	 *
-	 * Callers must {@link AuthStorage.reload} first when serving a stale snapshot
-	 * (the broker server's HTTP handler does this).
+	 * Builds a redacted snapshot of loaded credentials for broker synchronization.
 	 */
 	exportSnapshot(): AuthCredentialSnapshot {
 		const entries: AuthCredentialSnapshotEntry[] = [];
@@ -7062,12 +6377,7 @@ export class AuthStorage {
 	}
 
 	/**
-	 * Force-refresh the OAuth credential with the given id, bypassing the
-	 * not-yet-expired guard. Used by the auth-broker server to honour
-	 * `POST /v1/credential/:id/refresh`.
-	 *
-	 * Returns the redacted snapshot entry for the refreshed row.
-	 * Throws when no OAuth credential with that id is loaded.
+	 * Forces an immediate OAuth refresh for a specific credential ID.
 	 */
 	async forceRefreshCredentialById(id: number, signal?: AbortSignal): Promise<AuthCredentialSnapshotEntry> {
 		return this.refreshCredentialById(id, signal);
@@ -7164,13 +6474,7 @@ export class AuthStorage {
 	}
 
 	/**
-	 * Upsert a credential into the underlying store, refresh the in-memory
-	 * snapshot, and return the redacted snapshot entries for the provider.
-	 *
-	 * Used by the auth-broker server to honour `POST /v1/credential`. The
-	 * persistence layer (`SqliteAuthCredentialStore.upsertAuthCredentialForProvider`)
-	 * does identity-key matching, so re-uploading the same email/account replaces
-	 * the existing row instead of inserting a duplicate.
+	 * Upserts a credential into storage, updates memory state, and returns provider snapshot entries.
 	 */
 	upsertCredential(provider: string, credential: AuthCredential): AuthCredentialSnapshotEntry[] {
 		const stored = this.#store.upsertAuthCredentialForProvider(provider, credential);
@@ -7221,18 +6525,7 @@ export class AuthStorage {
 	}
 
 	/**
-	 * Describe where the active credential for a provider came from.
-	 *
-	 * Mirrors {@link AuthStorage.getApiKey} precedence, highest first:
-	 *   1. Runtime override (`--api-key`).
-	 *   2. Config override (`models.yml` `providers.<name>.apiKey`).
-	 *   3. Stored OAuth credential.
-	 *   4. API key persisted by a successful `/login`.
-	 *   5. Env var — overrides a stored static api_key (e.g. a stale broker copy).
-	 *   6. Stored api_key credential.
-	 *   7. Fallback resolver.
-	 *
-	 * The string is purely informational; consumers must not parse it.
+	 * Describes the origin source of the active credential for a provider.
 	 */
 	describeCredentialSource(provider: string, sessionId?: string): string | undefined {
 		if (this.#runtimeOverrides.has(provider)) {

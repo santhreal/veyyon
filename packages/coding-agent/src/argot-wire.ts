@@ -24,12 +24,8 @@ import { mapAgentMessageStrings, mapAssistantContentStrings } from "./secrets/ob
 import type { SessionContext } from "./session/session-context";
 
 /**
- * Adapt veyyon's three settings fields to an argot gate. The gate SHAPE and its
- * on/off + defaulting rules live in argot's {@link makeGate} (the one home for
- * that construction, so a future gate field is added once, in argot, not
- * re-derived here); this wrapper only reshapes the harness's positional settings
- * into argot's options object. When the feature is off the gate is argot's shared
- * inert gate. Decoding never consults the gate.
+ * Adapt veyyon's positional settings into argot's gate options via {@link makeGate}.
+ * When disabled, returns argot's shared inert gate.
  */
 export function buildArgotGate(enabled: boolean, models: readonly string[], disableAboveTokens: number): ArgotGate {
 	return makeGate(enabled, { models, disableAboveTokens });
@@ -52,20 +48,8 @@ export function expandSubagentReturn(codec: ArgotSession | undefined, text: stri
 }
 
 /**
- * Build a stream decoder for a subagent's LIVE token preview — the streaming
- * display seam. This is the one display seam a plain {@link ArgotSession.expand}
- * cannot serve, because the child's text arrives token by token and a handle can
- * split across two deltas (`§db` then `conn`): expanding each delta alone would
- * either flash a raw `§db…` in the TUI or resolve the shorter `§db` before the
- * longer `§dbconn` name finished. The {@link StreamDecoder} buffers exactly the
- * fragment that could still be a handle and returns only text that is safe to
- * show, so the operator never sees a raw handle in the live preview — the same
- * contract every other seam upholds, held under streaming.
- *
- * Returns `undefined` for an `off` child (no codec) or an unarmed one, so the
- * caller streams deltas straight through with zero added latency. Build one per
- * child message and feed every delta to `decoder.push`, rendering only its
- * return; call `decoder.flush()` at message end and `decoder.reset()` on abort.
+ * Build a stream decoder for a subagent's live token preview, buffering potential
+ * split handles so raw handles are never rendered. Returns undefined when disabled.
  */
 export function createSubagentStreamDecoder(codec: ArgotSession | undefined): StreamDecoder | undefined {
 	if (codec === undefined || !codec.loaded) return undefined;
@@ -73,30 +57,8 @@ export function createSubagentStreamDecoder(codec: ArgotSession | undefined): St
 }
 
 /**
- * Per-assistant-message decoder for the TOP-LEVEL live stream preview — seam 3
- * for the main agent's own output. The interactive renderer re-renders the
- * accumulated partial message on every `message_update`, so decoding cannot be
- * per-delta (a handle can split across deltas: `§db` then `conn`); instead one
- * {@link StreamDecoder} per content index accumulates decoded-safe text, and
- * the display copy of the partial message shows exactly what the decoder has
- * proved safe — a handle appears whole only once its name and boundary are in.
- *
- * `push` also RETURNS the decoded increment for its delta, so a caller can emit a
- * decoded delta stream (print `--mode json`) whose deltas never carry a raw
- * handle; {@link decodeContent} exposes the same decoded text as accumulated
- * content, and the two agree by construction.
- *
- * Tool-call blocks are decoded too, on both of the views a renderer can pick
- * from: the provider-parsed `arguments` object, and the raw streamed argument
- * JSON the live reveal prefers while the object is still incomplete. Decoding
- * only `arguments` would not be enough, because a renderer showing a growing
- * `write` body reads the raw JSON and would keep painting `§handle` until the
- * call finished. The operator has to see a tool's input in expanded form the
- * whole time it is being written, not once it is done.
- *
- * Inert (no codec, or none loaded) the helper is a no-op: `push` returns its
- * delta unchanged and holds nothing, and `decodeContent` returns the input
- * reference.
+ * Decodes live streaming deltas and accumulated content for the main agent's output,
+ * buffering partial handles across deltas for text, thinking, and tool arguments.
  */
 export class ArgotStreamDisplayDecoder {
 	readonly #codec: ArgotSession | undefined;
@@ -109,16 +71,8 @@ export class ArgotStreamDisplayDecoder {
 	}
 
 	/**
-	 * Decode a whole snapshot that may still grow, holding back the trailing
-	 * fragment that could still turn into a handle. Used for values that arrive as
-	 * successive snapshots rather than deltas (a tool call's parsed arguments),
-	 * where there is no increment to feed a long-lived decoder.
-	 *
-	 * The held-back tail is at most a sigil plus the longest handle name, so what
-	 * this drops is a few characters at the very end of a value still being
-	 * written, which the next snapshot restores. That is the same trade the delta
-	 * path makes, and it is the right one: a briefly missing character tail is
-	 * invisible, a briefly visible `§a1` is not.
+	 * Decode a snapshot that may still grow, holding back any trailing fragment
+	 * that could still form a handle.
 	 */
 	#decodeSnapshot(text: string): string {
 		if (this.#codec === undefined || text === "") return text;
@@ -126,21 +80,8 @@ export class ArgotStreamDisplayDecoder {
 	}
 
 	/**
-	 * Decode a growing prefix of tool-call argument JSON, expanding handles into
-	 * JSON-escaped text so the result stays parseable.
-	 *
-	 * A handle inside argument JSON sits inside a string literal, so its expansion
-	 * has to be escaped the way that literal's other characters are. Expanding it
-	 * verbatim would splice a raw quote, backslash or newline into the JSON and
-	 * break the very parse the live reveal runs on it, replacing a cosmetic
-	 * problem with a broken preview. So the decode runs against a vocabulary whose
-	 * expansions are pre-escaped: the same matching, a wire-safe replacement.
-	 *
-	 * The prefix is append-only in the normal case, so this feeds only the new
-	 * suffix to a decoder that lives as long as the block, which keeps the work
-	 * proportional to what arrived rather than to the whole payload. A provider
-	 * that re-sends a snapshot which is not an extension of the last one (a
-	 * rewritten preview) falls back to decoding it from scratch.
+	 * Decode a growing prefix of tool-call argument JSON using pre-escaped expansions
+	 * so the output remains valid JSON during streaming.
 	 */
 	#decodeArgJson(contentIndex: number, json: string, rawInput: boolean): string {
 		if (this.#codec === undefined || json === "") return json;
@@ -156,14 +97,7 @@ export class ArgotStreamDisplayDecoder {
 	}
 
 	/**
-	 * Feed one streamed fragment of tool-call argument JSON and return the newly
-	 * decodable part of it.
-	 *
-	 * The snapshot form above is the one a renderer reads, but the fragment is what
-	 * a provider actually sends, and not every provider also publishes the
-	 * accumulation. Both feed the same per-block decoder, so a stream that carries
-	 * fragments and a stream that carries snapshots decode to the identical text
-	 * and a stream carrying both never counts a byte twice.
+	 * Feed one streamed fragment of tool argument JSON and return the newly decoded increment.
 	 */
 	#pushArgJson(contentIndex: number, delta: string, rawInput: boolean): string {
 		if (this.#codec === undefined || delta === "") return delta;
@@ -175,15 +109,8 @@ export class ArgotStreamDisplayDecoder {
 	}
 
 	/**
-	 * A per-block decoder for a tool call's streamed arguments, built once per
-	 * message and matched to how that call's payload is encoded.
-	 *
-	 * A regular tool streams JSON, so its expansions are pre-escaped for a JSON
-	 * string body. A tool invoked through OpenAI's custom-tool mechanism streams
-	 * its payload VERBATIM (`apply_patch` sends a patch, not JSON), so escaping
-	 * there would corrupt it: a newline in an expansion would land in the patch as
-	 * the two characters backslash-n and the patch would no longer apply. The
-	 * `customWireName` on the block is what distinguishes them.
+	 * Create a per-block decoder for streamed tool arguments, using raw vocabulary for
+	 * custom-tool verbatim payloads and JSON-escaped vocabulary for standard JSON tools.
 	 */
 	#freshArgSlot(contentIndex: number, rawInput: boolean): { decoder: StreamDecoder; raw: string; decoded: string } {
 		const vocabulary = rawInput ? this.#codec!.vocabulary() : this.#jsonVocabulary();
@@ -199,14 +126,8 @@ export class ArgotStreamDisplayDecoder {
 	}
 
 	/**
-	 * Feed one streamed text/thinking delta for a content block and return the
-	 * newly display-safe decoded text for it (the increment). Inert (no codec, or
-	 * none loaded) this is identity: the delta is returned unchanged. The returned
-	 * increment never contains a raw handle — a handle split across deltas
-	 * (`§db` then `conn`) is held until its boundary arrives — so the concatenation
-	 * of increments equals the decoded accumulation {@link decodeContent} exposes,
-	 * and a consumer that reconstructs text from deltas alone (e.g. `--mode json`)
-	 * never sees a `§handle`.
+	 * Feed a text/thinking delta for a content block and return the newly display-safe
+	 * decoded increment, buffering partial handle boundaries.
 	 */
 	push(contentIndex: number, delta: string): string {
 		if (this.#codec === undefined) return delta;
@@ -222,11 +143,8 @@ export class ArgotStreamDisplayDecoder {
 	}
 
 	/**
-	 * Map a partial message's content to its decoded-for-display form: text and
-	 * thinking blocks replaced by their proven-safe decoded accumulation, tool-call
-	 * blocks replaced by decoded arguments (both the parsed object and the streamed
-	 * argument JSON a live reveal reads), every other block (and the input, when
-	 * nothing was decoded) returned as-is.
+	 * Map a partial message's content to its decoded display form for text, thinking,
+	 * and tool-call arguments.
 	 */
 	decodeContent(content: AssistantMessage["content"]): AssistantMessage["content"] {
 		if (this.#codec === undefined) return content;
@@ -260,24 +178,8 @@ export class ArgotStreamDisplayDecoder {
 	}
 
 	/**
-	 * The display copy of one streamed assistant-message event.
-	 *
-	 * Every variant of the event carries a `partial` snapshot of the message so
-	 * far, and several carry a payload of their own: the increment for a delta, the
-	 * finished text for a block end, the assembled call for a tool-call end, the
-	 * whole message for a terminal event. A renderer is free to read any of them,
-	 * so all of them are decoded here rather than at each call site. Decoding only
-	 * the fields the current TUI happens to read is how the raw form kept
-	 * resurfacing: `--print`, ACP and the collab client each read a different one.
-	 *
-	 * Deltas and the in-flight snapshot go through the stream decoder, which
-	 * withholds a fragment that could still become a handle. Anything final —
-	 * `text_end`, `toolcall_end`, `done`, `error` — is expanded wholesale, because
-	 * at that point there is nothing more to arrive and nothing left to withhold.
-	 *
-	 * This FEEDS the decoder with the event's delta, so it is the alternative to
-	 * calling {@link push} directly, not a complement to it. Do both for the same
-	 * delta and the text is counted twice.
+	 * Decode an assistant stream event for display, decoding deltas, partial snapshots,
+	 * and expanding finished blocks wholesale.
 	 */
 	decodeStreamEvent<T extends { type: string }>(event: T): T {
 		if (this.#codec === undefined) return event;
@@ -340,13 +242,7 @@ export class ArgotStreamDisplayDecoder {
 	}
 
 	/**
-	 * Decoded display copy of one tool-call block, or the block itself when it
-	 * carries no handle.
-	 *
-	 * Both argument views are decoded because a renderer chooses between them: the
-	 * streamed JSON while the object is still incomplete, the parsed object once it
-	 * closes. Leaving either raw would show the operator a handle for as long as
-	 * that view is the one on screen.
+	 * Return a display copy of a tool-call block with arguments and partial JSON decoded.
 	 */
 	#decodeToolCall<T extends AssistantMessage["content"][number]>(block: T, index: number): T {
 		if (this.#codec === undefined) return block;
@@ -389,26 +285,14 @@ export class ArgotStreamDisplayDecoder {
 }
 
 /**
- * Whether this call's streamed payload is the tool's own verbatim syntax rather
- * than JSON.
- *
- * OpenAI's custom-tool mechanism sends the payload as written (`apply_patch`
- * streams a patch body), and the block records the wire-level name it came in
- * under. Everything else streams a JSON object. The two need different escaping
- * of an expansion, so the distinction has to be read off the block rather than
- * assumed.
+ * Whether a tool call's streamed payload is verbatim text (e.g. custom tools) rather than JSON.
  */
 function isRawWireToolCall(block: unknown): boolean {
 	return (block as { customWireName?: string } | undefined)?.customWireName !== undefined;
 }
 
 /**
- * Whether any string anywhere in `value` contains `sigil`, stopping at the first
- * one found.
- *
- * A cheap gate in front of the expander, and cheap is the requirement rather than
- * a nicety: it runs on every streamed update of every tool call, so it walks the
- * strings that are already in memory instead of serialising them into a new one.
+ * Fast check for whether any string in `value` contains `sigil` without serializing.
  */
 function containsSigil(value: unknown, sigil: string): boolean {
 	if (typeof value === "string") return value.includes(sigil);
@@ -430,14 +314,7 @@ function escapeJsonStringBody(text: string): string {
 }
 
 /**
- * The same decode vocabulary with every expansion pre-escaped for a JSON string
- * body, so decoding a handle that sits inside argument JSON yields text the JSON
- * parser still accepts.
- *
- * Escaping the replacement rather than the finished string is what keeps this
- * correct: escaping afterwards would also escape the JSON's own quotes and
- * backslashes, and escaping nothing would let an expansion containing a quote or
- * a newline terminate the string literal early.
+ * Derive a decode vocabulary with expansions pre-escaped for insertion into JSON string bodies.
  */
 function jsonEscapedVocabulary(vocab: Vocabulary): Vocabulary {
 	const handles = new Map<string, string>();
@@ -457,25 +334,12 @@ export function expandAssistantContent(
 }
 
 /**
- * Argot display walks include thinking; the secret codec's do not.
- *
- * The distinction is about where the walked copy can end up. A deobfuscated
- * transcript is fed back to the provider on resume, so it must leave thinking
- * byte-identical or the signature bound to it stops matching. An argot expansion
- * is only ever rendered, and a person reading the model's reasoning has the same
- * claim on seeing `src/db.ts` as a person reading its prose: the live stream
- * already decodes thinking, so leaving the finished message raw would make the
- * text flip back to a handle the moment the model stopped writing.
+ * Display walks include thinking blocks so human viewers see expanded handles in reasoning.
  */
 const DISPLAY_WALK = { includeThinking: true } as const;
 
 /**
- * Expand handles across a whole persisted transcript for display/export/resume.
- * The persisted session keeps cheap handles (replay stays cheap — the token
- * win), so any human-facing rebuild of that history — the resumed TUI
- * transcript, a `/share` export — must expand them the same way the live
- * message seam does, or reloaded history would show raw handles. Composes on
- * top of secret deobfuscation, which runs first. Identity until a dict loads.
+ * Expand handles across an entire persisted session context for display, export, or resume.
  */
 export function expandSessionContext(argot: ArgotSession, context: SessionContext): SessionContext {
 	if (!argot.loaded) return context;

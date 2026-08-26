@@ -1,26 +1,6 @@
 /**
  * OpenTelemetry instrumentation for the agent loop.
- *
- * Implements the OpenTelemetry GenAI semantic conventions
- * (https://opentelemetry.io/docs/specs/semconv/gen-ai/) plus `pi.gen_ai.*`
- * extension attributes for run summaries, dashboard summaries, and cost hints
- * that are useful to downstream observability UIs.
- *
- * Span hierarchy emitted by the loop:
- *
- *   invoke_agent {agent.name}         (one per runLoop, gen_ai.operation.name=invoke_agent)
- *   ├── chat {model}                  (one per LLM call, gen_ai.operation.name=chat)
- *   ├── execute_tool {tool.name}      (one per tool call, gen_ai.operation.name=execute_tool)
- *   └── ...
- *
- * The `handoff` operation is emitted via the public {@link recordHandoff}
- * helper for hosts that route work between named agents.
- *
- * Activation is opt-in: callers pass an {@link AgentTelemetryConfig} on
- * `AgentLoopConfig.telemetry`. When unset, every helper short-circuits and
- * the loop performs zero tracer lookups. When set but no OTEL SDK is
- * registered, `@opentelemetry/api` returns a no-op tracer and all calls are
- * cheap pass-throughs.
+ * Implements OpenTelemetry GenAI semantic conventions and `pi.gen_ai.*` extension attributes.
  */
 
 import {
@@ -190,11 +170,7 @@ export interface CostEstimatorContext {
 }
 
 /**
- * Cost estimator result.
- *   { usd: number }                — cost is known; emitted as pi.gen_ai.cost.estimated_usd
- *   { unavailable: string }        — cost is intentionally unknown; emitted as
- *                                    pi.gen_ai.cost.unavailable_reason
- *   undefined                      — no opinion; nothing emitted
+ * Cost estimator result: `{ usd: number }`, `{ unavailable: string }`, or `undefined`.
  */
 export type CostEstimate =
 	| { readonly usd: number; readonly inputUsd?: number; readonly outputUsd?: number }
@@ -233,14 +209,7 @@ export interface ChatUsageEvent {
 	/** Resolved dynamic attributes for this chat span (from `resolveAttributes`). */
 	readonly attributes: Attributes | undefined;
 	/**
-	 * Response headers captured from the upstream HTTP response, with keys
-	 * lowercased (mirrors {@link ProviderResponseMetadata.headers}). `undefined`
-	 * when the provider transport did not surface headers (non-HTTP providers,
-	 * mocked streams, requests that aborted before headers arrived).
-	 *
-	 * Use this to reconcile gateway-issued ids (e.g. `x-litellm-call-id`) with
-	 * downstream billing / spend dashboards. Known gateway patterns are also
-	 * auto-stamped on the chat span as `pi.gen_ai.gateway.*` attributes.
+	 * Lowercased response headers from upstream HTTP response, or `undefined` if unavailable.
 	 */
 	readonly headers: Readonly<Record<string, string>> | undefined;
 }
@@ -301,12 +270,7 @@ export interface TelemetryHookContext extends TelemetryAttributeContext {
 	readonly span: Span;
 }
 /**
- * Opt-in OpenTelemetry configuration accepted by the agent loop.
- *
- * All fields are optional. Passing the empty object `{}` enables
- * instrumentation with sensible defaults. Pass `undefined` (or omit the
- * `telemetry` field entirely) to disable everything — the loop performs zero
- * tracer lookups in that case.
+ * Opt-in OpenTelemetry configuration for the agent loop. All fields are optional.
  */
 export interface AgentTelemetryConfig {
 	/**
@@ -317,12 +281,7 @@ export interface AgentTelemetryConfig {
 	/** Override the tracer name passed to `trace.getTracer`. */
 	readonly tracerName?: string;
 	/**
-	 * Capture request/response content. `true` preserves the historical full
-	 * payload capture; `"summary"` emits bounded dashboard-friendly summaries;
-	 * `"full"` emits both summaries and full OTEL message payloads.
-	 *
-	 * Defaults to the value of the `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT`
-	 * env var (`true`/`1`/`yes` => `"full"`, `"summary"` => `"summary"`).
+	 * Message content capture mode: `"none"`, `"summary"` (bounded), or `"full"`.
 	 */
 	readonly captureMessageContent?: TelemetryContentCapture;
 	/** Extra attributes merged onto every emitted span. */
@@ -348,13 +307,7 @@ export interface AgentTelemetryConfig {
 	/** Called after cost estimation for a chat step. */
 	readonly onCostDelta?: (delta: CostDelta) => void;
 	/**
-	 * Fired once per chat step that produced usage, regardless of whether a
-	 * {@link costEstimator} is configured. Use this for usage-only metrics
-	 * pipelines (token counters, cache-hit ratios) without paying the cost of
-	 * estimating dollars per call.
-	 *
-	 * **Non-fatal.** Synchronous and asynchronous failures are caught, surfaced
-	 * via {@link onTelemetryWarning}, and swallowed.
+	 * Non-fatal callback fired once per chat step producing usage data.
 	 */
 	readonly onChatUsage?: (event: ChatUsageEvent) => void | Promise<void>;
 	/** Override provider labels before they are emitted or passed to cost hooks. */
@@ -380,14 +333,7 @@ export interface AgentTelemetryConfig {
 	 */
 	readonly onSpanEnd?: (ctx: TelemetryHookContext) => void;
 	/**
-	 * Fired once per `invoke_agent`, immediately after the run-level summary
-	 * is built and aggregate attributes are stamped on the `invoke_agent`
-	 * span. Use this to persist, log, or forward the {@link AgentRunSummary} /
-	 * {@link AgentRunCoverage} value without parsing OTEL spans.
-	 *
-	 * **Non-fatal.** Exceptions thrown from this callback are caught, logged
-	 * via `console.warn`, and swallowed — a misbehaving telemetry consumer can
-	 * NEVER turn a successful agent run into a failed one.
+	 * Non-fatal callback fired once per `invoke_agent` when the run-level summary is ready.
 	 */
 	readonly onRunEnd?: (summary: AgentRunSummary, coverage: AgentRunCoverage) => void;
 	/** Receives non-fatal telemetry callback failures and host-defined warnings. */
@@ -1576,12 +1522,7 @@ export interface GatewayHeaderDetection {
 }
 
 /**
- * Identify a known LLM gateway / proxy from response headers (LiteLLM,
- * Helicone, Portkey). Returns `undefined` when no recognizable pattern is
- * present so direct-API traffic stays unaffected.
- *
- * Header keys are matched case-insensitively against the lowercased map that
- * {@link ProviderResponseMetadata.headers} produces.
+ * Identify a known LLM gateway / proxy from response headers (LiteLLM, Helicone, Portkey).
  */
 export function detectGatewayFromHeaders(
 	headers: Readonly<Record<string, string>> | undefined,
@@ -1989,11 +1930,7 @@ export function startExecuteToolSpan(
 }
 
 /**
- * End an `execute_tool` span. Pass `status` to specify the terminal status
- * explicitly (`"ok" | "error" | "skipped" | "blocked" | "timeout" |
- * "aborted"`); when omitted, `status` is derived from `isError`. Passing
- * `errorObject` (the thrown value) additionally records an exception with
- * stack.
+ * End an `execute_tool` span, recording status and optional exception details.
  */
 export function finishExecuteToolSpan(
 	telemetry: AgentTelemetry | undefined,
@@ -2067,11 +2004,7 @@ const STATUS_ERROR_TYPE: Record<Exclude<ToolStatus, "ok">, string> = {
 };
 
 /**
- * Record a tool that bypassed the span lifecycle entirely (pre-run
- * interrupt, post-execution tail sweep for calls that never produced a
- * result message). The LLM still asked for the tool, so it counts toward
- * coverage and toward the relevant `tools.<status>` counter; no span is
- * emitted because the loop never started one.
+ * Record a tool that bypassed span lifecycle (e.g. pre-run interrupt) toward run coverage counters.
  */
 export function recordSkippedTool(
 	telemetry: AgentTelemetry | undefined,
@@ -2122,12 +2055,7 @@ export function finishInvokeAgentSpan(
 }
 
 /**
- * Invoke {@link AgentTelemetryConfig.onRunEnd} on `telemetry` if set. Throws
- * are caught and surfaced via the `onTelemetryWarning` hook (falling back to `console.warn`
- * when no hook is set) — telemetry callbacks NEVER turn a
- * successful agent run into a failed one. Idempotent at the call site via
- * {@link AgentRunCollector.markRunEnded}; callers must check that before
- * calling this helper.
+ * Safely invoke `onRunEnd` callback, swallowing and reporting errors as warnings.
  */
 export function fireOnRunEnd(telemetry: AgentTelemetry, summary: AgentRunSummary, coverage: AgentRunCoverage): void {
 	const hook = telemetry.config.onRunEnd;
@@ -2206,13 +2134,7 @@ function applyAggregateAttributes(span: Span, summary: AgentRunSummary, coverage
 }
 
 /**
- * Run `fn` with `span` activated on the OTEL context. Spans created
- * downstream (provider HTTP clients, MCP tools, user code) attach as
- * children. No-op when `span` is undefined.
- *
- * Required because `tracer.startSpan` creates the span object but does not
- * activate it — without this wrapper, downstream spans attach to whatever
- * context was active before and the parent linkage we advertise is lost.
+ * Run `fn` with `span` activated on the OTEL context so child spans attach correctly.
  */
 export function runInActiveSpan<T>(span: Span | undefined, fn: () => Promise<T>): Promise<T> {
 	if (!span) return fn();

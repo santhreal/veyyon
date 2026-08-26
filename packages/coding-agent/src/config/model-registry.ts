@@ -105,16 +105,8 @@ function isDiscoveryBearerApiKey(apiKey: string | undefined | null): apiKey is s
 }
 
 /**
- * The local runtimes veyyon probes without being told to, and how each one is spelled.
- *
- * ONE TABLE, because there used to be three near-identical `if` blocks and the discovery
- * severity split reads what they set. A fourth runtime added as a fourth block would get
- * the loopback-refusal treatment by accident rather than by decision, and no test could
- * see it: `a-provider-nobody-configured-does-not-warn.test.ts` sweeps this list, so a new
- * row is exercised the moment it lands and an unexercised row fails.
- *
- * `baseUrl` is a function because two of the three read the environment, and reading it at
- * module load would pin whatever the process started with.
+ * Table of implicit local runtimes veyyon probes during discovery.
+ * Base URLs evaluate lazily from the environment at probe time.
  */
 interface ImplicitLocalRuntime {
 	readonly provider: string;
@@ -156,12 +148,7 @@ const IMPLICIT_LOCAL_RUNTIMES: readonly ImplicitLocalRuntime[] = [
 export const IMPLICIT_LOCAL_RUNTIME_IDS: readonly string[] = IMPLICIT_LOCAL_RUNTIMES.map(runtime => runtime.provider);
 
 /**
- * Whether a URL addresses this machine.
- *
- * The wildcard bind addresses count: a client URL of `http://0.0.0.0:8080` is how a local
- * server that binds every interface is reached, and it is this machine either way. A
- * hostname is matched whole rather than by prefix, because `127.example.com` is a legal
- * remote name and a prefix test silences a remote endpoint's failures.
+ * Whether a URL addresses this machine (loopback hostnames, IPv4 127/0, IPv6 loopbacks).
  */
 function isLoopbackUrl(url: string | undefined): boolean {
 	if (!url) return false;
@@ -179,12 +166,7 @@ function isLoopbackUrl(url: string | undefined): boolean {
 }
 
 /**
- * Whether a discovery failure means nothing answered, as opposed to something answering badly.
- *
- * The distinction is the whole severity decision, and it has to be read out of text: by the
- * time a failure reaches the reporter it is a formatted message, with the provider's own
- * wording in it. Bun's fetch says "Unable to connect", node says `ECONNREFUSED`, and a
- * probe that gave up says it failed to connect.
+ * Whether a discovery error indicates connection refusal or an unreachable host.
  */
 function isConnectionRefusalError(error: string): boolean {
 	return /unable to connect|econnrefused|connection refused|ehostunreach|enetunreach|econnreset|failed to connect/i.test(
@@ -221,30 +203,8 @@ interface ProviderOverride {
 }
 
 /**
- * Merge a freshly discovered model with the matching bundled/configured entry
- * (or a runtime provider override when no bundled entry exists).
- *
- * `baseUrl` resolution priority:
- *   1. User-set `providerOverride.baseUrl` (explicit override in models.json)
- *   2. Discovered baseUrl (xiaomi `tp-` token-plan keys resolve to
- *      `token-plan-sgp.xiaomimimo.com` at discovery time)
- *   3. Existing bundled baseUrl (the host baked into `models.json`)
- *
- * `transport` resolution priority:
- *   1. `providerOverride.transport` (e.g. `pi-native` for auth-gateway users)
- *   2. `existing.transport` (carried over from boot-time override application)
- *   3. `model.transport` (rarely set — discovery defaults omit it)
- *
- * Without (1), the user's override would lose to discovery; without (2)
- * preferred over (3), the bundled `api.xiaomimimo.com` would shadow the
- * tp- token-plan host and produce 401s on the first stream call.
- * Without explicit transport propagation, an openrouter (or any) entry
- * marked `transport: pi-native` in models.yml silently reverts to the
- * default openai-completions transport after the background catalog
- * refresh — so the first `/model` switch after boot hits the raw OpenAI
- * chat-completions URL instead of the gateway's `/v1/pi/stream` (#2555).
- * See `xiaomi-tp-discovery-merge.test.ts` and the `refresh()` baseUrl-override
- * regression in `model-registry.test.ts`.
+ * Merge a freshly discovered model with bundled/configured entries, applying
+ * provider-level baseUrl and transport override priority rules.
  */
 export function mergeDiscoveredModel<TApi extends Api>(
 	model: Model<TApi>,
@@ -418,11 +378,7 @@ interface CommandApiKeyResolution {
 	value?: string;
 }
 /**
- * Resolve a models.yml/models.yaml secret/config value to an actual value.
- * `!cmd` runs a shell command and returns trimmed stdout; `${NAME}` / `$NAME`
- * and a bare environment name resolve from the environment and produce nothing
- * when the variable is unset or empty; `literal:<text>` and any other bare value
- * are the value itself.
+ * Resolve a config secret/value (`!cmd`, `${NAME}`, `$NAME`, or literal text).
  */
 function resolveConfigValue(valueConfig: string, describedAs?: string): string | undefined {
 	const command = parseConfigValueCommand(valueConfig);
@@ -604,11 +560,7 @@ interface ModelPatch {
 }
 
 /**
- * How a patch treats the base model's transport metadata (headers/compat):
- * - `merge`: fold the patch into the base's (modelOverrides semantics).
- * - `replace`: the patch owns transport wholesale — same-id custom definitions
- *   already folded provider-level headers/compat in during parsing, so bundled
- *   transport metadata must not be re-merged (see `#mergeCustomModels`).
+ * Policy for applying a model patch's transport metadata: `merge` or `replace`.
  */
 type ModelTransportPolicy = "merge" | "replace";
 
@@ -688,11 +640,7 @@ function mergeAuthHeaderSources(
 }
 
 /**
- * Decide whether a custom-yaml model should force OAuth-style request shaping.
- * - Explicit `auth: oauth` → force on.
- *   endpoints are typically Claude-Code-style proxies (e.g. CLIProxyAPI) that expect
- *   the cloaked request shape regardless of how the proxy itself is authenticated.
- * - Otherwise → unset.
+ * Decide whether a custom model forces OAuth-style request shaping.
  */
 function resolveCustomModelIsOAuth(api: Api, providerAuth: ProviderAuthMode | undefined): boolean | undefined {
 	if (providerAuth === "oauth") return true;
@@ -832,11 +780,7 @@ function getDisabledProviderIdsFromSettings(): Set<string> {
 }
 
 /**
- * Bump when the persisted static stage's contract changes: the resolved record
- * shape, a hardcoded model policy, or the merge semantics feeding `#loadModels`.
- * The version prefixes every fingerprint, so old files miss instead of serving
- * state produced under retired rules — the same discipline as
- * `CACHE_SCHEMA_VERSION` in `@veyyon/catalog/model-cache`.
+ * Schema version for the persisted static stage snapshot cache.
  */
 const REGISTRY_SNAPSHOT_VERSION = 5;
 
@@ -922,12 +866,7 @@ export class ModelRegistry {
 
 	/**
 	 * @param authStorage - Auth storage for API key resolution
-	 *
-	 * Sync constructor — eagerly loads bundled + cached models so tests and
-	 * synchronous callers see a fully-populated registry immediately. Production
-	 * boot paths SHOULD prefer {@link ModelRegistry.create} so the YAML/JSONC
-	 * migration step lands off the event loop's hot path before the first
-	 * `tryLoad()` runs.
+	 * Synchronously loads bundled and cached models into the registry.
 	 */
 	constructor(
 		readonly authStorage: AuthStorage,
@@ -1057,13 +996,8 @@ export class ModelRegistry {
 	}
 
 	/**
-	 * Discover models for providers registered at runtime via `fetchDynamicModels`
-	 * (extension providers). Merges the discovered catalog into the existing model
-	 * set without reloading static models, so dynamically-discovered models from
-	 * other providers are preserved. No-op when no runtime providers are registered.
-	 *
-	 * Drives the same SQLite model cache as built-in providers, so the default
-	 * `online-if-uncached` strategy fetches at most once per cache TTL (24 h).
+	 * Discover models for runtime extension providers via `fetchDynamicModels`,
+	 * merging results without reloading static models.
 	 */
 	async refreshRuntimeProviders(
 		strategy: ModelRefreshStrategy = "online-if-uncached",
@@ -1842,16 +1776,7 @@ export class ModelRegistry {
 	}
 
 	/**
-	 * Report that a provider's model discovery did not produce a catalog.
-	 *
-	 * The ONE owner of this message. It was written for discovery that THREW, and a discovery that merely
-	 * returned no list -- a refused connection, a 401, an endpoint that is not OpenAI-compatible -- reached
-	 * no reporter at all, so a provider whose models the user pays for disappeared from the picker with
-	 * nothing anywhere explaining it. Both paths come through here now, and the built-in manager path used
-	 * to log the same sentence again from its own catch, without this dedup.
-	 *
-	 * Deduplicated per provider on the exact reason: discovery re-runs on a timer and on demand, and the
-	 * same unreachable endpoint must not fill the log. A CHANGED reason is reported, because that is news.
+	 * Check whether stored credentials exist for a provider in auth storage or custom keys.
 	 */
 	#hasStoredCredential(provider: string): boolean {
 		return (
@@ -1878,13 +1803,7 @@ export class ModelRegistry {
 	}
 
 	/**
-	 * Whether a discovery failure is a fault, or software the operator never started.
-	 *
-	 * A configured provider is always a fault: a credential or an endpoint is a statement
-	 * that it should work. Absent both, the failure is a fault only if something answered —
-	 * a status, a malformed body — or if the endpoint is not on this machine, because a
-	 * remote address is itself a configuration. What is left is a loopback port with nothing
-	 * behind it, which is the ordinary state of a machine that does not run that runtime.
+	 * Whether a provider discovery failure warrants a warning (configured or non-loopback).
 	 */
 	#shouldWarnOnDiscoveryFailure(provider: string, url: string | undefined, error: string): boolean {
 		if (this.#hasStoredCredential(provider) || this.#hasConfiguredEndpoint(provider)) {
@@ -2267,19 +2186,8 @@ export class ModelRegistry {
 	}
 
 	/**
-	 * Correct a model's context window from a value the provider reported on the
-	 * wire, so every reader of `model.contextWindow` agrees.
-	 *
-	 * Discovery has to guess a window for a gateway model the catalog has never
-	 * seen (`AGENT_GATEWAY_DEFAULT_CONTEXT_WINDOW`). When the provider then
-	 * states the real one per turn, the guess is simply wrong, and it is wrong
-	 * in the denominator of the context gauge and the compaction threshold at
-	 * once: a conversation the gateway reports as one fifth used renders as
-	 * empty and asks to compact on every turn. The correction is stored keyed by
-	 * provider/model and reapplied after each reload so discovery cannot put the
-	 * guess back.
-	 *
-	 * Returns true when this changed the registry.
+	 * Correct a model's context window from a provider wire report and persist the override.
+	 * Returns true when the context window changed.
 	 */
 	recordProviderReportedContextWindow(provider: string, id: string, contextWindow: number): boolean {
 		if (!Number.isFinite(contextWindow) || contextWindow <= 0) return false;
@@ -2337,20 +2245,8 @@ export class ModelRegistry {
 	}
 
 	/**
-	 * Check whether auth is configured for a model's provider.
-	 *
-	 * Mirrors the upstream `@mariozechner/pi-coding-agent` API surface so that
-	 * external plugins/extensions and downstream wrappers (e.g. subagent launch
-	 * paths that pre-flight auth before model resolution) can probe a model
-	 * without resolving an API key. Returns true for keyless providers as well
-	 * as providers with stored credentials. See issue #993.
-	 *
-	 * Side-effect-free and synchronous: a command-backed key (`!cmd`) counts as
-	 * configured by its presence alone — the program is NOT executed — and OAuth
-	 * tokens are NOT refreshed (`authStorage.hasAuth`). This is what keeps the
-	 * model-switch pre-flight off the event loop's hot path; the real key
-	 * (command execution + OAuth refresh) is resolved lazily per request via
-	 * {@link ModelRegistry.resolver}.
+	 * Check whether auth or keyless access is configured for a model's provider.
+	 * Synchronous check that avoids executing commands or refreshing OAuth tokens.
 	 */
 	hasConfiguredAuth(model: Model<Api>): boolean {
 		const keyConfig = this.#customProviderApiKeys.get(model.provider);
@@ -2404,11 +2300,7 @@ export class ModelRegistry {
 	}
 
 	/**
-	 * Get API key for a provider (e.g., "openai").
-	 *
-	 * `options.forceRefresh` powers step (b) of the auth-retry policy — it
-	 * re-mints the session-sticky OAuth token even when the cached copy still
-	 * looks valid. `options.signal` is threaded into any broker-bound refresh.
+	 * Get API key for a provider, supporting forced OAuth token refresh.
 	 */
 	async getApiKeyForProvider(
 		provider: string,
@@ -2429,11 +2321,7 @@ export class ModelRegistry {
 	}
 
 	/**
-	 * Build an {@link ApiKeyResolver} implementing the central a/b/c auth-retry
-	 * policy. Accepts a provider id with options, or a model with an optional
-	 * session id (`resolver(model, sessionId)`) which derives `baseUrl`/`modelId`
-	 * from the model. Callers that need the initial key for a guard can call
-	 * `resolveApiKeyOnce(resolver)`.
+	 * Build an {@link ApiKeyResolver} implementing the central auth-retry policy.
 	 */
 	resolver(provider: string, options?: ApiKeyResolverOptions): ApiKeyResolver;
 	resolver(model: ApiKeyResolverModel, sessionId?: string): ApiKeyResolver;
@@ -2510,12 +2398,7 @@ export class ModelRegistry {
 	}
 
 	/**
-	 * Register a provider dynamically (from extensions).
-	 *
-	 * If provider has models: replaces all existing models for this provider.
-	 * If provider has only baseUrl/headers: overrides existing models' URLs.
-	 * If provider has streamSimple: registers a custom API streaming function.
-	 * If provider has oauth: registers OAuth provider for /login support.
+	 * Register a provider dynamically from an extension, updating models, URLs, or OAuth.
 	 */
 	registerProvider(providerName: string, config: ProviderConfigInput, sourceId?: string): void {
 		if (config.streamSimple && !config.api) {

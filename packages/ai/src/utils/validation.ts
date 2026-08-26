@@ -1,26 +1,6 @@
 /**
- * Tool-call argument validation pipeline.
- *
- * Tools may declare their parameters as either Zod schemas (canonical) or
- * plain JSON Schema (legacy / extensions). This module is the single
- * entrypoint the agent calls before dispatching a tool — it:
- *
- *   1. Builds (or fetches from cache) a `ValidationContext` for the tool —
- *      the Zod schema if available plus the equivalent wire JSON Schema, or
- *      just the JSON Schema for non-Zod tools.
- *   2. Normalizes LLM quirks (null / "null" → omit-or-default substitution)
- *      against the JSON Schema before validation.
- *   3. Validates with the Zod or JSON-Schema validator.
- *   4. On failure, walks the resulting issues and coerces common LLM type
- *      drift (JSON-stringified values, boolean/number/string scalar drift),
- *      drops unrecognized keys, and retries up to `MAX_COERCION_PASSES` times.
- *   5. Throws a formatted error if reconciliation fails; otherwise returns
- *      the parsed arguments with original unknown root fields preserved (so
- *      hallucinated top-level keys still surface to the caller).
- *
- * The goal is to be conservative: every coercion is a structural rewrite that
- * keeps the schema in charge of acceptance — we never invent values, only
- * massage shapes the LLM almost got right.
+ * Tool-call argument validation pipeline: normalizes LLM quirks, validates against Zod
+ * or wire JSON Schema, and applies bounded schema-directed coercions on failure.
  */
 import { structuredCloneJSON } from "@veyyon/utils/json";
 import { isRecord } from "@veyyon/utils/type-guards";
@@ -320,13 +300,8 @@ function cleanLiteralEscapes(value: string): string {
 }
 
 /**
- * Escape raw control characters (0x00–0x1F) that appear *inside* JSON string
- * literals. LLMs sometimes emit literal newlines/tabs/etc. inside string
- * content instead of `\n` / `\t` escape sequences, which `JSON.parse` rejects
- * even though the surrounding structure is valid.
- *
- * This function only rewrites characters while inside a string; structural
- * whitespace outside of strings is preserved unchanged.
+ * Escape raw control characters (0x00–0x1F) inside JSON string literals while
+ * preserving structural whitespace outside strings.
  */
 function escapeRawControlsInJsonStrings(value: string): string {
 	let result = "";
@@ -391,14 +366,7 @@ const MAX_HEAL_DISTANCE = 3;
 const BRACKET_CHARS = ["[", "]", "{", "}"] as const;
 
 /**
- * Attempts to heal near-valid JSON by applying single-character edits near the
- * end of the string. LLMs (especially smaller ones) sometimes produce JSON with
- * a single misplaced, extra, or wrong bracket at the end — e.g. `"}]"` becomes
- * `"]}"` or gets an extra `}` appended. This function tries:
- *   1. Removing a single character from the last few positions
- *   2. Replacing a single character in the last few positions with each bracket type
- *
- * Returns the parsed value on success, undefined on failure.
+ * Heal near-valid JSON by testing single-character bracket edits near the string end.
  */
 function tryHealMalformedJson(value: string): unknown | undefined {
 	// Verify it actually fails to parse
@@ -481,17 +449,7 @@ function looksLikeJsonContainerString(value: unknown): boolean {
 }
 
 /**
- * Attempts to parse a string as JSON if it looks like a JSON literal and
- * the parsed result matches one of the expected types.
- *
- * Only attempts parsing for strings that syntactically look like JSON:
- *   - Objects: `{...}`
- *   - Arrays: `[...]`
- *   - Literals: `true`, `false`, `null`, or numeric strings
- *
- * Returns `{ changed: true }` only if parsing succeeded AND the result
- * matches an expected type. This prevents false positives like parsing
- * the string `"123"` when the schema actually wants a string.
+ * Parse string as JSON if it looks like a literal and matches an expected schema type.
  */
 function tryParseJsonForTypes(value: string, expectedTypes: string[], depth = 0): { value: unknown; changed: boolean } {
 	const trimmed = value.trim();
@@ -642,11 +600,7 @@ function setValueAtPointer(root: unknown, pointer: string, value: unknown): unkn
 }
 
 /**
- * Returns a new structure with the key at `pointer` removed. Only the
- * containers along the path are shallow-cloned (`O(depth)` allocations);
- * every sibling subtree is shared with the input. Returns the input
- * reference unchanged when the pointer is empty, the path is invalid, or
- * the final key is absent — so callers can detect a no-op via identity.
+ * Return structure with key at `pointer` removed via copy-on-write path cloning.
  */
 function deleteValueAtPointer(root: unknown, pointer: string): unknown {
 	if (!pointer) return root;
@@ -1090,13 +1044,7 @@ function trimIdentifierStringLeaf(input: unknown): unknown {
 }
 
 /**
- * Depth ceiling for the two schema-agnostic value walks below and for the
- * error echo. Real tool arguments are a handful of levels deep; a payload that
- * nests past this is malformed or hostile, and recursing it overflowed the
- * stack, so a clean `ValidationError` escaped the pipeline as a `RangeError`
- * instead. The depth does arrive intact: `JSON.parse` accepts 100k levels of
- * nesting without complaint. Past the ceiling a subtree is left exactly as
- * received rather than dropped, so no argument is ever lost to the guard.
+ * Recursion depth ceiling for schema-agnostic value walks to avoid stack overflow.
  */
 const MAX_VALUE_WALK_DEPTH = 64;
 
@@ -1165,11 +1113,7 @@ function normalizeIdentifierStringWhitespace(value: unknown, depth = 0): { value
 const MAX_KEY_DECODE_DEPTH = 3;
 
 /**
- * If `key` is the JSON encoding of a plain string (quote-wrapped and
- * `JSON.parse`s to a string), return the decoded string; otherwise null. Peels
- * up to {@link MAX_KEY_DECODE_DEPTH} nested encodings so multiply-encoded keys
- * collapse in one pass. Conservative: any key that is not a quote-wrapped JSON
- * string literal is left untouched.
+ * Decode multiply-encoded JSON string keys up to `MAX_KEY_DECODE_DEPTH`.
  */
 function decodeDoubleEncodedKey(key: string): string | null {
 	let current = key;
@@ -1190,11 +1134,7 @@ function decodeDoubleEncodedKey(key: string): string | null {
 }
 
 /**
- * Recursively unwrap object keys that were accidentally JSON-encoded an extra
- * time. Schema-agnostic by design: such keys are dropped before any schema pass
- * can map them, so this runs first. A key is only renamed when the decoded name
- * differs and does not already exist on the same object — renaming would
- * otherwise clobber a sibling and silently lose data.
+ * Recursively unwrap extra JSON-encoded object keys without clobbering existing siblings.
  */
 function normalizeDoubleEncodedKeys(value: unknown, depth = 0): { value: unknown; changed: boolean } {
 	if (depth >= MAX_VALUE_WALK_DEPTH) return { value, changed: false };
@@ -1252,11 +1192,7 @@ function normalizeDoubleEncodedKeys(value: unknown, depth = 0): { value: unknown
 // ============================================================================
 
 /**
- * Detects whether a schema node accepts BOTH the `string` and `array` JSON
- * Schema types. Recognizes:
- *   - `{ "type": ["string", "array"] }` (multi-type),
- *   - `{ "anyOf": [...] }` / `{ "oneOf": [...] }` with at least one string
- *     branch and one array branch.
+ * True if schema node accepts both `string` and `array` types.
  */
 function schemaAcceptsStringAndArray(schema: Record<string, unknown>): boolean {
 	if (Array.isArray(schema.type) && schema.type.includes("string") && schema.type.includes("array")) {
@@ -1308,18 +1244,8 @@ function parsedArrayMatchesArrayBranch(schema: Record<string, unknown>, value: u
 }
 
 /**
- * Pre-validation normalization: when a schema field accepts BOTH `string` and
- * `array`, providers that double-serialize tool arguments (e.g. Z.AI / GLM)
- * deliver array values as JSON-encoded strings like `'["a","b"]'`. Zod's
- * `union([string, array])` happily accepts that string against the string
- * branch, so the type-error driven coercion in {@link coerceArgsFromIssues}
- * never fires, and downstream tools treat the literal `["a","b"]` as a path
- * (silently producing zero matches or glob parse errors).
- *
- * Walk the schema; when both shapes are accepted AND the incoming value is a
- * JSON-array-shaped string, substitute the parsed array only if it validates
- * against the schema's array branch. Conservative: array-shaped strings like
- * `"[1]"` stay on the string branch when the array branch is `string[]`.
+ * Substitute parsed JSON arrays for array-shaped strings when schema accepts both
+ * string and array and the array validates.
  */
 function normalizeStringEncodedArrayUnions(schema: unknown, value: unknown): { value: unknown; changed: boolean } {
 	if (value === null || value === undefined) return { value, changed: false };
@@ -1414,14 +1340,7 @@ function singleRequiredStringKey(schema: unknown): string | undefined {
 }
 
 /**
- * LLM-quirk repair for single-argument tools. When a tool declares exactly one
- * property — a required string — some providers deliver the payload under a
- * different key (e.g. the `edit` tool's patch arriving as `input`/`_input`, or
- * any single-string tool whose argument the model mislabels). When the declared
- * key is absent but another field holds a string, adopt the first such string
- * as the declared key so the call validates instead of failing with "<key> was
- * missing". A present-but-wrong-type value is left alone so its real type error
- * still surfaces.
+ * Adopt mislabeled single-string argument for single-property string tool schemas.
  */
 function normalizeSingleStringField(schema: unknown, value: unknown): { value: unknown; changed: boolean } {
 	const key = singleRequiredStringKey(schema);
@@ -1527,25 +1446,7 @@ function flattenIssues(issues: ReadonlyArray<ZodIssue>): FlatIssue[] {
 }
 
 /**
- * Repair issues raised by the validator before we surface them to the caller.
- *
- * Two kinds of repair are applied:
- *  - **type**: when a value has a common LLM-produced shape mismatch, rewrite
- *    it only in the direction requested by the schema: parse JSON strings,
- *    accept boolean spellings, stringify non-null values for string fields,
- *    map booleans to numeric 0/1, and wrap singleton array values for non-union
- *    array expectations.
- *  - **unrecognized**: when a strict object received an extra key (Zod's
- *    `unrecognized_keys` or JSON Schema's `additionalProperties: false`),
- *    drop that key so re-validation succeeds. This effectively coerces every
- *    object schema to loose semantics recursively without rebuilding the
- *    underlying Zod tree.
- *
- * The function is safe and conservative:
- *   - Only processes "type" and "unrecognized" issues
- *   - Only attempts schema-directed coercions for the expected type
- *   - Only wraps singleton array values for non-union type expectations
- *   - Clones the args object before mutation (copy-on-write)
+ * Repair validator issues via schema-directed type coercions and dropping unrecognized keys.
  */
 function coerceArgsFromIssues(args: unknown, issues: FlatIssue[]): { value: unknown; changed: boolean } {
 	if (issues.length === 0) return { value: args, changed: false };
@@ -1832,16 +1733,7 @@ function splitSpilledValue(text: string): SpillSplit | null {
 }
 
 /**
- * Repairs native tool-call arguments contaminated by in-band
- * `<arg_key>`/`<arg_value>` syntax. Some providers parse owned tool-call
- * formats server-side; when the model mistypes or omits an `</arg_value>`
- * closer, every following pair is swallowed into one string argument, e.g.
- * `op: "done</arg_key>\n<arg_key>task</arg_key>\n<arg_value>…"`. Truncates
- * each contaminated top-level string at its spill boundary and restores the
- * swallowed pairs as sibling arguments (never overwriting existing keys).
- *
- * Only invoked after validation and every coercion pass fail, so valid calls
- * whose string content legitimately contains tag-like text are never touched.
+ * Repair tool arguments contaminated by unclosed in-band `<arg_key>`/`<arg_value>` syntax.
  */
 function healInbandArgSpill(value: unknown): { value: unknown; changed: boolean } {
 	if (!isRecord(value)) return { value, changed: false };
@@ -1868,11 +1760,7 @@ function healInbandArgSpill(value: unknown): { value: unknown; changed: boolean 
 const MAX_COERCION_PASSES = 5;
 
 /**
- * Finds a tool by name and validates the tool call arguments against its schema.
- * @param tools Array of tool definitions
- * @param toolCall The tool call from the LLM
- * @returns The validated arguments
- * @throws Error if tool is not found or validation fails
+ * Look up tool by name and validate arguments against its schema.
  */
 export function validateToolCall(tools: Tool[], toolCall: ToolCall): ToolCall["arguments"] {
 	const tool = tools.find(t => t.name === toolCall.name);
@@ -1889,12 +1777,7 @@ export function validateToolCall(tools: Tool[], toolCall: ToolCall): ToolCall["a
 /** Cap per-field string lengths when embedding received args in an error message. */
 const MAX_ERROR_ARG_STRING_LENGTH = 256;
 /**
- * Array elements echoed verbatim before the tail is replaced by a count.
- *
- * A per-string cap alone does not bound a container: eight short todo items
- * are each far under {@link MAX_ERROR_ARG_STRING_LENGTH}, so the whole array
- * used to round-trip into the transcript on every retry. One element is
- * enough to show the shape the model actually sent.
+ * Limit on array elements echoed in error message before tail truncation.
  */
 const MAX_ERROR_ARG_ARRAY_SAMPLE = 1;
 /** Object keys echoed before the rest is replaced by a count. */
@@ -1910,12 +1793,7 @@ const MAX_ERROR_RAW_JSON_LENGTH = 512;
  */
 const MAX_ERROR_ARG_DEPTH = 8;
 /**
- * Ceiling on the joined issue lines. A validator names the rejected value
- * inside the message (`op must be "init" | … (was "xxx…")`), so a single
- * oversized field pushes the issue block past every per-argument cap: a 50k
- * enum value produced a 50,437-character failure that the model re-read on
- * every retry. Bounded separately from the echo so neither half can crowd the
- * other out of the message.
+ * Ceiling on total character length of joined validation issue lines in errors.
  */
 const MAX_ERROR_ISSUES_LENGTH = 400;
 /**
@@ -1927,13 +1805,7 @@ const MAX_ERROR_ISSUES_LENGTH = 400;
 const MAX_ERROR_MESSAGE_LENGTH = 1200;
 
 /**
- * Cut `text` so the RESULT is at most `max` characters, the "what was dropped"
- * note included. Counting the note inside the budget is what makes `max` a
- * ceiling on the string a caller actually emits, so nested calls compose: the
- * outer bound holds whatever the inner ones produced. The note names the
- * dropped count, so its own width depends on the cut; the loop settles that.
- * Every `max` here is far wider than the note, which is the one case that
- * could not be honored (a bare note still has to be emitted).
+ * Truncate text to fit within `max` characters including the truncation notice.
  */
 function boundErrorText(text: string, max: number): string {
 	if (text.length <= max) return text;
@@ -2048,12 +1920,8 @@ function annotateIssuesWithAcceptedValues(json: unknown, messages: readonly stri
 }
 
 /**
- * Validates tool call arguments against the tool's schema (Zod or plain JSON
- * Schema). Applies LLM-quirk coercions (numeric strings, JSON-string
- * containers, null/invalid-empty-string-for-optional, null-for-default) before
- * declaring failure.
- *
- * @throws Error with a formatted message when validation cannot be reconciled.
+ * Validate tool call arguments against schema with multi-pass LLM quirk coercion.
+ * @throws Error with formatted message if validation fails.
  */
 export function validateToolArguments(tool: Tool, toolCall: ToolCall): ToolCall["arguments"] {
 	const originalArgs = toolCall.arguments;
