@@ -120,17 +120,13 @@ function hexDigit(c: number): number {
 	return c <= 57 ? c - 48 : (c & 0xdf) - 55;
 }
 
+const HEX_CHARS = "0123456789abcdef";
+
 function toHex(rgb: [number, number, number]): string {
-	const r = Math.round(Math.min(255, Math.max(0, rgb[0])))
-		.toString(16)
-		.padStart(2, "0");
-	const g = Math.round(Math.min(255, Math.max(0, rgb[1])))
-		.toString(16)
-		.padStart(2, "0");
-	const b = Math.round(Math.min(255, Math.max(0, rgb[2])))
-		.toString(16)
-		.padStart(2, "0");
-	return `#${r}${g}${b}`;
+	const r = Math.round(Math.min(255, Math.max(0, rgb[0])));
+	const g = Math.round(Math.min(255, Math.max(0, rgb[1])));
+	const b = Math.round(Math.min(255, Math.max(0, rgb[2])));
+	return `#${HEX_CHARS[r >> 4]}${HEX_CHARS[r & 0xf]}${HEX_CHARS[g >> 4]}${HEX_CHARS[g & 0xf]}${HEX_CHARS[b >> 4]}${HEX_CHARS[b & 0xf]}`;
 }
 
 /** Perceived lightness in [0,1] (Rec. 601 luma — enough to pick a direction). */

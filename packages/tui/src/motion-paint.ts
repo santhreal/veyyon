@@ -19,12 +19,14 @@ function clampChannel(value: number): number {
 	return clamp(Math.round(value), 0, 255);
 }
 
+const HEX = "0123456789abcdef";
+
 /** `#rrggbb` from channels, each clamped to a byte. */
 export function toHexColor(r: number, g: number, b: number): string {
-	const rr = clampChannel(r).toString(16).padStart(2, "0");
-	const gg = clampChannel(g).toString(16).padStart(2, "0");
-	const bb = clampChannel(b).toString(16).padStart(2, "0");
-	return `#${rr}${gg}${bb}`;
+	const rr = clampChannel(r);
+	const gg = clampChannel(g);
+	const bb = clampChannel(b);
+	return `#${HEX[rr >> 4]}${HEX[rr & 0xf]}${HEX[gg >> 4]}${HEX[gg & 0xf]}${HEX[bb >> 4]}${HEX[bb & 0xf]}`;
 }
 
 /**
@@ -61,9 +63,11 @@ export function fadeLineTowards(line: string, groundHex: string, strength: numbe
 	if (k >= 1) return line;
 	const ground = parseHexColor(groundHex);
 	if (ground === null) return line;
-	const gr = ground.r;
-	const gg = ground.g;
-	const gb = ground.b;
+	return fadeLineWithParsedGround(line, ground.r, ground.g, ground.b, k);
+}
+
+/** Internal: fade a line toward pre-parsed ground channels. Skips the per-call `parseHexColor` allocation. */
+function fadeLineWithParsedGround(line: string, gr: number, gg: number, gb: number, k: number): string {
 	SGR.lastIndex = 0;
 	return line.replace(SGR, (whole, params: string) => {
 		if (params === "") return whole;
@@ -94,7 +98,12 @@ export function fadeLineTowards(line: string, groundHex: string, strength: numbe
 /** Fade a block of rendered lines toward the ground behind it. */
 export function fadeLinesTowards(lines: readonly string[], groundHex: string, strength: number): string[] {
 	if (strength >= 1) return [...lines];
-	return lines.map(line => fadeLineTowards(line, groundHex, strength));
+	const ground = parseHexColor(groundHex);
+	if (ground === null) return [...lines];
+	const k = clamp01(strength);
+	if (k >= 1) return [...lines];
+	const { r: gr, g: gg, b: gb } = ground;
+	return lines.map(line => fadeLineWithParsedGround(line, gr, gg, gb, k));
 }
 
 /**
