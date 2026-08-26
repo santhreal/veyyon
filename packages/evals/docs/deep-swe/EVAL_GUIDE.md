@@ -17,7 +17,7 @@ The harness reads API keys from `~/.veyyon/shared-auth/agent.db`. If you have a 
 ```bash
 export OPENCODE_API_KEY=sk-...
 # or
-bun run.ts --opencode-key sk-... --arms baseline --tasks tasks/smoke.txt
+bun src/suites/deep-swe/run.ts --opencode-key sk-... --arms baseline --tasks datasets/deep-swe/tasks/smoke.txt
 ```
 
 ## Workflow 1: Smoke test
@@ -25,7 +25,7 @@ bun run.ts --opencode-key sk-... --arms baseline --tasks tasks/smoke.txt
 Validates the full pipeline on a single task. Use this after any harness change to confirm staging, auth, Pier, and the verifier all work.
 
 ```bash
-bun run.ts --tasks tasks/smoke.txt --arms baseline --jobs 1
+bun src/suites/deep-swe/run.ts --tasks datasets/deep-swe/tasks/smoke.txt --arms baseline --jobs 1
 ```
 
 Expected duration: 5 to 30 minutes depending on model latency and task difficulty.
@@ -46,13 +46,13 @@ Compares a baseline arm against a candidate arm across the pilot task set. Each 
 
 ```bash
 # Baseline vs full (argot encode + decode)
-bun run.ts --tasks tasks/pilot-10.txt --arms baseline,full --jobs 2 --repeats 2
+bun src/suites/deep-swe/run.ts --tasks datasets/deep-swe/tasks/pilot-10.txt --arms baseline,full --jobs 2 --repeats 2
 
 # Baseline vs a single prompt change
-bun run.ts --tasks tasks/pilot-10.txt --arms baseline,candidate-bash-trim --jobs 2
+bun src/suites/deep-swe/run.ts --tasks datasets/deep-swe/tasks/pilot-10.txt --arms baseline,candidate-bash-trim --jobs 2
 
 # Dry run first to validate configs
-bun run.ts --tasks tasks/pilot-10.txt --arms baseline,full --dry-run
+bun src/suites/deep-swe/run.ts --tasks datasets/deep-swe/tasks/pilot-10.txt --arms baseline,full --dry-run
 ```
 
 The report includes:
@@ -68,17 +68,17 @@ Runs different agent binaries (veyyon, omp, factory, hermes) on the same tasks a
 
 ```bash
 # veyvon baseline vs omp
-bun run.ts --arms baseline,omp \
+bun src/suites/deep-swe/run.ts --arms baseline,omp \
   --model opencode-go/deepseek-v4-flash \
-  --tasks tasks/pilot-10.txt \
+  --tasks datasets/deep-swe/tasks/pilot-10.txt \
   --jobs 2 --repeats 2
 
 # Pin a specific veyvon binary
-bun run.ts --arms baseline,omp \
+bun src/suites/deep-swe/run.ts --arms baseline,omp \
   --model opencode-go/deepseek-v4-flash \
   --binary packages/coding-agent/dist/vey \
   --omp-cli ~/node_modules/@oh-my-pi/pi-coding-agent/dist/cli.js \
-  --tasks tasks/pilot-10.txt
+  --tasks datasets/deep-swe/tasks/pilot-10.txt
 ```
 
 ### Fairness
@@ -94,7 +94,7 @@ Omp's release binary does not have veyvon's synchronous model discovery fallback
 Use the unbiased `diverse-20` task set for headline numbers. This set spans Go, TypeScript, and Python with no feature-favoring curation.
 
 ```bash
-bun run.ts --tasks tasks/diverse-20.txt --arms baseline,full --jobs 4 --repeats 3
+bun src/suites/deep-swe/run.ts --tasks datasets/deep-swe/tasks/diverse-20.txt --arms baseline,full --jobs 4 --repeats 3
 ```
 
 The report header carries `@headline` provenance, confirming the numbers are suitable for publication.
@@ -104,13 +104,13 @@ The report header carries `@headline` provenance, confirming the numbers are sui
 Re-parse trial results from an existing run without re-executing trials. Useful after changing the aggregation logic or report format.
 
 ```bash
-bun run.ts --reaggregate runs/2026-08-01T12-00-00
+bun src/suites/deep-swe/run.ts --reaggregate runs/2026-08-01T12-00-00
 ```
 
 Merge multiple runs into a combined report:
 
 ```bash
-bun run.ts --merge runs/day1,runs/day2 --out runs/merged
+bun src/suites/deep-swe/run.ts --merge runs/day1,runs/day2 --out runs/merged
 ```
 
 ## Choosing a task set
