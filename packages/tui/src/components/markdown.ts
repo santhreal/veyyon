@@ -111,7 +111,7 @@ function appendHtmlLineBreak(output: string, force: boolean = false): string {
 }
 
 function htmlListIndent(state: HtmlNormalizationState): string {
-	return "  ".repeat(Math.max(0, state.lists.length - 1));
+	return padding(Math.max(0, state.lists.length - 1) * 2);
 }
 
 function appendHtmlListBreak(output: string, state: HtmlNormalizationState): string {
@@ -2112,7 +2112,7 @@ export class Markdown implements Component {
 	 */
 	#renderList(token: ListToken, depth: number, styleContext?: InlineStyleContext): string[] {
 		const lines: string[] = [];
-		const indent = "  ".repeat(depth);
+		const indent = padding(depth * 2);
 		// Use the list's start property (defaults to 1 for ordered lists)
 		const startNumber = token.start ?? 1;
 
