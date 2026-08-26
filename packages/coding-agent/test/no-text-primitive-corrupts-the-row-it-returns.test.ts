@@ -50,15 +50,15 @@ import {
 	type TextPrimitiveOracleFrameState,
 	type TextPrimitiveOracleGuarantee,
 } from "../src/modes/components/defect-oracles";
-import { promoteTextPrimitiveFailureToCorpus } from "./helpers/renderer-defect-corpus";
 import {
 	evaluateTextPrimitiveCase,
-	stateFor,
+	promoteTextPrimitiveFailureToCorpus,
 	TEXT_FIXTURES,
 	TEXT_WIDTHS,
 	type TextPrimitiveCase,
 	textPrimitiveCases,
-} from "./helpers/text-primitive-oracle-runner";
+	textPrimitiveStateFor,
+} from "./helpers/defect-oracles";
 
 /**
  * What the primitives forward today, as `primitive/fixture` pairs.
@@ -129,7 +129,7 @@ function sweep(): SweepResult {
 		const pair = `${spec.primitive}/${spec.fixture}`;
 		let state: TextPrimitiveOracleFrameState;
 		try {
-			state = stateFor(spec);
+			state = textPrimitiveStateFor(spec);
 		} catch (error) {
 			threw.push(`${pair} at width ${spec.width}: ${error instanceof Error ? error.message : String(error)}`);
 			continue;

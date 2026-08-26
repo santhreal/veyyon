@@ -9,9 +9,9 @@
  * they judge, which is the only thing they have in common with the components beside them, and a
  * reader looking for "which surfaces have an oracle" had to know the four names.
  *
- * Each registry declares what it judges and nothing about how a state is produced. The runners that
- * mount a surface and read a frame live in `packages/coding-agent/test/helpers/`, and the corpus that
- * records a reproduction of one is `test/helpers/renderer-defect-corpus.ts`.
+ * Each registry declares what it judges and nothing about how a state is produced. The other half is
+ * `packages/coding-agent/test/helpers/defect-oracles/`: one runner per registry that mounts or drives
+ * the real subject and reads a state off it, and the corpus that records a state a run found.
  */
 
 export * from "./composer-defect-oracle";

@@ -21,7 +21,7 @@ import { stripAnsi } from "@veyyon/utils/strip-ansi";
 import { WHEEL_DOWN, WHEEL_UP } from "../../../tui/test/helpers/sgr-mouse";
 import type { ComposerAccentState } from "../../src/modes/components/composer-chrome";
 import { isComposerPromptLine, isHairlineLine } from "../../src/modes/components/defect-oracles";
-import { runComposerOracleScenario } from "./composer-oracle-runner";
+import { runComposerOracleScenario } from "./defect-oracles";
 
 // The wheel reports themselves are a TUI-level fact, owned by the tui package's test helpers and
 // re-exported here so a differential suite has one import rather than two.

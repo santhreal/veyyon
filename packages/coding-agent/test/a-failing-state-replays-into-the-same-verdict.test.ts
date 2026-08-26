@@ -35,13 +35,15 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import { ThinkingLevel } from "@veyyon/agent-core";
 import { initTheme } from "../src/modes/theme/theme";
-import { type RunnerOptions, type RunnerResult, runComposerOracleScenario } from "./helpers/composer-oracle-runner";
 import {
 	CORPUS_EXCLUDED_OPTION_KEYS,
 	corpusStateToRunnerOptions,
+	type RunnerOptions,
+	type RunnerResult,
 	replayCorpusCase,
+	runComposerOracleScenario,
 	runnerOptionsToCorpusState,
-} from "./helpers/renderer-defect-corpus";
+} from "./helpers/defect-oracles";
 import { contentLines, FLAVOR_MARK, FLAVORS, ISOLATION, MODE_STATES } from "./helpers/renderer-differential";
 
 beforeAll(async () => {

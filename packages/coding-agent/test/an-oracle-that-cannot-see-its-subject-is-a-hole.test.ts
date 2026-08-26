@@ -39,7 +39,7 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import { stripAnsi } from "@veyyon/utils/strip-ansi";
 import { initTheme } from "../src/modes/theme/theme";
-import { runComposerOracleScenario } from "./helpers/composer-oracle-runner";
+import { runComposerOracleScenario } from "./helpers/defect-oracles";
 import { contentLines, FLAVOR_MARK, FLAVORS } from "./helpers/renderer-differential";
 
 describe("an oracle that cannot see its subject is a hole", () => {

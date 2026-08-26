@@ -42,7 +42,7 @@
 
 import { beforeAll, describe, expect, it } from "bun:test";
 import { initTheme } from "../src/modes/theme/theme";
-import { runComposerOracleScenario } from "./helpers/composer-oracle-runner";
+import { runComposerOracleScenario } from "./helpers/defect-oracles";
 import {
 	compareGrids,
 	contentLine,

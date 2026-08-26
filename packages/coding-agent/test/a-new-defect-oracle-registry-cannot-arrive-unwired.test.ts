@@ -44,7 +44,7 @@
 
 import { describe, expect, it } from "bun:test";
 import { DEFECT_ORACLE_REGISTRIES, DEFECT_ORACLE_REGISTRY_NAMES } from "../src/modes/components/defect-oracles";
-import { CORPUS_FAMILIES, CORPUS_FAMILY_GUARANTEES } from "./helpers/renderer-defect-corpus";
+import { CORPUS_FAMILIES, CORPUS_FAMILY_GUARANTEES } from "./helpers/defect-oracles";
 
 const NAMES = DEFECT_ORACLE_REGISTRY_NAMES.map(name => [name] as const);
 

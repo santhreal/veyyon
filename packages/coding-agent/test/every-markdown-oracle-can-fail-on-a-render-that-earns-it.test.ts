@@ -37,7 +37,7 @@ import {
 	type MarkdownOracleGuarantee,
 } from "../src/modes/components/defect-oracles";
 import { initTheme } from "../src/modes/theme/theme";
-import { type MarkdownCase, stateFor } from "./helpers/markdown-oracle-runner";
+import { type MarkdownCase, markdownStateFor } from "./helpers/defect-oracles";
 
 /**
  * The states every craft below is derived from, both really produced by the component.
@@ -177,7 +177,7 @@ describe("every markdown oracle can fail on a render that earns it", () => {
 	it.each([PADDED, UNPADDED].map(spec => [`${spec.fixture} at ${spec.width}/${spec.paddingX}`, spec] as const))(
 		"judges the %s baseline clean",
 		(_label, spec) => {
-			const evaluation = evaluateAllMarkdownOracles(stateFor(spec));
+			const evaluation = evaluateAllMarkdownOracles(markdownStateFor(spec));
 			expect(evaluation.failures).toEqual([]);
 			// Every guarantee that applies reads something. A blind one on a baseline would mean a craft
 			// below is proving a check that never runs on a real render.
@@ -190,7 +190,7 @@ describe("every markdown oracle can fail on a render that earns it", () => {
 			DEFECTS[id].crafts.map((craft, index) => [`${id} craft ${index}`, id, craft] as const),
 		),
 	)("%s reports the defect it owns and nothing else", (_label, id, craft) => {
-		const clean = stateFor(DEFECTS[id].from);
+		const clean = markdownStateFor(DEFECTS[id].from);
 		const broken = craft(clean);
 
 		// A craft that changed nothing would pass as a clean baseline, which is the failure mode this
@@ -216,7 +216,7 @@ describe("every markdown oracle can fail on a render that earns it", () => {
 	it.each(STAND_DOWNS.map(entry => [`${entry.id} stands down when ${entry.why}`, entry] as const))(
 		"%s",
 		(_label, entry) => {
-			const state = stateFor(entry.spec);
+			const state = markdownStateFor(entry.spec);
 			expect(MARKDOWN_ORACLES[entry.id].appliesTo(state)).toBe(false);
 			expect(evaluateAllMarkdownOracles(state).skipped).toContain(entry.id);
 		},

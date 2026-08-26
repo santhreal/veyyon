@@ -36,7 +36,7 @@ import {
 	type OracleFailure,
 } from "../src/modes/components/defect-oracles";
 import { initTheme } from "../src/modes/theme/theme";
-import { runComposerOracleScenario } from "./helpers/composer-oracle-runner";
+import { runComposerOracleScenario } from "./helpers/defect-oracles";
 import {
 	contentLine,
 	contentLines,

@@ -92,7 +92,7 @@ import {
 	replayCorpusFile,
 	type TextPrimitiveCorpusCase,
 	type ToolRenderCorpusCase,
-} from "./helpers/renderer-defect-corpus";
+} from "./helpers/defect-oracles";
 
 const files = listCorpusFiles();
 

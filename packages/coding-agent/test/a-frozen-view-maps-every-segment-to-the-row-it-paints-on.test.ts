@@ -51,7 +51,7 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import { type ComposerOracleFrameState, screenRowForSegment } from "../src/modes/components/defect-oracles";
 import { initTheme } from "../src/modes/theme/theme";
-import { runComposerOracleScenario } from "./helpers/composer-oracle-runner";
+import { runComposerOracleScenario } from "./helpers/defect-oracles";
 import { contentLines, FLAVORS, ISOLATION } from "./helpers/renderer-differential";
 
 /** Terminal heights, from one that barely holds the composer to a roomy one. */

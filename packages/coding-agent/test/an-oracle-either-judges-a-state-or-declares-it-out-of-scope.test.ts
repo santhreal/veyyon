@@ -61,7 +61,7 @@ import {
 	subjectSize,
 } from "../src/modes/components/defect-oracles";
 import { initTheme } from "../src/modes/theme/theme";
-import { runComposerOracleScenario } from "./helpers/composer-oracle-runner";
+import { runComposerOracleScenario } from "./helpers/defect-oracles";
 import { contentLines, FLAVOR_MARK, FLAVORS, ISOLATION, MODE_STATES } from "./helpers/renderer-differential";
 
 const DEPTHS = [0, 4, 30] as const;

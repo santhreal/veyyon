@@ -37,8 +37,8 @@ import {
 	type ToolRenderOracleFailure,
 	type ToolRenderOracleGuarantee,
 	type ToolRenderSurface,
-} from "../../src/modes/components/defect-oracles";
-import type { Theme } from "../../src/modes/theme/theme";
+} from "../../../src/modes/components/defect-oracles";
+import type { Theme } from "../../../src/modes/theme/theme";
 import { type RunnerOptions, type RunnerResult, runComposerOracleScenario } from "./composer-oracle-runner";
 import {
 	evaluateMarkdownCase,
@@ -46,14 +46,14 @@ import {
 	MARKDOWN_PADDINGS,
 	MARKDOWN_WIDTHS,
 	type MarkdownCase,
-	stateFor as markdownStateFor,
+	markdownStateFor,
 } from "./markdown-oracle-runner";
 import { type OverlayRunnerResult, type OverlaySpec, runOverlayOracleScenario } from "./overlay-oracle-runner";
 import {
 	evaluateTextPrimitiveCase,
-	stateFor,
 	TEXT_FIXTURES,
 	type TextPrimitiveCase,
+	textPrimitiveStateFor,
 } from "./text-primitive-oracle-runner";
 import { evaluateToolRenderAttempts, RENDER_FIXTURES, sweepToolRenders } from "./tool-render-oracle-runner";
 
@@ -354,7 +354,7 @@ export const CORPUS_FAMILY_GUARANTEES: Readonly<Record<CorpusFamily, readonly st
 	) as Record<CorpusFamily, readonly string[]>,
 );
 
-export const CORPUS_DIR = path.resolve(import.meta.dirname, "../corpus/renderer-defect-oracle");
+export const CORPUS_DIR = path.resolve(import.meta.dirname, "../../corpus/renderer-defect-oracle");
 
 /** Compute the deterministic case id: the file name a state and observation are recorded under. */
 export function computeCaseHash(
@@ -516,7 +516,7 @@ function textPrimitiveCorpusStateFrom(value: Record<string, unknown>, label: str
 export function replayTextPrimitiveCorpusCase(state: TextPrimitiveCorpusCaseState): CorpusReplay {
 	return {
 		evaluation: evaluateTextPrimitiveCase(state),
-		frameState: { viewportLines: stateFor(state).rows },
+		frameState: { viewportLines: textPrimitiveStateFor(state).rows },
 		cleanUp: () => {},
 	};
 }

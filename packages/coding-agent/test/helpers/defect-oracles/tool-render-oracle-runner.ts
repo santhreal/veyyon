@@ -18,7 +18,7 @@
  */
 
 import type { Component } from "@veyyon/tui";
-import type { RenderResultOptions } from "../../src/extensibility/custom-tools/types";
+import type { RenderResultOptions } from "../../../src/extensibility/custom-tools/types";
 import {
 	evaluateAllToolRenderOracles,
 	plainRowOf,
@@ -26,12 +26,12 @@ import {
 	type ToolRenderOracleFrameState,
 	type ToolRenderSnapshot,
 	type ToolRenderSurface,
-} from "../../src/modes/components/defect-oracles";
-import type { Theme } from "../../src/modes/theme/theme";
-import { toolRenderers } from "../../src/tools/renderers";
+} from "../../../src/modes/components/defect-oracles";
+import type { Theme } from "../../../src/modes/theme/theme";
+import { toolRenderers } from "../../../src/tools/renderers";
 
 /** The home directory the path fixtures are built from, and the prefix a render must not print. */
-export const FIXTURE_HOME = "/home/oracle-operator";
+export const TOOL_RENDER_FIXTURE_HOME = "/home/oracle-operator";
 
 /**
  * One hostile payload, and the strings a renderer might read it out of.
@@ -99,7 +99,7 @@ export const RENDER_FIXTURES: readonly RenderFixture[] = [
 	{ name: "wide glyphs", hostile: "漢字テスト".repeat(40) },
 	{
 		name: "home path",
-		hostile: `${FIXTURE_HOME}/projects/veyyon/packages/coding-agent/src/index.ts`,
+		hostile: `${TOOL_RENDER_FIXTURE_HOME}/projects/veyyon/packages/coding-agent/src/index.ts`,
 		keys: PATH_KEYS,
 		inResultText: false,
 	},
@@ -245,7 +245,7 @@ export function evaluateToolRenderAttempts(attempts: readonly RenderAttempt[]): 
 /** Collect the renders that produced rows into one frame state for the oracles to judge. */
 export function frameStateFor(attempts: readonly RenderAttempt[]): ToolRenderOracleFrameState {
 	return {
-		homeDir: FIXTURE_HOME,
+		homeDir: TOOL_RENDER_FIXTURE_HOME,
 		forbiddenSequences: INJECTED_SEQUENCES,
 		renders: attempts
 			.map(entry => entry.snapshot)

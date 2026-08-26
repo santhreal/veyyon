@@ -15,11 +15,11 @@ import {
 	type TextPrimitive,
 	type TextPrimitiveEvaluationResult,
 	type TextPrimitiveOracleFrameState,
-} from "../../src/modes/components/defect-oracles";
-import { shortenPath } from "../../src/tools/render-utils";
+} from "../../../src/modes/components/defect-oracles";
+import { shortenPath } from "../../../src/tools/render-utils";
 
 /** The home directory a `shortenPath` application is given, so no real one reaches an assertion. */
-export const FIXTURE_HOME = "/home/oracle-operator";
+export const TEXT_FIXTURE_HOME = "/home/oracle-operator";
 
 /**
  * The inputs. Each is a shape that has broken a width, a wrap or a truncation somewhere: a wide
@@ -44,9 +44,9 @@ export const TEXT_FIXTURES: Readonly<Record<string, string>> = {
 	controlBytes: "a\x00b\x07c\x08d",
 	rtl: "\u0627\u0644\u0639\u0631\u0628\u064a\u0629 arabic text",
 	thai: "\u0e01\u0e33\u0e2b\u0e19\u0e14 thai text",
-	homePath: `${FIXTURE_HOME}/projects/veyyon/packages/tui/src/utils.ts`,
-	homeItself: FIXTURE_HOME,
-	homeLookalike: `${FIXTURE_HOME}extra/not-under-home.ts`,
+	homePath: `${TEXT_FIXTURE_HOME}/projects/veyyon/packages/tui/src/utils.ts`,
+	homeItself: TEXT_FIXTURE_HOME,
+	homeLookalike: `${TEXT_FIXTURE_HOME}extra/not-under-home.ts`,
 	spaces: "a   b    c     d",
 } as const;
 
@@ -83,14 +83,14 @@ function applyPrimitive(spec: TextPrimitiveCase, input: string): readonly string
 		case "expandTabs":
 			return [replaceTabs(input)];
 		case "shortenPath":
-			return [shortenPath(input, FIXTURE_HOME)];
+			return [shortenPath(input, TEXT_FIXTURE_HOME)];
 		case "measure":
 			return [input];
 	}
 }
 
 /** Build the state one application produces, driving the real primitive. */
-export function stateFor(spec: TextPrimitiveCase): TextPrimitiveOracleFrameState {
+export function textPrimitiveStateFor(spec: TextPrimitiveCase): TextPrimitiveOracleFrameState {
 	const input = TEXT_FIXTURES[spec.fixture];
 	if (input === undefined) {
 		throw new Error(`fixture ${spec.fixture} is not one the runner drives.`);
@@ -111,7 +111,7 @@ export function stateFor(spec: TextPrimitiveCase): TextPrimitiveOracleFrameState
 		rows,
 		measuredWidth: visibleWidth(input),
 		measuredPlainWidth: visibleWidth(plainText(input)),
-		homeDir: spec.primitive === "shortenPath" ? FIXTURE_HOME : "",
+		homeDir: spec.primitive === "shortenPath" ? TEXT_FIXTURE_HOME : "",
 		widthOf: visibleWidth,
 		reappliedRow,
 	};
@@ -119,7 +119,7 @@ export function stateFor(spec: TextPrimitiveCase): TextPrimitiveOracleFrameState
 
 /** Judge one application. */
 export function evaluateTextPrimitiveCase(spec: TextPrimitiveCase): TextPrimitiveEvaluationResult {
-	return evaluateAllTextPrimitiveOracles(stateFor(spec));
+	return evaluateAllTextPrimitiveOracles(textPrimitiveStateFor(spec));
 }
 
 /**

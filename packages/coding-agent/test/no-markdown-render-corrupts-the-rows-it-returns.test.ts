@@ -37,7 +37,7 @@ import {
 	plainRow,
 } from "../src/modes/components/defect-oracles";
 import { initTheme } from "../src/modes/theme/theme";
-import { evaluateMarkdownCase, type MarkdownCase, markdownCases, stateFor } from "./helpers/markdown-oracle-runner";
+import { evaluateMarkdownCase, type MarkdownCase, markdownCases, markdownStateFor } from "./helpers/defect-oracles";
 
 /** `fixture@width/paddingX`, the pair a ledger row names. */
 function label(spec: MarkdownCase): string {
@@ -123,7 +123,7 @@ describe("no markdown render corrupts the rows it returns", () => {
 			expect(blind.map(entry => label(entry.spec))).toEqual([]);
 			return;
 		}
-		const unexplained = blind.filter(entry => !reason(stateFor(entry.spec))).map(entry => label(entry.spec));
+		const unexplained = blind.filter(entry => !reason(markdownStateFor(entry.spec))).map(entry => label(entry.spec));
 		expect(unexplained).toEqual([]);
 	});
 

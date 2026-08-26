@@ -11,22 +11,22 @@ import { ThinkingLevel } from "@veyyon/agent-core";
 import { type Component, Container, Editor, TUI } from "@veyyon/tui";
 import type { MouseRoutable, SgrMouseEvent } from "@veyyon/tui/mouse";
 import { stripAnsi } from "@veyyon/utils";
-import { settleFrames } from "../../../tui/test/helpers/settle-frames";
-import { pressAt, releaseAt, WHEEL_UP } from "../../../tui/test/helpers/sgr-mouse";
-import { VirtualTerminal } from "../../../tui/test/virtual-terminal";
+import { settleFrames } from "../../../../tui/test/helpers/settle-frames";
+import { pressAt, releaseAt, WHEEL_UP } from "../../../../tui/test/helpers/sgr-mouse";
+import { VirtualTerminal } from "../../../../tui/test/virtual-terminal";
 import {
 	type ComposerAccentState,
 	ComposerHairline,
 	mountComposerZone,
 	resolveComposerAccents,
-} from "../../src/modes/components/composer-chrome";
+} from "../../../src/modes/components/composer-chrome";
 import {
 	type ComposerOracleFrameState,
 	evaluateAllComposerOracles,
 	type FrameSegmentSnapshot,
 	type OracleEvaluationResult,
-} from "../../src/modes/components/defect-oracles";
-import { getEditorTheme } from "../../src/modes/theme/theme";
+} from "../../../src/modes/components/defect-oracles";
+import { getEditorTheme } from "../../../src/modes/theme/theme";
 
 /** Transcript content component */
 export class TranscriptMock implements Component {

@@ -11,8 +11,8 @@ import {
 	evaluateAllMarkdownOracles,
 	type MarkdownEvaluationResult,
 	type MarkdownOracleFrameState,
-} from "../../src/modes/components/defect-oracles";
-import { getMarkdownTheme } from "../../src/modes/theme/markdown-theme";
+} from "../../../src/modes/components/defect-oracles";
+import { getMarkdownTheme } from "../../../src/modes/theme/markdown-theme";
 
 /**
  * The sources. Each is a construct that has broken a wrap, a cache or a lexer somewhere: nesting that
@@ -78,7 +78,7 @@ function frozenPrefixOf(source: string): string | null {
 }
 
 /** Build the state one render produces, driving the real component. */
-export function stateFor(spec: MarkdownCase): MarkdownOracleFrameState {
+export function markdownStateFor(spec: MarkdownCase): MarkdownOracleFrameState {
 	const source = MARKDOWN_FIXTURES[spec.fixture];
 	if (source === undefined) {
 		throw new Error(`fixture ${spec.fixture} is not one the runner drives.`);
@@ -112,7 +112,7 @@ export function stateFor(spec: MarkdownCase): MarkdownOracleFrameState {
 
 /** Judge one render. */
 export function evaluateMarkdownCase(spec: MarkdownCase): MarkdownEvaluationResult {
-	return evaluateAllMarkdownOracles(stateFor(spec));
+	return evaluateAllMarkdownOracles(markdownStateFor(spec));
 }
 
 /** Every render the sweep drives. */

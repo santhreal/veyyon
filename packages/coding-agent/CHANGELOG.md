@@ -17,6 +17,7 @@
 - A renderer defect sweep records a reproduction only when `VEYYON_ORACLE_CORPUS=record` is set, so a run against a deliberately broken tree no longer writes cases for defects that do not exist.
 - The markdown component every transcript row comes out of gains its own defect oracle registry covering row width, embedded line breaks, raw tabs, severed escape sequences, horizontal padding, agreement between two instances, agreement across a resize, row count against terminal width and the frozen streaming prefix, swept over thirty-two sources at seven widths and both paddings.
 - The renderer defect corpus records markdown reproductions, including the two blind spots where a frozen prefix paints nothing and where an empty source renders no rows.
+- Every defect oracle runner and the reproduction corpus live in one directory behind a barrel, and the three helpers that shared a `stateFor` name now say which family they drive.
 - `prewalk.cheapModel` and `prewalk.strongModel` configure the cheap model prewalk switches into at the first edit and the strong model it starts on.
 - `/prewalk` accepts an optional model argument to arm a per-session target model override.
 - `edit.critiqueCodeMutations` prompts a bounded self-review before finalization after one turn modifies at least two distinct code files.

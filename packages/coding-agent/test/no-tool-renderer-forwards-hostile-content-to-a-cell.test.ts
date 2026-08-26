@@ -55,13 +55,13 @@ import { Settings } from "../src/config/settings";
 import { TOOL_RENDER_ORACLE_GUARANTEES, type ToolRenderOracleGuarantee } from "../src/modes/components/defect-oracles";
 import { getThemeByName, setThemeInstance, type Theme } from "../src/modes/theme/theme";
 import { toolRenderers } from "../src/tools/renderers";
-import { promoteToolRenderFailureToCorpus } from "./helpers/renderer-defect-corpus";
 import {
 	evaluateToolRenderAttempts,
+	promoteToolRenderFailureToCorpus,
 	RENDER_FIXTURES,
 	type RenderAttempt,
 	sweepToolRenders,
-} from "./helpers/tool-render-oracle-runner";
+} from "./helpers/defect-oracles";
 
 const WIDTHS = [40, 80, 120] as const;
 

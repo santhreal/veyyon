@@ -33,8 +33,12 @@ import { beforeAll, describe, expect, it } from "bun:test";
 import { ThinkingLevel } from "@veyyon/agent-core";
 import { COMPOSER_ORACLE_GUARANTEES, type ComposerOracleGuarantee } from "../src/modes/components/defect-oracles";
 import { initTheme } from "../src/modes/theme/theme";
-import { type RunnerOptions, runComposerOracleScenario } from "./helpers/composer-oracle-runner";
-import { promoteFailureToCorpus, runnerOptionsToCorpusState } from "./helpers/renderer-defect-corpus";
+import {
+	promoteFailureToCorpus,
+	type RunnerOptions,
+	runComposerOracleScenario,
+	runnerOptionsToCorpusState,
+} from "./helpers/defect-oracles";
 import {
 	ACCENT_FLAGS,
 	ACCENT_VARIANTS,

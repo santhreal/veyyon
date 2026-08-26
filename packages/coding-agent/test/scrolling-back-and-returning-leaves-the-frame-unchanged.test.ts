@@ -36,7 +36,7 @@
 
 import { beforeAll, describe, expect, it } from "bun:test";
 import { initTheme } from "../src/modes/theme/theme";
-import { runComposerOracleScenario } from "./helpers/composer-oracle-runner";
+import { runComposerOracleScenario } from "./helpers/defect-oracles";
 import { ISOLATION, WHEEL_DOWN, WHEEL_UP } from "./helpers/renderer-differential";
 
 /** A terminal size and transcript depth, and whether that depth can scroll at all. */

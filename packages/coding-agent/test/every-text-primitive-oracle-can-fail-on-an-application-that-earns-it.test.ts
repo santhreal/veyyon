@@ -46,7 +46,7 @@ import {
 	type TextPrimitiveOracleFrameState,
 	type TextPrimitiveOracleGuarantee,
 } from "../src/modes/components/defect-oracles";
-import { stateFor, TEXT_FIXTURES, type TextPrimitiveCase } from "./helpers/text-primitive-oracle-runner";
+import { TEXT_FIXTURES, type TextPrimitiveCase, textPrimitiveStateFor } from "./helpers/defect-oracles";
 
 /** A correct application of each primitive, driven through the real primitive. */
 const BASELINES: Readonly<Record<TextPrimitive, TextPrimitiveCase>> = {
@@ -107,7 +107,7 @@ const BASELINES: Readonly<Record<TextPrimitive, TextPrimitiveCase>> = {
 };
 
 function baseline(primitive: TextPrimitive): TextPrimitiveOracleFrameState {
-	return stateFor(BASELINES[primitive]);
+	return textPrimitiveStateFor(BASELINES[primitive]);
 }
 
 /**
@@ -260,21 +260,21 @@ describe("an application a guarantee says nothing about", () => {
 	});
 
 	it("is blind when it applies and there is nothing to read", () => {
-		const noTabs = stateFor({ ...BASELINES.expandTabs, fixture: "ascii" });
+		const noTabs = textPrimitiveStateFor({ ...BASELINES.expandTabs, fixture: "ascii" });
 		const verdict = evaluateAllTextPrimitiveOracles(noTabs);
 		expect(verdict.blind).toContain("tabExpansionLeavesNoTab");
 		expect(verdict.failures).toEqual([]);
 	});
 
 	it("reads a path that is not under the home directory as untouched", () => {
-		const lookalike = stateFor({ ...BASELINES.shortenPath, fixture: "homeLookalike" });
+		const lookalike = textPrimitiveStateFor({ ...BASELINES.shortenPath, fixture: "homeLookalike" });
 		const verdict = evaluateAllTextPrimitiveOracles(lookalike);
 		expect(verdict.inspected).toContain("theHomeDirectoryIsNeverPainted");
 		expect(verdict.failures).toEqual([]);
 	});
 
 	it("declares a wrap into zero columns out of scope for both wrap guarantees", () => {
-		const zero = stateFor({ ...BASELINES.wrap, width: 0 });
+		const zero = textPrimitiveStateFor({ ...BASELINES.wrap, width: 0 });
 		const verdict = evaluateAllTextPrimitiveOracles(zero);
 		expect(verdict.skipped).toContain("everyWrappedRowFitsTheWidth");
 		expect(verdict.skipped).toContain("wrappingKeepsEveryVisibleGlyph");

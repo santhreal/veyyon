@@ -45,13 +45,14 @@ import {
 	type OverlayOracleGuarantee,
 } from "../src/modes/components/defect-oracles";
 import { initTheme } from "../src/modes/theme/theme";
-import type { RunnerOptions } from "./helpers/composer-oracle-runner";
-import { type OverlaySpec, runOverlayOracleScenario } from "./helpers/overlay-oracle-runner";
+import type { RunnerOptions } from "./helpers/defect-oracles";
 import {
+	type OverlaySpec,
 	overlaySpecsToCorpus,
 	promoteOverlayFailureToCorpus,
 	runnerOptionsToCorpusState,
-} from "./helpers/renderer-defect-corpus";
+	runOverlayOracleScenario,
+} from "./helpers/defect-oracles";
 
 const CARD = ["┌─ card ─┐", "│ line 1 │", "│ line 2 │", "└────────┘"] as const;
 const TALL = Array.from({ length: 14 }, (_, i) => `│ tall row ${String(i).padStart(2, "0")} │`);

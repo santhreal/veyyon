@@ -14,14 +14,14 @@
 import { stripVTControlCharacters } from "node:util";
 import { type Component, CURSOR_MARKER, type OverlayHandle, type OverlayOptions, type TUI } from "@veyyon/tui";
 import { stripAnsi } from "@veyyon/utils";
-import { settleFrames } from "../../../tui/test/helpers/settle-frames";
-import type { VirtualTerminal } from "../../../tui/test/virtual-terminal";
+import { settleFrames } from "../../../../tui/test/helpers/settle-frames";
+import type { VirtualTerminal } from "../../../../tui/test/virtual-terminal";
 import {
 	evaluateAllOverlayOracles,
 	type OverlayEvaluationResult,
 	type OverlayOracleFrameState,
 	type OverlaySnapshot,
-} from "../../src/modes/components/defect-oracles";
+} from "../../../src/modes/components/defect-oracles";
 import { type RunnerOptions, type RunnerResult, runComposerOracleScenario } from "./composer-oracle-runner";
 
 /**
