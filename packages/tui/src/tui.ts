@@ -31,6 +31,7 @@ import {
 	Ellipsis,
 	extractSegments,
 	normalizeTerminalOutput,
+	padding,
 	sliceByColumn,
 	sliceWithWidth,
 	truncateToWidth,
@@ -3100,14 +3101,7 @@ export class TUI extends Container {
 		// Compose result
 		const r = SGR_RESET;
 		const result =
-			base.before +
-			" ".repeat(beforePad) +
-			r +
-			overlay.text +
-			" ".repeat(overlayPad) +
-			r +
-			base.after +
-			" ".repeat(afterPad);
+			base.before + padding(beforePad) + r + overlay.text + padding(overlayPad) + r + base.after + padding(afterPad);
 
 		// CRITICAL: Always verify and truncate to terminal width.
 		// This is the final safeguard against width overflow which would crash the TUI.

@@ -309,7 +309,7 @@ export class TabBar implements Component {
 			if (cursorW + visibleWidth(label) > maxWidth && tab.short !== undefined) {
 				label = tab.short;
 			}
-			let text = truncateToWidth(`${active ? cursor : " ".repeat(cursorW)}${label}`, maxWidth);
+			let text = truncateToWidth(`${active ? cursor : padding(cursorW)}${label}`, maxWidth);
 			// `padding()` rather than `" ".repeat()`: a bad resize can hand this an
 			// Infinite or multi-million width, and `repeat` throws a RangeError on
 			// Infinity — a throw here takes down the whole frame, not just the bar.
