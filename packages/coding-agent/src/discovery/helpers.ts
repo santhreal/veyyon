@@ -938,14 +938,8 @@ export async function resolveActiveProjectRegistryPath(cwd: string): Promise<str
 
 /**
  * Like resolveActiveProjectRegistryPath, but falls back to `<cwd>/.veyyon/plugins/installed_plugins.json`
- * when no project anchor (.veyyon/ or .git/) is found.
- *
- * Use this when the caller accepts an explicit --scope project so that installing into a freshly
- * bootstrapped directory (no .veyyon/ or .git/ yet) works: writeInstalledPluginsRegistry auto-creates
- * the directory tree on first write.
- *
- * Returns undefined when cwd is os.homedir() — that path is already the user registry and must
- * never alias as the project registry.
+ * when no project anchor is found. Use for `--scope project` installs into a fresh directory. Returns
+ * undefined when cwd is `os.homedir()` (that's the user registry, must not alias as project).
  */
 export async function resolveOrDefaultProjectRegistryPath(cwd: string): Promise<string | undefined> {
 	const resolved = await resolveActiveProjectRegistryPath(cwd);

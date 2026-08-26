@@ -34,14 +34,9 @@ export interface CustomCommandAPI {
 }
 
 /**
- * What a BUNDLED command may use: everything an author gets except `pi`.
- *
- * The two commands veyyon ships (`/green`, `/review`) live in this repository and reach the codebase by
- * importing it, so they have no use for the injected package namespace -- and providing it is expensive.
- * `pi` is the whole package barrel, which re-exports every mode and every component, and
- * `loadCustomCommands` runs on every launch to register the bundled pair. Typing them against this narrower
- * shape is what lets the loader skip loading the barrel entirely when a project has no custom commands of
- * its own, which is almost every project. Authors still get the full {@link CustomCommandAPI}.
+ * What a BUNDLED command may use: everything except `pi`. Bundled commands (`/green`, `/review`) import
+ * the codebase directly, so the injected barrel is useless and expensive. Typing against this shape lets
+ * the loader skip the barrel when no custom commands exist. Authors still get full {@link CustomCommandAPI}.
  */
 export type BundledCommandAPI = Omit<CustomCommandAPI, "pi">;
 

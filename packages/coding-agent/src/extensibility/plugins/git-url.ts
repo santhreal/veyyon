@@ -1,14 +1,7 @@
 /**
- * Recognising the git URLs a plugin can be installed from.
- *
- * WHAT `null` MEANS HERE, once for the whole file: every parser below answers `null` for "this string
- * is not a git URL I can clone from", and that is the ONLY thing `null` means. There is no failure to
- * report: the callers try each shape in turn (known host, generic URL, namespaced shorthand) and offer
- * the same string to each, so being rejected is the ordinary outcome for most of them. The two throwing
- * operations, `new URL` and `decodeURIComponent`, are both shape tests -- a string that is not a URL and
- * a percent-escape that is not valid UTF-8 -- and each throw IS the answer rather than something
- * swallowed. Refusing is also the safe direction: a spec that cannot be parsed must never be handed to
- * `git clone` on a guess.
+ * Recognising git URLs a plugin can be installed from. `null` means "not a git URL I can clone from" —
+ * the only meaning, no failure to report. Callers try each shape in turn; rejection is ordinary. Throws
+ * from `new URL`/`decodeURIComponent` are shape tests, not swallowed errors. Refusing is safe.
  */
 
 /**
