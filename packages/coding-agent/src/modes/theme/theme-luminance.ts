@@ -8,26 +8,11 @@ import { resolveVarRefs, type ThemeJson } from "./color";
 
 /**
  * The synchronous light/dark classifier, and the one place a bundled theme's class is written down.
- *
- * WHY THIS FILE EXISTS, and it is a cost argument. `config/settings` needs one boolean for one legacy
- * migration: an old flat `theme: "<name>"` string has to be placed in the `theme.light` or `theme.dark`
- * slot. Getting that boolean used to mean importing `./builtin-themes`, which statically embeds one
- * JSON module per bundled theme, so the settings module carried 103 extra modules and every one of the
- * ~1,500 files that import `Settings` carried them too. That is the diffuse graph widening
- * the leveraged-import gate in `test/architecture/` exists to catch, and it was the single largest
- * edge in the package: `config/settings` reached 440 modules, of which 103 were theme data nothing on
- * that path reads.
- *
- * A theme's class is derivable from its JSON, so it does not have to be carried as JSON. The table
- * below records the answer for every bundled theme, and
- * `test/theme/builtin-theme-classes.test.ts` recomputes it from the actual JSON files and fails
- * if a single entry disagrees or is missing. The table cannot go stale, and it cannot go stale quietly:
- * adding a theme without an entry reddens that suite.
- *
- * Nothing here may import `./builtin-themes`, `./theme`, `./shimmer`, or `config/settings`. The first
- * would put the JSON modules back; the rest close the import cycle
- * `config/settings -> modes/theme/theme -> ./shimmer -> config/settings` that `./builtin-themes` was
- * carved out to break in the first place.
+ * `config/settings` needed one boolean; importing `./builtin-themes` for it carried 103 JSON modules
+ * into every file importing `Settings`. A theme's class is derivable from its JSON, so the table below
+ * records it. `test/theme/builtin-theme-classes.test.ts` recomputes from the JSON files and fails if an
+ * entry is wrong or missing. Nothing here may import `./builtin-themes`, `./theme`, `./shimmer`, or
+ * `config/settings` — those close the cycle this was carved out to break.
  */
 
 /**
