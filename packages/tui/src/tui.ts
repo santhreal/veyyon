@@ -1293,26 +1293,10 @@ export class TUI extends Container {
 	#lastWheelDirection: -1 | 1 | null = null;
 	#lastWheelAtMs = 0;
 	#wheelStreak = 0;
-	// Idle release of the mouse grab.
-	//
-	// Holding the mouse is what pins the composer, and it is also what takes native
-	// drag-select away: on the normal screen the wheel reaches an application ONLY through
-	// mouse reporting, and that is the same reporting the terminal would otherwise use to
-	// select. There is no mode that reports the wheel without the buttons, so the two cannot
-	// both be live. The grab was therefore held from the moment anything scrolled off until
-	// the session ended, and selecting became Shift+drag for the rest of the run.
-	//
-	// The answer is NOT to time-box the grab. That was tried: the grab was held only within
-	// three seconds of a keystroke and released on the quiet after it. The quiet is when you
-	// READ, and once released the engine cannot see a wheel tick at all, so the wheel fell
-	// through to native scrollback and took the pinned composer off the bottom of the screen
-	// with it. It also made drag-select depend on how recently you had typed, so the same
-	// gesture selected or did not depending on the clock. A pinned composer that unpins itself
-	// whenever you stop typing is not the feature, and nondeterministic selection is worse than
-	// consistently reaching for Shift.
-	//
-	// So the grab is held whenever the transcript is scrollable, Shift+drag selects, and
-	// `/copy` lifts text out without the mouse at all.
+	// Idle release of the mouse grab. Holding the mouse pins the composer but takes native
+	// drag-select away (wheel reporting and button reporting share the same channel). Time-boxing
+	// was tried and failed: the quiet is when you read, and releasing then drops wheel ticks to
+	// native scrollback, unpinning the composer. So the grab stays while scrollable; Shift+drag selects.
 	// Exactly what is painted on the screen rows (post-composite, prepared).
 	#previousWindow: string[] = [];
 	#nativeScrollbackLiveRegionStart: number | undefined;
@@ -3293,12 +3277,10 @@ export class TUI extends Container {
 		}
 
 		// If focused component is an overlay, verify it can still take input (visibility can change
-		// due to terminal resize or the `visible()` callback, and a card that is playing itself out
-		// stops being interactive before it stops being drawn).
+		// via resize or `visible()`; a card playing out stops being interactive before it stops being drawn).
 		const focusedOverlay = this.overlayStack.find(o => o.component === this.#focusedComponent);
 		if (focusedOverlay && !this.#isOverlayInteractive(focusedOverlay)) {
-			// Focused overlay went invisible under us (resize, or its visible()
-			// callback). Hand focus on the same way a close does.
+			// Focused overlay went invisible under us; hand focus on the same way a close does.
 			this.#restoreFocusAfterOverlay(focusedOverlay.preFocus);
 		}
 
