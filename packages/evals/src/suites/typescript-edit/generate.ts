@@ -70,8 +70,12 @@ export interface FileEntry {
 	functionRanges: Array<[string, number, number]>;
 }
 
-export interface CaseResult {
-	caseId: string;
+/**
+ * One mutated file a generation attempt produced. It carries no provenance: the seed and the
+ * source revision belong to the generation run, not to the attempt, and an attempt that states
+ * them states a default rather than what produced it.
+ */
+export interface CaseCandidate {
 	mutation: Mutation;
 	finalInfo: MutationInfo;
 	filePath: string;
@@ -79,9 +83,17 @@ export interface CaseResult {
 	formattedOriginalContent: string;
 	difficulty: Difficulty;
 	difficultyScore: number;
+}
+
+/** What produced a corpus: the seed the rng was started from, and the revision it read. */
+export interface CaseProvenance {
 	seed: number;
 	sourceRepoUrl: string;
 	sourceCommitSha: string;
+}
+
+export interface CaseResult extends CaseCandidate, CaseProvenance {
+	caseId: string;
 }
 
 export interface Args {
@@ -678,7 +690,7 @@ export async function generateCase(
 	difficulty: Difficulty,
 	minScore: number | null,
 	attemptLimit = 100,
-): Promise<CaseResult | null> {
+): Promise<CaseCandidate | null> {
 	let candidates = getCandidatesForDifficulty(files, difficulty);
 	if (candidates.length === 0) candidates = files;
 
@@ -747,7 +759,6 @@ export async function generateCase(
 
 		recordRegion(usedLines, entry.path, rawInfo.lineNumber);
 		return {
-			caseId: "",
 			mutation,
 			finalInfo,
 			filePath: entry.path,
@@ -755,9 +766,6 @@ export async function generateCase(
 			formattedOriginalContent: normalizedOriginal,
 			difficulty,
 			difficultyScore: diffScore,
-			seed: 0,
-			sourceRepoUrl: DEFAULT_SOURCE_REPO_URL,
-			sourceCommitSha: DEFAULT_SOURCE_COMMIT_SHA,
 		};
 	}
 
