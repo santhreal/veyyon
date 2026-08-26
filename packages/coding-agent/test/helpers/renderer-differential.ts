@@ -72,6 +72,24 @@ export function contentLine(flavor: Flavor, index: number): string {
 	}
 }
 
+/**
+ * A substring every row of a flavour carries after ANSI stripping.
+ *
+ * The bleed oracle recognises a transcript row by substring, so a mount that supplies flavoured
+ * content and leaves the marker at the default recognises nothing: it looks for
+ * `transcript-output-line-`, which only `plain` rows contain, finds no transcript row below the
+ * footer boundary, and reports the state clean. Five of the six flavours were judged by an oracle
+ * that could not see their rows.
+ */
+export const FLAVOR_MARK: Record<Flavor, string> = {
+	plain: "transcript-output-line-",
+	wide: "全角文字の行が続く",
+	combining: "combining",
+	astral: "astral",
+	ansi: "coloured",
+	wrapping: "wrap",
+};
+
 /** `count` transcript rows of one flavour, starting at row 0. */
 export function contentLines(flavor: Flavor, count: number): string[] {
 	return Array.from({ length: count }, (_v, i) => contentLine(flavor, i));
@@ -180,6 +198,7 @@ async function mount(state: State, scrollIsolation: boolean) {
 		width: state.width,
 		height: state.height,
 		transcriptLines: contentLines(state.flavor, state.lines),
+		transcriptLineMarkers: [FLAVOR_MARK[state.flavor]],
 		editorText: state.editor,
 		modeState: state.modeState,
 		statusMessage: state.statusMessage,
