@@ -494,6 +494,39 @@ the green-by-luck suite, which passes for a reason other than the one you think.
 Name the file after the behavior it defends, in prose
 (`a-question-to-the-user-ends-the-turn.test.ts`), not after the module or the issue number.
 
+### Backtests: replay the failure that was actually reported
+
+A defect reported from a real run carries the one input nobody would have invented. Replay it. When a
+fix comes from a session log, a crash trace, a provider transcript, a rollout capture, or a pasted
+error, add a **backtest** — a test seeded with the recorded input that reproduces the reported
+failure — alongside the ordinary functional and class-level tests above. The backtest proves the
+report; the class-level suite proves the class. Neither replaces the other, and a backtest alone
+never closes a defect.
+
+**Sanitize the capture before it reaches a file.** A recorded input is somebody's private session, and
+a fixture is published the moment it is committed. Strip, in the fixture and in every assertion,
+comment and test name that quotes it:
+
+- Absolute machine paths. Rewrite to a relative path or a neutral root (`/repo/src/app.ts`,
+  `C:\\repo\\src\\app.ts`). No home directory, no username, no drive layout, no worktree name, no
+  `/tmp` path, no operator directory.
+- Host and account identity: hostnames, usernames, SSH aliases, IP addresses, MAC addresses, email
+  addresses, GitHub logins, machine and profile names.
+- Credentials and identifiers: API keys, bearer tokens, OAuth codes, refresh tokens, session ids,
+  request ids, cookies, signed URLs. Replace with an obviously fake constant of the same shape, so
+  the parser under test still sees a well-formed value.
+- Content: prompts, file bodies, diffs, commit messages, error text and model output that carry the
+  operator's own work or words. Keep the structural feature that triggers the defect and replace the
+  rest with neutral text.
+
+The defect lives in the SHAPE of the input — a truncation boundary, an unbalanced brace, a surrogate
+pair split across a chunk, a header name, an ordering — never in whose data it was. Reduce the capture
+to the smallest input that still reproduces, then sanitize what remains. A fixture that still needs
+real content to reproduce is not ready to commit; say so rather than committing it.
+
+Raw transcripts, chat logs and agent `.jsonl` rollouts are never committed, sanitized or not. A
+backtest carries the minimized input those files revealed, in a fixture written for this test.
+
 ## Changelog
 
 Entries go under `## [Unreleased]` in the owning package's `packages/<name>/CHANGELOG.md`, in these
