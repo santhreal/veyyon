@@ -264,20 +264,34 @@ export async function executeRun(options: ExecuteRunOptions): Promise<EvalRunRec
 		options.onTrial?.(record, settled++);
 	};
 
+	// A trial that cannot be recorded ends the run. `Promise.all` rejects on the first
+	// failure while every other worker keeps pulling cells, so a runs directory that filled
+	// up mid-run, or a score holding a value JSON cannot write, went on paying for trials
+	// whose rows were then appended to a closed handle. The failure is held and rethrown
+	// once every worker has stopped, so nothing outlives this call.
+	const failures: unknown[] = [];
+
 	const worker = async (): Promise<void> => {
 		while (true) {
+			if (failures.length > 0) return;
 			if (options.signal?.aborted) return;
 			const index = nextIndex++;
 			if (index >= plan.cells.length) return;
 			if (results[index] !== undefined) continue;
 			const cell = plan.cells[index];
 			if (!cell) continue;
-			await runOne(cell, index);
+			try {
+				await runOne(cell, index);
+			} catch (cause) {
+				failures.push(cause);
+				return;
+			}
 		}
 	};
 
 	try {
 		await Promise.all(Array.from({ length: Math.min(jobs, plan.cells.length) }, worker));
+		if (failures.length > 0) throw failures[0];
 	} finally {
 		await journal.close();
 	}
