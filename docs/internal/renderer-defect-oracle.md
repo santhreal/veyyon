@@ -31,23 +31,23 @@ Composer defect oracles evaluate the rendered terminal grid:
 - Pinned footer row count matches the segment ledger row count sum.
 - Virtual scroll isolation retains live footer lines at the bottom of the viewport.
 
-Each oracle evaluates the terminal grid produced by the emitter rather than reading state counters from the rendering engine.
+Nine oracles evaluate the terminal grid produced by the emitter. Three of them (padding transparency, hairline placement, and footer height against the segment ledger) read a segment ledger that `packages/coding-agent/test/helpers/composer-oracle-runner.ts` rebuilds by re-rendering a hardcoded list of the components `mountComposerZone` is expected to mount. Those three judge a model of the composer rather than the composer, and the footer-height oracle compares a sum against the value that is defined as that sum. `packages/coding-agent/test/every-composer-oracle-inspects-real-frame-data.test.ts` cross-checks the rebuilt total against `TUI.composedFrameRows`, so the model cannot drift from the composed frame unnoticed.
 
-## Defect corpus and replay
+## Sweep
 
-Failing test cases are written to `packages/coding-agent/test/corpus/renderer-defect-oracle/<id>.json`. The file id is the SHA-256 hash of the normalized state and failing invariant name.
+`packages/coding-agent/test/composer-defect-sweep.test.ts` mounts the cross product of 8 mode variants, 5 widths, 5 heights, 3 transcript depths and 7 text variants: 4200 states. Each state mounts through the real `mountComposerZone`, settles through `settleFrames`, and is judged against all 12 oracles. A state whose oracles go red fails the sweep.
 
-Each case records:
-- `template`: scenario template identifier
-- `seed`: numeric seed
-- `state`: viewport dimensions, mode configuration, editor text, transcript line count, scroll parameters, and focus state
-- `failingOracle`: invariant identifier
-- `errorMessage`: failure message string
-- `observedGrid`: rendered viewport lines
+The sweep settles one frame per state, so a defect that appears only in the transition between two frames is out of its reach. `packages/coding-agent/test/a-repaint-never-leaves-a-second-composer-behind.test.ts` covers the resize case by walking a sequence of terminal geometries and re-reading the grid after each repaint. Randomized operation sequences and failure reduction stay in `packages/tui/test/render-stress-harness.ts`.
 
-`packages/coding-agent/test/renderer-defect-corpus-replay.test.ts` executes every case in the committed corpus on pull requests without spawning subprocesses.
+`scrollOffset` is derived as `transcriptCount > height ? 2 : 0`, so a scrolled-back state whose transcript is shorter than the viewport is never swept. Screen rows are located as `segment.startIndex - windowTopRow`, and that subtraction does not hold in that state: the padding oracle reports the capability line as a padding row.
 
-Scheduled test workflows run full sweeps against `main` within fixed time limits. Discovered failures write new case files to the corpus.
+## Local case files
+
+A failing state is written to `packages/coding-agent/test/corpus/renderer-defect-oracle/<id>.json`, where the id is the SHA-256 hash of the normalized state and failing invariant name, truncated to 16 hex characters. The directory is gitignored, because a case file belongs to the run that wrote it.
+
+Each case records `template`, `seed`, `state`, `failingOracle`, `errorMessage` and `observedGrid`. `corpusStateToRunnerOptions` turns `state` back into the mount that produced it. `statusMessage` and `customParts` do not survive that round trip, and `every-composer-oracle-inspects-real-frame-data.test.ts` pins the dropped set by exact equality, so an option the sweep varies and the mapping omits fails the suite instead of writing cases that replay as a different scenario.
+
+Nothing replays the directory. A case that survives a run is a defect to fix or an oracle to correct, and the sweep already covers every state a replay would cover.
 
 ## Exclusions
 
