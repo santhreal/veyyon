@@ -80,6 +80,9 @@ function testFiles(): string[] {
 
 const QUOTED_PATH = /['"`]([^'"`\n]*\/[^'"`\n]*)['"`]/g;
 
+/** The `src`-relative path of a shipped module, which is the key every route compares against. */
+const SRC_SUFFIX = /\/src\/(.+)\.ts$/;
+
 /** Reduce a quoted specifier to the `src`-relative key a shipped module would carry. */
 function moduleKey(literal: string): string {
 	return literal
@@ -96,27 +99,40 @@ function moduleKey(literal: string): string {
  * The modules no test names, by three routes in ascending cost: an exact module key, a bare path
  * segment (which covers a barrel or a basename reference), and a raw substring scan for the handful
  * neither route matched.
+ *
+ * A key that is itself a shipped module path contributes no segments. That reference is already
+ * spent on the exact step, and letting it also credit a same-named module in another package is the
+ * one way this can over-report: a test importing `swarm/pipeline` would otherwise mark
+ * `commit/pipeline` covered, which is the opposite of what a floor is for.
  */
 function unnamedModules(): string[] {
 	const keys = new Set<string>();
-	const segments = new Set<string>();
 	const texts: string[] = [];
 
 	for (const file of testFiles()) {
 		const text = fs.readFileSync(path.join(REPO_ROOT, file), "utf8");
 		texts.push(text);
-		for (const match of text.matchAll(QUOTED_PATH)) {
-			const key = moduleKey(match[1] ?? "");
-			keys.add(key);
-			for (const segment of key.split("/")) segments.add(segment);
-		}
+		for (const match of text.matchAll(QUOTED_PATH)) keys.add(moduleKey(match[1] ?? ""));
 	}
 	const corpus = texts.join("\n");
 
+	const shipped = shippedModules();
+	const shippedSuffixes = new Set<string>();
+	for (const file of shipped) {
+		const suffix = SRC_SUFFIX.exec(file)?.[1];
+		if (suffix !== undefined) shippedSuffixes.add(suffix);
+	}
+
+	const segments = new Set<string>();
+	for (const key of keys) {
+		if (shippedSuffixes.has(key)) continue;
+		for (const segment of key.split("/")) segments.add(segment);
+	}
+
 	const unnamed: string[] = [];
-	for (const file of shippedModules()) {
-		const suffix = /\/src\/(.+)\.ts$/.exec(file)?.[1];
-		if (!suffix) continue;
+	for (const file of shipped) {
+		const suffix = SRC_SUFFIX.exec(file)?.[1];
+		if (suffix === undefined) continue;
 		const base = suffix.slice(suffix.lastIndexOf("/") + 1);
 		if (keys.has(suffix) || segments.has(base)) continue;
 		if (suffix.endsWith("/index") && keys.has(suffix.slice(0, -"/index".length))) continue;
@@ -150,20 +166,24 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/ai/src/providers/openai-anthropic-shim.ts",
 	"packages/ai/src/providers/openai-chat-server-schema.ts",
 	"packages/ai/src/providers/openai-responses-server-schema.ts",
+	"packages/ai/src/providers/synthetic.ts",
 	"packages/ai/src/registry/api-key-login.ts",
 	"packages/ai/src/registry/baseten.ts",
 	"packages/ai/src/registry/llama-cpp.ts",
 	"packages/ai/src/registry/lm-studio.ts",
 	"packages/ai/src/registry/minimax-code-cn.ts",
+	"packages/ai/src/registry/minimax-code.ts",
 	"packages/ai/src/registry/mistral.ts",
 	"packages/ai/src/registry/oauth/device-code.ts",
 	"packages/ai/src/registry/oauth/pkce.ts",
 	"packages/ai/src/registry/oauth/success-page.ts",
 	"packages/ai/src/registry/oauth/wafer.ts",
 	"packages/ai/src/registry/openai-codex-device.ts",
+	"packages/ai/src/registry/parallel.ts",
 	"packages/ai/src/registry/qianfan.ts",
 	"packages/ai/src/registry/qwen-portal.ts",
 	"packages/ai/src/registry/sakana.ts",
+	"packages/ai/src/registry/tavily.ts",
 	"packages/ai/src/registry/together.ts",
 	"packages/ai/src/registry/vllm.ts",
 	"packages/ai/src/registry/xiaomi-token-plan-ams.ts",
@@ -236,6 +256,8 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/coding-agent/src/commit/analysis/conventional.ts",
 	"packages/coding-agent/src/commit/pipeline.ts",
 	"packages/coding-agent/src/config/dialect-format.ts",
+	"packages/coding-agent/src/config/settings-domains/interaction.ts",
+	"packages/coding-agent/src/config/settings-domains/tasks.ts",
 	"packages/coding-agent/src/debug/remote-debugger.ts",
 	"packages/coding-agent/src/discovery/agents-md.ts",
 	"packages/coding-agent/src/discovery/windsurf.ts",
@@ -261,6 +283,7 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/coding-agent/src/markit/converters/epub.ts",
 	"packages/coding-agent/src/markit/converters/pptx.ts",
 	"packages/coding-agent/src/mcp/config-commands.ts",
+	"packages/coding-agent/src/mcp/loader.ts",
 	"packages/coding-agent/src/mcp/smithery-auth.ts",
 	"packages/coding-agent/src/mcp/smithery-connect.ts",
 	"packages/coding-agent/src/mnemopi/embed-worker.ts",
@@ -288,6 +311,7 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/coding-agent/src/tools/browser/tab-worker-entry.ts",
 	"packages/coding-agent/src/tools/irc-render.ts",
 	"packages/coding-agent/src/tools/result-notice.ts",
+	"packages/coding-agent/src/tts/downloader.ts",
 	"packages/coding-agent/src/tts/tts-worker.ts",
 	"packages/coding-agent/src/tui/width-aware-text.ts",
 	"packages/coding-agent/src/web/scrapers/choosealicense.ts",
@@ -310,21 +334,24 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/coding-agent/src/web/scrapers/vscode-marketplace.ts",
 	"packages/coding-agent/src/web/search/providers/ecosia.ts",
 	"packages/coding-agent/src/web/search/providers/jina.ts",
+	"packages/coding-agent/src/web/search/providers/synthetic.ts",
 	"packages/collab-web/src/lib/use-guest.ts",
 	"packages/metaharness/src/bench-report.ts",
 	"packages/metaharness/src/launch-args.ts",
 	"packages/mnemopi/src/util/ids.ts",
+	"packages/simulations/src/cache-sim/harness.ts",
+	"packages/simulations/src/paint-sim/harness.ts",
 	"packages/simulations/src/turn-sim/invariants.ts",
 	"packages/stats/src/client/components/range-meta.ts",
 	"packages/stats/src/client/data/charts.ts",
 	"packages/stats/src/client/data/useHashRoute.ts",
 	"packages/stats/src/client/data/useResource.ts",
-	"packages/swarm-extension/src/swarm/pipeline.ts",
 	"packages/tui/src/components/cancellable-loader.ts",
 	"packages/tui/src/components/settings-search.ts",
 	"packages/typescript-edit-benchmark/src/edit-prompt-bench.ts",
 	"packages/typescript-edit-benchmark/src/goal-budget-context-bench.ts",
 	"packages/typescript-edit-benchmark/src/in-process-client.ts",
+	"packages/utils/src/vendor/mermaid-ascii/ascii/ansi.ts",
 	"packages/utils/src/vendor/mermaid-ascii/ascii/canvas.ts",
 	"packages/utils/src/vendor/mermaid-ascii/ascii/class-diagram.ts",
 	"packages/utils/src/vendor/mermaid-ascii/ascii/converter.ts",
@@ -332,6 +359,7 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/utils/src/vendor/mermaid-ascii/ascii/edge-bundling.ts",
 	"packages/utils/src/vendor/mermaid-ascii/ascii/edge-routing.ts",
 	"packages/utils/src/vendor/mermaid-ascii/ascii/er-diagram.ts",
+	"packages/utils/src/vendor/mermaid-ascii/ascii/grid.ts",
 	"packages/utils/src/vendor/mermaid-ascii/ascii/multiline-utils.ts",
 	"packages/utils/src/vendor/mermaid-ascii/ascii/sequence.ts",
 	"packages/utils/src/vendor/mermaid-ascii/ascii/shapes/circle.ts",
@@ -339,6 +367,7 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/utils/src/vendor/mermaid-ascii/ascii/shapes/hexagon.ts",
 	"packages/utils/src/vendor/mermaid-ascii/ascii/shapes/rectangle.ts",
 	"packages/utils/src/vendor/mermaid-ascii/ascii/shapes/rounded.ts",
+	"packages/utils/src/vendor/mermaid-ascii/ascii/shapes/special.ts",
 	"packages/utils/src/vendor/mermaid-ascii/ascii/shapes/stadium.ts",
 	"packages/utils/src/vendor/mermaid-ascii/ascii/xychart.ts",
 	"packages/utils/src/vendor/mermaid-ascii/multiline-utils.ts",
