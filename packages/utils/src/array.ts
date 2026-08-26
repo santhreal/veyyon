@@ -10,7 +10,9 @@ export function* batched<T>(items: readonly T[], size: number): Generator<T[]> {
 
 /** Count elements matching `pred` without allocating an intermediate array. */
 export function countWhere<T>(items: readonly T[], pred: (item: T) => boolean): number {
-	return items.reduce((n, item) => (pred(item) ? n + 1 : n), 0);
+	let n = 0;
+	for (let i = 0; i < items.length; i++) if (pred(items[i])) n++;
+	return n;
 }
 
 /** Split `items` into `[matching, nonMatching]` in a single pass. */

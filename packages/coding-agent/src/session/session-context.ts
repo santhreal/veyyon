@@ -101,8 +101,7 @@ export function resolveCompactionEntry(entries: SessionEntry[]): CompactionCache
 			if (entries[i].type === "compaction") {
 				cached.entry = entries[i] as CompactionEntry;
 				cached.index = i;
-				cached.length = entries.length;
-				return cached;
+				break;
 			}
 		cached.length = entries.length;
 	}
