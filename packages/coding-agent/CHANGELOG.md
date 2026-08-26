@@ -28,7 +28,7 @@
 - `/omfg` forges rules that carry the extended TTSR frontmatter (`astCondition`, `interruptMode`, `pathScope`, `repeatMode`, `repeatGap`, `repeatCompactions`, `warmupMatches`), confirms ast-grep conditions against the conversation's tool history through the same gate chain a live stream applies, and fails loudly on a malformed optional field instead of dropping it.
 - `/omfg` saves forged rules to the active profile's rules directory only; the project target is gone, because project `.veyyon/rules` was never discovered across sessions.
 - Settings → Stream Interrupts (TTSR) groups the profile's own rules under a leading `User created` section instead of `From native`, ahead of foreign-tool and built-in sections.
-- Added interactive search and filtering to the /providers account manager sidebar with real-time fuzzy matching across provider names and IDs, keyboard navigation parity and Escape/Backspace to clear (Refs #885).
+- The `/providers` account card filters its provider sidebar: `ctrl+s` enters search, typing narrows the list by fuzzy match on provider name and id, the arrows move within the matches, and `esc` leaves search before it closes the card ([#922](https://github.com/santhreal/veyyon/pull/922) by [@Crqptx](https://github.com/Crqptx)).
 
 ### Changed
 
@@ -151,6 +151,10 @@
 - `debug` reaches the Python debugger on a host that installs `python3` and no unsuffixed `python`, which is every current Linux and macOS. The bundled `debugpy` adapter named `python`, so launching answered `adapter 'debugpy' is not available` on a machine that had Python; an adapter may now declare alternate spellings, and a command written in `dap.json` is still used exactly as written.
 - A subagent that calls `yield` with unusable data now fails the run instead of returning success with the system warning as its result, matching how a subagent that never yields at all is already reported.
 - A subagent result that cannot be serialized now fails the run and reports the serialization error, instead of returning success with an unparseable error envelope as its payload.
+
+### Removed
+
+- The `/providers` account card no longer writes `accounts.loadBalancing`: its `b` key and footer chip are gone, Settings → Providers → Accounts is the one writer, and the card reports the stored value.
 
 ## [1.2.0] - 2026-08-23
 
