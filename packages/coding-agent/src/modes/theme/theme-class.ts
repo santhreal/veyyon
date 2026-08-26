@@ -15,7 +15,9 @@ import { getVisibleGround } from "./ground-tints";
 import {
 	BAR_RAMPS,
 	type BoxChars,
+	type IconChars,
 	type NavChars,
+	type SepChars,
 	SPINNER_FRAMES,
 	type SpinnerType,
 	type StatusChars,
@@ -23,6 +25,7 @@ import {
 	type SymbolKey,
 	type SymbolMap,
 	type SymbolPreset,
+	type TreeChars,
 } from "./symbols";
 
 // ============================================================================
@@ -147,6 +150,9 @@ export class Theme {
 	#boxSharpCache: BoxChars;
 	#navCache: NavChars;
 	#statusCache: StatusChars;
+	#treeCache: TreeChars;
+	#sepCache: SepChars;
+	#iconCache: IconChars;
 	#spinnerFramesOverrides: Partial<Record<SpinnerType, string[]>>;
 	/**
 	 * Perceptual luma (0..1) of the status-line background used to classify the theme as light/dark.
@@ -239,6 +245,75 @@ export class Theme {
 			shadowed: this.#symbols["status.shadowed"],
 			aborted: this.#symbols["status.aborted"],
 			done: this.#symbols["status.done"],
+		};
+		this.#treeCache = {
+			branch: this.#symbols["tree.branch"],
+			last: this.#symbols["tree.last"],
+			vertical: this.#symbols["tree.vertical"],
+			horizontal: this.#symbols["tree.horizontal"],
+			hook: this.#symbols["tree.hook"],
+		};
+		this.#sepCache = {
+			powerline: this.#symbols["sep.powerline"],
+			powerlineThin: this.#symbols["sep.powerlineThin"],
+			powerlineLeft: this.#symbols["sep.powerlineLeft"],
+			powerlineRight: this.#symbols["sep.powerlineRight"],
+			powerlineThinLeft: this.#symbols["sep.powerlineThinLeft"],
+			powerlineThinRight: this.#symbols["sep.powerlineThinRight"],
+			block: this.#symbols["sep.block"],
+			space: this.#symbols["sep.space"],
+			asciiLeft: this.#symbols["sep.asciiLeft"],
+			asciiRight: this.#symbols["sep.asciiRight"],
+			dot: this.#symbols["sep.dot"],
+			slash: this.#symbols["sep.slash"],
+			pipe: this.#symbols["sep.pipe"],
+		};
+		this.#iconCache = {
+			model: this.#symbols["icon.model"],
+			plan: this.#symbols["icon.plan"],
+			prewalk: this.#symbols["icon.prewalk"],
+			goal: this.#symbols["icon.goal"],
+			pause: this.#symbols["icon.pause"],
+			loop: this.#symbols["icon.loop"],
+			folder: this.#symbols["icon.folder"],
+			worktree: this.#symbols["icon.worktree"],
+			scratchFolder: this.#symbols["icon.scratchFolder"],
+			file: this.#symbols["icon.file"],
+			git: this.#symbols["icon.git"],
+			branch: this.#symbols["icon.branch"],
+			pr: this.#symbols["icon.pr"],
+			tokens: this.#symbols["icon.tokens"],
+			context: this.#symbols["icon.context"],
+			cost: this.#symbols["icon.cost"],
+			time: this.#symbols["icon.time"],
+			pi: this.#symbols["icon.pi"],
+			ghost: this.#symbols["icon.ghost"],
+			agents: this.#symbols["icon.agents"],
+			job: this.#symbols["icon.job"],
+			cache: this.#symbols["icon.cache"],
+			cacheMiss: this.#symbols["icon.cacheMiss"],
+			input: this.#symbols["icon.input"],
+			output: this.#symbols["icon.output"],
+			throughput: this.#symbols["icon.throughput"],
+			host: this.#symbols["icon.host"],
+			profile: this.#symbols["icon.profile"],
+			session: this.#symbols["icon.session"],
+			package: this.#symbols["icon.package"],
+			warning: this.#symbols["icon.warning"],
+			rewind: this.#symbols["icon.rewind"],
+			auto: this.#symbols["icon.auto"],
+			fast: this.#symbols["icon.fast"],
+			extensionSkill: this.#symbols["icon.extensionSkill"],
+			extensionTool: this.#symbols["icon.extensionTool"],
+			extensionSlashCommand: this.#symbols["icon.extensionSlashCommand"],
+			extensionMcp: this.#symbols["icon.extensionMcp"],
+			extensionRule: this.#symbols["icon.extensionRule"],
+			extensionHook: this.#symbols["icon.extensionHook"],
+			extensionPrompt: this.#symbols["icon.extensionPrompt"],
+			extensionContextFile: this.#symbols["icon.extensionContextFile"],
+			extensionInstruction: this.#symbols["icon.extensionInstruction"],
+			mic: this.#symbols["icon.mic"],
+			camera: this.#symbols["icon.camera"],
 		};
 		this.#spinnerFramesOverrides = spinnerFramesOverrides;
 	}
@@ -520,13 +595,7 @@ export class Theme {
 	}
 
 	get tree() {
-		return {
-			branch: this.#symbols["tree.branch"],
-			last: this.#symbols["tree.last"],
-			vertical: this.#symbols["tree.vertical"],
-			horizontal: this.#symbols["tree.horizontal"],
-			hook: this.#symbols["tree.hook"],
-		};
+		return this.#treeCache;
 	}
 
 	get boxRound() {
@@ -553,71 +622,11 @@ export class Theme {
 	}
 
 	get sep() {
-		return {
-			powerline: this.#symbols["sep.powerline"],
-			powerlineThin: this.#symbols["sep.powerlineThin"],
-			powerlineLeft: this.#symbols["sep.powerlineLeft"],
-			powerlineRight: this.#symbols["sep.powerlineRight"],
-			powerlineThinLeft: this.#symbols["sep.powerlineThinLeft"],
-			powerlineThinRight: this.#symbols["sep.powerlineThinRight"],
-			block: this.#symbols["sep.block"],
-			space: this.#symbols["sep.space"],
-			asciiLeft: this.#symbols["sep.asciiLeft"],
-			asciiRight: this.#symbols["sep.asciiRight"],
-			dot: this.#symbols["sep.dot"],
-			slash: this.#symbols["sep.slash"],
-			pipe: this.#symbols["sep.pipe"],
-		};
+		return this.#sepCache;
 	}
 
 	get icon() {
-		return {
-			model: this.#symbols["icon.model"],
-			plan: this.#symbols["icon.plan"],
-			prewalk: this.#symbols["icon.prewalk"],
-			goal: this.#symbols["icon.goal"],
-			pause: this.#symbols["icon.pause"],
-			loop: this.#symbols["icon.loop"],
-			folder: this.#symbols["icon.folder"],
-			worktree: this.#symbols["icon.worktree"],
-			scratchFolder: this.#symbols["icon.scratchFolder"],
-			file: this.#symbols["icon.file"],
-			git: this.#symbols["icon.git"],
-			branch: this.#symbols["icon.branch"],
-			pr: this.#symbols["icon.pr"],
-			tokens: this.#symbols["icon.tokens"],
-			context: this.#symbols["icon.context"],
-			cost: this.#symbols["icon.cost"],
-			time: this.#symbols["icon.time"],
-			pi: this.#symbols["icon.pi"],
-			ghost: this.#symbols["icon.ghost"],
-			agents: this.#symbols["icon.agents"],
-			job: this.#symbols["icon.job"],
-			cache: this.#symbols["icon.cache"],
-			cacheMiss: this.#symbols["icon.cacheMiss"],
-			input: this.#symbols["icon.input"],
-			output: this.#symbols["icon.output"],
-			throughput: this.#symbols["icon.throughput"],
-			host: this.#symbols["icon.host"],
-			profile: this.#symbols["icon.profile"],
-			session: this.#symbols["icon.session"],
-			package: this.#symbols["icon.package"],
-			warning: this.#symbols["icon.warning"],
-			rewind: this.#symbols["icon.rewind"],
-			auto: this.#symbols["icon.auto"],
-			fast: this.#symbols["icon.fast"],
-			extensionSkill: this.#symbols["icon.extensionSkill"],
-			extensionTool: this.#symbols["icon.extensionTool"],
-			extensionSlashCommand: this.#symbols["icon.extensionSlashCommand"],
-			extensionMcp: this.#symbols["icon.extensionMcp"],
-			extensionRule: this.#symbols["icon.extensionRule"],
-			extensionHook: this.#symbols["icon.extensionHook"],
-			extensionPrompt: this.#symbols["icon.extensionPrompt"],
-			extensionContextFile: this.#symbols["icon.extensionContextFile"],
-			extensionInstruction: this.#symbols["icon.extensionInstruction"],
-			mic: this.#symbols["icon.mic"],
-			camera: this.#symbols["icon.camera"],
-		};
+		return this.#iconCache;
 	}
 
 	get thinking() {

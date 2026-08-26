@@ -285,6 +285,81 @@ export type StatusChars = {
 	readonly done: string;
 };
 
+/** Tree-drawing glyphs used by `theme.tree`. */
+export type TreeChars = {
+	readonly branch: string;
+	readonly last: string;
+	readonly vertical: string;
+	readonly horizontal: string;
+	readonly hook: string;
+};
+
+/** Separator glyphs used by `theme.sep`. */
+export type SepChars = {
+	readonly powerline: string;
+	readonly powerlineThin: string;
+	readonly powerlineLeft: string;
+	readonly powerlineRight: string;
+	readonly powerlineThinLeft: string;
+	readonly powerlineThinRight: string;
+	readonly block: string;
+	readonly space: string;
+	readonly asciiLeft: string;
+	readonly asciiRight: string;
+	readonly dot: string;
+	readonly slash: string;
+	readonly pipe: string;
+};
+
+/** Icon glyphs used by `theme.icon`. */
+export type IconChars = {
+	readonly model: string;
+	readonly plan: string;
+	readonly prewalk: string;
+	readonly goal: string;
+	readonly pause: string;
+	readonly loop: string;
+	readonly folder: string;
+	readonly worktree: string;
+	readonly scratchFolder: string;
+	readonly file: string;
+	readonly git: string;
+	readonly branch: string;
+	readonly pr: string;
+	readonly tokens: string;
+	readonly context: string;
+	readonly cost: string;
+	readonly time: string;
+	readonly pi: string;
+	readonly ghost: string;
+	readonly agents: string;
+	readonly job: string;
+	readonly cache: string;
+	readonly cacheMiss: string;
+	readonly input: string;
+	readonly output: string;
+	readonly throughput: string;
+	readonly host: string;
+	readonly profile: string;
+	readonly session: string;
+	readonly package: string;
+	readonly warning: string;
+	readonly rewind: string;
+	readonly auto: string;
+	readonly fast: string;
+	readonly extensionSkill: string;
+	readonly extensionTool: string;
+	readonly extensionSlashCommand: string;
+	readonly extensionMcp: string;
+	readonly extensionRule: string;
+	readonly extensionHook: string;
+	readonly extensionPrompt: string;
+	readonly extensionContextFile: string;
+	readonly extensionInstruction: string;
+	readonly mic: string;
+	readonly camera: string;
+};
+
 export const UNICODE_SYMBOLS: SymbolMap = {
 	// Status
 	"status.success": "✓",
