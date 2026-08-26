@@ -1088,6 +1088,8 @@ export class Markdown implements Component {
 	#cachedBgColorProbeId = -1;
 	#cachedHeadingProbe = "";
 	#cachedHeadingProbeId = -1;
+	#cachedInlineStyleContext?: InlineStyleContext;
+	#cachedInlineStyleContextId = -1;
 
 	#ignoreTight = false;
 
@@ -1781,10 +1783,17 @@ export class Markdown implements Component {
 	}
 
 	#getDefaultInlineStyleContext(): InlineStyleContext {
-		return {
+		const styleId = this.#defaultTextStyle ? objectId(this.#defaultTextStyle) : -1;
+		if (styleId === this.#cachedInlineStyleContextId && this.#cachedInlineStyleContext) {
+			return this.#cachedInlineStyleContext;
+		}
+		const ctx: InlineStyleContext = {
 			applyText: (text: string) => this.#applyDefaultStyle(text),
 			stylePrefix: this.#getDefaultStylePrefix(),
 		};
+		this.#cachedInlineStyleContext = ctx;
+		this.#cachedInlineStyleContextId = styleId;
+		return ctx;
 	}
 
 	/**
