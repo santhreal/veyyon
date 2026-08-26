@@ -175,7 +175,7 @@ describe("Every declared server route is reachable and handled", () => {
 		});
 		expect(launchRes.status).toBe(400);
 		const launchJson = (await launchRes.json()) as { error: string };
-		expect(launchJson.error).toContain("model is required");
+		expect(launchJson.error).toContain('"model" is required');
 
 		// 11. GET /api/runs/:name
 		const getRunRes = await fetch(`${base}/api/runs/exp1-arm1`);

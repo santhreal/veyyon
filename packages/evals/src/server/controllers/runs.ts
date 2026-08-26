@@ -3,7 +3,7 @@
  * and deletion of benchmark runs.
  */
 import { experimentOf, knownExperimentIdsWith } from "../../manager/experiments";
-import { InvalidLaunchRequestError, type LaunchRequest, parseLaunchRequest } from "../../wire";
+import { parseLaunchRequest, parseRequestBody, RESUME_RUN_SPEC } from "../../wire";
 import type { ServerContext } from "../context";
 
 export function getRunsController(ctx: ServerContext, url: URL): Response {
@@ -26,13 +26,7 @@ export async function launchRunController(
 	_params: Record<string, string>,
 	request: Request,
 ): Promise<Response> {
-	let body: LaunchRequest;
-	try {
-		body = parseLaunchRequest(await request.json().catch(() => null));
-	} catch (error) {
-		if (error instanceof InvalidLaunchRequestError) return Response.json({ error: error.message }, { status: 400 });
-		throw error;
-	}
+	const body = parseLaunchRequest(await request.json().catch(() => null));
 	const result = ctx.runner.launch(body);
 	return Response.json(result, { status: 201 });
 }
@@ -63,7 +57,7 @@ export async function resumeRunController(
 	request: Request,
 ): Promise<Response> {
 	const jobName = params.name;
-	const body = (await request.json().catch(() => ({}))) as { filterErrorTypes?: string[] };
+	const body = parseRequestBody(await request.json().catch(() => ({})), RESUME_RUN_SPEC);
 	const result = ctx.runner.resume(jobName, body);
 	return Response.json(result, { status: 201 });
 }

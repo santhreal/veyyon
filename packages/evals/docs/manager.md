@@ -39,10 +39,13 @@ bun --cwd=packages/evals run serve --port 4700
 - `GET /api/runs/:name/traces/:trace[?raw=1]`: Fetch normalized or native execution trace.
 - `GET /api/events`: Server-Sent Events stream for real-time status updates.
 
-Every field of a `POST /api/runs` body is checked before a run starts: an unknown field is rejected
-by name, `tasks`, `concurrency` and `attempts` take an integer >= 1, `timeoutMultiplier` a number
-> 0, `environment` one of `docker` or `apple-container`, and `role` one of `baseline`, `variant` or
-the empty string. A rejected body returns 400 and creates no job.
+Every field of a mutating request body is checked before the request takes effect. An unknown field
+is rejected by name, including inside a nested object; `tasks`, `concurrency` and `attempts` take an
+integer >= 1; `timeoutMultiplier` a number > 0; `environment` one of `docker` or `apple-container`;
+`role` one of `baseline`, `variant` or the empty string; an experiment `id` a token of
+`[A-Za-z0-9_.]`. `POST /api/runs` requires `model`, `POST /api/experiments/:id/arms` requires `arm`
+and `model`, `POST /api/experiments` requires `id`. A rejected body returns 400, names the field and
+the reason, and changes nothing.
 
 State is stored in `<jobs-dir>/_manager/evals.sqlite`.
 

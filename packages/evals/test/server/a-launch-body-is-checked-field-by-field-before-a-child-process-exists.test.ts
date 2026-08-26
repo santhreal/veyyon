@@ -16,31 +16,33 @@
  */
 import { describe, expect, test } from "bun:test";
 import {
-	InvalidLaunchRequestError,
+	type BodyFieldKind,
+	InvalidRequestBodyError,
 	LAUNCH_REQUEST_FIELDS,
-	type LaunchFieldKind,
 	type LaunchRequest,
 	parseLaunchRequest,
 } from "../../src/wire";
 
 /** A value of the right shape for each kind, used to prove a swept field still accepts one. */
-const VALID: Readonly<Record<LaunchFieldKind, unknown>> = {
+const VALID: Readonly<Record<BodyFieldKind, unknown>> = {
 	string: "docker",
 	strings: ["task-one"],
 	count: 2,
 	ratio: 1.5,
 	boolean: true,
-	prewalk: { into: "anthropic/claude-haiku-4-5" },
+	object: { into: "anthropic/claude-haiku-4-5" },
+	map: { "exp1-arm1": { note: "a" } },
 };
 
 /** Values no field of that kind may accept, each with the reason the refusal must name. */
-const REJECTED: Readonly<Record<LaunchFieldKind, readonly unknown[]>> = {
+const REJECTED: Readonly<Record<BodyFieldKind, readonly unknown[]>> = {
 	string: [7, true, ["a"], {}],
 	strings: ["task-one", [""], [3], {}],
 	count: ["lots", -5, 0, 1.5, Number.NaN],
 	ratio: ["fast", 0, -1, Number.POSITIVE_INFINITY],
 	boolean: ["true", 1, {}],
-	prewalk: ["haiku", 3, ["haiku"]],
+	object: ["haiku", 3, ["haiku"]],
+	map: ["haiku", 3, ["haiku"]],
 };
 
 /** The two fields whose string values are pinned to a set rather than left open. */
@@ -57,7 +59,7 @@ function refusalFor(body: unknown): string {
 	try {
 		parseLaunchRequest(body);
 	} catch (error) {
-		if (error instanceof InvalidLaunchRequestError) return error.message;
+		if (error instanceof InvalidRequestBodyError) return error.message;
 		throw error;
 	}
 	throw new Error(`expected ${JSON.stringify(body)} to be rejected, it was accepted`);
@@ -66,7 +68,7 @@ function refusalFor(body: unknown): string {
 describe("a launch body", () => {
 	test("declares a checked kind for every field it accepts", () => {
 		const kinds = new Set<string>(Object.values(LAUNCH_REQUEST_FIELDS));
-		expect([...kinds].sort()).toEqual(["boolean", "count", "prewalk", "ratio", "string", "strings"]);
+		expect([...kinds].sort()).toEqual(["boolean", "count", "object", "ratio", "string", "strings"]);
 		expect(Object.keys(LAUNCH_REQUEST_FIELDS)).toContain("model");
 	});
 
@@ -153,8 +155,8 @@ describe("a launch body", () => {
 	});
 
 	test("states which launch body it rejected", () => {
-		const error = new InvalidLaunchRequestError('"tasks" must be an integer >= 1, got -5');
-		expect(error.name).toBe("InvalidLaunchRequestError");
+		const error = new InvalidRequestBodyError("Launch request", '"tasks" must be an integer >= 1, got -5');
+		expect(error.name).toBe("InvalidRequestBodyError");
 		expect(error.message).toBe('Launch request rejected: "tasks" must be an integer >= 1, got -5');
 	});
 });
