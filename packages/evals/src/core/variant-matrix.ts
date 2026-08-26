@@ -1,8 +1,10 @@
 /**
  * Variant matrix expansion and deterministic naming.
  *
- * Expands a selection over four axes (harness × config × prompt variant × model)
- * into a list of Variant records with stable ordering and collision prevention.
+ * Expands a selection across the axes declared in `VARIANT_MATRIX_AXES` — harness, config, prompt
+ * variant and model — into a list of Variant records with stable ordering and collision prevention.
+ * The suite axis is expanded outside this matrix, once per suite, because a suite carries its own
+ * task list and backend. Adding an axis is a row in that table, not an edit to the expansion.
  */
 
 import { createHash } from "node:crypto";
@@ -16,13 +18,28 @@ export class VariantMatrixError extends Error {
 	}
 }
 
+/** English, not `${axis}s`: the plural of corpus is corpora, and a message that says "corpuss" reads as a bug. */
+export const AXIS_PLURAL: Readonly<Record<string, string>> = {
+	harnesses: "harnesses",
+	configs: "configs",
+	promptVariants: "prompt variants",
+	models: "models",
+	corpus: "corpora",
+	corpora: "corpora",
+	suite: "suites",
+	suites: "suites",
+};
+
 export class EmptyAxisError extends VariantMatrixError {
 	readonly axis: string;
+	readonly plural: string;
 
-	constructor(axis: string) {
-		super(`Cannot expand variant matrix with empty axis "${axis}".`);
+	constructor(axis: string, plural?: string) {
+		const resolvedPlural = plural ?? (axis in AXIS_PLURAL ? AXIS_PLURAL[axis] : axis);
+		super(`Cannot expand variant matrix with empty axis "${axis}". No ${resolvedPlural} selected.`);
 		this.name = "EmptyAxisError";
 		this.axis = axis;
+		this.plural = resolvedPlural;
 	}
 }
 
@@ -56,6 +73,24 @@ export interface VariantCellInput {
 	readonly promptVariant: PromptVariantSpec | null;
 	readonly model: string;
 	readonly attachments: readonly string[];
+}
+
+export type MutableVariantCellInput = {
+	harness: string;
+	config: ConfigSpec | null;
+	promptVariant: PromptVariantSpec | null;
+	model: string;
+	attachments: readonly string[];
+	[key: string]: unknown;
+};
+
+export interface AxisDescriptor<TRaw = unknown, TNormalized = unknown> {
+	readonly id: string;
+	readonly plural: string;
+	readonly select: (selection: VariantMatrixSelection) => readonly TRaw[] | undefined;
+	readonly defaultValues?: readonly TRaw[];
+	readonly normalize: (item: TRaw) => TNormalized;
+	readonly project: (cell: MutableVariantCellInput, value: TNormalized) => void;
 }
 
 export interface VariantMatrixSelection {
@@ -189,6 +224,55 @@ function normalizePromptVariant(item: string | PromptVariantSpec | null): Prompt
 	};
 }
 
+export const VARIANT_MATRIX_AXES: readonly AxisDescriptor<unknown, unknown>[] = [
+	{
+		id: "harnesses",
+		plural: AXIS_PLURAL.harnesses ?? "harnesses",
+		select: (selection: VariantMatrixSelection) => selection.harnesses,
+		normalize: (harness: unknown) => harness as string,
+		project: (cell: MutableVariantCellInput, value: unknown) => {
+			cell.harness = value as string;
+		},
+	},
+	{
+		id: "configs",
+		plural: AXIS_PLURAL.configs ?? "configs",
+		select: (selection: VariantMatrixSelection) => selection.configs,
+		defaultValues: [null],
+		normalize: (config: unknown) => normalizeConfig(config as string | ConfigSpec | null),
+		project: (cell: MutableVariantCellInput, value: unknown) => {
+			cell.config = value as ConfigSpec | null;
+		},
+	},
+	{
+		id: "promptVariants",
+		plural: AXIS_PLURAL.promptVariants ?? "prompt variants",
+		select: (selection: VariantMatrixSelection) => selection.promptVariants,
+		defaultValues: [null],
+		normalize: (promptVariant: unknown) => normalizePromptVariant(promptVariant as string | PromptVariantSpec | null),
+		project: (cell: MutableVariantCellInput, value: unknown) => {
+			cell.promptVariant = value as PromptVariantSpec | null;
+		},
+	},
+	{
+		id: "models",
+		plural: AXIS_PLURAL.models ?? "models",
+		select: (selection: VariantMatrixSelection) => selection.models,
+		normalize: (model: unknown) => model as string,
+		project: (cell: MutableVariantCellInput, value: unknown) => {
+			cell.model = value as string;
+		},
+	},
+];
+
+/**
+ * Computes generic cartesian product across arrays of arbitrary elements.
+ */
+export function cartesianProduct<T>(arrays: readonly (readonly T[])[]): T[][] {
+	if (arrays.length === 0) return [];
+	return arrays.reduce<T[][]>((acc, curr) => acc.flatMap(prefix => curr.map(item => [...prefix, item])), [[]]);
+}
+
 /**
  * Default deterministic variant name generator.
  */
@@ -220,75 +304,74 @@ function defaultVariantName(cell: VariantCellInput, selection: VariantMatrixSele
  * @throws {EmptyAxisError} if any required axis is empty.
  * @throws {DuplicateVariantNameError} if any two cells resolve to the same variant name.
  */
-export function expandVariantMatrix(selection: VariantMatrixSelection): Variant[] {
-	if (!selection.harnesses || selection.harnesses.length === 0) {
-		throw new EmptyAxisError("harnesses");
-	}
-	if (!selection.models || selection.models.length === 0) {
-		throw new EmptyAxisError("models");
-	}
-	if (selection.configs !== undefined && selection.configs.length === 0) {
-		throw new EmptyAxisError("configs");
-	}
-	if (selection.promptVariants !== undefined && selection.promptVariants.length === 0) {
-		throw new EmptyAxisError("promptVariants");
+export function expandVariantMatrix(
+	selection: VariantMatrixSelection,
+	axes: readonly AxisDescriptor<unknown, unknown>[] = VARIANT_MATRIX_AXES,
+): Variant[] {
+	const normalizedAxes: (readonly unknown[])[] = [];
+
+	for (const axis of axes) {
+		const raw = axis.select(selection);
+		if (raw !== undefined && raw.length === 0) {
+			throw new EmptyAxisError(axis.id, axis.plural);
+		}
+		const values = raw ?? axis.defaultValues;
+		if (!values || values.length === 0) {
+			throw new EmptyAxisError(axis.id, axis.plural);
+		}
+		normalizedAxes.push(values.map(item => axis.normalize(item)));
 	}
 
-	const rawConfigs = selection.configs && selection.configs.length > 0 ? selection.configs : [null];
-	const rawPromptVariants =
-		selection.promptVariants && selection.promptVariants.length > 0 ? selection.promptVariants : [null];
-
-	const normalizedConfigs = rawConfigs.map(normalizeConfig);
-	const normalizedPromptVariants = rawPromptVariants.map(normalizePromptVariant);
-
+	const product = cartesianProduct(normalizedAxes);
 	const variants: Variant[] = [];
 	const seenNames = new Set<string>();
 
-	let cellIndex = 0;
-	for (const harness of selection.harnesses) {
-		for (const config of normalizedConfigs) {
-			for (const promptVariant of normalizedPromptVariants) {
-				for (const model of selection.models) {
-					let attachments: readonly string[] = [];
-					if (Array.isArray(selection.attachments)) {
-						if (selection.attachments.length > 0 && Array.isArray(selection.attachments[0])) {
-							const list2d = selection.attachments as readonly (readonly string[])[];
-							attachments = list2d[cellIndex % list2d.length] ?? [];
-						} else {
-							attachments = selection.attachments as readonly string[];
-						}
-					}
+	for (let cellIndex = 0; cellIndex < product.length; cellIndex++) {
+		const row = product[cellIndex];
+		const cell: MutableVariantCellInput = {
+			harness: "",
+			config: null,
+			promptVariant: null,
+			model: "",
+			attachments: [],
+		};
 
-					const cellInput: VariantCellInput = {
-						harness,
-						config,
-						promptVariant,
-						model,
-						attachments,
-					};
+		for (let axisIndex = 0; axisIndex < axes.length; axisIndex++) {
+			axes[axisIndex].project(cell, row[axisIndex]);
+		}
 
-					const name = selection.nameFormatter
-						? selection.nameFormatter(cellInput)
-						: defaultVariantName(cellInput, selection);
-
-					if (seenNames.has(name)) {
-						throw new DuplicateVariantNameError(name);
-					}
-					seenNames.add(name);
-
-					variants.push({
-						name,
-						harness,
-						configPath: config?.path ?? null,
-						promptVariantPath: promptVariant?.path ?? null,
-						model,
-						attachments,
-					});
-
-					cellIndex++;
-				}
+		let attachments: readonly string[] = [];
+		if (Array.isArray(selection.attachments)) {
+			if (selection.attachments.length > 0 && Array.isArray(selection.attachments[0])) {
+				const list2d = selection.attachments as readonly (readonly string[])[];
+				attachments = list2d[cellIndex % list2d.length] ?? [];
+			} else {
+				attachments = selection.attachments as readonly string[];
 			}
 		}
+		cell.attachments = attachments;
+
+		const cellInput: VariantCellInput = {
+			...cell,
+		};
+
+		const name = selection.nameFormatter
+			? selection.nameFormatter(cellInput)
+			: defaultVariantName(cellInput, selection);
+
+		if (seenNames.has(name)) {
+			throw new DuplicateVariantNameError(name);
+		}
+		seenNames.add(name);
+
+		variants.push({
+			name,
+			harness: cellInput.harness,
+			configPath: cellInput.config?.path ?? null,
+			promptVariantPath: cellInput.promptVariant?.path ?? null,
+			model: cellInput.model,
+			attachments: cellInput.attachments,
+		});
 	}
 
 	return variants;
