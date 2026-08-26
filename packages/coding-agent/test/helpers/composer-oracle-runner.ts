@@ -275,16 +275,19 @@ export async function runComposerOracleScenario(options: RunnerOptions): Promise
 		}
 	}
 
-	// Capture mouse click routing by probing key boundary rows
+	// Capture mouse click routing. Every footer row is probed, not just the boundaries: a click
+	// offset shows up as a row in the middle of the footer dispatching to the transcript, and an
+	// oracle that only sees the first and last footer row never looks at the rows between them.
 	const mouseRouting = new Map<number, { routedTo: string | null; localLine: number | null; col: number | null }>();
 	const probeRows = new Set<number>([
 		0,
 		Math.max(0, screenBounds.footerTop - 1),
-		screenBounds.footerTop,
-		Math.min(height - 1, screenBounds.footerBottom),
 		screenBounds.contentBottom,
 		Math.min(height - 1, screenBounds.contentBottom + 1),
 	]);
+	for (let row = screenBounds.footerTop; row <= Math.min(height - 1, screenBounds.footerBottom); row += 1) {
+		probeRows.add(row);
+	}
 
 	for (const r of probeRows) {
 		if (r < 0 || r >= height) continue;
