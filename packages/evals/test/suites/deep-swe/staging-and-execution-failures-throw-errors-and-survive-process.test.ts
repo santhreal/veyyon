@@ -576,6 +576,7 @@ describe("staging and execution failures throw errors and survive process", () =
 				name: "pier-unbound",
 				displayName: "Pier Unbound",
 				description: "A harness that builds pier kwargs without declaring a pier binding.",
+				flags: [],
 				defaultModel: null,
 				capabilities: { replay: false, compaction: false, armAttachments: false, promptOverrides: false },
 				backends: { harbor: { agentName: "pier-unbound" } },

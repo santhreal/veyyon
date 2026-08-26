@@ -28,7 +28,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { errorMessage } from "@veyyon/utils";
 import { discoverSharedInfra, InProcessClient, type SharedInfra } from "../backends/in-process/client";
-import { flagNumber, parseFlags, requireFlag } from "../core/flags";
+import { type FlagGrammar, flagCount, parseFlags, requireFlag } from "../core/flags";
 import { extractBenchmarkFixtures } from "../suites/typescript-edit/extract";
 import { type EditTask, loadTasksFromDir } from "../suites/typescript-edit/tasks";
 import { verifyExpectedFileSubset } from "../suites/typescript-edit/verify";
@@ -111,13 +111,18 @@ export interface EditPromptBenchArgs {
 }
 
 /** Read the invocation, or reject it by naming the flag it is missing. */
+/** Flags the edit-prompt bench accepts. */
+export const EDIT_PROMPT_BENCH_FLAGS = {
+	valued: { model: true, label: true, json: true, limit: true },
+} as const satisfies FlagGrammar;
+
 export function parseBenchArgs(argv: string[]): EditPromptBenchArgs {
-	const flags = parseFlags(argv);
+	const flags = parseFlags(argv, EDIT_PROMPT_BENCH_FLAGS);
 	return {
 		model: requireFlag(flags, "model", "e.g. --model cursor/cursor-grok-4.5-medium"),
 		label: flags.label === undefined || flags.label === "true" ? "run" : flags.label,
 		json: flags.json === undefined || flags.json === "true" ? undefined : flags.json,
-		limit: flagNumber(flags, "limit"),
+		limit: flagCount(flags, "limit"),
 	};
 }
 

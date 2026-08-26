@@ -125,6 +125,7 @@ describe("a harness is resolved through one registry and core contracts do not i
 			name: customName,
 			displayName: "Custom Unit Test Harness",
 			description: "Custom harness created for single-registry test verification",
+			flags: [],
 			defaultModel: null,
 			capabilities: {
 				replay: false,

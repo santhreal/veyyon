@@ -143,6 +143,16 @@ export function listHarnessNames(): readonly string[] {
 	return defaultHarnessRegistry.listNames();
 }
 
+/**
+ * Every flag the registered harnesses read, sorted and deduplicated.
+ *
+ * An entry point unions this into its flag grammar, so a flag an adapter reads is accepted
+ * exactly where that adapter is registered rather than restated in a table beside it.
+ */
+export function listHarnessFlags(): readonly string[] {
+	return [...new Set(listHarnesses().flatMap(harness => harness.flags))].sort();
+}
+
 export function requireHarness(name: string): HarnessAdapter {
 	return defaultHarnessRegistry.require(name);
 }

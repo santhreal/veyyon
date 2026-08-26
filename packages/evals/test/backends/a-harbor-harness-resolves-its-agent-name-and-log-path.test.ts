@@ -100,6 +100,7 @@ describe("a harbor harness resolves its agent name and log path from the registr
 			name: "invalid-harbor-agent",
 			displayName: "Invalid Harbor Agent",
 			description: "Harness with an empty harbor binding",
+			flags: [],
 			defaultModel: null,
 			capabilities: emptyCapabilities,
 			backends: {
@@ -119,6 +120,7 @@ describe("a harbor harness resolves its agent name and log path from the registr
 			name: "missing-agent-name",
 			displayName: "Missing Agent Name",
 			description: "Harness with undefined agentName in harbor binding",
+			flags: [],
 			defaultModel: null,
 			capabilities: emptyCapabilities,
 			backends: {

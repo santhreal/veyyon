@@ -229,6 +229,14 @@ export interface HarnessAdapter {
 	readonly name: string;
 	readonly displayName: string;
 	readonly description: string;
+	/**
+	 * Flags this adapter reads out of the invocation, without the leading dashes.
+	 *
+	 * An entry point unions these into its flag grammar, so `--factory-binary` is accepted only
+	 * where the factory adapter is registered and `--factry-binary` refuses instead of leaving the
+	 * adapter to fall back to a default the caller was trying to replace.
+	 */
+	readonly flags: readonly string[];
 	readonly defaultModel: string | null;
 	readonly capabilities: HarnessCapabilities;
 	readonly backends: Readonly<Partial<Record<BackendId, HarnessBackendBinding>>>;

@@ -7,7 +7,9 @@
  */
 import * as crypto from "node:crypto";
 import * as path from "node:path";
+import { errorMessage } from "@veyyon/utils";
 import type { Server } from "bun";
+import { type FlagGrammar, flagNumber, parseFlags } from "../core/flags";
 import { experimentOf, knownExperimentIdsWith } from "../manager/experiments";
 import { RunStore } from "../manager/store";
 import { harborJobsDir } from "../paths";
@@ -29,18 +31,18 @@ import { SseStream } from "./sse";
 export type { AddArmRequest, CreateExperimentRequest, ExperimentMetaUpdate, RouteDescriptor };
 export { resolveArmLaunch, SERVER_ROUTES };
 
-function parseServerArgs(argv: string[]): { port: number; host: string; jobsDir: string; token?: string } {
-	let port = 4700;
-	let host = "127.0.0.1";
-	let jobsDir = harborJobsDir();
-	let token: string | undefined;
-	for (let i = 0; i < argv.length; i++) {
-		if (argv[i] === "--port" && argv[i + 1]) port = Number(argv[++i]);
-		else if (argv[i] === "--host" && argv[i + 1]) host = argv[++i];
-		else if (argv[i] === "--jobs-dir" && argv[i + 1]) jobsDir = path.resolve(argv[++i]);
-		else if (argv[i] === "--token" && argv[i + 1]) token = argv[++i];
-	}
+/** Flags the manager server accepts. A misspelled one refuses rather than serving a default. */
+export const SERVER_FLAGS = {
+	valued: { port: true, host: true, "jobs-dir": true, token: true },
+} as const satisfies FlagGrammar;
+
+export function parseServerArgs(argv: string[]): { port: number; host: string; jobsDir: string; token?: string } {
+	const flags = parseFlags(argv, SERVER_FLAGS);
+	const port = flagNumber(flags, "port") ?? 4700;
 	if (!Number.isSafeInteger(port) || port < 1 || port > 65535) throw new Error("--port must be 1..65535");
+	const host = flags.host === undefined || flags.host === "true" ? "127.0.0.1" : flags.host;
+	const jobsDir = flags["jobs-dir"] === undefined ? harborJobsDir() : path.resolve(flags["jobs-dir"]);
+	const token = flags.token === undefined || flags.token === "true" ? undefined : flags.token;
 	return { port, host, jobsDir, token };
 }
 
@@ -172,7 +174,16 @@ if (import.meta.main) {
 		__evalsHooks?: boolean;
 	};
 	await globalHost.__evalsServer?.stop();
-	const { port, host, jobsDir, token } = parseServerArgs(process.argv.slice(2));
+	// Library code throws; the entry point states the refusal and exits, so a typo'd flag does
+	// not reach the terminal as a stack trace.
+	let args: { port: number; host: string; jobsDir: string; token?: string };
+	try {
+		args = parseServerArgs(process.argv.slice(2));
+	} catch (err) {
+		process.stderr.write(`${errorMessage(err)}\n`);
+		process.exit(2);
+	}
+	const { port, host, jobsDir, token } = args;
 	const manager = new ManagerServer(jobsDir, undefined, token);
 	globalHost.__evalsServer = manager;
 	const server = manager.start(port, host);

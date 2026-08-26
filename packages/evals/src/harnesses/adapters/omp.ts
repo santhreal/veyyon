@@ -93,6 +93,7 @@ export class OmpAdapter implements HarnessAdapter {
 	readonly name = "omp";
 	readonly displayName = "Oh My Pi (omp)";
 	readonly description = "Oh My Pi (omp) CLI agent headlessly executing DeepSWE benchmark tasks.";
+	readonly flags: readonly string[] = ["omp-binary", "omp-api-key"];
 	readonly defaultModel = "opencode-go/deepseek-v4-flash";
 
 	readonly capabilities: HarnessCapabilities = {

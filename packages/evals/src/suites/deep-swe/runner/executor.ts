@@ -13,10 +13,12 @@ import {
 	getHarness,
 	hasHarness,
 	listHarnesses,
+	listHarnessFlags,
 	listHarnessNames,
 	requireHarness,
 } from "../../../core/harness-registry";
 import type { HarnessAdapter } from "../../../core/types";
+import { registerBuiltinHarnesses } from "../../../harnesses";
 import {
 	aggregateSystemComparison,
 	type ComparisonSystem,
@@ -424,7 +426,11 @@ export function requirePierAgentImportPath(harness: HarnessAdapter): string {
 }
 
 export async function runBench(argv: string[]): Promise<void> {
-	const args = parseBenchCliArgs(argv);
+	// The harness axis is resolved from the registry, and the registry is process-wide: an entry
+	// point that never registers reads an empty one, so `--arms omp` becomes a config arm named
+	// omp and every adapter flag is refused as unknown.
+	registerBuiltinHarnesses();
+	const args = parseBenchCliArgs(argv, listHarnessFlags());
 	if (args.help) {
 		printHelp();
 		return;

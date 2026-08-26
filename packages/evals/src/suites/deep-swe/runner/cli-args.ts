@@ -29,17 +29,49 @@ export interface BenchCliArgs {
  * alone rather than swallowing it, and the registry is what the invariant suite
  * sweeps, so a new valueless flag is covered the moment it is declared here.
  */
-export const VALUELESS_FLAGS = { "dry-run": true, help: true, list: true } as const satisfies Record<string, true>;
+export const VALUELESS_FLAGS = {
+	"dry-run": true,
+	help: true,
+	list: true,
+	"system-comparison": true,
+} as const satisfies Record<string, true>;
+
+/**
+ * Flags that take a value. The harness adapters contribute their own on top of these, so
+ * `--omp-binary` is accepted where the omp adapter is registered and nowhere else.
+ */
+export const VALUED_FLAGS = {
+	tasks: true,
+	"tasks-root": true,
+	arms: true,
+	model: true,
+	limit: true,
+	repeats: true,
+	jobs: true,
+	out: true,
+	"run-dir": true,
+	reaggregate: true,
+	merge: true,
+	"trial-timeout": true,
+	systems: true,
+	binary: true,
+	"replay-root": true,
+} as const satisfies Record<string, true>;
 
 /** Short spellings the runner accepts, mapped onto the long key. */
 const ALIASES = { h: "help" } as const satisfies Record<string, string>;
 
-export function parseArgs(argv: string[]): Record<string, string> {
-	return parseFlags(argv, { valueless: VALUELESS_FLAGS, aliases: ALIASES });
+export function parseArgs(argv: string[], harnessFlags: readonly string[] = []): Record<string, string> {
+	return parseFlags(argv, {
+		valued: VALUED_FLAGS,
+		valueless: VALUELESS_FLAGS,
+		aliases: ALIASES,
+		extraValued: harnessFlags,
+	});
 }
 
-export function parseBenchCliArgs(argv: string[]): BenchCliArgs {
-	const raw = parseArgs(argv);
+export function parseBenchCliArgs(argv: string[], harnessFlags: readonly string[] = []): BenchCliArgs {
+	const raw = parseArgs(argv, harnessFlags);
 	return {
 		tasksFile: raw.tasks,
 		tasksRoot: raw["tasks-root"],

@@ -116,6 +116,11 @@ bun packages/evals/src/benches/search/runner.ts --list
 bun packages/evals/src/benches/search/runner.ts --json report.json
 ```
 
+`--help` prints the accepted flags. A flag the bench does not declare, an `--iterations` value that
+is not an integer >= 1, and a `--type` outside `files`, `text`, `structure` and `all` each refuse
+the invocation and print the usage text, so a misspelled knob never runs with the default it was
+passed to change. The disclosure bench takes no inputs and accepts only `--help`.
+
 Execute the progressive disclosure artifact compaction benchmark:
 
 ```sh

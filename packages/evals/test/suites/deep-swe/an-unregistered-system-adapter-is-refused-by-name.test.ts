@@ -50,6 +50,7 @@ describe("system adapter registry", () => {
 			name: "custom-test",
 			displayName: "Custom Test Adapter",
 			description: "Custom test adapter for unit test",
+			flags: [],
 			defaultModel: null,
 			capabilities: {
 				replay: false,

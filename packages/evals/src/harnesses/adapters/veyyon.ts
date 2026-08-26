@@ -24,6 +24,7 @@ export class VeyyonAdapter implements HarnessAdapter {
 	readonly name = "veyyon";
 	readonly displayName = "Veyyon";
 	readonly description = "Main Veyyon headless agent CLI execution and replay in isolated Docker containers.";
+	readonly flags: readonly string[] = ["auth-db"];
 	// Veyyon drives any provider-qualified model the run names, so it declares no
 	// default: a default here decided which model an unspecified run measured, and the
 	// arm's name never said which one. `resolveTrialModel` refuses instead.

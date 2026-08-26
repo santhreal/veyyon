@@ -695,6 +695,7 @@ describe("executeRun", () => {
 			name: "refusing-harness",
 			displayName: "Refusing Harness",
 			description: "Refuses preflight",
+			flags: [],
 			defaultModel: "test-model",
 			capabilities: { replay: false, compaction: false, armAttachments: false, promptOverrides: false },
 			backends: { "in-process": {} },

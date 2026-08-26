@@ -19,7 +19,7 @@
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { parseFlags } from "../core/flags";
+import { type FlagGrammar, parseFlags } from "../core/flags";
 import { type BenchmarkSnapshot, readBenchmarkSnapshot, requireBenchmark } from "../manager/benchmarks";
 import { type RunRow, RunStore } from "../manager/store";
 import { harborJobsDir } from "../paths";
@@ -75,8 +75,13 @@ export function upsertBenchResultsBlock(docText: string, key: string, block: str
 	return `${base}\n${heading}\n\n${block}\n`;
 }
 
+/** Flags the bench-report writer accepts. */
+export const BENCH_REPORT_FLAGS = {
+	valued: { run: true, doc: true, key: true, "jobs-dir": true },
+} as const satisfies FlagGrammar;
+
 if (import.meta.main) {
-	const args = parseFlags(process.argv.slice(2));
+	const args = parseFlags(process.argv.slice(2), BENCH_REPORT_FLAGS);
 	const runName = args.run;
 	const docPath = args.doc;
 	if (!runName || !docPath) {

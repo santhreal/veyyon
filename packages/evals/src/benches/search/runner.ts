@@ -18,6 +18,7 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import type { SearchType } from "@veyyon/coding-agent/tools/search";
 import { errorMessage } from "@veyyon/utils";
+import { type FlagGrammar, flagChoice, flagCount, parseFlags, UnknownFlagError } from "../../core/flags";
 import type { SearchArm, SearchArmResult, SearchArmRunner } from "./arms";
 import type { SearchBenchmarkCase, SearchCaseSuite } from "./cases";
 import { materializeCorpus } from "./corpus";
@@ -554,60 +555,69 @@ export function formatSearchBenchReport(report: SearchBenchReport): string {
 	return `${lines.join("\n")}\n`;
 }
 
-if (import.meta.main) {
-	const args = process.argv.slice(2);
-	let iterations = 5;
-	let filterType: SearchType | "all" = "all";
-	let caseSuiteIds: string[] | undefined;
-	let armIds: string[] | undefined;
-	let referenceArmId: string | undefined;
-	let jsonOutput: string | null = null;
-	let jsonStdout = false;
-	let listOnly = false;
+/** Flags the search bench accepts, so a misspelled one refuses instead of running the default. */
+export const SEARCH_BENCH_FLAGS = {
+	valued: { iterations: true, type: true, suite: true, arms: true, reference: true, json: true },
+	valueless: { list: true, help: true },
+} as const satisfies FlagGrammar;
 
+/** Usage text, printed for `--help` and after a refusal. */
+export const SEARCH_BENCH_USAGE = `search bench — measure every registered arm over every registered case suite
+
+Usage:
+  bench:search [--suite <ids>] [--arms <ids>] [--reference <id>] [--iterations <n>]
+  bench:search --list
+  bench:search --json [path]
+
+Flags:
+  --suite <ids>        case suites to run, comma-separated (default: every registered suite)
+  --arms <ids>         arms to measure, comma-separated (default: every registered arm)
+  --reference <id>     arm every other arm is compared against (default: ${DEFAULT_REFERENCE_ARM_ID})
+  --iterations <n>     timed repetitions per case, an integer >= 1 (default: 5)
+  --type <kind>        restrict to one query type: files, text, structure, or all
+  --json [path]        write the report as JSON to <path>, or to stdout when no path follows
+  --list               list the registered corpora, case suites and arms, then exit
+  --help               this text
+`;
+
+if (import.meta.main) {
 	const listValue = (value: string): string[] =>
 		value
 			.split(",")
 			.map(entry => entry.trim())
 			.filter(Boolean);
 
-	for (let i = 0; i < args.length; i++) {
-		const arg = args[i];
-		if (arg === "--iterations" && i + 1 < args.length) {
-			iterations = Number.parseInt(args[++i], 10) || 5;
-		} else if (arg === "--type" && i + 1 < args.length) {
-			const value = args[++i];
-			if (value === "files" || value === "text" || value === "structure" || value === "all") filterType = value;
-		} else if (arg === "--suite" && i + 1 < args.length) {
-			caseSuiteIds = listValue(args[++i]);
-		} else if (arg === "--arms" && i + 1 < args.length) {
-			armIds = listValue(args[++i]);
-		} else if (arg === "--reference" && i + 1 < args.length) {
-			referenceArmId = args[++i];
-		} else if (arg === "--list") {
-			listOnly = true;
-		} else if (arg === "--json") {
-			if (i + 1 < args.length && !args[i + 1].startsWith("-")) jsonOutput = args[++i];
-			else jsonStdout = true;
+	try {
+		const flags = parseFlags(process.argv.slice(2), SEARCH_BENCH_FLAGS);
+		if (flags.help !== undefined) {
+			process.stdout.write(SEARCH_BENCH_USAGE);
+			process.exit(0);
 		}
-	}
 
-	registerBuiltinSearchBench();
+		const iterations = flagCount(flags, "iterations") ?? 5;
+		const filterType = flagChoice(flags, "type", ["files", "text", "structure", "all"] as const) ?? "all";
+		const caseSuiteIds = flags.suite === undefined ? undefined : listValue(flags.suite);
+		const armIds = flags.arms === undefined ? undefined : listValue(flags.arms);
+		const referenceArmId = flags.reference;
+		// `--json` with no path writes to stdout; the grammar hands back "true" for a valueless use.
+		const jsonStdout = flags.json === "true" || flags.json === "";
+		const jsonOutput = flags.json !== undefined && !jsonStdout ? flags.json : null;
 
-	if (listOnly) {
-		const lines = ["corpora:"];
-		for (const corpus of searchCorpora()) {
-			lines.push(`  ${corpus.id}  files=${Object.keys(corpus.files).length}  ${corpus.description}`);
-		}
-		lines.push("case suites:");
-		for (const suite of searchCaseSuites()) {
-			lines.push(`  ${suite.id}  corpus=${suite.corpusId}  cases=${suite.cases.length}  ${suite.description}`);
-		}
-		lines.push("arms:");
-		for (const arm of searchArms()) lines.push(`  ${arm.id}  ${arm.description}`);
-		process.stdout.write(`${lines.join("\n")}\n`);
-	} else {
-		try {
+		registerBuiltinSearchBench();
+
+		if (flags.list !== undefined) {
+			const lines = ["corpora:"];
+			for (const corpus of searchCorpora()) {
+				lines.push(`  ${corpus.id}  files=${Object.keys(corpus.files).length}  ${corpus.description}`);
+			}
+			lines.push("case suites:");
+			for (const suite of searchCaseSuites()) {
+				lines.push(`  ${suite.id}  corpus=${suite.corpusId}  cases=${suite.cases.length}  ${suite.description}`);
+			}
+			lines.push("arms:");
+			for (const arm of searchArms()) lines.push(`  ${arm.id}  ${arm.description}`);
+			process.stdout.write(`${lines.join("\n")}\n`);
+		} else {
 			const report = await runSearchBench({
 				iterations,
 				filterType,
@@ -626,9 +636,10 @@ if (import.meta.main) {
 			if (jsonOutput) await fs.writeFile(jsonOutput, JSON.stringify(report, null, 2), "utf8");
 
 			if (!report.parityPassed || !report.expectationsPassed) process.exit(1);
-		} catch (err) {
-			process.stderr.write(`Search bench error: ${errorMessage(err)}\n`);
-			process.exit(1);
 		}
+	} catch (err) {
+		process.stderr.write(`Search bench error: ${errorMessage(err)}\n`);
+		if (err instanceof UnknownFlagError) process.stderr.write(`\n${SEARCH_BENCH_USAGE}`);
+		process.exit(1);
 	}
 }
