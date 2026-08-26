@@ -63,7 +63,8 @@ import {
 import { isArmConfigFile } from "../arm-fingerprint";
 import { formatArmPrediction, predictArmSaving } from "../arm-prediction";
 import { resolveBinaryPin } from "../binary-pin";
-import { conversationCollapsed, measureRunPrefix, PREFIX_CATEGORIES, prefixShares } from "../prefix-composition";
+import { PREFIX_CATEGORIES, prefixShares } from "../prefix-mass";
+import { conversationCollapsed, measureRunPrefix } from "../prefix-run";
 import { type LoadedReplayManifest, loadReplayManifest } from "../replay-manifest";
 import {
 	parseTaskTimeBudget,

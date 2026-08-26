@@ -11,35 +11,38 @@
  */
 
 import { describe, expect, test } from "bun:test";
-
-import { priceTokens, REFERENCE_RATE_CARD } from "../../../src/suites/deep-swe/cost-model";
 import {
-	accumulatePrefixMass,
-	COLLAPSED_CONVERSATION_SHARE,
 	cacheEfficiency,
 	cacheHitRate,
-	calibratePrefix,
-	conversationCollapsed,
-	conversationMassPerSession,
-	emptyPrefixMass,
 	freshRate,
 	freshTokens,
-	PREFIX_CATEGORIES,
-	type PrefixStep,
-	predictedBillSaving,
-	prefixObservations,
-	prefixShares,
-	prefixStability,
 	rebilledCostShare,
+} from "../../../src/suites/deep-swe/cache-efficiency";
+import { priceTokens, REFERENCE_RATE_CARD } from "../../../src/suites/deep-swe/cost-model";
+import {
 	SIGNATURE_CAP_SWEEP,
-	SKIP_SIGNATURE_CHARS,
 	SPILL_SUBSTITUTION_CHARS,
-	sessionPrefixSteps,
 	simulateSignatureCap,
 	simulateSignatureLever,
 	simulateToolResultCap,
+} from "../../../src/suites/deep-swe/lever-simulation";
+import { calibratePrefix, prefixObservations } from "../../../src/suites/deep-swe/prefix-calibration";
+import {
+	accumulatePrefixMass,
+	emptyPrefixMass,
+	PREFIX_CATEGORIES,
+	type PrefixStep,
+	predictedBillSaving,
+	prefixShares,
+	sessionPrefixSteps,
 	totalPrefixMass,
-} from "../../../src/suites/deep-swe/prefix-composition";
+} from "../../../src/suites/deep-swe/prefix-mass";
+import {
+	COLLAPSED_CONVERSATION_SHARE,
+	conversationCollapsed,
+	conversationMassPerSession,
+} from "../../../src/suites/deep-swe/prefix-run";
+import { prefixStability, SKIP_SIGNATURE_CHARS } from "../../../src/suites/deep-swe/prefix-stability";
 
 describe("accumulatePrefixMass — a byte costs once per turn it survives into", () => {
 	/**
