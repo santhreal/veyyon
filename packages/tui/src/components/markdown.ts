@@ -2333,14 +2333,18 @@ export class Markdown implements Component {
 		for (let i = 0; i < numCols; i++) {
 			const headerText = this.#renderInlineTokens(token.header[i].tokens || [], styleContext);
 			const headerLineWidths = this.#terminalLineWidths(headerText);
-			naturalWidths[i] = Math.max(...headerLineWidths, 0);
+			let maxLineWidth = 0;
+			for (let j = 0; j < headerLineWidths.length; j++) maxLineWidth = Math.max(maxLineWidth, headerLineWidths[j]);
+			naturalWidths[i] = maxLineWidth;
 			minWordWidths[i] = Math.max(1, this.#getLongestWordWidth(headerText, maxUnbrokenWordWidth));
 		}
 		for (const row of token.rows) {
 			for (let i = 0; i < row.length; i++) {
 				const cellText = this.#renderInlineTokens(row[i].tokens || [], styleContext);
 				const cellLineWidths = this.#terminalLineWidths(cellText);
-				naturalWidths[i] = Math.max(naturalWidths[i] || 0, ...cellLineWidths);
+				let maxCellWidth = naturalWidths[i] || 0;
+				for (let j = 0; j < cellLineWidths.length; j++) maxCellWidth = Math.max(maxCellWidth, cellLineWidths[j]);
+				naturalWidths[i] = maxCellWidth;
 				minWordWidths[i] = Math.max(
 					minWordWidths[i] || 1,
 					this.#getLongestWordWidth(cellText, maxUnbrokenWordWidth),
