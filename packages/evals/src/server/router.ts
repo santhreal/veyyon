@@ -5,7 +5,8 @@
  * checks loopback authentication on mutating requests, and maps route handlers to responses.
  */
 import { errorMessage } from "@veyyon/utils";
-import { type HttpMethod, type RouteDescriptor, SERVER_ROUTES } from "../wire";
+import { requirePathSegment } from "../paths";
+import { type HttpMethod, PATH_SEGMENT_PARAMS, type RouteDescriptor, SERVER_ROUTES } from "../wire";
 import type { ServerContext } from "./context";
 import { getBenchmarksController } from "./controllers/benchmarks";
 import { getEventsController } from "./controllers/events";
@@ -138,7 +139,14 @@ export class RequestRouter {
 
 				const params: Record<string, string> = {};
 				for (let i = 0; i < route.paramNames.length; i++) {
-					params[route.paramNames[i]] = decodeURIComponent(match[i + 1]);
+					const name = route.paramNames[i] as string;
+					// Decoded, so `%2e%2e%2f` is a separator by the time a handler sees it. A parameter
+					// that names a directory is checked here, once, rather than by each controller that
+					// joins it: a run name reached `path.join`, a kill and an `fs.rmSync` unchecked.
+					const value = decodeURIComponent(match[i + 1] as string);
+					params[name] = PATH_SEGMENT_PARAMS.includes(name)
+						? requirePathSegment(value, `${name} parameter`)
+						: value;
 				}
 				return await route.handler(ctx, url, params, request);
 			}

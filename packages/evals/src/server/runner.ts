@@ -140,6 +140,7 @@ export class RunnerManager {
 
 	/** Resume a harbor run in place via the runner's `--resume`. */
 	resume(jobName: string, opts: { filterErrorTypes?: string[] } = {}): { jobName: string; pid: number } {
+		assertSafeJobName(jobName);
 		const run = this.#store.getRun(jobName);
 		if (!run) throw new Error(`run ${jobName} not found`);
 		if (run.benchmark !== "harbor") {
@@ -179,6 +180,7 @@ export class RunnerManager {
 
 	/** Cancel a managed run. */
 	cancel(jobName: string): { jobName: string; cancelled: boolean } {
+		assertSafeJobName(jobName);
 		const child = this.#children.get(jobName);
 		if (child) {
 			child.cancelled = true;
@@ -210,6 +212,7 @@ export class RunnerManager {
 
 	/** Permanently delete a run: DB row + trials, job dir, and manager log. */
 	deleteRun(jobName: string): boolean {
+		assertSafeJobName(jobName);
 		const run = this.#store.getRun(jobName);
 		if (!run) return false;
 		if (this.isLive(run)) throw new Error(`run ${jobName} is running; cancel it first`);

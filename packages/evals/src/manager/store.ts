@@ -13,14 +13,17 @@ import * as path from "node:path";
 import { atomicWriteFileSync, isProcessAlive, logger } from "@veyyon/utils";
 import { readJobResult } from "../backends/harbor/runner/results";
 import type { BackendId } from "../core/types";
+import { requirePathSegment } from "../paths";
 import type { BenchmarkKind, RunRole, RunStatus } from "../wire";
 import { getBenchmark, getBenchmarkByBackend, readBenchmarkSnapshot } from "./benchmarks";
 
-/** Job names are single path segments; anything else could escape the jobs dir. */
+/**
+ * A job name is one directory name under the jobs directory. The rule is the same rule every
+ * dynamic path segment in this package passes, so it is applied by that owner rather than by a
+ * second regex here, which admitted a name of only spaces and one holding a NUL byte.
+ */
 export function assertSafeJobName(jobName: string): void {
-	if (!jobName || jobName === "." || jobName === ".." || /[/\\]/.test(jobName) || jobName.includes("..")) {
-		throw new Error(`invalid job name: ${jobName}`);
-	}
+	requirePathSegment(jobName, "job name");
 }
 
 export const CURRENT_SCHEMA_VERSION = 2;
@@ -541,6 +544,9 @@ export class RunStore {
 
 	/** Re-read a job dir from disk and mirror trial + rollup state into the DB. */
 	syncRun(jobName: string): RunRow | null {
+		// The name is joined into the jobs directory, so it is one directory name or nothing: a
+		// GET carrying `../..` otherwise read whatever that path held and mirrored it into the DB.
+		assertSafeJobName(jobName);
 		const jobDir = path.join(this.jobsDir, jobName);
 		if (!fs.existsSync(jobDir)) return this.getRun(jobName);
 		const row = this.getRun(jobName);

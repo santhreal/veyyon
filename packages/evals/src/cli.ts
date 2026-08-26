@@ -40,7 +40,7 @@ import {
 } from "./core";
 import { preflightHarnesses } from "./core/harness-preflight";
 import { registerBuiltinHarnesses } from "./harnesses";
-import { runsDir as defaultRunsDir } from "./paths";
+import { runsDir as defaultRunsDir, requirePathSegment } from "./paths";
 import {
 	buildRunPlan,
 	checkRunDirectories,
@@ -213,7 +213,9 @@ export function parseEvalsArgs(argv: readonly string[]): EvalsCliArgs {
 				datasetDir = value;
 				break;
 			case "--run-id":
-				runId = value;
+				// The id names a directory under the runs directory. Refused here so a separator
+				// or a `..` is a usage error, not a journal written outside the tree.
+				runId = requirePathSegment(value, "--run-id value");
 				break;
 			default:
 				throw new CliUsageError(`Unhandled flag "${name}".`);

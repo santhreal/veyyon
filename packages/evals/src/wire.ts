@@ -595,6 +595,19 @@ export const SERVER_ROUTES: readonly RouteDescriptor[] = [
 ] as const;
 
 /**
+ * Route parameters that name one directory: a run's job directory, an experiment's rows. The
+ * router refuses anything else for these, so `%2e%2e%2f` in a run name cannot reach a `path.join`
+ * or a kill.
+ */
+export const PATH_SEGMENT_PARAMS: readonly string[] = ["name", "id"];
+
+/**
+ * Route parameters deliberately left free-form. A trace is matched against the names the store
+ * holds for that run before anything opens a file, so the match is the check.
+ */
+export const FREE_FORM_PARAMS: readonly string[] = ["trace"];
+
+/**
  * A USD amount, or the absent marker when nothing measured it.
  *
  * The one owner of that decision: a dashboard cell, a markdown report and the harbor runner's
