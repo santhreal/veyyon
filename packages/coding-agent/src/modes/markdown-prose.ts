@@ -228,11 +228,11 @@ export function maskNonProse(text: string): string {
 		i++;
 	}
 
-	const arr = text.split("");
+	let result = "";
 	for (let p = 0; p < n; p++) {
-		if (masked[p] && arr[p] !== "\n") arr[p] = " ";
+		result += masked[p] && text[p] !== "\n" ? " " : text[p]!;
 	}
-	return arr.join("");
+	return result;
 }
 
 /**
