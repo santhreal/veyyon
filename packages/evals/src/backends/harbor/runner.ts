@@ -1857,10 +1857,10 @@ async function runBenchmark(cfg: Config): Promise<BenchmarkRun> {
 	if (cfg.agent === "veyyon" && cfg.gateway) {
 		modelsYaml = writeModelsYaml(benchDir, cfg);
 		if (!gatewayHealthOk(cfg.gatewayUrl)) {
-			process.stderr.write(
-				yellow(
-					`warning: gateway ${cfg.gatewayUrl} health check failed (continuing). Is the pm2 'veyyon-auth-gateway' running?\n`,
-				),
+			throw new Error(
+				`Auth gateway at ${cfg.gatewayUrl} is not answering /healthz. Start it on the host with ` +
+					"`vey auth-broker serve` and `vey auth-gateway serve --no-auth --bind 127.0.0.1:4000`, " +
+					"or pass --no-gateway to forward host provider keys into the containers instead.",
 			);
 		}
 	}

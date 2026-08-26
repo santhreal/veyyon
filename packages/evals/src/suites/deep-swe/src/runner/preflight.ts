@@ -203,6 +203,15 @@ export async function requireStagedAuthCanServeToken(
 		store.close();
 	}
 
+	if (modelVendor(model) === null) {
+		const message =
+			`deep-swe: cannot resolve the upstream vendor for model "${model}", so its quota pool cannot be ` +
+			`checked. Verify the model id against @veyyon/catalog.`;
+		console.error(message);
+		if (!dryRun) throw new Error(message);
+		console.error("deep-swe: continuing anyway because this is a --dry-run; no trial will be started.\n");
+	}
+
 	const spent = exhaustedPoolFor(probes, model);
 	if (spent) {
 		console.error(`deep-swe: ${describeExhaustedPool(spent, model)}`);
@@ -214,9 +223,7 @@ export async function requireStagedAuthCanServeToken(
 
 	const verdict = decideAuthPreflight(probes);
 	if (verdict.kind === "ok") {
-		const vendor = modelVendor(model);
-		const checked = vendor ? "" : ` Quota pool NOT checked: no vendor could be inferred from "${model}".`;
-		console.log(`deep-swe: staged auth DB serves a token (${verdict.usable} usable credential(s))${checked}`);
+		console.log(`deep-swe: staged auth DB serves a token (${verdict.usable} usable credential(s))`);
 		return;
 	}
 	if (verdict.kind === "unverifiable") {

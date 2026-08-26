@@ -1,3 +1,26 @@
+import {
+	bareModelId,
+	getBundledModelReferenceIndex,
+	isAnthropicNamespacedModelId,
+	isClaudeModelId,
+	isDeepseekModelIdOrName,
+	isGemmaModelId,
+	isGrokReasoningEffortCapable,
+	isKimiK26ModelId,
+	isKimiModelId,
+	isMimoModelIdOrName,
+	isMinimaxM2FamilyModelId,
+	isMinimaxM3FamilyModelId,
+	isOpenAIGptOssModelId,
+	isOpenAIModelId,
+	isOpenAIOSeriesModelId,
+	isQwenModelId,
+	parseGlmModel,
+	parseKnownModel,
+	resolveModelReference,
+} from "@veyyon/catalog/identity";
+import { CATALOG_PROVIDERS } from "@veyyon/catalog/provider-models/descriptors";
+
 /**
  * Deciding, before a single container starts, whether the staged credential
  * store can actually serve a token.
@@ -94,26 +117,185 @@ export function decideAuthPreflight(probes: readonly CredentialProbe[]): AuthPre
 }
 
 /**
- * The vendor whose pool a model draws from, inferred from the model id.
+ * The vendor a single id segment names, or null when the segment names none.
  *
  * A gateway provider meters each upstream vendor SEPARATELY. On
  * `google-antigravity` there are three daily pools, `:google:`, `:openai:` and
  * `:anthropic:`, and they empty independently: the Gemini pool can be spent to
  * the last token while the other two sit untouched at 100%. So "the credential
  * serves a token" is true and useless. The question that matters is whether the
- * pool THIS model draws from has anything left.
+ * pool THIS model draws from has anything left, which is a question about a
+ * vendor rather than about a provider.
  *
- * The table is explicit rather than clever, and unknown ids return null instead
- * of a guess. A wrong guess here refuses a run that could have succeeded, which
- * is worse than not checking, so the caller treats null as "could not check" and
- * says so rather than proceeding quietly (Law 10).
+ * Segments arrive from a router-namespaced id (`openrouter/mistralai/…`), from a
+ * provider descriptor id, and from a bare model id, so the same normalization
+ * serves all three.
+ */
+function normalizeVendorSegment(segment: string): string | null {
+	const s = segment.toLowerCase().trim();
+	if (
+		s.includes("gemini") ||
+		s === "google" ||
+		s === "google-vertex" ||
+		s === "google-gemini-cli" ||
+		s === "google-antigravity"
+	) {
+		return "google";
+	}
+	if (
+		s.includes("claude") ||
+		s.includes("opus") ||
+		s.includes("sonnet") ||
+		s.includes("haiku") ||
+		s.includes("fable") ||
+		s.includes("mythos") ||
+		s === "anthropic" ||
+		s === "amazon-bedrock" ||
+		s === "cursor" ||
+		s.includes("gitlab-duo")
+	) {
+		return "anthropic";
+	}
+	if (s.includes("gpt") || s.includes("codex") || s === "openai" || s === "azure" || s === "github-copilot") {
+		return "openai";
+	}
+	if (s.includes("mistral") || s.includes("codestral") || s.includes("pixtral") || s === "mistralai") return "mistral";
+	if (s.includes("deepseek") || s === "deepseek-ai") return "deepseek";
+	if (s.includes("llama") || s === "meta" || s === "meta-llama") return "meta";
+	if (
+		s.includes("qwen") ||
+		s.includes("alibaba") ||
+		s === "qwen-portal" ||
+		s === "alibaba-coding-plan" ||
+		s.includes("qianfan")
+	) {
+		return "qwen";
+	}
+	if (
+		s.includes("kimi") ||
+		s.includes("moonshot") ||
+		s === "moonshotai" ||
+		s === "kimi-code" ||
+		s === "firepass" ||
+		s === "fireworks" ||
+		s === "command-code" ||
+		s === "baseten"
+	) {
+		return "moonshot";
+	}
+	if (
+		s.includes("glm") ||
+		s.includes("zhipu") ||
+		s === "zhipuai" ||
+		s === "zai" ||
+		s === "zai-org" ||
+		s === "zhipu-coding-plan" ||
+		s === "cerebras"
+	) {
+		return "zhipu";
+	}
+	if (s.includes("grok") || s === "xai" || s === "xai-oauth") return "xai";
+	if (s.includes("minimax")) return "minimax";
+	if (s.includes("mimo") || s === "xiaomi") return "xiaomi";
+	if (s === "devin" || s.includes("swe-")) return "devin";
+	if (s === "synthetic" || s.includes("synthetic-model")) return "synthetic";
+	if (s === "vllm" || s === "local-model") return "vllm";
+	if (s === "ollama") return "ollama";
+	return null;
+}
+
+/**
+ * The vendor whose pool a model draws from, or null when the id cannot be placed.
+ *
+ * Resolution walks four sources: the qualifier segments of a router-namespaced
+ * id, the identity classifiers in `@veyyon/catalog/identity`, the bundled model
+ * reference index, and the provider descriptor table. A hand written substring
+ * table covered three families and read every other real id — Mistral, DeepSeek,
+ * Llama, Qwen, an OpenRouter path — as unplaceable, which the pool check then
+ * reported as "not checked".
+ *
+ * Segments are read RIGHT TO LEFT, because the rightmost names the model and the
+ * leftmost names the gateway that serves it. Reading left to right placed
+ * `google-antigravity/claude-sonnet-5` with the Google pool, which is the exact
+ * confusion this check exists to remove: that credential's Gemini pool empties
+ * while its Anthropic pool sits untouched, so a left-to-right reading refuses a
+ * Claude run that would have succeeded.
+ *
+ * This is a query and it never throws: a caller that must have an answer asks
+ * `requireModelVendor`.
  */
 export function modelVendor(modelId: string): string | null {
-	const id = modelId.toLowerCase();
-	if (id.includes("gemini")) return "google";
-	if (id.includes("claude")) return "anthropic";
-	if (id.includes("gpt") || id.includes("codex") || /\bo[134]\b/.test(id)) return "openai";
-	return null;
+	const id = modelId.toLowerCase().trim();
+	if (!id) return null;
+
+	// 1. Qualifier segments, most specific first (openrouter/mistralai/mistral-large,
+	//    google-antigravity/claude-sonnet-5).
+	if (id.includes("/")) {
+		const parts = id.split("/");
+		for (let index = parts.length - 1; index >= 0; index -= 1) {
+			const normalized = normalizeVendorSegment(parts[index] as string);
+			if (normalized) return normalized;
+		}
+	}
+
+	// 2. Identity classifiers from @veyyon/catalog/identity
+	const known = parseKnownModel(modelId);
+	if (known.family === "gemini") return "google";
+	if (known.family === "anthropic") return "anthropic";
+	if (known.family === "openai") return "openai";
+
+	if (parseGlmModel(modelId)) return "zhipu";
+	if (isClaudeModelId(modelId) || isAnthropicNamespacedModelId(modelId)) return "anthropic";
+	if (isOpenAIModelId(modelId) || isOpenAIOSeriesModelId(modelId) || isOpenAIGptOssModelId(modelId)) return "openai";
+	if (isGemmaModelId(modelId)) return "google";
+	if (isQwenModelId(modelId)) return "qwen";
+	if (isDeepseekModelIdOrName(modelId)) return "deepseek";
+	if (isKimiModelId(modelId) || isKimiK26ModelId(modelId)) return "moonshot";
+	if (isMimoModelIdOrName(modelId)) return "xiaomi";
+	if (isMinimaxM2FamilyModelId(modelId) || isMinimaxM3FamilyModelId(modelId)) return "minimax";
+	if (isGrokReasoningEffortCapable(modelId) || id.includes("grok")) return "xai";
+
+	// 3. Bundled reference lookup
+	try {
+		const ref = resolveModelReference(modelId, getBundledModelReferenceIndex());
+		if (ref?.provider) {
+			const normalized = normalizeVendorSegment(ref.provider);
+			if (normalized) return normalized;
+		}
+	} catch {
+		// Ignore reference resolution errors and proceed to descriptor check
+	}
+
+	// 4. Descriptor provider table lookup by ID or defaultModel
+	const providerMatch = CATALOG_PROVIDERS.find(
+		p => p.id === id || id.startsWith(`${p.id}/`) || p.defaultModel === modelId,
+	);
+	if (providerMatch) {
+		return normalizeVendorSegment(providerMatch.id) ?? providerMatch.id;
+	}
+
+	// 5. Bare model id segment heuristics
+	const bare = bareModelId(modelId).toLowerCase();
+	return normalizeVendorSegment(bare);
+}
+
+/**
+ * The vendor a model draws from, refusing when it cannot be placed.
+ *
+ * The preflight calls this: an id whose vendor no catalog source recognises is a
+ * typo or a model the catalog has not learned yet, and either way the quota pool
+ * behind it cannot be checked. Proceeding produces a run that dies on
+ * RESOURCE_EXHAUSTED after paying for container setup, so the refusal names the
+ * model and where to verify it.
+ */
+export function requireModelVendor(modelId: string): string {
+	const vendor = modelVendor(modelId);
+	if (!vendor) {
+		throw new Error(
+			`Cannot resolve model vendor for "${modelId}". Preflight refused: verify model id against @veyyon/catalog.`,
+		);
+	}
+	return vendor;
 }
 
 /**
@@ -139,7 +321,7 @@ export function exhaustedPoolFor(
 ): { pool: string; resetsAt?: number } | null {
 	const provider = modelId.includes("/") ? (modelId.split("/")[0] as string) : null;
 	const vendor = modelVendor(modelId);
-	if (!vendor) return null;
+	if (vendor === null) return null;
 	for (const probe of probes) {
 		if (provider && probe.provider !== provider) continue;
 		for (const limit of probe.report?.limits ?? []) {

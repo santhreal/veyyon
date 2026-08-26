@@ -13,6 +13,11 @@ export interface TypescriptEditProvenanceOptions {
 	readonly archivePath?: string;
 	readonly fixturesDir?: string;
 	readonly version?: string;
+	/**
+	 * Explicit opt-in to soft fallback returning `{ sha: null }` when the fixtures
+	 * archive is missing or unreadable. By default, provenance computation fails closed.
+	 */
+	readonly allowMissingArchive?: boolean;
 }
 
 /**
@@ -84,16 +89,20 @@ export async function computeTypescriptEditProvenance(
 				mtime: stat.mtime.toISOString(),
 			},
 		};
-	} catch {
-		return {
-			suite: TYPESCRIPT_EDIT_SUITE_NAME,
-			version,
-			sha: null,
-			sourceUrl: DEFAULT_FIXTURES_ARCHIVE_RELATIVE,
-			metadata: {
-				archivePath: defaultArchive,
-				error: "Archive not found or unreadable",
-			},
-		};
+	} catch (error) {
+		if (options.allowMissingArchive === true) {
+			return {
+				suite: TYPESCRIPT_EDIT_SUITE_NAME,
+				version,
+				sha: null,
+				sourceUrl: DEFAULT_FIXTURES_ARCHIVE_RELATIVE,
+				metadata: {
+					archivePath: defaultArchive,
+					error: error instanceof Error ? error.message : "Archive not found or unreadable",
+				},
+			};
+		}
+		const err = error instanceof Error ? error.message : String(error);
+		throw new Error(`TypeScript edit fixtures archive not found or unreadable at "${defaultArchive}": ${err}`);
 	}
 }

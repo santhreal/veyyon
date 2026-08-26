@@ -378,166 +378,25 @@ with_prompt_template = harbor_with_prompt_template
 # Arm Attachments & Helpers
 # ---------------------------------------------------------------------------
 
-MANIFEST_FILE = "attachments.json"
-SUPPORTED_MANIFEST_VERSION = 1
-DELIVERY_ENV_JSON = "env-json"
-DELIVERY_RULES_DIR = "rules-dir"
-SUPPORTED_DELIVERIES = (DELIVERY_ENV_JSON, DELIVERY_RULES_DIR)
-_ENV_VAR_NAME = re.compile(r"\A[A-Z][A-Z0-9_]*\Z")
+import sys
 
-
-@dataclass(frozen=True)
-class ArmAttachment:
-    """One staged file, and how it reaches the agent."""
-
-    kind: str
-    file: str
-    delivery: str
-    env_var: str | None = None
-
-
-def parse_arm_attachments(
-    manifest_text: str, arm_name: str
-) -> tuple[ArmAttachment, ...]:
-    try:
-        data = json.loads(manifest_text)
-    except json.JSONDecodeError as exc:
-        raise ValueError(
-            f"invalid arm attachment manifest JSON for arm {arm_name!r}: {exc}"
-        ) from exc
-    if not isinstance(data, dict):
-        raise ValueError(
-            f"arm attachment manifest for arm {arm_name!r} must be a JSON object"
-        )
-    version = data.get("version")
-    if version != SUPPORTED_MANIFEST_VERSION:
-        raise ValueError(
-            f"unsupported arm attachment manifest version {version!r} for arm {arm_name!r}; "
-            f"expected {SUPPORTED_MANIFEST_VERSION}"
-        )
-    arms = data.get("arms")
-    if not isinstance(arms, dict):
-        raise ValueError(
-            f"arm attachment manifest for arm {arm_name!r} must contain an 'arms' mapping"
-        )
-    entries = arms.get(arm_name)
-    if entries is None:
-        return ()
-    if not isinstance(entries, list):
-        raise ValueError(
-            f"attachments for arm {arm_name!r} must be a list, got {type(entries).__name__}"
-        )
-    return tuple(_parse_entry(entry, arm_name) for entry in entries)
-
-
-def _parse_entry(entry: Any, arm_name: str) -> ArmAttachment:
-    if not isinstance(entry, dict):
-        raise ValueError(
-            f"attachment entry for arm {arm_name!r} must be a JSON object, got {type(entry).__name__}"
-        )
-    for field in ("kind", "file", "delivery"):
-        val = entry.get(field)
-        if not isinstance(val, str) or not val.strip():
-            raise ValueError(
-                f"attachment entry for arm {arm_name!r} must contain a non-empty {field!r} string"
-            )
-    kind = entry["kind"].strip()
-    file = entry["file"].strip()
-    delivery = entry["delivery"].strip()
-    _require_contained(file, arm_name, kind)
-    if delivery not in SUPPORTED_DELIVERIES:
-        raise ValueError(
-            f"unsupported delivery {delivery!r} for attachment {kind!r} on arm {arm_name!r}; "
-            f"supported: {', '.join(SUPPORTED_DELIVERIES)}"
-        )
-    env_var: str | None = None
-    if delivery == DELIVERY_ENV_JSON:
-        raw_var = entry.get("envVar")
-        if not isinstance(raw_var, str) or _ENV_VAR_NAME.fullmatch(raw_var) is None:
-            raise ValueError(
-                f"attachment {kind!r} on arm {arm_name!r} uses delivery {DELIVERY_ENV_JSON!r} "
-                f"and requires a valid POSIX envVar name, got {raw_var!r}"
-            )
-        env_var = raw_var
-    return ArmAttachment(kind=kind, file=file, delivery=delivery, env_var=env_var)
-
-
-def _require_contained(file: str, arm_name: str, kind: str) -> None:
-    path = PurePosixPath(file)
-    if path.is_absolute() or any(part == ".." for part in path.parts):
-        raise ValueError(
-            f"attachment {kind!r} on arm {arm_name!r} specifies an invalid path {file!r}; "
-            "attachment files must be relative to the assets directory and cannot contain '..'"
-        )
-
-
-def read_arm_attachments(
-    assets_dir: Path, arm_name: str
-) -> tuple[ArmAttachment, ...]:
-    manifest_path = assets_dir / MANIFEST_FILE
-    if not manifest_path.is_file():
-        return ()
-    text = manifest_path.read_text(encoding="utf-8")
-    return parse_arm_attachments(text, arm_name)
-
-
-def missing_attachment_files(
-    attachments: tuple[ArmAttachment, ...], assets_dir: Path
-) -> tuple[str, ...]:
-    return tuple(
-        attachment.file
-        for attachment in attachments
-        if not (assets_dir / attachment.file).is_file()
-    )
-
-
-def attachment_directories(
-    attachments: tuple[ArmAttachment, ...], container_dir: str
-) -> tuple[str, ...]:
-    directories: list[str] = []
-    for attachment in attachments:
-        parent = PurePosixPath(attachment.file).parent
-        if parent == PurePosixPath("."):
-            continue
-        accum = PurePosixPath(container_dir)
-        for part in parent.parts:
-            accum = accum / part
-            path_str = str(accum)
-            if path_str not in directories:
-                directories.append(path_str)
-    return tuple(directories)
-
-
-def environment_prefix(
-    attachments: tuple[ArmAttachment, ...], container_dir: str
-) -> str:
-    parts: list[str] = []
-    for attachment in attachments:
-        if attachment.delivery != DELIVERY_ENV_JSON:
-            continue
-        assert attachment.env_var is not None
-        target = f"{container_dir}/{attachment.file}"
-        parts.append(
-            f"{attachment.env_var}=$(cat {shlex.quote(target)}) "
-        )
-    return "".join(parts)
-
-
-def rules_setup_command(
-    attachments: tuple[ArmAttachment, ...], container_dir: str
-) -> str:
-    fragments = ""
-    for attachment in attachments:
-        if attachment.delivery != DELIVERY_RULES_DIR:
-            continue
-        src = f"{container_dir}/{attachment.file}"
-        dst_name = PurePosixPath(attachment.file).name
-        fragments += (
-            f" && mkdir -p ~/.veyyon/rules && "
-            f"cp {shlex.quote(src)} ~/.veyyon/rules/{shlex.quote(dst_name)}"
-        )
-    return fragments
-
+_agents_dir = str(Path(__file__).resolve().parents[1])
+if _agents_dir not in sys.path:
+    sys.path.insert(0, _agents_dir)
+from common.arm_attachments import (
+    DELIVERY_ENV_JSON,
+    DELIVERY_RULES_DIR,
+    MANIFEST_FILE,
+    SUPPORTED_DELIVERIES,
+    SUPPORTED_MANIFEST_VERSION,
+    ArmAttachment,
+    attachment_directories,
+    environment_prefix,
+    missing_attachment_files,
+    parse_arm_attachments,
+    read_arm_attachments,
+    rules_setup_command,
+)
 
 # ---------------------------------------------------------------------------
 # Catalog Bootstrap & Tee Commands
