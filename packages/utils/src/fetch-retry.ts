@@ -1,3 +1,4 @@
+import { STATUS_CODES } from "node:http";
 import { scheduler } from "node:timers/promises";
 import { cancellationError, isAbortError } from "./abortable";
 
@@ -507,11 +508,8 @@ function messageStatus(error: unknown, depth: number): number | undefined {
 }
 
 /**
- * The union of the two lists that used to disagree, most specific first.
- *
- * The trailing entry reads a reason phrase (`429 Too Many Requests`), which is how a gateway
- * that never sets a field still names its status. It is last because a bare three-digit number
- * followed by capitalised words is the loosest evidence here.
+ * The union of the two lists that used to disagree, most specific first. A
+ * reason phrase is read separately, by {@link statusFromReasonPhrase}.
  */
 const STATUS_MESSAGE_PATTERNS = [
 	/\bstatus(?:_code)?\s*[:=]?\s*(\d{3})\b/i,
@@ -519,8 +517,35 @@ const STATUS_MESSAGE_PATTERNS = [
 	/error\s*\((\d{3})\)/i,
 	/\b(?:error|failed)\s*[:=]?\s*(\d{3})\b/i,
 	/\b(\d{3})\s*(?:status|error)\b/i,
-	/(?:^|\s)(\d{3})\s+(?:[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)/,
 ] as const;
+
+/** A three-digit run that could open a status line, with the text after it. */
+const CODE_THEN_TEXT = /(?:^|\s)(\d{3})\s+/g;
+
+/**
+ * A reason phrase is how a gateway that sets no field still names its status
+ * (`429 Too Many Requests`), and it is evidence only when it is the phrase that
+ * belongs to the code beside it. Matching a bare number followed by capitalised
+ * words read `Processed 200 Total Records` as a success and `gave up after 401
+ * Failed Attempts` as an expired credential, and the second of those reaches
+ * `isAuthError`, which rotates credentials.
+ *
+ * `node:http` owns the code-to-phrase table, so there is none to maintain here.
+ */
+function statusFromReasonPhrase(message: string): number | undefined {
+	for (const match of message.matchAll(CODE_THEN_TEXT)) {
+		const code = Number(match[1]);
+		const phrase = STATUS_CODES[code];
+		if (phrase === undefined) continue;
+		const rest = message.slice(match.index + match[0].length);
+		if (!rest.toLowerCase().startsWith(phrase.toLowerCase())) continue;
+		// The phrase must end where a word ends, so `503 Service Unavailableish`
+		// is not a status line.
+		const next = rest.charAt(phrase.length);
+		if (next === "" || !/[A-Za-z0-9]/.test(next)) return code;
+	}
+	return undefined;
+}
 
 function extractStatusFromMessage(message: string): number | undefined {
 	for (const pattern of STATUS_MESSAGE_PATTERNS) {
@@ -529,7 +554,7 @@ function extractStatusFromMessage(message: string): number | undefined {
 		const value = Number(match[1]);
 		if (Number.isFinite(value) && value >= 100 && value <= 599) return value;
 	}
-	return undefined;
+	return statusFromReasonPhrase(message);
 }
 
 /**

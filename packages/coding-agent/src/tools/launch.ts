@@ -605,7 +605,7 @@ export const launchToolRenderer = {
 				icon: options.spinnerFrame !== undefined ? "running" : "pending",
 				spinnerFrame: options.spinnerFrame,
 				title: op ? `Launch ${op}` : "Launch",
-				description: target ? replaceTabs(target) : undefined,
+				description: target ? previewLine(replaceTabs(target), TRUNCATE_LENGTHS.TITLE) : undefined,
 				meta,
 			},
 			theme,
@@ -788,12 +788,22 @@ export const launchToolRenderer = {
 		return createCachedComponent(
 			() => options.expanded,
 			(width, expanded) => {
+				// A failure prints whatever the process said and `list` prints a row per
+				// daemon; neither has a ceiling, so both collapse until asked to expand.
+				const collapsedLimit = isError
+					? PREVIEW_LIMITS.OUTPUT_COLLAPSED
+					: op === "list"
+						? PREVIEW_LIMITS.COLLAPSED_ITEMS
+						: undefined;
 				let visible = body;
-				if (!expanded && op === "list" && body.length > PREVIEW_LIMITS.COLLAPSED_ITEMS) {
-					const remaining = body.length - PREVIEW_LIMITS.COLLAPSED_ITEMS;
+				if (!expanded && collapsedLimit !== undefined && body.length > collapsedLimit) {
+					const remaining = body.length - collapsedLimit;
 					visible = [
-						...body.slice(0, PREVIEW_LIMITS.COLLAPSED_ITEMS),
-						theme.fg("dim", `${formatMoreItems(remaining, "process")} ${formatExpandHint(theme, false, true)}`),
+						...body.slice(0, collapsedLimit),
+						theme.fg(
+							"dim",
+							`${formatMoreItems(remaining, isError ? "line" : "process")} ${formatExpandHint(theme, false, true)}`,
+						),
 					];
 				}
 				return [header, ...visible].map(line => truncateToWidth(line, width));

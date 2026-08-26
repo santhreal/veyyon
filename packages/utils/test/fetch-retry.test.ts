@@ -369,6 +369,33 @@ describe("extractHttpStatusFromError", () => {
 		expect(extractHttpStatusFromError({ status: 999 })).toBeUndefined();
 		expect(extractHttpStatusFromError("not an object")).toBeUndefined();
 	});
+
+	/**
+	 * WHY: the loosest pattern read any three-digit number followed by
+	 * capitalised words as a status line, so `Processed 200 Total Records` came
+	 * back as a success and `gave up after 401 Failed Attempts` came back as an
+	 * expired credential — and 401 is what `isAuthError` rotates credentials on.
+	 * A reason phrase is now evidence only when it is the phrase that belongs to
+	 * the code beside it, which `node:http` owns.
+	 *
+	 * Not caught: a non-standard phrase a gateway invents for a standard code,
+	 * which is now read as no status rather than as the wrong one.
+	 */
+	it("reads a reason phrase only when it is the phrase for that code", () => {
+		expect(extractHttpStatusFromError(new Error("429 Too Many Requests"))).toBe(429);
+		expect(extractHttpStatusFromError(new Error("upstream said 502 Bad Gateway, giving up"))).toBe(502);
+		expect(extractHttpStatusFromError(new Error("503 Service Unavailable"))).toBe(503);
+		// A phrase belonging to a different code is not that code's status line.
+		expect(extractHttpStatusFromError(new Error("Processed 200 Total Records"))).toBeUndefined();
+		expect(extractHttpStatusFromError(new Error("gave up after 401 Failed Attempts"))).toBeUndefined();
+		expect(extractHttpStatusFromError(new Error("Read 503 Bytes Total"))).toBeUndefined();
+		// The phrase has to end on a word boundary.
+		expect(extractHttpStatusFromError(new Error("503 Service Unavailableish"))).toBeUndefined();
+	});
+
+	it("prefers an explicitly labelled status over a reason phrase later in the message", () => {
+		expect(extractHttpStatusFromError(new Error("status: 418, body said 503 Service Unavailable"))).toBe(418);
+	});
 });
 
 describe("retryability predicates", () => {
