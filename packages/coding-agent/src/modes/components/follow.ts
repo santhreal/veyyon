@@ -42,17 +42,27 @@ export function shimmerPhase(nowMs: number): number {
 }
 
 function hexChannel(hex: string, i: number): number {
-	return parseInt(hex.slice(1 + i * 2, 3 + i * 2), 16);
+	// charCodeAt-based hex parse avoids allocating a 2-char slice per channel.
+	const hi = hex.charCodeAt(1 + i * 2);
+	const lo = hex.charCodeAt(2 + i * 2);
+	const hv = hi <= 57 ? hi - 48 : (hi & 0xdf) - 55;
+	const lv = lo <= 57 ? lo - 48 : (lo & 0xdf) - 55;
+	return (hv << 4) | lv;
 }
 
 /** Linear blend of two `#rrggbb` colors, returning a `#rrggbb` string. */
 function mixHex(a: string, b: string, t: number): string {
 	const c = t < 0 ? 0 : t > 1 ? 1 : t;
-	const ch = (i: number): string =>
-		Math.round(hexChannel(a, i) + (hexChannel(b, i) - hexChannel(a, i)) * c)
-			.toString(16)
-			.padStart(2, "0");
-	return `#${ch(0)}${ch(1)}${ch(2)}`;
+	const r = Math.round(hexChannel(a, 0) + (hexChannel(b, 0) - hexChannel(a, 0)) * c)
+		.toString(16)
+		.padStart(2, "0");
+	const g = Math.round(hexChannel(a, 1) + (hexChannel(b, 1) - hexChannel(a, 1)) * c)
+		.toString(16)
+		.padStart(2, "0");
+	const bl = Math.round(hexChannel(a, 2) + (hexChannel(b, 2) - hexChannel(a, 2)) * c)
+		.toString(16)
+		.padStart(2, "0");
+	return `#${r}${g}${bl}`;
 }
 
 /** Truecolor foreground SGR for a `#rrggbb` color. */

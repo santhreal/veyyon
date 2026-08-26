@@ -611,6 +611,14 @@ function mixHex(a: string, b: string, t: number): [number, number, number] {
 	];
 }
 
+function mixRgb(a: readonly [number, number, number], b: string, t: number): [number, number, number] {
+	return [
+		Math.round(a[0] + (hexChannel(b, 0) - a[0]) * t),
+		Math.round(a[1] + (hexChannel(b, 1) - a[1]) * t),
+		Math.round(a[2] + (hexChannel(b, 2) - a[2]) * t),
+	];
+}
+
 /**
  * The molten color at phase `p` (0..1): a triangle wave through the heat ramp
  * deep-ember (trough) → ember → gold (crest) → ember → deep-ember. Returns
@@ -627,8 +635,7 @@ function lavaRgbAt(theme: LavaTheme, p: number): [number, number, number] {
 		// deep ember → ember: scale ember toward black by the deep factor.
 		const k = clamped / 0.5;
 		const deep = mixHex("#000000", ember, 1 - LAVA_DEEP_FACTOR);
-		const deepHex = `#${deep.map(c => c.toString(16).padStart(2, "0")).join("")}`;
-		return mixHex(deepHex, ember, k);
+		return mixRgb(deep, ember, k);
 	}
 	// ember → gold
 	return mixHex(ember, gold, (clamped - 0.5) / 0.5);
