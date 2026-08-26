@@ -1,4 +1,5 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it, spyOn } from "bun:test";
+import { AuthStorage } from "@veyyon/ai";
 import { hasSuite, requireSuite, SuiteRegistry } from "../../../src/core/suite-registry";
 import { registerDeepSweSuite } from "../../../src/suites/deep-swe/register";
 import { deepSweSuite } from "../../../src/suites/deep-swe/suite";
@@ -70,11 +71,19 @@ describe("DeepSweSuite", () => {
 		expect(score.reward).toBeNull();
 		expect(score.error).toBe("failed to start container");
 	});
-
 	it("preflight returns a structured verdict", async () => {
-		const verdict = await deepSweSuite.preflight({
-			options: { dryRun: true },
-		});
-		expect(typeof verdict.ok).toBe("boolean");
+		const reloadSpy = spyOn(AuthStorage.prototype, "reload").mockResolvedValue();
+		const checkSpy = spyOn(AuthStorage.prototype, "checkCredentials").mockResolvedValue([
+			{ id: 1, type: "oauth", provider: "anthropic", ok: true },
+		]);
+		try {
+			const verdict = await deepSweSuite.preflight({
+				options: { dryRun: true },
+			});
+			expect(typeof verdict.ok).toBe("boolean");
+		} finally {
+			reloadSpy.mockRestore();
+			checkSpy.mockRestore();
+		}
 	});
 });

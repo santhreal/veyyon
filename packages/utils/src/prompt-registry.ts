@@ -21,6 +21,7 @@
  * concern and lives with the parser that reads it. This file describes what a row
  * claims; the grammar decides what the bytes look like.
  */
+import { $env } from "./env";
 import { announceEvalPromptOverrides, applyEvalPromptOverrides } from "./eval-prompt-overrides";
 import { nearestNames } from "./levenshtein";
 
@@ -87,12 +88,48 @@ export interface PromptEntry {
  * once, in the `definePromptRegistry` call that owns it, and a rows file that restated
  * it would be a second copy of that fact in 21 more places.
  *
- * Costs nothing when no override is set: the table is returned by identity.
+ * Costs one string comparison per read and allocates nothing while no override is set:
+ * the rows are handed back by identity and each read returns the caller's own entry.
  */
 export function definePromptRows<const T extends Record<string, PromptEntry>>(rows: T): T {
+	const current = overrideView(rows);
+	const live: Record<string, PromptEntry> = {};
+	for (const id of Object.keys(rows)) {
+		Object.defineProperty(live, id, { enumerable: true, get: () => current()[id] });
+	}
+	return live as T;
+}
+
+/**
+ * The rows in force NOW, re-applied when `VEYYON_EVAL_PROMPTS` changes.
+ *
+ * WHY A VIEW AND NOT A SNAPSHOT. The variable is set per benchmark arm, and an arm can
+ * run in the same process as the arm before it: the eval harness's in-process backend
+ * builds a session without spawning, so it sets the variable long after these modules
+ * were imported. A table applied once at import then serves the FIRST arm's text to
+ * every later arm, and the results table names a treatment that never reached the model.
+ *
+ * The parse behind this is cached per distinct value (`evalPromptOverrides`), so a read
+ * while nothing changed is one env read and one string comparison.
+ */
+function overrideView<T extends Record<string, PromptEntry>>(rows: T): () => Readonly<Record<string, PromptEntry>> {
+	let appliedRaw = $env.VEYYON_EVAL_PROMPTS;
+	let effective: Readonly<Record<string, PromptEntry>> = apply(rows);
+	return () => {
+		const raw = $env.VEYYON_EVAL_PROMPTS;
+		if (raw !== appliedRaw) {
+			appliedRaw = raw;
+			effective = apply(rows);
+		}
+		return effective;
+	};
+}
+
+/** Replace what an override names, and say so once. */
+function apply<T extends Record<string, PromptEntry>>(rows: T): Readonly<Record<string, PromptEntry>> {
 	const { prompts, appliedIds } = applyEvalPromptOverrides(rows);
 	announceEvalPromptOverrides(appliedIds);
-	return prompts as T;
+	return prompts;
 }
 
 /**
@@ -224,20 +261,21 @@ export function definePromptRegistry<const T extends Record<string, PromptEntry>
 	prompts: T,
 ): PromptRegistry<T> {
 	// The production path is the identity path. A registry is read once per tool per
-	// turn, so an unconditional spread or a per-read sweep would be paid by every
-	// session to serve a benchmark that is not running; with no override set,
-	// `applyEvalPromptOverrides` hands back this very table and the accessors below
-	// close over it directly.
-	const { prompts: effective, appliedIds } = applyEvalPromptOverrides(prompts);
-	announceEvalPromptOverrides(appliedIds);
+	// turn, so an unconditional spread would be paid by every session to serve a
+	// benchmark that is not running; with no override set, `applyEvalPromptOverrides`
+	// hands back this very table and every accessor below reads it directly. The view
+	// re-applies only when the variable changes, which is one string comparison.
+	const current = overrideView(prompts);
 	const ids = Object.keys(prompts) as (keyof T & string)[];
 	return {
 		dir,
-		prompts: effective as T,
+		get prompts(): T {
+			return current() as T;
+		},
 		ids,
-		text: id => effective[id].text,
-		require: id => requirePromptFrom(effective, id, dir),
-		has: id => Object.hasOwn(effective, id),
+		text: id => current()[id].text,
+		require: id => requirePromptFrom(current(), id, dir),
+		has: id => Object.hasOwn(current(), id),
 		fileFor: id => `${dir}/${id}.md`,
 	};
 }

@@ -1,5 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { AGENT_IMPORT_PATH } from "../../backends/harbor/launch-args";
 import type {
 	HarnessAdapter,
 	HarnessCapabilities,
@@ -33,6 +34,10 @@ export class VeyyonAdapter implements HarnessAdapter, SystemAdapter {
 			agentImportPath: "veyyon_agent:VeyyonAgent",
 			containerAssetsDir: "/opt/veyyon-assets",
 		},
+		harbor: {
+			agentImportPath: AGENT_IMPORT_PATH,
+		},
+		"in-process": {},
 	} as const;
 
 	// Backward compatibility with legacy SystemAdapter

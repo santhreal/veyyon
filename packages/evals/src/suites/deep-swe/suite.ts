@@ -17,6 +17,7 @@ import { comparisonTaskListPath, resolvePackagePath, taskCorpusDir, taskListsDir
 import { parseTaskListProvenance } from "./src/aggregate";
 import {
 	AUTH_DB_SOURCES,
+	checkBinaryBuildNeeded,
 	ensureAuthDbSeeded,
 	ensureBinaryUpToDate,
 	getAuthDbPath,
@@ -212,10 +213,16 @@ export class DeepSweSuite implements EvalSuite {
 			} catch (err) {
 				missing.push(`up-to-date vey binary: ${errorMessage(err)}`);
 			}
+		} else {
+			const status = checkBinaryBuildNeeded();
+			if (status.needsBuild) {
+				const desc = status.reason === "missing" ? "missing vey binary" : "stale vey binary";
+				missing.push(`${desc} at ${status.binaryPath} (build with: ${status.buildCommand})`);
+			}
 		}
 
 		const effectiveBinary = pinnedBinary ?? getVeyBinaryPath();
-		if (!fs.existsSync(effectiveBinary) && !options.dryRun) {
+		if (!fs.existsSync(effectiveBinary) && !options.dryRun && !pinnedBinary) {
 			missing.push(`vey binary at ${effectiveBinary}`);
 		}
 
@@ -227,14 +234,20 @@ export class DeepSweSuite implements EvalSuite {
 			missing.push(`credential store: no agent.db at any of ${AUTH_DB_SOURCES.join(", ")}`);
 		} else {
 			try {
-				ensureAuthDbSeeded();
-				const model = typeof options.model === "string" ? options.model : "google-antigravity/gemini-3.5-flash";
-				await requireStagedAuthCanServeToken(model, Boolean(options.dryRun));
+				if (!options.dryRun) {
+					ensureAuthDbSeeded();
+					const model = typeof options.model === "string" ? options.model : "google-antigravity/gemini-3.5-flash";
+					await requireStagedAuthCanServeToken(model, false);
+				} else {
+					const candidateDb =
+						fs.existsSync(authDb) && probeCredentialStore(authDb) === undefined ? authDb : authDecision.source;
+					const model = typeof options.model === "string" ? options.model : "google-antigravity/gemini-3.5-flash";
+					await requireStagedAuthCanServeToken(model, true, candidateDb);
+				}
 			} catch (err) {
 				missing.push(`staged auth DB: ${errorMessage(err)}`);
 			}
 		}
-
 		if (missing.length > 0) {
 			return {
 				ok: false,

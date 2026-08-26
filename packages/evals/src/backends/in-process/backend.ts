@@ -1,5 +1,6 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import type { Settings } from "@veyyon/coding-agent";
 import { errorMessage } from "@veyyon/utils";
 import { type BackendRegistry, defaultBackendRegistry } from "../../core/backend-registry";
 import type {
@@ -18,8 +19,10 @@ import {
 	discoverSharedInfra,
 	InProcessClient,
 	type InProcessClientOptions,
+	type InProcessSessionState,
 	type SharedInfra,
 } from "./client";
+import { loadAndValidateConfigOverlay, loadAndValidatePromptOverlay } from "./overlays";
 
 export interface InProcessClientLike {
 	start(): Promise<void>;
@@ -36,6 +39,8 @@ export interface InProcessClientLike {
 		assistantMessages: number;
 	}>;
 	getLastAssistantText(): Promise<string | null>;
+	getSettings?(): Promise<Settings | undefined>;
+	getState?(): Promise<InProcessSessionState>;
 	dispose(): Promise<void>;
 }
 
@@ -62,9 +67,38 @@ export class InProcessBackend implements ExecutionBackend {
 	}
 
 	async preflight(context: RunContext): Promise<PreflightVerdict> {
+		const variants = context.options?.variants ?? [];
+		if (variants.length > 0) {
+			for (const variant of variants) {
+				if (variant.configPath) {
+					try {
+						await loadAndValidateConfigOverlay(variant.configPath, context.workDir);
+					} catch (error) {
+						return {
+							ok: false,
+							reason: errorMessage(error),
+							missingRequirements: ["valid-config-overlay"],
+						};
+					}
+				}
+				if (variant.promptVariantPath) {
+					try {
+						await loadAndValidatePromptOverlay(variant.promptVariantPath, context.workDir);
+					} catch (error) {
+						return {
+							ok: false,
+							reason: errorMessage(error),
+							missingRequirements: ["valid-prompt-overlay"],
+						};
+					}
+				}
+			}
+		}
+
 		if (this.#clientFactory) {
 			return { ok: true };
 		}
+
 		try {
 			if (!this.#sharedInfra) {
 				const infraOptions: DiscoverSharedInfraOptions = {
@@ -147,6 +181,25 @@ export class InProcessBackend implements ExecutionBackend {
 			(context.options?.defaultModel as string | undefined) ??
 			"anthropic/claude-sonnet-4-6";
 
+		// Match variant from context options if available
+		const variants = context.options?.variants ?? [];
+		const variant = variants.find(v => v.name === cell.variant);
+		const configPath = variant?.configPath ?? (context.options?.configPath as string | undefined) ?? null;
+		const promptVariantPath =
+			variant?.promptVariantPath ?? (context.options?.promptVariantPath as string | undefined) ?? null;
+
+		let resolvedConfigPath: string | undefined;
+		if (configPath) {
+			const loaded = await loadAndValidateConfigOverlay(configPath, context.workDir);
+			resolvedConfigPath = loaded.resolvedPath;
+		}
+
+		let promptOverrides: Record<string, string> | undefined;
+		if (promptVariantPath) {
+			const loaded = await loadAndValidatePromptOverlay(promptVariantPath, context.workDir);
+			promptOverrides = loaded.overrides;
+		}
+
 		const clientOptions: InProcessClientOptions = {
 			cwd: trialDir,
 			model,
@@ -156,6 +209,8 @@ export class InProcessBackend implements ExecutionBackend {
 			editFuzzy: context.options?.editFuzzy as boolean | "auto" | undefined,
 			editFuzzyThreshold: context.options?.editFuzzyThreshold as number | "auto" | undefined,
 			shared: this.#sharedInfra ?? undefined,
+			configPath: resolvedConfigPath,
+			promptOverrides,
 		};
 
 		const startTime = Date.now();
@@ -174,9 +229,13 @@ export class InProcessBackend implements ExecutionBackend {
 		} | null = null;
 		let lastAssistantText: string | null = null;
 		let trialError: string | null = null;
+		let state: InProcessSessionState | undefined;
 
 		try {
 			await client.start();
+			if (typeof client.getState === "function") {
+				state = await client.getState();
+			}
 			if (instruction) {
 				await client.prompt(instruction);
 			}
@@ -213,11 +272,14 @@ export class InProcessBackend implements ExecutionBackend {
 			files: fileMap,
 			extra: {
 				cell,
+				variant: cell.variant,
 				trialDir,
 				durationSec,
 				sessionStats,
 				usage,
 				error: trialError,
+				systemPrompt: state?.systemPrompt,
+				settings: state?.settings,
 			},
 		};
 	}

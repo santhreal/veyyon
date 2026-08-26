@@ -40,7 +40,7 @@
 - Bundled model resolution persists a content-verified enriched snapshot, and a registry cache stamp moves on every row-content write, and on a row crossing the freshness window it is read under, without treating SQLite sidecar churn or a provider re-verifying models it already had as a change.
 - Added `supportsServerCompaction` capability data for ChatGPT Codex backend models on the Responses API.
 - `@veyyon/evals` is the single package holding every evaluation in this repository, replacing `@veyyon/deepswe-bench`, `@veyyon/metaharness` and `@veyyon/typescript-edit-benchmark`.
-- `evals --suite <name>` runs any suite across five axes (suite × harness × config × prompt variant × model) with `--tasks`, `--repeats`, `--jobs`, `--dry-run` and `--list`.
+- `evals --suite <name,name>` runs any number of suites in one invocation across five axes (suite × harness × config × prompt variant × model), with `--tasks`, `--repeats`, `--jobs`, `--dry-run` and `--list`. Each suite produces its own run record, a `--tasks` entry is scoped to one suite by a `<suite>=` prefix, and `--dataset-dir` is refused when the run names more than one suite.
 - `src/run/plan.ts` decides every trial cell before anything executes, task-major with variants innermost, and refuses an empty selection, an unknown task id or a non-integer repeat count.
 - `src/run/execute.ts` drives a plan through one execution backend with a bounded worker pool, records results in plan order rather than completion order, and runs cleanup for a cell whose trial threw.
 - A trial that throws records `reward: null` with the error text, so a broken container is no longer indistinguishable from an agent that scored zero.
@@ -56,6 +56,8 @@
 - Moved the SQLite run store, experiment grouping layer, and REST/SSE manager server into `src/manager/` and `src/server/`.
 - Moved the React live evaluation dashboard into `src/web/`.
 - Moved benchmark and trace reporting tools into `src/report/`.
+- Harness adapters declare their supported execution backends in their backend map, refusing planning for unbound backend pairs and supporting multi-harness trial matrix generation.
+- The in-process backend loads a config overlay and a prompt-variant overlay per trial, applying settings to the agent session and the prompt text through `VEYYON_EVAL_PROMPTS`, and refuses a missing file, an unknown setting key or a prompt id no registry holds before any trial starts.
 - `Image` accepts an `onDisplayed` callback and reports the cause each time an image starts or stops falling back to a placeholder.
 - `MOTION.reflow` states the curve for a row that reflows its content sideways: 320ms, symmetric, where `expand` is 180ms and front-loaded.
 - `run()` accepts verified command summaries for root help and falls back to loading the full registry when any summary is absent.
@@ -111,6 +113,7 @@
 - The fuzzy-match benchmark fixture now names the canonical text-search source path instead of the retired grep-tool path. No benchmark behavior changed.
 - Settings rows can open nested panels, used by Files → LSP to keep its dependent switches behind one parent row.
 - The prompt registry and the eval prompt-override loader read benchmark prompts from `packages/evals/src/suites/typescript-edit/adapter/prompts/`, the path the consolidated evals package holds them at. No behavior change.
+- `definePromptRows` and `definePromptRegistry` re-read `VEYYON_EVAL_PROMPTS` when it changes instead of applying it once at import, so a prompt variant set per arm reaches the model in a process that runs several arms. The evals harness's in-process backend builds a session without spawning, so every arm after the first was served the first arm's prompt text while the run reported a variant. A read while the variable is unchanged costs one string comparison and allocates nothing.
 - The `prompt-variables` documentation examples name the `search` tool, which is the workspace-search tool that now exists, instead of the retired `grep` tool. No behavior change.
 - `bestEffort` and `optionalResult` are imported from `@veyyon/utils/discarded-fault`. The barrel does not re-export them, so a consumer reaching them through `@veyyon/utils` names the module instead.
 - `relativePathWithinRoot` returns the candidate's own spelling instead of the case-folded copy the containment check used, so on Windows a path under `C:\Users\dev\Projects` no longer comes back lowercased, and a root configured in a different case than the directory on disk resolves to the tail rather than to a `..` walk.
@@ -220,6 +223,7 @@
 - Cursor turns fail immediately when an asynchronous exec-server handler fails; malformed grep line or count values and oversized Connect frames fail before protobuf or buffer exhaustion; and success waits for queued handlers and gRPC trailers so quota and availability statuses are preserved.
 - A rejected API key reports the provider's own sentence from its JSON error envelope, so Command Code's plan-limit refusal reads as "Your Go plan doesn't include API access. Upgrade to Provider or higher at https://commandcode.ai/billing to use these endpoints." instead of the raw body.
 - An API-key login for a provider that declares `storeCredentialsAs` now stores the credential under that provider id, as an OAuth login already did, instead of filing it under the login mechanism's id where nothing reads it.
+- DeepSWE dry-run preflight reports missing or stale binary artifacts with their build command instead of triggering a product build.
 - Mnemopi cost log SQLite database (`cost_log.db`) manages schema migrations via `PRAGMA user_version` and dynamically backfills missing columns on legacy databases.
 - Fixed stock Windows AVX2 detection by trying PowerShell 7 before an isolated modern-addon trial; only explicit shell answers or illegal-instruction exits become verdicts, while missing, incompatible, timed-out, and unexpectedly crashing addons remain unknown.
 - Persisted AVX2 verdicts are schema-versioned and keyed by platform, architecture, and CPU model, so copied or stale caches cannot select a native variant for different hardware.

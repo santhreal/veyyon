@@ -62,6 +62,13 @@ describe("HarnessRegistry & Built-in Harnesses", () => {
 			expect(typeof harness.stageAssets).toBe("function");
 		}
 	});
+	it("veyyon harness explicitly binds pier, harbor, and in-process backends", () => {
+		expect(veyyonAdapter.backends.pier).toBeDefined();
+		expect(veyyonAdapter.backends.pier?.agentImportPath).toBe("veyyon_agent:VeyyonAgent");
+		expect(veyyonAdapter.backends.harbor).toBeDefined();
+		expect(veyyonAdapter.backends.harbor?.agentImportPath).toBe("veyyon_local:VeyyonLocal");
+		expect(veyyonAdapter.backends["in-process"]).toBeDefined();
+	});
 
 	it("preflight returns a valid PreflightVerdict for built-in harnesses", async () => {
 		for (const harness of builtinHarnesses) {

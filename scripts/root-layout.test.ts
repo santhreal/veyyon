@@ -33,8 +33,16 @@ const GENERATED: ReadonlyArray<{ dir: string; ignoreEntry: string; why: string }
 	{ dir: "relative-cache", ignoreEntry: "relative-cache/", why: "Bun cache pile written at the repo root" },
 	{ dir: "packages/evals/runs", ignoreEntry: "runs/", why: "benchmark trial output" },
 	{ dir: "packages/evals/.cache", ignoreEntry: ".cache/", why: "vendored dataset checkouts" },
-	{ dir: "packages/evals/datasets/repo-cache", ignoreEntry: "datasets/repo-cache/", why: "cloned upstream task repositories" },
-	{ dir: "packages/evals/datasets/deep-swe/corpus", ignoreEntry: "datasets/deep-swe/corpus/", why: "vendored DeepSWE task corpus" },
+	{
+		dir: "packages/evals/datasets/repo-cache",
+		ignoreEntry: "datasets/repo-cache/",
+		why: "cloned upstream task repositories",
+	},
+	{
+		dir: "packages/evals/datasets/deep-swe/corpus",
+		ignoreEntry: "datasets/deep-swe/corpus/",
+		why: "vendored DeepSWE task corpus",
+	},
 ];
 
 function trackedFileCount(dir: string): number {

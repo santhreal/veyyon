@@ -53,30 +53,69 @@ export function sha256File(p: string): string {
 	return createHash("sha256").update(fs.readFileSync(p)).digest("hex");
 }
 
-export async function ensureBinaryUpToDate(): Promise<void> {
+export interface BinaryBuildCheck {
+	readonly needsBuild: boolean;
+	readonly binaryPath: string;
+	readonly reason?: "missing" | "stale";
+	readonly newerFile?: string;
+	readonly buildCommand: string;
+}
+
+export function checkBinaryBuildNeeded(customBinaryPath?: string): BinaryBuildCheck {
 	const codingAgentDir = getCodingAgentDir();
-	const veyBinary = getVeyBinaryPath();
+	const veyBinary = customBinaryPath ? path.resolve(customBinaryPath) : getVeyBinaryPath();
 	const srcDir = path.join(codingAgentDir, "src");
-	let needsBuild = !fs.existsSync(veyBinary);
-	if (!needsBuild) {
-		const binaryMtime = fs.statSync(veyBinary).mtimeMs;
-		function checkDir(d: string): boolean {
-			for (const entry of fs.readdirSync(d, { withFileTypes: true })) {
-				const p = path.join(d, entry.name);
-				if (entry.isDirectory()) {
-					if (checkDir(p)) return true;
-				} else if (entry.isFile() && fs.statSync(p).mtimeMs > binaryMtime) {
-					return true;
-				}
-			}
-			return false;
-		}
-		needsBuild = checkDir(srcDir);
+	const buildCommand = "bun --cwd=packages/coding-agent scripts/build-binary.ts";
+
+	if (!fs.existsSync(veyBinary)) {
+		return {
+			needsBuild: true,
+			binaryPath: veyBinary,
+			reason: "missing",
+			buildCommand,
+		};
 	}
-	if (needsBuild) {
+
+	const binaryMtime = fs.statSync(veyBinary).mtimeMs;
+	let newerFile: string | undefined;
+
+	function checkDir(d: string): boolean {
+		if (!fs.existsSync(d)) return false;
+		for (const entry of fs.readdirSync(d, { withFileTypes: true })) {
+			const p = path.join(d, entry.name);
+			if (entry.isDirectory()) {
+				if (checkDir(p)) return true;
+			} else if (entry.isFile() && fs.statSync(p).mtimeMs > binaryMtime) {
+				newerFile = p;
+				return true;
+			}
+		}
+		return false;
+	}
+
+	if (checkDir(srcDir)) {
+		return {
+			needsBuild: true,
+			binaryPath: veyBinary,
+			reason: "stale",
+			newerFile,
+			buildCommand,
+		};
+	}
+
+	return {
+		needsBuild: false,
+		binaryPath: veyBinary,
+		buildCommand,
+	};
+}
+
+export async function ensureBinaryUpToDate(): Promise<void> {
+	const status = checkBinaryBuildNeeded();
+	if (status.needsBuild) {
 		console.log("deep-swe: building fresh vey binary...");
 		const proc = Bun.spawn(["bun", "scripts/build-binary.ts"], {
-			cwd: codingAgentDir,
+			cwd: getCodingAgentDir(),
 			stdout: "inherit",
 			stderr: "inherit",
 		});
@@ -120,9 +159,12 @@ export function ensureAuthDbSeeded(): void {
 	snapshotCredentialStore(decision.source, authDb);
 }
 
-export async function requireStagedAuthCanServeToken(model: string, dryRun = false): Promise<void> {
-	const authDb = getAuthDbPath();
-	const store = await SqliteAuthCredentialStore.open(authDb);
+export async function requireStagedAuthCanServeToken(
+	model: string,
+	dryRun = false,
+	dbPath = getAuthDbPath(),
+): Promise<void> {
+	const store = await SqliteAuthCredentialStore.open(dbPath);
 	let probes: CredentialProbe[];
 	try {
 		const storage = new AuthStorage(store);
@@ -135,7 +177,9 @@ export async function requireStagedAuthCanServeToken(model: string, dryRun = fal
 	const spent = exhaustedPoolFor(probes, model);
 	if (spent) {
 		console.error(`deep-swe: ${describeExhaustedPool(spent, model)}`);
-		if (spentQuotaShouldAbort(spent, dryRun)) process.exit(1);
+		if (spentQuotaShouldAbort(spent, dryRun)) {
+			throw new Error(describeExhaustedPool(spent, model));
+		}
 		console.error("deep-swe: continuing anyway because this is a --dry-run; no trial will be started.\n");
 	}
 
@@ -153,6 +197,7 @@ export async function requireStagedAuthCanServeToken(model: string, dryRun = fal
 		);
 		return;
 	}
-	console.error(describeAuthPreflightFailure(verdict, authDb));
-	process.exit(1);
+	const failureMessage = describeAuthPreflightFailure(verdict, dbPath);
+	console.error(failureMessage);
+	throw new Error(failureMessage);
 }

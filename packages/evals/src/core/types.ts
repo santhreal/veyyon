@@ -177,6 +177,11 @@ export interface HarnessAdapter {
 
 /**
  * Execution context for preparing, running, and cleaning up trials.
+ *
+ * `options` stays an open bag because a suite carries its own flags through it, but the
+ * plan's variants are NOT suite-specific: a backend reads them to load the config and
+ * prompt overlays a cell runs under, and a cast at every such read is how one of them
+ * ends up reading a field nobody writes.
  */
 export interface RunContext {
 	readonly runId: string;
@@ -184,7 +189,7 @@ export interface RunContext {
 	readonly workDir: string;
 	readonly runsDir: string;
 	readonly signal?: AbortSignal;
-	readonly options?: Readonly<Record<string, unknown>>;
+	readonly options?: Readonly<Record<string, unknown>> & { readonly variants?: readonly Variant[] };
 }
 
 /**

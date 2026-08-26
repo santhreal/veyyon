@@ -35,7 +35,8 @@ import type {
 	TrialCell,
 	TrialScore,
 } from "../../src/core";
-import { summarizeRunCells } from "../../src/core";
+import { HarnessNotFoundError, HarnessRegistry, summarizeRunCells } from "../../src/core";
+import { registerBuiltinHarnesses } from "../../src/harnesses";
 import {
 	BackendPreflightError,
 	buildRunPlan,
@@ -44,9 +45,24 @@ import {
 	executeRun,
 	InvalidConcurrencyError,
 	InvalidRepeatsError,
+	type RunPlan,
+	type RunPlanRequest,
 	SuitePreflightError,
+	UnboundHarnessBackendError,
 	UnknownTaskError,
 } from "../../src/run";
+
+// The plan resolves each variant's harness before it expands a single cell, so every
+// call here needs a registry holding the real builtin adapters. This file owns its own
+// registry rather than reading the process-wide default: the default is populated by
+// whichever module happened to import the harness barrel first, which makes a plan
+// assertion pass or fail on test-file grouping.
+const harnesses = new HarnessRegistry();
+registerBuiltinHarnesses(harnesses);
+
+function planRun(request: Omit<RunPlanRequest, "harnessRegistry">): Promise<RunPlan> {
+	return buildRunPlan({ ...request, harnessRegistry: harnesses });
+}
 
 interface ProbeSuiteOptions {
 	readonly tasks?: readonly string[];
@@ -140,7 +156,7 @@ const oneVariant = { harnesses: ["veyyon"], models: ["vendor/model-a"] } as cons
 
 describe("buildRunPlan", () => {
 	it("orders cells task-major with variants innermost and repeats outermost", async () => {
-		const plan = await buildRunPlan({ suite: probeSuite(), selection: twoVariants, repeats: 2 });
+		const plan = await planRun({ suite: probeSuite(), selection: twoVariants, repeats: 2 });
 
 		expect(plan.cells.map(cell => `${cell.repeat}:${cell.task}:${cell.variant}`)).toEqual([
 			"1:task-a:baseline",
@@ -155,14 +171,14 @@ describe("buildRunPlan", () => {
 	});
 
 	it("expands one cell per variant × task when repeats defaults to one", async () => {
-		const plan = await buildRunPlan({ suite: probeSuite(), selection: twoVariants });
+		const plan = await planRun({ suite: probeSuite(), selection: twoVariants });
 
 		expect(plan.cells).toHaveLength(plan.variants.length * plan.tasks.length);
 		expect(plan.repeats).toBe(1);
 	});
 
 	it("describes every requested task, in requested order", async () => {
-		const plan = await buildRunPlan({
+		const plan = await planRun({
 			suite: probeSuite({ tasks: ["a", "b", "c"] }),
 			selection: twoVariants,
 			tasks: ["c", "a"],
@@ -172,7 +188,7 @@ describe("buildRunPlan", () => {
 	});
 
 	it("refuses a requested task the suite does not hold, naming the missing ids", async () => {
-		const attempt = buildRunPlan({
+		const attempt = planRun({
 			suite: probeSuite({ tasks: ["a", "b"] }),
 			selection: twoVariants,
 			tasks: ["a", "ghost", "phantom"],
@@ -183,26 +199,26 @@ describe("buildRunPlan", () => {
 	});
 
 	it("refuses a suite that discovers no tasks rather than reporting an empty pass rate", async () => {
-		const attempt = buildRunPlan({ suite: probeSuite({ tasks: [] }), selection: twoVariants });
+		const attempt = planRun({ suite: probeSuite({ tasks: [] }), selection: twoVariants });
 
 		await expect(attempt).rejects.toThrow(EmptyTaskSelectionError);
 	});
 
 	it.each([0, -1, 1.5])("refuses repeats=%p", async repeats => {
-		const attempt = buildRunPlan({ suite: probeSuite(), selection: twoVariants, repeats });
+		const attempt = planRun({ suite: probeSuite(), selection: twoVariants, repeats });
 
 		await expect(attempt).rejects.toThrow(InvalidRepeatsError);
 	});
 
 	it("carries the suite's dataset provenance into the plan", async () => {
-		const plan = await buildRunPlan({ suite: probeSuite(), selection: twoVariants });
+		const plan = await planRun({ suite: probeSuite(), selection: twoVariants });
 
 		expect(plan.provenance.sha).toBe("deadbeef");
 	});
 
 	it("honours an explicit run id and otherwise generates one naming the suite", async () => {
-		const named = await buildRunPlan({ suite: probeSuite(), selection: twoVariants, runId: "job-17" });
-		const generated = await buildRunPlan({
+		const named = await planRun({ suite: probeSuite(), selection: twoVariants, runId: "job-17" });
+		const generated = await planRun({
 			suite: probeSuite(),
 			selection: twoVariants,
 			now: () => new Date("2026-01-02T03:04:05.678Z"),
@@ -213,7 +229,7 @@ describe("buildRunPlan", () => {
 	});
 
 	it("reports the queue size and every axis in its description", async () => {
-		const plan = await buildRunPlan({ suite: probeSuite(), selection: twoVariants, repeats: 3 });
+		const plan = await planRun({ suite: probeSuite(), selection: twoVariants, repeats: 3 });
 
 		const described = describeRunPlan(plan);
 
@@ -222,11 +238,56 @@ describe("buildRunPlan", () => {
 		expect(described).toContain("models     vendor/model-a");
 		expect(described).toContain("repeats    3");
 	});
+	it("refuses a harness that has no binding for the suite backend, naming harness, suite and backend", async () => {
+		const attempt = planRun({
+			suite: probeSuite(), // backend: "in-process"
+			selection: { harnesses: ["omp"], models: ["vendor/model-a"] }, // omp only binds pier
+		});
+
+		await expect(attempt).rejects.toThrow(UnboundHarnessBackendError);
+		await expect(attempt).rejects.toThrow(/Harness "omp" has no binding for backend "in-process"/);
+		await expect(attempt).rejects.toThrow(/required by suite "probe"/);
+	});
+
+	it("refuses a harness no registry holds, naming it and listing the registered ones", async () => {
+		const attempt = planRun({
+			suite: probeSuite(),
+			selection: { harnesses: ["ghost-agent"], models: ["vendor/model-a"] },
+		});
+
+		await expect(attempt).rejects.toThrow(HarnessNotFoundError);
+		await expect(attempt).rejects.toThrow(/Unknown harness adapter "ghost-agent"/);
+		await expect(attempt).rejects.toThrow(/Registered harnesses: .*veyyon/);
+	});
+
+	it("produces a 2N cell matrix for two harnesses × N tasks in deterministic task-major order", async () => {
+		const plan = await planRun({
+			suite: {
+				...probeSuite({ tasks: ["task-1", "task-2", "task-3"] }),
+				backend: "pier", // both veyyon and omp bind pier
+			},
+			selection: {
+				harnesses: ["veyyon", "omp"],
+				models: ["vendor/model-a"],
+			},
+		});
+
+		expect(plan.variants.map(v => v.harness)).toEqual(["veyyon", "omp"]);
+		expect(plan.cells).toHaveLength(6);
+		expect(plan.cells.map(c => `${c.task}:${c.variant}`)).toEqual([
+			"task-1:veyyon",
+			"task-1:omp",
+			"task-2:veyyon",
+			"task-2:omp",
+			"task-3:veyyon",
+			"task-3:omp",
+		]);
+	});
 });
 
 describe("executeRun", () => {
 	it("records results in plan order even when trials finish out of order", async () => {
-		const plan = await buildRunPlan({ suite: probeSuite(), selection: twoVariants });
+		const plan = await planRun({ suite: probeSuite(), selection: twoVariants });
 		const firstTaskGate = Promise.withResolvers<void>();
 		let remainingSecondTask = 2;
 		const probe = probeBackend({
@@ -257,7 +318,7 @@ describe("executeRun", () => {
 	});
 
 	it.each([1, 2, 3])("holds exactly jobs=%p trials in flight and no more", async jobs => {
-		const plan = await buildRunPlan({ suite: probeSuite({ tasks: ["a", "b", "c", "d"] }), selection: twoVariants });
+		const plan = await planRun({ suite: probeSuite({ tasks: ["a", "b", "c", "d"] }), selection: twoVariants });
 		const probe = probeBackend();
 
 		await executeRun({ plan, backend: probe.backend, workDir: "/work", runsDir: "/runs", jobs });
@@ -267,7 +328,7 @@ describe("executeRun", () => {
 	});
 
 	it("prepares the backend exactly once per run", async () => {
-		const plan = await buildRunPlan({ suite: probeSuite(), selection: twoVariants });
+		const plan = await planRun({ suite: probeSuite(), selection: twoVariants });
 		const probe = probeBackend();
 
 		await executeRun({ plan, backend: probe.backend, workDir: "/work", runsDir: "/runs", jobs: 2 });
@@ -276,7 +337,7 @@ describe("executeRun", () => {
 	});
 
 	it("keeps a thrown trial distinguishable from a real reward of zero", async () => {
-		const plan = await buildRunPlan({
+		const plan = await planRun({
 			suite: probeSuite({
 				tasks: ["boom", "zero"],
 				score: cell => ({
@@ -306,7 +367,7 @@ describe("executeRun", () => {
 	});
 
 	it("counts a thrown trial as an error and a zero as a non-pass in the run summary", async () => {
-		const plan = await buildRunPlan({
+		const plan = await planRun({
 			suite: probeSuite({
 				tasks: ["boom", "zero", "pass"],
 				score: cell => ({
@@ -335,7 +396,7 @@ describe("executeRun", () => {
 	});
 
 	it("cleans up every cell, including one whose trial threw", async () => {
-		const plan = await buildRunPlan({ suite: probeSuite({ tasks: ["ok", "boom"] }), selection: oneVariant });
+		const plan = await planRun({ suite: probeSuite({ tasks: ["ok", "boom"] }), selection: oneVariant });
 		const probe = probeBackend({
 			onRun: async cell => {
 				if (cell.task === "boom") throw new Error("spawn failed");
@@ -349,7 +410,7 @@ describe("executeRun", () => {
 	});
 
 	it("keeps a scored trial when cleanup itself throws", async () => {
-		const plan = await buildRunPlan({ suite: probeSuite({ tasks: ["ok"] }), selection: oneVariant });
+		const plan = await planRun({ suite: probeSuite({ tasks: ["ok"] }), selection: oneVariant });
 		const probe = probeBackend();
 		const backend: ExecutionBackend = {
 			...probe.backend,
@@ -365,7 +426,7 @@ describe("executeRun", () => {
 	});
 
 	it("refuses to start when the suite's preflight fails, naming what is missing", async () => {
-		const plan = await buildRunPlan({
+		const plan = await planRun({
 			suite: probeSuite({
 				preflight: { ok: false, reason: "corpus not acquired", missingRequirements: ["corpus"] },
 			}),
@@ -380,7 +441,7 @@ describe("executeRun", () => {
 	});
 
 	it("refuses to start when the backend's preflight fails, and runs no trial", async () => {
-		const plan = await buildRunPlan({ suite: probeSuite(), selection: twoVariants });
+		const plan = await planRun({ suite: probeSuite(), selection: twoVariants });
 		const probe = probeBackend({
 			preflight: { ok: false, reason: "harbor not found on PATH", missingRequirements: ["harbor"] },
 		});
@@ -393,7 +454,7 @@ describe("executeRun", () => {
 	});
 
 	it.each([0, -2, 2.5])("refuses jobs=%p", async jobs => {
-		const plan = await buildRunPlan({ suite: probeSuite(), selection: twoVariants });
+		const plan = await planRun({ suite: probeSuite(), selection: twoVariants });
 		const probe = probeBackend();
 
 		const attempt = executeRun({ plan, backend: probe.backend, workDir: "/work", runsDir: "/runs", jobs });
@@ -402,7 +463,7 @@ describe("executeRun", () => {
 	});
 
 	it("terminates on abort and returns only the trials that finished", async () => {
-		const plan = await buildRunPlan({
+		const plan = await planRun({
 			suite: probeSuite({ tasks: ["a", "b", "c", "d", "e", "f"] }),
 			selection: oneVariant,
 		});
@@ -429,7 +490,7 @@ describe("executeRun", () => {
 	});
 
 	it("tags the record with the suite identity and dataset sha so two suites cannot merge", async () => {
-		const plan = await buildRunPlan({ suite: probeSuite(), selection: twoVariants, runId: "job-42" });
+		const plan = await planRun({ suite: probeSuite(), selection: twoVariants, runId: "job-42" });
 		const probe = probeBackend();
 
 		const record = await executeRun({ plan, backend: probe.backend, workDir: "/work", runsDir: "/runs" });
@@ -441,7 +502,7 @@ describe("executeRun", () => {
 	});
 
 	it("reports each settled trial once, in completion order, to a progress callback", async () => {
-		const plan = await buildRunPlan({ suite: probeSuite({ tasks: ["slow", "fast"] }), selection: oneVariant });
+		const plan = await planRun({ suite: probeSuite({ tasks: ["slow", "fast"] }), selection: oneVariant });
 		const slowGate = Promise.withResolvers<void>();
 		const probe = probeBackend({
 			onRun: async cell => {

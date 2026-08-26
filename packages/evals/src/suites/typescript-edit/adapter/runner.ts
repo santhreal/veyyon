@@ -7,12 +7,17 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { AgentMessage, ResolvedThinkingLevel, ThinkingLevel } from "@veyyon/agent-core";
-import type { Model, ToolExample } from "@veyyon/ai";
+import type { Model } from "@veyyon/ai";
 import { formatSessionDumpText, RpcClient } from "@veyyon/coding-agent";
 import { formatHashlineHeader, InMemorySnapshotStore } from "@veyyon/hashline";
 import { errorMessage, estimateTokensFromText, isRecord, prompt, splitTextLines } from "@veyyon/utils";
 import { diffLines } from "diff";
-import { discoverSharedInfra, InProcessClient, type SharedInfra } from "../../../backends/in-process/client";
+import {
+	type DumpedTool,
+	discoverSharedInfra,
+	InProcessClient,
+	type SharedInfra,
+} from "../../../backends/in-process/client";
 import { repoRootDir, runsDir } from "../../../paths";
 import { formatDirectory } from "../formatter";
 import type { EditTask } from "../tasks";
@@ -35,7 +40,7 @@ type ConversationDumpSessionState = {
 	systemPrompt?: string[];
 	model?: Model;
 	thinkingLevel?: ThinkingLevel | undefined;
-	dumpTools?: Array<{ name: string; description: string; parameters: unknown; examples?: readonly ToolExample[] }>;
+	dumpTools?: readonly DumpedTool[];
 };
 
 /** Common interface for both RPC and in-process clients */
@@ -108,7 +113,7 @@ type ConversationDumpSnapshot = {
 	systemPrompt?: string[];
 	model?: Model;
 	thinkingLevel?: ThinkingLevel | undefined;
-	dumpTools?: Array<{ name: string; description: string; parameters: unknown; examples?: readonly ToolExample[] }>;
+	dumpTools?: readonly DumpedTool[];
 };
 
 function sanitizeDumpPathSegment(value: string): string {
