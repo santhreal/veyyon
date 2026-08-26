@@ -233,17 +233,25 @@ describe("ManagerServer API", () => {
 
 		const badLaunch = await fetch(`${base}/api/runs`, {
 			method: "POST",
-			headers: { "content-type": "application/json" },
+			headers: { "content-type": "application/json", "x-evals-token": manager.token },
 			body: JSON.stringify({}),
 		});
 		expect(badLaunch.status).toBe(400);
 
-		const cancelUnknown = (await (await fetch(`${base}/api/runs/nope/cancel`, { method: "POST" })).json()) as {
+		const cancelUnknown = (await (
+			await fetch(`${base}/api/runs/nope/cancel`, {
+				method: "POST",
+				headers: { "x-evals-token": manager.token },
+			})
+		).json()) as {
 			cancelled: boolean;
 		};
 		expect(cancelUnknown.cancelled).toBe(false);
 
-		const deleteUnknown = await fetch(`${base}/api/runs/nope`, { method: "DELETE" });
+		const deleteUnknown = await fetch(`${base}/api/runs/nope`, {
+			method: "DELETE",
+			headers: { "x-evals-token": manager.token },
+		});
 		expect(deleteUnknown.status).toBe(404);
 	});
 
@@ -335,11 +343,13 @@ describe("ManagerServer API", () => {
 		});
 		const base = `http://localhost:${server.port}`;
 		const resumeError = async (name: string): Promise<string> => {
-			const res = await fetch(`${base}/api/runs/${name}/resume`, { method: "POST" });
+			const res = await fetch(`${base}/api/runs/${name}/resume`, {
+				method: "POST",
+				headers: { "x-evals-token": manager.token },
+			});
 			expect(res.status).toBe(400);
 			return ((await res.json()) as { error: string }).error;
 		};
-
 		expect(await resumeError("nope")).toMatch(/not found/);
 		expect(await resumeError("edit-x")).toMatch(/only harbor/);
 		expect(await resumeError("job-live")).toMatch(/already running/);
@@ -378,7 +388,7 @@ describe("ManagerServer API", () => {
 		// Create: registered id is browsable before any run exists.
 		const created = await fetch(`${base}/api/experiments`, {
 			method: "POST",
-			headers: { "content-type": "application/json" },
+			headers: { "content-type": "application/json", "x-evals-token": manager.token },
 			body: JSON.stringify({ id: "fresh", goal: "does X beat Y?" }),
 		});
 		expect(created.status).toBe(201);
@@ -399,12 +409,11 @@ describe("ManagerServer API", () => {
 		for (const id of ["bad-id", ""]) {
 			const res = await fetch(`${base}/api/experiments`, {
 				method: "POST",
-				headers: { "content-type": "application/json" },
+				headers: { "content-type": "application/json", "x-evals-token": manager.token },
 				body: JSON.stringify({ id }),
 			});
 			expect(res.status).toBe(400);
 		}
-
 		// Browse: list filters.
 		const filtered = (await (await fetch(`${base}/api/runs?experiment=crud`)).json()) as Array<{
 			jobName: string;
@@ -418,24 +427,46 @@ describe("ManagerServer API", () => {
 		expect(q.map(e => e.id)).toEqual(["fresh"]);
 
 		// Delete run: live runs are protected, finished runs vanish from DB and disk.
-		const liveDelete = await fetch(`${base}/api/runs/live-run`, { method: "DELETE" });
+		// Delete run: live runs are protected, finished runs vanish from DB and disk.
+		const liveDelete = await fetch(`${base}/api/runs/live-run`, {
+			method: "DELETE",
+			headers: { "x-evals-token": manager.token },
+		});
 		expect(liveDelete.status).toBe(400);
-		const runDelete = await fetch(`${base}/api/runs/crud-treat`, { method: "DELETE" });
+		const runDelete = await fetch(`${base}/api/runs/crud-treat`, {
+			method: "DELETE",
+			headers: { "x-evals-token": manager.token },
+		});
 		expect(runDelete.status).toBe(200);
 		expect(fs.existsSync(path.join(jobsDir, "crud-treat"))).toBe(false);
 		expect(manager.store.getRun("crud-treat")).toBeNull();
 
 		// Delete experiment: remaining arm rows + dirs + goal row all go; 404 after.
-		const expDelete = (await (await fetch(`${base}/api/experiments/crud`, { method: "DELETE" })).json()) as {
+		const expDelete = (await (
+			await fetch(`${base}/api/experiments/crud`, {
+				method: "DELETE",
+				headers: { "x-evals-token": manager.token },
+			})
+		).json()) as {
 			deletedRuns: string[];
 		};
 		expect(expDelete.deletedRuns).toEqual(["crud-base"]);
 		expect(fs.existsSync(path.join(jobsDir, "crud-base"))).toBe(false);
 		expect((await fetch(`${base}/api/experiments/crud`)).status).toBe(404);
-		expect((await fetch(`${base}/api/experiments/unknown`, { method: "DELETE" })).status).toBe(404);
+		expect(
+			(
+				await fetch(`${base}/api/experiments/unknown`, {
+					method: "DELETE",
+					headers: { "x-evals-token": manager.token },
+				})
+			).status,
+		).toBe(404);
 
 		// Delete experiment with a live arm: refused, nothing removed.
-		const liveExpDelete = await fetch(`${base}/api/experiments/live`, { method: "DELETE" });
+		const liveExpDelete = await fetch(`${base}/api/experiments/live`, {
+			method: "DELETE",
+			headers: { "x-evals-token": manager.token },
+		});
 		expect(liveExpDelete.status).toBe(400);
 		expect(manager.store.getRun("live-run")).not.toBeNull();
 	});

@@ -7,6 +7,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { clampLow, errorMessage, readPipeText } from "@veyyon/utils";
 import YAML from "yaml";
+import { cleanupPierContainers } from "../../../../backends/pier/runner";
 import {
 	aggregateSystemComparison,
 	COMPARISON_MODEL,
@@ -753,9 +754,7 @@ export async function runBench(argv: string[]): Promise<void> {
 		if (attempt > 1 && fs.existsSync(jobDir)) {
 			fs.rmSync(jobDir, { recursive: true, force: true });
 			try {
-				await Bun.spawn(["sh", "-c", `docker rm -f $(docker ps -aq --filter name=${jobName}) 2>/dev/null || true`])
-					.exited;
-				await Bun.spawn(["docker", "network", "prune", "-f"]).exited;
+				await cleanupPierContainers(jobName);
 			} catch {
 				/* best effort */
 			}

@@ -1,8 +1,11 @@
 import { describe, expect, it } from "bun:test";
+import * as fs from "node:fs";
 import { existsSync, readdirSync } from "node:fs";
+import * as path from "node:path";
 import { join, resolve } from "node:path";
 import { requireSuite, SuiteRegistry } from "../../../src/core/suite-registry";
 import type { SuiteContext, TrialArtifacts, TrialCell } from "../../../src/core/types";
+import { internalScratchDir } from "../../../src/paths";
 import {
 	getDefaultTerminalBenchCacheDir,
 	TERMINAL_BENCH_COMMIT_SHA,
@@ -12,6 +15,32 @@ import { registerTerminalBenchSuite } from "../../../src/suites/terminal-bench/r
 import { TerminalBenchSuite, terminalBenchSuite } from "../../../src/suites/terminal-bench/suite";
 import { loadTaskConfig } from "../../../src/suites/terminal-bench/task-config";
 
+function createTempTrialDir(files: Record<string, string>): {
+	trialDir: string;
+	filePaths: Record<string, string>;
+	cleanup: () => void;
+} {
+	const dir = path.join(internalScratchDir(), `tb-test-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+	fs.mkdirSync(dir, { recursive: true });
+	const filePaths: Record<string, string> = {};
+	for (const [rel, content] of Object.entries(files)) {
+		const full = path.join(dir, rel);
+		fs.mkdirSync(path.dirname(full), { recursive: true });
+		fs.writeFileSync(full, content, "utf8");
+		filePaths[rel] = full;
+	}
+	return {
+		trialDir: dir,
+		filePaths,
+		cleanup: () => {
+			try {
+				fs.rmSync(dir, { recursive: true, force: true });
+			} catch {
+				/* ignore */
+			}
+		},
+	};
+}
 describe("TerminalBenchSuite — EvalSuite contract", () => {
 	it("registers with the global suite registry under 'terminal-bench'", () => {
 		registerTerminalBenchSuite();
@@ -251,190 +280,225 @@ describe("TerminalBenchSuite — EvalSuite contract", () => {
 		};
 
 		it("scores 1.0 from reward.json", async () => {
-			const artifacts: TrialArtifacts = {
-				files: {
-					"verifier/reward.json": JSON.stringify({ reward: 1.0 }),
-				},
-			};
-
-			const score = await terminalBenchSuite.scoreTrial(dummyCell, artifacts);
-			expect(score.reward).toBe(1.0);
-			expect(score.partial).toBe(1.0);
-			expect(score.error).toBeNull();
+			const { trialDir, filePaths, cleanup } = createTempTrialDir({
+				"verifier/reward.json": JSON.stringify({ reward: 1.0 }),
+			});
+			try {
+				const artifacts: TrialArtifacts = { trialDir, filePaths };
+				const score = await terminalBenchSuite.scoreTrial(dummyCell, artifacts);
+				expect(score.reward).toBe(1.0);
+				expect(score.partial).toBe(1.0);
+				expect(score.error).toBeNull();
+			} finally {
+				cleanup();
+			}
 		});
 
 		it("distinguishes scored-zero from an error (reward: 0.0, error: null)", async () => {
-			const artifacts: TrialArtifacts = {
-				files: {
-					"verifier/reward.json": JSON.stringify({ reward: 0.0 }),
-				},
-			};
-
-			const score = await terminalBenchSuite.scoreTrial(dummyCell, artifacts);
-			expect(score.reward).toBe(0.0);
-			expect(score.partial).toBe(0.0);
-			expect(score.error).toBeNull();
+			const { trialDir, filePaths, cleanup } = createTempTrialDir({
+				"verifier/reward.json": JSON.stringify({ reward: 0.0 }),
+			});
+			try {
+				const artifacts: TrialArtifacts = { trialDir, filePaths };
+				const score = await terminalBenchSuite.scoreTrial(dummyCell, artifacts);
+				expect(score.reward).toBe(0.0);
+				expect(score.partial).toBe(0.0);
+				expect(score.error).toBeNull();
+			} finally {
+				cleanup();
+			}
 		});
 
 		it("scores partial reward from reward.json", async () => {
-			const artifacts: TrialArtifacts = {
-				files: {
-					"verifier/reward.json": JSON.stringify({ reward: 0.75, partial: 0.75 }),
-				},
-			};
-
-			const score = await terminalBenchSuite.scoreTrial(dummyCell, artifacts);
-			expect(score.reward).toBe(0.75);
-			expect(score.partial).toBe(0.75);
-			expect(score.error).toBeNull();
+			const { trialDir, filePaths, cleanup } = createTempTrialDir({
+				"verifier/reward.json": JSON.stringify({ reward: 0.75, partial: 0.75 }),
+			});
+			try {
+				const artifacts: TrialArtifacts = { trialDir, filePaths };
+				const score = await terminalBenchSuite.scoreTrial(dummyCell, artifacts);
+				expect(score.reward).toBe(0.75);
+				expect(score.partial).toBe(0.75);
+				expect(score.error).toBeNull();
+			} finally {
+				cleanup();
+			}
 		});
 
 		it("scores reward from reward.txt when reward.json is absent", async () => {
-			const artifacts: TrialArtifacts = {
-				files: {
-					"verifier/reward.txt": "1\n",
-				},
-			};
-
-			const score = await terminalBenchSuite.scoreTrial(dummyCell, artifacts);
-			expect(score.reward).toBe(1.0);
-			expect(score.error).toBeNull();
+			const { trialDir, filePaths, cleanup } = createTempTrialDir({
+				"verifier/reward.txt": "1\n",
+			});
+			try {
+				const artifacts: TrialArtifacts = { trialDir, filePaths };
+				const score = await terminalBenchSuite.scoreTrial(dummyCell, artifacts);
+				expect(score.reward).toBe(1.0);
+				expect(score.error).toBeNull();
+			} finally {
+				cleanup();
+			}
 		});
 
 		it("prefers reward.json over reward.txt when both exist", async () => {
-			const artifacts: TrialArtifacts = {
-				files: {
-					"verifier/reward.json": JSON.stringify({ reward: 1.0 }),
-					"verifier/reward.txt": "0\n",
-				},
-			};
-
-			const score = await terminalBenchSuite.scoreTrial(dummyCell, artifacts);
-			expect(score.reward).toBe(1.0);
-			expect(score.error).toBeNull();
+			const { trialDir, filePaths, cleanup } = createTempTrialDir({
+				"verifier/reward.json": JSON.stringify({ reward: 1.0 }),
+				"verifier/reward.txt": "0\n",
+			});
+			try {
+				const artifacts: TrialArtifacts = { trialDir, filePaths };
+				const score = await terminalBenchSuite.scoreTrial(dummyCell, artifacts);
+				expect(score.reward).toBe(1.0);
+				expect(score.error).toBeNull();
+			} finally {
+				cleanup();
+			}
 		});
 
 		it("falls back to reward.txt if reward.json is unparseable JSON", async () => {
-			const artifacts: TrialArtifacts = {
-				files: {
-					"verifier/reward.json": "{ broken json",
-					"verifier/reward.txt": "1.0",
-				},
-			};
-
-			const score = await terminalBenchSuite.scoreTrial(dummyCell, artifacts);
-			expect(score.reward).toBe(1.0);
-			expect(score.error).toBeNull();
+			const { trialDir, filePaths, cleanup } = createTempTrialDir({
+				"verifier/reward.json": "{ broken json",
+				"verifier/reward.txt": "1.0",
+			});
+			try {
+				const artifacts: TrialArtifacts = { trialDir, filePaths };
+				const score = await terminalBenchSuite.scoreTrial(dummyCell, artifacts);
+				expect(score.reward).toBe(1.0);
+				expect(score.error).toBeNull();
+			} finally {
+				cleanup();
+			}
 		});
 
 		it("maps empty reward files to an errored score with reward: null", async () => {
-			const artifacts: TrialArtifacts = {
-				files: {
-					"verifier/reward.json": "   ",
-					"verifier/reward.txt": "",
-				},
-			};
-
-			const score = await terminalBenchSuite.scoreTrial(dummyCell, artifacts);
-			expect(score.reward).toBeNull();
-			expect(score.error).toContain("empty");
+			const { trialDir, filePaths, cleanup } = createTempTrialDir({
+				"verifier/reward.json": "   ",
+				"verifier/reward.txt": "",
+			});
+			try {
+				const artifacts: TrialArtifacts = { trialDir, filePaths };
+				const score = await terminalBenchSuite.scoreTrial(dummyCell, artifacts);
+				expect(score.reward).toBeNull();
+				expect(score.error).toContain("empty");
+			} finally {
+				cleanup();
+			}
 		});
 
 		it("maps unparseable reward text to an errored score", async () => {
-			const artifacts: TrialArtifacts = {
-				files: {
-					"verifier/reward.txt": "NOT_A_FLOAT_OR_NUMBER",
-				},
-			};
-
-			const score = await terminalBenchSuite.scoreTrial(dummyCell, artifacts);
-			expect(score.reward).toBeNull();
-			expect(score.error).toContain("Unparseable reward.txt");
+			const { trialDir, filePaths, cleanup } = createTempTrialDir({
+				"verifier/reward.txt": "NOT_A_FLOAT_OR_NUMBER",
+			});
+			try {
+				const artifacts: TrialArtifacts = { trialDir, filePaths };
+				const score = await terminalBenchSuite.scoreTrial(dummyCell, artifacts);
+				expect(score.reward).toBeNull();
+				expect(score.error).toContain("Unparseable reward.txt");
+			} finally {
+				cleanup();
+			}
 		});
 
 		it("maps missing reward files to an errored score", async () => {
-			const artifacts: TrialArtifacts = {
-				files: {},
-			};
-
-			const score = await terminalBenchSuite.scoreTrial(dummyCell, artifacts);
-			expect(score.reward).toBeNull();
-			expect(score.error).toContain("Missing reward file");
+			const { trialDir, filePaths, cleanup } = createTempTrialDir({});
+			try {
+				const artifacts: TrialArtifacts = { trialDir, filePaths };
+				const score = await terminalBenchSuite.scoreTrial(dummyCell, artifacts);
+				expect(score.reward).toBeNull();
+				expect(score.error).toContain("Missing reward file");
+			} finally {
+				cleanup();
+			}
 		});
 
 		it("carries usage metrics from result.json when present", async () => {
-			const artifacts: TrialArtifacts = {
-				files: {
-					"verifier/reward.json": JSON.stringify({ reward: 1.0 }),
-					"result.json": JSON.stringify({
-						agent_result: {
-							n_input_tokens: 1250,
-							n_output_tokens: 340,
-							n_cache_tokens: 500,
-							cost_usd: 0.012,
-						},
-						started_at: "2026-08-25T10:00:00Z",
-						finished_at: "2026-08-25T10:01:30Z",
-					}),
-				},
-			};
-
-			const score = await terminalBenchSuite.scoreTrial(dummyCell, artifacts);
-			expect(score.reward).toBe(1.0);
-			expect(score.usage).not.toBeNull();
-			expect(score.usage?.inputTokens).toBe(1250);
-			expect(score.usage?.outputTokens).toBe(340);
-			expect(score.usage?.cacheTokens).toBe(500);
-			expect(score.usage?.costUsd).toBe(0.012);
-			expect(score.usage?.durationSec).toBe(90);
+			const { trialDir, filePaths, cleanup } = createTempTrialDir({
+				"verifier/reward.json": JSON.stringify({ reward: 1.0 }),
+				"result.json": JSON.stringify({
+					agent_result: {
+						n_input_tokens: 1250,
+						n_output_tokens: 340,
+						n_cache_tokens: 500,
+						cost_usd: 0.012,
+					},
+					started_at: "2026-08-25T10:00:00Z",
+					finished_at: "2026-08-25T10:01:30Z",
+				}),
+			});
+			try {
+				const artifacts: TrialArtifacts = { trialDir, filePaths };
+				const score = await terminalBenchSuite.scoreTrial(dummyCell, artifacts);
+				expect(score.reward).toBe(1.0);
+				expect(score.usage).not.toBeNull();
+				expect(score.usage?.inputTokens).toBe(1250);
+				expect(score.usage?.outputTokens).toBe(340);
+				expect(score.usage?.cacheTokens).toBe(500);
+				expect(score.usage?.costUsd).toBe(0.012);
+				expect(score.usage?.durationSec).toBe(90);
+			} finally {
+				cleanup();
+			}
 		});
 
 		describe("multi-step tasks", () => {
 			it("computes mean strategy across steps (1.0 and 0.0 -> 0.5)", async () => {
-				const artifacts: TrialArtifacts = {
-					files: {
-						"step_0/verifier/reward.json": JSON.stringify({ reward: 1.0 }),
-						"step_1/verifier/reward.json": JSON.stringify({ reward: 0.0 }),
-					},
-					extra: {
-						multi_step_reward_strategy: "mean",
-					},
-				};
-
-				const score = await terminalBenchSuite.scoreTrial(dummyCell, artifacts);
-				expect(score.reward).toBe(0.5);
-				expect(score.partial).toBe(0.5);
-				expect(score.error).toBeNull();
+				const { trialDir, filePaths, cleanup } = createTempTrialDir({
+					"step_0/verifier/reward.json": JSON.stringify({ reward: 1.0 }),
+					"step_1/verifier/reward.json": JSON.stringify({ reward: 0.0 }),
+				});
+				try {
+					const artifacts: TrialArtifacts = {
+						trialDir,
+						filePaths,
+						extra: {
+							multi_step_reward_strategy: "mean",
+						},
+					};
+					const score = await terminalBenchSuite.scoreTrial(dummyCell, artifacts);
+					expect(score.reward).toBe(0.5);
+					expect(score.partial).toBe(0.5);
+					expect(score.error).toBeNull();
+				} finally {
+					cleanup();
+				}
 			});
 
 			it("computes final strategy across steps (1.0 and 0.0 -> 0.0)", async () => {
-				const artifacts: TrialArtifacts = {
-					files: {
-						"step_0/verifier/reward.json": JSON.stringify({ reward: 1.0 }),
-						"step_1/verifier/reward.json": JSON.stringify({ reward: 0.0 }),
-					},
-					extra: {
-						multi_step_reward_strategy: "final",
-					},
-				};
-
-				const score = await terminalBenchSuite.scoreTrial(dummyCell, artifacts);
-				expect(score.reward).toBe(0.0);
-				expect(score.partial).toBe(0.5);
-				expect(score.error).toBeNull();
+				const { trialDir, filePaths, cleanup } = createTempTrialDir({
+					"step_0/verifier/reward.json": JSON.stringify({ reward: 1.0 }),
+					"step_1/verifier/reward.json": JSON.stringify({ reward: 0.0 }),
+				});
+				try {
+					const artifacts: TrialArtifacts = {
+						trialDir,
+						filePaths,
+						extra: {
+							multi_step_reward_strategy: "final",
+						},
+					};
+					const score = await terminalBenchSuite.scoreTrial(dummyCell, artifacts);
+					expect(score.reward).toBe(0.0);
+					expect(score.partial).toBe(0.5);
+					expect(score.error).toBeNull();
+				} finally {
+					cleanup();
+				}
 			});
 
 			it("propagates step failure as an error score", async () => {
-				const artifacts: TrialArtifacts = {
-					files: {
-						"step_0/verifier/reward.json": JSON.stringify({ reward: 1.0 }),
-						"step_1/verifier/reward.txt": "CORRUPTED",
-					},
-				};
-
-				const score = await terminalBenchSuite.scoreTrial(dummyCell, artifacts);
-				expect(score.reward).toBeNull();
-				expect(score.error).toContain("Step 'step_1' failed");
+				const { trialDir, filePaths, cleanup } = createTempTrialDir({
+					"step_0/verifier/reward.json": JSON.stringify({ reward: 1.0 }),
+					"step_1/verifier/reward.txt": "CORRUPTED",
+				});
+				try {
+					const artifacts: TrialArtifacts = {
+						trialDir,
+						filePaths,
+					};
+					const score = await terminalBenchSuite.scoreTrial(dummyCell, artifacts);
+					expect(score.reward).toBeNull();
+					expect(score.error).toContain("Step 'step_1' failed");
+				} finally {
+					cleanup();
+				}
 			});
 		});
 

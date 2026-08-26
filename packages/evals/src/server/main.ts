@@ -21,13 +21,14 @@
  *   GET    /api/runs/:name/traces/:trace  → normalized trace
  *   GET    /api/events                    → SSE: run-list snapshots on change
  */
+import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { Server, Subprocess } from "bun";
 import { harborRunnerArgs, type LaunchRequest } from "../backends/harbor/launch-args";
 import { BENCHMARK_DEFINITIONS } from "../manager/benchmarks";
 import { buildExperiments, experimentDetail, experimentOf } from "../manager/experiments";
-import { type LaunchRecord, type RunRole, type RunRow, RunStore } from "../manager/store";
+import { assertSafeJobName, type LaunchRecord, type RunRole, type RunRow, RunStore } from "../manager/store";
 
 /** PUT /api/experiments/:id body — goal and per-run role/note/label metadata. */
 export interface ExperimentMetaUpdate {
@@ -77,22 +78,31 @@ interface SseClient {
 	state: SseState;
 }
 
-function parseServerArgs(argv: string[]): { port: number; jobsDir: string } {
+function parseServerArgs(argv: string[]): { port: number; host: string; jobsDir: string; token?: string } {
 	let port = 4700;
+	let host = "127.0.0.1";
 	let jobsDir = harborJobsDir();
+	let token: string | undefined;
 	for (let i = 0; i < argv.length; i++) {
 		if (argv[i] === "--port" && argv[i + 1]) port = Number(argv[++i]);
+		else if (argv[i] === "--host" && argv[i + 1]) host = argv[++i];
 		else if (argv[i] === "--jobs-dir" && argv[i + 1]) jobsDir = path.resolve(argv[++i]);
+		else if (argv[i] === "--token" && argv[i + 1]) token = argv[++i];
 	}
 	if (!Number.isSafeInteger(port) || port < 1 || port > 65535) throw new Error("--port must be 1..65535");
-	return { port, jobsDir };
+	return { port, host, jobsDir, token };
 }
 
-/** Job names are single path segments; anything else could escape the jobs dir. */
-function assertSafeJobName(jobName: string): void {
-	if (!jobName || jobName === "." || jobName === ".." || /[/\\]/.test(jobName)) {
-		throw new Error(`invalid job name: ${jobName}`);
+function sanitizeErrorMessage(err: unknown, jobsDir?: string): string {
+	let msg = errorMessage(err);
+	if (jobsDir) {
+		msg = msg.replaceAll(jobsDir, "<jobsDir>");
 	}
+	// Redact absolute POSIX filesystem paths (/a/b/c)
+	msg = msg.replace(/(?:\/[a-zA-Z0-9._-]+){2,}/g, "<path>");
+	// Redact Windows absolute filesystem paths (C:\a\b)
+	msg = msg.replace(/[a-zA-Z]:\\(?:[a-zA-Z0-9._-]+\\?)+/g, "<path>");
+	return msg;
 }
 
 /** True when `pid` names a live process. A null pid is never live. */
@@ -183,23 +193,30 @@ export class ManagerServer {
 	#syncTimer: Timer | undefined;
 	#server: Server<undefined> | null = null;
 	#stopped = false;
+	#token: string;
 	readonly jobsDir: string;
 
-	constructor(jobsDir: string, dbPath?: string) {
+	constructor(jobsDir: string, dbPath?: string, token?: string) {
 		this.jobsDir = jobsDir;
 		this.#store = new RunStore(jobsDir, dbPath);
+		this.#token = token ?? process.env.VEYYON_EVALS_TOKEN ?? crypto.randomUUID().replace(/-/g, "");
+	}
+
+	get token(): string {
+		return this.#token;
 	}
 
 	get store(): RunStore {
 		return this.#store;
 	}
 
-	start(port: number): Server<undefined> {
+	start(port: number, host = "127.0.0.1"): Server<undefined> {
 		this.#store.discover();
 		this.#store.syncAll();
 		this.#syncTimer = setInterval(() => this.#tick(), 2000);
 		this.#server = Bun.serve({
 			port,
+			hostname: host,
 			idleTimeout: 0,
 			// Bun bundles the dashboard (React + TSX) from the HTML import and
 			// serves it on the same port as the API — one process, no Vite.
@@ -252,7 +269,25 @@ export class ManagerServer {
 	async #route(request: Request): Promise<Response> {
 		const url = new URL(request.url);
 		const p = url.pathname;
+		const method = request.method.toUpperCase();
 		try {
+			if (p === "/api/token" && method === "GET") {
+				return Response.json({ token: this.#token });
+			}
+			if (method !== "GET" && method !== "HEAD" && method !== "OPTIONS") {
+				const authHeader = request.headers.get("authorization") ?? "";
+				const tokenHeader = request.headers.get("x-evals-token") ?? "";
+				const bearerMatch = authHeader.match(/^Bearer\s+(.+)$/i);
+				const providedToken = (
+					bearerMatch ? bearerMatch[1] : tokenHeader || url.searchParams.get("token") || ""
+				).trim();
+				if (!providedToken || providedToken !== this.#token) {
+					return Response.json(
+						{ error: "unauthorized: valid token required for mutating requests" },
+						{ status: 401 },
+					);
+				}
+			}
 			if (p === "/api/events") return this.#sseResponse();
 			if (p === "/api/benchmarks" && request.method === "GET") {
 				return Response.json(BENCHMARK_DEFINITIONS);
@@ -337,7 +372,7 @@ export class ManagerServer {
 			}
 			return Response.json({ error: "not found" }, { status: 404 });
 		} catch (err) {
-			const message = errorMessage(err);
+			const message = sanitizeErrorMessage(err, this.jobsDir);
 			return Response.json({ error: message }, { status: 400 });
 		}
 	}
@@ -379,6 +414,7 @@ export class ManagerServer {
 		const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
 		const modelSlug = request.model.replace(/[^a-zA-Z0-9]+/g, "-");
 		const jobName = request.jobName ?? `${modelSlug}-${stamp}`;
+		assertSafeJobName(jobName);
 		if (this.#children.has(jobName) || this.#store.getRun(jobName)?.status === "running") {
 			throw new Error(`run ${jobName} is already running`);
 		}
@@ -759,21 +795,21 @@ function isDevStreamTeardown(err: unknown): boolean {
 if (import.meta.main) {
 	// `bun --hot` re-evaluates this module in-place: retire the previous
 	// instance first, or its sync ticker and sqlite connection leak per reload.
-	const host = globalThis as typeof globalThis & {
+	const globalHost = globalThis as typeof globalThis & {
 		__evalsServer?: ManagerServer;
 		__evalsHooks?: boolean;
 	};
-	await host.__evalsServer?.stop();
-	const { port, jobsDir } = parseServerArgs(process.argv.slice(2));
-	const manager = new ManagerServer(jobsDir);
-	host.__evalsServer = manager;
-	const server = manager.start(port);
-	process.stdout.write(`evals manager listening on http://localhost:${server.port} (jobs: ${jobsDir})\n`);
+	await globalHost.__evalsServer?.stop();
+	const { port, host, jobsDir, token } = parseServerArgs(process.argv.slice(2));
+	const manager = new ManagerServer(jobsDir, undefined, token);
+	globalHost.__evalsServer = manager;
+	const server = manager.start(port, host);
+	process.stdout.write(`evals manager listening on http://${host}:${server.port} (jobs: ${jobsDir})\n`);
 	// Process-wide hooks register once; `--hot` re-evals reuse them via `host`.
-	if (!host.__evalsHooks) {
-		host.__evalsHooks = true;
+	if (!globalHost.__evalsHooks) {
+		globalHost.__evalsHooks = true;
 		const shutdown = async () => {
-			await host.__evalsServer?.stop();
+			await globalHost.__evalsServer?.stop();
 			process.exit(0);
 		};
 		process.on("SIGINT", shutdown);

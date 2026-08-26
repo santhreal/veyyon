@@ -16,7 +16,11 @@ import {
 	SessionManager,
 	Settings,
 } from "@veyyon/coding-agent";
-import { applyPromptOverrides, loadAndValidatePromptOverlay } from "./overlays";
+import {
+	applyPromptOverridesToSystemPrompt,
+	loadAndValidateConfigOverlay,
+	loadAndValidatePromptOverlay,
+} from "./overlays";
 
 export type InProcessEventListener = (event: AgentEvent) => void;
 
@@ -82,24 +86,12 @@ export interface DiscoverSharedInfraOptions {
 }
 
 /** Discover shared infrastructure once for the entire benchmark run. */
-export async function discoverSharedInfra(options: DiscoverSharedInfraOptions = {}): Promise<SharedInfra> {
+export async function discoverSharedInfra(_options: DiscoverSharedInfraOptions = {}): Promise<SharedInfra> {
 	const authStorage = await discoverAuthStorage();
 	try {
 		const modelRegistry = new ModelRegistry(authStorage);
-
-		// Initialize global Settings singleton (required by code paths that use the global `settings` proxy)
-		const overrides: Record<string, unknown> = {};
-		if (options.editVariant && options.editVariant !== "auto") {
-			overrides["edit.mode"] = options.editVariant;
-		}
-		if (options.editFuzzy !== undefined && options.editFuzzy !== "auto") {
-			overrides["edit.fuzzyMatch"] = options.editFuzzy;
-		}
-		if (options.editFuzzyThreshold !== undefined && options.editFuzzyThreshold !== "auto") {
-			overrides["edit.fuzzyThreshold"] = options.editFuzzyThreshold;
-		}
-		await Settings.init({ cwd: options.cwd, overrides });
-
+		// Do NOT call global Settings.init() here: each trial must create its own isolated Settings
+		// instance via Settings.loadIsolated() to avoid cross-trial settings contamination when running concurrently.
 		return { authStorage, modelRegistry };
 	} catch (error) {
 		authStorage.close();
@@ -116,7 +108,6 @@ export class InProcessClient {
 	#sessionResult: CreateAgentSessionResult | null = null;
 	#eventListeners: InProcessEventListener[] = [];
 	#unsubscribe: (() => void) | null = null;
-	#restorePrompts: (() => void) | null = null;
 	#options: InProcessClientOptions;
 
 	constructor(options: InProcessClientOptions) {
@@ -124,12 +115,14 @@ export class InProcessClient {
 	}
 
 	async start(): Promise<void> {
-		const shared = this.#options.shared;
-
 		// Build settings instance with config overlay and edit overrides if applicable
 		let sessionSettings = this.#options.settings;
 		if (!sessionSettings) {
 			const overrides: Record<string, unknown> = {};
+			if (this.#options.configPath) {
+				const loaded = await loadAndValidateConfigOverlay(this.#options.configPath, this.#options.cwd);
+				Object.assign(overrides, loaded.parsed);
+			}
 			if (this.#options.editVariant && this.#options.editVariant !== "auto") {
 				overrides["edit.mode"] = this.#options.editVariant;
 			}
@@ -147,27 +140,29 @@ export class InProcessClient {
 				overrides,
 			});
 		}
-
-		// Apply prompt overrides if configured
 		let promptOverrides = this.#options.promptOverrides;
 		if (!promptOverrides && this.#options.promptVariantPath) {
 			const loaded = await loadAndValidatePromptOverlay(this.#options.promptVariantPath, this.#options.cwd);
 			promptOverrides = loaded.overrides;
 		}
-		if (promptOverrides && Object.keys(promptOverrides).length > 0) {
-			this.#restorePrompts = applyPromptOverrides(promptOverrides);
-		}
 
 		const result = await createAgentSession({
 			cwd: this.#options.cwd,
 			modelPattern: this.#options.model,
-			authStorage: shared?.authStorage,
-			modelRegistry: shared?.modelRegistry,
+			authStorage: this.#options.shared?.authStorage,
+			modelRegistry: this.#options.shared?.modelRegistry,
 			settings: sessionSettings,
 			sessionManager: SessionManager.inMemory(this.#options.cwd),
-			systemPrompt: this.#options.appendSystemPrompt
-				? (defaultPrompt: string[]) => [...defaultPrompt, this.#options.appendSystemPrompt!]
-				: undefined,
+			systemPrompt: (defaultPrompt: string[]) => {
+				let promptBlocks = defaultPrompt;
+				if (promptOverrides && Object.keys(promptOverrides).length > 0) {
+					promptBlocks = applyPromptOverridesToSystemPrompt(promptBlocks, promptOverrides);
+				}
+				if (this.#options.appendSystemPrompt) {
+					promptBlocks = [...promptBlocks, this.#options.appendSystemPrompt];
+				}
+				return promptBlocks;
+			},
 			toolNames: this.#options.tools ?? ["read", "edit", "write"],
 			hasUI: false,
 			enableMCP: false,
@@ -265,8 +260,6 @@ export class InProcessClient {
 		}
 		this.#sessionResult = null;
 		this.#eventListeners = [];
-		this.#restorePrompts?.();
-		this.#restorePrompts = null;
 	}
 
 	[Symbol.dispose](): void {

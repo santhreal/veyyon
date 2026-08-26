@@ -15,23 +15,9 @@ import type {
 } from "../../core/types";
 import { comparisonTaskListPath, resolvePackagePath, taskCorpusDir, taskListsDir } from "../../paths";
 import { parseTaskListProvenance } from "./src/aggregate";
-import {
-	AUTH_DB_SOURCES,
-	checkBinaryBuildNeeded,
-	ensureAuthDbSeeded,
-	ensureBinaryUpToDate,
-	getAuthDbPath,
-	getVeyBinaryPath,
-	requireStagedAuthCanServeToken,
-} from "./src/runner/preflight";
+import { checkBinaryBuildNeeded } from "./src/runner/preflight";
 import { parseTrialResult } from "./src/runner/trial-result";
-import {
-	budgetedTrialTimeoutSec,
-	decideAuthSeed,
-	parseTaskTimeBudget,
-	probeCredentialStore,
-	resolveBinaryPin,
-} from "./src/shared";
+import { budgetedTrialTimeoutSec, parseTaskTimeBudget, resolveBinaryPin } from "./src/shared";
 
 export class DeepSweSuite implements EvalSuite {
 	readonly name = "deep-swe";
@@ -193,27 +179,19 @@ export class DeepSweSuite implements EvalSuite {
 		const options = context.options ?? {};
 		const missing: string[] = [];
 
-		const pin = resolveBinaryPin(typeof options.binary === "string" ? options.binary : undefined);
-		if (pin.kind === "invalid") {
-			return {
-				ok: false,
-				reason: `Invalid vey binary pin: ${pin.reason}`,
-				missingRequirements: ["valid vey binary"],
-			};
-		}
-
-		const pinnedBinary = pin.kind === "pinned" ? pin.path : null;
-		if (pinnedBinary) {
-			if (!fs.existsSync(pinnedBinary)) {
-				missing.push(`pinned vey binary at ${pinnedBinary}`);
+		if (typeof options.binary === "string") {
+			const pin = resolveBinaryPin(options.binary);
+			if (pin.kind === "invalid") {
+				return {
+					ok: false,
+					reason: `Invalid vey binary pin: ${pin.reason}`,
+					missingRequirements: ["valid vey binary"],
+				};
 			}
-		} else if (!options.dryRun && options.ensureBinary !== false) {
-			try {
-				await ensureBinaryUpToDate();
-			} catch (err) {
-				missing.push(`up-to-date vey binary: ${errorMessage(err)}`);
+			if (pin.kind === "pinned" && !fs.existsSync(pin.path)) {
+				missing.push(`pinned vey binary at ${pin.path}`);
 			}
-		} else {
+		} else if (options.dryRun) {
 			const status = checkBinaryBuildNeeded();
 			if (status.needsBuild) {
 				const desc = status.reason === "missing" ? "missing vey binary" : "stale vey binary";
@@ -221,38 +199,101 @@ export class DeepSweSuite implements EvalSuite {
 			}
 		}
 
-		const effectiveBinary = pinnedBinary ?? getVeyBinaryPath();
-		if (!fs.existsSync(effectiveBinary) && !options.dryRun && !pinnedBinary) {
-			missing.push(`vey binary at ${effectiveBinary}`);
+		// 1. Dataset corpus verification
+		const tasksRoot = context.datasetDir ? path.resolve(context.datasetDir) : taskCorpusDir();
+		try {
+			const s = fs.statSync(tasksRoot);
+			if (!s.isDirectory()) {
+				missing.push("task-corpus");
+			}
+		} catch {
+			missing.push("task-corpus");
 		}
 
-		const authDb = getAuthDbPath();
-		const mtimeOf = (p: string): number | undefined => (fs.existsSync(p) ? fs.statSync(p).mtimeMs : undefined);
-		const authDecision = decideAuthSeed(AUTH_DB_SOURCES, authDb, mtimeOf, probeCredentialStore);
+		// 2. Task list file verification (if explicitly given)
+		const explicitTasksFile =
+			typeof options.tasksFile === "string"
+				? resolvePackagePath(options.tasksFile)
+				: typeof options.taskList === "string"
+					? resolvePackagePath(options.taskList)
+					: null;
 
-		if (authDecision.kind === "missing") {
-			missing.push(`credential store: no agent.db at any of ${AUTH_DB_SOURCES.join(", ")}`);
-		} else {
+		if (explicitTasksFile) {
 			try {
-				if (!options.dryRun) {
-					ensureAuthDbSeeded();
-					const model = typeof options.model === "string" ? options.model : "google-antigravity/gemini-3.5-flash";
-					await requireStagedAuthCanServeToken(model, false);
-				} else {
-					const candidateDb =
-						fs.existsSync(authDb) && probeCredentialStore(authDb) === undefined ? authDb : authDecision.source;
-					const model = typeof options.model === "string" ? options.model : "google-antigravity/gemini-3.5-flash";
-					await requireStagedAuthCanServeToken(model, true, candidateDb);
+				const s = fs.statSync(explicitTasksFile);
+				if (!s.isFile()) {
+					missing.push("task-list-file");
 				}
-			} catch (err) {
-				missing.push(`staged auth DB: ${errorMessage(err)}`);
+			} catch {
+				missing.push("task-list-file");
 			}
 		}
+
 		if (missing.length > 0) {
+			const reasons: string[] = [];
+			if (missing.includes("task-corpus")) {
+				reasons.push(
+					`DeepSWE task corpus directory is missing or not a directory at ${tasksRoot}. Fetch the corpus with: git clone https://github.com/datacurve-ai/deep-swe datasets/deep-swe/corpus`,
+				);
+			}
+			if (missing.includes("task-list-file") && explicitTasksFile) {
+				reasons.push(`DeepSWE task list file is missing at ${explicitTasksFile}.`);
+			}
+			for (const m of missing) {
+				if (m !== "task-corpus" && m !== "task-list-file") {
+					reasons.push(m);
+				}
+			}
 			return {
 				ok: false,
-				reason: `Preflight failed for DeepSWE suite: ${missing.join(", ")}`,
+				reason: `Preflight failed for DeepSWE suite: ${reasons.join("; ")}`,
 				missingRequirements: missing,
+			};
+		}
+
+		// 3. Discover and verify per-task fixtures
+		const taskIds = await this.discoverTasks(context);
+		if (taskIds.length === 0) {
+			return {
+				ok: false,
+				reason: `Preflight failed for DeepSWE suite: no tasks found in corpus at ${tasksRoot} or task list.`,
+				missingRequirements: ["tasks"],
+			};
+		}
+
+		const missingTaskIds: string[] = [];
+		const invalidTaskTomls: string[] = [];
+		for (const taskId of taskIds) {
+			const taskDir = path.join(tasksRoot, taskId);
+			const taskToml = path.join(taskDir, "task.toml");
+			if (!fs.existsSync(taskDir) || !fs.existsSync(taskToml)) {
+				missingTaskIds.push(taskId);
+				continue;
+			}
+			try {
+				const content = fs.readFileSync(taskToml, "utf8");
+				parseTaskTimeBudget(content, taskId);
+			} catch {
+				invalidTaskTomls.push(taskId);
+			}
+		}
+
+		if (missingTaskIds.length > 0) {
+			const preview = missingTaskIds.slice(0, 5).join(", ");
+			const more = missingTaskIds.length > 5 ? `, ... and ${missingTaskIds.length - 5} more` : "";
+			return {
+				ok: false,
+				reason: `Preflight failed for DeepSWE suite: task corpus at ${tasksRoot} is missing ${missingTaskIds.length} task(s) named in the task list: ${preview}${more}. Fetch with: git clone https://github.com/datacurve-ai/deep-swe datasets/deep-swe/corpus`,
+				missingRequirements: ["task-corpus-tasks"],
+			};
+		}
+
+		if (invalidTaskTomls.length > 0) {
+			const preview = invalidTaskTomls.slice(0, 5).join(", ");
+			return {
+				ok: false,
+				reason: `Preflight failed for DeepSWE suite: task corpus at ${tasksRoot} contains ${invalidTaskTomls.length} task(s) with invalid task.toml: ${preview}`,
+				missingRequirements: ["valid-task-toml"],
 			};
 		}
 

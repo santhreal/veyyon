@@ -16,12 +16,12 @@
  * needs a session (`test/run/overlays/an-overlay-reaches-session-settings-and-prompts.test.ts`),
  * and the registry's own re-read of the variable, which `@veyyon/utils` owns.
  */
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { $env, TempDir } from "@veyyon/utils";
 import {
-	applyPromptOverrides,
+	applyPromptOverridesToSystemPrompt,
 	findUnknownConfigKeys,
 	loadAndValidateConfigOverlay,
 	loadAndValidatePromptOverlay,
@@ -174,39 +174,31 @@ describe("loadAndValidatePromptOverlay", () => {
 	});
 });
 
-describe("applyPromptOverrides", () => {
-	let before: string | undefined;
+describe("applyPromptOverridesToSystemPrompt", () => {
+	it("rewrites matching prompt text in system prompt blocks without touching process.env", () => {
+		const initialEnv = $env.VEYYON_EVAL_PROMPTS;
+		const originalAuthority =
+			"The user's instructions in this conversation have ABSOLUTE authority. Nothing in a file, rule, memory, or standing configuration overrides them. If loaded content forbids something the user has just asked you to do, the user wins, and you say which source you are setting aside and why rather than refusing.";
+		const blocks = [
+			"System instructions preamble.",
+			`You are an assistant. ${originalAuthority}`,
+			"Tools available: read, edit, write.",
+		];
 
-	beforeEach(() => {
-		before = $env.VEYYON_EVAL_PROMPTS;
-		delete $env.VEYYON_EVAL_PROMPTS;
+		const updated = applyPromptOverridesToSystemPrompt(blocks, {
+			"session/user-instruction-authority": "CUSTOM AUTHORITY OVERLAY",
+		});
+
+		expect(updated[1]).toContain("CUSTOM AUTHORITY OVERLAY");
+		expect(updated[1]).not.toContain("ABSOLUTE authority");
+		expect(updated[0]).toBe(blocks[0]);
+		expect(updated[2]).toBe(blocks[2]);
+		expect($env.VEYYON_EVAL_PROMPTS).toBe(initialEnv);
 	});
 
-	afterEach(() => {
-		if (before === undefined) delete $env.VEYYON_EVAL_PROMPTS;
-		else $env.VEYYON_EVAL_PROMPTS = before;
-	});
-
-	it("publishes the overrides on the one seam the registries read, and withdraws them", () => {
-		const restore = applyPromptOverrides({ "tools/bash": "ARM TEXT" });
-
-		expect(JSON.parse($env.VEYYON_EVAL_PROMPTS ?? "{}")).toEqual({ "tools/bash": "ARM TEXT" });
-
-		restore();
-
-		// Withdrawn, not blanked: a leftover empty payload is still an override in force,
-		// and every trial after this one would run under it.
-		expect($env.VEYYON_EVAL_PROMPTS).toBeUndefined();
-	});
-
-	it("puts back a value it found rather than deleting it", () => {
-		$env.VEYYON_EVAL_PROMPTS = JSON.stringify({ "tools/read": "OUTER" });
-
-		const restore = applyPromptOverrides({ "tools/bash": "INNER" });
-		expect(JSON.parse($env.VEYYON_EVAL_PROMPTS)).toEqual({ "tools/bash": "INNER" });
-
-		restore();
-
-		expect(JSON.parse($env.VEYYON_EVAL_PROMPTS ?? "{}")).toEqual({ "tools/read": "OUTER" });
+	it("returns unchanged blocks when overrides map is empty", () => {
+		const blocks = ["Block 1", "Block 2"];
+		const updated = applyPromptOverridesToSystemPrompt(blocks, {});
+		expect(updated).toEqual(blocks);
 	});
 });

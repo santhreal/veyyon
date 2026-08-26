@@ -27,6 +27,8 @@
  * (~/.veyyon/agent/agent.db: stored key, OAuth, or env var fallback).
  */
 
+import * as fs from "node:fs/promises";
+import { setTimeout } from "node:timers/promises";
 import { parseArgs } from "node:util";
 import { type Api, AuthStorage, completeSimple, type Model, SqliteAuthCredentialStore } from "@veyyon/ai";
 import { type GeneratedProvider, getBundledModel } from "@veyyon/catalog/models";
@@ -147,7 +149,7 @@ async function ask(opened: OpenedModel, system: string, user: string, maxTokens:
 		opened.usage.output += response.usage.output;
 		if (response.stopReason === "error" || response.stopReason === "aborted") {
 			lastError = response.errorMessage ?? response.stopReason;
-			await Bun.sleep(1000 * (attempt + 1));
+			await setTimeout(1000 * (attempt + 1));
 			continue;
 		}
 		const text = response.content
@@ -298,7 +300,7 @@ function usageLine(opened: OpenedModel): string {
 
 async function main(): Promise<void> {
 	const { values, positionals } = parseArgs({
-		args: Bun.argv.slice(2),
+		args: process.argv.slice(2),
 		allowPositionals: true,
 		options: {
 			base: { type: "string", default: DEFAULT_BASE },
@@ -391,7 +393,7 @@ async function main(): Promise<void> {
 		.join("\n\n");
 
 	if (values.out) {
-		await Bun.write(values.out, `${report}\n`);
+		await fs.writeFile(values.out, `${report}\n`, "utf8");
 		console.error(`[trace-report] wrote ${values.out}`);
 	} else {
 		console.log(report);

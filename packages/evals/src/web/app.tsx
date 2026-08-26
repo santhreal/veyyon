@@ -11,47 +11,11 @@
 import { errorMessage, formatCount } from "@veyyon/utils";
 import { type RefObject, useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
+import type { BenchmarkKind, RunRole, RunRow, RunStatus, TraceRow } from "../manager/store";
 
 // ── api types (mirrors server modules) ──────────────────────────────────────
 
-/** How a run relates to its experiment's question. */
-type RunRole = "baseline" | "variant" | "";
-
-interface RunRow {
-	benchmark: "harbor" | "edit";
-	jobName: string;
-	dataset: string;
-	agent: string;
-	models: string;
-	prewalk: string | null;
-	config: Record<string, unknown>;
-	role: RunRole;
-	note: string;
-	label: string;
-	status: "running" | "complete" | "failed" | "cancelled";
-	pid: number | null;
-	createdAt: number;
-	finishedAt: number | null;
-	nTotal: number;
-	done: number;
-	pass: number;
-	fail: number;
-	error: number;
-	running: number;
-	costUsd: number;
-	score: number | null;
-	metrics: Record<string, number | null>;
-}
-
-interface TraceRow {
-	name: string;
-	task: string;
-	status: string;
-	reward: number | null;
-	costUsd: number;
-	durationMs: number;
-	detail: string;
-}
+export type { BenchmarkKind, RunRole, RunRow, RunStatus, TraceRow };
 
 interface ArmProjection {
 	etaMs: number | null;
@@ -112,6 +76,32 @@ const fmtEta = (etaMs: number | null) => {
 	const mins = Math.max(0, Math.round((etaMs - Date.now()) / 60000));
 	return mins >= 90 ? `~${(mins / 60).toFixed(1)}h` : `~${mins}m`;
 };
+
+let cachedAuthToken = "";
+async function getAuthToken(): Promise<string> {
+	if (cachedAuthToken) return cachedAuthToken;
+	try {
+		const res = await fetch("/api/token");
+		if (res.ok) {
+			const data = (await res.json()) as { token?: string };
+			if (data.token) cachedAuthToken = data.token;
+		}
+	} catch {}
+	return cachedAuthToken;
+}
+
+async function authedFetch(url: string, init?: RequestInit): Promise<Response> {
+	const method = (init?.method ?? "GET").toUpperCase();
+	if (method === "GET" || method === "HEAD") {
+		return fetch(url, init);
+	}
+	const token = await getAuthToken();
+	const headers = new Headers(init?.headers);
+	if (token && !headers.has("x-evals-token") && !headers.has("authorization")) {
+		headers.set("x-evals-token", token);
+	}
+	return fetch(url, { ...init, headers });
+}
 
 async function getJson<T>(url: string): Promise<T> {
 	const res = await fetch(url);
@@ -253,7 +243,7 @@ async function putExperimentMeta(
 	id: string,
 	body: { goal?: string; runs?: Record<string, { role?: RunRole; note?: string; label?: string }> },
 ): Promise<void> {
-	const res = await fetch(`/api/experiments/${encodeURIComponent(id)}`, {
+	const res = await authedFetch(`/api/experiments/${encodeURIComponent(id)}`, {
 		method: "PUT",
 		headers: { "content-type": "application/json" },
 		body: JSON.stringify(body),
@@ -815,7 +805,7 @@ function AddArmForm({ experimentId, onDone }: { experimentId: string; onDone: ()
 				body.prewalk = f.get("prewalkInto") ? { into: f.get("prewalkInto") } : {};
 			}
 			setMsg("launching…");
-			const res = await fetch(`/api/experiments/${encodeURIComponent(experimentId)}/arms`, {
+			const res = await authedFetch(`/api/experiments/${encodeURIComponent(experimentId)}/arms`, {
 				method: "POST",
 				headers: { "content-type": "application/json" },
 				body: JSON.stringify(body),
@@ -1697,11 +1687,12 @@ function RunsPage({ selected }: { selected: string | null }) {
 		if (el) el.scrollTop = el.scrollHeight;
 	}, [traceData]);
 	const cancel = useCallback(async (name: string) => {
-		if (confirm(`stop ${name}?`)) await fetch(`/api/runs/${encodeURIComponent(name)}/cancel`, { method: "POST" });
+		if (confirm(`stop ${name}?`))
+			await authedFetch(`/api/runs/${encodeURIComponent(name)}/cancel`, { method: "POST" });
 	}, []);
 	const resume = useCallback(async (name: string) => {
 		if (!confirm(`resume ${name}? completed trials are kept; interrupted, pending, and errored ones re-run`)) return;
-		const res = await fetch(`/api/runs/${encodeURIComponent(name)}/resume`, { method: "POST" });
+		const res = await authedFetch(`/api/runs/${encodeURIComponent(name)}/resume`, { method: "POST" });
 		if (!res.ok) alert((await res.json().catch(() => null))?.error ?? `resume failed (${res.status})`);
 	}, []);
 
@@ -1879,7 +1870,7 @@ function LaunchForm({ onDone }: { onDone: () => void }) {
 				body.prewalk = f.get("prewalkInto") ? { into: f.get("prewalkInto") } : {};
 			}
 			setMsg("launching…");
-			const res = await fetch("/api/runs", {
+			const res = await authedFetch("/api/runs", {
 				method: "POST",
 				headers: { "content-type": "application/json" },
 				body: JSON.stringify(body),
@@ -1896,6 +1887,7 @@ function LaunchForm({ onDone }: { onDone: () => void }) {
 			<select name="benchmark" className={input}>
 				<option value="harbor">Harbor</option>
 				<option value="edit">TypeScript edit</option>
+				<option value="deepswe">DeepSWE arms</option>
 			</select>
 			<input name="model" placeholder="model (required)" required className={input} />
 			<input name="dataset" placeholder="dataset (terminal-bench@2.0)" className={input} />

@@ -1,6 +1,7 @@
 /**
  * Unified type contracts for cross-system benchmarking and adapter registration.
  */
+import type { BackendId, PreflightVerdict } from "../core/types";
 import type { ArmResult } from "../suites/deep-swe/src/aggregate/types";
 
 export interface ComparisonArtifacts {
@@ -219,4 +220,23 @@ export interface SystemAdapter {
 	validatePreflight(context: SystemPreflightContext): Promise<SystemPreflightResult> | SystemPreflightResult;
 	stageAssets(context: SystemStageContext): Promise<void> | void;
 	buildJobConfigKwargs(context: SystemJobConfigContext): Record<string, unknown>;
+}
+
+export interface HarnessPreflightReport {
+	readonly harness: string;
+	readonly variant: string;
+	readonly verdict: PreflightVerdict;
+}
+
+export interface PreflightHarnessesContext {
+	readonly backend: BackendId;
+	readonly options?: Readonly<Record<string, unknown>>;
+	readonly signal?: AbortSignal;
+}
+
+/**
+ * Sanitize a variant name for filesystem path safety.
+ */
+export function sanitizeVariantName(name: string): string {
+	return name.trim().replace(/[^a-zA-Z0-9._-]/g, "_") || "default";
 }

@@ -83,12 +83,23 @@ export interface TrialUsage {
 
 /**
  * Output artifacts produced by a trial run in an execution backend.
+ * Large data (logs, patches, workspace files) must be represented as file paths on disk,
+ * never in-memory file contents.
  */
 export interface TrialArtifacts {
+	/** Absolute paths to log files produced during the trial. */
 	readonly logPaths?: readonly string[];
+	/** Directory holding the trial's workspace and outputs on disk. */
 	readonly trialDir?: string | null;
+	/** Bounded tail of raw output (capped at <= 64 KiB), never unbounded output logs. */
 	readonly rawOutput?: string | null;
-	readonly files?: Readonly<Record<string, string>>;
+	/**
+	 * Map of relative artifact names or identifiers to their absolute file paths on disk.
+	 * Paths only: a reader opens the file. Two maps, one for paths and one for contents,
+	 * is what forced a reader to guess which it held.
+	 */
+	readonly filePaths?: Readonly<Record<string, string>>;
+	/** Lightweight trial metadata and exit statistics. */
 	readonly extra?: Readonly<Record<string, unknown>>;
 }
 
@@ -132,9 +143,14 @@ export interface HarnessCapabilities {
 
 /**
  * Backend-specific binding parameters for a harness adapter.
+ *
+ * `agentImportPath` is the class a backend imports to drive the harness (pier, harbor
+ * source installs). `agentName` is the name a backend's CLI selects the harness by
+ * (`harbor run --agent <name>`); it defaults to the harness name when absent.
  */
 export interface HarnessBackendBinding {
 	readonly agentImportPath?: string;
+	readonly agentName?: string;
 	readonly containerAssetsDir?: string;
 	readonly envVars?: Readonly<Record<string, string>>;
 	readonly cliFlags?: readonly string[];

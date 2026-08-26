@@ -1,5 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { $which } from "@veyyon/utils";
 import type {
 	HarnessAdapter,
 	HarnessCapabilities,
@@ -7,12 +8,13 @@ import type {
 	HarnessStageContext,
 	PreflightVerdict,
 } from "../../core/types";
-import type {
-	SystemAdapter,
-	SystemJobConfigContext,
-	SystemPreflightContext,
-	SystemPreflightResult,
-	SystemStageContext,
+import {
+	type SystemAdapter,
+	type SystemJobConfigContext,
+	type SystemPreflightContext,
+	type SystemPreflightResult,
+	type SystemStageContext,
+	sanitizeVariantName,
 } from "../types";
 
 export class FactoryAdapter implements HarnessAdapter, SystemAdapter {
@@ -48,14 +50,21 @@ export class FactoryAdapter implements HarnessAdapter, SystemAdapter {
 		const factoryBinary =
 			typeof options["factory-binary"] === "string"
 				? path.resolve(options["factory-binary"])
-				: (Bun.which("droid") ?? null);
+				: typeof options.factoryBinary === "string"
+					? path.resolve(options.factoryBinary)
+					: ($which("droid") ?? null);
 
 		if (!factoryBinary || !fs.existsSync(factoryBinary)) {
 			missing.push("Factory CLI binary (droid on PATH or --factory-binary)");
 		} else if (!fs.statSync(factoryBinary).isFile()) {
 			missing.push(`Factory CLI path is not a file: ${factoryBinary}`);
+		} else {
+			try {
+				fs.accessSync(factoryBinary, fs.constants.X_OK);
+			} catch {
+				missing.push(`Factory CLI at ${factoryBinary} is not executable (fix with: chmod +x ${factoryBinary})`);
+			}
 		}
-
 		const factoryAuth = typeof options["factory-auth"] === "string" ? path.resolve(options["factory-auth"]) : null;
 		if (!factoryAuth || !fs.existsSync(factoryAuth)) {
 			missing.push("Factory auth file (--factory-auth)");
@@ -79,8 +88,7 @@ export class FactoryAdapter implements HarnessAdapter, SystemAdapter {
 		const factoryBinary =
 			typeof context.args["factory-binary"] === "string"
 				? path.resolve(context.args["factory-binary"])
-				: (Bun.which("droid") ?? null);
-
+				: ($which("droid") ?? null);
 		if (!factoryBinary || !fs.existsSync(factoryBinary)) {
 			errors.push("Factory CLI binary unavailable; pass --factory-binary or install droid on PATH");
 		} else if (!fs.statSync(factoryBinary).isFile()) {
@@ -109,19 +117,37 @@ export class FactoryAdapter implements HarnessAdapter, SystemAdapter {
 		if ("targetDir" in context) {
 			// HarnessStageContext
 			const options = context.options ?? {};
+			const variantKey = sanitizeVariantName(context.variant.name);
+			const destDir = path.join(context.targetDir, variantKey);
+			fs.mkdirSync(destDir, { recursive: true });
+
 			const factoryBinary =
 				typeof options["factory-binary"] === "string"
 					? path.resolve(options["factory-binary"])
-					: (Bun.which("droid") ?? null);
+					: typeof options.factoryBinary === "string"
+						? path.resolve(options.factoryBinary)
+						: ($which("droid") ?? null);
 			if (factoryBinary && fs.existsSync(factoryBinary)) {
-				fs.copyFileSync(factoryBinary, path.join(context.targetDir, "droid"));
-				fs.chmodSync(path.join(context.targetDir, "droid"), 0o755);
+				fs.copyFileSync(factoryBinary, path.join(destDir, "droid"));
+				fs.chmodSync(path.join(destDir, "droid"), 0o755);
 			}
 
-			const factoryAuth = typeof options["factory-auth"] === "string" ? path.resolve(options["factory-auth"]) : null;
+			const factoryAuth =
+				typeof options["factory-auth"] === "string"
+					? path.resolve(options["factory-auth"])
+					: typeof options.factoryAuth === "string"
+						? path.resolve(options.factoryAuth)
+						: null;
 			if (factoryAuth && fs.existsSync(factoryAuth)) {
-				fs.copyFileSync(factoryAuth, path.join(context.targetDir, "factory-api-key"));
-				fs.chmodSync(path.join(context.targetDir, "factory-api-key"), 0o600);
+				fs.copyFileSync(factoryAuth, path.join(destDir, "factory-api-key"));
+				fs.chmodSync(path.join(destDir, "factory-api-key"), 0o600);
+			}
+
+			const settingsPath =
+				context.variant.configPath ||
+				(typeof options["factory-settings"] === "string" ? path.resolve(options["factory-settings"]) : null);
+			if (settingsPath && fs.existsSync(settingsPath)) {
+				fs.copyFileSync(settingsPath, path.join(destDir, "settings.json"));
 			}
 			return;
 		}

@@ -11,10 +11,16 @@ import { Database } from "bun:sqlite";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { isProcessAlive } from "@veyyon/utils";
-import { sqlPlaceholders } from "@veyyon/utils/sqlite";
 import { readJobResult } from "../backends/harbor/runner";
 import type { BackendId } from "../core/types";
 import { readBenchmarkSnapshot } from "./benchmarks";
+
+/** Job names are single path segments; anything else could escape the jobs dir. */
+export function assertSafeJobName(jobName: string): void {
+	if (!jobName || jobName === "." || jobName === ".." || /[/\\]/.test(jobName) || jobName.includes("..")) {
+		throw new Error(`invalid job name: ${jobName}`);
+	}
+}
 
 export const CURRENT_SCHEMA_VERSION = 2;
 
@@ -303,45 +309,52 @@ export class RunStore {
 
 	/** Register a run this manager just launched (pid-owning). */
 	registerLaunch(launch: LaunchRecord): void {
+		assertSafeJobName(launch.jobName);
 		const { suite, backend, benchmark } = inferSuiteAndBackend(launch);
-		this.#db.query("DELETE FROM trials WHERE job_name = ?").run(launch.jobName);
-		this.#db
-			.query(
-				`INSERT INTO runs
-				 (job_name, schema_version, suite, backend, benchmark, dataset, agent, models, prewalk, role, note, config_json, status, pid, created_at)
-				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, ?)
-				 ON CONFLICT(job_name) DO UPDATE SET
-					schema_version = excluded.schema_version,
-					suite = excluded.suite,
-					backend = excluded.backend,
-					benchmark = excluded.benchmark,
-					pid = excluded.pid, status = 'running',
-					config_json = excluded.config_json,
-					role = CASE WHEN excluded.role != '' THEN excluded.role ELSE runs.role END,
-					note = CASE WHEN excluded.note != '' THEN excluded.note ELSE runs.note END`,
-			)
-			.run(
-				launch.jobName,
-				CURRENT_SCHEMA_VERSION,
-				suite,
-				backend,
-				benchmark,
-				launch.dataset,
-				launch.agent,
-				launch.models.join(","),
-				launch.prewalk ? JSON.stringify(launch.prewalk) : null,
-				launch.role ?? "",
-				launch.note ?? "",
-				JSON.stringify(launch.config ?? {}),
-				launch.pid,
-				Date.now(),
-			);
+		const tx = this.#db.transaction(() => {
+			this.#db.query("DELETE FROM trials WHERE job_name = ?").run(launch.jobName);
+			this.#db
+				.query(
+					`INSERT INTO runs
+					 (job_name, schema_version, suite, backend, benchmark, dataset, agent, models, prewalk, role, note, config_json, status, pid, created_at)
+					 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, ?)
+					 ON CONFLICT(job_name) DO UPDATE SET
+						schema_version = excluded.schema_version,
+						suite = excluded.suite,
+						backend = excluded.backend,
+						benchmark = excluded.benchmark,
+						pid = excluded.pid, status = 'running',
+						config_json = excluded.config_json,
+						role = CASE WHEN excluded.role != '' THEN excluded.role ELSE runs.role END,
+						note = CASE WHEN excluded.note != '' THEN excluded.note ELSE runs.note END`,
+				)
+				.run(
+					launch.jobName,
+					CURRENT_SCHEMA_VERSION,
+					suite,
+					backend,
+					benchmark,
+					launch.dataset,
+					launch.agent,
+					launch.models.join(","),
+					launch.prewalk ? JSON.stringify(launch.prewalk) : null,
+					launch.role ?? "",
+					launch.note ?? "",
+					JSON.stringify(launch.config ?? {}),
+					launch.pid,
+					Date.now(),
+				);
+		});
+		tx();
 		const jobDir = path.join(this.jobsDir, launch.jobName);
 		fs.mkdirSync(jobDir, { recursive: true });
+		const targetFile = path.join(jobDir, "manager.json");
+		const tmpFile = path.join(jobDir, `.manager.json.tmp.${process.pid}.${Date.now()}`);
 		fs.writeFileSync(
-			path.join(jobDir, "manager.json"),
+			tmpFile,
 			JSON.stringify({ ...launch, schemaVersion: CURRENT_SCHEMA_VERSION, suite, backend, benchmark }, null, 2),
 		);
+		fs.renameSync(tmpFile, targetFile);
 	}
 	/** Upsert the experiment's stated goal. */
 	setExperimentGoal(id: string, goal: string): void {
@@ -383,8 +396,11 @@ export class RunStore {
 	/** Delete a run row and its trials; returns false when the run is unknown. */
 	deleteRun(jobName: string): boolean {
 		if (!this.getRun(jobName)) return false;
-		this.#db.query("DELETE FROM trials WHERE job_name = ?").run(jobName);
-		this.#db.query("DELETE FROM runs WHERE job_name = ?").run(jobName);
+		const tx = this.#db.transaction(() => {
+			this.#db.query("DELETE FROM trials WHERE job_name = ?").run(jobName);
+			this.#db.query("DELETE FROM runs WHERE job_name = ?").run(jobName);
+		});
+		tx();
 		return true;
 	}
 
@@ -473,11 +489,15 @@ export class RunStore {
 			// Prune rows whose trial dirs vanished from disk (a resume deletes
 			// interrupted trial dirs and re-runs the task under a fresh suffix) —
 			// otherwise phantom `running` rows haunt the dashboard forever.
-			if (snapshot.traces.length > 0) {
-				const names = snapshot.traces.map(t => t.name);
-				this.#db
-					.query(`DELETE FROM trials WHERE job_name = ? AND name NOT IN (${sqlPlaceholders(names.length)})`)
-					.run(jobName, ...names);
+			const existingRows = this.#db.query("SELECT name FROM trials WHERE job_name = ?").all(jobName) as Array<{
+				name: string;
+			}>;
+			const currentNames = new Set(snapshot.traces.map(t => t.name));
+			const deleteTrial = this.#db.query("DELETE FROM trials WHERE job_name = ? AND name = ?");
+			for (const { name } of existingRows) {
+				if (!currentNames.has(name)) {
+					deleteTrial.run(jobName, name);
+				}
 			}
 			for (const trace of snapshot.traces) {
 				upsert.run(

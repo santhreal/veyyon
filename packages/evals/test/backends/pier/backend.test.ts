@@ -4,8 +4,47 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { pierBackend } from "../../../src/backends/pier/backend";
 import { registerPierBackend } from "../../../src/backends/pier/register";
-import { checkPierPreflight, trialArtifactsFromExecution, writePierJobConfig } from "../../../src/backends/pier/runner";
+import {
+	checkPierPreflight,
+	cleanupPierContainers,
+	terminateProcessTree,
+	trialArtifactsFromExecution,
+	truncateRawOutput,
+	writePierJobConfig,
+} from "../../../src/backends/pier/runner";
 import { BackendRegistry, hasBackend, requireBackend } from "../../../src/core/backend-registry";
+import type { EvalSuite, RunContext, SuiteProvenance, TaskDescriptor, TrialScore } from "../../../src/core/types";
+
+function createMockSuite(): EvalSuite {
+	return {
+		name: "mock-pier-suite",
+		version: "1.0.0",
+		displayName: "Mock Pier Suite",
+		description: "Mock Pier Suite Description",
+		backend: "pier",
+		async discoverTasks(): Promise<readonly string[]> {
+			return ["task-1"];
+		},
+		async describeTask(taskId: string): Promise<TaskDescriptor> {
+			return {
+				id: taskId,
+				path: `/tmp/mock-tasks/${taskId}`,
+				timeBudgetSec: 300,
+				instructionPath: null,
+				metadata: {},
+			};
+		},
+		async provenance(): Promise<SuiteProvenance> {
+			return { suite: "mock-pier-suite", version: "1.0.0" };
+		},
+		async scoreTrial(): Promise<TrialScore> {
+			return { reward: 1, partial: 1, error: null, usage: null, extra: {} };
+		},
+		async preflight() {
+			return { ok: true };
+		},
+	};
+}
 
 describe("Pier ExecutionBackend", () => {
 	it("satisfies ExecutionBackend contract with id 'pier'", () => {
@@ -81,9 +120,115 @@ describe("Pier ExecutionBackend", () => {
 		expect(artifacts.rawOutput).toBe("success log");
 		expect(artifacts.extra?.durationMs).toBe(1234);
 	});
-
 	it("checkPierPreflight returns PreflightVerdict", () => {
 		const verdict = checkPierPreflight({});
 		expect(typeof verdict.ok).toBe("boolean");
+	});
+
+	it("cleanupPierContainers scopes cleanup to exact jobName without pruning or substring match", async () => {
+		const commandsIssued: Array<{ file: string; args: readonly string[] }> = [];
+		const fakeExec = async (file: string, args: readonly string[]) => {
+			commandsIssued.push({ file, args });
+			if (file === "docker" && args[0] === "ps") {
+				return {
+					stdout: [
+						"c_target\trun1__var1__task1__r0-agent-1\trun1__var1__task1__r0",
+						"c_sibling\trun1__var1__task2__r0-agent-1\trun1__var1__task2__r0",
+						"c_substring\tprefix-run1__var1__task1__r0-other\tother_proj",
+					].join("\n"),
+					stderr: "",
+				};
+			}
+			if (file === "docker" && args[0] === "network" && args[1] === "ls") {
+				return {
+					stdout: [
+						"net_target\trun1__var1__task1__r0_default\trun1__var1__task1__r0",
+						"net_sibling\trun1__var1__task2__r0_default\trun1__var1__task2__r0",
+					].join("\n"),
+					stderr: "",
+				};
+			}
+			return { stdout: "", stderr: "" };
+		};
+
+		await cleanupPierContainers("run1__var1__task1__r0", fakeExec);
+
+		// Verify prune was never called
+		for (const cmd of commandsIssued) {
+			expect(cmd.args).not.toContain("prune");
+		}
+
+		// Verify target container was removed, but not sibling or substring container
+		const rmCmd = commandsIssued.find(c => c.args[0] === "rm");
+		expect(rmCmd).toBeDefined();
+		expect(rmCmd?.args).toEqual(["rm", "-f", "c_target"]);
+
+		// Verify target network was removed, but not sibling network
+		const netRmCmd = commandsIssued.find(c => c.args[0] === "network" && c.args[1] === "rm");
+		expect(netRmCmd).toBeDefined();
+		expect(netRmCmd?.args).toEqual(["network", "rm", "net_target"]);
+	});
+
+	it("terminateProcessTree escalates to SIGKILL after grace period", async () => {
+		const signals: string[] = [];
+		const { promise: exited, resolve } = Promise.withResolvers<number>();
+
+		const fakeProc = {
+			pid: 888888,
+			kill(sig?: "SIGTERM" | "SIGKILL" | number) {
+				signals.push(String(sig));
+				if (sig === "SIGKILL") {
+					resolve(137);
+				}
+			},
+			exited,
+		};
+
+		const start = Date.now();
+		await terminateProcessTree(fakeProc, 40);
+		const elapsed = Date.now() - start;
+
+		expect(signals).toContain("SIGTERM");
+		expect(signals).toContain("SIGKILL");
+		expect(elapsed).toBeGreaterThanOrEqual(30);
+	});
+
+	it("prepare and run names/directories include runId to prevent concurrent run collisions", async () => {
+		const tmpRoot = path.join(
+			os.tmpdir() === "/tmp" ? "packages/evals/runs" : os.tmpdir(),
+			`pier-runid-${Date.now()}`,
+		);
+		try {
+			const contextA: RunContext = {
+				runId: "run_alpha",
+				suite: createMockSuite(),
+				workDir: tmpRoot,
+				runsDir: tmpRoot,
+			};
+			const contextB: RunContext = {
+				runId: "run_beta",
+				suite: createMockSuite(),
+				workDir: tmpRoot,
+				runsDir: tmpRoot,
+			};
+
+			await pierBackend.prepare(contextA);
+			await pierBackend.prepare(contextB);
+
+			expect(fs.existsSync(path.join(tmpRoot, "runs", "run_alpha", "jobs"))).toBe(true);
+			expect(fs.existsSync(path.join(tmpRoot, "runs", "run_beta", "jobs"))).toBe(true);
+		} finally {
+			try {
+				fs.rmSync(tmpRoot, { recursive: true, force: true });
+			} catch {
+				/* ignore */
+			}
+		}
+	});
+
+	it("rawOutput tail is capped by truncateRawOutput", () => {
+		const huge = "A".repeat(100000);
+		const capped = truncateRawOutput(huge, 65536);
+		expect(capped.length).toBe(65536);
 	});
 });

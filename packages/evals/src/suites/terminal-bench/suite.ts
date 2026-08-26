@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { readdir, readFile, stat } from "node:fs/promises";
-import { isAbsolute, join } from "node:path";
+import { join } from "node:path";
 import { promisify } from "node:util";
 import { $which, errorMessage } from "@veyyon/utils";
 import type {
@@ -314,11 +314,24 @@ export class TerminalBenchSuite implements EvalSuite {
 	}
 
 	async scoreTrial(cell: TrialCell, artifacts: TrialArtifacts): Promise<TrialScore> {
+		if (typeof artifacts.extra?.error === "string" && artifacts.extra.error) {
+			return {
+				reward: null,
+				partial: null,
+				error: `Trial execution failed: ${artifacts.extra.error}`,
+				usage: null,
+				extra: {
+					...artifacts.extra,
+					cell,
+				},
+			};
+		}
+
 		const trialDir = artifacts.trialDir;
-		const files = artifacts.files ?? {};
+		const filePaths = artifacts.filePaths ?? {};
 
 		// Check for multi-step trial layout
-		const stepDirs = await this.#findStepDirs(trialDir, files);
+		const stepDirs = await this.#findStepDirs(trialDir, filePaths);
 		if (stepDirs.length > 0) {
 			return this.#scoreMultiStepTrial(cell, artifacts, stepDirs);
 		}
@@ -328,7 +341,7 @@ export class TerminalBenchSuite implements EvalSuite {
 
 	async #findStepDirs(
 		trialDir: string | null | undefined,
-		files: Readonly<Record<string, string>>,
+		filePaths: Readonly<Record<string, string>>,
 	): Promise<readonly string[]> {
 		if (trialDir) {
 			try {
@@ -347,9 +360,9 @@ export class TerminalBenchSuite implements EvalSuite {
 			}
 		}
 
-		// Check files map for step patterns
+		// Check filePaths map for step patterns
 		const stepSet = new Set<string>();
-		for (const key of Object.keys(files)) {
+		for (const key of Object.keys(filePaths)) {
 			const match = key.match(/^(step_\d+)[/\\]/i);
 			if (match?.[1]) {
 				stepSet.add(match[1]);
@@ -368,23 +381,19 @@ export class TerminalBenchSuite implements EvalSuite {
 
 	async #readArtifactText(
 		trialDir: string | null | undefined,
-		files: Readonly<Record<string, string>>,
+		filePaths: Readonly<Record<string, string>>,
 		relativeCandidates: readonly string[],
 	): Promise<string | null> {
 		for (const rel of relativeCandidates) {
-			if (rel in files) {
-				const val = files[rel];
-				if (typeof val === "string") {
-					// Check if val is content or a file path on disk
-					if (!val.includes("\n") && isAbsolute(val)) {
-						try {
-							const text = await readFile(val, "utf-8");
-							return text;
-						} catch {
-							return val;
-						}
+			if (rel in filePaths) {
+				const fullPath = filePaths[rel];
+				if (typeof fullPath === "string") {
+					try {
+						const text = await readFile(fullPath, "utf-8");
+						return text;
+					} catch {
+						// Failed to read path
 					}
-					return val;
 				}
 			}
 
@@ -403,7 +412,7 @@ export class TerminalBenchSuite implements EvalSuite {
 
 	async #extractSingleReward(
 		trialDir: string | null | undefined,
-		files: Readonly<Record<string, string>>,
+		filePaths: Readonly<Record<string, string>>,
 		subPathPrefix = "",
 	): Promise<{ reward: number | null; partial: number | null; error: string | null }> {
 		const jsonCandidates = [
@@ -418,12 +427,12 @@ export class TerminalBenchSuite implements EvalSuite {
 			`${subPathPrefix}reward.txt`,
 		].map(p => p.replace(/^\/+/, ""));
 
-		const rawJson = await this.#readArtifactText(trialDir, files, jsonCandidates);
+		const rawJson = await this.#readArtifactText(trialDir, filePaths, jsonCandidates);
 		if (rawJson !== null) {
 			const trimmed = rawJson.trim();
 			if (trimmed.length === 0) {
 				// Empty reward.json: try reward.txt before failing
-				const rawTxt = await this.#readArtifactText(trialDir, files, txtCandidates);
+				const rawTxt = await this.#readArtifactText(trialDir, filePaths, txtCandidates);
 				if (rawTxt !== null) {
 					return this.#parseRewardText(rawTxt);
 				}
@@ -452,14 +461,14 @@ export class TerminalBenchSuite implements EvalSuite {
 					}
 				}
 				// JSON parse succeeded but no reward found: try reward.txt before reporting unparseable JSON
-				const rawTxt = await this.#readArtifactText(trialDir, files, txtCandidates);
+				const rawTxt = await this.#readArtifactText(trialDir, filePaths, txtCandidates);
 				if (rawTxt !== null) {
 					return this.#parseRewardText(rawTxt);
 				}
 				return { reward: null, partial: null, error: "Unparseable reward.json: missing numeric 'reward' field" };
 			} catch (err) {
 				// JSON syntax error: try reward.txt before reporting error
-				const rawTxt = await this.#readArtifactText(trialDir, files, txtCandidates);
+				const rawTxt = await this.#readArtifactText(trialDir, filePaths, txtCandidates);
 				if (rawTxt !== null) {
 					return this.#parseRewardText(rawTxt);
 				}
@@ -469,13 +478,13 @@ export class TerminalBenchSuite implements EvalSuite {
 		}
 
 		// Try reward.txt
-		const rawTxt = await this.#readArtifactText(trialDir, files, txtCandidates);
+		const rawTxt = await this.#readArtifactText(trialDir, filePaths, txtCandidates);
 		if (rawTxt !== null) {
 			return this.#parseRewardText(rawTxt);
 		}
 
 		// Try result.json if present
-		const resultJson = await this.#readArtifactText(trialDir, files, [
+		const resultJson = await this.#readArtifactText(trialDir, filePaths, [
 			`${subPathPrefix}result.json`.replace(/^\/+/, ""),
 		]);
 		if (resultJson !== null) {
@@ -529,9 +538,9 @@ export class TerminalBenchSuite implements EvalSuite {
 
 	async #extractUsage(
 		trialDir: string | null | undefined,
-		files: Readonly<Record<string, string>>,
+		filePaths: Readonly<Record<string, string>>,
 	): Promise<TrialUsage | null> {
-		const rawResult = await this.#readArtifactText(trialDir, files, ["result.json"]);
+		const rawResult = await this.#readArtifactText(trialDir, filePaths, ["result.json"]);
 		if (rawResult) {
 			try {
 				const r = JSON.parse(rawResult.trim());
@@ -602,9 +611,9 @@ export class TerminalBenchSuite implements EvalSuite {
 
 	async #scoreSingleStepTrial(cell: TrialCell, artifacts: TrialArtifacts): Promise<TrialScore> {
 		const trialDir = artifacts.trialDir;
-		const files = artifacts.files ?? {};
-		const { reward, partial, error } = await this.#extractSingleReward(trialDir, files);
-		const usage = await this.#extractUsage(trialDir, files);
+		const filePaths = artifacts.filePaths ?? {};
+		const { reward, partial, error } = await this.#extractSingleReward(trialDir, filePaths);
+		const usage = await this.#extractUsage(trialDir, filePaths);
 
 		return {
 			reward,
@@ -624,12 +633,12 @@ export class TerminalBenchSuite implements EvalSuite {
 		stepDirs: readonly string[],
 	): Promise<TrialScore> {
 		const trialDir = artifacts.trialDir;
-		const files = artifacts.files ?? {};
+		const filePaths = artifacts.filePaths ?? {};
 
 		const stepRewards: Array<{ step: string; reward: number | null; partial: number | null; error: string | null }> =
 			[];
 		for (const step of stepDirs) {
-			const res = await this.#extractSingleReward(trialDir, files, `${step}/`);
+			const res = await this.#extractSingleReward(trialDir, filePaths, `${step}/`);
 			stepRewards.push({ step, ...res });
 		}
 
@@ -639,8 +648,7 @@ export class TerminalBenchSuite implements EvalSuite {
 			(artifacts.extra?.strategy as MultiStepRewardStrategy) ??
 			"mean";
 
-		const usage = await this.#extractUsage(trialDir, files);
-
+		const usage = await this.#extractUsage(trialDir, filePaths);
 		if (anyError) {
 			return {
 				reward: null,

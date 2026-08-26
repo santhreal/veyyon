@@ -22,7 +22,9 @@
  * trials in each backend's and each suite's own tests.
  */
 
-import { describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import * as fs from "node:fs/promises";
+import { TempDir } from "@veyyon/utils";
 import type {
 	EvalSuite,
 	ExecutionBackend,
@@ -35,7 +37,7 @@ import type {
 	TrialCell,
 	TrialScore,
 } from "../../src/core";
-import { HarnessNotFoundError, HarnessRegistry, summarizeRunCells } from "../../src/core";
+import { defaultHarnessRegistry, HarnessNotFoundError, HarnessRegistry, summarizeRunCells } from "../../src/core";
 import { registerBuiltinHarnesses } from "../../src/harnesses";
 import {
 	BackendPreflightError,
@@ -43,10 +45,13 @@ import {
 	describeRunPlan,
 	EmptyTaskSelectionError,
 	executeRun,
+	HarnessPreflightError,
 	InvalidConcurrencyError,
 	InvalidRepeatsError,
+	journalPathFor,
 	type RunPlan,
 	type RunPlanRequest,
+	readRunJournal,
 	SuitePreflightError,
 	UnboundHarnessBackendError,
 	UnknownTaskError,
@@ -286,6 +291,20 @@ describe("buildRunPlan", () => {
 });
 
 describe("executeRun", () => {
+	let tempDir: TempDir;
+	let workDir: string;
+	let runsDir: string;
+
+	beforeEach(async () => {
+		tempDir = await TempDir.create("@evals-test-plan-execute-");
+		workDir = tempDir.join("work");
+		runsDir = tempDir.join("runs");
+	});
+
+	afterEach(async () => {
+		await tempDir.remove();
+	});
+
 	it("records results in plan order even when trials finish out of order", async () => {
 		const plan = await planRun({ suite: probeSuite(), selection: twoVariants });
 		const firstTaskGate = Promise.withResolvers<void>();
@@ -297,18 +316,18 @@ describe("executeRun", () => {
 				if (cell.task === "task-b") {
 					remainingSecondTask -= 1;
 					if (remainingSecondTask === 0) firstTaskGate.resolve();
-					return { trialDir: `/runs/${cell.task}` };
+					return { trialDir: `${runsDir}/${cell.task}` };
 				}
 				await firstTaskGate.promise;
-				return { trialDir: `/runs/${cell.task}` };
+				return { trialDir: `${runsDir}/${cell.task}` };
 			},
 		});
 
 		const record = await executeRun({
 			plan,
 			backend: probe.backend,
-			workDir: "/work",
-			runsDir: "/runs",
+			workDir,
+			runsDir,
 			jobs: 4,
 		});
 
@@ -321,7 +340,7 @@ describe("executeRun", () => {
 		const plan = await planRun({ suite: probeSuite({ tasks: ["a", "b", "c", "d"] }), selection: twoVariants });
 		const probe = probeBackend();
 
-		await executeRun({ plan, backend: probe.backend, workDir: "/work", runsDir: "/runs", jobs });
+		await executeRun({ plan, backend: probe.backend, workDir, runsDir, jobs });
 
 		expect(probe.counts.peak).toBe(jobs);
 		expect(probe.counts.started).toBe(plan.cells.length);
@@ -331,7 +350,7 @@ describe("executeRun", () => {
 		const plan = await planRun({ suite: probeSuite(), selection: twoVariants });
 		const probe = probeBackend();
 
-		await executeRun({ plan, backend: probe.backend, workDir: "/work", runsDir: "/runs", jobs: 2 });
+		await executeRun({ plan, backend: probe.backend, workDir, runsDir, jobs: 2 });
 
 		expect(probe.prepared).toEqual([plan.runId]);
 	});
@@ -357,7 +376,7 @@ describe("executeRun", () => {
 			},
 		});
 
-		const record = await executeRun({ plan, backend: probe.backend, workDir: "/work", runsDir: "/runs" });
+		const record = await executeRun({ plan, backend: probe.backend, workDir, runsDir });
 
 		const byTask = new Map(record.results.map(result => [result.cell.task, result.score]));
 		expect(byTask.get("boom")?.error).toBe("container exited 137");
@@ -387,7 +406,7 @@ describe("executeRun", () => {
 			},
 		});
 
-		const record = await executeRun({ plan, backend: probe.backend, workDir: "/work", runsDir: "/runs" });
+		const record = await executeRun({ plan, backend: probe.backend, workDir, runsDir });
 		const [summary] = summarizeRunCells(record);
 
 		expect(summary.total).toBe(3);
@@ -404,7 +423,7 @@ describe("executeRun", () => {
 			},
 		});
 
-		await executeRun({ plan, backend: probe.backend, workDir: "/work", runsDir: "/runs" });
+		await executeRun({ plan, backend: probe.backend, workDir, runsDir });
 
 		expect(probe.cleaned.sort()).toEqual(["boom/veyyon/1", "ok/veyyon/1"]);
 	});
@@ -419,7 +438,7 @@ describe("executeRun", () => {
 			},
 		};
 
-		const record = await executeRun({ plan, backend, workDir: "/work", runsDir: "/runs" });
+		const record = await executeRun({ plan, backend, workDir, runsDir });
 
 		expect(record.results).toHaveLength(1);
 		expect(record.results[0].score.reward).toBe(1);
@@ -434,7 +453,7 @@ describe("executeRun", () => {
 		});
 		const probe = probeBackend();
 
-		const attempt = executeRun({ plan, backend: probe.backend, workDir: "/work", runsDir: "/runs" });
+		const attempt = executeRun({ plan, backend: probe.backend, workDir, runsDir });
 
 		await expect(attempt).rejects.toThrow(SuitePreflightError);
 		await expect(attempt).rejects.toThrow(/corpus not acquired.*Missing: corpus/s);
@@ -446,7 +465,7 @@ describe("executeRun", () => {
 			preflight: { ok: false, reason: "harbor not found on PATH", missingRequirements: ["harbor"] },
 		});
 
-		const attempt = executeRun({ plan, backend: probe.backend, workDir: "/work", runsDir: "/runs" });
+		const attempt = executeRun({ plan, backend: probe.backend, workDir, runsDir });
 
 		await expect(attempt).rejects.toThrow(BackendPreflightError);
 		expect(probe.prepared).toEqual([]);
@@ -457,7 +476,7 @@ describe("executeRun", () => {
 		const plan = await planRun({ suite: probeSuite(), selection: twoVariants });
 		const probe = probeBackend();
 
-		const attempt = executeRun({ plan, backend: probe.backend, workDir: "/work", runsDir: "/runs", jobs });
+		const attempt = executeRun({ plan, backend: probe.backend, workDir, runsDir, jobs });
 
 		await expect(attempt).rejects.toThrow(InvalidConcurrencyError);
 	});
@@ -478,8 +497,8 @@ describe("executeRun", () => {
 		const record = await executeRun({
 			plan,
 			backend: probe.backend,
-			workDir: "/work",
-			runsDir: "/runs",
+			workDir,
+			runsDir,
 			jobs: 1,
 			signal: controller.signal,
 		});
@@ -493,7 +512,7 @@ describe("executeRun", () => {
 		const plan = await planRun({ suite: probeSuite(), selection: twoVariants, runId: "job-42" });
 		const probe = probeBackend();
 
-		const record = await executeRun({ plan, backend: probe.backend, workDir: "/work", runsDir: "/runs" });
+		const record = await executeRun({ plan, backend: probe.backend, workDir, runsDir });
 
 		expect(record.id).toBe("job-42");
 		expect(record.suite).toEqual({ name: "probe", version: "1.0.0", provenanceSha: "deadbeef" });
@@ -519,12 +538,212 @@ describe("executeRun", () => {
 		await executeRun({
 			plan,
 			backend: probe.backend,
-			workDir: "/work",
-			runsDir: "/runs",
+			workDir,
+			runsDir,
 			jobs: 2,
 			onTrial: (record, index) => seen.push(`${index}:${record.cell.task}`),
 		});
 
 		expect(seen).toEqual(["0:fast", "1:slow"]);
+	});
+
+	it("writes an append-only journal line per settled trial before the run returns", async () => {
+		const plan = await planRun({
+			suite: probeSuite({ tasks: ["t1", "t2"] }),
+			selection: twoVariants,
+		});
+		const probe = probeBackend({
+			onRun: async cell => ({
+				trialDir: `${runsDir}/${cell.task}`,
+				rawOutput: `output for ${cell.task}`,
+				extra: { exitCode: 0 },
+			}),
+		});
+
+		const record = await executeRun({
+			plan,
+			backend: probe.backend,
+			workDir,
+			runsDir,
+			jobs: 2,
+		});
+
+		const journalPath = journalPathFor(runsDir, plan.runId);
+		const journalExists = await fs
+			.stat(journalPath)
+			.then(() => true)
+			.catch(() => false);
+		expect(journalExists).toBe(true);
+
+		const journalRecords = await readRunJournal(runsDir, plan.runId);
+		expect(journalRecords).toHaveLength(plan.cells.length);
+		expect(record.results).toHaveLength(plan.cells.length);
+
+		for (let i = 0; i < plan.cells.length; i++) {
+			const cell = plan.cells[i];
+			expect(cell).toBeDefined();
+			const entry = journalRecords.find(
+				r => r.cell.task === cell!.task && r.cell.variant === cell!.variant && r.cell.repeat === cell!.repeat,
+			);
+			expect(entry).toBeDefined();
+			expect(entry?.score.reward).toBe(1);
+			expect(entry?.artifacts?.trialDir).toBe(`${runsDir}/${cell!.task}`);
+			expect(entry?.startedAt).toBeDefined();
+			expect(entry?.finishedAt).toBeDefined();
+		}
+	});
+
+	it("an abort mid-run leaves a journal whose lines are all parseable and whose count equals settled trials", async () => {
+		const plan = await planRun({
+			suite: probeSuite({ tasks: ["t1", "t2", "t3", "t4", "t5", "t6"] }),
+			selection: oneVariant,
+		});
+		const controller = new AbortController();
+		let completed = 0;
+		const probe = probeBackend({
+			onRun: async () => {
+				completed++;
+				if (completed === 2) {
+					controller.abort();
+				}
+				return { trialDir: `${runsDir}/trial` };
+			},
+		});
+
+		const record = await executeRun({
+			plan,
+			backend: probe.backend,
+			workDir,
+			runsDir,
+			jobs: 1,
+			signal: controller.signal,
+		});
+
+		expect(record.results).toHaveLength(2);
+
+		const journalRecords = await readRunJournal(runsDir, plan.runId);
+		expect(journalRecords).toHaveLength(2);
+		expect(journalRecords.every(r => r.cell && r.score && r.finishedAt)).toBe(true);
+	});
+
+	it("resumes a prior run with its journal, runs only remaining cells, and merges full record", async () => {
+		const plan = await planRun({
+			suite: probeSuite({ tasks: ["t1", "t2", "t3", "t4"] }),
+			selection: oneVariant,
+			runId: "resumable-run-1",
+		});
+
+		// First run: aborted after 2 trials settle
+		const controller = new AbortController();
+		let run1Count = 0;
+		const probe1 = probeBackend({
+			onRun: async () => {
+				run1Count++;
+				if (run1Count === 2) {
+					controller.abort();
+				}
+				return { trialDir: `${runsDir}/trial` };
+			},
+		});
+
+		const initialRecord = await executeRun({
+			plan,
+			backend: probe1.backend,
+			workDir,
+			runsDir,
+			jobs: 1,
+			signal: controller.signal,
+		});
+		expect(initialRecord.results).toHaveLength(2);
+
+		// Second run: resume the run
+		let skippedReported = 0;
+		let totalReported = 0;
+		const probe2 = probeBackend({
+			onRun: async () => ({ trialDir: `${runsDir}/trial-resumed` }),
+		});
+
+		const resumedRecord = await executeRun({
+			plan,
+			backend: probe2.backend,
+			workDir,
+			runsDir,
+			jobs: 2,
+			resume: true,
+			onSkip: (skipped, total) => {
+				skippedReported = skipped;
+				totalReported = total;
+			},
+		});
+
+		// Only remaining 2 trials should be started in probe2
+		expect(skippedReported).toBe(2);
+		expect(totalReported).toBe(4);
+		expect(probe2.counts.started).toBe(2);
+
+		// Merged record contains all 4 results in plan order
+		expect(resumedRecord.results).toHaveLength(4);
+		expect(resumedRecord.results.map(r => r.cell.task)).toEqual(["t1", "t2", "t3", "t4"]);
+
+		// Journal on disk now holds all 4 settled trials
+		const allJournalRecords = await readRunJournal(runsDir, plan.runId);
+		expect(allJournalRecords).toHaveLength(4);
+	});
+
+	it("refuses to run when harness preflight refuses, executing zero trials", async () => {
+		const refusingHarness = {
+			name: "refusing-harness",
+			displayName: "Refusing Harness",
+			description: "Refuses preflight",
+			defaultModel: "test-model",
+			capabilities: { replay: false, compaction: false, armAttachments: false, promptOverrides: false },
+			backends: { "in-process": {} },
+			async stageAssets() {},
+			async preflight() {
+				return { ok: false, reason: "Missing API key in environment", missingRequirements: ["API_KEY"] };
+			},
+		};
+		defaultHarnessRegistry.register(refusingHarness);
+		harnesses.register(refusingHarness);
+		const plan = await planRun({
+			suite: probeSuite(),
+			selection: { harnesses: ["refusing-harness"], models: ["test-model"] },
+		});
+		const probe = probeBackend();
+
+		const attempt = executeRun({ plan, backend: probe.backend, workDir, runsDir });
+		await expect(attempt).rejects.toThrow(HarnessPreflightError);
+		await expect(attempt).rejects.toThrow(/refusing-harness.*Missing API key/);
+		expect(probe.counts.started).toBe(0);
+	});
+
+	it("asserts an aborted run settles rather than hanging indefinitely", async () => {
+		const plan = await planRun({
+			suite: probeSuite({ tasks: ["hang-1", "hang-2"] }),
+			selection: oneVariant,
+		});
+		const controller = new AbortController();
+		const probe = probeBackend({
+			onRun: async () => {
+				controller.abort();
+				return {};
+			},
+		});
+
+		const start = Date.now();
+		const recordPromise = executeRun({
+			plan,
+			backend: probe.backend,
+			workDir,
+			runsDir,
+			jobs: 1,
+			signal: controller.signal,
+		});
+
+		const record = await recordPromise;
+		const duration = Date.now() - start;
+
+		expect(duration).toBeLessThan(2000);
+		expect(record).toBeDefined();
 	});
 });

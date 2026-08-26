@@ -4,6 +4,8 @@ import * as path from "node:path";
 import { promisify } from "node:util";
 import { $which, errorMessage, readPipeText } from "@veyyon/utils";
 import { type BackendRegistry, defaultBackendRegistry } from "../../core/backend-registry";
+import { requireBackendBinding, resolveCellVariant } from "../../core/cell-variant";
+import { requireHarness } from "../../core/harness-registry";
 import type {
 	BackendId,
 	ExecutionBackend,
@@ -15,7 +17,17 @@ import type {
 } from "../../core/types";
 import { runsDir as defaultRunsDir } from "../../paths";
 import { buildHarborArgs, type HarborRunArgsOptions } from "./launch-args";
-import { buildHarborEnv, listHarborContainers, prepareSourceDeps, runDockerCleanup, type SourceMount } from "./runner";
+import {
+	buildHarborEnv,
+	cleanupHarborTrialContainers,
+	DEFAULT_GRACE_PERIOD_MS,
+	DEFAULT_TRIAL_TIMEOUT_SEC,
+	HARD_CEILING_TIMEOUT_SEC,
+	prepareSourceDeps,
+	type SourceMount,
+	terminateProcessTree,
+	truncateRawOutput,
+} from "./runner";
 
 const execFileAsync = promisify(execFile);
 
@@ -35,54 +47,6 @@ export async function defaultCommandExecutor(
 export interface HarborBackendOptions {
 	readonly which?: WhichLookup;
 	readonly exec?: CommandExecutor;
-}
-
-interface ParsedVariant {
-	readonly agent: string;
-	readonly model?: string;
-}
-
-export function parseVariant(variantStr: string, options?: Readonly<Record<string, unknown>>): ParsedVariant {
-	const optionAgent = typeof options?.agent === "string" ? options.agent : undefined;
-	const optionModel = typeof options?.model === "string" ? options.model : undefined;
-
-	if (variantStr.includes("@")) {
-		const atIndex = variantStr.indexOf("@");
-		const agentPart = variantStr.slice(0, atIndex);
-		const modelPart = variantStr.slice(atIndex + 1);
-		const agent = agentPart.includes(":") ? agentPart.split(":")[0] : agentPart;
-		return {
-			agent: optionAgent ?? (agent || "veyyon"),
-			model: optionModel ?? modelPart,
-		};
-	}
-
-	if (optionAgent === "oracle" || variantStr === "oracle" || variantStr.startsWith("oracle:")) {
-		return { agent: "oracle", model: optionModel };
-	}
-
-	if (optionAgent === "nop" || variantStr === "nop" || variantStr.startsWith("nop:")) {
-		return { agent: "nop", model: optionModel };
-	}
-
-	if (variantStr.includes("/")) {
-		return {
-			agent: optionAgent ?? "veyyon",
-			model: optionModel ?? variantStr,
-		};
-	}
-
-	if (variantStr === "veyyon" || variantStr.startsWith("veyyon:")) {
-		return {
-			agent: "veyyon",
-			model: optionModel ?? "anthropic/claude-sonnet-4-6",
-		};
-	}
-
-	return {
-		agent: optionAgent ?? (variantStr || "veyyon"),
-		model: optionModel,
-	};
 }
 
 function sanitizeName(s: string): string {
@@ -235,15 +199,39 @@ export class HarborBackend implements ExecutionBackend {
 			options: context.options,
 		});
 
-		const { agent, model } = parseVariant(cell.variant, context.options);
+		const variant = resolveCellVariant(cell, context);
+		const harness = requireHarness(variant.harness);
+		const optionAgent = typeof context.options?.agent === "string" ? context.options.agent : undefined;
+		// An explicit `agent` option selects one of harbor's own baseline agents (oracle, nop),
+		// which are not harnesses; otherwise the harness axis names the agent and the class
+		// harbor imports to drive it.
+		let agent: string;
+		let agentImportPath: string | null = null;
+		if (optionAgent) {
+			agent = optionAgent;
+		} else {
+			const binding = requireBackendBinding(harness, this.id);
+			agent = binding.agentName ?? harness.name;
+			agentImportPath = binding.agentImportPath ?? null;
+		}
+		const optionModel = typeof context.options?.model === "string" ? context.options.model : undefined;
+		const model = variant.model || optionModel || harness.defaultModel || undefined;
 
+		const started = Date.now();
 		const runsDir = context.runsDir || defaultRunsDir();
-		const runDir = path.join(runsDir, context.runId);
+		const runDir = path.join(runsDir, sanitizeName(context.runId));
 		await fs.mkdir(runDir, { recursive: true });
 
-		const jobName = `${sanitizeName(cell.variant || "default")}__${sanitizeName(cell.task)}__r${cell.repeat ?? 0}_${Date.now()}`;
+		const jobName = `${sanitizeName(context.runId)}__${sanitizeName(cell.variant || "default")}__${sanitizeName(cell.task)}__r${cell.repeat ?? 0}_${Date.now()}`;
 		const jobDir = path.join(runDir, jobName);
 		await fs.mkdir(jobDir, { recursive: true });
+
+		const rawBudget = descriptor.timeBudgetSec > 0 ? descriptor.timeBudgetSec : DEFAULT_TRIAL_TIMEOUT_SEC;
+		const multiplier =
+			typeof context.options?.timeoutMultiplier === "number" && context.options.timeoutMultiplier > 0
+				? context.options.timeoutMultiplier
+				: 1;
+		const trialTimeoutSec = Math.min(Math.round(rawBudget * multiplier), HARD_CEILING_TIMEOUT_SEC);
 
 		// Read overrides from TaskDescriptor.metadata without re-reading task.toml
 		const metadata = descriptor.metadata;
@@ -281,6 +269,7 @@ export class HarborBackend implements ExecutionBackend {
 			tasks: 1,
 			models: model && agent !== "oracle" && agent !== "nop" ? [model] : [],
 			agent,
+			agentImportPath,
 			include: descriptor.path ? undefined : [cell.task],
 			yes: true,
 			timeoutMultiplier:
@@ -357,39 +346,66 @@ export class HarborBackend implements ExecutionBackend {
 			stderr: "pipe",
 		});
 
-		const onAbort = (): void => {
-			try {
-				proc.kill("SIGTERM");
-			} catch {
-				/* ignore */
-			}
+		const killTrial = async (): Promise<void> => {
+			await terminateProcessTree(proc, DEFAULT_GRACE_PERIOD_MS);
 			if (envType === "docker") {
-				runDockerCleanup(true);
+				await cleanupHarborTrialContainers({ jobDir, jobName, force: true }, this.#exec);
 			}
+		};
+
+		const onAbort = (): void => {
+			void killTrial();
 		};
 
 		if (context.signal) {
 			context.signal.addEventListener("abort", onAbort, { once: true });
 		}
 
+		const { promise: timeoutPromise, resolve: resolveTimeout } = Promise.withResolvers<"timed_out">();
+		const timer = setTimeout(() => resolveTimeout("timed_out"), trialTimeoutSec * 1000);
+
 		let stdout = "";
 		let stderr = "";
 		let exitCode = 0;
+		let timedOut = false;
 
 		try {
 			const stdoutPromise = readPipeText(proc.stdout);
 			const stderrPromise = readPipeText(proc.stderr);
-			[exitCode, stdout, stderr] = await Promise.all([proc.exited, stdoutPromise, stderrPromise]);
+			const raceResult = await Promise.race([
+				Promise.all([proc.exited, stdoutPromise, stderrPromise]).then(([code, out, err]) => ({
+					kind: "exited" as const,
+					code,
+					out,
+					err,
+				})),
+				timeoutPromise.then(kind => ({ kind, code: -1, out: "", err: "" })),
+			]);
+
+			if (raceResult.kind === "timed_out") {
+				timedOut = true;
+				await killTrial();
+				stdout = truncateRawOutput(await readPipeText(proc.stdout));
+				stderr = truncateRawOutput(await readPipeText(proc.stderr));
+				exitCode = -1;
+			} else {
+				exitCode = raceResult.code;
+				stdout = raceResult.out;
+				stderr = raceResult.err;
+			}
 		} finally {
+			clearTimeout(timer);
 			if (context.signal) {
 				context.signal.removeEventListener("abort", onAbort);
 			}
 		}
 
+		if (timedOut) {
+			throw new Error(`Trial timed out after ${trialTimeoutSec}s (watchdog ceiling)`);
+		}
+
 		if (context.signal?.aborted) {
-			if (envType === "docker") {
-				runDockerCleanup(true);
-			}
+			await killTrial();
 			throw new Error(`Trial aborted: harbor exited with code ${exitCode}`);
 		}
 
@@ -437,8 +453,8 @@ export class HarborBackend implements ExecutionBackend {
 			for (const rel of candidateLogFiles) {
 				const full = path.join(trialDir, rel);
 				try {
-					const content = await fs.readFile(full, "utf-8");
-					fileMap[rel] = content;
+					await fs.access(full);
+					fileMap[rel] = full;
 					logPaths.push(full);
 				} catch {
 					// File does not exist, continue
@@ -450,35 +466,49 @@ export class HarborBackend implements ExecutionBackend {
 			throw new Error(`Harbor run failed with exit code ${exitCode}: ${stderr || stdout}`);
 		}
 
+		const rawOutput = truncateRawOutput(stdout || stderr);
+
 		return {
 			trialDir,
 			logPaths,
-			rawOutput: stdout,
-			files: fileMap,
+			rawOutput,
+			filePaths: fileMap,
 			extra: {
 				cell,
 				jobName,
 				jobDir,
 				trialDir,
 				exitCode,
-				stdout,
-				stderr,
+				durationMs: Date.now() - started,
 			},
 		};
 	}
 
 	async cleanup(cell: TrialCell, context: RunContext): Promise<void> {
-		// Clean up any remaining trial containers
 		const envType = typeof context.options?.envType === "string" ? context.options.envType : "docker";
+		const runsDir = context.runsDir || defaultRunsDir();
+		const runDir = path.join(runsDir, sanitizeName(context.runId));
+		const prefix = `${sanitizeName(context.runId)}__${sanitizeName(cell.variant || "default")}__${sanitizeName(cell.task)}__r${cell.repeat ?? 0}`;
+
 		if (envType === "docker") {
 			try {
-				const containers = listHarborContainers();
-				const taskPattern = sanitizeName(cell.task);
-				const toRemove = containers.filter(
-					c => c.project.includes(taskPattern) || c.workingDir.includes(taskPattern),
-				);
-				if (toRemove.length > 0) {
-					runDockerCleanup(false);
+				let matchingJobDirs: string[] = [];
+				try {
+					const entries = await fs.readdir(runDir, { withFileTypes: true });
+					matchingJobDirs = entries
+						.filter(e => e.isDirectory() && e.name.startsWith(prefix))
+						.map(e => path.join(runDir, e.name));
+				} catch {
+					/* directory might not exist */
+				}
+
+				if (matchingJobDirs.length > 0) {
+					for (const jobDir of matchingJobDirs) {
+						const jobName = path.basename(jobDir);
+						await cleanupHarborTrialContainers({ jobDir, jobName, force: false }, this.#exec);
+					}
+				} else {
+					await cleanupHarborTrialContainers({ jobDir: runDir, jobName: prefix, force: false }, this.#exec);
 				}
 			} catch {
 				/* cleanup failure should not propagate */
@@ -487,9 +517,6 @@ export class HarborBackend implements ExecutionBackend {
 
 		if (context.options?.cleanup === true) {
 			try {
-				const runsDir = context.runsDir || defaultRunsDir();
-				const runDir = path.join(runsDir, context.runId);
-				const prefix = `${sanitizeName(cell.variant || "default")}__${sanitizeName(cell.task)}__r${cell.repeat ?? 0}`;
 				const entries = await fs.readdir(runDir, { withFileTypes: true });
 				for (const entry of entries) {
 					if (entry.isDirectory() && entry.name.startsWith(prefix)) {

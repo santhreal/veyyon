@@ -1,5 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { errorMessage } from "@veyyon/utils";
 import { AGENT_IMPORT_PATH } from "../../backends/harbor/launch-args";
 import type {
 	HarnessAdapter,
@@ -8,12 +9,16 @@ import type {
 	HarnessStageContext,
 	PreflightVerdict,
 } from "../../core/types";
-import type {
-	SystemAdapter,
-	SystemJobConfigContext,
-	SystemPreflightContext,
-	SystemPreflightResult,
-	SystemStageContext,
+import { authDbPath, veyBinaryPath } from "../../paths";
+import { decideAuthSeed, probeCredentialStore } from "../../suites/deep-swe/auth-seed";
+import { AUTH_DB_SOURCES, requireStagedAuthCanServeToken } from "../../suites/deep-swe/src/runner/preflight";
+import {
+	type SystemAdapter,
+	type SystemJobConfigContext,
+	type SystemPreflightContext,
+	type SystemPreflightResult,
+	type SystemStageContext,
+	sanitizeVariantName,
 } from "../types";
 
 export class VeyyonAdapter implements HarnessAdapter, SystemAdapter {
@@ -35,6 +40,7 @@ export class VeyyonAdapter implements HarnessAdapter, SystemAdapter {
 			containerAssetsDir: "/opt/veyyon-assets",
 		},
 		harbor: {
+			agentName: "veyyon",
 			agentImportPath: AGENT_IMPORT_PATH,
 		},
 		"in-process": {},
@@ -48,14 +54,66 @@ export class VeyyonAdapter implements HarnessAdapter, SystemAdapter {
 	readonly supportsArmAttachments = true;
 
 	async preflight(context: HarnessPreflightContext): Promise<PreflightVerdict> {
+		if (context.backend === "in-process") {
+			return { ok: true };
+		}
 		const options = context.options ?? {};
 		const missing: string[] = [];
-		const binary = typeof options.binary === "string" ? path.resolve(options.binary) : null;
-		if (binary) {
-			if (!fs.existsSync(binary) || !fs.statSync(binary).isFile()) {
-				missing.push(`pinned vey binary: ${binary}`);
+
+		const binary =
+			typeof options.binary === "string"
+				? path.resolve(options.binary)
+				: typeof options["vey-binary"] === "string"
+					? path.resolve(options["vey-binary"])
+					: typeof options.pinnedBinary === "string"
+						? path.resolve(options.pinnedBinary)
+						: veyBinaryPath();
+
+		if (!fs.existsSync(binary)) {
+			missing.push(
+				`missing vey binary at ${binary} (build with: bun --cwd=packages/coding-agent scripts/build-binary.ts)`,
+			);
+		} else if (!fs.statSync(binary).isFile()) {
+			missing.push(`vey binary path is not a file: ${binary}`);
+		} else {
+			try {
+				fs.accessSync(binary, fs.constants.X_OK);
+			} catch {
+				missing.push(`vey binary at ${binary} is not executable (fix with: chmod +x ${binary})`);
 			}
 		}
+
+		const authDb =
+			typeof options["auth-db"] === "string"
+				? path.resolve(options["auth-db"])
+				: typeof options.authDb === "string"
+					? path.resolve(options.authDb)
+					: authDbPath();
+		const mtimeOf = (p: string): number | undefined => (fs.existsSync(p) ? fs.statSync(p).mtimeMs : undefined);
+		const authDecision = decideAuthSeed(AUTH_DB_SOURCES, authDb, mtimeOf, probeCredentialStore);
+		const candidateDb =
+			fs.existsSync(authDb) && probeCredentialStore(authDb) === undefined
+				? authDb
+				: authDecision.kind !== "missing"
+					? authDecision.source
+					: null;
+
+		if (!candidateDb) {
+			missing.push(
+				`credential store: no agent.db at any of ${AUTH_DB_SOURCES.join(", ")} (log in first with: vey /login)`,
+			);
+		} else {
+			try {
+				const model =
+					typeof options.model === "string"
+						? options.model
+						: (this.defaultModel ?? "google-antigravity/gemini-3.5-flash");
+				await requireStagedAuthCanServeToken(model, true, candidateDb);
+			} catch (err) {
+				missing.push(`staged auth DB at ${candidateDb}: ${errorMessage(err)} (log in first with: vey /login)`);
+			}
+		}
+
 		if (missing.length > 0) {
 			return {
 				ok: false,
@@ -87,7 +145,14 @@ export class VeyyonAdapter implements HarnessAdapter, SystemAdapter {
 		return { valid: errors.length === 0, errors, warnings };
 	}
 
-	async stageAssets(_context: HarnessStageContext | SystemStageContext): Promise<void> {
+	async stageAssets(context: HarnessStageContext | SystemStageContext): Promise<void> {
+		if ("targetDir" in context) {
+			const variantKey = sanitizeVariantName(context.variant.name);
+			const destDir = path.join(context.targetDir, variantKey);
+			fs.mkdirSync(destDir, { recursive: true });
+			// Veyyon binary and auth DB staging are handled via arm-staging pipeline
+			return;
+		}
 		// Veyyon binary and auth DB staging are handled via arm-staging pipeline
 	}
 

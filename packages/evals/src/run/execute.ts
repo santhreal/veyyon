@@ -21,8 +21,9 @@ import type {
 	TrialScore,
 } from "../core";
 import { createRunRecord } from "../core";
+import { preflightHarnesses } from "../harnesses";
+import { cellKey, openRunJournal, readRunJournal, sanitizeTrialRecord } from "./journal";
 import type { RunPlan } from "./plan";
-
 export class BackendPreflightError extends Error {
 	readonly backendId: string;
 	readonly missingRequirements: readonly string[];
@@ -51,6 +52,29 @@ export class SuitePreflightError extends Error {
 	}
 }
 
+export class HarnessPreflightError extends Error {
+	readonly harness: string;
+	readonly variant: string;
+	readonly reason: string | null;
+	readonly missingRequirements: readonly string[];
+
+	constructor(
+		harness: string,
+		variant: string,
+		reason: string | null | undefined,
+		missing: readonly string[] | undefined,
+	) {
+		const detail = reason ?? "no reason given";
+		const requirements = missing && missing.length > 0 ? ` Missing: ${missing.join(", ")}.` : "";
+		super(`Harness "${harness}" refused preflight for variant "${variant}": ${detail}.${requirements}`);
+		this.name = "HarnessPreflightError";
+		this.harness = harness;
+		this.variant = variant;
+		this.reason = reason ?? null;
+		this.missingRequirements = missing ? [...missing] : [];
+	}
+}
+
 export class InvalidConcurrencyError extends Error {
 	constructor(jobs: number) {
 		super(`jobs must be an integer >= 1, got ${jobs}.`);
@@ -69,6 +93,10 @@ export interface ExecuteRunOptions {
 	readonly provenance?: RunProvenance;
 	/** Called as each trial settles, in completion order, for live progress. */
 	readonly onTrial?: (record: TrialResultRecord, index: number) => void;
+	/** Called when resuming an existing run and skipping already-settled cells. */
+	readonly onSkip?: (skippedCount: number, total: number) => void;
+	/** When true, read existing trials.jsonl and skip already-settled cells. */
+	readonly resume?: boolean;
 	readonly options?: Readonly<Record<string, unknown>>;
 	readonly now?: () => number;
 }
@@ -107,6 +135,22 @@ export async function executeRun(options: ExecuteRunOptions): Promise<EvalRunRec
 		throw new SuitePreflightError(plan.suite.name, suiteVerdict.reason, suiteVerdict.missingRequirements);
 	}
 
+	const harnessReports = await preflightHarnesses(plan.variants, {
+		backend: plan.suite.backend,
+		options: context.options,
+		signal: options.signal,
+	});
+	for (const report of harnessReports) {
+		if (!report.verdict.ok) {
+			throw new HarnessPreflightError(
+				report.harness,
+				report.variant,
+				report.verdict.reason,
+				report.verdict.missingRequirements,
+			);
+		}
+	}
+
 	const backendVerdict = await backend.preflight(context);
 	if (!backendVerdict.ok) {
 		throw new BackendPreflightError(backend.id, backendVerdict.reason, backendVerdict.missingRequirements);
@@ -114,9 +158,34 @@ export async function executeRun(options: ExecuteRunOptions): Promise<EvalRunRec
 
 	await backend.prepare(context);
 
+	const journal = await openRunJournal(options.runsDir, plan.runId);
+
 	const results = new Array<TrialResultRecord | undefined>(plan.cells.length);
 	let nextIndex = 0;
 	let settled = 0;
+
+	if (options.resume) {
+		const priorRecords = await readRunJournal(options.runsDir, plan.runId);
+		const settledMap = new Map<string, TrialResultRecord>();
+		for (const record of priorRecords) {
+			settledMap.set(cellKey(record.cell), record);
+		}
+		let skipped = 0;
+		for (let i = 0; i < plan.cells.length; i++) {
+			const cell = plan.cells[i];
+			if (cell) {
+				const existing = settledMap.get(cellKey(cell));
+				if (existing) {
+					results[i] = existing;
+					skipped++;
+				}
+			}
+		}
+		settled = skipped;
+		if (skipped > 0) {
+			options.onSkip?.(skipped, plan.cells.length);
+		}
+	}
 
 	const runOne = async (cell: TrialCell, index: number): Promise<void> => {
 		const startedAtMs = clock();
@@ -137,14 +206,15 @@ export async function executeRun(options: ExecuteRunOptions): Promise<EvalRunRec
 			}
 		}
 		const finishedAtMs = clock();
-		const record: TrialResultRecord = {
+		const record: TrialResultRecord = sanitizeTrialRecord({
 			cell,
 			score,
 			artifacts,
 			startedAt,
 			finishedAt: new Date(finishedAtMs).toISOString(),
 			durationMs: finishedAtMs - startedAtMs,
-		};
+		});
+		await journal.append(record);
 		results[index] = record;
 		options.onTrial?.(record, settled++);
 	};
@@ -154,11 +224,18 @@ export async function executeRun(options: ExecuteRunOptions): Promise<EvalRunRec
 			if (options.signal?.aborted) return;
 			const index = nextIndex++;
 			if (index >= plan.cells.length) return;
-			await runOne(plan.cells[index], index);
+			if (results[index] !== undefined) continue;
+			const cell = plan.cells[index];
+			if (!cell) continue;
+			await runOne(cell, index);
 		}
 	};
 
-	await Promise.all(Array.from({ length: Math.min(jobs, plan.cells.length) }, worker));
+	try {
+		await Promise.all(Array.from({ length: Math.min(jobs, plan.cells.length) }, worker));
+	} finally {
+		await journal.close();
+	}
 
 	return createRunRecord({
 		id: plan.runId,

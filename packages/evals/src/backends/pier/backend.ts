@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { getHarness } from "../../core/harness-registry";
+import { requireBackendBinding, resolveCellVariant } from "../../core/cell-variant";
+import { requireHarness } from "../../core/harness-registry";
 import type {
 	BackendId,
 	ExecutionBackend,
@@ -13,11 +14,16 @@ import { pierAgentDir } from "../../paths";
 import {
 	checkPierPreflight,
 	cleanupPierContainers,
+	DEFAULT_TRIAL_TIMEOUT_SEC,
+	HARD_CEILING_TIMEOUT_SEC,
 	runPierTrial,
 	trialArtifactsFromExecution,
 	writePierJobConfig,
 } from "./runner";
 
+function sanitizeName(s: string): string {
+	return s.replace(/[^a-zA-Z0-9._-]/g, "_");
+}
 export class PierExecutionBackend implements ExecutionBackend {
 	readonly id: BackendId = "pier";
 
@@ -26,9 +32,10 @@ export class PierExecutionBackend implements ExecutionBackend {
 	}
 
 	async prepare(context: RunContext): Promise<void> {
-		const configsDir = path.join(context.workDir, "configs");
-		const jobsDir = path.join(context.workDir, "jobs");
-		const assetsDir = path.join(context.workDir, "assets");
+		const runDir = path.join(context.workDir, "runs", sanitizeName(context.runId));
+		const configsDir = path.join(runDir, "configs");
+		const jobsDir = path.join(runDir, "jobs");
+		const assetsDir = path.join(runDir, "assets");
 		fs.mkdirSync(configsDir, { recursive: true });
 		fs.mkdirSync(jobsDir, { recursive: true });
 		fs.mkdirSync(assetsDir, { recursive: true });
@@ -36,25 +43,33 @@ export class PierExecutionBackend implements ExecutionBackend {
 
 	async runTrial(cell: TrialCell, context: RunContext): Promise<TrialArtifacts> {
 		const taskDescriptor = await context.suite.describeTask(cell.task, context);
-		const jobName =
-			cell.repeat > 1 ? `${cell.variant}__${cell.task}__r${cell.repeat}` : `${cell.variant}__${cell.task}`;
-		const configDir = path.join(context.workDir, "configs");
-		const jobsDir = path.join(context.workDir, "jobs");
-		const assetsDir = path.join(context.workDir, "assets");
+		const jobName = `${sanitizeName(context.runId)}__${sanitizeName(cell.variant || "default")}__${sanitizeName(cell.task)}__r${cell.repeat ?? 0}`;
+		const runDir = path.join(context.workDir, "runs", sanitizeName(context.runId));
+		const configsDir = path.join(runDir, "configs");
+		const jobsDir = path.join(runDir, "jobs");
+		const assetsDir = path.join(runDir, "assets");
 
-		const harness = getHarness(cell.variant);
-		const pierBinding = harness?.backends.pier;
-		const agentImportPath = pierBinding?.agentImportPath ?? "veyyon_agent:VeyyonAgent";
-		const modelName =
-			(context.options?.model as string | undefined) ??
-			harness?.defaultModel ??
-			"google-antigravity/gemini-3.5-flash";
+		const variant = resolveCellVariant(cell, context);
+		const harness = requireHarness(variant.harness);
+		const pierBinding = requireBackendBinding(harness, this.id);
+		const agentImportPath = pierBinding.agentImportPath;
+		if (!agentImportPath) {
+			throw new Error(
+				`Harness "${harness.name}" declares a pier binding without an agentImportPath, so pier has no agent class to load.`,
+			);
+		}
+		const modelName = variant.model || (context.options?.model as string | undefined) || harness.defaultModel;
+		if (!modelName) {
+			throw new Error(
+				`Variant "${variant.name}" names no model and harness "${harness.name}" has no default model.`,
+			);
+		}
 
 		const kwargs: Record<string, unknown> = {
-			arm_name: cell.variant,
+			arm_name: variant.name,
 			assets_dir: assetsDir,
 			binary_sha: (context.options?.binarySha as string | undefined) ?? "nosha",
-			...(pierBinding?.extra ?? {}),
+			...(pierBinding.extra ?? {}),
 		};
 
 		const configPath = writePierJobConfig({
@@ -64,25 +79,31 @@ export class PierExecutionBackend implements ExecutionBackend {
 			agentImportPath,
 			modelName,
 			kwargs,
-			configDir,
+			configDir: configsDir,
 		});
 
-		const trialTimeoutSec = taskDescriptor.timeBudgetSec > 0 ? taskDescriptor.timeBudgetSec : 1800;
+		const rawBudget = taskDescriptor.timeBudgetSec > 0 ? taskDescriptor.timeBudgetSec : DEFAULT_TRIAL_TIMEOUT_SEC;
+		const multiplier =
+			typeof context.options?.timeoutMultiplier === "number" && context.options.timeoutMultiplier > 0
+				? context.options.timeoutMultiplier
+				: 1;
+		const trialTimeoutSec = Math.min(Math.round(rawBudget * multiplier), HARD_CEILING_TIMEOUT_SEC);
 
 		const execution = await runPierTrial({
 			jobName,
-			outRoot: context.workDir,
+			outRoot: runDir,
+			jobsDir,
 			configPath,
 			pierAgentDir: pierAgentDir(),
 			trialTimeoutSec,
+			signal: context.signal,
 		});
 
 		return trialArtifactsFromExecution(execution.trialDirPath, execution);
 	}
 
-	async cleanup(cell: TrialCell, _context: RunContext): Promise<void> {
-		const jobName =
-			cell.repeat > 1 ? `${cell.variant}__${cell.task}__r${cell.repeat}` : `${cell.variant}__${cell.task}`;
+	async cleanup(cell: TrialCell, context: RunContext): Promise<void> {
+		const jobName = `${sanitizeName(context.runId)}__${sanitizeName(cell.variant || "default")}__${sanitizeName(cell.task)}__r${cell.repeat ?? 0}`;
 		await cleanupPierContainers(jobName);
 	}
 }
