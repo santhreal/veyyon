@@ -8,11 +8,17 @@
  * an unhandled error between tests that killed four test files in the native bucket
  * while every file passed on its own.
  *
- * The class this closes: any load-time cycle between the harness modules and the
- * suite modules, whichever module the process enters from. Each candidate module is
- * imported first in a fresh process, because module evaluation order — and therefore
- * whether a binding is still in its temporal dead zone — depends entirely on the
- * entry point.
+ * The class this closes: any load-time cycle between two modules the package ships,
+ * whichever module the process enters from. Every module under `src` that runs in a
+ * process is a candidate — the CLI, the core registries, the backends, the manager,
+ * the report writers, the server and its controllers, the benches, the harnesses and
+ * the suites — and each is imported first in a fresh process, because module
+ * evaluation order, and therefore whether a binding is still in its temporal dead
+ * zone, depends entirely on the entry point.
+ *
+ * `src/web` is excluded: those modules load in a browser, and the bundle entry reads
+ * `document` at module scope, so a process-entry probe cannot tell a missing DOM from
+ * a cycle. The dashboard's own suites drive those modules.
  *
  * What it does not catch: a cycle that only breaks when a module is imported after
  * some other specific module (this proves each module as a lone entry point, not
@@ -27,10 +33,29 @@ import { promisify } from "node:util";
 const execFileAsync = promisify(execFile);
 const packageRoot = path.resolve(import.meta.dirname, "..", "..");
 
+/**
+ * Every directory under `src` whose modules run in a process. `src/web` is the one
+ * omission, for the reason in the header.
+ */
+const PROBED_DIRS = [
+	"src/backends",
+	"src/benches",
+	"src/core",
+	"src/harnesses",
+	"src/manager",
+	"src/report",
+	"src/run",
+	"src/server",
+	"src/suites",
+] as const;
+
+/** The modules that sit directly under `src`, which no directory scan reaches. */
+const TOP_LEVEL_MODULES = ["src/cli.ts", "src/index.ts", "src/paths.ts", "src/wire.ts"] as const;
+
 async function moduleFiles(): Promise<string[]> {
 	const glob = new Bun.Glob("**/*.ts");
-	const files: string[] = [];
-	for (const dir of ["src/benches", "src/harnesses", "src/suites"]) {
+	const files: string[] = [...TOP_LEVEL_MODULES];
+	for (const dir of PROBED_DIRS) {
 		for await (const rel of glob.scan({ cwd: path.join(packageRoot, dir) })) {
 			if (rel.endsWith(".d.ts")) continue;
 			files.push(path.join(dir, rel));
@@ -74,13 +99,21 @@ const ENTRY_SCRIPTS = [
 /** A load-time cycle surfaces as a dead-zone read or a binding that is not yet a value. */
 const CYCLE_ERROR = /before initialization|is not defined|is not a function|is not an object|circular/i;
 
-describe("importing any harness or suite module first", () => {
+describe("importing any module the package ships first", () => {
 	test("never enters a load-time import cycle, whichever module the process starts from", async () => {
 		const files = await moduleFiles();
 		// A broken glob would otherwise pass this suite with nothing to prove.
+		expect(files).toContain("src/cli.ts");
+		expect(files).toContain("src/wire.ts");
+		expect(files).toContain("src/backends/harbor/runner/config.ts");
 		expect(files).toContain("src/benches/goal-budget-context-bench.ts");
+		expect(files).toContain("src/core/harness-registry.ts");
 		expect(files).toContain("src/harnesses/index.ts");
 		expect(files).toContain("src/harnesses/system-comparison.ts");
+		expect(files).toContain("src/manager/store.ts");
+		expect(files).toContain("src/report/bench-report.ts");
+		expect(files).toContain("src/run/index.ts");
+		expect(files).toContain("src/server/controllers/runs.ts");
 		expect(files).toContain("src/suites/deep-swe/runner/executor.ts");
 		expect(files).toContain("src/suites/deep-swe/replay-manifest.ts");
 
