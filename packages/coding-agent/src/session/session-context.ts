@@ -292,7 +292,7 @@ export function buildSessionContext(
 		}
 	}
 
-	const injectedTtsrRules = Array.from(injectedTtsrRulesSet);
+	const injectedTtsrRules = [...injectedTtsrRulesSet];
 
 	// Build messages and collect corresponding entries
 	// When there's a compaction, we need to:

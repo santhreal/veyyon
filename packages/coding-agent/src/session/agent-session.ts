@@ -6630,7 +6630,7 @@ export class AgentSession {
 		this.#postPromptTasksAbortController = new AbortController();
 		this.#resolveTtsrResume();
 
-		const pendingTasks = Array.from(this.#postPromptTasks);
+		const pendingTasks = [...this.#postPromptTasks];
 		if (pendingTasks.length === 0) {
 			this.#resolvePostPromptTasks();
 			return;
@@ -6937,9 +6937,9 @@ export class AgentSession {
 	}
 
 	#markTtsrInjected(ruleNames: string[]): void {
-		const uniqueRuleNames = Array.from(
-			new Set(ruleNames.map(ruleName => ruleName.trim()).filter(ruleName => ruleName.length > 0)),
-		);
+		const uniqueRuleNames = [
+			...new Set(ruleNames.map(ruleName => ruleName.trim()).filter(ruleName => ruleName.length > 0)),
+		];
 		if (uniqueRuleNames.length === 0) {
 			return;
 		}
@@ -7076,7 +7076,7 @@ export class AgentSession {
 		const toolPaths = tool?.matcherPaths?.(args);
 		if (toolPaths && toolPaths.length > 0) {
 			const normalized = toolPaths.flatMap(p => this.#normalizeTtsrPathCandidates(p));
-			if (normalized.length > 0) return Array.from(new Set(normalized));
+			if (normalized.length > 0) return [...new Set(normalized)];
 		}
 		return this.#extractTtsrFilePathsFromArgs(args);
 	}
@@ -7314,7 +7314,7 @@ export class AgentSession {
 			return undefined;
 		}
 
-		return Array.from(new Set(normalizedPaths));
+		return [...new Set(normalizedPaths)];
 	}
 
 	/** Convert a path argument into stable relative/absolute candidates for glob checks. */
@@ -7339,7 +7339,7 @@ export class AgentSession {
 			candidates.add(relativePath);
 		}
 
-		return Array.from(candidates);
+		return [...candidates];
 	}
 	/** Find the last assistant message in agent state (including aborted ones) */
 	#findLastAssistantMessage(): AssistantMessage | undefined {
@@ -8804,7 +8804,7 @@ export class AgentSession {
 	}
 
 	#filterSelectableMCPToolNames(toolNames: Iterable<string>): string[] {
-		return Array.from(toolNames).filter(name => this.#discoverableMCPTools.has(name) && this.#toolRegistry.has(name));
+		return [...toolNames].filter(name => this.#discoverableMCPTools.has(name) && this.#toolRegistry.has(name));
 	}
 
 	#getConfiguredDefaultSelectedMCPToolNames(): string[] {
@@ -8888,7 +8888,7 @@ export class AgentSession {
 	 * Get all configured tool names (built-in via --tools or default, plus custom tools).
 	 */
 	getAllToolNames(): string[] {
-		return Array.from(this.#toolRegistry.keys());
+		return [...this.#toolRegistry.keys()];
 	}
 
 	#wrapRuntimeTool(tool: AgentTool): AgentTool {
@@ -9038,7 +9038,7 @@ export class AgentSession {
 		// For "mcp-only" mode we only return MCP tools.
 		const mode = this.#resolveEffectiveDiscoveryMode();
 		const activeNames = new Set(this.getActiveToolNames());
-		const mcpTools = Array.from(this.#discoverableMCPTools.values()).filter(t => !activeNames.has(t.name));
+		const mcpTools = [...this.#discoverableMCPTools.values()].filter(t => !activeNames.has(t.name));
 		const localTools: DiscoverableTool[] = mode === "all" ? this.#collectDiscoverableLocalTools() : [];
 		const allTools = [...localTools, ...mcpTools];
 		return filter?.source ? allTools.filter(t => t.source === filter.source) : allTools;
@@ -9078,7 +9078,7 @@ export class AgentSession {
 		// selected while they are still active; otherwise BM25 must be able to rediscover them.
 		const activeNames = new Set(this.getActiveToolNames());
 		const mcpSelected = this.getSelectedMCPToolNames();
-		const nonMcpSelected = Array.from(this.#selectedDiscoveredToolNames).filter(
+		const nonMcpSelected = [...this.#selectedDiscoveredToolNames].filter(
 			name => activeNames.has(name) && this.#toolRegistry.has(name) && !isMCPToolName(name),
 		);
 		return [...new Set([...mcpSelected, ...nonMcpSelected])];
@@ -9372,7 +9372,7 @@ export class AgentSession {
 		}
 		this.#setActiveToolNames?.(validToolNames);
 		const activeNameSet = new Set(validToolNames);
-		for (const name of Array.from(this.#selectedDiscoveredToolNames)) {
+		for (const name of [...this.#selectedDiscoveredToolNames]) {
 			if (!activeNameSet.has(name) || isMCPToolName(name) || !this.#toolRegistry.has(name)) {
 				this.#selectedDiscoveredToolNames.delete(name);
 			}
@@ -9777,7 +9777,7 @@ export class AgentSession {
 	 */
 	async refreshMCPTools(mcpTools: CustomTool[], options?: { activateAll?: boolean }): Promise<void> {
 		const previousSelectedMCPToolNames = this.getSelectedMCPToolNames();
-		const existingNames = Array.from(this.#toolRegistry.keys());
+		const existingNames = [...this.#toolRegistry.keys()];
 		for (const name of existingNames) {
 			if (isMCPToolName(name)) {
 				this.#toolRegistry.delete(name);
@@ -9880,9 +9880,9 @@ export class AgentSession {
 		const autoActivatedRpcToolNames = rpcTools
 			.filter(tool => !tool.hidden && !previousRpcHostToolNames.has(tool.name))
 			.map(tool => tool.name);
-		await this.#applyActiveToolsByName(
-			Array.from(new Set([...activeNonRpcToolNames, ...preservedRpcToolNames, ...autoActivatedRpcToolNames])),
-		);
+		await this.#applyActiveToolsByName([
+			...new Set([...activeNonRpcToolNames, ...preservedRpcToolNames, ...autoActivatedRpcToolNames]),
+		]);
 	}
 
 	/** Whether auto-compaction is currently running */
@@ -18618,7 +18618,7 @@ export class AgentSession {
 				return false;
 			}
 			const settled = await Promise.race([
-				Promise.allSettled(Array.from(this.#activeEvalExecutions)).then(() => true),
+				Promise.allSettled([...this.#activeEvalExecutions]).then(() => true),
 				Bun.sleep(remainingMs).then(() => false),
 			]);
 			if (!settled && this.#activeEvalExecutions.size > 0) {

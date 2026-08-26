@@ -1165,10 +1165,10 @@ export class ModelRegistry {
 					builtIn: builtInModels,
 					cachedStandard: {
 						models: cachedStandardModels,
-						authoritativeFreshProviders: Array.from(authoritativeFreshProviders),
+						authoritativeFreshProviders: [...authoritativeFreshProviders],
 					},
 					cachedDiscoveries,
-					discoveryStates: Array.from(this.#providerDiscoveryStates.values()),
+					discoveryStates: [...this.#providerDiscoveryStates.values()],
 				});
 			}
 		}
@@ -1229,12 +1229,9 @@ export class ModelRegistry {
 			.update(
 				JSON.stringify({
 					overlays: this.#customModelOverlays,
-					overrides: Array.from(this.#providerOverrides),
-					modelOverrides: Array.from(this.#modelOverrides, ([provider, perModel]) => [
-						provider,
-						Array.from(perModel),
-					]),
-					keyless: Array.from(this.#keylessProviders),
+					overrides: [...this.#providerOverrides],
+					modelOverrides: Array.from(this.#modelOverrides, ([provider, perModel]) => [provider, [...perModel]]),
+					keyless: [...this.#keylessProviders],
 					discoverable: this.#discoverableProviders,
 				}),
 			)

@@ -414,7 +414,7 @@ export class FileSessionStorage implements SessionStorage {
 	 */
 	listFilesSync(dir: string, pattern: string): string[] {
 		try {
-			return Array.from(new Bun.Glob(pattern).scanSync(dir)).map(name => path.join(dir, name));
+			return [...new Bun.Glob(pattern).scanSync(dir)].map(name => path.join(dir, name));
 		} catch (err) {
 			if (isEnoent(err)) return [];
 			logger.warn("Session directory could not be listed; its sessions are invisible to this run", {
@@ -428,7 +428,7 @@ export class FileSessionStorage implements SessionStorage {
 
 	listFilesRecursiveSync(dir: string, pattern: string): string[] {
 		try {
-			return Array.from(new Bun.Glob(`**/${pattern}`).scanSync(dir)).map(name => path.join(dir, name));
+			return [...new Bun.Glob(`**/${pattern}`).scanSync(dir)].map(name => path.join(dir, name));
 		} catch (err) {
 			if (isEnoent(err)) return [];
 			logger.warn("Session directory tree could not be listed; some sessions are invisible to this run", {
