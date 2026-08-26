@@ -2458,23 +2458,9 @@ async function executeToolCalls(
 			}
 		}
 
-		// Rewrite the arguments HERE, before anything else observes them, and split the
-		// result by AUDIENCE.
-		//
-		// Two different expansions ride this hook and they disagree about display. A
-		// codec handle MUST be expanded before a person sees it: `tool_execution_start`
-		// is the event a renderer treats as authoritative ("args are final, reconcile
-		// them"), so leaving it unexpanded overwrote the live preview with `§handle` and
-		// left it there. A secret placeholder is the exact opposite: its expansion is a
-		// live credential, and a rendered card, a stream event, a telemetry span and a
-		// session file are precisely where it must never land.
-		//
-		// One form cannot satisfy both, so the transform returns both and the loop routes
-		// them. `execution` goes to `tool.execute` and to `beforeToolCall` — the hook that
-		// decides whether the call runs, so it must see what would actually run, and whose
-		// in-place mutations must reach the tool. `display` goes to everything that shows,
-		// streams, traces or records arguments. A sink added here later inherits `display`,
-		// so it is safe without knowing that secrets exist.
+		// Rewrite args here, split by audience: `execution` goes to `tool.execute` and `beforeToolCall`;
+		// `display` goes to everything that shows/streams/traces. Codec handles expand before display;
+		// secret placeholders never expand into display. Sinks inherit `display`, so they stay safe.
 		let displayArgs = effectiveArgs;
 		if (transformToolCallArguments) {
 			try {
