@@ -1953,8 +1953,8 @@ export class Editor implements Component, Focusable, MouseRoutable {
 			"NFC",
 		);
 
-		// Convert tabs to spaces (4 spaces per tab).
-		const tabExpandedText = cleanText.replace(/\t/g, "   ");
+		// Convert tabs to spaces (DEFAULT_TAB_WIDTH per tab).
+		const tabExpandedText = replaceTabs(cleanText);
 
 		// Strip control characters except newline (tabs already expanded above, CRs already
 		// normalized). Single regex pass instead of split/filter/join to avoid allocating a
