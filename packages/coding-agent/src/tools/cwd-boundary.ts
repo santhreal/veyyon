@@ -23,6 +23,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { isMissingPath, isRecord } from "@veyyon/utils";
 import {
+	expandDelimitedPathEntriesSync,
 	globSearchBase,
 	isInternalUrlPath,
 	isPathWithinCwd,
@@ -96,7 +97,7 @@ export interface CwdBoundedTool {
 	 * the boundary. Non-filesystem destinations (URLs, ssh, internal schemes) may
 	 * be included; the boundary skips them.
 	 */
-	filesystemTargets(args: unknown): string[];
+	filesystemTargets(args: unknown, cwd: string): string[];
 }
 
 /** True when `tool` declares filesystem targets, so the cwd boundary applies. */
@@ -125,23 +126,32 @@ function isNonFilesystemTarget(rawPath: string): boolean {
  * target, or internal scheme, which passes through so the boundary can skip it.
  * A bare `*.ts` bases at cwd.
  */
-export function searchPathFilesystemTargets(args: unknown): string[] {
+export function searchPathFilesystemTargets(args: unknown, cwd = process.cwd()): string[] {
+	// Accepts either the whole tool argument record or one already-extracted
+	// path value, because the unified search tool selects the field itself
+	// (`input` for a file search, `path` for text and structure).
 	let raw: unknown = args;
 	if (isRecord(args)) {
-		if (args.type === "files" && args.input !== undefined) {
-			raw = args.input;
-		} else if (args.path !== undefined) {
-			raw = args.path;
-		} else if (args.input !== undefined) {
-			raw = args.input;
-		} else {
-			raw = undefined;
-		}
+		// Selected by VALUE, not by key presence. `"path" in args` is true for a
+		// key carrying null (or any non-path value), and keying off presence let
+		// such a key suppress the legacy `paths` entirely — the under-report this
+		// breadth exists to prevent. `paths` (string or array) is still honored
+		// because the retired grep approval accepted it.
+		const direct = args.type === "files" && args.input !== undefined ? args.input : args.path;
+		const fallback = args.input !== undefined ? args.input : args.paths;
+		raw = typeof direct === "string" || Array.isArray(direct) ? direct : fallback;
 	}
 	const entries = parseApprovalPathList(raw);
+	if (entries.length === 0) return [];
+	// A delimited entry that names one real file keeps its delimiters, so a
+	// filename containing a space or a semicolon is not split into two bogus
+	// targets. Everything else fans out before the boundary reduces it.
+	const expanded = expandDelimitedPathEntriesSync(entries, cwd);
 	const targets: string[] = [];
-	for (const entry of entries) {
-		targets.push(isNonFilesystemTarget(entry) ? entry : globSearchBase(entry));
+	for (const entry of expanded) {
+		const trimmed = entry.trim();
+		if (trimmed.length === 0) continue;
+		targets.push(isNonFilesystemTarget(trimmed) ? trimmed : globSearchBase(trimmed));
 	}
 	return targets;
 }
@@ -161,7 +171,7 @@ export function cwdEscapingTargets(tool: unknown, args: unknown, cwd: string): s
 	const physicalCwd = physicalPath(cwd);
 	const cwdBase = physicalCwd === UNRESOLVABLE ? cwd : physicalCwd;
 	const escaping: string[] = [];
-	for (const rawPath of tool.filesystemTargets(args)) {
+	for (const rawPath of tool.filesystemTargets(args, cwd)) {
 		if (typeof rawPath !== "string" || rawPath.trim().length === 0) continue;
 		if (isNonFilesystemTarget(rawPath)) continue;
 		const resolved = resolveToCwd(rawPath, cwd);

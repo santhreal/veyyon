@@ -3,7 +3,7 @@
  */
 import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
 import type { ImageContent, Static, TextContent, TSchema } from "@veyyon/ai";
-import { isCancellation } from "@veyyon/utils";
+import { errorMessage, isCancellation, toError } from "@veyyon/utils";
 import type { Settings } from "../../config/settings";
 import type { Theme } from "../../modes/theme/theme";
 import { AgentRegistry } from "../../registry/agent-registry";
@@ -444,7 +444,7 @@ export class ExtensionToolWrapper<TParameters extends TSchema = TSchema, TDetail
 				}
 				throw new Error(
 					`An extension threw a non-error value while vetting this ${this.tool.name} call, so the call was ` +
-						`blocked rather than run unchecked: ${String(err)}. Do not retry it; tell the operator that ` +
+						`blocked rather than run unchecked: ${errorMessage(err)}. Do not retry it; tell the operator that ` +
 						"extension is failing.",
 				);
 			}
@@ -469,7 +469,7 @@ export class ExtensionToolWrapper<TParameters extends TSchema = TSchema, TDetail
 			// call did not happen, and turning either into a result the handlers can
 			// rewrite invites the agent loop to re-issue the work.
 			if (isCancellation(err)) throw err;
-			executionError = err instanceof Error ? err : new Error(String(err));
+			executionError = toError(err);
 			result = {
 				content: [{ type: "text", text: executionError.message }],
 				details: undefined as TDetails,

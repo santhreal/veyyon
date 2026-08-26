@@ -9,6 +9,7 @@ const SESSION_ACTIONS = ["stats"] as const;
 
 export default class Session extends Command {
 	static description = "Study a stored session (timing, tool cost, turn cadence)";
+	static aliases = ["sessions"];
 
 	static args = {
 		action: Args.string({

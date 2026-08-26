@@ -684,6 +684,9 @@ fn extract_aws_cloudwatch_events(root: &Value) -> Option<Vec<&Value>> {
 }
 
 fn epoch_ms_to_iso(ms: i64) -> String {
+	// Negative timestamps (pre-epoch or backwards clock skew) are clamped to the
+	// Unix epoch floor so sub-millisecond casts to u32 never wrap into billions.
+	let ms = ms.max(0);
 	let secs = ms / 1000;
 	let sub_ms = (ms % 1000) as u32;
 	let days_since_epoch = secs / 86400;
@@ -1638,6 +1641,57 @@ mod tests {
 				.contains("START RequestId: abc123 Version: $LATEST")
 		);
 		assert!(out.text.contains("END RequestId: abc123"));
+		assert!(out.text.contains("2 event(s)"));
+	}
+
+	#[test]
+	fn epoch_ms_to_iso_clamps_negative_and_boundary_timestamps() {
+		// Epoch itself
+		assert_eq!(epoch_ms_to_iso(0), "1970-01-01T00:00:00.000Z");
+
+		// One second before epoch
+		assert_eq!(epoch_ms_to_iso(-1000), "1970-01-01T00:00:00.000Z");
+
+		// Fractional second before epoch
+		assert_eq!(epoch_ms_to_iso(-1), "1970-01-01T00:00:00.000Z");
+
+		// Large negative value
+		assert_eq!(epoch_ms_to_iso(-1_000_000_000), "1970-01-01T00:00:00.000Z");
+
+		// Extreme negative value
+		assert_eq!(epoch_ms_to_iso(i64::MIN), "1970-01-01T00:00:00.000Z");
+
+		// Standard positive timestamp with sub-seconds
+		assert_eq!(epoch_ms_to_iso(1_705_310_100_123), "2024-01-15T09:15:00.123Z");
+	}
+
+	#[test]
+	fn compacts_cloudwatch_log_events_with_negative_timestamps() {
+		let cfg = MinimizerConfig { enabled: true, ..Default::default() };
+		let ctx = ctx("aws", &cfg);
+		let input = r#"{
+    "events": [
+        {
+            "timestamp": -1000,
+            "message": "event before epoch",
+            "ingestionTime": 0
+        },
+        {
+            "timestamp": 0,
+            "message": "event at epoch",
+            "ingestionTime": 0
+        }
+    ]
+}"#;
+		let out = filter(&ctx, input, 0);
+		assert!(
+			out.text
+				.contains("1970-01-01T00:00:00.000Z\tevent before epoch")
+		);
+		assert!(
+			out.text
+				.contains("1970-01-01T00:00:00.000Z\tevent at epoch")
+		);
 		assert!(out.text.contains("2 event(s)"));
 	}
 

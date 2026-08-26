@@ -82,7 +82,7 @@ describe("a vault scope directory that cannot be opened", () => {
 			expect(error).toBeInstanceOf(Error);
 			expect((error as Error).message).toBe(
 				`The profile vault directory at ${profileDir} could not be opened safely ` +
-					`(Error: EACCES: permission denied, open '${profileDir}').`,
+					`(EACCES: permission denied, open '${profileDir}').`,
 			);
 		});
 	});
@@ -103,7 +103,7 @@ describe("a vault scope directory that cannot be opened", () => {
 
 			expect((error as Error).message).toBe(
 				`The profile vault directory at ${profileDir} could not be opened safely ` +
-					`(Error: EACCES: permission denied, open '${profileDir}').`,
+					`(EACCES: permission denied, open '${profileDir}').`,
 			);
 		});
 	});
@@ -163,7 +163,7 @@ describe("a vault key directory that cannot be opened", () => {
 			// assertion is on the finished operator-visible string.
 			expect((error as Error).message).toBe(
 				`The vault key directory at ${configRoot} could not be opened safely ` +
-					`(Error: EACCES: permission denied, open '${configRoot}').`,
+					`(EACCES: permission denied, open '${configRoot}').`,
 			);
 		} finally {
 			await fs.chmod(configRoot, 0o700).catch(() => {});

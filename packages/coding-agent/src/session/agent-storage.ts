@@ -723,7 +723,11 @@ ON CONFLICT(model_key) DO UPDATE SET
 			try {
 				parsed = JSON.parse(row.data);
 			} catch (error) {
-				this.#reportUnreadableCredential(row.id, row.provider, `stored data is not valid JSON: ${String(error)}`);
+				this.#reportUnreadableCredential(
+					row.id,
+					row.provider,
+					`stored data is not valid JSON: ${errorMessage(error)}`,
+				);
 				continue;
 			}
 			if (!isRecord(parsed)) {

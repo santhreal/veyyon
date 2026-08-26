@@ -117,10 +117,21 @@ async function checkServerRunning(binaryPath: string): Promise<boolean> {
 		});
 		adoptIntoPrimarySessionCpuBudget(proc.pid);
 
-		const exited = await Promise.race([
-			proc.exited,
-			new Promise<null>(resolve => setTimeout(() => resolve(null), LIVENESS_TIMEOUT_MS)),
-		]);
+		// The timer has to be cancelled when the process wins the race. Left
+		// pending it holds its resolve closure and keeps the loop scheduled for the
+		// rest of the timeout on every probe of an already-dead server.
+		let timer: NodeJS.Timeout | undefined;
+		let exited: number | null;
+		try {
+			exited = await Promise.race([
+				proc.exited,
+				new Promise<null>(resolve => {
+					timer = setTimeout(() => resolve(null), LIVENESS_TIMEOUT_MS);
+				}),
+			]);
+		} finally {
+			clearTimeout(timer);
+		}
 
 		if (exited === null) {
 			proc.kill();

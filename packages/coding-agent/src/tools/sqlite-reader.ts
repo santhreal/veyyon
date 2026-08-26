@@ -482,6 +482,11 @@ function validateWriteColumns(
 }
 
 export function parseSqlitePathCandidates(filePath: string): SqlitePathCandidate[] {
+	// The pattern is module-scoped and global, so it carries `lastIndex` between
+	// calls. Draining to null resets it, but a throw out of the loop below does
+	// not, and the next call would then start scanning mid-string and miss
+	// candidates that are really there.
+	SQLITE_PATH_PATTERN.lastIndex = 0;
 	const normalized = filePath.replace(/\\/g, "/");
 	const seen = new Set<string>();
 	const candidates: SqlitePathCandidate[] = [];

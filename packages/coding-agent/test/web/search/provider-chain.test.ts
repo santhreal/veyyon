@@ -9,7 +9,9 @@ import {
 } from "@veyyon/coding-agent/web/search/provider";
 import { SEARCH_PROVIDER_ORDER } from "@veyyon/coding-agent/web/search/types";
 
-const authStorage = {} as AuthStorage;
+// This chain is driven purely by env-backed keys, so the store answers "nothing stored" for every
+// provider that consults it.
+const authStorage = { hasAuth: () => false } as unknown as AuthStorage;
 const originalBraveApiKey = process.env.BRAVE_API_KEY;
 const originalJinaApiKey = process.env.JINA_API_KEY;
 

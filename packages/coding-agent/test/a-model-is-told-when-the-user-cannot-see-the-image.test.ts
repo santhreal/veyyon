@@ -284,9 +284,17 @@ describe("a picture the terminal cannot draw leaves a row that says so", () => {
 		// A block whose own body never prints the path, so the file name in the
 		// row can only have come from the placeholder itself.
 		const rows = await renderBlock("a_tool_with_no_renderer", { args: {} });
-		// The row wraps on a narrow block, so the facts are read off the block
-		// text rather than off one line of it.
-		const row = rows.join(" ").replace(/\s+/gu, " ");
+		// The block wraps at a column that follows the length of the checkout path,
+		// so the file name can break anywhere. The facts are read off the rejoined
+		// block text: each row drops its gutter rail and the padding that follows
+		// the last glyph, and the rows are concatenated without a separator,
+		// because a terminal wrap inserts nothing between them. The rail pattern
+		// matches one box-drawing or block-element glyph specifically rather than
+		// any non-space character, so a renderer that stops drawing a rail fails
+		// this loudly instead of quietly eating the first character of every row.
+		// The rail this block draws is U+258F, a block element, so the class has
+		// to reach past the box-drawing range to cover it.
+		const row = rows.map(r => r.replace(/^ *[\u2500-\u259F] ?/u, "").trimEnd()).join("");
 
 		expect(row).toContain("[image not shown, no image protocol]");
 		expect(row).toContain("board.png");

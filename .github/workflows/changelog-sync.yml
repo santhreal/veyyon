@@ -1,0 +1,76 @@
+# Keep the generated repo-root CHANGELOG.md in step with the package changelogs.
+#
+# The root file is assembled from every `packages/*/CHANGELOG.md` and has no
+# machine consumer: the website renders from packages/coding-agent/CHANGELOG.md,
+# and `scripts/release.ts` regenerates the root at every cut. It exists so a
+# GitHub visitor reads one changelog instead of fourteen.
+#
+# WHY THIS WORKFLOW EXISTS. The entry gate requires a bullet under the changed
+# package's `## [Unreleased]` section, and adding that bullet is exactly what
+# desynchronizes the root. A pull request that did the documented thing then
+# failed two jobs — the changelog gate and the repo script gates, which assert
+# the same byte equality — for a file it was told never to edit by hand. Every
+# such pull request also edits one shared generated file, so concurrent ones
+# collide there and nowhere else.
+#
+# So the root is derived state and automation owns it. A contributor adds the
+# package bullet and stops. Whoever pushes to main directly still has the
+# pre-push hook, which renders the root before the push and refuses a commit
+# that carries a stale one, so this workflow stays a no-op on that path and
+# commits only after a merge that could not run the hook.
+#
+# A push made with GITHUB_TOKEN starts no workflow, so the commit below cannot
+# trigger this workflow again.
+name: Changelog sync
+
+on:
+  push:
+    branches: [main]
+    # A push that touches no changelog can only render the file it already has,
+    # so it never reaches this workflow. That also keeps the job off the list
+    # `REQUIRED_WORKFLOWS` builds from the workflows that run on every push,
+    # which the release waiter blocks on.
+    paths:
+      - "packages/*/CHANGELOG.md"
+      - "CHANGELOG.md"
+  # A resync on demand, for a root that drifted while this workflow was being
+  # wired up and for proving the job end to end without a changelog edit.
+  workflow_dispatch:
+
+# Serialized, never cancelled: two pushes landing together would otherwise race
+# to render the same file, and the loser's render would be the one that lands.
+concurrency:
+  group: changelog-sync-main
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    name: Resync the generated root changelog
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      - name: Render the root changelog
+        run: bun scripts/sync-root-changelog.ts
+      - name: Commit and push when the render changed
+        env:
+          # The repository's commit identity, not a bot's: this file's content is
+          # the maintainers' changelog text, only reassembled.
+          GIT_AUTHOR_NAME: santhreal
+          GIT_AUTHOR_EMAIL: 64453045+santhreal@users.noreply.github.com
+          GIT_COMMITTER_NAME: santhreal
+          GIT_COMMITTER_EMAIL: 64453045+santhreal@users.noreply.github.com
+        run: |
+          if git diff --quiet -- CHANGELOG.md; then
+            echo "root CHANGELOG.md already matches the package changelogs"
+            exit 0
+          fi
+          git commit -m "docs(changelog): resync the generated root" -- CHANGELOG.md
+          # HEAD:main rather than a branch checkout, so a main that moved during
+          # this run is a rejected non-fast-forward instead of a clobber. The
+          # next push to main renders again and lands it.
+          git push origin HEAD:main

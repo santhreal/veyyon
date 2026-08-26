@@ -350,7 +350,7 @@ function errorPayload(error: unknown): TabRunErrorPayload {
 	if (error instanceof Error) {
 		return { name: error.name, message: error.message, stack: error.stack, isToolError: false, isAbort: false };
 	}
-	return { name: "Error", message: String(error), isToolError: false, isAbort: false };
+	return { name: "Error", message: errorMessage(error), isToolError: false, isAbort: false };
 }
 
 function replyError(payload: TabRunErrorPayload): Error {

@@ -3,7 +3,7 @@
  * Uses Biome's CLI with JSON output instead of LSP (which has stale diagnostics issues).
  */
 import path from "node:path";
-import { logger, readPipeText } from "@veyyon/utils";
+import { errorMessage, logger, readPipeText } from "@veyyon/utils";
 import type { Diagnostic, DiagnosticSeverity, LinterClient, ServerConfig } from "../../lsp/types";
 import { adoptIntoPrimarySessionCpuBudget } from "../../session/cpu-limit";
 
@@ -109,7 +109,7 @@ async function runBiome(
 
 		return { stdout, stderr, success: exitCode === 0 };
 	} catch (err) {
-		return { stdout: "", stderr: String(err), success: false };
+		return { stdout: "", stderr: errorMessage(err), success: false };
 	}
 }
 

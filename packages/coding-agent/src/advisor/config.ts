@@ -1,6 +1,13 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { isEnoent, isRecord, logger, quarantineUnparseableFile, syncYamlTextToSettings } from "@veyyon/utils";
+import {
+	errorMessage,
+	isEnoent,
+	isRecord,
+	logger,
+	quarantineUnparseableFile,
+	syncYamlTextToSettings,
+} from "@veyyon/utils";
 import { type } from "arktype";
 import { YAML } from "bun";
 import { expandAtImports } from "../discovery/at-imports";
@@ -127,7 +134,7 @@ export async function discoverAdvisorConfigs(cwd: string, agentDir?: string): Pr
 		try {
 			parsed = YAML.parse(item.content);
 		} catch (err) {
-			logger.warn("Advisor config: failed to parse YAML", { path: item.path, error: String(err) });
+			logger.warn("Advisor config: failed to parse YAML", { path: item.path, error: errorMessage(err) });
 			continue;
 		}
 		if (!isRecord(parsed)) {
@@ -224,7 +231,7 @@ export async function loadWatchdogConfigFile(filePath: string): Promise<Watchdog
 		text = await Bun.file(filePath).text();
 	} catch (err) {
 		if (!isEnoent(err))
-			logger.warn("Advisor config: failed to read for edit", { path: filePath, error: String(err) });
+			logger.warn("Advisor config: failed to read for edit", { path: filePath, error: errorMessage(err) });
 		return { advisors: [] };
 	}
 	let parsed: unknown;
@@ -315,7 +322,7 @@ export async function saveWatchdogConfigFile(filePath: string, doc: WatchdogConf
 		edited = syncYamlTextToSettings(existingText, YAML.parse(content) as Record<string, unknown>);
 	} catch (err) {
 		throw new Error(
-			`Cannot save ${filePath}: its current contents cannot be edited in place (${String(err)}). ` +
+			`Cannot save ${filePath}: its current contents cannot be edited in place (${errorMessage(err)}). ` +
 				"Fix the file, or move it aside and save again.",
 			{ cause: err },
 		);

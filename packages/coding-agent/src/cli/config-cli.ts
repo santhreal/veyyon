@@ -5,7 +5,7 @@
  * Uses the settings schema as the source of truth for available settings.
  */
 
-import { APP_NAME, getAgentDir, isRecord, nearestNames } from "@veyyon/utils";
+import { APP_NAME, errorMessage, getAgentDir, isRecord, nearestNames } from "@veyyon/utils";
 import { renderHelpParagraph, renderHelpTable } from "@veyyon/utils/cli";
 import chalk from "chalk";
 import {
@@ -485,7 +485,7 @@ async function handleSet(key: string | undefined, value: string | undefined, fla
 	try {
 		parseAndSetValue(def.path, value);
 	} catch (err) {
-		console.error(chalk.red(String(err)));
+		console.error(chalk.red(errorMessage(err)));
 		process.exit(EXIT_USAGE);
 	}
 

@@ -123,6 +123,24 @@ export class HomeAnchorLayout {
 	}
 
 	/**
+	 * Seed the anchor on the frame the composer zone mounts.
+	 *
+	 * Always remeasures, and the mount path must go through here rather than a
+	 * bare {@link sync}. When the launch card was painted before this mode
+	 * existed, `first-frame.ts` has already started the screen, so
+	 * `ui.composedFrameRows` is non-zero — but that frame was composed from a
+	 * DIFFERENT layout instance's fills. Subtracting this layout's own fills
+	 * (still zero at mount) leaves the foreign frame's fill rows counted as
+	 * content, the slack reads as zero, and the composer mounts directly under
+	 * the hero in the middle of the viewport until the next composed frame
+	 * corrects it. A launch with no card takes the same path safely: no frame
+	 * exists yet, so the measurement was already direct.
+	 */
+	seedAfterMount(): void {
+		this.sync(true);
+	}
+
+	/**
 	 * Home-screen anchor self-correction, wired to the TUI's frame-composed
 	 * hook: content mounted or resized after the fill was seeded (e.g. the
 	 * async MCP status line) would otherwise leave the composer drifting off

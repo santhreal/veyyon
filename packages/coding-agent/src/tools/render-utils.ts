@@ -786,6 +786,25 @@ export function shortenPath(filePath: unknown, homeDir?: string): string {
 	return filePath;
 }
 
+/**
+ * Shorten home-directory paths embedded within a larger string (error messages,
+ * command previews, tool output descriptions). Words surrounded by quotes,
+ * brackets, or standard punctuation have their inner path shortened via
+ * {@link shortenPath}.
+ */
+export function shortenEmbeddedPaths(text: string, homeDir?: string): string {
+	return text
+		.split(" ")
+		.map(segment => {
+			const leading = segment.match(/^[("'`[]*/)?.[0] ?? "";
+			const trailing = segment.match(/[)"'`,.;:\]]*$/)?.[0] ?? "";
+			const end = segment.length - trailing.length;
+			if (leading.length >= end) return segment;
+			return `${leading}${shortenPath(segment.slice(leading.length, end), homeDir)}${trailing}`;
+		})
+		.join(" ");
+}
+
 export function formatToolWorkingDirectory(workdir: string | undefined, projectDir: string): string | undefined {
 	if (!workdir) return undefined;
 	const resolvedProjectDir = path.resolve(projectDir);

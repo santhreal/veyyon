@@ -24,8 +24,7 @@ interface ReadTargetSpec {
 
 interface FileReadHistory {
 	snapshotTag?: string;
-	hasFullVerbatim: boolean;
-	hasSummary: boolean;
+	hasSelectorFree: boolean;
 	ranges: Array<{ start: number; end: number }>;
 }
 
@@ -36,23 +35,112 @@ const MUTATING_TOOLS: Record<string, true> = {
 	patch: true,
 };
 
+const RANGE_CHUNK_RE = /^L?(\d+)(?:(\.\.|[-+])L?(\d+)?)?$/i;
+const WINDOWS_DRIVE_RE = /^[A-Za-z]:[\\/]/;
+const URI_SCHEME_PREFIX_RE = /^[A-Za-z][A-Za-z0-9+.-]*:\/\//;
+
+function parseRangeChunk(chunk: string): { startLine: number; endLine: number } | null {
+	const trimmed = chunk.trim();
+	const match = trimmed.match(RANGE_CHUNK_RE);
+	if (!match) return null;
+	const startLine = Number.parseInt(match[1]!, 10);
+	if (startLine < 1) return null;
+	const sep = match[2] === ".." ? "-" : match[2];
+	const rhs = match[3] ? Number.parseInt(match[3], 10) : undefined;
+	let endLine: number;
+	if (sep === "+") {
+		endLine = rhs !== undefined && rhs >= 1 ? startLine + rhs - 1 : startLine;
+	} else if (sep === "-") {
+		endLine = rhs !== undefined ? rhs : Number.POSITIVE_INFINITY;
+	} else {
+		endLine = startLine;
+	}
+	return { startLine, endLine };
+}
+
+function parseRangeSelector(sel: string): { startLine: number; endLine: number } | null {
+	const chunks = sel.split(",");
+	if (chunks.length === 0) return null;
+	const first = parseRangeChunk(chunks[0]!);
+	if (!first) return null;
+	for (let i = 1; i < chunks.length; i++) {
+		if (!parseRangeChunk(chunks[i]!)) return null;
+	}
+	return first;
+}
+
 function parseReadTarget(target: string): ReadTargetSpec {
 	const trimmed = target.trim();
-	const colonIdx = trimmed.indexOf(":");
-	if (colonIdx === -1) {
+	if (trimmed.length === 0) {
+		return { basePath: "", isRange: false };
+	}
+
+	const lastColon = trimmed.lastIndexOf(":");
+	if (lastColon <= 0) {
 		return { basePath: trimmed, isRange: false };
 	}
-	const basePath = trimmed.slice(0, colonIdx);
-	const sel = trimmed.slice(colonIdx + 1).toLowerCase();
-	if (sel === "raw" || sel === "conflicts" || sel.length === 0) {
-		return { basePath, isRange: false };
+
+	// If the only colon is part of a Windows drive prefix (e.g. C:\path or C:/path)
+	// or a URI scheme prefix with no other colon (e.g. skill://alpha), there is no selector.
+	if (lastColon === 1 && WINDOWS_DRIVE_RE.test(trimmed)) {
+		return { basePath: trimmed, isRange: false };
 	}
-	const rangeMatch = sel.match(/^(\d+)(?:-(\d+))?/);
-	if (rangeMatch) {
-		const startLine = Number.parseInt(rangeMatch[1]!, 10);
-		const endLine = rangeMatch[2] ? Number.parseInt(rangeMatch[2]!, 10) : startLine;
-		return { basePath, isRange: true, startLine, endLine };
+	if (URI_SCHEME_PREFIX_RE.test(trimmed) && trimmed.indexOf(":") === lastColon) {
+		return { basePath: trimmed, isRange: false };
 	}
+
+	const outerCandidate = trimmed.slice(lastColon + 1);
+	if (outerCandidate.length === 0) {
+		return { basePath: trimmed.slice(0, lastColon), isRange: false };
+	}
+
+	const outerTrimmedLower = outerCandidate.trim().toLowerCase();
+	const outerIsRaw = outerTrimmedLower === "raw";
+	const outerIsConflicts = outerTrimmedLower === "conflicts";
+	const outerRange = parseRangeSelector(outerCandidate);
+
+	if (!outerIsRaw && !outerIsConflicts && !outerRange) {
+		return { basePath: trimmed, isRange: false };
+	}
+
+	let basePath = trimmed.slice(0, lastColon);
+
+	// Check for compound selector (e.g. `path:raw:2-4` or `path:2-4:raw`)
+	const innerColon = basePath.lastIndexOf(":");
+	if (innerColon > 0) {
+		const innerCandidate = basePath.slice(innerColon + 1);
+		const innerIsRaw = innerCandidate.trim().toLowerCase() === "raw";
+		const innerRange = parseRangeSelector(innerCandidate);
+
+		if (innerIsRaw && outerRange) {
+			basePath = basePath.slice(0, innerColon);
+			return {
+				basePath,
+				isRange: true,
+				startLine: outerRange.startLine,
+				endLine: outerRange.endLine,
+			};
+		}
+		if (innerRange && outerIsRaw) {
+			basePath = basePath.slice(0, innerColon);
+			return {
+				basePath,
+				isRange: true,
+				startLine: innerRange.startLine,
+				endLine: innerRange.endLine,
+			};
+		}
+	}
+
+	if (outerRange) {
+		return {
+			basePath,
+			isRange: true,
+			startLine: outerRange.startLine,
+			endLine: outerRange.endLine,
+		};
+	}
+
 	return { basePath, isRange: false };
 }
 
@@ -66,27 +154,17 @@ function parseReadTargets(pathArg: unknown): ReadTargetSpec[] {
 
 function isTargetSubsumed(target: ReadTargetSpec, history: FileReadHistory | undefined): boolean {
 	if (!history) return false;
-	if (history.hasSummary) return false;
-	if (history.hasFullVerbatim) return true;
 	if (target.isRange && target.startLine !== undefined && target.endLine !== undefined) {
 		const start = target.startLine;
 		const end = target.endLine;
 		return history.ranges.some(r => r.start <= start && r.end >= end);
 	}
-	return false;
+	return !target.isRange && history.hasSelectorFree;
 }
 
 function extractSnapshotTag(text: string): string | undefined {
 	const tagMatch = text.match(/\[[^\]#]+#([0-9A-Fa-f]{4})\]/);
 	return tagMatch ? tagMatch[1] : undefined;
-}
-
-function resultIsStructuralSummary(text: string): boolean {
-	return (
-		text.includes("re-issue ONLY the ranges you need") ||
-		text.includes("structural summary") ||
-		text.includes("recovery selector")
-	);
 }
 
 /** A completed assistant turn plus the tool results it produced. */
@@ -209,9 +287,8 @@ export class ToolCallLoopGuard {
 		if (toolCall.name === "read") {
 			const targets = parseReadTargets((toolCall.arguments as Record<string, unknown>)?.path);
 			const resultText = summarizeToolResult(turn.toolResults, toolCall.id);
-			const isSummary = resultIsStructuralSummary(resultText);
 			const currentTag = extractSnapshotTag(resultText);
-			// Are all requested targets already subsumed by earlier verbatim reads?
+			// Are all requested targets already subsumed by earlier reads?
 			const allSubsumed =
 				targets.length > 0 &&
 				targets.every(t => {
@@ -231,23 +308,18 @@ export class ToolCallLoopGuard {
 				if (!history || (currentTag && history.snapshotTag && currentTag !== history.snapshotTag)) {
 					history = {
 						snapshotTag: currentTag,
-						hasFullVerbatim: false,
-						hasSummary: isSummary,
+						hasSelectorFree: false,
 						ranges: [],
 					};
 					this.#fileReadHistories.set(target.basePath, history);
 				}
 				if (currentTag) history.snapshotTag = currentTag;
-				history.hasSummary = isSummary;
-				if (!isSummary) {
-					if (target.isRange && target.startLine !== undefined && target.endLine !== undefined) {
-						history.ranges.push({ start: target.startLine, end: target.endLine });
-					} else {
-						history.hasFullVerbatim = true;
-					}
+				if (target.isRange && target.startLine !== undefined && target.endLine !== undefined) {
+					history.ranges.push({ start: target.startLine, end: target.endLine });
+				} else if (!target.isRange) {
+					history.hasSelectorFree = true;
 				}
 			}
-
 			if (this.#subsumedReadCount === this.#readSubsumptionThreshold) {
 				return {
 					kind: "repeated_tool_call",

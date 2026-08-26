@@ -20,7 +20,19 @@ export interface StatusLineSegmentOptions {
 		/** Quiet zones: a wide gap between the model name and the effort tail. */
 		roomy?: boolean;
 	};
-	path?: { abbreviate?: boolean; maxLength?: number; stripWorkPrefix?: boolean };
+	path?: {
+		abbreviate?: boolean;
+		maxLength?: number;
+		stripWorkPrefix?: boolean;
+		/**
+		 * Workspace roots the working directory is shown relative to, most specific first, with
+		 * `~` accepted for the home directory. Absent means the two conventions this segment has
+		 * always stripped (`~/Projects` and `/work`); `stripWorkPrefix: false` means none at all,
+		 * whatever is listed here. A relative entry is dropped and named to the log, because a
+		 * root that cannot contain a directory would otherwise read as applied and do nothing.
+		 */
+		displayRoots?: string[];
+	};
 	git?: { showBranch?: boolean };
 	time?: { format?: "12h" | "24h"; showSeconds?: boolean };
 }
@@ -167,6 +179,17 @@ export interface SegmentContext {
 export interface RenderedSegment {
 	content: string; // The segment text (may include ANSI color codes)
 	visible: boolean; // Whether to render (e.g., git hidden when not in repo)
+	/**
+	 * Cells at the FRONT of `content` a width clip must keep, in the location zone which
+	 * clips from the front. Zero or absent means the whole segment is expendable head.
+	 *
+	 * The path segment sets it to its icon: three glyphs run through that slot — a linked
+	 * worktree, a scratch directory, an ordinary folder — and the text beside it says which
+	 * one it is nowhere else, since a worktree renders as `project/worktree` and reads as any
+	 * two-segment path without the glyph. A clip that ate the icon changed what the row
+	 * claimed to be, so the icon is kept and the cells come out of the path instead.
+	 */
+	pin?: number;
 }
 
 export interface StatusLineSegment {

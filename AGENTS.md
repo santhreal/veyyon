@@ -49,15 +49,37 @@ of `Model`, `Api`, `ThinkingConfig` and `Effort` from `@veyyon/ai` are fine.
 the only capture authority. Read it and use it verbatim. There are no fallbacks: a capture taken any
 other way is not evidence and satisfies no gate here.
 
-None of these is evidence, and none substitutes for a capture:
+### Recording UI captures
 
-- A tmux capture, of anything. It renders on a black default ground and strips styling in
-  `capture-pane`, which hid dark background fills that shipped as black slabs (2026-07-22).
-- An off-screen raster of a component's ANSI. `scripts/demos/render-proof.ts` is a debugging aid: it
-  renders a fixture you wrote at a width you chose, so it cannot show that the surface is reachable,
-  that the state is real, or that the block is positioned, sized and clipped the way a session draws
-  it.
-- A mock-up, a hand-built frame, a snippet in a comment, or one unpaired image.
+Record all visual proof through the containerized X11 capture harness on the private display:
+
+```sh
+# UI change: record After and Before pair
+proof/docker/record-x11.sh proof/scenes/<name>.sh        # writes After to proof/captures/x11/
+proof/docker/record-x11-before.sh proof/scenes/<name>.sh # writes Before to proof/captures/x11/before/
+
+# Settings change: record Off and On differential
+OUT_DIR=proof/captures/x11/off proof/docker/record-x11.sh proof/scenes/<name>.sh
+OUT_DIR=proof/captures/x11/on SCENE_SETTINGS='<setting>: <val>' proof/docker/record-x11.sh proof/scenes/<name>.sh
+
+# Degradation change: one pair per terminal width. OUT_DIR is a docker bind mount, so it
+# has to be absolute, and both arms take it, since one directory cannot hold two arms
+# whose frames share the scene's mark names. About 12 pixels per column.
+for px in 960 1200 1440; do
+	SCENE_WIDTH=${px} OUT_DIR="${PWD}/proof/captures/x11/w${px}" \
+		proof/docker/record-x11.sh proof/scenes/<name>.sh
+	SCENE_WIDTH=${px} OUT_DIR="${PWD}/proof/captures/x11/before/w${px}" \
+		proof/docker/record-x11-before.sh proof/scenes/<name>.sh
+done
+```
+
+### What is NOT evidence
+
+None of these is evidence, and none satisfies any gate or PR visual requirement:
+
+- **Off-screen ANSI PNG rasters** (`scripts/demos/render-proof.ts`). This is strictly a local debugging aid for checking ANSI contrast/fills on synthetic fixtures; it never proves reachable UI, live state, correct sizing, or window clipping. It must never be presented as satisfying visual proof requirements.
+- **tmux captures** (`capture-pane`). It renders on a black ground, stripping styles and background fills.
+- **Mock-ups, hand-built frames, or unpaired images**.
 
 Two things stand beside a capture and replace neither: string/ANSI assertions that pin exact bytes,
 colours and widths, and the operator's own screenshots, which are ground truth.
@@ -67,7 +89,33 @@ colours and widths, and the operator's own screenshots, which are ground truth.
 A pull request that changes visible UI carries a labeled **Before** and **After** pair in its body
 before it can merge. Both frames show the same surface, dimensions, terminal configuration and state
 apart from the intended change, and both come from the capture config above. A static change proves
-with a PNG pair, an animation with a GIF pair; a still never proves an animation.
+with a PNG pair, an animation with a GIF/WebP pair; a still never proves an animation.
+
+Proof frames are **embedded inline** in the pull request description as Markdown images
+(`![After](https://github.com/user-attachments/assets/...)`), never pasted as monospace text
+blocks, never left as bare attachments, and never linked to a path in the repository.
+
+GitHub exposes no API for comment attachments. `gh image`, the `drogers0/gh-image` extension,
+reproduces the web upload flow and prints the canonical `user-attachments` Markdown reference for
+each file. It is unofficial and it is the only supported route here:
+
+```sh
+gh extension install drogers0/gh-image      # once per machine
+gh image check-token                        # prints the account, or fails closed
+gh image proof/captures/x11/before/<scene>.png proof/captures/x11/<scene>.png
+# ![before](https://github.com/user-attachments/assets/...)
+# ![after](https://github.com/user-attachments/assets/...)
+```
+
+The token comes from a browser session, so `check-token` runs before the upload rather than after a
+half-written body. Pass `GH_SESSION_TOKEN` in the environment instead of `--token`, which is visible
+in the process list.
+
+One pair covers a change that alters one surface in one state. A change that alters how a surface
+degrades carries a labeled pair for **every state and every width it reaches** — each composer
+state, each mode combination, and each terminal width where the layout changes what it drops or
+shortens. Two frames of the widest terminal prove nothing about the narrow one, which is where a
+shed segment is decided. Name each pair for the state and the width it shows.
 
 Proof frames are committed nowhere: not `assets/`, not a README, not the handbook, not the website.
 The regeneration command belongs in the handbook page that owns the surface.
@@ -453,10 +501,14 @@ sections: `### Breaking Changes` (first if present), `### Added`, `### Changed`,
 `### Removed`.
 
 - Keep entries concise: a single flat declarative sentence stating the exact user-visible change or fix. No narrative setup, filler, or multi-sentence paragraphs.
-- Never write an entry into the repo-root `CHANGELOG.md`. It is generated by
-  `bun run changelog:root` from every package changelog, so an entry there is deleted by the next
-  render. The write path refuses when the root holds an unreleased entry the render does not produce,
-  and names each one.
+- Never write an entry into the repo-root `CHANGELOG.md` by hand. It is generated by
+  `bun run changelog:root` from every package changelog, so an entry written there is deleted by the
+  next render. The write path refuses when the root holds an unreleased entry the render does not
+  produce, and states each one.
+- Pushing to `main` directly is the one path that still regenerates the root by hand: the pre-push
+  hook renders it and refuses a commit whose root is stale, so run `bun run changelog:root` and
+  commit the result alongside the package bullet. A pull request does not, and CI no longer gates
+  one on it — `.github/workflows/changelog-sync.yml` renders and commits the root after the merge.
 - Never modify a released section (`## [0.12.2]`). Released sections are immutable.
 - Do not flag changelog section order or formatting in reviews; the Release workflow runs
   `fix-changelogs`.

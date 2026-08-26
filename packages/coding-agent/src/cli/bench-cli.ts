@@ -16,7 +16,7 @@ import type {
 import { resolveModelServiceTier, streamSimple } from "@veyyon/ai";
 import { buildModelProviderPriorityRank } from "@veyyon/catalog/identity";
 import { replaceTabs, truncateToWidth } from "@veyyon/tui";
-import { formatDuration, getAgentDir, getProjectDir } from "@veyyon/utils";
+import { errorMessage, formatDuration, getAgentDir, getProjectDir } from "@veyyon/utils";
 import chalk from "chalk";
 import type { ApiKeyResolverModel } from "../config/api-key-resolver";
 import { credentialRemedySentence } from "../config/missing-credentials";
@@ -131,11 +131,6 @@ export interface BenchDependencies {
 	streamSimple?: BenchStreamSimple;
 	now?: () => number;
 	stdoutIsTTY?: boolean;
-}
-
-function getErrorMessage(error: unknown): string {
-	if (error instanceof Error && error.message) return error.message;
-	return String(error);
 }
 
 function normalizePositiveInteger(name: string, value: number | undefined, fallback: number): number {
@@ -310,7 +305,7 @@ async function runBenchRequest(
 			tokensPerSecond: durationMs > 0 ? (outputTokens * 1000) / durationMs : 0,
 		};
 	} catch (error) {
-		return { ok: false, error: getErrorMessage(error) };
+		return { ok: false, error: errorMessage(error) };
 	} finally {
 		closeProviderSessionStates(providerSessionState);
 	}
@@ -457,7 +452,7 @@ function resolveBenchModels(
 	const resolved: BenchTarget[] = [];
 	const errors: string[] = [];
 	for (const selector of selectors) {
-		const result = resolveCliModel({ cliModel: selector, modelRegistry, preferences });
+		const result = resolveCliModel({ cliModel: selector, modelRegistry, preferences, settings });
 		if (result.error) {
 			errors.push(`${selector}: ${result.error}`);
 			continue;
