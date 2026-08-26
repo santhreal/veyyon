@@ -24,6 +24,18 @@ export const PAINT_GROUND_AUTO_TOLERANCE = 32;
 
 /** Parse `#RRGGBB` into channels; null for anything else (fail closed). */
 export function parseHexColor(hex: string): { r: number; g: number; b: number } | null {
+	// Fast path: `#RRGGBB` is 7 chars starting with `#`. charCodeAt-based parse
+	// avoids the regex match + parseInt allocation for valid hex colors.
+	if (hex.length === 7 && hex.charCodeAt(0) === 35) {
+		let value = 0;
+		for (let i = 1; i < 7; i++) {
+			const c = hex.charCodeAt(i);
+			const d = c <= 57 ? c - 48 : (c & 0xdf) - 55;
+			if (d < 0 || d > 15) return null;
+			value = (value << 4) | d;
+		}
+		return { r: (value >> 16) & 0xff, g: (value >> 8) & 0xff, b: value & 0xff };
+	}
 	const match = /^#([0-9a-fA-F]{6})$/.exec(hex);
 	if (!match) return null;
 	const value = parseInt(match[1]!, 16);
