@@ -923,6 +923,31 @@ pub fn is_test_script_token(token: &str) -> bool {
 	matches!(token, "test" | "t" | "e2e" | "spec") || token.starts_with("test:")
 }
 
+/// Whether an argv word is a POSIX `NAME=value` environment assignment, a
+/// leading prefix that does not change which command word ultimately runs.
+///
+/// A shell decides this by the name rule: a name starts with a letter or `_`,
+/// so `1=2 cargo test` runs a program called `1=2` rather than setting a
+/// variable. `detect.rs` steps over these words to find the program that runs,
+/// and getting the rule wrong there names the wrong program.
+///
+/// Two other predicates ask questions that read like this one and are not:
+/// `engine::is_assignment_shaped` is deliberately broader, and
+/// `filters/system.rs` stays uppercase-only. Each states why where it is
+/// defined.
+#[must_use]
+pub fn is_env_assignment(token: &str) -> bool {
+	let Some((name, _)) = token.split_once('=') else {
+		return false;
+	};
+	let mut chars = name.chars();
+	let Some(first) = chars.next() else {
+		return false;
+	};
+	(first == '_' || first.is_ascii_alphabetic())
+		&& chars.all(|ch| ch == '_' || ch.is_ascii_alphanumeric())
+}
+
 /// Whether a line carries a word that marks it as a diagnostic worth keeping.
 ///
 /// TWO COPIES OF THIS DISAGREED, which is how it got here. `lint.rs` matched

@@ -265,3 +265,66 @@ mod the_router_and_the_filter_agree_on_a_script_word {
 		assert_eq!(primitives::trim_command_token("plain"), "plain");
 	}
 }
+
+mod two_questions_about_an_equals_sign_keep_two_names {
+	use veyyon_shell::minimizer::{detect, engine::should_minimize};
+
+	use super::*;
+
+	/// `is_env_assignment` in `detect.rs` and `is_env_assignment` in `engine.rs`
+	/// were two functions of one name with different rules: the detector
+	/// followed the POSIX name rule, the engine accepted a leading digit. The
+	/// detector's is now the shared owner in `primitives`; the engine's kept its
+	/// behavior under a name that says what it asks. These tests pin the rules
+	/// apart, so a later reader who "unifies" them turns this red rather than
+	/// changing which program the detector names.
+	#[test]
+	fn a_posix_name_is_an_assignment() {
+		assert!(primitives::is_env_assignment("FOO=1"));
+		assert!(primitives::is_env_assignment("_foo=1"));
+		assert!(primitives::is_env_assignment("Foo_9=x=y"));
+		assert!(primitives::is_env_assignment("FOO="));
+	}
+
+	/// The rule that separated the two copies, and the shell's own reading:
+	/// a name cannot start with a digit, so `1=2` is a program name.
+	#[test]
+	fn a_leading_digit_is_not_an_assignment() {
+		assert!(!primitives::is_env_assignment("1=2"));
+		assert!(!primitives::is_env_assignment("9FOO=1"));
+	}
+
+	#[test]
+	fn a_word_without_an_equals_is_not_an_assignment() {
+		assert!(!primitives::is_env_assignment("cargo"));
+		assert!(!primitives::is_env_assignment(""));
+		assert!(!primitives::is_env_assignment("=1"));
+		assert!(!primitives::is_env_assignment("a-b=1"));
+		assert!(!primitives::is_env_assignment("a.b=1"));
+	}
+
+	/// The detector names the program a shell would run, not the one a looser
+	/// reading of the prefix would leave behind.
+	#[test]
+	fn the_detector_steps_over_only_real_assignments() {
+		let after_assignment = detect::detect("FOO=1 cargo test").expect("cargo is detected");
+		assert_eq!(after_assignment.program, "cargo");
+
+		let leading_digit = detect::detect("1=2 cargo test");
+		assert_ne!(
+			leading_digit.map(|identity| identity.program),
+			Some("cargo".to_string()),
+			"`1=2` is a program name to a shell, so it must not be skipped as a prefix"
+		);
+	}
+
+	/// The engine's half, through its public entry point. `command 1=2 exec
+	/// >out` must stay opaque: the scan steps over the assignment-shaped word
+	/// and still reaches `exec`, which segmented execution cannot preserve.
+	#[test]
+	fn the_wrapper_scan_still_reaches_a_mutator_behind_an_odd_word() {
+		let config = enabled();
+		assert!(!should_minimize("command 1=2 exec >out && cargo test", &config));
+		assert!(!should_minimize("command FOO=1 exec >out && cargo test", &config));
+	}
+}
