@@ -5,6 +5,7 @@ import { isRecord } from "@veyyon/utils";
 import { aggregate, type JobInfo, type Trial } from "../backends/harbor/runner/results";
 import { sumOfMeasured } from "../core/scoring";
 import type { BackendId } from "../core/types";
+import { pathSegmentFrom } from "../paths";
 import type { BenchmarkDefinition, BenchmarkKind, MetricDefinition } from "../wire";
 
 /** Adapter for a benchmark system, declaring its wire metadata, backend binding, and snapshot reader. */
@@ -317,7 +318,7 @@ function readEditSnapshot(jobDir: string): BenchmarkSnapshot {
 					costUsd,
 					durationMs: run.duration,
 					detail: JSON.stringify({ name: task.name, error: run.error ?? null, tools: run.toolCalls ?? null }),
-					tracePath: path.join("result.dump", task.id.replace(/[^a-zA-Z0-9._-]/g, "_"), `run-${runNumber}.md`),
+					tracePath: path.join("result.dump", pathSegmentFrom(task.id, "task"), `run-${runNumber}.md`),
 				});
 			}
 		}

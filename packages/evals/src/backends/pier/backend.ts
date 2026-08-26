@@ -4,6 +4,7 @@ import { requireBackendBinding, resolveCellVariant } from "../../core/cell-varia
 import { requireHarness } from "../../core/harness-registry";
 import { trialTimeoutFromOptions } from "../../core/trial-deadline";
 import { resolveTrialModel } from "../../core/trial-model";
+import { runDirFor, trialJobName } from "../../core/trial-naming";
 import type {
 	BackendId,
 	ExecutionBackend,
@@ -23,9 +24,6 @@ import {
 	writePierJobConfig,
 } from "./runner";
 
-function sanitizeName(s: string): string {
-	return s.replace(/[^a-zA-Z0-9._-]/g, "_");
-}
 export type StagePierAssetsFn = typeof stagePierAssets;
 export type CheckPierPreflightFn = typeof checkPierPreflight;
 export type PierCommandExecutor = (
@@ -105,7 +103,7 @@ export class PierExecutionBackend implements ExecutionBackend {
 	}
 
 	async prepare(context: RunContext): Promise<void> {
-		const runDir = path.join(context.workDir, "runs", sanitizeName(context.runId));
+		const runDir = runDirFor(path.join(context.workDir, "runs"), context.runId);
 		const configsDir = path.join(runDir, "configs");
 		const jobsDir = path.join(runDir, "jobs");
 		const assetsDir = path.join(runDir, "assets");
@@ -127,8 +125,8 @@ export class PierExecutionBackend implements ExecutionBackend {
 	}
 	async runTrial(cell: TrialCell, context: RunContext): Promise<TrialArtifacts> {
 		const taskDescriptor = await context.suite.describeTask(cell.task, context);
-		const jobName = `${sanitizeName(context.runId)}__${sanitizeName(cell.variant || "default")}__${sanitizeName(cell.task)}__r${cell.repeat ?? 0}`;
-		const runDir = path.join(context.workDir, "runs", sanitizeName(context.runId));
+		const jobName = trialJobName(context.runId, cell);
+		const runDir = runDirFor(path.join(context.workDir, "runs"), context.runId);
 		const configsDir = path.join(runDir, "configs");
 		const jobsDir = path.join(runDir, "jobs");
 		const assetsDir = path.join(runDir, "assets");
@@ -178,7 +176,7 @@ export class PierExecutionBackend implements ExecutionBackend {
 	}
 
 	async cleanup(cell: TrialCell, context: RunContext): Promise<void> {
-		const jobName = `${sanitizeName(context.runId)}__${sanitizeName(cell.variant || "default")}__${sanitizeName(cell.task)}__r${cell.repeat ?? 0}`;
+		const jobName = trialJobName(context.runId, cell);
 		await cleanupPierContainers(jobName, this.#exec);
 	}
 }

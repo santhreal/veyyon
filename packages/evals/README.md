@@ -82,6 +82,13 @@ second, so `--timeout-multiplier 0.0001` shortens a trial rather than failing it
 starts. A trial's raw output keeps its last 65536 bytes, counted in bytes so multi-byte output is
 bounded by what the journal writes.
 
+One module spells where a trial's output lands: `src/core/trial-naming.ts`. The in-process backend
+writes `<runs>/<run>/<variant>/<task>/repeat-<n>`, harbor and pier file a job under
+`<run>__<variant>__<task>__r<n>`, and each part is derived through `pathSegmentFrom` in
+`src/paths.ts`, which rewrites anything a directory name cannot hold. A task or variant named `.`
+or `..` is filed under `_.` or `_..` rather than resolving to the directory above, so a trial's
+cleanup removes that trial and nothing beside it.
+
 DeepSWE also keeps its own runner for the flags that are specific to it (arm overlays, attachment
 staging, replay manifests):
 
