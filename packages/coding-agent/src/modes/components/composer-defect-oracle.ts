@@ -438,16 +438,53 @@ export function checkNoHorizontalOverflow(state: ComposerOracleFrameState): Orac
 }
 
 /**
+ * Screen row a segment's first row occupies, or null when that row is off screen.
+ *
+ * A frame row maps to a screen row differently for the two regions of the frame. The pinned footer
+ * is painted at the bottom of the screen whatever the transcript is doing, so a footer segment is
+ * located from the footer's own top row. Everything above it scrolls, so a content segment is
+ * located from the top of whatever window is on screen: the frozen slice's top row while the view
+ * is scrolled back, and the live window's top row otherwise.
+ *
+ * `startIndex - windowTopRow` alone is only the live-tail content mapping. Applied to a footer
+ * segment while the view was frozen it produced two wrong answers at once: a frame that overflowed
+ * the viewport by a few rows mapped a pad row onto a footer row and reported the capability line as
+ * unpainted air, and a frame that overflowed by more than a screen mapped it past the end of the
+ * viewport, where the bounds check dropped it and the oracle inspected nothing at all.
+ *
+ * A terminal shorter than the footer is the third case. The engine paints the footer's tail and
+ * drops the rest, so a footer row above the footer's top row is on no screen row, and returning the
+ * arithmetic's answer for it names a row the transcript owns.
+ */
+export function screenRowForSegment(state: ComposerOracleFrameState, segmentIndex: number): number | null {
+	const segment = state.segments[segmentIndex];
+	if (!segment) return null;
+	const footerFirstIndex = state.segments.length - state.pinnedFooterChildCount;
+	if (state.pinnedFooterChildCount > 0 && segmentIndex >= footerFirstIndex) {
+		const footerFirst = state.segments[footerFirstIndex];
+		if (!footerFirst) return null;
+		const row = state.screenBounds.footerRowOffset + (segment.startIndex - footerFirst.startIndex);
+		// A terminal too short to hold the whole footer shows only its tail, so a footer row above
+		// the footer's top row was clipped and is on no screen row at all. Without this the
+		// arithmetic hands back a row the transcript is painted on.
+		return row < Math.max(0, state.screenBounds.footerTop) ? null : row;
+	}
+	const top = state.virtualScrollTop ?? state.windowTopRow;
+	const row = segment.startIndex - top;
+	return row < 0 ? null : row;
+}
+
+/**
  * Guarantee 9: composerCardPadsAreUnpaintedAir
  * The vertical breathing rows above and below the input (CardPadRow) must render as unpainted blank lines.
  */
 export function checkComposerCardPadsAreUnpaintedAir(state: ComposerOracleFrameState): OracleFailure | null {
 	// Look for CardPadRow segments in the ledger
-	for (const segment of state.segments) {
+	for (let i = 0; i < state.segments.length; i += 1) {
+		const segment = state.segments[i]!;
 		if (segment.componentName === "CardPadRow" && segment.rowCount > 0) {
-			// Find its screen position
-			const segmentScreenRow = segment.startIndex - state.windowTopRow;
-			if (segmentScreenRow >= 0 && segmentScreenRow < state.rawViewportLines.length) {
+			const segmentScreenRow = screenRowForSegment(state, i);
+			if (segmentScreenRow !== null && segmentScreenRow < state.rawViewportLines.length) {
 				const rawLine = state.rawViewportLines[segmentScreenRow] ?? "";
 				const plainLine = state.viewportLines[segmentScreenRow] ?? "";
 				// Padding must be blank air: no painted background and no glyphs.
