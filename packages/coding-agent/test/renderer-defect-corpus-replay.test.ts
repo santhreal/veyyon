@@ -21,6 +21,7 @@
  */
 
 import { beforeAll, describe, expect, it } from "bun:test";
+import { isHairlineLine } from "../src/modes/components/composer-defect-oracle";
 import { initTheme } from "../src/modes/theme/theme";
 import {
 	corpusStateToRunnerOptions,
@@ -78,10 +79,10 @@ describe("renderer defect corpus replay", () => {
 				expect(hairlineSeg).toBeDefined();
 				expect(hairlineSeg?.rowCount).toBe(1);
 
-				// Pinned footer starts immediately at hairline
+				// Pinned footer starts immediately at hairline on the terminal grid
 				const footerTop = result.frameState.screenBounds.footerTop;
-				const hairlineScreenRow = hairlineSeg!.startIndex - result.frameState.windowTopRow;
-				expect(hairlineScreenRow).toBe(footerTop);
+				const hairlineLine = result.frameState.viewportLines[footerTop] ?? "";
+				expect(isHairlineLine(hairlineLine)).toBe(true);
 			} finally {
 				result.cleanUp();
 			}
