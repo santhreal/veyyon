@@ -58,6 +58,8 @@ export class BackgroundSessions {
 		return BackgroundSessions.#instance;
 	}
 
+	readonly #listeners = new Set<() => void>();
+
 	/** Sessions still finishing their turn, oldest handoff first. */
 	get kept(): readonly KeptSession[] {
 		return [...this.#kept.values()];
@@ -66,6 +68,31 @@ export class BackgroundSessions {
 	/** How many handed-off sessions have not settled yet. */
 	get size(): number {
 		return this.#kept.size;
+	}
+
+	/**
+	 * Watch the set for arrivals and departures. Returns the unsubscribe.
+	 *
+	 * A conversation that left the screen is spending tokens where nothing draws
+	 * it, so the count has to reach the status line the moment it changes rather
+	 * than on whatever repaint happens next. Fires after the set is already
+	 * updated, so a listener reading {@link size} sees the new value.
+	 */
+	subscribe(listener: () => void): () => void {
+		this.#listeners.add(listener);
+		return () => {
+			this.#listeners.delete(listener);
+		};
+	}
+
+	#emit(): void {
+		for (const listener of this.#listeners) {
+			try {
+				listener();
+			} catch (error) {
+				logger.warn("Background session listener failed", { error: errorMessage(error) });
+			}
+		}
 	}
 
 	/**
@@ -88,6 +115,7 @@ export class BackgroundSessions {
 			settled: this.#settle(session, sessionId, handoff),
 		};
 		this.#kept.set(session, entry);
+		this.#emit();
 		return entry;
 	}
 
@@ -132,6 +160,7 @@ export class BackgroundSessions {
 	#discard(session: AgentSession, handoff: number): void {
 		if (this.#kept.get(session)?.handoff === handoff) {
 			this.#kept.delete(session);
+			this.#emit();
 		}
 	}
 

@@ -697,6 +697,25 @@ const subagentsSegment: StatusLineSegment = {
 		return { content: theme.fg("statusLineSubagents", content), visible: true };
 	},
 };
+/**
+ * Conversations running with nothing drawing them.
+ *
+ * The only continuous signal that a handed-off `/new` is still spending. A
+ * subagent is at least visible in the transcript that spawned it; a
+ * backgrounded conversation has no surface at all until `/process-manager`
+ * opens one, so a count that is only correct while a card is open is not a
+ * count of anything. Hidden at zero, like every other conditional segment.
+ */
+const backgroundSegment: StatusLineSegment = {
+	id: "background",
+	render(ctx) {
+		if (ctx.backgroundSessionCount === 0) {
+			return { content: "", visible: false };
+		}
+		const content = withIcon(theme.icon.agents, `${ctx.backgroundSessionCount} bg`);
+		return { content: theme.fg("warning", content), visible: true };
+	},
+};
 
 const tokenInSegment: StatusLineSegment = {
 	id: "token_in",
@@ -1162,6 +1181,7 @@ export const SEGMENTS: Record<StatusLineSegmentId, StatusLineSegment> = {
 	git: gitSegment,
 	pr: prSegment,
 	subagents: subagentsSegment,
+	background: backgroundSegment,
 	token_in: tokenInSegment,
 	token_out: tokenOutSegment,
 	token_total: tokenTotalSegment,

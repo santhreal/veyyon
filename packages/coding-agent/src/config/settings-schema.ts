@@ -121,6 +121,7 @@ export const TAB_GROUPS: Record<SettingTab, readonly string[]> = {
 	],
 	interaction: [
 		"Input",
+		"Session",
 		"Approvals",
 		"Notifications",
 		"Speech",
@@ -166,6 +167,7 @@ export type StatusLineSegmentId =
 	| "git"
 	| "pr"
 	| "subagents"
+	| "background"
 	| "token_in"
 	| "token_out"
 	| "token_total"

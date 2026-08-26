@@ -81,6 +81,7 @@ function createGoalContext(opts: {
 		contextLimitKind: "window" as const,
 		autoCompactEnabled: false,
 		subagentCount: 0,
+		backgroundSessionCount: 0,
 		activeMs: opts.activeMs ?? 0,
 		activeRepo: null,
 		worktree: null,

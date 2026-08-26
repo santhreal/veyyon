@@ -136,6 +136,17 @@ export interface SegmentContext {
 	autoCompactEnabled: boolean;
 	subagentCount: number;
 	/**
+	 * Conversations this process is still running that no screen is showing —
+	 * `/new` handoffs that have not settled.
+	 *
+	 * Separate from {@link subagentCount}, which counts spawns INSIDE the
+	 * conversation on screen. A handed-off conversation is a peer of the one
+	 * being displayed, not a child of it, and it is the one that is invisible:
+	 * a subagent draws a widget in the transcript it belongs to, and a
+	 * backgrounded conversation draws nothing anywhere.
+	 */
+	backgroundSessionCount: number;
+	/**
 	 * Active processing time accumulated this session, in ms — the union of
 	 * every `agent_start`→`agent_end` window plus the currently-streaming
 	 * window if the agent is running. Idle wall-clock never contributes, so

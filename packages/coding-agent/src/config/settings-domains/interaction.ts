@@ -447,6 +447,32 @@ export const INTERACTION_SETTINGS = {
 		},
 	},
 
+	/**
+	 * What `/new` does to a turn that is still streaming.
+	 *
+	 * Two outcomes, and the difference is money: keeping the old conversation
+	 * alive finishes work that would otherwise be thrown away mid-turn, and it
+	 * also keeps spending tokens on a screen nobody is reading. Both are
+	 * defensible, so this states which one happens rather than leaving it to
+	 * whether a turn happened to be in flight.
+	 *
+	 * Default is `true`, which is what `/new` already did: aborting a turn the
+	 * moment the operator wants a clean prompt loses whatever it had produced.
+	 * The background conversation is not hidden while it runs — the status line
+	 * counts it and `/process-manager` opens it.
+	 */
+	"session.newKeepsBackground": {
+		type: "boolean",
+		default: true,
+		ui: {
+			tab: "interaction",
+			group: "Session",
+			label: "/new Keeps The Old Session",
+			description:
+				"On /new while a response is still streaming, keep the old conversation running in the background and attach the screen to a fresh one. The status line counts running background conversations and /process-manager opens them. Off stops the old turn and closes its provider stream before the new session starts, so nothing keeps billing once it leaves the screen.",
+		},
+	},
+
 	"share.serverUrl": {
 		type: "string",
 		default: DEFAULT_SHARE_URL,
