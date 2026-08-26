@@ -135,24 +135,9 @@ function deduplicateToolCallIds(
 }
 
 /**
- * Drop assistant `toolCall` blocks whose `id` or `name` is empty / whitespace-only,
- * the `toolResult` messages they point at, and any assistant turn that has no
- * replayable content left.
- *
- * Models occasionally emit malformed calls such as `{ "name": "", "arguments": "{}" }`
- * (observed: GLM-5.2 + thinking on long turns, #3458) or a structurally valid
- * `toolCall` whose provider/native passthrough id never materialized (`id: ""`).
- * The agent loop rejects or skips these at execution time, but the malformed block
- * and its error tool-result can stay in `currentContext.messages`, so every
- * subsequent request replays them. Every provider validates the call shape —
- * Anthropic 400s on `tool_use.name` / `tool_use.id` (alongside an orphan
- * `tool_result`), OpenAI Chat Completions 400s on malformed
- * `tool_calls[i].function.*` — wedging the session in a 400 loop until manual
- * `/clear`.
- *
- * Run before any other transform so the rest of the pipeline never sees a
- * malformed call. Idempotent: a re-run on an already-sanitized list returns
- * the input untouched. Provider-agnostic — any wire model could surface this.
+ * Drop malformed `toolCall` blocks (empty `id`/`name`), their `toolResult` messages, and empty turns.
+ * Models emit these occasionally (GLM-5.2, #3458); providers 400 on them, wedging the session.
+ * Run before other transforms; idempotent; provider-agnostic.
  */
 function isMalformedToolCallName(name: string | undefined): boolean {
 	return !name || name.trim().length === 0;
@@ -302,10 +287,7 @@ export function transformMessages<TApi extends Api>(
 	duplicateToolCallIdSuffixPrefix = "_dup",
 	targetCompat: Model<TApi>["compat"] = model.compat,
 ): Message[] {
-	// Drop assistant `toolCall` blocks with empty/whitespace `id` or `name`
-	// (and their matched `toolResult` messages) before anything else looks at
-	// the history. Replays of these would 400 every provider — see
-	// `sanitizeMalformedToolCalls`.
+	// Drop malformed toolCall blocks before anything else sees them; see `sanitizeMalformedToolCalls`.
 	messages = sanitizeMalformedToolCalls(messages);
 
 	// Build a map of original tool call IDs to normalized IDs
