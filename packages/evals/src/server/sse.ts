@@ -3,6 +3,12 @@
  *
  * Owns subscriber connections, periodic heartbeat / store snapshot broadcasts,
  * and clean stream termination upon disconnection or server shutdown.
+ *
+ * A subscriber that stops reading is dropped rather than buffered: `enqueue` on a stream
+ * nobody reads never throws, so a browser tab suspended on a run list grew the manager's
+ * memory by one snapshot every tick for as long as the manager lived. An idle subscriber gets
+ * a comment frame, because the tick only wrote when the snapshot changed and a proxy or a
+ * browser drops a connection that says nothing for a minute.
  */
 import type { RunStore } from "../manager/store";
 
@@ -16,10 +22,35 @@ interface SseClient {
 	state: SseState;
 }
 
+/** Frames one subscriber may have unread before it is dropped as gone. */
+export const SSE_CLIENT_BACKLOG_MAX_FRAMES = 256;
+
+/** How long a subscriber may hear nothing before it is sent a comment frame. */
+export const SSE_KEEPALIVE_MS = 15_000;
+
+/** The comment frame an idle connection is held open with. SSE readers ignore a comment. */
+export const SSE_KEEPALIVE_FRAME = ": keep-alive\n\n";
+
+export interface SseStreamOptions {
+	/** Clock the keep-alive is measured against. */
+	readonly now?: () => number;
+	/** Idle time before a comment frame is written. */
+	readonly keepaliveMs?: number;
+}
+
 export class SseStream {
 	readonly #clients = new Set<SseClient>();
+	readonly #now: () => number;
+	readonly #keepaliveMs: number;
 	#lastSnapshot = "";
 	#heartbeatTimer: Timer | undefined;
+	#lastFrameAt: number;
+
+	constructor(options: SseStreamOptions = {}) {
+		this.#now = options.now ?? Date.now;
+		this.#keepaliveMs = options.keepaliveMs ?? SSE_KEEPALIVE_MS;
+		this.#lastFrameAt = this.#now();
+	}
 
 	get clientCount(): number {
 		return this.#clients.size;
@@ -45,13 +76,31 @@ export class SseStream {
 		if (snapshot !== this.#lastSnapshot) {
 			this.#lastSnapshot = snapshot;
 			this.broadcast(`data: ${snapshot}\n\n`);
+			return;
+		}
+		if (this.#now() - this.#lastFrameAt >= this.#keepaliveMs) {
+			this.broadcast(SSE_KEEPALIVE_FRAME);
 		}
 	}
 
 	broadcast(frame: string): void {
 		const bytes = new TextEncoder().encode(frame);
+		this.#lastFrameAt = this.#now();
 		for (const client of this.#clients) {
 			if (client.state === SseState.Closed) continue;
+			// desiredSize is `highWaterMark - queued`, so this counts the frames the reader
+			// has not taken. A reader that never takes any is gone, whatever the socket says.
+			const size = client.controller.desiredSize;
+			if (size !== null && 1 - size >= SSE_CLIENT_BACKLOG_MAX_FRAMES) {
+				client.state = SseState.Closed;
+				this.#clients.delete(client);
+				try {
+					client.controller.error(
+						new Error(`SSE subscriber left ${SSE_CLIENT_BACKLOG_MAX_FRAMES} frames unread; dropped.`),
+					);
+				} catch {}
+				continue;
+			}
 			try {
 				client.controller.enqueue(bytes);
 			} catch {
