@@ -23,10 +23,8 @@ const CODE_OPEN = "```tool_code";
 const OUTPUT_OPEN = "```tool_outputs";
 const OPEN_TAGS = [CODE_OPEN] as const;
 /**
- * Gemini's fenced thinking opener. Named for the dialect on purpose: five sibling dialects import a shared
- * `THINK_OPEN` from `./wire-tags` whose value is `<think>`, and a bare `THINK_OPEN` here meant one name in one
- * directory standing for two different byte sequences. Adding the shared name to this file's imports would
- * have silently shadowed it with this value.
+ * Gemini's fenced thinking opener. Named for the dialect: sibling dialects import `THINK_OPEN` from
+ * `./wire-tags` (value ` IMD`), so a bare `THINK_OPEN` here would shadow it.
  */
 const GEMINI_THINK_FENCE_OPEN = "```thinking\n";
 const OPEN_TAGS_THINK = [CODE_OPEN, GEMINI_THINK_FENCE_OPEN] as const;

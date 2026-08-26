@@ -1633,9 +1633,8 @@ export function isAnthropicStreamRetryable(error: unknown, provider?: string): b
 }
 
 /**
- * The envelope this unwraps is the one `dialect/rendering.ts` WRITES, so the bytes are taken from the shared tag
- * owner. Both ends were spelled independently, this file being the third name for the pair: a drift would leave
- * an assistant turn's reasoning wrapped in visible `<thinking>` markup that nothing strips.
+ * The envelope this unwraps is the one `dialect/rendering.ts` writes. Both ends were spelled independently;
+ * drift would leave reasoning wrapped in visible `<thinking>` markup that nothing strips.
  */
 
 function unwrapAnthropicThinkingEnvelope(text: string): string | undefined {

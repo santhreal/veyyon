@@ -12,11 +12,8 @@ import type {
 } from "./types";
 
 /**
- * Gemma's own tags, every one prefixed with the dialect. The bare names collided across this directory: this
- * file's `GEMMA_CALL_OPEN` was `<|tool_call>` while `pi-native.ts` used the same name for `<call:`, and its
- * `GEMMA_RESPONSE_OPEN` was `<|tool_response>` while `glm.ts` used the same name for the shared `<tool_response>`.
- * One name standing for different bytes in sibling files is a latent bug rather than a style nit, since the
- * next reader carries the wrong meaning across the file boundary.
+ * Gemma's own tags, prefixed with the dialect. Bare names collided across this directory (GEMMA_CALL_OPEN
+ * was `<|tool_call>` here vs `<call:` in `pi-native.ts`); one name for different bytes is a latent bug.
  */
 const GEMMA_CALL_OPEN = "<|tool_call>";
 const GEMMA_CALL_CLOSE = "<tool_call|>";

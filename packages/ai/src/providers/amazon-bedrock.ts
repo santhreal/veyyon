@@ -779,9 +779,9 @@ function supportsThinkingSignature(model: Model<"bedrock-converse-stream">): boo
 }
 
 /**
- * Serialize the system blocks, anchoring the stable prefix separately from the volatile tail. A single trailing `cachePoint` caches a prefix that ENDS at the last system block, so any edit to a later block invalidates the whole system prompt. The first block is the harness shared across parent and subagent prompts; project context, the assignment and the handle table are appended after it and change constantly.
- *
- * Budget: Claude allows four cache checkpoints per request. This spends two on system and `convertMessages` spends one on the last message, leaving one unspent. AWS's guidance says to use multiple cache checkpoints when caching sections that change at different frequencies.
+ * Serialize system blocks, anchoring the stable prefix separately from the volatile tail. The first block is
+ * the harness shared across prompts; project context and handle table change constantly. Budget: four cache
+ * checkpoints per request — two on system, one on last message, one unspent.
  */
 function buildSystemPrompt(
 	systemPrompt: readonly string[] | undefined,
