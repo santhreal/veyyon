@@ -10,6 +10,7 @@ import type { AgentSession } from "../../session/agent-session";
 import { BACKGROUND_TAN_DISPATCH_MESSAGE_TYPE } from "../../session/messages";
 import { SessionManager } from "../../session/session-manager";
 import { createMCPProxyTools, createSubagentSettings } from "../../task/executor";
+import { previewLine } from "../../tools/render-utils";
 import { USER_TODO_EDIT_CUSTOM_TYPE } from "../../tools/todo";
 import type { InteractiveModeContext } from "../types";
 
@@ -26,12 +27,6 @@ export type TanCommandControllerContext = Pick<
 >;
 
 const TAN_LABEL_PREVIEW_LENGTH = 80;
-
-function previewWork(work: string): string {
-	const singleLine = work.trim().replace(/\s+/g, " ");
-	if (singleLine.length <= TAN_LABEL_PREVIEW_LENGTH) return singleLine;
-	return `${singleLine.slice(0, TAN_LABEL_PREVIEW_LENGTH - 1)}…`;
-}
 
 async function removeCloneSession(cloneFile: string): Promise<void> {
 	await Promise.allSettled([
@@ -93,7 +88,7 @@ export class TanCommandController {
 		const agentRegistry = AgentRegistry.global();
 		const cloneId = `Tan-${Snowflake.next()}`;
 		const cloneFile = path.join(sessionDir, sessionFileName(cloneId));
-		const label = `/tan ${previewWork(trimmedWork)}`;
+		const label = `/tan ${previewLine(trimmedWork, TAN_LABEL_PREVIEW_LENGTH)}`;
 
 		await this.ctx.sessionManager.ensureOnDisk();
 		await this.ctx.sessionManager.flush();

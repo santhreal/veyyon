@@ -44,6 +44,7 @@
 - Daemon completion parsing and eval-store serialization errors use shared type guards; behavior is unchanged.
 ### Fixed
 
+- A truncated advisor preview, retry reason, and background-task label measure their budget in display columns rather than UTF-16 code units, so a wide or multi-code-unit character is no longer cut in half or counted as one column.
 - A Kagi search refused for exhausted credits reports that, instead of a generic request failure, on any status code other than 401, 402 and 403.
 - A rendered tool error shortens embedded home-directory paths, so an error card no longer prints the home directory and no longer spends its width budget on the prefix instead of the reason.
 - A job label truncated for display keeps a regional-indicator flag whole instead of emitting half of one, and an empty width budget yields an empty label rather than an ellipsis a column too wide.

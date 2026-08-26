@@ -12,6 +12,7 @@
  * durable summary says what the retries cost once they are over.
  */
 import * as AIError from "@veyyon/ai/error";
+import { previewLine } from "../tools/render-utils";
 
 /**
  * Plain-language names for the error classes worth showing mid-retry.
@@ -70,10 +71,9 @@ export function retryReason(errorId: number | undefined, errorMessage: string | 
 	const trimmed = errorMessage?.trim().split("\n")[0]?.trim();
 	if (!trimmed) return undefined;
 	// Collapse internal whitespace so a wrapped provider message cannot inject
-	// blank runs into a single-line status.
-	const collapsed = trimmed.replace(/\s+/g, " ");
-	if (collapsed.length <= MAX_REASON_WIDTH) return collapsed;
-	return `${collapsed.slice(0, MAX_REASON_WIDTH - 1)}…`;
+	// blank runs into a single-line status, and cap by display width so a CJK or
+	// emoji message cannot overrun the row it is drawn into.
+	return previewLine(trimmed, MAX_REASON_WIDTH);
 }
 
 /** Render a millisecond duration the way a waiting human would say it. */
