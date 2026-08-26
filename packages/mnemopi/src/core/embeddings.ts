@@ -5,7 +5,7 @@ import type { ApiKey } from "@veyyon/ai";
 // header builder; through `@veyyon/ai` it was paying for the whole streaming
 // stack behind them.
 import { withAuth } from "@veyyon/ai/auth-retry";
-import { ProviderHttpError } from "@veyyon/ai/error";
+import { ProviderHttpError } from "@veyyon/ai/error/classes";
 import { getOpenRouterHeaders } from "@veyyon/ai/utils/openrouter-headers";
 import { hostMatchesUrl } from "@veyyon/catalog/hosts";
 import { OPENROUTER_API_ENDPOINT } from "@veyyon/catalog/provider-endpoints";
