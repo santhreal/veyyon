@@ -97,7 +97,7 @@ class SubprocessToolRegistryImpl {
 	 * Get all registered tool names.
 	 */
 	getRegisteredTools(): string[] {
-		return Array.from(this.#handlers.keys());
+		return [...this.#handlers.keys()];
 	}
 }
 

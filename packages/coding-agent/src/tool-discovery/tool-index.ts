@@ -118,7 +118,7 @@ function buildSearchDocument(tool: DiscoverableTool): DiscoverableToolSearchDocu
 	for (const schemaKey of tool.schemaKeys) {
 		addWeightedTokens(termFrequencies, schemaKey, FIELD_WEIGHTS.schemaKey);
 	}
-	const length = Array.from(termFrequencies.values()).reduce((sum, value) => sum + value, 0);
+	const length = [...termFrequencies.values()].reduce((sum, value) => sum + value, 0);
 	return { tool, termFrequencies, length };
 }
 
@@ -197,7 +197,7 @@ export function selectDiscoverableToolNamesByServer(
 	serverNames: ReadonlySet<string>,
 ): string[] {
 	if (serverNames.size === 0) return [];
-	return Array.from(tools)
+	return [...tools]
 		.filter(tool => tool.serverName !== undefined && serverNames.has(tool.serverName))
 		.map(tool => tool.name);
 }
@@ -208,7 +208,7 @@ export function summarizeDiscoverableTools(tools: DiscoverableTool[]): Discovera
 		if (!tool.serverName) continue;
 		serverToolCounts.set(tool.serverName, (serverToolCounts.get(tool.serverName) ?? 0) + 1);
 	}
-	const servers = Array.from(serverToolCounts.entries())
+	const servers = [...serverToolCounts.entries()]
 		.sort(([left], [right]) => left.localeCompare(right))
 		.map(([name, toolCount]) => ({ name, toolCount }));
 	return {
@@ -218,7 +218,7 @@ export function summarizeDiscoverableTools(tools: DiscoverableTool[]): Discovera
 }
 
 export function buildDiscoverableToolSearchIndex(tools: Iterable<DiscoverableTool>): DiscoverableToolSearchIndex {
-	const documents = Array.from(tools, buildSearchDocument);
+	const documents = [...tools].map(buildSearchDocument);
 	const averageLength = documents.reduce((sum, document) => sum + document.length, 0) / documents.length || 1;
 	const documentFrequencies = new Map<string, number>();
 	for (const document of documents) {

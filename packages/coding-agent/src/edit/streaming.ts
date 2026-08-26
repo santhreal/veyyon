@@ -296,7 +296,7 @@ function splitHashlinePerFile(input: string): EditMatcherEntry[] {
 		const existing = byPath.get(sectionPath);
 		byPath.set(sectionPath, existing === undefined ? added : `${existing}\n${added}`);
 	}
-	return Array.from(byPath, ([path, digest]) => ({ path, digest }));
+	return [...byPath].map(([path, digest]) => ({ path, digest }));
 }
 
 /**
@@ -327,7 +327,7 @@ function splitApplyPatchPerFile(input: string): EditMatcherEntry[] {
 		const existing = byPath.get(entry.path);
 		byPath.set(entry.path, existing === undefined ? added : `${existing}\n${added}`);
 	}
-	return Array.from(byPath, ([path, digest]) => ({ path, digest }));
+	return [...byPath].map(([path, digest]) => ({ path, digest }));
 }
 
 // -----------------------------------------------------------------------------

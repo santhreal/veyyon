@@ -109,7 +109,7 @@ async function runAstEditTargets(
 			fileCounts.set(rebased, (fileCounts.get(rebased) ?? 0) + fileChange.count);
 		}
 	}
-	const fileChanges: AstReplaceFileChange[] = Array.from(fileCounts, ([changePath, count]) => ({
+	const fileChanges: AstReplaceFileChange[] = [...fileCounts].map(([changePath, count]) => ({
 		path: changePath,
 		count,
 	}));

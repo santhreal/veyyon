@@ -86,8 +86,8 @@ export async function findLegacyPromptFiles(options: FindLegacyPromptFilesOption
 	systemPaths.add(path.join(cwd, ".gemini", "system.md"));
 
 	const candidates: LegacyPromptFile[] = [
-		...Array.from(systemPaths, filePath => ({ kind: "system" as const, path: filePath })),
-		...Array.from(appendPaths, filePath => ({ kind: "append" as const, path: filePath })),
+		...[...systemPaths].map(filePath => ({ kind: "system" as const, path: filePath })),
+		...[...appendPaths].map(filePath => ({ kind: "append" as const, path: filePath })),
 	];
 	const present = await Promise.all(
 		candidates.map(async candidate => ((await isFile(candidate.path)) ? candidate : null)),

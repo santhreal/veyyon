@@ -778,7 +778,7 @@ export class TtsrManager {
 
 	/** All rules currently registered for TTSR monitoring, in registration order. */
 	getRules(): Rule[] {
-		return Array.from(this.#rules.values(), entry => entry.rule);
+		return [...this.#rules.values()].map(entry => entry.rule);
 	}
 
 	/** Increment message counter (call after each turn). */

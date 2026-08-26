@@ -1199,9 +1199,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 					projectAgentsDir: null,
 					results: [],
 					totalDurationMs: Date.now() - startTime,
-					progress: Array.from(latestProgress.entries())
-						.sort((a, b) => a[0] - b[0])
-						.map(([, progress]) => progress),
+					progress: [...latestProgress.entries()].sort((a, b) => a[0] - b[0]).map(([, progress]) => progress),
 				},
 			});
 		};

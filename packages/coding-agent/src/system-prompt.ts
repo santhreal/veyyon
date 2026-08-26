@@ -329,7 +329,7 @@ export function buildSystemPromptToolMetadata(
 	overrides: Partial<Record<string, Partial<SystemPromptToolMetadata>>> = {},
 ): Map<string, SystemPromptToolMetadata> {
 	return new Map(
-		Array.from(tools.entries(), ([name, tool]) => {
+		[...tools.entries()].map(([name, tool]) => {
 			const toolRecord = tool as AgentTool & { label?: string; description?: string };
 			const override = overrides[name];
 			const wireName =
@@ -735,7 +735,7 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 	// Priority: explicit list > tools map > conservative SDK fallback.
 	let toolNames = providedToolNames;
 	if (!toolNames) {
-		toolNames = tools ? Array.from(tools.keys()) : [...DEFAULT_SYSTEM_PROMPT_TOOL_NAMES];
+		toolNames = tools ? [...tools.keys()] : [...DEFAULT_SYSTEM_PROMPT_TOOL_NAMES];
 	}
 
 	// Build tool descriptions for system prompt rendering.

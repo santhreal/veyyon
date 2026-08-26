@@ -534,9 +534,9 @@ export interface RegistrySnapshot {
  */
 export function captureRegistryForTests(): RegistrySnapshot {
 	return {
-		capabilityProviders: new Map(Array.from(capabilities, ([id, cap]) => [id, [...cap.providers]])),
-		providerCapabilities: new Map(Array.from(providerCapabilities, ([id, set]) => [id, new Set(set)])),
-		providerMeta: new Map(Array.from(providerMeta, ([id, meta]) => [id, { ...meta }])),
+		capabilityProviders: new Map([...capabilities].map(([id, cap]) => [id, [...cap.providers]])),
+		providerCapabilities: new Map([...providerCapabilities].map(([id, set]) => [id, new Set(set)])),
+		providerMeta: new Map([...providerMeta].map(([id, meta]) => [id, { ...meta }])),
 		disabledProviders: new Set(disabledProviders),
 		importForeignConfig,
 		settings,

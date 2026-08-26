@@ -1164,7 +1164,7 @@ export class ModelRegistry {
 				JSON.stringify({
 					overlays: this.#customModelOverlays,
 					overrides: [...this.#providerOverrides],
-					modelOverrides: Array.from(this.#modelOverrides, ([provider, perModel]) => [provider, [...perModel]]),
+					modelOverrides: [...this.#modelOverrides].map(([provider, perModel]) => [provider, [...perModel]]),
 					keyless: [...this.#keylessProviders],
 					discoverable: this.#discoverableProviders,
 				}),
