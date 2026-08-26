@@ -279,5 +279,10 @@ export function convertMessageToLlm(message: AgentMessage): Message | undefined 
  * core LLM roles and the compaction messages owned by this package.
  */
 export function defaultConvertToLlm(messages: AgentMessage[]): Message[] {
-	return messages.map(convertMessageToLlm).filter(message => message !== undefined);
+	const out: Message[] = [];
+	for (const m of messages) {
+		const converted = convertMessageToLlm(m);
+		if (converted !== undefined) out.push(converted);
+	}
+	return out;
 }

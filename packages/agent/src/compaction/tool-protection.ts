@@ -19,19 +19,13 @@ export function collectToolCallsById(entries: readonly SessionEntry[]): Map<stri
 		cached = { length: 0, map: new Map<string, AgentToolCall>() };
 		toolCallsByIdCache.set(entries, cached);
 	}
-	if (cached.length < entries.length) {
-		scanToolCalls(entries, cached.length, cached.map);
-		cached.length = entries.length;
-	}
-	return cached.map;
-}
-
-function scanToolCalls(entries: readonly SessionEntry[], from: number, map: Map<string, AgentToolCall>): void {
-	for (let i = from; i < entries.length; i++) {
+	for (let i = cached.length; i < entries.length; i++) {
 		const entry = entries[i];
 		if (entry?.type === "message" && entry.message.role === "assistant")
-			for (const block of entry.message.content) if (block.type === "toolCall") map.set(block.id, block);
+			for (const block of entry.message.content) if (block.type === "toolCall") cached.map.set(block.id, block);
 	}
+	cached.length = entries.length;
+	return cached.map;
 }
 
 /**

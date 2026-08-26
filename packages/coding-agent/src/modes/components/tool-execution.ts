@@ -739,8 +739,8 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 		const detailImages =
 			(this.#result.details as { images?: Array<{ data?: string; mimeType?: string }> } | undefined)?.images ?? [];
 		const content = this.#result.content;
-		if (!content) return [...detailImages];
-		return [...content.filter(b => b.type === "image"), ...detailImages];
+		const images = content.filter(b => b.type === "image");
+		return images.length > 0 ? [...images, ...detailImages] : [...detailImages];
 	}
 
 	/**
@@ -1747,10 +1747,11 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 
 		const content = this.#result.content;
 		if (!content) return "";
-		return content
-			.filter(b => b.type === "text")
-			.map(b => sanitizeWithOptionalSixelPassthrough(b.text || "", sanitizeText))
-			.join("\n");
+		const parts: string[] = [];
+		for (const b of content) {
+			if (b.type === "text") parts.push(sanitizeWithOptionalSixelPassthrough(b.text || "", sanitizeText));
+		}
+		return parts.join("\n");
 	}
 
 	/**

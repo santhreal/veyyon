@@ -229,18 +229,9 @@ export function getToolResultMessage(entry: SessionEntry): ToolResultMessage | u
 export const KEEP_NOTHING_ENTRY_ID = "compaction:keep-nothing";
 
 /**
- * Array index of the compaction boundary named by a `firstKeptEntryId`. Entries
- * BEFORE it were summarized away by the latest compaction and are never sent, so
- * prune and shake passes skip them: rewriting them churns persisted history
- * without shrinking a single prompt.
- *
- * Three cases, and the third is why this is shared rather than inlined at each
- * call site. No boundary means no compaction, so the whole branch is live and
- * the index is 0. An ordinary id resolves to its entry. {@link
- * KEEP_NOTHING_ENTRY_ID} deliberately matches no entry, and a plain `findIndex`
- * answers -1 for it, which every caller clamped to 0 — the exact opposite of
- * what it means. It resolves to just past the compaction entry, because a
- * compaction that kept nothing left everything before itself summarized away.
+ * Array index of the compaction boundary named by `firstKeptEntryId`. Entries before
+ * it were summarized away and are never sent. `KEEP_NOTHING_ENTRY_ID` resolves to
+ * just past the latest compaction entry (everything before it was summarized away).
  */
 type BoundaryCacheEntry = { boundaryId: string | undefined; length: number; index: number };
 const boundaryIndexCache = new WeakMap<readonly SessionEntry[], BoundaryCacheEntry>();

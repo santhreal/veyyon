@@ -90,7 +90,6 @@ const compactionEntryCache = new WeakMap<SessionEntry[], CompactionCacheEntry>()
 export function getLatestCompactionEntry(entries: SessionEntry[]): CompactionEntry | null {
 	return resolveCompactionEntry(entries).entry;
 }
-
 export function resolveCompactionEntry(entries: SessionEntry[]): CompactionCacheEntry {
 	let cached = compactionEntryCache.get(entries);
 	if (!cached || cached.length > entries.length) {

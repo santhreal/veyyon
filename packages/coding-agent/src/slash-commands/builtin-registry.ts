@@ -10,7 +10,6 @@ import {
 	APP_NAME,
 	CHANGELOG_URL,
 	collapseWhitespace,
-	countWhere,
 	getActiveProfile,
 	getAgentDir,
 	getGlobalConfigRootDir,
@@ -1751,9 +1750,14 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 	todo: {
 		getTuiAutocompleteDescription: runtime => {
 			const allTasks = runtime.ctx.todoPhases.flatMap(phase => phase.tasks);
-			const pending = countWhere(allTasks, task => task.status === "pending");
-			const inProgress = countWhere(allTasks, task => task.status === "in_progress");
-			const completed = countWhere(allTasks, task => task.status === "completed");
+			let pending = 0,
+				inProgress = 0,
+				completed = 0;
+			for (const t of allTasks) {
+				if (t.status === "pending") pending++;
+				else if (t.status === "in_progress") inProgress++;
+				else if (t.status === "completed") completed++;
+			}
 			if (pending + inProgress + completed === 0) return "Manage the shared todo list · empty";
 			return `Manage the shared todo list · ${pending + inProgress} open (${inProgress} in progress, ${completed} done)`;
 		},

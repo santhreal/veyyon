@@ -464,7 +464,9 @@ export function convertMessages<T extends GoogleApiType>(model: Model<T>, contex
 
 			// Use "output" key for success, "error" key for errors as per SDK documentation
 			const responseValue = omittedImages
-				? [hasText ? textResult.toWellFormed() : "", NON_VISION_IMAGE_PLACEHOLDER].filter(Boolean).join("\n")
+				? hasText
+					? `${textResult.toWellFormed()}\n${NON_VISION_IMAGE_PLACEHOLDER}`
+					: NON_VISION_IMAGE_PLACEHOLDER
 				: hasText
 					? textResult.toWellFormed()
 					: hasImages

@@ -837,18 +837,21 @@ const streamOpenAICompletionsOnce = (
 				return output.content.indexOf(block);
 			};
 			const hasCompleteToolCallBatch = (): boolean => {
-				const toolCalls = output.content.filter((block): block is ToolCallStreamBlock => block.type === "toolCall");
-				if (toolCalls.length === 0) return false;
-				return toolCalls.every(block => {
-					if (!block.id || !block.name) return false;
-					const argumentsValue =
-						block.partialArgs === undefined
-							? block.arguments
-							: typeof block.partialArgs === "string"
-								? tryParseJson(block.partialArgs)
-								: block.partialArgs;
-					return isRecord(argumentsValue);
-				});
+				let hasToolCall = false;
+				for (const block of output.content) {
+					if (block.type !== "toolCall") continue;
+					hasToolCall = true;
+					const tc = block as ToolCallStreamBlock;
+					if (!tc.id || !tc.name) return false;
+					const args =
+						tc.partialArgs === undefined
+							? tc.arguments
+							: typeof tc.partialArgs === "string"
+								? tryParseJson(tc.partialArgs)
+								: tc.partialArgs;
+					if (!isRecord(args)) return false;
+				}
+				return hasToolCall;
 			};
 			const finishToolCallBlock = (block: ToolCallStreamBlock): void => {
 				if (block.partialArgs === undefined) return;

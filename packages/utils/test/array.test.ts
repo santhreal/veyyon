@@ -57,7 +57,7 @@ describe("countWhere", () => {
 	});
 
 	it("returns 0 for an empty input", () => {
-		expect(countWhere([], x => true)).toBe(0);
+		expect(countWhere([], () => true)).toBe(0);
 	});
 
 	it("returns 0 when nothing matches", () => {

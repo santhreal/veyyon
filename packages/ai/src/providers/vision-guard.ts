@@ -23,9 +23,8 @@ export function partitionVisionContent(
 }
 
 export function joinTextWithImagePlaceholder(text: string, omittedImages: boolean): string {
-	return [text.length > 0 ? text : null, omittedImages ? NON_VISION_IMAGE_PLACEHOLDER : null]
-		.filter(s => s !== null)
-		.join("\n");
+	if (text.length > 0) return omittedImages ? `${text}\n${NON_VISION_IMAGE_PLACEHOLDER}` : text;
+	return omittedImages ? NON_VISION_IMAGE_PLACEHOLDER : "";
 }
 
 /** Detect text-only Qwen models on DashScope's `compatible-mode` endpoint that reject multimodal content. Covers `qwen*-max` and `qwen*-coder*` (issue #1859). */
