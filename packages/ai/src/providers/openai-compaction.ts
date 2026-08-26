@@ -92,18 +92,44 @@ export interface ServerCompactionResult {
 	usage?: { inputTokens?: number; outputTokens?: number };
 }
 
-/** Responses-API families served by the OpenAI wire shape in this module. */
-const SERVER_COMPACTION_WIRE_APIS: Record<string, true> = {
+/**
+ * Responses-API families served by the OpenAI wire shape in this module.
+ * Exported so a test pins the exact set: this table and the
+ * `supportsServerCompaction` host predicate are the two places server-side
+ * compaction has been switched off and back on, and neither change is visible
+ * in a diff that only reads the transport.
+ */
+export const SERVER_COMPACTION_WIRE_APIS: Record<string, true> = {
 	"openai-responses": true,
 	"azure-openai-responses": true,
 	"openai-codex-responses": true,
 };
 
 /**
+ * Models whose compact route answered 404. A 404 is not a transient failure
+ * and not a credential problem: the route is absent for that model on that
+ * host, so every later attempt costs a round trip, a warning and a fallback to
+ * reach the same answer. Recording it turns the negative into data discovered
+ * at run time instead of a hand-maintained predicate.
+ *
+ * Scope is the process, keyed by `provider/api/id`. A host that gains the
+ * route serves it again on the next launch; nothing here is persisted, so a
+ * stale negative cannot outlive the run that observed it.
+ */
+const routeAbsentForModel = new Set<string>();
+
+/** Forget every observed 404 so a test starts from the declared capability data. */
+export function resetServerCompactionRouteCache(): void {
+	routeAbsentForModel.clear();
+}
+
+/**
  * Resolve the server-side compaction transport for a model, or undefined when
  * the model cannot compact server-side. Support is the compat DATA flag, not
  * a provider-name check: `supportsServerCompaction` is resolved per host at
- * model build time and can be flipped per row by config or discovery.
+ * model build time and can be flipped per row by config or discovery. A model
+ * whose route already answered 404 in this process resolves undefined too, so
+ * the caller goes straight to local compaction without asking again.
  */
 export function resolveServerCompactionTransport(model: Model<Api>): ServerCompactionTransport | undefined {
 	if (!SERVER_COMPACTION_WIRE_APIS[model.api]) return undefined;
@@ -111,6 +137,7 @@ export function resolveServerCompactionTransport(model: Model<Api>): ServerCompa
 	// resolved responses compat record.
 	const compat = model.compat as ResolvedOpenAIResponsesCompat;
 	if (compat.supportsServerCompaction !== true) return undefined;
+	if (routeAbsentForModel.has(`${model.provider}/${model.api}/${model.id}`)) return undefined;
 	return openAIResponsesServerCompaction;
 }
 
@@ -291,6 +318,12 @@ export const openAIResponsesServerCompaction: ServerCompactionTransport = {
 				// never allocated whole just to be capped afterwards.
 				const errorText = applyCallerSanitizer(await readProviderErrorDetail(response));
 				const statusText = sanitize(response.statusText);
+				// 404 answers the capability question the compat flag only
+				// predicts: this model's host does not serve the route. Record
+				// it so the next compaction skips the request instead of
+				// repeating it once per compaction for the rest of the run.
+				const routeAbsent = response.status === 404;
+				if (routeAbsent) routeAbsentForModel.add(`${model.provider}/${model.api}/${model.id}`);
 				logger.warn("Server-side compaction failed", {
 					url,
 					provider: model.provider,
@@ -298,9 +331,12 @@ export const openAIResponsesServerCompaction: ServerCompactionTransport = {
 					status: response.status,
 					statusText,
 					errorText,
+					routeAbsent,
 				});
 				throw new ProviderHttpError(
-					`Server-side compaction failed (${response.status} ${statusText})`,
+					routeAbsent
+						? `Server-side compaction is not available for ${model.provider}/${model.id} (404 ${statusText})`
+						: `Server-side compaction failed (${response.status} ${statusText})`,
 					response.status,
 					{ headers: response.headers },
 				);
