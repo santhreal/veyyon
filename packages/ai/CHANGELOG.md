@@ -22,6 +22,9 @@
 
 ### Fixed
 
+- `AIError.status` and `extractHttpStatusFromError` are one reader, so a provider message spelled `error(503)`, `status_code: 429` or `429 Too Many Requests` yields the same status to the auth ladder and the retry ladder instead of one of the two seeing nothing; a status field anywhere in the cause chain now outranks prose anywhere in it.
+- A Nous Portal call that a gateway answers with an HTML 502, 503 or 504 reports the gateway status instead of "returned invalid JSON".
+- A `pi-native` payload hook rejection names the reason it gave rather than only the seam it came from, and an error may declare its text describes a local decision so a quoted `401` does not rotate the operator's credential.
 - OpenAI Codex request diagnostics redact every credential header rather than `authorization` alone, so a Codex request carrying `x-api-key`, `proxy-authorization` or a provider-specific key spelling no longer writes it in plaintext to the debug log.
 - A first-event stall is retried once on every provider that does not run its own stall ladder, so a single silent connect on OpenAI completions, OpenAI Responses, Azure Responses or Ollama no longer ends the turn unretried.
 - A persisted 400/413 request dump redacts `x-goog-api-key`, so a rejected Google Generative AI or Vertex request no longer writes the operator's plaintext API key into `logs/http-400-requests/`.
