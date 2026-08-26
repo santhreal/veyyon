@@ -81,6 +81,8 @@
 - The composer padding oracle inspects the row the padding is painted on while the transcript is scrolled back, instead of reporting the capability line as unpainted air on a frame that overflows the viewport by a few rows and inspecting nothing at all on a frame that overflows by more.
 - The composer defect oracles report whether each guarantee read a real subject, was out of scope for the state, or applied with nothing to read, so a guarantee that inspects nothing is no longer indistinguishable from one that passed.
 - Renderer defect reproduction cases are committed, validated on load, and replayed on every run, and record an oracle that read nothing as well as one that reported a failure.
+- A composer defect oracle checks that no cell beyond a row's painted text carries a background, foreground or underline, so an unclosed style cannot bleed into blank cells or the rows after them.
+- The composer padding oracle reads the terminal's cell attributes as well as escape sequences, so a background fill painted into a padding row is detected instead of passing because the emulator had already consumed the sequence.
 - The write tool rejects content carrying hashline patch markers, unified diff hunks, or read-output display prefixes with an error naming the detection and stating corrective action instead of silently stripping prefixes before writing.
 - Converted LLM message wrappers preserve reference identity across turns so the provider context canonicalizer re-renders only newly appended messages.
 - Memory pipeline SQLite storage (`storage.sqlite`) manages schema migrations via `PRAGMA user_version` and dynamically backfills missing columns on legacy databases.
