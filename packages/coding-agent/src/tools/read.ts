@@ -3600,17 +3600,19 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 
 		let tree: DirectoryTree;
 		let rootFooter: string | undefined;
-		if (conciseRoot) {
-			const listing = await buildTopLevelDirectoryListing(absolutePath, { entryLimit: ROOT_LISTING_ENTRY_LIMIT });
-			if (listing.totalLines > 1) {
-				rootFooter =
-					listing.omittedTopLevel > 0
-						? `[${listing.omittedTopLevel} more top-level entries not shown (capped at ${ROOT_LISTING_ENTRY_LIMIT}). Re-issue read with depth: 2 for the recursive listing, or read a subdirectory by name.]`
-						: "[Top-level listing of the working directory root. Re-issue read with depth: 2 for the recursive listing, or read a subdirectory by name.]";
-			}
-			tree = listing;
-		} else {
-			try {
+		// Both builders let a failed scan through, so an unreadable directory reports
+		// the permission rather than rendering as an empty one.
+		try {
+			if (conciseRoot) {
+				const listing = await buildTopLevelDirectoryListing(absolutePath, { entryLimit: ROOT_LISTING_ENTRY_LIMIT });
+				if (listing.totalLines > 1) {
+					rootFooter =
+						listing.omittedTopLevel > 0
+							? `[${listing.omittedTopLevel} more top-level entries not shown (capped at ${ROOT_LISTING_ENTRY_LIMIT}). Re-issue read with depth: 2 for the recursive listing, or read a subdirectory by name.]`
+							: "[Top-level listing of the working directory root. Re-issue read with depth: 2 for the recursive listing, or read a subdirectory by name.]";
+				}
+				tree = listing;
+			} else {
 				tree = await buildDirectoryTree(absolutePath, {
 					maxDepth: directory.depth ?? READ_DIRECTORY_MAX_DEPTH,
 					perDirLimit: READ_DIRECTORY_CHILD_LIMIT,
@@ -3619,10 +3621,9 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 					// did not request an offset — otherwise we'd cap the first N lines before slicing.
 					lineCap: offset === undefined && limit !== undefined ? limit : null,
 				});
-			} catch (error) {
-				const message = errorMessage(error);
-				throw new ToolError(`Cannot read directory: ${message}`);
 			}
+		} catch (error) {
+			throw new ToolError(`Cannot read directory: ${errorMessage(error)}`);
 		}
 		throwIfAborted(signal);
 

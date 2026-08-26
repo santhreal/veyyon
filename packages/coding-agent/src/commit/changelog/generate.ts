@@ -2,6 +2,7 @@ import type { ThinkingLevel } from "@veyyon/agent-core";
 import type { Api, ApiKey, AssistantMessage, Model } from "@veyyon/ai";
 import { validateToolCall } from "@veyyon/ai/utils/validation";
 import { prompt } from "@veyyon/utils";
+import { isRecord } from "@veyyon/utils/type-guards";
 import { type } from "arktype";
 import type { ChangelogGenerationResult } from "../../commit/types";
 import { commitPrompts } from "../../prompts/commit/rows";
@@ -83,6 +84,22 @@ function truncateDiff(diff: string, maxChars: number): string {
 	return `${diff.slice(0, maxChars)}\n[…${diff.length - maxChars}ch elided…]`;
 }
 
+/**
+ * The shape the text fallback has to find.
+ *
+ * `dedupeEntries` iterates each category's value. A model answering
+ * `{"entries": {"Added": "one bullet"}}` — a string where an array belongs —
+ * used to reach it as a cast, and iterating a string yields its characters, so
+ * the changelog filled with single-letter bullets rather than failing. A
+ * non-iterable value threw from inside the dedupe instead.
+ */
+function isChangelogGenerationResult(value: unknown): value is ChangelogGenerationResult {
+	if (!isRecord(value) || !isRecord(value.entries)) return false;
+	return Object.values(value.entries).every(
+		bullets => Array.isArray(bullets) && bullets.every(bullet => typeof bullet === "string"),
+	);
+}
+
 function parseChangelogResponse(message: AssistantMessage): ChangelogGenerationResult {
 	const toolCall = extractToolCall(message, "create_changelog_entries");
 	if (toolCall) {
@@ -91,8 +108,7 @@ function parseChangelogResponse(message: AssistantMessage): ChangelogGenerationR
 	}
 
 	const text = extractTextContent(message);
-	const parsed = parseJsonPayload(text) as ChangelogGenerationResult;
-	return { entries: parsed.entries ?? {} };
+	return { entries: parseJsonPayload(text, isChangelogGenerationResult).entries };
 }
 
 function dedupeEntries(entries: Record<string, string[]>): Record<string, string[]> {
