@@ -3,8 +3,31 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { SearchTool } from "@veyyon/coding-agent/tools/search";
+import { SearchTool, type SearchToolInput, type SearchType, searchSchema } from "@veyyon/coding-agent/tools/search";
 import { removeWithRetries } from "@veyyon/utils";
+
+/** One value per field `searchSchema` declares beyond `type` and `input`. */
+const FIELD_SAMPLES: Record<string, string | number | boolean> = {
+	path: "sample.ts",
+	case: true,
+	hidden: true,
+	gitignore: false,
+	limit: 10,
+	skip: 0,
+};
+
+/** The fields each mode's engine takes. Pinned by equality against the schema below. */
+const ACCEPTED_FIELDS: Record<SearchType, readonly string[]> = {
+	files: ["hidden", "gitignore", "limit"],
+	text: ["path", "case", "gitignore", "skip"],
+	structure: ["path", "skip"],
+};
+
+const MODE_INPUTS: Record<SearchType, string> = {
+	files: "**/*.ts",
+	text: "needle",
+	structure: "console.log($A)",
+};
 
 /**
  * The unified search facade must route every public discriminator through the
@@ -81,20 +104,26 @@ describe("one search tool dispatches every workspace search mode", () => {
 		).rejects.toThrow('Invalid search type "invalid"');
 	});
 
-	it.each([
-		["files", { type: "files" as const, input: "**/*.ts", path: "sample.ts" }, "path"],
-		["files", { type: "files" as const, input: "**/*.ts", case: true }, "case"],
-		["files", { type: "files" as const, input: "**/*.ts", skip: 0 }, "skip"],
-		["text", { type: "text" as const, input: "needle", hidden: true }, "hidden"],
-		["text", { type: "text" as const, input: "needle", limit: 10 }, "limit"],
-		["structure", { type: "structure" as const, input: "console.log($A)", case: true }, "case"],
-		["structure", { type: "structure" as const, input: "console.log($A)", hidden: true }, "hidden"],
-		["structure", { type: "structure" as const, input: "console.log($A)", limit: 10 }, "limit"],
-		["structure", { type: "structure" as const, input: "console.log($A)", gitignore: false }, "gitignore"],
-	])("rejects invalid cross-type field for %s", async (mode, params, invalidField) => {
-		await expect(tool.execute(`search-cross-${mode}-${invalidField}`, params)).rejects.toThrow(
-			`Search type "${mode}" does not accept: ${invalidField}`,
-		);
+	// The field table listed nine pairs literally, so a field added to `searchSchema` was
+	// checked against one mode and left unchecked against the other two. This sweep reads the
+	// field set out of the schema at run time and drives every (mode, field) pair: a new field
+	// with no sample value, or a mode that starts accepting one it did not, goes red here.
+	it("accepts exactly the fields its mode owns, across every field the schema declares", async () => {
+		const declaredFields = Object.keys(searchSchema.shape).filter(name => name !== "type" && name !== "input");
+		expect(declaredFields.slice().sort()).toEqual(Object.keys(FIELD_SAMPLES).sort());
+
+		for (const type of searchSchema.shape.type.options) {
+			for (const field of declaredFields) {
+				const params = { type, input: MODE_INPUTS[type], [field]: FIELD_SAMPLES[field] } as SearchToolInput;
+				const call = tool.execute(`search-sweep-${type}-${field}`, params);
+				if (ACCEPTED_FIELDS[type].includes(field)) {
+					const result = await call;
+					expect(result.details?.type).toBe(type);
+				} else {
+					await expect(call).rejects.toThrow(`Search type "${type}" does not accept: ${field}`);
+				}
+			}
+		}
 	});
 
 	it("resolves filesystem targets per search mode", () => {
