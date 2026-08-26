@@ -3,7 +3,6 @@
  *
  * Shows name, description, origin, status, and kind-specific preview.
  */
-import * as os from "node:os";
 import { isZodSchema, zodToWireSchema } from "@veyyon/ai/utils/schema";
 import { type Component, truncateToWidth, wrapTextWithAnsi } from "@veyyon/tui";
 import { collapseWhitespace, errorMessage, logger } from "@veyyon/utils";
@@ -98,7 +97,7 @@ export class InspectorPanel implements Component {
 		lines.push(theme.fg("muted", "Origin:"));
 		const levelLabel = ext.source.level === "user" ? "User" : ext.source.level === "project" ? "Project" : "Native";
 		lines.push(`  ${theme.italic(`via ${ext.source.providerName} (${levelLabel})`)}`);
-		const shortened = shortenPath(ext.path, os.homedir());
+		const shortened = shortenPath(ext.path);
 		// If path is very long, show just the last parts
 		const displayPath =
 			shortened.length > 40 && shortened.split("/").length > 3
