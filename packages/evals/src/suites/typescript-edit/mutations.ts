@@ -24,9 +24,13 @@ export interface MutationInfo {
 }
 
 export interface Mutation {
-	name: string;
-	category: string;
-	fixHint: string;
+	readonly id: string;
+	readonly name: string;
+	readonly category: string;
+	readonly fixHint: string;
+	readonly isMultiEdit: boolean;
+	readonly isStructural: boolean;
+	readonly allowsMultipleHunks: boolean;
 
 	canApply(content: string): boolean;
 	mutate(content: string, rng: () => number): [string, MutationInfo];
@@ -233,16 +237,31 @@ function isLengthMemberExpression(node: t.Node): node is t.MemberExpression {
 	return t.isMemberExpression(node) && !node.computed && t.isIdentifier(node.property, { name: "length" });
 }
 
-abstract class BaseAstMutation implements Mutation {
+export abstract class BaseAstMutation implements Mutation {
 	abstract name: string;
 	abstract category: string;
 	abstract fixHint: string;
 	abstract description: string;
 
+	get id(): string {
+		return this.name;
+	}
+
+	get isMultiEdit(): boolean {
+		return false;
+	}
+
+	get isStructural(): boolean {
+		return this.category === "structural";
+	}
+
+	get allowsMultipleHunks(): boolean {
+		return this.isMultiEdit || this.isStructural;
+	}
+
 	describe(_info: MutationInfo): string {
 		return this.description;
 	}
-
 	abstract collectCandidates(parsed: Parsed): Candidate[];
 	abstract applyCandidate(parsed: Parsed, candidate: Candidate, rng: () => number): MutationInfo;
 
@@ -280,7 +299,7 @@ abstract class BaseAstMutation implements Mutation {
 	}
 }
 
-class SwapComparisonMutation extends BaseAstMutation {
+export class SwapComparisonMutation extends BaseAstMutation {
 	name = "swap-comparison";
 	category = "operator";
 	fixHint = "Swap the comparison operator to the correct variant.";
@@ -309,7 +328,7 @@ class SwapComparisonMutation extends BaseAstMutation {
 	}
 }
 
-class SwapEqualityMutation extends BaseAstMutation {
+export class SwapEqualityMutation extends BaseAstMutation {
 	name = "swap-equality";
 	category = "operator";
 	fixHint = "Fix the equality comparison operator.";
@@ -338,7 +357,7 @@ class SwapEqualityMutation extends BaseAstMutation {
 	}
 }
 
-class SwapLogicalMutation extends BaseAstMutation {
+export class SwapLogicalMutation extends BaseAstMutation {
 	name = "swap-logical";
 	category = "operator";
 	fixHint = "Use the intended boolean operator.";
@@ -363,7 +382,7 @@ class SwapLogicalMutation extends BaseAstMutation {
 	}
 }
 
-class RemoveNegationMutation extends BaseAstMutation {
+export class RemoveNegationMutation extends BaseAstMutation {
 	name = "remove-negation";
 	category = "operator";
 	fixHint = "Add back the missing logical negation (`!`).";
@@ -392,7 +411,7 @@ class RemoveNegationMutation extends BaseAstMutation {
 	}
 }
 
-class SwapIncDecMutation extends BaseAstMutation {
+export class SwapIncDecMutation extends BaseAstMutation {
 	name = "swap-increment-decrement";
 	category = "operator";
 	fixHint = "Replace the increment/decrement operator with the intended one.";
@@ -416,7 +435,7 @@ class SwapIncDecMutation extends BaseAstMutation {
 	}
 }
 
-class SwapArithmeticMutation extends BaseAstMutation {
+export class SwapArithmeticMutation extends BaseAstMutation {
 	name = "swap-arithmetic";
 	category = "operator";
 	fixHint = "Correct the arithmetic operator.";
@@ -440,7 +459,7 @@ class SwapArithmeticMutation extends BaseAstMutation {
 	}
 }
 
-class BooleanLiteralFlipMutation extends BaseAstMutation {
+export class BooleanLiteralFlipMutation extends BaseAstMutation {
 	name = "flip-boolean";
 	category = "literal";
 	fixHint = "Flip the boolean literal to the intended value.";
@@ -464,7 +483,7 @@ class BooleanLiteralFlipMutation extends BaseAstMutation {
 	}
 }
 
-class OptionalChainRemovalMutation extends BaseAstMutation {
+export class OptionalChainRemovalMutation extends BaseAstMutation {
 	name = "remove-optional-chain";
 	category = "access";
 	fixHint =
@@ -497,7 +516,7 @@ class OptionalChainRemovalMutation extends BaseAstMutation {
 	}
 }
 
-class CallArgumentSwapMutation extends BaseAstMutation {
+export class CallArgumentSwapMutation extends BaseAstMutation {
 	name = "swap-call-args";
 	category = "call";
 	fixHint = "Swap the two arguments to their original order.";
@@ -562,7 +581,7 @@ class CallArgumentSwapMutation extends BaseAstMutation {
 	}
 }
 
-class NullishCoalescingSwapMutation extends BaseAstMutation {
+export class NullishCoalescingSwapMutation extends BaseAstMutation {
 	name = "swap-nullish";
 	category = "operator";
 	fixHint = "Use the intended nullish/logical operator.";
@@ -587,7 +606,7 @@ class NullishCoalescingSwapMutation extends BaseAstMutation {
 	}
 }
 
-class RegexQuantifierSwapMutation extends BaseAstMutation {
+export class RegexQuantifierSwapMutation extends BaseAstMutation {
 	name = "swap-regex-quantifier";
 	category = "regex";
 	fixHint = "Fix the ONE regex quantifier that was swapped (between `+` and `*`). Do not modify other quantifiers.";
@@ -649,7 +668,7 @@ class RegexQuantifierSwapMutation extends BaseAstMutation {
 	}
 }
 
-class UnicodeHyphenMutation extends BaseAstMutation {
+export class UnicodeHyphenMutation extends BaseAstMutation {
 	name = "unicode-hyphen";
 	category = "unicode";
 	fixHint = "Replace the unicode dash with a plain ASCII hyphen.";
@@ -689,11 +708,23 @@ class UnicodeHyphenMutation extends BaseAstMutation {
 	}
 }
 
-class IdentifierMultiEditMutation extends BaseAstMutation {
+export class IdentifierMultiEditMutation extends BaseAstMutation {
 	name = "identifier-multi-edit";
 	category = "identifier";
 	fixHint = "Restore the identifier to its original spelling in all affected locations.";
 	description = "An identifier is misspelled in multiple separate locations.";
+
+	override get isMultiEdit(): boolean {
+		return true;
+	}
+
+	override get isStructural(): boolean {
+		return false;
+	}
+
+	override get allowsMultipleHunks(): boolean {
+		return true;
+	}
 
 	#keywords = new Set([
 		"await",
@@ -934,7 +965,7 @@ class IdentifierMultiEditMutation extends BaseAstMutation {
 	}
 }
 
-class DuplicateLineLiteralFlipMutation extends BaseAstMutation {
+export class DuplicateLineLiteralFlipMutation extends BaseAstMutation {
 	name = "duplicate-line-flip";
 	category = "duplicate";
 	fixHint = "Fix the literal or operator on the duplicated line.";
@@ -1024,7 +1055,7 @@ class DuplicateLineLiteralFlipMutation extends BaseAstMutation {
 	}
 }
 
-class SwapAdjacentLinesMutation extends BaseAstMutation {
+export class SwapAdjacentLinesMutation extends BaseAstMutation {
 	name = "swap-adjacent-lines";
 	category = "structural";
 	fixHint = "Swap the two adjacent lines back to their original order.";
@@ -1133,7 +1164,7 @@ class SwapAdjacentLinesMutation extends BaseAstMutation {
 	}
 }
 
-class SwapIfElseBranchesMutation extends BaseAstMutation {
+export class SwapIfElseBranchesMutation extends BaseAstMutation {
 	name = "swap-if-else";
 	category = "structural";
 	fixHint = "Swap the if and else branch bodies back to their original positions.";
@@ -1165,7 +1196,7 @@ class SwapIfElseBranchesMutation extends BaseAstMutation {
 	}
 }
 
-class RemoveEarlyReturnMutation extends BaseAstMutation {
+export class RemoveEarlyReturnMutation extends BaseAstMutation {
 	name = "remove-early-return";
 	category = "structural";
 	fixHint =
@@ -1195,7 +1226,7 @@ class RemoveEarlyReturnMutation extends BaseAstMutation {
 	}
 }
 
-class SwapNamedImportsMutation extends BaseAstMutation {
+export class SwapNamedImportsMutation extends BaseAstMutation {
 	name = "swap-named-imports";
 	category = "import";
 	fixHint =
@@ -1283,7 +1314,7 @@ class SwapNamedImportsMutation extends BaseAstMutation {
 	}
 }
 
-class DeleteStatementMutation extends BaseAstMutation {
+export class DeleteStatementMutation extends BaseAstMutation {
 	name = "delete-statement";
 	category = "structural";
 	fixHint = "Restore the deleted statement.";
@@ -1315,7 +1346,7 @@ class DeleteStatementMutation extends BaseAstMutation {
 	}
 }
 
-class OffByOneMutation extends BaseAstMutation {
+export class OffByOneMutation extends BaseAstMutation {
 	name = "off-by-one";
 	category = "literal";
 	fixHint = "Fix the off-by-one error in the numeric literal or comparison.";
@@ -1388,7 +1419,100 @@ class OffByOneMutation extends BaseAstMutation {
 	}
 }
 
-export const ALL_MUTATIONS: Mutation[] = [
+export class MutationNotFoundError extends Error {
+	constructor(id: string, available: readonly string[]) {
+		const formatted = available.length > 0 ? available.join(", ") : "(none)";
+		super(`Unknown mutation "${id}". Registered mutations: ${formatted}`);
+		this.name = "MutationNotFoundError";
+	}
+}
+
+export class DuplicateMutationError extends Error {
+	constructor(id: string) {
+		super(`A different mutation is already registered as "${id}".`);
+		this.name = "DuplicateMutationError";
+	}
+}
+
+export class MutationRegistry {
+	readonly #members = new Map<string, Mutation>();
+
+	register(member: Mutation): void {
+		const existing = this.#members.get(member.id);
+		if (existing === member) return;
+		if (existing) throw new DuplicateMutationError(member.id);
+		this.#members.set(member.id, member);
+	}
+
+	get(id: string): Mutation | undefined {
+		return this.#members.get(id);
+	}
+
+	has(id: string): boolean {
+		return this.#members.has(id);
+	}
+
+	list(): readonly Mutation[] {
+		return [...this.#members.values()];
+	}
+
+	listIds(): readonly string[] {
+		return [...this.#members.keys()];
+	}
+
+	require(id: string): Mutation {
+		const member = this.#members.get(id);
+		if (!member) throw new MutationNotFoundError(id, this.listIds());
+		return member;
+	}
+
+	categoryMap(): Record<string, string[]> {
+		const map: Record<string, string[]> = {};
+		for (const member of this.#members.values()) {
+			const category = member.category;
+			const list = map[category] ?? [];
+			list.push(member.id);
+			map[category] = list;
+		}
+		return map;
+	}
+
+	clear(): void {
+		this.#members.clear();
+	}
+}
+
+const defaultRegistry = new MutationRegistry();
+
+export function registerMutation(mutation: Mutation): void {
+	defaultRegistry.register(mutation);
+}
+
+export function requireMutation(id: string): Mutation {
+	return defaultRegistry.require(id);
+}
+
+export function getMutation(id: string): Mutation | undefined {
+	return defaultRegistry.get(id);
+}
+
+export function allMutations(): readonly Mutation[] {
+	return defaultRegistry.list();
+}
+
+export function mutationIds(): readonly string[] {
+	return defaultRegistry.listIds();
+}
+
+export function mutationCategoryMap(): Record<string, string[]> {
+	return defaultRegistry.categoryMap();
+}
+
+export function clearMutationRegistry(): void {
+	defaultRegistry.clear();
+}
+
+export const BUILTIN_MUTATIONS: readonly Mutation[] = [
 	new SwapComparisonMutation(),
 	new SwapEqualityMutation(),
 	new SwapLogicalMutation(),
@@ -1411,15 +1535,13 @@ export const ALL_MUTATIONS: Mutation[] = [
 	new OffByOneMutation(),
 ];
 
-export const CATEGORY_MAP: Record<string, string[]> = {
-	operator: ALL_MUTATIONS.filter(m => m.category === "operator").map(m => m.name),
-	literal: ALL_MUTATIONS.filter(m => m.category === "literal").map(m => m.name),
-	access: ALL_MUTATIONS.filter(m => m.category === "access").map(m => m.name),
-	call: ALL_MUTATIONS.filter(m => m.category === "call").map(m => m.name),
-	regex: ALL_MUTATIONS.filter(m => m.category === "regex").map(m => m.name),
-	unicode: ALL_MUTATIONS.filter(m => m.category === "unicode").map(m => m.name),
-	identifier: ALL_MUTATIONS.filter(m => m.category === "identifier").map(m => m.name),
-	duplicate: ALL_MUTATIONS.filter(m => m.category === "duplicate").map(m => m.name),
-	structural: ALL_MUTATIONS.filter(m => m.category === "structural").map(m => m.name),
-	import: ALL_MUTATIONS.filter(m => m.category === "import").map(m => m.name),
-};
+export function registerBuiltinMutations(): void {
+	for (const mutation of BUILTIN_MUTATIONS) {
+		registerMutation(mutation);
+	}
+}
+
+registerBuiltinMutations();
+
+export const ALL_MUTATIONS: readonly Mutation[] = BUILTIN_MUTATIONS;
+export const CATEGORY_MAP: Record<string, string[]> = defaultRegistry.categoryMap();
