@@ -129,6 +129,10 @@ export function paintHotTail(
 	// The sheen is a lightened accent — the liquid-glass highlight, not pure white
 	// (that would read as a colorless flare and lose the accent identity).
 	const sheenColor = mixHex(accent, "#ffffff", 0.55);
+	// Pre-parse cooled and accent into RGB channels so the hot loop blends raw
+	// arrays instead of re-parsing the same hex strings every cell.
+	const cooledRgb = mixHex(cooled, cooled, 0);
+	const accentRgb = mixHex(accent, accent, 0);
 
 	// Travel the sheen from just before the oldest cell to just past the tip so
 	// the highlight enters and exits the trail each period instead of ping-ponging.
@@ -138,7 +142,7 @@ export function paintHotTail(
 	for (let i = 0; i < tailPlain.length; i++) {
 		// 0 → oldest of the tail (cooled), 1 → the newest character (accent).
 		const p = tailPlain.length === 1 ? 1 : i / (tailPlain.length - 1);
-		const base = mixHex(cooled, accent, smoothstep(p));
+		const base = mixRgb(cooledRgb, accentRgb, smoothstep(p));
 		// Moving sheen: a gaussian bump at sheenPos, weighted toward the fresh edge.
 		const d = p - sheenPos;
 		const bump = Math.exp(-(d * d) / (2 * SHEEN_SIGMA * SHEEN_SIGMA));
