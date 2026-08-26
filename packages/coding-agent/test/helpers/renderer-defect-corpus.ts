@@ -25,6 +25,8 @@ import {
 	type ComposerOracleGuarantee,
 	DEFECT_ORACLE_REGISTRIES,
 	DEFECT_ORACLE_REGISTRY_NAMES,
+	type MarkdownOracleFailure,
+	type MarkdownOracleGuarantee,
 	type OracleFailure,
 	type OverlayOracleFailure,
 	type OverlayOracleGuarantee,
@@ -38,6 +40,14 @@ import {
 } from "../../src/modes/components/defect-oracles";
 import type { Theme } from "../../src/modes/theme/theme";
 import { type RunnerOptions, type RunnerResult, runComposerOracleScenario } from "./composer-oracle-runner";
+import {
+	evaluateMarkdownCase,
+	MARKDOWN_FIXTURES,
+	MARKDOWN_PADDINGS,
+	MARKDOWN_WIDTHS,
+	type MarkdownCase,
+	stateFor as markdownStateFor,
+} from "./markdown-oracle-runner";
 import { type OverlayRunnerResult, type OverlaySpec, runOverlayOracleScenario } from "./overlay-oracle-runner";
 import {
 	evaluateTextPrimitiveCase,
@@ -102,7 +112,12 @@ export type CorpusCaseKind = (typeof CORPUS_CASE_KINDS)[number];
 
 /** What one oracle did with one state, as the corpus records it. */
 export interface CorpusObservation {
-	oracle: ComposerOracleGuarantee | OverlayOracleGuarantee | ToolRenderOracleGuarantee | TextPrimitiveOracleGuarantee;
+	oracle:
+		| ComposerOracleGuarantee
+		| OverlayOracleGuarantee
+		| ToolRenderOracleGuarantee
+		| TextPrimitiveOracleGuarantee
+		| MarkdownOracleGuarantee;
 	kind: CorpusCaseKind;
 	message: string;
 }
@@ -172,12 +187,21 @@ export interface ToolRenderCorpusCaseState {
  */
 export type TextPrimitiveCorpusCaseState = TextPrimitiveCase;
 
+/**
+ * What a markdown case records: which source fixture, at which width, with which horizontal padding.
+ *
+ * The rows are the output, so they are not the state. The three fields are the whole input to a
+ * render, and the validator rejects a fixture the runner no longer drives.
+ */
+export type MarkdownCorpusCaseState = MarkdownCase;
+
 /** Any family's state, for the id hash and the promotion path that are shared across families. */
 export type AnyCorpusCaseState =
 	| CorpusCaseState
 	| OverlayCorpusCaseState
 	| ToolRenderCorpusCaseState
-	| TextPrimitiveCorpusCaseState;
+	| TextPrimitiveCorpusCaseState
+	| MarkdownCorpusCaseState;
 
 interface CorpusCaseFields {
 	schemaVersion: typeof CORPUS_SCHEMA_VERSION;
@@ -221,8 +245,19 @@ export interface TextPrimitiveCorpusCase extends CorpusCaseFields {
 	oracle: TextPrimitiveOracleGuarantee;
 }
 
+export interface MarkdownCorpusCase extends CorpusCaseFields {
+	family: "markdown";
+	state: MarkdownCorpusCaseState;
+	oracle: MarkdownOracleGuarantee;
+}
+
 /** Discriminated on `family`, so a reader that handles one cannot silently be handed the other. */
-export type CorpusCase = ComposerCorpusCase | OverlayCorpusCase | ToolRenderCorpusCase | TextPrimitiveCorpusCase;
+export type CorpusCase =
+	| ComposerCorpusCase
+	| OverlayCorpusCase
+	| ToolRenderCorpusCase
+	| TextPrimitiveCorpusCase
+	| MarkdownCorpusCase;
 
 /**
  * Which state shape each family records.
@@ -235,6 +270,7 @@ interface CorpusStateByFamily extends Record<CorpusFamily, AnyCorpusCaseState> {
 	overlay: OverlayCorpusCaseState;
 	toolRender: ToolRenderCorpusCaseState;
 	textPrimitive: TextPrimitiveCorpusCaseState;
+	markdown: MarkdownCorpusCaseState;
 }
 
 /** What a replay produces, in the terms every family reports: a verdict, the rows, and a teardown. */
@@ -293,6 +329,10 @@ const ORACLE_FAMILIES: { readonly [F in CorpusFamily]: OracleFamily<CorpusStateB
 	textPrimitive: {
 		readState: textPrimitiveCorpusStateFrom,
 		replay: state => Promise.resolve(replayTextPrimitiveCorpusCase(state)),
+	},
+	markdown: {
+		readState: markdownCorpusStateFrom,
+		replay: state => Promise.resolve(replayMarkdownCorpusCase(state)),
 	},
 };
 
@@ -477,6 +517,47 @@ export function replayTextPrimitiveCorpusCase(state: TextPrimitiveCorpusCaseStat
 	return {
 		evaluation: evaluateTextPrimitiveCase(state),
 		frameState: { viewportLines: stateFor(state).rows },
+		cleanUp: () => {},
+	};
+}
+
+function markdownCorpusStateFrom(value: Record<string, unknown>, label: string): MarkdownCorpusCaseState {
+	const state = value.state;
+	if (typeof state !== "object" || state === null) {
+		throw new Error(`${label}: no state object.`);
+	}
+	const fields = state as Record<string, unknown>;
+	if (typeof fields.fixture !== "string" || typeof fields.width !== "number" || typeof fields.paddingX !== "number") {
+		throw new Error(
+			`${label}: a markdown case records fixture, width and paddingX. Re-record the case with the sweep.`,
+		);
+	}
+	if (MARKDOWN_FIXTURES[fields.fixture] === undefined) {
+		throw new Error(
+			`${label}: fixture ${String(fields.fixture)} is not one the runner drives. A fixture was renamed or removed; re-record the case.`,
+		);
+	}
+	if (!(MARKDOWN_WIDTHS as readonly number[]).includes(fields.width)) {
+		throw new Error(
+			`${label}: width ${fields.width} is not one the sweep drives, so a state at that width has no next width to compare against. Re-record the case.`,
+		);
+	}
+	if (!(MARKDOWN_PADDINGS as readonly number[]).includes(fields.paddingX)) {
+		throw new Error(`${label}: paddingX ${fields.paddingX} is not one the sweep drives. Re-record the case.`);
+	}
+	return state as MarkdownCorpusCaseState;
+}
+
+/**
+ * Replay a markdown case by rendering the same source at the same width.
+ *
+ * The component takes a theme from `getMarkdownTheme()`, which needs `initTheme` to have run in the
+ * suite; nothing is mounted, so there is nothing to tear down.
+ */
+export function replayMarkdownCorpusCase(state: MarkdownCorpusCaseState): CorpusReplay {
+	return {
+		evaluation: evaluateMarkdownCase(state),
+		frameState: { viewportLines: markdownStateFor(state).rows },
 		cleanUp: () => {},
 	};
 }
@@ -821,6 +902,22 @@ export function promoteOverlayFailureToCorpus(
 ): string {
 	return promoteCaseToCorpus(
 		"overlay",
+		state,
+		{ oracle: failure.oracle, kind: "failed", message: failure.message },
+		observedGrid,
+		options,
+	);
+}
+
+/** Record a markdown failure the evaluator reported. */
+export function promoteMarkdownFailureToCorpus(
+	state: MarkdownCorpusCaseState,
+	failure: MarkdownOracleFailure,
+	observedGrid: readonly string[],
+	options?: { template?: string; seed?: number; status?: CorpusCaseStatus; reason?: string },
+): string {
+	return promoteCaseToCorpus(
+		"markdown",
 		state,
 		{ oracle: failure.oracle, kind: "failed", message: failure.message },
 		observedGrid,

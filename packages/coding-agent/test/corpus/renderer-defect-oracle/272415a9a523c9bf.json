@@ -1,0 +1,22 @@
+{
+	"schemaVersion": 3,
+	"id": "272415a9a523c9bf",
+	"status": "exempted",
+	"reason": "A prefix that paints nothing cannot be a prefix of anything. While a source's frozen prefix is markup that renders to no cells, the streaming-lex path is unobserved by this guarantee, and the boundary is the source's, not the cache's.",
+	"recordedAt": "2026-08-26T11:06:28.707Z",
+	"template": "blind-spot",
+	"seed": 0,
+	"kind": "blind",
+	"message": "the largest blank-line-bounded prefix of this source is an HTML comment, which paints no rows, so the streaming guarantee has nothing to compare against the head of the full render.",
+	"observedGrid": [
+		"                                        ",
+		"visible                                 "
+	],
+	"family": "markdown",
+	"state": {
+		"fixture": "htmlComment",
+		"width": 40,
+		"paddingX": 0
+	},
+	"oracle": "aFrozenPrefixRendersAsAPrefix"
+}

@@ -1,0 +1,19 @@
+{
+	"schemaVersion": 3,
+	"id": "6000e010c97df1de",
+	"status": "exempted",
+	"reason": "A render of no rows is the one input on which every row comparison is vacuous. Recorded so a reader knows the cache guarantees do not cover the empty source, rather than believing they passed on it.",
+	"recordedAt": "2026-08-26T11:06:28.707Z",
+	"template": "blind-spot",
+	"seed": 0,
+	"kind": "blind",
+	"message": "an empty source renders no rows, so there is nothing for a second instance to disagree about.",
+	"observedGrid": [],
+	"family": "markdown",
+	"state": {
+		"fixture": "empty",
+		"width": 40,
+		"paddingX": 0
+	},
+	"oracle": "aSecondInstanceRendersTheSameRows"
+}

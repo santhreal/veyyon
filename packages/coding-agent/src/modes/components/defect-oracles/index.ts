@@ -16,6 +16,7 @@
 
 export * from "./composer-defect-oracle";
 export * from "./defect-oracle-registry";
+export * from "./markdown-defect-oracle";
 export * from "./overlay-defect-oracle";
 export * from "./registries";
 export * from "./text-primitive-defect-oracle";

@@ -19,6 +19,7 @@
  */
 
 import { COMPOSER_ORACLE_GUARANTEES, COMPOSER_ORACLES } from "./composer-defect-oracle";
+import { MARKDOWN_ORACLE_GUARANTEES, MARKDOWN_ORACLES } from "./markdown-defect-oracle";
 import { OVERLAY_ORACLE_GUARANTEES, OVERLAY_ORACLES } from "./overlay-defect-oracle";
 import { TEXT_PRIMITIVE_ORACLE_GUARANTEES, TEXT_PRIMITIVE_ORACLES } from "./text-primitive-defect-oracle";
 import { TOOL_RENDER_ORACLE_GUARANTEES, TOOL_RENDER_ORACLES } from "./tool-render-defect-oracle";
@@ -53,6 +54,11 @@ export const DEFECT_ORACLE_REGISTRIES = {
 		guarantees: TEXT_PRIMITIVE_ORACLE_GUARANTEES,
 		entryIds: Object.keys(TEXT_PRIMITIVE_ORACLES),
 		subject: "the text primitives every row goes through",
+	},
+	markdown: {
+		guarantees: MARKDOWN_ORACLE_GUARANTEES,
+		entryIds: Object.keys(MARKDOWN_ORACLES),
+		subject: "the rows the markdown component returns",
 	},
 } as const satisfies Readonly<Record<string, DefectOracleRegistry>>;
 

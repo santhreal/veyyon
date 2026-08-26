@@ -67,6 +67,7 @@ import * as path from "node:path";
 import { Settings } from "../src/config/settings";
 import type {
 	ComposerOracleGuarantee,
+	MarkdownOracleGuarantee,
 	OverlayOracleGuarantee,
 	TextPrimitiveOracleGuarantee,
 	ToolRenderOracleGuarantee,
@@ -86,6 +87,7 @@ import {
 	computeCaseHash,
 	listCorpusFiles,
 	loadCorpusCase,
+	type MarkdownCorpusCase,
 	type OverlayCorpusCase,
 	replayCorpusFile,
 	type TextPrimitiveCorpusCase,
@@ -349,6 +351,26 @@ function textPrimitiveValidCase(): TextPrimitiveCorpusCase {
 	};
 }
 
+/** A markdown case that validates: which source fixture, at which width, with which padding. */
+function markdownValidCase(): MarkdownCorpusCase {
+	const state = { fixture: "wideGlyphs", width: 5, paddingX: 2 } as const;
+	const oracle: MarkdownOracleGuarantee = "everyRowFitsTheWidth";
+	return {
+		schemaVersion: CORPUS_SCHEMA_VERSION,
+		id: computeCaseHash("markdown", state, oracle, "failed"),
+		status: "recorded",
+		recordedAt: "2026-01-01T00:00:00.000Z",
+		template: "negative-control",
+		seed: 0,
+		family: "markdown",
+		state,
+		oracle,
+		kind: "failed",
+		message: "row 0 is 6 cells wide",
+		observedGrid: ["  漢  "],
+	};
+}
+
 describe("a case the reader has to reject", () => {
 	beforeAll(() => {
 		fs.mkdirSync(INVALID_DIR, { recursive: true });
@@ -495,6 +517,38 @@ describe("a case the reader has to reject", () => {
 			},
 			/cannot round-trip through a file/,
 		],
+		[
+			"a markdown case naming a fixture the runner does not drive",
+			() => {
+				const base = markdownValidCase();
+				return { ...base, state: { ...base.state, fixture: "the old fixture" } };
+			},
+			/is not one the runner drives/,
+		],
+		[
+			"a markdown case at a width the sweep does not drive",
+			() => {
+				const base = markdownValidCase();
+				return { ...base, state: { ...base.state, width: 37 } };
+			},
+			/is not one the sweep drives/,
+		],
+		[
+			"a markdown case at a padding the sweep does not drive",
+			() => {
+				const base = markdownValidCase();
+				return { ...base, state: { ...base.state, paddingX: 7 } };
+			},
+			/paddingX 7 is not one the sweep drives/,
+		],
+		[
+			"a markdown case naming a text-primitive oracle",
+			() => ({
+				...markdownValidCase(),
+				oracle: "truncationIsIdempotent" as unknown as MarkdownOracleGuarantee,
+			}),
+			/not a guarantee of the markdown registry/,
+		],
 	];
 
 	it.each(controls)("rejects %s", (_name, build, expected) => {
@@ -511,6 +565,7 @@ describe("a case the reader has to reject", () => {
 		["an overlay case", overlayValidCase],
 		["a tool-render case", toolRenderValidCase],
 		["a text-primitive case", textPrimitiveValidCase],
+		["a markdown case", markdownValidCase],
 	] as const)("accepts %s the controls are built from", (_name, build) => {
 		const corpusCase = build();
 		const file = path.join(INVALID_DIR, `${corpusCase.id}.json`);
