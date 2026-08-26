@@ -457,11 +457,8 @@ export function isOpenRouterAnthropicModel(model: OpenAIModelIdentity): boolean 
 }
 
 /**
- * Append an OpenRouter routing-variant suffix (e.g. `:nitro`, `:floor`, `:online`, `:exacto`)
- * to a model id when no explicit variant is already present. A variant is considered
- * "already present" when `modelId` contains a colon after the last `/` separator —
- * which covers both user-typed selectors (`anthropic/claude-haiku:nitro`) and catalog
- * entries that bake the variant in (`deepseek/deepseek-v3.1-terminus:exacto`).
+ * Append an OpenRouter routing-variant suffix (`:nitro`, `:floor`, etc.) when no variant is present
+ * (colon after last `/` covers user selectors and catalog entries that bake it in).
  */
 export function applyOpenRouterRoutingVariant(modelId: string, variant: string | undefined): string {
 	if (!variant) return modelId;
@@ -1029,11 +1026,8 @@ export function applyChatCompletionsToolStream(
 }
 
 /**
- * The sentence a rejection was stated in, wherever the provider put it.
- *
- * A captured body and an `Error.message` are two halves of one answer: some endpoints put the reason
- * in the envelope the SDK threw, some only in the body the request-inspector kept. Reading one half
- * is how a rejection goes unrecognised on one path and recognised on another.
+ * The sentence a rejection was stated in. Some endpoints put the reason in `Error.message`, some in the
+ * captured body; reading only one half is how a rejection goes unrecognised.
  */
 function rejectionText(error: unknown, capturedErrorResponse: CapturedHttpErrorResponse | undefined): string {
 	return [error instanceof Error ? error.message : undefined, capturedErrorResponse?.bodyText]
@@ -1055,12 +1049,8 @@ export function isCompiledGrammarTooLargeStrictError(
 }
 
 /**
- * Whether this endpoint rejected the request for carrying strict tools.
- *
- * The vocabulary is `matchesStrictToolsRejectionText`, the grammar family's, and it used to be a
- * private regex here that answered the same question with different words: the registry read
- * `invalid_request_error` plus a grammar or schema complaint, this path read a wire-format code and a
- * `strict` value it could not mix, and each recognised rejections the other let through.
+ * Whether this endpoint rejected the request for carrying strict tools. Uses the shared vocabulary
+ * (`matchesStrictToolsRejectionText`) so this path and the registry recognise the same rejections.
  */
 export function shouldRetryWithoutStrictTools(
 	error: unknown,
@@ -2740,13 +2730,8 @@ type CommonSamplingOptions = Pick<
 > & { serviceTier?: ServiceTier };
 
 /**
- * Apply the common `StreamOptions` → Responses sampling-parameter mapping (max output tokens,
- * temperature, top-p/k, min-p, presence/repetition penalties, service tier). Mutates `params`.
- *
- * `max_output_tokens` is suppressed when {@link Model.omitMaxOutputTokens} is `true`, so
- * proxies (notably Ollama) that forward to upstream APIs with an unknown output-token cap
- * can let the upstream apply its own default instead of 400-ing on `maxTokens` values that
- * reflect the model's context window rather than the upstream output limit.
+ * Apply `StreamOptions` → Responses sampling params. Mutates `params`. `max_output_tokens` suppressed
+ * when `omitMaxOutputTokens` is true (Ollama proxies forward to upstream APIs with unknown output cap).
  */
 export function applyCommonResponsesSamplingParams<P extends CommonResponsesParams>(
 	params: P,
