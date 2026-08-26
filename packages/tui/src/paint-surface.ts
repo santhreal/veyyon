@@ -133,7 +133,7 @@ export function surfaceRowColor(spec: SurfaceSpec, row: number, rows: number): s
  * first frame.
  */
 export function fillSurface(lines: readonly string[], width: number, spec: SurfaceSpec, strength = 1): string[] {
-	if (strength <= 0 || lines.length === 0) return [...lines];
+	if (strength <= 0 || lines.length === 0) return lines as string[];
 	const rows = Math.max(1, lines.length - 1);
 	const clamped = clamp01(strength);
 	return paintBlockBackground(

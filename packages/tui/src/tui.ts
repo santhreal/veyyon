@@ -661,20 +661,23 @@ function isSgrParamByte(c: number): boolean {
 // form (`38:2::r:g:b`) is unambiguous — its tokens never equal a bare `38`, so
 // the scan treats it as a complete unit and merging stays safe.
 function endsWithIncompleteExtendedColor(params: string): boolean {
+	// Fast path: extended-color introducers are 38/48/58. If none appear,
+	// the params cannot end an incomplete extended color.
+	if (params.indexOf("38") === -1 && params.indexOf("48") === -1 && params.indexOf("58") === -1) return false;
 	const t = params.split(";");
 	let i = 0;
 	while (i < t.length) {
 		const tok = t[i];
 		if (tok === "38" || tok === "48" || tok === "58") {
 			const mode = t[i + 1];
-			if (mode === undefined) return true; // introducer with no mode
+			if (mode === undefined) return true;
 			if (mode === "2") {
-				if (i + 4 >= t.length) return true; // missing r/g/b
+				if (i + 4 >= t.length) return true;
 				i += 5;
 				continue;
 			}
 			if (mode === "5") {
-				if (i + 2 >= t.length) return true; // missing index
+				if (i + 2 >= t.length) return true;
 				i += 3;
 				continue;
 			}
