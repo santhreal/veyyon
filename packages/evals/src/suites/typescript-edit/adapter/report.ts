@@ -367,13 +367,6 @@ export function generateReport(result: BenchmarkResult): string {
 			}
 			lines.push("");
 
-			const taskDef = findTaskPrompt(task);
-			if (taskDef) {
-				lines.push("**Prompt:**");
-				lines.push(`> ${escapeMarkdown(taskDef.prompt).split("\n").join("\n> ")}`);
-				lines.push("");
-			}
-
 			const sampleResponse = task.runs.find(r => r.agentResponse)?.agentResponse;
 			if (sampleResponse) {
 				lines.push("**Sample agent response (run 1):**");
@@ -399,11 +392,6 @@ export function generateReport(result: BenchmarkResult): string {
 
 function formatScore(value: number): string {
 	return value.toFixed(2);
-}
-
-function findTaskPrompt(_task: TaskResult): { prompt: string } | undefined {
-	// This is a placeholder - in actual use, we'd pass task definitions alongside results
-	return undefined;
 }
 
 export function generateJsonReport(result: BenchmarkResult): string {
