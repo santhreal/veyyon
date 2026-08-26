@@ -122,6 +122,11 @@ const REQUIREMENTS: Record<ComposerOracleGuarantee, InputRequirement> = {
 		hasInputs: state => state.virtualScrollTop !== null && (state.liveFooterLines?.length ?? 0) > 0,
 		mount: "scrolledBack",
 	},
+	noSgrLeftOpenAtRowEnd: {
+		vacuousWhen: "the raw grid is empty, so there is no row whose escape sequences could be unbalanced",
+		hasInputs: state => state.rawViewportLines.length > 0,
+		mount: "liveTail",
+	},
 };
 
 const MOUNTS: Record<Mount, RunnerOptions> = {

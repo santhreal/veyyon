@@ -25,6 +25,7 @@ export const COMPOSER_ORACLE_GUARANTEES = [
 	"composerHairlineSpanAndPlacement",
 	"footerHeightMatchesComposedSegmentLedger",
 	"virtualScrollPreservesFooterStability",
+	"noSgrLeftOpenAtRowEnd",
 ] as const;
 
 export type ComposerOracleGuarantee = (typeof COMPOSER_ORACLE_GUARANTEES)[number];
@@ -610,6 +611,39 @@ export function checkVirtualScrollPreservesFooterStability(state: ComposerOracle
 	return null;
 }
 
+/**
+ * Guarantee 13: noSgrLeftOpenAtRowEnd
+ * Every painted row closes the colours and attributes it opened.
+ *
+ * A terminal carries SGR state across a line break, so a row that ends with a foreground colour or a
+ * background fill still in effect paints whatever the next row happens to write, and the last row of
+ * a frame paints the shell prompt after the process exits. The defect is invisible in a stripped grid
+ * and invisible in a screenshot of a frame whose next row happens to open its own colour, which is
+ * why it is judged on the raw rows over the whole matrix rather than by looking at one.
+ */
+export function checkNoSgrLeftOpenAtRowEnd(state: ComposerOracleFrameState): OracleFailure | null {
+	for (let row = 0; row < state.rawViewportLines.length; row += 1) {
+		const raw = state.rawViewportLines[row] ?? "";
+		let open: string | null = null;
+		const pattern = /\u001b\[([0-9;]*)m/g;
+		for (let match = pattern.exec(raw); match !== null; match = pattern.exec(raw)) {
+			const params = match[1] ?? "";
+			// An empty parameter list is `ESC [ m`, which the standard reads as a reset.
+			const resets = params === "" || params.split(";").every(part => part === "" || part === "0");
+			open = resets ? null : params;
+		}
+		if (open !== null) {
+			return {
+				oracle: "noSgrLeftOpenAtRowEnd",
+				message: `Row ${row} ends with SGR ${open} still in effect, which bleeds into the row painted after it.`,
+				details: { row, sgr: open, raw },
+			};
+		}
+	}
+
+	return null;
+}
+
 // ---------------------------------------------------------------------------
 // Registry
 // ---------------------------------------------------------------------------
@@ -816,6 +850,15 @@ export const COMPOSER_ORACLES: Readonly<Record<ComposerOracleGuarantee, Composer
 			footerBottom: state.screenBounds.footerBottom,
 		}),
 		run: checkVirtualScrollPreservesFooterStability,
+	},
+	noSgrLeftOpenAtRowEnd: {
+		id: "noSgrLeftOpenAtRowEnd",
+		description: "Every painted row closes the colours and attributes it opened, so none bleeds into the next.",
+		appliesTo: () => true,
+		// Every raw row, because the terminator is a property of each one independently and a row with
+		// no escape sequence at all is still a row that leaves nothing open.
+		subject: state => ({ kind: "rows", rows: allRows(state) }),
+		run: checkNoSgrLeftOpenAtRowEnd,
 	},
 };
 

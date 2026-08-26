@@ -237,6 +237,35 @@ const DEFECTS: Readonly<Record<ComposerOracleGuarantee, readonly DefectCase[]>> 
 			}),
 		},
 	],
+	noSgrLeftOpenAtRowEnd: [
+		{
+			name: "a row opens a foreground colour and never closes it",
+			says: "still in effect",
+			break: base => {
+				const rawViewportLines = [...base.rawViewportLines];
+				rawViewportLines[2] = "\x1b[31mred text with no reset";
+				return { ...base, rawViewportLines };
+			},
+		},
+		{
+			name: "a row resets its colour and then opens a background fill on the way out",
+			says: "still in effect",
+			break: base => {
+				const rawViewportLines = [...base.rawViewportLines];
+				rawViewportLines[4] = "\x1b[31mred\x1b[0m plain \x1b[48;5;236m";
+				return { ...base, rawViewportLines };
+			},
+		},
+		{
+			name: "a row closes only some of the attributes it opened",
+			says: "still in effect",
+			break: base => {
+				const rawViewportLines = [...base.rawViewportLines];
+				rawViewportLines[5] = "\x1b[1;31mbold red\x1b[22m still red";
+				return { ...base, rawViewportLines };
+			},
+		},
+	],
 };
 
 describe("the baseline frame is the control", () => {
