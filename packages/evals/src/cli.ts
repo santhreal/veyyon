@@ -299,13 +299,20 @@ async function resolveTasks(tasks: readonly string[]): Promise<readonly string[]
 	return ids;
 }
 
+/**
+ * Renders one row per variant.
+ *
+ * `graded` is the denominator of both rates: a timed-out trial is a graded failure, and an
+ * infrastructure error is excluded and printed in its own column, so a run whose trials mostly
+ * crashed can never read as a high pass rate.
+ */
 function summaryTable(summaries: readonly CellSummary[]): string {
-	const header = "| variant | trials | passes | errors | pass rate | mean reward |";
-	const divider = "| --- | --- | --- | --- | --- | --- |";
+	const header = "| variant | trials | graded | passes | timeouts | errors | pass rate | mean reward |";
+	const divider = "| --- | --- | --- | --- | --- | --- | --- | --- |";
 	const rows = summaries.map(summary => {
 		const passRate = summary.passRate === null ? "—" : `${(summary.passRate * 100).toFixed(1)}%`;
 		const meanReward = summary.meanReward === null ? "—" : summary.meanReward.toFixed(3);
-		return `| ${summary.variant} | ${summary.total} | ${summary.passes} | ${summary.errors} | ${passRate} | ${meanReward} |`;
+		return `| ${summary.variant} | ${summary.total} | ${summary.denominator} | ${summary.passes} | ${summary.timedOut} | ${summary.errors} | ${passRate} | ${meanReward} |`;
 	});
 	return [header, divider, ...rows].join("\n");
 }

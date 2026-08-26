@@ -26,7 +26,11 @@ export function cellKey(cell: TrialCell): string {
 }
 
 /**
- * Sanitizes artifacts so they never retain unbounded memory in the journal or in-memory records.
+ * Trims the artifacts so they never retain unbounded memory in the journal or in-memory records.
+ *
+ * Only `rawOutput` is bounded. Every other field is carried through: an enumerated
+ * allow-list silently dropped `usage`, which is the trial's only record of what the
+ * provider billed, so a run's spend read as unmeasured after a resume.
  */
 export function sanitizeArtifacts(artifacts: TrialArtifacts | undefined): TrialArtifacts | undefined {
 	if (!artifacts) return undefined;
@@ -36,13 +40,7 @@ export function sanitizeArtifacts(artifacts: TrialArtifacts | undefined): TrialA
 		rawOutput = rawOutput.slice(-MAX_RAW_OUTPUT_CHARS);
 	}
 
-	return {
-		logPaths: artifacts.logPaths,
-		trialDir: artifacts.trialDir,
-		rawOutput,
-		filePaths: artifacts.filePaths,
-		extra: artifacts.extra,
-	};
+	return { ...artifacts, rawOutput };
 }
 
 /**
