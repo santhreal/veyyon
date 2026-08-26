@@ -93,9 +93,31 @@ Two run clocks tick alongside the segments, both measuring model runtime, never 
 | `/fork` | Duplicate the current session into a new file |
 | `/session info` | Session metadata and stats |
 | `/agents` | Agent Control Center: the live roster (agent type, status, activity; Enter opens one agent's session) and the Comms stream of agent-to-agent messages |
+| `/process-manager` | The same Agent Control Center, opened across every conversation this process is running |
 | `/jobs` | List background async tool jobs |
 
 `/cockpit` and `/hub` are aliases of `/agents`, as is the `app.agents.hub` keybinding and a double-tap of the left arrow on an empty composer. They used to open a separate screen with its own roster and its own drill-in, which meant "which agents are running" had two answers that could disagree with each other. They all open the one card now.
+
+### One conversation, or every conversation
+
+A process runs more than one conversation at a time. `/new` leaves the previous one
+streaming unless `session.newKeepsBackground` is off, and an ACP client keeps every
+open session in the same process.
+
+`/agents` opens on the conversation on screen. `/process-manager` opens on all of
+them. Press `a` in either card to switch: the roster, the Comms stream and the
+transcripts you can open all move together, and the title reads
+`Agent Control Center — all conversations` at the wider scope. A card with no
+conversation of its own, which is what a collab guest has, already shows everything
+it can reach, so `a` does nothing there and no chip offers it.
+
+Regenerate the capture pair for this behavior with:
+
+```sh
+SCENE_COMMAND='bun /repo/packages/coding-agent/src/cli.ts --model local/qwen2.5-1.5b --no-tools' \
+  PROOF_LLM_BASE_URL=http://veyyon-proof-llm:8080/v1 SCENE_MOTION_FLOOR=1 \
+  proof/docker/record-x11.sh proof/scenes/process-manager-scope.sh
+```
 
 ### The Live roster
 
