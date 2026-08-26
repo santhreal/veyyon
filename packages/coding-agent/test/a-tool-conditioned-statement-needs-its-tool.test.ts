@@ -12,10 +12,13 @@
  * way, in either direction: a gate that fails open names a missing tool, a gate
  * that fails closed silently drops a rule the session needed.
  *
- * THE INVARIANT, at the choke point every statement crosses (the assembler):
+ * THE INVARIANTS, at the choke point every statement crosses (the assembler):
  *
  *   For a statement conditioned on tool T, its text is in the composed prompt when
  *   T is granted and absent when it is not.
+ *
+ *   A statement names, through `toolRefs`, only a tool this build ships. A retired
+ *   name renders as nothing, so the sentence keeps its shape and loses its subject.
  *
  * ENUMERATION. The rows come out of `PROMPT_STATEMENTS` at run time, filtered to
  * the ones whose whole condition is `contains("tools", …)`, so a statement added
@@ -31,6 +34,7 @@
 import { describe, expect, it } from "bun:test";
 import { buildSystemPrompt } from "@veyyon/coding-agent/system-prompt";
 import { PROMPT_STATEMENTS } from "@veyyon/coding-agent/system-prompt-builder/statement-registry";
+import { BUILTIN_TOOL_NAMES, HIDDEN_TOOL_NAMES } from "@veyyon/coding-agent/tools/builtin-names";
 
 const EMPTY_TREE = {
 	rootPath: "/tmp",
@@ -150,13 +154,30 @@ describe("a statement conditioned on a tool needs that tool", () => {
 		expect(TOOL_GATED.filter(row => row.fragment === undefined).map(row => row.id)).toEqual([]);
 	});
 
-	it("does not direct unified-search sessions to a missing legacy grep tool", async () => {
-		const unified = await composed(["search", "ast_edit"]);
-		expect(unified).not.toContain("Use `grep` only for plain-text lookup");
-		expect(unified).toContain("`search` owns workspace file discovery");
+	/**
+	 * The other half of the invariant: a statement may only NAME a tool this build
+	 * ships. `toolRefs` is the session's own name table, so `{{toolRefs.X}}` for an X
+	 * that no longer exists renders as nothing at all — the sentence survives with a
+	 * hole in it and no gate notices. That is how the unified-search cutover left prose
+	 * pointing at `grep` after `grep` was folded into `search`.
+	 *
+	 * The shipped set is read from `builtin-names.ts` at run time, and deliberately not
+	 * through `isKnownToolName`, which normalizes a retired alias (`grep`, `glob`,
+	 * `find`, `ast_grep`) onto its replacement and so would accept the very names this
+	 * asserts against.
+	 */
+	it("names only tools this build ships, so no statement points at a retired one", () => {
+		const shipped = new Set<string>([...BUILTIN_TOOL_NAMES, ...HIDDEN_TOOL_NAMES]);
+		const refs = PROMPT_STATEMENTS.flatMap(statement =>
+			[...statement.text.matchAll(/\{\{\s*toolRefs\.([A-Za-z0-9_]+)/g)].map(match => ({
+				id: statement.id,
+				tool: match[1],
+			})),
+		);
 
-		const legacy = await composed(["grep", "ast_edit"]);
-		expect(legacy).toContain("Use `grep` only for plain-text lookup");
+		// Anti-vacuity: the statements really do name tools through the table.
+		expect(refs.length).toBeGreaterThanOrEqual(15);
+		expect(refs.filter(ref => !shipped.has(ref.tool))).toEqual([]);
 	});
 
 	it("withholds every tool-gated statement from a session with no tools", async () => {
