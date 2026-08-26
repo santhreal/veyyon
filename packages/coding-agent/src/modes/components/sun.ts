@@ -63,6 +63,10 @@ export const EMBER: ReadonlyArray<readonly [number, number, number]> = [
 
 /** xterm-256 ember approximation for non-truecolor terminals, same ordering. */
 const EMBER_256 = [52, 88, 130, 166, 208, 214, 220, 223] as const;
+/** Pre-computed SGR sequences for each ember band — eliminates per-cell template
+ *  literal allocation in the sun/sunset renderers (400+ cells per frame). */
+export const EMBER_FG_TRUECOLOR: readonly string[] = EMBER.map(([r, g, b]) => `\x1b[38;2;${r};${g};${b}m`);
+const EMBER_FG_256: readonly string[] = EMBER_256.map(n => `\x1b[38;5;${n}m`);
 
 /**
  * Terminal cells are about twice as tall as they are wide, so a geometric
@@ -113,11 +117,7 @@ function hash(x: number, y: number, s: number): number {
 }
 
 function fg(trueColor: boolean, band: number): string {
-	if (trueColor) {
-		const [r, g, b] = EMBER[band];
-		return `\x1b[38;2;${r};${g};${b}m`;
-	}
-	return `\x1b[38;5;${EMBER_256[band]}m`;
+	return trueColor ? EMBER_FG_TRUECOLOR[band]! : EMBER_FG_256[band]!;
 }
 
 /**
@@ -269,6 +269,8 @@ const SKY: ReadonlyArray<readonly [number, number, number]> = [
 	[0xf0, 0x9a, 0x34],
 ];
 const SKY_256 = [16, 16, 52, 52, 52, 88, 88, 88, 88, 130, 130, 130, 166, 166, 166, 166] as const;
+const SKY_BG_TRUECOLOR: readonly string[] = SKY.map(([r, g, bl]) => `\x1b[48;2;${r};${g};${bl}m`);
+const SKY_BG_256: readonly string[] = SKY_256.map(n => `\x1b[48;5;${n}m`);
 
 export interface SunsetFieldOptions {
 	/** Field size in cells. */
@@ -283,12 +285,8 @@ export interface SunsetFieldOptions {
 }
 
 function skyBg(trueColor: boolean, band: number): string {
-	const b = Math.min(SKY.length - 1, Math.max(0, band));
-	if (trueColor) {
-		const [r, g, bl] = SKY[b];
-		return `\x1b[48;2;${r};${g};${bl}m`;
-	}
-	return `\x1b[48;5;${SKY_256[b]}m`;
+	const b = Math.min(SKY_BG_TRUECOLOR.length - 1, Math.max(0, band));
+	return trueColor ? SKY_BG_TRUECOLOR[b]! : SKY_BG_256[b]!;
 }
 
 /**

@@ -75,7 +75,7 @@ function nextBackground(bg: BgState, line: string, start: number, end: number): 
 			result = line.slice(i, j);
 		} else if (n === 48) {
 			// Parse mode token after the semicolon.
-			let p = j + 1;
+			const p = j + 1;
 			let modeEnd = p;
 			while (modeEnd < end && line.charCodeAt(modeEnd) !== 0x3b) modeEnd++;
 			const mode = modeEnd > p ? line.charCodeAt(p) - 48 : -1;
@@ -87,13 +87,13 @@ function nextBackground(bg: BgState, line: string, start: number, end: number): 
 				result = `48;5;${line.slice(idxStart, idxEnd)}`;
 				j = idxEnd;
 			} else if (mode === 2) {
-				let rStart = modeEnd + 1;
+				const rStart = modeEnd + 1;
 				let rEnd = rStart;
 				while (rEnd < end && line.charCodeAt(rEnd) !== 0x3b) rEnd++;
-				let gStart = rEnd + 1;
+				const gStart = rEnd + 1;
 				let gEnd = gStart;
 				while (gEnd < end && line.charCodeAt(gEnd) !== 0x3b) gEnd++;
-				let bStart = gEnd + 1;
+				const bStart = gEnd + 1;
 				let bEnd = bStart;
 				while (bEnd < end && line.charCodeAt(bEnd) !== 0x3b) bEnd++;
 				if (bEnd >= end && bStart >= end) return BAIL;
@@ -104,7 +104,7 @@ function nextBackground(bg: BgState, line: string, start: number, end: number): 
 			}
 		} else if (n === 38) {
 			// Foreground extended color: skip its sub-parameters, leave bg alone.
-			let p = j + 1;
+			const p = j + 1;
 			let modeEnd = p;
 			while (modeEnd < end && line.charCodeAt(modeEnd) !== 0x3b) modeEnd++;
 			const mode = modeEnd > p ? line.charCodeAt(p) - 48 : -1;

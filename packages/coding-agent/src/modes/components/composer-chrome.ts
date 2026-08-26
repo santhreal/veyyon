@@ -12,7 +12,7 @@ import type { Component, MouseRoutable, SgrMouseEvent } from "@veyyon/tui";
 import { Spacer, sliceByColumn, TERMINAL, truncateToWidth, visibleWidth } from "@veyyon/tui";
 import { groundHairlineHex, groundTintFgAnsi } from "../theme/ground-tints";
 import { theme } from "../theme/theme";
-import { EMBER } from "./sun";
+import { EMBER_FG_TRUECOLOR } from "./sun";
 
 /**
  * Left inset of the composer zone's content (the `›` gutter and the metadata
@@ -245,7 +245,7 @@ export function emberTick(trueColor: boolean, cells = 3): string {
 	let out = "";
 	for (let i = 0; i < cells; i++) {
 		const band = Math.max(0, 6 - i * 2);
-		out += `\x1b[38;2;${EMBER[band].join(";")}m${rule}`;
+		out += `${EMBER_FG_TRUECOLOR[band]}${rule}`;
 	}
 	return out;
 }
