@@ -771,11 +771,12 @@ export function truncateDiffByHunk(
 // share a separate `/Users|/home`-heuristic owner in `@veyyon/tool-render`
 // (`src/util.ts`). Two owners, one per runtime boundary, is deliberate here —
 // not an accidental duplicate.
+const CACHED_HOME = os.homedir();
 export function shortenPath(filePath: unknown, homeDir?: string): string {
 	if (typeof filePath !== "string") {
 		return "";
 	}
-	const home = homeDir ?? os.homedir();
+	const home = homeDir ?? CACHED_HOME;
 	if (home && filePath.startsWith(home)) {
 		const suffix = filePath.slice(home.length);
 		if (suffix === "" || suffix.startsWith(path.posix.sep) || suffix.startsWith(path.win32.sep)) {
