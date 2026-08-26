@@ -205,4 +205,33 @@ describe("extractPrintableText", () => {
 	it("preserves Kitty CSI-u text-field decoding for supported modifiers", () => {
 		expect(extractPrintableText("\x1b[97;1;229u")).toBe("å");
 	});
+
+	it("returns undefined for strings with control characters (C0 range)", () => {
+		// WHY: hasControlChars was rewritten from [...data].some() to a charCodeAt
+		// loop. The loop must detect every C0 control (0x00–0x1F), DEL (0x7F),
+		// and C1 controls (0x80–0x9F) so extractPrintableText rejects them.
+		expect(extractPrintableText("\x00")).toBeUndefined();
+		expect(extractPrintableText("\x01")).toBeUndefined();
+		expect(extractPrintableText("\x08")).toBeUndefined();
+		expect(extractPrintableText("\x1f")).toBeUndefined();
+		expect(extractPrintableText("\x7f")).toBeUndefined();
+	});
+
+	it("returns undefined for strings with C1 control characters (0x80–0x9F)", () => {
+		expect(extractPrintableText("\x80")).toBeUndefined();
+		expect(extractPrintableText("\x9f")).toBeUndefined();
+	});
+
+	it("returns the string for plain ASCII and printable Unicode (no control chars)", () => {
+		expect(extractPrintableText("hello")).toBe("hello");
+		expect(extractPrintableText("Hello, World!")).toBe("Hello, World!");
+		expect(extractPrintableText("café")).toBe("café");
+		expect(extractPrintableText("日本語")).toBe("日本語");
+	});
+
+	it("returns the string for text that only has characters above the C1 range", () => {
+		// 0xA0 (non-breaking space) and above are NOT control chars
+		expect(extractPrintableText("\xa0")).toBe("\xa0");
+		expect(extractPrintableText("😀")).toBe("😀");
+	});
 });
