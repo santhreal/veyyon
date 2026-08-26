@@ -821,17 +821,27 @@ function dirCreatedAt(dir: string): number {
 /** Stale threshold for foreign runs without a terminal marker. */
 const JOB_DIR_STALE_MS = 30 * 60 * 1000;
 
-/** Newest mtime across the job dir and its result.json (cheap freshness probe). */
-function jobDirMtime(dir: string): number {
-	let newest = 0;
+/** Newest mtime across the job dir and its result.json, or null when neither states one. */
+function jobDirMtime(dir: string): number | null {
+	let newest: number | null = null;
 	for (const p of [dir, path.join(dir, "result.json")]) {
 		try {
-			newest = Math.max(newest, fs.statSync(p).mtimeMs);
+			const ms = fs.statSync(p).mtimeMs;
+			newest = newest === null ? ms : Math.max(newest, ms);
 		} catch {}
 	}
-	return Math.round(newest) || Date.now();
+	return newest === null ? null : Math.round(newest);
 }
 
+/**
+ * Whether the job directory was written recently enough that an orphaned runner may still be at work.
+ *
+ * A timestamp the probe could not read is not evidence of a live run. Substituting the current time
+ * for it — which a truthiness check also did for a directory whose mtime is the epoch — left a run
+ * with no owning process marked `running` on every later sync, so it never reached a terminal state
+ * and its finish time was recorded as whenever the manager happened to look.
+ */
 function jobDirFresh(dir: string): boolean {
-	return Date.now() - jobDirMtime(dir) < JOB_DIR_STALE_MS;
+	const mtime = jobDirMtime(dir);
+	return mtime !== null && Date.now() - mtime < JOB_DIR_STALE_MS;
 }
