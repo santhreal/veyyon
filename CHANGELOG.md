@@ -70,9 +70,11 @@
 - The OpenAI-family, pi-native and Codex request builders serialize the request body once instead of deep-cloning the request graph, which took attempt preparation on a 32MiB context from 82ms to 9ms.
 - A message that names a dead socket reads the same everywhere: `namesDeadSocket` in `@veyyon/ai/error/flags` is the one list of errnos and phrases, and `ENETUNREACH`, `EHOSTUNREACH` and `EAI_AGAIN` now count as transient transport failures like the rest of them.
 - Formatted source files for Biome compliance.
+- `withAuth` imports the two error classes it throws from their owning modules instead of the `@veyyon/ai/error` barrel, so a consumer of the auth-retry wrapper no longer loads the provider-error registry and every error domain behind it; behavior is unchanged.
 - `MNEMOPI_NO_EMBEDDINGS=0`, `false`, `no` or `off` now leaves embeddings on everywhere instead of disabling them on the API path.
 - Every `MNEMOPI_*` value is read by `config.ts` alone; the local-model, extraction and embedding modules ask it instead of parsing the variable again.
 - `getDiagnostics` is now `extractionDiagnostics` in `core/extraction/diagnostics` and `recallDiagnostics` in `core/recall-diagnostics`, so the two registries are no longer reached by one name.
+- `core/embeddings.ts` imports `ProviderHttpError` from `@veyyon/ai/error/classes` instead of the error barrel, cutting twelve modules off the import graph of every module that can remember something; behavior is unchanged.
 - `imageFallback` takes the file name, media type, pixel size and cause of an undrawn image and returns a row naming all four; `ImageFallbackReason` states the cause.
 - Settings rows can open nested panels, used by Files → LSP to keep its dependent switches behind one parent row.
 - `bestEffort` and `optionalResult` are imported from `@veyyon/utils/discarded-fault`. The barrel does not re-export them, so a consumer reaching them through `@veyyon/utils` names the module instead.
