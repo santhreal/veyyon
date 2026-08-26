@@ -654,10 +654,29 @@ export function lavaText(text: string, theme: LavaTheme, trueColor: boolean, now
 	let out = "";
 	let cell = 0;
 	for (const ch of text) {
-		out += `${lavaAnsi(theme, true, now, cell)}${ch}`;
+		const p = now / LAVA_PERIOD_MS + cell * LAVA_CELL_PHASE;
+		const f = p - Math.floor(p);
+		const clamped = 1 - Math.abs(2 * f - 1);
+		let r: number, g: number, b: number;
+		if (clamped < 0.5) {
+			const dk = 1 - LAVA_DEEP_FACTOR;
+			const dr = Math.round(emberRgb[0] * dk);
+			const dg = Math.round(emberRgb[1] * dk);
+			const db = Math.round(emberRgb[2] * dk);
+			const k = clamp01(clamped / 0.5);
+			r = Math.round(dr + (emberRgb[0] - dr) * k);
+			g = Math.round(dg + (emberRgb[1] - dg) * k);
+			b = Math.round(db + (emberRgb[2] - db) * k);
+		} else {
+			const k2 = clamp01((clamped - 0.5) / 0.5);
+			r = Math.round(emberRgb[0] + (goldRgb[0] - emberRgb[0]) * k2);
+			g = Math.round(emberRgb[1] + (goldRgb[1] - emberRgb[1]) * k2);
+			b = Math.round(emberRgb[2] + (goldRgb[2] - emberRgb[2]) * k2);
+		}
+		out += "\x1b[38;2;" + r + ";" + g + ";" + b + "m" + ch;
 		cell++;
 	}
-	return `${out}${SGR_FG_RESET}`;
+	return out + SGR_FG_RESET;
 }
 
 /** Exposed for the lava test suite: period and the exact crest/trough stops. */

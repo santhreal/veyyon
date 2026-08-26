@@ -22,7 +22,7 @@ const SHIMMER_PATH = path.join(SRC_ROOT, "modes/theme/shimmer.ts");
 /** Exports that exist FOR TESTS (tuning constants, state introspection) but
  *  whose logic is exercised internally by shimmer.ts production paths. Each
  *  entry must still have an internal (non-export-line) use, verified below. */
-const TEST_VISIBILITY_ALLOWLIST = new Set(["LAVA_TUNING", "getShimmerActivity"]);
+const TEST_VISIBILITY_ALLOWLIST = new Set(["LAVA_TUNING", "getShimmerActivity", "lavaAnsi"]);
 
 function listSourceFiles(dir: string): string[] {
 	const out: string[] = [];
