@@ -53,7 +53,6 @@ import {
 } from "./loading";
 import { wrapToolWithMetaNotice } from "./output-meta";
 import { RerootDetector, wrapToolWithRerootHint } from "./reroot-hint";
-import { RuntimeTool } from "./runtime";
 import type { TodoPhase } from "./todo";
 
 // Builtin implementation modules remain lazy so the CLI boot path does not
@@ -484,7 +483,7 @@ export const BUILTIN_TOOLS: Record<BuiltinToolName, ToolFactory> = {
 	ask: async s => (await import("./ask")).AskTool.createIf(s),
 	debug: async s => (await import("./debug")).DebugTool.createIf(s),
 	eval: async s => (await import("./eval")).EvalTool.create(s),
-	runtime: async s => RuntimeTool.create(s),
+	runtime: async s => (await import("./runtime")).RuntimeTool.create(s),
 	ssh: async s => (await import("./ssh")).loadSshTool(s),
 	github: async s => (await import("./gh")).GithubTool.createIf(s),
 	lsp: async s => (await import("../lsp")).LspTool.createIf(s),
