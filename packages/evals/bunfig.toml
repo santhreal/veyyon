@@ -14,7 +14,7 @@ preload = ["../utils/test/helpers/real-data-tripwire.ts"]
 # honour .gitignore, so without this a `bun test` here walks into all of them and
 # reports THEIR failures as this repository's. `datasets/deep-swe/corpus/` is the
 # vendored task corpus, `runs/` holds trial artifacts and `.internal/` holds review
-# scratch; none of them carries our tests. `docs-coherence.test.ts` fails when an
+# scratch; none of them carries our tests. `every-arm-flag-and-task-set-the-docs-name-exists.test.ts` fails when an
 # ignored directory has no entry here.
 pathIgnorePatterns = [
 	"**/node_modules/**",

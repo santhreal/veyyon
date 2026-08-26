@@ -90,7 +90,7 @@ function sortDeep(value: unknown): unknown {
  * Which `arms/` files are attachments, from the one table that declares the kinds.
  *
  * WHY IT IS RE-EXPORTED RATHER THAN DECLARED. "Which files in `arms/` are arms" was
- * answered in three places and one of them was wrong: `docs-coherence.test.ts` took every
+ * answered in three places and one of them was wrong: the docs-coherence suite took every
  * `*.yml`, so `candidate-delivery-terse.sections.yml` became a phantom arm named
  * `candidate-delivery-terse.sections`, while the other two enumerators excluded it. A
  * phantom arm is not cosmetic here, because these lists are what the coherence checks
