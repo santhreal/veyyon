@@ -144,50 +144,6 @@ export function createRunRecord(params: CreateRunRecordParams): EvalRunRecord {
 }
 
 /**
- * Validates that an untyped object matches the EvalRunRecord structure.
- */
-export function validateRunRecord(record: unknown): EvalRunRecord {
-	if (!record || typeof record !== "object") {
-		throw new InvalidRunRecordError("Run record must be an object.");
-	}
-
-	const r = record as Record<string, unknown>;
-	if (typeof r.id !== "string" || !r.id) {
-		throw new InvalidRunRecordError("Run record must have a valid string id.");
-	}
-
-	if (!r.suite || typeof r.suite !== "object") {
-		throw new InvalidRunRecordError("Run record must have a suite object.");
-	}
-
-	const suite = r.suite as Record<string, unknown>;
-	if (typeof suite.name !== "string" || !suite.name) {
-		throw new InvalidRunRecordError("Run record suite must have a string name.");
-	}
-	if (typeof suite.version !== "string" || !suite.version) {
-		throw new InvalidRunRecordError("Run record suite must have a string version.");
-	}
-
-	if (!Array.isArray(r.variants)) {
-		throw new InvalidRunRecordError("Run record variants must be an array.");
-	}
-
-	if (!Array.isArray(r.tasks)) {
-		throw new InvalidRunRecordError("Run record tasks must be an array.");
-	}
-
-	if (typeof r.repeats !== "number" || r.repeats < 1) {
-		throw new InvalidRunRecordError("Run record repeats must be a positive number.");
-	}
-
-	if (!Array.isArray(r.results)) {
-		throw new InvalidRunRecordError("Run record results must be an array.");
-	}
-
-	return r as unknown as EvalRunRecord;
-}
-
-/**
  * Asserts that all provided runs belong to the exact same evaluation suite.
  * Throws CrossSuiteComparisonError if any two runs differ in suite name.
  */
