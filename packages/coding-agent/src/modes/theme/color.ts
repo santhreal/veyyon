@@ -466,28 +466,28 @@ export function resolveToHex(value: string | number, isLight: boolean): string {
  * Indices 16-231: 6x6x6 color cube
  * Indices 232-255: grayscale ramp
  */
+const BASIC_COLORS = [
+	"#000000",
+	"#800000",
+	"#008000",
+	"#808000",
+	"#000080",
+	"#800080",
+	"#008080",
+	"#c0c0c0",
+	"#808080",
+	"#ff0000",
+	"#00ff00",
+	"#ffff00",
+	"#0000ff",
+	"#ff00ff",
+	"#00ffff",
+	"#ffffff",
+] as const;
+
 export function ansi256ToHex(index: number): string {
-	// Basic colors (0-15) - approximate common terminal values
-	const basicColors = [
-		"#000000",
-		"#800000",
-		"#008000",
-		"#808000",
-		"#000080",
-		"#800080",
-		"#008080",
-		"#c0c0c0",
-		"#808080",
-		"#ff0000",
-		"#00ff00",
-		"#ffff00",
-		"#0000ff",
-		"#ff00ff",
-		"#00ffff",
-		"#ffffff",
-	];
 	if (index < 16) {
-		return basicColors[index];
+		return BASIC_COLORS[index];
 	}
 
 	// Color cube (16-231): 6x6x6 = 216 colors
