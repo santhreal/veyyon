@@ -1946,7 +1946,8 @@ export class Markdown implements Component {
 			if (!quoteStylePrefix) {
 				return quoteStyle(line);
 			}
-			const lineWithReappliedStyle = line.replaceAll(SGR_RESET, `${SGR_RESET}${quoteStylePrefix}`);
+			const lineWithReappliedStyle =
+				line.indexOf(SGR_RESET) === -1 ? line : line.replaceAll(SGR_RESET, `${SGR_RESET}${quoteStylePrefix}`);
 			return quoteStyle(lineWithReappliedStyle);
 		};
 		const quoteContentWidth = Math.max(1, width - 2);
