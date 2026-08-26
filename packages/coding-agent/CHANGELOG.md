@@ -44,6 +44,7 @@
 - Daemon completion parsing and eval-store serialization errors use shared type guards; behavior is unchanged.
 ### Fixed
 
+- Clearing memory waits the full deletion retry window before reporting the database files removed, instead of half of it, so a Windows SQLite lock that outlives `close()` no longer leaves files behind under a success message.
 - Ollama discovery keeps a configured base URL's path, so an endpoint mounted at a subpath behind a reverse proxy is found instead of reporting no models.
 - The write tool and the hashline parser agree on what a numeric-keyed mapping looks like, so a body of `true`, `false` or `null` values is accepted by both instead of one each way.
 - Cancelling an LSP request while a project is still loading returns on every language server, instead of returning on most and throwing `AbortError` on rust-analyzer alone.
