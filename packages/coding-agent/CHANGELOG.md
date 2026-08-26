@@ -52,6 +52,7 @@
 
 - A tool status line shortens the paths it was given, so `grep`, `glob`, `ast_grep`, `ast_edit`, `debug` and `set_cwd` show `~/project/src` instead of printing the home directory into the transcript, and a long path list is truncated rather than pushing the row past the terminal width.
 - The `/omfg` panel names the rule it saved under `~`, truncates it to one row, and shortens the paths embedded in a failure message, instead of printing the home directory in its subheader, footer and error text.
+- The `launch` status header truncates the command it is starting instead of drawing a row wider than the terminal, and a failed launch collapses to a few lines with a count of the rest until it is expanded, instead of printing every line the process wrote.
 - A conversation `/new` leaves running in the background keeps its own row in the agent registry instead of being overwritten by the session that replaced it, so it stays listed and its finished turn no longer marks the foreground conversation idle.
 - The `/resume` picker floats its card in the middle of the screen instead of drawing it against the top edge over a half-blank terminal, most visible right after `/new` or a profile switch, when the folder holds few enough sessions to make the card short.
 - Clearing memory waits the full deletion retry window before reporting the database files removed, instead of half of it, so a Windows SQLite lock that outlives `close()` no longer leaves files behind under a success message.

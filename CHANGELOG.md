@@ -94,6 +94,7 @@
 
 - A tool status line shortens the paths it was given, so `grep`, `glob`, `ast_grep`, `ast_edit`, `debug` and `set_cwd` show `~/project/src` instead of printing the home directory into the transcript, and a long path list is truncated rather than pushing the row past the terminal width.
 - The `/omfg` panel names the rule it saved under `~`, truncates it to one row, and shortens the paths embedded in a failure message, instead of printing the home directory in its subheader, footer and error text.
+- The `launch` status header truncates the command it is starting instead of drawing a row wider than the terminal, and a failed launch collapses to a few lines with a count of the rest until it is expanded, instead of printing every line the process wrote.
 - A conversation `/new` leaves running in the background keeps its own row in the agent registry instead of being overwritten by the session that replaced it, so it stays listed and its finished turn no longer marks the foreground conversation idle.
 - The `/resume` picker floats its card in the middle of the screen instead of drawing it against the top edge over a half-blank terminal, most visible right after `/new` or a profile switch, when the folder holds few enough sessions to make the card short.
 - Clearing memory waits the full deletion retry window before reporting the database files removed, instead of half of it, so a Windows SQLite lock that outlives `close()` no longer leaves files behind under a success message.
@@ -244,6 +245,7 @@
 - Exclude pinned footer rows from the scroll-isolation snapshot and scroll space so the composer does not duplicate inside scrolled-back history.
 - Extract LaTeX argument text by slicing the source rather than appending one character at a time, so a deeply nested optional-argument chain degrades linearly instead of quadratically.
 - `extractHttpStatusFromError` reads a status field anywhere in an error's cause chain before falling back to prose anywhere in it, and matches the `status_code: 503` and `429 Too Many Requests` spellings it previously missed.
+- `extractHttpStatusFromError` reads a reason phrase only when it is the phrase that belongs to the code beside it, so `Processed 200 Total Records` and `gave up after 401 Failed Attempts` no longer report a status, the second of which reached credential rotation.
 - `onProcessExit` honors its `AbortSignal` for every process shape: waiting on a `Subprocess` ends when the caller cancels instead of running to the child's exit, and a cancelled wait on a pid returns `false` rather than throwing.
 - Ending a child process no longer throws on a host where the native addon cannot load, such as a container whose glibc predates the modern build; the direct child is terminated through the runtime and process liveness falls back to signal 0, so the tree walk is the only capability lost ([#917](https://github.com/santhreal/veyyon/issues/917)).
 - `splitTrailingPartialEscape` lets a streaming reader hold back an escape sequence a chunk ended inside, so a sequence divided across two reads is stripped whole instead of losing its head and leaking its tail as text.

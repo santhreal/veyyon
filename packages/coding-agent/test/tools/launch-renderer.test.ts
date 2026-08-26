@@ -219,4 +219,52 @@ describe("launchToolRenderer", () => {
 		// The old render labeled the log match a bare "ready:" while also saying readiness timed out.
 		expect(rendered.some(line => line.includes("ready: Local:"))).toBe(false);
 	});
+
+	/**
+	 * WHY: the pending header interpolated `args.name ?? command` straight into
+	 * the status description, and a failure pushed one row per line of whatever
+	 * the process printed. A `launch start` of a long command line therefore
+	 * drew a header wider than any terminal, and a daemon that died with a
+	 * hundred-line trace filled the transcript with it before anyone asked to
+	 * see it. Both bounds are the display contract every other tool follows.
+	 *
+	 * Not caught: the expanded error view is deliberately unbounded, because an
+	 * operator who expands a failure is asking for the whole trace.
+	 */
+	it("truncates a long launch target in the pending header", async () => {
+		const uiTheme = await theme();
+		const command = `bunx ${"--define=SOME_VERY_LONG_FLAG_NAME=1 ".repeat(20)}vite`;
+		const [header] = lines(
+			launchToolRenderer.renderCall(
+				{ op: "start", application: command },
+				{ expanded: false, isPartial: false },
+				uiTheme,
+			),
+		);
+		expect(header!.length).toBeLessThan(command.length);
+		expect(header).toContain("…");
+	});
+
+	it("collapses a long failure to a few lines with a count of the rest", async () => {
+		const uiTheme = await theme();
+		const trace = Array.from({ length: 40 }, (_, i) => `    at frame ${i}`).join("\n");
+		const render = (expanded: boolean) =>
+			lines(
+				launchToolRenderer.renderResult(
+					{ content: [{ type: "text", text: trace }], isError: true, details: { op: "start" } },
+					{ expanded, isPartial: false },
+					uiTheme,
+					{ op: "start", name: "web" },
+				),
+			);
+
+		const collapsed = render(false);
+		expect(collapsed.length).toBeLessThan(10);
+		expect(collapsed.some(line => line.includes("more line"))).toBe(true);
+		expect(collapsed.some(line => line.includes("at frame 39"))).toBe(false);
+
+		// Expanding is the request for the whole trace, so nothing is withheld.
+		const expanded = render(true);
+		expect(expanded.some(line => line.includes("at frame 39"))).toBe(true);
+	});
 });
