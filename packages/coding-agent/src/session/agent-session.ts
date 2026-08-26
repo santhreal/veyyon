@@ -4984,9 +4984,7 @@ export class AgentSession {
 	#queueExtensionEvent(event: AgentSessionEvent): Promise<void> {
 		const emit = () => this.#emitExtensionEvent(event);
 		const queued = this.#queuedExtensionEvents.then(emit, emit);
-		// `queued` is returned, so the failure is delivered to whoever awaits it. The tail must resolve or one
-		// extension throwing would reject every later event on this session; note `then(emit, emit)` above,
-		// which is what makes the queue continue rather than stall on a previous failure.
+		// Tail must resolve so one extension throwing doesn't reject every later event.
 		this.#queuedExtensionEvents = queued.catch(() => {});
 		return queued;
 	}
@@ -5068,8 +5066,7 @@ export class AgentSession {
 			}
 		};
 		this.#pendingMessageEndPersistence.set(key, promise);
-		// Same tail rule as `#queueExtensionEvent`: `promise` is handed to the slot's caller and carries the
-		// failure; the tail only orders the next message's persistence and must not inherit the rejection.
+		// Same tail rule: `promise` carries the failure; the tail only orders persistence.
 		this.#messageEndPersistenceTail = promise.catch(() => {});
 		return {
 			promise,
@@ -17265,9 +17262,7 @@ export class AgentSession {
 					},
 					trace,
 				);
-		// The rules that decided it, not only what it decided: a retry nobody expected, or a failure
-		// that surfaced when a retry was due, is diagnosed from this line instead of by re-running the
-		// classifier's conditions by hand against the provider's sentence.
+		// Log rules that decided it, not only the result, for diagnosis.
 		logger.debug("retry classification", { errorId: id, kind: AIError.stringify(id), rules: [...new Set(trace)] });
 		message.errorId = id;
 		return id;
@@ -18434,9 +18429,7 @@ export class AgentSession {
 		try {
 			return await this.sessionManager.saveArtifact(originalText, "bash-original");
 		} catch (err) {
-			// The executor only appends the `artifact://<id>` footer when an id comes back, so undefined has to
-			// stay the answer here: the minimized output is still correct, it just cannot be expanded. The loss
-			// is reported through the same owner the tool spill path uses, so both say the same thing.
+			// Undefined stays the answer: minimized output is correct, just not expandable.
 			reportLostOutputArtifact("bash-original", err);
 			return undefined;
 		}
