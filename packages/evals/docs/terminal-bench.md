@@ -27,6 +27,13 @@ const suite = requireSuite("terminal-bench");
 `registerTerminalBenchSuite()` is idempotent and takes a registry, so a test may register into its
 own. Importing the module registers into the default registry as a side effect.
 
+`discoverTasks` lists the dataset's `tasks/` directory and counts every entry that is a directory
+carrying a `task.toml`. An entry that plainly is not a task — a loose file, a directory with no
+config — is skipped. Anything else refuses the discovery naming the path: an entry or a config that
+cannot be read, a `task.toml` that is not a file, and a `tasks/` directory holding no task at all.
+The discovered list is both what the run executes and what the corpus hash covers, so a task dropped
+in silence would record a partial dataset as the whole one.
+
 ## Task List Selection & Provenance
 
 Curated task lists live in `packages/evals/datasets/terminal-bench/tasks/`:

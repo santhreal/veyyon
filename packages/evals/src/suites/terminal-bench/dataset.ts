@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import type { Stats } from "node:fs";
 import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -112,8 +113,17 @@ export async function acquireTerminalBenchDataset(options: AcquireTerminalBenchO
 	return cacheDir;
 }
 
+/** Whether a filesystem error means the path is not there, as opposed to not readable. */
+function isMissing(error: unknown): boolean {
+	return (error as NodeJS.ErrnoException).code === "ENOENT";
+}
+
 /**
  * Discovers all valid task names under the dataset root's `tasks/` directory in stable (sorted) order.
+ *
+ * A directory that carries no `task.toml` is not a task and is skipped. Anything else is a broken
+ * checkout, and it refuses: swallowing it dropped tasks out of the run and out of the corpus hash
+ * that states what the run read, leaving a shorter task set recorded as if it were the whole dataset.
  */
 export async function discoverTerminalBenchTasks(datasetRoot: string): Promise<readonly string[]> {
 	const tasksDir = join(datasetRoot, "tasks");
@@ -129,19 +139,31 @@ export async function discoverTerminalBenchTasks(datasetRoot: string): Promise<r
 	const taskNames: string[] = [];
 	for (const entry of entries) {
 		const taskDir = join(tasksDir, entry);
+		let entryStat: Stats;
 		try {
-			const s = await stat(taskDir);
-			if (!s.isDirectory()) {
-				continue;
-			}
-			const configPath = join(taskDir, "task.toml");
-			const configStat = await stat(configPath);
-			if (configStat.isFile()) {
-				taskNames.push(entry);
-			}
-		} catch {}
+			entryStat = await stat(taskDir);
+		} catch (error) {
+			if (isMissing(error)) continue; // removed between the listing and the stat
+			throw new Error(`Cannot read Terminal-Bench task directory "${taskDir}": ${String(error)}`, { cause: error });
+		}
+		if (!entryStat.isDirectory()) continue;
+		const configPath = join(taskDir, "task.toml");
+		let configStat: Stats;
+		try {
+			configStat = await stat(configPath);
+		} catch (error) {
+			if (isMissing(error)) continue; // not a task directory
+			throw new Error(`Cannot read Terminal-Bench task config "${configPath}": ${String(error)}`, { cause: error });
+		}
+		if (!configStat.isFile()) {
+			throw new Error(`Terminal-Bench task config "${configPath}" is not a file`);
+		}
+		taskNames.push(entry);
 	}
 
+	if (taskNames.length === 0) {
+		throw new Error(`Terminal-Bench dataset at "${datasetRoot}" holds no task under "${tasksDir}"`);
+	}
 	taskNames.sort();
 	return Object.freeze(taskNames);
 }
