@@ -32,7 +32,7 @@ import {
 	decideAuthSeed,
 	probeCredentialStore,
 	snapshotCredentialStore,
-} from "../../../src/suites/deep-swe/auth-seed";
+} from "../../../src/core/auth-seed";
 
 const CANONICAL = "/home/u/.veyyon/shared-auth/agent.db";
 const LEGACY_DEFAULT = "/home/u/.veyyon/profiles/default/shared-auth/agent.db";

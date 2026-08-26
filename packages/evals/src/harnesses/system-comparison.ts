@@ -2,7 +2,7 @@
  * Generalized cross-system benchmark aggregation and paired gate evaluation.
  */
 import { errorMessage } from "@veyyon/utils";
-import { requireSystemAdapter } from "./registry";
+import { requireHarness } from "../core/harness-registry";
 import {
 	type ComparisonArmResult,
 	type ComparisonExecution,
@@ -19,8 +19,6 @@ import {
 } from "./types";
 
 export { ComparisonRejected } from "./types";
-export const COMPARISON_TASK_LIST = "datasets/deep-swe/tasks/pilot-10.txt";
-export const COMPARISON_TASK_LIST_SHA256 = "439b07dfbf30a988286e614b6b200def41b56f2447b249583560a78152cbfa06";
 
 export type ComparisonSystem = string;
 
@@ -257,7 +255,7 @@ export function aggregateSystemComparison(
 
 	for (const system of presentSystems) {
 		try {
-			requireSystemAdapter(system);
+			requireHarness(system);
 		} catch (err) {
 			issues.push(errorMessage(err));
 		}
@@ -435,7 +433,7 @@ function fmtCost(total: SystemTotals): string {
 /** Render only observed comparison data; an unsupported metric can never print PASS. */
 export function renderSystemComparison(comparison: SystemComparison): string {
 	const lines = [
-		"# Cross-system DeepSWE comparison",
+		"# Cross-system comparison",
 		"",
 		`Model (requested and resolved): \`${comparison.model}\``,
 		`Reference system: \`${comparison.referenceSystem}\``,

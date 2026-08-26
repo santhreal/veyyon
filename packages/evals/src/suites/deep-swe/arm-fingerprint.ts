@@ -25,7 +25,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { ARM_ATTACHMENT_SUFFIXES } from "./arm-attachments";
+import { ARM_ATTACHMENT_SUFFIXES } from "../../core/arm-attachments";
 
 /**
  * What one arm reduces to: its parsed config overlay, an optional per-section
@@ -59,6 +59,9 @@ export interface ArmInputs {
 	/** Optional always-apply rule bytes; prompt text, so whitespace-significant. */
 	readonly rule?: Uint8Array;
 }
+
+/** The attachment inputs of one arm: every `ArmInputs` member except the config overlay. */
+export type ArmAttachmentValues = { -readonly [K in keyof Omit<ArmInputs, "config">]?: ArmInputs[K] };
 
 /**
  * Stable, key-sorted JSON of an arbitrary parsed value. Object keys are sorted

@@ -8,7 +8,6 @@ import type {
 	PreflightVerdict,
 } from "../../core/types";
 import {
-	type SystemAdapter,
 	type SystemJobConfigContext,
 	type SystemPreflightContext,
 	type SystemPreflightResult,
@@ -16,7 +15,7 @@ import {
 	sanitizeVariantName,
 } from "../types";
 
-export class HermesAdapter implements HarnessAdapter, SystemAdapter {
+export class HermesAdapter implements HarnessAdapter {
 	readonly name = "hermes";
 	readonly displayName = "Hermes";
 	readonly description = "Hermes agent native replay and compaction execution.";
@@ -35,13 +34,6 @@ export class HermesAdapter implements HarnessAdapter, SystemAdapter {
 			containerAssetsDir: "/opt/hermes-bench",
 		},
 	} as const;
-
-	// Backward compatibility with legacy SystemAdapter
-	readonly pierAgentImport = "hermes_agent:HermesAgent";
-	readonly containerAssetsDir = "/opt/hermes-bench";
-	readonly supportsReplay = true;
-	readonly supportsCompaction = true;
-	readonly supportsArmAttachments = false;
 
 	async preflight(context: HarnessPreflightContext): Promise<PreflightVerdict> {
 		const options = context.options ?? {};

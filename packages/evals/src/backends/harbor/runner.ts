@@ -26,6 +26,7 @@ import { buildHarborArgs, harborRunnerArgs, type LaunchRequest } from "./launch-
 // ────────────────────────────────────────────────────────────────────── config
 
 import { codingAgentDir, harborAgentDir, harborJobsDir, repoRootDir } from "../../paths";
+import { formatUsd } from "../../wire";
 
 /** Container-side mount points for `--install source` (must match veyyon_local.py defaults). */
 const SOURCE_SRC_MOUNT = "/opt/veyyon/src";
@@ -473,10 +474,9 @@ const yellow = (s: string): string => c("33", s);
 const cyan = (s: string): string => c("36", s);
 const gray = (s: string): string => c("90", s);
 
-function fmtUsd(n: number): string {
-	if (n >= 100) return `$${n.toFixed(0)}`;
-	if (n >= 1) return `$${n.toFixed(2)}`;
-	return `$${n.toFixed(3)}`;
+/** The shared formatter, with harbor's own absent marker for a run nothing priced. */
+function fmtUsd(n: number | null): string {
+	return formatUsd(n, "—");
 }
 function fmtNum(n: number): string {
 	if (n >= 1e6) return `${(n / 1e6).toFixed(2)}M`;

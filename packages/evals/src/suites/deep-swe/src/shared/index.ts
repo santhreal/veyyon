@@ -10,16 +10,16 @@
  * root-level modules that predate the `src/` decomposition.
  */
 
+export * from "../../../../backends/pier/version";
+export * from "../../../../core/arm-attachments";
+export * from "../../../../core/auth-preflight";
+export * from "../../../../core/auth-seed";
+export * from "../../../../core/prompt-overrides";
 export * from "../../../../paths";
-export * from "../../arm-attachments";
 export * from "../../arm-fingerprint";
 export * from "../../arm-prediction";
-export * from "../../arm-prompts";
-export * from "../../auth-preflight";
-export * from "../../auth-seed";
 export * from "../../binary-pin";
 export * from "../../cost-model";
-export * from "../../pier-version";
 export * from "../../prefix-composition";
 export * from "../../replay-manifest";
 export * from "../../treatment-guard";

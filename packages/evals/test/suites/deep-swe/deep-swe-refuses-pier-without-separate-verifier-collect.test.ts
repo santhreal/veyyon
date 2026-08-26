@@ -7,7 +7,7 @@
  * implementation, which the zero-quota Oracle probe covers before paid runs.
  */
 import { describe, expect, it } from "bun:test";
-import { pierSupportsSeparateVerifierCollect } from "../../../src/suites/deep-swe/pier-version";
+import { pierSupportsSeparateVerifierCollect } from "../../../src/backends/pier/version";
 
 describe("DeepSWE Pier compatibility", () => {
 	it.each([

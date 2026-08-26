@@ -22,7 +22,6 @@ import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { armsDir, pierAgentDir } from "../../../src/paths";
 import {
 	ARM_ATTACHMENT_KINDS,
 	ARM_ATTACHMENT_MANIFEST_FILE,
@@ -37,7 +36,8 @@ import {
 	readArmAttachment,
 	stageArmAttachment,
 	writeArmAttachmentManifest,
-} from "../../../src/suites/deep-swe/arm-attachments";
+} from "../../../src/core/arm-attachments";
+import { armsDir, pierAgentDir } from "../../../src/paths";
 import {
 	ARM_ATTACHMENT_SUFFIXES,
 	armNamesIn,

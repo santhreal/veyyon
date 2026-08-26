@@ -1,16 +1,21 @@
-import { describe, expect, it } from "bun:test";
+import { beforeAll, describe, expect, it } from "bun:test";
 import {
-	getSystemAdapter,
-	hasSystemAdapter,
-	listSystemAdapters,
-	registerSystemAdapter,
-	validateSystemSelection,
-} from "../../../src/harnesses/registry";
-import type { SystemAdapter } from "../../../src/harnesses/types";
+	getHarness,
+	hasHarness,
+	listHarnessNames,
+	registerHarness,
+	validateSystemsSelection,
+} from "../../../src/core/harness-registry";
+import type { HarnessAdapter } from "../../../src/core/types";
+import { registerBuiltinHarnesses } from "../../../src/harnesses";
 
 describe("system adapter registry", () => {
+	beforeAll(() => {
+		registerBuiltinHarnesses();
+	});
+
 	it("lists all default registered adapters", () => {
-		const adapters = listSystemAdapters();
+		const adapters = listHarnessNames();
 		expect(adapters).toContain("veyyon");
 		expect(adapters).toContain("factory");
 		expect(adapters).toContain("hermes");
@@ -18,50 +23,58 @@ describe("system adapter registry", () => {
 	});
 
 	it("retrieves adapters by name", () => {
-		const veyyon = getSystemAdapter("veyyon");
+		const veyyon = getHarness("veyyon");
 		expect(veyyon).toBeDefined();
 		expect(veyyon?.name).toBe("veyyon");
 
-		const omp = getSystemAdapter("omp");
+		const omp = getHarness("omp");
 		expect(omp).toBeDefined();
 		expect(omp?.name).toBe("omp");
 	});
 
 	it("validates valid system selections", () => {
-		const result = validateSystemSelection(["veyyon", "omp"]);
+		const result = validateSystemsSelection(["veyyon", "omp"]);
 		expect(result.valid).toBe(true);
 		expect(result.missing).toEqual([]);
 		expect(result.invalid).toEqual([]);
 	});
 
 	it("identifies invalid system selections", () => {
-		const result = validateSystemSelection(["veyyon", "unknown-system"]);
+		const result = validateSystemsSelection(["veyyon", "unknown-system"]);
 		expect(result.valid).toBe(false);
 		expect(result.invalid).toEqual(["unknown-system"]);
 	});
 
 	it("allows registering custom adapters", () => {
-		const customAdapter: SystemAdapter = {
+		const customAdapter: HarnessAdapter = {
 			name: "custom-test",
 			displayName: "Custom Test Adapter",
-			pierAgentImport: "custom_agent:CustomAgent",
 			description: "Custom test adapter for unit test",
-			supportsReplay: false,
-			supportsCompaction: false,
-			supportsArmAttachments: false,
 			defaultModel: null,
-			containerAssetsDir: "/opt/custom-assets",
+			capabilities: {
+				replay: false,
+				compaction: false,
+				armAttachments: false,
+				promptOverrides: false,
+			},
+			backends: {
+				pier: {
+					agentImportPath: "custom_agent:CustomAgent",
+					containerAssetsDir: "/opt/custom-assets",
+				},
+			},
+			preflight: async () => ({ ok: true }),
+			stageAssets: async () => {},
 			validatePreflight() {
 				return { valid: true, errors: [], warnings: [] };
 			},
-			stageAssets() {},
 			buildJobConfigKwargs() {
 				return {};
 			},
 		};
 
-		registerSystemAdapter(customAdapter);
-		expect(hasSystemAdapter("custom-test")).toBe(true);
-		expect(getSystemAdapter("custom-test")?.displayName).toBe("Custom Test Adapter");
+		registerHarness(customAdapter);
+		expect(hasHarness("custom-test")).toBe(true);
+		expect(getHarness("custom-test")?.displayName).toBe("Custom Test Adapter");
 	});
 });

@@ -1,16 +1,19 @@
 import { describe, expect, test } from "bun:test";
+import { registerBuiltinHarnesses } from "../../../src/harnesses";
+
+registerBuiltinHarnesses();
+
 import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import {
 	aggregateSystemComparison,
-	COMPARISON_TASK_LIST,
-	COMPARISON_TASK_LIST_SHA256,
 	ComparisonRejected,
 	type ComparisonSystem,
 	renderSystemComparison,
 } from "../../../src/harnesses/system-comparison";
 import type { SystemTrialResult } from "../../../src/harnesses/types";
 import { resolvePackagePath } from "../../../src/paths";
+import { COMPARISON_TASK_LIST, COMPARISON_TASK_LIST_SHA256 } from "../../../src/suites/deep-swe/src/runner/executor";
 
 const TASKS = ["task-a", "task-b"] as const;
 const SYSTEMS = ["veyyon", "factory", "hermes"] as const;

@@ -2,6 +2,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { errorMessage } from "@veyyon/utils";
 import { AGENT_IMPORT_PATH } from "../../backends/harbor/launch-args";
+import { AUTH_DB_SOURCES, requireStagedAuthCanServeToken } from "../../core/auth-preflight";
+import { decideAuthSeed, probeCredentialStore } from "../../core/auth-seed";
 import type {
 	HarnessAdapter,
 	HarnessCapabilities,
@@ -10,10 +12,7 @@ import type {
 	PreflightVerdict,
 } from "../../core/types";
 import { authDbPath, veyBinaryPath } from "../../paths";
-import { decideAuthSeed, probeCredentialStore } from "../../suites/deep-swe/auth-seed";
-import { AUTH_DB_SOURCES, requireStagedAuthCanServeToken } from "../../suites/deep-swe/src/runner/preflight";
 import {
-	type SystemAdapter,
 	type SystemJobConfigContext,
 	type SystemPreflightContext,
 	type SystemPreflightResult,
@@ -21,7 +20,7 @@ import {
 	sanitizeVariantName,
 } from "../types";
 
-export class VeyyonAdapter implements HarnessAdapter, SystemAdapter {
+export class VeyyonAdapter implements HarnessAdapter {
 	readonly name = "veyyon";
 	readonly displayName = "Veyyon";
 	readonly description = "Main Veyyon headless agent CLI execution and replay in isolated Docker containers.";
@@ -48,13 +47,6 @@ export class VeyyonAdapter implements HarnessAdapter, SystemAdapter {
 		},
 		"in-process": {},
 	} as const;
-
-	// Backward compatibility with legacy SystemAdapter
-	readonly pierAgentImport = "veyyon_agent:VeyyonAgent";
-	readonly containerAssetsDir = "/opt/veyyon-assets";
-	readonly supportsReplay = true;
-	readonly supportsCompaction = true;
-	readonly supportsArmAttachments = true;
 
 	async preflight(context: HarnessPreflightContext): Promise<PreflightVerdict> {
 		if (context.backend === "in-process") {

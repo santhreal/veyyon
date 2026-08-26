@@ -1,4 +1,5 @@
-export const MINIMUM_DEEPSWE_PIER_VERSION = "0.3.1";
+export const MINIMUM_PIER_VERSION = "0.3.1";
+export const MINIMUM_DEEPSWE_PIER_VERSION = MINIMUM_PIER_VERSION;
 
 /** Whether Pier supports DeepSWE v1.1 separate-verifier collect hooks. */
 export function pierSupportsSeparateVerifierCollect(versionOutput: string): boolean {

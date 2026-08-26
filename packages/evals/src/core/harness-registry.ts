@@ -22,6 +22,15 @@ export class DuplicateHarnessRegistrationError extends Error {
 	}
 }
 
+export interface SystemsSelectionValidation {
+	readonly valid: boolean;
+	readonly selected: readonly string[];
+	readonly unknown: readonly string[];
+	readonly invalid: readonly string[];
+	readonly missing: readonly string[];
+	readonly errors: readonly string[];
+}
+
 export class HarnessRegistry {
 	#harnesses = new Map<string, HarnessAdapter>();
 
@@ -63,6 +72,53 @@ export class HarnessRegistry {
 	clear(): void {
 		this.#harnesses.clear();
 	}
+
+	validateSelection(systems: readonly string[]): SystemsSelectionValidation {
+		const selected: string[] = [];
+		const unknown: string[] = [];
+		const errors: string[] = [];
+
+		if (systems.length === 0) {
+			errors.push("at least one system must be specified for comparison");
+			return { valid: false, selected: [], unknown: [], invalid: [], missing: [], errors };
+		}
+
+		const seen = new Set<string>();
+		for (const name of systems) {
+			const trimmed = name.trim();
+			if (!trimmed) continue;
+			if (seen.has(trimmed)) {
+				errors.push(`duplicate system in comparison list: "${trimmed}"`);
+				continue;
+			}
+			seen.add(trimmed);
+			if (this.has(trimmed)) {
+				selected.push(trimmed);
+			} else {
+				unknown.push(trimmed);
+			}
+		}
+
+		if (unknown.length > 0) {
+			const available = [...this.listNames()].sort().join(", ");
+			errors.push(`unknown system(s): ${unknown.join(", ")}. Available systems: ${available}`);
+		}
+
+		if (selected.length < 2 && errors.length === 0) {
+			errors.push(
+				`system comparison requires at least 2 registered systems; got ${selected.length} (${selected.join(", ")})`,
+			);
+		}
+
+		return {
+			valid: errors.length === 0,
+			selected,
+			unknown,
+			invalid: unknown,
+			missing: [],
+			errors,
+		};
+	}
 }
 
 export const defaultHarnessRegistry = new HarnessRegistry();
@@ -97,4 +153,7 @@ export function unregisterHarness(name: string): boolean {
 
 export function clearHarnessRegistry(): void {
 	defaultHarnessRegistry.clear();
+}
+export function validateSystemsSelection(systems: readonly string[]): SystemsSelectionValidation {
+	return defaultHarnessRegistry.validateSelection(systems);
 }
