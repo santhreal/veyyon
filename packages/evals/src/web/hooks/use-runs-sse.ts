@@ -3,7 +3,9 @@ import type { RunRow } from "../../wire";
 import { resolveRoute } from "../routes";
 
 type GlobalEventSourceEnv = typeof globalThis & {
-	EventSource?: new (url: string) => {
+	EventSource?: new (
+		url: string,
+	) => {
 		onmessage: ((ev: { data: string }) => void) | null;
 		close: () => void;
 	};

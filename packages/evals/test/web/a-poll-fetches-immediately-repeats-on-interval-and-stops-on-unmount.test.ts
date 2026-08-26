@@ -47,7 +47,7 @@ let cleanupDom: (() => void) | null = null;
 let activeRoots: Root[] = [];
 
 beforeEach(() => {
-	const dom = parseHTML("<!doctype html><html><body><div id=\"root\"></div></body></html>");
+	const dom = parseHTML('<!doctype html><html><body><div id="root"></div></body></html>');
 	const g = globalThis as unknown as GlobalDomEnv;
 	const origWindow = g.window;
 	const origDocument = g.document;
@@ -300,7 +300,9 @@ describe("usePolled fetches immediately, repeats on declared interval, and stops
 		globalThis.clearInterval = (() => {}) as unknown as typeof globalThis.clearInterval;
 
 		try {
-			const { result } = await renderHook(() => usePolled<{ recovered: boolean; attempt: number }>("/api/runs", 1000));
+			const { result } = await renderHook(() =>
+				usePolled<{ recovered: boolean; attempt: number }>("/api/runs", 1000),
+			);
 
 			// 1st fetch failed (500) -> data remains null, hook does not crash
 			expect(result.current[0]).toBeNull();

@@ -61,7 +61,7 @@ let domWindow: FakeWindow | null = null;
 const registeredListeners = new Set<() => void>();
 
 beforeEach(() => {
-	const dom = parseHTML("<!doctype html><html><body><div id=\"root\"></div></body></html>");
+	const dom = parseHTML('<!doctype html><html><body><div id="root"></div></body></html>');
 	const g = globalThis as unknown as GlobalDomEnv;
 	const origWindow = g.window;
 	const origDocument = g.document;
@@ -172,7 +172,9 @@ describe("useHashRoute tracks location.hash and cleans up listeners on unmount",
 
 		await act(async () => {
 			mockLocation.hash = "#/experiments/exp-456";
-			domWindow?.dispatchEvent(new (globalThis as unknown as { Event: new (t: string) => unknown }).Event("hashchange"));
+			domWindow?.dispatchEvent(
+				new (globalThis as unknown as { Event: new (t: string) => unknown }).Event("hashchange"),
+			);
 		});
 
 		expect(result.current).toBe("#/experiments/exp-456");
@@ -185,7 +187,9 @@ describe("useHashRoute tracks location.hash and cleans up listeners on unmount",
 
 		await act(async () => {
 			mockLocation.hash = "";
-			domWindow?.dispatchEvent(new (globalThis as unknown as { Event: new (t: string) => unknown }).Event("hashchange"));
+			domWindow?.dispatchEvent(
+				new (globalThis as unknown as { Event: new (t: string) => unknown }).Event("hashchange"),
+			);
 		});
 
 		expect(result.current).toBe("#/");
@@ -205,7 +209,9 @@ describe("useHashRoute tracks location.hash and cleans up listeners on unmount",
 		// Dispatching hashchange after unmount must not change the last captured state
 		await act(async () => {
 			mockLocation.hash = "#/after-unmount";
-			domWindow?.dispatchEvent(new (globalThis as unknown as { Event: new (t: string) => unknown }).Event("hashchange"));
+			domWindow?.dispatchEvent(
+				new (globalThis as unknown as { Event: new (t: string) => unknown }).Event("hashchange"),
+			);
 		});
 
 		expect(result.current).toBe("#/initial");

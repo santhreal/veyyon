@@ -105,7 +105,7 @@ let cleanupDom: (() => void) | null = null;
 let activeRoots: Root[] = [];
 
 beforeEach(() => {
-	const dom = parseHTML("<!doctype html><html><body><div id=\"root\"></div></body></html>");
+	const dom = parseHTML('<!doctype html><html><body><div id="root"></div></body></html>');
 	const g = globalThis as unknown as GlobalDomEnv;
 	const origWindow = g.window;
 	const origDocument = g.document;

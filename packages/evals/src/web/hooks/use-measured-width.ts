@@ -5,7 +5,9 @@ interface ResizeObserverEntryLike {
 }
 
 type GlobalResizeObserverEnv = typeof globalThis & {
-	ResizeObserver?: new (callback: (entries: ResizeObserverEntryLike[]) => void) => {
+	ResizeObserver?: new (
+		callback: (entries: ResizeObserverEntryLike[]) => void,
+	) => {
 		observe: (target: unknown) => void;
 		disconnect: () => void;
 	};

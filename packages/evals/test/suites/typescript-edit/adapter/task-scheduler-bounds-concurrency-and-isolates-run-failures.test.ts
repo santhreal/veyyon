@@ -21,7 +21,7 @@
  * OS-level thread scheduling latency or filesystem I/O driver anomalies.
  */
 
-import { afterEach, describe, expect, it, type Mock, spyOn } from "bun:test";
+import { afterEach, describe, expect, it, spyOn } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { TempDir } from "@veyyon/utils";
@@ -36,7 +36,6 @@ import {
 import * as sessionModule from "../../../../src/suites/typescript-edit/adapter/runner/session";
 import type {
 	BenchmarkConfig,
-	BenchmarkResult,
 	ProgressEvent,
 	TaskRunItem,
 	TaskRunResult,
@@ -118,7 +117,7 @@ describe("copyFixtures", () => {
 			name: "No input dir task",
 			prompt: "fix",
 			files: ["a.ts"],
-			inputDir: (undefined as unknown as string),
+			inputDir: undefined as unknown as string,
 			expectedDir: "/tmp/fake-expected",
 		};
 
@@ -220,12 +219,7 @@ describe("runConcurrentBenchmarkRun", () => {
 		const runSingleTaskSpy = spyOn(sessionModule, "runSingleTask").mockImplementation(async () => expectedResult);
 
 		try {
-			const outcome = await runConcurrentBenchmarkRun(
-				item,
-				config,
-				tempRoot,
-				event => progressEvents.push(event),
-			);
+			const outcome = await runConcurrentBenchmarkRun(item, config, tempRoot, event => progressEvents.push(event));
 
 			expect(outcome.task.id).toBe("task-success");
 			expect(outcome.result).toEqual(expectedResult);
@@ -257,12 +251,7 @@ describe("runConcurrentBenchmarkRun", () => {
 		});
 
 		try {
-			const outcome = await runConcurrentBenchmarkRun(
-				item,
-				config,
-				tempRoot,
-				event => progressEvents.push(event),
-			);
+			const outcome = await runConcurrentBenchmarkRun(item, config, tempRoot, event => progressEvents.push(event));
 
 			expect(outcome.task.id).toBe("task-crash");
 			expect(outcome.result.success).toBe(false);
@@ -285,12 +274,7 @@ describe("runConcurrentBenchmarkRun", () => {
 		const item: TaskRunItem = { task, runIndex: 0 };
 		const progressEvents: ProgressEvent[] = [];
 
-		const outcome = await runConcurrentBenchmarkRun(
-			item,
-			config,
-			tempRoot,
-			event => progressEvents.push(event),
-		);
+		const outcome = await runConcurrentBenchmarkRun(item, config, tempRoot, event => progressEvents.push(event));
 
 		expect(outcome.task.id).toBe("task-bad-dir");
 		expect(outcome.result.success).toBe(false);
@@ -340,21 +324,17 @@ describe("runBenchmark concurrency and queue execution", () => {
 		});
 
 		try {
-			const runPromise = runBenchmark(
-				tasks,
-				config,
-				event => {
-					if (event.status === "started") {
-						activeStartedTasks++;
-						maxActiveStartedTasks = Math.max(maxActiveStartedTasks, activeStartedTasks);
-						if (activeStartedTasks >= concurrencyCap) {
-							allSlotsStartedGate.resolve();
-						}
-					} else if (event.status === "completed") {
-						activeStartedTasks--;
+			const runPromise = runBenchmark(tasks, config, event => {
+				if (event.status === "started") {
+					activeStartedTasks++;
+					maxActiveStartedTasks = Math.max(maxActiveStartedTasks, activeStartedTasks);
+					if (activeStartedTasks >= concurrencyCap) {
+						allSlotsStartedGate.resolve();
 					}
-				},
-			);
+				} else if (event.status === "completed") {
+					activeStartedTasks--;
+				}
+			});
 
 			// Await all initial concurrency slots to reach "started" status while held
 			await allSlotsStartedGate.promise;
