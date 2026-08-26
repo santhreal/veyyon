@@ -3,7 +3,7 @@
  * and deletion of benchmark runs.
  */
 import { experimentOf, knownExperimentIdsWith } from "../../manager/experiments";
-import type { LaunchRequest } from "../../wire";
+import { InvalidLaunchRequestError, type LaunchRequest, parseLaunchRequest } from "../../wire";
 import type { ServerContext } from "../context";
 
 export function getRunsController(ctx: ServerContext, url: URL): Response {
@@ -26,7 +26,13 @@ export async function launchRunController(
 	_params: Record<string, string>,
 	request: Request,
 ): Promise<Response> {
-	const body = (await request.json()) as LaunchRequest;
+	let body: LaunchRequest;
+	try {
+		body = parseLaunchRequest(await request.json().catch(() => null));
+	} catch (error) {
+		if (error instanceof InvalidLaunchRequestError) return Response.json({ error: error.message }, { status: 400 });
+		throw error;
+	}
 	const result = ctx.runner.launch(body);
 	return Response.json(result, { status: 201 });
 }
