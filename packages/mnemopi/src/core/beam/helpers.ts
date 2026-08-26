@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite";
-import { clamp01, logger } from "@veyyon/utils";
+import * as logger from "@veyyon/utils/logger";
+import { clamp01 } from "@veyyon/utils/math";
 import { generateId as generateTimedId, sha256Hex16, stableMemoryId } from "../../util/ids";
 import {
 	cjkFtsTerms,
@@ -586,7 +587,8 @@ async function runEmbedding(beam: BeamMemoryState, items: readonly EmbedItem[]):
 		// remember()/consolidate() that scheduled it. Production recall silently degrades
 		// to FTS-only for the affected rows, which is the same shape as a misconfigured
 		// provider. Log so the failure is diagnosable (#2322).
-		logger[mnemopiDebugEnabled() ? "warn" : "debug"]("mnemopi: background embedding failed", {
+		const logEmbedFailure = mnemopiDebugEnabled() ? logger.warn : logger.debug;
+		logEmbedFailure("mnemopi: background embedding failed", {
 			itemCount: items.length,
 			error: String(error),
 		});

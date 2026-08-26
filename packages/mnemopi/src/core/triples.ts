@@ -1,7 +1,7 @@
 import { Database, type SQLQueryBindings } from "bun:sqlite";
 import { existsSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { atomicWriteFileSync } from "@veyyon/utils";
+import { atomicWriteFileSync } from "@veyyon/utils/atomic-write";
 import { hermesRoot } from "../config";
 import { closeQuietly, type DatabasePath, openDatabase } from "../db";
 

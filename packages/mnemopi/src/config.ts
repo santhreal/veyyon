@@ -2,7 +2,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { hostMatchesUrl } from "@veyyon/catalog/hosts";
 import { OPENROUTER_API_ENDPOINT } from "@veyyon/catalog/provider-endpoints";
-import { trimTrailingSlashes } from "@veyyon/utils";
+import { trimTrailingSlashes } from "@veyyon/utils/url";
 import { getMnemopiRuntimeOptions } from "./core/runtime-options";
 import {
 	type Env,

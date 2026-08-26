@@ -1,4 +1,4 @@
-import { tryParseJson } from "@veyyon/utils";
+import { tryParseJson } from "@veyyon/utils/json";
 
 export function cosineSimilarity(a: ArrayLike<number>, b: ArrayLike<number>): number {
 	const length = a.length > b.length ? a.length : b.length;

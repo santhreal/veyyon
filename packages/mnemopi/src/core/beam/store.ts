@@ -1,5 +1,8 @@
 import type { Database, SQLQueryBindings } from "bun:sqlite";
-import { batched, errorMessage, HOUR_MS, isRecord, logger } from "@veyyon/utils";
+import { batched } from "@veyyon/utils/array";
+import * as logger from "@veyyon/utils/logger";
+import { HOUR_MS } from "@veyyon/utils/time";
+import { errorMessage, isRecord } from "@veyyon/utils/type-guards";
 import { scratchpadMaxItems } from "../../config";
 import { transaction } from "../../db";
 import { toUtcIso } from "../../util/datetime";
