@@ -15,6 +15,9 @@ import { clamp, clamp01 } from "@veyyon/utils/math";
 import { sgrSequence } from "./ansi";
 import { parseHexColor } from "./paint-ground";
 
+/** Pre-computed string representations of 0–255 for channel value emission. */
+const CHANNEL_STR: readonly string[] = Array.from({ length: 256 }, (_, i) => String(i));
+
 function clampChannel(value: number): number {
 	return clamp(Math.round(value), 0, 255);
 }
@@ -53,6 +56,117 @@ const SGR = sgrSequence("g");
  * (`ESC [ 38:2:255:0:0 m`, which libvte and several test runners emit) comes
  * back out in the spelling it went in with.
  */
+/** Parse an SGR parameter substring as a non-negative integer. Returns -1 on malformed input. */
+function parseSgrInt(s: string, start: number, len: number): number {
+	let n = 0;
+	for (let k = 0; k < len; k++) {
+		const c = s.charCodeAt(start + k);
+		if (c < 48 || c > 57) return -1;
+		n = n * 10 + (c - 48);
+	}
+	return n;
+}
+
+function fadeLineWithParsedGround(line: string, gr: number, gg: number, gb: number, k: number): string {
+	// Fast path: no extended-color SGR sequences in the line.
+	if (
+		line.indexOf("38;2;") === -1 &&
+		line.indexOf("48;2;") === -1 &&
+		line.indexOf("38:2:") === -1 &&
+		line.indexOf("48:2:") === -1
+	) {
+		return line;
+	}
+	SGR.lastIndex = 0;
+	return line.replace(SGR, (whole, params: string) => {
+		if (params === "") return whole;
+		// Fast path: this SGR sequence has no truecolor.
+		if (
+			params.indexOf("38;2;") === -1 &&
+			params.indexOf("48;2;") === -1 &&
+			params.indexOf("38:2:") === -1 &&
+			params.indexOf("48:2:") === -1
+		) {
+			return whole;
+		}
+		// In-place scan: walk params char by char, splitting on ';' (0x3b) and
+		// ':' (0x3a). When we find 38/48 followed by 2, blend the next 3 RGB
+		// values. Avoids allocating a tokens array via split(/([;:])/).
+		let out = "";
+		let changed = false;
+		let i = 0;
+		const n = params.length;
+		while (i < n) {
+			// Read one token (up to next separator).
+			let j = i;
+			while (j < n && params.charCodeAt(j) !== 0x3b && params.charCodeAt(j) !== 0x3a) j++;
+			const tokLen = j - i;
+			// Check for 38/48 followed by 2, using charCodeAt to avoid slicing for comparison.
+			if (
+				tokLen === 2 &&
+				params.charCodeAt(i + 1) === 0x38 &&
+				(params.charCodeAt(i) === 0x33 || params.charCodeAt(i) === 0x34) &&
+				j < n
+			) {
+				// Read the next token after the separator.
+				let k2 = j + 1;
+				while (k2 < n && params.charCodeAt(k2) !== 0x3b && params.charCodeAt(k2) !== 0x3a) k2++;
+				if (k2 - (j + 1) === 1 && params.charCodeAt(j + 1) === 0x32 && k2 < n) {
+					// Read 3 RGB values after the "2".
+					let pos = k2;
+					let rVal = -1;
+					let gVal = -1;
+					let bVal = -1;
+					let sep0 = "";
+					let sep1 = "";
+					let sep2 = "";
+					for (let c = 0; c < 3; c++) {
+						if (pos >= n) {
+							rVal = -1;
+							break;
+						}
+						const sep = params[pos]!;
+						pos++;
+						let valEnd = pos;
+						while (valEnd < n && params.charCodeAt(valEnd) !== 0x3b && params.charCodeAt(valEnd) !== 0x3a)
+							valEnd++;
+						const val = parseSgrInt(params, pos, valEnd - pos);
+						if (val < 0) {
+							rVal = -1;
+							break;
+						}
+						if (c === 0) {
+							rVal = val;
+							sep0 = sep;
+						} else if (c === 1) {
+							gVal = val;
+							sep1 = sep;
+						} else {
+							bVal = val;
+							sep2 = sep;
+						}
+						pos = valEnd;
+					}
+					if (rVal >= 0 && gVal >= 0 && bVal >= 0) {
+						out += params.slice(i, j) + params[j] + "2";
+						out += sep0 + CHANNEL_STR[clampChannel(gr + (rVal - gr) * k)]!;
+						out += sep1 + CHANNEL_STR[clampChannel(gg + (gVal - gg) * k)]!;
+						out += sep2 + CHANNEL_STR[clampChannel(gb + (bVal - gb) * k)]!;
+						changed = true;
+						i = pos;
+						continue;
+					}
+				}
+			}
+			// Not a truecolor token: emit as-is with its separator.
+			out += params.slice(i, j);
+			if (j < n) out += params[j];
+			i = j + 1;
+		}
+		return changed ? `\x1b[${out}m` : whole;
+	});
+}
+
 export function fadeLineTowards(line: string, groundHex: string, strength: number): string {
 	const k = clamp01(strength);
 	if (k >= 1) return line;
