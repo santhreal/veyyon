@@ -9,6 +9,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { formatSessionDumpText } from "@veyyon/coding-agent";
 import { isRecord } from "@veyyon/utils";
+import { pathSegmentFrom } from "../../../../paths";
 import type {
 	BenchmarkClient,
 	ConversationDumpSnapshot,
@@ -113,7 +114,7 @@ export function isMutationTool(toolName: unknown): boolean {
 }
 
 export function sanitizeDumpPathSegment(value: string): string {
-	return value.replace(/[^a-zA-Z0-9._-]/g, "_");
+	return pathSegmentFrom(value, "task");
 }
 
 export function getConversationDumpPath(dumpDir: string, taskId: string, runIndex: number): string {

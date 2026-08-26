@@ -8,6 +8,7 @@ import { listFiles } from "../../core/fs-walk";
 import { requireHarness } from "../../core/harness-registry";
 import { boundRawOutput, trialTimeoutFromOptions } from "../../core/trial-deadline";
 import { resolveTrialModel } from "../../core/trial-model";
+import { trialDirFor } from "../../core/trial-naming";
 import type {
 	BackendId,
 	ExecutionBackend,
@@ -150,15 +151,7 @@ export class InProcessBackend implements ExecutionBackend {
 		});
 
 		const runsDir = context.runsDir || defaultRunsDir();
-		const variantSegment = (cell.variant || "default").replace(/[^a-zA-Z0-9._-]/g, "_");
-		const taskSegment = cell.task.replace(/[^a-zA-Z0-9._-]/g, "_");
-		const trialDir = path.join(
-			runsDir,
-			context.runId || "in-process-run",
-			variantSegment,
-			taskSegment,
-			`repeat-${cell.repeat ?? 0}`,
-		);
+		const trialDir = trialDirFor(runsDir, context.runId, cell);
 		await fs.mkdir(trialDir, { recursive: true });
 
 		const inputDir =
@@ -335,16 +328,8 @@ export class InProcessBackend implements ExecutionBackend {
 
 	async cleanup(cell: TrialCell, context: RunContext): Promise<void> {
 		if (context.options?.cleanup === true) {
-			const variantSegment = (cell.variant || "default").replace(/[^a-zA-Z0-9._-]/g, "_");
-			const taskSegment = cell.task.replace(/[^a-zA-Z0-9._-]/g, "_");
 			const runsDir = context.runsDir || defaultRunsDir();
-			const trialDir = path.join(
-				runsDir,
-				context.runId || "in-process-run",
-				variantSegment,
-				taskSegment,
-				`repeat-${cell.repeat ?? 0}`,
-			);
+			const trialDir = trialDirFor(runsDir, context.runId, cell);
 			await fs.rm(trialDir, { recursive: true, force: true }).catch(() => {});
 		}
 	}

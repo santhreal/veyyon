@@ -44,6 +44,27 @@ function checkedSegments(segments: readonly string[]): string[] {
 	return segments.map(segment => requirePathSegment(segment, "path segment"));
 }
 
+/** Characters a derived path segment keeps; every other character becomes `_`. */
+const DISALLOWED_IN_SEGMENT = /[^a-zA-Z0-9._-]/g;
+
+/**
+ * Derive one safe path segment from an untrusted name.
+ *
+ * A task id, a variant label and a run id reach a trial directory from a CLI flag or a dataset
+ * listing, and a name that is not a valid segment is rewritten rather than rejected. Replacing
+ * separators is not enough: `.` and `..` contain no disallowed character, so they survive a
+ * character filter and resolve to the directory above. A trial directory built from one lands
+ * outside the run, and the cleanup that removes the trial directory then removes whatever is
+ * there instead. Every derived segment passes through here; a segment that must be rejected
+ * rather than rewritten passes through `requirePathSegment`.
+ */
+export function pathSegmentFrom(value: string, fallback: string): string {
+	const filtered = value.trim().replace(DISALLOWED_IN_SEGMENT, "_");
+	if (filtered.length === 0) return requirePathSegment(fallback, "path segment fallback");
+	if (/^\.+$/.test(filtered)) return `_${filtered}`;
+	return filtered;
+}
+
 /** Root directory of the DeepSWE suite (packages/evals/src/suites/deep-swe). */
 export function deepSweSuiteDir(): string {
 	return path.join(import.meta.dirname, "suites", "deep-swe");

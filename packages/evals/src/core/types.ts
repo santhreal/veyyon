@@ -254,10 +254,6 @@ export interface HarnessAdapter {
 	buildJobConfigKwargs?(context: SystemJobConfigContext): Record<string, unknown>;
 }
 
-export function sanitizeVariantName(name: string): string {
-	return name.trim().replace(/[^a-zA-Z0-9._-]/g, "_") || "default";
-}
-
 /**
  * Execution context for preparing, running, and cleaning up trials.
  *

@@ -12,6 +12,7 @@ import { resolveCellVariant } from "../../core/cell-variant";
 import { getHarness, listHarnesses, requireHarness } from "../../core/harness-registry";
 import { boundRawOutput, DEFAULT_GRACE_PERIOD_MS, trialTimeoutFromOptions } from "../../core/trial-deadline";
 import { resolveTrialModel } from "../../core/trial-model";
+import { runDirFor, trialJobName } from "../../core/trial-naming";
 import type {
 	BackendId,
 	ExecutionBackend,
@@ -98,10 +99,6 @@ export interface HarborBackendOptions {
 	readonly prepareDeps?: SourceDepsPreparer;
 	/** Probes the host auth gateway the containers route model calls through. */
 	readonly gatewayHealth?: GatewayHealthProbe;
-}
-
-function sanitizeName(s: string): string {
-	return s.replace(/[^a-zA-Z0-9._-]/g, "_");
 }
 
 /** The per-call parts of a harbor `Config`; everything else comes from run options. */
@@ -325,10 +322,10 @@ export class HarborBackend implements ExecutionBackend {
 
 		const started = Date.now();
 		const runsDir = context.runsDir || defaultRunsDir();
-		const runDir = path.join(runsDir, sanitizeName(context.runId));
+		const runDir = runDirFor(runsDir, context.runId);
 		await fs.mkdir(runDir, { recursive: true });
 
-		const jobName = `${sanitizeName(context.runId)}__${sanitizeName(cell.variant || "default")}__${sanitizeName(cell.task)}__r${cell.repeat ?? 0}_${Date.now()}`;
+		const jobName = `${trialJobName(context.runId, cell)}_${Date.now()}`;
 		const jobDir = path.join(runDir, jobName);
 		await fs.mkdir(jobDir, { recursive: true });
 
@@ -529,8 +526,8 @@ export class HarborBackend implements ExecutionBackend {
 	async cleanup(cell: TrialCell, context: RunContext): Promise<void> {
 		const envType = typeof context.options?.envType === "string" ? context.options.envType : "docker";
 		const runsDir = context.runsDir || defaultRunsDir();
-		const runDir = path.join(runsDir, sanitizeName(context.runId));
-		const prefix = `${sanitizeName(context.runId)}__${sanitizeName(cell.variant || "default")}__${sanitizeName(cell.task)}__r${cell.repeat ?? 0}`;
+		const runDir = runDirFor(runsDir, context.runId);
+		const prefix = trialJobName(context.runId, cell);
 
 		if (envType === "docker") {
 			try {
