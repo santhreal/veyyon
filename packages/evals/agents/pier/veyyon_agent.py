@@ -15,10 +15,20 @@ from __future__ import annotations
 
 import json
 import shlex
+import sys
 from pathlib import Path
 from typing import Any, ClassVar
 
-from arm_attachments import (
+# The container-side attachment reader is shared with the Harbor agent, so it is a package
+# under the agents root rather than a copy per backend. That root is one level above this
+# backend's flat import root, and it is appended rather than prepended: `pier` names both
+# the installed SDK imported below and the directory this module is in, so a prepended
+# root would resolve the SDK to this directory.
+_agents_dir = str(Path(__file__).resolve().parents[1])
+if _agents_dir not in sys.path:
+    sys.path.append(_agents_dir)
+
+from common.arm_attachments import (
     attachment_directories,
     environment_prefix,
     missing_attachment_files,

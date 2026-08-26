@@ -380,9 +380,13 @@ with_prompt_template = harbor_with_prompt_template
 
 import sys
 
+# The attachment reader is shared with the Pier agent, so it is a package under the agents
+# root. That root is appended rather than prepended: `harbor` names both the installed SDK
+# imported above and the directory this module is in, so a prepended root would resolve the
+# SDK to this directory for any import that runs after this point.
 _agents_dir = str(Path(__file__).resolve().parents[1])
 if _agents_dir not in sys.path:
-    sys.path.insert(0, _agents_dir)
+    sys.path.append(_agents_dir)
 from common.arm_attachments import (
     DELIVERY_ENV_JSON,
     DELIVERY_RULES_DIR,

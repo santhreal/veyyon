@@ -1,12 +1,12 @@
 /**
- * WHY: `harbor/veyyon_agent.py` previously duplicated `pier/arm_attachments.py` but drifted:
- * when the requested arm was missing from `attachments.json`, pier raised `ValueError` while
- * harbor silently returned `()` and ran an unconfigured treatment arm.
+ * WHY: the Harbor agent once carried its own copy of the attachment reader, and the copy
+ * drifted: an arm missing from `attachments.json` raised `ValueError` on the Pier side while
+ * Harbor returned `()` and ran an unconfigured treatment arm.
  *
  * This suite proves that:
- * 1. Both Pier and Harbor agents share the deduplicated `common.arm_attachments` module.
- * 2. When a requested arm is missing from `attachments.json`, BOTH agents raise `ValueError`
- *    (failing closed instead of running an unconfigured arm).
+ * 1. Both agents read attachments through the one shared `common.arm_attachments` module.
+ * 2. An arm the manifest does not name raises `ValueError` on both sides, failing closed
+ *    instead of running an unconfigured arm.
  */
 
 import { describe, expect, it } from "bun:test";
@@ -20,9 +20,9 @@ import json
 import sys
 from pathlib import Path
 
-_pier_dir = sys.argv[1]
-sys.path.insert(0, _pier_dir)
-import arm_attachments
+_agents_dir = str(Path(sys.argv[1]).resolve().parent)
+sys.path.insert(0, _agents_dir)
+from common import arm_attachments
 
 manifest_text = json.dumps({"version": 1, "arms": {"known_arm": []}})
 try:

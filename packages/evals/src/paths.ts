@@ -76,14 +76,19 @@ export function fixturesDir(): string {
 	return suiteDatasetDir("deep-swe", "fixtures");
 }
 
+/** Python agent root (packages/evals/agents), the import root of the `common` package. */
+export function agentsDir(): string {
+	return path.join(evalsPackageDir(), "agents");
+}
+
 /** In-container Pier agents directory (packages/evals/agents/pier). */
 export function pierAgentDir(): string {
-	return path.join(evalsPackageDir(), "agents", "pier");
+	return path.join(agentsDir(), "pier");
 }
 
 /** Harbor agents directory (packages/evals/agents/harbor). */
 export function harborAgentDir(): string {
-	return path.join(evalsPackageDir(), "agents", "harbor");
+	return path.join(agentsDir(), "harbor");
 }
 
 /** Default jobs directory for Harbor runs (runs/harbor at repository root). */
