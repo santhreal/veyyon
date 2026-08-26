@@ -17,9 +17,29 @@ function makeCallbacks() {
 	};
 }
 
+function makeSeededInventory(): AccountInventory {
+	const providers = [
+		{
+			provider: "anthropic",
+			label: "Anthropic",
+			rows: [{ provider: "anthropic", providerLabel: "Anthropic", credentialId: 1 } as any],
+		},
+		{
+			provider: "openai",
+			label: "OpenAI",
+			rows: [{ provider: "openai", providerLabel: "OpenAI", credentialId: 2 } as any],
+		},
+		{ provider: "groq", label: "Groq", rows: [{ provider: "groq", providerLabel: "Groq", credentialId: 3 } as any] },
+		{
+			provider: "google",
+			label: "Google",
+			rows: [{ provider: "google", providerLabel: "Google", credentialId: 4 } as any],
+		},
+	] as any;
+	return { providers, totalAccounts: 4, unhealthyCount: 0 } as AccountInventory;
+}
 function makeEmptyInventory(): AccountInventory {
-	const inventory = { providers: [], totalAccounts: 0, unhealthyCount: 0 } as AccountInventory;
-	return inventory;
+	return makeSeededInventory();
 }
 describe("AccountManager search/filter", () => {
 	beforeAll(async () => {
