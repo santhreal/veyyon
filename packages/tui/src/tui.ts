@@ -762,11 +762,22 @@ export function coalesceAdjacentSgr(line: string): string {
 /** Compare two rows ignoring SGR styling (theme restyles keep alignment). */
 function rowsEquivalent(a: string, b: string): boolean {
 	if (a === b) return true;
+	// Fast path: if neither row has escape sequences, the raw comparison
+	// already settled it without allocating stripped copies.
+	if (a.indexOf("\x1b") === -1 && b.indexOf("\x1b") === -1) return false;
 	return a.replace(SGR_SEQUENCE, "") === b.replace(SGR_SEQUENCE, "");
 }
 
 function isBlankRow(row: string): boolean {
 	if (row.length === 0) return true;
+	// Fast path: no escape sequences means no SGR to strip — just check for
+	// non-whitespace directly, avoiding the regex+trim allocation.
+	if (row.indexOf("\x1b") === -1) {
+		for (let i = 0; i < row.length; i++) {
+			if (row.charCodeAt(i) > 32) return false;
+		}
+		return true;
+	}
 	return row.replace(SGR_SEQUENCE, "").trim().length === 0;
 }
 
