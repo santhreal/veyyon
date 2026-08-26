@@ -39,6 +39,10 @@
  * - Two operations coalesced into one frame. Each step gets its own settle, so an interleaving that
  *   only goes wrong inside a single throttle window is out of reach.
  * - Mouse routing, overlays and focus changes, none of which are driven here.
+ * - The Ghostty initial-image delay, one of the two timers this closed. Removing it from
+ *   renderPending leaves every case here green, because arming it needs an inline image drawn on a
+ *   terminal reporting itself as Ghostty. The fail-by-default property above holds only for a
+ *   deferral a driven sequence can actually arm.
  * - Which of the two paints is wrong. A divergence proves they disagree, not that the cold mount is
  *   the correct one.
  */

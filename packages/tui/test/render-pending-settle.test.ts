@@ -127,6 +127,48 @@ describe("TUI.renderPending", () => {
 
 		expect(tui.renderPending).toBe(false);
 	});
+
+	/**
+	 * The deferred timers, which the cases above do not reach at all.
+	 *
+	 * `requestRender` is only one way a frame comes to be owed. Outside a
+	 * multiplexer a resize paints the viewport at once and defers the
+	 * authoritative full replay until the drag has been quiet for 120ms, and the
+	 * getter used to count neither that timer nor the Ghostty initial-image
+	 * delay. For the whole window it answered "idle" with a full paint queued,
+	 * so a settle inside the window returned on the pre-resize frame. Suites
+	 * papered over it with a hand-rolled `Bun.sleep(160)`, which is the fixed
+	 * sleep this signal exists to replace.
+	 *
+	 * `fullRedraws` is the observable proof: the deferred rebuild forces a full
+	 * paint, so a settle that honours the owed frame comes back with a higher
+	 * count than it went in with.
+	 *
+	 * WHAT THIS DOES NOT COVER. Of the two timers that were missing, only the
+	 * resize settle is exercised. Removing the Ghostty initial-image delay from
+	 * the getter leaves this file and the differential in
+	 * `an-incremental-paint-agrees-with-a-cold-mount` green, because arming it
+	 * needs an inline image drawn on a terminal that reports itself as Ghostty
+	 * and nothing here draws one. That branch rests on review, not on a test.
+	 */
+	it("stays true until a resize's deferred full paint has landed", async () => {
+		const term = new VirtualTerminal(40, 10);
+		const tui = new TUI(term);
+		tui.addChild(new Rows(Array.from({ length: 14 }, (_v, i) => `line-${i}`)));
+		tui.start();
+		await settleFrames(term, tui);
+		const before = tui.fullRedraws;
+
+		term.resize(40, 16);
+		await settleFrames(term, tui);
+
+		try {
+			expect(tui.fullRedraws).toBeGreaterThan(before);
+			expect(tui.renderPending).toBe(false);
+		} finally {
+			tui.stop();
+		}
+	});
 });
 
 describe("settleFrames", () => {
