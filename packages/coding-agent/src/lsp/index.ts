@@ -1302,9 +1302,7 @@ async function fetchDiagnosticsWithDeferral(args: {
 	}
 	// Slow server: deliver late via the deferred channel; nothing inline. The
 	// deferred sink (edit tool) applies its own dedup, so pass the raw result.
-	// Nothing awaits this, so a failure here used to mean the deferred diagnostics simply never arrived: the
-	// edit reported no problems and the user could not tell that the fetch had failed rather than come back
-	// clean. Reported so a server that keeps failing this late fetch is visible.
+	// Nothing awaits this; a failure meant diagnostics silently never arrived. Reported so a failing server is visible.
 	void fetchPromise
 		.then(diagnostics => {
 			if (diagnostics && !deferred.signal.aborted) deferred.onDeferredDiagnostics(diagnostics);

@@ -527,9 +527,7 @@ async function killSession(session: JsSession, error: Error, options: { force: b
 		await terminateJsWorker(session.worker, "kill-forced");
 		return;
 	}
-	// `close()` resolving false means the worker declined to shut down cleanly, which is an expected outcome
-	// and not a failure; a THROW means the close could not be attempted, and both lead to the same terminate
-	// below, so the distinction changes nothing here. The terminate reports for both.
+	// `close()` false or throw both lead to terminate below; distinction changes nothing here.
 	const closed = await session.worker.close().catch(() => false);
 	if (closed) return;
 	await terminateJsWorker(session.worker, "kill-graceful-fallback");

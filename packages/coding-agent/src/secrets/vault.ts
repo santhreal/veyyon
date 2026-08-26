@@ -312,11 +312,8 @@ export function parseTtl(spec: string): number | null {
 	if (text === NEVER_TTL) return null;
 
 	const match = TTL_WORD.exec(text);
-	// NEITHER refusal repeats the spec back. A lifetime is typed on the same line as a credential,
-	// and the realistic slip puts the credential where the lifetime goes (a lifetime slot holding `sk-live-...`) or
-	// where a verb expects nothing. Echoing it wrote the credential into an error that reaches the
-	// scrollback and the saved transcript. The two cases stay separately worded, because "not a
-	// lifetime" and "expires immediately" are different mistakes with different fixes.
+	// Neither refusal repeats the spec back: the realistic slip puts a credential where a lifetime goes.
+	// Two cases stay separately worded — "not a lifetime" and "expires immediately" are different mistakes.
 	if (match === null) {
 		throw new Error(
 			`That is not a lifetime. Write a number followed by m, h, d or w ` +

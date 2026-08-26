@@ -141,9 +141,7 @@ function quarantineShellSession(
 		? Promise.allSettled([runPromise, abortCleanupPromise])
 		: Promise.allSettled([runPromise]);
 	shellSessionQuarantines.set(sessionKey, cleanup);
-	// `cleanup` is `allSettled`, so it cannot reject on the quarantined run's own failure -- that failure was
-	// already delivered to whoever ran the command, and this only waits for the wedged shell to finish before
-	// letting the session be used again. The guard covers a rejection from `finally` itself.
+	// `cleanup` is `allSettled`: can't reject on the run's own failure (already delivered). Guard covers `finally` rejection.
 	void cleanup
 		.finally(() => {
 			if (shellSessionQuarantines.get(sessionKey) === cleanup) {

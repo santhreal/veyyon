@@ -186,9 +186,7 @@ function argValue(command: string, name: string, desc: ArgDescriptor): ValueSour
 	if (desc.options && desc.options.length > 0) return { kind: "enum", values: desc.options };
 	const key = `${command}.${name}`;
 	if (SETTING_ARGS[key]) return SETTING_ARGS[key];
-	// A repeatable model positional completes as a list, the same way the `models` FLAG does: the throughput
-	// benchmark takes several selectors, and pinning `multiple: false` would stop offering candidates after
-	// the first one.
+	// Repeatable model positional completes as a list (benchmark takes several selectors).
 	if (MODEL_ARGS[key]) return { kind: "models", multiple: Boolean(desc.multiple) };
 	if (FILE_ARGS[key]) return { kind: "file" };
 	if (AT_FILE_ARGS[key]) return { kind: "at-file" };
