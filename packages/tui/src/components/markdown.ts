@@ -1681,7 +1681,8 @@ export class Markdown implements Component {
 			const lines = cache.lines.slice();
 			const addedText = completedText.slice(cache.text.length + 1);
 			for (const codeLine of addedText.split("\n")) {
-				lines.push(...highlightCode(codeLine, lang));
+				const hl = highlightCode(codeLine, lang);
+				for (let j = 0; j < hl.length; j++) lines.push(hl[j]);
 			}
 			this.#streamingDiffLineCache = { ...signature, lang, text: completedText, lines };
 			return lines;
@@ -1689,7 +1690,8 @@ export class Markdown implements Component {
 
 		const lines: string[] = [];
 		for (const codeLine of completedText.split("\n")) {
-			lines.push(...highlightCode(codeLine, lang));
+			const hl = highlightCode(codeLine, lang);
+			for (let j = 0; j < hl.length; j++) lines.push(hl[j]);
 		}
 		if (signature) {
 			this.#streamingDiffLineCache = { ...signature, lang, text: completedText, lines };
@@ -1888,7 +1890,8 @@ export class Markdown implements Component {
 					break;
 				}
 				const paragraphText = this.#renderInlineTokens(token.tokens || [], styleContext);
-				lines.push(...(hangWrapTreeGuideLines(paragraphText, width) ?? [paragraphText]));
+				const hangLines = hangWrapTreeGuideLines(paragraphText, width) ?? [paragraphText];
+				for (let j = 0; j < hangLines.length; j++) lines.push(hangLines[j]);
 				// Don't add spacing if next token is space or list
 				if (nextTokenType && nextTokenType !== "list" && nextTokenType !== "space") {
 					lines.push("");
@@ -1931,7 +1934,7 @@ export class Markdown implements Component {
 
 			case "list": {
 				const listLines = this.#renderList(token as ListToken, 0, styleContext);
-				lines.push(...listLines);
+				for (let j = 0; j < listLines.length; j++) lines.push(listLines[j]);
 				// Don't add spacing after lists if a space token follows
 				// (the space token will handle it)
 				break;
@@ -1939,7 +1942,7 @@ export class Markdown implements Component {
 
 			case "table": {
 				const tableLines = this.#renderTable(token as TableToken, width, nextTokenType, styleContext);
-				lines.push(...tableLines);
+				for (let j = 0; j < tableLines.length; j++) lines.push(tableLines[j]);
 				break;
 			}
 
