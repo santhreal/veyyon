@@ -22,17 +22,15 @@ import * as path from "node:path";
 import { ThinkingLevel } from "@veyyon/agent-core";
 import type { OverlayOptions } from "@veyyon/tui";
 import {
-	COMPOSER_ORACLE_GUARANTEES,
 	type ComposerOracleGuarantee,
+	DEFECT_ORACLE_REGISTRIES,
+	DEFECT_ORACLE_REGISTRY_NAMES,
 	type OracleFailure,
-	OVERLAY_ORACLE_GUARANTEES,
 	type OverlayOracleFailure,
 	type OverlayOracleGuarantee,
-	TEXT_PRIMITIVE_ORACLE_GUARANTEES,
 	TEXT_PRIMITIVES,
 	type TextPrimitiveOracleFailure,
 	type TextPrimitiveOracleGuarantee,
-	TOOL_RENDER_ORACLE_GUARANTEES,
 	type ToolRenderEvaluationResult,
 	type ToolRenderOracleFailure,
 	type ToolRenderOracleGuarantee,
@@ -73,7 +71,15 @@ export const CORPUS_SCHEMA_VERSION = 3;
  * axes did. Keyed tables below make a new family a compile error until it declares its guarantees, its
  * state validator and its replay.
  */
-export const CORPUS_FAMILIES = ["composer", "overlay", "toolRender", "textPrimitive"] as const;
+/**
+ * The families, derived from the registries rather than restated.
+ *
+ * A registry named in `DEFECT_ORACLE_REGISTRIES` is a family here, and `ORACLE_FAMILIES` below is a
+ * `Record` over that union, so adding a registry does not compile until the corpus says how a case of
+ * it is read and replayed. The hand-written list this replaced let a registry exist with no
+ * reproductions, which is where a defect field hides.
+ */
+export const CORPUS_FAMILIES = DEFECT_ORACLE_REGISTRY_NAMES;
 export type CorpusFamily = (typeof CORPUS_FAMILIES)[number];
 
 /**
@@ -258,8 +264,6 @@ export interface ReplayDeps {
  * never registered, and replay through the composer runner.
  */
 interface OracleFamily<State extends AnyCorpusCaseState> {
-	/** The registry whose guarantee ids a case of this family may name. */
-	guarantees: readonly string[];
 	/** Validate the state as written on disk, or throw with the corrective action. */
 	readState: (fields: Record<string, unknown>, label: string) => State;
 	/** Rebuild the recorded scenario and re-judge it. */
@@ -268,17 +272,14 @@ interface OracleFamily<State extends AnyCorpusCaseState> {
 
 const ORACLE_FAMILIES: { readonly [F in CorpusFamily]: OracleFamily<CorpusStateByFamily[F]> } = {
 	composer: {
-		guarantees: COMPOSER_ORACLE_GUARANTEES,
 		readState: composerCorpusStateFrom,
 		replay: state => replayCorpusCase(state),
 	},
 	overlay: {
-		guarantees: OVERLAY_ORACLE_GUARANTEES,
 		readState: overlayCorpusStateFrom,
 		replay: state => replayOverlayCorpusCase(state),
 	},
 	toolRender: {
-		guarantees: TOOL_RENDER_ORACLE_GUARANTEES,
 		readState: toolRenderCorpusStateFrom,
 		replay: (state, deps, label) => {
 			if (!deps.theme) {
@@ -290,7 +291,6 @@ const ORACLE_FAMILIES: { readonly [F in CorpusFamily]: OracleFamily<CorpusStateB
 		},
 	},
 	textPrimitive: {
-		guarantees: TEXT_PRIMITIVE_ORACLE_GUARANTEES,
 		readState: textPrimitiveCorpusStateFrom,
 		replay: state => Promise.resolve(replayTextPrimitiveCorpusCase(state)),
 	},
@@ -307,12 +307,11 @@ function familyRow(family: CorpusFamily): OracleFamily<AnyCorpusCaseState> {
 	return ORACLE_FAMILIES[family] as OracleFamily<AnyCorpusCaseState>;
 }
 
-/** The guarantees a case of each family may name. */
+/** The guarantees a case of each family may name, read from that family's registry. */
 export const CORPUS_FAMILY_GUARANTEES: Readonly<Record<CorpusFamily, readonly string[]>> = Object.freeze(
-	Object.fromEntries(CORPUS_FAMILIES.map(family => [family, ORACLE_FAMILIES[family].guarantees])) as Record<
-		CorpusFamily,
-		readonly string[]
-	>,
+	Object.fromEntries(
+		CORPUS_FAMILIES.map(family => [family, DEFECT_ORACLE_REGISTRIES[family].guarantees as readonly string[]]),
+	) as Record<CorpusFamily, readonly string[]>,
 );
 
 export const CORPUS_DIR = path.resolve(import.meta.dirname, "../corpus/renderer-defect-oracle");
@@ -647,7 +646,7 @@ export function loadCorpusCase(filePath: string): CorpusCase {
 	}
 	const oracle = fields.oracle;
 	const row = familyRow(family as CorpusFamily);
-	if (typeof oracle !== "string" || !row.guarantees.includes(oracle)) {
+	if (typeof oracle !== "string" || !CORPUS_FAMILY_GUARANTEES[family as CorpusFamily].includes(oracle)) {
 		throw new Error(
 			`${label}: oracle ${String(oracle)} is not a guarantee of the ${family} registry. An oracle was renamed or removed; re-record the case or exempt it.`,
 		);
@@ -689,6 +688,18 @@ export async function replayCorpusFile(
  * Record one oracle's verdict on one state as a corpus case, or refresh the one already on disk.
  * Returns the written file path.
  */
+/**
+ * Whether this run may write a case.
+ *
+ * Off unless asked. A sweep promotes what it finds, and a sweep is run against a deliberately broken
+ * tree every time somebody proves a mutation gate: four cases recording defects that do not exist were
+ * committed that way, and each one then failed the replay suite for the rest of its life. Recording is
+ * a decision, so it is a flag, and the ledger claims in each sweep are what turn red in a gate.
+ */
+function recordingEnabled(): boolean {
+	return process.env.VEYYON_ORACLE_CORPUS === "record";
+}
+
 export function promoteCaseToCorpus(
 	family: CorpusFamily,
 	state: AnyCorpusCaseState,
@@ -696,9 +707,10 @@ export function promoteCaseToCorpus(
 	observedGrid: readonly string[],
 	options?: { template?: string; seed?: number; status?: CorpusCaseStatus; reason?: string },
 ): string {
-	fs.mkdirSync(CORPUS_DIR, { recursive: true });
 	const id = computeCaseHash(family, state, observation.oracle, observation.kind);
 	const filePath = path.join(CORPUS_DIR, `${id}.json`);
+	if (!recordingEnabled()) return filePath;
+	fs.mkdirSync(CORPUS_DIR, { recursive: true });
 
 	// A re-promotion of a case already on disk keeps its status, its reason and the timestamp it was
 	// first seen, so replaying the sweep does not rewrite a committed file with today's date.

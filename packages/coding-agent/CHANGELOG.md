@@ -13,6 +13,8 @@
 - The renderer defect corpus records tool-render reproductions alongside composer and overlay ones, replaying each committed case against the registry that owns its oracle.
 - The text primitives every renderer sanitizes through gain their own defect oracle registry covering truncation width, padding, prefix and idempotence, wrapped row width and glyph preservation, slice bounds, line breaks, raw tabs, severed escape sequences, style byte width, tab expansion and painted home directories, swept over twenty fixtures at ten widths.
 - The renderer defect corpus records text-primitive reproductions, and everything it knows about a family is one row of a table, so a new registry declares its guarantees, its state reader and its replay in one place.
+- A defect oracle registry that is not wired into the reproduction corpus now fails to compile or fails a test, rather than reporting verdicts nothing records.
+- A renderer defect sweep records a reproduction only when `VEYYON_ORACLE_CORPUS=record` is set, so a run against a deliberately broken tree no longer writes cases for defects that do not exist.
 - `prewalk.cheapModel` and `prewalk.strongModel` configure the cheap model prewalk switches into at the first edit and the strong model it starts on.
 - `/prewalk` accepts an optional model argument to arm a per-session target model override.
 - `edit.critiqueCodeMutations` prompts a bounded self-review before finalization after one turn modifies at least two distinct code files.
