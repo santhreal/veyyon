@@ -225,19 +225,38 @@ export function analyzeBgFillLine(line: string, width: number): BgFillAnalysis |
 		// Printable run up to the next escape.
 		let j = i;
 		while (j < line.length && line.charCodeAt(j) !== 0x1b) j++;
-		const text = line.slice(i, j);
-		let nonSpaceLen = text.length;
-		while (nonSpaceLen > 0 && text.charCodeAt(nonSpaceLen - 1) === 0x20) nonSpaceLen--;
-
+		// Fast path: scan the printable run in-place. For pure ASCII (no chars
+		// outside 0x20–0x7e), width equals byte length and no slice is needed.
+		const runLen = j - i;
+		let ascii = true;
+		for (let k = i; k < j; k++) {
+			const c = line.charCodeAt(k);
+			if (c < 0x20 || c > 0x7e) {
+				ascii = false;
+				break;
+			}
+		}
+		let nonSpaceLen = runLen;
+		let totalWidth: number;
+		if (ascii) {
+			while (nonSpaceLen > 0 && line.charCodeAt(i + nonSpaceLen - 1) === 0x20) nonSpaceLen--;
+			totalWidth = runLen;
+		} else {
+			const text = line.slice(i, j);
+			nonSpaceLen = text.length;
+			while (nonSpaceLen > 0 && text.charCodeAt(nonSpaceLen - 1) === 0x20) nonSpaceLen--;
+			totalWidth = visibleWidth(text);
+		}
 		if (nonSpaceLen > 0) {
 			// Run carries a non-space glyph: the trailing region restarts after it.
-			const nonSpaceWidth = visibleWidth(text.slice(0, nonSpaceLen));
+			// Trailing chars are all 0x20 (1 cell each), so nonSpaceWidth is total minus them.
+			const nonSpaceWidth = totalWidth - (runLen - nonSpaceLen);
 			nonSpaceEndByte = i + nonSpaceLen;
 			nonSpaceEndCol = col + nonSpaceWidth;
 			// Spaces after the last non-space glyph in this same printable run sit
 			// under the current bg. If there are none, the trailing region has not
 			// started yet; a later SGR can still begin a uniform fill safely.
-			if (nonSpaceLen < text.length) {
+			if (nonSpaceLen < runLen) {
 				trailBg = bg;
 				trailStarted = true;
 			} else {
@@ -245,7 +264,7 @@ export function analyzeBgFillLine(line: string, width: number): BgFillAnalysis |
 				trailStarted = false;
 			}
 			trailConsistent = true;
-		} else if (text.length > 0) {
+		} else if (runLen > 0) {
 			// Whole run is spaces: it extends the trailing region. Track bg drift.
 			if (!trailStarted) {
 				trailBg = bg;
