@@ -22,6 +22,10 @@ import { requireBackendBinding } from "../../src/core/cell-variant";
 import { HarnessRegistry, listHarnesses, listHarnessNames, requireHarness } from "../../src/core/harness-registry";
 import type { BackendId } from "../../src/core/types";
 import { registerBuiltinHarnesses } from "../../src/harnesses";
+import { factoryAdapter } from "../../src/harnesses/adapters/factory";
+import { hermesAdapter } from "../../src/harnesses/adapters/hermes";
+import { ompAdapter } from "../../src/harnesses/adapters/omp";
+import { veyyonAdapter } from "../../src/harnesses/adapters/veyyon";
 
 /**
  * The bindings each shipped harness is expected to declare. Pinned by exact equality so
@@ -33,6 +37,14 @@ const EXPECTED_BINDINGS: Readonly<Record<string, readonly BackendId[]>> = {
 	factory: ["pier"],
 	hermes: ["pier"],
 };
+
+/** The adapter object each name must resolve to: the shipped module, not a copy of it. */
+const SHIPPED_ADAPTERS = {
+	veyyon: veyyonAdapter,
+	omp: ompAdapter,
+	factory: factoryAdapter,
+	hermes: hermesAdapter,
+} as const;
 
 beforeAll(() => {
 	registerBuiltinHarnesses();
@@ -47,6 +59,13 @@ describe("the registered harnesses", () => {
 		for (const name of listHarnessNames()) {
 			expect(requireHarness(name).name).toBe(name);
 		}
+	});
+
+	it("resolves each name to the adapter module that ships it, so no second instance can drift", () => {
+		for (const [name, adapter] of Object.entries(SHIPPED_ADAPTERS)) {
+			expect(requireHarness(name)).toBe(adapter);
+		}
+		expect(Object.keys(SHIPPED_ADAPTERS).sort()).toEqual([...listHarnessNames()].sort());
 	});
 
 	it("declares the backends recorded for it, and no others", () => {
