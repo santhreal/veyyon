@@ -46,6 +46,21 @@ export interface ExpectationVerdict {
 type AnySearchDetails = FileSearchDetails | TextSearchDetails | StructureSearchDetails;
 
 /**
+ * The engine payload inside a details object, whichever shape carried it.
+ *
+ * The unified tool wraps its engine's details as `{ type, result }` while an arm that calls
+ * the engine directly returns the payload bare. Both the answer check here and the arm
+ * comparison in the runner have to see the same object, so the unwrap has one owner.
+ */
+export function unwrapSearchDetails(
+	details: AnySearchDetails | SearchToolDetails | undefined,
+): AnySearchDetails | undefined {
+	if (!details) return undefined;
+	if ("type" in details && "result" in details) return (details as SearchToolDetails).result;
+	return details as AnySearchDetails;
+}
+
+/**
  * The files a search reported, from whichever field its details variant carries.
  *
  * All three details shapes expose `files`; text and structure additionally carry
@@ -54,9 +69,8 @@ type AnySearchDetails = FileSearchDetails | TextSearchDetails | StructureSearchD
  * expectation independent of which representation answered it.
  */
 export function collectMatchedPaths(details: AnySearchDetails | SearchToolDetails | undefined): readonly string[] {
-	if (!details) return [];
-	const payload: AnySearchDetails =
-		"type" in details && "result" in details ? (details as SearchToolDetails).result : (details as AnySearchDetails);
+	const payload = unwrapSearchDetails(details);
+	if (!payload) return [];
 	const seen = new Set<string>();
 	const ordered: string[] = [];
 	const add = (candidate: unknown): void => {

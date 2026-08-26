@@ -1,8 +1,9 @@
 import { describe, expect, it } from "bun:test";
 import type { FileSearchDetails } from "@veyyon/coding-agent/tools/file-search";
-import { SearchTool, type SearchToolDetails } from "@veyyon/coding-agent/tools/search";
+import type { SearchToolDetails } from "@veyyon/coding-agent/tools/search";
 import type { StructureSearchDetails } from "@veyyon/coding-agent/tools/structure-search";
 import type { TextSearchDetails } from "@veyyon/coding-agent/tools/text-search";
+import { materializeCorpus } from "../../../src/benches/search/corpus";
 import {
 	collectMatchedPaths,
 	formatExpectationFailures,
@@ -10,13 +11,18 @@ import {
 	verifySearchExpectation,
 } from "../../../src/benches/search/expectations";
 import {
-	buildSearchBenchmarkCases,
-	createDeterministicSearchCorpus,
+	registerBuiltinSearchBench,
+	requireSearchArm,
+	requireSearchCorpus,
+	searchCaseSuiteIds,
+	searchCaseSuites,
+} from "../../../src/benches/search/registry";
+import {
 	createSearchBenchmarkSession,
-	formatBenchmarkSummary,
+	formatSearchBenchReport,
 	measureSearchCase,
-	runSearchParityBenchmark,
-} from "../../../src/benches/search/parity";
+	runSearchBench,
+} from "../../../src/benches/search/runner";
 
 /**
  * WHY: the parity arm compares `SearchTool` against the engine functions the tool
@@ -171,67 +177,78 @@ describe("a declared answer the search did not produce", () => {
 	});
 });
 
-describe("every bench case", () => {
+describe("every registered case", () => {
 	it("claims a file it must find or a count it must reach, so a new case cannot ship answerless", () => {
-		const cases = buildSearchBenchmarkCases();
-		expect(cases.length).toBeGreaterThan(20);
+		registerBuiltinSearchBench();
+		const suites = searchCaseSuites();
+		expect(suites.length).toBeGreaterThan(1);
 
 		// `mustNotMatchPaths` alone is satisfied by a search that returns nothing, so it is
 		// not an answer on its own. Each case has to make one positive claim.
-		const answerless = cases
-			.filter(benchCase => {
+		const answerless: string[] = [];
+		const ids: string[] = [];
+		for (const suite of suites) {
+			expect(suite.cases.length).toBeGreaterThan(0);
+			// A suite naming a corpus nobody registered cannot have derived its answers.
+			expect(() => requireSearchCorpus(suite.corpusId)).not.toThrow();
+			for (const benchCase of suite.cases) {
+				ids.push(`${suite.id}/${benchCase.id}`);
 				const answer: SearchExpectation = benchCase.expect;
-				return (
+				if (
 					(answer.mustMatchPaths ?? []).length === 0 &&
 					answer.minMatchedPaths === undefined &&
 					answer.exactMatchedPaths === undefined
-				);
-			})
-			.map(benchCase => benchCase.id);
+				) {
+					answerless.push(`${suite.id}/${benchCase.id}`);
+				}
+			}
+		}
 		expect(answerless).toEqual([]);
-
-		const ids = cases.map(benchCase => benchCase.id);
 		expect(new Set(ids).size).toBe(ids.length);
 	});
 });
 
-describe("the bench over the real corpus", () => {
-	it("produces the declared answer for every case and says so in the report", async () => {
-		const report = await runSearchParityBenchmark({ iterations: 1, filterType: "all", strictParity: true });
+describe("the bench over every registered corpus", () => {
+	it("produces the declared answer for every case of every suite and says so in the report", async () => {
+		const report = await runSearchBench({ iterations: 1, filterType: "all", strictParity: true });
 
 		expect(report.expectationsPassed).toBe(true);
 		expect(report.totalExpectationFailures).toBe(0);
+		// Every registered suite ran, not just the first one.
+		expect(report.suites.map(suite => suite.caseSuiteId).sort()).toEqual([...searchCaseSuiteIds()].sort());
+		expect(report.suites.length).toBeGreaterThan(1);
 
-		const failed = report.cases.filter(c => !c.expectationSatisfied).map(c => c.id);
-		expect(failed).toEqual([]);
-
-		for (const c of report.cases) {
-			expect(c.expectationFailureReason).toBeUndefined();
+		const allCases = report.suites.flatMap(suite => suite.cases);
+		expect(allCases.length).toBe(report.totalCases);
+		expect(allCases.filter(c => !c.expectationSatisfied).map(c => c.id)).toEqual([]);
+		for (const measurement of allCases) {
+			expect(measurement.expectationFailureReason).toBeUndefined();
+			expect(measurement.matchedPaths.every(p => p.length > 0)).toBe(true);
 		}
 
-		// A case that matches nothing is only allowed when its answer is a required zero.
-		for (const c of report.cases) {
-			if (c.matchedPaths.length === 0) continue;
-			expect(c.matchedPaths.every(p => p.length > 0)).toBe(true);
+		for (const suite of report.suites) {
+			expect(suite.corpusFileCount).toBeGreaterThan(0);
+			for (const summary of Object.values(suite.summaryByType)) {
+				expect(summary.expectationPassedCases).toBe(summary.totalCases);
+				expect(summary.expectationFailedCases).toBe(0);
+			}
 		}
 
-		for (const type of ["files", "text", "structure"] as const) {
-			const summary = report.summaryByType[type];
-			expect(summary.expectationPassedCases).toBe(summary.totalCases);
-			expect(summary.expectationFailedCases).toBe(0);
-		}
-
-		const summaryText = formatBenchmarkSummary(report);
-		expect(summaryText).toContain("Declared Answer Status: PASS (every case matched the corpus)");
-		expect(summaryText).toContain("| Answer |");
-		expect(summaryText).not.toContain("declared answer not produced");
-	}, 120_000);
+		const text = formatSearchBenchReport(report);
+		expect(text).toContain("Declared answers:   PASS");
+		expect(text).toContain("Arm agreement:      PASS");
+		expect(text).not.toContain("declared answer not produced");
+	}, 180_000);
 
 	it("finds the corpus files each search type is supposed to reach", async () => {
-		const report = await runSearchParityBenchmark({ iterations: 1, filterType: "all", strictParity: true });
-		const byId = new Map(report.cases.map(c => [c.id, c]));
+		const report = await runSearchBench({
+			iterations: 1,
+			caseSuiteIds: ["unified-search", "monorepo-scoping"],
+			strictParity: true,
+		});
+		const byId = new Map(report.suites.flatMap(suite => suite.cases).map(c => [c.id, c]));
 
-		// Anchored on the corpus literals, through the engines rather than by reading source.
+		// Anchored on the corpus contents, through the engines rather than by reading source.
 		expect([...(byId.get("files_glob_recursive_ts")?.matchedPaths ?? [])].sort()).toEqual([
 			"src/core/engine.ts",
 			"src/index.ts",
@@ -249,15 +266,25 @@ describe("the bench over the real corpus", () => {
 		]);
 		// A structural pattern with no return-type slot matches no annotated function.
 		expect(byId.get("structure_missing_return_annotation")?.matchedPaths).toEqual([]);
-	}, 120_000);
+
+		// The second corpus exists to separate scoping from finding: an unscoped query reaches
+		// both packages' same-named file, and the scoped one reaches exactly one.
+		const unscoped = byId.get("monorepo_text_shared_identifier_unscoped")?.matchedPaths ?? [];
+		const scoped = byId.get("monorepo_text_shared_identifier_scoped")?.matchedPaths ?? [];
+		expect(unscoped.length).toBeGreaterThanOrEqual(2);
+		expect(scoped.length).toBe(1);
+		expect(unscoped).toEqual(expect.arrayContaining([...scoped]));
+	}, 180_000);
 });
 
 describe("a case whose answer the search cannot produce", () => {
 	it("throws under strict expectations and is reported without it", async () => {
-		const corpus = await createDeterministicSearchCorpus();
+		registerBuiltinSearchBench();
+		const corpus = await materializeCorpus(requireSearchCorpus("typescript-project"));
 		try {
 			const session = createSearchBenchmarkSession(corpus.corpusDir);
-			const searchTool = new SearchTool(session);
+			const arm = requireSearchArm("unified-tool");
+			const prepared = [{ arm, runner: arm.prepare({ session, corpusDir: corpus.corpusDir }) }];
 			const impossible = {
 				id: "impossible_answer",
 				type: "files" as const,
@@ -265,12 +292,21 @@ describe("a case whose answer the search cannot produce", () => {
 				input: { type: "files" as const, input: "src/**/*.ts" },
 				expect: { mustMatchPaths: ["src/does-not-exist.ts"], exactMatchedPaths: 99 },
 			};
+			const options = {
+				iterations: 1,
+				caseSuiteId: "ad-hoc",
+				corpusId: "typescript-project",
+				referenceArmId: "unified-tool",
+				strictParity: true,
+			};
 
-			await expect(measureSearchCase(session, searchTool, impossible, 1, true, true)).rejects.toThrow(
+			await expect(
+				measureSearchCase(impossible, prepared, { ...options, strictExpectations: true }),
+			).rejects.toThrow(
 				/Search expectation failure on case "impossible_answer" \(files\): mustMatchPaths: never matched src\/does-not-exist\.ts/,
 			);
 
-			const lenient = await measureSearchCase(session, searchTool, impossible, 1, true, false);
+			const lenient = await measureSearchCase(impossible, prepared, { ...options, strictExpectations: false });
 			expect(lenient.parityPassed).toBe(true);
 			expect(lenient.expectationSatisfied).toBe(false);
 			expect(lenient.expectationFailureReason).toContain("mustMatchPaths: never matched src/does-not-exist.ts");
