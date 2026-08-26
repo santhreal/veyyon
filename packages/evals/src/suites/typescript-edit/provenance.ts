@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { listFiles } from "../../core/fs-walk";
 import type { SuiteProvenance } from "../../core/types";
-import { typescriptEditFixturesArchive } from "../../paths";
-import { listFiles } from "./shared";
+import { readFixturesArchive } from "./extract";
 
 export const TYPESCRIPT_EDIT_VERSION = "1.0.0";
 export const TYPESCRIPT_EDIT_SUITE_NAME = "typescript-edit";
@@ -29,20 +29,32 @@ export async function computeTypescriptEditProvenance(
 	const version = options.version ?? TYPESCRIPT_EDIT_VERSION;
 
 	if (options.archivePath) {
-		const stat = await fs.stat(options.archivePath);
-		const buffer = await fs.readFile(options.archivePath);
-		const hash = createHash("sha256").update(buffer).digest("hex");
-
+		const archiveResult = await readFixturesArchive({
+			archivePath: options.archivePath,
+			allowMissingArchive: options.allowMissingArchive,
+		});
+		if (!archiveResult.ok) {
+			return {
+				suite: TYPESCRIPT_EDIT_SUITE_NAME,
+				version,
+				sha: null,
+				sourceUrl: DEFAULT_FIXTURES_ARCHIVE_RELATIVE,
+				metadata: {
+					archivePath: archiveResult.path,
+					error: archiveResult.error,
+				},
+			};
+		}
 		return {
 			suite: TYPESCRIPT_EDIT_SUITE_NAME,
 			version,
-			sha: hash,
+			sha: archiveResult.sha,
 			sourceUrl: DEFAULT_FIXTURES_ARCHIVE_RELATIVE,
 			metadata: {
 				archivePath: options.archivePath,
-				contentHash: hash,
-				sizeBytes: stat.size,
-				mtime: stat.mtime.toISOString(),
+				contentHash: archiveResult.sha,
+				sizeBytes: archiveResult.size,
+				mtime: archiveResult.mtime.toISOString(),
 			},
 		};
 	}
@@ -71,38 +83,33 @@ export async function computeTypescriptEditProvenance(
 	}
 
 	// Default fallback to package datasets archive
-	const defaultArchive = typescriptEditFixturesArchive();
-	try {
-		const stat = await fs.stat(defaultArchive);
-		const buffer = await fs.readFile(defaultArchive);
-		const hash = createHash("sha256").update(buffer).digest("hex");
+	const archiveResult = await readFixturesArchive({
+		allowMissingArchive: options.allowMissingArchive,
+	});
 
+	if (!archiveResult.ok) {
 		return {
 			suite: TYPESCRIPT_EDIT_SUITE_NAME,
 			version,
-			sha: hash,
+			sha: null,
 			sourceUrl: DEFAULT_FIXTURES_ARCHIVE_RELATIVE,
 			metadata: {
-				archivePath: defaultArchive,
-				contentHash: hash,
-				sizeBytes: stat.size,
-				mtime: stat.mtime.toISOString(),
+				archivePath: archiveResult.path,
+				error: archiveResult.error,
 			},
 		};
-	} catch (error) {
-		if (options.allowMissingArchive === true) {
-			return {
-				suite: TYPESCRIPT_EDIT_SUITE_NAME,
-				version,
-				sha: null,
-				sourceUrl: DEFAULT_FIXTURES_ARCHIVE_RELATIVE,
-				metadata: {
-					archivePath: defaultArchive,
-					error: error instanceof Error ? error.message : "Archive not found or unreadable",
-				},
-			};
-		}
-		const err = error instanceof Error ? error.message : String(error);
-		throw new Error(`TypeScript edit fixtures archive not found or unreadable at "${defaultArchive}": ${err}`);
 	}
+
+	return {
+		suite: TYPESCRIPT_EDIT_SUITE_NAME,
+		version,
+		sha: archiveResult.sha,
+		sourceUrl: DEFAULT_FIXTURES_ARCHIVE_RELATIVE,
+		metadata: {
+			archivePath: archiveResult.path,
+			contentHash: archiveResult.sha,
+			sizeBytes: archiveResult.size,
+			mtime: archiveResult.mtime.toISOString(),
+		},
+	};
 }

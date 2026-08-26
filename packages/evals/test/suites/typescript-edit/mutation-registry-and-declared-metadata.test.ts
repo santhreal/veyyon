@@ -25,6 +25,34 @@ import {
 	mutationIds,
 	requireMutation,
 } from "../../../src/suites/typescript-edit/mutations";
+import * as accessFamily from "../../../src/suites/typescript-edit/mutations/access";
+import * as callFamily from "../../../src/suites/typescript-edit/mutations/call";
+import * as duplicateFamily from "../../../src/suites/typescript-edit/mutations/duplicate";
+import * as identifierFamily from "../../../src/suites/typescript-edit/mutations/identifier";
+import * as importFamily from "../../../src/suites/typescript-edit/mutations/import";
+import * as literalFamily from "../../../src/suites/typescript-edit/mutations/literal";
+import * as operatorFamily from "../../../src/suites/typescript-edit/mutations/operator";
+import * as regexFamily from "../../../src/suites/typescript-edit/mutations/regex";
+import * as structuralFamily from "../../../src/suites/typescript-edit/mutations/structural";
+import * as unicodeFamily from "../../../src/suites/typescript-edit/mutations/unicode";
+
+/**
+ * Every family module, swept at run time. A mutation class exported by a family module and left out
+ * of BUILTIN_MUTATIONS is invisible to generation: the registry is the only thing generation reads,
+ * so an unregistered class ships as dead code that no corpus ever exercises.
+ */
+const MUTATION_FAMILIES: Readonly<Record<string, Record<string, unknown>>> = {
+	access: accessFamily,
+	call: callFamily,
+	duplicate: duplicateFamily,
+	identifier: identifierFamily,
+	import: importFamily,
+	literal: literalFamily,
+	operator: operatorFamily,
+	regex: regexFamily,
+	structural: structuralFamily,
+	unicode: unicodeFamily,
+};
 
 describe("mutation registry and declared metadata", () => {
 	it("sweeps every registered mutation at runtime and asserts full declared metadata", () => {
@@ -82,6 +110,23 @@ describe("mutation registry and declared metadata", () => {
 				}
 			}
 		}
+	});
+
+	it("registers every mutation class each family module exports", () => {
+		const registeredConstructors = new Set(allMutations().map(mutation => mutation.constructor.name));
+		const unregistered: string[] = [];
+
+		for (const [family, module] of Object.entries(MUTATION_FAMILIES)) {
+			const classes = Object.entries(module).filter(
+				([name, value]) => typeof value === "function" && name.endsWith("Mutation") && name !== "BaseAstMutation",
+			);
+			expect(classes.length).toBeGreaterThan(0);
+			for (const [name] of classes) {
+				if (!registeredConstructors.has(name)) unregistered.push(`${family}: ${name}`);
+			}
+		}
+
+		expect(unregistered).toEqual([]);
 	});
 
 	it("refuses duplicate mutation ID registration with DuplicateMutationError", () => {

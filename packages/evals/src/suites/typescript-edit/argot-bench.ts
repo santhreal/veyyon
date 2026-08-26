@@ -14,47 +14,35 @@
  */
 
 import * as fs from "node:fs/promises";
+import * as os from "node:os";
 import * as path from "node:path";
 import type { AgentMessage } from "@veyyon/agent-core";
 import { assistantTextBlocksFromUnknown } from "@veyyon/ai/utils/message-text";
 import { createAgentSession, discoverAuthStorage, ModelRegistry, SessionManager, Settings } from "@veyyon/coding-agent";
 import { loadArgotFolder } from "@veyyon/coding-agent/argot-cache";
 import { ArgotSession, DEFAULT_SIGIL, makePromptFragment, measureDecode, renderPreamble, type Vocabulary } from "argot";
-import { typescriptEditFixturesArchive } from "../../paths";
+import Handlebars from "handlebars";
 import {
 	type ArgotCertification,
 	type ArgotRunMeasurement,
 	assembleRunMeasurement,
 	certifyArgot,
 } from "./argot-certify";
+import { extractBenchmarkFixtures } from "./extract";
+import forcedAdoptionPromptText from "./prompts/argot-forced-adoption.md" with { type: "text" };
+import sigilEmissionPromptText from "./prompts/argot-sigil-emission.md" with { type: "text" };
+import reproBarrelPromptText from "./prompts/repro-barrel-reexport.md" with { type: "text" };
+import reproFeaturePromptText from "./prompts/repro-new-feature.md" with { type: "text" };
 import type { EditTask } from "./tasks";
 import { loadTasksFromDir } from "./tasks";
 import { verifyExpectedFileSubset } from "./verify";
 
-/**
- * Extract the bundled fixture tasks into a fresh temp dir. Returns the directory
- * that directly contains the task folders (descending into a single top-level
- * wrapper directory if the archive has one, matching the edit adapter), plus a
- * cleanup.
- */
-export async function extractBenchmarkFixtures(): Promise<{ dir: string; cleanup: () => Promise<void> }> {
-	const root = await fs.mkdtemp(path.join(await realTmp(), "argot-bench-fixtures-"));
-	const archivePath = typescriptEditFixturesArchive();
-	const archive = new Bun.Archive(await Bun.file(archivePath).arrayBuffer());
-	for (const [filePath, file] of await archive.files()) {
-		await Bun.write(path.join(root, filePath), file);
-	}
-	const entries = await fs.readdir(root, { withFileTypes: true });
-	const dirs = entries.filter(entry => entry.isDirectory());
-	const files = entries.filter(entry => entry.isFile());
-	const dir = dirs.length === 1 && files.length === 0 ? path.join(root, dirs[0]!.name) : root;
-	return { dir, cleanup: () => fs.rm(root, { recursive: true, force: true }) };
-}
+export { extractBenchmarkFixtures };
 
-async function realTmp(): Promise<string> {
-	const os = await import("node:os");
-	return os.tmpdir();
-}
+const reproBarrelTemplate = Handlebars.compile(reproBarrelPromptText, { noEscape: true });
+const reproFeatureTemplate = Handlebars.compile(reproFeaturePromptText, { noEscape: true });
+const sigilEmissionTemplate = Handlebars.compile(sigilEmissionPromptText, { noEscape: true });
+const forcedAdoptionTemplate = Handlebars.compile(forcedAdoptionPromptText, { noEscape: true });
 
 /**
  * Apply this phase's argot policy to the LIVE settings singleton.
@@ -150,7 +138,7 @@ export interface ArgotBenchOutcome {
  */
 export async function runArgotBench(options: RunArgotBenchOptions): Promise<ArgotBenchOutcome> {
 	const fixtures = await extractBenchmarkFixtures();
-	const workRoot = await fs.mkdtemp(path.join(await realTmp(), "argot-bench-work-"));
+	const workRoot = await fs.mkdtemp(path.join(os.tmpdir(), "argot-bench-work-"));
 	try {
 		const allTasks = await loadTasksFromDir(fixtures.dir);
 		const tasks = options.taskLimit ? allTasks.slice(0, options.taskLimit) : allTasks;
@@ -227,23 +215,22 @@ const CONTENT_REPRO_TASKS: ReproTask[] = [
 		corpus: reproCorpus(),
 		targetFile: "src/barrel.ts",
 		required: [REPRO_SHARED.pkg, REPRO_SHARED.deepPath, REPRO_SHARED.url],
-		prompt:
-			"Create a new file `src/barrel.ts`. In it:\n" +
-			`- re-export \`helper\` from '${REPRO_SHARED.pkg}'\n` +
-			`- re-export \`pool\` from '${REPRO_SHARED.deepPath}'\n` +
-			`- export a constant \`ENDPOINT\` set to the string '${REPRO_SHARED.url}'\n` +
-			"Write only that file.",
+		prompt: reproBarrelTemplate({
+			pkg: REPRO_SHARED.pkg,
+			deepPath: REPRO_SHARED.deepPath,
+			url: REPRO_SHARED.url,
+		}),
 	},
 	{
 		id: "repro-new-feature",
 		corpus: reproCorpus(),
 		targetFile: "src/feature-6.ts",
 		required: [REPRO_SHARED.pkg, REPRO_SHARED.deepPath, REPRO_SHARED.url],
-		prompt:
-			"Create `src/feature-6.ts` following the exact same shape as the other feature files in `src/`: " +
-			`import \`helper\` from '${REPRO_SHARED.pkg}', import \`pool\` from '${REPRO_SHARED.deepPath}', ` +
-			`define \`const ENDPOINT = '${REPRO_SHARED.url}'\`, and export a function \`feature6()\` that returns ` +
-			"`helper(pool, ENDPOINT)`. Write only that file.",
+		prompt: reproFeatureTemplate({
+			pkg: REPRO_SHARED.pkg,
+			deepPath: REPRO_SHARED.deepPath,
+			url: REPRO_SHARED.url,
+		}),
 	},
 ];
 
@@ -348,7 +335,7 @@ async function runReproPhase(
  * certification.
  */
 export async function runContentReproBench(options: RunArgotBenchOptions): Promise<ArgotBenchOutcome> {
-	const workRoot = await fs.mkdtemp(path.join(await realTmp(), "argot-repro-work-"));
+	const workRoot = await fs.mkdtemp(path.join(os.tmpdir(), "argot-repro-work-"));
 	try {
 		const tasks = options.taskLimit ? CONTENT_REPRO_TASKS.slice(0, options.taskLimit) : CONTENT_REPRO_TASKS;
 		if (tasks.length === 0) {
@@ -403,7 +390,7 @@ export async function measureSigilEmission(
 	// `Settings.init` would no-op and leak that on-state into this measurement).
 	await applyArgotPhaseSettings(false, model);
 	const authStorage = await discoverAuthStorage();
-	const cwd = await fs.mkdtemp(path.join(await realTmp(), "argot-sigil-"));
+	const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "argot-sigil-"));
 	const results: SigilEmissionResult[] = [];
 	try {
 		const modelRegistry = new ModelRegistry(authStorage);
@@ -411,9 +398,7 @@ export async function measureSigilEmission(
 			// A fixed nonce name keeps the token unlikely to occur by chance; the test
 			// is whether the SIGIL survives, so the name is deliberately mundane.
 			const token = `${sigil}kx7qz`;
-			const prompt =
-				`Output this exact token ${repetitions} times, separated by single spaces, ` +
-				`and write nothing else at all (no quotes, no explanation): ${token}`;
+			const prompt = sigilEmissionTemplate({ repetitions, token });
 			const session = await createAgentSession({
 				cwd,
 				modelPattern: model,
@@ -496,18 +481,12 @@ export async function measureForcedAdoption(model: string): Promise<ForcedAdopti
 	]);
 	const vocab: Vocabulary = { version: 1, sigil: DEFAULT_SIGIL, handles, meta: new Map() };
 	const teaching = `${renderPreamble({ tools: false })}\n\n${makePromptFragment(vocab)}`;
-	const prompt =
-		`${teaching}\n\n` +
-		"Now apply that shorthand. Reproduce the following three references exactly, one per line, " +
-		"but replace any value that appears in the dictionary above with its handle. Output only the " +
-		"three lines, nothing else:\n" +
-		`${expansions.join("\n")}`;
-
+	const prompt = forcedAdoptionTemplate({ teaching, references: expansions.join("\n") });
 	// Argot off in the harness: this probe teaches the handles by prepending the
 	// preamble to the prompt itself, so the codec must not also inject or decode.
 	await applyArgotPhaseSettings(false, model);
 	const authStorage = await discoverAuthStorage();
-	const cwd = await fs.mkdtemp(path.join(await realTmp(), "argot-forced-"));
+	const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "argot-forced-"));
 	try {
 		const modelRegistry = new ModelRegistry(authStorage);
 		const session = await createAgentSession({

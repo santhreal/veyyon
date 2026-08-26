@@ -1,30 +1,12 @@
 #!/usr/bin/env bun
 /** Manager-owned executable adapter for the TypeScript edit benchmark. */
-import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { parseArgs } from "node:util";
-import { errorMessage, TempDir } from "@veyyon/utils";
-import { typescriptEditFixturesArchive } from "../../../paths";
+import { errorMessage } from "@veyyon/utils";
+import { extractFixtures } from "../extract";
 import { loadTasksFromDir } from "../tasks";
 import { generateJsonReport } from "./report";
 import { type BenchmarkConfig, runBenchmark } from "./runner";
-
-const FIXTURES_ARCHIVE = typescriptEditFixturesArchive();
-
-async function extractFixtures(): Promise<{ dir: string; temp: TempDir }> {
-	const temp = await TempDir.create("@evals-edit-fixtures-");
-	const archive = new Bun.Archive(await Bun.file(FIXTURES_ARCHIVE).arrayBuffer());
-	for (const [filePath, file] of await archive.files()) {
-		await Bun.write(path.join(temp.path(), filePath), file);
-	}
-	const entries = await fs.readdir(temp.path(), { withFileTypes: true });
-	const directories = entries.filter(entry => entry.isDirectory());
-	const files = entries.filter(entry => entry.isFile());
-	return {
-		dir: directories.length === 1 && files.length === 0 ? path.join(temp.path(), directories[0]!.name) : temp.path(),
-		temp,
-	};
-}
 
 /** Execute an edit benchmark and continuously materialize its normalized source artifact. */
 export async function main(argv = process.argv.slice(2)): Promise<void> {
@@ -89,7 +71,7 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
 		await writes;
 		await Bun.write(values.output, generateJsonReport(result));
 	} finally {
-		await fixtures.temp.remove();
+		await fixtures.cleanup();
 	}
 }
 

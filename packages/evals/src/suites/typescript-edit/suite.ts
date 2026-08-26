@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { errorMessage } from "@veyyon/utils";
@@ -14,7 +13,8 @@ import type {
 	TrialCell,
 	TrialScore,
 } from "../../core/types";
-import { typescriptEditCacheDir, typescriptEditFixturesArchive } from "../../paths";
+import { typescriptEditFixturesArchive } from "../../paths";
+import { ensureFixturesExtracted, readFixturesArchive } from "./extract";
 import { computeTypescriptEditProvenance, TYPESCRIPT_EDIT_SUITE_NAME, TYPESCRIPT_EDIT_VERSION } from "./provenance";
 import { type EditTask, loadTasksFromDir } from "./tasks";
 import { verifyExpectedFileSubset } from "./verify";
@@ -38,9 +38,7 @@ export class TypescriptEditSuite implements EvalSuite {
 
 	readonly #defaultArchive: string | undefined;
 	readonly #defaultFixturesDir: string | undefined;
-	#extractedDir: string | null = null;
 	#taskMap: Map<string, EditTask> | null = null;
-
 	constructor(options: TypescriptEditSuiteOptions = {}) {
 		this.version = options.version ?? TYPESCRIPT_EDIT_VERSION;
 		this.#defaultArchive = options.defaultArchive;
@@ -55,55 +53,6 @@ export class TypescriptEditSuite implements EvalSuite {
 			return path.resolve(context.datasetDir);
 		}
 		return this.#defaultArchive ?? typescriptEditFixturesArchive();
-	}
-
-	async #ensureExtracted(archivePath: string): Promise<string> {
-		if (this.#extractedDir) {
-			const check = await fs.stat(this.#extractedDir).catch(() => null);
-			if (check?.isDirectory()) {
-				return this.#extractedDir;
-			}
-		}
-
-		const cacheRoot = typescriptEditCacheDir();
-		await fs.mkdir(cacheRoot, { recursive: true });
-
-		const buffer = await fs.readFile(archivePath);
-		const hash = createHash("sha256").update(buffer).digest("hex").slice(0, 16);
-		const targetDir = path.join(cacheRoot, hash);
-
-		const targetStat = await fs.stat(targetDir).catch(() => null);
-		if (targetStat?.isDirectory()) {
-			const entries = await fs.readdir(targetDir, { withFileTypes: true });
-			const dirs = entries.filter(entry => entry.isDirectory());
-			const files = entries.filter(entry => entry.isFile());
-			const finalDir = dirs.length === 1 && files.length === 0 ? path.join(targetDir, dirs[0]!.name) : targetDir;
-			this.#extractedDir = finalDir;
-			return finalDir;
-		}
-
-		const stagingDir = path.join(cacheRoot, `staging-${hash}-${Date.now()}`);
-		await fs.mkdir(stagingDir, { recursive: true });
-
-		const archive = new Bun.Archive(buffer.buffer);
-		for (const [filePath, file] of await archive.files()) {
-			const fullPath = path.join(stagingDir, filePath);
-			await fs.mkdir(path.dirname(fullPath), { recursive: true });
-			await fs.writeFile(fullPath, Buffer.from(await file.arrayBuffer()));
-		}
-
-		try {
-			await fs.rename(stagingDir, targetDir);
-		} catch {
-			await fs.rm(stagingDir, { recursive: true, force: true }).catch(() => {});
-		}
-
-		const entries = await fs.readdir(targetDir, { withFileTypes: true });
-		const dirs = entries.filter(entry => entry.isDirectory());
-		const files = entries.filter(entry => entry.isFile());
-		const finalDir = dirs.length === 1 && files.length === 0 ? path.join(targetDir, dirs[0]!.name) : targetDir;
-		this.#extractedDir = finalDir;
-		return finalDir;
 	}
 
 	async #getTasks(context: SuiteContext): Promise<EditTask[]> {
@@ -129,7 +78,7 @@ export class TypescriptEditSuite implements EvalSuite {
 			fixturesDir = path.resolve(this.#defaultFixturesDir);
 		} else {
 			const archivePath = this.#resolveArchivePath(context);
-			fixturesDir = await this.#ensureExtracted(archivePath);
+			fixturesDir = await ensureFixturesExtracted(archivePath);
 		}
 
 		const tasks = await loadTasksFromDir(fixturesDir);
@@ -233,51 +182,37 @@ export class TypescriptEditSuite implements EvalSuite {
 
 		const archivePath = this.#resolveArchivePath(context);
 		try {
-			const s = await fs.stat(archivePath);
-			if (!s.isFile()) {
+			await readFixturesArchive({ archivePath });
+			return { ok: true };
+		} catch (error) {
+			const err = errorMessage(error);
+			if (err.includes("not a file")) {
 				return {
 					ok: false,
 					reason: `TypeScript-edit fixture archive at ${archivePath} is not a file. Ensure datasets/typescript-edit/fixtures.tar.gz exists.`,
 					missingRequirements: ["fixture-archive"],
 				};
 			}
-			if (s.size === 0) {
+			if (err.includes("empty (0 bytes)")) {
 				return {
 					ok: false,
 					reason: `TypeScript-edit fixture archive at ${archivePath} is empty (0 bytes). Re-generate or restore datasets/typescript-edit/fixtures.tar.gz.`,
 					missingRequirements: ["fixture-archive"],
 				};
 			}
-		} catch (error) {
-			const err = errorMessage(error);
-			return {
-				ok: false,
-				reason: `TypeScript-edit fixture archive is missing or unreadable at ${archivePath} (${err}). Ensure datasets/typescript-edit/fixtures.tar.gz exists.`,
-				missingRequirements: ["fixture-archive"],
-			};
-		}
-
-		try {
-			const buffer = await fs.readFile(archivePath);
-			const archive = new Bun.Archive(buffer.buffer);
-			const files = await archive.files();
-			if (files.size === 0) {
+			if (err.includes("contains no files")) {
 				return {
 					ok: false,
 					reason: `TypeScript-edit fixture archive at ${archivePath} contains no files.`,
 					missingRequirements: ["fixture-archive-contents"],
 				};
 			}
-		} catch (error) {
-			const err = errorMessage(error);
 			return {
 				ok: false,
-				reason: `TypeScript-edit fixture archive at ${archivePath} is corrupt or unreadable: ${err}.`,
-				missingRequirements: ["fixture-archive-readable"],
+				reason: `TypeScript-edit fixture archive is missing or unreadable at ${archivePath} (${err}). Ensure datasets/typescript-edit/fixtures.tar.gz exists.`,
+				missingRequirements: ["fixture-archive"],
 			};
 		}
-
-		return { ok: true };
 	}
 
 	async scoreTrial(cell: TrialCell, artifacts: TrialArtifacts): Promise<TrialScore> {

@@ -3,7 +3,7 @@
  */
 import * as path from "node:path";
 import * as prettier from "prettier";
-import { listFiles } from "./shared";
+import { listFiles } from "../../core/fs-walk";
 
 const PRETTIER_OPTIONS: prettier.Options = {
 	printWidth: 100,

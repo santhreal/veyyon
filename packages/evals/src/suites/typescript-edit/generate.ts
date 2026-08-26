@@ -25,10 +25,19 @@ import * as util from "node:util";
 import { parseArgs } from "node:util";
 import { clampLow, errorMessage, TempDir } from "@veyyon/utils";
 import { diffLines } from "diff";
+import Handlebars from "handlebars";
 import { typescriptEditFixturesArchive } from "../../paths";
 import { formatContent } from "./formatter";
 import { allMutations, type Mutation, type MutationInfo, mutationCategoryMap } from "./mutations";
+import generateTaskEasyText from "./prompts/generate-task-easy.md" with { type: "text" };
+import generateTaskHardText from "./prompts/generate-task-hard.md" with { type: "text" };
+import generateTaskMediumText from "./prompts/generate-task-medium.md" with { type: "text" };
+import generateTaskNightmareText from "./prompts/generate-task-nightmare.md" with { type: "text" };
 
+const generateTaskEasyTemplate = Handlebars.compile(generateTaskEasyText, { noEscape: true });
+const generateTaskMediumTemplate = Handlebars.compile(generateTaskMediumText, { noEscape: true });
+const generateTaskHardTemplate = Handlebars.compile(generateTaskHardText, { noEscape: true });
+const generateTaskNightmareTemplate = Handlebars.compile(generateTaskNightmareText, { noEscape: true });
 const execFile = util.promisify(childProcess.execFile);
 
 const SUPPORTED_EXTENSIONS = new Set([".js", ".jsx", ".ts", ".tsx"]);
@@ -402,14 +411,19 @@ export function buildPrompt(
 	difficulty: Difficulty,
 	entry: FileEntry,
 ): string {
-	const header = `# Fix the bug in \`${path.basename(filePath)}\``;
+	const filename = path.basename(filePath);
 
 	if (difficulty === "easy") {
 		const detail = mutation.describe(info);
 		const location = mutation.isStructural
 			? `The issue starts around line ${info.lineNumber}.`
 			: `The issue is on line ${info.lineNumber}.`;
-		return [header, detail, location, mutation.fixHint].join("\n\n");
+		return generateTaskEasyTemplate({
+			filename,
+			detail,
+			location,
+			fixHint: mutation.fixHint,
+		});
 	}
 
 	if (difficulty === "medium") {
@@ -427,34 +441,43 @@ export function buildPrompt(
 		if (mutation.isMultiEdit) {
 			location += " The same error appears in multiple places.";
 		}
-		return [header, detail, location, mutation.fixHint].join("\n\n");
+		return generateTaskMediumTemplate({
+			filename,
+			detail,
+			location,
+			fixHint: mutation.fixHint,
+		});
 	}
 
 	if (difficulty === "hard") {
 		const detail = mutation.describe(info);
+		let instruction = "Find and fix this issue.";
 		if (mutation.isMultiEdit) {
-			return [header, detail, "Find and fix all occurrences of this issue."].join("\n\n");
+			instruction = "Find and fix all occurrences of this issue.";
+		} else if (mutation.isStructural) {
+			instruction = "The fix may involve multiple lines.";
 		}
-		if (mutation.isStructural) {
-			return [header, detail, "The fix may involve multiple lines."].join("\n\n");
-		}
-		return [header, detail, "Find and fix this issue."].join("\n\n");
+		return generateTaskHardTemplate({
+			filename,
+			detail,
+			instruction,
+		});
 	}
 
 	// nightmare
+	let description = "There is a subtle bug in this file.";
+	let instruction = "Track it down and fix it with a minimal edit.";
 	if (mutation.isStructural) {
-		return [header, "There is a structural bug in this file.", "Track it down and fix it with a minimal edit."].join(
-			"\n\n",
-		);
+		description = "There is a structural bug in this file.";
+	} else if (mutation.isMultiEdit) {
+		description = "An identifier is consistently misspelled throughout this file.";
+		instruction = "Find all occurrences and fix them.";
 	}
-	if (mutation.isMultiEdit) {
-		return [
-			header,
-			"An identifier is consistently misspelled throughout this file.",
-			"Find all occurrences and fix them.",
-		].join("\n\n");
-	}
-	return [header, "There is a subtle bug in this file.", "Track it down and fix it with a minimal edit."].join("\n\n");
+	return generateTaskNightmareTemplate({
+		filename,
+		description,
+		instruction,
+	});
 }
 
 export function createSeededRng(seed: number): () => number {
