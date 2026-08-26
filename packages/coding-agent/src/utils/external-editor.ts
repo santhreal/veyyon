@@ -25,6 +25,49 @@ export function getEditorCommand(): string | undefined {
 	return undefined;
 }
 
+/**
+ * Editors that fork and return before the file has been edited. Launched
+ * without their wait flag the child exits at once, the temp file is read back
+ * unchanged, and the whole round trip appears to have done nothing.
+ */
+export const EDITOR_WAIT_FLAGS: ReadonlyMap<string, readonly string[]> = new Map<string, readonly string[]>([
+	["code", ["--wait"]],
+	["code-insiders", ["--wait"]],
+	["codium", ["--wait"]],
+	["vscodium", ["--wait"]],
+	["cursor", ["--wait"]],
+	["windsurf", ["--wait"]],
+	["positron", ["--wait"]],
+	["zed", ["--wait"]],
+	["subl", ["--wait"]],
+	["sublime_text", ["--wait"]],
+	["atom", ["--wait"]],
+	["gedit", ["--wait"]],
+	["kate", ["--block"]],
+	["mate", ["--wait"]],
+	["gvim", ["--nofork"]],
+	["mvim", ["--nofork"]],
+	["notepad++", ["-multiInst", "-nosession"]],
+]);
+
+/** The binary a command line starts with, without directory or `.exe`. */
+function editorBinaryName(command: string): string {
+	const base = command.replace(/\\/g, "/").split("/").pop() ?? command;
+	return base.replace(/\.exe$/i, "").toLowerCase();
+}
+
+/**
+ * Split `editorCmd` into a command and its arguments, adding the wait flag a
+ * GUI editor needs when the command line does not already carry one.
+ */
+export function resolveEditorInvocation(editorCmd: string): { command: string; args: string[] } {
+	const [command = editorCmd, ...args] = editorCmd.trim().split(/\s+/);
+	const waitFlags = EDITOR_WAIT_FLAGS.get(editorBinaryName(command));
+	if (!waitFlags) return { command, args };
+	const alreadyWaits = args.includes("-w") || waitFlags.some(flag => args.includes(flag));
+	return { command, args: alreadyWaits ? args : [...args, ...waitFlags] };
+}
+
 export interface OpenInEditorOptions {
 	/** File extension for the temp file (default: ".md"). */
 	extension?: string;
@@ -51,7 +94,7 @@ export async function openInEditor(
 	try {
 		await Bun.write(tmpFile, content);
 
-		const [editor, ...editorArgs] = editorCmd.split(" ");
+		const { command: editor, args: editorArgs } = resolveEditorInvocation(editorCmd);
 		const stdio = options?.stdio ?? ["inherit", "inherit", "inherit"];
 
 		const child = spawn(editor, [...editorArgs, tmpFile], { stdio, shell: process.platform === "win32" });
