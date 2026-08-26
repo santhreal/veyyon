@@ -1,0 +1,27 @@
+{
+	"schemaVersion": 3,
+	"id": "79714405bd8e64e7",
+	"status": "recorded",
+	"recordedAt": "2026-08-26T10:45:31.814Z",
+	"template": "text-primitive-sweep",
+	"seed": 0,
+	"kind": "failed",
+	"message": "wrap of zwjEmoji at width 5: row 2 is 9 cells wide, past the 5 asked for, and is more than one grapheme: \"y 👨🏽‍💻\"",
+	"observedGrid": [
+		"👩‍👩‍👧‍👦",
+		"famil",
+		"y 👨🏽‍💻",
+		"dev"
+	],
+	"family": "textPrimitive",
+	"state": {
+		"primitive": "wrap",
+		"fixture": "zwjEmoji",
+		"width": 5,
+		"ellipsis": "none",
+		"pad": false,
+		"strict": false,
+		"startColumn": 0
+	},
+	"oracle": "everyWrappedRowFitsTheWidth"
+}

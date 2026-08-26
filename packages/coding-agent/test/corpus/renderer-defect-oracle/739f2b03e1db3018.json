@@ -1,0 +1,24 @@
+{
+	"schemaVersion": 3,
+	"id": "739f2b03e1db3018",
+	"status": "recorded",
+	"recordedAt": "2026-08-26T10:43:50.805Z",
+	"template": "text-primitive-sweep",
+	"seed": 0,
+	"kind": "failed",
+	"message": "truncate of tabs at width 8: row 0 forwards a raw tab: \"col\\tc…\"",
+	"observedGrid": [
+		"col\tc…"
+	],
+	"family": "textPrimitive",
+	"state": {
+		"primitive": "truncate",
+		"fixture": "tabs",
+		"width": 8,
+		"ellipsis": "unicode",
+		"pad": false,
+		"strict": false,
+		"startColumn": 0
+	},
+	"oracle": "noProducedRowForwardsARawTab"
+}

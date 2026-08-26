@@ -1,0 +1,27 @@
+{
+	"schemaVersion": 3,
+	"id": "100faee68ba4793d",
+	"status": "recorded",
+	"recordedAt": "2026-08-26T10:43:50.808Z",
+	"template": "text-primitive-sweep",
+	"seed": 0,
+	"kind": "failed",
+	"message": "wrap of controlBytes at width 1: the wrapped rows carry 6 visible glyphs, the input 7. Wrapped: \"ab\\u0007c\\bd\"",
+	"observedGrid": [
+		"a",
+		"b\u0007",
+		"c\b",
+		"d"
+	],
+	"family": "textPrimitive",
+	"state": {
+		"primitive": "wrap",
+		"fixture": "controlBytes",
+		"width": 1,
+		"ellipsis": "none",
+		"pad": false,
+		"strict": false,
+		"startColumn": 0
+	},
+	"oracle": "wrappingKeepsEveryVisibleGlyph"
+}

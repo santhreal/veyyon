@@ -14,7 +14,8 @@
  *
  * The corpus holds one case shape per oracle registry, not one store per registry. A composer case
  * records a mount; an overlay case records the same mount plus the modals shown over it; a tool-render
- * case records which renderer painted which hostile fixture at which width. The reader dispatches on
+ * case records which renderer painted which hostile fixture at which width; a text-primitive case
+ * records which primitive ran over which fixture with which options. The reader dispatches on
  * `family`, so a case is replayed by the runner that recorded it and judged against the registry that
  * owns its oracle. A second copy of the round trip is how the stores drift.
  *
@@ -67,6 +68,7 @@ import { Settings } from "../src/config/settings";
 import type {
 	ComposerOracleGuarantee,
 	OverlayOracleGuarantee,
+	TextPrimitiveOracleGuarantee,
 	ToolRenderOracleGuarantee,
 } from "../src/modes/components/defect-oracles";
 import { getThemeByName, initTheme, setThemeInstance, type Theme } from "../src/modes/theme/theme";
@@ -86,6 +88,7 @@ import {
 	loadCorpusCase,
 	type OverlayCorpusCase,
 	replayCorpusFile,
+	type TextPrimitiveCorpusCase,
 	type ToolRenderCorpusCase,
 } from "./helpers/renderer-defect-corpus";
 
@@ -318,6 +321,34 @@ function toolRenderValidCase(): ToolRenderCorpusCase {
 	};
 }
 
+/** A text-primitive case that validates: which primitive over which fixture, with which options. */
+function textPrimitiveValidCase(): TextPrimitiveCorpusCase {
+	const state = {
+		primitive: "truncate",
+		fixture: "tabs",
+		width: 8,
+		ellipsis: "unicode",
+		pad: false,
+		strict: false,
+		startColumn: 0,
+	} as const;
+	const oracle: TextPrimitiveOracleGuarantee = "noProducedRowForwardsARawTab";
+	return {
+		schemaVersion: CORPUS_SCHEMA_VERSION,
+		id: computeCaseHash("textPrimitive", state, oracle, "failed"),
+		status: "recorded",
+		recordedAt: "2026-01-01T00:00:00.000Z",
+		template: "negative-control",
+		seed: 0,
+		family: "textPrimitive",
+		state,
+		oracle,
+		kind: "failed",
+		message: "row 0 forwards a raw tab",
+		observedGrid: ["col\tc…"],
+	};
+}
+
 describe("a case the reader has to reject", () => {
 	beforeAll(() => {
 		fs.mkdirSync(INVALID_DIR, { recursive: true });
@@ -392,6 +423,36 @@ describe("a case the reader has to reject", () => {
 			/needs a name and a lines array/,
 		],
 		[
+			"a text-primitive case naming a primitive that does not exist",
+			() => {
+				const base = textPrimitiveValidCase();
+				return {
+					...base,
+					state: {
+						...base.state,
+						primitive: "reflow" as unknown as TextPrimitiveCorpusCase["state"]["primitive"],
+					},
+				};
+			},
+			/records primitive, fixture, width, ellipsis, pad, strict and startColumn/,
+		],
+		[
+			"a text-primitive case naming a fixture the runner does not drive",
+			() => {
+				const base = textPrimitiveValidCase();
+				return { ...base, state: { ...base.state, fixture: "the old fixture" } };
+			},
+			/is not one the runner drives/,
+		],
+		[
+			"a text-primitive case naming a composer oracle",
+			() => ({
+				...textPrimitiveValidCase(),
+				oracle: "exactlyOneComposerPrompt" as unknown as TextPrimitiveOracleGuarantee,
+			}),
+			/not a guarantee of the textPrimitive registry/,
+		],
+		[
 			"a tool-render case naming a fixture the runner does not drive",
 			() => {
 				const base = toolRenderValidCase();
@@ -449,6 +510,7 @@ describe("a case the reader has to reject", () => {
 		["a composer case", composerValidCase],
 		["an overlay case", overlayValidCase],
 		["a tool-render case", toolRenderValidCase],
+		["a text-primitive case", textPrimitiveValidCase],
 	] as const)("accepts %s the controls are built from", (_name, build) => {
 		const corpusCase = build();
 		const file = path.join(INVALID_DIR, `${corpusCase.id}.json`);

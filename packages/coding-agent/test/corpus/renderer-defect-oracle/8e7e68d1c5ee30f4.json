@@ -1,0 +1,24 @@
+{
+	"schemaVersion": 3,
+	"id": "8e7e68d1c5ee30f4",
+	"status": "recorded",
+	"recordedAt": "2026-08-26T10:45:31.814Z",
+	"template": "text-primitive-sweep",
+	"seed": 0,
+	"kind": "failed",
+	"message": "slice of zwjEmoji at width 1: the loose slice is 11 cells wide, past the 3 it may reach: \"👩‍👩‍👧‍👦\"",
+	"observedGrid": [
+		"👩‍👩‍👧‍👦"
+	],
+	"family": "textPrimitive",
+	"state": {
+		"primitive": "slice",
+		"fixture": "zwjEmoji",
+		"width": 1,
+		"ellipsis": "none",
+		"pad": false,
+		"strict": false,
+		"startColumn": 0
+	},
+	"oracle": "slicingStaysWithinTheLengthAsked"
+}

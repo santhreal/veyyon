@@ -1,0 +1,24 @@
+{
+	"schemaVersion": 3,
+	"id": "6cc40add71841e8f",
+	"status": "recorded",
+	"recordedAt": "2026-08-26T10:45:31.810Z",
+	"template": "text-primitive-sweep",
+	"seed": 0,
+	"kind": "failed",
+	"message": "truncate of wideGlyphs at width 2: padded to 1 cells rather than exactly 2: \"漢\"",
+	"observedGrid": [
+		"漢"
+	],
+	"family": "textPrimitive",
+	"state": {
+		"primitive": "truncate",
+		"fixture": "wideGlyphs",
+		"width": 2,
+		"ellipsis": "omit",
+		"pad": true,
+		"strict": false,
+		"startColumn": 0
+	},
+	"oracle": "paddingReachesExactlyTheWidth"
+}

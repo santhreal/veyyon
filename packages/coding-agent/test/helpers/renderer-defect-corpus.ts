@@ -28,6 +28,10 @@ import {
 	OVERLAY_ORACLE_GUARANTEES,
 	type OverlayOracleFailure,
 	type OverlayOracleGuarantee,
+	TEXT_PRIMITIVE_ORACLE_GUARANTEES,
+	TEXT_PRIMITIVES,
+	type TextPrimitiveOracleFailure,
+	type TextPrimitiveOracleGuarantee,
 	TOOL_RENDER_ORACLE_GUARANTEES,
 	type ToolRenderEvaluationResult,
 	type ToolRenderOracleFailure,
@@ -37,6 +41,12 @@ import {
 import type { Theme } from "../../src/modes/theme/theme";
 import { type RunnerOptions, type RunnerResult, runComposerOracleScenario } from "./composer-oracle-runner";
 import { type OverlayRunnerResult, type OverlaySpec, runOverlayOracleScenario } from "./overlay-oracle-runner";
+import {
+	evaluateTextPrimitiveCase,
+	stateFor,
+	TEXT_FIXTURES,
+	type TextPrimitiveCase,
+} from "./text-primitive-oracle-runner";
 import { evaluateToolRenderAttempts, RENDER_FIXTURES, sweepToolRenders } from "./tool-render-oracle-runner";
 
 /**
@@ -63,7 +73,7 @@ export const CORPUS_SCHEMA_VERSION = 3;
  * axes did. Keyed tables below make a new family a compile error until it declares its guarantees, its
  * state validator and its replay.
  */
-export const CORPUS_FAMILIES = ["composer", "overlay", "toolRender"] as const;
+export const CORPUS_FAMILIES = ["composer", "overlay", "toolRender", "textPrimitive"] as const;
 export type CorpusFamily = (typeof CORPUS_FAMILIES)[number];
 
 /**
@@ -86,7 +96,7 @@ export type CorpusCaseKind = (typeof CORPUS_CASE_KINDS)[number];
 
 /** What one oracle did with one state, as the corpus records it. */
 export interface CorpusObservation {
-	oracle: ComposerOracleGuarantee | OverlayOracleGuarantee | ToolRenderOracleGuarantee;
+	oracle: ComposerOracleGuarantee | OverlayOracleGuarantee | ToolRenderOracleGuarantee | TextPrimitiveOracleGuarantee;
 	kind: CorpusCaseKind;
 	message: string;
 }
@@ -148,8 +158,20 @@ export interface ToolRenderCorpusCaseState {
 	width: number;
 }
 
+/**
+ * What a text-primitive case records: which primitive ran over which fixture, with which options.
+ *
+ * The input itself is not recorded. The fixture name is, and the validator rejects a name the runner
+ * no longer drives, so a case cannot replay against text nobody swept.
+ */
+export type TextPrimitiveCorpusCaseState = TextPrimitiveCase;
+
 /** Any family's state, for the id hash and the promotion path that are shared across families. */
-export type AnyCorpusCaseState = CorpusCaseState | OverlayCorpusCaseState | ToolRenderCorpusCaseState;
+export type AnyCorpusCaseState =
+	| CorpusCaseState
+	| OverlayCorpusCaseState
+	| ToolRenderCorpusCaseState
+	| TextPrimitiveCorpusCaseState;
 
 interface CorpusCaseFields {
 	schemaVersion: typeof CORPUS_SCHEMA_VERSION;
@@ -187,8 +209,14 @@ export interface ToolRenderCorpusCase extends CorpusCaseFields {
 	oracle: ToolRenderOracleGuarantee;
 }
 
+export interface TextPrimitiveCorpusCase extends CorpusCaseFields {
+	family: "textPrimitive";
+	state: TextPrimitiveCorpusCaseState;
+	oracle: TextPrimitiveOracleGuarantee;
+}
+
 /** Discriminated on `family`, so a reader that handles one cannot silently be handed the other. */
-export type CorpusCase = ComposerCorpusCase | OverlayCorpusCase | ToolRenderCorpusCase;
+export type CorpusCase = ComposerCorpusCase | OverlayCorpusCase | ToolRenderCorpusCase | TextPrimitiveCorpusCase;
 
 /**
  * Which state shape each family records.
@@ -200,6 +228,7 @@ interface CorpusStateByFamily extends Record<CorpusFamily, AnyCorpusCaseState> {
 	composer: CorpusCaseState;
 	overlay: OverlayCorpusCaseState;
 	toolRender: ToolRenderCorpusCaseState;
+	textPrimitive: TextPrimitiveCorpusCaseState;
 }
 
 /** What a replay produces, in the terms every family reports: a verdict, the rows, and a teardown. */
@@ -259,6 +288,11 @@ const ORACLE_FAMILIES: { readonly [F in CorpusFamily]: OracleFamily<CorpusStateB
 			}
 			return Promise.resolve(replayToolRenderCorpusCase(state, deps.theme));
 		},
+	},
+	textPrimitive: {
+		guarantees: TEXT_PRIMITIVE_ORACLE_GUARANTEES,
+		readState: textPrimitiveCorpusStateFrom,
+		replay: state => Promise.resolve(replayTextPrimitiveCorpusCase(state)),
 	},
 };
 
@@ -404,6 +438,48 @@ export async function replayOverlayCorpusCase(state: OverlayCorpusCaseState): Pr
 		...corpusStateToRunnerOptions(state),
 		overlays: corpusStateToOverlaySpecs(state),
 	});
+}
+
+function textPrimitiveCorpusStateFrom(value: Record<string, unknown>, label: string): TextPrimitiveCorpusCaseState {
+	const state = value.state;
+	if (typeof state !== "object" || state === null) {
+		throw new Error(`${label}: no state object.`);
+	}
+	const fields = state as Record<string, unknown>;
+	if (
+		typeof fields.primitive !== "string" ||
+		!(TEXT_PRIMITIVES as readonly string[]).includes(fields.primitive) ||
+		typeof fields.fixture !== "string" ||
+		typeof fields.width !== "number" ||
+		typeof fields.ellipsis !== "string" ||
+		typeof fields.pad !== "boolean" ||
+		typeof fields.strict !== "boolean" ||
+		typeof fields.startColumn !== "number"
+	) {
+		throw new Error(
+			`${label}: a text-primitive case records primitive, fixture, width, ellipsis, pad, strict and startColumn. Re-record the case with the sweep.`,
+		);
+	}
+	if (TEXT_FIXTURES[fields.fixture] === undefined) {
+		throw new Error(
+			`${label}: fixture ${String(fields.fixture)} is not one the runner drives. A fixture was renamed or removed; re-record the case.`,
+		);
+	}
+	return state as TextPrimitiveCorpusCaseState;
+}
+
+/**
+ * Replay a text-primitive case by driving the same primitive over the same fixture.
+ *
+ * Nothing is mounted and nothing is torn down: the primitives are pure, which is why a case of this
+ * family replays in microseconds and needs no theme, terminal or settings store.
+ */
+export function replayTextPrimitiveCorpusCase(state: TextPrimitiveCorpusCaseState): CorpusReplay {
+	return {
+		evaluation: evaluateTextPrimitiveCase(state),
+		frameState: { viewportLines: stateFor(state).rows },
+		cleanUp: () => {},
+	};
 }
 
 /** Absolute paths of every committed case, in file-name order so a run is reproducible. */
@@ -701,6 +777,22 @@ export function promoteToolRenderFailureToCorpus(
 ): string {
 	return promoteCaseToCorpus(
 		"toolRender",
+		state,
+		{ oracle: failure.oracle, kind: "failed", message: failure.message },
+		observedGrid,
+		options,
+	);
+}
+
+/** Record a text-primitive failure the evaluator reported. */
+export function promoteTextPrimitiveFailureToCorpus(
+	state: TextPrimitiveCorpusCaseState,
+	failure: TextPrimitiveOracleFailure,
+	observedGrid: readonly string[],
+	options?: { template?: string; seed?: number; status?: CorpusCaseStatus; reason?: string },
+): string {
+	return promoteCaseToCorpus(
+		"textPrimitive",
 		state,
 		{ oracle: failure.oracle, kind: "failed", message: failure.message },
 		observedGrid,
