@@ -63,35 +63,101 @@ export interface ColumnWindow {
 const SGR = sgrSequence("g");
 
 /** The truecolor background a run of SGR parameters leaves in effect. */
+/** Parse an SGR parameter substring as a non-negative integer. Returns -1 on malformed input. */
+function parseSgrInt(s: string, start: number, len: number): number {
+	let n = 0;
+	for (let k = 0; k < len; k++) {
+		const c = s.charCodeAt(start + k);
+		if (c < 48 || c > 57) return -1;
+		n = n * 10 + (c - 48);
+	}
+	return n;
+}
+
+/** Compare a substring of `s` at `[start, start+len)` against a literal string. */
+function substrEq(s: string, start: number, len: number, lit: string): boolean {
+	if (len !== lit.length) return false;
+	for (let k = 0; k < len; k++) {
+		if (s.charCodeAt(start + k) !== lit.charCodeAt(k)) return false;
+	}
+	return true;
+}
+
+/** Whether the substring at `[start, start+len)` starts with `lit`. */
+function substrStartsWith(s: string, start: number, len: number, lit: string): boolean {
+	if (len < lit.length) return false;
+	for (let k = 0; k < lit.length; k++) {
+		if (s.charCodeAt(start + k) !== lit.charCodeAt(k)) return false;
+	}
+	return true;
+}
+
 function trackBackground(current: string | undefined, params: string): string | undefined {
 	// `\x1b[m` is `\x1b[0m`: an empty parameter list is a full reset.
 	const codes = params === "" ? ["0"] : params.split(";");
 	let background = current;
-	for (let i = 0; i < codes.length; i++) {
-		const code = codes[i];
-		if (code === "0" || code === "") background = undefined;
-		else if (code === "49") background = undefined;
-		else if (code === "48") {
-			// 48;2;r;g;b is truecolor and readable; 48;5;n is indexed and is not.
-			if (codes[i + 1] === "2") {
-				const r = Number(codes[i + 2]);
-				const g = Number(codes[i + 3]);
-				const b = Number(codes[i + 4]);
-				background =
-					Number.isFinite(r) && Number.isFinite(g) && Number.isFinite(b) ? toHexColor(r, g, b) : undefined;
-				i += 4;
-			} else if (codes[i + 1] === "5") {
+	let i = 0;
+	const n = params.length;
+	while (i < n) {
+		let j = i;
+		while (j < n && params.charCodeAt(j) !== 0x3b) j++;
+		const tokLen = j - i;
+		if (substrEq(params, i, tokLen, "0") || tokLen === 0) background = undefined;
+		else if (substrEq(params, i, tokLen, "49")) background = undefined;
+		else if (substrEq(params, i, tokLen, "48")) {
+			// 48;2;r;g;b is truecolor; 48;5;n is indexed.
+			const modeStart = j + 1;
+			let modeEnd = modeStart;
+			while (modeEnd < n && params.charCodeAt(modeEnd) !== 0x3b) modeEnd++;
+			const modeLen = modeEnd - modeStart;
+			if (substrEq(params, modeStart, modeLen, "2")) {
+				let p = modeEnd + 1;
+				let rEnd = p;
+				while (rEnd < n && params.charCodeAt(rEnd) !== 0x3b) rEnd++;
+				let gStart = rEnd + 1;
+				let gEnd = gStart;
+				while (gEnd < n && params.charCodeAt(gEnd) !== 0x3b) gEnd++;
+				let bStart = gEnd + 1;
+				let bEnd = bStart;
+				while (bEnd < n && params.charCodeAt(bEnd) !== 0x3b) bEnd++;
+				const r = parseSgrInt(params, p, rEnd - p);
+				const g = parseSgrInt(params, gStart, gEnd - gStart);
+				const b = parseSgrInt(params, bStart, bEnd - bStart);
+				background = r >= 0 && g >= 0 && b >= 0 ? toHexColor(r, g, b) : undefined;
+				i = bEnd;
+			} else if (substrEq(params, modeStart, modeLen, "5")) {
 				background = undefined;
 				i += 2;
 			}
-		} else if (code.startsWith("48:")) {
-			// Colon form: `48:2::r:g:b` or `48:2:r:g:b`.
-			const parts = code.split(":").filter(part => part !== "");
-			if (parts[1] === "2" && parts.length >= 5) {
-				const [r, g, b] = parts.slice(-3).map(Number);
-				background =
-					Number.isFinite(r) && Number.isFinite(g) && Number.isFinite(b) ? toHexColor(r, g, b) : undefined;
-			} else background = undefined;
+		} else if (substrStartsWith(params, i, tokLen, "48:")) {
+			// Colon form: `48:2::r:g:b` or `48:2:r:g:b`. Scan in-place.
+			let ti = 3; // skip "48:"
+			let partIdx = 0;
+			let mode2 = false;
+			let rVal = -1;
+			let gVal = -1;
+			let bVal = -1;
+			let partCount = 1; // "48" is part 0
+			while (ti <= tokLen) {
+				let pe = ti;
+				while (pe < tokLen && params.charCodeAt(i + pe) !== 0x3a) pe++;
+				const plen = pe - ti;
+				if (plen > 0) {
+					partCount++;
+					if (partIdx === 1) {
+						mode2 = params.charCodeAt(i + ti) === 0x32 && plen === 1;
+					} else if (partIdx >= 4) {
+						const v = parseSgrInt(params, i + ti, plen);
+						if (rVal < 0) rVal = v;
+						else if (gVal < 0) gVal = v;
+						else bVal = v;
+					}
+					partIdx++;
+				}
+				ti = pe + 1;
+			}
+			background =
+				mode2 && partCount >= 5 && rVal >= 0 && gVal >= 0 && bVal >= 0 ? toHexColor(rVal, gVal, bVal) : undefined;
 		}
 	}
 	return background;
@@ -109,14 +175,25 @@ function trackBackground(current: string | undefined, params: string): string | 
  * across the page.
  */
 function touchesBackground(params: string): boolean {
-	const codes = params === "" ? ["0"] : params.split(";");
-	for (const code of codes) {
-		if (code === "0" || code === "" || code === "49" || code === "48") return true;
-		if (code.startsWith("48:")) return true;
-		// The 8/16-colour background ranges. Not read as a colour (see the module
-		// header) but they do change the background, so a paint over them is closed.
-		const value = Number(code);
-		if (Number.isInteger(value) && ((value >= 40 && value <= 47) || (value >= 100 && value <= 107))) return true;
+	if (params === "") return true;
+	let i = 0;
+	const n = params.length;
+	while (i < n) {
+		let j = i;
+		while (j < n && params.charCodeAt(j) !== 0x3b) j++;
+		const tokLen = j - i;
+		if (
+			tokLen === 0 ||
+			substrEq(params, i, tokLen, "0") ||
+			substrEq(params, i, tokLen, "49") ||
+			substrEq(params, i, tokLen, "48")
+		)
+			return true;
+		if (substrStartsWith(params, i, tokLen, "48:")) return true;
+		// The 8/16-colour background ranges.
+		const value = parseSgrInt(params, i, j - i);
+		if (value >= 0 && ((value >= 40 && value <= 47) || (value >= 100 && value <= 107))) return true;
+		i = j + 1;
 	}
 	return false;
 }
