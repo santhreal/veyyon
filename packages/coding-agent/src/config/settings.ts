@@ -30,14 +30,9 @@ import {
 } from "@veyyon/utils/dirs";
 import { withFileLock } from "@veyyon/utils/file-lock";
 import { isEnoent } from "@veyyon/utils/fs-error";
-// Owners, not the `@veyyon/utils` barrel, because that is this repository's rule and this is the module
-// 528 test files reach. It bought NO modules, and that is worth stating so nobody re-measures it hoping:
-// repointing a file removes the barrel edge only when that file was the LAST path to it, and this closure
-// still reaches the barrel elsewhere, so `config/settings.ts` reads 136 before and after. The rule is
-// still right -- the edge is gone from HERE, and the next file in the closure that stops naming the barrel
-// gets the whole 82 rather than none of it. Naming `dirs` directly is safe: it applies the
-// directory-location keys from `$HOME/.env` itself, which is what `packages/utils/src/dotenv-home.ts`
-// exists for.
+// Owners, not the `@veyyon/utils` barrel. 528 test files reach this module; naming owners bought zero
+// modules (the closure reaches the barrel elsewhere). Naming `dirs` directly applies directory-location
+// keys from `$HOME/.env` via `dotenv-home.ts`.
 import * as logger from "@veyyon/utils/logger";
 import { expandTilde } from "@veyyon/utils/path";
 import * as procmgr from "@veyyon/utils/procmgr";
@@ -46,22 +41,17 @@ import { errorMessage, isRecord } from "@veyyon/utils/type-guards";
 import { syncYamlTextToSettings } from "@veyyon/utils/yaml-sync";
 import { JSONC, YAML } from "bun";
 import type { ModelRole } from "../config/model-roles";
-// The classifier leaf, NOT `../modes/theme/theme` and NOT `../modes/theme/builtin-themes`. The barrel
-// imports `./shimmer`, which imports this file, and that cycle had to be instantiated as one unit:
-// importing `config/settings` anywhere cost 51 MB, paid once per test file because the runner gives each
-// one a fresh realm. `builtin-themes` breaks the cycle but statically embeds one JSON module per bundled
-// theme, so reaching through it cost this file 103 modules of theme data nothing here reads, and cost
-// them again to every one of the ~1,500 files that import `Settings`. `theme-luminance` owns the same
-// boolean as a table and carries no theme JSON.
+// The classifier leaf, NOT `../modes/theme/theme` or `builtin-themes`. The barrel imports `./shimmer`
+// which imports this file — a cycle that cost 51 MB per realm. `builtin-themes` embeds one JSON module
+// per theme (103 modules of data nothing here reads). `theme-luminance` owns the same boolean as a table.
 import { isLightTheme } from "../modes/theme/theme-luminance";
 import { AgentStorage } from "../session/agent-storage";
 import { normalizeToolName } from "../tools/builtin-names";
 import { type EditMode, normalizeEditMode } from "../utils/edit-mode";
 import { type CompactionStrategySetting, migrateCompactionStrategyValue } from "./compaction-strategy";
 import { UNSET_NUMBER } from "./optional-number";
+// The slot leaf (`./settings-instance.ts`), not a second copy: this module fills it; callers read it.
 import { GLOBAL_SETTING_BINDINGS } from "./settings-domains/global";
-// The slot, not a second copy of it: this module FILLS the slot that `./settings-instance.ts` owns, and
-// that leaf is what a caller reads when it wants a value rather than the store. See its doc for the split.
 import {
 	runSettingsTestResetHooks,
 	setSettingsInstance,
