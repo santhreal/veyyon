@@ -20,6 +20,7 @@ import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import YAML from "yaml";
+import { stagePierAssets } from "../../src/backends/pier/asset-staging";
 import { PierExecutionBackend } from "../../src/backends/pier/backend";
 import { registerPierBackend } from "../../src/backends/pier/register";
 import * as pierRunner from "../../src/backends/pier/runner";
@@ -453,5 +454,44 @@ describe("PierExecutionBackend asset staging", () => {
 
 		const verdict = await backend.preflight(context);
 		expect(verdict.ok).toBe(true);
+	});
+
+	it("reports the digest of the staged copy and one arm file per variant", () => {
+		const assetsDir = path.join(testDir, "direct-assets");
+		const variants: Variant[] = [
+			{
+				name: "baseline",
+				harness: "veyyon",
+				configPath: null,
+				promptVariantPath: null,
+				model: "mock/model-a",
+				attachments: [],
+			},
+			{
+				name: "candidate",
+				harness: "veyyon",
+				configPath: null,
+				promptVariantPath: null,
+				model: "mock/model-a",
+				attachments: [],
+			},
+		];
+
+		const staged = stagePierAssets({ assetsDir, variants, veyBinary: fakeVeyBinary, authDb: fakeAuthDb });
+
+		// The digest has to describe the binary the container will execute, not the one
+		// on the host at some earlier moment: pier records it as `binary_sha`, and a
+		// digest of a different file makes a run unattributable to a build.
+		const stagedBinary = path.join(assetsDir, "vey");
+		const stagedSha = createHash("sha256").update(fs.readFileSync(stagedBinary)).digest("hex");
+		expect(staged.binarySha).toBe(stagedSha);
+		expect(staged.binarySha).toBe(veySha);
+
+		// One arm file per variant, each on disk: a variant with no file is an arm the
+		// container agent cannot load, and it fails inside the trial rather than here.
+		expect([...staged.armFiles.keys()].sort()).toEqual(["baseline", "candidate"]);
+		for (const armFile of staged.armFiles.values()) {
+			expect(fs.existsSync(armFile)).toBe(true);
+		}
 	});
 });
