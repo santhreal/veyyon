@@ -12,6 +12,7 @@
  * go through {@link classify}, which is the point: a call site that re-runs a regex of its own is a
  * second opinion, and the second opinion is always the one that disagrees.
  */
+import { extractHttpStatusFromError } from "@veyyon/utils/fetch-retry";
 import { STREAM_FRAME_LIMIT_ERROR_NAME } from "@veyyon/utils/stream-frame-limit";
 import type { Api, AssistantMessage } from "../types";
 import { STREAM_ENVELOPE_ERROR_PREFIX } from "./classes";
@@ -66,55 +67,20 @@ export {
 export const LLAMA_CPP_TOOL_CALL_PARSE_PATTERN =
 	/failed to parse tool call arguments as json|\[json\.exception\.parse_error\.101\]/i;
 
-const STATUS_MESSAGE_PATTERNS = [
-	/\bstatus(?:_code)?[:=]\s*(\d{3})\b/i,
-	/\bstatus\s+(\d{3})\b/i,
-	/\bHTTP\s+(\d{3})\b/i,
-	/\b(?:error|failed)\s*[:=]?\s*(\d{3})\b/i,
-	/(?:^|\s)(\d{3})\s+(?:[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)/,
-] as const;
-
+/**
+ * The HTTP status a failure carries, from a field anywhere in its cause chain or from the prose
+ * when no field holds one.
+ *
+ * This walk used to be written out here, with its own pattern list and its own traversal order,
+ * beside the one in `@veyyon/utils/fetch-retry` that the auth ladder reads. The two answered
+ * differently -- `error(503)` was a status to one and nothing to the other, `status_code: 429` the
+ * other way round -- so one provider message could be retried by the retry ladder and reported as
+ * terminal by the auth ladder. The header of this file already says why that is wrong: a call site
+ * that re-runs a regex of its own is a second opinion, and the second opinion is always the one
+ * that disagrees.
+ */
 export function status(error: unknown): number | undefined {
-	return statusInternal(error, 0);
-}
-
-function statusInternal(error: unknown, depth: number): number | undefined {
-	if (depth > 2 || error === undefined || error === null) return undefined;
-	if (typeof error === "object") {
-		const errObj = error as Record<string, unknown>;
-
-		if (typeof errObj.status === "number" && errObj.status >= 100 && errObj.status <= 599) {
-			return errObj.status;
-		}
-		if (typeof errObj.statusCode === "number" && errObj.statusCode >= 100 && errObj.statusCode <= 599) {
-			return errObj.statusCode;
-		}
-		if (typeof errObj.response === "object" && errObj.response !== null) {
-			const resp = errObj.response as Record<string, unknown>;
-			if (typeof resp.status === "number" && resp.status >= 100 && resp.status <= 599) {
-				return resp.status;
-			}
-		}
-
-		if ("cause" in errObj) {
-			const nested = statusInternal(errObj.cause, depth + 1);
-			if (nested !== undefined) return nested;
-		}
-	}
-
-	if (error instanceof Error || (typeof error === "object" && error !== null && "message" in error)) {
-		const message = (error as { message: string }).message;
-		if (typeof message === "string") {
-			for (const pattern of STATUS_MESSAGE_PATTERNS) {
-				const match = pattern.exec(message);
-				if (match) {
-					const code = parseInt(match[1], 10);
-					if (code >= 100 && code <= 599) return code;
-				}
-			}
-		}
-	}
-	return undefined;
+	return extractHttpStatusFromError(error);
 }
 
 /** The machine-readable code a provider sent, from `code` or the SDK's nested `error.code`. */

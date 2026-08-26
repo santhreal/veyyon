@@ -19,6 +19,7 @@ import { emptyUsage } from "@veyyon/catalog/models";
 import { readSseJson } from "@veyyon/utils/stream";
 import { trimTrailingSlashes } from "@veyyon/utils/url";
 import * as AIError from "../error";
+import { AUTH_EVIDENCE_LOCAL } from "../error/auth-classify";
 import type {
 	Api,
 	AssistantMessage,
@@ -54,11 +55,25 @@ const NON_WIRE_KEYS = new Set<keyof SimpleStreamOptions>([
 const VEYYON_NATIVE_STREAM_IDLE_TIMEOUT_ERROR = "pi-native stream stalled while waiting for the next event";
 const VEYYON_NATIVE_STREAM_FIRST_EVENT_TIMEOUT_ERROR = "pi-native stream timed out while waiting for the first event";
 
+/**
+ * A rejection from the caller's `onPayload` hook, reported with the reason it gave.
+ *
+ * Payload sanitization is a local policy decision, not an upstream authentication failure, and it
+ * used to buy that distinction by discarding the rejection: the operator saw "pi-native onPayload
+ * hook rejected" and nothing else, which names the seam and not the failure. The reason was dropped
+ * because `isAuthRetryableError` reads a 401 out of the message, so a hook that rejected with one
+ * would have rotated a credential over a decision made here.
+ *
+ * The marker settles that instead of silence: the classifier is told the text is local, so the text
+ * can be the rejection's own.
+ */
 class PiNativePayloadHookError extends Error {
 	readonly rejection: unknown;
+	readonly [AUTH_EVIDENCE_LOCAL] = true;
 
 	constructor(rejection: unknown) {
-		super("pi-native onPayload hook rejected");
+		const detail = rejection instanceof Error ? rejection.message : String(rejection);
+		super(detail ? `pi-native onPayload hook rejected: ${detail}` : "pi-native onPayload hook rejected");
 		this.name = "PiNativePayloadHookError";
 		this.rejection = rejection;
 	}

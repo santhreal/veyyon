@@ -449,10 +449,26 @@ function resolveDefaultDelay(
  * Inspect an arbitrary error value (or its `cause` chain, up to depth 2) for an
  * HTTP status code. Reads `status`, `statusCode`, and `response.status` fields,
  * coerces string values, and falls back to scanning the error message for
- * common patterns like `Error: 401`, `error (429)`, or `HTTP 503`.
+ * common patterns like `Error: 401`, `error (429)`, `status_code: 503` or
+ * `429 Too Many Requests`.
+ *
+ * ONE EXTRACTOR, and it is this one. `@veyyon/ai/error/flags` carried a second
+ * with a different pattern list and a different traversal, so the two answered
+ * differently on the same string: `error(503)` and `502 error` were a status
+ * here and nothing there, `status_code: 429` and `429 Too Many Requests` were a
+ * status there and nothing here. Since the auth ladder rotates a credential on a
+ * 401 and the retry ladder backs off on a 5xx, and they read different sides of
+ * that split, one provider message could be retried by one and reported by the
+ * other. `AIError.status` now delegates here.
+ *
+ * STRUCTURED EVIDENCE WINS OVER PROSE, at every depth, which is the third thing
+ * the two disagreed about: this one read its own message before the cause's
+ * `status` field and the other read the cause first. A numeric field says what
+ * the transport reported; a message is a string somebody formatted. So the whole
+ * chain is asked for a field before any of it is asked for a sentence.
  */
 export function extractHttpStatusFromError(error: unknown): number | undefined {
-	return extractHttpStatusFromErrorInternal(error, 0);
+	return structuredStatus(error, 0) ?? messageStatus(error, 0);
 }
 
 type HttpErrorLike = {
@@ -464,7 +480,7 @@ type HttpErrorLike = {
 	cause?: unknown;
 };
 
-function extractHttpStatusFromErrorInternal(error: unknown, depth: number): number | undefined {
+function structuredStatus(error: unknown, depth: number): number | undefined {
 	if (!error || typeof error !== "object" || depth > 2) return undefined;
 	const info = error as HttpErrorLike;
 	const rawStatus = info.status ?? info.statusCode ?? info.response?.status;
@@ -477,21 +493,33 @@ function extractHttpStatusFromErrorInternal(error: unknown, depth: number): numb
 		if (Number.isFinite(parsed)) status = parsed;
 	}
 	if (status !== undefined && status >= 100 && status <= 599) return status;
+	return structuredStatus(info.cause, depth + 1);
+}
 
+function messageStatus(error: unknown, depth: number): number | undefined {
+	if (!error || typeof error !== "object" || depth > 2) return undefined;
+	const info = error as HttpErrorLike;
 	if (info.message) {
 		const extracted = extractStatusFromMessage(info.message);
 		if (extracted !== undefined) return extracted;
 	}
-	if (info.cause) return extractHttpStatusFromErrorInternal(info.cause, depth + 1);
-	return undefined;
+	return messageStatus(info.cause, depth + 1);
 }
 
+/**
+ * The union of the two lists that used to disagree, most specific first.
+ *
+ * The trailing entry reads a reason phrase (`429 Too Many Requests`), which is how a gateway
+ * that never sets a field still names its status. It is last because a bare three-digit number
+ * followed by capitalised words is the loosest evidence here.
+ */
 const STATUS_MESSAGE_PATTERNS = [
-	/\berror\s*[:=]\s*(\d{3})\b/i,
-	/error\s*\((\d{3})\)/i,
-	/status\s*[:=]?\s*(\d{3})/i,
+	/\bstatus(?:_code)?\s*[:=]?\s*(\d{3})\b/i,
 	/\bhttp\s*(\d{3})\b/i,
+	/error\s*\((\d{3})\)/i,
+	/\b(?:error|failed)\s*[:=]?\s*(\d{3})\b/i,
 	/\b(\d{3})\s*(?:status|error)\b/i,
+	/(?:^|\s)(\d{3})\s+(?:[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)/,
 ] as const;
 
 function extractStatusFromMessage(message: string): number | undefined {
