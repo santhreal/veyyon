@@ -91,12 +91,14 @@ export class BashExecutionComponent extends Container {
 		const incomingLines = chunk.split("\n");
 		if (this.#outputLines.length > 0 && incomingLines.length > 0) {
 			const lastIndex = this.#outputLines.length - 1;
-			const mergedLines = [`${this.#outputLines[lastIndex]}${incomingLines[0]}`, ...incomingLines.slice(1)];
+			const mergedLines: string[] = [`${this.#outputLines[lastIndex]}${incomingLines[0]}`];
+			for (let i = 1; i < incomingLines.length; i++) mergedLines.push(incomingLines[i]!);
 			const clampedMergedLines = this.#clampLinesPreservingSixel(mergedLines);
 			this.#outputLines[lastIndex] = clampedMergedLines[0] ?? "";
-			this.#outputLines.push(...clampedMergedLines.slice(1));
+			for (let i = 1; i < clampedMergedLines.length; i++) this.#outputLines.push(clampedMergedLines[i]!);
 		} else {
-			this.#outputLines.push(...this.#clampLinesPreservingSixel(incomingLines));
+			const clamped = this.#clampLinesPreservingSixel(incomingLines);
+			for (let i = 0; i < clamped.length; i++) this.#outputLines.push(clamped[i]!);
 		}
 
 		// Cap stored lines during streaming to avoid unbounded memory growth, and remember how many went, so the
