@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { Settings } from "@veyyon/coding-agent/config/settings";
+import { type SettingPath, Settings } from "@veyyon/coding-agent/config/settings";
 import type { BuiltinToolLoadMode, ToolSession } from "@veyyon/coding-agent/tools";
 import {
 	BUILTIN_TOOLS,
@@ -14,7 +14,7 @@ import { IrcTool } from "@veyyon/coding-agent/tools/irc";
 import { JobTool } from "@veyyon/coding-agent/tools/job";
 import { SshTool } from "@veyyon/coding-agent/tools/ssh";
 
-const allToolsSettings = Settings.isolated({
+const ALL_TOOLS_OVERRIDES: Partial<Record<SettingPath, unknown>> = {
 	"astEdit.enabled": true,
 	"debug.enabled": true,
 	"github.enabled": true,
@@ -32,7 +32,9 @@ const allToolsSettings = Settings.isolated({
 	// enabled — not discoverable — because loading is the canonical arming flow.
 	"argot.enabled": true,
 	"tools.discoveryMode": "all",
-});
+};
+
+const allToolsSettings = Settings.isolated(ALL_TOOLS_OVERRIDES);
 
 const toolSession: ToolSession = {
 	cwd: "/tmp/test",
@@ -48,9 +50,24 @@ const toolSession: ToolSession = {
 	getArgotSession: () => ({ loaded: false }) as never,
 };
 
+/**
+ * `tools.unifiedRuntime` is exclusive: off builds `eval` and `launch`, on builds
+ * `runtime` in their place, so no single settings map can construct all three. The sweep
+ * runs both arms and unions them, which is what keeps every factory in `BUILTIN_TOOLS`
+ * covered instead of whichever side the fixture happened to pick.
+ */
+const unifiedRuntimeSession: ToolSession = {
+	...toolSession,
+	settings: Settings.isolated({ ...ALL_TOOLS_OVERRIDES, "tools.unifiedRuntime": true }),
+};
+
 async function getToolMetadata(): Promise<Map<string, { loadMode?: string; summary?: string }>> {
-	const tools = await createTools(toolSession, Object.keys(BUILTIN_TOOLS));
-	const metadata = new Map(tools.map(tool => [tool.name, { loadMode: tool.loadMode, summary: tool.summary }]));
+	const metadata = new Map<string, { loadMode?: string; summary?: string }>();
+	for (const session of [toolSession, unifiedRuntimeSession]) {
+		for (const tool of await createTools(session, Object.keys(BUILTIN_TOOLS))) {
+			metadata.set(tool.name, { loadMode: tool.loadMode, summary: tool.summary });
+		}
+	}
 	for (const tool of [
 		new AskTool({ ...toolSession, hasUI: true }),
 		new GithubTool(toolSession),
