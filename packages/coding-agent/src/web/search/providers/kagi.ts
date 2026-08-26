@@ -54,7 +54,7 @@ export async function searchKagi(params: {
 	} catch (err) {
 		if (err instanceof KagiApiError) {
 			if (typeof err.statusCode === "number") {
-				const classified = classifyProviderHttpError("kagi", err.statusCode, "");
+				const classified = classifyProviderHttpError("kagi", err.statusCode, err.body);
 				if (classified) throw classified;
 			}
 			throw new SearchProviderError("kagi", "Kagi search request failed.", err.statusCode);
