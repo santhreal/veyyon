@@ -271,13 +271,8 @@ function normalizeAnthropicTargetToolCallId<TApi extends Api>(
 }
 
 /**
- * Normalize tool call ID for cross-provider compatibility.
- * OpenAI Responses API generates IDs that are 450+ chars with special characters like `|`.
- * Anthropic APIs require IDs matching ^[a-zA-Z0-9_-]+$ (max 64 chars).
- *
- * For aborted/errored turns, this function:
- * - Preserves tool call structure (unlike converting to text summaries)
- * - Injects synthetic "aborted" tool results
+ * Normalize tool call IDs for cross-provider compatibility (OpenAI 450+ chars → Anthropic ^[a-zA-Z0-9_-]{64}).
+ * Preserves tool call structure and injects synthetic "aborted" results for errored turns.
  */
 export function transformMessages<TApi extends Api>(
 	messages: Message[],
