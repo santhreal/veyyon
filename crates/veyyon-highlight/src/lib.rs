@@ -10,7 +10,7 @@ pub mod syntaxes;
 
 use syntect::parsing::{ParseState, ScopeStack, ScopeStackOp, SyntaxSet};
 
-pub use crate::syntaxes::{is_known_alias, syntax_set};
+pub use crate::syntaxes::{is_known_alias, release, syntax_set};
 use crate::{
 	scope_map::{SLOTS, scope_to_color_index},
 	syntaxes::find_syntax,
@@ -68,7 +68,7 @@ const RESET: &str = "\x1b[39m";
 /// on the next one: one malformed line costs its own colours, not the rest of
 /// the file's.
 pub fn highlight(code: &str, lang: Option<&str>, palette: &Palette<'_>) -> String {
-	highlight_with(syntax_set(), code, lang, palette)
+	highlight_with(&syntax_set(), code, lang, palette)
 }
 
 /// [`highlight`] against a caller-supplied set.
@@ -145,7 +145,7 @@ fn push_run(out: &mut String, text: &str, stack: &ScopeStack, slots: &[&str; SLO
 
 /// Whether `lang` resolves to a syntax, directly or through the alias table.
 pub fn supports_language(lang: &str) -> bool {
-	is_known_alias(lang) || find_syntax(syntax_set(), lang).is_some()
+	is_known_alias(lang) || find_syntax(&syntax_set(), lang).is_some()
 }
 
 /// Every syntax name in the set, in set order.

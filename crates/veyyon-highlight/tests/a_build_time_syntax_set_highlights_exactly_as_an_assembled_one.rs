@@ -26,7 +26,7 @@
 use std::collections::BTreeSet;
 
 use syntect::parsing::{SyntaxDefinition, SyntaxSet};
-use veyyon_highlight::{Palette, highlight_with, syntax_set};
+use veyyon_highlight::{Palette, highlight_with, release, syntax_set};
 
 const VENDORED: &[(&str, &str)] = &[
 	("Julia", include_str!("../src/syntaxes/Julia.sublime-syntax")),
@@ -146,7 +146,7 @@ fn the_embedded_set_highlights_every_token_exactly_as_an_assembled_one() {
 	for token in &tokens {
 		for (case, code) in CORPUS {
 			let want = highlight_with(&assembled, code, Some(token), &palette);
-			let got = highlight_with(embedded, code, Some(token), &palette);
+			let got = highlight_with(&embedded, code, Some(token), &palette);
 			if want != got {
 				divergent.push(format!("token {token:?} case {case:?}"));
 			}
@@ -175,7 +175,7 @@ fn an_unresolvable_language_falls_back_to_plain_text_in_both_sets() {
 		let code = "plain text { \"quoted\" } # 1\n";
 		assert_eq!(
 			highlight_with(&assembled, code, lang, &palette),
-			highlight_with(embedded, code, lang, &palette),
+			highlight_with(&embedded, code, lang, &palette),
 			"fallback for {lang:?} differs between an assembled set and the embedded one"
 		);
 	}
@@ -197,7 +197,7 @@ fn an_all_empty_palette_returns_every_input_verbatim() {
 	let mut wrong = Vec::new();
 	for token in tokens(&assembled_set()) {
 		for (case, code) in CORPUS {
-			let out = highlight_with(embedded, code, Some(&token), &empty);
+			let out = highlight_with(&embedded, code, Some(&token), &empty);
 			if out != *code {
 				wrong.push(format!("token {token:?} case {case:?}"));
 			}
@@ -217,7 +217,7 @@ fn a_populated_slot_wraps_its_run_and_preserves_the_text() {
 	let palette = palette();
 	let code = "// c\nfn f() { let s = \"x\"; }\n";
 
-	let out = highlight_with(embedded, code, Some("rs"), &palette);
+	let out = highlight_with(&embedded, code, Some("rs"), &palette);
 	assert_ne!(out, code, "a populated palette emitted no escapes at all");
 
 	let mut stripped = out;
@@ -238,4 +238,59 @@ fn a_populated_slot_wraps_its_run_and_preserves_the_text() {
 		stripped = stripped.replace(marker, "");
 	}
 	assert_eq!(stripped, code, "removing every escape did not return the original text");
+}
+
+#[test]
+fn releasing_the_set_cannot_change_any_output() {
+	// WHY: the set is released after an idle window so that syntect's compiled
+	// regexes, which it keeps in a `OnceCell` for the life of a set, are handed
+	// back. That is only safe if a reloaded set highlights identically to the one
+	// it replaced. It does, because both come from the same immutable dump — but
+	// "should" is not evidence, so this sweeps the whole token space across a
+	// release and requires byte equality.
+	//
+	// This is the assertion that makes the release policy free to change: any
+	// eviction timing is correct as long as this holds.
+	let palette = palette();
+	let tokens = tokens(&assembled_set());
+
+	let before: Vec<String> = tokens
+		.iter()
+		.flat_map(|token| {
+			let set = syntax_set();
+			CORPUS
+				.iter()
+				.map(|(_, code)| highlight_with(&set, code, Some(token), &palette))
+				.collect::<Vec<_>>()
+		})
+		.collect();
+
+	assert!(release(), "nothing was retained to release, so this proved nothing");
+
+	let after: Vec<String> = tokens
+		.iter()
+		.flat_map(|token| {
+			let set = syntax_set();
+			CORPUS
+				.iter()
+				.map(|(_, code)| highlight_with(&set, code, Some(token), &palette))
+				.collect::<Vec<_>>()
+		})
+		.collect();
+
+	assert_eq!(
+		before.len(),
+		tokens.len() * CORPUS.len(),
+		"the sweep did not cover every token and case"
+	);
+
+	let divergent: Vec<usize> = (0..before.len())
+		.filter(|i| before[*i] != after[*i])
+		.collect();
+	assert!(
+		divergent.is_empty(),
+		"{} of {} outputs changed across a release, so releasing is not output-neutral",
+		divergent.len(),
+		before.len()
+	);
 }

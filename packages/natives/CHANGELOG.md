@@ -6,6 +6,7 @@
 
 - Syntax highlighting moved from the native addon into the `veyyon-highlight` crate, with no change to highlighting output.
 - The syntax set is linked at build time instead of being assembled on first use, cutting about 8MB of resident memory from any session that highlights code.
+- Highlighting memory is released after 30 seconds without a highlight, returning about 34MB of a 42MB eight-language burst to the operating system.
 
 ### Fixed
 

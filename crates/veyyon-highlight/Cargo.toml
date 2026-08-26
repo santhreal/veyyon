@@ -11,6 +11,9 @@ homepage.workspace = true
 workspace = true
 
 [dependencies]
+# `malloc_trim` after a release. glibc keeps the freed pages otherwise, so the
+# release moves nothing a session can observe.
+libc.workspace = true
 syntect.workspace = true
 
 # The generator reads syntect's bundled syntax pack and the vendored
@@ -22,7 +25,6 @@ syntect.workspace = true
 syntect = { workspace = true, features = ["default-syntaxes", "yaml-load"] }
 
 [dev-dependencies]
-libc.workspace = true
 # `examples/rss-split.rs` measures the old shape against the new one, so the
 # baseline arm needs the bundled pack `load_defaults_newlines` reads. A
 # dev-dependency reaches examples and tests without reaching the shipped
