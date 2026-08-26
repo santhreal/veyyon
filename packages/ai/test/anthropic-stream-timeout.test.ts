@@ -308,11 +308,15 @@ describe("anthropic first-event timeout retries", () => {
 
 		const result = await streamAnthropic(model, context, {
 			client,
-			streamFirstEventTimeoutMs: 20,
+			// Real timers: the arm proves a short connect is not charged to the
+			// first-event budget and that the declared number reaches the SDK, so
+			// the number only has to sit above the runtime's own cost. Its two
+			// flaked siblings above were both a deadline inside scheduler noise.
+			streamFirstEventTimeoutMs: 2_000,
 		}).result();
 
 		expect(result.stopReason).toBe("stop");
-		expect(seenRequestTimeout).toBe(20);
+		expect(seenRequestTimeout).toBe(2_000);
 		expect(seenRequestMaxRetries).toBe(0);
 		expect(JSON.parse(JSON.stringify(result.content))).toEqual([{ type: "text", text: "delayed connect" }]);
 	});
