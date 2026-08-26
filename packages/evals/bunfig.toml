@@ -13,11 +13,14 @@ preload = ["../utils/test/helpers/real-data-tripwire.ts"]
 # 113 of them, about 1.9G, each a real project with its own test suite. Bun does not
 # honour .gitignore, so without this a `bun test` here walks into all of them and
 # reports THEIR failures as this repository's. `datasets/deep-swe/corpus/` is the
-# vendored task corpus and `runs/` holds trial artifacts; neither carries our tests.
+# vendored task corpus, `runs/` holds trial artifacts and `.internal/` holds review
+# scratch; none of them carries our tests. `docs-coherence.test.ts` fails when an
+# ignored directory has no entry here.
 pathIgnorePatterns = [
 	"**/node_modules/**",
 	"datasets/repo-cache/**",
 	"datasets/deep-swe/corpus/**",
 	"runs/**",
 	".cache/**",
+	".internal/**",
 ]

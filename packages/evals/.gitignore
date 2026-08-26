@@ -1,3 +1,6 @@
+# Review-only notes and scratch: audits, commit messages, gate logs.
+.internal/
+
 # Trial outputs: job dirs, transcripts, reports.
 runs/
 # Seeded provider credentials copied out of the developer profile.
