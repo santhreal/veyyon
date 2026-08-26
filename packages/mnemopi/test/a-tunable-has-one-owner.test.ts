@@ -35,7 +35,9 @@ import { describe, expect, it } from "bun:test";
 import { readdir, readFile } from "node:fs/promises";
 import * as path from "node:path";
 
+import * as config from "@veyyon/mnemopi/config";
 import { degradeBatchSize, sleepBatchSize, tier2Days, tier3Days, tier3MaxChars } from "@veyyon/mnemopi/config";
+import type { Env } from "@veyyon/mnemopi/util/env";
 
 const SRC = path.join(import.meta.dir, "..", "src");
 
@@ -106,6 +108,14 @@ describe("the consolidation tunables", () => {
 	});
 });
 
+/**
+ * An exported accessor of the shape every knob in config.ts has: `(env: Env = process.env)`, whose
+ * declared arity is therefore zero. It excludes `configureRecallFeatures`, which takes a flags
+ * object and mutates module state, and the two accessors that take a model name first.
+ */
+const isEnvAccessor = (value: unknown): value is (env: Env) => unknown =>
+	typeof value === "function" && value.length === 0;
+
 describe("no module reads a MNEMOPI_ variable behind config.ts", () => {
 	/**
 	 * The structural lock. The value assertions above prove the two copies agreed on the
@@ -163,15 +173,54 @@ describe("no module reads a MNEMOPI_ variable behind config.ts", () => {
 	});
 
 	/**
-	 * The lock above is only meaningful while the file it exempts still owns the parsing.
-	 * An exemption for a file that stopped reading the environment is a hole that opens
-	 * quietly, ready to excuse a copy that lands at that path later.
+	 * NON-VACUITY, stated as a live edge rather than a count.
+	 *
+	 * The lock above is only meaningful while the file it exempts still owns the parsing. An
+	 * exemption for a file that stopped reading the environment is a hole that opens quietly,
+	 * ready to excuse a copy that lands at that path later.
+	 *
+	 * The claim used to be `parsed.length > 20` next to a text search for one variable's
+	 * spelling. A magnitude proxy is satisfied by a file that lost half its knobs, and a text
+	 * search goes green on a comment and red on a reformat; neither says a variable reaches
+	 * anything. Every `MNEMOPI_*` name config.ts declares is now read out of it at run time, so
+	 * a new one joins the sweep by existing, and each has to MOVE an exported accessor: the
+	 * arity-zero accessors are settled once against an empty environment and once against an
+	 * environment holding the variable. A name that changes no result is a dead flag, whatever
+	 * config.ts appears to do with it.
+	 *
+	 * The probe values are one per value grammar config.ts parses -- the two `envOptionalString`
+	 * flags compare against `"1"`, `autoMigrateEnabled` against `"0"`, `vecType` takes a member
+	 * of its union -- because a probe outside a knob's grammar leaves the default in place and
+	 * would report a live knob as dead.
+	 *
+	 * WHAT IT DOES NOT CATCH: a variable wired to an accessor with the wrong meaning. It proves
+	 * the edge exists, not that the value carries the sense the name promises.
 	 */
-	it("and config.ts really still parses them", async () => {
+	it("and config.ts really still parses them, into accessors that read them", async () => {
 		const text = await readFile(path.join(SRC, "config.ts"), "utf8");
-		const parsed = text.match(/\benv(?:Int|Float|String|Bool|OneOf)\(\s*"MNEMOPI_[A-Z0-9_]+"/g) ?? [];
+		const declared = [
+			...new Set([...text.matchAll(/\benv[A-Za-z]*\(\s*"(MNEMOPI_[A-Z0-9_]+)"/g)].map(match => match[1] ?? "")),
+		];
+		expect(declared).toContain("MNEMOPI_TIER2_DAYS");
 
-		expect(parsed.length).toBeGreaterThan(20);
-		expect(text).toInclude('envInt("MNEMOPI_TIER2_DAYS"');
+		const exported: Readonly<Record<string, unknown>> = config;
+		const accessors = Object.values(exported).filter(isEnvAccessor);
+		const probes = ["0", "1", "7", "0.5", "true", "false", "float32", "mnemopi-probe"];
+		const settle = (accessor: (env: Env) => unknown, env: Env): string => {
+			try {
+				return JSON.stringify(accessor(env)) ?? "undefined";
+			} catch {
+				return "threw";
+			}
+		};
+		const baseline = accessors.map(accessor => settle(accessor, {}));
+		const dead = declared.filter(
+			name =>
+				!probes.some(probe =>
+					accessors.some((accessor, index) => settle(accessor, { [name]: probe }) !== baseline[index]),
+				),
+		);
+
+		expect(dead).toEqual([]);
 	});
 });
