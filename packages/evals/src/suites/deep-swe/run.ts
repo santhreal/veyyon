@@ -1,4 +1,6 @@
 #!/usr/bin/env bun
+import { errorMessage } from "@veyyon/utils";
+import { resolveExitCode } from "./src/runner/errors";
 import { runBench } from "./src/runner/executor";
 
 /**
@@ -12,5 +14,10 @@ import { runBench } from "./src/runner/executor";
 export * from "./src/runner";
 
 if (import.meta.main) {
-	await runBench(process.argv.slice(2));
+	try {
+		await runBench(process.argv.slice(2));
+	} catch (err) {
+		console.error(errorMessage(err));
+		process.exit(resolveExitCode(err));
+	}
 }

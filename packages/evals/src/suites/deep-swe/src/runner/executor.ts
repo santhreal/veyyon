@@ -9,18 +9,23 @@ import { clampLow, errorMessage, readPipeText } from "@veyyon/utils";
 import YAML from "yaml";
 import { cleanupPierContainers } from "../../../../backends/pier/runner";
 import {
-	getAllSystemAdapters,
-	getSystemAdapter,
-	hasSystemAdapter,
-	listSystemAdapters,
-} from "../../../../harnesses/registry";
+	getHarness,
+	hasHarness,
+	listHarnesses,
+	listHarnessNames,
+	requireHarness,
+} from "../../../../core/harness-registry";
+import type { HarnessAdapter } from "../../../../core/types";
 import {
 	aggregateSystemComparison,
-	COMPARISON_TASK_LIST,
 	type ComparisonSystem,
 	comparisonTrialsFromArmResults,
 	renderSystemComparison,
 } from "../../../../harnesses/system-comparison";
+
+export const COMPARISON_TASK_LIST = "datasets/deep-swe/tasks/pilot-10.txt";
+export const COMPARISON_TASK_LIST_SHA256 = "439b07dfbf30a988286e614b6b200def41b56f2447b249583560a78152cbfa06";
+
 import type { ComparisonArmResult, ComparisonExecution, SystemComparison } from "../../../../harnesses/types";
 import {
 	armsDir,
@@ -75,6 +80,25 @@ import {
 } from "../shared";
 import { stageAllArms } from "./arm-staging";
 import { parseBenchCliArgs, printHelp } from "./cli-args";
+import {
+	CanaryTrippedError,
+	ComparisonRejectionError,
+	EmptyArmsError,
+	InvalidBinaryPinError,
+	InvalidTaskBudgetError,
+	InvalidTrialTimeoutError,
+	MergeArgsError,
+	MergeMissingResultsError,
+	MergeRefusedError,
+	MissingBackendBindingError,
+	MissingModelError,
+	MissingTasksRootError,
+	NoTasksSelectedError,
+	PierIncompatibleError,
+	PierMissingError,
+	SystemPreflightError,
+	UnknownArmError,
+} from "./errors";
 import {
 	AUTH_DB_SOURCES,
 	checkBinaryBuildNeeded,
@@ -215,10 +239,9 @@ export function reaggregate(runDir: string): void {
 		),
 	);
 	if (comparisonRejection) {
-		console.error(
-			`\n${comparisonRejection}\nRaw results and artifacts were retained; no comparison report was written.`,
+		throw new ComparisonRejectionError(
+			`${comparisonRejection}\nRaw results and artifacts were retained; no comparison report was written.`,
 		);
-		process.exit(1);
 	}
 	const report = systemComparison
 		? renderSystemComparison(systemComparison)
@@ -234,15 +257,13 @@ export function reaggregate(runDir: string): void {
 
 export function mergeIntoReport(runDirs: string[], outDir: string | null): void {
 	if (runDirs.length < 2) {
-		console.error(`--merge needs at least two run directories, got ${runDirs.length}.`);
-		process.exit(1);
+		throw new MergeArgsError(`--merge needs at least two run directories, got ${runDirs.length}.`);
 	}
 	const runs: RunToMerge[] = [];
 	for (const dir of runDirs) {
 		const file = path.join(dir, "results.json");
 		if (!fs.existsSync(file)) {
-			console.error(`missing: ${file}\nRun --reaggregate on that directory first.`);
-			process.exit(1);
+			throw new MergeMissingResultsError(`missing: ${file}\nRun --reaggregate on that directory first.`);
 		}
 		const prior = JSON.parse(fs.readFileSync(file, "utf8"));
 		runs.push({
@@ -258,8 +279,7 @@ export function mergeIntoReport(runDirs: string[], outDir: string | null): void 
 		merged = mergeRuns(runs);
 	} catch (err) {
 		if (err instanceof MergeRefused) {
-			console.error(`refusing to merge: ${err.message}`);
-			process.exit(1);
+			throw new MergeRefusedError(`refusing to merge: ${err.message}`);
 		}
 		throw err;
 	}
@@ -366,7 +386,7 @@ function printAvailable(): void {
 		.readdirSync(taskListsDir())
 		.filter(f => f.endsWith(".txt"))
 		.sort();
-	const adapters = getAllSystemAdapters();
+	const adapters = listHarnesses();
 
 	console.log("\nArms:");
 	for (const file of armFiles) {
@@ -390,6 +410,22 @@ function printAvailable(): void {
 		console.log(`  ${file.padEnd(25)} ${lines.length} tasks  ${tag}`);
 	}
 	console.log();
+}
+
+/**
+ * The pier agent import path a harness runs under, read from the one place it is declared.
+ *
+ * A harness that reaches the pier job config without a pier binding produced
+ * `import_path: undefined` in the YAML, which pier reported as an import failure per trial.
+ */
+export function requirePierAgentImportPath(harness: HarnessAdapter): string {
+	const importPath = harness.backends.pier?.agentImportPath;
+	if (!importPath) {
+		throw new MissingBackendBindingError(
+			`harness "${harness.name}" declares no pier agent import path; add a pier binding to its backends map before running it on pier`,
+		);
+	}
+	return importPath;
 }
 
 export async function runBench(argv: string[]): Promise<void> {
@@ -419,8 +455,9 @@ export async function runBench(argv: string[]): Promise<void> {
 	const tasksRootArg =
 		args.tasksRoot ?? process.env.DEEPSWE_TASKS_ROOT ?? (fs.existsSync(localTasks) ? localTasks : undefined);
 	if (!tasksRootArg) {
-		console.error("pass --tasks-root <dir> (or clone https://github.com/datacurve-ai/deep-swe into this package)");
-		process.exit(1);
+		throw new MissingTasksRootError(
+			"pass --tasks-root <dir> (or clone https://github.com/datacurve-ai/deep-swe into this package)",
+		);
 	}
 	const tasksRoot = resolvePackagePath(tasksRootArg);
 
@@ -429,28 +466,26 @@ export async function runBench(argv: string[]): Promise<void> {
 	// system adapter names (veyyon, omp, factory, hermes).
 	const legacySystemComparison = args.raw["system-comparison"] === "true" || args.raw["system-comparison"] === "";
 	const rawArms =
-		args.arms ?? args.comparisonSystems ?? (legacySystemComparison ? listSystemAdapters() : ["baseline", "full"]);
+		args.arms ?? args.comparisonSystems ?? (legacySystemComparison ? listHarnessNames() : ["baseline", "full"]);
 	const arms = rawArms.map(a => a.trim()).filter(Boolean);
 	if (arms.length === 0) {
-		console.error("error: --arms must specify at least one name");
-		process.exit(1);
+		throw new EmptyArmsError("error: --arms must specify at least one name");
 	}
 
 	// Classify each arm: a registered system adapter, or a veyyon config arm
 	// backed by arms/<name>.yml.
-	const systemArms = arms.filter(a => hasSystemAdapter(a));
-	const configArms = arms.filter(a => !hasSystemAdapter(a));
+	const systemArms = arms.filter(a => hasHarness(a));
+	const configArms = arms.filter(a => !hasHarness(a));
 	const hasSystemArms = systemArms.length > 0;
 	const pureSystemComparison = hasSystemArms && configArms.length === 0;
 
 	for (const arm of configArms) {
 		const armYml = path.join(armsDir(), `${arm}.yml`);
 		if (!fs.existsSync(armYml)) {
-			console.error(
+			throw new UnknownArmError(
 				`error: unknown arm "${arm}". Not a system adapter and no arms/${arm}.yml found. ` +
-					`Available systems: ${listSystemAdapters().join(", ")}`,
+					`Available systems: ${listHarnessNames().join(", ")}`,
 			);
-			process.exit(1);
 		}
 	}
 
@@ -458,8 +493,7 @@ export async function runBench(argv: string[]): Promise<void> {
 	// model ran, and a substituted one reports another model's numbers under this run's
 	// name.
 	if (!args.model) {
-		console.error("error: --model <provider/model-id> is required.");
-		process.exit(1);
+		throw new MissingModelError("error: --model <provider/model-id> is required.");
 	}
 	const model = args.model;
 	const repeats = args.repeats ?? 1;
@@ -469,8 +503,7 @@ export async function runBench(argv: string[]): Promise<void> {
 	try {
 		trialTimeoutOverrideSec = parseTrialTimeoutFlag(args.trialTimeout);
 	} catch (err) {
-		console.error(`error: ${errorMessage(err)}`);
-		process.exit(1);
+		throw new InvalidTrialTimeoutError(`error: ${errorMessage(err)}`);
 	}
 
 	const limit = args.limit;
@@ -510,14 +543,12 @@ export async function runBench(argv: string[]): Promise<void> {
 		);
 	}
 	if (tasks.length === 0) {
-		console.error("no tasks selected");
-		process.exit(1);
+		throw new NoTasksSelectedError("no tasks selected");
 	}
 
 	const pin = resolveBinaryPin(args.raw.binary);
 	if (pin.kind === "invalid") {
-		console.error(`error: ${pin.reason}`);
-		process.exit(1);
+		throw new InvalidBinaryPinError(`error: ${pin.reason}`);
 	}
 	const pinnedBinary = pin.kind === "pinned" ? pin.path : null;
 	if (pinnedBinary) {
@@ -551,8 +582,7 @@ export async function runBench(argv: string[]): Promise<void> {
 			const budget = parseTaskTimeBudget(fs.readFileSync(taskToml, "utf8"), task);
 			trialTimeouts.set(task, resolveTrialTimeout(budget, trialTimeoutOverrideSec));
 		} catch (err) {
-			console.error(`error: ${errorMessage(err)}`);
-			process.exit(1);
+			throw new InvalidTaskBudgetError(`error: ${errorMessage(err)}`);
 		}
 	}
 
@@ -570,19 +600,17 @@ export async function runBench(argv: string[]): Promise<void> {
 
 	const pier = Bun.which("pier") ?? `${os.homedir()}/.local/bin/pier`;
 	if (!fs.existsSync(pier)) {
-		console.error(
+		throw new PierMissingError(
 			`pier not found on PATH or ~/.local/bin — uv tool install 'datacurve-pier>=${MINIMUM_DEEPSWE_PIER_VERSION}'`,
 		);
-		process.exit(1);
 	}
 	const pierVersionRun = spawnSync(pier, ["--version"], { encoding: "utf8", timeout: 30_000 });
 	const pierVersion = `${pierVersionRun.stdout ?? ""}\n${pierVersionRun.stderr ?? ""}`.trim();
 	if (pierVersionRun.error || pierVersionRun.status !== 0 || !pierSupportsSeparateVerifierCollect(pierVersion)) {
-		console.error(
+		throw new PierIncompatibleError(
 			`DeepSWE requires Pier >=${MINIMUM_DEEPSWE_PIER_VERSION} for separate-verifier collect hooks; ` +
 				`found ${pierVersion || "an unreadable version"}.`,
 		);
-		process.exit(1);
 	}
 
 	const assetsDir = path.join(outRoot, "assets");
@@ -594,17 +622,18 @@ export async function runBench(argv: string[]): Promise<void> {
 	fs.copyFileSync(getAuthDbPath(), path.join(assetsDir, "auth-agent.db"));
 
 	for (const sys of systemArms) {
-		const adapter = getSystemAdapter(sys);
+		const adapter = getHarness(sys);
 		if (!adapter) continue;
-		const preflight = await adapter.validatePreflight({
-			system: sys,
-			model,
-			args: args.raw,
-			dryRun: Boolean(args.dryRun),
-		});
-		if (!preflight.valid) {
-			console.error(`preflight failed for system "${sys}": ${preflight.errors.join(", ")}`);
-			process.exit(1);
+		if (adapter.validatePreflight) {
+			const preflight = await adapter.validatePreflight({
+				system: sys,
+				model,
+				args: args.raw,
+				dryRun: Boolean(args.dryRun),
+			});
+			if (!preflight.valid) {
+				throw new SystemPreflightError(`preflight failed for system "${sys}": ${preflight.errors.join(", ")}`);
+			}
 		}
 		await adapter.stageAssets({
 			system: sys,
@@ -648,6 +677,7 @@ export async function runBench(argv: string[]): Promise<void> {
 	const totalQueued = queue.length;
 	const canarySize = clampLow(jobParallel, 1, totalQueued);
 	let canaryTripped = false;
+	let canaryTripReason: string | null = null;
 	// One slot per arm means the same (task, repeat) cell can run its whole arm set
 	// together, so no arm races ahead into a different provider load or cache state.
 	const pairedWaveScheduling = jobParallel === arms.length;
@@ -666,9 +696,7 @@ export async function runBench(argv: string[]): Promise<void> {
 		console.log(`  model      ${model}`);
 		console.log(`  tasks      ${tasks.length} from ${args.tasksFile ?? "(full corpus)"}`);
 		console.log(`  arms       ${arms.join(", ")}`);
-		console.log(`  queue      ${queue.length} run(s)`);
-		console.log(`  staged     ${assetsDir}`);
-		process.exit(0);
+		return;
 	}
 
 	const provenance = {
@@ -715,9 +743,9 @@ export async function runBench(argv: string[]): Promise<void> {
 			"agents:",
 		];
 
-		const adapter = getSystemAdapter(arm);
+		const adapter = getHarness(arm);
 		let agent: string[];
-		if (adapter) {
+		if (adapter?.buildJobConfigKwargs) {
 			const kwargs = adapter.buildJobConfigKwargs({
 				system: arm,
 				task,
@@ -731,14 +759,16 @@ export async function runBench(argv: string[]): Promise<void> {
 				comparisonMode: pureSystemComparison,
 			});
 			agent = [
-				`  - import_path: ${adapter.pierAgentImport}`,
+				`  - import_path: ${requirePierAgentImportPath(adapter)}`,
 				`    model_name: ${JSON.stringify(model)}`,
 				"    kwargs:",
 				...Object.entries(kwargs).map(([k, v]) => `      ${k}: ${JSON.stringify(v)}`),
 			];
 		} else {
+			// A config arm is a veyyon run under a different settings file, so it executes the
+			// veyyon harness with the arm name as its only distinguishing kwarg.
 			agent = [
-				"  - import_path: veyyon_agent:VeyyonAgent",
+				`  - import_path: ${requirePierAgentImportPath(requireHarness("veyyon"))}`,
 				`    model_name: ${JSON.stringify(model)}`,
 				"    kwargs:",
 				`      arm_name: ${JSON.stringify(arm)}`,
@@ -789,7 +819,7 @@ export async function runBench(argv: string[]): Promise<void> {
 		let result: ComparisonArmResult;
 		try {
 			if (timedOut) throw new Error(`trial timed out after ${trialTimeoutSec}s`);
-			const isSystemArm = hasSystemAdapter(arm);
+			const isSystemArm = hasHarness(arm);
 			const comparisonContext: TrialComparisonContext | null = isSystemArm
 				? {
 						system: arm as ComparisonSystem,
@@ -813,7 +843,7 @@ export async function runBench(argv: string[]): Promise<void> {
 			}
 			result = { ...emptyArmResult(arm, task, repeat), error: errStr };
 		}
-		if (hasSystemAdapter(arm)) result.agentSeconds = (Date.now() - started) / 1000;
+		if (hasHarness(arm)) result.agentSeconds = (Date.now() - started) / 1000;
 		results.push(result);
 		const mark = result.error ? "ERROR" : result.reward === 1 ? "pass" : `reward=${result.reward}`;
 		console.log(
@@ -823,19 +853,22 @@ export async function runBench(argv: string[]): Promise<void> {
 		const quotaStop = !canaryTripped ? providerQuotaStop(result.error) : null;
 		if (quotaStop) {
 			canaryTripped = true;
-			console.error(`\nABORTING: provider quota exhausted (${quotaStop.model ?? "model"}).`);
+			canaryTripReason = `ABORTING: provider quota exhausted (${quotaStop.model ?? "model"}).`;
+			console.error(`\n${canaryTripReason}`);
 		}
 		if (!canaryTripped && shouldTripCanary(results, canarySize)) {
 			canaryTripped = true;
 			const hardErrors = results.filter(isHardError).map(r => r.error ?? "");
-			console.error(`\nABORTING: canary tripped (${mostCommonAgentReason(hardErrors)}).`);
+			canaryTripReason = `ABORTING: canary tripped (${mostCommonAgentReason(hardErrors)}).`;
+			console.error(`\n${canaryTripReason}`);
 		}
 		if (!canaryTripped) {
 			const deadArm = armCanaryFailure(results, canarySize);
 			if (deadArm !== undefined) {
 				canaryTripped = true;
 				const armErrors = results.filter(r => r.arm === deadArm && isHardError(r)).map(r => r.error ?? "");
-				console.error(`\nABORTING: arm "${deadArm}" failed canary (${mostCommonAgentReason(armErrors)}).`);
+				canaryTripReason = `ABORTING: arm "${deadArm}" failed canary (${mostCommonAgentReason(armErrors)}).`;
+				console.error(`\n${canaryTripReason}`);
 			}
 		}
 	}
@@ -858,7 +891,9 @@ export async function runBench(argv: string[]): Promise<void> {
 		await Promise.all(workers);
 	}
 
-	if (canaryTripped) process.exit(1);
+	if (canaryTripped) {
+		throw new CanaryTrippedError(canaryTripReason ?? "canary tripped");
+	}
 
 	results.sort((a, b) => a.arm.localeCompare(b.arm) || a.task.localeCompare(b.task) || a.repeat - b.repeat);
 	const orderedTasks = tasks;
@@ -893,8 +928,7 @@ export async function runBench(argv: string[]): Promise<void> {
 	);
 
 	if (comparisonRejection) {
-		console.error(`\n${comparisonRejection}\nRaw results retained; no report written.`);
-		process.exit(1);
+		throw new ComparisonRejectionError(`${comparisonRejection}\nRaw results retained; no report written.`);
 	}
 
 	const report = systemComparison

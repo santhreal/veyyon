@@ -5,7 +5,7 @@ import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { getEnumValues, getType, isSettingPath } from "@veyyon/coding-agent/config/settings-schema";
-import { isRecord } from "@veyyon/utils";
+import { errorMessage, isRecord } from "@veyyon/utils";
 import YAML from "yaml";
 import { armsDir } from "../../../../paths";
 import { effectiveTemperature, PINNED_TEMPERATURE } from "../aggregate";
@@ -26,6 +26,17 @@ import {
 	unknownArmSettings,
 	writeArmAttachmentManifest,
 } from "../shared";
+import {
+	ArmAttachmentError,
+	EncodeArmModelMismatchError,
+	InvalidArmConfigShapeError,
+	InvalidArmYamlError,
+	MissingArmConfigError,
+	MistypedArmSettingsError,
+	PromptOverrideIdError,
+	UnknownArmSettingsError,
+	ZeroIvCollisionError,
+} from "./errors";
 
 export interface StagedArmsResult {
 	armTemperature: Map<string, number>;
@@ -65,8 +76,7 @@ export function stageAllArms(opts: {
 		const configArm = isSystemArm ? "baseline" : arm;
 		const armYmlPath = path.join(sourceArmsDir, `${configArm}.yml`);
 		if (!fs.existsSync(armYmlPath)) {
-			console.error(`missing arm config: ${armYmlPath}`);
-			process.exit(1);
+			throw new MissingArmConfigError(`missing arm config: ${armYmlPath}`);
 		}
 
 		const ymlText = fs.readFileSync(armYmlPath, "utf8");
@@ -74,37 +84,36 @@ export function stageAllArms(opts: {
 		try {
 			config = YAML.parse(ymlText) ?? {};
 		} catch (err) {
-			console.error(`error: arm "${arm}" has invalid YAML in arms/${arm}.yml:\n${err}`);
-			process.exit(1);
+			throw new InvalidArmYamlError(
+				`error: arm "${arm}" has invalid YAML in arms/${arm}.yml:\n${errorMessage(err)}`,
+			);
 		}
 
 		if (!isRecord(config)) {
-			console.error(
+			throw new InvalidArmConfigShapeError(
 				`error: arm "${arm}" arms/${arm}.yml must be a mapping of setting -> value, ` +
 					`got ${Array.isArray(config) ? "a sequence" : typeof config}.`,
 			);
-			process.exit(1);
 		}
 
 		const mistyped = mistypedArmSettings(config, p =>
 			isSettingPath(p) ? { kind: getType(p), values: getEnumValues(p) } : undefined,
 		);
 		if (mistyped.length > 0) {
-			console.error(
+			throw new MistypedArmSettingsError(
 				`error: arm "${arm}" arms/${arm}.yml sets ${mistyped.length} key(s) to a value the settings\n` +
 					`schema would reject:\n` +
 					mistyped.map(m => `  ${m.path}: expected ${m.expected}, got ${m.actual}`).join("\n"),
 			);
-			process.exit(1);
 		}
 
-		const unknown = unknownArmSettings(config, isSettingPath);
+		const isKnownSettingPath = (p: string): boolean => isSettingPath(p) || p === "argot.models";
+		const unknown = unknownArmSettings(config, isKnownSettingPath);
 		if (unknown.length > 0) {
-			console.error(
+			throw new UnknownArmSettingsError(
 				`error: arm "${arm}" arms/${arm}.yml sets ${unknown.length} key(s) that are not veyyon settings:\n` +
 					unknown.map(p => `  ${p}`).join("\n"),
 			);
-			process.exit(1);
 		}
 
 		const temperature = effectiveTemperature(config);
@@ -116,13 +125,12 @@ export function stageAllArms(opts: {
 
 		const mismatch = encodeArmModelMismatch(config, model);
 		if (mismatch !== null) {
-			console.error(
+			throw new EncodeArmModelMismatchError(
 				`error: arm "${arm}" enables argot encoding with an allowlist that does not\n` +
 					`include the model under test, so it would SILENTLY degrade to decode-only:\n` +
 					`  arms/${arm}.yml argot.models = [${mismatch.join(", ")}]\n` +
 					`  --model = ${model}`,
 			);
-			process.exit(1);
 		}
 
 		const attachments: ArmAttachmentValues = {};
@@ -130,19 +138,18 @@ export function stageAllArms(opts: {
 		for (const kind of ARM_ATTACHMENT_KINDS) {
 			const read = readArmAttachment(kind, sourceArmsDir, arm, configArm);
 			if (isArmAttachmentError(read)) {
-				console.error(`error: ${read.error}`);
-				process.exit(1);
+				throw new ArmAttachmentError(`error: ${read.error}`);
 			}
 			if (!read.present) continue;
 
 			if (kind.field === "prompts") {
 				const problem = promptOverrideIdError(arm, mappingOf(read.payload) ?? {});
 				if (problem !== null) {
-					console.error(`error: ${problem}`);
-					process.exit(1);
+					throw new PromptOverrideIdError(`error: ${problem}`);
 				}
 			}
-			attachments[kind.field] = ("mapping" in read.payload ? read.payload.mapping : read.payload.bytes) as never;
+			(attachments as Record<string, unknown>)[kind.field] =
+				"mapping" in read.payload ? read.payload.mapping : read.payload.bytes;
 			staged.push(stageArmAttachment(kind, assetsDir, arm, read.payload));
 		}
 		stagedAttachments.set(arm, staged);
@@ -155,11 +162,10 @@ export function stageAllArms(opts: {
 		const collisions = findZeroIvCollisions(armFingerprints);
 		if (collisions.length > 0) {
 			const detail = collisions.map(group => `  {${group.join(", ")}} reduce to identical inputs`).join("\n");
-			console.error(
+			throw new ZeroIvCollisionError(
 				"error: zero-IV arm collision — a controlled comparison must vary exactly one\n" +
 					`independent variable, but these arms reduce to the same inputs:\n${detail}`,
 			);
-			process.exit(1);
 		}
 	}
 
