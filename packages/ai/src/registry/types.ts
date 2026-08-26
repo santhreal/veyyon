@@ -12,10 +12,8 @@
 import type { OAuthCredentials, OAuthLoginCallbacks } from "./oauth/types";
 
 /**
- * API-key environment fallback, re-exported from its owner so the name stays where callers expect it.
- *
- * It was declared here AND in `env-api-key.ts`, identically, which is the same-name duplicate that drifts.
- * `../provider-env-keys.ts` owns both the type and the table it describes.
+ * API-key environment fallback, re-exported from its owner. Was declared here AND in `env-api-key.ts`
+ * (same-name duplicate that drifts). `../provider-env-keys.ts` owns both the type and the table.
  */
 export type { KeyResolver } from "../provider-env-keys";
 

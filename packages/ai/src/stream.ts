@@ -173,13 +173,9 @@ const PROVIDER_INFLIGHT_LEASE_STALE_MS = 30_000;
 const PROVIDER_INFLIGHT_HEARTBEAT_MS = 5_000;
 const PROVIDER_INFLIGHT_SIGNAL_FALLBACK_MS = 250;
 /**
- * Consecutive heartbeat write failures that mean this lease WILL be treated as dead.
- *
- * A single failure is normal and uninteresting: the next beat rewrites the file. What matters is a run of
- * them long enough for the lease's timestamp to age past {@link PROVIDER_INFLIGHT_LEASE_STALE_MS}, because at
- * that point another process reclaims the lease while this request is still in flight and the concurrency
- * guard has failed OPEN. Derived from the two intervals rather than written as a number so it cannot drift
- * out of step with them.
+ * Consecutive heartbeat failures that mean this lease will be treated as dead. A single failure is normal;
+ * a run long enough to age past {@link PROVIDER_INFLIGHT_LEASE_STALE_MS} fails the guard open. Derived from
+ * the two intervals so it can't drift.
  */
 const PROVIDER_INFLIGHT_HEARTBEAT_FAILURES_BEFORE_STALE = Math.ceil(
 	PROVIDER_INFLIGHT_LEASE_STALE_MS / PROVIDER_INFLIGHT_HEARTBEAT_MS,
@@ -188,12 +184,8 @@ const PROVIDER_INFLIGHT_HEARTBEAT_FAILURES_BEFORE_STALE = Math.ceil(
 let providerInFlightRootOverride: string | undefined;
 
 /**
- * The caps and their resolver live in `./provider-inflight-limits`, which imports nothing.
- *
- * The WRITER of this state is the harness's settings layer, and reaching a setter that lived here meant
- * importing this module's 285: every provider transport, the model registry, the error taxonomy. The
- * re-export keeps `@veyyon/ai/stream` a working import path for it, so nothing that already calls it
- * changes, while a caller that only configures caps can name the owner instead.
+ * The caps and their resolver live in `./provider-inflight-limits` (imports nothing). Re-exported here so
+ * `@veyyon/ai/stream` stays a working import path; callers configuring only caps can name the owner.
  */
 export { configureProviderMaxInFlightRequests } from "./provider-inflight-limits";
 

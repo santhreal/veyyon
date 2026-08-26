@@ -18,13 +18,9 @@ import type { OAuthController, OAuthCredentials } from "./types";
 const DEFAULT_TIMEOUT = 300_000;
 const DEFAULT_HOSTNAME = "localhost";
 /**
- * The loopback path a provider redirects back to when nothing else is configured.
- *
- * Exported because this class is the one that serves it, and four callers each kept their own
- * `const CALLBACK_PATH = "/callback"` to hand back the same value: three OAuth providers passing it in
- * explicitly and the MCP flow using it as its own fallback. A change here would have moved the served path
- * and left all four still advertising the old one to the provider, which fails as a redirect mismatch at
- * the authorization server rather than anywhere in this codebase.
+ * The loopback path a provider redirects back to. Exported because four callers each kept their own
+ * `const CALLBACK_PATH = "/callback"`; a change here would move the served path and leave them advertising
+ * the old one (redirect mismatch at the authorization server).
  */
 export const DEFAULT_CALLBACK_PATH = "/callback";
 /**
