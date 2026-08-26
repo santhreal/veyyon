@@ -293,4 +293,4 @@ one dump, so no set is built at runtime.
 5. Rust shapes outputs into N-API objects (`lineNumber`, `matchCount`, `limitReached`, `patternTreatedAsLiteral`, etc.).
 6. The package's lazy binding returns typed JS objects and optional per-match callbacks for `grep`/`glob`.
 
-*Verified against `20990c6dd263fcd592b556d32aaf47c0937b1bea` on 2026-08-26.*
+*Verified against `7d81522bf9fd8000b939bbf0b0492697393a6683` on 2026-08-26.*
