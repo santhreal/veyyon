@@ -360,6 +360,46 @@ export type IconChars = {
 	readonly camera: string;
 };
 
+/** Thinking-level glyphs used by `theme.thinking`. */
+export type ThinkingChars = {
+	readonly minimal: string;
+	readonly low: string;
+	readonly medium: string;
+	readonly high: string;
+	readonly xhigh: string;
+	readonly max: string;
+	readonly autoPending: string;
+};
+
+/** Checkbox glyphs used by `theme.checkbox`. */
+export type CheckboxChars = {
+	readonly checked: string;
+	readonly unchecked: string;
+	readonly progress: string;
+};
+
+/** Radio glyphs used by `theme.radio`. */
+export type RadioChars = {
+	readonly selected: string;
+	readonly unselected: string;
+};
+
+/** Format glyphs used by `theme.format`. */
+export type FormatChars = {
+	readonly bullet: string;
+	readonly dash: string;
+	readonly bracketLeft: string;
+	readonly bracketRight: string;
+};
+
+/** Markdown glyphs used by `theme.md`. */
+export type MdChars = {
+	readonly quoteBorder: string;
+	readonly hrChar: string;
+	readonly bullet: string;
+	readonly colorSwatch: string;
+};
+
 export const UNICODE_SYMBOLS: SymbolMap = {
 	// Status
 	"status.success": "✓",

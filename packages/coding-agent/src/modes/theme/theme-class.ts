@@ -15,8 +15,12 @@ import { getVisibleGround } from "./ground-tints";
 import {
 	BAR_RAMPS,
 	type BoxChars,
+	type CheckboxChars,
+	type FormatChars,
 	type IconChars,
+	type MdChars,
 	type NavChars,
+	type RadioChars,
 	type SepChars,
 	SPINNER_FRAMES,
 	type SpinnerType,
@@ -25,6 +29,7 @@ import {
 	type SymbolKey,
 	type SymbolMap,
 	type SymbolPreset,
+	type ThinkingChars,
 	type TreeChars,
 } from "./symbols";
 
@@ -153,6 +158,11 @@ export class Theme {
 	#treeCache: TreeChars;
 	#sepCache: SepChars;
 	#iconCache: IconChars;
+	#thinkingCache: ThinkingChars;
+	#checkboxCache: CheckboxChars;
+	#radioCache: RadioChars;
+	#formatCache: FormatChars;
+	#mdCache: MdChars;
 	#spinnerFramesOverrides: Partial<Record<SpinnerType, string[]>>;
 	/**
 	 * Perceptual luma (0..1) of the status-line background used to classify the theme as light/dark.
@@ -314,6 +324,36 @@ export class Theme {
 			extensionInstruction: this.#symbols["icon.extensionInstruction"],
 			mic: this.#symbols["icon.mic"],
 			camera: this.#symbols["icon.camera"],
+		};
+		this.#thinkingCache = {
+			minimal: this.#symbols["thinking.minimal"],
+			low: this.#symbols["thinking.low"],
+			medium: this.#symbols["thinking.medium"],
+			high: this.#symbols["thinking.high"],
+			xhigh: this.#symbols["thinking.xhigh"],
+			max: this.#symbols["thinking.max"],
+			autoPending: this.#symbols["thinking.autoPending"],
+		};
+		this.#checkboxCache = {
+			checked: this.#symbols["checkbox.checked"],
+			unchecked: this.#symbols["checkbox.unchecked"],
+			progress: this.#symbols["checkbox.progress"],
+		};
+		this.#radioCache = {
+			selected: this.#symbols["radio.selected"],
+			unselected: this.#symbols["radio.unselected"],
+		};
+		this.#formatCache = {
+			bullet: this.#symbols["format.bullet"],
+			dash: this.#symbols["format.dash"],
+			bracketLeft: this.#symbols["format.bracketLeft"],
+			bracketRight: this.#symbols["format.bracketRight"],
+		};
+		this.#mdCache = {
+			quoteBorder: this.#symbols["md.quoteBorder"],
+			hrChar: this.#symbols["md.hrChar"],
+			bullet: this.#symbols["md.bullet"],
+			colorSwatch: this.#symbols["md.colorSwatch"],
 		};
 		this.#spinnerFramesOverrides = spinnerFramesOverrides;
 	}
@@ -630,15 +670,7 @@ export class Theme {
 	}
 
 	get thinking() {
-		return {
-			minimal: this.#symbols["thinking.minimal"],
-			low: this.#symbols["thinking.low"],
-			medium: this.#symbols["thinking.medium"],
-			high: this.#symbols["thinking.high"],
-			xhigh: this.#symbols["thinking.xhigh"],
-			max: this.#symbols["thinking.max"],
-			autoPending: this.#symbols["thinking.autoPending"],
-		};
+		return this.#thinkingCache;
 	}
 
 	/** Three task states, not two plus a colour. `progress` is total the same way
@@ -646,36 +678,18 @@ export class Theme {
 	 *  omit the key, and the override loop above only assigns keys already
 	 *  present rather than introducing or deleting any. */
 	get checkbox() {
-		return {
-			checked: this.#symbols["checkbox.checked"],
-			unchecked: this.#symbols["checkbox.unchecked"],
-			progress: this.#symbols["checkbox.progress"],
-		};
+		return this.#checkboxCache;
 	}
 
 	get radio() {
-		return {
-			selected: this.#symbols["radio.selected"],
-			unselected: this.#symbols["radio.unselected"],
-		};
+		return this.#radioCache;
 	}
-
 	get format() {
-		return {
-			bullet: this.#symbols["format.bullet"],
-			dash: this.#symbols["format.dash"],
-			bracketLeft: this.#symbols["format.bracketLeft"],
-			bracketRight: this.#symbols["format.bracketRight"],
-		};
+		return this.#formatCache;
 	}
 
 	get md() {
-		return {
-			quoteBorder: this.#symbols["md.quoteBorder"],
-			hrChar: this.#symbols["md.hrChar"],
-			bullet: this.#symbols["md.bullet"],
-			colorSwatch: this.#symbols["md.colorSwatch"],
-		};
+		return this.#mdCache;
 	}
 
 	/**
