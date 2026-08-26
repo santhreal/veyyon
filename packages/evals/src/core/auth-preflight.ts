@@ -234,6 +234,22 @@ export function describeExhaustedPool(pool: { pool: string; resetsAt?: number },
 	);
 }
 
+/**
+ * One provider failure as a verdict line.
+ *
+ * A credential probe reports the upstream error verbatim, so an OAuth refresh failure
+ * arrives as one sentence followed by `; stack=` and a dozen indented frames. A preflight
+ * verdict states which credential failed and what to do about it; the frames belong to the
+ * provider client that produced them, and repeated once per credential they bury the line
+ * that says a login is needed.
+ */
+export function summarizeCredentialReason(reason: string): string {
+	const beforeStack = reason.split("; stack=")[0] ?? reason;
+	const firstLine = beforeStack.split("\n")[0] ?? beforeStack;
+	const collapsed = firstLine.replace(/\s+/g, " ").trim();
+	return collapsed.length > 0 ? collapsed : "no reason reported";
+}
+
 export function describeAuthPreflightFailure(verdict: AuthPreflightVerdict, stagedPath: string): string {
 	switch (verdict.kind) {
 		case "empty":
@@ -242,7 +258,9 @@ export function describeAuthPreflightFailure(verdict: AuthPreflightVerdict, stag
 				"re-seed it by logging in (vey, then /login), which writes ~/.veyyon/shared-auth/agent.db"
 			);
 		case "dead": {
-			const lines = verdict.failures.map(failure => `  ${failure.provider}: ${failure.reason}`).join("\n");
+			const lines = verdict.failures
+				.map(failure => `  ${failure.provider}: ${summarizeCredentialReason(failure.reason)}`)
+				.join("\n");
 			return (
 				`the staged auth DB cannot serve a token: ${stagedPath}\n${lines}\n` +
 				"re-seed it by logging in again (vey, then /login). This is a credential problem. " +
@@ -278,17 +296,16 @@ export async function requireStagedAuthCanServeToken(
 		const message =
 			`cannot resolve the upstream vendor for model "${model}", so its quota pool cannot be ` +
 			`checked. Verify the model id against @veyyon/catalog.`;
-		console.error(message);
 		if (!dryRun) throw new Error(message);
+		console.error(message);
 		console.error("continuing anyway because this is a --dry-run; no trial will be started.\n");
 	}
 
 	const spent = exhaustedPoolFor(probes, model);
 	if (spent) {
-		console.error(describeExhaustedPool(spent, model));
-		if (spentQuotaShouldAbort(spent, dryRun)) {
-			throw new Error(describeExhaustedPool(spent, model));
-		}
+		const message = describeExhaustedPool(spent, model);
+		if (spentQuotaShouldAbort(spent, dryRun)) throw new Error(message);
+		console.error(message);
 		console.error("continuing anyway because this is a --dry-run; no trial will be started.\n");
 	}
 
@@ -303,7 +320,5 @@ export async function requireStagedAuthCanServeToken(
 		);
 		return;
 	}
-	const failureMessage = describeAuthPreflightFailure(verdict, dbPath);
-	console.error(failureMessage);
-	throw new Error(failureMessage);
+	throw new Error(describeAuthPreflightFailure(verdict, dbPath));
 }
