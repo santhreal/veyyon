@@ -1,6 +1,7 @@
 import { clamp01 } from "@veyyon/utils/math";
 import { SGR_BG_RESET, SGR_FG_RESET } from "./ansi";
 import { TERMINAL } from "./terminal-capabilities";
+import { padding } from "./utils";
 
 // LaTeX → Unicode/ANSI converter.
 //
@@ -1460,7 +1461,7 @@ class LatexParser {
 			return previous === null ? "" : SGR_FG_RESET;
 		}
 		if (name === "phantom" || name === "hphantom") {
-			return " ".repeat(codePointLength(this.#argument(style).text));
+			return padding(codePointLength(this.#argument(style).text));
 		}
 		if (name === "vphantom") {
 			this.#argument(style);

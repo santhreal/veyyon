@@ -22,7 +22,7 @@
 // scratch here on this module's ANSI-aware Box model.
 
 import { latexColorScope, latexToUnicode, MATH_FONT_COMMANDS } from "./latex-to-unicode";
-import { clamp, visibleWidth } from "./utils";
+import { clamp, padding, visibleWidth } from "./utils";
 
 /**
  * A rectangular block of rendered text. Every entry in `lines` is padded to
@@ -194,14 +194,9 @@ interface Ctx {
 }
 
 const ROOT_CTX: Ctx = { wrap: run => run };
-
-function spaces(n: number): string {
-	return n > 0 ? " ".repeat(n) : "";
-}
-
 /** Pad `line` on the right to `width` visible columns. */
 function padRight(line: string, width: number): string {
-	return line + spaces(width - visibleWidth(line));
+	return line + padding(width - visibleWidth(line));
 }
 
 /** Pad `line` symmetrically (left-biased) to `width` visible columns. */
@@ -209,7 +204,7 @@ function center(line: string, width: number): string {
 	const extra = width - visibleWidth(line);
 	if (extra <= 0) return line;
 	const left = extra >> 1;
-	return spaces(left) + line + spaces(extra - left);
+	return padding(left) + line + padding(extra - left);
 }
 
 /** A single rendered string (possibly multi-line) as a baseline-centered box. */
@@ -225,10 +220,10 @@ function padBox(b: Box, width: number, align: CellAlign): Box {
 	if (b.width >= width) return b;
 	const lines = b.lines.map(line => {
 		const extra = width - visibleWidth(line);
-		if (align === "l") return line + spaces(extra);
-		if (align === "r") return spaces(extra) + line;
+		if (align === "l") return line + padding(extra);
+		if (align === "r") return padding(extra) + line;
 		const left = extra >> 1;
-		return spaces(left) + line + spaces(extra - left);
+		return padding(left) + line + padding(extra - left);
 	});
 	return { lines, baseline: b.baseline, width };
 }
@@ -250,7 +245,7 @@ function hconcat(boxes: Box[]): Box {
 		let line = "";
 		for (const b of boxes) {
 			const local = row - (above - b.baseline);
-			line += local >= 0 && local < b.lines.length ? b.lines[local] : spaces(b.width);
+			line += local >= 0 && local < b.lines.length ? b.lines[local] : padding(b.width);
 		}
 		lines.push(line);
 	}
@@ -293,7 +288,7 @@ function delimColumn(key: string, height: number, baseline: number): Box | null 
 		return only ? { lines: [only], baseline: 0, width: visibleWidth(only) } : null;
 	}
 	const width = visibleWidth(pieces?.only ?? key);
-	const blank = spaces(width);
+	const blank = padding(width);
 	const lines: string[] = [];
 	if (!pieces) {
 		for (let y = 0; y < height; y++) lines.push(y === baseline ? key : blank);
@@ -330,7 +325,7 @@ function binomBox(top: Box, bottom: Box): Box {
 	const width = Math.max(top.width, bottom.width);
 	const lines = [
 		...top.lines.map(line => center(line, width)),
-		spaces(width),
+		padding(width),
 		...bottom.lines.map(line => center(line, width)),
 	];
 	return delimBox({ lines, baseline: top.lines.length, width }, "(", ")");
@@ -349,7 +344,7 @@ function radicalBox(inner: Box, degree: string | null): Box {
 	if (!degree) return box;
 	const deg = latexToUnicode(`^{${degree}}`);
 	// Degree sits one row above the baseline, at the radical's upper left.
-	return hconcat([{ lines: [deg, spaces(visibleWidth(deg))], baseline: 1, width: visibleWidth(deg) }, box]);
+	return hconcat([{ lines: [deg, padding(visibleWidth(deg))], baseline: 1, width: visibleWidth(deg) }, box]);
 }
 
 /** Big operator with limits: `sup` centered above `glyph`, `sub` below. */
@@ -373,7 +368,7 @@ function attachScripts(base: Box, sub: Box | null, sup: Box | null): Box {
 	if (sub === null && sup === null) return base;
 	const single = base.lines.length === 1;
 	const width = Math.max(sub?.width ?? 0, sup?.width ?? 0);
-	const blank = spaces(width);
+	const blank = padding(width);
 	const lines: string[] = [];
 	let baseline = 0;
 	if (sup) {
@@ -420,7 +415,7 @@ function gridBox(rows: Box[][], align: (col: number) => CellAlign, gap: (col: nu
 		for (let j = 0; j < ncols; j++) {
 			if (j > 0) {
 				const g = gap(j);
-				if (g > 0) parts.push({ lines: [spaces(g)], baseline: 0, width: g });
+				if (g > 0) parts.push({ lines: [padding(g)], baseline: 0, width: g });
 			}
 			parts.push(padBox(row[j] ?? { lines: [""], baseline: 0, width: 0 }, widths[j], align(j)));
 		}
@@ -428,7 +423,7 @@ function gridBox(rows: Box[][], align: (col: number) => CellAlign, gap: (col: nu
 	}
 	const grid = vconcat(rowBoxes);
 	if (rowGap > 0 && rows.length > 1 && grid.lines.length % 2 === 0) {
-		return { lines: [...grid.lines, spaces(grid.width)], baseline: grid.lines.length >> 1, width: grid.width };
+		return { lines: [...grid.lines, padding(grid.width)], baseline: grid.lines.length >> 1, width: grid.width };
 	}
 	return grid;
 }

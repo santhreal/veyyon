@@ -24,7 +24,7 @@
 import { CSI, sgrSequence } from "./ansi";
 import { toHexColor } from "./motion-paint";
 import { parseHexColor } from "./paint-ground";
-import { getSegmenter, visibleWidth } from "./utils";
+import { getSegmenter, padding, visibleWidth } from "./utils";
 
 /** What the caller is told about one column of the line. */
 export interface ColumnPaint {
@@ -148,7 +148,7 @@ export function paintLineBackground(
 	const first = window === undefined ? 0 : Math.max(0, window.start);
 	const last = window === undefined ? width : Math.min(width, window.end);
 	const content = visibleWidth(line);
-	const padded = content < last ? line + " ".repeat(last - content) : line;
+	const padded = content < last ? line + padding(last - content) : line;
 
 	let out = "";
 	let col = 0;
