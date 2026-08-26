@@ -19,15 +19,15 @@ import { describe, expect, test } from "bun:test";
 import * as path from "node:path";
 import { deepSweSuiteDir } from "../../../src/paths";
 import { emptyArmResult } from "../../../src/suites/deep-swe/aggregate";
+import { renderReferenceCostSection } from "../../../src/suites/deep-swe/aggregate/report-render";
+import { summarizeCell } from "../../../src/suites/deep-swe/aggregate/stats";
+import type { ArmResult } from "../../../src/suites/deep-swe/aggregate/types";
 import {
 	costShares,
 	priceTokens,
 	REFERENCE_RATE_CARD,
 	retainedTokenCost,
 } from "../../../src/suites/deep-swe/cost-model";
-import { renderReferenceCostSection } from "../../../src/suites/deep-swe/src/aggregate/report-render";
-import { summarizeCell } from "../../../src/suites/deep-swe/src/aggregate/stats";
-import type { ArmResult } from "../../../src/suites/deep-swe/src/aggregate/types";
 
 describe("the reference cost section refuses to price what it cannot attribute", () => {
 	/**

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
-import { trialQueue } from "../../../src/suites/deep-swe/src/aggregate/merge";
-import { drainTrialQueueInPairedWaves } from "../../../src/suites/deep-swe/src/runner/trial-scheduler";
+import { trialQueue } from "../../../src/suites/deep-swe/aggregate/merge";
+import { drainTrialQueueInPairedWaves } from "../../../src/suites/deep-swe/runner/trial-scheduler";
 
 /**
  * WHY: a generic two-worker queue can let a faster arm claim another task while

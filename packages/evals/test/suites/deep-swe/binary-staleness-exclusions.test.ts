@@ -29,7 +29,7 @@ import {
 	BUILD_GENERATED_EXCLUSIONS,
 	checkBinaryBuildNeeded,
 	isBuildGeneratedFile,
-} from "../../../src/suites/deep-swe/src/runner/preflight";
+} from "../../../src/suites/deep-swe/runner/preflight";
 
 function createScratchDir(prefix: string): string {
 	const base = internalScratchDir();

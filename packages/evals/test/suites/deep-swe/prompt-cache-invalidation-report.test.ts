@@ -11,8 +11,8 @@
 
 import { describe, expect, test } from "bun:test";
 import { emptyArmResult } from "../../../src/suites/deep-swe/aggregate";
-import { renderPromptCacheInvalidationSection } from "../../../src/suites/deep-swe/src/aggregate/report-render";
-import type { ArmResult } from "../../../src/suites/deep-swe/src/aggregate/types";
+import { renderPromptCacheInvalidationSection } from "../../../src/suites/deep-swe/aggregate/report-render";
+import type { ArmResult } from "../../../src/suites/deep-swe/aggregate/types";
 
 function row(arm: string, invalidations: string[] | null): ArmResult {
 	return { ...emptyArmResult(arm, "task", 0), promptCacheInvalidations: invalidations };

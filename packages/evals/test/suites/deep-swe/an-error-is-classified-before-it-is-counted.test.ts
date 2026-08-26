@@ -21,10 +21,10 @@ import {
 	providerFinishReason,
 	providerQuotaStop,
 	quotaStopMarker,
-} from "../../../src/suites/deep-swe/src/aggregate/error-classification";
-import { renderQuotaTruncationBanner, renderReport } from "../../../src/suites/deep-swe/src/aggregate/report-render";
-import { summarizeCell } from "../../../src/suites/deep-swe/src/aggregate/stats";
-import type { ArmResult } from "../../../src/suites/deep-swe/src/aggregate/types";
+} from "../../../src/suites/deep-swe/aggregate/error-classification";
+import { renderQuotaTruncationBanner, renderReport } from "../../../src/suites/deep-swe/aggregate/report-render";
+import { summarizeCell } from "../../../src/suites/deep-swe/aggregate/stats";
+import type { ArmResult } from "../../../src/suites/deep-swe/aggregate/types";
 import {
 	FINISHED_WITHOUT_PATCH_JOB_LOG,
 	KILLED_MID_RUN_JOB_LOG,

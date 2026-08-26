@@ -20,8 +20,8 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { MergeRefused, mergeRuns, type RunToMerge } from "../../../src/suites/deep-swe/src/aggregate/merge";
-import type { ArmResult } from "../../../src/suites/deep-swe/src/aggregate/types";
+import { MergeRefused, mergeRuns, type RunToMerge } from "../../../src/suites/deep-swe/aggregate/merge";
+import type { ArmResult } from "../../../src/suites/deep-swe/aggregate/types";
 
 /** A minimal scored trial; only the fields the merge reads are meaningful. */
 function result(arm: string, task: string, repeat = 0, reward = 1): ArmResult {

@@ -29,7 +29,7 @@ import {
 	modelVendor,
 	requireModelVendor,
 } from "../../../src/core/auth-preflight";
-import { requireStagedAuthCanServeToken } from "../../../src/suites/deep-swe/src/runner/preflight";
+import { requireStagedAuthCanServeToken } from "../../../src/suites/deep-swe/runner/preflight";
 
 describe("an unresolvable model vendor refuses the preflight", () => {
 	it("refuses by name, and says where to verify the id", () => {

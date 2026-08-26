@@ -7,26 +7,27 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { clampLow, errorMessage, readPipeText } from "@veyyon/utils";
 import YAML from "yaml";
-import { cleanupPierContainers } from "../../../../backends/pier/runner";
+import { cleanupPierContainers } from "../../../backends/pier/runner";
+import { MINIMUM_DEEPSWE_PIER_VERSION, pierSupportsSeparateVerifierCollect } from "../../../backends/pier/version";
 import {
 	getHarness,
 	hasHarness,
 	listHarnesses,
 	listHarnessNames,
 	requireHarness,
-} from "../../../../core/harness-registry";
-import type { HarnessAdapter } from "../../../../core/types";
+} from "../../../core/harness-registry";
+import type { HarnessAdapter } from "../../../core/types";
 import {
 	aggregateSystemComparison,
 	type ComparisonSystem,
 	comparisonTrialsFromArmResults,
 	renderSystemComparison,
-} from "../../../../harnesses/system-comparison";
+} from "../../../harnesses/system-comparison";
 
 export const COMPARISON_TASK_LIST = "datasets/deep-swe/tasks/pilot-10.txt";
 export const COMPARISON_TASK_LIST_SHA256 = "439b07dfbf30a988286e614b6b200def41b56f2447b249583560a78152cbfa06";
 
-import type { ComparisonArmResult, ComparisonExecution, SystemComparison } from "../../../../harnesses/types";
+import type { ComparisonArmResult, ComparisonExecution, SystemComparison } from "../../../harnesses/types";
 import {
 	armsDir,
 	comparisonTaskListPath,
@@ -36,7 +37,7 @@ import {
 	runsDir,
 	taskCorpusDir,
 	taskListsDir,
-} from "../../../../paths";
+} from "../../../paths";
 import {
 	type ArmResult,
 	armCanaryFailure,
@@ -59,25 +60,18 @@ import {
 	type TaskSetProvenance,
 	trialQueue,
 } from "../aggregate";
+import { isArmConfigFile } from "../arm-fingerprint";
+import { formatArmPrediction, predictArmSaving } from "../arm-prediction";
+import { resolveBinaryPin } from "../binary-pin";
+import { conversationCollapsed, measureRunPrefix, PREFIX_CATEGORIES, prefixShares } from "../prefix-composition";
+import { type LoadedReplayManifest, loadReplayManifest } from "../replay-manifest";
 import {
-	conversationCollapsed,
-	formatArmPrediction,
-	isArmConfigFile,
-	type LoadedReplayManifest,
-	loadReplayManifest,
-	MINIMUM_DEEPSWE_PIER_VERSION,
-	measureRunPrefix,
-	PREFIX_CATEGORIES,
 	parseTaskTimeBudget,
 	parseTrialTimeoutFlag,
-	pierSupportsSeparateVerifierCollect,
-	predictArmSaving,
-	prefixShares,
 	type ResolvedTrialTimeout,
-	resolveBinaryPin,
 	resolveTrialTimeout,
 	truncationWarning,
-} from "../shared";
+} from "../trial-timeout";
 import { stageAllArms } from "./arm-staging";
 import { parseBenchCliArgs, printHelp } from "./cli-args";
 import {

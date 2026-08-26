@@ -4,8 +4,8 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { isRecord } from "@veyyon/utils";
-import type { ComparisonSystem } from "../../../../harnesses/system-comparison";
-import type { ComparisonArmResult, ComparisonExecution, NativeCompactionEvidence } from "../../../../harnesses/types";
+import type { ComparisonSystem } from "../../../harnesses/system-comparison";
+import type { ComparisonArmResult, ComparisonExecution, NativeCompactionEvidence } from "../../../harnesses/types";
 import {
 	emptyArmResult,
 	finishedWithoutPatch,
@@ -15,7 +15,7 @@ import {
 	providerQuotaStop,
 	quotaStopMarker,
 } from "../aggregate";
-import type { LoadedReplayManifest } from "../shared";
+import type { LoadedReplayManifest } from "../replay-manifest";
 import { parseSessionsUsage } from "./session-transcript";
 
 export function readIfPresent(file: string): string | null {

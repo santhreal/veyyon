@@ -27,7 +27,7 @@ import type {
 	SuiteContext,
 	VariantMatrixSelection,
 } from "./core";
-import { requireBackend, requireSuite, summarizeRunCells } from "./core";
+import { judgeRunOutcome, requireBackend, requireSuite, summarizeRunCells } from "./core";
 import { preflightHarnesses } from "./core/harness-preflight";
 import { registerBuiltinHarnesses } from "./harnesses";
 import { runsDir as defaultRunsDir } from "./paths";
@@ -303,17 +303,18 @@ async function resolveTasks(tasks: readonly string[]): Promise<readonly string[]
 /**
  * Renders one row per variant.
  *
- * `graded` is the denominator of both rates: a timed-out trial is a graded failure, and an
- * infrastructure error is excluded and printed in its own column, so a run whose trials mostly
- * crashed can never read as a high pass rate.
+ * `graded` is the denominator of both rates: a timed-out trial is a graded failure, and a trial
+ * that never reached a grade is excluded and printed in its own column — `ungraded` for a trial
+ * that settled with no reward and no error, `errors` for one that reported a failure — so a run
+ * whose trials mostly crashed can never read as a high pass rate.
  */
 function summaryTable(summaries: readonly CellSummary[]): string {
-	const header = "| variant | trials | graded | passes | timeouts | errors | pass rate | mean reward |";
-	const divider = "| --- | --- | --- | --- | --- | --- | --- | --- |";
+	const header = "| variant | trials | graded | passes | timeouts | ungraded | errors | pass rate | mean reward |";
+	const divider = "| --- | --- | --- | --- | --- | --- | --- | --- | --- |";
 	const rows = summaries.map(summary => {
 		const passRate = summary.passRate === null ? "—" : `${(summary.passRate * 100).toFixed(1)}%`;
 		const meanReward = summary.meanReward === null ? "—" : summary.meanReward.toFixed(3);
-		return `| ${summary.variant} | ${summary.total} | ${summary.denominator} | ${summary.passes} | ${summary.timedOut} | ${summary.errors} | ${passRate} | ${meanReward} |`;
+		return `| ${summary.variant} | ${summary.total} | ${summary.denominator} | ${summary.passes} | ${summary.timedOut} | ${summary.unscored} | ${summary.errors} | ${passRate} | ${meanReward} |`;
 	});
 	return [header, divider, ...rows].join("\n");
 }
@@ -544,9 +545,19 @@ async function runOneSuite(args: EvalsCliArgs, suite: EvalSuite, running: readon
 	}
 
 	process.stdout.write(`\n${summaryTable(summarizeRunCells(record))}\n`);
-	const errors = record.results.filter(result => result.score.error !== null).length;
-	process.stdout.write(`\nrun ${record.id}: ${record.results.length} trial(s), ${errors} error(s)\n`);
-	return errors > 0 ? 1 : 0;
+
+	const verdict = judgeRunOutcome(record);
+	process.stdout.write(
+		`\nrun ${record.id}: ${verdict.settled} trial(s), ${verdict.measured} measured, ${verdict.errors} error(s)\n`,
+	);
+	if (verdict.failure === "no-trial-settled") {
+		process.stderr.write(`\nRun ${record.id} settled no trial: there is nothing to report.\n`);
+	} else if (verdict.failure === "nothing-measured") {
+		process.stderr.write(
+			`\nRun ${record.id} produced no measurement: ${verdict.settled} trial(s) settled and none reached a grade.\n`,
+		);
+	}
+	return verdict.exitCode;
 }
 
 if (import.meta.main) {

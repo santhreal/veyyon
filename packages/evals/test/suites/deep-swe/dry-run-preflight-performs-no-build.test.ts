@@ -28,7 +28,7 @@ import * as path from "node:path";
 import { AuthStorage, type CredentialHealthResult } from "@veyyon/ai";
 import { internalScratchDir } from "../../../src/paths";
 import { builtinSuites } from "../../../src/suites";
-import { checkBinaryBuildNeeded } from "../../../src/suites/deep-swe/src/runner/preflight";
+import { checkBinaryBuildNeeded } from "../../../src/suites/deep-swe/runner/preflight";
 import { deepSweSuite } from "../../../src/suites/deep-swe/suite";
 
 function createScratchDir(prefix: string): string {

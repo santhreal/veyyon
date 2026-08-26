@@ -42,7 +42,7 @@ const ARMS_DIR = armsDir();
 const TASKS_DIR = taskListsDir();
 const REPO_ROOT = repoRootDir();
 const README = fs.readFileSync(path.join(SUITE_DIR, "README.md"), "utf8");
-const CLI_ARGS_TS = fs.readFileSync(path.join(SUITE_DIR, "src", "runner", "cli-args.ts"), "utf8");
+const CLI_ARGS_TS = fs.readFileSync(path.join(SUITE_DIR, "runner", "cli-args.ts"), "utf8");
 const SKILL_PATH = path.join(REPO_ROOT, ".veyyon", "skills", "evals", "SKILL.md");
 const SKILL = fs.existsSync(SKILL_PATH) ? fs.readFileSync(SKILL_PATH, "utf8") : "";
 
@@ -278,7 +278,7 @@ describe("the documented model agrees with the arms", () => {
 	 */
 	it.each([
 		["README", () => README],
-		["executor.ts", () => fs.readFileSync(path.join(SUITE_DIR, "src", "runner", "executor.ts"), "utf8")],
+		["executor.ts", () => fs.readFileSync(path.join(SUITE_DIR, "runner", "executor.ts"), "utf8")],
 		["evals SKILL", () => SKILL],
 		["arms/full.yml", () => fs.readFileSync(path.join(ARMS_DIR, "full.yml"), "utf8")],
 		["arms/full-budget16k.yml", () => fs.readFileSync(path.join(ARMS_DIR, "full-budget16k.yml"), "utf8")],

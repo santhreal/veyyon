@@ -7,25 +7,20 @@ import * as path from "node:path";
 import { getEnumValues, getType, isSettingPath } from "@veyyon/coding-agent/config/settings-schema";
 import { errorMessage, isRecord } from "@veyyon/utils";
 import YAML from "yaml";
-import { armsDir } from "../../../../paths";
-import { effectiveTemperature, PINNED_TEMPERATURE } from "../aggregate";
 import {
 	ARM_ATTACHMENT_KINDS,
 	type ArmAttachmentManifestEntry,
-	type ArmAttachmentValues,
-	computeArmFingerprint,
-	encodeArmModelMismatch,
-	findZeroIvCollisions,
 	isArmAttachmentError,
-	isEncodeArm,
 	mappingOf,
-	mistypedArmSettings,
-	promptOverrideIdError,
 	readArmAttachment,
 	stageArmAttachment,
-	unknownArmSettings,
 	writeArmAttachmentManifest,
-} from "../shared";
+} from "../../../core/arm-attachments";
+import { promptOverrideIdError } from "../../../core/prompt-overrides";
+import { armsDir } from "../../../paths";
+import { effectiveTemperature, PINNED_TEMPERATURE } from "../aggregate";
+import { type ArmAttachmentValues, computeArmFingerprint, findZeroIvCollisions } from "../arm-fingerprint";
+import { encodeArmModelMismatch, isEncodeArm, mistypedArmSettings, unknownArmSettings } from "../treatment-guard";
 import {
 	ArmAttachmentError,
 	EncodeArmModelMismatchError,

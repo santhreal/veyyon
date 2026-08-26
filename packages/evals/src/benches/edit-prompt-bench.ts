@@ -27,10 +27,10 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { errorMessage } from "@veyyon/utils";
-import { discoverSharedInfra, InProcessClient, type SharedInfra } from "../../backends/in-process/client";
-import { extractBenchmarkFixtures } from "./argot-bench";
-import { type EditTask, loadTasksFromDir } from "./tasks";
-import { verifyExpectedFileSubset } from "./verify";
+import { discoverSharedInfra, InProcessClient, type SharedInfra } from "../backends/in-process/client";
+import { extractBenchmarkFixtures } from "../suites/typescript-edit/argot-bench";
+import { type EditTask, loadTasksFromDir } from "../suites/typescript-edit/tasks";
+import { verifyExpectedFileSubset } from "../suites/typescript-edit/verify";
 
 interface TaskOutcome {
 	id: string;

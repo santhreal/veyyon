@@ -33,7 +33,7 @@ import { requireHarness } from "../../../src/core/harness-registry";
 import type { HarnessAdapter } from "../../../src/core/types";
 import { registerBuiltinHarnesses } from "../../../src/harnesses";
 import { internalScratchDir } from "../../../src/paths";
-import { stageAllArms } from "../../../src/suites/deep-swe/src/runner/arm-staging";
+import { stageAllArms } from "../../../src/suites/deep-swe/runner/arm-staging";
 import {
 	ArmAttachmentError,
 	BinaryBuildFailedError,
@@ -67,14 +67,14 @@ import {
 	UnknownArmError,
 	UnknownArmSettingsError,
 	ZeroIvCollisionError,
-} from "../../../src/suites/deep-swe/src/runner/errors";
+} from "../../../src/suites/deep-swe/runner/errors";
 import {
 	mergeIntoReport,
 	reaggregate,
 	requirePierAgentImportPath,
 	runBench,
-} from "../../../src/suites/deep-swe/src/runner/executor";
-import { requireFile } from "../../../src/suites/deep-swe/src/runner/preflight";
+} from "../../../src/suites/deep-swe/runner/executor";
+import { requireFile } from "../../../src/suites/deep-swe/runner/preflight";
 
 registerBuiltinHarnesses();
 

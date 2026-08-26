@@ -9,11 +9,11 @@ import {
 	meanWithTimeoutsAsZero,
 	rateOf,
 	sumOfMeasured,
-} from "../../../../core/scoring";
+} from "../../../core/scoring";
 
 export { mean };
 
-import { priceTokens } from "../shared";
+import { priceTokens } from "../cost-model";
 import { isAgentTimeout } from "./error-classification";
 import type { ArmResult, CellSummary } from "./types";
 
@@ -187,9 +187,14 @@ export function pairwiseMetricDeltas(
 }
 
 export function summarizeCell(rows: readonly ArmResult[]): CellSummary {
-	const outcomes = rows.map(r => classifyTrialOutcome(r.error, isAgentTimeout(r.error)));
+	const outcomes = rows.map(r => classifyTrialOutcome(r.error, isAgentTimeout(r.error), r.reward));
 	const counts = countOutcomes(outcomes);
 	const ok = rows.filter((_, idx) => outcomes[idx] === "scored");
+	// Every row that reached a grader, whether or not the grader produced a reward. A timeout and
+	// an infrastructure error are excluded: neither ran to a priceable end. This is the population
+	// the reference cost section prices, and it is deliberately wider than `ok`, which drives the
+	// means and excludes a trial nothing graded.
+	const priced = rows.filter((_, idx) => outcomes[idx] === "scored" || outcomes[idx] === "unscored");
 	const passes = ok.filter(r => r.reward === 1).length;
 	const passRate = rateOf(passes, counts.denominator);
 	const stdErr =
@@ -202,6 +207,7 @@ export function summarizeCell(rows: readonly ArmResult[]): CellSummary {
 		total: counts.total,
 		errors: counts.errors,
 		timedOut: counts.timedOut,
+		unscored: counts.unscored,
 		n: counts.denominator,
 		passes,
 		passRate,
@@ -216,19 +222,21 @@ export function summarizeCell(rows: readonly ArmResult[]): CellSummary {
 		meanOutputTokens: meanOfScored(ok.map(r => r.outputTokens)),
 		meanInputTokens: meanOfScored(ok.map(r => r.inputTokens)),
 		meanCostUsd: meanOfScored(ok.map(r => r.costUsd)),
-		sumOutputTokens: sumOfMeasured(ok.map(r => r.outputTokens)) ?? 0,
-		sumCostUsd: sumOfMeasured(ok.map(r => r.costUsd)) ?? 0,
-		sumInputTokens: sumOfMeasured(ok.map(r => r.inputTokens)) ?? 0,
-		sumCacheTokens: sumOfMeasured(ok.map(r => r.cacheTokens)) ?? 0,
-		sumAgentSeconds: sumOfMeasured(ok.map(r => r.agentSeconds)) ?? 0,
-		costPriced: ok.some(r => (r.costUsd ?? 0) > 0),
+		sumOutputTokens: sumOfMeasured(priced.map(r => r.outputTokens)) ?? 0,
+		sumCostUsd: sumOfMeasured(priced.map(r => r.costUsd)) ?? 0,
+		sumInputTokens: sumOfMeasured(priced.map(r => r.inputTokens)) ?? 0,
+		sumCacheTokens: sumOfMeasured(priced.map(r => r.cacheTokens)) ?? 0,
+		sumAgentSeconds: sumOfMeasured(priced.map(r => r.agentSeconds)) ?? 0,
+		costPriced: priced.some(r => (r.costUsd ?? 0) > 0),
 		refCost: priceTokens({
-			inputTokens: sumOfMeasured(ok.map(r => r.inputTokens)) ?? 0,
-			cacheReadTokens: sumOfMeasured(ok.map(r => r.cacheReadTokens)) ?? 0,
-			cacheWriteTokens: sumOfMeasured(ok.map(r => r.cacheWriteTokens)) ?? 0,
-			outputTokens: sumOfMeasured(ok.map(r => r.outputTokens)) ?? 0,
+			inputTokens: sumOfMeasured(priced.map(r => r.inputTokens)) ?? 0,
+			cacheReadTokens: sumOfMeasured(priced.map(r => r.cacheReadTokens)) ?? 0,
+			cacheWriteTokens: sumOfMeasured(priced.map(r => r.cacheWriteTokens)) ?? 0,
+			outputTokens: sumOfMeasured(priced.map(r => r.outputTokens)) ?? 0,
 		}),
-		refCostMeasurable: ok.length > 0 && ok.every(r => r.cacheReadTokens != null && r.cacheWriteTokens != null),
+		refPricedSamples: priced.length,
+		refCostMeasurable:
+			priced.length > 0 && priced.every(r => r.cacheReadTokens != null && r.cacheWriteTokens != null),
 	};
 }
 

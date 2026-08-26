@@ -31,8 +31,8 @@ bun run.ts --tasks tasks/pilot-10.txt --arms baseline,full --dry-run
                                +----------------+---------------+
                                |                                |
                      +---------v---------+            +---------v---------+
-                     |    src/runner/    |            |   ../../harnesses/ |
-                     |  - cli-args       |            |  - registry       |
+                     |     runner/       |            |   ../../harnesses/ |
+                     |  - cli-args       |            |  - harness-registry|
                      |  - preflight      |            |  - adapters (vey, |
                      |  - arm-staging    |            |    omp, factory,  |
                      |  - executor       |            |    hermes)        |
@@ -48,7 +48,7 @@ bun run.ts --tasks tasks/pilot-10.txt --arms baseline,full --dry-run
                                +----------------+---------------+
                                |                                |
                      +---------v---------+            +---------v---------+
-                     |   src/aggregate/  |            |   report.md /     |
+                     |    aggregate/     |            |   report.md /     |
                      |  - stats & Wilson |            |   results.json    |
                      |  - usage tally    |            +-------------------+
                      |  - report-render  |
@@ -57,10 +57,10 @@ bun run.ts --tasks tasks/pilot-10.txt --arms baseline,full --dry-run
 
 ### Layers
 
-1. **CLI (`run.ts` → `src/runner/executor.ts`)**: Parses arguments, runs preflight checks, stages assets, queues trials, and writes the final report.
+1. **CLI (`run.ts` → `runner/executor.ts`)**: Parses arguments, runs preflight checks, stages assets, queues trials, and writes the final report.
 2. **Harness adapters (`packages/evals/src/harnesses/`)**: Registry of agent systems shared by every suite. Each adapter handles preflight validation, asset staging, and Pier job configuration for its target agent (veyyon, omp, factory, hermes).
-3. **Pier orchestrator**: Spawns Docker containers per trial with network allowlists, egress proxies, and verifier environments. Python agents in `pier_agent/` run inside the containers.
-4. **Aggregation (`src/aggregate/`)**: Collects trial results, computes Wilson confidence intervals, sign tests with Holm-Bonferroni correction, and renders the Markdown report.
+3. **Pier orchestrator**: Spawns Docker containers per trial with network allowlists, egress proxies, and verifier environments. Python agents in `packages/evals/agents/pier/` run inside the containers.
+4. **Aggregation (`aggregate/`)**: Collects trial results, computes Wilson confidence intervals, sign tests with Holm-Bonferroni correction, and renders the Markdown report.
 
 ## Execution Model
 
@@ -202,9 +202,8 @@ packages/evals/
 ├── src/suites/deep-swe/
 │   ├── run.ts           # DeepSWE runner entrypoint
 │   ├── aggregate.ts     # Re-exports + emptyArmResult factory
-│   └── src/
-│       ├── aggregate/   # Statistical tests, usage tallying, report rendering
-│       └── runner/      # CLI parsing, preflight, arm staging, Pier execution
+│   ├── aggregate/       # Statistical tests, usage tallying, report rendering
+│   └── runner/          # CLI parsing, preflight, arm staging, Pier execution
 ├── src/harnesses/       # Harness adapter registry shared by every suite
 ├── arms/                # Configuration overlays (baseline.yml, candidate-*.yml)
 ├── datasets/

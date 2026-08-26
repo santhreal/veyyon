@@ -12,12 +12,12 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { shouldTripCanary } from "../../../src/suites/deep-swe/src/aggregate/canary";
+import { shouldTripCanary } from "../../../src/suites/deep-swe/aggregate/canary";
 import {
 	isAgentTimeout,
 	isHardError,
 	NO_REWARD_ERROR,
-} from "../../../src/suites/deep-swe/src/aggregate/error-classification";
+} from "../../../src/suites/deep-swe/aggregate/error-classification";
 import {
 	efficiencyDeltaAttribution,
 	renderReport,
@@ -25,8 +25,8 @@ import {
 	TIMEOUT_UNATTRIBUTABLE_VERDICT,
 	timeoutAttributionBanner,
 	timeoutRate,
-} from "../../../src/suites/deep-swe/src/aggregate/report-render";
-import { summarizeCell } from "../../../src/suites/deep-swe/src/aggregate/stats";
+} from "../../../src/suites/deep-swe/aggregate/report-render";
+import { summarizeCell } from "../../../src/suites/deep-swe/aggregate/stats";
 import { res } from "./aggregate-test-helpers";
 
 describe("isAgentTimeout — the one place that decides what a timeout is", () => {

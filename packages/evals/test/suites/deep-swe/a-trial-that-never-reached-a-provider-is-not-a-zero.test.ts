@@ -24,7 +24,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { TempDir } from "@veyyon/utils";
 import type { TrialCell } from "../../../src/core/types";
-import { parseTrialResult } from "../../../src/suites/deep-swe/src/runner/trial-result";
+import { parseTrialResult } from "../../../src/suites/deep-swe/runner/trial-result";
 import { deepSweSuite } from "../../../src/suites/deep-swe/suite";
 
 const NO_PATCH_LINE =

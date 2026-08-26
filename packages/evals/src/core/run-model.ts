@@ -50,6 +50,8 @@ export interface CellSummary {
 	readonly passes: number;
 	/** Trials that never reached a grade. Excluded from every rate and mean below. */
 	readonly errors: number;
+	/** Trials that settled with no grade and no error. Excluded from every rate and mean below. */
+	readonly unscored: number;
 	/** Trials that exhausted the agent budget. Graded as failures. */
 	readonly timedOut: number;
 	/** Trials the grader scored. */
@@ -233,7 +235,7 @@ export function summarizeRunCells(run: EvalRunRecord): readonly CellSummary[] {
 
 	const summaries: CellSummary[] = [];
 	for (const [variantName, results] of byVariant) {
-		const outcomes = results.map(res => classifyTrialOutcome(res.score.error, timedOutOf(res)));
+		const outcomes = results.map(res => classifyTrialOutcome(res.score.error, timedOutOf(res), res.score.reward));
 		const counts = countOutcomes(outcomes);
 
 		const graded = results.filter((_, index) => outcomes[index] === "scored");
@@ -244,6 +246,7 @@ export function summarizeRunCells(run: EvalRunRecord): readonly CellSummary[] {
 			total: counts.total,
 			passes,
 			errors: counts.errors,
+			unscored: counts.unscored,
 			timedOut: counts.timedOut,
 			scored: counts.scored,
 			denominator: counts.denominator,
@@ -262,6 +265,53 @@ export function summarizeRunCells(run: EvalRunRecord): readonly CellSummary[] {
 	}
 
 	return summaries;
+}
+
+/** Why a settled run counts as a failure, or `null` when it does not. */
+export type RunFailure = "infrastructure-errors" | "no-trial-settled" | "nothing-measured";
+
+/** The exit status a settled run deserves, with the counts that produced it. */
+export interface RunVerdict {
+	readonly exitCode: number;
+	/** Every trial that settled, whatever the outcome. */
+	readonly settled: number;
+	/** Trials in the denominator of a rate: scored plus timed out. */
+	readonly measured: number;
+	/** Trials that never reached a grade. */
+	readonly errors: number;
+	readonly failure: RunFailure | null;
+}
+
+/**
+ * Single owner of the question "did this run succeed".
+ *
+ * Three outcomes are failures, and only one of them was reported as such before: an infrastructure
+ * error, a run that settled no trial at all, and a run whose trials all settled without reaching a
+ * grade. The third is why a suite that measured nothing used to exit 0.
+ *
+ * A run in which every graded trial failed is not a failure of the run: the eval measured what it
+ * set out to measure, and the reward is the answer.
+ */
+export function judgeRunOutcome(run: EvalRunRecord): RunVerdict {
+	const summaries = summarizeRunCells(run);
+	const settled = run.results.length;
+	let errors = 0;
+	let measured = 0;
+	for (const cell of summaries) {
+		errors += cell.errors;
+		measured += cell.denominator;
+	}
+
+	const failure: RunFailure | null =
+		errors > 0
+			? "infrastructure-errors"
+			: settled === 0
+				? "no-trial-settled"
+				: measured === 0
+					? "nothing-measured"
+					: null;
+
+	return { exitCode: failure === null ? 0 : 1, settled, measured, errors, failure };
 }
 
 /**

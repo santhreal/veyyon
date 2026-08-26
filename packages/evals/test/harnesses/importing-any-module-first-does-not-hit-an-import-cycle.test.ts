@@ -30,7 +30,7 @@ const packageRoot = path.resolve(import.meta.dirname, "..", "..");
 async function moduleFiles(): Promise<string[]> {
 	const glob = new Bun.Glob("**/*.ts");
 	const files: string[] = [];
-	for (const dir of ["src/harnesses", "src/suites"]) {
+	for (const dir of ["src/benches", "src/harnesses", "src/suites"]) {
 		for await (const rel of glob.scan({ cwd: path.join(packageRoot, dir) })) {
 			if (rel.endsWith(".d.ts")) continue;
 			files.push(path.join(dir, rel));
@@ -62,8 +62,14 @@ async function importFailure(rel: string): Promise<string | null> {
  * reason other than a cycle.
  */
 const ENTRY_SCRIPTS = [
+	"src/benches/edit-prompt-bench.ts",
+	"src/benches/goal-budget-context-bench.ts",
+	"src/suites/deep-swe/context-encode-ceiling.ts",
 	"src/suites/deep-swe/gen-dicts.ts",
-	"src/suites/typescript-edit/edit-prompt-bench.ts",
+	"src/suites/deep-swe/measure-channel-split.ts",
+	"src/suites/deep-swe/measure-retype-likelihood.ts",
+	"src/suites/deep-swe/online-codec-ceiling.ts",
+	"src/suites/deep-swe/prefix-composition.ts",
 	"src/suites/typescript-edit/generate.ts",
 ];
 
@@ -74,11 +80,12 @@ describe("importing any harness or suite module first", () => {
 	test("never enters a load-time import cycle, whichever module the process starts from", async () => {
 		const files = await moduleFiles();
 		// A broken glob would otherwise pass this suite with nothing to prove.
+		expect(files).toContain("src/benches/edit-prompt-bench.ts");
+		expect(files).toContain("src/benches/goal-budget-context-bench.ts");
 		expect(files).toContain("src/harnesses/index.ts");
 		expect(files).toContain("src/harnesses/system-comparison.ts");
-		expect(files).toContain("src/suites/deep-swe/src/runner/executor.ts");
+		expect(files).toContain("src/suites/deep-swe/runner/executor.ts");
 		expect(files).toContain("src/suites/deep-swe/replay-manifest.ts");
-		expect(files.length).toBeGreaterThan(40);
 
 		expect(files.filter(f => ENTRY_SCRIPTS.includes(f)).sort()).toEqual([...ENTRY_SCRIPTS].sort());
 

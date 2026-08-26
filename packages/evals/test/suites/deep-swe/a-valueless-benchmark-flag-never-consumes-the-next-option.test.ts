@@ -5,7 +5,7 @@
  * it does not decide whether a newly introduced flag belongs in that registry.
  */
 import { describe, expect, it } from "bun:test";
-import { parseArgs, VALUELESS_FLAGS } from "../../../src/suites/deep-swe/./src/runner/cli-args";
+import { parseArgs, VALUELESS_FLAGS } from "../../../src/suites/deep-swe/runner/cli-args";
 
 describe("valueless benchmark flags", () => {
 	for (const flag of Object.keys(VALUELESS_FLAGS)) {

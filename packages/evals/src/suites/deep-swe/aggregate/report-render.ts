@@ -1,7 +1,7 @@
 /**
  * Markdown report rendering, cost tables, cache invalidation, and timeout attribution.
  */
-import { costShares, priceTokens, REFERENCE_RATE_CARD } from "../shared";
+import { costShares, priceTokens, REFERENCE_RATE_CARD } from "../cost-model";
 import { interpretEncodeArm } from "./encode-probe";
 import { classifyError, providerQuotaStop } from "./error-classification";
 import type { TaskSetProvenance } from "./merge";
@@ -80,7 +80,7 @@ export function renderReferenceCostSection(results: readonly ArmResult[], arms: 
 	lines.push("## Cost at reference rates");
 	lines.push("");
 	const cells = arms.map(arm => ({ arm, s: summarizeCell(results.filter(r => r.arm === arm)) }));
-	const unmeasurable = cells.filter(c => c.s.n > 0 && !c.s.refCostMeasurable).map(c => c.arm);
+	const unmeasurable = cells.filter(c => c.s.refPricedSamples > 0 && !c.s.refCostMeasurable).map(c => c.arm);
 	if (unmeasurable.length > 0) {
 		lines.push(
 			`> Not computed for ${unmeasurable.join(", ")}: these runs predate the cache read/write split, so ` +
@@ -92,12 +92,12 @@ export function renderReferenceCostSection(results: readonly ArmResult[], arms: 
 	}
 	lines.push(`Counterfactual, not billed. Rates: ${REFERENCE_RATE_CARD.source}.`);
 	lines.push("");
-	const counted = cells.filter(c => c.s.refCostMeasurable && c.s.n > 0);
-	const sampleCounts = [...new Set(counted.map(c => c.s.n))];
+	const counted = cells.filter(c => c.s.refCostMeasurable && c.s.refPricedSamples > 0);
+	const sampleCounts = [...new Set(counted.map(c => c.s.refPricedSamples))];
 	if (counted.length > 1 && sampleCounts.length > 1) {
 		lines.push(
 			`> **These percentages are NOT a cost comparison: the arms completed different numbers of trials** (` +
-				counted.map(c => `${c.arm} ${c.s.n}`).join(", ") +
+				counted.map(c => `${c.arm} ${c.s.refPricedSamples}`).join(", ") +
 				`). Each figure is a SUM over whatever that arm finished, so an arm that ran fewer trials looks ` +
 				`cheaper by exactly the work it never did. Re-run so both arms cover the same tasks, or compare ` +
 				`only the tasks both completed. Read the per-task columns above instead.`,
@@ -120,8 +120,9 @@ export function renderReferenceCostSection(results: readonly ArmResult[], arms: 
 		const b = baseline?.s.refCost;
 		const notes: string[] = [];
 		if (s.errors > 0) notes.push(`+${s.errors} err`);
+		if (s.unscored > 0) notes.push(`${s.unscored} ungraded`);
 		if (s.timedOut > 0) notes.push(`${s.timedOut} timed out`);
-		const samples = notes.length > 0 ? `${s.n} (${notes.join(", ")})` : String(s.n);
+		const samples = notes.length > 0 ? `${s.refPricedSamples} (${notes.join(", ")})` : String(s.refPricedSamples);
 		lines.push(
 			`| ${arm} | ${samples} | ${withDelta(c.input, b?.input ?? 0)} | ${withDelta(c.cacheRead, b?.cacheRead ?? 0)} | ` +
 				`${withDelta(c.cacheWrite, b?.cacheWrite ?? 0)} | ${withDelta(c.output, b?.output ?? 0)} | ` +

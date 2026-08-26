@@ -13,7 +13,7 @@ import {
 } from "../../../src/harnesses/system-comparison";
 import type { SystemTrialResult } from "../../../src/harnesses/types";
 import { resolvePackagePath } from "../../../src/paths";
-import { COMPARISON_TASK_LIST, COMPARISON_TASK_LIST_SHA256 } from "../../../src/suites/deep-swe/src/runner/executor";
+import { COMPARISON_TASK_LIST, COMPARISON_TASK_LIST_SHA256 } from "../../../src/suites/deep-swe/runner/executor";
 
 const TASKS = ["task-a", "task-b"] as const;
 const SYSTEMS = ["veyyon", "factory", "hermes"] as const;
