@@ -31,12 +31,15 @@ import { executeStructureSearch, type StructureSearchDetails } from "@veyyon/cod
 import { executeTextSearch, type TextSearchDetails } from "@veyyon/coding-agent/tools/text-search";
 import { errorMessage } from "@veyyon/utils";
 import { internalScratchDir } from "../../paths";
+import { formatExpectationFailures, type SearchExpectation, verifySearchExpectation } from "./expectations";
 
 export interface SearchBenchmarkCase {
 	id: string;
 	type: SearchType;
 	description: string;
 	input: SearchToolInput;
+	/** The answer the corpus has for this query. Required: see `expectations.ts`. */
+	expect: SearchExpectation;
 }
 
 export interface SearchArmMeasurement {
@@ -54,6 +57,12 @@ export interface SearchCaseMeasurement {
 	description: string;
 	parityPassed: boolean;
 	mismatchReason?: string;
+	/** The search produced the answer the corpus has for this query. */
+	expectationSatisfied: boolean;
+	/** Every violated clause, one phrase each. Absent when satisfied. */
+	expectationFailureReason?: string;
+	/** The files the search reported, which the verdict was formed from. */
+	matchedPaths: readonly string[];
 	searchTool: SearchArmMeasurement;
 	directEngine: SearchArmMeasurement;
 	dispatchOverheadMs: number;
@@ -65,6 +74,8 @@ export interface SearchTypeSummary {
 	totalCases: number;
 	parityPassedCases: number;
 	parityFailedCases: number;
+	expectationPassedCases: number;
+	expectationFailedCases: number;
 	avgSearchToolDurationMs: number;
 	avgDirectEngineDurationMs: number;
 	avgDispatchOverheadMs: number;
@@ -80,6 +91,9 @@ export interface SearchBenchmarkReport {
 	totalCases: number;
 	parityPassed: boolean;
 	totalMismatches: number;
+	/** Every case produced the answer the corpus has for it. */
+	expectationsPassed: boolean;
+	totalExpectationFailures: number;
 	summaryByType: Record<SearchType, SearchTypeSummary>;
 	cases: SearchCaseMeasurement[];
 	limitations: string[];
@@ -89,6 +103,8 @@ export interface SearchBenchmarkOptions {
 	iterations?: number;
 	filterType?: SearchType | "all";
 	strictParity?: boolean;
+	/** Throw on the first case whose declared answer the search did not produce. */
+	strictExpectations?: boolean;
 	corpusBaseDir?: string;
 }
 
@@ -339,7 +355,14 @@ export function runUtilsTests() {
 	};
 }
 
-/** Build comprehensive benchmark cases covering files, text, and structure search. */
+/**
+ * Build the benchmark cases: one query per capability, each declaring the answer the
+ * deterministic corpus has for it.
+ *
+ * `expect` is required rather than optional, so a case added without a declared answer
+ * does not compile. Parity alone cannot catch an engine that stops finding things,
+ * because both arms call the same engine.
+ */
 export function buildSearchBenchmarkCases(): SearchBenchmarkCase[] {
 	return [
 		// Files search cases
@@ -348,48 +371,69 @@ export function buildSearchBenchmarkCases(): SearchBenchmarkCase[] {
 			type: "files",
 			description: "Find all TypeScript source files recursively",
 			input: { type: "files", input: "src/**/*.ts" },
+			expect: {
+				mustMatchPaths: [
+					"src/types.ts",
+					"src/index.ts",
+					"src/core/engine.ts",
+					"src/utils/math.ts",
+					"src/utils/string-helpers.ts",
+				],
+				// `.tsx` is not `.ts`, and `tests/` is not `src/`.
+				mustNotMatchPaths: ["src/components/SearchHeader.tsx", "tests/engine.test.ts"],
+			},
 		},
 		{
 			id: "files_glob_semicolon_multi",
 			type: "files",
 			description: "Find files matching multiple semicolon-delimited scopes",
 			input: { type: "files", input: "src/**/*.ts; docs/*.md" },
+			expect: {
+				mustMatchPaths: ["src/types.ts", "src/core/engine.ts", "docs/overview.md", "docs/api-guide.md"],
+			},
 		},
 		{
 			id: "files_glob_json_all",
 			type: "files",
 			description: "Find all JSON configuration files",
 			input: { type: "files", input: "**/*.json" },
+			expect: { mustMatchPaths: ["package.json", "tsconfig.json"] },
 		},
 		{
 			id: "files_exact_single_file",
 			type: "files",
 			description: "Locate a specific single file by relative path",
 			input: { type: "files", input: "src/index.ts" },
+			expect: { mustMatchPaths: ["src/index.ts"], exactMatchedPaths: 1 },
 		},
 		{
 			id: "files_glob_with_limit",
 			type: "files",
 			description: "Constrain file search results with limit",
 			input: { type: "files", input: "src/**/*.ts", limit: 2 },
+			// The cap is the contract; which two files survive it is mtime order.
+			expect: { exactMatchedPaths: 2 },
 		},
 		{
 			id: "files_hidden_included",
 			type: "files",
 			description: "Search hidden directories with hidden=true",
 			input: { type: "files", input: ".hidden/*", hidden: true },
+			expect: { mustMatchPaths: [".hidden/config.json", ".hidden/credentials.txt"] },
 		},
 		{
 			id: "files_gitignore_respected",
 			type: "files",
 			description: "Respect .gitignore rules with gitignore=true",
 			input: { type: "files", input: "ignored/*", gitignore: true },
+			expect: { mustNotMatchPaths: ["ignored/cache.tmp", "ignored/build.log"], exactMatchedPaths: 0 },
 		},
 		{
 			id: "files_gitignore_bypassed",
 			type: "files",
 			description: "Bypass .gitignore rules with gitignore=false",
 			input: { type: "files", input: "ignored/*", gitignore: false },
+			expect: { mustMatchPaths: ["ignored/cache.tmp", "ignored/build.log"] },
 		},
 
 		// Text search cases
@@ -398,54 +442,74 @@ export function buildSearchBenchmarkCases(): SearchBenchmarkCase[] {
 			type: "text",
 			description: "Find exact literal interface identifier in src",
 			input: { type: "text", input: "SearchQuery", path: "src" },
+			expect: { mustMatchPaths: ["src/types.ts", "src/index.ts", "src/core/engine.ts"] },
 		},
 		{
 			id: "text_regex_exports",
 			type: "text",
 			description: "Match regex export declarations in src",
 			input: { type: "text", input: "export (function|class)", path: "src" },
+			expect: {
+				mustMatchPaths: [
+					"src/index.ts",
+					"src/core/engine.ts",
+					"src/utils/math.ts",
+					"src/utils/string-helpers.ts",
+					"src/components/SearchHeader.tsx",
+				],
+			},
 		},
 		{
 			id: "text_case_sensitive_comment",
 			type: "text",
 			description: "Case-sensitive search for uppercase TODO marker",
 			input: { type: "text", input: "TODO", path: "src", case: true },
+			expect: { mustMatchPaths: ["src/core/engine.ts"], exactMatchedPaths: 1 },
 		},
 		{
 			id: "text_case_insensitive_comment",
 			type: "text",
 			description: "Case-insensitive search for todo marker",
 			input: { type: "text", input: "todo", path: "src", case: false },
+			expect: { mustMatchPaths: ["src/core/engine.ts"] },
 		},
 		{
 			id: "text_scoped_directory",
 			type: "text",
 			description: "Scoped search inside utils directory",
 			input: { type: "text", input: "calculate", path: "src/utils" },
+			// `calculateMean` is imported in src/index.ts too; the scope has to exclude it.
+			expect: { mustMatchPaths: ["src/utils/math.ts"], mustNotMatchPaths: ["src/index.ts"] },
 		},
 		{
 			id: "text_semicolon_delimited_scopes",
 			type: "text",
 			description: "Search across multiple semicolon-delimited directory scopes",
 			input: { type: "text", input: "test", path: "src; tests" },
+			expect: { mustMatchPaths: ["tests/engine.test.ts", "tests/utils.test.ts"] },
 		},
 		{
 			id: "text_gitignore_respected",
 			type: "text",
 			description: "Respected gitignore hides ignored temporary cache marker",
 			input: { type: "text", input: "TEMPORARY_CACHE", path: ".", gitignore: true },
+			expect: { mustNotMatchPaths: ["ignored/cache.tmp"], exactMatchedPaths: 0 },
 		},
 		{
 			id: "text_gitignore_bypassed",
 			type: "text",
 			description: "Bypassed gitignore surfaces ignored temporary cache marker",
 			input: { type: "text", input: "TEMPORARY_CACHE", path: ".", gitignore: false },
+			expect: { mustMatchPaths: ["ignored/cache.tmp"] },
 		},
 		{
 			id: "text_pagination_skip",
 			type: "text",
 			description: "Paginate text search results using skip",
 			input: { type: "text", input: "return", path: "src", skip: 2 },
+			// A later page still has to carry files; an empty page two means the window
+			// collapsed rather than advanced.
+			expect: { minMatchedPaths: 1 },
 		},
 
 		// Structure search cases
@@ -454,30 +518,53 @@ export function buildSearchBenchmarkCases(): SearchBenchmarkCase[] {
 			type: "structure",
 			description: "Structural match for console.log calls with arbitrary arguments",
 			input: { type: "structure", input: "console.log($$$)", path: "src/**/*.ts" },
+			expect: {
+				mustMatchPaths: ["src/core/engine.ts"],
+				// The .tsx components log too, and the glob excludes them.
+				mustNotMatchPaths: ["src/components/SearchHeader.tsx"],
+			},
 		},
 		{
 			id: "structure_function_declaration",
 			type: "structure",
 			description: "Structural match for top-level function declarations",
-			input: { type: "structure", input: "function $NAME($$$ARGS) { $$$BODY }", path: "src/**/*.ts" },
+			input: { type: "structure", input: "function $NAME($$$ARGS): $_ { $$$BODY }", path: "src/**/*.ts" },
+			expect: { mustMatchPaths: ["src/core/engine.ts", "src/utils/math.ts", "src/utils/string-helpers.ts"] },
 		},
 		{
 			id: "structure_class_declaration",
 			type: "structure",
 			description: "Structural match for class definitions",
 			input: { type: "structure", input: "class $NAME { $$$MEMBERS }", path: "src/**/*.ts" },
+			expect: { mustMatchPaths: ["src/index.ts"] },
 		},
 		{
 			id: "structure_scoped_path",
 			type: "structure",
 			description: "Structural search scoped to utils directory",
-			input: { type: "structure", input: "function $NAME($$$) { $$$ }", path: "src/utils/*.ts" },
+			input: { type: "structure", input: "function $NAME($$$): $_ { $$$ }", path: "src/utils/*.ts" },
+			expect: {
+				mustMatchPaths: ["src/utils/math.ts", "src/utils/string-helpers.ts"],
+				mustNotMatchPaths: ["src/core/engine.ts"],
+			},
 		},
 		{
 			id: "structure_pagination_skip",
 			type: "structure",
 			description: "Paginate structural search results using skip",
-			input: { type: "structure", input: "function $NAME($$$) { $$$ }", path: "src/**/*.ts", skip: 1 },
+			input: { type: "structure", input: "function $NAME($$$): $_ { $$$ }", path: "src/**/*.ts", skip: 1 },
+			expect: { minMatchedPaths: 1 },
+		},
+		{
+			id: "structure_missing_return_annotation",
+			type: "structure",
+			description: "A declaration pattern without a return-type slot matches no annotated function",
+			// Records a real property of structural matching: the pattern's node has to carry
+			// every child the target does, so a pattern with no return type never matches a
+			// function that has one. Every corpus function is annotated, so the answer is zero.
+			// This case goes red if that stops holding, which the tool's guidance depends on.
+			input: { type: "structure", input: "function $NAME($$$ARGS) { $$$BODY }", path: "src/**/*.ts" },
+			expect: { exactMatchedPaths: 0 },
 		},
 	];
 }
@@ -590,6 +677,7 @@ export async function measureSearchCase(
 	benchCase: SearchBenchmarkCase,
 	iterations: number,
 	strictParity = true,
+	strictExpectations = true,
 ): Promise<SearchCaseMeasurement> {
 	const stDurations: number[] = [];
 	const deDurations: number[] = [];
@@ -645,12 +733,24 @@ export async function measureSearchCase(
 	const stMean = stDurations.reduce((acc, v) => acc + v, 0) / stDurations.length;
 	const deMean = deDurations.reduce((acc, v) => acc + v, 0) / deDurations.length;
 
+	// The declared answer is checked against the tool arm, which is the surface a model
+	// reaches. Parity above already pinned the engine arm to the same bytes.
+	const expectation = verifySearchExpectation(lastStResult.details, benchCase.expect);
+	if (strictExpectations && !expectation.satisfied) {
+		throw new Error(
+			`Search expectation failure on case "${benchCase.id}" (${benchCase.type}): ${formatExpectationFailures(expectation.failures)}`,
+		);
+	}
+
 	return {
 		id: benchCase.id,
 		type: benchCase.type,
 		description: benchCase.description,
 		parityPassed: parityCheck.parity,
 		mismatchReason: parityCheck.error,
+		expectationSatisfied: expectation.satisfied,
+		expectationFailureReason: expectation.satisfied ? undefined : formatExpectationFailures(expectation.failures),
+		matchedPaths: expectation.matchedPaths,
 		searchTool: {
 			meanDurationMs: Number(stMean.toFixed(3)),
 			minDurationMs: Number(Math.min(...stDurations).toFixed(3)),
@@ -677,6 +777,7 @@ export async function runSearchParityBenchmark(options: SearchBenchmarkOptions =
 	const iterations = Math.max(1, options.iterations ?? 5);
 	const filterType = options.filterType ?? "all";
 	const strictParity = options.strictParity ?? true;
+	const strictExpectations = options.strictExpectations ?? true;
 
 	const corpus = await createDeterministicSearchCorpus(options.corpusBaseDir);
 
@@ -690,7 +791,14 @@ export async function runSearchParityBenchmark(options: SearchBenchmarkOptions =
 		const measurements: SearchCaseMeasurement[] = [];
 
 		for (const benchCase of casesToRun) {
-			const measurement = await measureSearchCase(session, searchTool, benchCase, iterations, strictParity);
+			const measurement = await measureSearchCase(
+				session,
+				searchTool,
+				benchCase,
+				iterations,
+				strictParity,
+				strictExpectations,
+			);
 			measurements.push(measurement);
 		}
 
@@ -702,6 +810,7 @@ export async function runSearchParityBenchmark(options: SearchBenchmarkOptions =
 			const total = typeCases.length;
 			const passed = typeCases.filter(m => m.parityPassed).length;
 			const failed = total - passed;
+			const expectationPassed = typeCases.filter(m => m.expectationSatisfied).length;
 			const avgSt = total > 0 ? typeCases.reduce((acc, c) => acc + c.searchTool.meanDurationMs, 0) / total : 0;
 			const avgDe = total > 0 ? typeCases.reduce((acc, c) => acc + c.directEngine.meanDurationMs, 0) / total : 0;
 			const avgOverhead = total > 0 ? typeCases.reduce((acc, c) => acc + c.dispatchOverheadMs, 0) / total : 0;
@@ -713,6 +822,8 @@ export async function runSearchParityBenchmark(options: SearchBenchmarkOptions =
 				totalCases: total,
 				parityPassedCases: passed,
 				parityFailedCases: failed,
+				expectationPassedCases: expectationPassed,
+				expectationFailedCases: total - expectationPassed,
 				avgSearchToolDurationMs: Number(avgSt.toFixed(3)),
 				avgDirectEngineDurationMs: Number(avgDe.toFixed(3)),
 				avgDispatchOverheadMs: Number(avgOverhead.toFixed(3)),
@@ -722,6 +833,7 @@ export async function runSearchParityBenchmark(options: SearchBenchmarkOptions =
 		}
 
 		const totalMismatches = measurements.filter(m => !m.parityPassed).length;
+		const totalExpectationFailures = measurements.filter(m => !m.expectationSatisfied).length;
 
 		return {
 			timestamp: new Date().toISOString(),
@@ -731,6 +843,8 @@ export async function runSearchParityBenchmark(options: SearchBenchmarkOptions =
 			totalCases: measurements.length,
 			parityPassed: totalMismatches === 0,
 			totalMismatches,
+			expectationsPassed: totalExpectationFailures === 0,
+			totalExpectationFailures,
 			summaryByType,
 			cases: measurements,
 			limitations: SEARCH_BENCHMARK_LIMITATIONS,
@@ -753,15 +867,19 @@ export function formatBenchmarkSummary(report: SearchBenchmarkReport): string {
 	lines.push(
 		`Result Parity Status:  ${report.parityPassed ? "PASS (100% Exact Match)" : `FAIL (${report.totalMismatches} mismatches)`}`,
 	);
+	lines.push(
+		`Declared Answer Status:${report.expectationsPassed ? " PASS (every case matched the corpus)" : ` FAIL (${report.totalExpectationFailures} cases)`}`,
+	);
 	lines.push("--------------------------------------------------------------------------------");
 	lines.push("TYPE SUMMARY:");
-	lines.push("Type       | Cases | Parity | SearchTool (ms) | DirectEngine (ms) | Overhead (ms) | ST Bytes");
-	lines.push("-----------+-------+--------+-----------------+-------------------+---------------+---------");
+	lines.push("Type       | Cases | Parity | Answer | SearchTool (ms) | DirectEngine (ms) | Overhead (ms) | ST Bytes");
+	lines.push("-----------+-------+--------+--------+-----------------+-------------------+---------------+---------");
 
 	for (const summary of Object.values(report.summaryByType)) {
 		const typeCol = summary.type.padEnd(10);
 		const casesCol = String(summary.totalCases).padStart(5);
 		const parityCol = `${summary.parityPassedCases}/${summary.totalCases}`.padStart(6);
+		const answerCol = `${summary.expectationPassedCases}/${summary.totalCases}`.padStart(6);
 		const stMsCol = summary.avgSearchToolDurationMs.toFixed(3).padStart(15);
 		const deMsCol = summary.avgDirectEngineDurationMs.toFixed(3).padStart(17);
 		const overheadCol = (
@@ -770,24 +888,32 @@ export function formatBenchmarkSummary(report: SearchBenchmarkReport): string {
 				: summary.avgDispatchOverheadMs.toFixed(3)
 		).padStart(13);
 		const bytesCol = String(summary.totalSearchToolBytes).padStart(8);
-		lines.push(`${typeCol} | ${casesCol} | ${parityCol} | ${stMsCol} | ${deMsCol} | ${overheadCol} | ${bytesCol}`);
+		lines.push(
+			`${typeCol} | ${casesCol} | ${parityCol} | ${answerCol} | ${stMsCol} | ${deMsCol} | ${overheadCol} | ${bytesCol}`,
+		);
 	}
 
 	lines.push("--------------------------------------------------------------------------------");
 	lines.push("CASE DETAILS:");
-	lines.push("Case ID                        | Type      | Parity | ST (ms) | DE (ms) | Delta (ms) | Bytes");
-	lines.push("-------------------------------+-----------+--------+---------+---------+------------+------");
+	lines.push("Case ID                        | Type      | Parity | Answer | Files | ST (ms) | DE (ms) | Delta (ms)");
+	lines.push("-------------------------------+-----------+--------+--------+-------+---------+---------+-----------");
 
 	for (const c of report.cases) {
 		const idCol = c.id.padEnd(30);
 		const typeCol = c.type.padEnd(9);
 		const parityCol = c.parityPassed ? "PASS  " : "FAIL  ";
+		const answerCol = c.expectationSatisfied ? "PASS  " : "FAIL  ";
 		const stCol = c.searchTool.meanDurationMs.toFixed(3).padStart(7);
 		const deCol = c.directEngine.meanDurationMs.toFixed(3).padStart(7);
 		const delta = c.dispatchOverheadMs >= 0 ? `+${c.dispatchOverheadMs.toFixed(3)}` : c.dispatchOverheadMs.toFixed(3);
 		const deltaCol = delta.padStart(10);
-		const bytesCol = String(c.searchTool.contentBytes).padStart(5);
-		lines.push(`${idCol} | ${typeCol} | ${parityCol} | ${stCol} | ${deCol} | ${deltaCol} | ${bytesCol}`);
+		const filesCol = String(c.matchedPaths.length).padStart(5);
+		lines.push(
+			`${idCol} | ${typeCol} | ${parityCol} | ${answerCol} | ${filesCol} | ${stCol} | ${deCol} | ${deltaCol}`,
+		);
+		if (c.expectationFailureReason) {
+			lines.push(`  -> declared answer not produced: ${c.expectationFailureReason}`);
+		}
 	}
 
 	lines.push("================================================================================");
@@ -831,6 +957,7 @@ if (import.meta.main) {
 			iterations,
 			filterType,
 			strictParity: false,
+			strictExpectations: false,
 		});
 
 		if (jsonStdout) {
@@ -843,7 +970,7 @@ if (import.meta.main) {
 			await fs.writeFile(jsonOutput, JSON.stringify(report, null, 2), "utf8");
 		}
 
-		if (!report.parityPassed) {
+		if (!report.parityPassed || !report.expectationsPassed) {
 			process.exit(1);
 		}
 	} catch (err) {

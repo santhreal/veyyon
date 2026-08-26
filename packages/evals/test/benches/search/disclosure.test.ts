@@ -1,10 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { inlineCapForTurn } from "@veyyon/coding-agent/session/streaming-output";
 import { BROAD_SEARCH_INLINE_MAX_BYTES } from "@veyyon/coding-agent/tools/text-search";
-import {
-	formatSearchDisclosureBenchmark,
-	runSearchDisclosureBenchmark,
-} from "../../../src/suites/typescript-edit/search-disclosure-bench";
+import { formatSearchDisclosureBenchmark, runSearchDisclosureBenchmark } from "../../../src/benches/search/disclosure";
 
 /**
  * WHY: broad search output is paid again on every later model turn. This benchmark

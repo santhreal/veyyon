@@ -12,7 +12,7 @@ import {
 	runSearchParityBenchmark,
 	SEARCH_BENCHMARK_LIMITATIONS,
 	verifySearchParity,
-} from "../../../src/suites/typescript-edit/search-parity-bench";
+} from "../../../src/benches/search/parity";
 
 describe("search parity benchmark suite", () => {
 	it("creates and cleans up the deterministic fixture corpus", async () => {
