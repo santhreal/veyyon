@@ -10,10 +10,10 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { effectiveTemperature, PINNED_TEMPERATURE } from "../../../src/suites/deep-swe/src/aggregate/merge";
-import { renderReport } from "../../../src/suites/deep-swe/src/aggregate/report-render";
-import { summarizeCell, wilsonInterval } from "../../../src/suites/deep-swe/src/aggregate/stats";
-import type { ArmResult } from "../../../src/suites/deep-swe/src/aggregate/types";
+import { effectiveTemperature, PINNED_TEMPERATURE } from "../../../src/suites/deep-swe/aggregate/merge";
+import { renderReport } from "../../../src/suites/deep-swe/aggregate/report-render";
+import { summarizeCell, wilsonInterval } from "../../../src/suites/deep-swe/aggregate/stats";
+import type { ArmResult } from "../../../src/suites/deep-swe/aggregate/types";
 import { res } from "./aggregate-test-helpers";
 
 describe("summarizeCell — pass rate and standard error", () => {

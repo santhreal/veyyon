@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import { errorMessage } from "@veyyon/utils";
-import { resolveExitCode } from "./src/runner/errors";
-import { runBench } from "./src/runner/executor";
+import { resolveExitCode } from "./runner/errors";
+import { runBench } from "./runner/executor";
 
 /**
  * DeepSWE feature bench for veyyon.
@@ -11,7 +11,7 @@ import { runBench } from "./src/runner/executor";
  * and writes a comparison table of verifier reward + cost/performance metrics per arm.
  */
 
-export * from "./src/runner";
+export * from "./runner";
 
 if (import.meta.main) {
 	try {

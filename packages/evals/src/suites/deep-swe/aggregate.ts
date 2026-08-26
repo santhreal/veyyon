@@ -1,6 +1,6 @@
-import type { ArmResult } from "./src/aggregate/types";
+import type { ArmResult } from "./aggregate/types";
 
-export * from "./src/aggregate";
+export * from "./aggregate/index";
 
 /**
  * A trial result with every measurement still unknown, which is the honest

@@ -1,11 +1,14 @@
 /**
  * The one owner of how an unscored trial counts.
  *
- * Three outcomes, and the arithmetic each one gets:
+ * Four outcomes, and the arithmetic each one gets:
  *
  * - `scored` — the grader produced a reward. It counts in the denominator and in the mean.
  * - `timed-out` — the agent ran out of its budget. That is a scored failure: reward 0, counted
  *   in the denominator, because a model that cannot finish in the budget has failed the task.
+ * - `unscored` — the trial settled, reported no error, and carries no reward. Nothing graded it,
+ *   so it is not a zero and not a pass. It is excluded from every denominator and reported as its
+ *   own count.
  * - `infrastructure-error` — the trial never reached a grade (a container died, a provider
  *   refused, an artifact was missing). It is not a zero. It is excluded from every denominator
  *   and reported as its own count, so a broken run reads as broken rather than as bad.
@@ -14,6 +17,10 @@
  * container dragged the mean toward zero, and the other divided by the graded ones without
  * saying so. Both now route through here, and every renderer prints the error count beside the
  * rate it qualifies.
+ *
+ * `unscored` was the remaining hole: a trial with no reward and no error classified as `scored`,
+ * entered the denominator, and counted as a failure in every pass rate, so a suite whose grader
+ * never ran read as a suite the model failed.
  */
 
 /**
@@ -22,7 +29,7 @@
  * Enumerated as a value so a test can sweep the space and refuse a new member that nobody has
  * decided a denominator rule for.
  */
-export const TRIAL_OUTCOMES = ["scored", "timed-out", "infrastructure-error"] as const;
+export const TRIAL_OUTCOMES = ["scored", "timed-out", "unscored", "infrastructure-error"] as const;
 
 /** What kind of number, if any, a trial produced. */
 export type TrialOutcome = (typeof TRIAL_OUTCOMES)[number];
@@ -33,12 +40,13 @@ export function countsInDenominator(outcome: TrialOutcome): boolean {
 		case "scored":
 		case "timed-out":
 			return true;
+		case "unscored":
 		case "infrastructure-error":
 			return false;
 	}
 }
 
-/** Per-outcome trial counts for one cell. `scored + timedOut + errors === total`. */
+/** Per-outcome trial counts for one cell. `scored + timedOut + unscored + errors === total`. */
 export interface OutcomeCounts {
 	/** Every trial the cell scheduled and settled. */
 	readonly total: number;
@@ -46,6 +54,8 @@ export interface OutcomeCounts {
 	readonly scored: number;
 	/** Trials that exhausted the agent budget; graded as failures. */
 	readonly timedOut: number;
+	/** Trials that settled without a grade and without an error. Never averaged as zero. */
+	readonly unscored: number;
 	/** Trials that never reached a grade. Never averaged as zero. */
 	readonly errors: number;
 	/** The denominator every rate and mean over this cell uses. */
@@ -56,11 +66,13 @@ export interface OutcomeCounts {
  * Classify one settled trial.
  *
  * `timedOut` is the caller's own judgement, because each suite reads a timeout from a different
- * place: a container exit reason, an `extra.timedOut` flag, a message its verifier wrote.
+ * place: a container exit reason, an `extra.timedOut` flag, a message its verifier wrote. `reward`
+ * is what the grader produced, and `null` means nothing graded the trial.
  */
-export function classifyTrialOutcome(error: string | null, timedOut: boolean): TrialOutcome {
+export function classifyTrialOutcome(error: string | null, timedOut: boolean, reward: number | null): TrialOutcome {
 	if (timedOut) return "timed-out";
 	if (error !== null) return "infrastructure-error";
+	if (reward === null) return "unscored";
 	return "scored";
 }
 
@@ -68,15 +80,17 @@ export function classifyTrialOutcome(error: string | null, timedOut: boolean): T
 export function countOutcomes(outcomes: readonly TrialOutcome[]): OutcomeCounts {
 	let scored = 0;
 	let timedOut = 0;
+	let unscored = 0;
 	let errors = 0;
 	let denominator = 0;
 	for (const outcome of outcomes) {
 		if (outcome === "scored") scored++;
 		else if (outcome === "timed-out") timedOut++;
+		else if (outcome === "unscored") unscored++;
 		else errors++;
 		if (countsInDenominator(outcome)) denominator++;
 	}
-	return { total: outcomes.length, scored, timedOut, errors, denominator };
+	return { total: outcomes.length, scored, timedOut, unscored, errors, denominator };
 }
 
 /**

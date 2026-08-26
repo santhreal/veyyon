@@ -12,8 +12,8 @@
 import { describe, expect, test } from "bun:test";
 import type { ArmResult } from "../../../src/core/arm-result";
 import { emptyArmResult } from "../../../src/suites/deep-swe/aggregate";
-import { renderReport } from "../../../src/suites/deep-swe/src/aggregate/report-render";
-import { ARM_RESULT_FIELDS } from "../../../src/suites/deep-swe/src/aggregate/types";
+import { renderReport } from "../../../src/suites/deep-swe/aggregate/report-render";
+import { ARM_RESULT_FIELDS } from "../../../src/suites/deep-swe/aggregate/types";
 import { res } from "./aggregate-test-helpers";
 
 describe("renderReport is reproducible — output depends on data, not row order", () => {

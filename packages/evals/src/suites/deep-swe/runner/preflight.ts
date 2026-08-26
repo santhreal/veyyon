@@ -6,9 +6,9 @@ import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { AUTH_DB_SOURCES, requireStagedAuthCanServeToken } from "../../../../core";
-import { assetsDir, authDbPath, codingAgentDir, evalsPackageDir, veyBinaryPath } from "../../../../paths";
-import { decideAuthSeed, probeCredentialStore, snapshotCredentialStore } from "../shared";
+import { AUTH_DB_SOURCES, requireStagedAuthCanServeToken } from "../../../core";
+import { decideAuthSeed, probeCredentialStore, snapshotCredentialStore } from "../../../core/auth-seed";
+import { assetsDir, authDbPath, codingAgentDir, evalsPackageDir, veyBinaryPath } from "../../../paths";
 import { BinaryBuildFailedError, MissingCredentialStoreError, MissingRequiredFileError } from "./errors";
 
 export function getBenchDir(): string {

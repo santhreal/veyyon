@@ -332,7 +332,7 @@ describe("truncationWarning", () => {
 });
 
 describe("runner wiring", () => {
-	const executorPath = path.join(deepSweSuiteDir(), "src", "runner", "executor.ts");
+	const executorPath = path.join(deepSweSuiteDir(), "runner", "executor.ts");
 
 	/**
 	 * The lock: the flat literal must not come back. It survived for months
@@ -348,7 +348,7 @@ describe("runner wiring", () => {
 	/** The resolver must actually be the thing the runner uses, not a parallel copy. */
 	test("the runner resolves each trial's timeout through this module", async () => {
 		const source = await Bun.file(executorPath).text();
-		expect(moduleSpecifiersIn(source)).toContain("../shared");
+		expect(moduleSpecifiersIn(source)).toContain("../trial-timeout");
 		expect(source).toContain("resolveTrialTimeout(budget, trialTimeoutOverrideSec)");
 	});
 

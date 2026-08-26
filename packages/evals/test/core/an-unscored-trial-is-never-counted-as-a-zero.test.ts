@@ -38,6 +38,7 @@ describe("the outcome space", () => {
 		expect([...rules]).toEqual([
 			["scored", true],
 			["timed-out", true],
+			["unscored", false],
 			["infrastructure-error", false],
 		]);
 	});
@@ -47,22 +48,35 @@ describe("the outcome space", () => {
 			"scored",
 			"scored",
 			"timed-out",
+			"unscored",
 			"infrastructure-error",
 			"infrastructure-error",
 		];
 		const counts = countOutcomes(outcomes);
 
-		expect(counts).toEqual({ total: 5, scored: 2, timedOut: 1, errors: 2, denominator: 3 });
-		expect(counts.scored + counts.timedOut + counts.errors).toBe(counts.total);
+		expect(counts).toEqual({ total: 6, scored: 2, timedOut: 1, unscored: 1, errors: 2, denominator: 3 });
+		expect(counts.scored + counts.timedOut + counts.unscored + counts.errors).toBe(counts.total);
 		expect(counts.denominator).toBe(outcomes.filter(countsInDenominator).length);
 	});
 
 	it("classifies a stopped trial as timed out even though it also carries an error message", () => {
 		// A backend that kills an over-budget agent reports both; the timeout wins, because the
 		// model failed the task rather than the harness failing the model.
-		expect(classifyTrialOutcome("agent budget exhausted", true)).toBe("timed-out");
-		expect(classifyTrialOutcome("container exited 137", false)).toBe("infrastructure-error");
-		expect(classifyTrialOutcome(null, false)).toBe("scored");
+		expect(classifyTrialOutcome("agent budget exhausted", true, null)).toBe("timed-out");
+		expect(classifyTrialOutcome("container exited 137", false, null)).toBe("infrastructure-error");
+		expect(classifyTrialOutcome(null, false, 1)).toBe("scored");
+		expect(classifyTrialOutcome(null, false, 0)).toBe("scored");
+	});
+
+	it("classifies a trial that settled with no grade and no error as unscored, not as a zero", () => {
+		// A grader that never ran leaves reward null. Counting it as scored put it in the
+		// denominator, so a suite nothing graded read as a suite the model failed outright.
+		expect(classifyTrialOutcome(null, false, null)).toBe("unscored");
+		const counts = countOutcomes([classifyTrialOutcome(null, false, null)]);
+		expect(counts.denominator).toBe(0);
+		expect(counts.unscored).toBe(1);
+		expect(counts.scored).toBe(0);
+		expect(rateOf(0, counts.denominator)).toBeNull();
 	});
 });
 

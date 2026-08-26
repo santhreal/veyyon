@@ -2,9 +2,9 @@
  * Core result types for DeepSWE evaluations.
  */
 
-import type { ArmResult } from "../../../../core";
+import type { ArmResult } from "../../../core";
 
-export type { ArmResult } from "../../../../core";
+export type { ArmResult } from "../../../core";
 
 /**
  * Runtime list of every field name declared on ArmResult.
@@ -77,6 +77,8 @@ export interface CellSummary {
 	total: number;
 	errors: number;
 	timedOut: number;
+	/** Trials that settled with no reward and no error. Excluded from `n`, never averaged as zero. */
+	unscored: number;
 	n: number;
 	passes: number;
 	passRate: number | null;
@@ -101,5 +103,7 @@ export interface CellSummary {
 		output: number;
 		total: number;
 	};
+	/** Rows the reference cost section prices: those that reached a grader, graded or not. */
+	refPricedSamples: number;
 	refCostMeasurable: boolean;
 }

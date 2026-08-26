@@ -14,10 +14,11 @@ import type {
 	TrialUsage,
 } from "../../core/types";
 import { comparisonTaskListPath, resolvePackagePath, taskCorpusDir, taskListsDir } from "../../paths";
-import { parseTaskListProvenance } from "./src/aggregate";
-import { checkBinaryBuildNeeded } from "./src/runner/preflight";
-import { parseTrialResult } from "./src/runner/trial-result";
-import { budgetedTrialTimeoutSec, parseTaskTimeBudget, resolveBinaryPin } from "./src/shared";
+import { parseTaskListProvenance } from "./aggregate";
+import { resolveBinaryPin } from "./binary-pin";
+import { checkBinaryBuildNeeded } from "./runner/preflight";
+import { parseTrialResult } from "./runner/trial-result";
+import { budgetedTrialTimeoutSec, parseTaskTimeBudget } from "./trial-timeout";
 
 export class DeepSweSuite implements EvalSuite {
 	readonly name = "deep-swe";

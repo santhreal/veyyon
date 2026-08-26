@@ -22,7 +22,7 @@ import {
 } from "../../../src/core/arm-attachments";
 import { knownPromptIds } from "../../../src/core/prompt-overrides";
 import { internalScratchDir } from "../../../src/paths";
-import { stageAllArms } from "../../../src/suites/deep-swe/src/runner/arm-staging";
+import { stageAllArms } from "../../../src/suites/deep-swe/runner/arm-staging";
 
 function createScratchDir(prefix: string): string {
 	const base = internalScratchDir();
