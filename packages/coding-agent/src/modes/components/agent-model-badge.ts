@@ -18,17 +18,8 @@ import { replaceTabs } from "../../tools/render-utils";
 import type { Theme } from "../theme/theme";
 
 /**
- * `sonnet-4-6 ◒ high`: the model id, then the reasoning level in the colour the
- * theme gives that level.
- *
- * Module-private. Every caller has a `provider/id[:level]` selector rather than a
- * split pair, so {@link modelBadgeFromSelector} is the whole public surface and an
- * exported second entry point would be a way to reach the badge that skips the
- * colon-splitting rule below.
- *
- * `Off` and `Inherit` print nothing extra: they are the absence of a choice,
- * and a badge that says "inherit" spends a column to say the row is like every
- * other row.
+ * `sonnet-4-6 ◒ high`: model id with theme-colored reasoning level. Module-private;
+ * callers use {@link modelBadgeFromSelector} with a `provider/id[:level]` selector.
  */
 function formatModelBadge(modelId: string, level: ThinkingLevel | undefined, theme: Theme): string {
 	const model = theme.fg("muted", replaceTabs(modelId));

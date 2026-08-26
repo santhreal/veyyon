@@ -47,19 +47,9 @@ const CONFIGURABLE_EDITOR_ACTIONS = [
 type ConfigurableEditorAction = (typeof CONFIGURABLE_EDITOR_ACTIONS)[number];
 
 /**
- * The shipped chord for each action this editor matches, read from the one table.
- *
- * These are the FALLBACK values, used until the host calls `setActionKeys` with
- * whatever the user's `keybindings.yml` resolved to. They used to be a hand-written
- * copy of twenty rows, which is exactly the shape that drifts: the copy pinned
- * `app.clipboard.pasteImage` to `ctrl+v` alone, so on Windows and macOS its
- * `alt+v` / `super+v` fallbacks were missing here and present everywhere else, and
- * an editor mounted before the host injected keys silently matched the wrong set.
- *
- * `config/keybinding-defs.ts` is the leaf that holds the table, so reading it here
- * costs the TUI types and nothing else. `KEYBINDINGS` covers the `tui.*` ids too;
- * only the ids in {@link ConfigurableEditorAction} are picked out, so an action
- * this editor does not handle cannot arrive by accident.
+ * Fallback keybindings used until the host calls `setActionKeys`.
+ * Read from `config/keybinding-defs.ts` to prevent drift across platforms
+ * (e.g. `app.clipboard.pasteImage` pinned to `ctrl+v` alone without OS fallbacks).
  */
 const DEFAULT_ACTION_KEYS = Object.fromEntries(
 	CONFIGURABLE_EDITOR_ACTIONS.map(action => [action, [...[KEYBINDINGS[action].defaultKeys].flat()] as KeyId[]]),

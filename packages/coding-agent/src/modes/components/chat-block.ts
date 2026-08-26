@@ -10,21 +10,9 @@ export interface ChatBlockHost {
 }
 
 /**
- * Lifecycle-aware transcript block — the "return a block, let the host mount it"
- * primitive, modelled on React/Svelte component lifecycles.
- *
- * Producers build and return a `ChatBlock` instead of poking `chatContainer` and
- * `ui.requestRender()` directly. The host (`ctx.present`) appends it and calls
- * {@link mount}, which runs {@link onMount}; effects started there register
- * teardown via {@link onCleanup}. The block repaints through {@link requestRender}
- * — never touching the TUI — and tears down exactly once on {@link finish}
- * (self-complete: stop the animation, keep the final frame in the transcript) or
- * {@link dispose} (host discards it, e.g. a transcript reset).
- *
- * While mounted and unfinished a block reports `isTranscriptBlockFinalized() ===
- * false` so {@link "../components/transcript-container".TranscriptContainer}
- * keeps it in the live, repaintable region on ED3-risk terminals; after
- * `finish()`/`dispose()` it reports `true` and freezes at its final content.
+ * Lifecycle-aware transcript block. `mount` runs `onMount`; effects register teardown
+ * via `onCleanup`. Repaints through `requestRender` (never touching the TUI). Tears down
+ * once on `finish` (self-complete) or `dispose` (host discards).
  */
 export abstract class ChatBlock extends Container {
 	#host: ChatBlockHost | undefined;

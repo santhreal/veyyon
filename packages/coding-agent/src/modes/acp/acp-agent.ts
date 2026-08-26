@@ -159,10 +159,8 @@ type PromptTurnState = {
 };
 
 /**
- * A turn is "in flight" from the moment `prompt()` reserves the slot until `settled` is
- * true AND any cancel cleanup has completed. Fork/queue/event gating all depend on this
- * combined window — a settled-but-still-aborting turn is not safe to fork from, queue
- * onto, or forward late events for.
+ * A turn is in flight from `prompt()` slot reservation until `settled` is true AND
+ * cancel cleanup completes. Fork/queue/event gating all depend on this combined window.
  */
 function isPromptTurnInFlight(turn: PromptTurnState | undefined): turn is PromptTurnState {
 	return turn !== undefined && (!turn.settled || turn.cleanup !== undefined);

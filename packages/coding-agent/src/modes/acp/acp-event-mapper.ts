@@ -981,13 +981,8 @@ function extractNumberProperty<T extends object>(value: unknown, key: keyof T): 
 }
 
 /**
- * Whether an arbitrary value is shaped like an assistant message.
- *
- * A STRUCTURAL check on `unknown`, which is why it is named for what it inspects rather
- * than for a type it proves: it reads a `role` field and nothing more. Three other modules
- * used to call their own, stricter predicates `isAssistantMessage` too: one also requires
- * usage counters, one requires array content, one requires a linkable id. Four different
- * questions under one name is how a caller reaches for the wrong guarantee.
+ * Structural check on `unknown` reading `role` and nothing more. Other modules
+ * use stricter `isAssistantMessage` predicates with different field requirements.
  */
 function looksLikeAssistantMessage(value: unknown): boolean {
 	return (

@@ -32,12 +32,8 @@ export function effortStepItems(model?: Model, scope?: ReadonlyArray<Model>): Se
 }
 
 /**
- * Human summary of a stored model selector for a settings row: renders the
- * effort suffix as a readable ` · high` (e.g. `anthropic/claude-sonnet-4-5 · high`)
- * instead of the raw `:high` token, and returns the bare selector unchanged when
- * it carries no effort. Uses the same parser the resolver does, so a model id
- * that legitimately ends in a colon token is left intact. One owner so the
- * single-slot rows and the role list read identically.
+ * Human summary of a stored model selector for a settings row. Renders effort
+ * suffix as ` · high` instead of `:high`. Uses the same parser the resolver does.
  */
 export function formatSelectorSummary(raw: string): string {
 	const trimmed = raw.trim();

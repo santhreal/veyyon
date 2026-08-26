@@ -346,25 +346,9 @@ function isAskText(value: unknown): boolean {
 }
 
 /**
- * Refuse a question this dialog cannot render, naming the field and the question
- * that carried it.
- *
- * The rendered fields are read with no fallback — `replaceTabs(question.question)`,
- * `question.options.length` — because the declared type makes them mandatory. That
- * holds for every in-tree caller and for nobody else: `ExtensionUI.askDialog` is a
- * published extension API, and the collab and RPC paths hand over JSON that was
- * decoded rather than type-checked. A question with no `question` field reached the
- * header renderer and took the process down with `undefined is not an object
- * (evaluating 'text.replaceAll')` — an uncaught exception thrown from inside a
- * render pass, so there was no tool error and no notice, just a dead session and
- * every live subagent with it.
- *
- * The precondition is therefore checked once, where the dialog is built, and a
- * violation is an ordinary rejection: `#presentDialog` catches a throwing
- * presenter, releases the modal surface, and the caller — a tool call, an
- * extension command — is handed an error naming what to fix. Refusing beats
- * substituting a placeholder, because a dialog reading "undefined" asks a question
- * nobody wrote and records an answer to it.
+ * Validates that questions have required fields before rendering.
+ * `ExtensionUI.askDialog` and collab/RPC paths pass decoded JSON that bypasses type-checking;
+ * missing fields crashed the process during render. Refusing early beats substituting placeholders.
  */
 function assertRenderableAskQuestions(questions: readonly ExtensionAskDialogQuestion[]): void {
 	if (!Array.isArray(questions) || questions.length === 0) {

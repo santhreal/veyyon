@@ -1,12 +1,7 @@
 /**
- * The single owner of the AgentStatus visual language: one color per status,
- * plus the glyph form (compact rosters) and word form (labels) derived from it.
- *
- * Both the Control Center roster and the transcript viewer read from here, so the two
- * can never again disagree on which color means `running` vs `idle` — they
- * previously did (hub: running→accent/idle→success; viewer: the reverse), a
- * same-name divergence where the identical status carried opposite colors in two
- * views. ONE-PLACE: the mapping lives here and nowhere else.
+ * Canonical owner of AgentStatus visual language (colors, glyphs, labels).
+ * Control Center and transcript viewer read here so status colors cannot diverge
+ * (previously hub had running→accent/idle→success, viewer had the reverse).
  */
 import type { AgentStatus } from "../../registry/agent-registry";
 import { type ThemeColor, theme } from "../theme/theme";
@@ -64,17 +59,9 @@ export const AGENT_DISPLAY_STATES = Object.keys(AGENT_STATUS_COLOR) as readonly 
 // reader will assume is in force.
 
 /**
- * The state to render for one agent. Every surface derives it here, so no two
- * can disagree about when an agent counts as blocked or waiting.
- *
- * An open approval outranks working while the agent is `running`, because it is
- * the one state a person has to act on. Only a RUNNING agent can be `blocked`:
- * `pendingApproval` is written during a turn, and once the agent stops, is aborted,
- * or completes, the terminal state takes precedence.
- *
- * Only a STOPPED agent can be `waiting`: `waitingOnPeer` is written at the end of
- * a run and left in place while the agent is woken again, so reading it on a
- * `running` row would label a working agent with the reason it stopped last time.
+ * Derives display state for an agent across surfaces.
+ * Only a RUNNING agent can be `blocked` (`pendingApproval` during turn; terminal state takes precedence once stopped).
+ * Only a STOPPED agent can be `waiting` (`waitingOnPeer` written at end of turn).
  */
 export function agentDisplayState(agent: {
 	status: AgentStatus;
