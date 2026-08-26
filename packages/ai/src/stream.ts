@@ -435,8 +435,7 @@ async function cleanupProviderInFlightLeases(providerDir: string): Promise<numbe
 		}
 		if (!isDirectory) continue;
 		if (await isProviderInFlightDirStale(leaseDir, PROVIDER_INFLIGHT_LEASE_STALE_MS)) {
-			// Dead lease: removal is housekeeping, not the request's error. Counted as reclaimed (not active)
-			// so an unremovable dir doesn't block every request forever. Warning names the directory.
+			// Dead lease: removal is housekeeping. Counted as reclaimed so an unremovable dir doesn't block forever.
 			try {
 				await fs.rm(leaseDir, { recursive: true, force: true });
 			} catch (error) {
@@ -1800,8 +1799,7 @@ function getGoogleBudget(
 		}
 	}
 
-	// Non-2.5 models don't accept a thinking budget. Refuse rather than silently send -1 (a no-op)
-	// or invent a budget for an alias whose underlying model may use `thinkingLevel` instead.
+	// Non-2.5 models don't accept a thinking budget. Refuse rather than silently send -1 or invent one.
 	throw new AIError.ConfigurationError(
 		`${model.provider}/${model.id} does not accept a thinking budget, so the requested effort "${effort}" would change nothing about the request. ` +
 			`Choose a model that supports budgeted thinking (the Gemini 2.5 family on this API), pass an explicit thinkingBudgets entry for "${effort}", or turn thinking off for this model.`,
