@@ -25,6 +25,7 @@ import {
 	type Component,
 	Editor,
 	matchesKey,
+	padding,
 	routeSgrMouseInput,
 	ScrollView,
 	type SgrMouseEvent,
@@ -46,7 +47,7 @@ import { COMPOSER_INSET_COLS } from "./composer-chrome";
 // The whole transcript sits on ONE left rail (COMPOSER_INSET_COLS); the
 // viewer's chrome rows pad to the same rail so title, body, editor, and
 // footer share one gutter.
-const RAIL_PAD = " ".repeat(COMPOSER_INSET_COLS);
+const RAIL_PAD = padding(COMPOSER_INSET_COLS);
 
 import { type AgentDisplayState, agentDisplayState, agentStatusWord } from "./agent-status-display";
 import { ChatTranscriptBuilder } from "./chat-transcript-builder";
@@ -632,7 +633,7 @@ export class AgentTranscriptViewer implements Component {
 		const dims = computeModalDims(width, termHeight, sizing);
 		if (!dims) {
 			this.#shellGeometry = null;
-			return Array(termHeight).fill(" ".repeat(width));
+			return Array(termHeight).fill(padding(width));
 		}
 		// The transcript components carry their own rail inset, and ScrollView
 		// reserves the last column for the scrollbar, so the body is widthed to
