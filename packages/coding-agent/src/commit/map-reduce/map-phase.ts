@@ -169,7 +169,7 @@ function generateContextHeader(projection: ContextProjection, currentFile: strin
 		lines.push(`- ${file.filename} (${lineCount} lines): ${file.description}`);
 	}
 	const elided = Math.max(0, projection.totalFileCount - 1 - toShow.length);
-	if (elided > 0) lines.push(`[…${elided} files elided…]`);
+	if (elided > 0) lines.push(`[...${elided} files elided...]`);
 
 	return lines.join("\n");
 }

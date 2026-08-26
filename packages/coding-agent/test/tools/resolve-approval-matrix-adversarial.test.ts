@@ -120,7 +120,7 @@ describe("truncateForPrompt", () => {
 		const long = "x".repeat(500);
 		const out = truncateForPrompt(long, 50);
 		expect(out.length).toBeLessThan(long.length);
-		expect(out).toMatch(/elided|…|\.\.\./);
+		expect(out).toMatch(/elided|...|\.\.\./);
 		expect(out.startsWith("x".repeat(10))).toBe(true);
 	});
 });

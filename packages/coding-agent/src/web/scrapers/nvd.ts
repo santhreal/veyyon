@@ -183,7 +183,7 @@ export const handleNvd: SpecialHandler = async (
 				md += `- \`${cpe}\`\n`;
 			}
 			if (cpes.length > 20) {
-				md += `\n[…${cpes.length - 20} CPEs elided…]\n`;
+				md += `\n[...${cpes.length - 20} CPEs elided...]\n`;
 			}
 			md += "\n";
 		}
@@ -196,7 +196,7 @@ export const handleNvd: SpecialHandler = async (
 				md += `- ${ref.url}${tags}\n`;
 			}
 			if (vuln.references.length > 15) {
-				md += `\n[…${vuln.references.length - 15} references elided…]\n`;
+				md += `\n[...${vuln.references.length - 15} references elided...]\n`;
 			}
 		}
 

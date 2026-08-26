@@ -507,7 +507,7 @@ function formatPrFiles(files: GhPrFile[] | undefined): string[] {
 	}
 
 	if (files.length > FILE_PREVIEW_LIMIT) {
-		lines.push(`[…${files.length - FILE_PREVIEW_LIMIT} files elided…]`);
+		lines.push(`[...${files.length - FILE_PREVIEW_LIMIT} files elided...]`);
 	}
 
 	return lines;

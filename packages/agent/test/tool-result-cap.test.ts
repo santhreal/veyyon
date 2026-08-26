@@ -74,7 +74,7 @@ describe("the agent loop's cap on tool result size", () => {
 		const result = capToolResultContent([text(big)], "mcp__scraper__fetch", 1000);
 		const capped = (result.content[0] as TextContent).text;
 
-		expect(capped).toContain(`[…${result.elidedBytes}B elided…]`);
+		expect(capped).toContain(`[...${result.elidedBytes}B elided...]`);
 	});
 
 	/**

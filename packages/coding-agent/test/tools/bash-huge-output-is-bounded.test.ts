@@ -211,7 +211,7 @@ describe("the elision is reported, never silent", () => {
 	it("reconciles kept plus elided against the total, to the byte", async () => {
 		const { text, truncation } = await run("reconcile", "seq 1 400000");
 
-		const marker = /\[…[^\]]*elided…\]/.exec(text)?.[0];
+		const marker = /\[...[^\]]*elided...\]/.exec(text)?.[0];
 		expect(marker).toBeTruthy();
 
 		const overshoot = (truncation?.elidedBytes ?? 0) + (truncation?.outputBytes ?? 0) - (truncation?.totalBytes ?? 0);

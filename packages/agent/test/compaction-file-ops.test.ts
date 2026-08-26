@@ -201,7 +201,7 @@ describe("formatFileOperations", () => {
 		expect(rendered).toContain("f00.ts (Read)");
 		expect(rendered).toContain("f19.ts (Read)");
 		expect(rendered).not.toContain("f20.ts (Read)");
-		expect(rendered).toContain("[…5 files elided…]");
+		expect(rendered).toContain("[...5 files elided...]");
 	});
 });
 

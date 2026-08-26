@@ -164,7 +164,7 @@ function boundBlockWithAtomicPlaceholders(block: string): string {
 function boundBlock(block: string): string {
 	if (block.length <= MAX_BLOCK_CHARS) return block;
 	const half = MAX_BLOCK_CHARS / 2;
-	return `${block.slice(0, half)}\n… (elided) …\n${block.slice(-half)}`;
+	return `${block.slice(0, half)}\n... (elided) ...\n${block.slice(-half)}`;
 }
 
 /**

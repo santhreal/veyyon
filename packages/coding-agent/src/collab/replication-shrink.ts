@@ -73,14 +73,14 @@ function shrinkWalk(value: unknown, stringCap: number, arrayLimit: number): unkn
 	if (typeof value === "string") {
 		if (value.length <= stringCap) return value;
 		const headLen = Math.max(0, stringCap - STRING_ELISION_RESERVE);
-		return `${value.slice(0, headLen)}\n…[${value.length - headLen} chars elided for collab session]`;
+		return `${value.slice(0, headLen)}\n...[${value.length - headLen} chars elided for collab session]`;
 	}
 	if (Array.isArray(value)) {
 		const keep = Math.min(value.length, arrayLimit);
 		const elided = value.length - keep;
 		const out: unknown[] = new Array(elided > 0 ? keep + 1 : keep);
 		for (let i = 0; i < keep; i++) out[i] = shrinkWalk(value[i], stringCap, arrayLimit);
-		if (elided > 0) out[keep] = `…[${elided} items elided for collab session]`;
+		if (elided > 0) out[keep] = `...[${elided} items elided for collab session]`;
 		return out;
 	}
 	if (value && typeof value === "object") {

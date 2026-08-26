@@ -89,7 +89,7 @@ describe("the agent loop wiring its tool result cap", () => {
 		// tool result from eating the context window, and against the constant the
 		// assertion holds for a cap raised to 100 MiB.
 		expect(Buffer.byteLength(text, "utf-8")).toBeLessThanOrEqual(1_048_576);
-		expect(text).toContain("B elided…]");
+		expect(text).toContain("B elided...]");
 	});
 
 	/**

@@ -174,14 +174,23 @@ function countNewlines(text: string): number {
 // =============================================================================
 
 /**
- * Truncate a single line to max characters, appending '…' if truncated.
+ * Truncate a single line to max characters, appending `...` if truncated.
+ *
+ * The ellipsis is three ASCII dots rather than `…`, and that is a memory
+ * contract. This runs per line over captured tool output, and the capped lines
+ * are joined into one body the session retains for the rest of the
+ * conversation. JSC stores a string at one byte per character only while every
+ * character fits in latin1, so a single `…` anywhere in that body doubles its
+ * resident cost — one wide character on one line taxes every other line with
+ * it. Three bytes on the lines that were already over the cap is the cheaper
+ * trade.
  */
 export function truncateLine(
 	line: string,
 	maxChars: number = DEFAULT_MAX_COLUMN,
 ): { text: string; wasTruncated: boolean } {
 	if (line.length <= maxChars) return { text: line, wasTruncated: false };
-	return { text: `${line.slice(0, maxChars)}…`, wasTruncated: true };
+	return { text: `${line.slice(0, maxChars)}...`, wasTruncated: true };
 }
 
 // =============================================================================
@@ -414,12 +423,21 @@ export function truncateTail(content: string, options: TruncationOptions = {}): 
 /**
  * Format the inline marker substituted for the elided middle region.
  * Returned without surrounding newlines so callers can position it freely.
+ *
+ * ASCII only, and that is a memory contract rather than a style choice. This
+ * marker is spliced into the middle of a tool result that the session then holds
+ * for the rest of the conversation. JSC stores a string at one byte per
+ * character only while every character fits in latin1, so a single `…` here
+ * doubles the resident cost of the entire surrounding body: an 891 KB ASCII
+ * result measured 1,782,618 bytes with two ellipses in it, and 891,309 with
+ * none. Tool output is the largest thing a long session retains, so the marker
+ * that announces the elision must not cost more than the elision saves.
  */
 export function formatMiddleElisionMarker(elidedLines: number, elidedBytes: number): string {
 	// A 0/1-line elision (e.g. one giant single line) would read as
-	// "[…0ln elided…]"; fall back to a byte count there.
-	if (elidedLines <= 1) return `[…${elidedBytes}B elided…]`;
-	return `[…${elidedLines}ln elided…]`;
+	// "[...0ln elided...]"; fall back to a byte count there.
+	if (elidedLines <= 1) return `[...${elidedBytes}B elided...]`;
+	return `[...${elidedLines}ln elided...]`;
 }
 
 /**

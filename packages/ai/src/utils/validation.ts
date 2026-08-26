@@ -1946,23 +1946,23 @@ function boundErrorText(text: string, max: number): string {
 function truncateArgsForError(value: unknown, depth = 0): unknown {
 	if (typeof value === "string") return boundErrorText(value, MAX_ERROR_ARG_STRING_LENGTH);
 	if (Array.isArray(value)) {
-		if (depth >= MAX_ERROR_ARG_DEPTH) return `… ${value.length} element(s) elided below depth ${depth}`;
+		if (depth >= MAX_ERROR_ARG_DEPTH) return `... ${value.length} element(s) elided below depth ${depth}`;
 		const sample: unknown[] = value
 			.slice(0, MAX_ERROR_ARG_ARRAY_SAMPLE)
 			.map(entry => truncateArgsForError(entry, depth + 1));
 		const elided = value.length - sample.length;
-		if (elided > 0) sample.push(`… ${elided} more of ${value.length} element(s) elided`);
+		if (elided > 0) sample.push(`... ${elided} more of ${value.length} element(s) elided`);
 		return sample;
 	}
 	if (value !== null && typeof value === "object") {
 		const entries = Object.entries(value);
-		if (depth >= MAX_ERROR_ARG_DEPTH) return `… ${entries.length} key(s) elided below depth ${depth}`;
+		if (depth >= MAX_ERROR_ARG_DEPTH) return `... ${entries.length} key(s) elided below depth ${depth}`;
 		const out: Record<string, unknown> = {};
 		for (const [key, entry] of entries.slice(0, MAX_ERROR_ARG_OBJECT_KEYS)) {
 			out[key] = truncateArgsForError(entry, depth + 1);
 		}
 		const elided = entries.length - Math.min(entries.length, MAX_ERROR_ARG_OBJECT_KEYS);
-		if (elided > 0) out["…"] = `${elided} more of ${entries.length} key(s) elided`;
+		if (elided > 0) out["..."] = `${elided} more of ${entries.length} key(s) elided`;
 		return out;
 	}
 	return value;

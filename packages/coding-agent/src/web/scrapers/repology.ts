@@ -253,7 +253,7 @@ export const handleRepology: SpecialHandler = async (
 		}
 
 		if (packages.length > 15) {
-			md += `\n[…${packages.length - 15} repositories elided…]\n`;
+			md += `\n[...${packages.length - 15} repositories elided...]\n`;
 		}
 
 		md += `\n---\n\n${markdownLink("View on Repology", url)}\n`;

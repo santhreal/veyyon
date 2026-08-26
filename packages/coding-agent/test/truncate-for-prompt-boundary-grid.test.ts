@@ -18,12 +18,12 @@ describe("truncateForPrompt boundary grid", () => {
 
 		it(`max=${max} over by 1`, () => {
 			const s = "a".repeat(max + 1);
-			expect(truncateForPrompt(s, max)).toBe(`${"a".repeat(max)}[…1ch elided…]`);
+			expect(truncateForPrompt(s, max)).toBe(`${"a".repeat(max)}[...1ch elided...]`);
 		});
 
 		it(`max=${max} over by 10`, () => {
 			const s = "a".repeat(max + 10);
-			expect(truncateForPrompt(s, max)).toBe(`${"a".repeat(max)}[…10ch elided…]`);
+			expect(truncateForPrompt(s, max)).toBe(`${"a".repeat(max)}[...10ch elided...]`);
 		});
 	}
 });

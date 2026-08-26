@@ -212,7 +212,7 @@ export const handleGoPkg: SpecialHandler = async (
 					sections.push(exported.slice(0, 50).join("\n"));
 					if (exported.length > 50) {
 						notes.push(`showing 50 of ${exported.length} exports`);
-						sections.push(`\n[…${exported.length - 50} exports elided…]`);
+						sections.push(`\n[...${exported.length - 50} exports elided...]`);
 					}
 					sections.push("");
 				}
@@ -241,7 +241,7 @@ export const handleGoPkg: SpecialHandler = async (
 					sections.push(imports.slice(0, 20).join("\n"));
 					if (imports.length > 20) {
 						notes.push(`showing 20 of ${imports.length} imports`);
-						sections.push(`\n[…${imports.length - 20} imports elided…]`);
+						sections.push(`\n[...${imports.length - 20} imports elided...]`);
 					}
 					sections.push("");
 				}

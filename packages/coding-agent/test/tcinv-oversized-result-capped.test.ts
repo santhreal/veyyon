@@ -14,7 +14,7 @@
  *    DEFAULT_TOOL_RESULT_MAX_BYTES (1 MiB);
  *  - the middle is elided, head and tail are kept (the head says what the
  *    command was doing, the tail says how it ended);
- *  - the elision marker `[…NB elided…]` states exactly how many bytes were
+ *  - the elision marker `[...NB elided...]` states exactly how many bytes were
  *    removed, so the gap is never mistaken for real output;
  *  - a result that fits is delivered byte-identical — the cap must not
  *    rewrite ordinary results.
@@ -94,8 +94,8 @@ function nextRequestToolResultText(messages: Message[], toolName: string): strin
 	return undefined;
 }
 
-/** Marker string the cap writes where bytes were removed, e.g. `[…681kB elided…]`. */
-const ELISION_PATTERN = /\[…(\d+)B elided…\]/;
+/** Marker string the cap writes where bytes were removed, e.g. `[...681kB elided...]`. */
+const ELISION_PATTERN = /\[...(\d+)B elided...\]/;
 
 describe("an oversized tool result is capped before it is persisted or sent", () => {
 	let tempDir: string;

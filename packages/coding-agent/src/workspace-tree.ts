@@ -385,7 +385,7 @@ function applyLineCap(
 	const removed = new Set(removable.map(item => item.index));
 	const kept = lines.filter((_, index) => !removed.has(index));
 	kept.push({
-		label: `[…${removable.length}ln elided…]`,
+		label: `[...${removable.length}ln elided...]`,
 		depth: 0,
 		isRoot: false,
 	});

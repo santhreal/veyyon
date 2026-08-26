@@ -438,7 +438,7 @@ function formatSummaryElisionFooter(
 		.join(",");
 	const example = `${readPath}:${selector}`;
 	const tail = elidedRanges.length > sampleCount ? `, e.g. ${example}` : ` with ${example}`;
-	return `[…${elidedLines}ln elided; re-read needed ranges${tail}]`;
+	return `[...${elidedLines}ln elided; re-read needed ranges${tail}]`;
 }
 const READ_CHUNK_SIZE = 8 * 1024;
 

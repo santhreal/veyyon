@@ -11,7 +11,7 @@ describe("truncateForPrompt max 1 to 200 over matrix", () => {
 			it(`max=${max} over=${over}`, () => {
 				const s = "z".repeat(max + over);
 				const out = truncateForPrompt(s, max);
-				expect(out).toBe(`${"z".repeat(max)}[…${over}ch elided…]`);
+				expect(out).toBe(`${"z".repeat(max)}[...${over}ch elided...]`);
 			});
 		}
 	}

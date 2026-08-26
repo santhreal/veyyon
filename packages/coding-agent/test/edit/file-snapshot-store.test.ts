@@ -73,7 +73,9 @@ describe("snapshot store fusion via canonical keys", () => {
 
 describe("parseSeenLinesFromHashlineBody", () => {
 	it("collects single NN: line numbers and skips the header and footer rows", () => {
-		const body = ["[src/x.ts#1A2B]", "300:function f() {", "301:\treturn 1;", "302:}", "[…2ln elided; …]"].join("\n");
+		const body = ["[src/x.ts#1A2B]", "300:function f() {", "301:\treturn 1;", "302:}", "[...2ln elided; ...]"].join(
+			"\n",
+		);
 		expect(parseSeenLinesFromHashlineBody(body)).toEqual([300, 301, 302]);
 	});
 

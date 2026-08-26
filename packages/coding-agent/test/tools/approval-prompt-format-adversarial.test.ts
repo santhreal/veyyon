@@ -27,7 +27,7 @@ describe("formatApprovalPrompt adversarial", () => {
 		const long = `PREFIX${"z".repeat(10_000)}`;
 		const out = truncateForPrompt(long, 100);
 		expect(out.startsWith("PREFIX")).toBe(true);
-		expect(out).toMatch(/elided|…/);
+		expect(out).toMatch(/elided|.../);
 		expect(out.length).toBeLessThan(long.length);
 	});
 

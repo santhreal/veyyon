@@ -8,7 +8,7 @@
 import { describe, expect, it } from "bun:test";
 import { DEFAULT_MAX_BYTES, enforceInlineByteCap } from "@veyyon/coding-agent/session/streaming-output";
 
-const MARKER_PATTERN = /\[…\d+B elided…\]/;
+const MARKER_PATTERN = /\[...\d+B elided...\]/;
 
 /** Build `count` complete lines of the form `line-00001 <pad>`. */
 function makeLines(count: number, pad = "x".repeat(40)): string {

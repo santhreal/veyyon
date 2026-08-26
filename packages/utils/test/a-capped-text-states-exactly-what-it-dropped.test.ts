@@ -151,7 +151,7 @@ describe("capTextBytes", () => {
 
 describe("elisionMarker", () => {
 	it("names the byte count it was given so a caller can match its own elision", () => {
-		expect(elisionMarker(0)).toBe("[…0B elided…]");
-		expect(elisionMarker(5_872)).toBe("[…5872B elided…]");
+		expect(elisionMarker(0)).toBe("[...0B elided...]");
+		expect(elisionMarker(5_872)).toBe("[...5872B elided...]");
 	});
 });

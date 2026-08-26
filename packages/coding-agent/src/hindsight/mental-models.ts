@@ -374,12 +374,12 @@ export function diffMentalModelContent(previous: string | null, current: string,
 	while (j < curr.length) out.push(`+ ${curr[j++]}`);
 
 	if (prevTrimmed || currTrimmed) {
-		out.push(`… input capped at ${MAX_LCS_LINES} lines per side before diff`);
+		out.push(`... input capped at ${MAX_LCS_LINES} lines per side before diff`);
 	}
 
 	if (out.length > maxLines) {
 		const dropped = out.length - maxLines;
-		return `${out.slice(0, maxLines).join("\n")}\n[…${dropped}ln elided…]`;
+		return `${out.slice(0, maxLines).join("\n")}\n[...${dropped}ln elided...]`;
 	}
 	return out.join("\n");
 }

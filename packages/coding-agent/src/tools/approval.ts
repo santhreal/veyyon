@@ -454,7 +454,7 @@ export function requiresApproval(
 export function truncateForPrompt(value: string, maxChars = DEFAULT_PROMPT_TRUNCATE_CHARS): string {
 	if (value.length <= maxChars) return value;
 	const omitted = value.length - maxChars;
-	return `${value.slice(0, maxChars)}[…${omitted}ch elided…]`;
+	return `${value.slice(0, maxChars)}[...${omitted}ch elided...]`;
 }
 
 /**

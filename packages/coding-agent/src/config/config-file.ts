@@ -136,7 +136,7 @@ export class ConfigError extends Error {
 		} else {
 			klass = "Unknown";
 		}
-		if (elided > 0) messages?.push(`… ${elided} more of ${schemaErrors?.length} problem(s) not shown`);
+		if (elided > 0) messages?.push(`... ${elided} more of ${schemaErrors?.length} problem(s) not shown`);
 
 		const where = configPath ? ` (${configPath})` : "";
 		const title = `Failed to load config file ${id}${where}, ${klass} error:`;

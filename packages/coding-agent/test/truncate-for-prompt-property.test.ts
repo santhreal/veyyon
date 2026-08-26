@@ -16,9 +16,9 @@ describe("truncateForPrompt property", () => {
 		it(`elides with exact omitted count at max=${max}`, () => {
 			const value = "x".repeat(max + 17);
 			const out = truncateForPrompt(value, max);
-			expect(out).toBe(`${"x".repeat(max)}[…17ch elided…]`);
+			expect(out).toBe(`${"x".repeat(max)}[...17ch elided...]`);
 			expect(out.startsWith("x".repeat(max))).toBe(true);
-			expect(out).toContain("[…17ch elided…]");
+			expect(out).toContain("[...17ch elided...]");
 		});
 	}
 
@@ -26,10 +26,10 @@ describe("truncateForPrompt property", () => {
 		const under = "a".repeat(2000);
 		expect(truncateForPrompt(under)).toBe(under);
 		const over = "a".repeat(2005);
-		expect(truncateForPrompt(over)).toBe(`${"a".repeat(2000)}[…5ch elided…]`);
+		expect(truncateForPrompt(over)).toBe(`${"a".repeat(2000)}[...5ch elided...]`);
 	});
 
 	it("maxChars 0 elides entire string", () => {
-		expect(truncateForPrompt("abc", 0)).toBe("[…3ch elided…]");
+		expect(truncateForPrompt("abc", 0)).toBe("[...3ch elided...]");
 	});
 });

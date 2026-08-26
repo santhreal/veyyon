@@ -322,7 +322,7 @@ describe("diffMentalModelContent", () => {
 		const out = diffMentalModelContent(null, big, 50);
 		const lines = out.split("\n");
 		expect(lines.length).toBe(51); // 50 diff lines + 1 elision marker
-		expect(lines[lines.length - 1]).toMatch(/\[…\d+ln elided…\]$/);
+		expect(lines[lines.length - 1]).toMatch(/\[...\d+ln elided...\]$/);
 	});
 
 	it("caps LCS input lines so a huge curated model cannot hang the diff", () => {

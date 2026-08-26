@@ -42,7 +42,7 @@ describe("truncateToTokenLimit", () => {
 		const text = "a".repeat(400); // 100 tokens
 		// keep = floor(400 * 50 / 100) = 200; elided = 400 - 200 = 200.
 		const out = truncateToTokenLimit(text, 50);
-		expect(out).toBe(`${"a".repeat(200)}\n[…200ch elided…]`);
+		expect(out).toBe(`${"a".repeat(200)}\n[...200ch elided...]`);
 		// The kept prefix alone lands at the 50-token budget.
 		expect(estimateTokens("a".repeat(200))).toBe(50);
 	});
@@ -54,7 +54,7 @@ describe("truncateToTokenLimit", () => {
 		// (360 bytes -> 90 tokens), triple the budget.
 		const out = truncateToTokenLimit(text, 30);
 		expect(out.startsWith("中".repeat(40))).toBe(true);
-		expect(out).toContain("[…60ch elided…]");
+		expect(out).toContain("[...60ch elided...]");
 		expect(estimateTokens("中".repeat(40))).toBe(30);
 	});
 
@@ -62,7 +62,7 @@ describe("truncateToTokenLimit", () => {
 		const text = "x".repeat(1000);
 		const out = truncateToTokenLimit(text, 60); // tokens = 250, keep = floor(1000*60/250)=240
 		const kept = out.slice(0, out.indexOf("\n"));
-		const match = out.match(/…(\d+)ch elided…/);
+		const match = out.match(/...(\d+)ch elided.../);
 		expect(match).not.toBeNull();
 		const elided = Number(match?.[1]);
 		expect(kept.length + elided).toBe(text.length);
@@ -73,7 +73,7 @@ describe("truncateToTokenLimit", () => {
 	it("degrades to only the marker (keep = 0) when the budget is zero", () => {
 		const text = "a".repeat(400);
 		// tokens (100) > 0, keep = max(0, floor(400*0/100)) = 0.
-		expect(truncateToTokenLimit(text, 0)).toBe("\n[…400ch elided…]");
+		expect(truncateToTokenLimit(text, 0)).toBe("\n[...400ch elided...]");
 	});
 });
 

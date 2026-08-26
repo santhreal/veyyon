@@ -160,7 +160,16 @@ export function capTextBytes(text: string, maxBytes: number): TextByteCapResult 
  *
  * Exported so callers can recognise their own elisions without pattern-matching
  * a string literal they would have to keep in sync.
+ *
+ * ASCII only, and that is a memory contract rather than a style choice. This
+ * marker is spliced into the middle of a capped tool result, which the session
+ * then holds for the rest of the conversation. JSC stores a string at one byte
+ * per character only while every character fits in latin1, so one `…` here
+ * doubles the resident cost of the whole surrounding body: an 891,309-character
+ * ASCII result measured 1,782,618 bytes carrying two ellipses, and 891,309 with
+ * none. Capped tool output is the largest thing a long session retains, so the
+ * marker announcing the elision must not cost more than the elision saved.
  */
 export function elisionMarker(elidedBytes: number): string {
-	return `[…${elidedBytes}B elided…]`;
+	return `[...${elidedBytes}B elided...]`;
 }

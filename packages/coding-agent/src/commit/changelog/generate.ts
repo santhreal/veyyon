@@ -80,7 +80,7 @@ export async function generateChangelogEntries({
 
 function truncateDiff(diff: string, maxChars: number): string {
 	if (diff.length <= maxChars) return diff;
-	return `${diff.slice(0, maxChars)}\n[…${diff.length - maxChars}ch elided…]`;
+	return `${diff.slice(0, maxChars)}\n[...${diff.length - maxChars}ch elided...]`;
 }
 
 function parseChangelogResponse(message: AssistantMessage): ChangelogGenerationResult {

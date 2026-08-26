@@ -219,7 +219,7 @@ export function formatFileOperations(
 	const all = [...mode.keys()].sort();
 	let files = formatGroupedPaths(all.slice(0, FILE_OPERATION_SUMMARY_LIMIT), path => ` (${mode.get(path)})`);
 	if (all.length > FILE_OPERATION_SUMMARY_LIMIT) {
-		files += `\n[…${all.length - FILE_OPERATION_SUMMARY_LIMIT} files elided…]`;
+		files += `\n[...${all.length - FILE_OPERATION_SUMMARY_LIMIT} files elided...]`;
 	}
 	return prompt.render(AGENT_PROMPTS["compaction/file-operations"].text, { files });
 }

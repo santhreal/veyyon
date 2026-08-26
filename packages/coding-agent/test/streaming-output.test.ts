@@ -160,8 +160,10 @@ describe("truncateLine", () => {
 		expect(truncateLine("hello", 10)).toEqual({ text: "hello", wasTruncated: false });
 	});
 
-	test("truncates long lines with ellipsis", () => {
-		expect(truncateLine("abcdefgh", 5)).toEqual({ text: "abcde…", wasTruncated: true });
+	test("truncates long lines with an ASCII ellipsis, so a capped line cannot widen the body", () => {
+		// Three ASCII dots rather than `…`: the capped lines are joined into one
+		// retained body, and one wide character in it doubles the whole body.
+		expect(truncateLine("abcdefgh", 5)).toEqual({ text: "abcde...", wasTruncated: true });
 	});
 });
 
@@ -606,9 +608,9 @@ describe("truncateMiddle", () => {
 	});
 
 	test("formatMiddleElisionMarker uses lines, falling back to bytes for <=1 line", () => {
-		expect(formatMiddleElisionMarker(0, 512)).toBe("[…512B elided…]");
-		expect(formatMiddleElisionMarker(1, 100)).toBe("[…100B elided…]");
-		expect(formatMiddleElisionMarker(123, 4096)).toBe("[…123ln elided…]");
+		expect(formatMiddleElisionMarker(0, 512)).toBe("[...512B elided...]");
+		expect(formatMiddleElisionMarker(1, 100)).toBe("[...100B elided...]");
+		expect(formatMiddleElisionMarker(123, 4096)).toBe("[...123ln elided...]");
 	});
 
 	/**

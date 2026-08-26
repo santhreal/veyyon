@@ -260,7 +260,7 @@ describe("read summary", () => {
 
 	it("appends an elision footer that names targeted recovery ranges", async () => {
 		// Regression for issue #1046: summarized reads must tell the model how
-		// to recover the elided body so it does not stall on `…` / `{ … }`
+		// to recover the elided body so it does not stall on `...` / `{ ... }`
 		// markers and burn a turn guessing the selector.
 		const fixture = path.join(tmpDir, "footer.ts");
 		await fs.writeFile(
