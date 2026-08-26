@@ -1780,7 +1780,7 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 				JSON_TREE_MAX_LINES_EXPANDED,
 				JSON_TREE_SCALAR_LEN_EXPANDED,
 			);
-			lines.push(...tree.lines);
+			for (let j = 0; j < tree.lines.length; j++) lines.push(tree.lines[j]);
 			if (tree.truncated) {
 				lines.push(theme.fg("dim", "…"));
 			}
@@ -1806,7 +1806,7 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 				const tree = renderJsonTreeLines(parsed, theme, maxDepth, maxLines, maxScalarLen);
 
 				if (tree.lines.length > 0) {
-					lines.push(...tree.lines);
+					for (let j = 0; j < tree.lines.length; j++) lines.push(tree.lines[j]);
 					if (!this.#expanded) {
 						lines.push(formatExpandHint(theme, this.#expanded, true));
 					} else if (tree.truncated) {
