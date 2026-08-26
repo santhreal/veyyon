@@ -166,6 +166,14 @@ Top-level entry modules: `cli.ts`, `main.ts`, `sdk.ts`, `index.ts` (SDK barrel),
 ### TUI and theming
 - [tui.md](../../docs/handbook/src/architecture/tui.md), [tui-core-renderer.md](../../docs/internal/tui-core-renderer.md), [tui-runtime-internals.md](../../docs/internal/tui-runtime-internals.md)
 - [theme.md](../../docs/handbook/src/reference/theme.md)
+- [renderer-defect-oracle.md](../../docs/internal/renderer-defect-oracle.md) — the composer zone
+  invariants and how a failing state is recorded. Render verification lives in two places, and the
+  split follows the dependency direction rather than preference: `packages/tui/test/render-stress-*`
+  drives randomized operation sequences against synthetic components and reduces a failure to a
+  minimal one, while the composer oracles sit in `packages/coding-agent/test` because
+  `mountComposerZone` is defined here and `packages/tui` cannot import this package. The composer
+  side reuses `VirtualTerminal` and `settle-frames` from the tui suite and none of its randomized
+  machinery, so a defect that only appears in a sequence of operations belongs on the tui side.
 
 ### Natives (`crates/veyyon-natives`, `packages/natives`)
 - [natives-architecture.md](../../docs/internal/natives-architecture.md), [natives-addon-loader-runtime.md](../../docs/internal/natives-addon-loader-runtime.md), [natives-binding-contract.md](../../docs/internal/natives-binding-contract.md)
