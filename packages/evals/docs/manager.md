@@ -87,7 +87,11 @@ Insert benchmark results into markdown documentation:
 bun packages/evals/src/report/bench-report.ts --run <jobName> --doc docs/argot.md [--key argot]
 ```
 
-Results are placed within `<!-- bench-results:<key> -->` comment markers.
+Results are placed within `<!-- bench-results:<key> -->` comment markers. A re-run replaces the
+block between that pair. A key holds letters, digits, `.`, `_` or `-`; anything else is rejected
+with exit 2, because a key that closes its own comment early leaves a pair the next run cannot
+find. A doc with no marker pair takes the block at the end of its `## Benchmark results` section,
+or gains that heading when it states none.
 
 ## Trace reports
 
