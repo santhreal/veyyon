@@ -31,13 +31,13 @@ bun --cwd=packages/evals run serve --port 4700
 - `POST /api/experiments/:id/arms`: Launch a new arm inheriting configuration.
 - `DELETE /api/experiments/:id`: Delete experiment and associated runs.
 - `GET /api/runs[?experiment=&status=&benchmark=]`: List runs filtered by experiment, status, or benchmark adapter.
-- `POST /api/runs`: Launch a run with parameters (benchmark, model, tasks, concurrency, attempts, jobName).
+- `POST /api/runs`: Launch a run with parameters (benchmark, model, tasks, concurrency, attempts, jobName). A `jobName` that already names a run is rejected, whatever that run's status: resume it, delete it, or pick another name.
 - `GET /api/runs/:name`: Run metadata and execution traces.
-- `POST /api/runs/:name/cancel`: Cancel an active run.
+- `POST /api/runs/:name/cancel`: Cancel an active run. The response states whether anything was signalled; a run whose process is already gone reports `cancelled: false` and its status is reconciled from disk.
 - `DELETE /api/runs/:name`: Delete a completed run and on-disk job files.
 - `POST /api/runs/:name/resume`: Resume incomplete run trials.
 - `GET /api/runs/:name/traces/:trace[?raw=1]`: Fetch normalized or native execution trace.
-- `GET /api/events`: Server-Sent Events stream for real-time status updates.
+- `GET /api/events`: Server-Sent Events stream for real-time status updates. A subscriber receives a comment frame every 15 seconds while the run list is unchanged, and is dropped once 256 frames go unread.
 
 Every field of a mutating request body is checked before the request takes effect. An unknown field
 is rejected by name, including inside a nested object; `tasks`, `concurrency` and `attempts` take an

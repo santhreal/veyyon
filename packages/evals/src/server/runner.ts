@@ -79,10 +79,27 @@ export class RunnerManager {
 		const modelSlug = request.model.replace(/[^a-zA-Z0-9]+/g, "-");
 		const jobName = request.jobName ?? `${modelSlug}-${stamp}`;
 		assertSafeJobName(jobName);
-		if (this.#children.has(jobName) || this.#store.getRun(jobName)?.status === "running") {
-			throw new Error(`run ${jobName} is already running`);
+		// A job name names one run. `launch` refused only a running one, so relaunching a
+		// settled name dropped that run's trial rows and started writing into its job
+		// directory: the disk still held the earlier trials, and syncRun read them back as
+		// this run's results. Resuming or deleting the run is the way to reuse the name.
+		if (this.#children.has(jobName)) {
+			throw new Error(`run ${jobName} is already running; cancel it before launching it again`);
+		}
+		const existing = this.#store.getRun(jobName);
+		if (existing) {
+			throw new Error(
+				`run ${jobName} already exists (status ${existing.status}); ` +
+					`resume it, delete it, or launch under another job name`,
+			);
 		}
 		const jobDir = path.join(this.#jobsDir, jobName);
+		if (fs.existsSync(jobDir) && fs.readdirSync(jobDir).length > 0) {
+			throw new Error(
+				`job directory '${jobDir}' already holds an earlier run's files; ` +
+					`delete it before launching ${jobName} again`,
+			);
+		}
 		fs.mkdirSync(jobDir, { recursive: true });
 
 		let argv: string[];
@@ -196,6 +213,14 @@ export class RunnerManager {
 		const run = this.#store.getRun(jobName);
 		if (run?.pid != null) {
 			const pid = run.pid;
+			// A row can outlive its process: a manager restart, or a runner killed from
+			// outside. Reporting `cancelled: true` for a pid nothing signalled claimed a kill
+			// that never happened, and marking the row cancelled overwrote whatever the run
+			// had actually reached on disk. The store's own reconciliation decides that.
+			if (!pidAlive(pid)) {
+				this.#store.syncActive();
+				return { jobName, cancelled: false };
+			}
 			try {
 				process.kill(pid, "SIGTERM");
 			} catch {}
