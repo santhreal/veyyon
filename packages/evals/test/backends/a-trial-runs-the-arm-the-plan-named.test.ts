@@ -247,7 +247,11 @@ describe("a trial runs the arm the plan named", () => {
 		for (const harness of unbound) {
 			const variant = planVariant(harness);
 			const context = await makeContext("harbor", [variant]);
-			const spawnSpy = spyOn(Bun, "spawn").mockImplementation(() => stubSubprocess());
+			const spawns: CapturedSpawn[] = [];
+			const spawnSpy = spyOn(Bun, "spawn").mockImplementation(command => {
+				spawns.push({ argv: [...(command as readonly string[])] });
+				return stubSubprocess();
+			});
 			try {
 				await expect(new HarborBackend().runTrial(cell(variant.name), context)).rejects.toThrow(
 					/declares no binding for backend "harbor"/,
@@ -255,7 +259,9 @@ describe("a trial runs the arm the plan named", () => {
 			} finally {
 				spawnSpy.mockRestore();
 			}
-			expect(spawnSpy).not.toHaveBeenCalled();
+			// The refusal has to land before anything is launched: an unbound harness that
+			// still reaches harbor would run some other harness's agent under this name.
+			expect(spawns).toEqual([]);
 		}
 	});
 

@@ -78,7 +78,7 @@ describe("InProcessBackend — overlay preflight and execution", () => {
 						async start() {},
 						async prompt() {},
 						async getSessionStats() {
-							return { tokens: { input: 10, output: 10, total: 20 }, assistantMessages: 1 };
+							return { tokens: { input: 10, output: 10, total: 20 }, assistantMessages: 1, cost: 0.002 };
 						},
 						async getLastAssistantText() {
 							return "done";
@@ -284,7 +284,7 @@ describe("InProcessBackend — overlay preflight and execution", () => {
 							async start() {},
 							async prompt() {},
 							async getSessionStats() {
-								return { tokens: { input: 100, output: 40, total: 140 }, assistantMessages: 1 };
+								return { tokens: { input: 100, output: 40, total: 140 }, assistantMessages: 1, cost: 0.01 };
 							},
 							async getLastAssistantText() {
 								return "Executed successfully.";

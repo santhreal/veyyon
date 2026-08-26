@@ -191,6 +191,7 @@ describe("TypeScript Edit Benchmark — EvalSuite & ExecutionBackend contracts",
 							return {
 								tokens: { input: 150, output: 50, reasoning: 0, cacheRead: 0, cacheWrite: 0, total: 200 },
 								assistantMessages: 1,
+								cost: 0.003,
 							};
 						},
 						async getLastAssistantText() {
@@ -234,6 +235,7 @@ describe("TypeScript Edit Benchmark — EvalSuite & ExecutionBackend contracts",
 							return {
 								tokens: { input: 120, output: 30, reasoning: 0, cacheRead: 0, cacheWrite: 0, total: 150 },
 								assistantMessages: 1,
+								cost: 0.002,
 							};
 						},
 						async getLastAssistantText() {

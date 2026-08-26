@@ -13,7 +13,6 @@ import type {
 	TrialArtifacts,
 	TrialCell,
 	TrialScore,
-	TrialUsage,
 } from "../../core/types";
 import { typescriptEditCacheDir, typescriptEditFixturesArchive } from "../../paths";
 import { computeTypescriptEditProvenance, TYPESCRIPT_EDIT_SUITE_NAME, TYPESCRIPT_EDIT_VERSION } from "./provenance";
@@ -288,7 +287,7 @@ export class TypescriptEditSuite implements EvalSuite {
 				reward: null,
 				partial: null,
 				error: "Missing trialDir in trial artifacts",
-				usage: (artifacts.extra?.usage as TrialUsage | null | undefined) ?? null,
+				usage: artifacts.usage ?? null,
 				extra: { ...artifacts.extra, cell },
 			};
 		}
@@ -298,7 +297,7 @@ export class TypescriptEditSuite implements EvalSuite {
 				reward: null,
 				partial: null,
 				error: `Trial execution failed: ${artifacts.extra.error}`,
-				usage: (artifacts.extra?.usage as TrialUsage | null | undefined) ?? null,
+				usage: artifacts.usage ?? null,
 				extra: { ...artifacts.extra, cell },
 			};
 		}
@@ -315,7 +314,7 @@ export class TypescriptEditSuite implements EvalSuite {
 					reward: null,
 					partial: null,
 					error: verification.error ?? "Verification infrastructure failure",
-					usage: (artifacts.extra?.usage as TrialUsage | null | undefined) ?? null,
+					usage: artifacts.usage ?? null,
 					extra: {
 						...artifacts.extra,
 						cell,
@@ -332,7 +331,7 @@ export class TypescriptEditSuite implements EvalSuite {
 
 			const reward = verification.success ? 1 : 0;
 			const partial = verification.success ? 1 : verification.formattedEquivalent ? 0.5 : 0;
-			const usage = (artifacts.extra?.usage as TrialUsage | null | undefined) ?? null;
+			const usage = artifacts.usage ?? null;
 
 			return {
 				reward,
@@ -357,7 +356,7 @@ export class TypescriptEditSuite implements EvalSuite {
 				reward: null,
 				partial: null,
 				error: `Scoring failed: ${err}`,
-				usage: (artifacts.extra?.usage as TrialUsage | null | undefined) ?? null,
+				usage: artifacts.usage ?? null,
 				extra: { ...artifacts.extra, cell, error: err },
 			};
 		}

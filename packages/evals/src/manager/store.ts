@@ -10,7 +10,7 @@
 import { Database } from "bun:sqlite";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { isProcessAlive } from "@veyyon/utils";
+import { atomicWriteFileSync, isProcessAlive } from "@veyyon/utils";
 import { readJobResult } from "../backends/harbor/runner";
 import type { BackendId } from "../core/types";
 import { readBenchmarkSnapshot } from "./benchmarks";
@@ -349,12 +349,11 @@ export class RunStore {
 		const jobDir = path.join(this.jobsDir, launch.jobName);
 		fs.mkdirSync(jobDir, { recursive: true });
 		const targetFile = path.join(jobDir, "manager.json");
-		const tmpFile = path.join(jobDir, `.manager.json.tmp.${process.pid}.${Date.now()}`);
-		fs.writeFileSync(
-			tmpFile,
+		atomicWriteFileSync(
+			targetFile,
 			JSON.stringify({ ...launch, schemaVersion: CURRENT_SCHEMA_VERSION, suite, backend, benchmark }, null, 2),
+			{ mode: 0o644 },
 		);
-		fs.renameSync(tmpFile, targetFile);
 	}
 	/** Upsert the experiment's stated goal. */
 	setExperimentGoal(id: string, goal: string): void {
