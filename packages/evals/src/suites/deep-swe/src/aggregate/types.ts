@@ -28,6 +28,12 @@ export interface ArmResult {
 	encodeHeadroom?: EncodeHeadroom | null;
 	toolCalls?: Record<string, number> | null;
 	error: string | null;
+	/**
+	 * The runner's exception record for a trial graded 0 without an infrastructure error.
+	 * `error` stays null there — the model failed the task — so this is the only record of
+	 * why the reward is 0, and it survives into the run JSON a resume reads back.
+	 */
+	exceptionInfo?: Record<string, unknown> | null;
 }
 
 export interface SessionUsage {

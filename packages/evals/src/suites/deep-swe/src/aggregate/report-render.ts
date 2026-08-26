@@ -118,8 +118,12 @@ export function renderReferenceCostSection(results: readonly ArmResult[], arms: 
 			return `${money(v)} (${pct >= 0 ? "+" : ""}${pct.toFixed(1)}%)`;
 		};
 		const b = baseline?.s.refCost;
+		const notes: string[] = [];
+		if (s.errors > 0) notes.push(`+${s.errors} err`);
+		if (s.timedOut > 0) notes.push(`${s.timedOut} timed out`);
+		const samples = notes.length > 0 ? `${s.n} (${notes.join(", ")})` : String(s.n);
 		lines.push(
-			`| ${arm} | ${s.n} | ${withDelta(c.input, b?.input ?? 0)} | ${withDelta(c.cacheRead, b?.cacheRead ?? 0)} | ` +
+			`| ${arm} | ${samples} | ${withDelta(c.input, b?.input ?? 0)} | ${withDelta(c.cacheRead, b?.cacheRead ?? 0)} | ` +
 				`${withDelta(c.cacheWrite, b?.cacheWrite ?? 0)} | ${withDelta(c.output, b?.output ?? 0)} | ` +
 				`**${withDelta(c.total, b?.total ?? 0)}** | ${(shares.output * 100).toFixed(1)}% |`,
 		);
@@ -445,7 +449,10 @@ export function renderReport(
 			{
 				label: "ref cost",
 				unit: "$",
-				of: c => (c.refCostMeasurable ? c.refCost.total / Math.max(1, c.n) : null),
+				of: c => {
+					const gradedOkCount = c.n - c.timedOut;
+					return c.refCostMeasurable && gradedOkCount > 0 ? c.refCost.total / gradedOkCount : null;
+				},
 				raw: r =>
 					r.cacheReadTokens == null || r.cacheWriteTokens == null
 						? null

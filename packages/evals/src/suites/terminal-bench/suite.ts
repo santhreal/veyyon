@@ -3,6 +3,7 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { $which, errorMessage } from "@veyyon/utils";
+import { sumOfMeasured } from "../../core/scoring";
 import type {
 	BackendId,
 	EvalSuite,
@@ -539,36 +540,35 @@ export class TerminalBenchSuite implements EvalSuite {
 	async #extractUsage(
 		trialDir: string | null | undefined,
 		filePaths: Readonly<Record<string, string>>,
-	): Promise<TrialUsage | null> {
+	): Promise<{
+		usage: TrialUsage | null;
+		parseError?: { file: string; message: string } | null;
+	}> {
 		const rawResult = await this.#readArtifactText(trialDir, filePaths, ["result.json"]);
-		if (rawResult) {
+		if (rawResult !== null) {
+			const targetFile = filePaths["result.json"] ?? (trialDir ? join(trialDir, "result.json") : "result.json");
 			try {
 				const r = JSON.parse(rawResult.trim());
 				if (r && typeof r === "object") {
-					let inputTokens = 0;
-					let outputTokens = 0;
-					let cacheTokens = 0;
-					let costUsd = 0;
-					let hasUsage = false;
+					const inputTokensList: (number | null | undefined)[] = [];
+					const outputTokensList: (number | null | undefined)[] = [];
+					const cacheTokensList: (number | null | undefined)[] = [];
+					const costUsdList: (number | null | undefined)[] = [];
 
 					const addCtx = (ctx: unknown) => {
 						if (ctx && typeof ctx === "object") {
 							const c = ctx as Record<string, unknown>;
 							if (typeof c.n_input_tokens === "number") {
-								inputTokens += c.n_input_tokens;
-								hasUsage = true;
+								inputTokensList.push(c.n_input_tokens);
 							}
 							if (typeof c.n_output_tokens === "number") {
-								outputTokens += c.n_output_tokens;
-								hasUsage = true;
+								outputTokensList.push(c.n_output_tokens);
 							}
 							if (typeof c.n_cache_tokens === "number") {
-								cacheTokens += c.n_cache_tokens;
-								hasUsage = true;
+								cacheTokensList.push(c.n_cache_tokens);
 							}
 							if (typeof c.cost_usd === "number") {
-								costUsd += c.cost_usd;
-								hasUsage = true;
+								costUsdList.push(c.cost_usd);
 							}
 						}
 					};
@@ -591,38 +591,62 @@ export class TerminalBenchSuite implements EvalSuite {
 						}
 					}
 
-					if (hasUsage || durationSec !== null) {
+					const inputTokens = sumOfMeasured(inputTokensList);
+					const outputTokens = sumOfMeasured(outputTokensList);
+					const cacheTokens = sumOfMeasured(cacheTokensList);
+					const costUsd = sumOfMeasured(costUsdList);
+
+					const hasUsage =
+						inputTokens !== null ||
+						outputTokens !== null ||
+						cacheTokens !== null ||
+						costUsd !== null ||
+						durationSec !== null;
+
+					if (hasUsage) {
 						return {
-							inputTokens: hasUsage ? inputTokens : null,
-							outputTokens: hasUsage ? outputTokens : null,
-							cacheTokens: hasUsage ? cacheTokens : null,
-							costUsd: hasUsage ? costUsd : null,
-							durationSec,
+							usage: {
+								inputTokens,
+								outputTokens,
+								cacheTokens,
+								costUsd,
+								durationSec,
+							},
+							parseError: null,
 						};
 					}
 				}
-			} catch {
-				// Ignore
+			} catch (err) {
+				return {
+					usage: null,
+					parseError: {
+						file: targetFile,
+						message: `Failed to parse result.json from '${targetFile}': ${errorMessage(err)}`,
+					},
+				};
 			}
 		}
 
-		return null;
+		return { usage: null, parseError: null };
 	}
 
 	async #scoreSingleStepTrial(cell: TrialCell, artifacts: TrialArtifacts): Promise<TrialScore> {
 		const trialDir = artifacts.trialDir;
 		const filePaths = artifacts.filePaths ?? {};
 		const { reward, partial, error } = await this.#extractSingleReward(trialDir, filePaths);
-		const usage = await this.#extractUsage(trialDir, filePaths);
+		const { usage, parseError } = await this.#extractUsage(trialDir, filePaths);
+
+		const finalError = error ?? parseError?.message ?? null;
 
 		return {
-			reward,
-			partial,
-			error,
+			reward: finalError ? null : reward,
+			partial: finalError ? null : partial,
+			error: finalError,
 			usage,
 			extra: {
 				...artifacts.extra,
 				cell,
+				...(parseError ? { result_json_parse_error: parseError.message, result_json_file: parseError.file } : {}),
 			},
 		};
 	}
@@ -648,18 +672,22 @@ export class TerminalBenchSuite implements EvalSuite {
 			(artifacts.extra?.strategy as MultiStepRewardStrategy) ??
 			"mean";
 
-		const usage = await this.#extractUsage(trialDir, filePaths);
-		if (anyError) {
+		const { usage, parseError } = await this.#extractUsage(trialDir, filePaths);
+		const finalError = anyError ? `Step '${anyError.step}' failed: ${anyError.error}` : (parseError?.message ?? null);
+		if (finalError) {
 			return {
 				reward: null,
 				partial: null,
-				error: `Step '${anyError.step}' failed: ${anyError.error}`,
+				error: finalError,
 				usage,
 				extra: {
 					...artifacts.extra,
 					cell,
 					stepRewards,
 					multi_step_reward_strategy: strategy,
+					...(parseError
+						? { result_json_parse_error: parseError.message, result_json_file: parseError.file }
+						: {}),
 				},
 			};
 		}
@@ -689,6 +717,7 @@ export class TerminalBenchSuite implements EvalSuite {
 				cell,
 				stepRewards,
 				multi_step_reward_strategy: strategy,
+				...(parseError ? { result_json_parse_error: parseError.message, result_json_file: parseError.file } : {}),
 			},
 		};
 	}
