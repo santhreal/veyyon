@@ -42,7 +42,8 @@ const SLASH_COMMAND_SELECT_LIST_LAYOUT: SelectListLayoutOptions = {
 
 function sanitizeLoadedText(text: string): string {
 	// Normalize CRLF/CR → LF, then strip C0 control chars except \n.
-	return replaceTabs(text.replace(/\r\n?/g, "\n")).replace(/[\x00-\x09\x0b-\x1f]/g, "");
+	const normalized = text.includes("\r") ? text.replace(/\r\n?/g, "\n") : text;
+	return replaceTabs(normalized).replace(/[\x00-\x09\x0b-\x1f]/g, "");
 }
 
 const segmenter = getSegmenter();

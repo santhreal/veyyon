@@ -440,9 +440,7 @@ export class Input implements Component, Focusable {
 		// remove remaining C0/DEL bytes.
 		const insertedText = this.credentialMode
 			? pastedText
-			: replaceTabs(
-					decodeReencodedPasteControls(pastedText).replace(/\r\n/g, "").replace(/\r/g, "").replace(/\n/g, ""),
-				)
+			: replaceTabs(decodeReencodedPasteControls(pastedText).replace(/[\r\n]/g, ""))
 					.normalize("NFC")
 					.replace(/[\x00-\x1F\x7F]/g, "");
 
