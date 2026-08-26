@@ -28,11 +28,12 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { errorMessage } from "@veyyon/utils";
 import { discoverSharedInfra, InProcessClient, type SharedInfra } from "../backends/in-process/client";
+import { flagNumber, parseFlags, requireFlag } from "../core/flags";
 import { extractBenchmarkFixtures } from "../suites/typescript-edit/argot-bench";
 import { type EditTask, loadTasksFromDir } from "../suites/typescript-edit/tasks";
 import { verifyExpectedFileSubset } from "../suites/typescript-edit/verify";
 
-interface TaskOutcome {
+export interface TaskOutcome {
 	id: string;
 	passed: boolean;
 	inputTokens: number;
@@ -41,7 +42,7 @@ interface TaskOutcome {
 	error?: string;
 }
 
-interface BenchReport {
+export interface BenchReport {
 	label: string;
 	model: string;
 	editToolDescriptionTokens: number;
@@ -102,24 +103,47 @@ async function runTask(task: EditTask, model: string, shared: SharedInfra): Prom
 	}
 }
 
-function parseArgs(argv: string[]): { model: string; label: string; json?: string; limit?: number } {
-	let model = "";
-	let label = "run";
-	let json: string | undefined;
-	let limit: number | undefined;
-	for (let i = 0; i < argv.length; i++) {
-		const arg = argv[i];
-		if (arg === "--model") model = argv[++i];
-		else if (arg === "--label") label = argv[++i];
-		else if (arg === "--json") json = argv[++i];
-		else if (arg === "--limit") limit = Number(argv[++i]);
-	}
-	if (!model) throw new Error("--model is required (e.g. --model cursor/cursor-grok-4.5-medium)");
-	return { model, label, json, limit };
+export interface EditPromptBenchArgs {
+	model: string;
+	label: string;
+	json?: string;
+	limit?: number;
+}
+
+/** Read the invocation, or reject it by naming the flag it is missing. */
+export function parseBenchArgs(argv: string[]): EditPromptBenchArgs {
+	const flags = parseFlags(argv);
+	return {
+		model: requireFlag(flags, "model", "e.g. --model cursor/cursor-grok-4.5-medium"),
+		label: flags.label === undefined || flags.label === "true" ? "run" : flags.label,
+		json: flags.json === undefined || flags.json === "true" ? undefined : flags.json,
+		limit: flagNumber(flags, "limit"),
+	};
+}
+
+/**
+ * The two numbers the prune is decided on, plus the token totals behind them.
+ * Separate from the run loop so a report is summarized the same way whether the
+ * outcomes came from a live model or from a recorded run.
+ */
+export function summarizeBenchOutcomes(
+	outcomes: readonly TaskOutcome[],
+	identity: { label: string; model: string; editToolDescriptionTokens: number },
+): BenchReport {
+	return {
+		label: identity.label,
+		model: identity.model,
+		editToolDescriptionTokens: identity.editToolDescriptionTokens,
+		passed: outcomes.filter(outcome => outcome.passed).length,
+		total: outcomes.length,
+		totalInputTokens: outcomes.reduce((sum, outcome) => sum + outcome.inputTokens, 0),
+		totalOutputTokens: outcomes.reduce((sum, outcome) => sum + outcome.outputTokens, 0),
+		tasks: [...outcomes],
+	};
 }
 
 async function main(): Promise<void> {
-	const { model, label, json, limit } = parseArgs(process.argv.slice(2));
+	const { model, label, json, limit } = parseBenchArgs(process.argv.slice(2));
 	const fixtures = await extractBenchmarkFixtures();
 	try {
 		const all = await loadTasksFromDir(fixtures.dir);
@@ -149,16 +173,11 @@ async function main(): Promise<void> {
 			);
 		}
 
-		const report: BenchReport = {
+		const report = summarizeBenchOutcomes(outcomes, {
 			label,
 			model,
 			editToolDescriptionTokens: descriptionTokens,
-			passed: outcomes.filter(o => o.passed).length,
-			total: outcomes.length,
-			totalInputTokens: outcomes.reduce((sum, o) => sum + o.inputTokens, 0),
-			totalOutputTokens: outcomes.reduce((sum, o) => sum + o.outputTokens, 0),
-			tasks: outcomes,
-		};
+		});
 
 		console.log(
 			`\n${label}: ${report.passed}/${report.total} passed, ` +
@@ -175,4 +194,6 @@ async function main(): Promise<void> {
 	}
 }
 
-await main();
+if (import.meta.main) {
+	await main();
+}

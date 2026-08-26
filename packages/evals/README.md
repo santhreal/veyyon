@@ -85,7 +85,7 @@ every case, so a new case cannot be added without one.
 
 ```
 src/
-├── core/        contracts, the three registries, variant matrix, run record model
+├── core/        contracts, the three registries, variant matrix, run record model, flag grammar
 ├── run/         plan.ts computes every cell; execute.ts drives them through one backend
 ├── suites/      deep-swe/, terminal-bench/, typescript-edit/
 ├── backends/    pier/, harbor/, in-process/
@@ -97,7 +97,7 @@ src/
 ├── report/      benchmark and trace report renderers
 ├── paths.ts     the one owner of the package's directory layout
 └── cli.ts       the cross-suite entrypoint
-test/            every test, mirroring the src/ tree
+test/            every test, in the directory of the code it drives, named for the behavior it defends
 datasets/        task lists, corpora, fixtures, dictionaries
 agents/          Python container agents (pier/, harbor/)
 docs/            per-suite and per-layer reference (see docs/ below)

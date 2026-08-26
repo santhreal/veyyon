@@ -62,10 +62,8 @@ async function importFailure(rel: string): Promise<string | null> {
  * reason other than a cycle.
  */
 const ENTRY_SCRIPTS = [
-	"src/benches/edit-prompt-bench.ts",
 	"src/benches/goal-budget-context-bench.ts",
 	"src/suites/deep-swe/context-encode-ceiling.ts",
-	"src/suites/deep-swe/gen-dicts.ts",
 	"src/suites/deep-swe/measure-channel-split.ts",
 	"src/suites/deep-swe/measure-retype-likelihood.ts",
 	"src/suites/deep-swe/online-codec-ceiling.ts",
@@ -80,7 +78,6 @@ describe("importing any harness or suite module first", () => {
 	test("never enters a load-time import cycle, whichever module the process starts from", async () => {
 		const files = await moduleFiles();
 		// A broken glob would otherwise pass this suite with nothing to prove.
-		expect(files).toContain("src/benches/edit-prompt-bench.ts");
 		expect(files).toContain("src/benches/goal-budget-context-bench.ts");
 		expect(files).toContain("src/harnesses/index.ts");
 		expect(files).toContain("src/harnesses/system-comparison.ts");

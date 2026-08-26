@@ -41,26 +41,26 @@ const DEFAULT_BASE = "http://localhost:4700";
 // --------------------------------------------------------------------------
 // Trace API types (mirror packages/evals/src/manager/store.ts normalization)
 
-interface TraceAssistantEntry {
+export interface TraceAssistantEntry {
 	kind: "assistant";
 	model: string;
 	text: string;
 	tools: string[];
 }
 
-interface TraceToolResultEntry {
+export interface TraceToolResultEntry {
 	kind: "toolResult";
 	tool: string;
 	isError: boolean;
 	text: string;
 }
 
-interface TraceNoticeEntry {
+export interface TraceNoticeEntry {
 	kind: "notice";
 	text: string;
 }
 
-type TraceEntry = TraceAssistantEntry | TraceToolResultEntry | TraceNoticeEntry;
+export type TraceEntry = TraceAssistantEntry | TraceToolResultEntry | TraceNoticeEntry;
 
 interface TraceResponse {
 	jobName: string;
@@ -87,11 +87,11 @@ interface RunResponse {
 // Turn grouping
 
 /** One numbered item of the Turn Log: an assistant turn or a harness notice. */
-type LogItem =
+export type LogItem =
 	| { kind: "turn"; model: string; text: string; tools: string[]; results: TraceToolResultEntry[] }
 	| { kind: "notice"; text: string };
 
-function groupItems(entries: TraceEntry[]): LogItem[] {
+export function groupItems(entries: TraceEntry[]): LogItem[] {
 	const items: LogItem[] = [];
 	let current: Extract<LogItem, { kind: "turn" }> | undefined;
 	for (const entry of entries) {
@@ -203,7 +203,11 @@ function turnPrompt(turn: Extract<LogItem, { kind: "turn" }>): string {
 }
 
 /** Map `items` through `worker` with at most `limit` in flight, order preserved. */
-async function mapPool<T, R>(items: T[], limit: number, worker: (item: T, index: number) => Promise<R>): Promise<R[]> {
+export async function mapPool<T, R>(
+	items: T[],
+	limit: number,
+	worker: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
 	const results = new Array<R>(items.length);
 	let next = 0;
 	const lanes = Array.from({ length: Math.min(limit, items.length) }, async () => {
@@ -219,7 +223,7 @@ async function mapPool<T, R>(items: T[], limit: number, worker: (item: T, index:
 // --------------------------------------------------------------------------
 // Turn Log assembly (deterministic scaffolding + tiny sentences)
 
-function toolsLine(tools: string[]): string {
+export function toolsLine(tools: string[]): string {
 	if (tools.length === 0) return "prose only (no tool calls)";
 	const counts = new Map<string, number>();
 	for (const tool of tools) counts.set(tool, (counts.get(tool) ?? 0) + 1);
@@ -227,7 +231,7 @@ function toolsLine(tools: string[]): string {
 	return `tools called: ${named.join(", ")}`;
 }
 
-function renderTurnLog(items: LogItem[], sentences: (string | undefined)[]): string {
+export function renderTurnLog(items: LogItem[], sentences: (string | undefined)[]): string {
 	const lines: string[] = ["### Turn Log", ""];
 	items.forEach((item, index) => {
 		const number = index + 1;
@@ -284,7 +288,7 @@ function synthPrompt(options: {
 // @veyyon/utils formatDuration's compact multi-scale format — this file imports
 // that module, so the local formatter takes an honest name to avoid a same-name
 // shadow. "?" marks a row whose duration was never recorded.
-function formatTraceDuration(ms: number | null): string {
+export function formatTraceDuration(ms: number | null): string {
 	if (ms == null) return "?";
 	const seconds = Math.round(ms / 1000);
 	return `${Math.floor(seconds / 60)}m${String(seconds % 60).padStart(2, "0")}s`;
@@ -400,4 +404,6 @@ async function main(): Promise<void> {
 	}
 }
 
-await main();
+if (import.meta.main) {
+	await main();
+}
