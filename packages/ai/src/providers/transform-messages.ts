@@ -139,20 +139,14 @@ function deduplicateToolCallIds(
  * Models emit these occasionally (GLM-5.2, #3458); providers 400 on them, wedging the session.
  * Run before other transforms; idempotent; provider-agnostic.
  */
-function isMalformedToolCallName(name: string | undefined): boolean {
-	if (!name) return true;
-	for (let i = 0; i < name.length; i++) if (name.charCodeAt(i) > 32) return false;
-	return true;
-}
-
-function isMalformedToolCallId(id: string | undefined): boolean {
-	if (!id) return true;
-	for (let i = 0; i < id.length; i++) if (id.charCodeAt(i) > 32) return false;
+function isBlankString(s: string | undefined): boolean {
+	if (!s) return true;
+	for (let i = 0; i < s.length; i++) if (s.charCodeAt(i) > 32) return false;
 	return true;
 }
 
 function isMalformedToolCall(block: { id: string; name: string }): boolean {
-	return isMalformedToolCallId(block.id) || isMalformedToolCallName(block.name);
+	return isBlankString(block.id) || isBlankString(block.name);
 }
 
 function sanitizeMalformedToolCalls(messages: Message[]): Message[] {
