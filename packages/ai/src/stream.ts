@@ -127,9 +127,7 @@ function isLeakedThinkingHealExempt(model: Model<Api>): boolean {
 			// FOUNDRY_BASE_URL, so exempt only when the effective endpoint is official.
 			return isOfficialAnthropicApiUrl((isFoundryEnabled() && $env.FOUNDRY_BASE_URL?.trim()) || model.baseUrl);
 		case "openai":
-			// The catalog's check, not a third copy of it: the same hostname question decides whether this
-			// endpoint gets the obfuscation opt-out and server compaction, and a local copy drifted into
-			// answering it here.
+			// Catalog's check, not a local copy: same hostname decides obfuscation opt-out and server compaction.
 			return isOfficialOpenAIEndpoint("openai", model.baseUrl ?? "");
 		case "openai-codex":
 			return isOfficialCodexApiUrl(model.baseUrl);
@@ -229,9 +227,7 @@ async function readProviderInFlightInfo(infoPath: string): Promise<ProviderInFli
 		}
 		return { pid: parsed.pid, timestamp: parsed.timestamp, token: parsed.token };
 	} catch {
-		// Null means "no valid lease here", the same answer the shape checks above give and the same answer
-		// an absent file gives. The lease protocol then treats the slot as free, which is correct: a lease
-		// we cannot read cannot be honoured, and a stale one is exactly what this file is for.
+		// Unreadable lease = free slot; a stale lease is exactly what this file is for.
 		return null;
 	}
 }
@@ -439,18 +435,8 @@ async function cleanupProviderInFlightLeases(providerDir: string): Promise<numbe
 		}
 		if (!isDirectory) continue;
 		if (await isProviderInFlightDirStale(leaseDir, PROVIDER_INFLIGHT_LEASE_STALE_MS)) {
-			// The lease is provably dead: its owning pid is gone or its heartbeat stopped long enough ago
-			// that another process is already entitled to proceed. Removing the directory is housekeeping,
-			// so a removal that fails must not become the request's error. It used to: the throw escaped
-			// through `tryAcquireProviderInFlightLease` and `acquireProviderInFlightSlot` into
-			// `withProviderInFlightLimit`, which failed the stream with an `EACCES` about a temp directory,
-			// and it did so on EVERY later request for that provider because the sweep runs on each one.
-			// One unremovable directory turned into a permanently dead provider.
-			//
-			// It is counted as reclaimed rather than active, deliberately. Counting it would be the other
-			// failure: with a limit of one, a directory that cannot be removed and cannot age out would
-			// block every request for that provider forever, and a hang is worse than briefly exceeding a
-			// soft concurrency cap. The warning names the directory so the cause is findable.
+			// Dead lease: removal is housekeeping, not the request's error. Counted as reclaimed (not active)
+			// so an unremovable dir doesn't block every request forever. Warning names the directory.
 			try {
 				await fs.rm(leaseDir, { recursive: true, force: true });
 			} catch (error) {
@@ -481,19 +467,13 @@ async function tryAcquireProviderInFlightLease(
 			await fs.mkdir(leaseDir);
 			await writeProviderInFlightInfo(leaseDir, token);
 		} catch (error) {
-			// The lease-creation error is what the caller needs and it is rethrown. A cleanup that also fails
-			// could only be surfaced by replacing that error with a less useful one; the cost of dropping it is
-			// one lease directory that the staleness sweep will reclaim.
+			// Rethrow the creation error; cleanup failure is dropped (staleness sweep reclaims the dir).
 			await removeProviderInFlightLeaseDir(leaseDir).catch(() => {});
 			throw error;
 		}
 		let heartbeatFlush = Promise.resolve();
-		// A heartbeat that keeps failing lets the lease age past PROVIDER_INFLIGHT_LEASE_STALE_MS, after which
-		// another process treats this in-flight request as dead and proceeds: the concurrency guard fails OPEN
-		// while the operator still believes duplicate in-flight requests are prevented. The write itself cannot
-		// be made to throw here (nothing awaits the interval callback), so the failure is COUNTED, and the run
-		// is reported once it is long enough to have that effect. The first failures stay quiet on purpose: a
-		// single transient write failure is normal and the next beat repairs it.
+		// Heartbeat failures let the lease go stale → concurrency guard fails open. Counted, reported after
+		// enough failures; transient ones stay quiet (next beat repairs).
 		let consecutiveFailures = 0;
 		let reportedStaleRisk = false;
 		const touchHeartbeat = (): Promise<void> => {
@@ -636,15 +616,10 @@ async function releaseProviderInFlightLease(lease: ProviderInFlightLease): Promi
 	try {
 		await removeProviderInFlightLeaseDir(lease.path);
 	} catch (error) {
-		// Never rethrow. This runs from the `finally` in `withProviderInFlightLimit`, where a throw
-		// REPLACES whatever the request was already reporting: a provider's real failure became an
-		// `EACCES` about a temp directory, and a successful stream had the throw swallowed silently
-		// because `outer` was already ended. Both outcomes destroyed the information that mattered.
+		// Never rethrow: a throw from `finally` replaces the request's real error with an `EACCES`.
 		reportProviderInFlightLeaseLeak(lease.path, "own lease", error);
 	}
-	// Signalled even when the removal failed. Waiters are woken by the `.wakeup` write, not by the
-	// directory disappearing, and a waiter that is never woken pays the fallback timer on top of a
-	// slot it may not get anyway.
+	// Signal waiters even if removal failed; they're woken by `.wakeup`, not directory removal.
 	await signalProviderInFlightWaitersInDir(path.dirname(lease.path));
 }
 
@@ -706,9 +681,7 @@ export const __providerInFlightForTesting = {
 			const identity = await readProviderInFlightLockIdentity(lockDir);
 			return () => releaseProviderInFlightLockDirIfSame(lockDir, identity);
 		} catch {
-			// No identity read means we cannot prove the lock is ours, so no release closure is handed back and
-			// nothing is unlocked. Fail closed: releasing a lock that might belong to another process is the
-			// failure that matters here, and null is the caller's "nothing to release" answer.
+			// Can't prove lock is ours; fail closed (null = nothing to release).
 			return null;
 		}
 	},
@@ -844,10 +817,7 @@ function resolveVertexRequest(input: string | URL | Request): string | URL | Req
 	return rewriteUrl(input);
 }
 
-// The env-key table moved to `./env-api-key`, a leaf that imports the catalog and the registry and
-// nothing else. It was here only because it was written here, and it made every caller that wanted
-// "which variable holds this key" instantiate the whole streaming engine. Re-exported rather than
-// dropped so the specifier a caller already uses keeps working.
+// Re-exported from `./env-api-key` (a leaf) so existing specifiers keep working without pulling the streaming engine.
 export { getEnvApiKey, getEnvApiKeyName, listProvidersWithEnvKey } from "./env-api-key";
 
 export function stream<TApi extends Api>(
@@ -1830,18 +1800,8 @@ function getGoogleBudget(
 		}
 	}
 
-	// Every effort level used to land here as -1, Gemini's "you decide" sentinel, for any id
-	// without "2.5-" in it. That made the thinking control a no-op on eleven bundled rows:
-	// `gemini-flash-latest` and `-lite` on both `google` and `google-vertex`, plus 7 `gemma-4`
-	// rows. minimal, low, medium and high all produced the byte-identical
-	// `{enabled: true, budgetTokens: -1}`, so the operator set an effort, the request did not
-	// change, and nothing said so.
-	//
-	// Refuse rather than invent a number. A budget picked for a row whose underlying model is
-	// unknown is a second silent wrong answer: `gemini-flash-latest` is an alias, and the Gemini 3
-	// generation takes `thinkingLevel` rather than `thinkingBudget`, so a plausible-looking value
-	// could be wrong in a way no one would ever observe. The caller can pick a row that accepts a
-	// budget, or leave thinking off and take the model's own behaviour.
+	// Non-2.5 models don't accept a thinking budget. Refuse rather than silently send -1 (a no-op)
+	// or invent a budget for an alias whose underlying model may use `thinkingLevel` instead.
 	throw new AIError.ConfigurationError(
 		`${model.provider}/${model.id} does not accept a thinking budget, so the requested effort "${effort}" would change nothing about the request. ` +
 			`Choose a model that supports budgeted thinking (the Gemini 2.5 family on this API), pass an explicit thinkingBudgets entry for "${effort}", or turn thinking off for this model.`,
