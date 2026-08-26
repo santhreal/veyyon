@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
+import { requirePathSegment } from "../../paths";
 import { terminalBenchDatasetDir } from "./paths";
 
 const execFileAsync = promisify(execFile);
@@ -147,21 +148,24 @@ export async function discoverTerminalBenchTasks(datasetRoot: string): Promise<r
 
 /**
  * Returns the path to a specific task directory.
+ *
+ * A task id arrives from a task list file, which is data, so it goes through the one path-segment
+ * validator before it is joined onto the dataset root.
  */
 export function getTerminalBenchTaskDir(datasetRoot: string, taskId: string): string {
-	return join(datasetRoot, "tasks", taskId);
+	return join(datasetRoot, "tasks", requirePathSegment(taskId, "terminal-bench task id"));
 }
 
 /**
  * Returns the path to a task's task.toml file.
  */
 export function getTerminalBenchTaskConfigPath(datasetRoot: string, taskId: string): string {
-	return join(datasetRoot, "tasks", taskId, "task.toml");
+	return join(getTerminalBenchTaskDir(datasetRoot, taskId), "task.toml");
 }
 
 /**
  * Returns the path to a task's instruction.md file.
  */
 export function getTerminalBenchTaskInstructionPath(datasetRoot: string, taskId: string): string {
-	return join(datasetRoot, "tasks", taskId, "instruction.md");
+	return join(getTerminalBenchTaskDir(datasetRoot, taskId), "instruction.md");
 }

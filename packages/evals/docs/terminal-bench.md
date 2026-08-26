@@ -43,6 +43,18 @@ Every task list file begins with a provenance directive:
 - `# @biased: <reason>`: Marks a subset chosen for speed or stress, not suitable for headline reporting.
 - `# @headline: <reason>`: Marks an unbiased, representative sample suitable for headline pass rate claims.
 
+A task list line is one task id, which becomes a directory under the dataset root. A line that is
+not a single path segment — a path, an absolute name, `..`, or a name with surrounding whitespace —
+refuses the list and names the file and the line number, before a run starts.
+
+### Recorded provenance
+
+`computeTerminalBenchProvenance` records `resolvedCommitSha`, `taskCount`, `selectedTasks` and a
+SHA-256 `contentHash` over the `task.toml` and `instruction.md` of each selected task, in sorted
+order. Both fields state what was read: a task file that cannot be read ends the computation naming
+the path rather than hashing as empty, and a checkout whose commit cannot be resolved ends it rather
+than reporting the pinned constant. Pass `commitSha` to record a commit explicitly.
+
 ## Task Descriptor & Metadata Mapping
 
 `describeTask(taskId, context)` reads `task.toml` and returns a `TaskDescriptor`:
