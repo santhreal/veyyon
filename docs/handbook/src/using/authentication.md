@@ -39,6 +39,11 @@ arrow down past your last account to land on it, and press `enter` there to star
 mouse works on the card as well. Click an account to select it, click that last row to start the
 login, and click any key chip in the footer to run what it names.
 
+The provider list filters. Press `ctrl+s`, type part of a provider's name or id, and the sidebar
+keeps the providers that match; the arrows move within them and `enter` still switches to the
+selected account. Press `esc` to leave the filter and get the full list back, and `esc` again to
+close the card.
+
 Switching is **per provider**. Choosing another Anthropic account changes Anthropic and nothing else,
 because several providers serve one session at the same time: your main model, your subagent roles,
 and web search can each be a different provider. Moving between providers is a model choice, so it

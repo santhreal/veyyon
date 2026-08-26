@@ -23,6 +23,8 @@
 import { getOAuthProviders } from "@veyyon/ai/oauth";
 import {
 	type Component,
+	extractPrintableText,
+	fuzzyFilter,
 	HoverFade,
 	Input,
 	matchesKey,
@@ -95,7 +97,7 @@ const SHORTCUT_KEYS: Record<string, string> = {
 	usage: "u",
 	logout: "x",
 	add: "a",
-	balance: "b",
+	search: "\x13",
 	clearBlock: "c",
 };
 
@@ -119,15 +121,6 @@ export interface AccountManagerCallbacks {
 	onShowUsage: (row: AccountRow) => void;
 	/** Start a login that adds another account for this provider. */
 	onAddAccount: (provider: string) => void;
-	/**
-	 * Flip `accounts.loadBalancing` and return its new value.
-	 *
-	 * On the card because the setting decides what happens when the account on screen runs out of
-	 * quota, and sending the user to `/settings` to answer that question loses the context they
-	 * are looking at. Returns the value actually stored, so a write the settings layer refuses
-	 * cannot leave the footer claiming a state the config does not have.
-	 */
-	onToggleLoadBalancing: () => boolean;
 	/**
 	 * Lift the rate-limit block this card is showing on one account, and re-probe it.
 	 *
@@ -157,9 +150,10 @@ export interface AccountManagerOptions {
 	 */
 	terminalHeight?: number;
 	/**
-	 * Current value of `accounts.loadBalancing`, for the footer chip and the scope line.
+	 * Current value of `accounts.loadBalancing`, for the scope line.
 	 *
-	 * Passed in rather than read here: this component owns no config, and a card that reached for
+	 * Read here and written in Settings -> Providers -> Accounts, which is the one writer. Passed
+	 * in rather than read from config: this component owns no config, and a card that reached for
 	 * the settings singleton could not be rendered by a proof script or a test without one.
 	 */
 	loadBalancing?: boolean;
@@ -231,8 +225,16 @@ export class AccountManagerComponent implements Component {
 	#splitRowCount = 0;
 	#sidebarWidthLast = SIDEBAR_MIN_WIDTH;
 	#bodyLines: BodyLine[] = [];
-	/** Mirrors `accounts.loadBalancing`; only `b` and the chip change it. */
+	/**
+	 * Read-only mirror of `accounts.loadBalancing`, for the scope line.
+	 *
+	 * The card shows the value and writes nothing. Settings -> Providers -> Accounts is the one
+	 * writer, so the card and the settings screen cannot disagree about what is stored.
+	 */
 	#loadBalancing = false;
+	#searchQuery = "";
+	/** Whether the sidebar is filtering. Entered with `ctrl+s`, left with `esc`. */
+	#searching = false;
 
 	constructor(inventory: AccountInventory, callbacks: AccountManagerCallbacks, options: AccountManagerOptions = {}) {
 		this.#inventory = inventory;
@@ -303,6 +305,15 @@ export class AccountManagerComponent implements Component {
 			this.#activeProviderId = this.#entries[0]?.providerId ?? "";
 			this.#sidebarFollowActive = true;
 		}
+		if (this.#searchQuery.trim()) {
+			const filtered = this.#filteredEntries;
+			if (filtered.length > 0 && !filtered.some(entry => entry.providerId === this.#activeProviderId)) {
+				this.#activeProviderId = filtered[0]?.providerId ?? this.#activeProviderId;
+				this.#sidebarFollowActive = true;
+				this.#selectFirstEntry();
+			}
+			this.#sidebarScroll = 0;
+		}
 	}
 
 	#activeEntry(): AccountSidebarEntry | undefined {
@@ -337,6 +348,80 @@ export class AccountManagerComponent implements Component {
 			: selection.kind === "account" && selection.credentialId === target.credentialId;
 	}
 
+	/**
+	 * Whether the sidebar is filtering.
+	 *
+	 * A MODE, not a heuristic. Treating any printable key as filter text while the sidebar has
+	 * focus takes `a`, `b`, `c`, `n`, `r`, `u` and `x` away from the actions the footer is still
+	 * advertising, and gating that on whether the list happens to overflow makes the same
+	 * keystroke mean one thing on a short terminal and another on a tall one. `ctrl+s` in, `esc`
+	 * out, and outside the mode every letter reaches the callback beside it.
+	 */
+	searching(): boolean {
+		return this.#searching;
+	}
+
+	/** Providers matching the current query, or all of them when the query is empty. */
+	get #filteredEntries(): AccountSidebarEntry[] {
+		const query = this.#searchQuery.trim();
+		if (!query) return this.#entries;
+		return fuzzyFilter(this.#entries, query, entry => `${entry.label} ${entry.providerId}`);
+	}
+
+	/**
+	 * Enter or leave search mode.
+	 *
+	 * Entering moves focus to the sidebar, because the filter acts on the provider list and a
+	 * query that narrowed a list the user was not looking at would be invisible. Leaving drops
+	 * the query: a filter still in force behind a mode that says it is off is how a provider
+	 * goes missing with nothing on screen to explain it.
+	 */
+	#setSearching(searching: boolean): void {
+		if (this.#searching === searching) return;
+		this.#searching = searching;
+		if (searching) this.#focus = "sidebar";
+		else this.#setSearchQuery("");
+		this.#requestRender?.();
+	}
+
+	/** Update the query and keep the active provider inside the filtered set. */
+	#setSearchQuery(query: string): void {
+		this.#searchQuery = query;
+		const filtered = this.#filteredEntries;
+		if (filtered.length > 0 && !filtered.some(entry => entry.providerId === this.#activeProviderId)) {
+			this.#activeProviderId = filtered[0]?.providerId ?? this.#activeProviderId;
+			this.#bodyScroll = 0;
+			this.#sidebarFollowActive = true;
+			this.#selectFirstEntry();
+		}
+		this.#sidebarScroll = 0;
+	}
+
+	/** Edit the query. Only ever reached inside the mode; returns true when the key was consumed. */
+	#handleSearchInput(data: string): boolean {
+		if (!this.#searching) return false;
+		if (matchesKey(data, "backspace") || matchesKey(data, "ctrl+h")) {
+			const chars = [...this.#searchQuery];
+			chars.pop();
+			this.#setSearchQuery(chars.join(""));
+			return true;
+		}
+		const printable = extractPrintableText(data);
+		if (printable === undefined) return false;
+		// A leading space filters nothing and reads as a dead keystroke, so it is not the start of
+		// a query; inside one it is an ordinary character.
+		if (this.#searchQuery.length === 0 && printable.trim().length === 0) return false;
+		this.#setSearchQuery(this.#searchQuery + printable);
+		return true;
+	}
+
+	/** The `Search:` row, which exists only while the mode is on. */
+	#renderSearchStatus(width: number): string {
+		const label = theme.fg("accent", "Search:");
+		const query = this.#searchQuery.length > 0 ? this.#searchQuery : theme.fg("dim", "type to filter");
+		return truncateToWidth(`  ${label} ${query}`, width);
+	}
+
 	// ═══════════════════════════════════════════════════════════════════════
 	// Input
 	// ═══════════════════════════════════════════════════════════════════════
@@ -360,6 +445,10 @@ export class AccountManagerComponent implements Component {
 				this.#pendingLogoutCredentialId = null;
 				return;
 			}
+			if (this.#searching) {
+				this.#setSearching(false);
+				return;
+			}
 			this.#callbacks.onCancel();
 			return;
 		}
@@ -374,12 +463,17 @@ export class AccountManagerComponent implements Component {
 		}
 
 		// A second `x` is the confirm, and ANY other key is not. The arm used to survive a rename, a
-		// balancing toggle, a refresh and a provider switch, so an `x` pressed after all of those
-		// still deleted a credential the operator had stopped thinking about: a destructive
-		// confirmation whose two halves are not adjacent is not a confirmation. Cleared at the one
-		// point every non-`x` key passes rather than inside each branch, so a key added later cannot
-		// forget to do it.
+		// refresh and a provider switch, so an `x` pressed after all of those still deleted a
+		// credential the operator had stopped thinking about: a destructive confirmation whose two
+		// halves are not adjacent is not a confirmation. Cleared at the one point every non-`x` key
+		// passes rather than inside each branch, so a key added later cannot forget to do it.
 		if (data !== "x") this.#pendingLogoutCredentialId = null;
+		// Above the filter, so the mode can always be left and re-entered from inside itself.
+		if (matchesKey(data, "ctrl+s")) {
+			this.#setSearching(!this.#searching);
+			return;
+		}
+		if (this.#handleSearchInput(data)) return;
 
 		if (matchesSelectUp(data)) {
 			this.#step(-1);
@@ -423,11 +517,6 @@ export class AccountManagerComponent implements Component {
 			case "a":
 				if (this.#activeProviderId) this.#callbacks.onAddAccount(this.#activeProviderId);
 				return;
-			case "b":
-				// Mirrored locally from the callback's return so the footer reflects what was STORED.
-				// Assuming the flip landed is how a chip ends up claiming a state the config refused.
-				this.#loadBalancing = this.#callbacks.onToggleLoadBalancing();
-				return;
 			case "c": {
 				const blocked = this.#selectedRow();
 				if (blocked && this.#rowIsBlocked(blocked)) this.#callbacks.onClearRateLimitBlock(blocked);
@@ -455,13 +544,14 @@ export class AccountManagerComponent implements Component {
 	#step(direction: 1 | -1): void {
 		this.#pendingLogoutCredentialId = null;
 		if (this.#focus === "sidebar") {
-			if (this.#entries.length === 0) return;
+			const filtered = this.#filteredEntries;
+			if (filtered.length === 0) return;
 			const current = Math.max(
 				0,
-				this.#entries.findIndex(entry => entry.providerId === this.#activeProviderId),
+				filtered.findIndex(entry => entry.providerId === this.#activeProviderId),
 			);
-			const next = (current + direction + this.#entries.length) % this.#entries.length;
-			this.#selectProvider(this.#entries[next]?.providerId ?? this.#activeProviderId);
+			const next = (current + direction + filtered.length) % filtered.length;
+			this.#selectProvider(filtered[next]?.providerId ?? this.#activeProviderId);
 			return;
 		}
 		const rows = this.#rows();
@@ -572,23 +662,34 @@ export class AccountManagerComponent implements Component {
 		const innerCol = event.col - this.#frameLeft - 2;
 		const contentLine = event.row - this.#contentRowStart;
 		const overSplit = contentLine >= 0 && contentLine < this.#splitRowCount;
+		const searchOffset = this.#searching ? 1 : 0;
 		// The summary block owns the last rows of the sidebar column and answers to no provider,
 		// so a click there must select nothing rather than index past the visible list.
 		const overSidebar =
-			overSplit && contentLine < this.#sidebarListRows() && innerCol >= 0 && innerCol < this.#sidebarWidthLast;
+			overSplit &&
+			contentLine >= searchOffset &&
+			contentLine < searchOffset + this.#sidebarListRows() &&
+			innerCol >= 0 &&
+			innerCol < this.#sidebarWidthLast;
 		const overBody = overSplit && innerCol >= this.#sidebarWidthLast + 3;
 
 		if (event.motion) {
-			this.#sidebarHover = overSidebar ? this.#sidebarScroll + contentLine : null;
+			this.#sidebarHover = overSidebar ? this.#sidebarScroll + contentLine - searchOffset : null;
 			this.#sidebarFade?.set(this.#sidebarHover);
 			return true;
 		}
 		if (event.wheel !== null) {
-			if (overSidebar) {
+			const overSidebarForWheel =
+				overSplit &&
+				contentLine < searchOffset + this.#sidebarListRows() &&
+				innerCol >= 0 &&
+				innerCol < this.#sidebarWidthLast;
+			if (overSidebarForWheel) {
+				const filtered = this.#filteredEntries;
 				this.#sidebarScroll = clampLow(
 					this.#sidebarScroll + event.wheel,
 					0,
-					Math.max(0, this.#entries.length - this.#sidebarListRows()),
+					Math.max(0, filtered.length - this.#sidebarListRows()),
 				);
 			} else if (overBody) {
 				this.#bodyScroll = clampLow(
@@ -601,8 +702,15 @@ export class AccountManagerComponent implements Component {
 		}
 		if (!event.leftClick) return true;
 
+		if (searchOffset === 1 && overSplit && contentLine === 0 && innerCol >= 0 && innerCol < this.#sidebarWidthLast) {
+			this.#focus = "sidebar";
+			this.#requestRender?.();
+			return true;
+		}
 		if (overSidebar) {
-			const entry = this.#entries[this.#sidebarScroll + contentLine];
+			const filtered = this.#filteredEntries;
+			const providerLine = contentLine - searchOffset;
+			const entry = filtered[this.#sidebarScroll + providerLine];
 			if (entry) {
 				this.#focus = "sidebar";
 				this.#selectProvider(entry.providerId);
@@ -663,11 +771,12 @@ export class AccountManagerComponent implements Component {
 	 * the fold, and the wheel could never reach the last three providers.
 	 */
 	#sidebarListRows(): number {
-		return Math.max(1, this.#splitRowCount - SIDEBAR_SUMMARY_ROWS);
+		return Math.max(1, this.#splitRowCount - SIDEBAR_SUMMARY_ROWS - (this.#searching ? 1 : 0));
 	}
 
 	#renderSidebar(width: number): string[] {
 		const listRows = this.#sidebarListRows();
+		const filtered = this.#filteredEntries;
 		// The scroll offset is the wheel's to pan freely; only an ACTIVATION snaps it back to the
 		// selected provider. Following the active entry on every frame instead made the wheel look
 		// broken: each pan was undone by the very next repaint, so the providers below the fold
@@ -675,40 +784,52 @@ export class AccountManagerComponent implements Component {
 		if (this.#sidebarFollowActive) {
 			const activeIndex = Math.max(
 				0,
-				this.#entries.findIndex(entry => entry.providerId === this.#activeProviderId),
+				filtered.findIndex(entry => entry.providerId === this.#activeProviderId),
 			);
 			if (activeIndex < this.#sidebarScroll) this.#sidebarScroll = activeIndex;
 			else if (activeIndex >= this.#sidebarScroll + listRows) this.#sidebarScroll = activeIndex - listRows + 1;
 			this.#sidebarFollowActive = false;
 		}
-		this.#sidebarScroll = clampLow(this.#sidebarScroll, 0, Math.max(0, this.#entries.length - listRows));
+		this.#sidebarScroll = clampLow(this.#sidebarScroll, 0, Math.max(0, filtered.length - listRows));
 
 		const lines: string[] = [];
-		for (let i = this.#sidebarScroll; i < Math.min(this.#entries.length, this.#sidebarScroll + listRows); i++) {
-			const entry = this.#entries[i];
-			if (!entry) continue;
-			const active = entry.providerId === this.#activeProviderId;
-			const cursor = active && this.#focus === "sidebar" ? theme.fg("accent", theme.nav.cursor) : " ";
-			// A provider you hold no account for dims ENTIRELY, label included. Only its count was
-			// dimmed before, so forty empty providers sat at the same text weight as the three you use
-			// and the eye had to read the right-hand column to find them. The list's job is "what you
-			// have, then what you could have", and weight is what says which is which.
-			const label = active
-				? theme.bold(theme.fg("accent", entry.label))
-				: entry.accountCount === 0
-					? theme.fg("dim", entry.label)
-					: entry.label;
-			const annotation = entry.hasFailure
-				? `${theme.fg("dim", entry.annotation)} ${theme.fg("warning", theme.status.warning)}`
-				: `${theme.fg("dim", entry.annotation)}  `;
-			const left = `${cursor} ${label}`;
-			const gap = Math.max(1, width - visibleWidth(left) - visibleWidth(annotation));
-			let line = `${left}${" ".repeat(gap)}${annotation}`;
-			const hoverStrength = this.#sidebarStrength(i);
-			if (hoverStrength > 0) line = hoverBandAt(line, width, hoverStrength);
-			lines.push(line);
+		if (this.#searching) {
+			lines.push(this.#renderSearchStatus(width));
 		}
-		while (lines.length < listRows + 1) lines.push("");
+		if (filtered.length === 0) {
+			// Only the filter can empty this list. An inventory with no providers at all is a
+			// different state, and reporting it as a query that matched nothing would name a
+			// query the operator never typed.
+			if (this.#searching) lines.push(theme.fg("muted", truncateToWidth("  No matching providers", width)));
+			while (lines.length < (this.#searching ? 1 : 0) + listRows) lines.push("");
+		} else {
+			for (let i = this.#sidebarScroll; i < Math.min(filtered.length, this.#sidebarScroll + listRows); i++) {
+				const entry = filtered[i];
+				if (!entry) continue;
+				const active = entry.providerId === this.#activeProviderId;
+				const cursor = active && this.#focus === "sidebar" ? theme.fg("accent", theme.nav.cursor) : " ";
+				// A provider you hold no account for dims ENTIRELY, label included. Only its count was
+				// dimmed before, so forty empty providers sat at the same text weight as the three you use
+				// and the eye had to read the right-hand column to find them. The list's job is "what you
+				// have, then what you could have", and weight is what says which is which.
+				const label = active
+					? theme.bold(theme.fg("accent", entry.label))
+					: entry.accountCount === 0
+						? theme.fg("dim", entry.label)
+						: entry.label;
+				const annotation = entry.hasFailure
+					? `${theme.fg("dim", entry.annotation)} ${theme.fg("warning", theme.status.warning)}`
+					: `${theme.fg("dim", entry.annotation)}  `;
+				const left = `${cursor} ${label}`;
+				const gap = Math.max(1, width - visibleWidth(left) - visibleWidth(annotation));
+				let line = `${left}${" ".repeat(gap)}${annotation}`;
+				const hoverStrength = this.#sidebarStrength(i);
+				if (hoverStrength > 0) line = hoverBandAt(line, width, hoverStrength);
+				lines.push(line);
+			}
+			while (lines.length < (this.#searching ? 1 : 0) + listRows) lines.push("");
+		}
+		while (lines.length < (this.#searching ? 1 : 0) + listRows + 1) lines.push("");
 		lines.push(theme.fg("borderAccent", "─".repeat(Math.max(1, width - 2))));
 		lines.push(theme.fg("dim", truncateToWidth(sidebarSummaryLine(this.#inventory), width)));
 		return lines;
@@ -890,6 +1011,16 @@ export class AccountManagerComponent implements Component {
 				{ label: "esc cancel", clickable: true, id: "close" },
 			];
 		}
+		// Search mode advertises only what search mode answers. Every letter chip below is a key
+		// the filter is consuming while the mode is on, and a footer that offers them anyway is
+		// the defect this mode exists to remove.
+		if (this.#searching) {
+			return [
+				{ label: "↑↓ move" },
+				{ label: "enter switch to this account", clickable: true, id: "confirm" },
+				{ label: "esc exit search", clickable: true, id: "close" },
+			];
+		}
 		const entry = this.#activeEntry();
 		// The chip names the ACTION, not the mechanism: "switch to" is what pressing enter does, and
 		// the previous "use for <provider>" left the card's headline capability reading as a noun.
@@ -939,7 +1070,7 @@ export class AccountManagerComponent implements Component {
 			// nothing is a chip that teaches the operator to distrust the footer.
 			...(this.#selectedRowIsBlocked() ? [{ label: "c clear limit", clickable: true, id: "clearBlock" }] : []),
 			{ label: "a add", clickable: true, id: "add" },
-			{ label: `b balancing ${this.#loadBalancing ? "on" : "off"}`, clickable: true, id: "balance" },
+			{ label: "ctrl+s search", clickable: true, id: "search" },
 			{ label: "esc close", clickable: true, id: "close" },
 		];
 	}

@@ -82,7 +82,6 @@ function harness(rows: AccountRow[]) {
 		onLogout: () => {},
 		onShowUsage: () => {},
 		onAddAccount: () => {},
-		onToggleLoadBalancing: () => false,
 		onClearRateLimitBlock: row => cleared.push(row),
 		onCancel: () => {},
 	};

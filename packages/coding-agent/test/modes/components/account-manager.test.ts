@@ -90,7 +90,6 @@ function harness(
 		onLogout: row => recorded.loggedOut.push(row.credentialId),
 		onShowUsage: row => recorded.usage.push(row.credentialId),
 		onAddAccount: provider => recorded.added.push(provider),
-		onToggleLoadBalancing: () => false,
 		onClearRateLimitBlock: () => {},
 		onCancel: () => {
 			recorded.cancels += 1;
