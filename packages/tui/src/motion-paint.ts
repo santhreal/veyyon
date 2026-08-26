@@ -61,7 +61,9 @@ export function fadeLineTowards(line: string, groundHex: string, strength: numbe
 	if (k >= 1) return line;
 	const ground = parseHexColor(groundHex);
 	if (ground === null) return line;
-	const channels = [ground.r, ground.g, ground.b];
+	const gr = ground.r;
+	const gg = ground.g;
+	const gb = ground.b;
 	SGR.lastIndex = 0;
 	return line.replace(SGR, (whole, params: string) => {
 		if (params === "") return whole;
@@ -79,7 +81,8 @@ export function fadeLineTowards(line: string, groundHex: string, strength: numbe
 			for (let c = 0; c < 3; c++) {
 				const from = Number(tokens[first + c * 2]);
 				if (!Number.isFinite(from)) continue;
-				tokens[first + c * 2] = String(clampChannel(channels[c]! + (from - channels[c]!) * k));
+				const target = c === 0 ? gr : c === 1 ? gg : gb;
+				tokens[first + c * 2] = String(clampChannel(target + (from - target) * k));
 				changed = true;
 			}
 			i = first + 4;
