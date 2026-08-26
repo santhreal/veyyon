@@ -1867,7 +1867,11 @@ export class Markdown implements Component {
 				} else if (headingLevel === 2) {
 					styledHeading = this.#theme.heading(this.#theme.bold(headingText));
 				} else {
-					styledHeading = this.#theme.heading(this.#theme.bold((HEADING_PREFIXES[headingLevel - 1] ?? "#".repeat(headingLevel) + " ") + headingText));
+					styledHeading = this.#theme.heading(
+						this.#theme.bold(
+							(HEADING_PREFIXES[headingLevel - 1] ?? "#".repeat(headingLevel) + " ") + headingText,
+						),
+					);
 				}
 				lines.push(styledHeading);
 				if (nextTokenType && nextTokenType !== "space") {
@@ -1951,16 +1955,21 @@ export class Markdown implements Component {
 				for (let i = 0; i < quoteTokens.length; i++) {
 					const quoteToken = quoteTokens[i];
 					const nextQuoteToken = quoteTokens[i + 1];
-					renderedQuoteLines.push(
-						...this.#renderToken(quoteToken, quoteContentWidth, nextQuoteToken?.type, quoteInlineStyleContext),
+					const quoteLines = this.#renderToken(
+						quoteToken,
+						quoteContentWidth,
+						nextQuoteToken?.type,
+						quoteInlineStyleContext,
 					);
+					for (let j = 0; j < quoteLines.length; j++) renderedQuoteLines.push(quoteLines[j]);
 				}
 
 				while (renderedQuoteLines.length > 0 && renderedQuoteLines[renderedQuoteLines.length - 1] === "") {
 					renderedQuoteLines.pop();
 				}
 
-				lines.push(...this.#applyQuoteBorder(renderedQuoteLines, width));
+				const borderLines = this.#applyQuoteBorder(renderedQuoteLines, width);
+				for (let j = 0; j < borderLines.length; j++) lines.push(borderLines[j]);
 				if (nextTokenType && nextTokenType !== "space") {
 					lines.push(""); // Add spacing after blockquotes (unless space token follows)
 				}
@@ -1978,7 +1987,8 @@ export class Markdown implements Component {
 
 			case "html":
 				if ("raw" in token && typeof token.raw === "string") {
-					lines.push(...this.#renderHtmlBlock(token.raw, width));
+					const htmlLines = this.#renderHtmlBlock(token.raw, width);
+					for (let j = 0; j < htmlLines.length; j++) lines.push(htmlLines[j]);
 				}
 				break;
 
@@ -2052,7 +2062,8 @@ export class Markdown implements Component {
 			flushText(raw.slice(lastIndex, match.index));
 			lastIndex = match.index + match[0].length;
 			if (match[1] !== undefined) {
-				lines.push(...this.#renderHtmlBlockquote(match[1], width));
+				const quoteLines = this.#renderHtmlBlockquote(match[1], width);
+				for (let j = 0; j < quoteLines.length; j++) lines.push(quoteLines[j]);
 			} else {
 				lines.push(this.#renderHrLine(width));
 			}
@@ -2442,7 +2453,8 @@ export class Markdown implements Component {
 			return this.#wrapCellText(text, columnWidths[i]);
 		});
 		let headerLineCount = 0;
-		for (let i = 0; i < headerCellLines.length; i++) headerLineCount = Math.max(headerLineCount, headerCellLines[i].length);
+		for (let i = 0; i < headerCellLines.length; i++)
+			headerLineCount = Math.max(headerLineCount, headerCellLines[i].length);
 
 		for (let lineIdx = 0; lineIdx < headerLineCount; lineIdx++) {
 			const rowParts = headerCellLines.map((cellLines, colIdx) => {
@@ -2613,8 +2625,8 @@ function walkInlineTokens(tokens: Token[], ctx: InlineWalkContext): string {
 				// (token.text) not styled text (linkText) since linkText has ANSI codes.
 				// For mailto: links, strip the prefix before comparing (autolinked emails
 				// have text="foo@bar.com" but href="mailto:foo@bar.com").
-			const href = token.href;
-			const hrefForComparison = href.startsWith("mailto:") ? href.slice(7) : href;
+				const href = token.href;
+				const hrefForComparison = href.startsWith("mailto:") ? href.slice(7) : href;
 				if (token.text === token.href || token.text === hrefForComparison) {
 					result += clickableLinkText + ctx.stylePrefix;
 				} else {
