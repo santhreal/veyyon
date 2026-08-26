@@ -1700,43 +1700,51 @@ describe("TUI terminal-state regressions", () => {
 			});
 		});
 
-		it("appending lines during aggressive resize does not duplicate history rows", async () => {
-			const term = new VirtualTerminal(80, 18);
-			const tui = new TUI(term);
-			const lines: string[] = [];
-			const component = new MutableLinesComponent(lines);
-			tui.addChild(component);
+		// 140 resize-and-settle rounds. Each round re-arms the 120 ms resize settle
+		// window, and `settle` waits it out now that the engine reports that frame as
+		// owed, so the wall clock is work rather than a wait. The ceiling comes from
+		// `stormBudgetMs`, which records why these cases need one at all.
+		it(
+			"appending lines during aggressive resize does not duplicate history rows",
+			async () => {
+				const term = new VirtualTerminal(80, 18);
+				const tui = new TUI(term);
+				const lines: string[] = [];
+				const component = new MutableLinesComponent(lines);
+				tui.addChild(component);
 
-			try {
-				tui.start();
-				await settle(term, tui);
-
-				for (let i = 0; i < 140; i++) {
-					lines.push(`line-${i}`);
-					component.setLines(lines);
-					term.resize(i % 2 === 0 ? 79 : 80, i % 3 === 0 ? 17 : 18);
-					tui.requestRender();
+				try {
+					tui.start();
 					await settle(term, tui);
-				}
-				// The aggressive drag only ever painted the viewport; let the settle
-				// window elapse so the authoritative rebuild commits the full history.
-				await settleResize(term, tui);
 
-				const scrollback = term.getScrollBuffer();
-				const duplicated: number[] = [];
-				let presentCount = 0;
-				for (let i = 0; i < 140; i++) {
-					const pattern = new RegExp(`\\bline-${i}\\b`);
-					const count = countMatches(scrollback, pattern);
-					if (count > 0) presentCount += 1;
-					if (count > 1) duplicated.push(i);
+					for (let i = 0; i < 140; i++) {
+						lines.push(`line-${i}`);
+						component.setLines(lines);
+						term.resize(i % 2 === 0 ? 79 : 80, i % 3 === 0 ? 17 : 18);
+						tui.requestRender();
+						await settle(term, tui);
+					}
+					// The aggressive drag only ever painted the viewport; let the settle
+					// window elapse so the authoritative rebuild commits the full history.
+					await settleResize(term, tui);
+
+					const scrollback = term.getScrollBuffer();
+					const duplicated: number[] = [];
+					let presentCount = 0;
+					for (let i = 0; i < 140; i++) {
+						const pattern = new RegExp(`\\bline-${i}\\b`);
+						const count = countMatches(scrollback, pattern);
+						if (count > 0) presentCount += 1;
+						if (count > 1) duplicated.push(i);
+					}
+					expect(presentCount).toBeGreaterThan(30);
+					expect(duplicated).toEqual([]);
+				} finally {
+					tui.stop();
 				}
-				expect(presentCount).toBeGreaterThan(30);
-				expect(duplicated).toEqual([]);
-			} finally {
-				tui.stop();
-			}
-		}, 15_000);
+			},
+			stormBudgetMs(140),
+		);
 
 		it("rebuilds native scrollback on a width resize without duplicating rows", async () => {
 			// A width resize makes the terminal reflow its own committed scrollback

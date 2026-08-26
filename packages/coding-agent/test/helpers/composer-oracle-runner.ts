@@ -93,6 +93,8 @@ export interface RunnerResult {
 	frameState: ComposerOracleFrameState;
 	evaluation: OracleEvaluationResult;
 	transcript: TranscriptMock;
+	/** The live editor, so a scenario can change the composer's own height. */
+	editor: Editor;
 	advance: () => Promise<void>;
 	cleanUp: () => void;
 }
@@ -404,6 +406,7 @@ export async function runComposerOracleScenario(options: RunnerOptions): Promise
 		frameState,
 		evaluation,
 		transcript,
+		editor,
 		advance: async () => {
 			tui.requestRender();
 			await settleFrames(term, tui);

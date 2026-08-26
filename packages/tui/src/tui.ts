@@ -1669,17 +1669,28 @@ export class TUI extends Container {
 	 * green alone and only failed in a 378,000-test run, which is the worst kind
 	 * of flake: it reads exactly like a regression.
 	 *
-	 * All four sources of an owed frame count. `#renderRequested` is the request
+	 * Every source of an owed frame counts. `#renderRequested` is the request
 	 * itself; `#renderTimer` is the throttled/adaptive schedule; the ConPTY
-	 * post-full-paint settle and the multiplexer resize settle both hold a frame
-	 * back deliberately and then paint it.
+	 * post-full-paint settle, the multiplexer resize settle, the non-multiplexer
+	 * resize viewport settle and the Ghostty initial-image delay each hold a
+	 * frame back deliberately and then paint it.
+	 *
+	 * The last two were missing here, and a resize is the common path: while
+	 * `#resizeViewportSettleTimer` runs, every render short-circuits to a
+	 * viewport-only paint and the authoritative full paint is still owed, so
+	 * this reported idle for the whole 120 ms window. A settle helper built on
+	 * this signal then returned on a stale frame, which is the flake it exists
+	 * to rule out: content changed after a resize was not painted until an
+	 * unrelated later frame.
 	 */
 	get renderPending(): boolean {
 		return (
 			this.#renderRequested ||
 			this.#renderTimer !== undefined ||
 			this.#postFullPaintSettleTimer !== undefined ||
-			this.#multiplexerResizeTimer !== undefined
+			this.#multiplexerResizeTimer !== undefined ||
+			this.#resizeViewportSettleTimer !== undefined ||
+			this.#ghosttyInitialImageDelayTimer !== undefined
 		);
 	}
 
