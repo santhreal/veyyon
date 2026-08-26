@@ -50,8 +50,10 @@ export function tryParseJson<T = unknown>(content: string): T | null {
  * a replayed value must be the value. For DISPLAY, where readability matters
  * more than round-tripping, use {@link stringifyJsonSafe}.
  */
+const bigIntReplacer = (_key: string, item: unknown): unknown => (typeof item === "bigint" ? item.toString() : item);
+
 export function stringifyJson(value: unknown, space?: string | number): string | undefined {
-	return JSON.stringify(value, (_key, item) => (typeof item === "bigint" ? item.toString() : item), space);
+	return JSON.stringify(value, bigIntReplacer, space);
 }
 
 /**

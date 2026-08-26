@@ -10,7 +10,7 @@
 
 import type { AssistantMessage } from "@veyyon/ai";
 import { stringifyJson } from "@veyyon/utils/json";
-import { countTokens } from "../tokenizer";
+import { accurateTokenizer, countTokens } from "../tokenizer";
 import type { AgentMessage } from "../types";
 import { LEGACY_FRAME_TOKEN_ESTIMATE } from "./legacy-snapcompact-archive";
 
@@ -89,12 +89,19 @@ export function estimateTokens(message: AgentMessage, options?: { excludeEncrypt
 }
 
 function estimateTokensUncached(message: AgentMessage, options?: { excludeEncryptedReasoning?: boolean }): number {
-	const fragments: string[] = [];
+	if (accurateTokenizer) {
+		const fragments: string[] = [];
+		const extra = walkCountedFragments(message, options, text => {
+			fragments.push(text);
+		});
+		if (fragments.length === 0) return extra;
+		return extra + countTokens(fragments);
+	}
+	let total = 0;
 	const extra = walkCountedFragments(message, options, text => {
-		fragments.push(text);
+		if (text.length > 0) total += (Buffer.byteLength(text, "utf-8") + 3) >> 2;
 	});
-	if (fragments.length === 0) return extra;
-	return extra + countTokens(fragments);
+	return extra + total;
 }
 
 /**

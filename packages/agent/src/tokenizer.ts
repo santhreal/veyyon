@@ -2,6 +2,7 @@ import { countTokens as countTokensNat } from "@veyyon/natives";
 import { estimateTokensFromText } from "@veyyon/utils";
 
 const accurate = process.env.VEYYON_TOKENIZER_ACCURATE === "1" && Bun.env.NODE_ENV !== "test";
+export const accurateTokenizer = accurate;
 
 export function countTokens(text: string | string[]): number {
 	if (accurate) {
