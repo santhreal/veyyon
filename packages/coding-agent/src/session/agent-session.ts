@@ -311,9 +311,7 @@ import { expandSlashCommand, type FileSlashCommand } from "../extensibility/slas
 import { GoalRuntime } from "../goals/runtime";
 import type { Goal, GoalAbortReason, GoalModeState } from "../goals/state";
 import type { HindsightSessionState } from "../hindsight/state";
-// The owning module, not the `../internal-urls` barrel: the barrel re-exports every protocol
-// handler and reaches several hundred modules, and all three of these live in `local-protocol`,
-// which reaches seven.
+// Owner, not the `../internal-urls` barrel: barrel reaches hundreds of modules; this reaches seven.
 import {
 	type LocalProtocolOptions,
 	listLocalPlanFileUrls,
@@ -440,8 +438,7 @@ import {
 } from "./codex-auto-reset";
 import { findCompactMode } from "./compact-modes";
 import { type ContentBlockLike, contentText } from "./content-text";
-// The accounting, not the drawing. Both of these used to be imported from `modes/`, which put the
-// terminal UI on the session engine's graph and cost the layering gate a standing exception each.
+// Accounting, not drawing: importing from `modes/` put terminal UI on the session engine's graph.
 import {
 	buildContextSnapshot,
 	computeNonMessageBreakdown,

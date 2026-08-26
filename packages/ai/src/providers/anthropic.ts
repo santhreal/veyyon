@@ -615,8 +615,7 @@ function createClaudeBillingHeader(firstUserMessageText: string): string {
 		.update(`59cf53e54c78${k}${claudeCodeVersion}`)
 		.digest("hex")
 		.slice(0, 3);
-	// cch=00000: placeholder replaced with the real attestation hash by wrapFetchForCch
-	// before the request hits the wire (see below).
+	// cch placeholder: replaced with real attestation hash by wrapFetchForCch before the request hits the wire.
 	return `${CLAUDE_BILLING_HEADER_PREFIX} cc_version=${claudeCodeVersion}.${versionSuffix}; cc_entrypoint=local-agent; ${CCH_PLACEHOLDER_STR};`;
 }
 
