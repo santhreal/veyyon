@@ -1,7 +1,7 @@
 /** Benchmark adapters normalize native artifacts into manager runs and traces. */
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { isRecord } from "@veyyon/utils";
+import { errorMessage, isRecord } from "@veyyon/utils";
 import { aggregate, type JobInfo, type Trial } from "../backends/harbor/runner/results";
 import { sumOfMeasured } from "../core/scoring";
 import type { BackendId } from "../core/types";
@@ -242,30 +242,63 @@ export function clearBenchmarkCache(): void {
 	deepsweSnapshotCache.clear();
 	resetFilesParsedCount();
 }
-interface EditRun {
-	runIndex: number;
-	success: boolean;
-	error?: string;
-	duration: number;
-	tokens: { input: number; output: number; reasoning?: number; cache?: number };
-	costUsd?: number | null;
-	toolCalls?: { read: number; edit: number; write: number };
+/**
+ * A finite number, or null.
+ *
+ * A results file is written by another process and read while it is still being written, so every
+ * field it states is checked here. Casting the parsed JSON to a result interface made one absent
+ * field an exception, and the exception erased the whole run: an eval that finished reported zero
+ * tasks and no score, with nothing saying why.
+ */
+function finiteNumber(value: unknown): number | null {
+	return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-interface EditTask {
-	id: string;
-	name: string;
-	runs: EditRun[];
+/** A finite number as a whole count >= 0, or null. */
+function countOf(value: unknown): number | null {
+	const n = finiteNumber(value);
+	return n !== null && n >= 0 ? Math.trunc(n) : null;
 }
 
-interface EditResult {
-	tasks: EditTask[];
-	summary: {
-		totalRuns: number;
-		successfulRuns: number;
-		taskSuccessRate: number;
-		editSuccessRate: number;
-		totalTokens: { input: number; output: number };
+/** One normalized row of an edit result, or null when the row states nothing readable. */
+function readEditRun(raw: unknown, taskId: string, index: number): BenchmarkTrace {
+	const runNumber = (isRecord(raw) ? countOf(raw.runIndex) : null) ?? index;
+	const name = `${taskId}__${runNumber + 1}`;
+	if (!isRecord(raw)) {
+		return unreadableTrace(name, taskId, "run entry is not an object");
+	}
+	const tokens = isRecord(raw.tokens) ? raw.tokens : {};
+	const error = typeof raw.error === "string" && raw.error ? raw.error : null;
+	return {
+		name,
+		task: taskId,
+		status: raw.success === true ? "pass" : error ? "error" : "fail",
+		reward: raw.success === true ? 1 : 0,
+		costUsd: finiteNumber(raw.costUsd),
+		durationMs: finiteNumber(raw.duration) ?? 0,
+		detail: JSON.stringify({
+			name: typeof raw.name === "string" ? raw.name : taskId,
+			error,
+			tools: isRecord(raw.toolCalls) ? raw.toolCalls : null,
+			tokIn: countOf(tokens.input) ?? 0,
+			tokOut: countOf(tokens.output) ?? 0,
+			cache: countOf(tokens.cache),
+		}),
+		tracePath: path.join("result.dump", pathSegmentFrom(taskId, "task"), `run-${runNumber + 1}.md`),
+	};
+}
+
+/** A row that states nothing readable is an error naming what could not be read, never a pass. */
+function unreadableTrace(name: string, task: string, reason: string): BenchmarkTrace {
+	return {
+		name,
+		task,
+		status: "error",
+		reward: null,
+		costUsd: null,
+		durationMs: 0,
+		detail: JSON.stringify({ error: reason }),
+		tracePath: null,
 	};
 }
 
@@ -289,85 +322,72 @@ function emptySnapshot(): BenchmarkSnapshot {
 
 function readEditSnapshot(jobDir: string): BenchmarkSnapshot {
 	const file = path.join(jobDir, "result.json");
+	let raw: unknown;
+	let st: fs.Stats;
 	try {
-		const st = fs.statSync(file);
+		st = fs.statSync(file);
 		const cached = editSnapshotCache.get(file);
 		if (cached && cached.mtimeMs === st.mtimeMs && cached.size === st.size) {
 			return cached.snapshot;
 		}
-		const result: EditResult = JSON.parse(fs.readFileSync(file, "utf8"));
+		const text = fs.readFileSync(file, "utf8");
 		filesParsedCount++;
-		const traces: BenchmarkTrace[] = [];
-		let tokIn = 0;
-		let tokOut = 0;
-		const caches: (number | null)[] = [];
-		for (const task of result.tasks) {
-			for (const run of task.runs) {
-				tokIn += run.tokens.input;
-				tokOut += run.tokens.output;
-				if (typeof run.tokens?.cache === "number" && Number.isFinite(run.tokens.cache)) {
-					caches.push(run.tokens.cache);
-				}
-				const runNumber = run.runIndex + 1;
-				const costUsd = typeof run.costUsd === "number" && Number.isFinite(run.costUsd) ? run.costUsd : null;
-				traces.push({
-					name: `${task.id}__${runNumber}`,
-					task: task.id,
-					status: run.success ? "pass" : run.error ? "error" : "fail",
-					reward: run.success ? 1 : 0,
-					costUsd,
-					durationMs: run.duration,
-					detail: JSON.stringify({ name: task.name, error: run.error ?? null, tools: run.toolCalls ?? null }),
-					tracePath: path.join("result.dump", pathSegmentFrom(task.id, "task"), `run-${runNumber}.md`),
-				});
-			}
-		}
-		const pass = traces.filter(trace => trace.status === "pass").length;
-		const error = traces.filter(trace => trace.status === "error").length;
-		const snapshot: BenchmarkSnapshot = {
-			traces,
-			total: result.summary.totalRuns,
-			done: traces.length,
-			pass,
-			fail: traces.length - pass - error,
-			error,
-			running: Math.max(0, result.summary.totalRuns - traces.length),
-			costUsd: sumOfMeasured(traces.map(t => t.costUsd)),
-			tokIn,
-			tokOut,
-			tokCache: sumOfMeasured(caches),
-			score: result.summary.taskSuccessRate,
-			metrics: {
-				task_success_rate: result.summary.taskSuccessRate,
-				edit_success_rate: result.summary.editSuccessRate,
-			},
-		};
-		editSnapshotCache.set(file, { mtimeMs: st.mtimeMs, size: st.size, snapshot });
-		return snapshot;
+		raw = JSON.parse(text);
 	} catch {
 		return emptySnapshot();
 	}
-}
+	if (!isRecord(raw) || !Array.isArray(raw.tasks)) return emptySnapshot();
 
-interface DeepsweResultRow {
-	arm: string;
-	task: string;
-	reward: number | null;
-	partial: number | null;
-	inputTokens: number | null;
-	outputTokens: number | null;
-	cacheTokens: number | null;
-	costUsd: number | null;
-	agentSeconds: number | null;
-	toolCalls: Record<string, number> | null;
-	error: string | null;
-}
+	const traces: BenchmarkTrace[] = [];
+	let tokIn = 0;
+	let tokOut = 0;
+	const caches: (number | null)[] = [];
+	for (const [taskIndex, rawTask] of raw.tasks.entries()) {
+		if (!isRecord(rawTask)) {
+			traces.push(unreadableTrace(`task-${taskIndex}`, `task-${taskIndex}`, "task entry is not an object"));
+			continue;
+		}
+		const taskId = typeof rawTask.id === "string" && rawTask.id ? rawTask.id : `task-${taskIndex}`;
+		if (!Array.isArray(rawTask.runs)) {
+			traces.push(unreadableTrace(taskId, taskId, "task states no runs"));
+			continue;
+		}
+		for (const [runIndex, rawRun] of rawTask.runs.entries()) {
+			const trace = readEditRun(rawRun, taskId, runIndex);
+			traces.push(trace);
+			if (isRecord(rawRun)) {
+				const tokens = isRecord(rawRun.tokens) ? rawRun.tokens : {};
+				tokIn += countOf(tokens.input) ?? 0;
+				tokOut += countOf(tokens.output) ?? 0;
+				if (tokens.cache !== undefined) caches.push(countOf(tokens.cache));
+			}
+		}
+	}
 
-interface DeepsweResult {
-	model: string;
-	arms: string[];
-	tasks: string[];
-	results: DeepsweResultRow[];
+	const summary = isRecord(raw.summary) ? raw.summary : {};
+	const pass = traces.filter(trace => trace.status === "pass").length;
+	const error = traces.filter(trace => trace.status === "error").length;
+	const total = countOf(summary.totalRuns) ?? traces.length;
+	const snapshot: BenchmarkSnapshot = {
+		traces,
+		total,
+		done: traces.length,
+		pass,
+		fail: traces.length - pass - error,
+		error,
+		running: Math.max(0, total - traces.length),
+		costUsd: sumOfMeasured(traces.map(trace => trace.costUsd)),
+		tokIn,
+		tokOut,
+		tokCache: sumOfMeasured(caches),
+		score: finiteNumber(summary.taskSuccessRate),
+		metrics: {
+			task_success_rate: finiteNumber(summary.taskSuccessRate),
+			edit_success_rate: finiteNumber(summary.editSuccessRate),
+		},
+	};
+	editSnapshotCache.set(file, { mtimeMs: st.mtimeMs, size: st.size, snapshot });
+	return snapshot;
 }
 
 /**
@@ -376,68 +396,85 @@ interface DeepsweResult {
  * verifier reward is a pass, an execution error is an error, anything else —
  * including a partial reward — is a fail, so pass/fail/error stay disjoint
  * per the shared aggregate contract. The planned grid (arms x tasks) is the
- * total, which keeps `running` honest while the bench is mid-flight.
+ * total, which keeps `running` honest while the bench is mid-flight. A row that
+ * states nothing readable is one error, never the loss of every other row.
  */
 function readDeepsweSnapshot(jobDir: string): BenchmarkSnapshot {
 	const file = path.join(jobDir, "results.json");
+	let raw: unknown;
+	let st: fs.Stats;
 	try {
-		const st = fs.statSync(file);
+		st = fs.statSync(file);
 		const cached = deepsweSnapshotCache.get(file);
 		if (cached && cached.mtimeMs === st.mtimeMs && cached.size === st.size) {
 			return cached.snapshot;
 		}
-		const result: DeepsweResult = JSON.parse(fs.readFileSync(file, "utf8"));
+		const text = fs.readFileSync(file, "utf8");
 		filesParsedCount++;
-		let tokIn = 0;
-		let tokOut = 0;
-		let partialSum = 0;
-		let partialCount = 0;
-		const traces: BenchmarkTrace[] = result.results.map(row => {
-			tokIn += row.inputTokens ?? 0;
-			tokOut += row.outputTokens ?? 0;
-			if (row.partial !== null) {
-				partialSum += row.partial;
-				partialCount++;
-			}
-			const status = row.error !== null ? "error" : row.reward !== null && row.reward >= 1 ? "pass" : "fail";
-			return {
-				name: `${row.task}__${row.arm}`,
-				task: row.task,
-				status,
-				reward: row.reward,
-				costUsd: row.costUsd ?? null,
-				durationMs: Math.round((row.agentSeconds ?? 0) * 1000),
-				detail: JSON.stringify({ arm: row.arm, partial: row.partial, error: row.error, tools: row.toolCalls }),
-				tracePath: null,
-			};
-		});
-		const total = result.arms.length * result.tasks.length;
-		const pass = traces.filter(trace => trace.status === "pass").length;
-		const error = traces.filter(trace => trace.status === "error").length;
-		const done = traces.length;
-		const snapshot: BenchmarkSnapshot = {
-			traces,
-			total,
-			done,
-			pass,
-			fail: done - pass - error,
-			error,
-			running: Math.max(0, total - done),
-			costUsd: sumOfMeasured(result.results.map(r => r.costUsd)),
-			tokIn,
-			tokOut,
-			tokCache: sumOfMeasured(result.results.map(r => r.cacheTokens)),
-			score: done > 0 ? pass / done : null,
-			metrics: {
-				reward_rate: done > 0 ? pass / done : null,
-				mean_partial: partialCount > 0 ? partialSum / partialCount : null,
-			},
-		};
-		deepsweSnapshotCache.set(file, { mtimeMs: st.mtimeMs, size: st.size, snapshot });
-		return snapshot;
+		raw = JSON.parse(text);
 	} catch {
 		return emptySnapshot();
 	}
+	if (!isRecord(raw) || !Array.isArray(raw.results)) return emptySnapshot();
+
+	let tokIn = 0;
+	let tokOut = 0;
+	let partialSum = 0;
+	let partialCount = 0;
+	const costs: (number | null)[] = [];
+	const caches: (number | null)[] = [];
+	const traces: BenchmarkTrace[] = raw.results.map((row, index) => {
+		if (!isRecord(row)) return unreadableTrace(`row-${index}`, `row-${index}`, "result row is not an object");
+		const task = typeof row.task === "string" && row.task ? row.task : `row-${index}`;
+		const arm = typeof row.arm === "string" ? row.arm : "";
+		tokIn += countOf(row.inputTokens) ?? 0;
+		tokOut += countOf(row.outputTokens) ?? 0;
+		costs.push(finiteNumber(row.costUsd));
+		caches.push(countOf(row.cacheTokens));
+		const partial = finiteNumber(row.partial);
+		if (partial !== null) {
+			partialSum += partial;
+			partialCount++;
+		}
+		const error = typeof row.error === "string" && row.error ? row.error : null;
+		const reward = finiteNumber(row.reward);
+		return {
+			name: `${task}__${arm}`,
+			task,
+			status: error !== null ? "error" : reward !== null && reward >= 1 ? "pass" : "fail",
+			reward,
+			costUsd: finiteNumber(row.costUsd),
+			durationMs: Math.round((finiteNumber(row.agentSeconds) ?? 0) * 1000),
+			detail: JSON.stringify({ arm, partial, error, tools: isRecord(row.toolCalls) ? row.toolCalls : null }),
+			tracePath: null,
+		};
+	});
+	const armCount = Array.isArray(raw.arms) ? raw.arms.length : 0;
+	const taskCount = Array.isArray(raw.tasks) ? raw.tasks.length : 0;
+	const done = traces.length;
+	const total = Math.max(armCount * taskCount, done);
+	const pass = traces.filter(trace => trace.status === "pass").length;
+	const error = traces.filter(trace => trace.status === "error").length;
+	const snapshot: BenchmarkSnapshot = {
+		traces,
+		total,
+		done,
+		pass,
+		fail: done - pass - error,
+		error,
+		running: Math.max(0, total - done),
+		costUsd: sumOfMeasured(costs),
+		tokIn,
+		tokOut,
+		tokCache: sumOfMeasured(caches),
+		score: done > 0 ? pass / done : null,
+		metrics: {
+			reward_rate: done > 0 ? pass / done : null,
+			mean_partial: partialCount > 0 ? partialSum / partialCount : null,
+		},
+	};
+	deepsweSnapshotCache.set(file, { mtimeMs: st.mtimeMs, size: st.size, snapshot });
+	return snapshot;
 }
 
 interface HarborParsedTrial {
@@ -450,9 +487,43 @@ interface HarborParsedTrial {
 	tokCache: number | null;
 	durationMs: number;
 	detail: string;
+	/** Job-relative path to the agent's own log, or null when the trial wrote none. */
+	tracePath: string | null;
 }
 
-function parseHarborTrialFromJson(raw: unknown, name: string): HarborParsedTrial | null {
+/**
+ * The agent's log inside one harbor trial directory, as a job-relative path.
+ *
+ * Harbor writes `agent/<agent name>.txt`, and a trial's `result.json` does not record which agent
+ * produced it, so the file is read from the directory rather than assumed. A hardcoded
+ * `agent/veyyon.txt` pointed every trace of an omp, factory or hermes run at a file none of them
+ * writes, and the traces route answered `trace not found`. The largest log wins, then the first by
+ * name, so a directory holding more than one file resolves the same way on every tick.
+ */
+function findAgentLogPath(jobDir: string, trialName: string): string | null {
+	let entries: fs.Dirent[];
+	try {
+		entries = fs.readdirSync(path.join(jobDir, trialName, "agent"), { withFileTypes: true });
+	} catch {
+		return null;
+	}
+	const logs: Array<{ name: string; size: number }> = [];
+	for (const entry of entries) {
+		if (!entry.isFile() || !entry.name.endsWith(".txt")) continue;
+		let size = 0;
+		try {
+			size = fs.statSync(path.join(jobDir, trialName, "agent", entry.name)).size;
+		} catch {
+			/* a log that vanished mid-read sorts last */
+		}
+		logs.push({ name: entry.name, size });
+	}
+	if (logs.length === 0) return null;
+	logs.sort((a, b) => b.size - a.size || a.name.localeCompare(b.name));
+	return path.join(trialName, "agent", logs[0].name);
+}
+
+function parseHarborTrialFromJson(raw: unknown, name: string, tracePath: string | null): HarborParsedTrial | null {
 	if (!isRecord(raw)) return null;
 	const ctxs: Array<Record<string, unknown>> = [];
 	if (isRecord(raw.agent_result)) {
@@ -521,10 +592,10 @@ function parseHarborTrialFromJson(raw: unknown, name: string): HarborParsedTrial
 	} else {
 		status = "fail";
 	}
-	return { name, status, reward, costUsd, tokIn, tokOut, tokCache, durationMs, detail };
+	return { name, status, reward, costUsd, tokIn, tokOut, tokCache, durationMs, detail, tracePath };
 }
 
-function parseRunningHarborTrial(dir: string, name: string): HarborParsedTrial {
+function parseRunningHarborTrial(dir: string, name: string, tracePath: string | null): HarborParsedTrial {
 	let started = Date.now();
 	try {
 		started = fs.statSync(dir).mtimeMs;
@@ -539,7 +610,47 @@ function parseRunningHarborTrial(dir: string, name: string): HarborParsedTrial {
 		tokCache: null,
 		durationMs: Math.max(0, Date.now() - started),
 		detail: "",
+		tracePath,
 	};
+}
+
+/**
+ * A trial whose `result.json` exists and cannot be read is an error, never a running trial.
+ *
+ * Reporting it as running kept a finished run permanently short of its own total: the dashboard
+ * showed a trial still working, the run never reached a terminal count, and the truncated file was
+ * re-read on every tick.
+ */
+function unreadableHarborTrial(name: string, tracePath: string | null, detail: string): HarborParsedTrial {
+	return {
+		name,
+		status: "error",
+		reward: null,
+		costUsd: null,
+		tokIn: 0,
+		tokOut: 0,
+		tokCache: null,
+		durationMs: 0,
+		detail,
+		tracePath,
+	};
+}
+
+function readFinishedHarborTrial(resultPath: string, name: string, tracePath: string | null): HarborParsedTrial {
+	let raw: unknown;
+	try {
+		const text = fs.readFileSync(resultPath, "utf8");
+		// The read counts as work done even when the parse fails, so a cached unreadable result is
+		// observable as a file this reader stopped touching.
+		filesParsedCount++;
+		raw = JSON.parse(text);
+	} catch (error) {
+		return unreadableHarborTrial(name, tracePath, `result.json is unreadable: ${errorMessage(error)}`);
+	}
+	return (
+		parseHarborTrialFromJson(raw, name, tracePath) ??
+		unreadableHarborTrial(name, tracePath, "result.json holds no trial result object")
+	);
 }
 
 function parseJobInfoFromJson(raw: unknown): JobInfo | null {
@@ -568,23 +679,23 @@ function readHarborSnapshot(jobDir: string): BenchmarkSnapshot {
 		if (!e.isDirectory()) continue;
 		const trialDir = path.join(jobDir, e.name);
 		const resultPath = path.join(trialDir, "result.json");
+		const tracePath = findAgentLogPath(jobDir, e.name);
+		let stat: fs.Stats;
 		try {
-			const st = fs.statSync(resultPath);
-			const cached = harborTrialCache.get(resultPath);
-			if (cached && cached.mtimeMs === st.mtimeMs && cached.size === st.size) {
-				trials.push(cached.trial);
-			} else {
-				const raw = JSON.parse(fs.readFileSync(resultPath, "utf8"));
-				filesParsedCount++;
-				const trial = parseHarborTrialFromJson(raw, e.name);
-				if (trial) {
-					harborTrialCache.set(resultPath, { mtimeMs: st.mtimeMs, size: st.size, trial });
-					trials.push(trial);
-				}
-			}
+			stat = fs.statSync(resultPath);
 		} catch {
-			trials.push(parseRunningHarborTrial(trialDir, e.name));
+			// No result yet: the trial is still working, which is the only reading of a missing file.
+			trials.push(parseRunningHarborTrial(trialDir, e.name, tracePath));
+			continue;
 		}
+		const cached = harborTrialCache.get(resultPath);
+		if (cached && cached.mtimeMs === stat.mtimeMs && cached.size === stat.size) {
+			trials.push(cached.trial);
+			continue;
+		}
+		const trial = readFinishedHarborTrial(resultPath, e.name, tracePath);
+		harborTrialCache.set(resultPath, { mtimeMs: stat.mtimeMs, size: stat.size, trial });
+		trials.push(trial);
 	}
 
 	const jobResultPath = path.join(jobDir, "result.json");
@@ -617,7 +728,7 @@ function readHarborSnapshot(jobDir: string): BenchmarkSnapshot {
 			costUsd: trial.costUsd,
 			durationMs: trial.durationMs,
 			detail: trial.detail,
-			tracePath: path.join(trial.name, "agent", "veyyon.txt"),
+			tracePath: trial.tracePath,
 		})),
 		total: totals.total,
 		done: totals.done,

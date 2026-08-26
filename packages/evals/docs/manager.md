@@ -36,7 +36,7 @@ bun --cwd=packages/evals run serve --port 4700
 - `POST /api/runs/:name/cancel`: Cancel an active run. The response states whether anything was signalled; a run whose process is already gone reports `cancelled: false` and its status is reconciled from disk.
 - `DELETE /api/runs/:name`: Delete a completed run and on-disk job files.
 - `POST /api/runs/:name/resume`: Resume incomplete run trials.
-- `GET /api/runs/:name/traces/:trace[?raw=1]`: Fetch normalized or native execution trace.
+- `GET /api/runs/:name/traces/:trace[?raw=1]`: Fetch normalized or native execution trace. A harbor trace links to the agent log the trial wrote, discovered from the trial's `agent/` directory rather than assumed, so a run of any harness links to its own `agent/<agent>.txt`. A trial whose `result.json` cannot be read is reported as an error naming the unreadable file, not as a trial still running.
 - `GET /api/events`: Server-Sent Events stream for real-time status updates. A subscriber receives a comment frame every 15 seconds while the run list is unchanged, and is dropped once 256 frames go unread.
 
 Every field of a mutating request body is checked before the request takes effect. An unknown field
