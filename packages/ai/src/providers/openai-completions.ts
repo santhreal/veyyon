@@ -538,13 +538,8 @@ function getOpenAICompletionsProviderSessionState(
 	return created;
 }
 
-// DeepSeek models leak chat-template special tokens (e.g. `<｜tool_calls_begin｜>`,
-// `<｜DSML｜tool_calls｜>`) into visible `content` deltas when hosted behind providers
-// (such as NVIDIA NIM) that don't strip them server-side. The structured `tool_calls`
-// payload is still emitted correctly — we only need to filter the leaked markers from
-// user-visible text. Tokens use either fullwidth pipes (｜, U+FF5C) or ASCII pipes.
-// Body is restricted to identifier-like chars (with the DeepSeek tokenizer's `▁`),
-// capped at a sane length to avoid swallowing legitimate angle-bracket text.
+// DeepSeek models leak chat-template tokens (`<｜tool_calls_begin｜>`, etc.) into `content` deltas behind providers
+// (NVIDIA NIM) that don't strip them. Structured `tool_calls` still works; filter leaked markers from visible text.
 const DEEPSEEK_SPECIAL_TOKEN_REGEX = /<(?:｜|\|)[A-Za-z0-9_.｜|▁]{1,64}(?:｜|\|)>/g;
 const DEEPSEEK_SPECIAL_TOKEN_AT_START_REGEX = /^\s*<(?:｜|\|)[A-Za-z0-9_.｜|▁]{1,64}(?:｜|\|)>/;
 const DEEPSEEK_SPECIAL_TOKEN_AT_END_REGEX = /<(?:｜|\|)[A-Za-z0-9_.｜|▁]{1,64}(?:｜|\|)>\s*$/;
@@ -2031,14 +2026,8 @@ export function convertMessages(
 				assistantMsg.reasoning_content !== undefined ||
 				assistantMsg.reasoning !== undefined ||
 				assistantMsg.reasoning_text !== undefined;
-			// Tier 1: Recover reasoning_content from ALL thinking blocks (including empty-text
-			// ones) when the provider requires exact replay and rejects synthetic placeholders.
-			// This covers the case where thinking blocks have valid signatures but were excluded
-			// by the nonEmptyThinkingBlocks filter above, or where thinking text is empty but
-			// the signature identifies the correct field name for replay.
-			// Only recognized OpenAI-compat reasoning field names qualify — opaque signatures
-			// from other providers (Anthropic encrypted, OpenAI Responses JSON, etc.) are not
-			// valid property names for the wire message.
+			// Tier 1: Recover reasoning_content from ALL thinking blocks (including empty-text ones) when the
+			// provider requires exact replay. Only recognized OpenAI-compat field names qualify.
 			if (
 				needsReasoningField &&
 				!hasReasoningField &&
@@ -2054,10 +2043,7 @@ export function convertMessages(
 					}
 				}
 			}
-			// Tier 2: When the provider requires reasoning_content but there are genuinely no
-			// thinking blocks at all (e.g. proxy stripped reasoning_content from the response),
-			// emit an empty string. The field must be present; an empty string is the most honest
-			// representation of "no reasoning was captured."
+			// Tier 2: No thinking blocks at all (proxy stripped reasoning); emit empty string — field must be present.
 			if (
 				needsReasoningField &&
 				!hasReasoningField &&
