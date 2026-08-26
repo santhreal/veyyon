@@ -192,10 +192,8 @@ export default class Index extends Command {
 			description:
 				"Remove the session's permission prompts, including per-tool prompt overrides (a blatantly destructive command, an explicit deny, and plan mode still block). Toggle at runtime with /yolo.",
 		}),
-		// `--approval-mode`: declared here so the generated `--help` lists it; runtime parsing
-		// happens in `cli/args.ts parseArgs`. The value is applied via `Settings.override("tools.approvalMode", …)`
-		// in `main.ts` after the `Settings` instance is constructed, so every `settings.get("tools.approvalMode")`
-		// site (wrapper, `/settings` UI) observes the same value.
+		// `--approval-mode`: declared here for `--help`; parsed in `cli/args.ts`, applied via `Settings.override`
+		// in `main.ts` so every `settings.get("tools.approvalMode")` site observes the same value.
 		"approval-mode": Flags.string({
 			options: ["plan", "ask", "ask-command", "auto", "yolo", "always-ask", "write", "auto-edit"],
 			description:
