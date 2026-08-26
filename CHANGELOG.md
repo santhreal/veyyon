@@ -72,8 +72,8 @@
 - Every `MNEMOPI_*` value is read by `config.ts` alone; the local-model, extraction and embedding modules ask it instead of parsing the variable again.
 - `getDiagnostics` is now `extractionDiagnostics` in `core/extraction/diagnostics` and `recallDiagnostics` in `core/recall-diagnostics`, so the two registries are no longer reached by one name.
 - Syntax highlighting moved from the native addon into the `veyyon-highlight` crate, with no change to highlighting output.
-- The syntax set is linked at build time instead of being assembled on first use, cutting about 8MB of resident memory from any session that highlights code.
-- Highlighting memory is released after 30 seconds without a highlight, returning about 34MB of a 42MB eight-language burst to the operating system.
+- The syntax set is linked at build time instead of being assembled on first use, cutting about 6MB of resident memory from any session that highlights code.
+- Highlighting memory is released after 30 seconds without a highlight, so a session that highlighted eight languages settles about 32MB lower for the rest of its life.
 - `imageFallback` takes the file name, media type, pixel size and cause of an undrawn image and returns a row naming all four; `ImageFallbackReason` states the cause.
 - Settings rows can open nested panels, used by Files → LSP to keep its dependent switches behind one parent row.
 - `bestEffort` and `optionalResult` are imported from `@veyyon/utils/discarded-fault`. The barrel does not re-export them, so a consumer reaching them through `@veyyon/utils` names the module instead.
