@@ -56,19 +56,71 @@ type BgState = string | null;
  * about (colon-form extended color, malformed params). Foreground and style
  * parameters are skipped; only background state is tracked.
  */
-function nextBackground(bg: BgState, params: string): BgState | typeof BAIL {
+function nextBackground(bg: BgState, line: string, start: number, end: number): BgState | typeof BAIL {
 	// CSI m with no parameters is SGR 0 (reset everything).
-	if (params.length === 0) return null;
-	const tokens = params.split(";");
+	if (end === start) return null;
 	let result: BgState = bg;
-	for (let i = 0; i < tokens.length; i++) {
-		const token = tokens[i];
+	let i = start;
+	while (i < end) {
+		// Find the next semicolon or end of params.
+		let j = i;
+		while (j < end && line.charCodeAt(j) !== 0x3b) j++;
+		const tokenLen = j - i;
 		// An empty parameter defaults to 0 (reset), matching terminal behavior.
-		const n = token.length === 0 ? 0 : Number(token);
-		if (!Number.isInteger(n)) return BAIL;
+		const n = tokenLen === 0 ? 0 : parseSgrInt(line, i, tokenLen);
+		if (n < 0) return BAIL;
 		if (n === 0 || n === 49) {
 			result = null;
-			continue;
+		} else if ((n >= 40 && n <= 47) || (n >= 100 && n <= 107)) {
+			result = line.slice(i, j);
+		} else if (n === 48) {
+			// Parse mode token after the semicolon.
+			let p = j + 1;
+			let modeEnd = p;
+			while (modeEnd < end && line.charCodeAt(modeEnd) !== 0x3b) modeEnd++;
+			const mode = modeEnd > p ? line.charCodeAt(p) - 48 : -1;
+			if (mode === 5) {
+				const idxStart = modeEnd + 1;
+				let idxEnd = idxStart;
+				while (idxEnd < end && line.charCodeAt(idxEnd) !== 0x3b) idxEnd++;
+				if (idxStart > end) return BAIL;
+				result = `48;5;${line.slice(idxStart, idxEnd)}`;
+				j = idxEnd;
+			} else if (mode === 2) {
+				let rStart = modeEnd + 1;
+				let rEnd = rStart;
+				while (rEnd < end && line.charCodeAt(rEnd) !== 0x3b) rEnd++;
+				let gStart = rEnd + 1;
+				let gEnd = gStart;
+				while (gEnd < end && line.charCodeAt(gEnd) !== 0x3b) gEnd++;
+				let bStart = gEnd + 1;
+				let bEnd = bStart;
+				while (bEnd < end && line.charCodeAt(bEnd) !== 0x3b) bEnd++;
+				if (bEnd >= end && bStart >= end) return BAIL;
+				result = `48;2;${line.slice(rStart, rEnd)};${line.slice(gStart, gEnd)};${line.slice(bStart, bEnd)}`;
+				j = bEnd;
+			} else {
+				return BAIL;
+			}
+		} else if (n === 38) {
+			// Foreground extended color: skip its sub-parameters, leave bg alone.
+			let p = j + 1;
+			let modeEnd = p;
+			while (modeEnd < end && line.charCodeAt(modeEnd) !== 0x3b) modeEnd++;
+			const mode = modeEnd > p ? line.charCodeAt(p) - 48 : -1;
+			if (mode === 5) {
+				j = modeEnd;
+			} else if (mode === 2) {
+				// skip r;g;b tokens
+				let q = modeEnd + 1;
+				for (let s = 0; s < 3; s++) {
+					while (q < end && line.charCodeAt(q) !== 0x3b) q++;
+					q++;
+				}
+				j = q - 1;
+			} else {
+				return BAIL;
+			}
 		}
 		if ((n >= 40 && n <= 47) || (n >= 100 && n <= 107)) {
 			result = token;
@@ -163,7 +215,7 @@ export function analyzeBgFillLine(line: string, width: number): BgFillAnalysis |
 			}
 			if (j >= line.length) return null; // unterminated CSI
 			if (line.charCodeAt(j) !== 0x6d) return null; // non-SGR CSI (final byte != 'm')
-			const next = nextBackground(bg, line.slice(i + 2, j));
+			const next = nextBackground(bg, line, i + 2, j);
 			if (next === BAIL) return null;
 			bg = next;
 			i = j + 1;
