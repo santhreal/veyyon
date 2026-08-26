@@ -86,6 +86,15 @@ export interface RunnerOptions {
 	focused?: boolean;
 	statusMessage?: string;
 	customParts?: Partial<Parameters<typeof mountComposerZone>[1]>;
+	/**
+	 * Substrings that identify a transcript row on screen, for the bleed oracle.
+	 *
+	 * Defaults to the marker the runner's own generated rows carry. A caller that supplies its own
+	 * `transcriptLines` MUST supply markers for them: the bleed oracle looks for these substrings
+	 * below the footer boundary, so content it cannot recognise makes the oracle inspect nothing
+	 * and report nothing, which reads as a clean state.
+	 */
+	transcriptLineMarkers?: readonly string[];
 }
 
 export interface RunnerResult {
@@ -382,7 +391,7 @@ export async function runComposerOracleScenario(options: RunnerOptions): Promise
 						},
 					],
 		mouseRouting,
-		transcriptLineMarkers: ["transcript-output-line-"],
+		transcriptLineMarkers: options.transcriptLineMarkers ?? ["transcript-output-line-"],
 		expectedPromptGlyph: expectedGlyph,
 		editorFocused: options.focused !== false,
 		liveFooterLines,
