@@ -79,8 +79,11 @@ function makeInventory(): AccountInventory {
 		{ provider: "openai", label: "OpenAI", rows: [makeRow("openai", "OpenAI", 2)] },
 		{ provider: "groq", label: "Groq", rows: [makeRow("groq", "Groq", 3)] },
 		{ provider: "google", label: "Google", rows: [makeRow("google", "Google", 4)] },
+		// A provider whose id carries a token its label does not. The filter reads both, and a
+		// version that read only the label would still pass every case above.
+		{ provider: "custom-id-xyz", label: "CustomAlpha", rows: [makeRow("custom-id-xyz", "CustomAlpha", 5)] },
 	];
-	return { providers, totalAccounts: 4, unhealthyCount: 0 };
+	return { providers, totalAccounts: 5, unhealthyCount: 0 };
 }
 
 interface Harness {
@@ -146,7 +149,9 @@ describe("the provider filter", () => {
 
 		harness.card.handleInput("\x1b[B");
 
-		expect(harness.text()).toContain("› Google");
+		// The sidebar orders providers that hold accounts alphabetically, so one row below
+		// Anthropic is CustomAlpha. The claim is that the arrow walked the PROVIDER list.
+		expect(harness.text()).toContain("› CustomAlpha");
 	});
 
 	it("filters the sidebar to matching providers once it is on", () => {
@@ -160,6 +165,23 @@ describe("the provider filter", () => {
 		expect(rendered).toContain("Anthropic");
 		expect(rendered).not.toContain("Groq");
 		expect(rendered).not.toContain("Google");
+	});
+
+	/**
+	 * The query reaches the provider id, not only the label the sidebar prints. A provider is often
+	 * looked for by the name its key or its docs use rather than the one shown, and a filter that
+	 * read the label alone would answer nothing for it while the row sat two lines below.
+	 */
+	it("matches on the provider id when the label does not carry the query", () => {
+		const harness = openCard();
+		harness.card.handleInput(CTRL_S);
+		type(harness.card, "xyz");
+
+		const rendered = harness.text();
+		expect(rendered).toContain("Search: xyz");
+		expect(rendered).toContain("CustomAlpha");
+		expect(rendered).not.toContain("Anthropic");
+		expect(rendered).not.toContain("Groq");
 	});
 
 	it("reports a query that matches nothing rather than an empty list", () => {
