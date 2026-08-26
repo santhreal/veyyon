@@ -109,8 +109,19 @@ export function expandKeyHint(): string {
  * Get first N lines of text as preview, with each line truncated.
  */
 export function getPreviewLines(text: string, maxLines: number, maxLineLen: number, ellipsis?: Ellipsis): string[] {
-	const lines = text.split("\n").filter(l => l.trim());
-	return lines.slice(0, maxLines).map(l => truncateToWidth(l.trim(), maxLineLen, ellipsis));
+	const result: string[] = [];
+	let start = 0;
+	for (let i = 0; i <= text.length; i++) {
+		if (i === text.length || text.charCodeAt(i) === 0x0a) {
+			const line = text.slice(start, i);
+			if (line.trim()) {
+				result.push(truncateToWidth(line.trim(), maxLineLen, ellipsis));
+				if (result.length >= maxLines) break;
+			}
+			start = i + 1;
+		}
+	}
+	return result;
 }
 
 /**
@@ -652,6 +663,13 @@ function parseDiffSegments(lines: string[]): DiffSegment[] {
 	if (current) segments.push(current);
 	return segments;
 }
+function pushAll(dst: string[], src: readonly string[]): void {
+	for (let i = 0; i < src.length; i++) dst.push(src[i]!);
+}
+function pushRange(dst: string[], src: readonly string[], start: number, end: number): void {
+	if (start < 0) start = Math.max(0, src.length + start);
+	for (let i = start; i < end && i < src.length; i++) dst.push(src[i]!);
+}
 
 export function truncateDiffByHunk(
 	diffText: string,
@@ -682,8 +700,10 @@ export function truncateDiffByHunk(
 
 	const segments = parseDiffSegments(lines);
 
-	const changeSegments = segments.filter(s => s.isChange);
-	const changeLineCount = changeSegments.reduce((sum, s) => sum + s.lines.length, 0);
+	let changeLineCount = 0;
+	for (let i = 0; i < segments.length; i++) {
+		if (segments[i]!.isChange) changeLineCount += segments[i]!.lines.length;
+	}
 
 	if (changeLineCount > maxLines) {
 		const kept: string[] = [];
@@ -694,7 +714,7 @@ export function truncateDiffByHunk(
 				keptHunks++;
 				if (keptHunks > maxHunks) break;
 			}
-			kept.push(...seg.lines);
+			pushAll(kept, seg.lines);
 			if (kept.length >= maxLines) break;
 		}
 
@@ -707,8 +727,15 @@ export function truncateDiffByHunk(
 	}
 
 	const contextBudget = maxLines - changeLineCount;
-	const contextSegments = segments.filter(s => !s.isChange && !s.isEllipsis);
-	const totalContextLines = contextSegments.reduce((sum, s) => sum + s.lines.length, 0);
+	let totalContextLines = 0;
+	let contextSegmentCount = 0;
+	for (let i = 0; i < segments.length; i++) {
+		const s = segments[i]!;
+		if (!s.isChange && !s.isEllipsis) {
+			totalContextLines += s.lines.length;
+			contextSegmentCount++;
+		}
+	}
 
 	const kept: string[] = [];
 	let keptHunks = 0;
@@ -719,10 +746,10 @@ export function truncateDiffByHunk(
 				keptHunks++;
 				if (keptHunks > maxHunks) break;
 			}
-			kept.push(...seg.lines);
+			pushAll(kept, seg.lines);
 		}
 	} else {
-		const contextRatio = contextSegments.length > 0 ? contextBudget / totalContextLines : 0;
+		const contextRatio = contextSegmentCount > 0 ? contextBudget / totalContextLines : 0;
 
 		for (let i = 0; i < segments.length; i++) {
 			const seg = segments[i];
@@ -730,9 +757,9 @@ export function truncateDiffByHunk(
 			if (seg.isChange) {
 				keptHunks++;
 				if (keptHunks > maxHunks) break;
-				kept.push(...seg.lines);
+				pushAll(kept, seg.lines);
 			} else if (seg.isEllipsis) {
-				kept.push(...seg.lines);
+				pushAll(kept, seg.lines);
 			} else {
 				const allowedLines = Math.max(1, Math.floor(seg.lines.length * contextRatio));
 				const isBeforeChange = segments[i + 1]?.isChange;
@@ -741,18 +768,18 @@ export function truncateDiffByHunk(
 				if (isBeforeChange && isAfterChange) {
 					const half = Math.ceil(allowedLines / 2);
 					if (seg.lines.length > allowedLines) {
-						kept.push(...seg.lines.slice(0, half));
+						pushRange(kept, seg.lines, 0, half);
 						kept.push("");
-						kept.push(...seg.lines.slice(-half));
+						pushRange(kept, seg.lines, -half, seg.lines.length);
 					} else {
-						kept.push(...seg.lines);
+						pushAll(kept, seg.lines);
 					}
 				} else if (isBeforeChange) {
-					kept.push(...seg.lines.slice(-allowedLines));
+					pushRange(kept, seg.lines, -allowedLines, seg.lines.length);
 				} else if (isAfterChange) {
-					kept.push(...seg.lines.slice(0, allowedLines));
+					pushRange(kept, seg.lines, 0, allowedLines);
 				} else {
-					kept.push(...seg.lines.slice(0, Math.min(allowedLines, 2)));
+					pushRange(kept, seg.lines, 0, Math.min(allowedLines, 2));
 				}
 			}
 		}
