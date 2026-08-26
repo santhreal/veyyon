@@ -358,13 +358,12 @@ function formatStatusEventExpanded(event: EvalStatusEvent, theme: Theme): string
 	};
 
 	const addPreview = (preview: string, maxLines = 3) => {
-		const previewLines = String(preview).split("\n").slice(0, maxLines);
-		for (const line of previewLines) {
-			lines.push(`   ${theme.fg("toolOutput", truncateToWidth(replaceTabs(line), 80))}`);
+		const allPreviewLines = String(preview).split("\n");
+		for (let i = 0; i < Math.min(allPreviewLines.length, maxLines); i++) {
+			lines.push(`   ${theme.fg("toolOutput", truncateToWidth(replaceTabs(allPreviewLines[i]!), 80))}`);
 		}
-		const totalLines = String(preview).split("\n").length;
-		if (totalLines > maxLines) {
-			lines.push(`   ${theme.fg("dim", `… ${formatMoreLines(totalLines - maxLines)}`)}`);
+		if (allPreviewLines.length > maxLines) {
+			lines.push(`   ${theme.fg("dim", `… ${formatMoreLines(allPreviewLines.length - maxLines)}`)}`);
 		}
 	};
 
@@ -524,7 +523,7 @@ export const evalToolRenderer = {
 						},
 						uiTheme,
 					);
-					lines.push(...cellLines);
+					for (let j = 0; j < cellLines.length; j++) lines.push(cellLines[j]);
 					if (i < cells.length - 1) {
 						lines.push("");
 					}
@@ -595,11 +594,15 @@ export const evalToolRenderer = {
 					for (let i = 0; i < cellResults.length; i++) {
 						const cell = cellResults[i];
 						const allEvents = cell.statusEvents ?? [];
-						const agentEvents = allEvents.filter(e => e.op === "agent");
-						const otherEvents = agentEvents.length > 0 ? allEvents.filter(e => e.op !== "agent") : allEvents;
+						const agentEvents: typeof allEvents = [];
+						const otherEvents: typeof allEvents = [];
+						for (let ei = 0; ei < allEvents.length; ei++) {
+							const e = allEvents[ei]!;
+							(e.op === "agent" ? agentEvents : otherEvents).push(e);
+						}
 						const statusLines = renderStatusEvents(otherEvents, uiTheme, expanded);
 						const outputContent = formatCellOutputLines(cell, expanded, previewLines, uiTheme, width);
-						const outputLines = [...outputContent.lines];
+						const outputLines = outputContent.lines.slice();
 						if (!expanded && outputContent.hiddenCount > 0) {
 							outputLines.push(
 								uiTheme.fg("dim", `… ${formatMoreLines(outputContent.hiddenCount)}${expandHintSuffix()}`),
@@ -609,7 +612,7 @@ export const evalToolRenderer = {
 							if (outputLines.length > 0) {
 								outputLines.push(uiTheme.fg("dim", "Status"));
 							}
-							outputLines.push(...statusLines);
+							for (let j = 0; j < statusLines.length; j++) outputLines.push(statusLines[j]);
 						}
 						const cellLines = renderCodeCell(
 							{
@@ -634,9 +637,10 @@ export const evalToolRenderer = {
 							},
 							uiTheme,
 						);
-						lines.push(...cellLines);
+						for (let j = 0; j < cellLines.length; j++) lines.push(cellLines[j]);
 						if (agentEvents.length > 0) {
-							lines.push(...renderAgentProgressEvents(agentEvents, uiTheme, options.spinnerFrame));
+							const agentLines = renderAgentProgressEvents(agentEvents, uiTheme, options.spinnerFrame);
+							for (let j = 0; j < agentLines.length; j++) lines.push(agentLines[j]);
 						}
 						if (i < cellResults.length - 1) {
 							lines.push("");
