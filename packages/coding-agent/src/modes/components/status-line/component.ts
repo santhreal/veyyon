@@ -54,6 +54,12 @@ const RIGHT_PART_SHED_RANK: Record<string, number> = {
 	subagents: 4,
 };
 
+/** Segment ids that belong in the location group of the quiet footline. */
+const LOCATION_SEGMENT_IDS: Record<string, true> = { path: true, git: true, pr: true };
+
+/** Segment ids that belong in the context group (held aside from the left loop). */
+const CONTEXT_SEGMENT_IDS: Record<string, true> = { context_pct: true, context_total: true };
+
 /** One segment's slot on the rendered quiet footline (0-based columns, end exclusive). */
 export interface QuietSegmentBounds {
 	id: string;
@@ -1278,8 +1284,6 @@ export class StatusLineComponent implements Component {
 			model: { ...effectiveSettings.segmentOptions?.model, roomy: true },
 		};
 		const ctx = this.#buildSegmentContext(width, quietOptions, includePath, includeContext, includeGit, includePr);
-		const LOCATION_IDS: Record<string, true> = { path: true, git: true, pr: true };
-		const CONTEXT_IDS: Record<string, true> = { context_pct: true, context_total: true };
 		const subagentBadge = this.#subagentBadgeText();
 		const location: QuietPart[] = [];
 		const capLeft: QuietPart[] = [];
@@ -1300,12 +1304,12 @@ export class StatusLineComponent implements Component {
 		// configured on the RIGHT keeps the position they gave it.
 		const contextFromLeft: QuietPart[] = [];
 		for (const id of leftCfg) {
-			if (LOCATION_IDS[id]) push(id, location);
-			else if (CONTEXT_IDS[id]) push(id, contextFromLeft);
+			if (LOCATION_SEGMENT_IDS[id]) push(id, location);
+			else if (CONTEXT_SEGMENT_IDS[id]) push(id, contextFromLeft);
 			else push(id, capLeft);
 		}
 		for (const id of rightCfg) {
-			if (LOCATION_IDS[id]) push(id, location);
+			if (LOCATION_SEGMENT_IDS[id]) push(id, location);
 			else push(id, capRight);
 		}
 		capRight.push(...contextFromLeft);
