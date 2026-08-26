@@ -896,21 +896,10 @@ function buildRawMemoriesMarkdown(outputs: Stage1OutputRow[]): string {
 }
 
 /**
- * The rollout-summary section of the consolidation prompt.
- *
- * EVERY SENTENCE THIS RETURNS IS READ BY THE MODEL AS FACT, which is why neither failure below may end
- * at "No rollout summaries yet.". Two swallows used to do exactly that: `fs.readdir(dir).catch(() => [])`
- * turned a permission error into an empty listing, and `.text().catch(() => "")` turned an unreadable
- * summary into an empty one. A run whose summaries were all present but unreadable therefore told the
- * model that nothing had ever been summarised, and consolidation rewrote long-term memory from that
- * premise. Memory loss with no operator-visible cause.
- *
- * So the distinction is between "asked, and there are none" and "could not ask". A missing directory is
- * the first and keeps the concise answer, because it is the ordinary first-run state. Anything else is
- * the second: it reaches the log with the failing path and the reason, AND the returned text says the
- * section is unknown rather than empty. Exported so
- * `test/memories/rollout-summaries-never-report-unreadable-as-absent.test.ts` can assert the exact
- * sentences, since the sentence is what the model reads.
+ * The rollout-summary section of the consolidation prompt. Every sentence is read by the model as fact,
+ * so neither failure may end at "No rollout summaries yet." A missing dir is "asked, and there are none"
+ * (ordinary first-run). Anything else is "could not ask" — logged, and the text says "unknown" not
+ * "empty". Exported for `test/memories/rollout-summaries-never-report-unreadable-as-absent.test.ts`.
  */
 export async function readRolloutSummaries(memoryRoot: string): Promise<string> {
 	const summariesDir = path.join(memoryRoot, "rollout_summaries");
@@ -1103,13 +1092,9 @@ async function applyConsolidation(
 }
 
 /**
- * Every file under `rootDir`, as paths relative to it.
- *
- * `readdirIfPresent` rather than a bare catch: absence is an answer here (a memory root with no skills
- * directory yet), and any OTHER failure is logged with the directory rather than read as "empty". The
- * caller diffs this list against what consolidation produced and deletes what is missing from it, so an
- * unlistable directory silently reported as empty would mean nothing gets deleted. That is the safe
- * direction, and it is still worth a line: the alternative is a stale skill file nobody can explain.
+ * Every file under `rootDir`, as paths relative to it. `readdirIfPresent` not a bare catch: absence is
+ * an answer (no skills dir yet); other failures are logged, not read as empty. The caller deletes what
+ * is missing from this list, so an unlistable dir read as empty would skip deletion — safe, but worth a line.
  */
 async function listRelativeFiles(rootDir: string, prefix = ""): Promise<string[]> {
 	const entries = await readdirIfPresent(rootDir, "existing memory files");
@@ -1126,15 +1111,9 @@ async function listRelativeFiles(rootDir: string, prefix = ""): Promise<string[]
 }
 
 /**
- * Remove directories under `rootDir` that consolidation left empty.
- *
- * THE LISTING FAILURE IS NOT AN EMPTY DIRECTORY, and reading it as one deleted live data. The old code
- * listed the child with `.catch(() => [])` and then removed any child whose listing was empty, so a
- * directory that could not be listed (a permission change, a half-mounted NFS path) was removed
- * RECURSIVELY along with everything in it. A skills directory full of captured lessons could go that
- * way, and the only trace was that it was gone. Now an unlistable directory is reported and SKIPPED:
- * this function's job is removing what is empty, and it cannot know that about a directory it could not
- * read.
+ * Remove directories under `rootDir` that consolidation left empty. A listing failure is NOT an empty
+ * directory — the old code read unlistable dirs as empty and deleted them recursively. Now an unlistable
+ * directory is reported and skipped.
  */
 async function pruneEmptyDirectories(rootDir: string): Promise<void> {
 	const entries = await readdirIfPresent(rootDir, "empty memory directories to prune");

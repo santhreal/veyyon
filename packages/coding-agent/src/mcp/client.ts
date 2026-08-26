@@ -314,17 +314,10 @@ export async function disconnectServer(connection: MCPServerConnection): Promise
 }
 
 /**
- * Close a transport on a path that cannot report the close's own failure, in one place.
- *
- * The callers are all tearing a connection down: a connect that timed out with the transport possibly
- * alive, a server being replaced by a reconnect, a reconnect abandoned because the manager was reset, a
- * tool-list that failed after the handshake. Each either throws its own error, which is the one the
- * operator needs, or is deliberately not awaited because a close can take the transport's full timeout
- * (an HTTP DELETE at 30s by default) and blocking the reconnect loop on it is worse than not knowing.
- *
- * Not knowing is still the wrong default, because a close that fails leaves a zombie: an open SSE
- * listener, or a stdio subprocess that outlives every reference to it. So the failure is reported with the
- * server it belonged to, and the caller keeps its own control flow.
+ * Close a transport on a path that cannot report the close's own failure. Callers are tearing down
+ * (timeout, reconnect, reset, failed handshake) — each throws its own error or is not awaited (a close
+ * can take 30s). A failed close leaves a zombie (SSE listener, stdio subprocess), so the failure is
+ * reported with the server name; the caller keeps its own control flow.
  */
 export function closeTransportDetached(
 	transport: Pick<MCPServerConnection["transport"], "close">,

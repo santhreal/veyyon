@@ -1,26 +1,9 @@
 /**
- * Where every file a project's daemon broker keeps on disk lives.
- *
- * WHY THIS MODULE OWNS THE NAMES. The broker writes these files and other processes read them, so a
- * filename is a contract between two programs, not an implementation detail of either one. It was written
- * as an implementation detail of both: `broker.ts` and `client.ts` each declared their own
- * `const TOKEN_FILE = "broker.token"`, the client creating the file and the broker reading it. Nothing
- * connected the two literals. Rename one and the client writes a token the broker never finds, so every
- * daemon RPC fails authentication with a message about a missing token rather than about a rename.
- * `"daemons"` and `"process.pid"` were each spelled inline twice in `broker.ts` for the same reason.
- *
- * So the names live here once, privately, and callers ask for a path instead of joining a string. There is
- * nothing to keep in sync because there is nothing to disagree with.
- *
- * TWO DIRECTORIES, AND THE PREFIX TELLS YOU WHICH. `daemonBroker*` paths sit directly in a project's
- * runtime directory and belong to the one broker serving that project. `managedDaemon*` paths sit in a
- * per-daemon directory under `daemons/` and belong to one long-running process the broker supervises for
- * you. Both take their base directory as an argument; the prefix says which base is expected.
- *
- * THE WORD "daemons" MEANS TWO THINGS HERE, deliberately kept apart. Under the config root it names the
- * directory holding one entry per project broker. Under a project's runtime directory it names the
- * directory holding one entry per supervised process. Same spelling, unrelated contents, which is exactly
- * why neither is written inline any more.
+ * Where every file a project's daemon broker keeps on disk lives. Filenames are a contract between
+ * broker and client, so they live here once, privately; callers ask for a path, never join a string.
+ * `daemonBroker*` paths sit in a project's runtime dir (one broker per project). `managedDaemon*` paths
+ * sit under `daemons/` (one per supervised process). "daemons" means two unrelated things: under the
+ * config root, one entry per project broker; under a project runtime dir, one entry per supervised process.
  */
 
 import * as fs from "node:fs/promises";
@@ -29,11 +12,8 @@ import { getConfigRootDir, isEnoent } from "@veyyon/utils";
 
 /**
  * Every on-disk name in the daemon runtime layout, in the one place a rename can be made.
- *
- * Private on purpose: callers take a path from a function below, never a name from this table, so the
- * table can be reshaped without touching a caller. `test/launch/daemon-runtime-layout.test.ts` pins the
- * bytes of each name through those functions, because a rename is a compatibility break for any broker
- * already running against an older layout.
+ * Private: callers take a path from a function below, never a name from this table. A rename is a
+ * compatibility break for any running broker; `test/launch/daemon-runtime-layout.test.ts` pins the bytes.
  */
 const NAMES = {
 	/** Under the config root: one entry per project broker, keyed by project hash. */
@@ -85,10 +65,8 @@ export function daemonBrokerEndpoint(projectDir: string, runtimeDir: string): st
 }
 
 /**
- * The shared secret a client and its broker authenticate with.
- *
- * The client creates this file and the broker reads it, so the two agreed on the name by coincidence until
- * both asked here for it.
+ * The shared secret a client and its broker authenticate with. Client creates, broker reads —
+ * both agree on the name through this function.
  */
 export function daemonBrokerTokenPath(runtimeDir: string): string {
 	return path.join(runtimeDir, NAMES.brokerToken);
@@ -100,10 +78,8 @@ export function daemonBrokerLeasePath(runtimeDir: string): string {
 }
 
 /**
- * The directory holding one presence entry per live veyyon process in a project.
- *
- * The broker exits when this directory holds no live pid, so its name is what keeps a shared daemon alive
- * across two terminals in the same project.
+ * The directory holding one presence entry per live veyyon process. The broker exits when this is empty,
+ * so its name is what keeps a shared daemon alive across two terminals.
  */
 export function daemonPresenceDir(runtimeDir: string): string {
 	return path.join(runtimeDir, NAMES.presenceRoot);

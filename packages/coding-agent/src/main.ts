@@ -185,16 +185,10 @@ function applyAcpDefaultSettingOverrides(targetSettings: Settings = settings): v
 }
 
 /**
- * How long a run that ALREADY has a prompt waits for the first byte of piped stdin.
- *
- * A supervisor, CI runner or wrapper that spawns `veyyon -p "…"` with an inherited pipe it never writes to
- * nor closes leaves startup blocked forever: `Bun.stdin.text()` waits for EOF, which never comes, and the
- * run produces nothing but a notice. The prompt was on the command line, so there is something to run.
- *
- * The bound applies ONLY before the first byte. A producer that is slow to START is indistinguishable from
- * one that will never write, and a producer that has begun writing is neither -- so once any byte arrives
- * the wait is unbounded again and a slow, large piped document is never truncated. Override with
- * `VEYYON_PIPED_STDIN_WAIT_MS`; `0` restores the old wait-forever behaviour.
+ * How long a run that ALREADY has a prompt waits for the first byte of piped stdin. A wrapper that spawns
+ * `veyyon -p "…"` with an inherited pipe it never closes leaves startup blocked forever. The bound
+ * applies ONLY before the first byte — once any byte arrives, the wait is unbounded. Override with
+ * `VEYYON_PIPED_STDIN_WAIT_MS`; `0` restores wait-forever.
  */
 const PIPED_STDIN_FIRST_BYTE_WAIT_MS = 10_000;
 
@@ -204,16 +198,9 @@ function pipedStdinFirstByteWaitMs(): number {
 }
 
 /**
- * Read stdin to EOF, giving up only if NOTHING arrives and the caller already has a prompt.
- *
- * Reads the stream in chunks rather than calling `Bun.stdin.text()` so "has anything arrived yet" is
- * observable: that is the whole distinction the bound rests on. The deadline is armed before the first
- * chunk and dropped the moment one lands, so a producer that writes slowly, or writes a lot, is waited on
- * for as long as it takes.
- *
- * Returns `undefined` when it gave up, having said so on stderr -- a run that silently dropped the piped
- * half of its input would be a silent fallback (Law 10), and the operator needs to know the context they
- * piped is not in the prompt.
+ * Read stdin to EOF, giving up only if NOTHING arrives and the caller already has a prompt. Reads in
+ * chunks so "has anything arrived yet" is observable. Deadline armed before first chunk, dropped once
+ * one lands. Returns `undefined` when it gave up (said on stderr — never a silent fallback).
  */
 export async function readStdinWithFirstByteBound(
 	havePromptArgument: boolean,
