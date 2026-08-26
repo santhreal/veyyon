@@ -4,7 +4,7 @@
 
 import { HL_FILE_PREFIX, HL_FILE_SUFFIX, HL_MOVE_KEYWORD, HL_REM_KEYWORD } from "@veyyon/hashline";
 import type { Component } from "@veyyon/tui";
-import { sliceWithWidth, visibleWidth, wrapTextWithAnsi } from "@veyyon/tui";
+import { padding, sliceWithWidth, visibleWidth, wrapTextWithAnsi } from "@veyyon/tui";
 import { SGR_FG_RESET } from "@veyyon/tui/ansi";
 import { errorMessage, formatMoreLines, sanitizeText } from "@veyyon/utils";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
@@ -743,7 +743,7 @@ function splitDiffRow(body: string): { prefix: string; continuation: string; con
 		const prefix = `${gutter[1]}${gutter[2]}`;
 		return {
 			prefix,
-			continuation: `${" ".repeat(Math.max(0, visibleWidth(prefix) - 1))}${gutter[2]}`,
+			continuation: `${padding(Math.max(0, visibleWidth(prefix) - 1))}${gutter[2]}`,
 			content: gutter[3] ?? "",
 		};
 	}

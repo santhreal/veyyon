@@ -3,6 +3,7 @@
  */
 
 import { Markdown } from "@veyyon/tui/components/markdown";
+import { padding } from "@veyyon/tui/utils";
 // Owners, not the `@veyyon/utils` barrel: 1 module against 74.
 import { formatCount } from "@veyyon/utils/format";
 import { highlightCode } from "../modes/theme/highlight";
@@ -177,14 +178,14 @@ export function renderCodeCell(options: CodeCellOptions, theme: Theme): string[]
 			const gutter =
 				lineNum !== null && lineNum !== undefined
 					? String(lineNum).padStart(lineNumberWidth, " ")
-					: " ".repeat(lineNumberWidth);
+					: padding(lineNumberWidth);
 			codeLines[i] = theme.fg("dim", `${gutter} `) + codeLines[i];
 		}
 	}
 
 	if (hiddenCodeLines > 0) {
 		const hint = formatExpandHint(theme, expanded, hiddenCodeLines > 0);
-		const gutterPad = lineNumberWidth > 0 ? " ".repeat(lineNumberWidth + 1) : "";
+		const gutterPad = lineNumberWidth > 0 ? padding(lineNumberWidth + 1) : "";
 		if (tail) {
 			// Earlier rows scrolled above the live tail window — mark them on top so
 			// the newest streamed line stays pinned to the bottom of the box.
