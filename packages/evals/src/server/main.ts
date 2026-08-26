@@ -34,39 +34,23 @@ import {
 	knownExperimentIds,
 	knownExperimentIdsWith,
 } from "../manager/experiments";
-import { assertSafeJobName, type LaunchRecord, type RunRole, type RunRow, RunStore } from "../manager/store";
+import { assertSafeJobName, type LaunchRecord, type RunRow, RunStore } from "../manager/store";
+import {
+	type AddArmRequest,
+	type CreateExperimentRequest,
+	type ExperimentMetaUpdate,
+	type RouteDescriptor,
+	SERVER_ROUTES,
+} from "../wire";
 
-/** PUT /api/experiments/:id body — goal and per-run role/note/label metadata. */
-export interface ExperimentMetaUpdate {
-	goal?: string;
-	runs?: Record<string, { role?: RunRole; note?: string; label?: string }>;
-}
-
-/** POST /api/experiments body — pre-registers an experiment id with a goal. */
-export interface CreateExperimentRequest {
-	/** Dash-free token; runs group into it as `<id>-<arm>` job names. */
-	id: string;
-	goal?: string;
-}
+export type { AddArmRequest, CreateExperimentRequest, ExperimentMetaUpdate, RouteDescriptor };
+export { SERVER_ROUTES };
 
 import { errorMessage, isProcessAlive } from "@veyyon/utils";
 import { evalsPackageDir, harborJobsDir } from "../paths";
 import indexHtml from "../web/index.html";
 
 export type { LaunchRequest } from "../backends/harbor/launch-args";
-
-/** POST /api/experiments/:id/arms body — a new comparable arm; sample+config inherited. */
-export interface AddArmRequest {
-	/** Arm label; becomes the `<id>-<arm>` job name. */
-	arm: string;
-	model: string;
-	prewalk?: LaunchRequest["prewalk"];
-	/** Explicit task sample; skips sibling inheritance when provided. */
-	include?: string[];
-	role?: RunRole;
-	note?: string;
-	extraArgs?: string[];
-}
 
 interface ManagedChild {
 	proc: Subprocess;
@@ -195,6 +179,7 @@ export function resolveArmLaunch(store: RunStore, experimentId: string, req: Add
 }
 
 export class ManagerServer {
+	static readonly routes: readonly RouteDescriptor[] = SERVER_ROUTES;
 	#store: RunStore;
 	#children = new Map<string, ManagedChild>();
 	#sse = new Set<SseClient>();
@@ -217,6 +202,10 @@ export class ManagerServer {
 
 	get store(): RunStore {
 		return this.#store;
+	}
+
+	handle(request: Request): Promise<Response> {
+		return this.#route(request);
 	}
 
 	start(port: number, host = "127.0.0.1"): Server<undefined> {

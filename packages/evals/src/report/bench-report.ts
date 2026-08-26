@@ -22,11 +22,12 @@ import * as path from "node:path";
 import { BENCHMARK_DEFINITIONS, type BenchmarkSnapshot, readBenchmarkSnapshot } from "../manager/benchmarks";
 import { type RunRow, RunStore } from "../manager/store";
 import { harborJobsDir } from "../paths";
+import { formatUsd } from "../wire";
 
 function formatMetric(value: number | null, format: "percent" | "number" | "usd"): string {
+	if (format === "usd") return formatUsd(value, "n/a");
 	if (value === null) return "n/a";
 	if (format === "percent") return `${(value * 100).toFixed(1)}%`;
-	if (format === "usd") return `$${value.toFixed(2)}`;
 	return value.toFixed(2);
 }
 
