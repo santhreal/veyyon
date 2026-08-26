@@ -565,6 +565,14 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 		aliases: ["cockpit", "hub"],
 		description: "Agent Control Center: live agent roster and comms stream",
 	},
+	{
+		// The SAME card `/agents` opens, at the widest scope, not a fifth roster.
+		// It is a separate command rather than an argument because it answers a
+		// different question — "is this process spending anywhere" — and that is
+		// the question you cannot answer by looking at the screen you are on.
+		name: "process-manager",
+		description: "Agent Control Center across every conversation this process is running",
+	},
 
 	{
 		name: "branch",

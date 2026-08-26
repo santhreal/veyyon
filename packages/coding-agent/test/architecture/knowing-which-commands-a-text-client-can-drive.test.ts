@@ -243,9 +243,13 @@ describe("the declared flag and the handler table agree", () => {
 	 * `/trust` moved both by one, and is text-drivable for the same reason `/permissions` is: project
 	 * code is withheld until a decision exists, and a headless client that cannot answer the refusal
 	 * has no route to the extensions, hooks, tools, commands or MCP servers the project ships.
+	 *
+	 * `/process-manager` moved the total by one and is NOT text-drivable: it opens the Agent Control
+	 * Center, an interactive card, and a headless client has no screen to open it on. `/agents` is
+	 * absent from the text list for the same reason.
 	 */
-	it("35 of the 73 builtins are text-drivable", () => {
-		expect(DECLARATIONS.length).toBe(73);
+	it("35 of the 74 builtins are text-drivable", () => {
+		expect(DECLARATIONS.length).toBe(74);
 		expect(TEXT_MODE_BUILTIN_DECLARATIONS.length).toBe(35);
 	});
 

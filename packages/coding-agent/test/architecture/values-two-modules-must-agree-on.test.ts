@@ -277,26 +277,26 @@ describe("each value is declared once", () => {
 	 * `"Main"` IS DECLARED TWICE ON PURPOSE, and this case is the record of that decision so the next scan
 	 * does not refile it.
 	 *
-	 * `registry/agent-registry.ts` declares `MAIN_AGENT_ID`, the key the agent registry stores the driving
-	 * session under. `modes/components/agent-activity.ts` declares `MAIN_CALL_SIGN`, the label a person reads
-	 * in the Agent Hub and the dashboard. They share five bytes and nothing else: `agent-activity.ts` imports
-	 * BOTH and maps one to the other explicitly (`if (ref.id === MAIN_AGENT_ID) callSign = MAIN_CALL_SIGN`),
-	 * which is precisely the seam that lets them differ.
+	 * `registry/agent-registry.ts` declares `MAIN_AGENT_ID`, the name a driving agent answers to and the
+	 * name the model is told to write. `modes/components/agent-activity.ts` declares `MAIN_CALL_SIGN`, the
+	 * label a person reads in the dashboard. They share five bytes and nothing else.
 	 *
-	 * Folding them would assert that renaming the label renames a registry key, and the label is UI text: it
-	 * is rendered into a sentence in the dashboard's own help line. A registry key is not free to change with
-	 * it, since parked agents are revived by id from disk.
+	 * Folding them would assert that renaming the label renames what the model addresses, and the label is
+	 * UI text: it is rendered into a sentence in the dashboard's own help line.
+	 *
+	 * The UI module no longer reads the registry name at ALL, which is what this case now pins. A driving
+	 * agent is identified by its ROLE (`kind === "main"`), because a process runs several conversations and
+	 * each has one, so no single name can pick out the right row; the label is assigned from the role. That
+	 * is stronger than the import seam this replaced — there is nothing left to keep in step. The behavior
+	 * is owned by `test/registry/two-live-conversations-keep-their-own-driving-agent.test.ts`, which proves
+	 * a driving agent whose id is nothing like `Main` still reads as `Main` on screen.
 	 */
 	it("keeps the agent registry key and the displayed call sign apart", () => {
 		expect(MAIN_AGENT_ID).toBe("Main");
 		expect(MAIN_CALL_SIGN).toBe("Main");
-		// The seam, as an IMPORT rather than as a search for one exact line of code: the UI module reads
-		// the registry key and assigns its own label, so the two are free to diverge. The regex this
-		// replaced (`ref.id === MAIN_AGENT_ID[\s\S]{0,120}callSign = MAIN_CALL_SIGN`) pinned 120
-		// characters of unrelated statement layout and would have gone red on a reformat.
 		expect(
 			moduleSpecifiersIn(fs.readFileSync(path.join(SRC, "modes/components/agent-activity.ts"), "utf-8")),
-		).toContain("../../registry/agent-registry");
+		).not.toContain("../../registry/agent-registry");
 	});
 
 	/**
