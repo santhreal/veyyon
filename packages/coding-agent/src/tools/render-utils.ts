@@ -790,6 +790,24 @@ export function shortenPath(filePath: unknown, homeDir?: string): string {
 }
 
 /**
+ * The comma-separated path list a tool's status line shows.
+ *
+ * Path arguments reach these renderers exactly as the model wrote them, so an
+ * absolute path printed the operator's home directory into the pending header,
+ * and a handful of long paths pushed the row past the terminal width. Both are
+ * the display contract every other tool string already follows.
+ */
+export function formatScopePaths(paths: string | readonly string[]): string {
+	const list = typeof paths === "string" ? [paths] : paths;
+	return truncateToWidth(list.map(entry => shortenPath(entry)).join(", "), TRUNCATE_LENGTHS.CONTENT);
+}
+
+/** The `in <paths>` status-line fragment built from {@link formatScopePaths}. */
+export function formatScopeMeta(paths: string | readonly string[]): string {
+	return `in ${formatScopePaths(paths)}`;
+}
+
+/**
  * Shorten home-directory paths embedded within a larger string (error messages,
  * command previews, tool output descriptions). Words surrounded by quotes,
  * brackets, or standard punctuation have their inner path shortened via

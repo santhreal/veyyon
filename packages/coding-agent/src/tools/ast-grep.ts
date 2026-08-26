@@ -39,6 +39,7 @@ import {
 	formatMoreItems,
 	formatParseErrors,
 	formatParseErrorsCountLabel,
+	formatScopeMeta,
 	PREVIEW_LIMITS,
 	replaceTabs,
 } from "./render-utils";
@@ -513,7 +514,7 @@ export const astGrepToolRenderer = {
 	renderCall(args: AstGrepRenderArgs, _options: RenderResultOptions, uiTheme: Theme): Component {
 		const meta: string[] = [];
 		const scopePaths = toPathList(args.path ?? args.paths);
-		if (scopePaths.length) meta.push(`in ${scopePaths.join(", ")}`);
+		if (scopePaths.length) meta.push(formatScopeMeta(scopePaths));
 		if (args.skip !== undefined && args.skip > 0) meta.push(`skip:${args.skip}`);
 
 		const description = args.pat ?? "?";
@@ -542,7 +543,7 @@ export const astGrepToolRenderer = {
 		if (matchCount === 0) {
 			const description = args?.pat;
 			const meta = ["0 matches"];
-			if (details?.scopePath) meta.push(`in ${details.scopePath}`);
+			if (details?.scopePath) meta.push(formatScopeMeta(details.scopePath));
 			if (filesSearched > 0) meta.push(`searched ${filesSearched}`);
 			const header = renderStatusLine({ icon: "warning", title: "AST Grep", description, meta }, uiTheme);
 			const lines = [header, formatEmptyMessage("No matches found", uiTheme)];
@@ -555,7 +556,7 @@ export const astGrepToolRenderer = {
 
 		const summaryParts = [formatCount("match", matchCount), formatCount("file", fileCount)];
 		const meta = [...summaryParts];
-		if (details?.scopePath) meta.push(`in ${details.scopePath}`);
+		if (details?.scopePath) meta.push(formatScopeMeta(details.scopePath));
 		meta.push(`searched ${filesSearched}`);
 		if (limitReached) meta.push(uiTheme.fg("warning", "limit reached"));
 		const description = args?.pat;

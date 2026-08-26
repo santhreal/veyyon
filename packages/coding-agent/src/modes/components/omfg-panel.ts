@@ -1,5 +1,11 @@
 import { type Component, Container, Markdown, Spacer, Text, type TUI } from "@veyyon/tui";
-import { replaceTabs } from "../../tools/render-utils";
+import {
+	replaceTabs,
+	shortenEmbeddedPaths,
+	shortenPath,
+	TRUNCATE_LENGTHS,
+	truncateToWidth,
+} from "../../tools/render-utils";
 import { getMarkdownTheme } from "../theme/markdown-theme";
 import { theme } from "../theme/theme";
 import { COMPOSER_INSET_COLS } from "./composer-chrome";
@@ -96,8 +102,13 @@ export class OmfgPanelComponent extends Container {
 
 	#rebuild(): void {
 		mountTranscriptBlock(this, {
-			header: theme.bold(theme.fg("accent", replaceTabs(`/omfg ${this.#complaint}`))),
-			subheader: theme.fg("muted", replaceTabs(this.#status)),
+			header: theme.bold(
+				theme.fg("accent", truncateToWidth(replaceTabs(`/omfg ${this.#complaint}`), TRUNCATE_LENGTHS.LINE)),
+			),
+			subheader: theme.fg(
+				"muted",
+				replaceTabs(truncateToWidth(shortenEmbeddedPaths(this.#status), TRUNCATE_LENGTHS.LINE)),
+			),
 			body: this.#contentComponent(),
 			footer: this.#footerLine(),
 		});
@@ -114,7 +125,7 @@ export class OmfgPanelComponent extends Container {
 			case "saved":
 				return theme.fg(
 					"success",
-					`${theme.status.success} Registered live · ${replaceTabs(this.#savedPath ?? "saved")} · Esc dismiss`,
+					`${theme.status.success} Registered live · ${replaceTabs(truncateToWidth(shortenPath(this.#savedPath ?? "saved"), TRUNCATE_LENGTHS.TITLE))} · Esc dismiss`,
 				);
 			case "rejected":
 				return theme.fg("warning", `${theme.status.warning} Not saved · Esc dismiss`);
@@ -127,7 +138,11 @@ export class OmfgPanelComponent extends Container {
 
 	#contentComponent(): Component {
 		if (this.#state === "error") {
-			return new Text(theme.fg("error", replaceTabs(this.#errorMessage ?? "Unknown error")), COMPOSER_INSET_COLS, 0);
+			return new Text(
+				theme.fg("error", replaceTabs(shortenEmbeddedPaths(this.#errorMessage ?? "Unknown error"))),
+				COMPOSER_INSET_COLS,
+				0,
+			);
 		}
 		const text = replaceTabs(this.#preview).trim();
 		if (!text) {
