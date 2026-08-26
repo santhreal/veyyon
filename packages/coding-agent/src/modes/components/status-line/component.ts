@@ -1511,9 +1511,11 @@ export class StatusLineComponent implements Component {
 		// The badge shifts every segment right by its width; the recorded bounds
 		// answer in columns of the RETURNED line (quietSegmentAt hit-testing), so
 		// they shift with it.
-		const shifted = bounds
-			.filter(e => e.start < budget)
-			.map(e => ({ id: e.id, start: e.start + badgeWidth, end: Math.min(e.end, budget) + badgeWidth }));
+		const shifted: QuietSegmentBounds[] = [];
+		for (const e of bounds) {
+			if (e.start < budget)
+				shifted.push({ id: e.id, start: e.start + badgeWidth, end: Math.min(e.end, budget) + badgeWidth });
+		}
 		this.#quietLineBounds = shifted;
 		if (left && right) {
 			return badge + left + padding(budget - visibleWidth(left) - visibleWidth(right)) + right;
