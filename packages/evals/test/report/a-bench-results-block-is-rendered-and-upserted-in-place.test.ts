@@ -4,11 +4,18 @@
  * block in place, never appends a second copy (the exact scattering the tool
  * was built to stop), and a doc with a broken marker pair fails loudly
  * instead of silently duplicating or truncating prose.
+ *
+ * Two ways of losing that idempotence are pinned below. A key is interpolated
+ * into an HTML comment, so a key holding `-->`, `<` or a newline closed the
+ * comment early: the markers rendered as prose, the pair could no longer be
+ * found, and the next emit appended a second block. And a doc whose
+ * "## Benchmark results" heading is followed by another section took the block
+ * at the end of the file, filing it under whichever heading came last.
  */
 import { describe, expect, it } from "bun:test";
 import type { BenchmarkSnapshot } from "../../src/manager/benchmarks";
 import type { RunRow } from "../../src/manager/store";
-import { renderBenchResultsBlock, upsertBenchResultsBlock } from "../../src/report/bench-report";
+import { renderBenchResultsBlock, requireBlockKey, upsertBenchResultsBlock } from "../../src/report/bench-report";
 
 function fakeRun(overrides: Partial<RunRow> = {}): RunRow {
 	return {
@@ -114,5 +121,50 @@ describe("upsertBenchResultsBlock", () => {
 		expect(() => upsertBenchResultsBlock("x\n<!-- bench-results:k -->\ny\n", "k", block)).toThrow(
 			/no closing marker/,
 		);
+	});
+
+	it("files the block at the end of the results section, not at the end of the page", () => {
+		const doc = "# F\n\n## Benchmark results\n\nintro\n\n## Notes\n\ntail\n";
+
+		const out = upsertBenchResultsBlock(doc, "k", block);
+
+		expect(out).toBe(`# F\n\n## Benchmark results\n\nintro\n\n${block}\n\n## Notes\n\ntail\n`);
+		expect(out.indexOf("NEW")).toBeLessThan(out.indexOf("## Notes"));
+	});
+
+	it("keeps a deeper subsection inside the results section", () => {
+		const doc = "# F\n\n## Benchmark results\n\n### Parity\n\nnumbers\n\n## Notes\n\ntail\n";
+
+		const out = upsertBenchResultsBlock(doc, "k", block);
+
+		expect(out).toBe(`# F\n\n## Benchmark results\n\n### Parity\n\nnumbers\n\n${block}\n\n## Notes\n\ntail\n`);
+	});
+
+	it("stops at a following h1 as well as an h2", () => {
+		const doc = "## Benchmark results\n\nintro\n\n# Appendix\n\ntail\n";
+
+		const out = upsertBenchResultsBlock(doc, "k", block);
+
+		expect(out).toBe(`## Benchmark results\n\nintro\n\n${block}\n\n# Appendix\n\ntail\n`);
+	});
+
+	it("stays idempotent on a page whose results section is not the last one", () => {
+		const doc = "# F\n\n## Benchmark results\n\nintro\n\n## Notes\n\ntail\n";
+		const once = upsertBenchResultsBlock(doc, "k", block);
+
+		expect(upsertBenchResultsBlock(once, "k", block)).toBe(once);
+	});
+
+	it("refuses a key that would not survive its own marker", () => {
+		for (const key of ["", "a -->b", "a\nb", "a<b", "a b", "k/../x", "café"]) {
+			expect(() => upsertBenchResultsBlock("# F\n", key, block)).toThrow(/Invalid bench block key/);
+			expect(() => renderBenchResultsBlock(fakeRun(), fakeSnapshot(), key)).toThrow(/Invalid bench block key/);
+		}
+	});
+
+	it("accepts the keys a doc actually uses", () => {
+		for (const key of ["argot", "deepswe", "edit_v2", "harbor.2", "a-b"]) {
+			expect(requireBlockKey(key)).toBe(key);
+		}
 	});
 });
