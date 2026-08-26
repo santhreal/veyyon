@@ -76,6 +76,7 @@ import {
 	sha256File,
 } from "./preflight";
 import { parseTrialResult, type TrialComparisonContext } from "./trial-result";
+import { drainTrialQueueInPairedWaves } from "./trial-scheduler";
 
 interface PriorRunResults {
 	model?: string;
@@ -618,12 +619,18 @@ export async function runBench(argv: string[]): Promise<void> {
 	const totalQueued = queue.length;
 	const canarySize = clampLow(jobParallel, 1, totalQueued);
 	let canaryTripped = false;
+	// One slot per arm means the same (task, repeat) cell can run its whole arm set
+	// together, so no arm races ahead into a different provider load or cache state.
+	const pairedWaveScheduling = jobParallel === arms.length;
 
 	console.log(
 		`deepswe-bench: ${arms.length} arm(s) x ${tasks.length} task(s)` +
 			`${repeats > 1 ? ` x ${repeats} repeat(s)` : ""} = ${queue.length} run(s), model ${model}`,
 	);
 	console.log(`assets: ${assetsDir} (binary sha256 ${binarySha.slice(0, 12)}) → jobs under ${outRoot}`);
+	console.log(
+		`scheduling: ${pairedWaveScheduling ? `paired waves of ${arms.length} arm(s) per task` : `worker pool of ${clampLow(jobParallel, 1, totalQueued)} trial(s)`}`,
+	);
 
 	if (args.dryRun) {
 		console.log("\nDRY RUN — every pre-run guard passed. No container was started and no report written.\n");
@@ -806,15 +813,23 @@ export async function runBench(argv: string[]): Promise<void> {
 		}
 	}
 
-	const workers = Array.from({ length: Math.max(1, jobParallel) }, async () => {
-		for (;;) {
-			if (canaryTripped) return;
-			const next = queue.shift();
-			if (!next) return;
-			await runOne(next.arm, next.task, next.repeat);
-		}
-	});
-	await Promise.all(workers);
+	if (pairedWaveScheduling) {
+		await drainTrialQueueInPairedWaves(queue, {
+			armsPerWave: arms.length,
+			shouldStop: () => canaryTripped,
+			run: next => runOne(next.arm, next.task, next.repeat),
+		});
+	} else {
+		const workers = Array.from({ length: Math.max(1, jobParallel) }, async () => {
+			for (;;) {
+				if (canaryTripped) return;
+				const next = queue.shift();
+				if (!next) return;
+				await runOne(next.arm, next.task, next.repeat);
+			}
+		});
+		await Promise.all(workers);
+	}
 
 	if (canaryTripped) process.exit(1);
 

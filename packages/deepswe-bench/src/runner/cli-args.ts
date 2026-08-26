@@ -22,6 +22,13 @@ export interface BenchCliArgs {
 	raw: Record<string, string>;
 }
 
+/**
+ * Flags that take no value. `--dry-run tasks/smoke.txt` must leave the path
+ * alone rather than swallowing it, and the registry is what the invariant suite
+ * sweeps, so a new valueless flag is covered the moment it is declared here.
+ */
+export const VALUELESS_FLAGS = { "dry-run": true, list: true } as const satisfies Record<string, true>;
+
 export function parseArgs(argv: string[]): Record<string, string> {
 	const out: Record<string, string> = {};
 	for (let i = 0; i < argv.length; i++) {
@@ -34,14 +41,19 @@ export function parseArgs(argv: string[]): Record<string, string> {
 			const eq = arg.indexOf("=");
 			if (eq !== -1) {
 				out[arg.slice(2, eq)] = arg.slice(eq + 1);
+				continue;
+			}
+			const name = arg.slice(2);
+			if (Object.hasOwn(VALUELESS_FLAGS, name)) {
+				out[name] = "";
+				continue;
+			}
+			const next = argv[i + 1];
+			if (next !== undefined && !next.startsWith("--")) {
+				out[name] = next;
+				i++;
 			} else {
-				const next = argv[i + 1];
-				if (next !== undefined && !next.startsWith("--")) {
-					out[arg.slice(2)] = next;
-					i++;
-				} else {
-					out[arg.slice(2)] = "true";
-				}
+				out[name] = "true";
 			}
 		}
 	}

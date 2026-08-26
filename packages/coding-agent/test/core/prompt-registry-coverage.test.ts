@@ -561,9 +561,9 @@ describe("each prompt directory owns its rows and registry.ts aggregates every o
 		// accept any string, a typo would compile, and `PROMPTS[typo]` would render as `undefined`. The
 		// compile-time half of this lives in the row modules' `satisfies` clause; this is the runtime
 		// half, which fails if a row module ever stops contributing its ids.
-		// 169 since `session/code-review-reminder` was added and `tools/ast-grep`, `tools/glob`
-		// and `tools/grep` collapsed into the single `tools/search` row.
-		expect(PROMPT_IDS.length).toBe(169);
+		// 170 since `session/code-review-reminder` and `tools/runtime` were added and `tools/ast-grep`,
+		// `tools/glob` and `tools/grep` collapsed into the single `tools/search` row.
+		expect(PROMPT_IDS.length).toBe(170);
 		expect(PROMPT_IDS).toContain("tools/read");
 		expect(new Set(PROMPT_IDS).size).toBe(PROMPT_IDS.length);
 	});

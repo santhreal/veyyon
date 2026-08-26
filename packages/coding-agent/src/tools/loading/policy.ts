@@ -264,6 +264,8 @@ export interface BuiltinToolPermissionInputs {
 	launchEnabled: boolean;
 	/** Result of {@link resolveEvalToolAvailability}. */
 	evalAllowed: boolean;
+	/** `tools.unifiedRuntime` — suppresses eval and launch, activates runtime. */
+	unifiedRuntime: boolean;
 	/** `debug.enabled`. */
 	debugEnabled: boolean;
 	/** `ToolSession.requireYieldTool` — a session that must `yield` never gets `todo`. */
@@ -327,8 +329,9 @@ export function isBuiltinToolAllowed(name: string, inputs: BuiltinToolPermission
 	if (name === TOOL.goal) return inputs.goalEnabled;
 	if (name === TOOL.lsp) return inputs.enableLsp && inputs.lspEnabled && inputs.lspTool;
 	if (name === TOOL.bash) return inputs.bashEnabled;
-	if (name === TOOL.launch) return inputs.launchEnabled;
-	if (name === TOOL.eval) return inputs.evalAllowed;
+	if (name === TOOL.launch) return !inputs.unifiedRuntime && inputs.launchEnabled;
+	if (name === TOOL.eval) return !inputs.unifiedRuntime && inputs.evalAllowed;
+	if (name === TOOL.runtime) return inputs.unifiedRuntime && (inputs.evalAllowed || inputs.launchEnabled);
 	if (name === TOOL.debug) return inputs.debugEnabled;
 	if (name === TOOL.todo) return !inputs.requireYieldTool && inputs.todoEnabled;
 	if (name === TOOL.github) return inputs.githubEnabled;

@@ -289,7 +289,7 @@ describe("a tool call the model sent without its required argument", () => {
 		// mandatory. A second name in either list is a tool that stopped being
 		// validated by anyone, and this is where that decision gets recorded.
 		expect(optedOut).toEqual(["yield"]);
-		expect(noRequiredArguments.sort()).toEqual(["job", "todo"]);
+		expect(noRequiredArguments.sort()).toEqual(["job", "runtime", "todo"]);
 		// And the sweep did drive something: an empty `checked` would satisfy
 		// every assertion above.
 		expect(checked.length).toBeGreaterThan(20);

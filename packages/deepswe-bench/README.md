@@ -99,7 +99,7 @@ Before and during execution:
 | `--model <id>` | Model identifier (defaults to `opencode/deepseek-ai/DeepSeek-V3.2`) |
 | `--limit <n>` | Representative task limit sampled evenly across the task list |
 | `--repeats <n>` | Samples per `(arm, task)` cell |
-| `--jobs <n>` | Maximum parallel Docker container trials |
+| `--jobs <n>` | Maximum parallel Docker container trials. When `n` equals the arm count the runner drains in paired waves: one trial per arm for the same task starts together, and the next task waits for the whole wave to settle |
 | `--out <dir>` | Output directory for artifacts and reports |
 | `--binary <path>` | Pin a specific build of the `vey` binary |
 | `--trial-timeout <sec>` | Override per-trial timeout in seconds |

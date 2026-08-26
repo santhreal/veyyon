@@ -1,24 +1,42 @@
-Run one step of code in a persistent kernel.
+{{#ifAll hasEval launch}}Execute persistent code evaluation cells or supervise long-running background processes.{{else}}{{#if hasEval}}Run one step of code in a persistent kernel.{{/if}}{{#if launch}}Supervises a process that does NOT end on its own, shared by every veyyon instance in the same directory.{{/if}}{{/ifAll}}
+
+<routing>
+- Pick by how the process ENDS, never by how long it runs.
+{{#if hasEval}}- `op="exec"`: Run one step of code in a persistent evaluation kernel. State persists per language across calls within each language. Use for computation, data inspection, rapid iteration, script-like workflows, or multi-step logic.
+{{/if}}{{#if launch}}- Launch operations (`start`, `logs`, `wait`, `send`, `stop`, `restart`, `list`, `describe`): Supervise processes that do NOT end on their own (servers, daemons, watchers, REPLs). A supervised process reports its own exit as a background job, so you never poll.
+{{/if}}- Ends on its own with a final exit code (test suite, build, benchmark, migration, install — any command with a last line)? That is `bash`, backgrounded if it is slow.
+</routing>
 
 <instruction>
-**One eval call = one cell = one logical step.** State persists per language across eval calls, tool calls, and `task` subagents, so imports go in one call, definitions in the next, then the test, then the use, each its own call. Parallelize *within* a cell with `parallel(thunks)`, never by batching steps.
+{{#if hasEval}}## Kernel Evaluation (`op="exec"`)
+**One exec call = one cell = one logical step.** State persists per language across exec calls, tool calls, and `task` subagents, so imports go in one call, definitions in the next, then the test, then the use, each its own call. Parallelize *within* a cell with `parallel(thunks)`, never by batching steps.
 
 Fields:
-
-- `language` — {{#if py}}`"py"` IPython kernel{{/if}}{{#ifAll py js}}, {{/ifAll}}{{#if js}}`"js"` persistent JavaScript VM{{/if}}{{#if rb}}{{#ifAny py js}}, {{/ifAny}}`"rb"` persistent Ruby kernel{{/if}}{{#if jl}}{{#ifAny py js rb}}, {{/ifAny}}`"jl"` persistent Julia kernel{{/if}}.
-- `code` — cell body, verbatim. Newlines/quotes JSON-encoded; no fences, no headers.
+- `language` (required) — {{#if py}}`"py"` IPython kernel{{/if}}{{#ifAll py js}}, {{/ifAll}}{{#if js}}`"js"` persistent JavaScript VM{{/if}}{{#if rb}}{{#ifAny py js}}, {{/ifAny}}`"rb"` persistent Ruby kernel{{/if}}{{#if jl}}{{#ifAny py js rb}}, {{/ifAny}}`"jl"` persistent Julia kernel{{/if}}.
+- `code` (required) — cell body, verbatim. Newlines/quotes JSON-encoded; no fences, no headers.
 - `title` (optional) — short transcript label (e.g. `"imports"`).
 - `timeout` (optional) — seconds; default 30, clamped to 1-3600; `0` disables the cell timeout. Raise only for heavy compute or long non-agent tool calls.
-- `reset` (optional) — wipe this language's kernel first.{{#ifAll py js}} Per-language: a `py` reset never touches the JS VM.{{/ifAll}}
+- `reset` (optional) — wipe this language's kernel before running.{{#ifAll py js}} Per-language: a `py` reset never touches the JS VM.{{/ifAll}}
 
 {{#if py}}Live event loop: use top-level `await` directly; `asyncio.run(…)` raises "cannot be called from a running event loop".{{/if}}
 {{#if js}}JS runs under **Bun**: Bun globals/APIs are available (`Bun.file`, `Bun.write`, `Bun.$`, `fetch`, `Buffer`); top-level `await`/`return` work directly.{{/if}}
 {{#if rb}}Ruby: synchronous; helper options are keyword args (e.g. `output("id", limit: 2)`); the last expression auto-displays unless it is `nil`, an assignment, or a definition (like IRB).{{/if}}
 {{#if jl}}Julia: synchronous; helper options are standard keyword args (e.g. `output("id", limit=2)`); the last expression auto-displays unless it is an assignment or a definition (like the Julia REPL).{{/if}}
 On error, fix and re-run only the failing step — prior calls' state survives.
-</instruction>
+{{/if}}
+{{#if launch}}## Process Supervision (`start`, `logs`, `wait`, `send`, `stop`, `restart`, `list`, `describe`)
+- The schema documents every field; these are the facts it cannot state.
+- `start` BLOCKS until readiness or `ready.timeout`, so a pattern that never prints costs the whole timeout. Without `ready` it returns as soon as the process is spawned.
+- Names are unique per project directory. A completed name MAY be started again; a live name MUST be stopped or restarted.
+- Every op except `start` and `list` addresses the stable `name`.
+- `logs` with `follow` returns a cursor; pass it back on the next call to continue where you stopped.
+- `wait` blocks. An exit already arrives on its own, so `wait` is for readiness or a pattern you need before the next step — never a poll loop.
+- `send.keys` accepts ENTER, TAB, ESCAPE, CTRL_C, CTRL_D, UP, DOWN, LEFT, RIGHT. PTY input is serialized: many clients MAY observe, but writes share one input stream.
+- `stop` terminates the process tree gracefully before hard-kill; `restart` reuses the retained spec. Neither reports an exit you asked for, and `on-failure`/`always` restarts use bounded backoff.
+- The broker stops every non-persistent process once the last veyyon in this directory exits. `persist` opts out of that; `detached` also survives broker shutdown and reports no exit.
+{{/if}}</instruction>
 
-<prelude>
+{{#if hasEval}}<prelude>
 {{#ifAll py js}}Same helpers + arg order, both runtimes. Python: sync, options = trailing kwargs. JS: async/`await`able, options = ONE trailing object literal, never positional (extras throw).{{else}}{{#if py}}Sync; options = trailing kwargs.{{/if}}{{#if js}}Async/`await`able; options = ONE trailing object literal, never positional (extras throw).{{/if}}{{/ifAll}}{{#if rb}} Ruby: sync, options = trailing keyword args.{{/if}}{{#if jl}} Julia: sync, options = trailing keyword args.{{/if}}
 ```
 display(value) → None
@@ -31,10 +49,6 @@ write(path, content) → str
     Write file (creates parents) → resolved path. `local://…` persists across turns/subagents.
 env(key?=None, value?=None) → str | None | dict
     No args → full env dict; one → value of `key`; two → set `key=value`, return value.
-kv.get(key, default?=None) / kv.set(key, value) / kv.delete(key) / kv.list()
-    Session store on disk that OUTLIVES the kernel: values survive `reset`, crashes, and continuations, shared across languages. Values move by name only (never echoed to status/output) and must be JSON-serializable; store handles and tokens here, payloads in files.
-defs() → list[str]
-    Names this kernel already defines (user code only, with shapes). Check before re-sending a definition.
 output(*ids, format?="raw", query?=None, offset?=None, limit?=None) → str | dict | list[dict]
     Task/agent output by id; one → text/dict, multiple → list.
 tool.<name>(args) → unknown
@@ -70,16 +84,10 @@ Pipe handles through stage helpers to build an acyclic dependency graph:
 - **Acyclic only.** A node never waits on its own descendant.
 </dag>
 {{/if}}
-{{#if pyWorkspace}}
-<workspace>
-Use the persistent Python kernel as your working data environment:
-- **Retain large results in variables.** Store raw `tool.*` outputs (large file reads, command outputs, search results) in top-level variables rather than dumping raw payloads to display.
-- **Inspect and transform in-kernel.** Slice, filter, search, regex-match, and parse data with Python expressions and standard library modules directly.
-- **Define reusable helpers.** Write helper functions for repeated repository queries, multi-file transformations, or batch checks, and reuse them across subsequent cells.
-- **Display only compact conclusions.** Print or `display()` structured summaries, diffs, or exact answers; keep intermediate bulk data inside kernel memory.
-</workspace>
 {{/if}}
 
 <critical>
-Prior top-level names (`data`, `sessions`, helpers, imports) survive into the next eval call — reuse them; NEVER re-import, re-require, or re-declare a helper. Re-read a file only if it may have changed since the last read. Re-run setup only after `reset`, a crash, or a `NameError`/`ReferenceError`.
-</critical>
+{{#if launch}}- Readiness MUST be observed; process creation alone is not readiness.
+- Use `stop`; NEVER kill an unverified PID through bash.
+{{/if}}{{#if hasEval}}- Prior top-level names (`data`, `sessions`, helpers, imports) survive into the next exec call — reuse them; NEVER re-import, re-require, or re-declare a helper. Re-read a file only if it may have changed since the last read. Re-run setup only after `reset`, a crash, or a `NameError`/`ReferenceError`.
+{{/if}}</critical>
