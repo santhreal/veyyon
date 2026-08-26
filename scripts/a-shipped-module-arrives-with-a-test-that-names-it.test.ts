@@ -259,7 +259,6 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/coding-agent/src/config/settings-domains/interaction.ts",
 	"packages/coding-agent/src/config/settings-domains/tasks.ts",
 	"packages/coding-agent/src/debug/remote-debugger.ts",
-	"packages/coding-agent/src/discovery/agents-md.ts",
 	"packages/coding-agent/src/discovery/windsurf.ts",
 	"packages/coding-agent/src/edit/hashline/params.ts",
 	"packages/coding-agent/src/eval/agent-bridge-name.ts",
