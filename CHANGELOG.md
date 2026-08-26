@@ -77,6 +77,7 @@
 
 ### Fixed
 
+- A Kagi search refused for exhausted credits reports that, instead of a generic request failure, on any status code other than 401, 402 and 403.
 - A rendered tool error shortens embedded home-directory paths, so an error card no longer prints the home directory and no longer spends its width budget on the prefix instead of the reason.
 - A job label truncated for display keeps a regional-indicator flag whole instead of emitting half of one, and an empty width budget yields an empty label rather than an ellipsis a column too wide.
 - Brave and Jina web search honor an API key held in the credential store, instead of reporting themselves unconfigured unless the key was also exported as an environment variable.
