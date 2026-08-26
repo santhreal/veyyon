@@ -12,7 +12,7 @@ import { harborRunnerArgs } from "../backends/harbor/launch-args";
 import { requireBenchmark } from "../manager/benchmarks";
 import { experimentOf, knownExperimentIds } from "../manager/experiments";
 import { assertSafeJobName, type LaunchRecord, type RunRow, type RunStore } from "../manager/store";
-import { evalsPackageDir } from "../paths";
+import { evalsPackageDir, requirePathSegment } from "../paths";
 import type { LaunchRequest } from "../wire";
 
 interface ManagedChild {
@@ -43,6 +43,26 @@ function erroredExceptionTypes(jobDir: string): string[] {
 	} catch {
 		return [];
 	}
+}
+
+/**
+ * Opens a run's manager log for append and writes the line that says what is starting.
+ *
+ * The log was opened with "w", so resuming a run truncated the log of the attempt being
+ * resumed: the output explaining why the run needed resuming was gone at the moment it was
+ * wanted. Each spawn now adds a header line and the earlier output stays above it.
+ */
+export function openRunnerLog(
+	jobsDir: string,
+	jobName: string,
+	argv: readonly string[],
+	now: () => number = Date.now,
+): number {
+	const logDir = path.join(jobsDir, "_manager", "logs");
+	fs.mkdirSync(logDir, { recursive: true });
+	const fd = fs.openSync(path.join(logDir, `${requirePathSegment(jobName, "job name")}.log`), "a");
+	fs.writeSync(fd, `=== ${new Date(now()).toISOString()} ${argv.join(" ")}\n`);
+	return fd;
 }
 
 export class RunnerManager {
@@ -257,9 +277,7 @@ export class RunnerManager {
 	/** Spawn a detached runner child, wire its exit back into the store, and register the run. */
 	#spawnRunner(argv: string[], cwd: string, record: Omit<LaunchRecord, "pid">): number {
 		const jobName = record.jobName;
-		const logDir = path.join(this.#jobsDir, "_manager", "logs");
-		fs.mkdirSync(logDir, { recursive: true });
-		const logFile = fs.openSync(path.join(logDir, `${jobName}.log`), "w");
+		const logFile = openRunnerLog(this.#jobsDir, jobName, argv);
 		const proc = Bun.spawn(argv, {
 			cwd,
 			stdout: logFile,

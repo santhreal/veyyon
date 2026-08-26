@@ -17,6 +17,10 @@
  * `RunStore` on a temp jobs directory, and every case here refuses before a child process could
  * exist, so nothing in it spawns a runner.
  *
+ * The same class covers the manager's own log. It was opened with "w", so resuming a run
+ * truncated the log of the attempt being resumed: the output explaining why the run needed
+ * resuming was gone at the moment it was wanted.
+ *
  * What it does not catch: the live-child branch of `cancel`, which needs a spawned runner to
  * signal, and the reconciliation `syncActive` performs, which is proven where the store is.
  */
@@ -26,7 +30,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { RunStore } from "../../src/manager/store";
-import { RunnerManager } from "../../src/server/runner";
+import { openRunnerLog, RunnerManager } from "../../src/server/runner";
 import type { LaunchRequest } from "../../src/wire";
 
 const cleanups: Array<() => void> = [];
@@ -186,5 +190,39 @@ describe("a cancel of a run whose process is gone", () => {
 	it("refuses a path in the name it is asked to cancel", () => {
 		const h = harness();
 		expect(() => h.manager.cancel("../escaped")).toThrow();
+	});
+});
+
+describe("a run's manager log", () => {
+	it("keeps the earlier attempt's output when the run is spawned again", () => {
+		const h = harness();
+		const logPath = path.join(h.jobsDir, "_manager", "logs", "twice.log");
+
+		const first = openRunnerLog(h.jobsDir, "twice", ["bun", "runner.ts", "--model", "m"], () => 0);
+		fs.writeSync(first, "first attempt said this\n");
+		fs.closeSync(first);
+
+		const second = openRunnerLog(h.jobsDir, "twice", ["bun", "runner.ts", "--resume", "twice"], () => 1000);
+		fs.writeSync(second, "second attempt said that\n");
+		fs.closeSync(second);
+
+		const written = fs.readFileSync(logPath, "utf-8");
+		expect(written).toContain("first attempt said this");
+		expect(written).toContain("second attempt said that");
+		expect(written.indexOf("first attempt")).toBeLessThan(written.indexOf("second attempt"));
+	});
+
+	it("states what each spawn ran, so two attempts are told apart", () => {
+		const h = harness();
+		const fd = openRunnerLog(h.jobsDir, "stated", ["bun", "runner.ts", "--resume", "stated"], () => 0);
+		fs.closeSync(fd);
+		const written = fs.readFileSync(path.join(h.jobsDir, "_manager", "logs", "stated.log"), "utf-8");
+		expect(written).toStartWith("=== 1970-01-01T00:00:00.000Z bun runner.ts --resume stated\n");
+	});
+
+	it("refuses a job name that is a path rather than writing outside the log directory", () => {
+		const h = harness();
+		expect(() => openRunnerLog(h.jobsDir, "../escaped", ["bun", "runner.ts"])).toThrow();
+		expect(fs.existsSync(path.join(h.jobsDir, "_manager", "escaped.log"))).toBe(false);
 	});
 });
