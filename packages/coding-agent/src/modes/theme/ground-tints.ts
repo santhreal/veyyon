@@ -22,6 +22,10 @@ import type { PaintGroundPlan } from "@veyyon/tui";
 
 /** Currently detected terminal background (`#rrggbb`), if any. */
 let detectedGround: string | undefined;
+/** Cached parsed channels of {@link detectedGround}; invalidated when it changes. */
+let detectedGroundRgb: [number, number, number] | undefined;
+/** Cached luma pole (0 or 255) of {@link detectedGround}. */
+let detectedGroundPole: number;
 
 /** The ground this process painted onto the terminal (`#rrggbb`), if any. */
 let paintedGround: string | undefined;
@@ -37,6 +41,13 @@ export function setDetectedTerminalGround(hex: string | undefined): void {
 	const normalized = hex !== undefined && HEX_RE.test(hex) ? hex.toLowerCase() : undefined;
 	if (normalized === detectedGround) return;
 	detectedGround = normalized;
+	if (normalized !== undefined) {
+		const rgb = channels(normalized);
+		detectedGroundRgb = rgb;
+		detectedGroundPole = luma(rgb) < 0.5 ? 255 : 0;
+	} else {
+		detectedGroundRgb = undefined;
+	}
 	for (const listener of listeners) listener();
 }
 
@@ -96,6 +107,7 @@ export function onGroundTintChange(listener: () => void): void {
 /** Test hook: drop all listeners, the detected ground, and the painted one. */
 export function resetGroundTintsForTest(): void {
 	detectedGround = undefined;
+	detectedGroundRgb = undefined;
 	paintedGround = undefined;
 	listeners.length = 0;
 }
@@ -140,14 +152,10 @@ function luma(rgb: [number, number, number]): number {
  * what keeps the chrome equally quiet everywhere.
  */
 function tintFromGround(amount: number): string | undefined {
-	if (detectedGround === undefined) return undefined;
-	const rgb = channels(detectedGround);
-	const pole = luma(rgb) < 0.5 ? 255 : 0;
-	return toHex([
-		rgb[0] + (pole - rgb[0]) * amount,
-		rgb[1] + (pole - rgb[1]) * amount,
-		rgb[2] + (pole - rgb[2]) * amount,
-	]);
+	if (detectedGroundRgb === undefined) return undefined;
+	const [r, g, b] = detectedGroundRgb;
+	const pole = detectedGroundPole;
+	return toHex([r + (pole - r) * amount, g + (pole - g) * amount, b + (pole - b) * amount]);
 }
 
 /** Hairline / card outline: visible but structural (12% toward the pole). */
