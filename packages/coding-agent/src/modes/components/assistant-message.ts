@@ -144,6 +144,18 @@ export function resetThinkingSpeedTracker(): void {
 	sharedSpeedTracker.reset();
 }
 
+const HEX_LUT = "0123456789abcdef";
+
+/** Parse a hex byte pair at `offset` in a `#rrggbb` string. Returns -1 on invalid. */
+function hexPair(s: string, offset: number): number {
+	const hi = s.charCodeAt(offset);
+	const lo = s.charCodeAt(offset + 1);
+	const dHi = hi <= 57 ? hi - 48 : (hi & 0xdf) - 55;
+	const dLo = lo <= 57 ? lo - 48 : (lo & 0xdf) - 55;
+	if (dHi < 0 || dHi > 15 || dLo < 0 || dLo > 15) return -1;
+	return (dHi << 4) | dLo;
+}
+
 /**
  * Linear-interpolate two `#rrggbb` colors in sRGB space. `t` clamps to [0,1]:
  * `t = 0` → `from`, `t = 1` → `to`. Drives the streaming speed badge, fading
@@ -151,16 +163,17 @@ export function resetThinkingSpeedTracker(): void {
  */
 function lerpHex(from: string, to: string, t: number): string {
 	const k = t < 0 ? 0 : t > 1 ? 1 : t;
-	const fr = Number.parseInt(from.slice(1, 3), 16);
-	const fg = Number.parseInt(from.slice(3, 5), 16);
-	const fb = Number.parseInt(from.slice(5, 7), 16);
-	const tr = Number.parseInt(to.slice(1, 3), 16);
-	const tg = Number.parseInt(to.slice(3, 5), 16);
-	const tb = Number.parseInt(to.slice(5, 7), 16);
+	const fr = hexPair(from, 1);
+	const fg = hexPair(from, 3);
+	const fb = hexPair(from, 5);
+	const tr = hexPair(to, 1);
+	const tg = hexPair(to, 3);
+	const tb = hexPair(to, 5);
+	if (fr < 0 || fg < 0 || fb < 0 || tr < 0 || tg < 0 || tb < 0) return t >= 0.5 ? to : from;
 	const r = Math.round(fr + (tr - fr) * k);
 	const g = Math.round(fg + (tg - fg) * k);
 	const b = Math.round(fb + (tb - fb) * k);
-	return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`;
+	return `#${HEX_LUT[r >> 4]}${HEX_LUT[r & 0xf]}${HEX_LUT[g >> 4]}${HEX_LUT[g & 0xf]}${HEX_LUT[b >> 4]}${HEX_LUT[b & 0xf]}`;
 }
 
 /**
