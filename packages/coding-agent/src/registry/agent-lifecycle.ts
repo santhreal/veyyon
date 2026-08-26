@@ -196,11 +196,17 @@ export class AgentLifecycleManager {
 	 * disables its stage.
 	 */
 	adopt(id: string, opts: AdoptOptions): void {
+		// The bare alias names whichever agent drives the asking conversation, and
+		// a driving agent is never adopted: there is no owner to hand it to.
 		if (id === MAIN_AGENT_ID) return;
-		if (!this.#registry.get(id)) {
+		const ref = this.#registry.get(id);
+		if (!ref) {
 			logger.warn("AgentLifecycleManager.adopt: unknown agent id", { id });
 			return;
 		}
+		// Recognized by role rather than by name: a driving agent's id is derived
+		// from the conversation it drives, so there is no one id to compare with.
+		if (ref.kind === "main") return;
 		// A zero quiet budget means "never close", and that has to include the waiting
 		// case: honouring a waiting budget beside it would close exactly the agents most
 		// likely to be needed while leaving every ordinary one listed, which inverts the

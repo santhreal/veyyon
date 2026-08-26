@@ -6,6 +6,8 @@
 
 ### Added
 
+- `session.newKeepsBackground` decides what `/new` does to a turn still streaming: on (the default) keeps the old conversation running and says which one, off stops it and closes its provider stream before the new session starts.
+- The status line carries a background chip counting conversations this process is still running that no screen is showing, present in every preset and silent at zero.
 - The terminal renderer composer zone gains a formal defect oracle and automated invariant sweep suite covering prompt counts, output bleed, row mixing, footer alignment, mouse click routing, caret positioning, overflow, pad transparency, hairline integrity, and virtual scroll stability.
 - `prewalk.cheapModel` and `prewalk.strongModel` configure the cheap model prewalk switches into at the first edit and the strong model it starts on.
 - `/prewalk` accepts an optional model argument to arm a per-session target model override.
@@ -84,6 +86,7 @@
 
 ### Fixed
 
+- A conversation `/new` leaves running in the background keeps its own row in the agent registry instead of being overwritten by the session that replaced it, so it stays listed and its finished turn no longer marks the foreground conversation idle.
 - The `/resume` picker floats its card in the middle of the screen instead of drawing it against the top edge over a half-blank terminal, most visible right after `/new` or a profile switch, when the folder holds few enough sessions to make the card short.
 - Clearing memory waits the full deletion retry window before reporting the database files removed, instead of half of it, so a Windows SQLite lock that outlives `close()` no longer leaves files behind under a success message.
 - Ollama discovery keeps a configured base URL's path, so an endpoint mounted at a subpath behind a reverse proxy is found instead of reporting no models.

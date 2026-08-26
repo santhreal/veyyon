@@ -134,7 +134,7 @@ import { createSessionMemoryRuntimeContext, resolveMemoryBackend } from "./memor
 import type { MnemopiSessionState } from "./mnemopi/state";
 import { toolsPrompts } from "./prompts/tools/rows";
 import { AgentLifecycleManager } from "./registry/agent-lifecycle";
-import { AgentRegistry, MAIN_AGENT_ID } from "./registry/agent-registry";
+import { AgentRegistry, MAIN_AGENT_ID, mainAgentIdFor } from "./registry/agent-registry";
 import { createRepairToolCallArgumentsHook } from "./repair/agent-hook";
 import {
 	collectEnvSecrets,
@@ -2455,7 +2455,15 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			asyncJobManager ?? (isInProcessChildSession(options) ? AsyncJobManager.instance() : undefined);
 
 		const agentRegistry = options.agentRegistry ?? AgentRegistry.global();
-		const resolvedAgentId = options.agentId ?? options.parentTaskPrefix ?? MAIN_AGENT_ID;
+		// A driving agent is named for the conversation it starts, so two live
+		// top-level sessions in one process cannot collide on one key. Falls back
+		// to the bare alias only when there is no conversation id to name yet,
+		// which is the pre-existing behavior and cannot produce a second main.
+		const conversationId = sessionManager.getSessionId?.();
+		const resolvedAgentId =
+			options.agentId ??
+			options.parentTaskPrefix ??
+			(!sessionIsSubagent && conversationId ? mainAgentIdFor(conversationId) : MAIN_AGENT_ID);
 		const resolvedAgentDisplayName = options.agentDisplayName ?? (sessionIsSubagent ? "sub" : "main");
 		const agentKind = sessionIsSubagent ? ("sub" as const) : ("main" as const);
 		/**

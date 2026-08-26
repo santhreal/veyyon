@@ -74,7 +74,7 @@ import type { KeyId } from "../../config/keybindings";
 import type { MessageRenderer } from "../../extensibility/extensions/types";
 import { IrcBus, type IrcLogEntry } from "../../irc/bus";
 import { AgentLifecycleManager } from "../../registry/agent-lifecycle";
-import { AgentRegistry, MAIN_AGENT_ID } from "../../registry/agent-registry";
+import { AgentRegistry } from "../../registry/agent-registry";
 import { registerPersistedSubagents } from "../../registry/persisted-subagents";
 import { USER_INTERRUPT_LABEL } from "../../session/messages";
 import type { ObservableSession, SessionObserverRegistry } from "../session-observer-registry";
@@ -425,8 +425,10 @@ class LiveRosterPane implements Component {
 			}
 		}
 		// A nested spawn's parent, so a deep run reads as a tree rather than a flat
-		// list of strangers. Omitted for the common case of a child of the session.
-		if (agent.parentId && agent.parentId !== MAIN_AGENT_ID) {
+		// list of strangers. Omitted for the common case of a child of a driving
+		// agent, which is recognized by its role: its id names the conversation it
+		// drives, so there is no one name to compare against.
+		if (agent.parentId && !this.agents.some(row => row.id === agent.parentId && row.kind === "main")) {
 			parts.push(theme.fg("dim", `↳ ${replaceTabs(agent.parentId)}`));
 		}
 		if (agent.kind === "advisor") parts.push(theme.fg("warning", "read-only"));
@@ -982,7 +984,7 @@ export class AgentDashboard extends Container {
 	 * those included wait for {@link persistedSubagentsReady} first.
 	 */
 	get isEmpty(): boolean {
-		return this.#liveAgents.every(agent => agent.id === MAIN_AGENT_ID);
+		return this.#liveAgents.every(agent => agent.kind === "main");
 	}
 
 	/**
@@ -1446,7 +1448,7 @@ export class AgentDashboard extends Container {
 
 	/** Whether this roster row represents a child session the operator may terminate. */
 	#canTerminate(agent: LiveAgent): boolean {
-		return agent.id !== MAIN_AGENT_ID && agent.kind !== "advisor";
+		return agent.kind !== "main" && agent.kind !== "advisor";
 	}
 
 	/**
@@ -1464,7 +1466,7 @@ export class AgentDashboard extends Container {
 	}
 
 	#requestTermination(agent: LiveAgent): void {
-		if (agent.id === MAIN_AGENT_ID) {
+		if (agent.kind === "main") {
 			this.#notice = "The main session cannot be terminated from its own roster.";
 			this.#rebuildAndRender();
 			return;

@@ -67,7 +67,15 @@ export type QuietPart = { id: string; content: string; pin?: number };
  * the one the oldest contract here says must be the last thing standing. The ranking makes the
  * degradation ordered instead: the weakest ranked part goes, then the next, and the persistent
  * count is alone on the line before anything clips it.
- * Why each of the five outranks a badge:
+ * Why each of the six outranks a badge:
+ *
+ * `background` (6) counts the conversations this process is running that NO screen is showing.
+ * It outranks even the persistent subagent count, which is the only thing here it could be
+ * accused of crowding out: a running subagent is spending in a transcript the operator is
+ * looking at, and a handed-off conversation is spending somewhere they cannot look at all. It
+ * renders nothing at zero, so on the overwhelmingly common single-conversation line it costs
+ * the width it is worth, and the older contract below never observes it because that fixture
+ * has no background conversation.
  *
  * `subagents` (5) is the persistent running count. It is the last thing standing by an older
  * contract than any of the rest: `status-line-running-subagents.test.ts` narrows the footline
@@ -102,6 +110,7 @@ const RIGHT_PART_SHED_RANK: Record<string, number> = {
 	mode: 3,
 	location_right: 4,
 	subagents: 5,
+	background: 6,
 };
 
 /**

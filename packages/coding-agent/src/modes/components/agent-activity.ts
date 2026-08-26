@@ -16,7 +16,6 @@
  * a rendered frame.
  */
 import type { AgentKind, AgentRef, AgentStatus } from "../../registry/agent-registry";
-import { MAIN_AGENT_ID } from "../../registry/agent-registry";
 
 /**
  * Call signs handed to subagents, in order.
@@ -127,8 +126,11 @@ export interface LiveAgent {
  * agree; they now agree on the right answer.
  */
 function rosterOrder(a: AgentRef, b: AgentRef): number {
-	if (a.id === MAIN_AGENT_ID) return -1;
-	if (b.id === MAIN_AGENT_ID) return 1;
+	// A driving agent is recognized by its role, not by a name. Its id is derived
+	// from the conversation it drives, so a roster holding two of them still puts
+	// each one first among its own rows.
+	if (a.kind === "main" && b.kind !== "main") return -1;
+	if (b.kind === "main" && a.kind !== "main") return 1;
 	return a.createdAt - b.createdAt;
 }
 
@@ -164,7 +166,7 @@ export function collectLiveAgents(refs: readonly AgentRef[]): LiveAgent[] {
 	let advisorOrder = 0;
 	return ordered.map(ref => {
 		let callSign: string;
-		if (ref.id === MAIN_AGENT_ID || ref.kind === "main") {
+		if (ref.kind === "main") {
 			callSign = MAIN_CALL_SIGN;
 		} else if (ref.kind === "advisor") {
 			advisorOrder += 1;

@@ -71,12 +71,18 @@ export class SessionFocusController {
 	 */
 	async focusAgent(id: string): Promise<void> {
 		if (this.ctx.collabGuest) throw new Error("Viewing agents is unavailable in a collab session.");
-		if (id === MAIN_AGENT_ID) return this.unfocus();
 		// `?.()` because a driving session need not carry a registry id at all (an
-		// embedded or render-only host); an absent id falls back to `Main`, and a
-		// scope that resolves to undefined is permissive, so a host that cannot
-		// name itself keeps working rather than being locked out of its own agents.
-		const scope = this.registry.get(this.ctx.session.getAgentId?.() ?? MAIN_AGENT_ID)?.scope;
+		// embedded or render-only host); an absent id falls back to the bare alias,
+		// and a scope that resolves to undefined is permissive, so a host that
+		// cannot name itself keeps working rather than being locked out of its own
+		// agents.
+		const ownId = this.ctx.session.getAgentId?.() ?? MAIN_AGENT_ID;
+		const scope = this.registry.get(ownId)?.scope;
+		// Focusing the agent already driving this screen is a return to it. The
+		// alias means "whoever drives the conversation asking", which here is this
+		// one; another conversation's driving agent has its own id and is a
+		// stranger, so it takes the scope refusal below rather than this branch.
+		if (id === ownId || id === MAIN_AGENT_ID) return this.unfocus();
 		const target = this.registry.get(id);
 		if (target && !AgentRegistry.sameScope(target.scope, scope)) {
 			throw new Error(`Agent ${id} belongs to a different conversation and cannot be viewed from this one.`);
@@ -108,9 +114,10 @@ export class SessionFocusController {
 	async focusParent(): Promise<void> {
 		if (!this.#focusedAgentId) return;
 		const parentId = this.registry.get(this.#focusedAgentId)?.parentId;
-		if (parentId && parentId !== MAIN_AGENT_ID && this.registry.get(parentId)) {
-			return this.focusAgent(parentId);
-		}
+		// A driving agent is the top of the chain, so hopping to it is an unfocus
+		// rather than a focus. Recognized by role: its id names its conversation.
+		const parent = parentId ? this.registry.get(parentId) : undefined;
+		if (parent && parent.kind !== "main") return this.focusAgent(parent.id);
 		return this.unfocus();
 	}
 
