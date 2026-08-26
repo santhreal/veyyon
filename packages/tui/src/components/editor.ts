@@ -1949,7 +1949,9 @@ export class Editor implements Component, Focusable, MouseRoutable {
 		// renders — without this, cursor column accounting drifts by
 		// `(NFD cells − NFC cells)` and the visible glyph desyncs from the
 		// hardware cursor.
-		const cleanText = decodedText.replace(/\r\n?/g, "\n").normalize("NFC");
+		const cleanText = (decodedText.includes("\r") ? decodedText.replace(/\r\n?/g, "\n") : decodedText).normalize(
+			"NFC",
+		);
 
 		// Convert tabs to spaces (4 spaces per tab).
 		const tabExpandedText = cleanText.replace(/\t/g, "   ");
@@ -2373,7 +2375,7 @@ export class Editor implements Component, Focusable, MouseRoutable {
 		this.#resetKillSequence();
 		this.#recordUndoState();
 
-		const normalized = text.replace(/\r\n?/g, "\n");
+		const normalized = text.includes("\r") ? text.replace(/\r\n?/g, "\n") : text;
 		const lines = normalized.split("\n");
 
 		if (lines.length === 1) {
