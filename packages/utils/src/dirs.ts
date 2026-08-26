@@ -38,10 +38,8 @@ import { syncYamlTextToSettings } from "./yaml-sync";
 /** App name (e.g. "veyyon") */
 /**
  * The lowercase slug used in filesystem paths.
- *
- * Read from `app-identity.ts`, which also owns the capitalized `APP_DISPLAY_NAME` a person reads. The two used
- * to share this name across packages, and a slug in a notification title or a capitalized name in a path is
- * the kind of mistake nothing reports.
+ * Read from `app-identity.ts` which also owns `APP_DISPLAY_NAME`.
+ * Two names shared across packages caused slug-in-title or name-in-path mistakes.
  */
 export const APP_NAME: string = APP_DIRECTORY_SLUG;
 

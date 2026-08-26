@@ -1,25 +1,6 @@
 /**
- * Reading a `.env` file, and deciding which names and values may enter the environment at all.
- *
- * WHY THIS IS ITS OWN MODULE. Applying a user's `.env` happens in TWO phases and the two phases cannot
- * share a module. `$HOME/.env` needs nothing but `os.homedir()`, and `dirs.ts` has to see it: the resolver
- * builds its paths at module load, and `VEYYON_CODING_AGENT_DIR` or `XDG_CONFIG_HOME` arriving from
- * `$HOME/.env` decides what those paths ARE. `<configRoot>/.env` and `<agentDir>/.env` are the opposite
- * case: you cannot read them until you know where those directories are, so they can only be applied after
- * `dirs.ts` exists. `dotenv-home.ts` is phase one and `dirs.ts` imports it; `env.ts` is phase two and
- * imports `dirs.ts`.
- *
- * Both phases need the same parser and the same admission rules, and there is exactly one copy of each,
- * here, in a module that imports `node:fs` and one predicate. Two copies would be worse than a cycle: the
- * phases would disagree about which keys are acceptable, and a key admitted in one and rejected in the
- * other reads as a `.env` line that works in some processes.
- *
- * THE REPORTER IS A PARAMETER, not a default. Phase one runs before `logger.ts` can be imported (the logger
- * asks `dirs.ts` where the log directory is, which is the cycle this split exists to avoid), so it reports
- * through `process.emitWarning`, the same channel `dirs.ts` already uses at module scope. Phase two has the
- * logger and uses it. Neither may be omitted: a `.env` that exists and cannot be read is usually the file
- * holding the user's API keys, and the symptom of dropping it silently is an authentication failure nobody
- * can trace back to a permission bit (Law 10).
+ * Applying a user's `.env` happens in two phases that cannot share a module: `$HOME/.env` needs only `os.homedir()` and must run before `dirs.ts`.
+ * `<configRoot>/.env` and `<agentDir>/.env` can only be applied after `dirs.ts` exists. Both phases share one parser and one admission rule.
  */
 
 import * as fs from "node:fs";

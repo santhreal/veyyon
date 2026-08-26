@@ -32,21 +32,8 @@ export function defaultWarmup(iterations: number): number {
 }
 
 /**
- * Build a `bench(name, fn)` that runs `fn` `iterations` times, after a warmup that is not timed.
- *
- * It prints `<name>: <total>ms total (<perOp>ms/op, <warmup> warmup)` and returns the total elapsed
- * milliseconds, so a caller can compute a ratio between two runs without timing them again. The warmup
- * count is in the output because a reader comparing two numbers has to know what was excluded from each.
- *
- * WHY THE WARMUP EXISTS. This loop used to time the FIRST iteration along with the rest, so every figure
- * any bench here published included JIT tier-up. That distortion is largest exactly where these benches
- * are pointed: at functions costing hundreds of nanoseconds, where a few hundred microseconds of warmup is
- * a large fraction of the whole run. One script already ran its own warmup loop, which is the practice this
- * makes the default rather than something each caller has to remember.
- *
- * It is worth saying what the warmup did NOT explain, since that was the suspicion that prompted it: two
- * tui bench scripts disagree about whether the native key parser beats the TypeScript one, and they still
- * disagree with both of them warm. That difference is the input mix, not the cold start.
+ * Build a benchmark runner printing `<name>: <total>ms (<perOp>ms/op, <warmup> warmup)` and returning total elapsed ms.
+ * Untimed warmup prevents JIT tier-up distortion on sub-microsecond operations.
  */
 export function makeBench(iterations: number, options: BenchOptions = {}): (name: string, fn: () => void) => number {
 	const warmup = Math.max(0, Math.floor(options.warmup ?? defaultWarmup(iterations)));

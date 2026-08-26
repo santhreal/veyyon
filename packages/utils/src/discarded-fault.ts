@@ -1,20 +1,6 @@
 /**
- * The two contracts under which a failure is thrown away, each spelled as a call that states why.
- *
- * WHY THIS EXISTS. A discarded fault is a decision, and `.catch(() => undefined)` records none of it.
- * There were 180 of them in this workspace, in 98 files, and they cover three different decisions that
- * look identical on the line: a teardown step that must not fail the teardown, a probe whose failure
- * IS an answer the caller wants, and a fault the caller should have seen. The third is a defect and
- * `fault-sink.ts` is where it goes; the first two are correct and are what this file names.
- *
- * `fs-optional.ts` already settled the shape for the filesystem half: {@link pathExistsQuietly} takes a
- * MANDATORY `why` that is never rendered, so silence has to be spelled and every silent probe is
- * greppable at once. The same shape works for a promise, and the type does the rest of the telling:
- * {@link bestEffort} resolves to nothing, so a caller cannot read an answer out of a step whose answer
- * it has decided not to wait for; {@link optionalResult} resolves to `undefined`, which IS the answer.
- *
- * Neither of these reports. A fault an operator should know about is `reportFault`, and a fault a
- * caller should handle is a throw. If the `why` cannot be written, the site wants one of those two.
+ * Explicit contracts for discarded failures: {@link bestEffort} (resolves to void for teardown steps)
+ * and {@link optionalResult} (resolves to undefined for probes where absence is an expected answer).
  */
 
 /**
