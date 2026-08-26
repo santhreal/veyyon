@@ -11,6 +11,7 @@
 
 ### Changed
 
+- The assistant-text extractor's one-owner check names the consolidated evals package path instead of the retired metaharness path. No behavior change.
 - Formatted tool-call loop guard whitespace; behavior is unchanged.
 - The Anthropic provider reads its endpoint, credential placement, rejected betas and retry policy from the catalog's wire-capability table instead of comparing provider ids at seventeen call sites.
 - `ToolCall.arguments` is a `Readonly<Record<string, unknown>>`, so a producer replaces the object instead of writing into one a streaming snapshot already shares.
@@ -21,7 +22,6 @@
 
 ### Fixed
 
-- Anthropic strict-tool planning now recognizes the unified `search` tool instead of the retired `find` identity, so canonical workspace search receives strict schema enforcement without reviving a legacy tool name.
 - A persisted 400/413 request dump redacts `x-goog-api-key`, so a rejected Google Generative AI or Vertex request no longer writes the operator's plaintext API key into `logs/http-400-requests/`.
 - A failed Amazon Bedrock turn reports its elapsed duration again, instead of carrying time-to-first-token with no total while a successful turn reported both.
 - Normalized cumulative tool-call argument delta snapshots for OpenAI Codex streams while preserving true incremental deltas on standard OpenAI Responses streams via declared per-provider wire shapes.
@@ -35,7 +35,6 @@
 - Cursor turns fail immediately when an asynchronous exec-server handler fails; malformed grep line or count values and oversized Connect frames fail before protobuf or buffer exhaustion; and success waits for queued handlers and gRPC trailers so quota and availability statuses are preserved.
 - A rejected API key reports the provider's own sentence from its JSON error envelope, so Command Code's plan-limit refusal reads as "Your Go plan doesn't include API access. Upgrade to Provider or higher at https://commandcode.ai/billing to use these endpoints." instead of the raw body.
 - An API-key login for a provider that declares `storeCredentialsAs` now stores the credential under that provider id, as an OAuth login already did, instead of filing it under the login mechanism's id where nothing reads it.
-
 
 ## [1.2.0] - 2026-08-23
 

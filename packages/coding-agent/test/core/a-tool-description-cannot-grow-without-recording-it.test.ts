@@ -26,7 +26,7 @@
  * per configuration, and the JSON schema each tool serialises alongside its description
  * is not measured at all (`veyyon prompt --tools` reports both together, and the schema
  * is generated rather than written). It also says nothing about whether a description
- * still works after a trim — that is what the deepswe-bench prompt-override arm is for,
+ * still works after a trim — that is what the DeepSWE prompt-override arm is for,
  * and a trim lands on that verdict, not on this number going down.
  */
 import { describe, expect, it } from "bun:test";

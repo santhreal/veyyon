@@ -217,7 +217,6 @@ export const fastWorkspacePackages = [
 	"packages/stats",
 	"packages/tool-render",
 	"packages/swarm-extension",
-	"packages/deepswe-bench",
 	// mnemopi ran in NO CI job until this entry existed. It sat in
 	// `localOnlyWorkspacePackages` below, excluded as a whole package because "its
 	// embedding suites depend on a ~270MB fastembed model absent from CI runners".
@@ -249,11 +248,10 @@ export const fastWorkspacePackages = [
 export const nativeAndIntegrationPackages = [
 	"packages/natives",
 	"packages/tui",
-	"packages/typescript-edit-benchmark",
 	// Same omission as above. These two belong in this bucket rather than the fast
-	// one for the reason the comment gives: metaharness starts local servers and
-	// collab-web is browser-ish.
-	"packages/metaharness",
+	// one for the reason the comment gives: evals starts local servers and drives
+	// agent sessions against benchmark fixtures, and collab-web is browser-ish.
+	"packages/evals",
 	"packages/collab-web",
 ];
 

@@ -16,7 +16,7 @@ describe("one search tool dispatches every workspace search mode", () => {
 	let tool: SearchTool;
 
 	beforeAll(async () => {
-		const scratchRoot = path.join(process.cwd(), ".internal");
+		const scratchRoot = path.resolve(import.meta.dirname, "../../../../.internal");
 		await fs.mkdir(scratchRoot, { recursive: true });
 		cwd = await fs.mkdtemp(path.join(scratchRoot, "search-tool-test-"));
 		await fs.writeFile(path.join(cwd, "sample.ts"), 'console.log("needle");\n', "utf8");

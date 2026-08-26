@@ -225,7 +225,7 @@ function hasFloorFirst(text: string): boolean {
 //     maps non-finite inputs to its LOW bound (-4), which would flip the sign.
 const FLOOR_FIRST_GRANDFATHERED = new Set([
 	"coding-agent/src/tools/browser/tab-worker.ts",
-	"metaharness/src/experiments.ts",
+	"evals/src/manager/experiments.ts",
 ]);
 
 describe("clamp source lock", () => {

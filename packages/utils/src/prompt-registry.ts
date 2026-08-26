@@ -7,7 +7,7 @@
  * that is not there.
  *
  * WHY THE CONTRACT LIVES HERE AND NOT IN A REGISTRY. Four packages ship prompts
- * (`coding-agent`, `agent-core`, `ai`, `metaharness`) and each needs the same row
+ * (`coding-agent`, `agent-core`, `ai`, `evals`) and each needs the same row
  * type. Written per package that is four declarations of one concept, which is the
  * failure this file exists to end: `PromptEntry` was already declared twice, and the
  * two copies had diverged — the `agent-core` copy had no `sections` field, so a

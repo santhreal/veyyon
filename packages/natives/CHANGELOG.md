@@ -9,7 +9,6 @@
 - The AVX2 trial load answers from the addon loader's first import and exits, so a compiled host, whose `process.execPath` is the product binary rather than a JavaScript runtime, reports a verdict instead of booting the whole CLI and spawning a trial child of its own at every level.
 - A wrapped line now continues under the indent its first row opened at, so an indented row no longer reads as a new top-level row at a narrow width.
 - An indented row inside a tool block keeps its indent when it wraps at a narrow width, instead of continuing at the block's left edge.
-- A wrapped line now continues under the indent its first row opened at, so an indented row no longer reads as a new top-level row at a narrow width.
 - Native text context rows now report truncation explicitly, and mixed-language structure searches suppress pattern-compilation diagnostics from unrelated languages when another candidate language accepts the pattern.
 - The native addon loader memoizes a load failure. A failed `loadNative()` re-throws the cached error on subsequent calls instead of re-running the full candidate scan and printing every GLIBC/version warning again on each native access, which produced ~1000 lines of warning spam in containers with older glibc ([#917](https://github.com/santhreal/veyyon/issues/917)).
 

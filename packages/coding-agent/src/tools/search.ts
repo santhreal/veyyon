@@ -90,8 +90,7 @@ export class SearchTool implements AgentTool<typeof searchSchema, SearchToolDeta
 	readonly parameters = searchSchema;
 	readonly strict = true;
 	readonly description: string;
-	readonly filesystemTargets = (args: unknown, cwd = this.session.cwd): string[] =>
-		searchFilesystemTargets(args, cwd);
+	readonly filesystemTargets = (args: unknown, cwd = this.session.cwd): string[] => searchFilesystemTargets(args, cwd);
 	readonly examples: readonly ToolExample<SearchToolInput>[] = [
 		{
 			caption: "Find TypeScript files",

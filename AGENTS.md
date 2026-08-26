@@ -28,9 +28,7 @@ operator manual.
 |`packages/tool-render`|Shared React tool-call renderers for HTML export and collab-web|
 |`packages/collab-web`|Browser guest client and local relay for collab live sessions (private)|
 |`packages/swarm-extension`|Swarm orchestration extension|
-|`packages/metaharness`|Benchmark runners, Harbor run storage, REST/SSE API, live dashboard (private)|
-|`packages/deepswe-bench`|DeepSWE bench runner for performance-affecting changes (private)|
-|`packages/typescript-edit-benchmark`|Edit-tool benchmark from TypeScript source mutations (private)|
+|`packages/evals`|Every model and agent evaluation: the DeepSWE, Terminal-Bench 3.0 and TypeScript-edit suites, harness adapters, execution backends, run store, REST/SSE API and live dashboard (private)|
 |`packages/simulations`|Deterministic offline simulations driving real subsystems end to end (private)|
 |`crates/veyyon-natives`|Rust crate for performance-critical text/grep ops|
 |`crates/veyyon-conformance`|Whole-product conformance corpus and harness (issue #877)|
@@ -371,7 +369,7 @@ argot. Never hand-roll handle logic here.
   in the pull request (off arm at the default, on arm with `SCENE_SETTINGS='argot.enabled: true'`) —
   off shows only the "Argot Shorthand" master toggle, on shows it plus Models, Dictionary Budget,
   Context Cutoff and Subagents — and the bench
-  `packages/typescript-edit-benchmark/src/argot-bench.ts`, which runs the edit tasks with encoding on
+  `packages/evals/src/suites/typescript-edit/argot-bench.ts`, which runs the edit tasks with encoding on
   and off and certifies the token delta. `test/argot-settings-e2e.test.ts` asserts every Argot
   setting end to end, including that the knobs are hidden while off. Keep all of it current.
 

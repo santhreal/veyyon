@@ -31,6 +31,7 @@ import { readRenderer } from "./tools/read";
 import { reportFindingRenderer } from "./tools/report-finding";
 import { reportToolIssueRenderer } from "./tools/report-tool-issue";
 import { resolveRenderer } from "./tools/resolve";
+import { runtimeRenderer } from "./tools/runtime";
 import { searchRenderer } from "./tools/search";
 import { searchBm25Renderer } from "./tools/search-bm25";
 import { setCwdRenderer } from "./tools/set-cwd";
@@ -81,6 +82,7 @@ const RENDERERS: Record<string, ToolRenderer> = {
 	report_finding: reportFindingRenderer,
 	report_tool_issue: reportToolIssueRenderer,
 	resolve: resolveRenderer,
+	runtime: runtimeRenderer,
 	search: searchRenderer,
 	search_tool_bm25: searchBm25Renderer,
 	set_cwd: setCwdRenderer,

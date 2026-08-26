@@ -19,7 +19,7 @@
  *
  * What it does not catch: delivery of the variable into a Docker container, and the two
  * refusal layers themselves (`an-eval-prompt-override-must-name-a-prompt-some-registry-holds.test.ts`
- * in coding-agent, `arm-prompts.test.ts` in deepswe-bench).
+ * in coding-agent, `arm-prompts.test.ts` in the DeepSWE suite).
  */
 import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import { $env } from "../src/env";

@@ -167,7 +167,7 @@ const CONTAINER_SCAN_SKIP = new Set([
  *
  * WHAT DOES NOT SEPARATE THEM: counting nested repositories. That was the first answer here and it
  * is wrong, because a perfectly ordinary project can carry many. The project that prompted this
- * carries a benchmark corpus of forty-odd checkouts under `packages/deepswe-bench/repo-cache/`, so
+ * carries a benchmark corpus of forty-odd checkouts under `packages/evals/datasets/repo-cache/`, so
  * a count classifies it as a container, which is exactly backwards. Neither manifests nor child
  * count separate them either: the container and the project inside it both carry `AGENTS.md` and
  * `Cargo.toml` at their roots and have 59 and 47 direct children.

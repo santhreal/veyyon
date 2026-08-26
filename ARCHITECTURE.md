@@ -58,9 +58,7 @@ subcommand (`commit`, `grep`, `models`, `exec`, …).
 | `packages/tool-render` | Shared React tool-call renderers for the HTML export and `collab-web`. |
 | `packages/collab-web` | Browser guest client and local relay for collab live sessions (private). |
 | `packages/swarm-extension` | Swarm orchestration extension. |
-| `packages/metaharness` | Benchmark runners plus Harbor run storage, its REST/SSE API, and the live dashboard (private). |
-| `packages/deepswe-bench` | DeepSWE bench runner for performance-affecting changes (private). |
-| `packages/typescript-edit-benchmark` | Edit-tool benchmark built from TypeScript source mutations (private). |
+| `packages/evals` | Every model and agent evaluation: the DeepSWE, Terminal-Bench 3.0 and TypeScript-edit suites, harness adapters, execution backends, the SQLite run store, its REST/SSE API and the live dashboard (private). |
 | `packages/simulations` | Deterministic offline simulations that drive real subsystems end to end against scripted inputs (private). |
 | `crates/veyyon-natives` (+ siblings) | Rust hot paths: grep, PTY, shell, text/AST. |
 
@@ -75,11 +73,13 @@ nothing in them is tracked:
 
 | Path | Written by |
 | --- | --- |
-| `runs/` | default artifact sink for the benchmark harnesses (`deepswe-bench`, `metaharness`) |
+| `runs/` | default artifact sink for the benchmark harnesses (`packages/evals`) |
 | `website-get/` | `website/build.mjs`, deployed to get.veyyon.dev by the `deploy_website` CI job |
 | `relative-cache/` | Bun, at whatever directory it is invoked from |
-| `packages/deepswe-bench/runs/` | benchmark trial output |
-| `packages/deepswe-bench/repo-cache/` | cloned upstream task repositories (several gigabytes) |
+| `packages/evals/runs/` | benchmark trial output |
+| `packages/evals/.cache/` | vendored dataset checkouts (Terminal-Bench and friends) |
+| `packages/evals/datasets/repo-cache/` | cloned upstream task repositories (several gigabytes) |
+| `packages/evals/datasets/deep-swe/corpus/` | vendored DeepSWE task corpus |
 
 `scripts/root-layout.test.ts` asserts each one carries a deliberate ignore entry and tracks zero
 files, and that the `website-get/` staging step still exists — an ignore rule that outlives the build

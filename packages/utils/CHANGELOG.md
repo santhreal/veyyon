@@ -4,9 +4,6 @@
 
 ## [Unreleased]
 
-### Changed
-
-- The `prompt-variables` documentation examples name the `search` tool, which is the workspace-search tool that now exists, instead of the retired `grep` tool. No behavior change.
 ### Added
 
 - `run()` accepts verified command summaries for root help and falls back to loading the full registry when any summary is absent.
@@ -14,17 +11,16 @@
 
 ### Changed
 
+- The prompt registry and the eval prompt-override loader read benchmark prompts from `packages/evals/src/suites/typescript-edit/adapter/prompts/`, the path the consolidated evals package holds them at. No behavior change.
+- The `prompt-variables` documentation examples name the `search` tool, which is the workspace-search tool that now exists, instead of the retired `grep` tool. No behavior change.
 - `bestEffort` and `optionalResult` are imported from `@veyyon/utils/discarded-fault`. The barrel does not re-export them, so a consumer reaching them through `@veyyon/utils` names the module instead.
+- `relativePathWithinRoot` returns the candidate's own spelling instead of the case-folded copy the containment check used, so on Windows a path under `C:\Users\dev\Projects` no longer comes back lowercased, and a root configured in a different case than the directory on disk resolves to the tail rather than to a `..` walk.
 
 ### Fixed
 
 - `splitTrailingPartialEscape` lets a streaming reader hold back an escape sequence a chunk ended inside, so a sequence divided across two reads is stripped whole instead of losing its head and leaking its tail as text.
 - `discarded-fault.ts`: `bestEffort` and `optionalResult` state which contract discarded a promise's failure, one for a step nobody waits on and one for a probe whose failure is the answer, each taking a mandatory reason.
 - `ChildProcess.kill()` falls back to Bun's built-in `proc.kill()` (SIGTERM) when the native `Process` class cannot load, instead of throwing an uncaught exception that crashes the host. This fixes a crash in containers with older glibc where the native addon fails to load ([#917](https://github.com/santhreal/veyyon/issues/917)).
-### Changed
-
-- The `prompt-variables` documentation examples name the `search` tool, which is the workspace-search tool that now exists, instead of the retired `grep` tool. No behavior change.
-- `relativePathWithinRoot` returns the candidate's own spelling instead of the case-folded copy the containment check used, so on Windows a path under `C:\Users\dev\Projects` no longer comes back lowercased, and a root configured in a different case than the directory on disk resolves to the tail rather than to a `..` walk.
 
 ## [1.2.0] - 2026-08-23
 
