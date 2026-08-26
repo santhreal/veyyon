@@ -214,7 +214,10 @@ fn command_wrapper_invokes_mutator(segment: &plan::ChainSegment) -> bool {
 		if is_ambiguous_assignment_fragment(word) {
 			return true;
 		}
-		if word == "command" || word == "builtin" || word.starts_with('-') || is_env_assignment(word)
+		if word == "command"
+			|| word == "builtin"
+			|| word.starts_with('-')
+			|| is_assignment_shaped(word)
 		{
 			continue;
 		}
@@ -224,12 +227,20 @@ fn command_wrapper_invokes_mutator(segment: &plan::ChainSegment) -> bool {
 }
 
 fn is_ambiguous_assignment_fragment(word: &str) -> bool {
-	is_env_assignment(word) && (word.contains('"') || word.contains('\''))
+	is_assignment_shaped(word) && (word.contains('"') || word.contains('\''))
 }
 
-/// True for a leading `KEY=value` environment assignment (a prefix that does
-/// not change which command word ultimately runs).
-fn is_env_assignment(word: &str) -> bool {
+/// A word the wrapper scan steps over while it looks for the effective command.
+///
+/// Broader than [`primitives::is_env_assignment`] on purpose, and asking a
+/// different question. That one decides which word names the program, so it
+/// follows the POSIX name rule exactly. This one decides whether the scan may
+/// keep going, and a scan that stops early reports "no mutator" from
+/// incomplete evidence. A word merely shaped like `key=value` — including
+/// `1=2`, which a shell would run as a program — is stepped over, so the scan
+/// still reaches an `exec` behind it. Over-reporting a mutator costs
+/// minimization and nothing else.
+fn is_assignment_shaped(word: &str) -> bool {
 	word.split_once('=').is_some_and(|(key, _)| {
 		!key.is_empty() && key.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
 	})
