@@ -256,10 +256,7 @@ export const streamDevin: StreamFunction<"devin-agent"> = (
 			}
 			const body = response.body;
 
-			// Only the first attempt announces the stream. A retry is a continuation of the same turn
-			// from the consumer's point of view, and it is only ever reached when nothing but `start`
-			// has escaped, so re-announcing would be the one observable difference between a retried
-			// turn and a clean one.
+			// Only first attempt announces; retry is a continuation (only `start` has escaped).
 			if (retryAttempt === 0) stream.push({ type: "start", partial: output });
 
 			const reader = body.getReader();
@@ -441,14 +438,9 @@ export const streamDevin: StreamFunction<"devin-agent"> = (
 				if (options?.providerRetryWait) await options.providerRetryWait(retryDelayMs, options.signal);
 				else await scheduler.wait(retryDelayMs, { signal: options?.signal });
 
-				// Re-run the whole turn and forward it into the stream the caller is already reading.
-				// Delegating rather than looping in place is what keeps the partial `output` of this
-				// attempt from reaching anyone: the retry builds its own, and the only event the caller
-				// has seen so far is the `start` this attempt emitted, which the retry does not repeat.
+				// Delegate (not loop): retry builds its own `output`; only `start` has escaped to the caller.
 				const retried = streamDevin(model, context, { ...options, devinRetryAttempt: retryAttempt + 1 });
-				// The abandoned attempt's text reaches nobody, but Devin billed whatever
-				// it reported before dying: carry that spend onto the message the retry
-				// delivers, once, whichever terminal shape arrives first.
+				// Carry the abandoned attempt's billing onto the retry's message, once.
 				let carried = false;
 				const carrySpend = (message: AssistantMessage): AssistantMessage => {
 					if (!carried) {
