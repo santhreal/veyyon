@@ -11,7 +11,7 @@ import type { ToolCallContext } from "@veyyon/agent-core";
 import type { Ellipsis } from "@veyyon/natives";
 import type { Component } from "@veyyon/tui";
 import { getKeybindings } from "@veyyon/tui/keybindings";
-import { replaceTabs, truncateToWidth } from "@veyyon/tui/utils";
+import { padding, replaceTabs, truncateToWidth } from "@veyyon/tui/utils";
 // Owners, not the `@veyyon/utils` barrel: 3 modules against 74.
 import { collapseWhitespace } from "@veyyon/utils/collapse-whitespace";
 import { formatCount, pluralize } from "@veyyon/utils/format";
@@ -24,7 +24,7 @@ import { Hasher } from "../tui/utils";
 import { formatDimensionNote, type ResizedImage } from "../utils/image-resize";
 
 export { Ellipsis } from "@veyyon/natives";
-export { replaceTabs, truncateToWidth, wrapTextWithAnsi } from "@veyyon/tui/utils";
+export { padding, replaceTabs, truncateToWidth, wrapTextWithAnsi } from "@veyyon/tui/utils";
 
 // =============================================================================
 // Standardized Display Constants
@@ -892,7 +892,7 @@ export function createCachedComponent(
 			const paddingX = Math.max(0, options.paddingX ?? 0);
 			const innerWidth = Math.max(1, width - paddingX * 2);
 			const lines = compute(innerWidth, expanded);
-			const pad = paddingX === 0 ? "" : " ".repeat(paddingX);
+			const pad = paddingX === 0 ? "" : padding(paddingX);
 			const paddedLines = paddingX === 0 ? lines : lines.map(line => `${pad}${line}${pad}`);
 			cached = { key, lines: paddedLines };
 			return paddedLines;
