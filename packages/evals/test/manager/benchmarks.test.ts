@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { BENCHMARK_DEFINITIONS, readBenchmarkSnapshot } from "../../src/manager/benchmarks";
+import { listBenchmarkDefinitions, readBenchmarkSnapshot } from "../../src/manager/benchmarks";
 
 const cleanups: string[] = [];
 
@@ -104,8 +104,9 @@ describe("benchmark adapters", () => {
 	});
 
 	it("publishes metric definitions for every managed benchmark", () => {
-		expect(BENCHMARK_DEFINITIONS.map(definition => definition.kind)).toEqual(["harbor", "edit", "deepswe"]);
-		expect(BENCHMARK_DEFINITIONS.every(definition => definition.metrics.length > 0)).toBe(true);
+		const definitions = listBenchmarkDefinitions();
+		expect(definitions.map(definition => definition.kind)).toEqual(["harbor", "edit", "deepswe"]);
+		expect(definitions.every(definition => definition.metrics.length > 0)).toBe(true);
 	});
 
 	/**

@@ -13,8 +13,8 @@ import { afterEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { BENCHMARK_DEFINITIONS, readBenchmarkSnapshot } from "../../src/manager/benchmarks";
-import type { BenchmarkKind } from "../../src/manager/store";
+import { listBenchmarkKinds, readBenchmarkSnapshot } from "../../src/manager/benchmarks";
+import type { BenchmarkKind } from "../../src/wire";
 
 const cleanups: string[] = [];
 
@@ -302,7 +302,7 @@ const FIXTURE_DRIVERS: Record<BenchmarkKind, FixtureDriver> = {
 };
 
 describe("unknown spend is never reported as zero across all benchmark adapters", () => {
-	const kinds = BENCHMARK_DEFINITIONS.map(d => d.kind);
+	const kinds: BenchmarkKind[] = [...listBenchmarkKinds()];
 
 	it.each(kinds)("reports null costUsd and tokCache when %s artifacts carry no cost", kind => {
 		const driver = FIXTURE_DRIVERS[kind];

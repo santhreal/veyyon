@@ -13,7 +13,8 @@ import * as path from "node:path";
 import { atomicWriteFileSync, isProcessAlive, logger } from "@veyyon/utils";
 import { readJobResult } from "../backends/harbor/runner";
 import type { BackendId } from "../core/types";
-import { readBenchmarkSnapshot } from "./benchmarks";
+import type { BenchmarkKind, RunRole, RunStatus } from "../wire";
+import { getBenchmark, getBenchmarkByBackend, readBenchmarkSnapshot } from "./benchmarks";
 
 /** Job names are single path segments; anything else could escape the jobs dir. */
 export function assertSafeJobName(jobName: string): void {
@@ -32,14 +33,6 @@ export class StaleSchemaError extends Error {
 		this.name = "StaleSchemaError";
 	}
 }
-
-export type RunStatus = "running" | "complete" | "failed" | "cancelled";
-
-/** Benchmark implementation that produced a run. */
-export type BenchmarkKind = "harbor" | "edit" | "deepswe";
-
-/** How a run relates to its experiment's question. */
-export type RunRole = "baseline" | "variant" | "";
 
 export interface RunRow {
 	schemaVersion: number;
@@ -141,17 +134,17 @@ export function inferSuiteAndBackend(record: {
 	const dataset = record.dataset ?? "";
 	let suite = record.suite;
 	let backend = record.backend;
-	let benchmark = (record.benchmark as BenchmarkKind) ?? "harbor";
+	let benchmark = record.benchmark as BenchmarkKind | undefined;
 
 	if (suite && backend) {
-		benchmark = backend === "in-process" ? "edit" : backend === "pier" ? "deepswe" : "harbor";
+		benchmark = benchmark ?? getBenchmarkByBackend(backend)?.kind ?? (backend as unknown as BenchmarkKind);
 		return { suite, backend, benchmark };
 	}
 
 	if (dataset.startsWith("terminal-bench@3") || dataset === "terminal-bench-3") {
 		suite = suite ?? "terminal-bench@3.0";
 		backend = backend ?? "harbor";
-		benchmark = "harbor";
+		benchmark = benchmark ?? getBenchmarkByBackend(backend)?.kind ?? "harbor";
 	} else if (
 		dataset.startsWith("terminal-bench") ||
 		dataset === "terminal-bench-2" ||
@@ -159,20 +152,19 @@ export function inferSuiteAndBackend(record: {
 	) {
 		suite = suite ?? (dataset.includes("@") ? dataset : "terminal-bench@2.0");
 		backend = backend ?? "harbor";
-		benchmark = "harbor";
-	} else if (dataset === "deep-swe" || record.benchmark === "deepswe") {
+		benchmark = benchmark ?? getBenchmarkByBackend(backend)?.kind ?? "harbor";
+	} else if (dataset === "deep-swe" || (benchmark && getBenchmark(benchmark)?.backend === "pier")) {
 		suite = suite ?? "deep-swe";
 		backend = backend ?? "pier";
-		benchmark = "deepswe";
-	} else if (dataset === "typescript-edit" || record.benchmark === "edit") {
+		benchmark = benchmark ?? getBenchmarkByBackend(backend)?.kind ?? "deepswe";
+	} else if (dataset === "typescript-edit" || (benchmark && getBenchmark(benchmark)?.backend === "in-process")) {
 		suite = suite ?? "typescript-edit";
 		backend = backend ?? "in-process";
-		benchmark = "edit";
+		benchmark = benchmark ?? getBenchmarkByBackend(backend)?.kind ?? "edit";
 	} else {
 		suite = suite ?? (dataset || "terminal-bench@2.0");
-		backend =
-			backend ?? (record.benchmark === "edit" ? "in-process" : record.benchmark === "deepswe" ? "pier" : "harbor");
-		benchmark = backend === "in-process" ? "edit" : backend === "pier" ? "deepswe" : "harbor";
+		backend = backend ?? (benchmark ? getBenchmark(benchmark)?.backend : undefined) ?? "harbor";
+		benchmark = benchmark ?? getBenchmarkByBackend(backend)?.kind ?? (backend as unknown as BenchmarkKind);
 	}
 
 	return { suite, backend, benchmark };

@@ -9,7 +9,7 @@
  */
 
 /** Benchmark implementation that produced a run. */
-export type BenchmarkKind = "harbor" | "edit" | "deepswe";
+export type BenchmarkKind = "harbor" | "edit" | "deepswe" | (string & {});
 
 /** Lifecycle status of a managed benchmark run. */
 export type RunStatus = "running" | "complete" | "failed" | "cancelled";

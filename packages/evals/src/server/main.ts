@@ -25,8 +25,8 @@ import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { Server, Subprocess } from "bun";
-import { harborRunnerArgs, type LaunchRequest } from "../backends/harbor/launch-args";
-import { BENCHMARK_DEFINITIONS } from "../manager/benchmarks";
+import { harborRunnerArgs } from "../backends/harbor/launch-args";
+import { listBenchmarkDefinitions, requireBenchmark } from "../manager/benchmarks";
 import {
 	buildExperiments,
 	experimentDetail,
@@ -39,6 +39,7 @@ import {
 	type AddArmRequest,
 	type CreateExperimentRequest,
 	type ExperimentMetaUpdate,
+	type LaunchRequest,
 	type RouteDescriptor,
 	SERVER_ROUTES,
 } from "../wire";
@@ -49,8 +50,6 @@ export { SERVER_ROUTES };
 import { errorMessage, isProcessAlive } from "@veyyon/utils";
 import { evalsPackageDir, harborJobsDir } from "../paths";
 import indexHtml from "../web/index.html";
-
-export type { LaunchRequest } from "../backends/harbor/launch-args";
 
 interface ManagedChild {
 	proc: Subprocess;
@@ -288,7 +287,7 @@ export class ManagerServer {
 			}
 			if (p === "/api/events") return this.#sseResponse();
 			if (p === "/api/benchmarks" && request.method === "GET") {
-				return Response.json(BENCHMARK_DEFINITIONS);
+				return Response.json(listBenchmarkDefinitions());
 			}
 			if (p === "/api/experiments" && request.method === "GET") {
 				const q = url.searchParams.get("q")?.toLowerCase() ?? "";
@@ -406,9 +405,7 @@ export class ManagerServer {
 	launch(request: LaunchRequest): { jobName: string; pid: number } {
 		if (!request.model) throw new Error("model is required");
 		const benchmark = request.benchmark ?? "harbor";
-		if (benchmark !== "harbor" && benchmark !== "edit" && benchmark !== "deepswe") {
-			throw new Error(`unsupported benchmark: ${benchmark}`);
-		}
+		requireBenchmark(benchmark);
 		const dataset =
 			request.dataset ??
 			(benchmark === "harbor" ? "terminal-bench@2.0" : benchmark === "deepswe" ? "deep-swe" : "typescript-edit");
