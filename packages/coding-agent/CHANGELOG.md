@@ -50,6 +50,7 @@
 
 ### Fixed
 
+- A server-side compaction failure states the reason once instead of wrapping it in its own prefix, so a host without the compact route reports "Server-side compaction is not available for openai-codex/… (404 Not Found); falling back to local compaction." rather than nesting the message inside itself.
 - A tool status line shortens the paths it was given, so `grep`, `glob`, `ast_grep`, `ast_edit`, `debug` and `set_cwd` show `~/project/src` instead of printing the home directory into the transcript, and a long path list is truncated rather than pushing the row past the terminal width.
 - The `/omfg` panel names the rule it saved under `~`, truncates it to one row, and shortens the paths embedded in a failure message, instead of printing the home directory in its subheader, footer and error text.
 - The `launch` status header truncates the command it is starting instead of drawing a row wider than the terminal, and a failed launch collapses to a few lines with a count of the rest until it is expanded, instead of printing every line the process wrote.

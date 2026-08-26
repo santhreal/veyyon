@@ -22,6 +22,7 @@
 
 ### Fixed
 
+- A compact route that answers 404 is recorded as absent for that model for the rest of the process, so server-side compaction is asked once instead of once per compaction, and the error names the model rather than repeating "Server-side compaction failed".
 - `AIError.status` and `extractHttpStatusFromError` are one reader, so a provider message spelled `error(503)`, `status_code: 429` or `429 Too Many Requests` yields the same status to the auth ladder and the retry ladder instead of one of the two seeing nothing; a status field anywhere in the cause chain now outranks prose anywhere in it.
 - A Nous Portal call that a gateway answers with an HTML 502, 503 or 504 reports the gateway status instead of "returned invalid JSON".
 - A `pi-native` payload hook rejection names the reason it gave rather than only the seam it came from, and an error may declare its text describes a local decision so a quoted `401` does not rotate the operator's credential.

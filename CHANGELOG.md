@@ -92,6 +92,7 @@
 
 ### Fixed
 
+- A server-side compaction failure states the reason once instead of wrapping it in its own prefix, so a host without the compact route reports "Server-side compaction is not available for openai-codex/… (404 Not Found); falling back to local compaction." rather than nesting the message inside itself.
 - A tool status line shortens the paths it was given, so `grep`, `glob`, `ast_grep`, `ast_edit`, `debug` and `set_cwd` show `~/project/src` instead of printing the home directory into the transcript, and a long path list is truncated rather than pushing the row past the terminal width.
 - The `/omfg` panel names the rule it saved under `~`, truncates it to one row, and shortens the paths embedded in a failure message, instead of printing the home directory in its subheader, footer and error text.
 - The `launch` status header truncates the command it is starting instead of drawing a row wider than the terminal, and a failed launch collapses to a few lines with a count of the rest until it is expanded, instead of printing every line the process wrote.
@@ -211,6 +212,7 @@
 - A branch-summary reserve at or above the model's context window now falls back to the proportional 15% reserve instead of leaving a non-positive budget, which the entry preparation read as "no limit" and which sent the whole branch.
 - A tool that blocks on only some of its operations declares interruptibility per call, so an interrupt arriving beside a non-blocking or malformed call no longer replaces that call's own result with a skipped placeholder.
 - A tool result that ran and failed no longer supersedes an earlier successful read of the same path, which replaced that file's content with a supersede notice and left the conversation only the error text.
+- A compact route that answers 404 is recorded as absent for that model for the rest of the process, so server-side compaction is asked once instead of once per compaction, and the error names the model rather than repeating "Server-side compaction failed".
 - `AIError.status` and `extractHttpStatusFromError` are one reader, so a provider message spelled `error(503)`, `status_code: 429` or `429 Too Many Requests` yields the same status to the auth ladder and the retry ladder instead of one of the two seeing nothing; a status field anywhere in the cause chain now outranks prose anywhere in it.
 - A Nous Portal call that a gateway answers with an HTML 502, 503 or 504 reports the gateway status instead of "returned invalid JSON".
 - A `pi-native` payload hook rejection names the reason it gave rather than only the seam it came from, and an error may declare its text describes a local decision so a quoted `401` does not rotate the operator's credential.

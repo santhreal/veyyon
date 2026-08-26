@@ -16122,11 +16122,10 @@ export class AgentSession {
 			});
 			if (!this.#announcedServerCompactionFailures.has(message)) {
 				this.#announcedServerCompactionFailures.add(message);
-				this.emitNotice(
-					"warning",
-					`Server-side compaction failed (${message}); falling back to local compaction.`,
-					"compaction",
-				);
+				// The thrown message already states what failed, so prefixing it
+				// here produced "Server-side compaction failed (Server-side
+				// compaction failed (404 Not Found))".
+				this.emitNotice("warning", `${message}; falling back to local compaction.`, "compaction");
 			}
 			return undefined;
 		}
