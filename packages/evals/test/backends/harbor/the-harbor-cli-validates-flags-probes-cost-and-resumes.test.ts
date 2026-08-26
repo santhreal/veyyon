@@ -14,6 +14,11 @@ import {
 import { parseArgs, resolveResumeConfig } from "../../../src/backends/harbor/runner/cli";
 import { buildHarborEnv, buildResumeArgs, collectForwardEnv } from "../../../src/backends/harbor/runner/config";
 import { readTrials } from "../../../src/backends/harbor/runner/results";
+import { registerBuiltinHarnesses } from "../../../src/harnesses";
+
+// The harbor seams resolve their agent through the process-wide harness registry, so a
+// chunk that holds no other registering file would otherwise read an empty registry.
+registerBuiltinHarnesses();
 
 describe("generic agent-arg / env passthrough", () => {
 	it("forwards repeated --agent-arg as a JSON array the in-container agent can parse", () => {

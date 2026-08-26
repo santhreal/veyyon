@@ -14,6 +14,11 @@ import type {
 	TrialCell,
 	TrialScore,
 } from "../../../src/core/types";
+import { registerBuiltinHarnesses } from "../../../src/harnesses";
+
+// The harbor seams resolve their agent through the process-wide harness registry, so a
+// chunk that holds no other registering file would otherwise read an empty registry.
+registerBuiltinHarnesses();
 
 function createMockSuite(overrides: Partial<EvalSuite> = {}): EvalSuite {
 	return {

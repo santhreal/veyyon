@@ -33,13 +33,17 @@ function row(task: string, overrides: Partial<DictRow> = {}): DictRow {
 		structureHandles: 36,
 		typeableSavings: 100,
 		expectedSavings: Math.round(100 * OBSERVED_TYPEABLE_EMISSION_RATE),
+		repoUrl: "https://example.invalid/repo",
+		baseCommit: "0123456789abcdef",
 		error: null,
 		...overrides,
 	};
 }
 
+/** Data rows of the savings table, which ends where the revisions section begins. */
 function tableRows(report: string): string[] {
 	return report
+		.slice(0, report.indexOf("## Source revisions"))
 		.split("\n")
 		.filter(line => line.startsWith("| ") && !line.startsWith("| task ") && !line.startsWith("|---"));
 }
@@ -108,6 +112,44 @@ describe("ranking the dictionary report", () => {
 
 	it("states the measured emission rate the expected-saving column is scaled by", () => {
 		expect(renderDictReport([], "when")).toContain(`(${(100 * OBSERVED_TYPEABLE_EMISSION_RATE).toFixed(2)}%)`);
+	});
+});
+
+describe("the revision each dictionary was measured against", () => {
+	it("states the repository and base commit of every task in the table", () => {
+		const report = renderDictReport(
+			[
+				row("first", { repoUrl: "https://example.invalid/one", baseCommit: "aaa111" }),
+				row("second", { typeableSavings: 5, repoUrl: "https://example.invalid/two", baseCommit: "bbb222" }),
+			],
+			"when",
+		);
+
+		const section = report.slice(report.indexOf("## Source revisions"));
+		expect(section).toContain("| first | https://example.invalid/one | aaa111 |");
+		expect(section).toContain("| second | https://example.invalid/two | bbb222 |");
+	});
+
+	it("marks a task whose revision was never recorded rather than omitting the row", () => {
+		const section = renderDictReport(
+			[row("unknown-source", { repoUrl: null, baseCommit: null, error: "clone failed: 128" })],
+			"when",
+		);
+
+		expect(section.slice(section.indexOf("## Source revisions"))).toContain("| unknown-source | — | — |");
+	});
+
+	it("lists revisions in the same ranked order as the savings table", () => {
+		const report = renderDictReport(
+			[
+				row("slow", { typeableSavings: 1, baseCommit: "slow-sha" }),
+				row("fast", { typeableSavings: 900, baseCommit: "fast-sha" }),
+			],
+			"when",
+		);
+		const section = report.slice(report.indexOf("## Source revisions"));
+
+		expect(section.indexOf("fast-sha")).toBeLessThan(section.indexOf("slow-sha"));
 	});
 });
 
