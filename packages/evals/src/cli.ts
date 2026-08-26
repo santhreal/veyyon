@@ -41,7 +41,15 @@ import {
 import { preflightHarnesses } from "./core/harness-preflight";
 import { registerBuiltinHarnesses } from "./harnesses";
 import { runsDir as defaultRunsDir } from "./paths";
-import { buildRunPlan, describeRunPlan, executeRun, type RunPlan } from "./run";
+import {
+	buildRunPlan,
+	describeRunPlan,
+	executeRun,
+	journalExists,
+	journalPathFor,
+	type RunPlan,
+	readRunJournal,
+} from "./run";
 import { registerAllSuites } from "./suites";
 
 /** Flags that take a value. A flag outside this table never consumes the next argument. */
@@ -380,6 +388,27 @@ export function describeRegistries(
 	].join("\n");
 }
 
+/**
+ * The `resume` verdict line's body: what a resume of this run id would find.
+ *
+ * A journal this build cannot read is a refusal here rather than an exception mid-run, and
+ * a journal that exists but holds no settled trial is stated as such — a run interrupted
+ * before its first trial is resumable, and reporting it as missing would send an operator
+ * to a new run id for nothing.
+ */
+export async function describeResume(runsDir: string, runId: string): Promise<string> {
+	const journal = journalPathFor(runsDir, runId);
+	if (!(await journalExists(runsDir, runId))) {
+		return `REFUSED — no trial journal at ${journal}: there is nothing to resume`;
+	}
+	try {
+		const prior = await readRunJournal(runsDir, runId);
+		return `ok — ${prior.length} settled trial(s) in ${journal} would be skipped`;
+	} catch (error) {
+		return `REFUSED — ${errorMessage(error)}`;
+	}
+}
+
 export async function main(argv: readonly string[] = process.argv.slice(2)): Promise<number> {
 	registerAllSuites();
 	registerAllBackends();
@@ -535,13 +564,19 @@ async function runOneSuite(args: EvalsCliArgs, suite: EvalSuite, running: readon
 								`  harness    REFUSED — ${report.harness} (${report.variant}): ${report.verdict.reason ?? "no reason given"}`,
 						)
 						.join("\n");
+		// What --resume would find. A dry run that reported nothing about it let a mistyped
+		// --run-id read as a plan for a fresh run, which is what the real invocation then
+		// paid for.
+		const resumeLine = args.resume ? `  resume     ${await describeResume(runsDir, plan.runId)}` : null;
 		const verdicts = [
 			`  suite      ${suiteVerdict.ok ? "ok" : `REFUSED — ${suiteVerdict.reason ?? "no reason given"}`}`,
 			harnessLine,
 			`  backend    ${backendVerdict.ok ? "ok" : `REFUSED — ${backendVerdict.reason ?? "no reason given"}`}`,
+			...(resumeLine === null ? [] : [resumeLine]),
 		].join("\n");
 		process.stdout.write(`\npreflight:\n${verdicts}\n`);
-		if (!suiteVerdict.ok || !backendVerdict.ok || refusedHarness.length > 0) return 1;
+		const resumeRefused = resumeLine?.includes("REFUSED") === true;
+		if (!suiteVerdict.ok || !backendVerdict.ok || refusedHarness.length > 0 || resumeRefused) return 1;
 		process.stdout.write("\nDRY RUN — nothing was executed.\n");
 		return 0;
 	}

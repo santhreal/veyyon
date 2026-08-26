@@ -61,11 +61,43 @@ export class CorruptRunJournalError extends Error {
 	}
 }
 
+/** A resume that names a run whose journal was never written. */
+export class ResumeWithoutJournalError extends Error {
+	readonly journalPath: string;
+	readonly runId: string;
+
+	constructor(journalPath: string, runId: string) {
+		super(
+			`Run '${runId}' has no trial journal at '${journalPath}', so there is nothing to resume. ` +
+				`Drop --resume to start it, or pass the --run-id of a run that has already settled trials.`,
+		);
+		this.name = "ResumeWithoutJournalError";
+		this.journalPath = journalPath;
+		this.runId = runId;
+	}
+}
+
 /**
  * Returns the canonical path to the trials.jsonl journal for a run.
  */
 export function journalPathFor(runsDir: string, runId: string): string {
 	return path.join(runsDir, runId, "trials.jsonl");
+}
+
+/**
+ * Whether a run has a journal to resume from.
+ *
+ * Checked before the journal is opened for append, since opening one creates it: a resume
+ * that ran the existence check afterwards found the file it had just written and read a
+ * mistyped --run-id as a fresh run of every task.
+ */
+export async function journalExists(runsDir: string, runId: string): Promise<boolean> {
+	try {
+		await fs.access(journalPathFor(runsDir, runId));
+		return true;
+	} catch {
+		return false;
+	}
 }
 
 /** The header a journal opens with, or null when the first line is not one. */

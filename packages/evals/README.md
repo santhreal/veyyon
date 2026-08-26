@@ -29,9 +29,14 @@ bun run evals --suite deep-swe --model google-antigravity/gemini-3.5-flash \
 	--config arms/baseline.yml --config arms/candidate-unified-runtime.yml --dry-run
 ```
 
-`--dry-run` prints the plan and both preflight verdicts and starts no container, and builds nothing:
-a missing or stale artifact is reported with the command that produces it. `--repeats N` runs each
-cell N times; results are recorded in plan order, so two runs of one plan diff cell by cell.
+`--dry-run` prints the plan and every preflight verdict — suite, harness, backend, and `resume` when
+`--resume` is passed — and starts no container, and builds nothing: a missing or stale artifact is
+reported with the command that produces it. `--repeats N` runs each cell N times; results are
+recorded in plan order, so two runs of one plan diff cell by cell.
+
+`--resume` continues the run named by `--run-id` from its `trials.jsonl` journal, skipping every
+trial that already settled. A run id with no journal is rejected rather than started, so a typo
+cannot bill a fresh run of every task under a name that looked half finished.
 
 A `--suite` list runs each suite in turn and writes one run record per suite, because a record is
 suite-tagged and two suites' trials are never comparable. A `--tasks` entry carrying a `<suite>=`
