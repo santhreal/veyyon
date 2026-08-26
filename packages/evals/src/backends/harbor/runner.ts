@@ -734,7 +734,10 @@ function parseTrial(dir: string, name: string): Trial | null {
 	if (exc) {
 		status = "error";
 		detail = typeof exc.exception_type === "string" ? exc.exception_type : "error";
-	} else if (reward !== null && reward >= 1 - 1e-9) {
+	} else if (reward === null) {
+		status = "error";
+		detail = "missing or unparsable reward";
+	} else if (reward >= 1 - 1e-9) {
 		status = "pass";
 	} else {
 		status = "fail";
@@ -1360,7 +1363,6 @@ export function buildResumeArgs(cfg: Config, jobDir: string): string[] {
 
 const FORWARD_ENV_DENYLIST = new Set([
 	"VEYYON_CODING_AGENT_DIR",
-	"VEYYON_CODING_AGENT_DIR",
 	"VEYYON_CONFIG_DIR",
 	"VEYYON_PROFILE",
 	"VEYYON_PACKAGE_DIR",
@@ -1527,6 +1529,206 @@ export function runDockerCleanup(force: boolean): void {
 		process.stdout.write("Docker cleanup completed.\n");
 	} catch (err: unknown) {
 		process.stdout.write(`\nwarning: failed to run docker cleanup: ${errorMessage(err)}\n`);
+	}
+}
+
+export const DEFAULT_TRIAL_TIMEOUT_SEC = 1800;
+export const HARD_CEILING_TIMEOUT_SEC = 3600;
+export const DEFAULT_GRACE_PERIOD_MS = 5000;
+export const RAW_OUTPUT_MAX_BYTES = 65536;
+
+export function truncateRawOutput(output: string | null | undefined, maxBytes = RAW_OUTPUT_MAX_BYTES): string {
+	if (!output) return "";
+	if (output.length <= maxBytes) return output;
+	return output.slice(-maxBytes);
+}
+
+export interface TerminableProcess {
+	readonly pid?: number;
+	kill(signal?: "SIGTERM" | "SIGKILL" | number): unknown;
+	readonly exited: Promise<number>;
+}
+
+export async function terminateProcessTree(
+	proc: TerminableProcess,
+	gracePeriodMs = DEFAULT_GRACE_PERIOD_MS,
+): Promise<void> {
+	const pid = proc.pid;
+	try {
+		proc.kill("SIGTERM");
+	} catch {
+		/* process may already be dead */
+	}
+	if (typeof pid === "number" && pid > 0) {
+		try {
+			process.kill(-pid, "SIGTERM");
+		} catch {
+			try {
+				process.kill(pid, "SIGTERM");
+			} catch {
+				/* already dead */
+			}
+		}
+	}
+
+	const { promise: timeoutPromise, resolve: resolveTimeout } = Promise.withResolvers<"timed_out">();
+	const timer = setTimeout(() => resolveTimeout("timed_out"), gracePeriodMs);
+
+	const result = await Promise.race([
+		proc.exited.then(() => "exited" as const).catch(() => "exited" as const),
+		timeoutPromise,
+	]);
+
+	clearTimeout(timer);
+
+	if (result === "timed_out") {
+		try {
+			proc.kill("SIGKILL");
+		} catch {
+			/* ignore */
+		}
+		if (typeof pid === "number" && pid > 0) {
+			try {
+				process.kill(-pid, "SIGKILL");
+			} catch {
+				try {
+					process.kill(pid, "SIGKILL");
+				} catch {
+					/* already dead */
+				}
+			}
+		}
+		const { promise: killGracePromise, resolve: resolveKillGrace } = Promise.withResolvers<void>();
+		const killTimer = setTimeout(() => resolveKillGrace(), 500);
+		await Promise.race([proc.exited.catch(() => {}), killGracePromise]);
+		clearTimeout(killTimer);
+	}
+}
+
+export interface ScopedHarborCleanupOptions {
+	readonly jobDir?: string;
+	readonly jobName?: string;
+	readonly force?: boolean;
+}
+
+export async function cleanupHarborTrialContainers(
+	options: ScopedHarborCleanupOptions,
+	exec?: (file: string, args: readonly string[]) => Promise<{ stdout: string; stderr: string }>,
+): Promise<void> {
+	const runExec =
+		exec ??
+		(async (file: string, args: readonly string[]) => {
+			const res = spawnSync(file, args as string[], { encoding: "utf8" });
+			if (res.status !== 0) {
+				throw new Error(res.stderr || `exit ${res.status}`);
+			}
+			return { stdout: res.stdout ?? "", stderr: res.stderr ?? "" };
+		});
+
+	try {
+		const psRes = await runExec("docker", [
+			"ps",
+			"-a",
+			"--format",
+			'{{.ID}}\t{{.State}}\t{{.Label "com.docker.compose.project"}}\t{{.Label "com.docker.compose.project.working_dir"}}',
+		]);
+
+		const matchedContainerIds: string[] = [];
+		const matchedProjects = new Set<string>();
+
+		for (const line of psRes.stdout.trim().split("\n")) {
+			if (!line.trim()) continue;
+			const [id, state, project, workingDir] = line.split("\t");
+			if (!id) continue;
+
+			let matches = false;
+			if (options.jobDir) {
+				if (
+					workingDir === options.jobDir ||
+					workingDir?.startsWith(`${options.jobDir}/`) ||
+					workingDir?.startsWith(`${options.jobDir}\\`)
+				) {
+					matches = true;
+				}
+			}
+			if (options.jobName && !matches) {
+				if (
+					project === options.jobName ||
+					project?.startsWith(`${options.jobName}_`) ||
+					project?.startsWith(`${options.jobName}-`)
+				) {
+					matches = true;
+				}
+			}
+			if (matches) {
+				if (options.force || ["exited", "created", "dead"].includes(state ?? "")) {
+					matchedContainerIds.push(id);
+				}
+				if (project) {
+					matchedProjects.add(project);
+				}
+			}
+		}
+
+		if (matchedContainerIds.length > 0) {
+			const rmArgs = options.force ? ["rm", "-f", ...matchedContainerIds] : ["rm", ...matchedContainerIds];
+			try {
+				await runExec("docker", rmArgs);
+			} catch {
+				/* ignore */
+			}
+		}
+
+		const netRes = await runExec("docker", ["network", "ls", "--format", "{{.ID}}\t{{.Name}}\t{{.Labels}}"]);
+
+		const matchedNetIds: string[] = [];
+		for (const line of netRes.stdout.trim().split("\n")) {
+			if (!line.trim()) continue;
+			const [netId, name, labels] = line.split("\t");
+			if (!netId) continue;
+
+			let netMatches = false;
+			if (options.jobDir && (labels ?? "").includes(options.jobDir)) {
+				netMatches = true;
+			}
+			if (options.jobName) {
+				if (
+					name === `${options.jobName}_default` ||
+					name === options.jobName ||
+					name?.startsWith(`${options.jobName}-`) ||
+					name?.startsWith(`${options.jobName}_`)
+				) {
+					netMatches = true;
+				}
+				if ((labels ?? "").includes(`com.docker.compose.project=${options.jobName}`)) {
+					netMatches = true;
+				}
+			}
+			if (!netMatches && matchedProjects.size > 0) {
+				for (const proj of matchedProjects) {
+					if (name === `${proj}_default` || (labels ?? "").includes(`com.docker.compose.project=${proj}`)) {
+						netMatches = true;
+						break;
+					}
+				}
+			}
+
+			if (netMatches) {
+				matchedNetIds.push(netId);
+			}
+		}
+
+		if (matchedNetIds.length > 0) {
+			for (const netId of matchedNetIds) {
+				try {
+					await runExec("docker", ["network", "rm", netId]);
+				} catch {
+					/* ignore */
+				}
+			}
+		}
+	} catch {
+		/* ignore docker failures */
 	}
 }
 

@@ -17,6 +17,7 @@ export interface VerificationResult {
 	formattedEquivalent?: boolean;
 	diffStats?: DiffStats;
 	diff?: string;
+	infrastructureFailure?: boolean;
 }
 
 export interface DiffStats {
@@ -103,6 +104,7 @@ export async function verifyExpectedFileSubset(
 				success: false,
 				error: `Expected files missing from fixture: ${formatFileList(missingExpected)}`,
 				duration: Date.now() - startTime,
+				infrastructureFailure: true,
 			};
 		}
 
@@ -174,6 +176,7 @@ export async function verifyExpectedFileSubset(
 			success: false,
 			error: errorMessage(err),
 			duration: Date.now() - startTime,
+			infrastructureFailure: true,
 		};
 	}
 }

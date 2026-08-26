@@ -7,12 +7,13 @@ import type {
 	HarnessStageContext,
 	PreflightVerdict,
 } from "../../core/types";
-import type {
-	SystemAdapter,
-	SystemJobConfigContext,
-	SystemPreflightContext,
-	SystemPreflightResult,
-	SystemStageContext,
+import {
+	type SystemAdapter,
+	type SystemJobConfigContext,
+	type SystemPreflightContext,
+	type SystemPreflightResult,
+	type SystemStageContext,
+	sanitizeVariantName,
 } from "../types";
 
 export class HermesAdapter implements HarnessAdapter, SystemAdapter {
@@ -45,7 +46,12 @@ export class HermesAdapter implements HarnessAdapter, SystemAdapter {
 	async preflight(context: HarnessPreflightContext): Promise<PreflightVerdict> {
 		const options = context.options ?? {};
 		const missing: string[] = [];
-		const hermesAuth = typeof options["hermes-auth"] === "string" ? path.resolve(options["hermes-auth"]) : null;
+		const hermesAuth =
+			typeof options["hermes-auth"] === "string"
+				? path.resolve(options["hermes-auth"])
+				: typeof options.hermesAuth === "string"
+					? path.resolve(options.hermesAuth)
+					: null;
 
 		if (!hermesAuth || !fs.existsSync(hermesAuth)) {
 			missing.push("Hermes auth .env file (--hermes-auth)");
@@ -80,10 +86,19 @@ export class HermesAdapter implements HarnessAdapter, SystemAdapter {
 		if ("targetDir" in context) {
 			// HarnessStageContext
 			const options = context.options ?? {};
-			const hermesAuth = typeof options["hermes-auth"] === "string" ? path.resolve(options["hermes-auth"]) : null;
+			const variantKey = sanitizeVariantName(context.variant.name);
+			const destDir = path.join(context.targetDir, variantKey);
+			fs.mkdirSync(destDir, { recursive: true });
+
+			const hermesAuth =
+				typeof options["hermes-auth"] === "string"
+					? path.resolve(options["hermes-auth"])
+					: typeof options.hermesAuth === "string"
+						? path.resolve(options.hermesAuth)
+						: null;
 			if (hermesAuth && fs.existsSync(hermesAuth)) {
-				fs.copyFileSync(hermesAuth, path.join(context.targetDir, "hermes.env"));
-				fs.chmodSync(path.join(context.targetDir, "hermes.env"), 0o600);
+				fs.copyFileSync(hermesAuth, path.join(destDir, "hermes.env"));
+				fs.chmodSync(path.join(destDir, "hermes.env"), 0o600);
 			}
 			return;
 		}

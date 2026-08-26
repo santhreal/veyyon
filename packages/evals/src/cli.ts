@@ -21,13 +21,14 @@ import { registerAllBackends } from "./backends";
 import type {
 	CellSummary,
 	ConfigSpec,
+	EvalRunRecord,
 	EvalSuite,
 	PromptVariantSpec,
 	SuiteContext,
 	VariantMatrixSelection,
 } from "./core";
 import { requireBackend, requireSuite, summarizeRunCells } from "./core";
-import { registerBuiltinHarnesses } from "./harnesses";
+import { preflightHarnesses, registerBuiltinHarnesses } from "./harnesses";
 import { runsDir as defaultRunsDir } from "./paths";
 import { buildRunPlan, describeRunPlan, executeRun, type RunPlan } from "./run";
 import { builtinSuites, registerAllSuites } from "./suites";
@@ -51,6 +52,7 @@ export const VALUE_FLAGS: Record<string, true> = {
 export const BOOLEAN_FLAGS: Record<string, true> = {
 	"--dry-run": true,
 	"--list": true,
+	"--resume": true,
 	"--help": true,
 };
 
@@ -69,6 +71,7 @@ export interface EvalsCliArgs {
 	readonly runId: string | null;
 	readonly dryRun: boolean;
 	readonly list: boolean;
+	readonly resume: boolean;
 	readonly help: boolean;
 }
 
@@ -101,8 +104,8 @@ export function parseEvalsArgs(argv: readonly string[]): EvalsCliArgs {
 	let runId: string | null = null;
 	let dryRun = false;
 	let list = false;
+	let resume = false;
 	let help = false;
-
 	for (let index = 0; index < argv.length; index += 1) {
 		const arg = argv[index] as string;
 		if (!arg.startsWith("--")) {
@@ -119,6 +122,7 @@ export function parseEvalsArgs(argv: readonly string[]): EvalsCliArgs {
 			}
 			if (name === "--dry-run") dryRun = true;
 			if (name === "--list") list = true;
+			if (name === "--resume") resume = true;
 			if (name === "--help") help = true;
 			continue;
 		}
@@ -211,6 +215,7 @@ export function parseEvalsArgs(argv: readonly string[]): EvalsCliArgs {
 		runId,
 		dryRun,
 		list,
+		resume,
 		help,
 	};
 }
@@ -241,6 +246,7 @@ Selection and execution:
   --run-id <name>           name the run instead of generating a timestamped id; with
                             several suites each run is named <name>-<suite>
   --dry-run                 print the plan and every preflight verdict, run nothing
+  --resume                  resume a prior run from its trials.jsonl journal
   --help                    this text
 `;
 
@@ -446,12 +452,29 @@ async function runOneSuite(args: EvalsCliArgs, suite: EvalSuite, running: readon
 			runsDir,
 			options: { ...context.options, variants: plan.variants },
 		});
+		// The harness axis is preflighted on the real run too, so a dry run that skipped it
+		// promised a verdict the run then refused.
+		const harnessReports = await preflightHarnesses(plan.variants, {
+			backend: suite.backend,
+			options: { ...context.options, variants: plan.variants },
+		});
+		const refusedHarness = harnessReports.filter(report => !report.verdict.ok);
+		const harnessLine =
+			refusedHarness.length === 0
+				? "  harness    ok"
+				: refusedHarness
+						.map(
+							report =>
+								`  harness    REFUSED — ${report.harness} (${report.variant}): ${report.verdict.reason ?? "no reason given"}`,
+						)
+						.join("\n");
 		const verdicts = [
 			`  suite      ${suiteVerdict.ok ? "ok" : `REFUSED — ${suiteVerdict.reason ?? "no reason given"}`}`,
+			harnessLine,
 			`  backend    ${backendVerdict.ok ? "ok" : `REFUSED — ${backendVerdict.reason ?? "no reason given"}`}`,
 		].join("\n");
 		process.stdout.write(`\npreflight:\n${verdicts}\n`);
-		if (!suiteVerdict.ok || !backendVerdict.ok) return 1;
+		if (!suiteVerdict.ok || !backendVerdict.ok || refusedHarness.length > 0) return 1;
 		process.stdout.write("\nDRY RUN — nothing was executed.\n");
 		return 0;
 	}
@@ -459,18 +482,58 @@ async function runOneSuite(args: EvalsCliArgs, suite: EvalSuite, running: readon
 	await fs.mkdir(runsDir, { recursive: true });
 
 	const total = plan.cells.length;
-	const record = await executeRun({
-		plan,
-		backend,
-		workDir,
-		runsDir,
-		jobs: args.jobs,
-		options: { datasetDir: args.datasetDir ?? undefined },
-		onTrial: (trial, index) => {
-			const outcome = trial.score.error !== null ? `error: ${trial.score.error}` : `reward ${trial.score.reward}`;
-			process.stdout.write(`[${index + 1}/${total}] ${trial.cell.variant} ${trial.cell.task} — ${outcome}\n`);
-		},
-	});
+	const controller = new AbortController();
+	let abortedSignal: string | null = null;
+	const onSigInt = () => {
+		if (!controller.signal.aborted) {
+			abortedSignal = "SIGINT";
+			controller.abort();
+		}
+	};
+	const onSigTerm = () => {
+		if (!controller.signal.aborted) {
+			abortedSignal = "SIGTERM";
+			controller.abort();
+		}
+	};
+
+	process.on("SIGINT", onSigInt);
+	process.on("SIGTERM", onSigTerm);
+
+	let record: EvalRunRecord | undefined;
+	try {
+		record = await executeRun({
+			plan,
+			backend,
+			workDir,
+			runsDir,
+			jobs: args.jobs,
+			signal: controller.signal,
+			resume: args.resume,
+			options: { datasetDir: args.datasetDir ?? undefined },
+			onSkip: (skipped, totalCount) => {
+				process.stdout.write(
+					`resumed run ${plan.runId}: skipping ${skipped} already-settled trial(s) out of ${totalCount}\n`,
+				);
+			},
+			onTrial: (trial, index) => {
+				const outcome = trial.score.error !== null ? `error: ${trial.score.error}` : `reward ${trial.score.reward}`;
+				process.stdout.write(`[${index + 1}/${total}] ${trial.cell.variant} ${trial.cell.task} — ${outcome}\n`);
+			},
+		});
+	} finally {
+		process.removeListener("SIGINT", onSigInt);
+		process.removeListener("SIGTERM", onSigTerm);
+	}
+
+	if (controller.signal.aborted || abortedSignal !== null) {
+		const completedCount = record ? record.results.length : 0;
+		process.stderr.write(
+			`\nRun ${plan.runId} interrupted by ${abortedSignal ?? "signal"} (${completedCount}/${total} trials completed).\n` +
+				`To resume this run:\n  evals --suite ${suite.name} --run-id ${plan.runId} --resume\n`,
+		);
+		return 130;
+	}
 
 	process.stdout.write(`\n${summaryTable(summarizeRunCells(record))}\n`);
 	const errors = record.results.filter(result => result.score.error !== null).length;

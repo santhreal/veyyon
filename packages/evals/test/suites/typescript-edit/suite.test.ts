@@ -150,6 +150,16 @@ describe("TypeScript Edit Benchmark — EvalSuite & ExecutionBackend contracts",
 					options: {
 						model: "test-model",
 						tools: ["read", "edit", "write"],
+						variants: [
+							{
+								name: "veyyon-default",
+								harness: "veyyon",
+								configPath: null,
+								promptVariantPath: null,
+								model: "test-model",
+								attachments: [],
+							},
+						],
 					},
 				};
 

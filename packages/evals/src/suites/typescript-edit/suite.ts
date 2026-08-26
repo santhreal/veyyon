@@ -293,12 +293,42 @@ export class TypescriptEditSuite implements EvalSuite {
 			};
 		}
 
+		if (typeof artifacts.extra?.error === "string" && artifacts.extra.error) {
+			return {
+				reward: null,
+				partial: null,
+				error: `Trial execution failed: ${artifacts.extra.error}`,
+				usage: (artifacts.extra?.usage as TrialUsage | null | undefined) ?? null,
+				extra: { ...artifacts.extra, cell },
+			};
+		}
+
 		try {
 			const descriptor = await this.describeTask(cell.task);
 			const expectedDir = descriptor.metadata.expectedDir as string;
 			const files = descriptor.metadata.files as string[] | undefined;
 
 			const verification = await verifyExpectedFileSubset(expectedDir, trialDir, files);
+
+			if (verification.infrastructureFailure) {
+				return {
+					reward: null,
+					partial: null,
+					error: verification.error ?? "Verification infrastructure failure",
+					usage: (artifacts.extra?.usage as TrialUsage | null | undefined) ?? null,
+					extra: {
+						...artifacts.extra,
+						cell,
+						success: false,
+						error: verification.error ?? null,
+						duration: verification.duration,
+						indentScore: verification.indentScore ?? 0,
+						formattedEquivalent: verification.formattedEquivalent ?? false,
+						diffStats: verification.diffStats ?? { linesChanged: 0, charsChanged: 0 },
+						diff: verification.diff ?? null,
+					},
+				};
+			}
 
 			const reward = verification.success ? 1 : 0;
 			const partial = verification.success ? 1 : verification.formattedEquivalent ? 0.5 : 0;

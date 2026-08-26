@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { errorMessage } from "@veyyon/utils";
+import { $which, errorMessage, logger } from "@veyyon/utils";
 import type {
 	HarnessAdapter,
 	HarnessCapabilities,
@@ -9,12 +9,14 @@ import type {
 	HarnessStageContext,
 	PreflightVerdict,
 } from "../../core/types";
-import type {
-	SystemAdapter,
-	SystemJobConfigContext,
-	SystemPreflightContext,
-	SystemPreflightResult,
-	SystemStageContext,
+import { veyBinaryPath } from "../../paths";
+import {
+	type SystemAdapter,
+	type SystemJobConfigContext,
+	type SystemPreflightContext,
+	type SystemPreflightResult,
+	type SystemStageContext,
+	sanitizeVariantName,
 } from "../types";
 
 /**
@@ -118,12 +120,38 @@ export class OmpAdapter implements HarnessAdapter, SystemAdapter {
 		const options = context.options ?? {};
 		const missing: string[] = [];
 		const ompBinary =
-			typeof options["omp-binary"] === "string" ? path.resolve(options["omp-binary"]) : (Bun.which("omp") ?? null);
+			typeof options["omp-binary"] === "string"
+				? path.resolve(options["omp-binary"])
+				: typeof options.ompBinary === "string"
+					? path.resolve(options.ompBinary)
+					: ($which("omp") ?? null);
 
 		if (!ompBinary || !fs.existsSync(ompBinary)) {
-			missing.push("omp binary on PATH or --omp-binary");
+			missing.push("omp binary on PATH or --omp-binary (install omp or pass --omp-binary <path>)");
 		} else if (!fs.statSync(ompBinary).isFile()) {
 			missing.push(`omp binary path is not a file: ${ompBinary}`);
+		} else {
+			try {
+				fs.accessSync(ompBinary, fs.constants.X_OK);
+			} catch {
+				missing.push(`omp binary at ${ompBinary} is not executable (fix with: chmod +x ${ompBinary})`);
+			}
+		}
+
+		const model =
+			typeof options.model === "string" ? options.model : (this.defaultModel ?? "opencode-go/deepseek-v4-flash");
+		const slashIndex = model.indexOf("/");
+		const provider = slashIndex > 0 ? model.slice(0, slashIndex) : model;
+		const authEnvVar = `${provider.toUpperCase().replace(/[^A-Z0-9]/g, "_")}_API_KEY`;
+		const explicitKey =
+			typeof options["omp-api-key"] === "string"
+				? options["omp-api-key"]
+				: typeof options.ompApiKey === "string"
+					? options.ompApiKey
+					: null;
+		const envKey = process.env[authEnvVar] ?? process.env.OPENCODE_API_KEY ?? null;
+		if (!explicitKey && !envKey) {
+			missing.push(`omp requires an API key for ${model}; set $${authEnvVar} or pass --omp-api-key <key>`);
 		}
 
 		if (missing.length > 0) {
@@ -167,13 +195,61 @@ export class OmpAdapter implements HarnessAdapter, SystemAdapter {
 		if ("targetDir" in context) {
 			// HarnessStageContext
 			const options = context.options ?? {};
+			const variantKey = sanitizeVariantName(context.variant.name);
+			const destDir = path.join(context.targetDir, variantKey);
+			fs.mkdirSync(destDir, { recursive: true });
+
 			const ompBinary =
 				typeof options["omp-binary"] === "string"
 					? path.resolve(options["omp-binary"])
-					: (Bun.which("omp") ?? null);
+					: typeof options.ompBinary === "string"
+						? path.resolve(options.ompBinary)
+						: ($which("omp") ?? null);
 			if (ompBinary && fs.existsSync(ompBinary)) {
-				fs.copyFileSync(ompBinary, path.join(context.targetDir, "omp"));
-				fs.chmodSync(path.join(context.targetDir, "omp"), 0o755);
+				fs.copyFileSync(ompBinary, path.join(destDir, "omp"));
+				fs.chmodSync(path.join(destDir, "omp"), 0o755);
+			}
+
+			const model = context.variant.model || (typeof options.model === "string" ? options.model : this.defaultModel);
+			const slashIndex = model.indexOf("/");
+			const provider = slashIndex > 0 ? model.slice(0, slashIndex) : model;
+			const authEnvVar = `${provider.toUpperCase().replace(/[^A-Z0-9]/g, "_")}_API_KEY`;
+			const apiKey =
+				(typeof options["omp-api-key"] === "string" ? options["omp-api-key"] : null) ??
+				(typeof options.ompApiKey === "string" ? options.ompApiKey : null) ??
+				process.env[authEnvVar] ??
+				process.env.OPENCODE_API_KEY ??
+				"";
+
+			if (apiKey) {
+				const envContent = [`${authEnvVar}=${apiKey}`, `OPENCODE_API_KEY=${apiKey}`, ""].join("\n");
+				fs.writeFileSync(path.join(destDir, "omp.env"), envContent);
+				fs.chmodSync(path.join(destDir, "omp.env"), 0o600);
+			}
+
+			const veyBinary =
+				typeof options.binary === "string"
+					? path.resolve(options.binary)
+					: typeof options["vey-binary"] === "string"
+						? path.resolve(options["vey-binary"])
+						: path.join(context.targetDir, "vey");
+			const effectiveVeyBinary = fs.existsSync(veyBinary) ? veyBinary : veyBinaryPath();
+			if (fs.existsSync(effectiveVeyBinary) && apiKey) {
+				try {
+					const refreshOutput = execFileSync(effectiveVeyBinary, ["models", "refresh", provider, "--json"], {
+						encoding: "utf8",
+						timeout: 30_000,
+						env: { ...process.env, [authEnvVar]: apiKey },
+					});
+					const modelsYml = buildModelsYml(refreshOutput, model, apiKey);
+					if (modelsYml) {
+						fs.writeFileSync(path.join(destDir, "models.yml"), modelsYml);
+					}
+				} catch (err) {
+					logger.warn(
+						`warning: failed to build models.yml for omp via 'vey models refresh': ${errorMessage(err)}`,
+					);
+				}
 			}
 			return;
 		}
@@ -182,7 +258,7 @@ export class OmpAdapter implements HarnessAdapter, SystemAdapter {
 		const ompBinary =
 			typeof context.args["omp-binary"] === "string"
 				? path.resolve(context.args["omp-binary"])
-				: (Bun.which("omp") ?? null);
+				: ($which("omp") ?? null);
 		if (ompBinary && fs.existsSync(ompBinary)) {
 			fs.copyFileSync(ompBinary, path.join(context.assetsDir, "omp"));
 			fs.chmodSync(path.join(context.assetsDir, "omp"), 0o755);
@@ -216,7 +292,7 @@ export class OmpAdapter implements HarnessAdapter, SystemAdapter {
 					fs.writeFileSync(path.join(context.assetsDir, "models.yml"), modelsYml);
 				}
 			} catch (err) {
-				console.warn(`warning: failed to build models.yml for omp via 'vey models refresh': ${errorMessage(err)}`);
+				logger.warn(`warning: failed to build models.yml for omp via 'vey models refresh': ${errorMessage(err)}`);
 			}
 		}
 	}

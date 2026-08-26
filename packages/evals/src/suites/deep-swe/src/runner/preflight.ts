@@ -61,6 +61,29 @@ export interface BinaryBuildCheck {
 	readonly buildCommand: string;
 }
 
+/**
+ * Source files generated or rewritten by build-binary.ts teardown / generators.
+ *
+ * These files are rewritten during build completion / reset and will have
+ * mtimes slightly newer than the compiled binary, which would otherwise cause
+ * checkBinaryBuildNeeded() to report false staleness.
+ */
+export const BUILD_GENERATED_EXCLUSIONS: readonly string[] = [
+	"src/embedded-client.generated.txt",
+	"src/utils/mupdf-wasm-embed.ts",
+];
+
+export function isBuildGeneratedFile(relPath: string, basename: string): boolean {
+	const normalized = relPath.replace(/\\/g, "/");
+	if (BUILD_GENERATED_EXCLUSIONS.includes(normalized)) {
+		return true;
+	}
+	if (basename.includes(".generated.")) {
+		return true;
+	}
+	return false;
+}
+
 export function checkBinaryBuildNeeded(customBinaryPath?: string): BinaryBuildCheck {
 	const codingAgentDir = getCodingAgentDir();
 	const veyBinary = customBinaryPath ? path.resolve(customBinaryPath) : getVeyBinaryPath();
@@ -85,9 +108,15 @@ export function checkBinaryBuildNeeded(customBinaryPath?: string): BinaryBuildCh
 			const p = path.join(d, entry.name);
 			if (entry.isDirectory()) {
 				if (checkDir(p)) return true;
-			} else if (entry.isFile() && fs.statSync(p).mtimeMs > binaryMtime) {
-				newerFile = p;
-				return true;
+			} else if (entry.isFile()) {
+				const relPath = path.relative(codingAgentDir, p);
+				if (isBuildGeneratedFile(relPath, entry.name)) {
+					continue;
+				}
+				if (fs.statSync(p).mtimeMs > binaryMtime) {
+					newerFile = p;
+					return true;
+				}
 			}
 		}
 		return false;

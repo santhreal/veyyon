@@ -19,10 +19,86 @@ export interface PierJobConfigOptions {
 export interface PierTrialRunOptions {
 	readonly jobName: string;
 	readonly outRoot: string;
+	readonly jobsDir?: string;
 	readonly configPath: string;
 	readonly pierAgentDir: string;
 	readonly trialTimeoutSec: number;
 	readonly attempt?: number;
+	readonly signal?: AbortSignal;
+	readonly exec?: (file: string, args: readonly string[]) => Promise<{ stdout: string; stderr: string }>;
+}
+
+export const DEFAULT_TRIAL_TIMEOUT_SEC = 1800;
+export const HARD_CEILING_TIMEOUT_SEC = 3600;
+export const DEFAULT_GRACE_PERIOD_MS = 5000;
+export const RAW_OUTPUT_MAX_BYTES = 65536;
+
+export function truncateRawOutput(output: string | null | undefined, maxBytes = RAW_OUTPUT_MAX_BYTES): string {
+	if (!output) return "";
+	if (output.length <= maxBytes) return output;
+	return output.slice(-maxBytes);
+}
+
+export interface TerminableProcess {
+	readonly pid?: number;
+	kill(signal?: "SIGTERM" | "SIGKILL" | number): unknown;
+	readonly exited: Promise<number>;
+}
+
+export async function terminateProcessTree(
+	proc: TerminableProcess,
+	gracePeriodMs = DEFAULT_GRACE_PERIOD_MS,
+): Promise<void> {
+	const pid = proc.pid;
+	try {
+		proc.kill("SIGTERM");
+	} catch {
+		/* process may already be dead */
+	}
+	if (typeof pid === "number" && pid > 0) {
+		try {
+			process.kill(-pid, "SIGTERM");
+		} catch {
+			try {
+				process.kill(pid, "SIGTERM");
+			} catch {
+				/* already exited */
+			}
+		}
+	}
+
+	const { promise: timeoutPromise, resolve: resolveTimeout } = Promise.withResolvers<"timed_out">();
+	const timer = setTimeout(() => resolveTimeout("timed_out"), gracePeriodMs);
+
+	const result = await Promise.race([
+		proc.exited.then(() => "exited" as const).catch(() => "exited" as const),
+		timeoutPromise,
+	]);
+
+	clearTimeout(timer);
+
+	if (result === "timed_out") {
+		try {
+			proc.kill("SIGKILL");
+		} catch {
+			/* ignore */
+		}
+		if (typeof pid === "number" && pid > 0) {
+			try {
+				process.kill(-pid, "SIGKILL");
+			} catch {
+				try {
+					process.kill(pid, "SIGKILL");
+				} catch {
+					/* already exited */
+				}
+			}
+		}
+		const { promise: killGracePromise, resolve: resolveKillGrace } = Promise.withResolvers<void>();
+		const killTimer = setTimeout(() => resolveKillGrace(), 500);
+		await Promise.race([proc.exited.catch(() => {}), killGracePromise]);
+		clearTimeout(killTimer);
+	}
 }
 
 export interface PierExecutionResult {
@@ -95,11 +171,87 @@ export function writePierJobConfig(options: PierJobConfigOptions): string {
 	return configPath;
 }
 
-export async function cleanupPierContainers(jobName: string): Promise<void> {
+export async function cleanupPierContainers(
+	jobName: string,
+	exec?: (file: string, args: readonly string[]) => Promise<{ stdout: string; stderr: string }>,
+): Promise<void> {
+	const runExec =
+		exec ??
+		(async (file: string, args: readonly string[]) => {
+			const res = spawnSync(file, args as string[], { encoding: "utf8" });
+			if (res.status !== 0) {
+				throw new Error(res.stderr || `exit ${res.status}`);
+			}
+			return { stdout: res.stdout ?? "", stderr: res.stderr ?? "" };
+		});
+
 	try {
-		await Bun.spawn(["sh", "-c", `docker rm -f $(docker ps -aq --filter name=${jobName}) 2>/dev/null || true`])
-			.exited;
-		await Bun.spawn(["docker", "network", "prune", "-f"]).exited;
+		const psRes = await runExec("docker", [
+			"ps",
+			"-a",
+			"--format",
+			'{{.ID}}\t{{.Names}}\t{{.Label "com.docker.compose.project"}}',
+		]);
+
+		const matchedContainerIds: string[] = [];
+		for (const line of psRes.stdout.trim().split("\n")) {
+			if (!line.trim()) continue;
+			const [id, names, project] = line.split("\t");
+			if (!id) continue;
+
+			if (
+				project === jobName ||
+				names === jobName ||
+				names?.startsWith(`${jobName}-`) ||
+				names?.startsWith(`${jobName}_`) ||
+				names?.startsWith(`/${jobName}-`) ||
+				names?.startsWith(`/${jobName}_`)
+			) {
+				matchedContainerIds.push(id);
+			}
+		}
+
+		if (matchedContainerIds.length > 0) {
+			try {
+				await runExec("docker", ["rm", "-f", ...matchedContainerIds]);
+			} catch {
+				/* ignore */
+			}
+		}
+
+		const netRes = await runExec("docker", [
+			"network",
+			"ls",
+			"--format",
+			'{{.ID}}\t{{.Name}}\t{{.Label "com.docker.compose.project"}}',
+		]);
+
+		const matchedNetIds: string[] = [];
+		for (const line of netRes.stdout.trim().split("\n")) {
+			if (!line.trim()) continue;
+			const [netId, name, project] = line.split("\t");
+			if (!netId) continue;
+
+			if (
+				project === jobName ||
+				name === jobName ||
+				name === `${jobName}_default` ||
+				name?.startsWith(`${jobName}-`) ||
+				name?.startsWith(`${jobName}_`)
+			) {
+				matchedNetIds.push(netId);
+			}
+		}
+
+		if (matchedNetIds.length > 0) {
+			for (const netId of matchedNetIds) {
+				try {
+					await runExec("docker", ["network", "rm", netId]);
+				} catch {
+					/* ignore */
+				}
+			}
+		}
 	} catch {
 		/* best effort */
 	}
@@ -107,17 +259,24 @@ export async function cleanupPierContainers(jobName: string): Promise<void> {
 
 export async function runPierTrial(options: PierTrialRunOptions): Promise<PierExecutionResult> {
 	const attempt = options.attempt ?? 1;
-	const jobDir = path.join(options.outRoot, "jobs", options.jobName);
+	const jobDir = options.jobsDir
+		? path.join(options.jobsDir, options.jobName)
+		: path.join(options.outRoot, "jobs", options.jobName);
 
 	if (attempt > 1 && fs.existsSync(jobDir)) {
 		fs.rmSync(jobDir, { recursive: true, force: true });
-		await cleanupPierContainers(options.jobName);
+		await cleanupPierContainers(options.jobName, options.exec);
 	}
 
 	const pier = findPierBinary();
 	if (!pier) {
-		throw new Error(`pier executable not found`);
+		throw new Error("pier executable not found");
 	}
+
+	const timeoutSec = Math.min(
+		options.trialTimeoutSec > 0 ? options.trialTimeoutSec : DEFAULT_TRIAL_TIMEOUT_SEC,
+		HARD_CEILING_TIMEOUT_SEC,
+	);
 
 	const started = Date.now();
 	const proc = Bun.spawn([pier, "run", "-c", options.configPath, "-q"], {
@@ -127,16 +286,58 @@ export async function runPierTrial(options: PierTrialRunOptions): Promise<PierEx
 		stderr: "pipe",
 	});
 
-	let timedOut = false;
-	const timer = setTimeout(() => {
-		timedOut = true;
-		proc.kill();
-	}, options.trialTimeoutSec * 1000);
+	const killTrial = async (): Promise<void> => {
+		await terminateProcessTree(proc, DEFAULT_GRACE_PERIOD_MS);
+		await cleanupPierContainers(options.jobName, options.exec);
+	};
 
-	const exitCode = await proc.exited;
-	clearTimeout(timer);
-	const stdout = await readPipeText(proc.stdout);
-	const stderr = await readPipeText(proc.stderr);
+	const onAbort = (): void => {
+		void killTrial();
+	};
+
+	if (options.signal) {
+		options.signal.addEventListener("abort", onAbort, { once: true });
+	}
+
+	const { promise: timeoutPromise, resolve: resolveTimeout } = Promise.withResolvers<"timed_out">();
+	const timer = setTimeout(() => resolveTimeout("timed_out"), timeoutSec * 1000);
+
+	let stdout = "";
+	let stderr = "";
+	let exitCode = 0;
+	let timedOut = false;
+
+	try {
+		const stdoutPromise = readPipeText(proc.stdout);
+		const stderrPromise = readPipeText(proc.stderr);
+		const raceResult = await Promise.race([
+			Promise.all([proc.exited, stdoutPromise, stderrPromise]).then(([code, out, err]) => ({
+				kind: "exited" as const,
+				code,
+				out,
+				err,
+			})),
+			timeoutPromise.then(kind => ({ kind, code: -1, out: "", err: "" })),
+		]);
+
+		if (raceResult.kind === "timed_out") {
+			timedOut = true;
+			await killTrial();
+			stdout = truncateRawOutput(await readPipeText(proc.stdout));
+			stderr = truncateRawOutput(await readPipeText(proc.stderr));
+			exitCode = -1;
+		} else {
+			exitCode = raceResult.code;
+			stdout = truncateRawOutput(raceResult.out);
+			stderr = truncateRawOutput(raceResult.err);
+		}
+	} finally {
+		clearTimeout(timer);
+		if (options.signal) {
+			options.signal.removeEventListener("abort", onAbort);
+		}
+	}
+
 	const durationMs = Date.now() - started;
 
 	let trialDirPath: string | null = null;
@@ -156,8 +357,13 @@ export async function runPierTrial(options: PierTrialRunOptions): Promise<PierEx
 			trialDirPath,
 			durationMs,
 			timedOut: true,
-			error: `trial timed out after ${options.trialTimeoutSec}s`,
+			error: `trial timed out after ${timeoutSec}s`,
 		};
+	}
+
+	if (options.signal?.aborted) {
+		await killTrial();
+		throw new Error("Trial aborted: pier execution cancelled");
 	}
 
 	const errStr = `pier exit ${exitCode}; ${stderr.slice(-300) || stdout.slice(-300)}`;
@@ -186,24 +392,24 @@ export function trialArtifactsFromExecution(
 	execution: PierExecutionResult,
 ): TrialArtifacts {
 	const logPaths: string[] = [];
-	const files: Record<string, string> = {};
+	const filePaths: Record<string, string> = {};
 
 	if (trialDirPath && fs.existsSync(trialDirPath)) {
 		const patchPath = path.join(trialDirPath, "artifacts", "model.patch");
 		if (fs.existsSync(patchPath)) {
-			files.patch = patchPath;
+			filePaths.patch = patchPath;
 		}
 		const transcriptPath = path.join(trialDirPath, "agent", "sessions");
 		if (fs.existsSync(transcriptPath)) {
-			files.transcript = transcriptPath;
+			filePaths.transcript = transcriptPath;
 		}
 	}
 
 	return {
 		trialDir: trialDirPath,
 		logPaths,
-		rawOutput: execution.stdout || execution.stderr,
-		files,
+		filePaths,
+		rawOutput: truncateRawOutput(execution.stdout || execution.stderr),
 		extra: {
 			exitCode: execution.exitCode,
 			durationMs: execution.durationMs,

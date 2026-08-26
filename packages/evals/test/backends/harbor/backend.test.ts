@@ -2,12 +2,7 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import {
-	HarborBackend,
-	harborBackend,
-	parseVariant,
-	registerHarborBackend,
-} from "../../../src/backends/harbor/backend";
+import { HarborBackend, harborBackend, registerHarborBackend } from "../../../src/backends/harbor/backend";
 import { buildHarborArgs } from "../../../src/backends/harbor/launch-args";
 import { BackendRegistry, defaultBackendRegistry } from "../../../src/core/backend-registry";
 import type {
@@ -197,46 +192,6 @@ describe("HarborBackend preflight", () => {
 	});
 });
 
-describe("parseVariant mapping", () => {
-	it("parses oracle variant", () => {
-		expect(parseVariant("oracle")).toEqual({ agent: "oracle", model: undefined });
-		expect(parseVariant("oracle@anthropic/claude-sonnet-4-6")).toEqual({
-			agent: "oracle",
-			model: "anthropic/claude-sonnet-4-6",
-		});
-		expect(parseVariant("", { agent: "oracle" })).toEqual({ agent: "oracle", model: undefined });
-	});
-
-	it("parses nop variant", () => {
-		expect(parseVariant("nop")).toEqual({ agent: "nop", model: undefined });
-	});
-
-	it("parses model-only variant to veyyon agent with model", () => {
-		expect(parseVariant("anthropic/claude-sonnet-4-6")).toEqual({
-			agent: "veyyon",
-			model: "anthropic/claude-sonnet-4-6",
-		});
-	});
-
-	it("parses compound agent@model variant", () => {
-		expect(parseVariant("veyyon@openai/gpt-4o")).toEqual({
-			agent: "veyyon",
-			model: "openai/gpt-4o",
-		});
-		expect(parseVariant("custom-harness:config@anthropic/claude-3-5-sonnet")).toEqual({
-			agent: "custom-harness",
-			model: "anthropic/claude-3-5-sonnet",
-		});
-	});
-
-	it("honors explicit options overrides", () => {
-		expect(parseVariant("default", { agent: "oracle", model: "custom-model" })).toEqual({
-			agent: "oracle",
-			model: "custom-model",
-		});
-	});
-});
-
 describe("buildHarborArgs shared construction", () => {
 	it("builds single trial task path invocation", () => {
 		const args = buildHarborArgs({
@@ -376,9 +331,66 @@ describe("HarborBackend cleanup", () => {
 
 		await expect(backend.cleanup(cell, context)).resolves.toBeUndefined();
 	});
+
+	it("scopes cleanup exclusively to this trial containers and networks", async () => {
+		const commands: Array<{ file: string; args: readonly string[] }> = [];
+		const backend = new HarborBackend({
+			which: () => "/usr/bin/docker",
+			exec: async (file, args) => {
+				commands.push({ file, args });
+				if (args[0] === "ps") {
+					return {
+						stdout:
+							"cont_target\texited\trun_A__oracle__task_1__r0_123\t/runs/run_A/job1\ncont_other\trunning\trun_B__oracle__task_1__r0_456\t/runs/run_B/job2",
+						stderr: "",
+					};
+				}
+				if (args[0] === "network" && args[1] === "ls") {
+					return {
+						stdout:
+							"net_target\trun_A__oracle__task_1__r0_123_default\tcom.docker.compose.project=run_A__oracle__task_1__r0_123\nnet_other\trun_B__oracle__task_1__r0_456_default\tcom.docker.compose.project=run_B__oracle__task_1__r0_456",
+						stderr: "",
+					};
+				}
+				return { stdout: "", stderr: "" };
+			},
+		});
+
+		const cell: TrialCell = {
+			variant: "oracle",
+			suite: "terminal-bench",
+			task: "task_1",
+			repeat: 0,
+		};
+		const context: RunContext = {
+			runId: "run_A",
+			suite: createMockSuite(),
+			workDir: "/tmp",
+			runsDir: "/tmp",
+		};
+
+		await backend.cleanup(cell, context);
+
+		// Assert no prune was called
+		for (const cmd of commands) {
+			expect(cmd.args).not.toContain("prune");
+		}
+
+		// Assert target container removed, not cont_other
+		const rmCmd = commands.find(c => c.args[0] === "rm");
+		expect(rmCmd).toBeDefined();
+		expect(rmCmd?.args).toEqual(["rm", "cont_target"]);
+		expect(rmCmd?.args).not.toContain("cont_other");
+
+		// Assert target network removed, not net_other
+		const netRmCmd = commands.find(c => c.args[0] === "network" && c.args[1] === "rm");
+		expect(netRmCmd).toBeDefined();
+		expect(netRmCmd?.args).toEqual(["network", "rm", "net_target"]);
+		expect(netRmCmd?.args).not.toContain("net_other");
+	});
 });
 
-describe("HarborBackend runTrial abort handling", () => {
+describe("HarborBackend runTrial abort handling and runId isolation", () => {
 	it("rejects immediately if signal is already aborted", async () => {
 		const backend = new HarborBackend();
 		const controller = new AbortController();

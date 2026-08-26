@@ -2,12 +2,9 @@
  * Overlay files for the config and prompt-variant axes, loaded and checked before a
  * trial starts.
  *
- * A prompt variant reaches the agent through exactly one seam, `VEYYON_EVAL_PROMPTS`
- * (`@veyyon/utils/eval-prompt-overrides`), which the prompt rows and registries re-read
- * when it changes. This module therefore writes that variable and nothing else:
- * mutating the imported prompt rows as well would be a second mechanism for one
- * behaviour, and one that outlives the trial that set it.
- *
+ * Prompt variants are applied per session/trial directly through session construction
+ * (e.g. systemPrompt block rewriting) without mutating the process-global environment
+ * or leaking across concurrent trials.
  * The id space is read from the registries at call time, and the refusal is worded by
  * the same owner the DeepSWE arm check and the agent's assembly-time refusal use, so a
  * typo is refused in the second before a run starts rather than inside a container once
@@ -17,7 +14,8 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { isSettingPath } from "@veyyon/coding-agent/config/settings-schema";
-import { $env, describeUnknownPromptIds, errorMessage, isRecord, PROMPT_ID_SHAPE_HINT } from "@veyyon/utils";
+import { PROMPT_REGISTRIES } from "@veyyon/coding-agent/prompts/all-registries";
+import { describeUnknownPromptIds, errorMessage, isRecord, PROMPT_ID_SHAPE_HINT } from "@veyyon/utils";
 import YAML from "yaml";
 import { knownPromptIds } from "../../suites/deep-swe/arm-prompts";
 
@@ -178,17 +176,32 @@ export async function loadAndValidatePromptOverlay(
 }
 
 /**
- * Publishes prompt overrides on `VEYYON_EVAL_PROMPTS` for the duration of a trial, and
- * returns the call that puts the variable back the way it was.
+ * Applies prompt overrides to system prompt blocks by replacing the base text of overridden prompt IDs
+ * with their replacement text, without mutating global process environment variables.
  */
-export function applyPromptOverrides(overrides: Record<string, string>): () => void {
-	const previous = $env.VEYYON_EVAL_PROMPTS;
-	$env.VEYYON_EVAL_PROMPTS = JSON.stringify(overrides);
-	return () => {
-		if (previous === undefined) {
-			delete $env.VEYYON_EVAL_PROMPTS;
-			return;
+export function applyPromptOverridesToSystemPrompt(
+	promptBlocks: readonly string[],
+	overrides: Readonly<Record<string, string>>,
+): string[] {
+	if (Object.keys(overrides).length === 0) {
+		return [...promptBlocks];
+	}
+
+	return promptBlocks.map(block => {
+		let updated = block;
+		for (const [id, replacement] of Object.entries(overrides)) {
+			const registry = PROMPT_REGISTRIES.find(r => r.has(id));
+			const originalText = registry?.prompts[id]?.text;
+			if (originalText) {
+				const trimmedOriginal = originalText.trim();
+				const trimmedReplacement = replacement.trim();
+				if (trimmedOriginal.length > 0 && updated.includes(trimmedOriginal)) {
+					updated = updated.replaceAll(trimmedOriginal, trimmedReplacement);
+				} else if (updated.includes(originalText)) {
+					updated = updated.replaceAll(originalText, replacement);
+				}
+			}
 		}
-		$env.VEYYON_EVAL_PROMPTS = previous;
-	};
+		return updated;
+	});
 }

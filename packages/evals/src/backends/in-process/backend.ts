@@ -3,6 +3,7 @@ import * as path from "node:path";
 import type { Settings } from "@veyyon/coding-agent";
 import { errorMessage } from "@veyyon/utils";
 import { type BackendRegistry, defaultBackendRegistry } from "../../core/backend-registry";
+import { resolveCellVariant } from "../../core/cell-variant";
 import type {
 	BackendId,
 	ExecutionBackend,
@@ -24,24 +25,41 @@ import {
 } from "./client";
 import { loadAndValidateConfigOverlay, loadAndValidatePromptOverlay } from "./overlays";
 
+export interface InProcessSessionStats {
+	tokens: {
+		input: number;
+		output: number;
+		reasoning?: number;
+		cacheRead?: number;
+		cacheWrite?: number;
+		total: number;
+	};
+	assistantMessages: number;
+}
+
 export interface InProcessClientLike {
 	start(): Promise<void>;
 	prompt(text: string): Promise<void>;
-	getSessionStats(): Promise<{
-		tokens: {
-			input: number;
-			output: number;
-			reasoning?: number;
-			cacheRead?: number;
-			cacheWrite?: number;
-			total: number;
-		};
-		assistantMessages: number;
-	}>;
+	getSessionStats(): Promise<InProcessSessionStats>;
 	getLastAssistantText(): Promise<string | null>;
 	getSettings?(): Promise<Settings | undefined>;
 	getState?(): Promise<InProcessSessionState>;
+	abort?(): void;
 	dispose(): Promise<void>;
+}
+
+export const DEFAULT_TRIAL_TIMEOUT_SEC = 1800;
+export const HARD_CEILING_TRIAL_TIMEOUT_SEC = 7200;
+export const RAW_OUTPUT_TAIL_CAP_BYTES = 64 * 1024;
+
+/**
+ * Returns a bounded tail of rawOutput up to capBytes (defaults to 64 KiB).
+ */
+export function capRawOutputTail(text: string | null | undefined, capBytes = RAW_OUTPUT_TAIL_CAP_BYTES): string | null {
+	if (!text) return null;
+	const buf = Buffer.from(text, "utf-8");
+	if (buf.byteLength <= capBytes) return text;
+	return buf.subarray(buf.byteLength - capBytes).toString("utf-8");
 }
 
 export type InProcessClientFactory = (options: InProcessClientOptions) => InProcessClientLike;
@@ -51,13 +69,8 @@ export interface InProcessBackendOptions {
 	readonly clientFactory?: InProcessClientFactory;
 }
 
-/**
- * ExecutionBackend implementation for in-process AgentSession evaluation.
- * Runs benchmark tasks directly in the local process, reusing auth/model infrastructure.
- */
 export class InProcessBackend implements ExecutionBackend {
 	readonly id: BackendId = "in-process";
-
 	#sharedInfra: SharedInfra | null = null;
 	readonly #clientFactory: InProcessClientFactory | undefined;
 
@@ -176,17 +189,16 @@ export class InProcessBackend implements ExecutionBackend {
 			instruction = (await fs.readFile(descriptor.instructionPath, "utf-8")).trim();
 		}
 
+		const variant = resolveCellVariant(cell, context);
 		const model =
-			(context.options?.model as string | undefined) ??
-			(context.options?.defaultModel as string | undefined) ??
+			variant.model ||
+			(context.options?.model as string | undefined) ||
+			(context.options?.defaultModel as string | undefined) ||
 			"anthropic/claude-sonnet-4-6";
 
-		// Match variant from context options if available
-		const variants = context.options?.variants ?? [];
-		const variant = variants.find(v => v.name === cell.variant);
-		const configPath = variant?.configPath ?? (context.options?.configPath as string | undefined) ?? null;
+		const configPath = variant.configPath ?? (context.options?.configPath as string | undefined) ?? null;
 		const promptVariantPath =
-			variant?.promptVariantPath ?? (context.options?.promptVariantPath as string | undefined) ?? null;
+			variant.promptVariantPath ?? (context.options?.promptVariantPath as string | undefined) ?? null;
 
 		let resolvedConfigPath: string | undefined;
 		if (configPath) {
@@ -216,22 +228,65 @@ export class InProcessBackend implements ExecutionBackend {
 		const startTime = Date.now();
 		const client = this.#clientFactory ? this.#clientFactory(clientOptions) : new InProcessClient(clientOptions);
 
-		let sessionStats: {
-			tokens: {
-				input: number;
-				output: number;
-				reasoning?: number;
-				cacheRead?: number;
-				cacheWrite?: number;
-				total: number;
-			};
-			assistantMessages: number;
-		} | null = null;
+		const baseBudget = descriptor.timeBudgetSec > 0 ? descriptor.timeBudgetSec : DEFAULT_TRIAL_TIMEOUT_SEC;
+		const overrideTimeout =
+			typeof context.options?.trialTimeout === "number" && context.options.trialTimeout > 0
+				? context.options.trialTimeout
+				: typeof context.options?.trialTimeoutSec === "number" && context.options.trialTimeoutSec > 0
+					? context.options.trialTimeoutSec
+					: undefined;
+		const multiplier =
+			typeof context.options?.timeoutMultiplier === "number" && context.options.timeoutMultiplier > 0
+				? context.options.timeoutMultiplier
+				: 1;
+		const rawBudget = (overrideTimeout ?? baseBudget) * multiplier;
+		const timeoutSec = Math.min(Math.max(1, rawBudget), HARD_CEILING_TRIAL_TIMEOUT_SEC);
+
+		let sessionStats: InProcessSessionStats | null = null;
 		let lastAssistantText: string | null = null;
 		let trialError: string | null = null;
 		let state: InProcessSessionState | undefined;
+		let timedOut = false;
+		let timeoutTimer: NodeJS.Timeout | undefined;
+		const timeoutAbort = new AbortController();
 
-		try {
+		const { promise: deadlinePromise, reject: rejectDeadline } = Promise.withResolvers<never>();
+		timeoutTimer = setTimeout(() => {
+			timedOut = true;
+			timeoutAbort.abort();
+			try {
+				client.abort?.();
+			} catch {}
+			rejectDeadline(new Error(`Trial exceeded deadline of ${timeoutSec}s (time budget exceeded)`));
+		}, timeoutSec * 1000);
+
+		if (context.signal) {
+			if (context.signal.aborted) {
+				timeoutAbort.abort();
+				try {
+					client.abort?.();
+				} catch {}
+				rejectDeadline(new Error("Trial aborted by context signal"));
+			} else {
+				context.signal.addEventListener(
+					"abort",
+					() => {
+						timeoutAbort.abort();
+						try {
+							client.abort?.();
+						} catch {}
+						rejectDeadline(new Error("Trial aborted by context signal"));
+					},
+					{ once: true },
+				);
+			}
+		}
+
+		const runClient = async (): Promise<{
+			stats: InProcessSessionStats | null;
+			text: string | null;
+			sessionState: InProcessSessionState | undefined;
+		}> => {
 			await client.start();
 			if (typeof client.getState === "function") {
 				state = await client.getState();
@@ -239,19 +294,28 @@ export class InProcessBackend implements ExecutionBackend {
 			if (instruction) {
 				await client.prompt(instruction);
 			}
-			sessionStats = await client.getSessionStats().catch(() => null);
-			lastAssistantText = await client.getLastAssistantText().catch(() => null);
+			const stats = await client.getSessionStats().catch(() => null);
+			const text = await client.getLastAssistantText().catch(() => null);
+			return { stats, text, sessionState: state };
+		};
+
+		try {
+			const result = await Promise.race([runClient(), deadlinePromise]);
+			sessionStats = result.stats;
+			lastAssistantText = result.text;
+			state = result.sessionState;
 		} catch (err) {
 			trialError = errorMessage(err);
 		} finally {
+			clearTimeout(timeoutTimer);
 			await client.dispose().catch(() => {});
 		}
 
 		const durationSec = (Date.now() - startTime) / 1000;
 		const actualFiles = await listFiles(trialDir).catch(() => []);
-		const fileMap: Record<string, string> = {};
+		const filePathsMap: Record<string, string> = {};
 		for (const file of actualFiles) {
-			fileMap[file] = await fs.readFile(path.join(trialDir, file), "utf-8").catch(() => "");
+			filePathsMap[file] = path.join(trialDir, file);
 		}
 
 		const usage: TrialUsage = sessionStats
@@ -268,8 +332,8 @@ export class InProcessBackend implements ExecutionBackend {
 		return {
 			trialDir,
 			logPaths: [],
-			rawOutput: lastAssistantText,
-			files: fileMap,
+			rawOutput: capRawOutputTail(lastAssistantText),
+			filePaths: filePathsMap,
 			extra: {
 				cell,
 				variant: cell.variant,
@@ -278,6 +342,9 @@ export class InProcessBackend implements ExecutionBackend {
 				sessionStats,
 				usage,
 				error: trialError,
+				timedOut,
+				infrastructureError: timedOut ? trialError : undefined,
+				timeoutSec,
 				systemPrompt: state?.systemPrompt,
 				settings: state?.settings,
 			},

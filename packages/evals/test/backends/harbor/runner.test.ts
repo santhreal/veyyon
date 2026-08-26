@@ -5,10 +5,17 @@ import * as path from "node:path";
 import {
 	buildHarborEnv,
 	buildResumeArgs,
+	cleanupHarborTrialContainers,
 	collectForwardEnv,
+	DEFAULT_GRACE_PERIOD_MS,
+	DEFAULT_TRIAL_TIMEOUT_SEC,
+	HARD_CEILING_TIMEOUT_SEC,
 	parseArgs,
+	RAW_OUTPUT_MAX_BYTES,
 	readTrials,
 	resolveResumeConfig,
+	terminateProcessTree,
+	truncateRawOutput,
 } from "../../../src/backends/harbor/runner";
 
 describe("generic agent-arg / env passthrough", () => {
@@ -286,5 +293,223 @@ describe("resume", () => {
 		// No explicit filters → no -f flags: harbor's own default applies.
 		const bare = parseArgs(["--resume", "j"]);
 		expect(buildResumeArgs(bare, "/jobs/j")).toEqual(["job", "resume", "-p", "/jobs/j"]);
+	});
+});
+
+describe("reward parsing and error handling in parseTrial / readTrials", () => {
+	it("surfaces missing or unparsable reward as infrastructure error, not reward 0 fail", () => {
+		const tmpRoot = path.join(
+			os.tmpdir() === "/tmp" ? "packages/evals/runs" : os.tmpdir(),
+			`harbor-reward-test-${Date.now()}`,
+		);
+		const trialDir = path.join(tmpRoot, "task1__abc1234");
+		fs.mkdirSync(trialDir, { recursive: true });
+
+		try {
+			// Write result.json with no verifier reward
+			fs.writeFileSync(
+				path.join(trialDir, "result.json"),
+				JSON.stringify({
+					started_at: new Date(Date.now() - 5000).toISOString(),
+					finished_at: new Date().toISOString(),
+					verifier_result: null,
+					step_results: [],
+				}),
+			);
+
+			const trials = readTrials(tmpRoot);
+			expect(trials.length).toBe(1);
+			expect(trials[0]?.status).toBe("error");
+			expect(trials[0]?.detail).toBe("missing or unparsable reward");
+			expect(trials[0]?.reward).toBeNull();
+		} finally {
+			try {
+				fs.rmSync(tmpRoot, { recursive: true, force: true });
+			} catch {
+				/* ignore */
+			}
+		}
+	});
+
+	it("records pass when reward is >= 1", () => {
+		const tmpRoot = path.join(
+			os.tmpdir() === "/tmp" ? "packages/evals/runs" : os.tmpdir(),
+			`harbor-pass-test-${Date.now()}`,
+		);
+		const trialDir = path.join(tmpRoot, "task1__abc1234");
+		fs.mkdirSync(trialDir, { recursive: true });
+
+		try {
+			fs.writeFileSync(
+				path.join(trialDir, "result.json"),
+				JSON.stringify({
+					started_at: new Date(Date.now() - 5000).toISOString(),
+					finished_at: new Date().toISOString(),
+					verifier_result: { rewards: { test: 1.0 } },
+				}),
+			);
+
+			const trials = readTrials(tmpRoot);
+			expect(trials.length).toBe(1);
+			expect(trials[0]?.status).toBe("pass");
+			expect(trials[0]?.reward).toBe(1.0);
+		} finally {
+			try {
+				fs.rmSync(tmpRoot, { recursive: true, force: true });
+			} catch {
+				/* ignore */
+			}
+		}
+	});
+
+	it("records fail when reward is 0", () => {
+		const tmpRoot = path.join(
+			os.tmpdir() === "/tmp" ? "packages/evals/runs" : os.tmpdir(),
+			`harbor-fail-test-${Date.now()}`,
+		);
+		const trialDir = path.join(tmpRoot, "task1__abc1234");
+		fs.mkdirSync(trialDir, { recursive: true });
+
+		try {
+			fs.writeFileSync(
+				path.join(trialDir, "result.json"),
+				JSON.stringify({
+					started_at: new Date(Date.now() - 5000).toISOString(),
+					finished_at: new Date().toISOString(),
+					verifier_result: { rewards: { test: 0.0 } },
+				}),
+			);
+
+			const trials = readTrials(tmpRoot);
+			expect(trials.length).toBe(1);
+			expect(trials[0]?.status).toBe("fail");
+			expect(trials[0]?.reward).toBe(0.0);
+		} finally {
+			try {
+				fs.rmSync(tmpRoot, { recursive: true, force: true });
+			} catch {
+				/* ignore */
+			}
+		}
+	});
+});
+
+describe("truncateRawOutput helper and constants", () => {
+	it("exports expected watchdog and grace period bounds", () => {
+		expect(DEFAULT_TRIAL_TIMEOUT_SEC).toBe(1800);
+		expect(HARD_CEILING_TIMEOUT_SEC).toBe(3600);
+		expect(DEFAULT_GRACE_PERIOD_MS).toBe(5000);
+		expect(RAW_OUTPUT_MAX_BYTES).toBe(65536);
+	});
+
+	it("leaves small output untouched", () => {
+		expect(truncateRawOutput("short string")).toBe("short string");
+	});
+
+	it("truncates output exceeding maxBytes keeping tail", () => {
+		const big = "A".repeat(100) + "B".repeat(50);
+		const truncated = truncateRawOutput(big, 50);
+		expect(truncated.length).toBe(50);
+		expect(truncated).toBe("B".repeat(50));
+	});
+});
+
+describe("terminateProcessTree and grace period", () => {
+	it("terminates prompt process with SIGTERM without escalating to SIGKILL", async () => {
+		const killCalls: string[] = [];
+		const { promise: exited, resolve: resolveExited } = Promise.withResolvers<number>();
+
+		const fakeProc = {
+			pid: 9999991,
+			kill(signal?: "SIGTERM" | "SIGKILL" | number) {
+				killCalls.push(String(signal));
+				if (signal === "SIGTERM") {
+					resolveExited(0);
+				}
+			},
+			exited,
+		};
+
+		await terminateProcessTree(fakeProc, 500);
+		expect(killCalls).toContain("SIGTERM");
+		expect(killCalls).not.toContain("SIGKILL");
+	});
+
+	it("escalates to SIGKILL after bounded grace period when process ignores SIGTERM", async () => {
+		const killCalls: string[] = [];
+		const { promise: exited, resolve: resolveExited } = Promise.withResolvers<number>();
+
+		const fakeProc = {
+			pid: 9999992,
+			kill(signal?: "SIGTERM" | "SIGKILL" | number) {
+				killCalls.push(String(signal));
+				if (signal === "SIGKILL") {
+					resolveExited(137);
+				}
+			},
+			exited,
+		};
+
+		const start = Date.now();
+		await terminateProcessTree(fakeProc, 40);
+		const elapsed = Date.now() - start;
+
+		expect(killCalls).toContain("SIGTERM");
+		expect(killCalls).toContain("SIGKILL");
+		expect(elapsed).toBeGreaterThanOrEqual(30);
+	});
+});
+
+describe("cleanupHarborTrialContainers scoped cleanup", () => {
+	it("only deletes containers and networks matching this specific trial, never pruning or deleting others", async () => {
+		const commandsIssued: Array<{ file: string; args: readonly string[] }> = [];
+		const fakeExec = async (file: string, args: readonly string[]) => {
+			commandsIssued.push({ file, args });
+			if (file === "docker" && args[0] === "ps") {
+				return {
+					stdout: [
+						"c_target\texited\ttarget_proj\t/runs/run1/target_job/task__1234567",
+						"c_sibling\texited\tsibling_proj\t/runs/run1/sibling_job/task__2345678",
+						"c_other\trunning\tother_proj\t/runs/run2/other_job/task__3456789",
+					].join("\n"),
+					stderr: "",
+				};
+			}
+			if (file === "docker" && args[0] === "network" && args[1] === "ls") {
+				return {
+					stdout: [
+						"net_target\ttarget_job_default\tcom.docker.compose.project=target_proj,com.docker.compose.project.working_dir=/runs/run1/target_job/task__1234567",
+						"net_sibling\tsibling_job_default\tcom.docker.compose.project=sibling_proj,com.docker.compose.project.working_dir=/runs/run1/sibling_job/task__2345678",
+						"net_other\tother_job_default\tcom.docker.compose.project=other_proj",
+					].join("\n"),
+					stderr: "",
+				};
+			}
+			return { stdout: "", stderr: "" };
+		};
+
+		await cleanupHarborTrialContainers(
+			{
+				jobDir: "/runs/run1/target_job",
+				jobName: "target_job",
+				force: true,
+			},
+			fakeExec,
+		);
+
+		// Verify no prune command was ever issued
+		for (const cmd of commandsIssued) {
+			expect(cmd.args).not.toContain("prune");
+		}
+
+		// Verify exact rm command was called for target container only
+		const rmCmd = commandsIssued.find(c => c.args[0] === "rm");
+		expect(rmCmd).toBeDefined();
+		expect(rmCmd?.args).toEqual(["rm", "-f", "c_target"]);
+
+		// Verify exact network rm command was called for target network only
+		const netRmCmd = commandsIssued.find(c => c.args[0] === "network" && c.args[1] === "rm");
+		expect(netRmCmd).toBeDefined();
+		expect(netRmCmd?.args).toEqual(["network", "rm", "net_target"]);
 	});
 });

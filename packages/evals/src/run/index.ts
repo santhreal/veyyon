@@ -3,4 +3,5 @@
  */
 
 export * from "./execute";
+export * from "./journal";
 export * from "./plan";
