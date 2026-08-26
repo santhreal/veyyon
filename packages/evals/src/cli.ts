@@ -43,6 +43,7 @@ import { registerBuiltinHarnesses } from "./harnesses";
 import { runsDir as defaultRunsDir } from "./paths";
 import {
 	buildRunPlan,
+	checkRunDirectories,
 	describeRunPlan,
 	executeRun,
 	journalExists,
@@ -255,13 +256,18 @@ Axes:
 
 Selection and execution:
   --tasks <ids|file>        task ids, or a task-list file (one id per line, # comments).
-                            Prefix an entry with a suite name (--tasks deep-swe=smoke.txt)
-                            to scope it; an unprefixed entry applies to every suite.
+                            A value holding a path separator or a .txt/.jsonl/.list/.tasks
+                            extension names a file and must exist. Prefix an entry with a
+                            suite name (--tasks deep-swe=smoke.txt) to scope it; an
+                            unprefixed entry applies to every suite.
   --repeats <n>             trials per cell (default 1)
   --jobs <n>                trials in flight at once (default 1)
-  --dataset-dir <path>      override the suite's dataset directory (one suite only)
-  --runs-dir <path>         where trial output goes (default packages/evals/runs)
-  --work-dir <path>         working directory handed to the backend (default cwd)
+  --dataset-dir <path>      override the suite's dataset directory, which must exist (one
+                            suite only)
+  --runs-dir <path>         where trial output goes, created when absent (default
+                            packages/evals/runs)
+  --work-dir <path>         working directory handed to the backend, which must exist
+                            (default cwd)
   --run-id <name>           name the run instead of generating a timestamped id; with
                             several suites each run is named <name>-<suite>
   --dry-run                 print the plan and every preflight verdict, run nothing
@@ -296,10 +302,45 @@ export function tasksForSuite(tasks: readonly string[], suite: string, running: 
 }
 
 /**
+ * The extensions a task list is written with. Exported so a caller sweeps them rather than
+ * restating the set, since every one of them is a value the CLI reads as a file.
+ */
+export const TASK_LIST_EXTENSIONS = [".txt", ".jsonl", ".list", ".tasks"] as const;
+
+/**
+ * A value that names a place rather than a task: it holds a path separator, or carries one
+ * of the extensions a task list is written with. No suite discovers an id of that shape, so
+ * reading such a value as an id can only ever be the wrong answer.
+ */
+function looksLikeTaskListPath(value: string): boolean {
+	if (value.includes("/") || value.includes(path.sep)) return true;
+	const lowered = value.toLowerCase();
+	return TASK_LIST_EXTENSIONS.some(extension => lowered.endsWith(extension));
+}
+
+/**
  * Task ids either arrive inline or in a file. A single argument that resolves to a
- * readable file is read as a task list; anything else is taken as an id.
+ * readable file is read as a task list; anything else is taken as an id — unless it is
+ * shaped like a path, in which case an unreadable value is refused by path. A mistyped
+ * task-list file otherwise read as one unknown task id, and the refusal named the suite's
+ * task count instead of the file that is missing.
  */
 async function resolveTasks(tasks: readonly string[]): Promise<readonly string[]> {
+	for (const entry of tasks) {
+		if (!looksLikeTaskListPath(entry)) continue;
+		try {
+			await fs.access(entry);
+		} catch (cause) {
+			throw new CliUsageError(
+				`--tasks names a task-list file that cannot be read: ${entry} (${errorMessage(cause)}).`,
+			);
+		}
+		if (tasks.length > 1) {
+			throw new CliUsageError(
+				`--tasks takes either one task-list file or a list of ids, and this run got both: ${tasks.join(", ")}.`,
+			);
+		}
+	}
 	if (tasks.length !== 1) return tasks;
 	const candidate = tasks[0] as string;
 	let text: string;
@@ -501,6 +542,26 @@ function suiteContext(args: EvalsCliArgs, suite: EvalSuite): SuiteContext {
 async function runOneSuite(args: EvalsCliArgs, suite: EvalSuite, running: readonly string[]): Promise<number> {
 	const context = suiteContext(args, suite);
 	const workDir = args.workDir ?? process.cwd();
+	const runsDir = path.resolve(args.runsDir ?? defaultRunsDir());
+	// Directories decide before a plan does. A suite discovers its tasks out of the dataset
+	// directory, so a mistyped --dataset-dir arrived as a raw ENOENT on the harness verdict
+	// line; a runs directory that is a regular file, or a work directory that is not there,
+	// was reported `ok` by a dry run and failed once a trial had already been paid for.
+	const pathProblems = await checkRunDirectories({
+		runsDir,
+		workDir,
+		datasetDir: args.datasetDir ?? undefined,
+	});
+	if (pathProblems.length > 0) {
+		if (args.dryRun) {
+			const lines = pathProblems.map(problem => `  paths      REFUSED — ${problem.message}`).join("\n");
+			process.stdout.write(`\npreflight:\n${lines}\n`);
+		} else {
+			process.stderr.write(`${pathProblems.map(problem => problem.message).join("\n")}\n`);
+		}
+		return 1;
+	}
+
 	const configs: readonly ConfigSpec[] | undefined =
 		args.configs.length > 0 ? args.configs.map(file => ({ path: file })) : undefined;
 	const promptVariants: readonly PromptVariantSpec[] | undefined =
@@ -524,6 +585,14 @@ async function runOneSuite(args: EvalsCliArgs, suite: EvalSuite, running: readon
 			runId,
 		});
 	} catch (error) {
+		// A mistyped flag value is a usage refusal wherever it is decided, and it is decided
+		// here for --tasks, whose file is read while the plan is being built. Reporting it as
+		// a `harness` verdict named an axis that had nothing to do with it, and returned the
+		// exit code of a failed run instead of the one every other usage refusal returns.
+		if (error instanceof CliUsageError) {
+			process.stderr.write(`${errorMessage(error)}\n\n${USAGE}`);
+			return 2;
+		}
 		if (args.dryRun) {
 			process.stdout.write(`\npreflight:\n  harness    REFUSED — ${errorMessage(error)}\n`);
 			return 1;
@@ -534,7 +603,6 @@ async function runOneSuite(args: EvalsCliArgs, suite: EvalSuite, running: readon
 
 	const backend = requireBackend(suite.backend);
 	process.stdout.write(`${describeRunPlan(plan)}\n  backend    ${backend.id}\n`);
-	const runsDir = path.resolve(args.runsDir ?? defaultRunsDir());
 
 	if (args.dryRun) {
 		const suiteVerdict = await suite.preflight(context);
@@ -569,6 +637,9 @@ async function runOneSuite(args: EvalsCliArgs, suite: EvalSuite, running: readon
 		// paid for.
 		const resumeLine = args.resume ? `  resume     ${await describeResume(runsDir, plan.runId)}` : null;
 		const verdicts = [
+			// Reached only when every directory checked out above, which is why this states `ok`
+			// rather than checking again: a dry run names the same verdicts the real run reaches.
+			"  paths      ok",
 			`  suite      ${suiteVerdict.ok ? "ok" : `REFUSED — ${suiteVerdict.reason ?? "no reason given"}`}`,
 			harnessLine,
 			`  backend    ${backendVerdict.ok ? "ok" : `REFUSED — ${backendVerdict.reason ?? "no reason given"}`}`,
@@ -580,8 +651,6 @@ async function runOneSuite(args: EvalsCliArgs, suite: EvalSuite, running: readon
 		process.stdout.write("\nDRY RUN — nothing was executed.\n");
 		return 0;
 	}
-
-	await fs.mkdir(runsDir, { recursive: true });
 
 	const total = plan.cells.length;
 	const controller = new AbortController();

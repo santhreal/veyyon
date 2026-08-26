@@ -21,6 +21,7 @@ import type {
 	TrialScore,
 } from "../core";
 import { createRunRecord, preflightHarnesses } from "../core";
+import { requireRunDirectories } from "./directories";
 import {
 	cellKey,
 	journalExists,
@@ -31,6 +32,7 @@ import {
 	sanitizeTrialRecord,
 } from "./journal";
 import type { RunPlan } from "./plan";
+
 export class BackendPreflightError extends Error {
 	readonly backendId: string;
 	readonly missingRequirements: readonly string[];
@@ -136,6 +138,16 @@ export async function executeRun(options: ExecuteRunOptions): Promise<EvalRunRec
 			variants: plan.variants,
 		},
 	};
+
+	// Every directory this run reaches, before any of them is written to. A runs directory
+	// that is a regular file, or a work directory that does not exist, otherwise fails after
+	// preflight said `ok` — one as an ENOTDIR from `fs.mkdir`, the other as a backend
+	// spawning into nothing.
+	await requireRunDirectories({
+		runsDir: options.runsDir,
+		workDir: options.workDir,
+		datasetDir: typeof options.options?.datasetDir === "string" ? options.options.datasetDir : undefined,
+	});
 
 	// A resume names a prior run. When that run has no journal, the honest outcome is a
 	// refusal: a mistyped --run-id otherwise reads as a fresh run and pays for every task
