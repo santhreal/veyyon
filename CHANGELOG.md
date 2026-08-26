@@ -77,6 +77,7 @@
 
 ### Fixed
 
+- Mounting a chat block no longer routes home-anchor slack for rows the content has already taken, which composed a frame taller than the viewport and moved the window on that frame and back on the next.
 - An `irc send` with `await` ends as soon as its recipient is terminated or leaves the roster, instead of blocking for the full timeout, or forever at `timeoutMs: 0`, on a reply that can no longer arrive; a recipient that is merely idle or parked is still woken by the delivery and given the full timeout to answer.
 - A truncated advisor preview, retry reason, and background-task label measure their budget in display columns rather than UTF-16 code units, so a wide or multi-code-unit character is no longer cut in half or counted as one column.
 - The tool approval card, the `ast_edit` diff preview, and an `eval` `display()` value cut long text at a code point rather than a UTF-16 code unit, so an emoji or rare CJK character sitting at the limit is no longer split into an invalid lone surrogate.
