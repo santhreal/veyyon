@@ -1,0 +1,32 @@
+[package]
+name = "veyyon-highlight"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# `malloc_trim` after a release. glibc keeps the freed pages otherwise, so the
+# release moves nothing a session can observe.
+libc.workspace = true
+syntect.workspace = true
+
+# The generator reads syntect's bundled syntax pack and the vendored
+# `.sublime-syntax` sources, so it needs `default-syntaxes` and `yaml-load` that
+# the runtime does not. Resolver 3 keeps a build-dependency's features out of
+# the normal dependency graph, so enabling them here does not pull the bundled
+# packs into the shipped library.
+[build-dependencies]
+syntect = { workspace = true, features = ["default-syntaxes", "yaml-load"] }
+
+[dev-dependencies]
+# `examples/rss-split.rs` measures the old shape against the new one, so the
+# baseline arm needs the bundled pack `load_defaults_newlines` reads. A
+# dev-dependency reaches examples and tests without reaching the shipped
+# library.
+syntect = { workspace = true, features = ["default-syntaxes", "yaml-load"] }

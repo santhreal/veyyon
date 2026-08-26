@@ -26,7 +26,7 @@ Terminology follows [`natives-architecture.md`](./natives-architecture.md):
 - `crates/veyyon-natives/src/summary.rs`
 - `crates/veyyon-natives/src/text.rs`
 - `crates/veyyon-text/src/lib.rs`
-- `crates/veyyon-natives/src/highlight.rs`
+- `crates/veyyon-natives/src/highlight.rs` (N-API shim), `crates/veyyon-highlight/src/lib.rs` (implementation)
 - `crates/veyyon-natives/src/tokens.rs`
 
 ## JS API ↔ Rust export mapping
@@ -239,7 +239,13 @@ Text functions generally return deterministic transformed output; errors are lim
 
 ## 6) Syntax highlighting (`highlight`)
 
-`highlight.rs` is pure transformation; it does not use the filesystem scan cache.
+`highlight.rs` is an N-API shim: it converts the arguments and calls
+`veyyon_highlight::highlight`, which holds the syntax set, the scope-to-category
+map and the ANSI emitter. It is pure transformation and does not use the
+filesystem scan cache.
+
+The syntax set is assembled by `crates/veyyon-highlight/build.rs` and embedded as
+one dump, so no set is built at runtime.
 
 ### Flow
 
@@ -287,4 +293,4 @@ Text functions generally return deterministic transformed output; errors are lim
 5. Rust shapes outputs into N-API objects (`lineNumber`, `matchCount`, `limitReached`, `patternTreatedAsLiteral`, etc.).
 6. The package's lazy binding returns typed JS objects and optional per-match callbacks for `grep`/`glob`.
 
-*Verified against `0eb8d74a3ecf60e1b2ec37c15e9255f2dbe310dc` on 2026-07-30.*
+*Verified against `7d81522bf9fd8000b939bbf0b0492697393a6683` on 2026-08-26.*

@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Syntax highlighting moved from the native addon into the `veyyon-highlight` crate, with no change to highlighting output.
+- The syntax set is linked at build time instead of being assembled on first use, cutting about 6MB of resident memory from any session that highlights code.
+- Highlighting memory is released after 30 seconds without a highlight, so a session that highlighted eight languages settles about 32MB lower for the rest of its life.
+
 ### Fixed
 
 - Fixed stock Windows AVX2 detection by trying PowerShell 7 before an isolated modern-addon trial; only explicit shell answers or illegal-instruction exits become verdicts, while missing, incompatible, timed-out, and unexpectedly crashing addons remain unknown.

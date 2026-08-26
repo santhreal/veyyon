@@ -180,6 +180,7 @@ veyyon-iso = { path = "crates/veyyon-iso" }
 veyyon-diff-kernel = { path = "crates/veyyon-diff-kernel" }
 veyyon-glob = { path = "crates/veyyon-glob" }
 veyyon-grep-kernel = { path = "crates/veyyon-grep-kernel" }
+veyyon-highlight = { path = "crates/veyyon-highlight" }
 veyyon-keys = { path = "crates/veyyon-keys" }
 veyyon-shell = { path = "crates/veyyon-shell" }
 veyyon-test-scratch = { path = "crates/veyyon-test-scratch" }
@@ -340,11 +341,15 @@ image = { version = "0.25", default-features = false, features = [
 ] }
 png = "0.18"
 inferno = { version = "0.12", default-features = false }
+# Runtime needs only the parser and a regex engine. `default-syntaxes` and
+# `default-themes` each `include_bytes!` a bundled pack (two 368KB syntax
+# packdumps and a themedump) that the shipped addon never reads: veyyon-highlight
+# generates its own combined dump at build time and loads that instead. The
+# generator needs the bundled packs, so it takes them as a build-dependency,
+# which resolver 3 keeps out of the runtime graph.
 syntect = { version = "5.3", default-features = false, features = [
-   "default-syntaxes",
-   "default-themes",
+   "parsing",
    "regex-fancy",
-   "yaml-load",
 ] }
 
 # ──────────────────────────────────────────────────────────────────────────────
