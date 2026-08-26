@@ -147,42 +147,27 @@ interface PendingExecution {
 export const DEFAULT_KERNEL_STARTUP_TIMEOUT_MS = 10_000;
 
 /**
- * How long a kernel subprocess gets to exit on its own after being asked to shut down, before it is killed.
- *
- * One second is the whole budget an interpreter gets to flush and unwind. It was declared four times, once
- * in each of the three language kernels and again in the Julia executor's session reset, so a language whose
- * shutdown needed longer would have been given it in one place and killed at one second in another.
+ * How long a kernel gets to exit before being killed. Was declared four times (three kernels + Julia reset).
  */
 export const KERNEL_SHUTDOWN_GRACE_MS = 1_000;
 
 /**
- * How long an interrupt is given to land before the kernel is terminated instead.
- *
- * This is the budget behind Ctrl-C in an eval cell: send the interrupt, and if the interpreter is still
- * running after this, stop being polite. Five seconds across every language, because the number describes a
- * user's patience rather than anything about the interpreter, and it was written out once per language.
+ * How long an interrupt gets to land before the kernel is terminated. Five seconds — a user's patience,
+ * not an interpreter property. Was written out once per language.
  */
 export const KERNEL_INTERRUPT_ESCALATION_MS = 5_000;
 
 /**
- * The environment variable that turns on IPC tracing for one language's kernel, `VEYYON_<LANG>_IPC_TRACE`.
- *
- * A user types this name, so the convention is part of the product and not an implementation detail. Each
- * kernel built the string itself, which left nothing stating the convention and no reason a fourth language
- * would follow it. `language` is the uppercase name used in the variable (`PYTHON`, `RUBY`, `JULIA`), which
- * is not always the directory name: the directories are `py`, `rb` and `jl`.
+ * `VEYYON_<LANG>_IPC_TRACE`. A user types this name, so the convention is product surface. `language` is
+ * the uppercase name (`PYTHON`, `RUBY`, `JULIA`), not the directory name (`py`, `rb`, `jl`).
  */
 export function kernelIpcTraceEnvVar(language: string): string {
 	return `VEYYON_${language}_IPC_TRACE`;
 }
 
 /**
- * Where one language's kernel caches its generated runner script, `<tmpdir>/veyyon-<language>-runner`.
- *
- * Same reasoning as {@link kernelIpcTraceEnvVar}: three kernels each joined this path themselves, so the
- * layout under the temp directory was a coincidence rather than a rule, and a stale-runner cleanup that
- * wanted to find all of them had nothing to ask. `language` is the lowercase name in the directory
- * (`python`, `ruby`, `julia`).
+ * `<tmpdir>/veyyon-<language>-runner`. Same reasoning as {@link kernelIpcTraceEnvVar}: three kernels each
+ * joined this path themselves. `language` is lowercase (`python`, `ruby`, `julia`).
  */
 export function kernelRunnerCacheDir(tmpDir: string, language: string): string {
 	return path.join(tmpDir, `veyyon-${language}-runner`);
