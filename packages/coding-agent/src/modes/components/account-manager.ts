@@ -797,7 +797,10 @@ export class AccountManagerComponent implements Component {
 			lines.push(this.#renderSearchStatus(width));
 		}
 		if (filtered.length === 0) {
-			lines.push(theme.fg("muted", truncateToWidth("  No matching providers", width)));
+			// Only the filter can empty this list. An inventory with no providers at all is a
+			// different state, and reporting it as a query that matched nothing would name a
+			// query the operator never typed.
+			if (this.#searching) lines.push(theme.fg("muted", truncateToWidth("  No matching providers", width)));
 			while (lines.length < (this.#searching ? 1 : 0) + listRows) lines.push("");
 		} else {
 			for (let i = this.#sidebarScroll; i < Math.min(filtered.length, this.#sidebarScroll + listRows); i++) {
