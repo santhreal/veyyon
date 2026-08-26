@@ -1,11 +1,26 @@
-import { formatCount } from "@veyyon/utils";
+import { formatCount } from "@veyyon/utils/format";
 import { type ExperimentSummary, formatUsd } from "../../wire";
 import { usePolled } from "../hooks/use-polled";
 import { Progress } from "./ui";
 
 export function ExperimentsIndex() {
 	const [experiments] = usePolled<ExperimentSummary[]>("/api/experiments", 3000);
+	return <ExperimentsList experiments={experiments} />;
+}
+
+/**
+ * The three states this view has. An empty store rendered an empty grid, which on screen is
+ * a page with a nav bar and nothing under it — the same thing a failed fetch looks like.
+ */
+export function ExperimentsList({ experiments }: { experiments: ExperimentSummary[] | null }) {
 	if (!experiments) return <div className="p-10 text-zinc-500">loading…</div>;
+	if (experiments.length === 0) {
+		return (
+			<div className="p-10 text-zinc-500">
+				no experiments yet. Launch a run with <span className="text-zinc-300">new run</span> to create one.
+			</div>
+		);
+	}
 	return (
 		<div className="mx-auto grid max-w-5xl gap-3 p-6">
 			{experiments.map(exp => (
