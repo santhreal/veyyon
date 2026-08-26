@@ -34,9 +34,12 @@ describe("a harbor cli maps each failure class to its exit code", () => {
 		expect(mapErrorToExitCode(new HarborExecutionError(42, "process failure"))).toBe(42);
 	});
 
+	it("maps a wrong command line to exit code 2, the code that means nothing ran", () => {
+		expect(mapErrorToExitCode(new HarborConfigError("bad arg"))).toBe(2);
+	});
+
 	it("maps unknown or general errors to exit code 1", () => {
 		expect(mapErrorToExitCode(new Error("generic failure"))).toBe(1);
-		expect(mapErrorToExitCode(new HarborConfigError("bad arg"))).toBe(1);
 		expect(mapErrorToExitCode("string error")).toBe(1);
 	});
 
@@ -49,9 +52,9 @@ describe("a harbor cli maps each failure class to its exit code", () => {
 		expect(code).toBe(0);
 	});
 
-	it("main resolves to a non-zero exit code when required arguments are missing", async () => {
-		// Missing --model flag
+	it("main resolves to the usage exit code when required arguments are missing", async () => {
+		// Missing --model flag: nothing ran, so this is 2 rather than the code a failed run returns.
 		const code = await main([]);
-		expect(code).toBe(1);
+		expect(code).toBe(2);
 	});
 });

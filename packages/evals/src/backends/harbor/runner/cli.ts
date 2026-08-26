@@ -7,6 +7,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { errorMessage, isRecord, tryParseJson } from "@veyyon/utils";
 import { requireHarness } from "../../../core/harness-registry";
+import { requirePathSegment } from "../../../paths";
 import { requireHarborBinding } from "../backend";
 import { buildHarborArgs, harborRunnerArgs, type LaunchRequest } from "../launch-args";
 import { runDockerCleanup } from "./cleanup";
@@ -154,6 +155,17 @@ export function parseArgs(argv: string[], options?: { defaultDataset?: string })
 			i++;
 			return v;
 		};
+		// A count harbor cannot act on used to arrive as NaN or 0: `--n-tasks abc` reached the
+		// launch request as `null` and harbor silently ran its own default, and `--n-concurrent 0`
+		// asked for a run with no workers. A wrong count refuses here instead.
+		const takeCount = (flag: string): number => {
+			const raw = take(flag);
+			const value = Number(raw);
+			if (!Number.isInteger(value) || value < 1) {
+				throw new HarborConfigError(`${flag} expects an integer >= 1, got ${JSON.stringify(raw)}`);
+			}
+			return value;
+		};
 		switch (arg) {
 			case "-m":
 			case "--model":
@@ -199,17 +211,17 @@ export function parseArgs(argv: string[], options?: { defaultDataset?: string })
 			case "-l":
 			case "--tasks":
 			case "--n-tasks":
-				cfg.tasks = Number(take(arg));
+				cfg.tasks = takeCount(arg);
 				break;
 			case "-n":
 			case "--concurrency":
 			case "--n-concurrent":
-				cfg.concurrency = Number(take(arg));
+				cfg.concurrency = takeCount(arg);
 				break;
 			case "-k":
 			case "--attempts":
 			case "--n-attempts":
-				cfg.attempts = Number(take(arg));
+				cfg.attempts = takeCount(arg);
 				break;
 			case "-i":
 			case "--include":
@@ -251,7 +263,8 @@ export function parseArgs(argv: string[], options?: { defaultDataset?: string })
 				cfg.jobsDir = path.resolve(take(arg));
 				break;
 			case "--job-name":
-				cfg.jobName = take(arg);
+				// The job name becomes a directory under the jobs dir, so it is one path segment.
+				cfg.jobName = requirePathSegment(take(arg), "--job-name");
 				break;
 			case "--resume":
 				cfg.resume = take(arg);
@@ -259,9 +272,17 @@ export function parseArgs(argv: string[], options?: { defaultDataset?: string })
 			case "--filter-error-type":
 				cfg.filterErrorTypes.push(take(arg));
 				break;
-			case "--timeout-multiplier":
-				cfg.timeoutMultiplier = Number(take(arg));
+			case "--timeout-multiplier": {
+				const raw = take(arg);
+				const value = Number(raw);
+				// The deadline owner treats a non-positive or non-finite multiplier as 1, so a
+				// typo here would scale nothing and say so nowhere.
+				if (!Number.isFinite(value) || value <= 0) {
+					throw new HarborConfigError(`--timeout-multiplier expects a number > 0, got ${JSON.stringify(raw)}`);
+				}
+				cfg.timeoutMultiplier = value;
 				break;
+			}
 			case "--dry-run":
 				cfg.dryRun = true;
 				break;
@@ -286,8 +307,15 @@ export function parseArgs(argv: string[], options?: { defaultDataset?: string })
 				const spec = take(arg);
 				const eq2 = spec.indexOf("=");
 				if (eq2 === -1) {
+					// A key forwarded from a host that does not hold it used to vanish, and the
+					// run discovered the missing credential inside the container.
 					const hostVal = process.env[spec];
-					if (hostVal !== undefined) cfg.env[spec] = hostVal;
+					if (hostVal === undefined) {
+						throw new HarborConfigError(
+							`--env ${spec}: this host sets no ${spec}; pass ${spec}=<value> to state one`,
+						);
+					}
+					cfg.env[spec] = hostVal;
 				} else {
 					cfg.env[spec.slice(0, eq2)] = spec.slice(eq2 + 1);
 				}
@@ -564,7 +592,10 @@ export function mapErrorToExitCode(err: unknown): number {
 	if (err instanceof HelpRequestedError) return 0;
 	if (err instanceof HarborExecutionError) return err.exitCode;
 	if (err instanceof GatewayHealthError) return 3;
+	// Nothing ran: a wrong command line and a missing prerequisite are both "fix the invocation",
+	// which a caller reads apart from 1, the code a harbor run that failed returns.
 	if (err instanceof HarborPrerequisiteError) return 2;
+	if (err instanceof HarborConfigError) return 2;
 	return 1;
 }
 

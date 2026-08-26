@@ -59,7 +59,7 @@ State is stored in `<jobs-dir>/_manager/evals.sqlite`.
 | `-k, --attempts <N>` | `1` | Attempts per task (pass@k). |
 | `-d, --dataset <name>` | `terminal-bench@2.0` | Harbor dataset identifier. |
 | `-i/-x, --include/--exclude <glob>` | None | Task pattern filters (repeatable). |
-| `--timeout-multiplier <x>` | None | Task timeout scaling factor. |
+| `--timeout-multiplier <x>` | None | Task timeout scaling factor, a number > 0. |
 | `--agent-arg <arg>` | None | Arguments forwarded to the in-container CLI. |
 | `--env <KEY[=VALUE]>` | None | Environment variables forwarded to container. |
 | `--binary <path>` | None | Prebuilt CLI binary path. |
@@ -71,6 +71,14 @@ State is stored in `<jobs-dir>/_manager/evals.sqlite`.
 | `--resume <name\|path>` | None | Resume an existing job directory. |
 | `--filter-error-type <T>` | `CancelledError` | Error types to retry during resume. |
 | `--dry-run` | off | Validate configuration and print commands without execution. |
+
+`-l/--tasks`, `-n/--concurrency` and `-k/--attempts` take an integer >= 1, and
+`--timeout-multiplier` a number greater than zero. A value outside that refuses the invocation
+instead of reaching harbor as `null` or reaching the deadline as an ignored multiplier.
+`--job-name` is one directory name under the jobs directory. `--env KEY` forwards the host value
+and refuses when the host sets no `KEY`; `--env KEY=VALUE` states the value and never reads the
+host. A wrong invocation exits 2, a failed gateway health check 3, and a harbor run that failed
+returns harbor's own exit code.
 
 ## Outputs
 
