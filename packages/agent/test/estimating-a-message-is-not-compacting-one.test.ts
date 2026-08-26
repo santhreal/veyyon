@@ -76,6 +76,17 @@ const SHAKE_CEILING = 16;
  */
 const PRUNING_CEILING = 195;
 
+/**
+ * The engine and the remote summarizer both took `ProviderHttpError` from the `@veyyon/ai/error` barrel,
+ * which is 21 modules for one class. They name `@veyyon/ai/error/classes` now.
+ *
+ * RE-MEASURED 2026-08-26: engine 302, down from 316; remote summarizer 209, down from 223. These are not
+ * leaf ceilings — the engine's graph is the job it does — but a ceiling here is what stops a barrel edge
+ * from coming back, which is how those 14 got there.
+ */
+const COMPACTION_ENGINE_CEILING = 310;
+const REMOTE_SUMMARIZER_CEILING = 216;
+
 describe("the estimator is a leaf", () => {
 	it(`token-estimate reaches at most ${TOKEN_ESTIMATE_CEILING} modules`, () => {
 		expect(reach("compaction/token-estimate.ts")).toBeLessThanOrEqual(TOKEN_ESTIMATE_CEILING);
@@ -168,6 +179,31 @@ describe("the three callers take the estimate from the leaf", () => {
 			path.join("packages", "agent", "src", "compaction", "compaction.ts"),
 		);
 	});
+});
+
+describe("one error class does not cost an error barrel", () => {
+	it(`the compaction engine reaches at most ${COMPACTION_ENGINE_CEILING} modules`, () => {
+		expect(reach("compaction/compaction.ts")).toBeLessThanOrEqual(COMPACTION_ENGINE_CEILING);
+	});
+
+	it(`the remote summarizer reaches at most ${REMOTE_SUMMARIZER_CEILING} modules`, () => {
+		expect(reach("compaction/remote-summarizer.ts")).toBeLessThanOrEqual(REMOTE_SUMMARIZER_CEILING);
+	});
+
+	/**
+	 * Asserted as the specifier as well as the count, because the two spellings compile identically. The
+	 * ceilings above are wide enough that one barrel edge returning would not necessarily break them, and
+	 * this is the edge that put 14 modules behind a single `instanceof`.
+	 */
+	it.each(["compaction/compaction.ts", "compaction/remote-summarizer.ts"])(
+		"%s names the error-class owner rather than the error barrel",
+		relative => {
+			const imports = runtimeImportsOf(relative);
+
+			expect(imports).toContain("@veyyon/ai/error/classes");
+			expect(imports).not.toContain("@veyyon/ai/error");
+		},
+	);
 });
 
 describe("the engine keeps the name its callers already import", () => {
