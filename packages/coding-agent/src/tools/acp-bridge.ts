@@ -1,11 +1,9 @@
 /**
  * Shared ACP client bridge routing for file-write sites.
  *
- * When an ACP client (e.g. Zed) advertises the `fs.writeTextFile` capability,
- * all write-mode tools must route through it so the editor's open buffer is
- * updated immediately. Internal artifacts ('/Users/theo/.veyyon/agent/sessions/-Projects-veyyon/2026-06-10T09-11-41-506Z_019eb0cd-3ec2-7000-92aa-1b82aa4d78f0/local' plan files, other scheme
- * URLs) are always written directly to disk — those are Veyyon-owned and should
- * never be pushed into the editor.
+ * When an ACP client (e.g. Zed) advertises `fs.writeTextFile`, all write-mode tools must route through it
+ * so the editor's open buffer is updated immediately. Internal artifacts (plan files, scheme URLs) are
+ * always written directly to disk — Veyyon-owned, never pushed to the editor.
  */
 
 import { FileChangeType, notifyWorkspaceWatchedFiles } from "../lsp/client";
@@ -18,9 +16,8 @@ import { ToolError, toolFailure } from "./tool-errors";
 /**
  * Return `true` when an ACP client bridge write is appropriate for this path.
  *
- * Returns `false` for internal-URL paths (e.g. `'/Users/theo/.veyyon/agent/sessions/-Projects-veyyon/2026-06-10T09-11-41-506Z_019eb0cd-3ec2-7000-92aa-1b82aa4d78f0/local/PLAN.md'`) and for the
- * active plan file while plan mode is enabled — both are Veyyon-internal artifacts
- * that must stay off the editor's buffer.
+ * Returns `false` for internal-URL paths and the active plan file while plan mode is enabled — both are
+ * Veyyon-internal artifacts that stay off the editor's buffer.
  */
 export function shouldRouteWriteThroughBridge(
 	session: ToolSession,
