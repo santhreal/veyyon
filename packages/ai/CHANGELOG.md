@@ -18,6 +18,7 @@
 - The OpenAI-family, pi-native and Codex request builders serialize the request body once instead of deep-cloning the request graph, which took attempt preparation on a 32MiB context from 82ms to 9ms.
 - A message that names a dead socket reads the same everywhere: `namesDeadSocket` in `@veyyon/ai/error/flags` is the one list of errnos and phrases, and `ENETUNREACH`, `EHOSTUNREACH` and `EAI_AGAIN` now count as transient transport failures like the rest of them.
 - Formatted source files for Biome compliance.
+- `withAuth` imports the two error classes it throws from their owning modules instead of the `@veyyon/ai/error` barrel, so a consumer of the auth-retry wrapper no longer loads the provider-error registry and every error domain behind it; behavior is unchanged.
 
 ### Fixed
 

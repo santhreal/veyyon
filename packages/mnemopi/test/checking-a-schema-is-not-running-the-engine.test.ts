@@ -127,13 +127,20 @@ describe("asking whether a model is configured is not calling one", () => {
 	 * the beam engine 144 (402 before any of today's cuts), the MCP server 148 (406). Every ceiling
 	 * below is one of those, because a cut that held at the first hop and leaked at the third would
 	 * be worth nothing and would pass a single-file check.
+	 *
+	 * RE-MEASURED 2026-08-25, after `auth-retry.ts` and `core/embeddings.ts` stopped reaching the
+	 * provider-error registry through the `@veyyon/ai/error` barrel for three classes: the config
+	 * half 96, extraction 99, consolidate 139 (was 151, over its old 150 ceiling), the beam engine
+	 * 149 (was 161, over 160), the MCP server 153 (was 165, at its ceiling). Each ceiling below is
+	 * the new measurement plus five, so the next barrel that lands on this graph is red instead of
+	 * absorbed by slack.
 	 */
 	it.each([
-		["core/local-llm-config.ts", 100],
-		["core/extraction.ts", 105],
-		["core/beam/consolidate.ts", 150],
-		["core/beam/index.ts", 160],
-		["mcp-server.ts", 165],
+		["core/local-llm-config.ts", 101],
+		["core/extraction.ts", 104],
+		["core/beam/consolidate.ts", 144],
+		["core/beam/index.ts", 154],
+		["mcp-server.ts", 158],
 	])("%s reaches at most %i modules", (relative, ceiling) => {
 		expect(reach(relative)).toBeLessThanOrEqual(ceiling);
 	});
