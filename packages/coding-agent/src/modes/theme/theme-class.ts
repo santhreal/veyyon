@@ -164,6 +164,7 @@ export class Theme {
 	#formatCache: FormatChars;
 	#mdCache: MdChars;
 	#contrastFgAnsiCache: Map<ThemeColor, string>;
+	#thinkingBorderColors: Partial<Record<string, (str: string) => string>>;
 	#spinnerFramesOverrides: Partial<Record<SpinnerType, string[]>>;
 	/**
 	 * Perceptual luma (0..1) of the status-line background used to classify the theme as light/dark.
@@ -357,6 +358,7 @@ export class Theme {
 			colorSwatch: this.#symbols["md.colorSwatch"],
 		};
 		this.#contrastFgAnsiCache = new Map();
+		this.#thinkingBorderColors = {};
 		this.#spinnerFramesOverrides = spinnerFramesOverrides;
 	}
 
@@ -565,26 +567,29 @@ export class Theme {
 	}
 
 	getThinkingBorderColor(level: ThinkingLevel | Effort): (str: string) => string {
-		// Map thinking levels to dedicated theme colors
-		switch (level) {
-			case "off":
-				return (str: string) => this.fg("thinkingOff", str);
-			case "minimal":
-				return (str: string) => this.fg("thinkingMinimal", str);
-			case "low":
-				return (str: string) => this.fg("thinkingLow", str);
-			case "medium":
-				return (str: string) => this.fg("thinkingMedium", str);
-			case "high":
-				return (str: string) => this.fg("thinkingHigh", str);
-			case "xhigh":
-				return (str: string) => this.fg("thinkingXhigh", str);
-			case "max":
-				// thinkingMax is optional; themes without it resolve to the xhigh color.
-				return (str: string) => this.fg(this.#fgColors.thinkingMax ? "thinkingMax" : "thinkingXhigh", str);
-			default:
-				return (str: string) => this.fg("thinkingOff", str);
-		}
+		const cached = this.#thinkingBorderColors[level];
+		if (cached) return cached;
+		const color: ThemeColor =
+			level === "off"
+				? "thinkingOff"
+				: level === "minimal"
+					? "thinkingMinimal"
+					: level === "low"
+						? "thinkingLow"
+						: level === "medium"
+							? "thinkingMedium"
+							: level === "high"
+								? "thinkingHigh"
+								: level === "xhigh"
+									? "thinkingXhigh"
+									: level === "max"
+										? this.#fgColors.thinkingMax
+											? "thinkingMax"
+											: "thinkingXhigh"
+										: "thinkingOff";
+		const fn = (str: string) => this.fg(color, str);
+		this.#thinkingBorderColors[level] = fn;
+		return fn;
 	}
 
 	getBashModeBorderColor(): (str: string) => string {
