@@ -924,9 +924,7 @@ export class InteractiveMode implements InteractiveModeContext {
 				void this.openGoalDetail();
 				return;
 			}
-			// The chip says a credential is live here, and clicking it answers WHICH: the same list
-			// `/secret list` prints, without leaving the screen the reader is already looking at. A
-			// reader who notices the chip should not have to remember a command name to act on it.
+			// The chip says a credential is live; clicking it shows which, same as `/secret list` without leaving the screen.
 			if (segmentId === "secrets") {
 				this.showSecretList();
 				return;
@@ -1362,21 +1360,15 @@ export class InteractiveMode implements InteractiveModeContext {
 				this.#syncStatusLineSettings();
 				this.#handleSessionAccentInputsChanged();
 			}),
-			// Auth death moved a provider to a different account. Not gated by
-			// `accounts.loadBalancing` — a revoked credential cannot serve the request at all — so
-			// it is the one account move that can happen without the operator asking, and it says
-			// so, naming both accounts. Silently spending a second subscription is exactly the
-			// surprise this notice exists to prevent.
+			// Auth death moved a provider to a different account. Not gated by `accounts.loadBalancing` —
+			// a revoked credential can't serve the request. Names both accounts to prevent surprise.
 			this.session.modelRegistry.authStorage.onCredentialFailover(event => {
 				this.showWarning(
 					`${formatProviderName(event.provider)}: ${event.from.label} could not authenticate (${event.cause}), now using ${event.to.label}`,
 				);
 			}),
-			// The move that did NOT happen: quota is out, other accounts are idle, and
-			// `accounts.loadBalancing` is off. The turn is already waiting out a window that can be
-			// hours long, so the notice names what is spent, when it returns, how many accounts are
-			// sitting unused, and the one toggle that would use them. AuthStorage emits this once per
-			// exhausted window, so a retrying turn does not repeat it.
+			// Quota out, other accounts idle, `accounts.loadBalancing` off. Names what's spent, when it
+			// returns, idle accounts, and the toggle. Emitted once per exhausted window.
 			this.session.modelRegistry.authStorage.onUsageLimitWithheld(event => {
 				const returnsAt = new Date(event.retryAtMs).toLocaleTimeString();
 				const idle = event.idleSiblings === 1 ? "1 other account is" : `${event.idleSiblings} other accounts are`;
@@ -2395,9 +2387,7 @@ export class InteractiveMode implements InteractiveModeContext {
 	 * clock.
 	 */
 	#syncAnchoredMotionTimer(): void {
-		// `unref()` keeps the interval from holding the process open, which is not the same as
-		// being gone: a frozen mode that still owns one goes on stepping, rendering, and reading
-		// the settings singleton, and inside one test process that outlives the mode entirely.
+		// `unref()` keeps the interval from holding the process open, but a frozen mode still owns one.
 		const wanted =
 			!this.#frameProductionFrozen &&
 			transitionsEnabled() &&
@@ -3215,9 +3205,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		try {
 			return await fs.open(terminalPath, "r+");
 		} catch {
-			// No controlling terminal: piped stdin, a CI runner, a detached process. That is ordinary rather
-			// than a failure, and null is the same "cannot hand a terminal to an editor" the win32 branch above
-			// returns, so the caller already has one path for it.
+			// No controlling terminal (piped stdin, CI, detached). Ordinary, not failure; caller handles null.
 			return null;
 		}
 	}
@@ -3768,8 +3756,7 @@ export class InteractiveMode implements InteractiveModeContext {
 				return;
 			}
 
-			// Hit the turn cap without an explicit `ready`. Rather than discard the whole interview,
-			// salvage the latest non-empty model objective draft seen on any earlier turn. A final
+			// Hit the turn cap without `ready`: salvage the latest non-empty objective draft. A final
 			// question turn may omit `objective`; that must not erase a usable draft.
 			if (latestDraftObjective) {
 				const finalObjective = (
