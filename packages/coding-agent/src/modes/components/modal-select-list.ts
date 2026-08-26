@@ -185,7 +185,7 @@ export class ModalSelectListComponent implements Component {
 		const dims = computeModalDims(width, termHeight, sizing);
 		if (!dims) {
 			this.#shellGeometry = null;
-			return Array.from({ length: termHeight }, () => padding(width));
+			return Array(termHeight).fill(padding(width));
 		}
 
 		const body = [...this.#list.render(dims.contentWidth)];

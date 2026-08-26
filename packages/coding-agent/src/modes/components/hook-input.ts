@@ -216,7 +216,7 @@ export class HookInputComponent extends Container {
 		const dims = computeModalDims(renderWidth, height, sizing);
 		if (!dims) {
 			this.#shellGeometry = null;
-			return Array.from({ length: height }, () => padding(renderWidth));
+			return Array(height).fill(padding(renderWidth));
 		}
 
 		const shortcuts = this.#shortcuts();

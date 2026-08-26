@@ -3145,7 +3145,7 @@ export class SettingsSelectorComponent implements Component {
 		this.#viewportTooSmall = true;
 		this.#shellGeometry = null;
 		this.#contentRowCount = 0;
-		const lines = Array.from({ length: termHeight }, () => padding(width));
+		const lines = Array(termHeight).fill(padding(width));
 		const messages =
 			width >= 40
 				? ["Settings needs a larger terminal · resize or press Esc to close"]

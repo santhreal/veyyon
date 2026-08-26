@@ -632,7 +632,7 @@ export class AgentTranscriptViewer implements Component {
 		const dims = computeModalDims(width, termHeight, sizing);
 		if (!dims) {
 			this.#shellGeometry = null;
-			return Array.from({ length: termHeight }, () => " ".repeat(width));
+			return Array(termHeight).fill(" ".repeat(width));
 		}
 		// The transcript components carry their own rail inset, and ScrollView
 		// reserves the last column for the scrollbar, so the body is widthed to

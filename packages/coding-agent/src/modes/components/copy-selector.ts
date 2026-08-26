@@ -325,7 +325,7 @@ export class CopySelectorComponent implements Component {
 		const sizing = sizingForArea(MODAL_SIZING_LARGE, height);
 		const dims = computeModalDims(width, height, sizing);
 		if (!dims) {
-			return Array.from({ length: height }, () => padding(width));
+			return Array(height).fill(padding(width));
 		}
 
 		const flat = this.#flatten();

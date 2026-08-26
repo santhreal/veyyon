@@ -157,7 +157,7 @@ export class LoginDialogComponent implements Component {
 		const dims = computeModalDims(width, termHeight, sizing);
 		if (!dims) {
 			this.#shellGeometry = null;
-			return Array.from({ length: termHeight }, () => padding(width));
+			return Array(termHeight).fill(padding(width));
 		}
 
 		// Lay the card out from state: where to go, what is happening, what is

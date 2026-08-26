@@ -1156,7 +1156,7 @@ export class TreeSelectorComponent implements Component {
 		const dims = computeModalDims(width, height, sizing);
 		if (!dims) {
 			this.#shellGeometry = null;
-			return Array.from({ length: height }, () => padding(width));
+			return Array(height).fill(padding(width));
 		}
 
 		const query = this.#treeList.getSearchQuery();
