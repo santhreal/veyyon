@@ -452,7 +452,7 @@ const customHrExtension: TokenizerAndRendererExtension = {
 		const match = CUSTOM_HR_START_REGEX.exec(src);
 		if (!match) return undefined;
 		let idx = match.index;
-		if (src[idx] === "\n") {
+		if (src.charCodeAt(idx) === 0x0a) {
 			idx += 1;
 		}
 		return idx;
@@ -552,11 +552,11 @@ function bareMathEnvBlock(src: string): readonly [number, number] | null {
 	// The `\end` must close before any blank line (i.e. within the same block).
 	if (/\n[ \t]*\n/.test(src.slice(beginLineStart, endAt))) return null;
 	let blockEnd = endAt + endToken.length;
-	while (src[blockEnd] === " " || src[blockEnd] === "\t") blockEnd++;
-	if (src[blockEnd] === "\n") blockEnd++;
+	while (src.charCodeAt(blockEnd) === 0x20 || src.charCodeAt(blockEnd) === 0x09) blockEnd++;
+	if (src.charCodeAt(blockEnd) === 0x0a) blockEnd++;
 	// Pull in one immediately-preceding `lhs =`/open-delimiter line (e.g. `f(x) =`).
 	let start = beginLineStart;
-	if (start > 0 && src[start - 1] === "\n") {
+	if (start > 0 && src.charCodeAt(start - 1) === 0x0a) {
 		const prevStart = src.lastIndexOf("\n", start - 2) + 1;
 		const prevLine = src.slice(prevStart, start - 1);
 		if (/[=([{]\s*$/.test(prevLine)) start = prevStart;
