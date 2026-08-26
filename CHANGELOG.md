@@ -238,6 +238,8 @@
 - The AVX2 trial load answers from the addon loader's first import and exits, so a compiled host, whose `process.execPath` is the product binary rather than a JavaScript runtime, reports a verdict instead of booting the whole CLI and spawning a trial child of its own at every level.
 - A wrapped line now continues under the indent its first row opened at, so an indented row no longer reads as a new top-level row at a narrow width.
 - An indented row inside a tool block keeps its indent when it wraps at a narrow width, instead of continuing at the block's left edge.
+- A tab-indented row hangs its wrapped continuations under the tab, instead of counting only spaces as indent and continuing at column zero.
+- The Darwin process list is sized from the count the kernel reports rather than a fixed 4096 entries, so a host past that many live processes no longer loses whole branches of a tracked process tree out of its CPU budget.
 - A tab bar holding no tabs keeps its active index at 0, instead of reporting tab -1 and handing an undefined tab to the change callback.
 - `SelectList.setSelectedIndex` holds its low bound on an empty list rather than storing an inverted -1; no behavior changes today, since no caller can distinguish the two.
 - Derive scroll-isolation pinned footer hit-test boundaries from the rendered window top and clamp child frame-local mouse coordinates within valid segment bounds.
