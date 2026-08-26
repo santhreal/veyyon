@@ -595,7 +595,12 @@ const LAVA_DEEP_FACTOR = 0.45;
 type LavaTheme = Pick<Theme, "getColorHex" | "fg">;
 
 function hexChannel(hex: string, i: number): number {
-	return parseInt(hex.slice(1 + i * 2, 3 + i * 2), 16);
+	// charCodeAt-based hex parse avoids allocating a 2-char slice per channel.
+	const hi = hex.charCodeAt(1 + i * 2);
+	const lo = hex.charCodeAt(2 + i * 2);
+	const hv = hi <= 57 ? hi - 48 : (hi & 0xdf) - 55;
+	const lv = lo <= 57 ? lo - 48 : (lo & 0xdf) - 55;
+	return (hv << 4) | lv;
 }
 
 function mixHex(a: string, b: string, t: number): [number, number, number] {
