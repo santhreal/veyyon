@@ -121,12 +121,28 @@ function refusingClone(real: ToolUnderTest): AgentTool {
 	};
 }
 
-/** The argument names a tool's own schema declares mandatory. */
+/**
+ * The argument names a tool's own schema declares mandatory.
+ *
+ * A union schema declares nothing at the top level: each branch carries its own
+ * mandatory fields and a payload matching no branch is refused, so reading only
+ * `required` would file a validated tool as unconstrained and stop checking it.
+ * What a caller must supply whatever branch it picks is the INTERSECTION of the
+ * branches, so a union holding one unconstrained branch imposes nothing and is
+ * reported as requiring nothing.
+ */
 function requiredArguments(tool: ToolUnderTest): string[] {
 	const schema = toolWireSchema(tool);
-	const required = schema.required;
-	if (!Array.isArray(required)) return [];
-	return required.filter((key): key is string => typeof key === "string" && key !== INTENT_FIELD);
+	const names = (value: unknown): string[] =>
+		Array.isArray(value) ? value.filter((key): key is string => typeof key === "string" && key !== INTENT_FIELD) : [];
+	const declared = names(schema.required);
+	if (declared.length > 0) return declared;
+	const branches = Array.isArray(schema.anyOf) ? schema.anyOf : [];
+	if (branches.length === 0) return [];
+	const perBranch = branches.map(branch =>
+		names(typeof branch === "object" && branch !== null ? (branch as Record<string, unknown>).required : undefined),
+	);
+	return perBranch.reduce((common, required) => common.filter(name => required.includes(name))).sort();
 }
 
 /**
@@ -308,6 +324,7 @@ const CHECKED_BY_THE_SWEEP: string[] = [
 	"resolve",
 	"retain",
 	"rewind",
+	"runtime",
 	"search",
 	"search_tool_bm25",
 	"set_cwd",
