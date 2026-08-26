@@ -1,21 +1,28 @@
 /**
- * WHY: `computeTypescriptEditProvenance` previously caught any missing or unreadable
- * default archive error and returned `{ sha: null }` with an error stuffed in metadata.
- * This allowed evaluation runs to persist with no dataset identity / SHA, silently hiding
- * broken dataset staging.
+ * WHY:
+ * Multiple independent extraction sites (`suite.ts`, `adapter/cli.ts`, `argot-bench.ts`, `provenance.ts`)
+ * each previously had their own error handling and inconsistent fallback behaviors.
  *
- * This suite proves that provenance computation fails closed with a named Error naming
- * the archive path by default, requiring callers to explicitly pass `allowMissingArchive: true`
- * if they legitimately require soft fallback.
+ * This suite proves that all callers reach the archive through the single `extract.ts` module,
+ * that a missing or unreadable archive fails closed by default with an actionable Error naming the path
+ * across EVERY caller entry point, and that soft fallback returning `{ sha: null }` is only permitted
+ * when `allowMissingArchive: true` is explicitly passed.
  */
 
 import { afterEach, describe, expect, it, type Mock, spyOn } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import {
+	ensureFixturesExtracted,
+	extractBenchmarkFixtures,
+	extractFixtures,
+	readFixturesArchive,
+} from "../../../src/suites/typescript-edit/extract";
 import { computeTypescriptEditProvenance } from "../../../src/suites/typescript-edit/provenance";
+import { TypescriptEditSuite } from "../../../src/suites/typescript-edit/suite";
 
-describe("a missing fixtures archive fails closed", () => {
+describe("a missing fixtures archive fails closed across all callers", () => {
 	let tempDir: string | null = null;
 	let statSpy: Mock<typeof fs.stat> | null = null;
 
@@ -28,23 +35,108 @@ describe("a missing fixtures archive fails closed", () => {
 		}
 	});
 
-	it("fails closed and throws when default fixtures archive does not exist and no opt-in is provided", async () => {
-		statSpy = spyOn(fs, "stat").mockRejectedValue(new Error("ENOENT: no such file or directory"));
+	const NONEXISTENT_ARCHIVE = "/nonexistent/path/datasets/typescript-edit/fixtures.tar.gz";
 
-		await expect(computeTypescriptEditProvenance()).rejects.toThrow(/fixtures archive not found or unreadable/i);
+	it("readFixturesArchive fails closed by default naming the archive path", async () => {
+		await expect(readFixturesArchive({ archivePath: NONEXISTENT_ARCHIVE })).rejects.toThrow(
+			/fixtures archive not found or unreadable at "\/nonexistent\/path\/datasets\/typescript-edit\/fixtures\.tar\.gz"/,
+		);
 	});
 
-	it("allows soft fallback returning sha: null only when allowMissingArchive is explicitly enabled", async () => {
-		statSpy = spyOn(fs, "stat").mockRejectedValue(new Error("ENOENT: no such file or directory"));
+	it("readFixturesArchive returns ok: false with error only when allowMissingArchive is true", async () => {
+		const result = await readFixturesArchive({
+			archivePath: NONEXISTENT_ARCHIVE,
+			allowMissingArchive: true,
+		});
 
+		expect(result.ok).toBe(false);
+		if (!result.ok) {
+			expect(result.path).toBe(NONEXISTENT_ARCHIVE);
+			expect(typeof result.error).toBe("string");
+			expect(result.error.length).toBeGreaterThan(0);
+		}
+	});
+
+	it("extractFixtures fails closed by default naming the archive path", async () => {
+		await expect(extractFixtures({ archivePath: NONEXISTENT_ARCHIVE })).rejects.toThrow(
+			/fixtures archive not found or unreadable at "\/nonexistent\/path\/datasets\/typescript-edit\/fixtures\.tar\.gz"/,
+		);
+	});
+
+	it("ensureFixturesExtracted fails closed by default naming the archive path", async () => {
+		await expect(ensureFixturesExtracted(NONEXISTENT_ARCHIVE)).rejects.toThrow(
+			/fixtures archive not found or unreadable at "\/nonexistent\/path\/datasets\/typescript-edit\/fixtures\.tar\.gz"/,
+		);
+	});
+
+	it("extractBenchmarkFixtures fails closed by default naming the archive path", async () => {
+		await expect(extractBenchmarkFixtures({ archivePath: NONEXISTENT_ARCHIVE })).rejects.toThrow(
+			/fixtures archive not found or unreadable at "\/nonexistent\/path\/datasets\/typescript-edit\/fixtures\.tar\.gz"/,
+		);
+	});
+
+	it("computeTypescriptEditProvenance fails closed by default naming the archive path", async () => {
+		await expect(computeTypescriptEditProvenance({ archivePath: NONEXISTENT_ARCHIVE })).rejects.toThrow(
+			/fixtures archive not found or unreadable at "\/nonexistent\/path\/datasets\/typescript-edit\/fixtures\.tar\.gz"/,
+		);
+	});
+
+	it("computeTypescriptEditProvenance allows soft fallback only when allowMissingArchive is explicitly enabled", async () => {
 		const provenance = await computeTypescriptEditProvenance({
+			archivePath: NONEXISTENT_ARCHIVE,
 			allowMissingArchive: true,
 		});
 
 		expect(provenance.suite).toBe("typescript-edit");
 		expect(provenance.version).toBe("1.0.0");
 		expect(provenance.sha).toBeNull();
-		expect(provenance.metadata?.error).toBe("ENOENT: no such file or directory");
+		expect(provenance.metadata?.archivePath).toBe(NONEXISTENT_ARCHIVE);
+		expect(provenance.metadata?.error).toBeDefined();
+	});
+
+	it("TypescriptEditSuite discoverTasks fails closed when archive is missing", async () => {
+		const suite = new TypescriptEditSuite({
+			defaultArchive: NONEXISTENT_ARCHIVE,
+		});
+		await expect(suite.discoverTasks()).rejects.toThrow(/fixtures archive not found or unreadable/);
+	});
+
+	it("TypescriptEditSuite preflight refuses with actionable message and missing requirement when archive is missing", async () => {
+		const suite = new TypescriptEditSuite({
+			defaultArchive: NONEXISTENT_ARCHIVE,
+		});
+		const verdict = await suite.preflight();
+		expect(verdict.ok).toBe(false);
+		expect(verdict.reason).toContain("fixture archive is missing or unreadable");
+		expect(verdict.missingRequirements).toContain("fixture-archive");
+	});
+
+	it("sweeps the entire caller suite under simulated ENOENT default archive", async () => {
+		statSpy = spyOn(fs, "stat").mockRejectedValue(new Error("ENOENT: no such file or directory"));
+
+		// 1. readFixturesArchive
+		await expect(readFixturesArchive()).rejects.toThrow(/fixtures archive not found or unreadable/i);
+
+		// 2. extractFixtures
+		await expect(extractFixtures()).rejects.toThrow(/fixtures archive not found or unreadable/i);
+
+		// 3. ensureFixturesExtracted
+		await expect(ensureFixturesExtracted()).rejects.toThrow(/fixtures archive not found or unreadable/i);
+
+		// 4. extractBenchmarkFixtures
+		await expect(extractBenchmarkFixtures()).rejects.toThrow(/fixtures archive not found or unreadable/i);
+
+		// 5. computeTypescriptEditProvenance
+		await expect(computeTypescriptEditProvenance()).rejects.toThrow(/fixtures archive not found or unreadable/i);
+
+		// 6. TypescriptEditSuite discoverTasks
+		const suite = new TypescriptEditSuite();
+		await expect(suite.discoverTasks()).rejects.toThrow(/fixtures archive not found or unreadable/i);
+
+		// 7. TypescriptEditSuite preflight
+		const verdict = await suite.preflight();
+		expect(verdict.ok).toBe(false);
+		expect(verdict.missingRequirements).toContain("fixture-archive");
 	});
 
 	it("computes deterministic SHA when fixtures directory exists", async () => {

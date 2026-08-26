@@ -8,7 +8,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { errorMessage } from "@veyyon/utils";
-import { listFiles } from "./shared";
+import { listFiles } from "../../core/fs-walk";
 
 export interface EditTask {
 	id: string;

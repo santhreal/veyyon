@@ -6,8 +6,8 @@
 import * as path from "node:path";
 import { errorMessage, splitTextLines } from "@veyyon/utils";
 import { diffLines } from "diff";
+import { listFiles } from "../../core/fs-walk";
 import { formatContent } from "./formatter";
-import { listFiles } from "./shared";
 
 export interface VerificationResult {
 	success: boolean;

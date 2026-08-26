@@ -8,7 +8,7 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { TempDir } from "@veyyon/utils";
-import { listFiles } from "../../../src/suites/typescript-edit/shared";
+import { listFiles } from "../../../src/core/fs-walk";
 
 describe("shared listFiles", () => {
 	it("recursively lists files in alphabetical order", async () => {
