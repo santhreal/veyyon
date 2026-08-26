@@ -179,7 +179,17 @@ export function renderOutputBlock(options: OutputBlockOptions, theme: Theme): st
 		} else if (section.separator && sectionIndex > 0) {
 			rows.push({ kind: "rule" });
 		}
-		const allLines = section.lines.flatMap(l => l.split("\n"));
+		const allLines: string[] = [];
+		for (let li = 0; li < section.lines.length; li++) {
+			const src = section.lines[li]!;
+			let start = 0;
+			for (let si = 0; si <= src.length; si++) {
+				if (si === src.length || src.charCodeAt(si) === 0x0a) {
+					allLines.push(src.slice(start, si));
+					start = si + 1;
+				}
+			}
+		}
 		const sixelLineMask = TERMINAL.imageProtocol === ImageProtocol.Sixel ? getSixelLineMask(allLines) : undefined;
 		for (let lineIndex = 0; lineIndex < allLines.length; lineIndex++) {
 			const line = allLines[lineIndex]!;
