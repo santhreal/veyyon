@@ -150,6 +150,15 @@ describe("a statement conditioned on a tool needs that tool", () => {
 		expect(TOOL_GATED.filter(row => row.fragment === undefined).map(row => row.id)).toEqual([]);
 	});
 
+	it("does not direct unified-search sessions to a missing legacy grep tool", async () => {
+		const unified = await composed(["search", "ast_edit"]);
+		expect(unified).not.toContain("Use `grep` only for plain-text lookup");
+		expect(unified).toContain("`search` owns workspace file discovery");
+
+		const legacy = await composed(["grep", "ast_edit"]);
+		expect(legacy).toContain("Use `grep` only for plain-text lookup");
+	});
+
 	it("withholds every tool-gated statement from a session with no tools", async () => {
 		const bare = await composed([]);
 		for (const row of SWEPT) {

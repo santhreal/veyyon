@@ -54,6 +54,7 @@ import {
 import { wrapToolWithMetaNotice } from "./output-meta";
 import { RerootDetector, wrapToolWithRerootHint } from "./reroot-hint";
 import type { TodoPhase } from "./todo";
+import { RuntimeTool } from "./runtime";
 
 // Builtin implementation modules remain lazy so the CLI boot path does not
 // parse tools this session never activates.
@@ -483,6 +484,7 @@ export const BUILTIN_TOOLS: Record<BuiltinToolName, ToolFactory> = {
 	ask: async s => (await import("./ask")).AskTool.createIf(s),
 	debug: async s => (await import("./debug")).DebugTool.createIf(s),
 	eval: async s => (await import("./eval")).EvalTool.create(s),
+	runtime: async s => RuntimeTool.create(s),
 	ssh: async s => (await import("./ssh")).loadSshTool(s),
 	github: async s => (await import("./gh")).GithubTool.createIf(s),
 	lsp: async s => (await import("../lsp")).LspTool.createIf(s),
@@ -633,6 +635,7 @@ export async function createTools(session: ToolSession, toolNames?: string[]): P
 		bashEnabled: session.settings.get("bash.enabled"),
 		launchEnabled: session.settings.get("launch.enabled"),
 		evalAllowed: allowEval,
+		unifiedRuntime: session.settings.get("tools.unifiedRuntime"),
 		debugEnabled: session.settings.get("debug.enabled"),
 		requireYieldTool: includeYield,
 		todoEnabled: session.settings.get("todo.enabled"),

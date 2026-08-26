@@ -351,4 +351,119 @@ describe("createTools", () => {
 			"yield",
 		]);
 	});
+	describe("unified runtime (tools.unifiedRuntime)", () => {
+		it("baseline session exposes the same tool names as default", async () => {
+			const baselineSession = createTestSession({
+				settings: Settings.isolated({ "tools.unifiedRuntime": false }),
+			});
+			const defaultSession = createTestSession({
+				settings: Settings.isolated({}),
+			});
+
+			const baselineTools = (await createTools(baselineSession)).map(t => t.name);
+			const defaultTools = (await createTools(defaultSession)).map(t => t.name);
+
+			expect(baselineTools).toEqual(defaultTools);
+			expect(baselineTools).toContain("eval");
+			expect(baselineTools).toContain("launch");
+			expect(baselineTools).not.toContain("runtime");
+		});
+
+		it("candidate session exposes runtime and suppresses eval and launch", async () => {
+			const session = createTestSession({
+				settings: Settings.isolated({ "tools.unifiedRuntime": true }),
+			});
+			const tools = await createTools(session);
+			const names = tools.map(t => t.name);
+
+			expect(names).toContain("runtime");
+			expect(names).not.toContain("eval");
+			expect(names).not.toContain("launch");
+		});
+
+		it("candidate session derives capability variants and proves parity vs candidate replacement", async () => {
+			const variants = [true, false].flatMap(evalEnabled =>
+				[true, false].map(launchEnabled => ({ eval: evalEnabled, launch: launchEnabled })),
+			);
+
+			for (const variant of variants) {
+				const evalSettings = variant.eval
+					? { "eval.py": true, "eval.js": true }
+					: { "eval.py": false, "eval.js": false };
+				const launchSettings = { "launch.enabled": variant.launch };
+
+				// Baseline arm: tools.unifiedRuntime = false
+				const baselineSession = createTestSession({
+					settings: Settings.isolated({
+						"tools.unifiedRuntime": false,
+						...evalSettings,
+						...launchSettings,
+					}),
+				});
+				const baselineNames = (await createTools(baselineSession)).map(t => t.name);
+
+				expect(baselineNames.includes("eval")).toBe(variant.eval);
+				expect(baselineNames.includes("launch")).toBe(variant.launch);
+				expect(baselineNames).not.toContain("runtime");
+
+				// Candidate arm: tools.unifiedRuntime = true
+				const candidateSession = createTestSession({
+					settings: Settings.isolated({
+						"tools.unifiedRuntime": true,
+						...evalSettings,
+						...launchSettings,
+					}),
+				});
+				const candidateNames = (await createTools(candidateSession)).map(t => t.name);
+
+				expect(candidateNames).not.toContain("eval");
+				expect(candidateNames).not.toContain("launch");
+
+				const expectRuntime = variant.eval || variant.launch;
+				expect(candidateNames.includes("runtime")).toBe(expectRuntime);
+
+				// When both capabilities are disabled, candidate does not leak runtime
+				if (!expectRuntime) {
+					expect(candidateNames).not.toContain("runtime");
+				}
+			}
+		});
+
+		it("handles explicit tool whitelists in baseline and candidate modes", async () => {
+			const baselineSession = createTestSession({
+				settings: Settings.isolated({ "tools.unifiedRuntime": false }),
+			});
+			const candidateSession = createTestSession({
+				settings: Settings.isolated({ "tools.unifiedRuntime": true }),
+			});
+
+			// Requesting legacy eval/launch tools:
+			const requestedLegacy = ["eval", "launch", "read", "write"];
+			const baselineLegacy = (await createTools(baselineSession, requestedLegacy)).map(t => t.name);
+			expect(baselineLegacy).toEqual(["eval", "launch", "read", "write", "goal", "resolve"]);
+
+			const candidateLegacy = (await createTools(candidateSession, requestedLegacy)).map(t => t.name);
+			expect(candidateLegacy).toEqual(["read", "write", "goal", "resolve"]);
+
+			// Requesting runtime tool:
+			const requestedRuntime = ["runtime", "read", "write"];
+			const baselineRuntime = (await createTools(baselineSession, requestedRuntime)).map(t => t.name);
+			expect(baselineRuntime).toEqual(["read", "write", "goal", "resolve"]);
+
+			const candidateRuntime = (await createTools(candidateSession, requestedRuntime)).map(t => t.name);
+			expect(candidateRuntime).toEqual(["runtime", "read", "write", "goal", "resolve"]);
+
+			// Requesting runtime when both capabilities are disabled under candidate mode:
+			const disabledCandidateSession = createTestSession({
+				settings: Settings.isolated({
+					"tools.unifiedRuntime": true,
+					"launch.enabled": false,
+					"eval.py": false,
+					"eval.js": false,
+				}),
+			});
+			const disabledRuntime = (await createTools(disabledCandidateSession, ["runtime", "read"])).map(t => t.name);
+			expect(disabledRuntime).toEqual(["read", "goal", "resolve"]);
+		});
+	});
 });

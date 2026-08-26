@@ -52,6 +52,7 @@ import toolsReplace from "./replace.md" with { type: "text" };
 import toolsResolve from "./resolve.md" with { type: "text" };
 import toolsRetain from "./retain.md" with { type: "text" };
 import toolsRewind from "./rewind.md" with { type: "text" };
+import toolsRuntime from "./runtime.md" with { type: "text" };
 import toolsSearch from "./search.md" with { type: "text" };
 import toolsSearchToolBm25 from "./search-tool-bm25.md" with { type: "text" };
 import toolsSetCwd from "./set-cwd.md" with { type: "text" };
@@ -118,6 +119,7 @@ export const toolsPrompts = definePromptRows({
 	"tools/resolve": { text: toolsResolve, purpose: "the resolve tool description" },
 	"tools/retain": { text: toolsRetain, purpose: "the retain tool description" },
 	"tools/rewind": { text: toolsRewind, purpose: "the rewind tool description" },
+	"tools/runtime": { text: toolsRuntime, purpose: "the runtime tool description" },
 	"tools/search": { text: toolsSearch, purpose: "the search tool description" },
 	"tools/search-tool-bm25": { text: toolsSearchToolBm25, purpose: "the tool-discovery tool description" },
 	"tools/set-cwd": { text: toolsSetCwd, purpose: "the set_cwd tool description" },

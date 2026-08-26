@@ -28,6 +28,11 @@
 - `/omfg` saves forged rules to the active profile's rules directory only; the project target is gone, because project `.veyyon/rules` was never discovered across sessions.
 - Settings → Stream Interrupts (TTSR) groups the profile's own rules under a leading `User created` section instead of `From native`, ahead of foreign-tool and built-in sections.
 
+### Added
+
+- An opt-in `tools.unifiedRuntime` experiment replaces the model-facing `eval` and `launch` tools with one `runtime` tool while preserving their existing kernel and process implementations.
+- An opt-in `eval.pyWorkspace` experiment teaches the agent to keep large tool results and repeated repository operations inside the persistent Python kernel, reducing intermediate transcript output without changing kernel execution.
+
 ### Changed
 
 - `veyyon --help` renders its command list from registry summaries verified against command statics and loads only the hidden default command for its flag table, reducing a measured warm Windows invocation from 1.2 seconds to 0.13 seconds.
@@ -75,6 +80,10 @@
 
 - An explicit `--model` pointing at a dynamically-discovered model (a provider`s `/v1/models` entry or models.dev overlay absent from the bundled catalog) no longer fails with "not found among N models" when the background discovery refresh has not completed before model resolution. The deferred pattern path does a synchronous cache-aware discovery pass when none of the patterns resolve against the static catalog, mirroring the fallback already present for default-role models.
 ### Fixed
+- Unified search now preserves purpose-specific field semantics through the Antigravity tool-schema adapter, replaces primitive search tools in explicit tool lists, keeps plan/subagent/bash guidance aligned with the active tool, and redirects intercepted shell searches to `search`.
+- Bundled edit and write guidance now uses TTSR's deferred reminder path instead of inheriting the global interrupt policy and aborting the active model response. Every bundled tool-scoped rule must now declare its interrupt policy explicitly.
+
+- A setting the system prompt depends on rebuilds that prompt whoever writes it. Two owners decided that: the settings screen asked the prompt-gate registry, and the session asked a private table of eight paths that never restated six of the registry's live gates. So writing `personality`, `tools.format`, `inlineToolDescriptors`, `includeModelInPrompt`, `tui.renderMermaid` or `tools.intentTracing` from anywhere but the settings screen — a slash command, an SDK or ACP host, a plugin — changed the configuration and left the model reading a prompt that described the previous one, with nothing logged; and flipping one of the five paths both lists held rebuilt the prompt twice for one change. The trigger now lives once, with the prompt, in the session's effective-setting listener, and reads the registry for which settings reach the model. The session's own table keeps only the three that gate no prompt text at all (`async.enabled`, `subagent.isolation.mode`, `subagent.maxNestedSpawnDepth`, which decide the `task` tool's description and schema), and a failed rebuild is logged as a warning rather than at debug, because the settings screen is no longer there to report it.
 
 - Brave and Jina web search honor an API key held in the credential store, instead of reporting themselves unconfigured unless the key was also exported as an environment variable.
 - A JSON-RPC header field whose name merely ends in `Content-Length`, or a server log line that mentions it, no longer sets the frame length and parks the language-server connection on a byte count the stream never reaches.
