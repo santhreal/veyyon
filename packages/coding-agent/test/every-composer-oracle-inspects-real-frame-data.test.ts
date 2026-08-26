@@ -30,12 +30,8 @@ import {
 	type ComposerOracleGuarantee,
 } from "../src/modes/components/composer-defect-oracle";
 import { initTheme } from "../src/modes/theme/theme";
-import {
-	corpusStateToRunnerOptions,
-	type RunnerOptions,
-	runComposerOracleScenario,
-	runnerOptionsToCorpusState,
-} from "./helpers/composer-oracle-runner";
+import { type RunnerOptions, runComposerOracleScenario } from "./helpers/composer-oracle-runner";
+import { corpusStateToRunnerOptions, runnerOptionsToCorpusState } from "./helpers/renderer-defect-corpus";
 
 /** Which mount exercises a guarantee: live tail, or scrolled back under scroll isolation. */
 type Mount = "liveTail" | "scrolledBack";
@@ -176,6 +172,26 @@ describe("every composer oracle inspects real frame data", () => {
 			}
 		});
 	}
+	/**
+	 * This table and the registry's `subject` are two independent statements about what an oracle
+	 * needs, written from opposite sides: this one from the frame, the registry's from the check. They
+	 * are allowed to differ in strictness, but not to contradict each other. A `subject` narrowed to
+	 * something the frame does not carry, while the table still says the data is there, is the drift
+	 * that made two oracles inspect nothing, so it is asserted rather than reviewed.
+	 */
+	for (const mount of Object.keys(MOUNTS) as Mount[]) {
+		it(`agrees with the registry about what a ${mount} mount supplies`, async () => {
+			const result = await runComposerOracleScenario(MOUNTS[mount]);
+			try {
+				const contradictions = COMPOSER_ORACLE_GUARANTEES.filter(
+					g => REQUIREMENTS[g].hasInputs(result.frameState) && result.evaluation.blind.includes(g),
+				).map(g => `${g}: the frame carries its inputs, and the registry read nothing`);
+				expect(contradictions).toEqual([]);
+			} finally {
+				result.cleanUp();
+			}
+		});
+	}
 
 	/**
 	 * A written case is only useful if it can be turned back into the mount that produced it.
@@ -183,7 +199,7 @@ describe("every composer oracle inspects real frame data", () => {
 	 * varies and the corpus mapping forgets turns this red instead of writing cases that replay
 	 * as a different scenario.
 	 */
-	it("round-trips every swept runner option through the corpus state, dropping only the two it cannot carry", () => {
+	it("round-trips every swept runner option through the corpus state, dropping only the one it cannot carry", () => {
 		const populated: RunnerOptions = {
 			width: 40,
 			height: 12,
@@ -199,7 +215,7 @@ describe("every composer oracle inspects real frame data", () => {
 
 		const round = corpusStateToRunnerOptions(runnerOptionsToCorpusState(populated));
 		const dropped = Object.keys(populated).filter(key => round[key as keyof RunnerOptions] === undefined);
-		expect(dropped).toEqual(["statusMessage", "customParts"]);
+		expect(dropped).toEqual(["customParts"]);
 
 		expect(round.width).toBe(40);
 		expect(round.height).toBe(12);
@@ -213,13 +229,12 @@ describe("every composer oracle inspects real frame data", () => {
 	});
 
 	/**
-	 * The segment ledger the oracles judge is rebuilt test-side: the runner walks a hardcoded list
-	 * of the components it expects `mountComposerZone` to have mounted and re-renders each one, so
-	 * three oracles read a model of the composer rather than the composer. Cross-checking the
-	 * rebuilt total against `TUI.composedFrameRows` -- the engine's own count of the frame it
-	 * composed -- is what stops that model from drifting away from the frame unnoticed. Without
-	 * this, a component added to or removed from the real mount leaves the ledger oracles
-	 * comparing the reconstruction to itself and passing on every state.
+	 * The segment ledger the oracles judge is derived from the root children the tui holds, and each
+	 * one is re-rendered to count its rows. Cross-checking the total against `TUI.composedFrameRows`
+	 * -- the engine's own count of the frame it composed -- is what stops the ledger from describing
+	 * a frame the engine did not paint. Without it, a component whose row count depends on frame
+	 * context leaves the three ledger oracles comparing a reconstruction to itself and passing on
+	 * every state.
 	 */
 	it("rebuilds a segment ledger that agrees with the frame the engine composed", async () => {
 		const result = await runComposerOracleScenario(MOUNTS.liveTail);

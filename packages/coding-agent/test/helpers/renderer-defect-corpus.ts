@@ -9,7 +9,18 @@
 import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { ThinkingLevel } from "@veyyon/agent-core";
 import type { ComposerOracleGuarantee, OracleFailure } from "../../src/modes/components/composer-defect-oracle";
+import { type RunnerOptions, type RunnerResult, runComposerOracleScenario } from "./composer-oracle-runner";
+
+/**
+ * Option keys that cannot round-trip through CorpusCaseState JSON serialisation.
+ *
+ * - `customParts`: holds live component instances and factory functions passed to `mountComposerZone`,
+ *   which are runtime closures/objects that cannot be serialised to deterministic JSON artifacts.
+ */
+export const CORPUS_EXCLUDED_OPTION_KEYS = ["customParts"] as const;
+export type CorpusExcludedOptionKey = (typeof CORPUS_EXCLUDED_OPTION_KEYS)[number];
 
 export interface CorpusCaseState {
 	width: number;
@@ -24,13 +35,15 @@ export interface CorpusCaseState {
 		thinkingLevel?: string;
 	};
 	editorText: string;
-	transcriptLines: number;
+	transcriptLines: number | string[];
 	scrollIsolation: boolean;
 	scrollOffset: number; // 0 for live tail, >0 for scroll back
 	focused: boolean;
+	statusMessage?: string;
+	transcriptLineMarkers?: readonly string[];
 }
 
-interface CorpusCase {
+export interface CorpusCase {
 	schemaVersion: 1;
 	id: string;
 	status: "recorded" | "resolved" | "exempted";
@@ -44,7 +57,7 @@ interface CorpusCase {
 	observedGrid: string[];
 }
 
-const CORPUS_DIR = path.resolve(import.meta.dirname, "../corpus/renderer-defect-oracle");
+export const CORPUS_DIR = path.resolve(import.meta.dirname, "../corpus/renderer-defect-oracle");
 
 /** Ensure corpus directory exists */
 function ensureCorpusDir(): void {
@@ -60,6 +73,90 @@ function computeCaseHash(state: CorpusCaseState, failingOracle: string): string 
 		failingOracle,
 	});
 	return crypto.createHash("sha256").update(normalized).digest("hex").slice(0, 16);
+}
+
+/** Convert runner options to CorpusCaseState */
+export function runnerOptionsToCorpusState(options: RunnerOptions): CorpusCaseState {
+	const state: CorpusCaseState = {
+		width: options.width,
+		height: options.height,
+		modeState: {
+			bypass: options.modeState?.bypass,
+			bashMode: options.modeState?.bashMode,
+			pythonMode: options.modeState?.pythonMode,
+			planMode: options.modeState?.planMode,
+			focusedSubagent: options.modeState?.focusedSubagent,
+			sessionAccentAnsi: options.modeState?.sessionAccentAnsi,
+			thinkingLevel: options.modeState?.thinkingLevel,
+		},
+		editorText: options.editorText ?? "",
+		transcriptLines: Array.isArray(options.transcriptLines)
+			? [...options.transcriptLines]
+			: (options.transcriptLines ?? 0),
+		scrollIsolation: options.scrollIsolation ?? true,
+		scrollOffset: options.scrollOffset ?? 0,
+		focused: options.focused ?? true,
+	};
+	if (options.statusMessage !== undefined) {
+		state.statusMessage = options.statusMessage;
+	}
+	if (options.transcriptLineMarkers !== undefined) {
+		state.transcriptLineMarkers = [...options.transcriptLineMarkers];
+	}
+	return state;
+}
+
+/** Convert CorpusCaseState back to RunnerOptions */
+export function corpusStateToRunnerOptions(state: CorpusCaseState): RunnerOptions {
+	let thinkingLevel: ThinkingLevel = ThinkingLevel.Off;
+	if (state.modeState?.thinkingLevel) {
+		thinkingLevel = state.modeState.thinkingLevel as ThinkingLevel;
+	}
+	const options: RunnerOptions = {
+		width: state.width,
+		height: state.height,
+		modeState: {
+			bypass: state.modeState?.bypass,
+			bashMode: state.modeState?.bashMode,
+			pythonMode: state.modeState?.pythonMode,
+			planMode: state.modeState?.planMode,
+			focusedSubagent: state.modeState?.focusedSubagent,
+			sessionAccentAnsi: state.modeState?.sessionAccentAnsi,
+			thinkingLevel,
+		},
+		editorText: state.editorText,
+		transcriptLines: Array.isArray(state.transcriptLines) ? [...state.transcriptLines] : state.transcriptLines,
+		scrollIsolation: state.scrollIsolation,
+		scrollOffset: state.scrollOffset,
+		focused: state.focused,
+	};
+	if (state.statusMessage !== undefined) {
+		options.statusMessage = state.statusMessage;
+	}
+	if (state.transcriptLineMarkers !== undefined) {
+		options.transcriptLineMarkers = [...state.transcriptLineMarkers];
+	}
+	return options;
+}
+
+/**
+ * Replay a corpus state by mounting it in the runner and re-evaluating all defect oracles.
+ *
+ * Produces the same oracle evaluation and frame geometry as the original mount.
+ */
+export async function replayCorpusCase(state: CorpusCaseState): Promise<RunnerResult> {
+	const options = corpusStateToRunnerOptions(state);
+	return await runComposerOracleScenario(options);
+}
+
+/**
+ * Load and replay a committed corpus case from disk.
+ */
+export async function replayCorpusFile(filePath: string): Promise<{ corpusCase: CorpusCase; result: RunnerResult }> {
+	const raw = fs.readFileSync(filePath, "utf-8");
+	const corpusCase: CorpusCase = JSON.parse(raw);
+	const result = await replayCorpusCase(corpusCase.state);
+	return { corpusCase, result };
 }
 
 /**
@@ -85,6 +182,8 @@ export function promoteFailingCaseToCorpus(
 			const existing: CorpusCase = JSON.parse(fs.readFileSync(filePath, "utf-8"));
 			if (!options?.status) {
 				existingStatus = existing.status;
+			}
+			if (options?.reason === undefined) {
 				existingReason = existing.reason;
 			}
 		} catch {

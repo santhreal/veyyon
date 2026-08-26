@@ -1,172 +1,250 @@
 /**
- * Renderer Composer Zone Defect Oracle Sweep.
+ * No composer state in the swept space produces a defect, and every oracle reads a real subject in
+ * that space rather than reporting a pass on nothing.
  *
  * WHY THIS SUITE EXISTS:
- * Rendering defects (e.g. output bleeding past composer, duplicated composer,
- * misrouted footer clicks, unpainted pad color leak, horizontal overflow) reach
- * operators when tests only assert static fixture frames. This suite derives a
- * dynamic corpus from source at run time, runs every combination through real
- * TUI + ComposerZone components on Ghostty VirtualTerminal, and checks 12 formal
- * defect oracles.
+ * A rendering defect reaches an operator when the tests assert authored fixture frames: bleed past
+ * the composer, a second composer, a misrouted footer click, a pad row painting a background, a row
+ * wider than the terminal. This sweep drives real TUI and composer components over the Ghostty
+ * virtual terminal across the whole state space and judges each frame with all twelve oracles.
  *
- * WHAT THIS COVERS:
- * - Runtime enumeration of all ThinkingLevel values and ComposerAccentState modes
- * - Cross-product with terminal widths (10, 20, 40, 80, 120), heights (4, 6, 8, 12, 24),
- *   transcript depths (0, 5, 50 rows), editor text variants (empty, single-line,
- *   multiline, wide characters, combining marks, astral emoji), and scroll isolation states
- * - Fail-by-default on new mode members with opt-outs pinned by exact equality
- * - Automatic promotion of failing cases into committed corpus
+ * The sweep also has to defend itself. Two oracles were once inspecting nothing across four thousand
+ * states and reporting clean, so a green sweep alone means little; the per-oracle accounting below is
+ * what makes the green mean something. The mode axis is derived from the accent state's own fields,
+ * so a new composer mode enters the sweep as a compile error rather than as silence.
  *
- * WHAT THIS DOES NOT COVER:
- * - Pure color theme matching, image protocol placement, or terminals that disagree with Ghostty.
+ * WHAT THIS SUITE DOES NOT CATCH:
+ * - Colour theme fidelity, image protocol placement, or a terminal that disagrees with Ghostty.
+ * - Transitions. Every state here is a cold mount; the differential, the overlay suite and the
+ *   transition sweep drive sequences.
+ * - Whether an oracle's judgement is right. This sweep proves the oracles found nothing to report on
+ *   a subject they actually read; the mutation suite proves each predicate can fire.
+ *
+ * MUTATION GATE (each restored in the same step, product diff proven empty after):
+ * 1. `packages/tui/src/tui.ts:1588`, `#pinnedFooterRows` minus one: the footer geometry oracles fail
+ *    across the sweep and the failure list names them per state.
+ * 2. `packages/tui/src/tui.ts:4141`, `windowTop` minus one: bleed and footer placement fail.
+ * 3. `subject: () => ({ kind: "rows", rows: [] })` on `noHorizontalOverflow` in the oracle registry:
+ *    the sweep stays green on failures and goes red on the per-oracle accounting instead, which is
+ *    the whole point of keeping both claims.
  */
 
 import { beforeAll, describe, expect, it } from "bun:test";
 import { ThinkingLevel } from "@veyyon/agent-core";
-import { initTheme } from "../src/modes/theme/theme";
+import type { ComposerAccentState } from "../src/modes/components/composer-chrome";
 import {
-	type RunnerOptions,
-	runComposerOracleScenario,
-	runnerOptionsToCorpusState,
-} from "./helpers/composer-oracle-runner";
-import { promoteFailingCaseToCorpus } from "./helpers/renderer-defect-corpus";
+	COMPOSER_ORACLE_GUARANTEES,
+	type ComposerOracleGuarantee,
+} from "../src/modes/components/composer-defect-oracle";
+import { initTheme } from "../src/modes/theme/theme";
+import { type RunnerOptions, runComposerOracleScenario } from "./helpers/composer-oracle-runner";
+import { promoteFailingCaseToCorpus, runnerOptionsToCorpusState } from "./helpers/renderer-defect-corpus";
 
-/** Supported mode configurations derived from source */
+/**
+ * An accent field whose value is a flag, so one sweep variant can turn it on.
+ *
+ * Derived from the interface rather than listed, so a new flag joins `ACCENT_FLAGS` by existing.
+ */
+type BooleanAccentFlag = {
+	[K in keyof ComposerAccentState]-?: NonNullable<ComposerAccentState[K]> extends boolean ? K : never;
+}[keyof ComposerAccentState];
+
+/**
+ * Every accent field with a value.
+ *
+ * `Required` is the fail-by-default mechanism for the mode axis: a field added to
+ * `ComposerAccentState` and not given a value here does not compile, so it cannot quietly go
+ * unswept the way a hand-written list of eight mode names did.
+ */
+const ACCENT_CANON: Required<ComposerAccentState> = {
+	bypass: false,
+	bashMode: false,
+	pythonMode: false,
+	planMode: false,
+	focusedSubagent: false,
+	sessionAccentAnsi: "\x1b[38;2;255;100;50m",
+	thinkingLevel: ThinkingLevel.Off,
+};
+
+const ACCENT_FLAGS: readonly BooleanAccentFlag[] = (Object.keys(ACCENT_CANON) as (keyof ComposerAccentState)[]).filter(
+	(key): key is BooleanAccentFlag => typeof ACCENT_CANON[key] === "boolean",
+);
+
+const THINKING_LEVELS: readonly ThinkingLevel[] = Object.values(ThinkingLevel);
+
 interface ModeVariant {
 	name: string;
-	bypass?: boolean;
-	bashMode?: boolean;
-	pythonMode?: boolean;
-	planMode?: boolean;
-	focusedSubagent?: boolean;
-	sessionAccentAnsi?: string;
-	thinkingLevel: ThinkingLevel;
+	state: Partial<ComposerAccentState>;
 }
 
-describe("renderer composer defect oracle sweep", () => {
-	beforeAll(async () => {
-		await initTheme(false);
+/** One variant per accent flag, one per thinking level, one for a session accent, plus the default. */
+function modeVariants(): ModeVariant[] {
+	const variants: ModeVariant[] = [{ name: "default", state: { thinkingLevel: ThinkingLevel.Off } }];
+	for (const flag of ACCENT_FLAGS) {
+		const state: Partial<ComposerAccentState> = { thinkingLevel: ThinkingLevel.Off };
+		state[flag] = true;
+		variants.push({ name: flag, state });
+	}
+	variants.push({
+		name: "session-accent",
+		state: { sessionAccentAnsi: ACCENT_CANON.sessionAccentAnsi, thinkingLevel: ThinkingLevel.Off },
 	});
-	// Dynamically enumerate ThinkingLevel enum members from source
-	const discoveredThinkingLevels = Object.values(ThinkingLevel);
+	for (const level of THINKING_LEVELS) {
+		variants.push({ name: `thinking-${level}`, state: { thinkingLevel: level } });
+	}
+	return variants;
+}
 
-	// Pin opt-outs by exact equality: no unrecorded opt-outs allowed
-	const optedOutThinkingLevels: ThinkingLevel[] = [];
-	it("thinking levels have no unrecorded opt-outs (fail by default on new member)", () => {
-		expect(optedOutThinkingLevels).toEqual([]);
-		// Every discovered thinking level must be accounted for
-		const knownLevels = [
-			ThinkingLevel.Inherit,
-			ThinkingLevel.Off,
-			ThinkingLevel.Minimal,
-			ThinkingLevel.Low,
-			ThinkingLevel.Medium,
-			ThinkingLevel.High,
-			ThinkingLevel.XHigh,
-			ThinkingLevel.Max,
-		];
-		expect(discoveredThinkingLevels.sort()).toEqual(knownLevels.sort());
-	});
+const MODES: readonly ModeVariant[] = modeVariants();
 
-	// Derive the mode space dynamically
-	const modeVariants: ModeVariant[] = [
-		{ name: "normal-default", thinkingLevel: ThinkingLevel.Off },
-		{ name: "normal-thinking-high", thinkingLevel: ThinkingLevel.High },
-		{ name: "bypass-yolo", bypass: true, thinkingLevel: ThinkingLevel.Off },
-		{ name: "bash-mode", bashMode: true, thinkingLevel: ThinkingLevel.Off },
-		{ name: "python-mode", pythonMode: true, thinkingLevel: ThinkingLevel.Off },
-		{ name: "plan-mode", planMode: true, thinkingLevel: ThinkingLevel.Off },
-		{ name: "focused-subagent", focusedSubagent: true, thinkingLevel: ThinkingLevel.Off },
-		{ name: "session-accent", sessionAccentAnsi: "\x1b[38;2;255;100;50m", thinkingLevel: ThinkingLevel.Off },
-	];
+const WIDTHS = [10, 20, 40, 80, 120] as const;
+const HEIGHTS = [4, 6, 8, 12, 24] as const;
+const TRANSCRIPTS = [0, 5, 50] as const;
+const TEXTS = [
+	{ name: "empty-placeholder", text: "" },
+	{ name: "short-prompt", text: "explain quantum computing" },
+	{ name: "multiline-code", text: "function main() {\n  console.log('hello');\n  return 42;\n}" },
+	{ name: "long-wrapping", text: "a".repeat(150) },
+	{ name: "wide-cjk", text: "你好世界 こんにちは 🚀" },
+	{ name: "combining-marks", text: "e\u0301 a\u0308 n\u0303 cafe\u0301" },
+	{ name: "astral-emoji", text: "👨‍👩‍👧‍👦 🌟 🚀 ✨" },
+] as const;
 
-	const optedOutModes: string[] = [];
-	it("modes have no unrecorded opt-outs", () => {
-		expect(optedOutModes).toEqual([]);
-	});
+/** How each oracle fared over the whole sweep. */
+interface OracleTally {
+	inspected: number;
+	skipped: number;
+	blind: number;
+}
 
-	const WIDTHS = [10, 20, 40, 80, 120] as const;
-	const HEIGHTS = [4, 6, 8, 12, 24] as const;
-	const TRANSCRIPTS = [0, 5, 50] as const;
-	const TEXT_VARIANTS = [
-		{ name: "empty-placeholder", text: "" },
-		{ name: "short-prompt", text: "explain quantum computing" },
-		{ name: "multiline-code", text: "function main() {\n  console.log('hello');\n  return 42;\n}" },
-		{ name: "long-wrapping", text: "a".repeat(150) },
-		{ name: "wide-cjk", text: "你好世界 こんにちは 🚀" },
-		{ name: "combining-marks", text: "e\u0301 a\u0308 n\u0303 cafe\u0301" },
-		{ name: "astral-emoji", text: "👨‍👩‍👧‍👦 🌟 🚀 ✨" },
-	] as const;
+const failures: string[] = [];
+const tallies = new Map<ComposerOracleGuarantee, OracleTally>();
+let statesDriven = 0;
 
-	it("asserts that the set of unconstructable states in sweep is empty", () => {
-		const unconstructableStates: Array<{ mode: string; width: number; height: number; reason: string }> = [];
+function tally(id: ComposerOracleGuarantee): OracleTally {
+	const existing = tallies.get(id);
+	if (existing) return existing;
+	const fresh: OracleTally = { inspected: 0, skipped: 0, blind: 0 };
+	tallies.set(id, fresh);
+	return fresh;
+}
 
-		for (const mode of modeVariants) {
-			for (const width of [10, 80]) {
-				for (const height of [4, 24]) {
-					try {
-						// Attempt fast dry-run construction
+beforeAll(async () => {
+	await initTheme(false);
+
+	for (const mode of MODES) {
+		for (const width of WIDTHS) {
+			for (const height of HEIGHTS) {
+				for (const depth of TRANSCRIPTS) {
+					for (const text of TEXTS) {
 						const options: RunnerOptions = {
 							width,
 							height,
-							modeState: mode,
-							editorText: "test",
-							transcriptLines: 0,
+							modeState: mode.state,
+							editorText: text.text,
+							transcriptLines: depth,
+							scrollIsolation: true,
+							scrollOffset: depth > height ? 2 : 0,
+							focused: true,
 						};
-						runnerOptionsToCorpusState(options);
-					} catch (error) {
-						unconstructableStates.push({
-							mode: mode.name,
-							width,
-							height,
-							reason: String(error),
-						});
-					}
-				}
-			}
-		}
-
-		expect(unconstructableStates).toEqual([]);
-	});
-
-	// Run sweep across the cross-product
-	for (const mode of modeVariants) {
-		for (const width of WIDTHS) {
-			for (const height of HEIGHTS) {
-				for (const transcriptCount of TRANSCRIPTS) {
-					for (const textVariant of TEXT_VARIANTS) {
-						it(`evaluates oracles across (${mode.name}, w=${width}, h=${height}, trans=${transcriptCount}, text=${textVariant.name})`, async () => {
-							const options: RunnerOptions = {
-								width,
-								height,
-								modeState: mode,
-								editorText: textVariant.text,
-								transcriptLines: transcriptCount,
-								scrollIsolation: true,
-								scrollOffset: transcriptCount > height ? 2 : 0,
-								focused: true,
-							};
-
-							const result = await runComposerOracleScenario(options);
-							try {
-								if (!result.evaluation.passed) {
-									// Auto-promote failure to committed corpus
-									const state = runnerOptionsToCorpusState(options);
-									const failure = result.evaluation.failures[0]!;
-									promoteFailingCaseToCorpus(state, failure, [...result.frameState.viewportLines]);
-								}
-
-								expect(
-									result.evaluation.failures,
-									`Composer oracle failed on (${mode.name}, ${width}x${height}, trans=${transcriptCount}, ${textVariant.name}):\n${result.evaluation.failures.map(f => `[${f.oracle}] ${f.message}`).join("\n")}`,
-								).toEqual([]);
-							} finally {
-								result.cleanUp();
+						const name = `${mode.name}/${width}x${height}/d${depth}/${text.name}`;
+						const result = await runComposerOracleScenario(options);
+						try {
+							statesDriven += 1;
+							for (const id of result.evaluation.inspected) tally(id).inspected += 1;
+							for (const id of result.evaluation.skipped) tally(id).skipped += 1;
+							for (const id of result.evaluation.blind) tally(id).blind += 1;
+							for (const failure of result.evaluation.failures) {
+								failures.push(`${name}: [${failure.oracle}] ${failure.message}`);
 							}
-						});
+							if (result.evaluation.failures.length > 0) {
+								promoteFailingCaseToCorpus(
+									runnerOptionsToCorpusState(options),
+									result.evaluation.failures[0]!,
+									[...result.frameState.viewportLines],
+								);
+							}
+						} finally {
+							result.cleanUp();
+						}
 					}
 				}
 			}
 		}
 	}
+}, 900_000);
+
+describe("the swept space is the one the composer can reach", () => {
+	it("sweeps every thinking level the enum declares", () => {
+		expect([...THINKING_LEVELS].sort()).toEqual(
+			[
+				ThinkingLevel.Inherit,
+				ThinkingLevel.Off,
+				ThinkingLevel.Minimal,
+				ThinkingLevel.Low,
+				ThinkingLevel.Medium,
+				ThinkingLevel.High,
+				ThinkingLevel.XHigh,
+				ThinkingLevel.Max,
+			].sort(),
+		);
+		for (const level of THINKING_LEVELS) {
+			expect(
+				MODES.some(m => m.state.thinkingLevel === level),
+				`thinking level ${level} is unswept`,
+			).toBe(true);
+		}
+	});
+
+	it("sweeps every accent flag the composer state declares", () => {
+		const pinned: BooleanAccentFlag[] = ["bashMode", "bypass", "focusedSubagent", "planMode", "pythonMode"];
+		expect([...ACCENT_FLAGS].sort()).toEqual(pinned.sort());
+		for (const flag of ACCENT_FLAGS) {
+			expect(
+				MODES.some(m => m.state[flag] === true),
+				`accent flag ${flag} is unswept`,
+			).toBe(true);
+		}
+	});
+
+	it("drove the whole cross-product", () => {
+		expect(statesDriven).toBe(MODES.length * WIDTHS.length * HEIGHTS.length * TRANSCRIPTS.length * TEXTS.length);
+	});
+});
+
+describe("no state in the swept space produces a composer defect", () => {
+	it("reports no oracle failure anywhere in the sweep", () => {
+		expect(failures).toEqual([]);
+	});
+});
+
+describe("the sweep judged the composer rather than passing on nothing", () => {
+	it("read a real subject for every guarantee somewhere in the sweep", () => {
+		const never = COMPOSER_ORACLE_GUARANTEES.filter(id => (tallies.get(id)?.inspected ?? 0) === 0);
+		expect([...never].sort()).toEqual([]);
+	});
+
+	it("went blind only where the state cannot supply the subject", () => {
+		const blind = COMPOSER_ORACLE_GUARANTEES.filter(id => (tallies.get(id)?.blind ?? 0) > 0);
+		// A state with no transcript row on screen paints nothing the two bleed oracles can read, and a
+		// four-row terminal paints the footer's tail only, so the input's breathing rows are off screen
+		// and the padding oracle has no row to judge. Pinned by exact equality: any other oracle
+		// reaching a blind state is the defect class that produced two silent holes in this module, and
+		// a new oracle that reads nothing anywhere lands here.
+		expect([...blind].sort()).toEqual([
+			"composerCardPadsAreUnpaintedAir",
+			"noMixedTranscriptAndChromeRows",
+			"noOutputBleedPastComposer",
+		]);
+	});
+
+	it("accounts for every guarantee in every state it drove", () => {
+		const wrong: string[] = [];
+		for (const id of COMPOSER_ORACLE_GUARANTEES) {
+			const seen = tallies.get(id) ?? { inspected: 0, skipped: 0, blind: 0 };
+			const total = seen.inspected + seen.skipped + seen.blind;
+			if (total !== statesDriven) wrong.push(`${id}: accounted ${total} of ${statesDriven}`);
+		}
+		expect(wrong).toEqual([]);
+	});
 });

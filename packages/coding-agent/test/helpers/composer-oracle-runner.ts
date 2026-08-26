@@ -8,15 +8,13 @@
 
 import { stripVTControlCharacters } from "node:util";
 import { ThinkingLevel } from "@veyyon/agent-core";
-import { type Component, Container, Editor, Spacer, TUI } from "@veyyon/tui";
+import { type Component, Container, Editor, TUI } from "@veyyon/tui";
 import type { MouseRoutable, SgrMouseEvent } from "@veyyon/tui/mouse";
 import { stripAnsi } from "@veyyon/utils";
 import { settleFrames } from "../../../tui/test/helpers/settle-frames";
 import { pressAt, releaseAt, WHEEL_UP } from "../../../tui/test/helpers/sgr-mouse";
 import { VirtualTerminal } from "../../../tui/test/virtual-terminal";
 import {
-	CardPadRow,
-	COMPOSER_BOTTOM_MARGIN_ROWS,
 	type ComposerAccentState,
 	ComposerHairline,
 	mountComposerZone,
@@ -29,7 +27,6 @@ import {
 	type OracleEvaluationResult,
 } from "../../src/modes/components/composer-defect-oracle";
 import { getEditorTheme } from "../../src/modes/theme/theme";
-import type { CorpusCaseState } from "./renderer-defect-corpus";
 
 /** Transcript content component */
 export class TranscriptMock implements Component {
@@ -105,6 +102,16 @@ export interface RunnerResult {
 	transcript: TranscriptMock;
 	/** The live editor, so a scenario can change the composer's own height. */
 	editor: Editor;
+	/**
+	 * Everything the capture needs beyond the terminal itself.
+	 *
+	 * Exposed so a caller that drives operations after the mount re-reads the frame through the same
+	 * code the mount used. `scrolledNotches` is the only field a caller updates: set it to the number
+	 * of wheel notches currently applied before recapturing a frozen view.
+	 */
+	captureContext: ComposerCaptureContext;
+	/** Read the frame as it stands now and judge it again. */
+	recapture: () => { frameState: ComposerOracleFrameState; evaluation: OracleEvaluationResult };
 	advance: () => Promise<void>;
 	cleanUp: () => void;
 }
@@ -194,218 +201,71 @@ export async function runComposerOracleScenario(options: RunnerOptions): Promise
 	tui.start();
 	await settleFrames(term, tui);
 
-	const allComponents = [
-		{ name: "TranscriptMock", comp: transcript },
-		{ name: "statusContainer", comp: statusContainer },
-		{ name: "statusLine", comp: statusLine },
-		{ name: "hookWidgetsAbove", comp: hookWidgetsAbove },
-		{ name: "ComposerHairline", comp: hairline },
-		{ name: "CardPadRow", comp: new CardPadRow() },
-		{ name: "Editor", comp: editorContainer },
-		{ name: "CardPadRow", comp: new CardPadRow() },
-		{ name: "QuietZoneLine", comp: capabilityLine },
-		{ name: "ComposerShortcuts", comp: shortcuts },
-		{ name: "hookWidgetsBelow", comp: hookWidgetsBelow },
-		{ name: "Spacer", comp: new Spacer(COMPOSER_BOTTOM_MARGIN_ROWS) },
-	];
+	const partNames = new Map<Component, string>([
+		[transcript, "TranscriptMock"],
+		[statusContainer, "statusContainer"],
+		[statusLine, "statusLine"],
+		[hookWidgetsAbove, "hookWidgetsAbove"],
+		[editorContainer, "Editor"],
+		[capabilityLine, "QuietZoneLine"],
+		[shortcuts, "ComposerShortcuts"],
+		[hookWidgetsBelow, "hookWidgetsBelow"],
+	]);
 
-	const segments: FrameSegmentSnapshot[] = [];
-	let offset = 0;
-	for (const item of allComponents) {
-		const rowCount = item.comp.render(width)?.length ?? 0;
-		segments.push({
-			startIndex: offset,
-			rowCount,
-			componentName: item.name,
-		});
-		offset += rowCount;
-	}
-	const totalFrameRows = offset;
-	const footerSegments = segments.slice(-mountedCount);
-	const pinnedFooterRows = footerSegments.reduce((sum, s) => sum + s.rowCount, 0);
+	let expectedPromptGlyph = "›";
+	if (accentState.bypass) expectedPromptGlyph = "!";
+	else if (accentState.bashMode) expectedPromptGlyph = "$";
+	else if (accentState.planMode) expectedPromptGlyph = "◈";
 
-	// Capture live footer lines from the live frame before any virtual scrolling
-	const liveRawViewport = term.getViewport();
-	const liveViewportLines = liveRawViewport.map(l => stripVTControlCharacters(stripAnsi(l)));
-	const liveFooterTop = totalFrameRows < height ? totalFrameRows - pinnedFooterRows : height - pinnedFooterRows;
-	const liveFooterLines: string[] = [];
-	if (totalFrameRows < height) {
-		liveFooterLines.push(...liveViewportLines.slice(Math.max(0, liveFooterTop), totalFrameRows));
-	} else {
-		liveFooterLines.push(...liveViewportLines.slice(Math.max(0, liveFooterTop), height));
-	}
+	// The live footer has to be read before anything freezes the view, because it is the baseline the
+	// frozen-view oracle compares the painted footer against.
+	const liveLedger = composerSegments(tui, width, partNames);
+	const liveFooterLines = liveFooterFromViewport(
+		term,
+		height,
+		liveLedger.totalFrameRows,
+		footerRowsOf(liveLedger.segments, mountedCount),
+	);
 
-	// If scrollOffset requested, scroll back
+	const captureContext: ComposerCaptureContext = {
+		term,
+		tui,
+		width,
+		height,
+		pinnedFooterChildCount: mountedCount,
+		segmentNames: partNames,
+		probes: { capabilityLine, shortcuts },
+		transcriptLineMarkers: options.transcriptLineMarkers ?? ["transcript-output-line-"],
+		expectedPromptGlyph,
+		editorFocused: options.focused !== false,
+		liveFooterLines,
+		scrolledNotches: 0,
+	};
+
 	if (options.scrollOffset && options.scrollOffset > 0) {
 		for (let i = 0; i < options.scrollOffset; i++) {
 			term.sendInput(WHEEL_UP);
 			await settleFrames(term, tui);
 		}
+		captureContext.scrolledNotches = options.scrollOffset;
 	}
 
-	// Read viewport lines
-	const rawViewportLines = term.getViewport();
-	const viewportLines = rawViewportLines.map(l => stripVTControlCharacters(stripAnsi(l)));
-	const cursor = term.getCursor();
-	let windowTopRow = 0;
-	const virtualScrollTop = tui.virtualScrollActive ? (options.scrollOffset ?? 1) : null;
-	let screenBounds = {
-		footerTop: 0,
-		footerBottom: 0,
-		footerRowOffset: 0,
-		contentBottom: 0,
+	const recapture = (): { frameState: ComposerOracleFrameState; evaluation: OracleEvaluationResult } => {
+		const next = captureComposerFrameState(captureContext);
+		return { frameState: next, evaluation: evaluateAllComposerOracles(next) };
 	};
 
-	if (tui.virtualScrollActive) {
-		const footerRows = Math.min(pinnedFooterRows, height - 1);
-		const footerTop = height - footerRows;
-		screenBounds = {
-			footerTop,
-			footerBottom: height - 1,
-			contentBottom: height - 1,
-			footerRowOffset: height - pinnedFooterRows,
-		};
-	} else {
-		if (totalFrameRows < height) {
-			windowTopRow = 0;
-			screenBounds = {
-				footerTop: totalFrameRows - pinnedFooterRows,
-				footerBottom: totalFrameRows - 1,
-				footerRowOffset: totalFrameRows - pinnedFooterRows,
-				contentBottom: totalFrameRows - 1,
-			};
-		} else {
-			windowTopRow = totalFrameRows - height;
-			screenBounds = {
-				footerTop: height - pinnedFooterRows,
-				footerBottom: height - 1,
-				footerRowOffset: height - pinnedFooterRows,
-				contentBottom: height - 1,
-			};
-		}
-	}
-
-	// Capture mouse click routing. Every footer row is probed, not just the boundaries: a click
-	// offset shows up as a row in the middle of the footer dispatching to the transcript, and an
-	// oracle that only sees the first and last footer row never looks at the rows between them.
-	const mouseRouting = new Map<number, { routedTo: string | null; localLine: number | null; col: number | null }>();
-	const probeRows = new Set<number>([
-		0,
-		Math.max(0, screenBounds.footerTop - 1),
-		screenBounds.contentBottom,
-		Math.min(height - 1, screenBounds.contentBottom + 1),
-	]);
-	for (let row = screenBounds.footerTop; row <= Math.min(height - 1, screenBounds.footerBottom); row += 1) {
-		probeRows.add(row);
-	}
-
-	for (const r of probeRows) {
-		if (r < 0 || r >= height) continue;
-		capabilityLine.calls = [];
-		shortcuts.calls = [];
-
-		term.sendInput(pressAt(r, 5));
-		term.sendInput(releaseAt(r, 5));
-
-		let routedTo: string | null = null;
-		let localLine: number | null = null;
-		let col: number | null = null;
-
-		if (capabilityLine.calls.length > 0) {
-			const call = capabilityLine.calls[0]!;
-			routedTo = "footer:capabilityLine";
-			localLine = call.line;
-			col = call.col;
-		} else if (shortcuts.calls.length > 0) {
-			const call = shortcuts.calls[0]!;
-			routedTo = "footer:shortcuts";
-			localLine = call.line;
-			col = call.col;
-		} else if (r < screenBounds.footerTop && r <= screenBounds.contentBottom) {
-			routedTo = "transcript";
-		}
-
-		mouseRouting.set(r, { routedTo, localLine, col });
-	}
-
-	let expectedGlyph = "›";
-	if (accentState.bypass) expectedGlyph = "!";
-	else if (accentState.bashMode) expectedGlyph = "$";
-	else if (accentState.planMode) expectedGlyph = "◈";
-
-	const frameState: ComposerOracleFrameState = {
-		width,
-		height,
-		viewportLines,
-		rawViewportLines,
-		cursor,
-		totalFrameRows,
-		windowTopRow,
-		pinnedFooterChildCount: mountedCount,
-		pinnedFooterRows,
-		virtualScrollTop,
-		screenBounds,
-		segments:
-			segments.length > 0
-				? segments
-				: [
-						{
-							startIndex: 0,
-							rowCount: transcript.lines.length,
-							componentName: "TranscriptMock",
-						},
-						{
-							startIndex: transcript.lines.length,
-							rowCount: 1,
-							componentName: "ComposerHairline",
-						},
-						{
-							startIndex: transcript.lines.length + 1,
-							rowCount: 1,
-							componentName: "CardPadRow",
-						},
-						{
-							startIndex: transcript.lines.length + 2,
-							rowCount: 1,
-							componentName: "Editor",
-						},
-						{
-							startIndex: transcript.lines.length + 3,
-							rowCount: 1,
-							componentName: "CardPadRow",
-						},
-						{
-							startIndex: transcript.lines.length + 4,
-							rowCount: 1,
-							componentName: "QuietZoneLine",
-						},
-						{
-							startIndex: transcript.lines.length + 5,
-							rowCount: 1,
-							componentName: "ComposerShortcuts",
-						},
-						{
-							startIndex: transcript.lines.length + 6,
-							rowCount: 1,
-							componentName: "Spacer",
-						},
-					],
-		mouseRouting,
-		transcriptLineMarkers: options.transcriptLineMarkers ?? ["transcript-output-line-"],
-		expectedPromptGlyph: expectedGlyph,
-		editorFocused: options.focused !== false,
-		liveFooterLines,
-	};
-
-	const evaluation = evaluateAllComposerOracles(frameState);
+	const first = recapture();
 
 	return {
 		terminal: term,
 		tui,
-		frameState,
-		evaluation,
+		frameState: first.frameState,
+		evaluation: first.evaluation,
 		transcript,
 		editor,
+		captureContext,
+		recapture,
 		advance: async () => {
 			tui.requestRender();
 			await settleFrames(term, tui);
@@ -416,50 +276,201 @@ export async function runComposerOracleScenario(options: RunnerOptions): Promise
 	};
 }
 
-/** Convert runner options to CorpusCaseState */
-export function runnerOptionsToCorpusState(options: RunnerOptions): CorpusCaseState {
+/** Click probe targets, so a capture can record where a row's click was dispatched. */
+interface ComposerClickProbes {
+	capabilityLine: RoutableTestComponent;
+	shortcuts: RoutableTestComponent;
+}
+
+/** Everything a frame capture needs that is not readable from the terminal. */
+export interface ComposerCaptureContext {
+	term: VirtualTerminal;
+	tui: TUI;
+	width: number;
+	height: number;
+	pinnedFooterChildCount: number;
+	/** Display names for the parts the caller built. Other children use their constructor name. */
+	segmentNames: ReadonlyMap<Component, string>;
+	/** Probe targets, or null to read the frame without sending clicks into it. */
+	probes: ComposerClickProbes | null;
+	transcriptLineMarkers: readonly string[];
+	expectedPromptGlyph: string;
+	editorFocused: boolean;
+	/** The footer as the live tail paints it, read once before anything freezes the view. */
+	liveFooterLines: readonly string[];
+	/** Wheel notches currently applied. Zero on the live tail. */
+	scrolledNotches: number;
+}
+
+/** The ledger, and the frame length it accounts for. */
+interface ComposerLedger {
+	segments: FrameSegmentSnapshot[];
+	totalFrameRows: number;
+}
+
+/**
+ * The segment ledger, walked from the tui's own root children.
+ *
+ * The membership and order are the mount's, not a second copy of them. An earlier version of this
+ * restated `mountComposerZone`'s eleven `addChild` calls and stood in fresh `CardPadRow` and `Spacer`
+ * instances for the ones the mount had created, so a change to the zone's composition left every
+ * segment-reading oracle judging a frame that was never painted. Only the display names belong to the
+ * caller: three of the parts are bare Containers, which a constructor name cannot tell apart.
+ */
+export function composerSegments(
+	tui: TUI,
+	width: number,
+	segmentNames: ReadonlyMap<Component, string>,
+): ComposerLedger {
+	const segments: FrameSegmentSnapshot[] = [];
+	let offset = 0;
+	for (const child of tui.children) {
+		const rowCount = child.render(width)?.length ?? 0;
+		segments.push({
+			startIndex: offset,
+			rowCount,
+			componentName: segmentNames.get(child) ?? child.constructor.name,
+		});
+		offset += rowCount;
+	}
+	return { segments, totalFrameRows: offset };
+}
+
+/** Rows the last `childCount` segments occupy. */
+function footerRowsOf(segments: readonly FrameSegmentSnapshot[], childCount: number): number {
+	return segments.slice(-childCount).reduce((sum, s) => sum + s.rowCount, 0);
+}
+
+/** The footer as the current viewport paints it. */
+function liveFooterFromViewport(
+	term: VirtualTerminal,
+	height: number,
+	totalFrameRows: number,
+	pinnedFooterRows: number,
+): string[] {
+	const lines = term.getViewport().map(l => stripVTControlCharacters(stripAnsi(l)));
+	const footerTop = totalFrameRows < height ? totalFrameRows - pinnedFooterRows : height - pinnedFooterRows;
+	const end = totalFrameRows < height ? totalFrameRows : height;
+	return lines.slice(Math.max(0, footerTop), end);
+}
+
+/**
+ * Read the painted frame and everything the oracles judge it by.
+ *
+ * One owner. A caller that drives operations after the mount and then rebuilds this by hand ends up
+ * judging its own model of the composer, and the model drifts the first time the extraction changes.
+ */
+export function captureComposerFrameState(ctx: ComposerCaptureContext): ComposerOracleFrameState {
+	const { term, tui, width, height, pinnedFooterChildCount } = ctx;
+	const { segments, totalFrameRows } = composerSegments(tui, width, ctx.segmentNames);
+	const pinnedFooterRows = footerRowsOf(segments, pinnedFooterChildCount);
+
+	const rawViewportLines = term.getViewport();
+	const viewportLines = rawViewportLines.map(l => stripVTControlCharacters(stripAnsi(l)));
+	const cursor = term.getCursor();
+	const virtualScrollTop = tui.virtualScrollActive ? ctx.scrolledNotches || 1 : null;
+
+	// While the view is live, the footer on screen IS the baseline, so refresh it. A sequence that
+	// resizes and then freezes would otherwise compare the frozen footer against a baseline captured
+	// at the old width and report a difference the renderer never painted.
+	if (!tui.virtualScrollActive) {
+		ctx.liveFooterLines = liveFooterFromViewport(term, height, totalFrameRows, pinnedFooterRows);
+	}
+
+	let windowTopRow = 0;
+	let screenBounds: ComposerOracleFrameState["screenBounds"];
+	if (tui.virtualScrollActive) {
+		screenBounds = {
+			footerTop: height - Math.min(pinnedFooterRows, height - 1),
+			footerBottom: height - 1,
+			footerRowOffset: height - pinnedFooterRows,
+			contentBottom: height - 1,
+		};
+	} else if (totalFrameRows < height) {
+		screenBounds = {
+			footerTop: totalFrameRows - pinnedFooterRows,
+			footerBottom: totalFrameRows - 1,
+			footerRowOffset: totalFrameRows - pinnedFooterRows,
+			contentBottom: totalFrameRows - 1,
+		};
+	} else {
+		windowTopRow = totalFrameRows - height;
+		screenBounds = {
+			footerTop: height - pinnedFooterRows,
+			footerBottom: height - 1,
+			footerRowOffset: height - pinnedFooterRows,
+			contentBottom: height - 1,
+		};
+	}
+
 	return {
-		width: options.width,
-		height: options.height,
-		modeState: {
-			bypass: options.modeState?.bypass,
-			bashMode: options.modeState?.bashMode,
-			pythonMode: options.modeState?.pythonMode,
-			planMode: options.modeState?.planMode,
-			focusedSubagent: options.modeState?.focusedSubagent,
-			sessionAccentAnsi: options.modeState?.sessionAccentAnsi,
-			thinkingLevel: options.modeState?.thinkingLevel,
-		},
-		editorText: options.editorText ?? "",
-		transcriptLines:
-			typeof options.transcriptLines === "number" ? options.transcriptLines : (options.transcriptLines?.length ?? 0),
-		scrollIsolation: options.scrollIsolation ?? true,
-		scrollOffset: options.scrollOffset ?? 0,
-		focused: options.focused ?? true,
+		width,
+		height,
+		viewportLines,
+		rawViewportLines,
+		cursor,
+		totalFrameRows,
+		windowTopRow,
+		pinnedFooterChildCount,
+		pinnedFooterRows,
+		virtualScrollTop,
+		screenBounds,
+		segments,
+		mouseRouting: ctx.probes ? probeClickRouting(ctx, screenBounds) : undefined,
+		transcriptLineMarkers: ctx.transcriptLineMarkers,
+		expectedPromptGlyph: ctx.expectedPromptGlyph,
+		editorFocused: ctx.editorFocused,
+		liveFooterLines: ctx.liveFooterLines,
 	};
 }
 
-export function corpusStateToRunnerOptions(state: CorpusCaseState): RunnerOptions {
-	let thinkingLevel: ThinkingLevel = ThinkingLevel.Off;
-	if (state.modeState.thinkingLevel) {
-		thinkingLevel = state.modeState.thinkingLevel as ThinkingLevel;
+/**
+ * Click each interesting row and record where the click landed.
+ *
+ * Every footer row is probed, not only the boundaries: a click offset shows up as a row in the middle
+ * of the footer dispatching to the transcript, and an oracle that sees only the first and last footer
+ * row never looks at the rows between them.
+ */
+function probeClickRouting(
+	ctx: ComposerCaptureContext,
+	screenBounds: ComposerOracleFrameState["screenBounds"],
+): Map<number, { routedTo: string | null; localLine: number | null; col: number | null }> {
+	const { term, height, probes } = ctx;
+	const routing = new Map<number, { routedTo: string | null; localLine: number | null; col: number | null }>();
+	if (!probes) return routing;
+
+	const rows = new Set<number>([
+		0,
+		Math.max(0, screenBounds.footerTop - 1),
+		screenBounds.contentBottom,
+		Math.min(height - 1, screenBounds.contentBottom + 1),
+	]);
+	for (let row = screenBounds.footerTop; row <= Math.min(height - 1, screenBounds.footerBottom); row += 1) {
+		rows.add(row);
 	}
-	return {
-		width: state.width,
-		height: state.height,
-		modeState: {
-			bypass: state.modeState.bypass,
-			bashMode: state.modeState.bashMode,
-			pythonMode: state.modeState.pythonMode,
-			planMode: state.modeState.planMode,
-			focusedSubagent: state.modeState.focusedSubagent,
-			sessionAccentAnsi: state.modeState.sessionAccentAnsi,
-			thinkingLevel,
-		},
-		editorText: state.editorText,
-		transcriptLines: state.transcriptLines,
-		scrollIsolation: state.scrollIsolation,
-		scrollOffset: state.scrollOffset,
-		focused: state.focused,
-	};
+
+	for (const row of rows) {
+		if (row < 0 || row >= height) continue;
+		probes.capabilityLine.calls = [];
+		probes.shortcuts.calls = [];
+
+		term.sendInput(pressAt(row, 5));
+		term.sendInput(releaseAt(row, 5));
+
+		const hit = probes.capabilityLine.calls[0]
+			? { name: "footer:capabilityLine", call: probes.capabilityLine.calls[0] }
+			: probes.shortcuts.calls[0]
+				? { name: "footer:shortcuts", call: probes.shortcuts.calls[0] }
+				: null;
+
+		if (hit) {
+			routing.set(row, { routedTo: hit.name, localLine: hit.call.line, col: hit.call.col });
+		} else if (row < screenBounds.footerTop && row <= screenBounds.contentBottom) {
+			routing.set(row, { routedTo: "transcript", localLine: null, col: null });
+		} else {
+			routing.set(row, { routedTo: null, localLine: null, col: null });
+		}
+	}
+
+	return routing;
 }

@@ -63,17 +63,25 @@ describe("an oracle that cannot see its subject is a hole", () => {
 			try {
 				const marker = scenario.frameState.transcriptLineMarkers?.[0];
 				expect(marker).toBe(FLAVOR_MARK[flavor]);
+				if (marker === undefined) return;
 
 				const grid = scenario.frameState.rawViewportLines.map(line => stripAnsi(line));
-				const matched = grid.filter(line => line.includes(marker!)).length;
+				const matched = grid.filter(line => line.includes(marker)).length;
 				expect(
 					matched,
 					`flavour ${flavor}: marker ${JSON.stringify(marker)} matched no painted row, so the bleed oracle inspects nothing. Grid: ${JSON.stringify(grid.slice(0, 4))}`,
 				).toBeGreaterThan(0);
 
+				// The registry's own account of the same question. A marker that matches a row is the
+				// precondition; this is the evaluator agreeing it read one, which is what a green
+				// verdict on this state is worth.
+				expect(scenario.evaluation.blind, `flavour ${flavor}: an oracle read nothing`).toEqual([]);
+				expect(scenario.evaluation.inspected).toContain("noOutputBleedPastComposer");
+				expect(scenario.evaluation.inspected).toContain("noMixedTranscriptAndChromeRows");
+
 				// The state is painted correctly, so no oracle should be complaining either. This
 				// pins that supplying a real marker does not start reporting false bleed.
-				expect(scenario.evaluation.failures ?? []).toEqual([]);
+				expect(scenario.evaluation.failures).toEqual([]);
 			} finally {
 				scenario.cleanUp();
 			}

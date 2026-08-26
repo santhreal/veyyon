@@ -83,9 +83,22 @@ export interface OracleFailure {
 	details?: Record<string, unknown>;
 }
 
+/**
+ * The verdict of one sweep over every oracle.
+ *
+ * `passed` collapses to whether anything failed. The three arrays separate outcomes a single boolean
+ * hides: an oracle out of scope for the state, an oracle in scope whose subject was empty so it read
+ * nothing, and an oracle that actually looked at something. Their union is always every guarantee.
+ */
 export interface OracleEvaluationResult {
 	passed: boolean;
 	failures: OracleFailure[];
+	/** Oracles whose `appliesTo` rejected the state. */
+	skipped: ComposerOracleGuarantee[];
+	/** Oracles that read a non-empty subject and reached a verdict. */
+	inspected: ComposerOracleGuarantee[];
+	/** Oracles that applied but had nothing to read. A silent pass, and where two defects hid. */
+	blind: ComposerOracleGuarantee[];
 }
 
 const PROMPT_GLYPHS = ["›", "!", "$", "◈", ">"] as const;
@@ -598,39 +611,245 @@ export function checkVirtualScrollPreservesFooterStability(state: ComposerOracle
 }
 
 // ---------------------------------------------------------------------------
+// Registry
+// ---------------------------------------------------------------------------
+
+/**
+ * What an oracle reads to reach its verdict.
+ *
+ * An oracle with an empty subject inspects nothing, and every one of them reports that as success.
+ * Two defects found in this module were exactly that: the padding oracle computing a screen row past
+ * the end of the viewport, and the bleed oracle looking for a transcript marker no painted row
+ * carried. Neither failed anything, and a sweep of thousands of states reported clean while the
+ * guarantee went unchecked. Declaring the subject makes the difference between a state an oracle
+ * judged and a state it walked away from observable, instead of both reading as a pass.
+ */
+export type OracleSubject =
+	| { kind: "rows"; rows: readonly number[] }
+	| { kind: "ledger"; segments: readonly FrameSegmentSnapshot[] }
+	| { kind: "routing"; rows: readonly number[] }
+	| { kind: "cursor"; row: number; col: number }
+	| { kind: "bounds"; footerTop: number; footerBottom: number };
+
+/** How many things a subject holds. Zero means the oracle would inspect nothing. */
+export function subjectSize(subject: OracleSubject): number {
+	switch (subject.kind) {
+		case "rows":
+		case "routing":
+			return subject.rows.length;
+		case "ledger":
+			return subject.segments.length;
+		case "cursor":
+		case "bounds":
+			return 1;
+	}
+}
+
+/**
+ * One guarantee, its precondition, and what it reads.
+ *
+ * Before this registry the module carried three hand-maintained parallel lists: the id tuple, the
+ * array of check functions inside the evaluator, and the `Guarantee N` numbering in the doc
+ * comments. Nothing linked them, so an oracle added to one and missed in another was silent, and
+ * every precondition was buried in the check body as an early `return null`, which is indexed as a
+ * pass. The registry is keyed by the id union, so a new id without an entry and an entry without an
+ * id are both type errors.
+ */
+export interface ComposerOracle {
+	/** Guarantee id, matching its key in the registry. */
+	id: ComposerOracleGuarantee;
+	/** What the guarantee promises, in one sentence. */
+	description: string;
+	/**
+	 * Whether the guarantee is meaningful for this state at all.
+	 *
+	 * A state outside an oracle's scope is reported as skipped rather than passed. These predicates
+	 * are the guards that used to sit at the top of each check body.
+	 */
+	appliesTo(state: ComposerOracleFrameState): boolean;
+	/** What `run` will read for this state. */
+	subject(state: ComposerOracleFrameState): OracleSubject;
+	/** The judgement itself. */
+	run(state: ComposerOracleFrameState): OracleFailure | null;
+}
+
+/** Every viewport row index, for an oracle that scans the whole grid. */
+function allRows(state: ComposerOracleFrameState): readonly number[] {
+	return Array.from({ length: state.viewportLines.length }, (_v, r) => r);
+}
+
+/** Rows carrying a declared transcript marker, which is what the bleed oracles judge. */
+function markerRows(state: ComposerOracleFrameState): readonly number[] {
+	const markers = state.transcriptLineMarkers ?? [];
+	if (markers.length === 0) return [];
+	const rows: number[] = [];
+	for (let r = 0; r < state.viewportLines.length; r += 1) {
+		const line = state.viewportLines[r] ?? "";
+		if (markers.some(m => line.includes(m))) rows.push(r);
+	}
+	return rows;
+}
+
+/** Screen rows the CardPadRow segments land on, dropping the ones off screen. */
+function padRows(state: ComposerOracleFrameState): readonly number[] {
+	const rows: number[] = [];
+	for (let i = 0; i < state.segments.length; i += 1) {
+		const segment = state.segments[i]!;
+		if (segment.componentName !== "CardPadRow" || segment.rowCount <= 0) continue;
+		const row = screenRowForSegment(state, i);
+		if (row !== null && row < state.rawViewportLines.length) rows.push(row);
+	}
+	return rows;
+}
+
+/**
+ * Every guarantee, keyed by its id.
+ *
+ * Keyed by the union rather than held in an array so the type checker enforces totality in both
+ * directions: adding an id to `COMPOSER_ORACLE_GUARANTEES` without an entry here fails to compile,
+ * and an entry whose key is not an id fails too.
+ */
+export const COMPOSER_ORACLES: Readonly<Record<ComposerOracleGuarantee, ComposerOracle>> = {
+	exactlyOneComposerPrompt: {
+		id: "exactlyOneComposerPrompt",
+		description:
+			"One composer prompt row is on screen when the composer is in view, and none when it is scrolled off.",
+		appliesTo: () => true,
+		subject: state => ({ kind: "rows", rows: allRows(state) }),
+		run: checkExactlyOneComposerPrompt,
+	},
+	noOutputBleedPastComposer: {
+		id: "noOutputBleedPastComposer",
+		description: "No transcript row is painted inside the footer zone or below the content bottom.",
+		appliesTo: state => state.pinnedFooterRows > 0 && (state.transcriptLineMarkers ?? []).length > 0,
+		subject: state => ({ kind: "rows", rows: markerRows(state) }),
+		run: checkNoOutputBleedPastComposer,
+	},
+	noMixedTranscriptAndChromeRows: {
+		id: "noMixedTranscriptAndChromeRows",
+		description: "No row carries both transcript content and composer chrome.",
+		appliesTo: state => (state.transcriptLineMarkers ?? []).length > 0,
+		subject: state => ({ kind: "rows", rows: markerRows(state) }),
+		run: checkNoMixedTranscriptAndChromeRows,
+	},
+	footerOccupiesBottomPhysicalRows: {
+		id: "footerOccupiesBottomPhysicalRows",
+		description: "The pinned footer occupies the bottom rows of the viewport on the live tail.",
+		// The body judges nothing while the view is frozen: both of its branches require a null
+		// virtual scroll top, so a frozen state was walking out through the bottom of the function.
+		appliesTo: state => state.pinnedFooterRows > 0 && state.virtualScrollTop === null,
+		subject: state => ({
+			kind: "bounds",
+			footerTop: state.screenBounds.footerTop,
+			footerBottom: state.screenBounds.footerBottom,
+		}),
+		run: checkFooterOccupiesBottomPhysicalRows,
+	},
+	noFooterRowsAboveFooterRegion: {
+		id: "noFooterRowsAboveFooterRegion",
+		description: "No composer chrome row appears above the top of the footer region.",
+		appliesTo: state => state.pinnedFooterRows > 0 && state.screenBounds.footerTop > 0,
+		subject: state => ({
+			kind: "rows",
+			rows: Array.from({ length: Math.max(0, state.screenBounds.footerTop) }, (_v, r) => r),
+		}),
+		run: checkNoFooterRowsAboveFooterRegion,
+	},
+	mouseClickRoutesToRenderedZone: {
+		id: "mouseClickRoutesToRenderedZone",
+		description: "A click routes to the component painted at the row it landed on.",
+		appliesTo: state => (state.mouseRouting?.size ?? 0) > 0,
+		subject: state => ({ kind: "routing", rows: [...(state.mouseRouting?.keys() ?? [])] }),
+		run: checkMouseClickRoutesToRenderedZone,
+	},
+	caretWithinComposerEditorBounds: {
+		id: "caretWithinComposerEditorBounds",
+		description: "The terminal cursor sits inside the editor's rows and the terminal's width.",
+		appliesTo: state => state.editorFocused === true && state.cursor !== null && state.pinnedFooterRows > 0,
+		subject: state => ({ kind: "cursor", row: state.cursor?.row ?? -1, col: state.cursor?.col ?? -1 }),
+		run: checkCaretWithinComposerEditorBounds,
+	},
+	noHorizontalOverflow: {
+		id: "noHorizontalOverflow",
+		description: "No row's visible width exceeds the terminal width.",
+		appliesTo: () => true,
+		subject: state => ({ kind: "rows", rows: allRows(state) }),
+		run: checkNoHorizontalOverflow,
+	},
+	composerCardPadsAreUnpaintedAir: {
+		id: "composerCardPadsAreUnpaintedAir",
+		description: "The breathing rows above and below the input paint no glyphs and no background.",
+		appliesTo: state => state.segments.some(s => s.componentName === "CardPadRow" && s.rowCount > 0),
+		subject: state => ({ kind: "rows", rows: padRows(state) }),
+		run: checkComposerCardPadsAreUnpaintedAir,
+	},
+	composerHairlineSpanAndPlacement: {
+		id: "composerHairlineSpanAndPlacement",
+		description: "The hairline occupies exactly one boundary row.",
+		appliesTo: state =>
+			state.pinnedFooterRows > 0 && state.segments.some(s => s.componentName === "ComposerHairline"),
+		subject: state => ({
+			kind: "ledger",
+			segments: state.segments.filter(s => s.componentName === "ComposerHairline"),
+		}),
+		run: checkComposerHairlineSpanAndPlacement,
+	},
+	footerHeightMatchesComposedSegmentLedger: {
+		id: "footerHeightMatchesComposedSegmentLedger",
+		description: "The pinned footer's row count is the sum of its children's rows in the ledger.",
+		appliesTo: () => true,
+		subject: state => ({
+			kind: "ledger",
+			segments:
+				state.pinnedFooterChildCount > 0 ? state.segments.slice(-state.pinnedFooterChildCount) : state.segments,
+		}),
+		run: checkFooterHeightMatchesComposedSegmentLedger,
+	},
+	virtualScrollPreservesFooterStability: {
+		id: "virtualScrollPreservesFooterStability",
+		description: "A frozen view paints the live footer at the bottom, with no snapshot rows leaking into it.",
+		appliesTo: state =>
+			state.virtualScrollTop !== null && (state.liveFooterLines?.length ?? 0) > 0 && state.pinnedFooterRows > 0,
+		subject: state => ({
+			kind: "bounds",
+			footerTop: state.screenBounds.footerTop,
+			footerBottom: state.screenBounds.footerBottom,
+		}),
+		run: checkVirtualScrollPreservesFooterStability,
+	},
+};
+
+// ---------------------------------------------------------------------------
 // Master Evaluator
 // ---------------------------------------------------------------------------
 
 /**
- * Run all composer defect oracles on a frame state.
+ * Run every composer defect oracle on a frame state.
+ *
+ * Walks `COMPOSER_ORACLE_GUARANTEES` so the order is the declared one rather than an object's key
+ * order, and separates the three outcomes an oracle can have. `passed` still reports only whether
+ * anything failed, so existing callers are unaffected.
  */
 export function evaluateAllComposerOracles(state: ComposerOracleFrameState): OracleEvaluationResult {
 	const failures: OracleFailure[] = [];
+	const skipped: ComposerOracleGuarantee[] = [];
+	const inspected: ComposerOracleGuarantee[] = [];
+	const blind: ComposerOracleGuarantee[] = [];
 
-	const checks = [
-		checkExactlyOneComposerPrompt,
-		checkNoOutputBleedPastComposer,
-		checkNoMixedTranscriptAndChromeRows,
-		checkFooterOccupiesBottomPhysicalRows,
-		checkNoFooterRowsAboveFooterRegion,
-		checkMouseClickRoutesToRenderedZone,
-		checkCaretWithinComposerEditorBounds,
-		checkNoHorizontalOverflow,
-		checkComposerCardPadsAreUnpaintedAir,
-		checkComposerHairlineSpanAndPlacement,
-		checkFooterHeightMatchesComposedSegmentLedger,
-		checkVirtualScrollPreservesFooterStability,
-	];
-
-	for (const check of checks) {
-		const failure = check(state);
-		if (failure) {
-			failures.push(failure);
+	for (const id of COMPOSER_ORACLE_GUARANTEES) {
+		const oracle = COMPOSER_ORACLES[id];
+		if (!oracle.appliesTo(state)) {
+			skipped.push(id);
+			continue;
 		}
+		if (subjectSize(oracle.subject(state)) === 0) {
+			blind.push(id);
+			continue;
+		}
+		inspected.push(id);
+		const failure = oracle.run(state);
+		if (failure) failures.push(failure);
 	}
 
-	return {
-		passed: failures.length === 0,
-		failures,
-	};
+	return { passed: failures.length === 0, failures, skipped, inspected, blind };
 }

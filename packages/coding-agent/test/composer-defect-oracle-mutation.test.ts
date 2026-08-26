@@ -1,42 +1,39 @@
 /**
- * Mutation Gate Verification Suite for Composer Defect Oracles.
+ * Every composer defect oracle can fail, and fails through the evaluator rather than only when
+ * called by hand.
  *
  * WHY THIS SUITE EXISTS:
- * An oracle that cannot fail is worthless. Every one of the 12 named composer defect
- * oracles must be shown going red against a real defect before it counts. This suite
- * synthesizes real defect mutations across every guarantee and asserts that each
- * oracle triggers red for the exact right reason.
+ * An oracle that cannot fail is worthless, and a sweep of thousands of states built on one is
+ * theatre. Each guarantee therefore has at least one crafted frame that is wrong in the way that
+ * guarantee describes, and the defect has to come back out of `evaluateAllComposerOracles`.
  *
- * GUARANTEES TESTED:
- * 1. exactlyOneComposerPrompt
- * 2. noOutputBleedPastComposer
- * 3. noMixedTranscriptAndChromeRows
- * 4. footerOccupiesBottomPhysicalRows
- * 5. noFooterRowsAboveFooterRegion
- * 6. mouseClickRoutesToRenderedZone
- * 7. caretWithinComposerEditorBounds
- * 8. noHorizontalOverflow
- * 9. composerCardPadsAreUnpaintedAir
- * 10. composerHairlineSpanAndPlacement
- * 11. footerHeightMatchesComposedSegmentLedger
- * 12. virtualScrollPreservesFooterStability
+ * Going through the evaluator is the point. Calling `checkX` directly proves the predicate works and
+ * says nothing about whether the registry lets it run: an `appliesTo` that rejects the very state its
+ * own defect lives in suppresses the failure and reports the state as out of scope, which reads as a
+ * pass. That is the same shape as the two oracles that were found inspecting nothing. The cases are
+ * filed in a `Record` keyed by the guarantee union, so a thirteenth oracle without a crafted defect
+ * does not compile.
+ *
+ * WHAT THIS SUITE DOES NOT CATCH:
+ * - Whether an oracle fires on a defect a real mount can produce. These frames are synthetic; the
+ *   sweep and the differential drive real mounts, and the product mutation gates recorded in those
+ *   suites are what prove the oracles catch a renderer defect rather than a hand-built one.
+ * - Over-triggering. A crafted frame may fail several guarantees, and only the one under test is
+ *   asserted. The sweep is what proves a correct frame fails nothing.
+ * - A guarantee with exactly one crafted defect is proven able to fail, not proven to cover its whole
+ *   statement.
+ *
+ * MUTATION GATE:
+ * Setting any entry's `appliesTo` to `() => false` in the registry turns that guarantee's cases red
+ * with the diagnosis naming it as skipped, which the direct-call version of this suite could not see.
  */
 
 import { describe, expect, it } from "bun:test";
 import {
+	COMPOSER_ORACLE_GUARANTEES,
 	type ComposerOracleFrameState,
-	checkCaretWithinComposerEditorBounds,
+	type ComposerOracleGuarantee,
 	checkComposerCardPadsAreUnpaintedAir,
-	checkComposerHairlineSpanAndPlacement,
-	checkExactlyOneComposerPrompt,
-	checkFooterHeightMatchesComposedSegmentLedger,
-	checkFooterOccupiesBottomPhysicalRows,
-	checkMouseClickRoutesToRenderedZone,
-	checkNoFooterRowsAboveFooterRegion,
-	checkNoHorizontalOverflow,
-	checkNoMixedTranscriptAndChromeRows,
-	checkNoOutputBleedPastComposer,
-	checkVirtualScrollPreservesFooterStability,
 	evaluateAllComposerOracles,
 } from "../src/modes/components/composer-defect-oracle";
 
@@ -98,7 +95,8 @@ function createBaselineFrameState(): ComposerOracleFrameState {
 	};
 }
 
-function mutateViewportLine(state: ComposerOracleFrameState, row: number, line: string): ComposerOracleFrameState {
+/** Replace one screen row, in both the stripped and the raw grid. */
+function withRow(state: ComposerOracleFrameState, row: number, line: string): ComposerOracleFrameState {
 	const viewportLines = [...state.viewportLines];
 	viewportLines[row] = line;
 	const rawViewportLines = [...state.rawViewportLines];
@@ -106,193 +104,196 @@ function mutateViewportLine(state: ComposerOracleFrameState, row: number, line: 
 	return { ...state, viewportLines, rawViewportLines };
 }
 
-describe("composer defect oracle mutation gates", () => {
-	it("baseline frame passes all 12 oracles", () => {
-		const state = createBaselineFrameState();
-		const result = evaluateAllComposerOracles(state);
-		expect(result.passed).toBe(true);
-		expect(result.failures).toEqual([]);
-	});
+/** Paint a background into the pad row while leaving it blank once the escapes are stripped. */
+function withPadFill(state: ComposerOracleFrameState, fill: string): ComposerOracleFrameState {
+	const rawViewportLines = [...state.rawViewportLines];
+	rawViewportLines[6] = `${fill}   \x1b[0m`;
+	const viewportLines = [...state.viewportLines];
+	viewportLines[6] = "";
+	return { ...state, rawViewportLines, viewportLines };
+}
 
-	it("1. exactlyOneComposerPrompt goes red on duplicate prompt or missing prompt", () => {
-		const base = createBaselineFrameState();
-		// Mutate: inject a second prompt row
-		const state = mutateViewportLine(base, 2, "  › duplicate prompt row");
-		const failure = checkExactlyOneComposerPrompt(state);
-		expect(failure).not.toBeNull();
-		expect(failure?.oracle).toBe("exactlyOneComposerPrompt");
-		expect(failure?.message).toContain("Expected 1 composer prompt row(s)");
+/** One frame that is wrong in the way its guarantee describes. */
+interface DefectCase {
+	/** What is wrong with the frame. */
+	name: string;
+	/** A phrase the failure has to say, so a rewording is a decision rather than a silent drift. */
+	says: string;
+	break(base: ComposerOracleFrameState): ComposerOracleFrameState;
+}
 
-		// Mutate: missing prompt
-		const missingState = mutateViewportLine(base, 7, "  just plain text without prompt");
-		const missingFailure = checkExactlyOneComposerPrompt(missingState);
-		expect(missingFailure).not.toBeNull();
-		expect(missingFailure?.oracle).toBe("exactlyOneComposerPrompt");
-	});
-
-	it("2. noOutputBleedPastComposer goes red when transcript bleeds into footer region", () => {
-		const base = createBaselineFrameState();
-		// Mutate: transcript output injected at screen row 7 (inside footer)
-		const state = mutateViewportLine(base, 7, "transcript-output-line-0099 bleed past composer");
-		const failure = checkNoOutputBleedPastComposer(state);
-		expect(failure).not.toBeNull();
-		expect(failure?.oracle).toBe("noOutputBleedPastComposer");
-		expect(failure?.message).toContain("inside the composer footer zone");
-	});
-
-	it("3. noMixedTranscriptAndChromeRows goes red when prompt and transcript are mixed on one row", () => {
-		const base = createBaselineFrameState();
-		// Mutate: mix transcript line prefix with composer prompt
-		const state = mutateViewportLine(base, 7, "  › transcript-output-line-0012 hello");
-		const failure = checkNoMixedTranscriptAndChromeRows(state);
-		expect(failure).not.toBeNull();
-		expect(failure?.oracle).toBe("noMixedTranscriptAndChromeRows");
-		expect(failure?.message).toContain("mixes transcript content with composer chrome");
-	});
-
-	it("4. footerOccupiesBottomPhysicalRows goes red when footer does not dock to bottom", () => {
-		const base = createBaselineFrameState();
-		// Mutate: footer bottom is row 8 instead of row 9
-		const state = {
-			...base,
-			screenBounds: {
-				...base.screenBounds,
-				footerBottom: 8,
+/**
+ * A crafted defect per guarantee.
+ *
+ * Keyed by the guarantee union: a new oracle with no way to fail does not compile.
+ */
+const DEFECTS: Readonly<Record<ComposerOracleGuarantee, readonly DefectCase[]>> = {
+	exactlyOneComposerPrompt: [
+		{
+			name: "a second prompt row is painted in the transcript region",
+			says: "Expected 1 composer prompt row(s)",
+			break: base => withRow(base, 2, "  › duplicate prompt row"),
+		},
+		{
+			name: "the composer's own prompt row is painted without its glyph",
+			says: "Expected 1 composer prompt row(s)",
+			break: base => withRow(base, 7, "  just plain text without prompt"),
+		},
+	],
+	noOutputBleedPastComposer: [
+		{
+			name: "a transcript row is painted inside the footer zone",
+			says: "inside the composer footer zone",
+			break: base => withRow(base, 7, "transcript-output-line-0099 bleed past composer"),
+		},
+	],
+	noMixedTranscriptAndChromeRows: [
+		{
+			name: "one row carries both the prompt glyph and transcript content",
+			says: "mixes transcript content with composer chrome",
+			break: base => withRow(base, 7, "  › transcript-output-line-0012 hello"),
+		},
+	],
+	footerOccupiesBottomPhysicalRows: [
+		{
+			name: "the footer stops one row short of the terminal bottom",
+			says: "does not reach terminal bottom",
+			break: base => ({ ...base, screenBounds: { ...base.screenBounds, footerBottom: 8 } }),
+		},
+	],
+	noFooterRowsAboveFooterRegion: [
+		{
+			name: "composer chrome is painted above the footer region",
+			says: "Composer prompt row found at row 2",
+			break: base => withRow(base, 2, "  › leaked prompt in transcript"),
+		},
+	],
+	mouseClickRoutesToRenderedZone: [
+		{
+			name: "a click on a footer row is dispatched to the transcript",
+			says: "is inside footer bounds [5..9] but routed to transcript",
+			break: base => {
+				const mouseRouting = new Map(base.mouseRouting ?? []);
+				mouseRouting.set(7, { routedTo: "transcript", localLine: null, col: null });
+				return { ...base, mouseRouting };
 			},
-		};
-		const failure = checkFooterOccupiesBottomPhysicalRows(state);
-		expect(failure).not.toBeNull();
-		expect(failure?.oracle).toBe("footerOccupiesBottomPhysicalRows");
-		expect(failure?.message).toContain("does not reach terminal bottom");
+		},
+	],
+	caretWithinComposerEditorBounds: [
+		{
+			name: "the caret sits past the right edge of the terminal",
+			says: "outside terminal width",
+			break: base => ({ ...base, cursor: { row: 7, col: 85 } }),
+		},
+		{
+			name: "the caret sits in the transcript region",
+			says: "outside footer screen row bounds",
+			break: base => ({ ...base, cursor: { row: 2, col: 5 } }),
+		},
+	],
+	noHorizontalOverflow: [
+		{
+			name: "a row is painted wider than the terminal",
+			says: "exceeding terminal width 80",
+			break: base => withRow(base, 3, "x".repeat(95)),
+		},
+	],
+	composerCardPadsAreUnpaintedAir: [
+		{
+			name: "a breathing row above the input carries text",
+			says: "has non-blank content or background styling",
+			break: base => withRow(base, 6, "leaked text in padding"),
+		},
+		{
+			name: "a breathing row is blank but painted with a truecolor background",
+			says: "has non-blank content or background styling",
+			break: base => withPadFill(base, "\x1b[48;2;255;0;0m"),
+		},
+	],
+	composerHairlineSpanAndPlacement: [
+		{
+			name: "the hairline claims two rows",
+			says: "ComposerHairline segment rowCount is 2, expected exactly 1",
+			break: base => ({
+				...base,
+				segments: base.segments.map(s => (s.componentName === "ComposerHairline" ? { ...s, rowCount: 2 } : s)),
+			}),
+		},
+	],
+	footerHeightMatchesComposedSegmentLedger: [
+		{
+			name: "the pinned footer height disagrees with its children's rows",
+			says: "does not match segment ledger sum",
+			break: base => ({ ...base, pinnedFooterRows: 7 }),
+		},
+	],
+	virtualScrollPreservesFooterStability: [
+		{
+			name: "a frozen view paints a footer row the live footer does not have",
+			says: "differs from live footer",
+			break: base => ({
+				...withRow(base, 7, "  › corrupted virtual scroll footer row"),
+				virtualScrollTop: 2,
+			}),
+		},
+	],
+};
+
+describe("the baseline frame is the control", () => {
+	it("fails nothing, reads a subject for every guarantee in scope, and goes blind nowhere", () => {
+		const result = evaluateAllComposerOracles(createBaselineFrameState());
+		expect(result.failures).toEqual([]);
+		expect(result.blind).toEqual([]);
+		// The baseline is a live-tail frame, so the frozen-view guarantee is the one guarantee out of
+		// scope. Pinned by exact equality: a predicate that quietly stops applying to a plain frame is
+		// how a guarantee stops being enforced.
+		expect([...result.skipped].sort()).toEqual(["virtualScrollPreservesFooterStability"]);
+	});
+});
+
+describe("every guarantee has a defect that makes it fail", () => {
+	it("files at least one crafted defect for every guarantee", () => {
+		const missing = COMPOSER_ORACLE_GUARANTEES.filter(id => DEFECTS[id].length === 0);
+		expect([...missing].sort()).toEqual([]);
 	});
 
-	it("5. noFooterRowsAboveFooterRegion goes red when footer chrome leaks into transcript region", () => {
+	for (const id of COMPOSER_ORACLE_GUARANTEES) {
+		for (const defect of DEFECTS[id]) {
+			it(`${id}: ${defect.name}`, () => {
+				const result = evaluateAllComposerOracles(defect.break(createBaselineFrameState()));
+				const failure = result.failures.find(f => f.oracle === id);
+				expect(
+					failure,
+					`${id} reported no failure on its own defect. skipped=[${result.skipped.join(", ")}] blind=[${result.blind.join(", ")}]`,
+				).toBeDefined();
+				if (!failure) return;
+				expect(failure.message).toContain(defect.says);
+				// The evaluator has to have let it run, not merely not contradicted it.
+				expect(result.inspected).toContain(id);
+			});
+		}
+	}
+});
+
+describe("a pad row's background is read from the SGR parameters, not the shape of the escape", () => {
+	// This one calls the predicate directly on purpose: the negative half asserts the absence of a
+	// failure, and going through the evaluator would not distinguish a predicate that found nothing
+	// from one the registry never ran.
+	it("treats a background fill as paint in every spelling", () => {
 		const base = createBaselineFrameState();
-		// Mutate: prompt appears at row 2 (transcript region)
-		const state = mutateViewportLine(base, 2, "  › leaked prompt in transcript");
-		const failure = checkNoFooterRowsAboveFooterRegion(state);
-		expect(failure).not.toBeNull();
-		expect(failure?.oracle).toBe("noFooterRowsAboveFooterRegion");
-		expect(failure?.message).toContain("Composer prompt row found at row 2");
-	});
-
-	it("6. mouseClickRoutesToRenderedZone goes red on misrouted footer clicks", () => {
-		const base = createBaselineFrameState();
-		// Mutate: click on footer row 7 routes to transcript instead of footer component
-		const mouseRouting = new Map(base.mouseRouting ?? []);
-		mouseRouting.set(7, { routedTo: "transcript", localLine: null, col: null });
-		const state = { ...base, mouseRouting };
-		const failure = checkMouseClickRoutesToRenderedZone(state);
-		expect(failure).not.toBeNull();
-		expect(failure?.oracle).toBe("mouseClickRoutesToRenderedZone");
-		expect(failure?.message).toContain("is inside footer bounds [5..9] but routed to transcript");
-	});
-
-	it("7. caretWithinComposerEditorBounds goes red when cursor is out of bounds", () => {
-		const base = createBaselineFrameState();
-		// Mutate: cursor col exceeds terminal width
-		const colState = { ...base, cursor: { row: 7, col: 85 } };
-		const failure = checkCaretWithinComposerEditorBounds(colState);
-		expect(failure).not.toBeNull();
-		expect(failure?.oracle).toBe("caretWithinComposerEditorBounds");
-		expect(failure?.message).toContain("outside terminal width");
-
-		// Mutate: cursor placed in transcript region
-		const rowState = { ...base, cursor: { row: 2, col: 5 } };
-		const rowFailure = checkCaretWithinComposerEditorBounds(rowState);
-		expect(rowFailure).not.toBeNull();
-		expect(rowFailure?.oracle).toBe("caretWithinComposerEditorBounds");
-		expect(rowFailure?.message).toContain("outside footer screen row bounds");
-	});
-
-	it("8. noHorizontalOverflow goes red when a rendered row exceeds terminal width", () => {
-		const base = createBaselineFrameState();
-		// Mutate: line exceeds 80 columns
-		const state = mutateViewportLine(base, 3, "x".repeat(95));
-		const failure = checkNoHorizontalOverflow(state);
-		expect(failure).not.toBeNull();
-		expect(failure?.oracle).toBe("noHorizontalOverflow");
-		expect(failure?.message).toContain("exceeding terminal width 80");
-	});
-
-	it("9. composerCardPadsAreUnpaintedAir goes red when padding contains background fill or text", () => {
-		const base = createBaselineFrameState();
-		// Mutate: CardPadRow contains text
-		const state = mutateViewportLine(base, 6, "leaked text in padding");
-		const failure = checkComposerCardPadsAreUnpaintedAir(state);
-		expect(failure).not.toBeNull();
-		expect(failure?.oracle).toBe("composerCardPadsAreUnpaintedAir");
-		expect(failure?.message).toContain("has non-blank content or background styling");
-
-		// Mutate: CardPadRow has background ANSI escape
-		const rawViewportLines = [...base.rawViewportLines];
-		rawViewportLines[6] = "\x1b[48;2;255;0;0m   \x1b[0m";
-		const viewportLines = [...base.viewportLines];
-		viewportLines[6] = "";
-		const ansiState = { ...base, rawViewportLines, viewportLines };
-		const ansiFailure = checkComposerCardPadsAreUnpaintedAir(ansiState);
-		expect(ansiFailure).not.toBeNull();
-		expect(ansiFailure?.oracle).toBe("composerCardPadsAreUnpaintedAir");
-	});
-
-	it("9b. composerCardPadsAreUnpaintedAir reads background from SGR parameters, not text shape", () => {
-		const base = createBaselineFrameState();
-		const withPadEscape = (raw: string): ComposerOracleFrameState => {
-			const rawViewportLines = [...base.rawViewportLines];
-			rawViewportLines[6] = `${raw}   \x1b[0m`;
-			const viewportLines = [...base.viewportLines];
-			viewportLines[6] = "";
-			return { ...base, rawViewportLines, viewportLines };
-		};
-
-		// A background is painted: standard, bright, and truecolor in both subparameter spellings.
 		for (const fill of ["\x1b[41m", "\x1b[101m", "\x1b[48;2;255;0;0m", "\x1b[48:2:255:0:0m"]) {
-			expect(checkComposerCardPadsAreUnpaintedAir(withPadEscape(fill))?.oracle).toBe(
+			expect(checkComposerCardPadsAreUnpaintedAir(withPadFill(base, fill))?.oracle, fill).toBe(
 				"composerCardPadsAreUnpaintedAir",
 			);
 		}
+	});
 
-		// No background is painted: underline and background-reset both begin with `4`, and an
-		// extended foreground carries a subparameter that reads as background 41 unless the
-		// parameter list is walked rather than matched.
+	it("treats underline, a background reset and an extended foreground as unpainted", () => {
+		const base = createBaselineFrameState();
+		// Underline and background-reset both begin with `4`, and an extended foreground carries a
+		// subparameter that reads as background 41 unless the parameter list is walked.
 		for (const bare of ["\x1b[4m", "\x1b[49m", "\x1b[38;5;41m", "\x1b[38;2;0;41;0m"]) {
-			expect(checkComposerCardPadsAreUnpaintedAir(withPadEscape(bare))).toBeNull();
+			expect(checkComposerCardPadsAreUnpaintedAir(withPadFill(base, bare)), bare).toBeNull();
 		}
-	});
-
-	it("10. composerHairlineSpanAndPlacement goes red when hairline row count is corrupted", () => {
-		const base = createBaselineFrameState();
-		// Mutate: hairline segment has rowCount 2
-		const segments = base.segments.map(s =>
-			s.componentName === "ComposerHairline" ? { ...s, rowCount: 2 } : { ...s },
-		);
-		const state = { ...base, segments };
-		const failure = checkComposerHairlineSpanAndPlacement(state);
-		expect(failure).not.toBeNull();
-		expect(failure?.oracle).toBe("composerHairlineSpanAndPlacement");
-		expect(failure?.message).toContain("ComposerHairline segment rowCount is 2, expected exactly 1");
-	});
-
-	it("11. footerHeightMatchesComposedSegmentLedger goes red when pinned rows and segment ledger diverge", () => {
-		const base = createBaselineFrameState();
-		// Mutate: pinnedFooterRows does not match sum of segments
-		const state = { ...base, pinnedFooterRows: 7 };
-		const failure = checkFooterHeightMatchesComposedSegmentLedger(state);
-		expect(failure).not.toBeNull();
-		expect(failure?.oracle).toBe("footerHeightMatchesComposedSegmentLedger");
-		expect(failure?.message).toContain("does not match segment ledger sum");
-	});
-
-	it("12. virtualScrollPreservesFooterStability goes red when virtual scroll footer diverges from live footer", () => {
-		const base = createBaselineFrameState();
-		// Mutate: enable virtual scroll and tamper with rendered footer row
-		const state = {
-			...mutateViewportLine(base, 7, "  › corrupted virtual scroll footer row"),
-			virtualScrollTop: 2,
-		};
-		const failure = checkVirtualScrollPreservesFooterStability(state);
-		expect(failure).not.toBeNull();
-		expect(failure?.oracle).toBe("virtualScrollPreservesFooterStability");
-		expect(failure?.message).toContain("differs from live footer");
 	});
 });
