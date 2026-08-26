@@ -1902,7 +1902,8 @@ function retainCompletedToolCalls(
 }
 
 /**
- * Give every tool call in one assistant message its own id. Scope is the branch, not one message: the outbound canonicalizer's handle map is keyed by original id and lives for the session, so ids already stored on the branch are taken. `takenIds` must exclude the in-flight partial being finalized.
+ * Give every tool call in one assistant message its own id. Scope is the branch (canonicalizer's handle
+ * map is session-scoped). `takenIds` must exclude the in-flight partial being finalized.
  */
 function disambiguateToolCallIds(message: AssistantMessage, takenIds: ReadonlySet<string>): AssistantMessage {
 	if (!message.content.some(b => b.type === "toolCall")) return message;

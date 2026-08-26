@@ -1,17 +1,11 @@
 /**
- * How many tokens a message costs, and the cache that keeps the answer.
+ * How many tokens a message costs, and the cache that keeps the answer. Split from `compaction.ts`
+ * (the engine, 395 modules) so `shake.ts`, `pruning.ts`, and `branch-summarization.ts` don't pay for
+ * the engine to get an estimate. `compaction.ts` re-exports this, so no caller changed.
  *
- * WHY IT IS NOT IN `compaction.ts`. That module is the compaction ENGINE: the summarizer, the cut point and
- * the provider round trip, and it reaches 395 modules to do that job. Estimating a message costs a tokenizer
- * and nothing else. Three modules in this directory wanted only the estimate and had taken it from the
- * engine: `shake.ts` paid 312 marginal modules for it, `pruning.ts` 197, and `branch-summarization.ts` the
- * same edge again. `compaction.ts` re-exports the name it used to declare, so no caller outside changed.
- *
- * The estimate is not a display number. It decides when compaction triggers, how pruning spends its budget,
- * and what the operator's context meter reads, so an estimate that is wrong in one direction silently lets a
- * session exceed the provider window and wrong in the other compacts a session that did not need it. That is
- * why the odd-looking cases below (a `developer` message counting its images, a thinking block counting its
- * signature) are each written with the failure they fix.
+ * The estimate decides when compaction triggers, how pruning spends its budget, and what the context
+ * meter reads. Wrong-high exceeds the provider window; wrong-low compacts unnecessarily. Each odd-looking
+ * case below (`developer` counting images, thinking counting signature) is written with the failure it fixes.
  */
 
 import type { AssistantMessage } from "@veyyon/ai";

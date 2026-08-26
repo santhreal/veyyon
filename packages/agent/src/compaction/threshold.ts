@@ -1,37 +1,11 @@
 /**
- * The one owner of "when does auto-compaction trigger?", which now includes the settings shape the
- * decision reads and the reserve policy the auto behaviour needs.
+ * The one owner of "when does auto-compaction trigger?" — settings shape, reserve policy, and threshold.
+ * Split from `./compaction.ts` (the engine, 395 modules) so callers needing only the trigger don't pay
+ * for the engine. `./compaction.ts` re-exports all of it, so no caller changed.
  *
- * THE SECOND HALF ARRIVED LATE, and why it had to is worth recording. `CompactionSettings`,
- * `resolveBudgetReserveTokens`, `shouldCompact` and the three threshold wrappers lived in
- * `./compaction.ts`, the module that RUNS a compaction: it imports the `@veyyon/ai` barrel, the provider
- * dialects, the prompt registry and the tokenizer, because summarizing a conversation needs all of that.
- * Asking "is 170k over the trigger?" needs none of it. So every host that only wanted the trigger paid
- * for the engine: `packages/coding-agent/src/config/compaction-strategy.ts` named
- * `@veyyon/agent-core/compaction` for `resolveThresholdTokens` alone, and through it `config/settings.ts`
- * -- the most imported module in that package, 528 test files -- reached `@veyyon/ai/stream.ts`. An
- * architecture gate there asserted the opposite and passed, because its resolution table did not know
- * this package's name (see `packages/utils/src/module-reach-workspace.ts`).
- *
- * Everything here is arithmetic over primitives and imports two clamps. `./compaction.ts` re-exports all
- * of it, so no caller changed.
- *
- * There used to be TWO settings on this single axis — `compaction.thresholdTokens`
- * (absolute) and `compaction.thresholdPercent` (percent of window) — both labelled
- * "Compaction Threshold" in the UI, both defaulting to the `-1` sentinel, and with
- * their precedence recorded nowhere but a comment above the resolver. An operator
- * reading the settings list could not tell which one was in force, and setting the
- * one nearer the top silently did nothing when the other was already set.
- *
- * Now there is one value whose UNIT IS PART OF THE VALUE:
- *
- *   auto     the window minus the reserve (the historical default behavior)
- *   85%      a percent of whatever window the current model has
- *   170000   an absolute token amount, the same on every model
- *
- * The two legacy keys are folded in here, at exactly one read boundary, the same
- * way {@link withLegacyDefaultEffort} folds the retired `defaultThinkingLevel`
- * into the Default Effort list: nothing else in the codebase may consult them.
+ * One value whose unit is part of the value: `auto` (window minus reserve), `85%` (percent of window),
+ * `170000` (absolute). Two legacy keys (`thresholdTokens`, `thresholdPercent`) are folded in here at
+ * one read boundary, like {@link withLegacyDefaultEffort} folds retired `defaultThinkingLevel`.
  */
 import { clamp, clampLow } from "@veyyon/utils/math";
 

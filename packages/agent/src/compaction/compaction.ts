@@ -79,10 +79,7 @@ export {
 } from "./threshold";
 
 /**
- * Re-exported from `./token-estimate`, which owns it.
- *
- * Three modules in this directory want the estimate and nothing else from this file, which reaches 395
- * modules; they name the leaf. This keeps the name every caller outside the directory already imports.
+ * Re-exported from `./token-estimate` (leaf module) so callers don't reach this 395-module engine for an estimate.
  */
 export { estimateTokens } from "./token-estimate";
 
