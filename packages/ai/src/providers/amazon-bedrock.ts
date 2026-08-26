@@ -458,9 +458,7 @@ export const streamBedrock: StreamFunction<"bedrock-converse-stream"> = (
 					// drop the cache entry so the next attempt re-resolves from scratch.
 					invalidateAwsCredentialCache({ profile: options.profile, region });
 				}
-				// The STATUS is the failure; the body is Bedrock's explanation of it. Losing an unreadable body still
-				// leaves the status, which is what the error below is built from. The shared reader replaces a local
-				// 1000-character slice, so the read is bounded too and truncation says so.
+				// Status is the failure; body is detail. Unreadable body degrades to empty; read is bounded.
 				const detail = await AIError.readProviderErrorDetail(response);
 				throw new AIError.BedrockApiError(`Bedrock HTTP ${response.status}: ${detail}`, response.status, {
 					headers: response.headers,
@@ -625,9 +623,7 @@ function safeParsePayload(payload: Uint8Array): unknown {
 	try {
 		return JSON.parse(new TextDecoder().decode(payload));
 	} catch {
-		// Undefined is DISTINCT from the `{}` an empty payload returns, and the caller relies on that: an
-		// unparseable event frame is skipped rather than treated as an empty event, so a malformed frame
-		// cannot look like a legitimate no-op in the stream.
+		// Undefined (not `{}`) so unparseable frames are skipped, not treated as empty no-ops.
 		return undefined;
 	}
 }

@@ -703,9 +703,7 @@ function isClaudeJsonUserId(userId: string): boolean {
 	try {
 		parsed = JSON.parse(userId);
 	} catch {
-		// This asks whether the caller's `user_id` is Claude Code's JSON envelope. Text starting with `{`
-		// that is not JSON is not that envelope, so false is the answer, and the caller then treats the
-		// value as an opaque id.
+		// Not a JSON envelope; caller treats the value as an opaque id.
 		return false;
 	}
 	if (!isRecord(parsed)) return false;
@@ -811,19 +809,13 @@ export function resolveAnthropicMetadataUserId(
 	if (!isOAuthToken) return undefined;
 	return generateClaudeJsonUserId(sessionId, accountId);
 }
-// `web_search` comes from the owner because two packages have to agree on it: the search provider in
-// `@veyyon/coding-agent` asks Anthropic for that tool by name and this module matches the blocks it returns.
-// The other three are matched here and nowhere else, so they stay inline.
+// `web_search` is shared with the coding-agent search provider; the other three are matched only here.
 const ANTHROPIC_BUILTIN_TOOL_NAMES = new Set([ANTHROPIC_WEB_SEARCH_TOOL, "code_execution", "text_editor", "computer"]);
 const UMANS_WEBSEARCH_PROVIDER_HEADER = "X-Umans-Websearch-Provider";
 export const applyClaudeToolPrefix = (name: string): string => {
 	if (!claudeToolPrefix) return name;
 	if (ANTHROPIC_BUILTIN_TOOL_NAMES.has(name.toLowerCase())) return name;
-	// Always prepend (no "already prefixed" short-circuit): the prefix is a wire
-	// transport detail applied once to internal tool names, and `stripClaudeToolPrefix`
-	// removes exactly one prefix on receive. Skipping names that already start with the
-	// prefix would make a tool literally named `_foo` lose its leading underscore on the
-	// return trip (`_foo` → wire `_foo` → strip → `foo`), so the agent loop can't find it.
+	// Always prepend: skipping "already prefixed" names would make `_foo` lose its underscore on the return trip.
 	return `${claudeToolPrefix}${name}`;
 };
 
@@ -1377,9 +1369,7 @@ function buildClaudeCodeTlsFetchOptions(
 	try {
 		serverName = new URL(baseUrl).hostname;
 	} catch {
-		// Without a hostname there is no SNI name to pin, so no Claude-Code TLS options are built and the
-		// request goes out with the default fetch options. The unparseable base URL is reported by the
-		// request that then fails on it, which names the URL the user configured.
+		// No hostname → no SNI to pin; default fetch options. The unparseable URL is reported by the request that fails on it.
 		return undefined;
 	}
 
@@ -3075,8 +3065,7 @@ export function buildAnthropicClientOptions(args: AnthropicClientOptionsArgs): A
 			fetchOptions,
 		};
 	}
-	// A `bearer-only` gateway rejects the client-added `X-Api-Key`, so the key is
-	// dropped and only the `Authorization` header the request already carries goes out.
+	// `bearer-only` gateway rejects `X-Api-Key`; drop it and keep only `Authorization`.
 	if (wire.credential === "bearer-only") {
 		return {
 			isOAuthToken: false,
@@ -3090,12 +3079,7 @@ export function buildAnthropicClientOptions(args: AnthropicClientOptionsArgs): A
 		};
 	}
 
-	// Suppress the client-level `X-Api-Key` whenever an `Authorization` header
-	// already sits in `defaultHeaders` for a non-official, non-OAuth endpoint —
-	// either our auto-built `Bearer <apiKey>` or a caller-supplied custom auth
-	// scheme via `model.headers` (#3391). Adding a bonus `X-Api-Key` would force
-	// the proxy to deal with two competing credentials when the user explicitly
-	// asked for one.
+	// Suppress `X-Api-Key` when `Authorization` is already in `defaultHeaders` for a non-official, non-OAuth endpoint (#3391).
 	const authorizationHeader = getHeaderCaseInsensitive(defaultHeaders, "Authorization");
 	const shouldSuppressClientApiKey =
 		!oauthToken && !model.compat.officialEndpoint && typeof authorizationHeader === "string";
