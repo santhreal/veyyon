@@ -35,8 +35,10 @@ export type { SegmentContext } from "./types";
 
 /** Hostname is fixed for the process lifetime; cache the short form once. */
 const SHORT_HOSTNAME = os.hostname().split(".")[0]!;
-/** Home Projects directory — `os.homedir()` is a syscall, hoist the join. */
-const HOME_PROJECTS = path.join(os.homedir(), "Projects");
+/** Home directory — `os.homedir()` is a syscall, cache once for the process lifetime. */
+const HOME_DIR = os.homedir();
+/** Home Projects directory — derived from the cached home dir. */
+const HOME_PROJECTS = path.join(HOME_DIR, "Projects");
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Helpers
@@ -519,7 +521,7 @@ const pathSegment: StatusLineSegment = {
 		}
 		const repoSuffix = ctx.activeRepo ? ` ↳ ${ctx.activeRepo.relativeRepoRoot}` : "";
 		if (opts.abbreviate !== false) {
-			pwd = shortenPath(pwd);
+			pwd = shortenPath(pwd, HOME_DIR);
 		}
 
 		pwd = clampPathLength(pwd, opts.maxLength ?? 40);
