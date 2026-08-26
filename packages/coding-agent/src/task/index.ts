@@ -1,17 +1,6 @@
 /**
- * Task tool - Delegate tasks to specialized agents.
- *
- * Discovers agent definitions from:
- *   - Bundled agents (shipped with the veyyon coding agent)
- *   - ~/.veyyon/agent/agents/*.md (user-level)
- *   - .veyyon/agents/*.md (project-level)
- *
- * Supports:
- *   - Single agent spawn per call (parallelism = parallel task calls)
- *   - Batch spawning + shared context per call when `task.batch` is enabled
- *   - Background execution through AsyncJobManager when `async.enabled` is enabled
- *   - Progress tracking via JSON events
- *   - Session artifacts for debugging
+ * Task tool - Delegate tasks to specialized agents (bundled, user, and project level).
+ * Supports single/batch spawning, background execution, and progress tracking.
  */
 
 import * as fs from "node:fs/promises";
@@ -248,14 +237,7 @@ function validateShapeParams(batchEnabled: boolean, params: TaskParams): string 
 }
 
 /**
- * Validate the spawn parameter contract against the wire shapes. With
- * `task.batch` the model-facing shape is `{ context, tasks[] }` — `tasks`
- * non-empty with per-item `task` instructions and unique names, `context`
- * non-empty, no top-level `task` alongside. The flat `{ agent?, ...item }`
- * form stays accepted at runtime under either setting (internal callers, stale
- * transcripts). Missing `agent` values resolve against the session spawn
- * policy later, in `spawnParamsFor`. Returns a problem description, or
- * undefined when valid.
+ * Validates spawn parameters against batch or flat tool invocation schemas.
  */
 function validateSpawnParams(params: TaskParams, batchEnabled: boolean): string | undefined {
 	const hasTask = typeof params.task === "string" && params.task.trim() !== "";
@@ -305,11 +287,7 @@ function validateSpawnParams(params: TaskParams, batchEnabled: boolean): string 
  */
 
 /**
- * Resolve the ExecutorOptions.cwd for a spawn.
- * Default / `"inherit"` uses the parent's live session cwd at spawn time.
- * A relative path resolves against the parent's cwd (like `cd libs/scanner`
- * from where the parent agent is), and an absolute path is used as-is. Either
- * way the result must exist and be a directory (fail closed).
+ * Resolves the working directory for a spawn against the parent agent's directory.
  */
 export async function resolveSpawnCwd(raw: string | undefined, parentCwd: string): Promise<string> {
 	const trimmed = typeof raw === "string" ? raw.trim() : "";
@@ -350,13 +328,7 @@ function resolveSpawnItems(params: TaskParams): TaskItem[] {
 }
 
 /**
- * Per-spawn params handed to the executor path: top-level call fields with the
- * item's identity substituted in. Each spawn's `agent` resolves here —
- * the item's own value, else `defaultAgent` from the session spawn policy.
- * `tasks` never leaks into a spawn; the shared `context` rides along
- * unchanged. Keys are only materialized when present — `#runSpawn`
- * distinguishes an absent `isolated` from an explicit one. The item's
- * `isolated` (batch form) wins over the top-level flag (flat form).
+ * Prepares per-spawn parameters by resolving agent type, context, and isolation settings.
  */
 function spawnParamsFor(params: TaskParams, item: TaskItem, defaultAgent: string): TaskParams {
 	const spawn: TaskParams = { agent: item.agent?.trim() || defaultAgent };
@@ -391,11 +363,7 @@ interface MergedSyncPayloads {
 	outputPaths?: string[];
 	projectAgentsDir: string | null;
 	/**
-	 * Spawns cancelled before they started, so they have no payload and no
-	 * `SingleResult` to classify. Counted separately because the batch summary is
-	 * built from `results`, and a spawn that never ran is invisible there: without
-	 * this, cancelling a five-agent fan-out before two of them started reported
-	 * "3 of 3 agents completed".
+	 * Count of spawns cancelled before starting, excluded from settled results.
 	 */
 	cancelledBeforeStart: number;
 }
@@ -450,11 +418,7 @@ function mergeSyncPayloads(
 const GENERIC_SPAWN_AGENTS: ReadonlySet<string> = new Set(["deep", "sonic"]); // not-a-tool-name: agent ids
 
 /**
- * Advisory — never a rejection — nudging the spawner toward tailored
- * specific agent types when one call resolves ≥2 items to a generic
- * `task`/`sonic` worker and the spawner still holds spawn capacity
- * (DepthCapacity: it currently has the `task` tool). `agentNames` are the
- * per-item resolved agent types. Returns undefined when no nudge applies.
+ * Advisory nudging the caller toward specialized agents when multiple generic workers are spawned.
  */
 export function buildSpecializationAdvisory(
 	agentNames: string[],
@@ -491,13 +455,7 @@ export function buildCoordinationAdvisory(
 }
 
 /**
- * Compose the non-blocking advisory appended to a `task` result: the
- * specialization nudge (from the per-item resolved agent types), plus — only
- * when some spawns keep running after this call (`willRunAsync`) — the
- * coordination suggestion over those still-live spawns (`items`). Coordination
- * is gated on async because a sync spawn has already finished by the time the
- * call returns, so a "coordinate while they run" hint would misfire. Returns
- * undefined when neither applies.
+ * Composes the non-blocking advisory appended to a task result (specialization and IRC coordination).
  */
 export function composeSpawnAdvisory(args: {
 	agents: string[];
@@ -521,14 +479,7 @@ export function composeSpawnAdvisory(args: {
 class TaskJobError extends Error {}
 
 /**
- * Process-level memo for create-time agent discovery, keyed by resolved cwd.
- *
- * `TaskTool.create` runs for every (sub)agent session in this process and the
- * walk-up + plugin-registry scan in `discoverAgents` is identical for a given
- * cwd, so repeat creations reuse the first scan. Execution-time discovery
- * (`#runSpawn`) intentionally stays fresh. The memo also tracks the live
- * `discoverAgents` binding: test spies swap that binding, which invalidates
- * the memo automatically.
+ * Process-level cache for create-time agent discovery keyed by working directory.
  */
 const discoveryMemo = new Map<string, Promise<DiscoveryResult>>();
 let discoveryMemoFn: typeof discoverAgents | undefined;
@@ -556,11 +507,7 @@ function discoverAgentsForCreate(cwd: string): Promise<DiscoveryResult> {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * Task tool - Delegate tasks to specialized agents.
- *
- * Each call spawns one subagent — or, with `task.batch`, one per `tasks[]`
- * item. When `async.enabled` is on, spawns run as AsyncJobManager jobs; when
- * disabled, the tool blocks until every spawn finishes.
+ * Task tool - Delegate tasks to specialized subagents synchronously or in the background.
  */
 export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetails, Theme>, EnabledSubagentSource {
 	readonly name = "task";
@@ -633,12 +580,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 	}
 
 	/**
-	 * The agent types this session may actually spawn, in discovery order.
-	 *
-	 * The system prompt reads this so its delegation prose can name only agents
-	 * that exist here: on a stock install the specialists are off, and a prompt
-	 * telling the model to send research to a `scout` it cannot spawn is an
-	 * instruction it can only fail to follow.
+	 * The agent types this session may spawn, in discovery order.
 	 */
 	get enabledAgentNames(): string[] {
 		return this.#enabledSubagents().agents.map(agent => agent.name);
@@ -1311,12 +1253,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 	}
 
 	/**
-	 * Run a set of spawns to completion inline, bounded by the session spawn
-	 * semaphore. `preAllocatedId` reuses an id claimed up front (mixed calls);
-	 * `index` is each item's position in the original call so progress rows and
-	 * merged results keep stable ordering. Per-item progress snapshots flow
-	 * through `onItemProgress`. Returns per-spawn payloads in input order;
-	 * `undefined` marks a spawn cancelled before it started.
+	 * Runs a set of spawns to completion inline, bounded by the session spawn semaphore.
 	 */
 	async #runSyncSpawns(args: {
 		toolCallId: string;

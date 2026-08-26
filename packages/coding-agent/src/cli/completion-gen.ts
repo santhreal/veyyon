@@ -1,18 +1,5 @@
 /**
- * Shell-completion generation (bash, zsh, fish, powershell).
- *
- * Single source of truth: the declarative `flags`/`args` descriptors carried by
- * each `Command` subclass plus the registered subcommand table. {@link buildSpec}
- * walks that metadata — the same data `renderCommandBody` renders for `--help` —
- * and {@link generateCompletion} emits a self-contained completion script. Adding
- * a flag to a command's static `flags` therefore propagates into completions with
- * no edits here.
- *
- * Static candidates (enum `options`, the builtin tool list) are baked into the
- * script. A small set of flags resolve dynamic candidates (the live model
- * catalog and on-disk sessions) by calling back into `<bin> __complete <kind>`
- * — see `commands/complete.ts`. The flag→source mapping below is the only manual
- * knob and is keyed by flag name so it stays stable as flags are added.
+ * Shell-completion generation (bash, zsh, fish, powershell) derived from command flag and argument descriptors.
  */
 import { APP_ALIAS, collapseWhitespace } from "@veyyon/utils";
 import type { ArgDescriptor, CliConfig, CommandCtor, FlagDescriptor } from "@veyyon/utils/cli";
@@ -120,19 +107,7 @@ const FILE_FLAGS: Record<string, true> = {
 };
 
 /**
- * The fallback is "no candidates", not "a file".
- *
- * Falling back to file completion made every unclassified value offer the
- * current directory: `--api-key <TAB>`, `--provider <TAB>`, `ssh --host <TAB>`
- * and `search <query> <TAB>` all listed the user's files, and accepting one
- * wrote a filename where a secret, a provider id, a hostname or a search term
- * belonged. Offering nothing is the honest answer for a value only the user
- * knows; a path-valued flag earns its completion by being named above.
- *
- * Flags are keyed by bare name because a flag spelled the same way means the
- * same thing wherever it appears (`--out` is a path under both `gallery` and
- * `say`). Positional names are not that stable, so those are qualified by
- * command below.
+ * Resolves the {@link ValueSource} for a flag by name and descriptor.
  */
 function flagValue(name: string, desc: FlagDescriptor): ValueSource {
 	if (desc.kind === "boolean") return { kind: "flag" };
@@ -163,12 +138,6 @@ export const FILE_ARGS: Record<string, true> = {
 export const AT_FILE_ARGS: Record<string, true> = { "launch.messages": true };
 /**
  * Positionals resolved against the live model catalog, keyed `<command>.<arg>`.
- *
- * The key is the REGISTERED command name, which is not always the word the command file is called after:
- * the throughput benchmark registers as `bench/throughput`, and while this table said `bench` it matched
- * nothing, so `veyyon bench/throughput <TAB>` offered no models at all. A stale key here fails silently,
- * which is why `completion-arg-tables-name-real-commands.test.ts` checks every key against the real
- * command list.
  */
 export const MODEL_ARGS: Record<string, true> = {
 	"bench/throughput.models": true,
@@ -233,14 +202,7 @@ function buildArgs(command: string, Cmd: CommandCtor): CompletionArg[] {
 }
 
 /**
- * Build a {@link CompletionSpec} from loaded command classes.
- *
- * @param rootName  Entry name of the default command (its flags become top-level
- *                  flags; it is excluded from the subcommand list).
- * @param aliasMap  Canonical-name → aliases (merged from the registration table
- *                  and the command class's static `aliases`).
- * @param options   `includeLaunchAlias: false` omits the `vey` launch alias, for
- *                  an install where that name belongs to something else.
+ * Builds a {@link CompletionSpec} from loaded command classes.
  */
 export function buildSpec(
 	config: CliConfig,
@@ -352,14 +314,8 @@ function bashFlagCase(bin: string, flags: CompletionFlag[]): string {
 	return lines.join("\n");
 }
 
-/** `case` labels for every root flag that consumes the following token. */
 /**
- * Every spelling of a flag that consumes the token after it.
- *
- * The token following one of these is that flag's VALUE, never a subcommand.
- * bash and fish both walk the command line looking for the subcommand and both
- * got this wrong; they share this list so the two can never disagree about
- * which flags take a value.
+ * Every spelling of a flag that consumes the token after it as a value.
  */
 function valueFlagLabels(flags: CompletionFlag[]): string[] {
 	const labels: string[] = [];
@@ -538,11 +494,7 @@ function zshDesc(s: string): string {
 }
 
 /**
- * The zsh completer for a value: the part after the last colon of an
- * `_arguments` spec. One owner, because flags and positionals want the same
- * answer and had two mappings that disagreed — the positional one classified
- * everything it did not recognize as `_files`, so `config set <TAB>` listed the
- * current directory where a setting key belongs.
+ * Resolves the zsh completer spec for a given value source.
  */
 function zshCompleter(v: ValueSource): string {
 	switch (v.kind) {
@@ -746,14 +698,7 @@ function fishDesc(s: string): string {
 }
 
 /**
- * Whether a value has candidates to offer.
- *
- * Only meaningful for POSITIONALS. On a flag, the bare `-x` fishValue returns
- * for a candidate-less value is the useful statement "this flag takes a value,
- * do not offer files for it". On a positional there is no flag to attach it to,
- * so the same `-x` becomes an unconditional rule that suppresses file
- * completion for the whole subcommand: emitting it for `grep <pattern>` would
- * cancel the file completion `grep <path>` asks for on the very next line.
+ * Returns true when a positional value source has candidate completions.
  */
 function fishValueHasCandidates(v: ValueSource): boolean {
 	return v.kind !== "flag" && v.kind !== "value";
@@ -963,11 +908,7 @@ function generateFish(spec: CompletionSpec): string {
 // --- powershell ---------------------------------------------------------------
 
 /**
- * Escape a string for a single-quoted PowerShell literal.
- *
- * PowerShell single-quoted strings interpret nothing except a doubled quote, so
- * this is the only escape needed and the only one that is safe: a description
- * containing `$( )` would be executed inside a double-quoted string.
+ * Escapes a string for a single-quoted PowerShell literal.
  */
 function psQuote(s: string): string {
 	return `'${s.replace(/'/g, "''")}'`;
@@ -984,11 +925,7 @@ function psArray(values: readonly string[]): string {
 }
 
 /**
- * One flag or positional rendered as the hashtable the completer reads.
- *
- * `Kind` is the {@link ValueSource} discriminant verbatim, so the emitted script
- * and this file agree by construction rather than by a parallel mapping that
- * could drift when a new kind is added.
+ * Renders a flag or positional value source as a PowerShell hashtable entry.
  */
 function psValueEntry(v: ValueSource): string {
 	const values = v.kind === "enum" || v.kind === "list" ? v.values : [];
@@ -1008,22 +945,7 @@ function psFlagTable(flags: CompletionFlag[], indent: string): string {
 }
 
 /**
- * PowerShell completion, registered through `Register-ArgumentCompleter -Native`.
- *
- * Unlike the POSIX shells there is no per-command file a shell autoloads, so
- * this script is meant to be dot-sourced from the user's `$PROFILE`. It
- * registers one completer bound to every name the binary answers to, which is
- * why `-CommandName` takes the full {@link binNames} list rather than just `bin`.
- *
- * Every name it defines is written to the GLOBAL scope. Registering a completer
- * outlives the script that registered it, so a user who RUNS this file instead
- * of dot-sourcing it would otherwise get a completer whose tables and helper
- * functions had already gone out of scope — tab completion that silently
- * produces nothing, with the registration still in place to hide the cause.
- *
- * The generated script is data plus one fixed completer, rather than generated
- * control flow: the tables below are the only part that changes as commands and
- * flags are added, so the logic can be read once and trusted.
+ * Generates PowerShell completion script registering `Register-ArgumentCompleter -Native`.
  */
 function generatePowerShell(spec: CompletionSpec): string {
 	const { bin } = spec;
@@ -1088,12 +1010,7 @@ function generatePowerShell(spec: CompletionSpec): string {
 }
 
 /**
- * The fixed half of the PowerShell completion script.
- *
- * Held as one literal rather than assembled line by line because none of it
- * varies with the CLI surface: every command- and flag-specific detail lives in
- * the tables {@link generatePowerShell} emits above it. Keeping the logic in one
- * readable block is what makes the generated script auditable.
+ * Fixed helper functions and completer script block for PowerShell completion.
  */
 const PS_COMPLETER_BODY =
 	// The three pieces below are ONE PowerShell script, split only because PowerShell's escape

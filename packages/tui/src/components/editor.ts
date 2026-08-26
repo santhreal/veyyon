@@ -58,17 +58,8 @@ interface TextChunk {
 }
 
 /**
- * Split a line into word-wrapped chunks.
- * Wraps at word boundaries when possible, falling back to character-level
- * wrapping for words longer than the available width.
- *
- * @param line - The text line to wrap
- * @param maxWidth - Maximum visible width per chunk
- * @returns Array of chunks with text and position information
- *
- * Exported for the wrap-invariant fuzz (chunk indices drive cursor positioning,
- * so they must stay in-range and ordered for any line/width); not part of the
- * package's main entrypoint.
+ * Split a line into word-wrapped chunks, wrapping at word boundaries or graphemes.
+ * Exported for wrap-invariant fuzzing.
  */
 export function wordWrapLine(line: string, maxWidth: number): TextChunk[] {
 	if (!line || maxWidth <= 0) {
@@ -443,12 +434,7 @@ export class Editor implements Component, Focusable, MouseRoutable {
 	 */
 	#autocompleteRowStart = -1;
 	/**
-	 * Where the LAST paint put the input text, so a click can be turned back
-	 * into a caret position: the first text row of this editor's own frame, how
-	 * many text rows it painted, the column that text starts at (the prompt
-	 * gutter's width, or the left border plus its padding), and the scroll
-	 * offset in force for that paint. Recorded at render because each depends on
-	 * that frame's geometry; the wrap width is `#lastLayoutWidth`.
+	 * Text placement metadata from the last paint used to map mouse clicks to caret coordinates.
 	 */
 	#textRowStart = 0;
 	#textRowCount = 0;
@@ -533,11 +519,7 @@ export class Editor implements Component, Focusable, MouseRoutable {
 	}
 
 	/**
-	 * Tonal ground painted under every input row (the composer "quiet card").
-	 * `open` is a raw SGR background-open sequence (e.g. `\x1b[48;2;12;14;18m`);
-	 * pass undefined or "" to clear. Applies only in gutter mode — the framed
-	 * (borderVisible) variant draws its own chrome. Inner `\x1b[0m` resets are
-	 * re-opened so a reverse-video cursor cannot punch a hole in the card.
+	 * Tonal ground SGR background painted under every input row in gutter mode.
 	 */
 	setRowBackground(open: string | undefined): void {
 		this.#rowBackground = open === "" ? undefined : open;
@@ -747,13 +729,7 @@ export class Editor implements Component, Focusable, MouseRoutable {
 		return Math.max(1, this.#maxHeight - verticalChrome);
 	}
 
-	/** Apply the optional input decorator to a plain (ANSI-free) text segment.
-	 *  Decoration only adds zero-width SGR codes, so visible width is unchanged.
-	 *  Splits around CURSOR_MARKER so each user-text segment is decorated in
-	 *  isolation: the marker begins with ESC, and a keyword regex that pins
-	 *  the right boundary with `(?!\S)` would otherwise reject an otherwise-
-	 *  valid match at the cursor seam (e.g. `ultrathink` immediately followed
-	 *  by the marker stops glowing until a trailing character is typed). */
+	/** Apply the optional input decorator to a plain text segment, preserving CURSOR_MARKER. */
 	#decorate(text: string): string {
 		const decorate = this.decorateText;
 		if (decorate === undefined || text.length === 0) return text;
@@ -2706,11 +2682,7 @@ export class Editor implements Component, Focusable, MouseRoutable {
 	}
 
 	/**
-	 * Build a mapping from visual lines to logical positions.
-	 * Returns an array where each element represents a visual line with:
-	 * - logicalLine: index into this.#state.lines
-	 * - startCol: starting column in the logical line
-	 * - length: length of this visual line segment
+	 * Build a mapping from visual lines to logical line positions.
 	 */
 	#buildVisualLineMap(width: number): Array<{ logicalLine: number; startCol: number; length: number }> {
 		const visualLines: Array<{ logicalLine: number; startCol: number; length: number }> = [];
@@ -2932,25 +2904,7 @@ export class Editor implements Component, Focusable, MouseRoutable {
 	}
 
 	/**
-	 * Decide whether the popup's `#autocompletePrefix` still safely maps onto the current
-	 * text before the cursor for an accept-time (`applyCompletion`) call. Mirrors the
-	 * re-anchoring branches in `CombinedAutocompleteProvider.applyCompletion`:
-	 *
-	 * - Exact match → always safe.
-	 * - Path branch is safe when the prefix is still a live suffix of the text; the
-	 *   provider's default slice at `cursorCol - prefix.length` then hits the right span.
-	 * - Slash branch re-anchors when both the prefix and the current text carry a
-	 *   leading slash command and the current slash token is clean (no whitespace or
-	 *   inner slash), matching `applyCompletion`'s slash-branch guard. It only
-	 *   engages for command-shaped selections: absolute-path completions (`/tmp/fo`
-	 *   via the no-command-match fall-through) share the leading-slash prefix shape
-	 *   but must use the live-suffix path rule so the apply slice stays anchored.
-	 * - Mid-prompt skill branch re-anchors when the popup item is a skill and the
-	 *   current text still ends in a trailing slash token, matching the provider's
-	 *   mid-prompt replacement branch.
-	 * - `@`-file branch re-anchors via `#extractAtPrefix`; safe when the current text
-	 *   still ends in a whitespace-anchored `@<token>`.
-	 * - Everything else is stale — accepting it would corrupt the buffer (issue #4295).
+	 * Tests whether autocomplete prefix still safely maps to cursor text before completion.
 	 */
 	#autocompletePrefixMatchesCursorText(currentTextBeforeCursor: string, item?: SelectItem | null): boolean {
 		if (currentTextBeforeCursor === this.#autocompletePrefix) return true;
@@ -2991,11 +2945,7 @@ export class Editor implements Component, Focusable, MouseRoutable {
 	}
 
 	/**
-	 * Whether the current popup selection inserts a file path rather than a
-	 * slash command. Leading-slash prefixes are ambiguous: the provider falls
-	 * through to absolute-path completion when no command matches, and those
-	 * item values start with `/` (or `"` when quoted) while command values are
-	 * bare names.
+	 * Whether the current popup selection inserts a file path rather than a slash command.
 	 */
 	#selectedCompletionIsPath(): boolean {
 		const selected = this.#autocompleteList?.getSelectedItem();
@@ -3027,11 +2977,7 @@ export class Editor implements Component, Focusable, MouseRoutable {
 
 	// Autocomplete methods
 	/**
-	 * Whether the text ending at the cursor looks like a `scheme://` URL token.
-	 * Generic by design: any scheme triggers a suggestion fetch and the active
-	 * provider decides whether it has candidates (returning none is a no-op).
-	 * MUST stay in sync with the token grammar in coding-agent's
-	 * `internal-url-autocomplete.ts`.
+	 * Whether the text ending at cursor looks like a scheme:// URL token.
 	 */
 	#textTriggersUrlAutocomplete(textBeforeCursor: string): boolean {
 		return /(?:^|[\s"'`(<=])[a-z][a-z0-9+.-]*:\/{1,2}[^\s"'`()<>]*$/i.test(textBeforeCursor);
@@ -3134,13 +3080,7 @@ export class Editor implements Component, Focusable, MouseRoutable {
 	}
 
 	/**
-	 * Apply one suggestion to the buffer — the shared body of Tab-accept and
-	 * click-accept, so the pointer can never drift from the key.
-	 *
-	 * A destructive edit or a paste can outrun the debounced refresh, leaving the
-	 * popup describing text that is no longer under the cursor. Accepting that
-	 * would rewrite the wrong span, so a stale popup is cancelled and nothing is
-	 * applied.
+	 * Apply selected suggestion to buffer for Tab-accept and click-accept.
 	 */
 	#acceptAutocompleteSelection(selected: SelectItem | null): void {
 		const currentLine = this.#state.lines[this.#state.cursorLine] ?? "";
@@ -3178,18 +3118,7 @@ export class Editor implements Component, Focusable, MouseRoutable {
 	}
 
 	/**
-	 * A left click accepts a suggestion, or places the caret in the text.
-	 *
-	 * The popup paints as the tail rows of this editor's own frame, so the row
-	 * span is known from the last render and the list resolves a row to an item.
-	 * A click on a text row instead moves the caret there, which is what a click
-	 * in a text field means everywhere else; the row and column come from the
-	 * same paint, so a wrapped line, a scrolled input, and a prompt gutter all
-	 * land on the character under the pointer.
-	 *
-	 * Only a click is honored: the composer lives in the engine's pinned footer,
-	 * which reports presses and releases and no motion at all, so there is no
-	 * hover to keep, and a wheel notch there belongs to the transcript.
+	 * Handle left-clicks to accept autocomplete suggestions or position the caret.
 	 */
 	routeMouse(event: SgrMouseEvent, line: number, col: number): void {
 		if (!event.leftClick) return;
@@ -3206,12 +3135,7 @@ export class Editor implements Component, Focusable, MouseRoutable {
 	}
 
 	/**
-	 * Move the caret to the character the pointer is over, or do nothing when
-	 * the click missed the rows this editor painted. A click past the end of a
-	 * row lands at the end of that row's text, the way a click past the end of a
-	 * line does in an editor — the grapheme walk stops there on its own, so no
-	 * upper clamp is needed. A click while a suggestion popup is open dismisses
-	 * the popup: its prefix no longer describes where the caret is.
+	 * Move caret to the character under the pointer, dismissing active autocomplete.
 	 */
 	#placeCaretAt(line: number, col: number): void {
 		const row = line - this.#textRowStart;

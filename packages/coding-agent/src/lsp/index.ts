@@ -155,12 +155,7 @@ export function discoverStartupLspServers(
 }
 
 /**
- * Warm up LSP servers for a directory by connecting to all detected servers.
- * This should be called at startup to avoid cold-start delays.
- *
- * @param cwd - Working directory to detect and start servers for
- * @param options - Optional callbacks for progress reporting
- * @returns Status of each server that was started
+ * Warm up LSP servers for a directory by connecting to all detected servers at startup.
  */
 export async function warmupLspServers(cwd: string, options?: LspWarmupOptions): Promise<LspWarmupResult> {
 	const config = loadConfig(cwd);
@@ -214,13 +209,7 @@ export function getLspStatus(): LspServerStatus[] {
 }
 
 /**
- * Sync in-memory file content to all applicable LSP servers.
- * Sends didOpen (if new) or didChange (if already open).
- *
- * @param absolutePath - Absolute path to the file
- * @param content - The new file content
- * @param cwd - Working directory for LSP config resolution
- * @param servers - Servers to sync to
+ * Sync in-memory file content to all applicable LSP servers via didOpen or didChange.
  */
 async function syncFileContent(
 	absolutePath: string,
@@ -245,11 +234,6 @@ async function syncFileContent(
 
 /**
  * Notify all LSP servers that a file was saved.
- * Assumes content was already synced via syncFileContent.
- *
- * @param absolutePath - Absolute path to the file
- * @param cwd - Working directory for LSP config resolution
- * @param servers - Servers to notify
  */
 async function notifyFileSaved(
 	absolutePath: string,
@@ -328,11 +312,7 @@ const BATCH_DIAGNOSTICS_WAIT_TIMEOUT_MS = 400;
 const DIAGNOSTICS_POLL_MS = 100;
 const DIAGNOSTICS_SETTLE_MS = 250;
 /**
- * How long the edit/write writethrough blocks inline waiting for fresh
- * diagnostics before handing slow servers off to the deferred late-injection
- * channel. Keeps the common fast-server case inline while letting an edit
- * return promptly when a server (e.g. a large-monorepo tsserver) is slow to
- * publish fresh diagnostics.
+ * Max inline wait for fresh diagnostics before handing slow servers to deferred delivery.
  */
 const INLINE_DIAGNOSTICS_WAIT_TIMEOUT_MS = 500;
 /**
@@ -530,12 +510,7 @@ interface WaitForDiagnosticsOptions {
 	minVersion?: number;
 	expectedDocumentVersion?: number;
 	/**
-	 * Quiescence window (ms). typescript-language-server never echoes the document
-	 * version (issue #983) and emits diagnostics from several sources at different
-	 * times, so there is no single "complete, version-matched" publish to gate on.
-	 * When the server does not exact-version-match, accept the latest publish only
-	 * after no newer one has arrived for this long, letting an in-flight pre-edit
-	 * publish be superseded by the fresh one.
+	 * Quiescence window (ms) for unversioned diagnostics publishes to settle.
 	 */
 	settleMs?: number;
 }
@@ -660,20 +635,7 @@ async function resolveGoWorkspaceDiagnosticsCommand(cwd: string, signal?: AbortS
 }
 
 /**
- * Detect the project type from the marker files in its root.
- *
- * The markers are probed with `pathExists` rather than `fs.existsSync`. This runs on the
- * diagnostics path while a session is live, and the probes are SEQUENTIAL by design (the
- * order encodes precedence, a Go workspace outranks a single Go module), so a synchronous
- * version stops the event loop once per marker, up to six times in a row, before the tool
- * has done any work. On a cold or network filesystem that is a visible stall in the TUI.
- * `pathExists` also reports a path that exists and cannot be stat'd instead of reading it
- * as absent, which for a marker file means the project is misdetected rather than silently
- * skipped.
- *
- * The order is load-bearing and must not be reordered into a parallel probe: `go.work`
- * outranks `go.mod` because a workspace member has both, and `Cargo.toml` outranks the rest
- * because a Rust project with a `tsconfig.json` for its docs site is still a Rust project.
+ * Detect project type from root marker files using ordered precedence probes.
  */
 async function detectProjectType(cwd: string, signal?: AbortSignal): Promise<ProjectType> {
 	// Check for Rust (Cargo.toml)
@@ -830,13 +792,7 @@ async function captureOpenFileVersions(
 }
 
 /**
- * Get diagnostics for a file using LSP or custom linter client.
- *
- * @param absolutePath - Absolute path to the file
- * @param cwd - Working directory for LSP config resolution
- * @param servers - Servers to query diagnostics for
- * @param minVersions - Minimum diagnostic versions per server (to detect stale results)
- * @returns Diagnostic results or undefined if no servers
+ * Get diagnostics for a file using LSP or a configured linter client.
  */
 async function getDiagnosticsForFile(
 	absolutePath: string,
@@ -943,13 +899,7 @@ export enum FileFormatResult {
 }
 
 /**
- * Format content using LSP or custom linter client.
- *
- * @param absolutePath - Absolute path (for URI)
- * @param content - Content to format
- * @param cwd - Working directory for LSP config resolution
- * @param servers - Servers to try formatting with
- * @returns Formatted content, or original if no formatter available
+ * Format content using LSP or a configured formatting client.
  */
 async function formatContent(
 	absolutePath: string,
@@ -1057,27 +1007,7 @@ export type WritethroughCallback = (
 ) => Promise<FileDiagnosticsResult | undefined>;
 
 /**
- * Persist `content` to `dst` crash-atomically, carrying the existing file's
- * permission bits forward. Every edit/write commit routes through here.
- *
- * A raw `Bun.write` truncates the target and then streams the new bytes in; if
- * the process dies between those steps (SIGINT, OOM-kill, full disk, power loss)
- * the user's source file is left truncated or empty. {@link atomicWriteFile}
- * writes a sibling temp and renames it over the target, so a crash leaves either
- * the whole old file or the whole new one — never a partial one. It also resolves
- * symlinks (the link survives instead of being replaced by a regular file).
- *
- * Two overrides of the atomic-write defaults are load-bearing here:
- *  - MODE: the rename swaps in a fresh inode, so without preservation the
- *    replacement would take the temp file's `0o600` default and silently strip a
- *    script's `+x` or a file's group/other read bits.
- *    {@link atomicWriteFilePreservingMode} carries the current file's mode
- *    forward (a brand-new file gets `0o644`).
- *  - FSYNC OFF: this is the interactive edit hot path. The rename alone already
- *    defeats the truncation-on-crash class; forcing an fsync + directory fsync on
- *    every edit would add a disk round-trip per write purely for power-loss
- *    durability, which the previous `Bun.write` never provided either. Keeping it
- *    off preserves the prior latency while adding crash-atomicity.
+ * Persist content to dst crash-atomically, preserving existing file permissions and symlinks.
  */
 async function commitFileContentAtomic(dst: string, content: string, signal?: AbortSignal): Promise<void> {
 	// The abort check belongs HERE, immediately before the rename, rather than at
@@ -1247,18 +1177,7 @@ async function scheduleDeferredDiagnosticsFetch(args: {
 }
 
 /**
- * Fetch post-write diagnostics without making the edit/write block on a slow
- * language server.
- *
- * Blocks inline only briefly ({@link INLINE_DIAGNOSTICS_WAIT_TIMEOUT_MS}) for a
- * fresh result. Freshness is enforced by the pre-edit `minVersions` baseline:
- * exact document-version matches return immediately, and unversioned/mismatched
- * publishes must settle with no newer publish before inline acceptance. If
- * nothing fresh arrives in the inline window and a deferred
- * channel is available, the in-flight fetch is handed off to deliver late via
- * `onDeferredDiagnostics`, and this returns `undefined` so the tool result
- * lands immediately. Without a deferred channel (direct/CI callers) it blocks
- * for the standard budget so the result is still returned inline.
+ * Fetch post-write diagnostics inline with fallback to deferred background delivery.
  */
 async function fetchDiagnosticsWithDeferral(args: {
 	dst: string;

@@ -1,11 +1,5 @@
 /**
- * Extension system types.
- *
- * Extensions are TypeScript modules that can:
- * - Subscribe to agent lifecycle events
- * - Register LLM-callable tools
- * - Register commands, keyboard shortcuts, and CLI flags
- * - Interact with the user via UI primitives
+ * Extension system types for lifecycle events, tools, commands, and UI primitives.
  */
 import type {
 	AgentMessage,
@@ -314,11 +308,7 @@ export interface ExtensionUIContext {
 	addAutocompleteProvider(factory: AutocompleteProviderFactory): void;
 
 	/**
-	 * Set a custom editor component via factory function, or `undefined` to restore the default editor.
-	 *
-	 * The factory must return a {@link CustomEditor} subclass. Plain `EditorComponent`/`Editor`
-	 * instances do not implement the action-keys, escape callbacks, and custom-key-handler surface
-	 * required by interactive mode.
+	 * Set a custom editor component via factory function returning a {@link CustomEditor}, or `undefined` for default.
 	 */
 	setEditorComponent(
 		factory: ((tui: TUI, theme: EditorTheme, keybindings: KeybindingsManager) => CustomEditor) | undefined,
@@ -359,23 +349,11 @@ export interface CompactOptions {
 	onComplete?: (result: CompactionResult) => void;
 	onError?: (error: Error) => void;
 	/**
-	 * Force a one-off compaction mode for this invocation, overriding the
-	 * configured `compaction.strategy`. `summary` is the only mode `/compact`
-	 * accepts; `handoff` is a separate session-transfer operation reached by
-	 * `/handoff`, and `/compact handoff` is refused rather than summarized.
-	 * Omitted = configured behavior.
+	 * Force a one-off compaction mode (`summary`) for this invocation.
 	 */
 	mode?: CompactMode;
 	/**
-	 * Internal summarizer guidance — piped only to native summarization, never
-	 * exposed as `customInstructions` on the `session_before_compact` extension
-	 * hook. Used by plan-mode "Approve and compact context" so extensions that
-	 * treat `customInstructions` as user focus don't mistake plan-mode
-	 * boilerplate for the operator's intent (issue #4359).
-	 *
-	 * When both `customInstructions` and `internalGuidance` are set, the
-	 * summarizer uses `internalGuidance`; the hook still sees only the public
-	 * `customInstructions`.
+	 * Internal summarizer guidance piped only to native summarization, not exposed to extension hooks.
 	 */
 	internalGuidance?: string;
 }
@@ -537,15 +515,7 @@ export interface ToolDefinition<TParams extends TSchema = TSchema, TDetails = un
 	/** Original MCP tool name for discovery/search metadata. */
 	mcpToolName?: string;
 	/**
-	 * Execute the tool. The signal comes THIRD here, matching how the agent calls
-	 * every tool.
-	 *
-	 * A custom tool (a file under `tools/`, `CustomTool.execute`) takes the same
-	 * five arguments in a different order: `(toolCallId, params, onUpdate, ctx,
-	 * signal)`. Copying one signature into the other place fails quietly, because
-	 * the arguments still arrive and `ctx` ends up being the update callback;
-	 * `examples/extensions/api-demo.ts` shipped exactly that. Both orders are pinned
-	 * in `test/tool-adapter-argument-order.test.ts`.
+	 * Execute the tool with `(toolCallId, params, signal, onUpdate, ctx)`.
 	 */
 	execute(
 		toolCallId: string,

@@ -313,11 +313,8 @@ interface TreeGuidePrefix {
 }
 
 /**
- * Match the leading box-drawing guide run of a rendered line (e.g. `│   ├── `),
- * tolerating interleaved SGR styling. Returns undefined unless the run
- * contains a branch glyph joined to a horizontal connector and node text
- * follows, so dash art, indented prose, and lone glyphs used as prose are
- * never treated as a tree.
+ * Matches the leading box-drawing guide run of a rendered line (e.g. `│   ├── `).
+ * Returns undefined unless a branch glyph connects to a horizontal line followed by text.
  */
 function matchTreeGuidePrefix(line: string): TreeGuidePrefix | undefined {
 	let codes = "";
@@ -343,13 +340,7 @@ function matchTreeGuidePrefix(line: string): TreeGuidePrefix | undefined {
 
 /**
  * Hanging wrap for box-drawing tree lines inside prose block text.
- *
- * Returns undefined when no line needs the treatment, so paragraphs without
- * overflowing tree lines keep their exact current render. When a paragraph
- * does hang, its lines are returned pre-split and style-self-contained: the
- * SGR state open at each line start is re-played onto that line (`carry`),
- * because the caller's wrap pass — which normally carries SGR state across
- * the newlines of a single entry — no longer sees them as one entry.
+ * Preserves open SGR styling across wrapped lines.
  */
 function hangWrapTreeGuideLines(text: string, width: number): string[] | undefined {
 	if (width < MIN_TREE_CONTENT_WIDTH || !TREE_GUIDE_ANCHOR_RE.test(text)) return undefined;
@@ -749,14 +740,7 @@ type TableToken = Token & {
 };
 
 /**
- * Pad `text` to `width` according to a column's alignment.
- *
- * The one place a table cell is fitted to its column, used by the header row
- * and the body rows alike. It previously existed twice as an inline
- * `text + padding(width - visibleWidth(text))`, which is the left-aligned case
- * written out longhand, so `| :---: |` and `| ---: |` parsed correctly and then
- * rendered identically to `| --- |`. A centre-aligned column with an odd amount
- * of slack gets the extra column on the right, matching how browsers round it.
+ * Pads `text` to `width` according to a column's alignment (left, center, right).
  */
 function alignCellText(text: string, width: number, align: TableAlign): string {
 	const slack = Math.max(0, width - visibleWidth(text));
@@ -824,11 +808,8 @@ function renderMathToken(text: string): string {
 }
 
 /**
- * When a paragraph's only meaningful content is a single display math token
- * (`$$…$$` / `\[…\]`), return it so the paragraph can be stacked multi-line
- * instead of flattened inline. Models routinely write display math on one line,
- * which marked captures as an inline `display:true` math token inside a
- * paragraph; without this it would flatten through `renderMathToken`.
+ * Returns the display math token if a paragraph contains only display math (`$$…$$`),
+ * allowing multi-line stacking instead of inline flattening.
  */
 function soleDisplayMath(tokens?: Token[]): (Token & { text: string }) | null {
 	if (!tokens) return null;
@@ -886,13 +867,8 @@ function inlineHtmlTag(token: Token): { name: string; closing: boolean } | null 
 }
 
 /**
- * Collapse inline `<code>…</code>` runs — which marked emits as separate `html`
- * open/close tokens around the literal content — into a single synthetic
- * `codespan` token, so they render with the theme's inline-code styling instead
- * of leaking the raw tags. HTML entities inside the run are decoded. Stray or
- * unmatched code tags are dropped; other inline html tokens pass through for the
- * `html` render path to normalize. Returns the original array when no `<code>`
- * tag is present (the common case).
+ * Collapses inline `<code>…</code>` HTML tokens into a synthetic `codespan` token
+ * with decoded entities so they render with theme inline-code styling.
  */
 function collapseInlineHtml(tokens: Token[]): Token[] {
 	let hasCode = false;
@@ -946,14 +922,8 @@ const HEX_COLOR_REGEX = /(?<![\w#&])#([0-9a-fA-F]{3,8})(?![0-9a-fA-F])/g;
 const HEX_COLOR_EXACT_REGEX = /^#([0-9a-fA-F]{3,8})$/;
 
 /**
- * Decide whether a run of hex digits denotes a renderable CSS color.
- *
- * Only the canonical CSS lengths (#RGB, #RRGGBB, #RRGGBBAA) qualify. The 4-digit
- * #RGBA form is deliberately excluded: it collides with hashline `#TAG` snapshot
- * tags (4 hex digits, e.g. #6C5E), which would otherwise sprout spurious swatches.
- * In `strict` mode (bare prose) a 3-digit run must contain a hex letter, so the
- * far more common short issue/PR references (#123, #1011) don't sprout swatches.
- * Codespans opt out of strictness — the backticks already signal "this is a color".
+ * Determines whether a hex string denotes a renderable CSS color (#RGB, #RRGGBB, #RRGGBBAA).
+ * Excludes 4-digit hex to prevent collision with hashline snapshot tags.
  */
 function classifyHexColor(hex: string, strict: boolean): boolean {
 	const n = hex.length;
@@ -1148,13 +1118,8 @@ export class Markdown implements Component {
 	}
 
 	/**
-	 * Rows at the top of the most recent render() (top padding + rendered
-	 * frozen-token prefix) whose bytes are settled: byte-stable at this
-	 * width/theme for as long as the text keeps growing append-only. Hosts
-	 * feed this to transcript commit gating (see the coding agent's
-	 * `FinalizableBlock.getTranscriptBlockSettledRows`). 0 outside streaming
-	 * (`transientRenderCache`) mode, after a text rewind (re-earned on the new
-	 * lineage), and on cache-served non-streaming renders.
+	 * Number of settled (byte-stable) rows at the top of the most recent render.
+	 * Used by transcript commit gating during streaming.
 	 */
 	getLastRenderSettledRows(): number {
 		return this.#lastRenderSettledRows;
@@ -1776,23 +1741,12 @@ export class Markdown implements Component {
 	}
 
 	/**
-	 * Render one token, bounding recursion depth. Markdown from model output can
-	 * nest blockquotes/lists arbitrarily deep (`>>>>…`), and the per-token
-	 * recursion would overflow the JS stack — a crash on untrusted input. Past
-	 * {@link Markdown.MAX_RENDER_DEPTH} the token is rendered as its raw source on
-	 * a single plain line instead of recursing into its children.
+	 * Maximum token recursion depth to prevent stack overflow on deeply nested markdown.
 	 */
 	static readonly MAX_RENDER_DEPTH = 20;
 
 	/**
-	 * Inline-token recursion cap. marked nests emphasis arbitrarily deep — a run
-	 * like `**`×N around content parses to N-deep strong>strong>… tokens — and
-	 * `#renderInlineTokens` wraps each level in ANSI codes, so the bubbling string
-	 * concatenation is O(n^2): `**`×3000 rendered in ~8.8s (a per-message hang on
-	 * untrusted model output). Real inline nesting (a link holding bold holding
-	 * code) is only a handful deep; past this cap, flatten the subtree to styled
-	 * plain text in one pass (`plainInlineTokens` is O(n), no per-level wrapping)
-	 * instead of recursing.
+	 * Maximum inline token recursion depth to prevent O(n^2) styling performance issues.
 	 */
 	static readonly MAX_INLINE_DEPTH = 32;
 
@@ -2423,20 +2377,8 @@ export class Markdown implements Component {
 }
 
 /**
- * Per-level dispatch context for {@link walkInlineTokens}. Both inline renderers
- * (the rich Markdown component and the standalone {@link renderInlineMarkdown})
- * flow through the one walker; every place they diverge is a field here rather
- * than a second copy of the token switch:
- *   - `renderLeafText` styles a bare text leaf (rich shows color swatches, the
- *     standalone just applies its base color).
- *   - `swatchGlyph` non-null adds the codespan color swatch.
- *   - `hyperlinks` wraps links in OSC-8 escapes and appends the ` (href)` tail.
- *   - `useHtmlState` threads an HTML-normalization state across the token run.
- *   - `handleBlocks` activates the `paragraph`/`br` block cases (the standalone
- *     falls those through to plain text).
- *   - `stripTrailingPrefix` trims a dangling reopened-default SGR at the end.
- * The recursion cap lives in the two thin callers, so this walker is pure
- * single-level dispatch.
+ * Per-level dispatch context for {@link walkInlineTokens}.
+ * Configures leaf rendering, swatches, hyperlinks, and recursion limits.
  */
 interface InlineWalkContext {
 	theme: MarkdownTheme;
@@ -2453,11 +2395,7 @@ interface InlineWalkContext {
 }
 
 /**
- * The single owner of the inline-token grammar (text/strong/em/codespan/link/
- * del/html/paragraph/br/math + fallback). Walks one level of inline tokens and
- * returns the styled string; nested emphasis recurses through `ctx.renderNested`
- * so each caller keeps its own depth guard. Kept byte-identical to the two
- * former hand-copied switches — locked by markdown-inline-one-place.test.ts.
+ * Single-level walker for inline markdown tokens (text, strong, em, codespan, links, math).
  */
 function walkInlineTokens(tokens: Token[], ctx: InlineWalkContext): string {
 	let result = "";

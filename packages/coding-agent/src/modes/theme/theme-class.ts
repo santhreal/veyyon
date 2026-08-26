@@ -124,11 +124,7 @@ const langMap: Record<string, SymbolKey> = {
 };
 
 /**
- * Brand colors for language icons, keyed by the resolved `lang.*` SymbolKey.
- * Used by {@link Theme.getLangIconStyled} so eval-kernel cell headers tint each
- * language with its recognizable hue (JS yellow, Ruby red, Julia purple, Python
- * blue) instead of a flat muted gray. Applied as truecolor/256 per the active
- * color mode; languages without an entry fall back to the muted theme color.
+ * Brand colors for language icons keyed by symbol key, used by {@link Theme.getLangIconStyled}.
  */
 const LANG_BRAND_COLORS: Partial<Record<SymbolKey, string>> = {
 	"lang.javascript": "#f7df1e",
@@ -147,11 +143,7 @@ export class Theme {
 	#symbols: SymbolMap;
 	#spinnerFramesOverrides: Partial<Record<SpinnerType, string[]>>;
 	/**
-	 * Perceptual luma (0..1) of the status-line background — used to classify the
-	 * theme light/dark. Undefined when it can't be resolved. Classified against the
-	 * status line (the surface session accents render on) rather than the chat bubble
-	 * (`userMessageBg`), which some themes (e.g. `porcelain`) style dark on an
-	 * otherwise-light theme.
+	 * Perceptual luma (0..1) of the status-line background used to classify the theme as light/dark.
 	 */
 	readonly statusLineLuminance: number | undefined;
 	/** WCAG relative luminance of the status-line background — basis for accent contrast. */
@@ -243,43 +235,21 @@ export class Theme {
 	}
 
 	/**
-	 * The theme's terminal ground color as `#RRGGBB`, or undefined when the theme
-	 * declares none. The painted-ground consumer (`tui.paintGround`) uses this as
-	 * the OSC 11 background color; a theme without a ground returns undefined and
-	 * the consumer inherits the terminal's own background rather than inventing a
-	 * color the theme never chose.
+	 * The theme's terminal ground color as `#RRGGBB`, or undefined when none declared.
 	 */
 	getGroundHex(): string | undefined {
 		return this.#groundHex;
 	}
 
 	/**
-	 * The ground an animation resolves a color OUT OF: the declared ground when the
-	 * theme has one, else the extreme of its appearance.
-	 *
-	 * Distinct from {@link getGroundHex}, and the difference is which answer is
-	 * safe. Painting the terminal background with a color the theme never declared
-	 * would leave the operator's terminal recolored, so that consumer takes the
-	 * undefined. An animation cannot use undefined — it needs a color to mix from
-	 * for one frame — and black or white by appearance is the neutral choice, never
-	 * the terminal's own reported background, which is how a fade acquires a hue
-	 * the theme has nothing to do with.
+	 * Ground color an animation resolves out of: declared ground or extreme black/white.
 	 */
 	getResolvedGroundHex(): string {
 		return this.#groundHex ?? (this.isLight ? "#ffffff" : "#000000");
 	}
 
 	/**
-	 * The ground a row VISIBLY sits on: what this process painted, else what the
-	 * terminal reported, else {@link getResolvedGroundHex}.
-	 *
-	 * Anything asking "can a reader separate this color from the background" has
-	 * to ask this one and not the declared ground, and the difference is not
-	 * academic: titanium declares black, `tui.paintGround: auto` refuses to paint
-	 * black onto a grey terminal, so a check against the declared ground clears a
-	 * color the operator cannot see. Measured off a real recording — `borderMuted`
-	 * `#202329` reads as visible against black and vanishes on the `#1e2127` the
-	 * terminal actually had.
+	 * Ground color a row visibly sits on: painted ground, terminal-reported, or resolved ground.
 	 */
 	visibleGroundHex(): string {
 		return getVisibleGround() ?? this.getResolvedGroundHex();
@@ -358,14 +328,7 @@ export class Theme {
 	}
 
 	/**
-	 * A background band in a hex an animation computed, rather than one of the
-	 * theme's named backgrounds. Degradation is the same as {@link bg}: the color
-	 * goes through the theme's own color mode, so a 256-color terminal gets the
-	 * nearest index and a mono one gets no band at all.
-	 *
-	 * The caller owns the color. This exists because a fading band's color is not
-	 * a theme color — it is a mix of one with whatever it sits on — and the
-	 * alternative was every animated surface writing its own `48;2;r;g;b`.
+	 * Renders a background band using a computed hex color, respecting the active color mode.
 	 */
 	bgHex(hex: string, text: string): string {
 		if (!colorEnabled()) return text;
@@ -373,16 +336,7 @@ export class Theme {
 	}
 
 	/**
-	 * The foreground SGR — the opening sequence alone — for a hex an animation
-	 * computed. The {@link bgHex} argument in the foreground: the colour of a
-	 * moving highlight is a mix of a theme colour with white, not a theme colour,
-	 * and the alternative is every animated surface writing its own
-	 * `38;2;r;g;b`.
-	 *
-	 * Only the open, because the one caller replaces the colour of a cell in a row
-	 * that already carries the matching reset. Returns `""` when colour is off, so
-	 * a caller can tell that there is nothing to paint with and leave the row
-	 * alone rather than emit a bare glyph.
+	 * Foreground SGR opening sequence for a computed hex color, or `""` when color is disabled.
 	 */
 	fgHexAnsi(hex: string): string {
 		if (!colorEnabled()) return "";
@@ -430,14 +384,7 @@ export class Theme {
 	}
 
 	/**
-	 * Foreground ANSI for text drawn **on top of** `fillColor` used as a solid
-	 * background (e.g. a powerline chip). Picks near-black or near-white by the
-	 * fill's perceived luminance (Rec. 601 luma) so the label stays legible on
-	 * both bright and dark fills, across light and dark themes.
-	 *
-	 * Reads the RGB out of the already-resolved truecolor escape; when the fill
-	 * is encoded as a 256-palette index (limited terminals) the RGB is
-	 * unavailable, so it falls back to the theme `text` color.
+	 * High-contrast foreground ANSI for text drawn on top of a solid fill color.
 	 */
 	getContrastFgAnsi(fillColor: ThemeColor): string {
 		const ansi = this.#fgColors[fillColor];
@@ -728,27 +675,14 @@ export class Theme {
 	}
 
 	/**
-	 * The glyphs a bar is drawn from under the active symbol preset.
-	 *
-	 * One accessor rather than each bar reading the preset itself, for the same
-	 * reason `getSpinnerFrames` exists: the six surfaces that draw a bar have to
-	 * agree, and `ascii` has to reach all six or it reaches none.
+	 * Sub-cell bar ramp glyphs under the active symbol preset.
 	 */
 	getBarRamp(): SubCellBarRamp {
 		return BAR_RAMPS[this.symbolPreset];
 	}
 
 	/**
-	 * The badge for a language, or the empty string when the preset has none.
-	 *
-	 * AN EMPTY GLYPH IS AN ANSWER, not a hole to patch. This used to resurrect a blank
-	 * per-language glyph as `lang.default`, so the unicode preset — where every language is
-	 * deliberately blank — badged every file in the product with `⌘`, the Command mark, and
-	 * an Edit header read `⌘ packages/tui/src/box.ts`. The same mark on every row carries no
-	 * information and costs two columns of a header that truncates its path to fit.
-	 *
-	 * Callers therefore have to cope with `""` by omitting the separator they would have put
-	 * after it, which is the one thing the fallback was hiding.
+	 * Language badge glyph from the active preset, or `""` if none defined.
 	 */
 	getLangIcon(lang: string | undefined): string {
 		if (!lang) return this.#symbols["lang.default"];
@@ -757,13 +691,7 @@ export class Theme {
 	}
 
 	/**
-	 * The muted language badge AND the space after it, or `""` when the preset has none.
-	 *
-	 * Every header that puts a badge before a path wants exactly this, and each one used to
-	 * build it itself as `${icon} ${path}`. With a preset that has no glyph for the language
-	 * that leaves a leading space before the path, so the fix for the universal `⌘` badge
-	 * would have traded one cosmetic defect for another on four surfaces. The separator
-	 * belongs to the badge.
+	 * Muted language badge with trailing space, or `""` when the preset has no badge.
 	 */
 	langBadge(lang: string | undefined): string {
 		const icon = this.getLangIcon(lang);

@@ -1,9 +1,5 @@
 /**
- * The `/providers` account manager: a fullscreen ModalShell LARGE card whose sidebar lists every provider
- * and whose body lists that provider's ACCOUNTS. One row per CREDENTIAL (not provider) — the thing you
- * switch, name and log out. Switching is per-provider (main model, subagent roles, web search all serve
- * one session). Geometry/focus/rename/logout/mouse live here; wording in `account-manager-rows.ts`,
- * account model in `session/account-inventory.ts`. Never reads `AuthStorage`, never prints a token.
+ * The /providers account manager card for switching, renaming, and managing provider credentials.
  */
 import { getOAuthProviders } from "@veyyon/ai/oauth";
 import {
@@ -59,19 +55,11 @@ const NOTE_MAX_LINES = 3;
 const SIDEBAR_MIN_WIDTH = 20;
 const SIDEBAR_MAX_WIDTH = 30;
 /**
- * Rows the sidebar spends below its provider list: a blank gap, a rule, and the account tally.
- *
- * The provider list is therefore SHORTER than the split, and everything that maps a screen row
- * to a provider has to agree about by how much — see {@link AccountManagerComponent.sidebarListRows}.
+ * Rows the sidebar allocates below its provider list for separator rule and summary tally.
  */
 const SIDEBAR_SUMMARY_ROWS = 3;
-
 /**
- * The keystroke each clickable footer chip stands for.
- *
- * Clicking a chip replays that key through {@link AccountManagerComponent.handleInput}, so the
- * mouse path has no logic of its own: `x` still arms before it logs out, `enter` still submits an
- * open rename, and a chip can never do something the key beside it does not.
+ * Key mapping for clickable footer shortcut chips.
  */
 const SHORTCUT_KEYS: Record<string, string> = {
 	confirm: "\r",
@@ -91,11 +79,6 @@ export interface AccountManagerCallbacks {
 	onRename: (row: AccountRow, name: string) => void;
 	/**
 	 * Re-probe one account, or the whole provider when no row is selected.
-	 *
-	 * Row-scoped because the probe costs a network round-trip PER CREDENTIAL, sequentially: on a
-	 * nine-account provider, asking about the row under the cursor made the user wait behind eight
-	 * accounts they did not ask about. `row` is absent only from the add entry, which has no
-	 * credential to probe, and then the provider's accounts are all there is to refresh.
 	 */
 	onRefresh: (provider: string, row?: AccountRow) => void;
 	/** Remove this credential from the store. Destructive; the card confirms first. */
@@ -105,22 +88,11 @@ export interface AccountManagerCallbacks {
 	/** Start a login that adds another account for this provider. */
 	onAddAccount: (provider: string) => void;
 	/**
-	 * Flip `accounts.loadBalancing` and return its new value.
-	 *
-	 * On the card because the setting decides what happens when the account on screen runs out of
-	 * quota, and sending the user to `/settings` to answer that question loses the context they
-	 * are looking at. Returns the value actually stored, so a write the settings layer refuses
-	 * cannot leave the footer claiming a state the config does not have.
+	 * Toggle accounts.loadBalancing and return the updated value.
 	 */
 	onToggleLoadBalancing: () => boolean;
 	/**
-	 * Lift the rate-limit block this card is showing on one account, and re-probe it.
-	 *
-	 * The block is this product's own prediction of when a provider will serve again, and the
-	 * provider can lift a limit by routes this process never sees: a reset redeemed on the
-	 * provider's own site, a plan change, a support credit. Nothing but time cleared one, so the
-	 * account the operator chose stayed unusable behind a countdown while the provider would have
-	 * served it, and routing preferred a sibling account over the choice they had made.
+	 * Lift the rate-limit block on one account and re-probe it.
 	 */
 	onClearRateLimitBlock: (row: AccountRow) => void;
 	onCancel: () => void;
@@ -132,20 +104,11 @@ export interface AccountManagerOptions {
 	/** Repaint hook, for the reveal driver and for mouse-only state changes. */
 	requestRender?: () => void;
 	/**
-	 * Rows to size the card against, instead of reading the terminal.
-	 *
-	 * A piped render has no `process.stdout.rows`, so it falls back to a height nobody is looking
-	 * at, and the compact card that a short terminal produces is two columns WIDER than the
-	 * ordinary one. That is how a body line that overflows on a real terminal renders as fitting
-	 * in an image proof, which has happened here before.
-	 * Naming the height is what makes a proof reproduce the operator's card.
+	 * Explicit terminal row count to size the modal against.
 	 */
 	terminalHeight?: number;
 	/**
-	 * Current value of `accounts.loadBalancing`, for the footer chip and the scope line.
-	 *
-	 * Passed in rather than read here: this component owns no config, and a card that reached for
-	 * the settings singleton could not be rendered by a proof script or a test without one.
+	 * Current value of accounts.loadBalancing for the footer chip and scope line.
 	 */
 	loadBalancing?: boolean;
 }
@@ -178,15 +141,7 @@ export class AccountManagerComponent implements Component {
 	#activeProviderId = "";
 	#focus: "sidebar" | "body" = "body";
 	/**
-	 * Selection is keyed by CREDENTIAL id, never by index.
-	 *
-	 * The host calls {@link setInventory} whenever a health or usage probe lands, which can be
-	 * seconds after the card opened and while the user is arrowing through rows. An index-keyed
-	 * selection silently moves to a different account when a refresh reorders or drops a row —
-	 * and the next `x` would then log out an account the user never selected.
-	 *
-	 * The add-account entry has no credential, so the selection is a tagged union rather than a
-	 * nullable id: a provider you hold no accounts for still has one selectable entry.
+	 * Selected credential target, keyed by credential ID or the add-account action.
 	 */
 	#bodySelection: BodyTarget = { kind: "add" };
 
@@ -240,11 +195,7 @@ export class AccountManagerComponent implements Component {
 	}
 
 	/**
-	 * Replace the inventory in place, keeping the user where they were.
-	 *
-	 * Health and usage arrive over the network, so this runs mid-interaction. The active
-	 * provider and the selected credential survive; only a credential that has genuinely
-	 * disappeared from the store forces the selection to move.
+	 * Replace account inventory while preserving the user's active selection.
 	 */
 	setInventory(next: AccountInventory): void {
 		this.#inventory = next;
@@ -640,12 +591,7 @@ export class AccountManagerComponent implements Component {
 	}
 
 	/**
-	 * Rows the sidebar's provider list actually occupies, top-aligned in the split.
-	 *
-	 * One owner on purpose. The click router, the wheel clamp and the renderer each convert
-	 * between a screen row and a provider index, and when two of them recomputed `rows - 3`
-	 * independently a click on the summary block selected a provider scrolled out of view below
-	 * the fold, and the wheel could never reach the last three providers.
+	 * Number of rows available for the sidebar's provider list.
 	 */
 	#sidebarListRows(): number {
 		return Math.max(1, this.#splitRowCount - SIDEBAR_SUMMARY_ROWS);
@@ -707,13 +653,7 @@ export class AccountManagerComponent implements Component {
 	 */
 
 	/**
-	 * Wrap a warning across up to three body lines instead of truncating it.
-	 *
-	 * These notes are the ONE place a user learns what to do: a torn-down login's cause names the
-	 * remedy (`invalid_grant` means re-login, a 400 from the provider does not), and truncating it to
-	 * `oauth refresh failed:…` leaves exactly the half that says nothing. Bounded at three lines so a
-	 * pathological upstream body cannot push the account list off the card, with an ellipsis marking
-	 * that something was dropped rather than pretending the text ended.
+	 * Wrap warning text across up to NOTE_MAX_LINES with hanging indentation.
 	 */
 	#wrapNote(text: string, indent: string, width: number): string[] {
 		// Hanging indent: the content is wrapped at the REMAINING width and every line, continuation

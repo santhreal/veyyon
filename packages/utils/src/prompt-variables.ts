@@ -1,46 +1,7 @@
 /**
- * Static analysis of what a prompt template actually needs from its context.
- *
- * WHY THIS EXISTS. Templates compile with Handlebars `strict: false`, so an
- * unknown or misspelled variable renders as the empty string and nothing
- * complains: `render("dir={{working_dir}}", { workingDir: "/tmp" })` returns
- * `"dir="`. Nothing throws, nothing logs, and no test fails unless one happens
- * to assert the exact bytes. Rename a caller's field, or type `working_dir`
- * where the caller passes `workingDir`, and every user gets a silently shorter
- * prompt — a hole that is invisible in production and impossible to attribute
- * afterwards. That is Law 10 at the prompt layer: a template that cannot be
- * filled has to fail loudly rather than render a gap.
- *
- * WHY NOT JUST `strict: true`. Handlebars' own strict mode throws on any
- * missing path, including the ones that are missing ON PURPOSE. These templates
- * are built out of optional regions — `{{#if secretsEnabled}}`,
- * `{{#has tools "lsp"}}`, `{{#if skills.length}}` — whose whole job is to
- * disappear when the feature is off. Blanket strictness would turn every
- * disabled feature into a crash, so it is not usable here.
- *
- * THE DISTINCTION THAT MAKES THIS WORK is between the two ways a template can
- * name a variable:
- *
- *   - INTERPOLATED, as in `{{toolRefs.grep}}`. The name's value is written into
- *     the output. If it is absent the output has a hole in it, and that is
- *     ALWAYS a bug — there is no reading of `Regex search -> ``` where the
- *     empty backticks were intended.
- *   - CONDITIONAL, as in `{{#if secretsEnabled}}` or `{{default x "none"}}`.
- *     The name is only tested, never printed. Absent means false, which is a
- *     legitimate, designed state.
- *
- * So interpolated references are REQUIRED and conditional ones are OPTIONAL,
- * and that split is derived from the template body rather than declared by
- * hand. Nothing to keep in sync, and it stays correct when a template is
- * edited — which is the same reason the section registry derives its override
- * keys instead of restating them.
- *
- * GUARDING is the third case and the reason a naive version of this would be
- * unusable. `{{#if personality}}{{personality}}{{/if}}` interpolates a name
- * that is explicitly optional; the enclosing conditional is the author saying
- * so. A reference is therefore required only when it is interpolated OUTSIDE
- * any block that tests it. This is what lets the analysis run over the real
- * templates, which are built almost entirely out of guarded regions.
+ * Static analysis of what a prompt template requires from its context.
+ * Identifies interpolated (required) vs conditional (optional) variables
+ * and checks guarded expressions so missing variables fail loudly.
  */
 import Handlebars from "handlebars";
 import { levenshteinDistance } from "./levenshtein";
@@ -55,14 +16,8 @@ export interface TemplateVariable {
 	/** Every full dotted path seen for this root, e.g. `toolRefs.grep`. */
 	readonly paths: readonly string[];
 	/**
-	 * Conditions under which the name is actually printed, as sets of other
-	 * roots that must all be truthy. Empty array means unconditional.
-	 *
-	 * `{{#if intentTracing}}{{intentField}}{{/if}}` makes `intentField` required
-	 * only when tracing is on, and a check that ignored that would fail every
-	 * caller who has the feature switched off — which is most of them. A name
-	 * interpolated in several places gets one entry per place, and satisfying
-	 * ANY of them makes it required, because any one of them can render.
+	 * Conditions under which the name is printed, as sets of truthy roots.
+	 * Empty array means unconditional.
 	 */
 	readonly requiredWhen: readonly (readonly string[])[];
 }
@@ -75,22 +30,13 @@ export interface TemplateVariables {
 }
 
 /**
- * Block helpers that evaluate their body against a NEW context.
- *
- * Inside these, a bare `{{name}}` reads a field of the item being iterated, not
- * of the root context, so attributing it to the root would invent a required
- * variable that no caller could ever satisfy. Kept in step with the helper
- * definitions in `prompt.ts`: each of these calls `options.fn(item)` with
- * something other than `this`.
+ * Block helpers that evaluate their body against a new context.
+ * Bare references inside read iterated items rather than the root context.
  */
 const RESCOPING_BLOCKS: ReadonlySet<string> = new Set(["each", "with", "list", "table"]);
 
 /**
- * Helpers whose FIRST path argument guards whatever their body interpolates.
- *
- * `unless` is deliberately absent: its body runs when the argument is falsy, so
- * a name interpolated inside is not protected by the test above it — if
- * anything it is the opposite.
+ * Helpers whose first path argument guards whatever their body interpolates.
  */
 const GUARDING_HELPERS: ReadonlySet<string> = new Set([
 	"if",
@@ -155,14 +101,7 @@ function isSubExpression(node: Node | undefined): node is Node & SubExpressionNo
 }
 
 /**
- * The context root a path expression reads, or null when it reads something
- * that is not the context (a literal, a builtin, an `@data` variable).
- *
- * `depth` counts `../` hops. A path that climbs out of the current scope is
- * reaching for an outer context, and since only the root scope is tracked
- * precisely, any climb is attributed to the root — the conservative direction,
- * because a missed attribution loses a check while a wrong one invents a
- * requirement that fails the build.
+ * Resolves the context root for a path expression, attributing climbs to the root scope.
  */
 function contextRoot(path: PathExpressionNode): string | null {
 	if (path.data) {
@@ -178,13 +117,7 @@ function contextRoot(path: PathExpressionNode): string | null {
 
 export interface AnalyzeOptions {
 	/**
-	 * Names registered as helpers on the instance that will render this template.
-	 *
-	 * Required rather than read off the global Handlebars, because `prompt.ts`
-	 * renders on a PRIVATE instance (`Handlebars.create()`) carrying ~20 helpers
-	 * the global does not have. Reading the wrong registry would misread a
-	 * zero-argument helper mustache as a context variable and demand a caller
-	 * supply it.
+	 * Helpers registered on the template instance to distinguish helper calls from variables.
 	 */
 	readonly helperNames?: Iterable<string>;
 }
@@ -308,13 +241,7 @@ function dedupeGuardSets(sets: readonly (readonly string[])[]): readonly (readon
 }
 
 /**
- * Handlebars' own notion of truth, which is what the guard actually tested.
- *
- * It differs from JavaScript's in the case that matters most here: an EMPTY
- * ARRAY is falsy to `{{#if}}`, and the templates lean on that constantly
- * (`{{#if skills.length}}`, `{{#if toolInfo.length}}`). Using `!!value` would
- * treat "no skills" as "skills present" and demand a variable that the block
- * will never reach.
+ * Tests Handlebars truthiness, where empty arrays are falsy for conditional blocks.
  */
 function isTruthyGuard(value: unknown): boolean {
 	if (value === undefined || value === null || value === false) return false;
@@ -324,11 +251,7 @@ function isTruthyGuard(value: unknown): boolean {
 }
 
 /**
- * Raised when a template would render a hole.
- *
- * Carries the variable, the exact paths the template reads through it, and the
- * closest context key by edit distance, because the overwhelmingly common cause
- * is a rename or a typo and the fix is then obvious from the message alone.
+ * Raised when a template would render an empty hole due to missing required variables.
  */
 export class MissingTemplateVariableError extends Error {
 	readonly missing: readonly string[];
@@ -371,11 +294,7 @@ function closestKey(name: string, available: readonly string[]): string | undefi
 }
 
 /**
- * Every required variable of `template` that `context` fails to supply.
- *
- * `null` counts as missing alongside `undefined`: both render as the empty
- * string, so both leave the same hole, and a check that accepted `null` would
- * pass on exactly the case where an upstream lookup returned nothing.
+ * Returns required variables that the context fails to supply.
  */
 export function findMissingTemplateVariables(
 	template: string,
@@ -393,11 +312,7 @@ export function findMissingTemplateVariables(
 }
 
 /**
- * Throw unless `context` can fill every hole `template` would otherwise leave.
- *
- * `label` names the template in the message; pass the file path when there is
- * one, since a stack trace through the render machinery does not say which of
- * 143 templates failed.
+ * Throws MissingTemplateVariableError if context cannot satisfy all required variables.
  */
 export function assertTemplateContext(
 	template: string,

@@ -25,10 +25,6 @@ import { paintHotTail, shimmerPhase } from "./follow";
 
 /**
  * Max lines of a turn-ending provider error rendered inline in the transcript.
- * Bounds pathological error bodies — e.g. a proxy 502 whose body is a full HTML
- * page — so they can't flood the scrollback. Blank lines are dropped and each
- * line is width-truncated by {@link getPreviewLines}. Full text is still kept in
- * the persisted session.
  */
 const MAX_TRANSCRIPT_ERROR_LINES = 8;
 
@@ -53,12 +49,7 @@ function resolveThinkingDisplay(block: ThinkingContentBlock, proseOnly: boolean)
 }
 
 /**
- * Whether `text` contains a ` ```mermaid ` fence (open or closed) outside
- * ordinary code fences. Mermaid defers native-scrollback settling wholesale
- * (see {@link AssistantMessageComponent.getTranscriptBlockSettledRows}): its
- * ASCII rendering resolves asynchronously, so even a completed fence can
- * re-layout rows that already looked settled. Fence-aware so a mermaid
- * example inside a regular code block never triggers the deferral.
+ * Whether text contains a mermaid fence outside ordinary code blocks.
  */
 function containsMermaidFence(text: string): boolean {
 	let fence: string | null = null;
@@ -85,14 +76,7 @@ function containsMermaidFence(text: string): boolean {
 }
 
 /**
- * Frames for the streaming "thinking" pulse rendered in place of a hidden
- * thinking block while the model is still producing it. The theme's symbol
- * system owns the glyphs (`theme.getSpinnerFrames("thinking")`): a fixed-width
- * starburst cycling through facets (✻ ✼ ❉ …) on unicode/nerd presets, a single
- * static `*` on ascii (one frame ⇒ no animation timer). The dwell per frame
- * eases between {@link THINKING_DOTS_FRAME_MS_MIN} and
- * {@link THINKING_DOTS_FRAME_MS_MAX} across each revolution (see
- * {@link AssistantMessageComponent.thinkingDotsFrameDelay}).
+ * Frames for the animated thinking pulse rendered while reasoning is hidden.
  */
 function thinkingPulseFrames(): readonly string[] {
 	return theme.getSpinnerFrames("thinking");
@@ -117,14 +101,7 @@ const SPEED_WINDOW_MS = 3000;
 const SPEED_MAX = 200;
 
 /**
- * Session-wide streaming-speed gauge. Only one thinking indicator animates at a
- * time, so a single shared instance accumulates instantaneous tok/s observations
- * and reports their windowed average — smoothing the jumpy per-delta numbers.
- * Each thinking block resets the gauge on its first live sample (see
- * {@link AssistantMessageComponent.updateContent}) so the average reflects only
- * the active block, never a previous turn's trailing rate. Components feed it
- * deltas (not cumulative totals), so a fresh turn restarting its token count at
- * zero never produces a spike.
+ * Session-wide streaming speed gauge reporting windowed-average tok/s.
  */
 class SpeedTracker {
 	#observations: Array<{ time: number; rate: number }> = [];
@@ -198,31 +175,15 @@ export class AssistantMessageComponent extends Container {
 	#kittyConversionsInFlight = new Set<string>();
 	#transcriptBlockFinalized: boolean;
 	/**
-	 * True while any rendered item carries a ` ```mermaid ` fence. Mermaid's
-	 * ASCII form resolves asynchronously and can re-layout rows that already
-	 * looked settled, so settling defers until the message finalizes. See
-	 * {@link getTranscriptBlockSettledRows}. Recomputed in
-	 * {@link updateContent} ahead of the fast-path return, so it tracks every
-	 * stream tick. Streaming GFM tables need no gate: they live in markdown's
-	 * unfrozen tail while re-aligning and render deterministically once their
-	 * block completes.
+	 * True while any rendered item carries a mermaid fence, deferring settled row commits.
 	 */
 	#containsMermaidSource = false;
 	/**
-	 * When true, the turn-ending `Error: …` line for `stopReason === "error"` is
-	 * suppressed because the same error is currently shown in the pinned banner
-	 * above the editor (see `EventController` + `ErrorBannerComponent`). Avoids
-	 * rendering the identical error twice (inline + banner) at the error moment.
-	 * Restored to `false` when the banner is cleared at the next turn so the
-	 * transcript keeps the error in history.
+	 * Suppresses inline error rendering when the error is currently pinned in the banner.
 	 */
 	#errorPinned = false;
 	/**
-	 * Monotonic content version reported to the transcript container via
-	 * {@link getTranscriptBlockVersion}. Bumped by {@link updateContent} — the
-	 * choke point every mutator funnels through, including post-finalize changes
-	 * such as `setErrorPinned(false)` restoring the inline error at the next
-	 * turn's `agent_start`, late tool-result images, and async Kitty conversions.
+	 * Monotonic content version reported to transcript container for repaint invalidation.
 	 */
 	#blockVersion = 0;
 	/** Whether the last updateContent carried an in-flight streaming partial; such
@@ -368,12 +329,7 @@ export class AssistantMessageComponent extends Container {
 	}
 
 	/**
-	 * Whether to render the animated "thinking" pulse in place of the suppressed
-	 * reasoning: only while this block is still streaming (not yet finalized — the
-	 * in-flight message always carries `stopReason: "stop"`, so finalization is the
-	 * only reliable live signal), thinking is hidden, no tool call has started, and
-	 * the active tail block is a thinking block (the model is reasoning right now).
-	 * Once text starts, a tool call streams, or the block is sealed, the pulse ends.
+	 * Whether to render the animated thinking pulse in place of hidden reasoning.
 	 */
 	#shouldAnimateThinking(message: AssistantMessage): boolean {
 		if (!this.hideThinkingBlock || this.#transcriptBlockFinalized) return false;
@@ -495,17 +451,7 @@ export class AssistantMessageComponent extends Container {
 	}
 
 	/**
-	 * Settled leading rows for mid-stream native-scrollback commits (see
-	 * `FinalizableBlock.getTranscriptBlockSettledRows`). Completed content
-	 * blocks render in final form (non-transient) and settle in full; the
-	 * actively streaming markdown contributes its rendered frozen-token
-	 * prefix. The walk stops at the first child that is not declared
-	 * byte-stable (the animated thinking pulse, extension components, images,
-	 * error rows), and a cache-invalidation marker above the content defers
-	 * settling entirely. Mermaid anywhere defers wholesale — its ASCII
-	 * rendering resolves asynchronously and can re-layout settled-looking
-	 * rows. Reads only L1-cached child renders at the width recorded by this
-	 * frame's render().
+	 * Settled leading rows for mid-stream native-scrollback commits.
 	 */
 	getTranscriptBlockSettledRows(): number {
 		if (this.#transcriptBlockFinalized || !this.#lastUpdateTransient) return 0;
@@ -809,11 +755,7 @@ export class AssistantMessageComponent extends Container {
 	}
 
 	/**
-	 * Whether the tail row should carry the liquid accent glow this render:
-	 * only while the block is an in-flight streaming partial (`transient`) that
-	 * has not been finalized, and its newest content is streaming text/thinking
-	 * (a tool call ends the text segment — the glow must not linger on frozen
-	 * text while a tool card renders below it).
+	 * Whether the tail row should carry the liquid accent glow during streaming.
 	 */
 	#shouldPaintTrail(message: AssistantMessage): boolean {
 		if (!this.#lastUpdateTransient || this.#transcriptBlockFinalized) return false;

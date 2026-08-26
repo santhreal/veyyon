@@ -64,16 +64,6 @@ export function boundedTodoPreviewText(text: string, maxWidth: number): string {
 
 /**
  * Emit todo preview rows against one shared aggregate budget.
- *
- * Every surface that projects the board for a reader needs the same three
- * caps: {@link TODO_ITEM_PREVIEW_WIDTH} per row, {@link TODO_TOTAL_PREVIEW_WIDTH}
- * across all rows, and a `… N more` tail naming what was withheld. It was
- * open-coded per surface, and the copy in the stop-time continuation reminder's
- * full-list echo applied only the per-row cap, so 300 open items rendered
- * 52,077 characters into the context window that had just been compacted.
- *
- * Callers own the row cap ({@link TODO_REMINDER_PREVIEW_LIMIT}) and the tail
- * wording, because those differ per surface; the budget arithmetic does not.
  */
 export function createBoundedTodoPreview(
 	totalWidth: number = TODO_TOTAL_PREVIEW_WIDTH,
@@ -182,26 +172,13 @@ export interface TodoToolDetails {
 	completedTasks?: TodoCompletionTransition[];
 	telemetry?: TodoTaskTelemetry;
 	/**
-	 * Non-fatal adjustments the tool made to a write that LANDED. Present only
-	 * when the applied board differs in structure from what the caller sent.
-	 * Never a failure: a result carrying notes has `isError` unset and the new
-	 * board in `phases`.
+	 * Non-fatal adjustments the tool made to an applied write.
 	 */
 	notes?: string[];
 }
 
 /**
- * The two OUTPUT channels of one todo operation. They are a single object with
- * two named arrays, rather than two `string[]` parameters, so a call site
- * cannot pass the wrong one: it writes `report.errors` or `report.notes` and
- * the name says which contract it is invoking.
- *
- * `errors` is fatal. Any entry discards the whole batch and the board is left
- * exactly as it was, so nothing the caller sent took effect.
- *
- * `notes` is not. The batch was applied; a note describes how the applied
- * result differs from the literal request. Silently returning a different board
- * than the one requested is the defect class this channel exists to close.
+ * Output channels of a todo operation: fatal errors and non-fatal notes.
  */
 export interface TodoOpReport {
 	errors: string[];
@@ -220,11 +197,7 @@ const InitListEntry = type({
 });
 
 /**
- * Compatibility shape: models trained on the Claude/Cursor `TodoWrite` tool
- * emit a whole-board write (`{ merge, todos: [{ id, content, status }] }`)
- * instead of a single `{ op, ... }`. Accepting it here is what makes that call
- * land; the alternative was validating clean and then silently resolving to a
- * read-only `view`, so a completed board never got written.
+ * Compatibility shape for Claude/Cursor TodoWrite whole-board writes.
  */
 const TodoWriteEntry = type({
 	"id?": type("string").describe("caller-side item id; veyyon keys tasks by content and ignores it"),
@@ -234,23 +207,7 @@ const TodoWriteEntry = type({
 });
 
 /**
- * `op` names the operation and is required for every call EXCEPT the
- * compatibility whole-board write, which carries `todos` and no `op` at all.
- *
- * The requirement is a `.narrow()` rather than a required property because the
- * two shapes have to live in ONE object: a top-level ArkType union converts to
- * `anyOf`, and `buildAnthropicBaseToolInputSchema` reads `properties` off the
- * root, so a union would advertise the tool as an object with no fields at all.
- *
- * Declaring `op` plainly optional and leaving the requirement to the executor is
- * what shipped in 1.1.0, and it made the schema lie: `{"task":"Scaffold"}`
- * validated clean, because a missing optional field is legal and an undeclared
- * key is not refused for an ArkType-authored tool, and the executor then
- * answered `Missing op` — naming a field the call had just been told it could
- * leave out, with the repair layer reporting the same call `clean`. Three layers
- * declined to act and the model retried the identical payload. The refusal
- * belongs at validation, which is the layer the repair loop and the model-facing
- * error path are built around.
+ * Todo tool schema. Requires op for single operations, or todos for compat whole-board writes.
  */
 const todoSchema = type({
 	"op?": TodoOp,
@@ -294,17 +251,7 @@ type TodoTaskMatch =
 	| { kind: "ambiguous"; candidates: string[] };
 
 /**
- * Resolve a task by content: exact text first, then a normalized comparison
- * ({@link normalizeForTodoMatch}: lowercased, punctuation and whitespace runs
- * collapsed to single spaces).
- *
- * Content is the only task identity the tool has, and it is free text the model
- * retypes from an earlier result. A trailing period, a capitalized first word,
- * or an en dash where a hyphen was is enough to miss exact equality, and a miss
- * is not a soft failure: the whole op batch is discarded and the board write is
- * lost. Two tasks whose normalized text is equal are reported as ambiguous
- * rather than resolved to the first, because no op could ever address the
- * second one.
+ * Resolve a task by content: exact text first, then normalized comparison.
  */
 function matchTaskByContent(phases: TodoPhase[], content: string): TodoTaskMatch {
 	for (const phase of phases) {
@@ -609,17 +556,7 @@ function normalizeForTodoMatch(value: string): string {
 }
 
 /**
- * Report whether `content` likely names the same work as any entry in
- * `descriptions`. Used by the sticky todo panel to light up a pending todo
- * when an in-flight subagent is doing the work for it, without requiring
- * the caller to flip the todo's status.
- *
- * Matching is normalize-then-equal first (lowercased; punctuation and
- * whitespace runs both collapsed to a single space; trimmed), with a
- * substring fallback in either direction so minor wording drift
- * ("Sonnet #2: bug scan" vs "Sonnet #2") still links up. The substring
- * fallback requires at least {@link TODO_DESCRIPTION_MIN_OVERLAP} chars on
- * the contained side.
+ * Report whether content likely matches any entry in descriptions.
  */
 export function todoMatchesAnyDescription(content: string, descriptions: readonly string[]): boolean {
 	const target = normalizeForTodoMatch(content);
@@ -877,36 +814,7 @@ function applyEntry(phases: TodoPhase[], entry: TodoOpEntryValue, report: TodoOp
 }
 
 /**
- * `op` is REQUIRED by the schema, so there is nothing to normalize: a call that
- * omits it, or names it something the schema does not declare, is refused by
- * `validateToolArguments` before `execute` runs.
- *
- * It was optional for one release, to let a Claude/Cursor `TodoWrite` payload
- * (which carries `todos` and no `op`) validate. That traded one accepted shape
- * for a schema that lied about every other one: `{"task":"Scaffold"}` and
- * `{"operation":"start","task":"Scaffold"}` both validated clean, because a
- * missing optional field is legal and an undeclared key is not refused for an
- * ArkType-authored tool, and then the executor answered `Missing op` — a
- * contradiction of the shape the model had just been told was valid, with no
- * field named that the model could correct. The repair layer could not help
- * either: it reported `clean` on a payload that could not execute. A required
- * `op` puts the refusal back where the model can act on it, and
- * `COMMON_KEY_ALIASES` renames `operation`/`action` onto it.
- */
-
-/**
- * Translate a Claude/Cursor `TodoWrite` whole-board write into the ordered
- * `{op,...}` batch veyyon applies, plus the notes describing any adjustment
- * made to what the caller sent.
- *
- * Items are keyed by `content`, not by the caller's `id`: content is already
- * veyyon's task identity (every op targets `task`), and the incoming ids come
- * from the caller's own board, which this session never stored. The caller's
- * `id` and `activeForm` are therefore read and dropped.
- *
- * `merge: false` replaces the board, so the batch opens with an `init` holding
- * every incoming item. Otherwise the batch opens with an `append` for the
- * items the board does not already carry, then applies each item's status.
+ * Translate a Claude/Cursor TodoWrite whole-board write into an ordered op batch.
  */
 export function adaptTodoWriteBatch(
 	params: TodoSchema,
@@ -1107,16 +1015,7 @@ export function markdownToPhases(md: string): { phases: TodoPhase[]; errors: str
 }
 
 /**
- * The tally every summary ends with. `done` is the COMPLETED count and nothing
- * else. A dropped task is closed, so it leaves the open count — but reporting it
- * as done claims work happened that did not, and `drop` on one of six tasks read
- * `Dropped: Add error handling. … Overall: 2/6 done, 4 open.` on one line, where
- * the only 2 the board could show was one completion and one abandonment.
- *
- * `done + dropped + open === total` for any status the vocabulary grows: open is
- * the complement of terminal, and dropped is terminal minus completed. A new
- * terminal status therefore lands in `dropped` rather than being absorbed into
- * `done`, which is the direction that cannot lie about progress.
+ * Formats the overall completion tally (done / total done, open).
  */
 function formatOverall(tasks: readonly TodoItem[]): string {
 	const done = countWhere(tasks, task => task.status === "completed");
@@ -1510,20 +1409,7 @@ function strikeRevealCount(text: string, frame: number | undefined): number | un
 }
 
 /**
- * A task's text with the completion strike swept across it, `frame` frames in.
- *
- * The sweep is the one gesture that says a task closed, and both surfaces that
- * draw a closed task run it: the transcript card and the anchored board above
- * the composer. It lives here because it is a property of the TASK rather than
- * of either renderer, and because the board's copy of it drifted the moment
- * there were two — the board slammed the whole strike on in one frame while the
- * card swept it, so the same completion looked like two different events
- * depending on which surface the eye was on.
- *
- * `undefined` is the settled state: fully struck, no animation owed. A frame
- * past {@link TODO_STRIKE_TOTAL_FRAMES} is the same thing, so a caller that
- * keeps counting past the window converges on the static bytes instead of
- * wrapping back to the start of the sweep.
+ * Renders task text with the completion strike swept across it.
  */
 export function todoStrikeReveal(text: string, frame: number | undefined): string {
 	const revealCount = strikeRevealCount(text, frame);
