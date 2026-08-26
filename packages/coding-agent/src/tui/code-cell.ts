@@ -2,7 +2,8 @@
  * Render a code or markdown cell with optional output section.
  */
 
-import { Markdown } from "@veyyon/tui";
+import { Markdown } from "@veyyon/tui/components/markdown";
+import { padding } from "@veyyon/tui/utils";
 // Owners, not the `@veyyon/utils` barrel: 1 module against 74.
 import { formatCount } from "@veyyon/utils/format";
 import { highlightCode } from "../modes/theme/highlight";
@@ -124,13 +125,24 @@ function formatHeader(options: CodeCellOptions, theme: Theme): { title: string; 
  * Splits on `\n` and returns the cleaned lines.
  */
 function sanitizeTerminalLines(text: string): string[] {
-	return text.split(/\r?\n/).map(collapseCarriageReturns);
+	const lines: string[] = [];
+	let start = 0;
+	for (let i = 0; i <= text.length; i++) {
+		if (i === text.length || text.charCodeAt(i) === 0x0a) {
+			let segment = text.slice(start, i);
+			// Strip a trailing \r (from \r\n) — \r\n was split on \n, leaving \r at end
+			if (segment.length > 0 && segment.charCodeAt(segment.length - 1) === 0x0d) {
+				segment = segment.slice(0, -1);
+			}
+			// Within a line, \r acts as cursor-return overwrite: keep only the final segment
+			const crIdx = segment.lastIndexOf("\r");
+			lines.push(crIdx >= 0 ? segment.slice(crIdx + 1) : segment);
+			start = i + 1;
+		}
+	}
+	return lines;
 }
 
-function collapseCarriageReturns(line: string): string {
-	const idx = line.lastIndexOf("\r");
-	return idx < 0 ? line : line.slice(idx + 1);
-}
 export function renderCodeCell(options: CodeCellOptions, theme: Theme): string[] {
 	const {
 		code,
@@ -160,12 +172,17 @@ export function renderCodeCell(options: CodeCellOptions, theme: Theme): string[]
 	if (codeLineNumbers) {
 		visibleLineNumbers = codeLineNumbers.slice(startIndex, startIndex + maxCodeLines);
 	} else if (codeStartLine !== undefined) {
-		visibleLineNumbers = Array.from({ length: maxCodeLines }, (_, i) => codeStartLine + startIndex + i);
+		const nums = new Array<number>(maxCodeLines);
+		for (let i = 0; i < maxCodeLines; i++) nums[i] = codeStartLine + startIndex + i;
+		visibleLineNumbers = nums;
 	}
 
 	if (visibleLineNumbers) {
-		const validLineNums = visibleLineNumbers.filter((n): n is number => n !== null && n !== undefined);
-		const maxVal = validLineNums.length > 0 ? Math.max(...validLineNums) : 0;
+		let maxVal = 0;
+		for (let i = 0; i < visibleLineNumbers.length; i++) {
+			const n = visibleLineNumbers[i];
+			if (n !== null && n !== undefined && n > maxVal) maxVal = n;
+		}
 		if (maxVal > 0) {
 			lineNumberWidth = Math.max(2, String(maxVal).length);
 		}
@@ -177,14 +194,14 @@ export function renderCodeCell(options: CodeCellOptions, theme: Theme): string[]
 			const gutter =
 				lineNum !== null && lineNum !== undefined
 					? String(lineNum).padStart(lineNumberWidth, " ")
-					: " ".repeat(lineNumberWidth);
+					: padding(lineNumberWidth);
 			codeLines[i] = theme.fg("dim", `${gutter} `) + codeLines[i];
 		}
 	}
 
 	if (hiddenCodeLines > 0) {
 		const hint = formatExpandHint(theme, expanded, hiddenCodeLines > 0);
-		const gutterPad = lineNumberWidth > 0 ? " ".repeat(lineNumberWidth + 1) : "";
+		const gutterPad = lineNumberWidth > 0 ? padding(lineNumberWidth + 1) : "";
 		if (tail) {
 			// Earlier rows scrolled above the live tail window — mark them on top so
 			// the newest streamed line stays pinned to the bottom of the box.
@@ -200,10 +217,10 @@ export function renderCodeCell(options: CodeCellOptions, theme: Theme): string[]
 	if (output?.trim()) {
 		const rawLines = sanitizeTerminalLines(output);
 		const maxLines = Math.min(rawLines.length, expanded ? EXPANDED_MAX_LINES : outputMaxLines);
-		const displayLines = rawLines
-			.slice(0, maxLines)
-			.map(line => (line.includes("\x1b[") ? replaceTabs(line) : theme.fg("toolOutput", replaceTabs(line))));
-		outputLines.push(...displayLines);
+		for (let i = 0; i < maxLines; i++) {
+			const line = rawLines[i]!;
+			outputLines.push(line.includes("\x1b[") ? replaceTabs(line) : theme.fg("toolOutput", replaceTabs(line)));
+		}
 		const remaining = rawLines.length - maxLines;
 		if (remaining > 0) {
 			const hint = formatExpandHint(theme, expanded, remaining > 0);
@@ -268,10 +285,10 @@ export function renderMarkdownCell(options: MarkdownCellOptions, theme: Theme): 
 	if (output?.trim()) {
 		const rawLines = sanitizeTerminalLines(output);
 		const maxLines = Math.min(rawLines.length, expanded ? EXPANDED_MAX_LINES : outputMaxLines);
-		const displayLines = rawLines
-			.slice(0, maxLines)
-			.map(line => (line.includes("\x1b[") ? replaceTabs(line) : theme.fg("toolOutput", replaceTabs(line))));
-		outputLines.push(...displayLines);
+		for (let i = 0; i < maxLines; i++) {
+			const line = rawLines[i]!;
+			outputLines.push(line.includes("\x1b[") ? replaceTabs(line) : theme.fg("toolOutput", replaceTabs(line)));
+		}
 		const remaining = rawLines.length - maxLines;
 		if (remaining > 0) {
 			const hint = formatExpandHint(theme, expanded, remaining > 0);
