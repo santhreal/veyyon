@@ -378,13 +378,9 @@ async function ensureToolBridge(options: RubyExecutorOptions): Promise<void> {
 }
 
 /**
- * Run one cell on a kernel that exists only for it.
- *
- * Nothing carries over: no variable an earlier cell defined, no `require` it performed, no monkey patch.
- * That is the point of `per-call`, and it is why the kernel is shut down in a `finally` -- a leaked
- * kernel would keep a Ruby process alive for the rest of the session, which is the opposite of what the
- * user asked for. The shutdown failure is swallowed deliberately: the cell's result is what the caller
- * asked for, and turning a shutdown hiccup into a failed eval would lose it.
+ * Run one cell on a kernel that exists only for it. Nothing carries over — that's the point of
+ * `per-call`. Kernel is shut down in `finally` (a leak keeps Ruby alive for the session). Shutdown
+ * failure is swallowed: the cell result is what the caller asked for.
  */
 async function executePerCall(code: string, cwd: string, options: RubyExecutorOptions): Promise<RubyResult> {
 	if (options.bridge && !options.bridgeSessionId) {

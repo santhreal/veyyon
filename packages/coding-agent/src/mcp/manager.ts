@@ -341,7 +341,7 @@ export class MCPManager {
 		for (const [name, connection] of this.#connections) {
 			const uris = this.#subscribedResources.get(name);
 			if (uris && uris.size > 0) {
-				void unsubscribeFromResources(connection, Array.from(uris)).catch(error => {
+				void unsubscribeFromResources(connection, [...uris]).catch(error => {
 					logger.debug("Failed to unsubscribe MCP resources", { path: `mcp:${name}`, error });
 				});
 			}
@@ -633,7 +633,7 @@ export class MCPManager {
 		return {
 			tools: allTools,
 			errors,
-			connectedServers: Array.from(connectedServers),
+			connectedServers: [...connectedServers],
 			exaApiKeys: [], // Will be populated by discoverAndConnect
 		};
 	}
@@ -815,16 +815,14 @@ export class MCPManager {
 	 * Get all connected server names.
 	 */
 	getConnectedServers(): string[] {
-		return Array.from(this.#connections.keys());
+		return [...this.#connections.keys()];
 	}
 
 	/**
 	 * Get all known server names (connected, connecting, or discovered).
 	 */
 	getAllServerNames(): string[] {
-		return Array.from(
-			new Set([...this.#sources.keys(), ...this.#connections.keys(), ...this.#pendingConnections.keys()]),
-		);
+		return [...new Set([...this.#sources.keys(), ...this.#connections.keys(), ...this.#pendingConnections.keys()])];
 	}
 
 	/**
@@ -845,7 +843,7 @@ export class MCPManager {
 		if (subscribedUris && subscribedUris.size > 0 && connection) {
 			// The connection is disconnected a few lines below, which drops every subscription with it, so an
 			// unsubscribe that fails costs nothing: it is a courtesy to the server, not state we still need.
-			void unsubscribeFromResources(connection, Array.from(subscribedUris)).catch(() => {});
+			void unsubscribeFromResources(connection, [...subscribedUris]).catch(() => {});
 		}
 		this.#subscribedResources.delete(name);
 
@@ -880,7 +878,7 @@ export class MCPManager {
 		for (const conn of this.#connections.values()) {
 			conn.transport.onClose = undefined;
 		}
-		const promises = Array.from(this.#connections.values()).map(conn => disconnectServer(conn));
+		const promises = [...this.#connections.values()].map(conn => disconnectServer(conn));
 		await Promise.allSettled(promises);
 
 		this.#pendingConnections.clear();
@@ -1187,7 +1185,7 @@ export class MCPManager {
 	 * Refresh tools from all servers.
 	 */
 	async refreshAllTools(): Promise<void> {
-		const promises = Array.from(this.#connections.keys()).map(name => this.refreshServerTools(name));
+		const promises = [...this.#connections.keys()].map(name => this.refreshServerTools(name));
 		await Promise.allSettled(promises);
 	}
 

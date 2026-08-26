@@ -452,15 +452,9 @@ async function ensureToolBridge(options: JuliaExecutorOptions): Promise<void> {
 }
 
 /**
- * Run one cell on a kernel that exists only for it.
- *
- * Nothing carries over: no binding an earlier cell made, no package it brought into scope. Julia pays
- * more for this than Ruby or Python do, because a fresh kernel recompiles what it loads, so `per-call` is
- * a deliberate trade of speed for a clean slate rather than a default.
- *
- * The kernel is shut down in a `finally`, or the process would outlive the call it was created for. A
- * shutdown failure is swallowed on purpose: the cell's result is what the caller asked for, and losing it
- * to a shutdown hiccup would be worse than a stray process the session cleanup also sweeps.
+ * Run one cell on a kernel that exists only for it. Nothing carries over. Julia pays more (fresh kernel
+ * recompiles what it loads), so `per-call` is a deliberate trade of speed for a clean slate. Kernel is
+ * shut down in `finally`; shutdown failure is swallowed (cell result is what the caller asked for).
  */
 async function executePerCall(code: string, cwd: string, options: JuliaExecutorOptions): Promise<JuliaResult> {
 	const kernel = await startKernel(cwd, options);

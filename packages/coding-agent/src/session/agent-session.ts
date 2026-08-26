@@ -7372,7 +7372,7 @@ export class AgentSession {
 		const exemptTools = this.settings
 			.get("model.toolCallLoopGuard.exemptTools")
 			.filter((tool): tool is string => typeof tool === "string" && tool.length > 0);
-		const settingsKey = `${threshold}:${readSubsumptionThreshold}:${JSON.stringify(exemptTools)}`;
+		const settingsKey = `${threshold}:${readSubsumptionThreshold}:${exemptTools.join(",")}`;
 		if (!this.#toolCallLoopGuard || this.#toolCallLoopGuardSettingsKey !== settingsKey) {
 			this.#toolCallLoopGuard = new ToolCallLoopGuard({ threshold, exemptTools, readSubsumptionThreshold });
 			this.#toolCallLoopGuardSettingsKey = settingsKey;

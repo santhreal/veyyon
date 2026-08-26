@@ -254,7 +254,7 @@ export async function setServerDisabled(filePath: string, name: string, disabled
 
 		const updated: MCPConfigFile = {
 			...config,
-			disabledServers: current.size > 0 ? Array.from(current).sort() : undefined,
+			disabledServers: current.size > 0 ? [...current].sort() : undefined,
 		};
 
 		if (!updated.disabledServers) {
@@ -291,7 +291,7 @@ export async function setServerForceEnabled(filePath: string, name: string, forc
 
 		const updated: MCPConfigFile = {
 			...config,
-			enabledServers: current.size > 0 ? Array.from(current).sort() : undefined,
+			enabledServers: current.size > 0 ? [...current].sort() : undefined,
 		};
 
 		if (!updated.enabledServers) {

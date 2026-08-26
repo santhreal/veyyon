@@ -393,7 +393,7 @@ function renderReferences(refMatch: RegExpMatchArray, lines: string[], expanded:
 		}
 	}
 
-	const files = Array.from(byFile.keys());
+	const files = [...byFile.keys()];
 
 	const renderGrouped = (maxFiles: number, maxLocsPerFile: number, showHint: boolean): string => {
 		const expandHint = formatExpandHint(theme, undefined, showHint);

@@ -1161,7 +1161,7 @@ export async function flushLspWritethroughBatch(
 		return undefined;
 	}
 	writethroughBatches.delete(id);
-	return flushWritethroughBatch(Array.from(state.entries.values()), cwd, state.options, signal);
+	return flushWritethroughBatch([...state.entries.values()], cwd, state.options, signal);
 }
 
 function mergeDiagnostics(
@@ -1212,7 +1212,7 @@ function mergeDiagnostics(
 	const formatter = hasFormatter ? (formatted ? FileFormatResult.FORMATTED : FileFormatResult.UNCHANGED) : undefined;
 
 	return {
-		server: servers.size > 0 ? Array.from(servers).join(", ") : undefined,
+		server: servers.size > 0 ? [...servers].join(", ") : undefined,
 		messages: limitedMessages,
 		summary,
 		errored,
@@ -1558,7 +1558,7 @@ export function createLspWritethrough(cwd: string, options?: WritethroughOptions
 		}
 
 		writethroughBatches.delete(batch.id);
-		return flushWritethroughBatch(Array.from(state.entries.values()), cwd, state.options, signal, getDeferred);
+		return flushWritethroughBatch([...state.entries.values()], cwd, state.options, signal, getDeferred);
 	};
 }
 
@@ -1795,7 +1795,7 @@ export class LspTool implements AgentTool<typeof lspSchema, LspToolDetails, Them
 					if (uniqueDiagnostics.length === 0) {
 						return {
 							content: [{ type: "text", text: "OK" }],
-							details: { action, serverName: Array.from(allServerNames).join(", "), success: true },
+							details: { action, serverName: [...allServerNames].join(", "), success: true },
 						};
 					}
 
@@ -1804,7 +1804,7 @@ export class LspTool implements AgentTool<typeof lspSchema, LspToolDetails, Them
 					const output = `${summary}:\n${formatGroupedDiagnosticMessages(formatted)}`;
 					return {
 						content: [{ type: "text", text: output }],
-						details: { action, serverName: Array.from(allServerNames).join(", "), success: true },
+						details: { action, serverName: [...allServerNames].join(", "), success: true },
 					};
 				}
 
@@ -1820,7 +1820,7 @@ export class LspTool implements AgentTool<typeof lspSchema, LspToolDetails, Them
 
 			return {
 				content: [{ type: "text", text: results.join("\n") }],
-				details: { action, serverName: Array.from(allServerNames).join(", "), success: true },
+				details: { action, serverName: [...allServerNames].join(", "), success: true },
 			};
 		}
 
@@ -1984,7 +1984,7 @@ export class LspTool implements AgentTool<typeof lspSchema, LspToolDetails, Them
 					content: [{ type: "text", text: lines.join("\n") }],
 					details: {
 						action,
-						serverName: Array.from(respondingServers).join(", "),
+						serverName: [...respondingServers].join(", "),
 						success: true,
 						request: params,
 					},
@@ -2060,7 +2060,7 @@ export class LspTool implements AgentTool<typeof lspSchema, LspToolDetails, Them
 				const rel = formatPathRelativeToCwd(filePath, this.session.cwd);
 				summary.push(`  ${bucket.primaryServer}: applied ${bucket.edits.length} edit(s) to ${rel}`);
 				if (bucket.discarded > 0) {
-					const others = Array.from(bucket.conflictServers).join(", ");
+					const others = [...bucket.conflictServers].join(", ");
 					summary.push(
 						`    note: discarded ${bucket.discarded} overlapping edit(s) from ${others} (kept ${bucket.primaryServer})`,
 					);
@@ -2103,7 +2103,7 @@ export class LspTool implements AgentTool<typeof lspSchema, LspToolDetails, Them
 				content: [{ type: "text", text: `${header}\n${summary.join("\n")}` }],
 				details: {
 					action,
-					serverName: Array.from(respondingServers).join(", "),
+					serverName: [...respondingServers].join(", "),
 					success: true,
 					request: params,
 				},
@@ -2155,7 +2155,7 @@ export class LspTool implements AgentTool<typeof lspSchema, LspToolDetails, Them
 				content: [{ type: "text", text: sections.join("\n") }],
 				details: {
 					action,
-					serverName: Array.from(respondingServers).join(", "),
+					serverName: [...respondingServers].join(", "),
 					success: true,
 					request: params,
 				},
@@ -2323,7 +2323,7 @@ export class LspTool implements AgentTool<typeof lspSchema, LspToolDetails, Them
 					content: [{ type: "text", text: `No symbols matching "${normalizedQuery}"` }],
 					details: {
 						action,
-						serverName: Array.from(respondingServers).join(", "),
+						serverName: [...respondingServers].join(", "),
 						success: true,
 						request: params,
 					},
@@ -2344,7 +2344,7 @@ export class LspTool implements AgentTool<typeof lspSchema, LspToolDetails, Them
 				],
 				details: {
 					action,
-					serverName: Array.from(respondingServers).join(", "),
+					serverName: [...respondingServers].join(", "),
 					success: true,
 					request: params,
 				},

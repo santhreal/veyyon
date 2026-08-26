@@ -54,7 +54,7 @@ function startIdleChecker(): void {
 	idleCheckInterval = setInterval(() => {
 		if (!idleTimeoutMs) return;
 		const now = Date.now();
-		for (const [key, client] of Array.from(clients.entries())) {
+		for (const [key, client] of [...clients.entries()]) {
 			if (now - client.lastActivity > idleTimeoutMs) {
 				void shutdownClient(key);
 			}
@@ -379,7 +379,7 @@ async function startMessageReader(client: LspClient): Promise<void> {
 		}
 	} catch (err) {
 		// Connection closed or error - reject all pending requests
-		for (const pending of Array.from(client.pendingRequests.values())) {
+		for (const pending of [...client.pendingRequests.values()]) {
 			pending.reject(new Error(`LSP connection closed: ${err}`));
 		}
 		client.pendingRequests.clear();
@@ -995,7 +995,7 @@ export async function notifyWorkspaceWatchedFiles(
 	if (changes.length === 0) return;
 
 	const workspace = path.resolve(cwd);
-	const activeClients = Array.from(clients.values()).filter(
+	const activeClients = [...clients.values()].filter(
 		client => client.status === "ready" && path.resolve(client.cwd) === workspace,
 	);
 	if (activeClients.length === 0) return;
@@ -1109,7 +1109,7 @@ async function waitForExit(client: LspClient, timeoutMs: number): Promise<boolea
  */
 async function shutdownClientInstance(client: LspClient): Promise<void> {
 	const err = new Error("LSP client shutdown");
-	for (const pending of Array.from(client.pendingRequests.values())) {
+	for (const pending of [...client.pendingRequests.values()]) {
 		pending.reject(err);
 	}
 	client.pendingRequests.clear();
@@ -1274,12 +1274,12 @@ export async function sendNotification(
  * Shutdown all LSP clients.
  */
 export async function shutdownAll(): Promise<void> {
-	const clientsToShutdown = Array.from(clients.values());
+	const clientsToShutdown = [...clients.values()];
 	clients.clear();
 	// Mid-initialize clients live only in clientLocks (publication is deferred
 	// until init succeeds) — without this, their server processes outlive
 	// shutdown. Failed init promises already cleaned up after themselves.
-	const pendingClients = Array.from(clientLocks.values());
+	const pendingClients = [...clientLocks.values()];
 	clientLocks.clear();
 	const seen = new Set<LspClient>(clientsToShutdown);
 	await Promise.allSettled([
@@ -1306,7 +1306,7 @@ export interface LspServerStatus {
  * Get status of all active LSP clients.
  */
 export function getActiveClients(): LspServerStatus[] {
-	return Array.from(clients.values()).map(client => ({
+	return [...clients.values()].map(client => ({
 		name: client.config.command,
 		status: client.status,
 		fileTypes: client.config.fileTypes,

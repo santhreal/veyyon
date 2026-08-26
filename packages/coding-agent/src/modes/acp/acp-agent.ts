@@ -769,7 +769,7 @@ export class AcpAgent implements Agent {
 
 	async #waitForPromptEventHandlers(record: ManagedSessionRecord): Promise<void> {
 		while (record.promptEventHandlers.size > 0) {
-			await Promise.allSettled(Array.from(record.promptEventHandlers));
+			await Promise.allSettled([...record.promptEventHandlers]);
 		}
 	}
 
@@ -788,7 +788,7 @@ export class AcpAgent implements Agent {
 		baseline: ReadonlySet<Promise<void>>,
 	): Promise<void> {
 		while (true) {
-			const pending = Array.from(record.extensionUserMessageTasks).filter(task => !baseline.has(task));
+			const pending = [...record.extensionUserMessageTasks].filter(task => !baseline.has(task));
 			if (pending.length === 0) {
 				return;
 			}
@@ -977,7 +977,7 @@ export class AcpAgent implements Agent {
 						});
 					}
 				}
-				const projects = Array.from(buckets.values()).sort((a, b) => b.lastActivityAt - a.lastActivityAt);
+				const projects = [...buckets.values()].sort((a, b) => b.lastActivityAt - a.lastActivityAt);
 				return { projects, totalSessions: sessions.length };
 			}
 			case "_veyyon/chats/byCwd": {
@@ -2396,11 +2396,7 @@ export class AcpAgent implements Agent {
 
 		const result = await manager.connectServers(configs, sources);
 		if (result.errors.size > 0) {
-			throw new Error(
-				Array.from(result.errors.entries())
-					.map(([name, message]) => `${name}: ${message}`)
-					.join("; "),
-			);
+			throw new Error([...result.errors.entries()].map(([name, message]) => `${name}: ${message}`).join("; "));
 		}
 
 		record.mcpManager = manager;
@@ -2495,7 +2491,7 @@ export class AcpAgent implements Agent {
 		}
 
 		this.#disposePromise = (async () => {
-			const records = Array.from(this.#sessions.entries());
+			const records = [...this.#sessions.entries()];
 			this.#sessions.clear();
 			await Promise.all(
 				records.map(async ([sessionId, record]) => {

@@ -58,17 +58,10 @@ function markerPath(line: string, markerLength: number): string {
 }
 
 /**
- * The path a file-op marker names, refusing a marker that names nothing.
- *
- * `*** Delete File:   ` trims to the empty string, and an empty path is not a harmless empty value:
- * every op resolves its path against the working directory, so the delete targets the cwd itself and
- * the create writes to a directory. Falling through to the same "not a valid hunk header" error the
- * parser already raises for an unrecognised line is the honest answer, because a marker with no path
- * IS an unrecognised header rather than an op with a missing argument.
- *
- * Streaming is the exception, and only because it is not a decision yet: a partial buffer can hold
- * `*** Add File:` before the path has arrived, and the caller uses that parse to draw a preview, never
- * to touch a file. It gets the empty path and the preview stays blank until the rest of the line lands.
+ * The path a file-op marker names, refusing a marker that names nothing. An empty path targets the cwd
+ * (delete) or a directory (create), so it falls through to the "not a valid hunk header" error. Streaming
+ * is the exception: a partial buffer may hold `*** Add File:` before the path arrives — caller draws a
+ * preview, never touches a file.
  */
 function requireMarkerPath(line: string, markerLength: number, lineNumber: number, streaming: boolean): string {
 	const path = markerPath(line, markerLength);
