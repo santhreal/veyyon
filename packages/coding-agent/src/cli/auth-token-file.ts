@@ -4,29 +4,14 @@ import * as path from "node:path";
 import { getConfigRootDir, isEnoent, logger } from "@veyyon/utils";
 
 /**
- * The bearer-token file a local auth service authenticates its clients with.
- *
- * The auth gateway and the auth broker each ship one of these, and each had its own private copy of the
- * whole family: path, read, write, generate, ensure. The copies had drifted in two ways that both
- * matter, and the broker had the worse half of each:
- *
- *  - CONCURRENCY. The gateway created the file with `O_EXCL` and, on `EEXIST`, re-read what the other
- *    process wrote, so two simultaneous starts converge on ONE token. The broker read, generated, and
- *    wrote unconditionally, so two simultaneous starts each minted a token and the second overwrote the
- *    first: a client holding the first token is then rejected by the service that handed it out.
- *  - PERMISSIONS. The gateway created the file with mode `0600` in the open call. The broker wrote it
- *    with `Bun.write` (default `0644`) and chmod'd afterwards, leaving a window in which any local user
- *    could read the token, and on Windows, where `chmod` does nothing, no narrowing at all.
- *
- * This module is the one owner, and it takes the gateway's behaviour in both cases: create exclusively,
- * at `0600`, and treat losing the create race as success by reading the winner's token.
+ * The bearer-token file a local auth service authenticates with. Unified from two drifted copies
+ * (gateway + broker): the broker lost the create race (two tokens, client rejected) and had a permissions
+ * window (`Bun.write` at `0644` before chmod). This module takes the gateway's behavior: `O_EXCL` at `0600`,
+ * losing the race means reading the winner's token.
  */
 /**
- * How long a caller that lost the create race waits for the winner to write the token.
- *
- * The window is one `writeFile` wide, so this is generous by orders of magnitude on purpose: the cost of
- * waiting slightly too long is a few milliseconds at service startup, and the cost of giving up too early
- * is two live tokens and a client that gets rejected by the service that issued its token.
+ * How long a create-race loser waits for the winner to write. Generous by design: waiting too long costs
+ * milliseconds; giving up too early costs two live tokens and a rejected client.
  */
 const TOKEN_RACE_TIMEOUT_MS = 2_000;
 

@@ -1,27 +1,8 @@
 /**
- * The process-global settings slot, and the `settings` proxy that reads it.
- *
- * WHY THIS IS NOT IN `settings.ts`. The slot is a nullable variable and the proxy is twenty lines over it.
- * The module that FILLS the slot is `config/settings.ts`, 2,768 lines that read `config.yml`, open
- * `agent.db`, migrate legacy keys, hold the schema and every setting signal, and reach 94 modules. Reading
- * one boolean cost all of it: `internal-urls/vault-protocol.ts` asks whether the vault is enabled and paid
- * 32 marginal modules for the question, and `tui/hyperlink.ts` and `modes/theme/shimmer.ts` ask the same
- * kind of question. Splitting the slot out means asking costs one module, and filling it still costs what
- * filling it has always cost.
- *
- * WHY THIS CANNOT SILENTLY RETURN A DEFAULT. `settingsOrThrow` and the proxy THROW when the slot is empty,
- * naming `Settings.init()`, because an empty slot means the process never initialised settings and every
- * value a caller would read is a guess. A caller that genuinely has something to do without settings asks
- * `isSettingsInitialized()` first and supplies its own default from the schema, which is what
- * `vault-protocol.ts` does; that is a decision at the call site rather than a fallback hidden here.
- *
- * THERE IS STILL EXACTLY ONE SLOT. `settings.ts` does not keep its own copy: `Settings.init`,
- * `Settings.instance` and `resetSettingsForTest` all go through the setters below, so there is one variable
- * to write and one to read. `packages/coding-agent/test/config/settings-instance.test.ts` pins that.
- *
- * This module imports nothing at runtime. `Settings` is a type-only import, which is what keeps it a leaf:
- * `import type` is erased, while dropping the `type` keyword would pull the whole store back in and put the
- * 94 modules back on every consumer.
+ * The process-global settings slot and the `settings` proxy. Split from `settings.ts` (2,768 lines,
+ * 94 modules) so reading one boolean costs one module. `settingsOrThrow` and the proxy throw when the
+ * slot is empty (call `isSettingsInitialized()` first for a default). One slot: `settings.ts` goes
+ * through these setters. Type-only `Settings` import keeps this a leaf.
  */
 
 import type { Settings } from "./settings";
