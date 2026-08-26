@@ -44,5 +44,6 @@ export function emptyArmResult(arm: string, task: string, repeat: number): ArmRe
 		encodeHeadroom: null,
 		toolCalls: null,
 		error: null,
+		exceptionInfo: null,
 	};
 }

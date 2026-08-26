@@ -30,15 +30,12 @@ import * as path from "node:path";
 import { parseSectionOverridesJson } from "@veyyon/coding-agent/system-prompt-builder/default-template";
 import { parseStatementOverridesJson } from "@veyyon/coding-agent/system-prompt-builder/statement-registry";
 import YAML from "yaml";
-import { getAllRegisteredSystemNames } from "../../../src/harnesses/registry";
+import { ARM_ATTACHMENT_KINDS, type ArmAttachmentKind, attachmentKindOf } from "../../../src/core/arm-attachments";
+import { listHarnessNames } from "../../../src/core/harness-registry";
+import { promptOverrideIdError } from "../../../src/core/prompt-overrides";
+import { registerBuiltinHarnesses } from "../../../src/harnesses";
 import { armsDir, deepSweSuiteDir, evalsPackageDir, repoRootDir, taskListsDir } from "../../../src/paths";
-import {
-	ARM_ATTACHMENT_KINDS,
-	type ArmAttachmentKind,
-	attachmentKindOf,
-} from "../../../src/suites/deep-swe/arm-attachments";
 import { armNamesIn } from "../../../src/suites/deep-swe/arm-fingerprint";
-import { promptOverrideIdError } from "../../../src/suites/deep-swe/arm-prompts";
 
 const SUITE_DIR = deepSweSuiteDir();
 const ARMS_DIR = armsDir();
@@ -53,8 +50,9 @@ const armFiles = fs.readdirSync(ARMS_DIR);
 /** Arm names, from the one owner of "which files in `arms/` are arms". This list used to be every
  * `*.yml`, which made `candidate-delivery-terse.sections.yml` a phantom arm named
  * `candidate-delivery-terse.sections` and quantified every check below over an arm nobody can run. */
+registerBuiltinHarnesses();
 const ARMS = armNamesIn(armFiles);
-const SYSTEM_NAMES = getAllRegisteredSystemNames();
+const SYSTEM_NAMES = listHarnessNames();
 const TASK_SETS = fs.readdirSync(TASKS_DIR).filter(f => f.endsWith(".txt"));
 /** Arm names a document references, found by the `--arms a,b` and backtick
  * forms the docs actually use. Filtered to plausible arm-shaped tokens so prose
