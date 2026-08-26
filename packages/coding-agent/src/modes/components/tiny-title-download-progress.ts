@@ -27,7 +27,7 @@ function progressBar(ratio: number | undefined, width: number): string {
 
 function currentFile(event: TinyTitleProgressEvent | undefined): string | undefined {
 	if (!event) return undefined;
-	if (event.file) return event.file.split("/").at(-1) ?? event.file;
+	if (event.file) return event.file.slice(event.file.lastIndexOf("/") + 1) || event.file;
 	if (event.files) {
 		let largestFile: string | undefined;
 		let largestLoaded = -1;
@@ -37,7 +37,7 @@ function currentFile(event: TinyTitleProgressEvent | undefined): string | undefi
 			largestFile = file;
 			largestLoaded = state.loaded;
 		}
-		return largestFile?.split("/").at(-1) ?? largestFile;
+		return largestFile ? largestFile.slice(largestFile.lastIndexOf("/") + 1) || largestFile : undefined;
 	}
 	return undefined;
 }
