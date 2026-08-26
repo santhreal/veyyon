@@ -2436,7 +2436,8 @@ export class Markdown implements Component {
 			const text = this.#renderInlineTokens(cell.tokens || [], styleContext);
 			return this.#wrapCellText(text, columnWidths[i]);
 		});
-		const headerLineCount = Math.max(...headerCellLines.map(c => c.length));
+		let headerLineCount = 0;
+		for (let i = 0; i < headerCellLines.length; i++) headerLineCount = Math.max(headerLineCount, headerCellLines[i].length);
 
 		for (let lineIdx = 0; lineIdx < headerLineCount; lineIdx++) {
 			const rowParts = headerCellLines.map((cellLines, colIdx) => {
@@ -2460,7 +2461,8 @@ export class Markdown implements Component {
 				const text = this.#renderInlineTokens(cell.tokens || [], styleContext);
 				return this.#wrapCellText(text, columnWidths[i]);
 			});
-			const rowLineCount = Math.max(...rowCellLines.map(c => c.length));
+			let rowLineCount = 0;
+			for (let i = 0; i < rowCellLines.length; i++) rowLineCount = Math.max(rowLineCount, rowCellLines[i].length);
 
 			if (rowIndex > 0 && (prevRowWrapped || rowLineCount > 1)) {
 				lines.push(separatorLine);
