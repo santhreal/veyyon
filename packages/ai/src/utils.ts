@@ -14,6 +14,19 @@ export function normalizeSystemPrompts(systemPrompt: readonly string[] | string 
 }
 
 export function normalizeToolCallId(id: string): string {
+	// Fast path: IDs that are already safe and within the length limit need no work.
+	// Scan with charCodeAt to avoid compiling a regex per call.
+	if (id.length <= 64 && id.length > 0) {
+		let safe = true;
+		for (let i = 0; i < id.length; i++) {
+			const c = id.charCodeAt(i);
+			if (!((c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c === 95 || c === 45)) {
+				safe = false;
+				break;
+			}
+		}
+		if (safe) return id;
+	}
 	const sanitized = id.replace(/[^a-zA-Z0-9_-]/g, "_");
 	return sanitized.length > 64 ? sanitized.slice(0, 64) : sanitized;
 }
