@@ -19,11 +19,9 @@ import {
 	onSymbolPresetChanged,
 	registerSettingsTestResetHook,
 } from "../../config/settings";
-// The bundled theme JSON lives in `./builtin-themes` and the light/dark classifier in
-// `./theme-luminance`, so `config/settings` can reach `isLightTheme` for its legacy theme migration
-// without importing this module and without paying for a hundred JSON modules. Importing it from here
-// closed a cycle (settings -> theme -> shimmer -> settings) that cost 51 MB per realm; see the notes at
-// the top of both files.
+// `builtin-themes` holds the JSON, `theme-luminance` the classifier — so `config/settings` reaches
+// `isLightTheme` without this module or its 100+ JSON modules. Importing from here closed a cycle
+// (settings → theme → shimmer → settings) that cost 51 MB per realm.
 import { getBuiltinThemes } from "./builtin-themes";
 import {
 	ansi256ToHex,

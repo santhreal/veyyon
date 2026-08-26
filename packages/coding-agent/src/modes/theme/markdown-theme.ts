@@ -25,8 +25,7 @@ import type { MarkdownTheme } from "@veyyon/tui";
 import { registerSettingsTestResetHook } from "../../config/settings-instance";
 import { highlightCached } from "./highlight";
 import { resolveMermaidAscii } from "./mermaid-cache";
-// The leaf, not `./theme`: the engine is 144 marginal modules on this graph and this file needs one
-// symbol set. `./theme-binding` and `./symbol-theme` are the two leaves that answer "what is active now".
+// The leaves, not `./theme` (144 marginal modules). `theme-binding` and `symbol-theme` answer "what is active now".
 import { getSymbolTheme } from "./symbol-theme";
 import { theme } from "./theme-binding";
 import type { Theme } from "./theme-class";

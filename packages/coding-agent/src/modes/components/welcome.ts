@@ -14,9 +14,7 @@ import { APP_NAME, clamp01, DEFAULT_PROFILE_DIR_NAME, getActiveProfileOrDefault 
 import { isSettingsInitialized, settings } from "../../config/settings-instance";
 import { theme } from "../../modes/theme/theme";
 
-// The forced-tip state and the post-update message live in `launch-tip.ts`, which `main.ts` can import
-// without pulling this component (and the whole TUI) into the static boot graph. Re-exported here so the
-// welcome card stays the one place a reader looks for anything about welcome tips.
+// `launch-tip.ts` holds forced-tip state so `main.ts` can import it without pulling the TUI. Re-exported here for discoverability.
 export { clearLaunchTip, setLaunchTip, updateInstalledTip } from "./launch-tip";
 
 import { SGR_RESET } from "@veyyon/tui/ansi";

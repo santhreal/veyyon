@@ -5,10 +5,8 @@ import { isEnoent } from "@veyyon/utils/fs-error";
 import { readPipeText } from "@veyyon/utils/stream";
 import { errorMessage } from "@veyyon/utils/type-guards";
 import { trimTrailingSlashes } from "@veyyon/utils/url";
-// The pure helpers come from their owners (5 modules against 74). `$which` deliberately does not: it
-// resolves a binary against `PATH`, and `PATH` reaches the process from a user's `.env` only once
-// `@veyyon/utils/env` has applied it. Only the DIRECTORY-LOCATION keys are applied earlier than that, on
-// purpose, so that a subprocess does not inherit a user's whole `.env`; see `@veyyon/utils/dir-env-keys`.
+// `$which` resolves against `PATH`, which comes from `.env` via `@veyyon/utils/env`. Only directory-location
+// keys are applied earlier (so subprocesses don't inherit a user's whole `.env`); see `dir-env-keys`.
 import { $which } from "@veyyon/utils/which";
 // The slot leaf, not the 94-module store: this file reads values, it does not fill them.
 import { isSettingsInitialized, settings } from "../config/settings-instance";

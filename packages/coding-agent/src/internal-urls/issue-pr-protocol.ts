@@ -22,10 +22,7 @@ import { formatCount } from "@veyyon/utils/format";
 import { errorMessage } from "@veyyon/utils/type-guards";
 import type { Settings } from "../config/settings";
 import { AgentRegistry } from "../registry/agent-registry";
-// The FETCHERS, not the `github` tool. `../tools/gh` is the tool: 38 ops, the run-watch poller, PR
-// checkout, and `PROMPTS` for its own description, which is 352 modules. This handler wants six names
-// and now pays 188 for them. `../tools/gh` re-exports every one, so both spellings compile and only one
-// is honest about what it needs.
+// The fetchers, not the `github` tool (352 modules). This handler wants six names and pays 188 for them.
 import {
 	getOrFetchIssue,
 	getOrFetchPr,
