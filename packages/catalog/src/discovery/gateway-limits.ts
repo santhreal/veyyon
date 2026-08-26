@@ -1,33 +1,8 @@
 /**
- * Token limits for an agent-gateway model, resolved from what is actually known about that model.
- *
- * WHY THIS EXISTS. Antigravity, Cursor and Devin are gateways: they proxy other vendors' models and report
- * little or nothing about the limits of what they are proxying. Cursor reports no limits at all, Devin reports
- * one number that has to serve as both, and Antigravity's fields are frequently absent. Every one of the three
- * used to fall straight to {@link AGENT_GATEWAY_DEFAULT_CONTEXT_WINDOW}, so a gateway-hosted `grok-4.5` was
- * described as a 200k model when the model has a 500k window, and a Gemini row as 200k against 1M. That number
- * is not cosmetic: auto-compaction, the context panel, context promotion and the overflow check all read it, so
- * the agent compacted at two fifths of the window it had and told the operator their 256k threshold was larger
- * than the model's context.
- *
- * WHAT IS DIFFERENT NOW. The gateway not reporting a window does not mean nothing is known about the model. The
- * bundled catalog carries the same model under the vendor that hosts it directly (`xai/grok-4.5`,
- * `google/gemini-3-pro`), and the reference index already resolves a proxied id onto that entry — it is what the
- * proxy/reseller path uses for pricing and capabilities. So the order is: what the gateway reported, then what
- * the catalog knows about that model, and only then the gateway assumption.
- *
- * THE CATALOG IS NOT ASKED ABOUT ITSELF. The bundled catalog also carries the gateways' OWN rows, written by a
- * previous discovery run: `cursor/gpt-5.1-high` sits there at 200k because that is what this module's ancestor
- * assumed. Resolving against the whole catalog therefore answered a gateway's question with the gateway's own
- * assumption one indirection removed, which is the original defect wearing a disguise — and it reached exactly
- * the ids the gateway actually serves, since those are the ids a discovery run wrote down. The index consulted
- * here is built from rows that are evidence about a model: not a gateway's own row, and not a row that is
- * numerically indistinguishable from the assumption below (which no answer can be worse than, since discarding
- * it lands on that same pair).
- *
- * The assumption is still the floor rather than the answer, because being too LOW is the safe direction: an
- * over-estimate makes the agent keep filling a window the model does not have until the provider rejects the
- * request, while an under-estimate only compacts earlier than it needed to.
+ * Token limits for an agent-gateway model, resolved from what is actually known. Gateways (Antigravity,
+ * Cursor, Devin) proxy other vendors' models and report little about limits. Resolution order: what the
+ * gateway reported, then what the catalog knows about that model (via reference index, excluding the
+ * gateway's own rows), then the gateway assumption floor. Under-estimating is the safe direction.
  */
 import { buildModelReferenceIndex, type ModelReferenceIndex, resolveModelReference } from "../identity/reference";
 import { getBundledModels, getBundledProviders } from "../models";

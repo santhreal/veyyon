@@ -529,11 +529,8 @@ function preferDiscoveryLimit(discoveryLimit: number | null, fallbackLimit: numb
 /**
  * Build the models a spec list actually yields, naming every spec it had to drop.
  *
- * `onRejected` receives one call per dropped spec with the id it claimed (or `"<no id>"` when even that was
- * unusable) and the field that disqualified it. Dropping specs silently is how a provider payload drift
- * turns into an empty model picker with nothing anywhere saying why, so callers that have somewhere to
- * report pass the sink; the static and models.dev paths, whose input is generated in-repo rather than
- * fetched, do not.
+ * `onRejected` receives one call per dropped spec with the id and the field that disqualified it. Dropping
+ * specs silently turns a payload drift into an empty model picker with nothing saying why.
  */
 function normalizeModelList<TApi extends Api>(
 	value: unknown,
@@ -556,12 +553,8 @@ function normalizeModelList<TApi extends Api>(
 }
 
 /**
- * The first field that disqualifies `value` as a {@link ModelSpec}, as a dotted path, or `null` if it is one.
- *
- * The field name is the point. A provider that answers 200 with a real-looking model list whose `cost` has
- * no `cacheRead`, or whose `contextWindow` arrives as a string, produces an empty catalog; without the name
- * of the field that failed, an operator sees a model picker with nothing in it and has no way to tell a
- * payload drift from a provider outage.
+ * The first field that disqualifies `value` as a {@link ModelSpec}, or `null` if valid. The field name is
+ * the point: without it, an operator cannot tell a payload drift from a provider outage.
  */
 function modelSpecRejection(value: unknown): string | null {
 	if (!isRecord(value)) {

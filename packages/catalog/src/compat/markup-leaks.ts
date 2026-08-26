@@ -1,13 +1,7 @@
 /**
- * Which endpoints leak model markup into the visible text channel, and which grammar it is.
- *
- * A model that streams its chat template, its tool-call envelope or its reasoning idiom as ordinary
- * content needs that markup read back out. WHICH grammar to read is a fact about the provider and the
- * model id, so it belongs beside the rest of the catalog's model identity rather than in the code that
- * does the reading — `@veyyon/ai` composes the healer from this, and the OpenAI compat resolution
- * composes the per-model `streamMarkupHealingPattern` from it. Both used to carry their own copy of
- * these two lists, byte for byte, one as a `Set` and one as an or-chain, which is two places for a
- * newly-leaking provider to be added to only one of.
+ * Which endpoints leak model markup into the visible text channel, and which grammar it is. Belongs beside
+ * the catalog's model identity — `@veyyon/ai` and OpenAI compat resolution both compose from this. Two lists
+ * that used to be duplicated in both consumers.
  */
 import { isDeepseekModelIdOrName } from "../identity/family";
 import type { OpenAIStreamMarkupHealingPattern } from "../types";

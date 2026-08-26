@@ -1,68 +1,8 @@
 /**
- * Default base URLs the code decides, for providers whose host is not a piece of catalog data.
- *
- * WHEN A HOST BELONGS HERE. A provider whose endpoint comes from configuration, from a model row's
- * `baseUrl`, or from a discovery response reads it there; nothing about it belongs in this file. What lands
- * here is the host a request goes to when nobody configured one, which is a decision the code makes and
- * therefore a value the code has to own somewhere. `hosts.ts` answers the different question of classifying
- * an arbitrary base URL by case-insensitive substring, including behind a proxy that embedded the name in a
- * path, and stays separate.
- *
- * This module has NO imports and must keep it that way. Every duplicate below existed because the only
- * existing export of the value sat behind arktype and a package's discovery machinery, so importing it cost
- * dozens of modules and retyping the string cost nothing. Taking a host from here costs one module, which
- * is what makes the duplicates not come back.
- *
- * ## Google Cloud Code Assist and Antigravity
- *
- * WHY THESE THREE STRINGS WERE THE FIRST ENTRIES. They are the same hosts everywhere they appear, and they
- * appeared in ten modules under nine different names: `https://cloudcode-pa.googleapis.com` was declared
- * six times as `DEFAULT_ENDPOINT`, `CLOUD_CODE_ENDPOINT`, `CODE_ASSIST_ENDPOINT` and
- * `CLOUD_CODE_ASSIST_ENDPOINT`, and the Antigravity daily host six more times, once as a bare literal
- * inside a switch. `catalog/discovery/antigravity.ts` did export two of them, but reaching that export
- * means importing arktype and the whole discovery machinery for one string, which is a real cost and is
- * exactly why the value kept being retyped instead of imported.
- *
- * So this module has NO imports. Taking a host from here costs one module, and there is no longer a reason
- * to write the string a tenth time.
- *
- * THE ORDER OF THE FALLBACK LIST IS PART OF THE CONTRACT. Antigravity is tried on the daily host first and
- * the sandbox host second, and four modules each kept their own copy of that pair. One of the four wrote
- * the sandbox host as an inline literal beside its named constant, so a rotation of that host would have
- * updated the name and missed the literal. `ANTIGRAVITY_ENDPOINTS` is the one list, so a host rotation or
- * a reordering happens once.
- *
- * ## GitLab
- *
- * `https://gitlab.com` was declared in five modules across two packages under three names
- * (`GITLAB_COM_URL` three times, `GITLAB_DEFAULT_BASE_URL`, `DEFAULT_GITLAB_BASE_URL`), each the fallback
- * for a self-managed instance URL that was not configured. GitLab is the provider most likely to be
- * self-hosted, so this string is the one every unconfigured GitLab request depends on.
- *
- * ## Gemini, Anthropic and Cursor
- *
- * Three more hosts that each had a name per package. The Gemini developer API base was
- * `DEFAULT_GENERATIVE_LANGUAGE_BASE` in `@veyyon/ai`, `GOOGLE_GENERATIVE_AI_BASE_URL` in this package's
- * discovery and `DEVELOPER_API_ENDPOINT` in `@veyyon/coding-agent`'s web search. It carries a `/v1beta` path
- * segment, which is the part three separate spellings put at risk: the host is stable and the API version is
- * not, so a version bump had to find three declarations that shared no name.
- *
- * `https://api.anthropic.com` was `DEFAULT_BASE_URL` in `ai/utils/anthropic-auth.ts` and
- * `OFFICIAL_ANTHROPIC_URL` in `catalog/compat/anthropic.ts`, plus two bare literals in the Anthropic
- * provider. The second name is the one that matters: that module decides whether a base URL IS the official
- * host, and its check is deliberately exact rather than a prefix test so `https://api.anthropic.com.evil.com`
- * cannot pass. A check for the canonical host and the fallback TO the canonical host reading two different
- * declarations is the shape where a proxy config ends up trusted by one and rejected by the other.
- *
- * `https://api2.cursor.sh` was `CURSOR_DEFAULT_BASE_URL` in discovery and a bare literal in
- * `ai/src/usage/cursor.ts`, both the fallback for an unconfigured Cursor endpoint.
- *
- * ## What is data and not a declaration
- *
- * `provider-models/openai-compat.ts` carries a host per provider descriptor, the same kind of value a model
- * row's `baseUrl` is, and `models.json` carries thousands more. Those are the catalog's data rather than
- * places the code decides a host, so they are not counted as copies. Google's OAuth endpoints and scopes are
- * a different concern and live in `wire/google-oauth.ts`: a permission string is not a base URL.
+ * Default base URLs the code decides, for providers whose host is not catalog data. What lands here is the
+ * host a request goes to when nobody configured one. `hosts.ts` answers the different question of classifying
+ * an arbitrary base URL. No imports — taking a host from here costs one module, which is why duplicates don't
+ * come back. `ANTIGRAVITY_ENDPOINTS` order is part of the contract (daily first, sandbox second).
  */
 
 /**

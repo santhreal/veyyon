@@ -1,21 +1,12 @@
 /**
- * Why a discovery reader answered "no catalog".
- *
- * This package returns `null` for a transport or protocol failure and `[]` for a provider that answered
- * with an empty list, and those two must never collapse into each other: `[]` means "asked and told
- * nothing", `null` means "could not ask". The reason for a `null` travels back to the caller as a VALUE
- * rather than a log line, because no source file in this package logs, and its callers already keep the
- * per-provider state they report from. See the README section on failures travelling back.
- *
- * One shape for every reader, so a consumer writes one handler rather than one per provider.
+ * Why a discovery reader answered "no catalog". `null` = transport/protocol failure, `[]` = empty list.
+ * These must never collapse. The reason for `null` travels back as a VALUE, not a log. One shape for every
+ * reader, so a consumer writes one handler.
  */
 
 /**
- * Where discovery gave up, which is the part that decides what an operator should do next.
- *
- * `request` points at the network, `status` at credentials, `payload` at whether the endpoint speaks the
- * protocol at all, and `base-url` at the configuration. A single "discovery failed" would send all four
- * to the same wrong place.
+ * Where discovery gave up, which decides what an operator should do next. `request` → network, `status` →
+ * credentials, `payload` → protocol, `base-url` → configuration.
  */
 export type DiscoveryFailureStage =
 	/** The configured base URL is empty or unusable, so nothing was requested. */
