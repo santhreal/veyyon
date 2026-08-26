@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from "bun:test";
-import type { AccountInventory } from "../../session/account-inventory";
+import type { AccountInventory, AccountRow, ProviderAccounts } from "../../session/account-inventory";
 import { initTheme } from "../theme/theme";
 import { AccountManagerComponent } from "./account-manager";
 
@@ -17,26 +17,27 @@ function makeCallbacks() {
 	};
 }
 
+function makeRow(provider: string, label: string, credentialId: number): AccountRow {
+	return {
+		provider,
+		providerLabel: label,
+		credentialId,
+		type: "api_key",
+		usage: [],
+		activeForSession: false,
+		activeIsPrediction: false,
+		selectedForProvider: false,
+	};
+}
+
 function makeSeededInventory(): AccountInventory {
-	const providers = [
-		{
-			provider: "anthropic",
-			label: "Anthropic",
-			rows: [{ provider: "anthropic", providerLabel: "Anthropic", credentialId: 1 } as any],
-		},
-		{
-			provider: "openai",
-			label: "OpenAI",
-			rows: [{ provider: "openai", providerLabel: "OpenAI", credentialId: 2 } as any],
-		},
-		{ provider: "groq", label: "Groq", rows: [{ provider: "groq", providerLabel: "Groq", credentialId: 3 } as any] },
-		{
-			provider: "google",
-			label: "Google",
-			rows: [{ provider: "google", providerLabel: "Google", credentialId: 4 } as any],
-		},
-	] as any;
-	return { providers, totalAccounts: 4, unhealthyCount: 0 } as AccountInventory;
+	const providers: ProviderAccounts[] = [
+		{ provider: "anthropic", label: "Anthropic", rows: [makeRow("anthropic", "Anthropic", 1)] },
+		{ provider: "openai", label: "OpenAI", rows: [makeRow("openai", "OpenAI", 2)] },
+		{ provider: "groq", label: "Groq", rows: [makeRow("groq", "Groq", 3)] },
+		{ provider: "google", label: "Google", rows: [makeRow("google", "Google", 4)] },
+	];
+	return { providers, totalAccounts: 4, unhealthyCount: 0 };
 }
 function makeEmptyInventory(): AccountInventory {
 	return makeSeededInventory();
