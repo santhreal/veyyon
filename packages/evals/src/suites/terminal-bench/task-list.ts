@@ -1,5 +1,7 @@
 import { readdir, readFile } from "node:fs/promises";
 import { isAbsolute, join, resolve } from "node:path";
+import { errorMessage } from "@veyyon/utils";
+import { requirePathSegment } from "../../paths";
 import { terminalBenchTaskListsDir } from "./paths";
 
 export interface TaskSetProvenance {
@@ -50,13 +52,27 @@ export function parseTaskListProvenance(content: string): TaskSetProvenance {
 /**
  * Parses raw task list content into task names and provenance metadata.
  * Strips comments and empty lines.
+ *
+ * A task list is data, and each name becomes a directory under the dataset root, so a line that is
+ * not one path segment refuses the list by line number instead of reaching `path.join` and reading
+ * a directory outside the corpus. `sourceLabel` names the file in that refusal.
  */
-export function parseTaskList(content: string): { tasks: readonly string[]; provenance: TaskSetProvenance } {
+export function parseTaskList(
+	content: string,
+	sourceLabel = "task list",
+): { tasks: readonly string[]; provenance: TaskSetProvenance } {
 	const provenance = parseTaskListProvenance(content);
-	const tasks = content
-		.split("\n")
-		.map(line => line.trim())
-		.filter(line => line.length > 0 && !line.startsWith("#"));
+	const tasks: string[] = [];
+	const lines = content.split("\n");
+	for (let index = 0; index < lines.length; index++) {
+		const line = (lines[index] ?? "").trim();
+		if (line.length === 0 || line.startsWith("#")) continue;
+		try {
+			tasks.push(requirePathSegment(line, "terminal-bench task id"));
+		} catch (error) {
+			throw new Error(`${sourceLabel} line ${index + 1}: ${errorMessage(error)}`, { cause: error });
+		}
+	}
 	return { tasks, provenance };
 }
 
@@ -76,7 +92,7 @@ export async function loadTaskList(pathOrName: string, baseDir?: string): Promis
 	}
 
 	const content = await readFile(resolvedPath, "utf-8");
-	const { tasks, provenance } = parseTaskList(content);
+	const { tasks, provenance } = parseTaskList(content, resolvedPath);
 	return { tasks, provenance, path: resolvedPath };
 }
 

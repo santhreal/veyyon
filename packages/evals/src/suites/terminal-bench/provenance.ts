@@ -1,10 +1,10 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { errorMessage } from "@veyyon/utils";
 import {
 	defaultGitExecutor,
 	discoverTerminalBenchTasks,
-	TERMINAL_BENCH_COMMIT_SHA,
 	TERMINAL_BENCH_GIT_REMOTE,
 	TERMINAL_BENCH_TAG,
 } from "./dataset";
@@ -43,18 +43,20 @@ export async function computeTaskSetContentHash(datasetRoot: string, tasks: read
 		const tomlPath = join(taskDir, "task.toml");
 		const instructionPath = join(taskDir, "instruction.md");
 
-		let tomlBytes = Buffer.alloc(0);
+		// A file that could not be read used to hash as the empty buffer, so a half-checked-out
+		// dataset produced a content hash indistinguishable from a corpus of empty task files, and
+		// that hash was recorded as the provenance of the run. A hash states what it read.
+		let tomlBytes: Buffer;
+		let instructionBytes: Buffer;
 		try {
 			tomlBytes = await readFile(tomlPath);
-		} catch {
-			// task.toml missing
-		}
-
-		let instructionBytes = Buffer.alloc(0);
-		try {
 			instructionBytes = await readFile(instructionPath);
-		} catch {
-			// instruction.md missing
+		} catch (error) {
+			throw new Error(
+				`Cannot hash Terminal-Bench task "${taskId}": ${errorMessage(error)}. ` +
+					`A content hash covers ${tomlPath} and ${instructionPath}, so an unreadable file is not hashed as empty.`,
+				{ cause: error },
+			);
 		}
 
 		const taskHasher = createHash("sha256");
@@ -82,12 +84,19 @@ export async function computeTerminalBenchProvenance(
 		? [...options.selectedTasks].sort()
 		: await discoverTerminalBenchTasks(datasetRoot);
 
+	// The pinned constant is what the checkout is supposed to be, not what it is. Substituting it
+	// for a failed `rev-parse` recorded a commit nobody verified, which is the one field of this
+	// record a later reader cannot check for themselves.
 	let resolvedSha = options.commitSha;
 	if (!resolvedSha) {
 		try {
 			resolvedSha = await defaultGitExecutor(["rev-parse", "HEAD"], datasetRoot);
-		} catch {
-			resolvedSha = TERMINAL_BENCH_COMMIT_SHA;
+		} catch (error) {
+			throw new Error(
+				`Cannot resolve the commit of the Terminal-Bench checkout at "${datasetRoot}": ${errorMessage(error)}. ` +
+					`Provenance states the commit it read, so pass commitSha to record one explicitly.`,
+				{ cause: error },
+			);
 		}
 	}
 
