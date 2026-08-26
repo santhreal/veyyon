@@ -220,3 +220,31 @@ scratch-settings-probes/
 # because git cannot carry the parts the tests need -- a symlink to a target that
 # must not exist, a loop, a 512-byte file whose exact size is asserted.
 /crates/vendor/uu-find/test_data/
+
+# Renderer defect oracle: untracked artifacts from dynamic sweeps are ignored.
+# Only explicitly curated and reduced regression fixtures remain tracked.
+/packages/coding-agent/test/corpus/renderer-defect-oracle/*.json
+!/packages/coding-agent/test/corpus/renderer-defect-oracle/8edf8b4fdd6625a4.json
+!/packages/coding-agent/test/corpus/renderer-defect-oracle/fe014358d43f4b8c.json
+!/packages/coding-agent/test/corpus/renderer-defect-oracle/fde3500779cfc01c.json
+!/packages/coding-agent/test/corpus/renderer-defect-oracle/70290aad243b364b.json
+!/packages/coding-agent/test/corpus/renderer-defect-oracle/1ee65ab5a9733ebf.json
+!/packages/coding-agent/test/corpus/renderer-defect-oracle/9d1006fc64fd879c.json
+!/packages/coding-agent/test/corpus/renderer-defect-oracle/276b4e528a1e4daf.json
+!/packages/coding-agent/test/corpus/renderer-defect-oracle/bd131a4f791fef21.json
+!/packages/coding-agent/test/corpus/renderer-defect-oracle/cd06e66c6b12a705.json
+!/packages/coding-agent/test/corpus/renderer-defect-oracle/ba39ee6944698ef2.json
+!/packages/coding-agent/test/corpus/renderer-defect-oracle/59df7ad47390d007.json
+!/packages/coding-agent/test/corpus/renderer-defect-oracle/8ca586d652b38abe.json
+!/packages/coding-agent/test/corpus/renderer-defect-oracle/8f5afff8e8d39839.json
+!/packages/coding-agent/test/corpus/renderer-defect-oracle/10641fff55f137c6.json
+!/packages/coding-agent/test/corpus/renderer-defect-oracle/709bbfa33c6aacb6.json
+!/packages/coding-agent/test/corpus/renderer-defect-oracle/1a165965f55a69f7.json
+!/packages/coding-agent/test/corpus/renderer-defect-oracle/50da988526102432.json
+!/packages/coding-agent/test/corpus/renderer-defect-oracle/37e572ad0db7d3bd.json
+!/packages/coding-agent/test/corpus/renderer-defect-oracle/f619f256b0c10418.json
+!/packages/coding-agent/test/corpus/renderer-defect-oracle/d2bb43bfd46b7eb7.json
+!/packages/coding-agent/test/corpus/renderer-defect-oracle/24742648529b848a.json
+!/packages/coding-agent/test/corpus/renderer-defect-oracle/2ecfebde1f419598.json
+!/packages/coding-agent/test/corpus/renderer-defect-oracle/61a2930c8293efdb.json
+!/packages/coding-agent/test/corpus/renderer-defect-oracle/c9f87967a04ffc6b.json
