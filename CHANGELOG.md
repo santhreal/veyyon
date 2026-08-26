@@ -37,6 +37,7 @@
 - `ProviderWireCapabilities.anthropicMessages` declares how a provider serves the Anthropic Messages API — its endpoint, credential placement, rejected request features and retryable model errors — and `declaredProviders()` and `declaredCapabilityNames()` derive the declaring sets from the table.
 - Bundled model resolution persists a content-verified enriched snapshot, and a registry cache stamp moves on every row-content write, and on a row crossing the freshness window it is read under, without treating SQLite sidecar churn or a provider re-verifying models it already had as a change.
 - Added `supportsServerCompaction` capability data for ChatGPT Codex backend models on the Responses API.
+- `TUI.onBeforeCompose` runs at the top of every frame, before any root child renders, so a layout whose height is a function of its siblings' heights is sized against the children about to render rather than the previous frame's.
 - `Image` accepts an `onDisplayed` callback and reports the cause each time an image starts or stops falling back to a placeholder.
 - `MOTION.reflow` states the curve for a row that reflows its content sideways: 320ms, symmetric, where `expand` is 180ms and front-loaded.
 - `run()` accepts verified command summaries for root help and falls back to loading the full registry when any summary is absent.
@@ -77,6 +78,7 @@
 
 ### Fixed
 
+- A streaming answer no longer composes a frame one row taller than the viewport on every chunk, which moved the window down to fit and back up on the next frame and shook the screen for as long as the answer kept arriving.
 - Mounting a chat block no longer routes home-anchor slack for rows the content has already taken, which composed a frame taller than the viewport and moved the window on that frame and back on the next.
 - An `irc send` with `await` ends as soon as its recipient is terminated or leaves the roster, instead of blocking for the full timeout, or forever at `timeoutMs: 0`, on a reply that can no longer arrive; a recipient that is merely idle or parked is still woken by the delivery and given the full timeout to answer.
 - A truncated advisor preview, retry reason, and background-task label measure their budget in display columns rather than UTF-16 code units, so a wide or multi-code-unit character is no longer cut in half or counted as one column.
