@@ -60,7 +60,7 @@ const forcedAdoptionTemplate = Handlebars.compile(forcedAdoptionPromptText, { no
  * (idempotent), then push the phase's values as runtime overrides, which the agent
  * session reads at construction exactly like a persisted setting.
  *
- * Exported for its regression suite (argot-bench.test.ts locks the flip).
+ * Exported for its regression suite (an-argot-phase-flip-does-not-leak-between-bench-runs.test.ts locks the flip).
  */
 export async function applyArgotPhaseSettings(
 	argotEnabled: boolean,

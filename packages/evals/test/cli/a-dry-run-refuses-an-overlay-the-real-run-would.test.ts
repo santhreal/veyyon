@@ -12,7 +12,7 @@
  * asserted beside each refusal so a preflight that refuses everything cannot pass either.
  *
  * WHAT IT DOES NOT CATCH: the wording of each refusal, which belongs to the loader
- * (`test/backends/in-process/overlays.test.ts`), and whether an accepted overlay changes
+ * (`test/backends/in-process/an-overlay-with-an-unknown-key-is-rejected-by-name.test.ts`), and whether an accepted overlay changes
  * what the model receives (`test/run/overlays/`).
  */
 

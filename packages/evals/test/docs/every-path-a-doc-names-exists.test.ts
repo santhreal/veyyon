@@ -13,7 +13,7 @@
  * moment it is added.
  *
  * What it does not catch: a path that exists but is described wrongly, a stale line number, a
- * script name (covered for deep-swe by `docs-coherence.test.ts`), and a prose claim about behavior.
+ * script name (covered for deep-swe by `every-arm-flag-and-task-set-the-docs-name-exists.test.ts`), and a prose claim about behavior.
  */
 
 import { describe, expect, it } from "bun:test";

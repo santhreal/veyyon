@@ -250,7 +250,7 @@ describe("shipped arms are pairwise distinct (single-IV coherence)", () => {
 /**
  * WHICH FILES IN `arms/` ARE ARMS, answered once.
  *
- * It used to be answered in three places and one was wrong: `docs-coherence.test.ts` took every
+ * It used to be answered in three places and one was wrong: the docs-coherence suite took every
  * `*.yml`, so `candidate-delivery-terse.sections.yml` became a phantom arm named
  * `candidate-delivery-terse.sections` and every coherence check quantified over an arm nobody can run.
  * Adding `.statements.yml` would have meant a second phantom in the same place.
