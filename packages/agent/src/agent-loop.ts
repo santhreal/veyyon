@@ -16,10 +16,7 @@ import type {
 	TSchema,
 	UserMessage,
 } from "@veyyon/ai";
-// Eleven runtime names, each from the module that declares it. The package entry point re-exports
-// the whole of `@veyyon/ai`; this loop legitimately reaches the streaming engine because it streams,
-// but the other ten had been arriving with the catalogue, the providers and the usage backends
-// attached. Types stay on the entry point, which is free.
+// Runtime imports from individual modules to avoid pulling the entire `@veyyon/ai` barrel.
 import { isApiKeyResolver, resolveApiKeyOnce, seedApiKeyResolver } from "@veyyon/ai/auth-retry";
 import {
 	type Dialect,
@@ -1309,9 +1306,7 @@ async function runLoopBody(
 					const asides = signal?.aborted ? [] : resolveAsides(await config.getAsideMessages?.());
 					pendingMessages = asides.length > 0 ? [...steering, ...asides] : steering;
 				} else {
-					// Stop boundary: only steering (live user input) forces another turn here. Leave
-					// asides for the outer drain below so a passive aside can't trigger an extra model
-					// turn ahead of a queued follow-up — the outer drain batches asides + follow-ups together.
+					// Stop boundary: only steering forces another turn. Leave asides for the outer drain.
 					pendingMessages = steering;
 				}
 			}
@@ -1572,9 +1567,7 @@ async function streamAssistantResponse(
 			const finishAbortedStream = async (): Promise<AssistantMessage> => {
 				try {
 					const cleanup = responseIterator.return?.();
-					// The same reason as the `catch` below, for the ASYNC half of the same call: a provider that
-					// fails to acknowledge the cancellation cannot change the aborted message that is already
-					// being committed, and the user asked for this stream to stop, not for a report about it.
+					// Provider cancellation failure cannot change the committed aborted message.
 					if (cleanup) void cleanup.catch(() => {});
 				} catch {
 					// Provider cancellation failures cannot change the committed aborted message.
@@ -2094,12 +2087,7 @@ function emitAbortedAssistantMessage(
 ): AssistantMessage {
 	const model = config.getModel?.() ?? config.model;
 	const errorMessage = abortReasonText(requestSignal);
-	// THIS MESSAGE IS AN ABORT, so it carries the flag whatever the reason said. The flag used to
-	// be attached only when the text matched the generic sentinel byte for byte, so a cancellation
-	// that carried a reason — the user-interrupt label, a tool-scoped stop — produced an `aborted`
-	// message whose id classified as nothing, and every reader of the id (recovery, retry, the
-	// renderer) saw an unclassified failure. Whatever the reason itself classifies as rides
-	// alongside rather than replacing it.
+	// Always set the Abort flag; the reason's classification rides alongside rather than replacing it.
 	const errorId = AIError.create(AIError.Flag.Abort) | (AIError.classify(requestSignal?.reason) || 0);
 	const base: AssistantMessage = partialMessage
 		? { ...partialMessage, stopReason: "aborted", errorMessage, errorId }
@@ -2716,13 +2704,7 @@ async function executeToolCalls(
 				true,
 			);
 		} else {
-			// No interrupt on this signal, or the tool finished before the interrupt landed
-			// (`completedToolExecution`) — even if the signal aborted around completion. Keep
-			// its real result: a completed tool already ran its side effects, so the model must
-			// see what actually happened (a genuine non-zero exit / error result) rather than a
-			// false "skipped" that discards work the tool performed (#4752). A peer-IRC interrupt
-			// on the batch leaves non-interruptible tools' signals untouched — their genuine
-			// errors survive here too.
+			// Keep real result for completed tools — side effects already ran, model must see actual outcome (#4752).
 			emitToolResult(record, result, isError);
 		}
 
