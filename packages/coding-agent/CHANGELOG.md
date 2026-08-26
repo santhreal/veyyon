@@ -151,6 +151,12 @@
 - `debug` reaches the Python debugger on a host that installs `python3` and no unsuffixed `python`, which is every current Linux and macOS. The bundled `debugpy` adapter named `python`, so launching answered `adapter 'debugpy' is not available` on a machine that had Python; an adapter may now declare alternate spellings, and a command written in `dap.json` is still used exactly as written.
 - A subagent that calls `yield` with unusable data now fails the run instead of returning success with the system warning as its result, matching how a subagent that never yields at all is already reported.
 - A subagent result that cannot be serialized now fails the run and reports the serialization error, instead of returning success with an unparseable error envelope as its payload.
+- `launch` recovers from a broker connection that fails while the broker is still binding its socket. The rejected connection was cached for the life of the process, so every later `launch` call reported the first error with no route back short of a restart.
+- `bash` runs `cd - && …` again. The leading `cd` was read as a directory literally named `-`, so the call was rejected with a path the operator never typed before the shell ran.
+- A `bash` working-directory error shortens the path it reports instead of printing the absolute one, which put the home directory into the tool result and the transcript.
+- `grep` reports why an archive could not be opened or read when the failure is not an `Error`, instead of the word `undefined`.
+- A detached daemon that exited while no broker was supervising it is recorded as its own exit, not as a non-detached daemon terminated by the replacement broker.
+- Background conversations abandoned at shutdown before their transcript finished flushing are named in the log, instead of leaving a short file as the only trace.
 
 ### Removed
 

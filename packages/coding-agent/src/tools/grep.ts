@@ -278,7 +278,7 @@ async function resolveArchiveSearchPaths(
 				try {
 					archive = await openArchive(archiveAbs);
 				} catch (err) {
-					unreadable.push(`${entry} (cannot open archive: ${(err as Error).message})`);
+					unreadable.push(`${entry} (cannot open archive: ${errorMessage(err)})`);
 					continue;
 				}
 				archiveCache.set(archiveAbs, archive);
@@ -288,7 +288,7 @@ async function resolveArchiveSearchPaths(
 			try {
 				extracted = await archive.readFile(member.subPath);
 			} catch (err) {
-				unreadable.push(`${entry} (${(err as Error).message})`);
+				unreadable.push(`${entry} (${errorMessage(err)})`);
 				continue;
 			}
 			// UTF-8 only — binary members would just produce noise through ripgrep.
