@@ -59,13 +59,9 @@ export function getGitNoIndexNullPath(): string {
 
 /**
  * Whether `dir` is itself a git repository, i.e. whether it holds a `.git` entry.
- *
- * A missing `.git` is the ordinary answer for almost every directory, so ENOENT is a plain "no". Any
- * OTHER error means the question could not be answered -- an unreadable parent, a permission-restricted
- * mount, an I/O failure -- and answering "no" there is not a guess, it is wrong in the dangerous
- * direction: the walk would descend into a repository it failed to recognise and fold that repository's
- * files into the task snapshot as if they were the parent's. So an unanswerable check is reported and
- * treated as a repository boundary: the caller stops rather than reaching into a tree it cannot inspect.
+ * A missing `.git` is ordinary, so ENOENT is a plain "no". Any OTHER error (unreadable parent, permission,
+ * I/O) means the question could not be answered — answering "no" would descend into a repo it failed to
+ * recognise and fold its files into the task snapshot. An unanswerable check is treated as a boundary.
  */
 async function isGitRepoDir(dir: string): Promise<{ isRepo: boolean; inspectable: boolean }> {
 	try {

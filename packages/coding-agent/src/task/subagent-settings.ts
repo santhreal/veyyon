@@ -530,10 +530,8 @@ export function preferredSubagentName(enabled: readonly string[], preferred: str
 /**
  * Read one of the spawner's name lists defensively.
  *
- * The spawner is `unknown` because the prompt build receives whatever the tool registry holds, which
- * may be a test stub, a tool from a build that predates the property, or nothing at all. Every element
- * is type-checked rather than trusted, so a malformed list degrades to the names that ARE strings
- * instead of putting `undefined` into prompt prose.
+ * The spawner is `unknown` — the prompt build receives whatever the tool registry holds. Every element is
+ * type-checked, so a malformed list degrades to valid names rather than putting `undefined` into prose.
  */
 function readNameList(spawner: unknown, key: keyof EnabledSubagentSource): string[] {
 	const names = (spawner as Partial<EnabledSubagentSource> | undefined)?.[key];
