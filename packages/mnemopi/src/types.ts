@@ -1,4 +1,4 @@
-import type { JsonPrimitive, JsonValue } from "@veyyon/utils";
+import type { JsonPrimitive, JsonValue } from "@veyyon/utils/json";
 import type { Veracity } from "./core/veracity";
 
 /**

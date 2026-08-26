@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { isRecord } from "@veyyon/utils";
+import { isRecord } from "@veyyon/utils/type-guards";
 
 import { dataDir as configuredDataDir, dbPath as configuredDbPath } from "./config";
 import { BankManager, ValueError } from "./core/banks";

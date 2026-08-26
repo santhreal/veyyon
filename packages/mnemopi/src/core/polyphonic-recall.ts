@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite";
-import { DAY_MS, isRecord, WEEK_MS } from "@veyyon/utils";
+import { DAY_MS, WEEK_MS } from "@veyyon/utils/time";
+import { isRecord } from "@veyyon/utils/type-guards";
 import { type Env, envDisabled, polyphonicRecallEnabled } from "../config";
 import { closeQuietly, type DatabasePath, openDatabase } from "../db";
 import { unicodeWordTokens, WORD_TOKEN_HYPHEN_RE } from "../util/regex";

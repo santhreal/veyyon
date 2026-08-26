@@ -9,15 +9,12 @@ import { ProviderHttpError } from "@veyyon/ai/error";
 import { getOpenRouterHeaders } from "@veyyon/ai/utils/openrouter-headers";
 import { hostMatchesUrl } from "@veyyon/catalog/hosts";
 import { OPENROUTER_API_ENDPOINT } from "@veyyon/catalog/provider-endpoints";
-import {
-	$env,
-	extractHttpStatusFromError,
-	fetchWithRetry,
-	getFastembedCacheDir,
-	logger,
-	trimTrailingSlashes,
-	withScopedTimeoutSignal,
-} from "@veyyon/utils";
+import { getFastembedCacheDir } from "@veyyon/utils/dirs";
+import { $env } from "@veyyon/utils/env";
+import { extractHttpStatusFromError, fetchWithRetry } from "@veyyon/utils/fetch-retry";
+import * as logger from "@veyyon/utils/logger";
+import { withScopedTimeoutSignal } from "@veyyon/utils/scoped-timeout";
+import { trimTrailingSlashes } from "@veyyon/utils/url";
 import type { EmbeddingModel } from "fastembed";
 import { LRUCache } from "lru-cache/raw";
 import {
@@ -256,7 +253,8 @@ function capInputs(texts: readonly string[]): readonly string[] {
 		if (text.length > maxOriginalLen) maxOriginalLen = text.length;
 	}
 	if (trimmed === null) return texts;
-	logger[mnemopiDebugEnabled() ? "warn" : "debug"]("mnemopi: embedding input truncated", {
+	const logTruncation = mnemopiDebugEnabled() ? logger.warn : logger.debug;
+	logTruncation("mnemopi: embedding input truncated", {
 		inputCount: texts.length,
 		trimmedCount,
 		maxOriginalLen,
@@ -426,7 +424,8 @@ async function getLocalModel(): Promise<LocalEmbeddingModel | null> {
 	try {
 		return await loading;
 	} catch (error) {
-		logger[mnemopiDebugEnabled() ? "warn" : "debug"]("mnemopi: local embedding model failed to load", {
+		const logLoadFailure = mnemopiDebugEnabled() ? logger.warn : logger.debug;
+		logLoadFailure("mnemopi: local embedding model failed to load", {
 			model: modelName,
 			error: String(error),
 		});
@@ -720,7 +719,8 @@ export async function embed(texts: readonly string[]): Promise<EmbeddingMatrix |
 		}
 		return vectors;
 	} catch (error) {
-		logger[mnemopiDebugEnabled() ? "warn" : "debug"]("mnemopi: local embedding failed", {
+		const logEmbedFailure = mnemopiDebugEnabled() ? logger.warn : logger.debug;
+		logEmbedFailure("mnemopi: local embedding failed", {
 			textCount: texts.length,
 			error: String(error),
 		});

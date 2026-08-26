@@ -1,4 +1,4 @@
-import { estimateTokensFromText } from "@veyyon/utils";
+import { estimateTokensFromText } from "@veyyon/utils/tokens";
 
 const PRICING: Readonly<Record<string, number>> = {
 	"claude-sonnet-4": 3.0,

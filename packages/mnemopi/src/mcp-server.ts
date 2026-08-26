@@ -1,4 +1,4 @@
-import { errorMessage, isRecord } from "@veyyon/utils";
+import { errorMessage, isRecord } from "@veyyon/utils/type-guards";
 import { getToolDefinitions, handleToolCall, type ToolArguments, type ToolDefinition } from "./mcp-tools";
 
 /**

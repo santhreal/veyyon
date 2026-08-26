@@ -1,4 +1,5 @@
-import { batched, clamp, clamp01 } from "@veyyon/utils";
+import { batched } from "@veyyon/utils/array";
+import { clamp, clamp01 } from "@veyyon/utils/math";
 import { normalizedRecallWeights, temporalHalflifeHours } from "../../config";
 import { parseQueryTime, recencyDecay, temporalBoost, toUtcIso } from "../../util/datetime";
 

@@ -16,7 +16,7 @@ import { withAuth } from "@veyyon/ai/auth-retry";
 import { ProviderHttpError } from "@veyyon/ai/error";
 import { completeSimple } from "@veyyon/ai/stream";
 import { assistantText } from "@veyyon/ai/utils/message-text";
-import { withScopedTimeoutSignal } from "@veyyon/utils";
+import { withScopedTimeoutSignal } from "@veyyon/utils/scoped-timeout";
 import { forceLocalLlm, hostLlmModel, hostLlmProvider } from "../config";
 import { safeForLog } from "./extraction/diagnostics";
 import { type CompleteOptions, callHostLlm, getHostLlmBackend, MNEMOPI_LLM_ATTEMPT_PLACEHOLDER } from "./llm-backends";
