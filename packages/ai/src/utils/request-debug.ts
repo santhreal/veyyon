@@ -780,6 +780,43 @@ export function isCredentialHeaderName(name: string): boolean {
 	return REDACTED_HEADER_SUBSTRINGS.some(fragment => lower.includes(fragment));
 }
 
+/**
+ * The spellings {@link isCredentialHeaderName} recognizes, expanded for a gate that
+ * has to sweep them. A substring is listed as one representative header a provider
+ * really sends, because a gate asserting on the fragment alone would pass while the
+ * header carrying it leaked.
+ */
+export const CREDENTIAL_HEADER_SPELLINGS: readonly string[] = [
+	...Object.keys(REDACTED_HEADER_NAMES),
+	"x-api-key",
+	"anthropic-api-key",
+	"x-goog-api-key",
+	"openai-apikey",
+	"x-veyyon-auth-token",
+	"x-access-token",
+	"x-client-secret",
+];
+
+/**
+ * Redacts a header set on its way into a diagnostic log or dump.
+ *
+ * The credential half is {@link isCredentialHeaderName} and nothing else, so a
+ * provider-specific spelling is covered everywhere at once rather than in whichever
+ * list a caller remembered to extend. A caller with headers that are sensitive
+ * without being credentials — an account id, a conversation id — passes
+ * `alsoSensitive`, which receives the lowercased name.
+ */
+export function redactDiagnosticHeaders(
+	headers: Iterable<[string, string]>,
+	alsoSensitive?: (lowercasedName: string) => boolean,
+): Record<string, string> {
+	const redacted: Record<string, string> = {};
+	for (const [key, value] of headers) {
+		redacted[key] = isCredentialHeaderName(key) || alsoSensitive?.(key.toLowerCase()) === true ? "[redacted]" : value;
+	}
+	return redacted;
+}
+
 function redactHeaderValue(value: string): string {
 	return `<redacted ${value.length} chars>`;
 }
