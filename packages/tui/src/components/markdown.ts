@@ -2229,10 +2229,19 @@ export class Markdown implements Component {
 	 * Get the visible width of the longest word in a string.
 	 */
 	#getLongestWordWidth(text: string, maxWidth?: number): number {
-		const words = text.split(/\s+/).filter(word => word.length > 0);
 		let longest = 0;
-		for (const word of words) {
-			longest = Math.max(longest, visibleWidth(word));
+		let wordStart = -1;
+		for (let i = 0; i <= text.length; i++) {
+			const c = i < text.length ? text.charCodeAt(i) : 0;
+			const isWs = i < text.length && (c === 0x20 || (c >= 0x09 && c <= 0x0d));
+			if (isWs) {
+				if (wordStart >= 0) {
+					longest = Math.max(longest, visibleWidth(text.slice(wordStart, i)));
+					wordStart = -1;
+				}
+			} else if (wordStart < 0) {
+				wordStart = i;
+			}
 		}
 		if (maxWidth === undefined) {
 			return longest;
