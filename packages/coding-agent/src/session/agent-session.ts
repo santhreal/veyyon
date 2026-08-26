@@ -264,9 +264,7 @@ import { usesCursorRuleDelivery } from "../cursor";
 import { RawSseDebugBuffer } from "../debug/raw-sse-buffer";
 import { loadCapability } from "../discovery";
 import { clearClaudePluginRootsCache } from "../discovery/helpers";
-// The owning modules, not the `../edit` barrel. The barrel `export *`s the streaming applier, the
-// hashline engine and the EditTool, and owns 44 modules nothing else here reaches; these six
-// symbols live in four leaves that reach a handful between them.
+// Own modules, not the `../edit` barrel (44 unreachable modules). These six symbols live in four leaves.
 import { normalizeDiff, ParseError } from "../edit/diff";
 import { getFileSnapshotStore } from "../edit/file-snapshot-store";
 import { expandApplyPatchToEntries } from "../edit/modes/apply-patch";
@@ -3291,10 +3289,7 @@ export class AgentSession {
 		this.#preferWebsockets = config.preferWebsockets;
 		this.#onPayload = config.onPayload;
 		this.rawSseDebugBuffer = config.rawSseDebugBuffer ?? new RawSseDebugBuffer();
-		// Avoid wrapping in an `async` closure when no user callback is configured: the
-		// outer await on `#onResponse` (provider-response.ts) tolerates a sync void return,
-		// and skipping the wrapper drops a per-event `newPromiseCapability` allocation that
-		// shows up as ~3.5% self time in streaming profiles.
+		// Skip `async` wrapper when no user callback: drops a per-event `newPromiseCapability` allocation (~3.5% self time).
 		const configuredOnResponse = config.onResponse;
 		this.#onResponse = configuredOnResponse
 			? async (response, model) => {
