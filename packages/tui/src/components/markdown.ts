@@ -1520,7 +1520,8 @@ export class Markdown implements Component {
 		for (let i = start; i < end; i++) {
 			const token = tokens[i];
 			const nextToken = tokens[i + 1];
-			renderedLines.push(...this.#renderToken(token, contentWidth, nextToken?.type));
+			const tokenLines = this.#renderToken(token, contentWidth, nextToken?.type);
+			for (let j = 0; j < tokenLines.length; j++) renderedLines.push(tokenLines[j]);
 		}
 
 		const leftMargin = padding(signature.paddingX);
