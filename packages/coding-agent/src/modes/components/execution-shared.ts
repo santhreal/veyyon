@@ -27,53 +27,27 @@ import { truncateToVisualLines } from "./visual-truncate";
 export type ExecutionStatus = "running" | "complete" | "cancelled" | "error";
 
 /**
- * Output rows an execution block shows before it is expanded.
- *
- * Deliberately not one of `PREVIEW_LIMITS.OUTPUT_*` and not `DEFAULT_TERMINAL_PREVIEW_LINES`. Those describe how
- * a FINISHED tool result is summarised in the transcript, three rows collapsed and ten expanded. This is a live
- * block a user is watching run, so it keeps a screenful: the point of watching is to see the output scroll, and
- * three rows of a build log is not watching anything. Both components declared it as their own `PREVIEW_LINES`.
+ * Output rows an execution block shows before it is expanded. Not `PREVIEW_LIMITS.OUTPUT_*` (those
+ * describe finished results); this is a live block a user is watching run, so it keeps a screenful.
  */
 export const EXECUTION_PREVIEW_LINES = 20;
 
 /**
- * Widest single output line an execution block draws, in terminal COLUMNS.
- *
- * The unit is the whole point and it is where the two copies of this had diverged. Both declared
- * `MAX_DISPLAY_LINE_CHARS = 4000`, but bash measured `visibleWidth` and eval measured `line.length`, so the
- * same named limit meant two different things:
- *
- * - `line.length` counts ANSI escape bytes. Eval output is syntax-highlighted, so a styled line was charged for
- *   invisible colour codes and truncated while it still displayed far short of the limit.
- * - `line.length` counts a wide character as one. Two thousand CJK characters occupy 4000 columns and would
- *   overflow, yet measured 2000 and passed through untouched.
- * - `line.slice(4000)` cuts wherever 4000 code units land, which can be the middle of an escape sequence or of a
- *   surrogate pair, so the fragment reaches the terminal and the styling of everything after it is undefined.
- *
- * The column measurement is the correct one, so it is the one that survives here.
+ * Widest single output line an execution block draws, in terminal COLUMNS. The unit matters: the two
+ * copies this replaced diverged — bash measured `visibleWidth`, eval measured `line.length` (counts ANSI
+ * escapes, counts wide chars as 1, cuts mid-sequence). Column measurement is the correct one.
  */
 export const EXECUTION_MAX_DISPLAY_COLUMNS = 4_000;
 
 /**
- * Retained output lines during streaming, after which the oldest are dropped.
- *
- * Five screenfuls, so expanding a block that is still running still shows more than the collapsed view had. The
- * bound exists because a build or a test run emits tens of thousands of lines and a component that kept them all
- * would grow without limit while the user watched.
- *
- * `bash-execution.ts` had this and `eval-execution.ts` did not, so a long-running eval cell grew unbounded.
+ * Retained output lines during streaming, after which the oldest are dropped. Five screenfuls so
+ * expanding still shows more than collapsed. `bash-execution.ts` had this; `eval-execution.ts` did not.
  */
 export const EXECUTION_STREAMING_LINE_CAP = EXECUTION_PREVIEW_LINES * 5;
 
 /**
- * Trim a retained-output buffer in place to {@link EXECUTION_STREAMING_LINE_CAP}, returning how many lines were
- * dropped from the front.
- *
- * The RETURN VALUE is the reason this is a function rather than two lines inline. Dropping output silently is
- * indistinguishable to a user from a program that produced less output, and the previous inline version dropped
- * lines and then computed its "… N more lines" hint from the already-trimmed buffer, so a five-thousand-line run
- * reported eighty hidden lines and expanding revealed a hundred. The caller now has the number it needs to say
- * what actually happened.
+ * Trim a retained-output buffer in place to {@link EXECUTION_STREAMING_LINE_CAP}, returning how many
+ * lines were dropped. The return value lets the caller report the real count, not the trimmed buffer's.
  */
 export function capExecutionOutputLines(lines: string[]): number {
 	if (lines.length <= EXECUTION_STREAMING_LINE_CAP) return 0;
@@ -83,11 +57,8 @@ export function capExecutionOutputLines(lines: string[]): number {
 }
 
 /**
- * Clamp one output line to {@link EXECUTION_MAX_DISPLAY_COLUMNS} display columns, with a note saying how much
- * was dropped.
- *
- * The count in the note is columns, matching what was measured, so a user comparing it against a wrapped
- * terminal sees a number that corresponds to what they are looking at.
+ * Clamp one output line to {@link EXECUTION_MAX_DISPLAY_COLUMNS} display columns, with a note. The
+ * count in the note is columns, matching what was measured.
  */
 export function clampExecutionDisplayLine(line: string): string {
 	const visible = visibleWidth(line);
