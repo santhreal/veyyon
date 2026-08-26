@@ -653,11 +653,11 @@ export function getMnemopiDbDirForTests(session: AgentSession): string | undefin
  * Best-effort removal of a SQLite DB file and its WAL/SHM sidecars.
  *
  * Windows keeps `-wal`/`-shm` busy briefly after the DB handle closes, so a
- * single `rm` races with EBUSY/EPERM. `removeWithRetries` in `@veyyon/utils`
- * owns that retry window and sizes it at 2s, because a Windows SQLite lock can
- * outlive `close()` by about 1.5s. A copy here used half that window on exactly
- * the file kind the owner sized it for, so a clear reported success where the
- * shared spelling would still have been waiting.
+ * single `rm` races with EBUSY/EPERM. `removeWithRetries` in `@veyyon/utils` is
+ * the single definition of that retry window and sets it at 2s, because a
+ * Windows SQLite lock can outlive `close()` by about 1.5s. A copy here used half
+ * that window on exactly the file kind the shared one is sized for, so a clear
+ * reported success 1s before the shared spelling would have given up.
  */
 async function removeDbFiles(dbPaths: readonly string[]): Promise<void> {
 	for (const dbPath of dbPaths) {
