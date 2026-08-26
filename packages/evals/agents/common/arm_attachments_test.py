@@ -29,7 +29,7 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from arm_attachments import (
+from common.arm_attachments import (
     DELIVERY_ENV_JSON,
     DELIVERY_RULES_DIR,
     MANIFEST_FILE,

@@ -37,7 +37,7 @@ import {
 	stageArmAttachment,
 	writeArmAttachmentManifest,
 } from "../../../src/core/arm-attachments";
-import { armsDir, pierAgentDir } from "../../../src/paths";
+import { agentsDir, armsDir } from "../../../src/paths";
 import {
 	ARM_ATTACHMENT_SUFFIXES,
 	armNamesIn,
@@ -75,7 +75,7 @@ function sampleValueFor(kind: ArmAttachmentKind): Record<string, string | null> 
 	return "mapping" in payload ? payload.mapping : payload.bytes;
 }
 
-const PY_DIR = pierAgentDir();
+const PY_DIR = agentsDir();
 
 /** Run a snippet against the real container-side reader, failing loudly if it cannot run. */
 function python(snippet: string, ...args: string[]): string {
@@ -91,7 +91,7 @@ function python(snippet: string, ...args: string[]): string {
 function pythonReader(): { version: number; deliveries: readonly string[] } {
 	return JSON.parse(
 		python(
-			"import json, arm_attachments as a; " +
+			"import json; from common import arm_attachments as a; " +
 				"print(json.dumps({'version': a.SUPPORTED_MANIFEST_VERSION, 'deliveries': list(a.SUPPORTED_DELIVERIES)}))",
 		),
 	);
@@ -101,7 +101,7 @@ function pythonReader(): { version: number; deliveries: readonly string[] } {
 function pythonDelivery(manifestFile: string, arm: string): { kinds: readonly string[]; command: string } {
 	return JSON.parse(
 		python(
-			"import json, sys, arm_attachments as a; " +
+			"import json, sys; from common import arm_attachments as a; " +
 				"found = a.parse_arm_attachments(open(sys.argv[1]).read(), sys.argv[2]); " +
 				"print(json.dumps({'kinds': [x.kind for x in found], " +
 				"'command': a.environment_prefix(found, '/opt/veyyon-assets') + a.rules_setup_command(found, '/opt/veyyon-assets')}))",
