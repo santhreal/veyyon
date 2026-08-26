@@ -16,8 +16,8 @@
  * the same mounted component, taken here rather than by the oracle.
  */
 
-import type { ExtensionAskDialogQuestion } from "../../../src/extensibility/extensions";
 import { visibleWidth } from "@veyyon/tui";
+import type { ExtensionAskDialogQuestion } from "../../../src/extensibility/extensions";
 import { AskDialogComponent } from "../../../src/modes/components/ask-dialog";
 import type {
 	DialogRenderEvaluationResult,
