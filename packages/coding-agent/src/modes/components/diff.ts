@@ -9,6 +9,9 @@ import { theme } from "../theme/theme-binding";
 /** SGR dim on / normal intensity — additive, preserves fg/bg colors. */
 const DIM = "\x1b[2m";
 
+/** Pre-computed tab marker: ` → ` in dim, centered in the tab width. */
+const TAB_MARKER = `${DIM}${" ".repeat(Math.floor(DEFAULT_TAB_WIDTH / 2))}→${" ".repeat(Math.max(0, DEFAULT_TAB_WIDTH - Math.floor(DEFAULT_TAB_WIDTH / 2) - 1))}${SGR_INTENSITY_RESET}`;
+
 /**
  * Visualize leading whitespace (indentation) with dim glyphs.
  * Tabs become ` → ` and spaces become `·`. Only affects whitespace
@@ -20,14 +23,10 @@ function visualizeIndent(text: string): string {
 	if (!match) return replaceTabs(text);
 	const indent = match[1];
 	const rest = text.slice(indent.length);
-	const tabWidth = DEFAULT_TAB_WIDTH;
-	const leftPadding = Math.floor(tabWidth / 2);
-	const rightPadding = Math.max(0, tabWidth - leftPadding - 1);
-	const tabMarker = `${DIM}${" ".repeat(leftPadding)}→${" ".repeat(rightPadding)}${SGR_INTENSITY_RESET}`;
 	let visible = "";
 	for (const ch of indent) {
 		if (ch === "\t") {
-			visible += tabMarker;
+			visible += TAB_MARKER;
 		} else {
 			visible += `${DIM}·${SGR_INTENSITY_RESET}`;
 		}
