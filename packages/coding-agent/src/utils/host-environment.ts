@@ -310,6 +310,18 @@ export function __resetGpuStateForTests(): void {
 }
 
 /**
+ * Forget this process's CPU answer, the way `__resetGpuStateForTests` forgets the GPU one.
+ *
+ * The cache below is keyed on nothing, because the hardware cannot change under a running process.
+ * A test that fakes `process.platform` changes the answer anyway, and without this it reads whatever
+ * the first `buildSystemPrompt` in the bucket cached — so the darwin branch was never entered when
+ * an earlier file in the same process had already resolved the real host.
+ */
+export function __resetCpuStateForTests(): void {
+	processCpuModel = undefined;
+}
+
+/**
  * The CPU line of the environment section, or nothing when it cannot be had.
  *
  * Answered from a process-level cache after the first call, the way the GPU
