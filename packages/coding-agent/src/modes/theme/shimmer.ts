@@ -591,18 +591,33 @@ const LAVA_PERIOD_MS = 5500;
 const LAVA_CELL_PHASE = 0.09;
 /** How far the trough dips below the ember stop toward black (deep ember). */
 const LAVA_DEEP_FACTOR = 0.45;
+const BLACK_RGB: Rgb = [0, 0, 0];
 
 type LavaTheme = Pick<Theme, "getColorHex" | "fg">;
 
 function hexChannel(hex: string, i: number): number {
-	return parseInt(hex.slice(1 + i * 2, 3 + i * 2), 16);
+	const hi = hex.charCodeAt(1 + i * 2);
+	const lo = hex.charCodeAt(2 + i * 2);
+	return (hexVal(hi) << 4) | hexVal(lo);
 }
 
-function mixHex(a: string, b: string, t: number): [number, number, number] {
-	return [0, 1, 2].map(i => Math.round(hexChannel(a, i) + (hexChannel(b, i) - hexChannel(a, i)) * t)) as [
-		number,
-		number,
-		number,
+function hexVal(c: number): number {
+	if (c >= 0x30 && c <= 0x39) return c - 0x30;
+	if (c >= 0x41 && c <= 0x46) return c - 0x41 + 10;
+	return c - 0x61 + 10;
+}
+
+type Rgb = [number, number, number];
+
+function parseHex(hex: string): Rgb {
+	return [hexChannel(hex, 0), hexChannel(hex, 1), hexChannel(hex, 2)];
+}
+
+function mixRgb(a: Rgb, b: Rgb, t: number): Rgb {
+	return [
+		Math.round(a[0] + (b[0] - a[0]) * t),
+		Math.round(a[1] + (b[1] - a[1]) * t),
+		Math.round(a[2] + (b[2] - a[2]) * t),
 	];
 }
 
@@ -611,9 +626,9 @@ function mixHex(a: string, b: string, t: number): [number, number, number] {
  * deep-ember (trough) → ember → gold (crest) → ember → deep-ember. Returns
  * r/g/b so callers can emit one 24-bit sequence.
  */
-function lavaRgbAt(theme: LavaTheme, p: number): [number, number, number] {
-	const ember = theme.getColorHex("borderAccent");
-	const gold = theme.getColorHex("matchHighlight");
+function lavaRgbAt(theme: LavaTheme, p: number): Rgb {
+	const emberRgb = parseHex(theme.getColorHex("borderAccent"));
+	const goldRgb = parseHex(theme.getColorHex("matchHighlight"));
 	// Triangle: 0→1→0 across the cycle, so the heat rises and falls smoothly —
 	// trough (phase 0) is deep ember, crest (phase 0.5) is gold.
 	const f = p - Math.floor(p);
@@ -621,12 +636,11 @@ function lavaRgbAt(theme: LavaTheme, p: number): [number, number, number] {
 	if (clamped < 0.5) {
 		// deep ember → ember: scale ember toward black by the deep factor.
 		const k = clamped / 0.5;
-		const deep = mixHex("#000000", ember, 1 - LAVA_DEEP_FACTOR);
-		const deepHex = `#${deep.map(c => c.toString(16).padStart(2, "0")).join("")}`;
-		return mixHex(deepHex, ember, k);
+		const deep = mixRgb(BLACK_RGB, emberRgb, 1 - LAVA_DEEP_FACTOR);
+		return mixRgb(deep, emberRgb, k);
 	}
 	// ember → gold
-	return mixHex(ember, gold, (clamped - 0.5) / 0.5);
+	return mixRgb(emberRgb, goldRgb, (clamped - 0.5) / 0.5);
 }
 
 /**
