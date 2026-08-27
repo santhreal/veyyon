@@ -149,9 +149,10 @@ function getRunMeta(run: GhRunWatchRunDetails): string[] {
 function formatRunLine(run: GhRunWatchRunDetails, theme: Theme): string {
 	const title = theme.fg("accent", getRunLabel(run));
 	const metaParts = getRunMeta(run);
-	const meta = metaParts.map((part, index) =>
-		index === metaParts.length - 1 ? theme.fg("muted", part) : theme.fg("text", part),
-	);
+	const meta: string[] = new Array(metaParts.length);
+	for (let mi = 0; mi < metaParts.length; mi++) {
+		meta[mi] = mi === metaParts.length - 1 ? theme.fg("muted", metaParts[mi]!) : theme.fg("text", metaParts[mi]!);
+	}
 	return [title, ...meta].join("  ");
 }
 
@@ -193,9 +194,8 @@ function renderRunBlock(run: GhRunWatchRunDetails, width: number, theme: Theme):
 		lines.push(theme.fg("dim", "waiting for workflow jobs..."));
 		return lines;
 	}
-
-	for (const job of run.jobs) {
-		lines.push(renderJobLine(job, width, theme));
+	for (let ji = 0; ji < run.jobs.length; ji++) {
+		lines.push(renderJobLine(run.jobs[ji]!, width, theme));
 	}
 	return lines;
 }
@@ -211,7 +211,8 @@ function renderFailedLogs(
 	}
 
 	const lines: string[] = [];
-	for (const entry of failedLogs) {
+	for (let ei = 0; ei < failedLogs.length; ei++) {
+		const entry = failedLogs[ei]!;
 		const context = entry.workflowName ? `${entry.workflowName}  #${entry.runId}` : `run #${entry.runId}`;
 		lines.push(
 			theme.fg("error", `${theme.status.error} ${replaceTabs(entry.jobName)}  ${theme.fg("muted", context)}`),
@@ -222,12 +223,15 @@ function renderFailedLogs(
 			continue;
 		}
 
-		const tailLines = replaceTabs(entry.tail)
-			.split("\n")
-			.filter(line => line.length > 0);
+		const tailRaw = replaceTabs(entry.tail).split("\n");
+		const tailLines: string[] = [];
+		for (let li = 0; li < tailRaw.length; li++) {
+			if (tailRaw[li]!.length > 0) tailLines.push(tailRaw[li]!);
+		}
 		const previewLimit = expanded ? tailLines.length : Math.min(PREVIEW_LIMITS.OUTPUT_COLLAPSED, tailLines.length);
-		for (const line of tailLines.slice(-previewLimit)) {
-			lines.push(theme.fg("dim", `  ${truncateVisualWidth(line, Math.max(8, width - 2))}`));
+		const tailStart = Math.max(0, tailLines.length - previewLimit);
+		for (let li = tailStart; li < tailLines.length; li++) {
+			lines.push(theme.fg("dim", `  ${truncateVisualWidth(tailLines[li]!, Math.max(8, width - 2))}`));
 		}
 
 		if (!expanded && tailLines.length > previewLimit) {
@@ -259,13 +263,13 @@ function buildWatchSections(
 		if (runs.length === 0) {
 			main.push(theme.fg("dim", "waiting for workflow runs..."));
 		} else {
-			runs.forEach((run, index) => {
-				if (index > 0) {
+			for (let ri = 0; ri < runs.length; ri++) {
+				if (ri > 0) {
 					main.push("");
 				}
-				const rb = renderRunBlock(run, width, theme);
+				const rb = renderRunBlock(runs[ri]!, width, theme);
 				for (let li = 0; li < rb.length; li++) main.push(rb[li]!);
-			});
+			}
 		}
 	}
 
@@ -283,11 +287,14 @@ function buildWatchSections(
 }
 
 function extractText(content: Array<{ type: string; text?: string }>): string {
-	return content
-		.filter(part => part.type === "text")
-		.map(part => part.text)
-		.filter((value): value is string => typeof value === "string" && value.length > 0)
-		.join("\n");
+	const parts: string[] = [];
+	for (let ci = 0; ci < content.length; ci++) {
+		const part = content[ci]!;
+		if (part.type === "text" && typeof part.text === "string" && part.text.length > 0) {
+			parts.push(part.text);
+		}
+	}
+	return parts.join("\n");
 }
 
 function renderFallbackComponent(

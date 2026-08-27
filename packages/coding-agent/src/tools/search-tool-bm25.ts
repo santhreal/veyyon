@@ -220,9 +220,11 @@ function renderMatchBullets(tools: SearchToolBm25Match[], expanded: boolean, the
 
 function renderFallbackResult(text: string, theme: Theme): Component {
 	const header = renderStatusLine({ icon: "warning", title: TOOL_DISCOVERY_TITLE }, theme);
-	const bodyLines = (text || "Tool discovery completed")
-		.split("\n")
-		.map(line => theme.fg("dim", truncateToWidth(replaceTabs(line), TRUNCATE_LENGTHS.LINE)));
+	const bodyRaw = (text || "Tool discovery completed").split("\n");
+	const bodyLines: string[] = new Array(bodyRaw.length);
+	for (let li = 0; li < bodyRaw.length; li++) {
+		bodyLines[li] = theme.fg("dim", truncateToWidth(replaceTabs(bodyRaw[li]!), TRUNCATE_LENGTHS.LINE));
+	}
 	return new Text([header, ...bodyLines].join("\n"), 0, 0);
 }
 
@@ -342,11 +344,14 @@ export const searchToolBm25Renderer = {
 		uiTheme: Theme,
 	): Component {
 		if (!result.details) {
-			const fallbackText = result.content
-				.filter(part => part.type === "text")
-				.map(part => part.text)
-				.filter((text): text is string => typeof text === "string" && text.length > 0)
-				.join("\n");
+			const parts: string[] = [];
+			for (let ci = 0; ci < result.content.length; ci++) {
+				const part = result.content[ci]!;
+				if (part.type === "text" && typeof part.text === "string" && part.text.length > 0) {
+					parts.push(part.text);
+				}
+			}
+			const fallbackText = parts.join("\n");
 			return renderFallbackResult(fallbackText, uiTheme);
 		}
 
