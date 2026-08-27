@@ -379,10 +379,11 @@ export function parseKittySequence(data: string): ParsedKittySequence | null {
 }
 
 function hasControlChars(data: string): boolean {
-	return [...data].some(ch => {
-		const code = ch.charCodeAt(0);
-		return code < 32 || code === 0x7f || (code >= 0x80 && code <= 0x9f);
-	});
+	for (let i = 0; i < data.length; i++) {
+		const code = data.charCodeAt(i);
+		if (code < 32 || code === 0x7f || (code >= 0x80 && code <= 0x9f)) return true;
+	}
+	return false;
 }
 
 function decodeKittyPrintable(data: string): string | undefined {
