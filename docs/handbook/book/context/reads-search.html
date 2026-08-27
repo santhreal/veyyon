@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-5902088c.js";
+            window.path_to_searchindex_js = "../searchindex-8e0d80af.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-a2abefc1.js"></script>
@@ -222,7 +222,10 @@ bounded rather than spilled to an artifact: a paged window with a continuation s
 than a truncated one with a link.</li>
 <li><strong>Structural summaries for parseable code.</strong> A read with no selector on a parseable source file
 returns declarations with bodies elided (<code>…</code>), and the footer states the recovery selector so the model
-re-issues only the ranges it actually needs instead of re-reading the whole file.</li>
+re-issues only the ranges it actually needs instead of re-reading the whole file. The summary takes
+the same byte budget as a file window, and lines wider than <code>tools.outputMaxColumns</code> are clipped, so
+a declaration-dense file (generated protobuf bindings, a large <code>.d.ts</code>) returns a bounded window
+with the line that continues it rather than the whole projection.</li>
 <li><strong>Truncation is explicit.</strong> A summary footer or a <code>[Showing lines …]</code>-style notice states the
 continuation selector.</li>
 <li><strong>Beyond plain text files:</strong> the same tool also reads directories (depth-limited listing), archives
@@ -242,8 +245,9 @@ mention stays in the transcript and is billed on every later request. A capped m
 lines it showed and the selector that pages the rest. A file over 5 MB, a binary file, or an image
 over 25 MB is not read: the message carries the path and the reason.</p>
 <p><code>tools.artifactSpillThreshold</code> bounds every model-visible result. <code>read</code> applies it directly to a
-file window, a directory listing, an archive listing, a notebook or converted document and a URL
-body, and states what it carried and how to reach the rest. Every other tool passes the shared spill
+file window, a structural summary, a directory listing, an archive listing, a notebook or converted
+document and a URL body, and states what it carried and how to reach the rest. Every other tool
+passes the shared spill
 layer: output over the threshold is written to an artifact and the result keeps a head and tail
 window no larger than the threshold, sized by <code>tools.artifactHeadBytes</code> and
 <code>tools.artifactTailBytes</code> in the ratio they name, plus the <code>artifact://</code> id that reads the full text

@@ -2364,15 +2364,31 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 		}
 	}
 
-	#renderSummary(summary: SummaryResult): {
+	/**
+	 * Render a structural summary, stopping once the model-facing text reaches
+	 * `maxBytes`. A summary is a projection over the whole file, so a
+	 * declaration-dense file (generated protobuf bindings, a large `.d.ts`)
+	 * keeps nearly every line and renders hundreds of kilobytes from a
+	 * selector-free read. That text is re-sent on every later request of the
+	 * session, so it takes the same budget as every other read window, and the
+	 * caller states the line the summary stopped at.
+	 */
+	#renderSummary(
+		summary: SummaryResult,
+		maxBytes: number,
+	): {
 		text: string;
 		displayText: string;
 		elidedRanges: ElidedRange[];
 		elidedLines: number;
+		truncated: boolean;
+		nextLine: number;
+		columnTruncated: number;
 	} {
 		const displayMode = resolveFileDisplayMode(this.session);
 		const shouldAddHashLines = displayMode.hashLines;
 		const shouldAddLineNumbers = shouldAddHashLines ? false : displayMode.lineNumbers;
+		const maxColumns = resolveOutputMaxColumns(this.session.settings);
 
 		// Flatten segments into per-line units so we can merge a kept-head /
 		// elided / kept-tail sandwich into a single brace-pair line when the
@@ -2430,37 +2446,71 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 		const displayParts: string[] = [];
 		const elidedRanges: ElidedRange[] = [];
 		let elidedLines = 0;
+		let modelBytes = 0;
+		let truncated = false;
+		let nextLine = 0;
+		let columnTruncated = 0;
+		const clip = (text: string): string => {
+			if (maxColumns <= 0) return text;
+			const result = truncateLine(text, maxColumns);
+			if (result.wasTruncated) columnTruncated = maxColumns;
+			return result.text;
+		};
 		for (const unit of units) {
+			const unitStartLine = unit.kind === "line" ? unit.line : unit.startLine;
+			let modelPart: string;
+			let displayPart: string;
 			if (unit.kind === "elided") {
-				modelParts.push("…");
-				displayParts.push("…");
-				elidedRanges.push({ start: unit.startLine, end: unit.endLine });
-				elidedLines += unit.endLine - unit.startLine + 1;
-				continue;
-			}
-			if (unit.kind === "merged") {
+				modelPart = "…";
+				displayPart = "…";
+			} else if (unit.kind === "merged") {
 				const formatted = formatMergedBraceLine(
 					unit.startLine,
 					unit.endLine,
-					unit.headText,
-					unit.tailText,
+					clip(unit.headText),
+					clip(unit.tailText),
 					shouldAddHashLines,
 					shouldAddLineNumbers,
 				);
-				modelParts.push(formatted.model);
-				displayParts.push(formatted.display);
+				modelPart = formatted.model;
+				displayPart = formatted.display;
+			} else {
+				const text = clip(unit.text);
+				modelPart = formatSingleLine(unit.line, text, shouldAddHashLines, shouldAddLineNumbers);
+				displayPart = text;
+			}
+
+			const cost = Buffer.byteLength(modelPart, "utf-8") + (modelParts.length > 0 ? 1 : 0);
+			if (modelParts.length > 0 && modelBytes + cost > maxBytes) {
+				truncated = true;
+				nextLine = unitStartLine;
+				break;
+			}
+			modelBytes += cost;
+			modelParts.push(modelPart);
+			displayParts.push(displayPart);
+
+			if (unit.kind === "elided") {
+				elidedRanges.push({ start: unit.startLine, end: unit.endLine });
+				elidedLines += unit.endLine - unit.startLine + 1;
+			} else if (unit.kind === "merged") {
 				// Suggest the full brace range so re-reading shows both braces
 				// plus the elided body in one shot.
 				elidedRanges.push({ start: unit.startLine, end: unit.endLine });
 				// Merged brace pair encloses (start+1)..(end-1) as elided.
 				elidedLines += Math.max(0, unit.endLine - unit.startLine - 1);
-				continue;
 			}
-			modelParts.push(formatSingleLine(unit.line, unit.text, shouldAddHashLines, shouldAddLineNumbers));
-			displayParts.push(unit.text);
 		}
 
-		return { text: modelParts.join("\n"), displayText: displayParts.join("\n"), elidedRanges, elidedLines };
+		return {
+			text: modelParts.join("\n"),
+			displayText: displayParts.join("\n"),
+			elidedRanges,
+			elidedLines,
+			truncated,
+			nextLine,
+			columnTruncated,
+		};
 	}
 
 	async execute(
@@ -2806,22 +2856,31 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 			) {
 				const summary = await this.#trySummarize(absolutePath, fileSize, signal);
 				if (summary?.parsed && summary.elided) {
-					const renderedSummary = this.#renderSummary(summary);
+					const summaryBudget = inlineBudgetFor(this.session);
+					const renderedSummary = this.#renderSummary(summary, summaryBudget);
 					const footer = formatSummaryElisionFooter(
 						localReadPath,
 						renderedSummary.elidedRanges,
 						renderedSummary.elidedLines,
 					);
+					const budgetNotice = renderedSummary.truncated
+						? `[Summary reached the ${formatBytes(summaryBudget)} output budget. Use :${renderedSummary.nextLine} to continue]`
+						: "";
 					const summaryHashContext = displayMode.hashLines
 						? await readHashlineHeaderContext(this.session, absolutePath, this.session.cwd)
 						: undefined;
-					const bodyText = footer ? `${renderedSummary.text}\n\n${footer}` : renderedSummary.text;
+					const bodyText = [renderedSummary.text, footer, budgetNotice].filter(part => part).join("\n\n");
 					const modelText = prependHashlineHeader(bodyText, summaryHashContext);
 					if (summaryHashContext?.tag) {
 						recordSeenLinesFromBody(this.session, absolutePath, summaryHashContext.tag, renderedSummary.text);
 					}
 					details = {
-						displayContent: { text: renderedSummary.displayText, startLine: 1 },
+						displayContent: {
+							text: budgetNotice
+								? `${renderedSummary.displayText}\n\n${budgetNotice}`
+								: renderedSummary.displayText,
+							startLine: 1,
+						},
 						summary: {
 							lines: countTextLines(renderedSummary.text),
 							elidedSpans: renderedSummary.elidedRanges.length,
@@ -2831,6 +2890,9 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 
 					sourcePath = absolutePath;
 					content = [{ type: "text", text: modelText }];
+					if (renderedSummary.columnTruncated > 0) {
+						columnTruncated = renderedSummary.columnTruncated;
+					}
 				}
 			}
 
