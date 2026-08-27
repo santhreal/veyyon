@@ -91,7 +91,8 @@ export class TtsrNotificationComponent extends TranscriptNoteComponent {
 		const visible = this.#expanded ? this.#rules : this.#rules.slice(0, MAX_COLLAPSED_RULES);
 		const rows: string[] = [];
 		let elidedDetail = false;
-		for (const rule of visible) {
+		for (let ri = 0; ri < visible.length; ri++) {
+			const rule = visible[ri]!;
 			const desc = (rule.description || rule.content)?.trim();
 			let line = theme.bold(theme.fg("text", rule.name));
 			if (desc) {

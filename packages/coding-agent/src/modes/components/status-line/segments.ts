@@ -84,23 +84,13 @@ function thinkingGlyph(display: string): string {
 	return space === -1 ? display : display.slice(0, space);
 }
 
-/**
- * Workspace roots the path segment shows a project RELATIVE to, when no root is configured.
- *
- * Two conventions, and that is all they are: a `Projects` directory in the home directory, and
- * a `/work` mount. They are the default because they are what this segment has always
- * stripped, not because they are anyone's layout -- `path.displayRoots` is how a session names
- * its own, and `/work` on Windows resolves against whichever drive the process is on, which is
- * an accident of `path.resolve` rather than a place anything lives.
- *
- * READ WHEN USED, NOT AT IMPORT. As a module const this joined the home directory once, at the
- * moment the module loaded, and a home resolved after that -- a different `HOME` in a worker, a
- * test that answers `os.homedir()` for a fixture -- never matched a default root again, so the
- * whole default silently stopped stripping. `os.homedir()` reads an environment variable; a
- * render can afford it.
- */
-export function defaultDisplayRoots(): readonly string[] {
-	return [path.join(os.homedir(), "Projects"), "/work"];
+function stripDisplayRoot(pwd: string): string {
+	const roots = [HOME_PROJECTS, "/work"];
+	for (let ri = 0; ri < roots.length; ri++) {
+		const relative = relativePathWithinRoot(roots[ri]!, pwd);
+		if (relative) return relative;
+	}
+	return pwd;
 }
 
 /** Display roots already reported as unusable, so a bad entry is named once and not per frame. */
@@ -185,7 +175,8 @@ function scratchRoots(): readonly string[] {
 }
 
 function classifyProjectDir(pwd: string): { scratch: boolean; relative: string | null } {
-	for (const root of scratchRoots()) {
+	for (let ri = 0; ri < SCRATCH_ROOTS.length; ri++) {
+		const root = SCRATCH_ROOTS[ri]!;
 		if (pathIsWithin(root, pwd)) {
 			return { scratch: true, relative: relativePathWithinRoot(root, pwd) };
 		}
@@ -498,8 +489,8 @@ export const BASE_MODE_STATES: readonly BaseModeState[] = [
 
 /** The active mode label (plan/prewalk/goal/vibe/loop), independent of the bypass marker. */
 function renderBaseMode(ctx: SegmentContext): string {
-	for (const mode of BASE_MODE_STATES) {
-		const content = mode.render(ctx);
+	for (let mi = 0; mi < BASE_MODE_STATES.length; mi++) {
+		const content = BASE_MODE_STATES[mi]!.render(ctx);
 		if (content !== "") return content;
 	}
 	return "";

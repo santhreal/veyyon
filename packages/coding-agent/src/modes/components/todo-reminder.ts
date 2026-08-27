@@ -31,8 +31,9 @@ export class TodoReminderComponent extends TranscriptNoteComponent {
 
 		const preview = createBoundedTodoPreview();
 		const prefix = `${theme.checkbox.unchecked} `;
-		for (const todo of prioritizeTodoItems(todos).slice(0, TODO_REMINDER_PREVIEW_LIMIT)) {
-			if (!preview.push(prefix, todo.content)) break;
+		const prioritized = prioritizeTodoItems(todos).slice(0, TODO_REMINDER_PREVIEW_LIMIT);
+		for (let ti = 0; ti < prioritized.length; ti++) {
+			if (!preview.push(prefix, prioritized[ti]!.content)) break;
 		}
 		const rows = preview.lines.map(row => theme.italic(theme.fg("text", row)));
 		const hidden = count - preview.lines.length;
