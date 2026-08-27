@@ -65,7 +65,8 @@ export function createAdvisorMessageCard(
 			const lines = [`${tag} ${uiTheme.fg("dim", meta.join(uiTheme.sep.dot))}`];
 			const railGlyph = uiTheme.symbol("advisor.rail");
 			const shown = expanded ? notes : notes.slice(0, COLLAPSED_NOTES);
-			for (const entry of shown) {
+			for (let ni = 0; ni < shown.length; ni++) {
+				const entry = shown[ni]!;
 				const badge = entry.severity
 					? `${formatBadge(entry.severity, severityColor(entry.severity), uiTheme)} `
 					: "";

@@ -740,7 +740,8 @@ export class AccountManagerComponent implements Component {
 
 	#sidebarWidth(): number {
 		let longest = SIDEBAR_MIN_WIDTH;
-		for (const entry of this.#entries) {
+		for (let ei = 0; ei < this.#entries.length; ei++) {
+			const entry = this.#entries[ei]!;
 			longest = Math.max(longest, visibleWidth(entry.label) + visibleWidth(entry.annotation) + 7);
 		}
 		return clampLow(longest, SIDEBAR_MIN_WIDTH, SIDEBAR_MAX_WIDTH);

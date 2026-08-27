@@ -29,8 +29,9 @@ export class ErrorBannerComponent extends Container {
 		this.addChild(
 			new Text(theme.bold(theme.fg("error", `${theme.status.error} ${lines[0]}`)), COMPOSER_INSET_COLS, 0),
 		);
-		for (const line of lines.slice(1)) {
-			this.addChild(new Text(theme.fg("error", `  ${line}`), COMPOSER_INSET_COLS, 0));
+		const rest = lines.slice(1);
+		for (let li = 0; li < rest.length; li++) {
+			this.addChild(new Text(theme.fg("error", `  ${rest[li]}`), COMPOSER_INSET_COLS, 0));
 		}
 		this.addChild(new Text(theme.fg("dim", "Dismissed when you send your next message."), COMPOSER_INSET_COLS, 0));
 	}
