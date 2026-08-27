@@ -94,6 +94,8 @@
 ### Fixed
 
 - A bash working directory on a different Windows drive from the project renders as the absolute path it is, instead of being reported as a path inside the project.
+- Web search keeps trying the next provider when one returns only follow-up suggestions or intermediate search queries, instead of counting that metadata as a result and handing the model a list of questions; a SearXNG "did you mean" on a misspelled query no longer ends the search.
+- Public Web search reports which engines did not answer within the deadline instead of reporting an empty web, so a slow or bot-walled engine no longer surfaces as "returned no renderable search content".
 - The `VEYYON_TINY_DEVICE` and `VEYYON_TINY_DTYPE` reference states the `providers.tinyModelDevice` and `providers.tinyModelDtype` defaults as the `default` sentinel each setting actually holds, and names what that sentinel selects, instead of listing `CPU` and `q4` as the stored values.
 - A collapsed `ssh` result measures its preview in rendered rows at the frame's inner width and shows the newest three lines with a count of what was hidden, instead of slicing the first five newlines and overflowing the frame whenever a remote line wrapped.
 - A terminal resize, theme switch or session switch no longer seals a backgrounded subagent's tool card mid-flight, so the progress it reports afterwards still reaches the card instead of being dropped for the rest of the turn.
@@ -222,6 +224,7 @@
 - A branch-summary reserve at or above the model's context window now falls back to the proportional 15% reserve instead of leaving a non-positive budget, which the entry preparation read as "no limit" and which sent the whole branch.
 - A tool that blocks on only some of its operations declares interruptibility per call, so an interrupt arriving beside a non-blocking or malformed call no longer replaces that call's own result with a skipped placeholder.
 - A tool result that ran and failed no longer supersedes an earlier successful read of the same path, which replaced that file's content with a supersede notice and left the conversation only the error text.
+- A `503 auth_unavailable` refusal is classified as an authentication failure rather than a bare server status, so compaction falls back to an authenticated model instead of failing the whole compaction ([#986](https://github.com/santhreal/veyyon/issues/986)).
 - A llama.cpp tool-call JSON parse failure explains itself and names the fix on every route to a local server, not only when the provider id is `ollama`, so an LM Studio or llama-cpp user sees why the turn stopped instead of a bare HTTP 500 whose retry was already being suppressed.
 - A rate-limit message reads `503`, `529` and `500` as the status codes they are rather than as digits inside a longer number, so an exhausted balance reporting `5030 credits remaining` rotates the credential instead of retrying the same account after a 45-second capacity backoff.
 - A Gemini or Cloud Code Assist body that carried a whole turn and then ended without a `finishReason` settles on what arrived rather than failing as a truncated response, matching the four dialects that already read the shared end-of-stream judgement; a body carrying nothing usable is still refused.
