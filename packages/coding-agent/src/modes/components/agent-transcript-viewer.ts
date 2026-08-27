@@ -696,11 +696,12 @@ export class AgentTranscriptViewer implements Component {
 		if (this.#followBottom) this.#scrollView.scrollToBottom();
 
 		const body: string[] = [];
-		for (const headerLine of headerLines) body.push(headerLine);
+		for (let li = 0; li < headerLines.length; li++) body.push(headerLines[li]!);
 		body.push("");
-		for (const row of this.#scrollView.render(contentWidth)) body.push(row);
+		const scrollRows = this.#scrollView.render(contentWidth);
+		for (let li = 0; li < scrollRows.length; li++) body.push(scrollRows[li]!);
 		if (noticeLine) body.push(noticeLine);
-		for (const editorLine of editorLines) body.push(`${RAIL_PAD}${editorLine}`);
+		for (let li = 0; li < editorLines.length; li++) body.push(`${RAIL_PAD}${editorLines[li]!}`);
 
 		const shell = renderModalShell({
 			title: `Transcript ${theme.sep.dot} ${this.deps.agentId}`,
