@@ -195,7 +195,8 @@ export function parseArgs(argv: string[]): Config {
 	for (let i = 0; i < argv.length; i++) {
 		let arg = argv[i];
 		if (arg === "--") {
-			cfg.passthrough.push(...argv.slice(i + 1));
+			const ps = argv.slice(i + 1);
+			for (let pi = 0; pi < ps.length; pi++) cfg.passthrough.push(ps[pi]!);
 			break;
 		}
 		let inlineValue: string | null = null;
@@ -1374,7 +1375,7 @@ function buildHarborArgs(
 	} else {
 		a.push("-a", cfg.agent);
 	}
-	a.push(...cfg.passthrough);
+	for (let pi = 0; pi < cfg.passthrough.length; pi++) a.push(cfg.passthrough[pi]!);
 	return a;
 }
 /**
@@ -1388,7 +1389,7 @@ export function buildResumeArgs(cfg: Config, jobDir: string): string[] {
 	if (cfg.filterErrorTypes.length > 0) {
 		for (const t of new Set(["CancelledError", ...cfg.filterErrorTypes])) a.push("-f", t);
 	}
-	a.push(...cfg.passthrough);
+	for (let pi = 0; pi < cfg.passthrough.length; pi++) a.push(cfg.passthrough[pi]!);
 	return a;
 }
 

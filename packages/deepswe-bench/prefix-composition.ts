@@ -1208,7 +1208,8 @@ export function measureRunPrefix(
 					}
 				}
 				mass = accumulatePrefixMass(sessionPrefixSteps(records), mass);
-				observations.push(...prefixObservations(records));
+				const po = prefixObservations(records);
+				for (let oi = 0; oi < po.length; oi++) observations.push(po[oi]!);
 				perSession.push(records);
 				for (const cap of CAP_SWEEP) {
 					const point = capRemoved.get(cap);

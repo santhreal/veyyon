@@ -162,7 +162,10 @@ if (import.meta.main) {
 		process.exit(2);
 	}
 	const chunks: string[] = [];
-	for (const p of paths) chunks.push(...(JSON.parse(fs.readFileSync(p, "utf8")) as string[]));
+	for (const p of paths) {
+		const pc = JSON.parse(fs.readFileSync(p, "utf8")) as string[];
+		for (let ci = 0; ci < pc.length; ci++) chunks.push(pc[ci]!);
+	}
 	console.log(`stream: ${chunks.length} turns from ${paths.length} file(s)`);
 	console.log(`rates:  ${REFERENCE_RATE_CARD.source}`);
 	console.log("");

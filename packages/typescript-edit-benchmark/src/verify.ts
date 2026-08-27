@@ -217,11 +217,11 @@ function computeIndentDistanceForDiff(expected: string, actual: string): number 
 	for (const change of changes) {
 		const lines = splitTextLines(change.value);
 		if (change.removed) {
-			pendingRemoved.push(...lines);
+			for (let li = 0; li < lines.length; li++) pendingRemoved.push(lines[li]!);
 			continue;
 		}
 		if (change.added) {
-			pendingAdded.push(...lines);
+			for (let li = 0; li < lines.length; li++) pendingAdded.push(lines[li]!);
 			continue;
 		}
 		if (pendingRemoved.length > 0 || pendingAdded.length > 0) {
@@ -271,15 +271,15 @@ function restoreWhitespaceOnlyLineDiffs(expected: string, actual: string): strin
 	for (const change of changes) {
 		const lines = splitTextLines(change.value);
 		if (change.removed) {
-			pendingRemoved.push(...lines);
+			for (let li = 0; li < lines.length; li++) pendingRemoved.push(lines[li]!);
 			continue;
 		}
 		if (change.added) {
-			pendingAdded.push(...lines);
+			for (let li = 0; li < lines.length; li++) pendingAdded.push(lines[li]!);
 			continue;
 		}
 		flush();
-		out.push(...lines);
+		for (let li = 0; li < lines.length; li++) out.push(lines[li]!);
 	}
 	flush();
 

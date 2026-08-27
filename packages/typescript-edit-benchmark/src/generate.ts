@@ -587,12 +587,12 @@ function resolveFormattedMutationInfo(
 			if (!part.added && !part.removed) break;
 			const lines = splitChangedLines(part.value);
 			if (part.removed) {
-				hunk.removedLines.push(...lines);
+				for (let li = 0; li < lines.length; li++) hunk.removedLines.push(lines[li]!);
 				oldLine += lines.length;
 				hunk.oldEnd = oldLine - 1;
 			}
 			if (part.added) {
-				hunk.addedLines.push(...lines);
+				for (let li = 0; li < lines.length; li++) hunk.addedLines.push(lines[li]!);
 				newLine += lines.length;
 				hunk.newEnd = newLine - 1;
 			}

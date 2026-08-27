@@ -561,7 +561,8 @@ function assistantText(messages: readonly AgentMessage[]): string {
 	const parts: string[] = [];
 	for (const message of messages as ReadonlyArray<{ role: string; content?: unknown }>) {
 		if (message.role !== "assistant") continue;
-		parts.push(...assistantTextBlocksFromUnknown(message.content));
+		const ab = assistantTextBlocksFromUnknown(message.content);
+		for (let pi = 0; pi < ab.length; pi++) parts.push(ab[pi]!);
 	}
 	return parts.join("\n");
 }

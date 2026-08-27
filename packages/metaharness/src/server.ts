@@ -409,7 +409,10 @@ export class ManagerServer {
 			cwd = PKG_DIR;
 			argv = ["bun", "src/runner.ts", ...harborRunnerArgs(request, { jobsDir: this.jobsDir, jobName, dataset })];
 		}
-		if (benchmark !== "harbor") argv.push(...(request.extraArgs ?? []));
+		if (benchmark !== "harbor") {
+			const ea = request.extraArgs ?? [];
+			for (let ai = 0; ai < ea.length; ai++) argv.push(ea[ai]!);
+		}
 
 		const pid = this.#spawnRunner(argv, cwd, {
 			benchmark,

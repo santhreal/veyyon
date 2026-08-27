@@ -77,6 +77,7 @@ export function harborRunnerArgs(
 			if (fs.existsSync(binary)) argv.push("--binary", binary);
 		}
 	}
-	argv.push(...(request.extraArgs ?? []));
+	const ea = request.extraArgs ?? [];
+	for (let ai = 0; ai < ea.length; ai++) argv.push(ea[ai]!);
 	return argv;
 }

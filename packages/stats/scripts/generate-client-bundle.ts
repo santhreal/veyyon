@@ -21,7 +21,8 @@ async function collectFiles(dir: string): Promise<string[]> {
 	for (const entry of entries) {
 		const fullPath = path.join(dir, entry.name);
 		if (entry.isDirectory()) {
-			files.push(...(await collectFiles(fullPath)));
+			const cf = await collectFiles(fullPath);
+			for (let fi = 0; fi < cf.length; fi++) files.push(cf[fi]!);
 		} else if (entry.isFile()) {
 			files.push(fullPath);
 		}

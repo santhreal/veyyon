@@ -605,7 +605,7 @@ function buildGuidedHashlinePatch(file: string, actual: string, expected: string
 			line += lines.length;
 		}
 		if (change.added) {
-			pendingAdded.push(...lines);
+			for (let li = 0; li < lines.length; li++) pendingAdded.push(lines[li]!);
 		}
 	}
 	flush();
@@ -1291,7 +1291,7 @@ async function runSingleTask(
 								if (e.toolName === "edit") {
 									const warningMessages = extractHashlineWarnings(e.result);
 									if (warningMessages.length > 0) {
-										editWarnings.push(...warningMessages);
+										for (let wi = 0; wi < warningMessages.length; wi++) editWarnings.push(warningMessages[wi]!);
 										toolStats.editWarnings += warningMessages.length;
 										if (hasHashlineAutocorrectWarning(warningMessages)) {
 											editAutocorrectCount++;
