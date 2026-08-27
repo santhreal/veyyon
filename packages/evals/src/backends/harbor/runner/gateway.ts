@@ -7,6 +7,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { trimTrailingSlashes } from "@veyyon/utils";
 import type { Server } from "bun";
+import { syncCommandOptions } from "../../../core/external-command";
 import { type Config, VMNET_HOST_IP } from "./config";
 
 export interface VmnetGatewayForwarder {
@@ -51,7 +52,7 @@ export function gatewayHealthOk(url: string): boolean {
 	const hostUrl = trimTrailingSlashes(
 		url.replace("host.docker.internal", "127.0.0.1").replace(VMNET_HOST_IP, "127.0.0.1"),
 	);
-	const r = spawnSync("curl", ["-s", "--max-time", "4", `${hostUrl}/healthz`], { encoding: "utf8" });
+	const r = spawnSync("curl", ["-s", "--max-time", "4", `${hostUrl}/healthz`], syncCommandOptions());
 	return r.status === 0 && (r.stdout ?? "").includes('"ok":true');
 }
 

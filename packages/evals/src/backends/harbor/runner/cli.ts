@@ -6,6 +6,7 @@ import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { errorMessage, isRecord, tryParseJson } from "@veyyon/utils";
+import { syncCommandOptions } from "../../../core/external-command";
 import { requireHarness } from "../../../core/harness-registry";
 import { requirePathSegment } from "../../../paths";
 import { requireHarborBinding } from "../backend";
@@ -129,7 +130,8 @@ function readJson(file: string): unknown {
 }
 
 function which(bin: string): string | null {
-	const r = spawnSync("bash", ["-lc", `command -v ${bin}`], { encoding: "utf8" });
+	// A login shell reads the operator's profile, which can block; the probe cannot.
+	const r = spawnSync("bash", ["-lc", `command -v ${bin}`], syncCommandOptions());
 	const out = r.stdout?.trim();
 	return r.status === 0 && out ? out : null;
 }
