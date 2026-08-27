@@ -1536,9 +1536,9 @@ export class Markdown implements Component {
 			const isOsc66 = isOsc66Line(line);
 			const isImageOrOsc66 = TERMINAL.isImageLine(line) || isOsc66;
 			const wrapped = isImageOrOsc66 ? undefined : wrapTextWithAnsi(line, contentWidth);
-			const lines = isImageOrOsc66 ? 1 : wrapped.length;
+			const lines = isImageOrOsc66 ? 1 : wrapped!.length;
 			for (let wi = 0; wi < lines; wi++) {
-				const wLine = isImageOrOsc66 ? line : wrapped[wi]!;
+				const wLine = isImageOrOsc66 ? line : wrapped![wi]!;
 				// The first empty row after a scale>1 OSC 66 heading is structural:
 				// it reserves the lower cells occupied by the multicell glyphs. Do
 				// not pad or background-fill it, because real spaces on that row can
