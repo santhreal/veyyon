@@ -242,6 +242,9 @@
 - `launch.ts` replaces spread + `.map()` and `.filter().map()` with for loops in list render and settled set construction.
 - `sqlite-reader.ts` replaces `.map().join()` and `.split().map()` with for loops in vertical blocks, table list, and schema rendering.
 - `todo.ts` replaces `.flatMap()` and `.filter().length` with for loops in todo tool result rendering.
+- `settings-selector.ts` replaces spread + `.split().map()` closure with for loop in appearance preview rendering.
+- `settings-list.ts` replaces `[...render(width)]` spread with `.slice()` in submenu render to avoid iterator allocation.
+- `debug.ts` replaces `.filter().join()` and `.map()` closures with for loops in `formatDisassembly`, `formatSessions`, and render snapshot/output paths.
 ### Added
 
 - `/advisor` reports advisor status, opens the `WATCHDOG.yml` roster editor and applies a save to the running session, starts or stops the advisor for the session, and copies the advisor's own transcript; the subsystem shipped complete but no command, key or menu row reached it.
