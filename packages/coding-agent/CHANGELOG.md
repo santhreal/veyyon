@@ -13,6 +13,8 @@
 - `truncationFromText` in `output-meta.ts` replaces `text.split("\n").length` with a `charCodeAt` newline counter, avoiding an intermediate array allocation per tool output truncation check.
 - `split("\n").length` replaced with `charCodeAt` newline counting in `write.ts`, `session-history-format.ts`, `copy-targets.ts`, `file-mentions.ts`, `eval.ts`, `fetch.ts`, `executor.ts`, and `render.ts`, avoiding an intermediate array allocation per line count; `render.ts` consolidates three `split("\n")` calls on the same string into one pass.
 - `ast-grep.ts` replaces `match.text.split("\n").length` with a `charCodeAt` newline count in the line number width `reduce`, avoiding an intermediate array per match.
+- `truncateForPersistence` in `session-persistence.ts` replaces `content.split("\n").length` with a `charCodeAt` newline count, avoiding an intermediate array per session save.
+
 
 
 
