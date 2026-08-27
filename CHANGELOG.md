@@ -66,6 +66,7 @@
 
 ### Changed
 
+- `search.contextAfter` defaults to 1 line instead of 3. A tool result is sent again on every later request of the session, so each line of a search result is billed once per remaining request; over eight searches of this repository the wider window cost 16,836 tokens against 11,483.
 - The eval prompt-override registry, the system-prompt eval hooks, the argot cache and the reroot hint name `@veyyon/evals` paths instead of the retired `@veyyon/metaharness`, `@veyyon/typescript-edit-benchmark` and `@veyyon/deepswe-bench` packages. No behavior change.
 - `veyyon --help` renders its command list from registry summaries verified against command statics and loads only the hidden default command for its flag table, reducing a measured warm Windows invocation from 1.2 seconds to 0.13 seconds.
 - The default launch command imports the session runtime and ACP terminal authentication only when it runs, so loading its flag table no longer imports the runtime graph.
@@ -127,6 +128,8 @@
 
 ### Fixed
 
+- A structure search excludes matches in prose grammars (markdown, reStructuredText, AsciiDoc, LaTeX, plain text, logs, CSV, TSV) and states how many it withheld, instead of reporting documentation paragraphs as code matches: over this repository `logger.warn($$$ARGS)` returned three changelog paragraphs averaging 2,000 characters, none of which contains the string `logger.warn`.
+- The `search` tool states that `case` is on by default and that passing `false` matches case-insensitively, so a case-insensitive text search no longer depends on guessing the default.
 - A directory listing reports a native addon that could not load instead of answering "(empty directory)". A container whose glibc was older than the shipped addon required got an empty listing for a full checkout on the first `read .`, both in the tool result and in the workspace tree the system prompt carries.
 - An explicit `--model` pointing at a dynamically-discovered model (a provider`s `/v1/models` entry or models.dev overlay absent from the bundled catalog) no longer fails with "not found among N models" when the background discovery refresh has not completed before model resolution. The deferred pattern path does a synchronous cache-aware discovery pass when none of the patterns resolve against the static catalog, mirroring the fallback already present for default-role models.
 - Unified search now preserves purpose-specific field semantics through the Antigravity tool-schema adapter, replaces primitive search tools in explicit tool lists, keeps plan/subagent/bash guidance aligned with the active tool, and redirects intercepted shell searches to `search`.
