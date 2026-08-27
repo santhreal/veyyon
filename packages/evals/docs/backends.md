@@ -76,6 +76,35 @@ network: the corpus is on disk and the verifier is a compile plus a diff. `src/b
 applies a variant's settings overlay to the session, so a config axis is measurable without a
 container. This is the backend an offline bench uses.
 
+## A model served by this host
+
+`src/core/local-endpoint.ts` states everything a run needs to measure a model served by the host
+instead of a vendor. A provider segment in the table there (`lm-studio`, `llama.cpp`, `ollama`,
+`vllm`) marks the model as locally served, and three facts follow.
+
+The container reads the endpoint at the docker bridge address `172.17.0.1` on port 80, in the base
+URL variable the agent binary already reads (`LM_STUDIO_BASE_URL` and its siblings). Publish that
+address before a run:
+
+```sh
+bash packages/evals/scripts/local-endpoint-bridge.sh up   # [endpoint-port], default 1234
+bash packages/evals/scripts/local-endpoint-bridge.sh down
+```
+
+The port is not a preference. A task declaring `network_mode = "no-network"` runs the agent behind a
+squid proxy whose `Safe_ports` list is 80 and 443, so a model server on 1234 is refused before its
+destination is matched. The forwarder is a container, so publishing port 80 needs no privileged
+shell; reaching the server from it needs the host firewall to accept the docker subnets on the
+server's own port.
+
+The endpoint host is the arm's only allowed destination, so the trial keeps the task's network
+policy for everything else. Declaring no destinations is not the alternative it looks like: pier
+then gives the container `network_mode: none`, where nothing is reachable.
+
+A local endpoint takes no credential, so the omp API-key requirement and the veyyon credential
+probe do not apply to it, and no vendor `models.yml` is written: the endpoint reports its own
+catalog, including the context window it loaded the model with.
+
 ## Preflight
 
 Every backend rejects rather than degrades. Pier rejects a missing or incompatible Pier binary,

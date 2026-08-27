@@ -74,12 +74,14 @@ class VeyyonAgent(BaseInstalledAgent):
         assets_dir: str = "",
         binary_sha: str = "nosha",
         replay_path: str = "",
+        local_endpoint_env: dict[str, str] | None = None,
         **kwargs,
     ):
         self._arm_name = arm_name
         self._assets_dir = assets_dir
         self._binary_sha = binary_sha
         self._replay_path = replay_path
+        self._local_endpoint_env = dict(local_endpoint_env or {})
         super().__init__(*args, **kwargs)
 
     def get_version_command(self) -> str | None:
@@ -93,7 +95,16 @@ class VeyyonAgent(BaseInstalledAgent):
             cache_key=f"veyyon-{self._binary_sha[:16]}-{self._arm_name}",
             steps=[InstallStep(user="agent", run="true")],
         )
+
     def network_allowlist(self):
+        # A model served by the host is one destination like any vendor host, so the run
+        # allowlists the address it answers on and nothing else. Declaring no destinations
+        # is not the alternative it looks like: a task that declares no network then gets
+        # `network_mode: none`, where the endpoint is unreachable along with everything
+        # else. The URL the runner passes already names the bridge address and a port the
+        # proxy permits (see src/core/local-endpoint.ts).
+        if self._local_endpoint_env:
+            return allowlist_from_urls(self._local_endpoint_env.values())
         return allowlist_from_urls(
             [], default_domains=[
                 ".googleapis.com", ".google.com",
@@ -102,6 +113,7 @@ class VeyyonAgent(BaseInstalledAgent):
                 ".models.dev",
             ]
         )
+
     async def run(
         self,
         instruction: str,
@@ -192,12 +204,20 @@ class VeyyonAgent(BaseInstalledAgent):
             command=f"chmod +x {CONTAINER_ASSETS_DIR}/vey", user="root"
         )
         rule_setup = rules_setup_command(attachments, CONTAINER_ASSETS_DIR)
+        # Exported once at the head of the trial command, so the catalog refresh and the
+        # session that follows read the same endpoint. The refresh is what turns a locally
+        # served model into a catalog entry, and it fails without this.
+        endpoint_exports = "".join(
+            f"export {key}={shlex.quote(value)} && "
+            for key, value in sorted(self._local_endpoint_env.items())
+        )
         setup = (
             # Seed the store veyyon actually opens: the machine-wide
             # ~/.veyyon/shared-auth/agent.db (getSharedAuthDir). This used to
             # write the pre-move per-profile path and rely on the first-run
             # legacy promotion to find it, which only happens while profile
             # sharing is on and is a migration path meant to be deleted.
+            f"{endpoint_exports}"
             "mkdir -p ~/.veyyon/shared-auth && "
             f"cp {CONTAINER_ASSETS_DIR}/auth-agent.db ~/.veyyon/shared-auth/agent.db && "
             f"cp {CONTAINER_ASSETS_DIR}/arm.yml ~/.veyyon/arm.yml{rule_setup}"

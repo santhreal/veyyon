@@ -35,6 +35,7 @@ import {
 	judgeRunOutcome,
 	listBackendIds,
 	listHarnesses,
+	listHarnessFlags,
 	listSuites,
 	MAX_TRIAL_ATTEMPTS,
 	requireBackend,
@@ -61,7 +62,14 @@ import {
 } from "./run";
 import { registerAllSuites } from "./suites";
 
-/** Flags that take a value. A flag outside this table never consumes the next argument. */
+/**
+ * Flags that take a value. A flag outside this table, and outside the harness-declared
+ * set below, never consumes the next argument.
+ *
+ * An adapter declares the option keys it reads (`HarnessAdapter.flags`), so those keys
+ * belong to the grammar too: without them the one entrypoint refused `--vey-binary` while
+ * the veyyon preflight read it, and a run could measure no build but the checkout's own.
+ */
 export const VALUE_FLAGS: Record<string, true> = {
 	"--suite": true,
 	"--harness": true,
@@ -107,6 +115,12 @@ export interface EvalsCliArgs {
 	readonly list: boolean;
 	readonly resume: boolean;
 	readonly help: boolean;
+	/**
+	 * Values passed under a harness-declared flag, keyed by the dashed option key the
+	 * adapter declared (`--vey-binary` arrives as `vey-binary`), which is the key its
+	 * preflight and its container program read off the options bag.
+	 */
+	readonly harnessOptions: Readonly<Record<string, string>>;
 }
 
 export class CliUsageError extends Error {
@@ -122,8 +136,18 @@ export class CliUsageError extends Error {
  * A value flag with no value is an error rather than a flag that swallows the next
  * one: `--tasks --dry-run` used to leave the run with a task named `--dry-run` and
  * no dry run at all.
+ *
+ * `harnessFlags` defaults to every flag the registered harnesses declare, so the grammar
+ * follows the roster: registering an adapter that reads `binary` accepts `--binary` here
+ * without a second table to edit. A caller passes the set explicitly to parse against a
+ * roster it controls.
  */
-export function parseEvalsArgs(argv: readonly string[]): EvalsCliArgs {
+export function parseEvalsArgs(
+	argv: readonly string[],
+	harnessFlags: readonly string[] = listHarnessFlags(),
+): EvalsCliArgs {
+	const harnessFlagKeys = new Map(harnessFlags.map(flag => [`--${flag}`, flag]));
+	const harnessOptions: Record<string, string> = {};
 	const harnesses: string[] = [];
 	const configs: string[] = [];
 	const promptVariants: string[] = [];
@@ -164,7 +188,8 @@ export function parseEvalsArgs(argv: readonly string[]): EvalsCliArgs {
 			continue;
 		}
 
-		if (!VALUE_FLAGS[name]) {
+		const harnessOptionKey = harnessFlagKeys.get(name);
+		if (!VALUE_FLAGS[name] && harnessOptionKey === undefined) {
 			throw new CliUsageError(`Unknown flag "${name}". Run --help for the accepted flags.`);
 		}
 
@@ -178,6 +203,13 @@ export function parseEvalsArgs(argv: readonly string[]): EvalsCliArgs {
 		}
 		if (value.length === 0) {
 			throw new CliUsageError(`${name} needs a non-empty value.`);
+		}
+
+		// A harness flag carries one whole value: an adapter reads a path or an id off its
+		// option key, never a variant list, so a comma stays part of the value.
+		if (harnessOptionKey !== undefined) {
+			harnessOptions[harnessOptionKey] = value;
+			continue;
 		}
 
 		const items = value
@@ -285,10 +317,24 @@ export function parseEvalsArgs(argv: readonly string[]): EvalsCliArgs {
 		list,
 		resume,
 		help,
+		harnessOptions,
 	};
 }
 
-export const USAGE = `evals — run any evaluation suite in this repository
+/**
+ * The help text, with one line per harness-declared flag.
+ *
+ * The harness lines are rendered from the roster rather than written out, so a flag an
+ * adapter declares is documented where it is declared and cannot go missing from help.
+ */
+export function evalsUsage(harnessFlags: readonly string[] = listHarnessFlags()): string {
+	const harnessSection =
+		harnessFlags.length === 0
+			? ""
+			: `\nHarness options, each read by the harnesses declaring it:\n${harnessFlags
+					.map(flag => `  ${`--${flag} <value>`.padEnd(24)}read by ${harnessesDeclaring(flag).join(", ")}`)
+					.join("\n")}\n`;
+	return `evals — run any evaluation suite in this repository
 
 Usage:
   evals --list                                    list suites, backends and harnesses
@@ -327,7 +373,16 @@ Selection and execution:
   --dry-run                 print the plan and every preflight verdict, run nothing
   --resume                  resume a prior run from its trials.jsonl journal
   --help                    this text
-`;
+${harnessSection}`;
+}
+
+/** The registered harnesses that declare one option key, so help states who reads it. */
+function harnessesDeclaring(flag: string): readonly string[] {
+	return listHarnesses()
+		.filter(harness => harness.flags.includes(flag))
+		.map(harness => harness.name)
+		.sort();
+}
 
 /**
  * The entries of `--tasks` that apply to one suite: those carrying its name as a
@@ -510,16 +565,19 @@ export async function main(argv: readonly string[] = process.argv.slice(2)): Pro
 	registerAllBackends();
 	registerBuiltinHarnesses();
 
+	// Rendered after registration, so its harness section states the roster this process
+	// actually runs rather than an empty one.
+	const usage = evalsUsage();
 	let args: EvalsCliArgs;
 	try {
 		args = parseEvalsArgs(argv);
 	} catch (error) {
-		process.stderr.write(`${errorMessage(error)}\n\n${USAGE}`);
+		process.stderr.write(`${errorMessage(error)}\n\n${usage}`);
 		return 2;
 	}
 
 	if (args.help || (argv.length === 0 && !args.list)) {
-		process.stdout.write(USAGE);
+		process.stdout.write(usage);
 		return 0;
 	}
 
@@ -529,7 +587,7 @@ export async function main(argv: readonly string[] = process.argv.slice(2)): Pro
 	}
 
 	if (args.suites.length === 0) {
-		process.stderr.write(`--suite is required.\n\n${USAGE}`);
+		process.stderr.write(`--suite is required.\n\n${usage}`);
 		return 2;
 	}
 
@@ -545,7 +603,7 @@ export async function main(argv: readonly string[] = process.argv.slice(2)): Pro
 	try {
 		suites = names.map(name => requireSuite(name));
 	} catch (error) {
-		process.stderr.write(`${errorMessage(error)}\n\n${USAGE}`);
+		process.stderr.write(`${errorMessage(error)}\n\n${usage}`);
 		return 2;
 	}
 
@@ -559,7 +617,7 @@ export async function main(argv: readonly string[] = process.argv.slice(2)): Pro
 	}
 
 	if (args.models.length === 0) {
-		process.stderr.write(`--model is required to run ${names.join(", ")}.\n\n${USAGE}`);
+		process.stderr.write(`--model is required to run ${names.join(", ")}.\n\n${usage}`);
 		return 2;
 	}
 
@@ -582,6 +640,9 @@ export function suiteContext(args: EvalsCliArgs, suite: EvalSuite): SuiteContext
 		datasetDir: args.datasetDir ?? undefined,
 		workDir: args.workDir ?? process.cwd(),
 		options: {
+			// First, so a fixed option below is never overwritten by a harness flag of the
+			// same name: `--model` is the axis, and an adapter reads its own keys.
+			...args.harnessOptions,
 			dryRun: args.dryRun,
 			ensureBinary: !args.dryRun,
 			model: args.models[0],
@@ -650,7 +711,7 @@ async function runOneSuite(args: EvalsCliArgs, suite: EvalSuite, running: readon
 		// a `harness` verdict named an axis that had nothing to do with it, and returned the
 		// exit code of a failed run instead of the one every other usage refusal returns.
 		if (error instanceof CliUsageError) {
-			process.stderr.write(`${errorMessage(error)}\n\n${USAGE}`);
+			process.stderr.write(`${errorMessage(error)}\n\n${evalsUsage()}`);
 			return 2;
 		}
 		if (args.dryRun) {

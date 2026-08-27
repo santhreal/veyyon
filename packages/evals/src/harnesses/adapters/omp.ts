@@ -5,7 +5,11 @@ import { $which, errorMessage, logger } from "@veyyon/utils";
 import {
 	CONTAINER_PROGRAM_VERSION,
 	type ContainerProgramContext,
+	containerLocalEndpointEnv,
 	containerProgramPath,
+	isLocalInferenceModel,
+	localEndpointAllowedDomains,
+	localEndpointRefusal,
 	type ProgramFile,
 	programDirFor,
 	type StagedProgram,
@@ -143,9 +147,13 @@ function buildModelsYml(refreshJson: string, modelSelector: string, apiKey: stri
  * Best effort: a run whose host has no vey binary, or whose refresh fails, stages no
  * models.yml and omp resolves the model through its own discovery. The program marks the
  * file optional for that reason.
+ *
+ * A locally served model stages none either. Its catalog is what the endpoint reports at
+ * startup, including the context window the model was loaded with, and every vendor base
+ * URL this builder knows is wrong for it.
  */
 function ompModelsYml(model: string, apiKey: string, options: Readonly<Record<string, unknown>>): string | null {
-	if (!apiKey) return null;
+	if (!apiKey || isLocalInferenceModel(model)) return null;
 	const flag = options.binary ?? options["vey-binary"];
 	const candidate = typeof flag === "string" ? path.resolve(flag) : veyBinaryPath();
 	const veyBinary = fs.existsSync(candidate) ? candidate : null;
@@ -206,12 +214,15 @@ export class OmpAdapter implements HarnessAdapter {
 		const apiKey = resolveApiKey(options, authEnvVar) ?? "";
 		const binary = resolveOmpBinary(options);
 		const modelsYml = ompModelsYml(model, apiKey, options);
+		const localEndpoint = containerLocalEndpointEnv(model);
 
 		const files: ProgramFile[] = [];
 		if (binary) files.push({ file: "omp", source: { copy: binary }, mode: 0o755 });
+		const envLines = [`${authEnvVar}=${apiKey}`, `OPENCODE_API_KEY=${apiKey}`];
+		for (const [key, value] of Object.entries(localEndpoint ?? {})) envLines.push(`${key}=${value}`);
 		files.push({
 			file: "omp.env",
-			source: { text: `${authEnvVar}=${apiKey}\nOPENCODE_API_KEY=${apiKey}\n` },
+			source: { text: `${envLines.join("\n")}\n` },
 			mode: 0o600,
 		});
 		if (modelsYml) files.push({ file: "models.yml", source: { text: modelsYml } });
@@ -237,7 +248,7 @@ export class OmpAdapter implements HarnessAdapter {
 				envFile: `${CONTAINER_DIR}/omp.env`,
 				logPath: "/logs/agent/omp.txt",
 				sessions: { sources: [SESSION_DIR], pattern: "*.jsonl" },
-				allowedDomains: ALLOWED_DOMAINS,
+				allowedDomains: localEndpoint ? localEndpointAllowedDomains(model) : ALLOWED_DOMAINS,
 				usage: "omp",
 			},
 			files,
@@ -263,9 +274,16 @@ export class OmpAdapter implements HarnessAdapter {
 
 		const model = typeof options.model === "string" ? options.model : this.defaultModel;
 		const authEnvVar = authEnvVarFor(model);
-		if (!resolveApiKey(options, authEnvVar)) {
+		// A locally served endpoint authenticates nothing, so a key it never reads is not a
+		// requirement a run can be missing.
+		if (!isLocalInferenceModel(model) && !resolveApiKey(options, authEnvVar)) {
 			missing.push(`omp requires an API key for ${model}; set $${authEnvVar} or pass --omp-api-key <key>`);
 		}
+
+		// A locally served endpoint the container cannot reach fails every trial the same
+		// way, so the run refuses here with the command that publishes it.
+		const endpointRefusal = await localEndpointRefusal(model);
+		if (endpointRefusal) missing.push(endpointRefusal);
 
 		if (missing.length > 0) {
 			return {
@@ -289,7 +307,7 @@ export class OmpAdapter implements HarnessAdapter {
 		}
 
 		const authEnvVar = authEnvVarFor(context.model);
-		if (!resolveApiKey(context.args, authEnvVar)) {
+		if (!isLocalInferenceModel(context.model) && !resolveApiKey(context.args, authEnvVar)) {
 			errors.push(`omp requires an API key for ${context.model}; set $${authEnvVar} or pass --omp-api-key <key>`);
 		}
 

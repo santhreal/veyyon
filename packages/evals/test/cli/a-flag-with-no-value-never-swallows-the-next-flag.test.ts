@@ -8,18 +8,27 @@
  *
  * THE CLASS: any flag that reads a value must refuse a missing one instead of
  * absorbing a neighbouring flag, and any flag that reads no value must refuse a
- * value instead of ignoring it. Both directions sweep the parser's own flag tables,
- * so a flag added later is covered the moment it is declared — and a flag that the
- * printed help does not mention fails the last case below.
+ * value instead of ignoring it. The parser accepts two kinds of valued flag — its
+ * own fixed table and the keys the registered harnesses declare — and every sweep
+ * below reads both live, so a flag added to either is covered the moment it is
+ * declared, and one the printed help does not mention fails the last cases.
  *
  * WHAT IT DOES NOT CATCH: whether a suite interprets a resolved config or prompt
  * path correctly. That is the suite's own contract.
  */
 
 import { describe, expect, it } from "bun:test";
-import { BOOLEAN_FLAGS, CliUsageError, parseEvalsArgs, USAGE, VALUE_FLAGS } from "../../src/cli";
+import { BOOLEAN_FLAGS, CliUsageError, evalsUsage, parseEvalsArgs, suiteContext, VALUE_FLAGS } from "../../src/cli";
+import { listHarnessFlags, requireSuite } from "../../src/core";
+import { registerBuiltinHarnesses } from "../../src/harnesses";
+import { registerAllSuites } from "../../src/suites";
 
-const valueFlags = Object.keys(VALUE_FLAGS);
+registerBuiltinHarnesses();
+registerAllSuites();
+
+const fixedValueFlags = Object.keys(VALUE_FLAGS);
+const harnessFlags = listHarnessFlags().map(flag => `--${flag}`);
+const valueFlags = [...fixedValueFlags, ...harnessFlags];
 const booleanFlags = Object.keys(BOOLEAN_FLAGS);
 
 describe("a value flag refuses a missing value", () => {
@@ -108,21 +117,65 @@ describe("anything the parser does not know", () => {
 	});
 });
 
+describe("a harness-declared flag reaches the harness that declared it", () => {
+	it("has harness flags to sweep", () => {
+		expect(harnessFlags.length).toBeGreaterThan(0);
+	});
+
+	it.each(harnessFlags)("%s lands on harnessOptions under its dashed key", flag => {
+		const key = flag.slice(2);
+		expect(parseEvalsArgs([flag, "/some/value"]).harnessOptions).toEqual({ [key]: "/some/value" });
+	});
+
+	it.each(harnessFlags)("%s reaches the options bag every backend is handed", flag => {
+		const args = parseEvalsArgs(["--suite", "deep-swe", flag, "/some/value"]);
+		const options = suiteContext(args, requireSuite("deep-swe")).options ?? {};
+
+		expect(options[flag.slice(2)]).toBe("/some/value");
+	});
+
+	it("keeps a comma in the value, which names one path and never a variant list", () => {
+		const flag = harnessFlags[0] as string;
+		expect(parseEvalsArgs([flag, "/a,b/vey"]).harnessOptions[flag.slice(2)]).toBe("/a,b/vey");
+	});
+
+	it("states no harness options when none were passed", () => {
+		expect(parseEvalsArgs(["--suite", "deep-swe"]).harnessOptions).toEqual({});
+	});
+
+	it("never lets a harness flag overwrite a fixed option of the same name", () => {
+		const args = parseEvalsArgs(["--suite", "deep-swe", "--model", "p/m"]);
+		const options = suiteContext(args, requireSuite("deep-swe")).options ?? {};
+
+		expect(options.model).toBe("p/m");
+		expect(options.suite).toBe("deep-swe");
+	});
+});
+
 describe("the parser and the help it prints agree", () => {
 	/**
 	 * A flag the parser accepts and the help never mentions is undiscoverable, and a
 	 * flag the help promises and the parser rejects is a lie. Both directions read the
 	 * live tables and the live help string, so neither can drift in silence.
 	 */
-	it("documents every flag it accepts", () => {
-		const undocumented = [...valueFlags, ...booleanFlags].filter(flag => !USAGE.includes(flag));
+	it("documents every flag it accepts, including every harness-declared one", () => {
+		const help = evalsUsage();
+		const undocumented = [...valueFlags, ...booleanFlags].filter(flag => !help.includes(flag));
 		expect(undocumented).toEqual([]);
 	});
 
 	it("accepts every flag its help advertises", () => {
-		const advertised = [...new Set([...USAGE.matchAll(/(--[a-z][a-z-]+)/g)].map(match => match[1] as string))];
-		const rejected = advertised.filter(flag => !VALUE_FLAGS[flag] && !BOOLEAN_FLAGS[flag]);
+		const advertised = [...new Set([...evalsUsage().matchAll(/(--[a-z][a-z-]+)/g)].map(match => match[1] as string))];
+		const rejected = advertised.filter(
+			flag => !VALUE_FLAGS[flag] && !BOOLEAN_FLAGS[flag] && !harnessFlags.includes(flag),
+		);
 
 		expect(rejected).toEqual([]);
+	});
+
+	it("names the harnesses that read each harness flag, so help says who it reaches", () => {
+		const help = evalsUsage(["vey-binary"]);
+		expect(help).toContain("--vey-binary <value>");
+		expect(help).toMatch(/--vey-binary <value>\s+read by veyyon/);
 	});
 });

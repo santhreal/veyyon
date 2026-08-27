@@ -10,12 +10,12 @@ export * from "./backend-registry";
 export * from "./bounded-fetch";
 export * from "./cell-variant";
 export * from "./container-program";
-
 export * from "./external-command";
 export * from "./flags";
 export * from "./fs-walk";
 export * from "./harness-preflight";
 export * from "./harness-registry";
+export * from "./local-endpoint";
 export * from "./process-tree";
 export * from "./prompt-overrides";
 export * from "./run-model";
