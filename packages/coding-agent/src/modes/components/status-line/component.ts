@@ -57,6 +57,16 @@ const SESSION_CLOCK_GAP = "      ";
  */
 export type QuietPart = { id: string; content: string; pin?: number };
 
+/** Join the `content` fields of quiet-line parts with `sep`, without allocating an intermediate array. */
+function joinContents(parts: readonly QuietPart[], sep: string): string {
+	if (parts.length === 0) return "";
+	let result = parts[0]!.content;
+	for (let i = 1; i < parts.length; i++) {
+		result += sep + parts[i]!.content;
+	}
+	return result;
+}
+
 /**
  * Shed order for the right group, as a rank rather than a boolean. Higher survives longer;
  * everything unlisted ranks 0 and sheds first, right to left, which is the ordinary case.
@@ -2067,7 +2077,7 @@ export class StatusLineComponent implements Component {
 		let left = this.#locationWithRunClock(locationContents, sep);
 		const rightParts = capLeft.concat(capRight);
 		if (extras?.locationRight) rightParts.push({ id: "location_right", content: extras.locationRight });
-		let right = rightParts.map(part => part.content).join(sep);
+		let right = joinContents(rightParts, sep);
 		// The run clock is comfort chrome; the capability segments (context
 		// gauge, mode, badges) are operating data. On a tight width the clock
 		// degrades FIRST — its roomy gap shrinks to two cells, then the clock
@@ -2111,7 +2121,7 @@ export class StatusLineComponent implements Component {
 			const dropRank = weakest.rank;
 			if (dropRank === 0 && dropIndex >= 0) {
 				rightParts.splice(dropIndex, 1);
-				right = rightParts.map(part => part.content).join(sep);
+				right = joinContents(rightParts, sep);
 				continue;
 			}
 			// Only ranked parts are left. Shorten the location before touching any of
@@ -2135,7 +2145,7 @@ export class StatusLineComponent implements Component {
 			// that DOES end it is accounted for below, once the group has stopped moving.
 			if (rightParts.length > 1 && dropIndex >= 0) {
 				rightParts.splice(dropIndex, 1);
-				right = rightParts.map(part => part.content).join(sep);
+				right = joinContents(rightParts, sep);
 				continue;
 			}
 			break;
@@ -2164,7 +2174,7 @@ export class StatusLineComponent implements Component {
 			const index = weakestSpendablePart(rightParts);
 			if (index < 0) break;
 			rightParts.splice(index, 1);
-			right = rightParts.map(part => part.content).join(sep);
+			right = joinContents(rightParts, sep);
 			const fitted = fitToTheRoomLeft();
 			left = fitted.text;
 			locationSlots = fitted.slots;
@@ -2260,7 +2270,7 @@ export class StatusLineComponent implements Component {
 				}
 				// Descending, so an earlier removal cannot shift a later index.
 				for (const index of spent.sort((a, b) => b - a)) rightParts.splice(index, 1);
-				right = rightParts.map(part => part.content).join(sep);
+				right = joinContents(rightParts, sep);
 				const widened = fitToTheRoomLeft();
 				left = widened.text;
 				locationSlots = widened.slots;
