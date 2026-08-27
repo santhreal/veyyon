@@ -18,6 +18,7 @@
 - `tui.ts` replaces `Array.from(Set)` with direct `for...of` iteration in partial compose root resolution and input listener dispatch, eliminating an intermediate array allocation per render frame.
 - `motion.ts` replaces `Array.from(Set)` snapshot with `for...of` and deferred delete in the animation tick, eliminating a per-tick array allocation.
 - `motion-hover.ts` replaces `Array.from(Map)` with direct `for...of` in `HoverFade.set`, eliminating an intermediate array allocation per hover change.
+- `tui.ts` skips `window.slice()` in overlay compositing when no visible overlays are present, using copy-on-write so the array is only copied when an overlay actually modifies a row.
 
 ### Fixed
 
