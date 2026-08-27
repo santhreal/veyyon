@@ -762,7 +762,10 @@ export class AgentTranscriptViewer implements Component {
 		if (stats.length > 0 || progress.toolCount > 0) {
 			const toolStat =
 				progress.toolCount > 0 ? `${formatNumber(progress.toolCount)} ${theme.icon.extensionTool}` : "";
-			parts.push(theme.fg("dim", [toolStat, ...stats].filter(Boolean).join(theme.sep.dot)));
+			const statParts: string[] = [];
+			if (toolStat) statParts.push(toolStat);
+			for (let si = 0; si < stats.length; si++) statParts.push(stats[si]!);
+			parts.push(theme.fg("dim", statParts.join(theme.sep.dot)));
 		}
 		if (progress.cost > 0) parts.push(theme.fg("statusLineCost", `$${progress.cost.toFixed(2)}`));
 		return parts.join(theme.sep.dot);
