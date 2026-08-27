@@ -557,14 +557,7 @@ export class AssistantMessageComponent extends Container {
 
 	messagePersistenceKey(): string | undefined {
 		if (!this.#lastMessage) return undefined;
-		return [
-			"assistant",
-			this.#lastMessage.timestamp,
-			this.#lastMessage.provider,
-			this.#lastMessage.model,
-			this.#lastMessage.responseId ?? "",
-			this.#lastMessage.stopReason,
-		].join(":");
+		return `assistant:${this.#lastMessage.timestamp}:${this.#lastMessage.provider}:${this.#lastMessage.model}:${this.#lastMessage.responseId ?? ""}:${this.#lastMessage.stopReason}`;
 	}
 
 	/**
