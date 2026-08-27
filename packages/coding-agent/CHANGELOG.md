@@ -264,7 +264,6 @@
 - `task/render.ts` replaces `[...arr]` spreads with `.slice()`/`.concat()` in subagent progress, recent output, findings sort, and recursive tree prefix building.
 - `extension-dashboard.ts` replaces `[...EXT_SHORTCUTS]` spread with `.slice()` in modal shell construction.
 - `read.ts`, `output-meta.ts`, `result-notice.ts`, `irc.ts`, and `job.ts` replace `[...arr]` spreads with `.slice()`/`.concat()` in tool result construction paths.
-- `editor.ts` replaces `visibleWidth` + `padding` with `padLineToWidth` for gutter continuation, eliminating a redundant width scan per editor render frame.
 - `emoji-autocomplete.ts`, `internal-url-autocomplete.ts`, and `prompt-action-autocomplete.ts` replace `[...lines]` spread with `.slice()` in insert handlers.
 - `interactive-mode.ts` replaces `[...event.messages].reverse().find()` with a backward for loop, eliminating array copy + reverse + iterator.
 - Setup wizard scenes (approvals, glyph, outro, theme, providers) replace `[...arr, elem]` and `[...a, ...b]` spreads with `.concat()` in render paths.

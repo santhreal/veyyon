@@ -6,7 +6,7 @@
 
 ### Changed
 
-- `ast-grep.tsx`, `eval.tsx`, `generate-image.tsx`, `job.tsx`, and `task.tsx` replace array/Set spreads with `.concat()`, `Array.from()`, and `.slice()` across badge rendering, language deduplication, image content merging, and job/task result sorting.
+- No user-facing effect; the spread-to-concat optimization this rebase repaired was already released in 1.2.0.
 
 
 ## [1.2.0] - 2026-08-23

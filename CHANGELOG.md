@@ -54,6 +54,287 @@
 
 - Reading a file or fetching a URL no longer loads the document converters, and a web search no longer loads the browser fingerprint generator, because the constants those paths wanted are separated from the libraries that sat behind them, taking about 40ms off session startup.
 - The launch card is painted and flushed before the agent runtime graph is loaded, taking an interactive launch from a blank terminal for 760ms to a typable composer at 111ms.
+- Classified runner output (cargo, bun, Go, ctest, dotnet, clippy, golangci-lint, Gradle lint, pytest, and tsc/eslint-family) now opens with a result-contract header: `[clean] <command>` or `[errors]` / `[errors N] <command>`. The header is the verdict and the body contains retained diagnostics.
+- `nextBackground` in `deccara.ts` scans SGR parameters in-place via byte offsets, eliminating a `line.slice()` allocation per SGR sequence in `analyzeBgFillLine`.
+- `sun.ts` pre-computes truecolor and 256-color SGR string arrays for the EMBER and SKY ramps, eliminating per-cell template literal allocation across 400+ cells per animation frame in `renderSunField` and `renderSunsetField`.
+- `trackBackground` and `touchesBackground` in `paint-columns.ts` scan SGR parameters in-place via `charCodeAt`, eliminating per-token `slice()` allocations.
+- `fadeLineWithParsedGround` in `motion-paint.ts` uses a pre-computed channel-string lookup table and `charCodeAt` comparisons, eliminating `String()` calls and slice allocations per truecolor SGR during animation.
+- `coalesceAdjacentSgr` in `tui.ts` skips the params array allocation for single SGR sequences and `endsWithIncompleteExtendedColor` uses `charCodeAt` instead of `slice()` for token comparisons.
+- `analyzeBgFillLine` in `deccara.ts` skips `line.slice()` and `visibleWidth()` for pure ASCII printable runs, scanning trailing spaces in-place via `charCodeAt`.
+- `paintBand` in `theme.ts` inlines the `arriving`/`arrivingRgb` closures, eliminating per-call closure allocation and hoisting constant branch checks out of the per-span loop.
+- `renderSignature` in `markdown.ts` caches the `bgColor` and `heading` probe strings keyed on theme/style object identity, eliminating two styled-string function calls per frame during streaming.
+- `getDefaultInlineStyleContext` in `markdown.ts` caches its object and `applyText` closure keyed on `defaultTextStyle` identity, eliminating per-paragraph allocation during rendering.
+- `#renderList` and `htmlListIndent` in `markdown.ts` use the pre-allocated `padding()` buffer instead of `"  ".repeat(depth)`.
+- Heading prefixes in `markdown.ts` use a pre-computed lookup table; the `"#".repeat()` allocation is skipped for h1 and h2.
+- `getLongestWordWidth` in `markdown.ts` scans word boundaries in-place via `charCodeAt` instead of `split(/\s+/).filter()`.
+- `renderContentLines` in `markdown.ts` combines wrapping and margin loops into a single pass, eliminating the intermediate `wrappedLines` array.
+- Table border rendering in `markdown.ts` computes `borderCells` once and reuses it for all three borders.
+- Math tokenizer and HTML entity decoder in `markdown.ts` use `charCodeAt` instead of `startsWith` for prefix checks.
+- `renderEmptyPaddingLines` in `markdown.ts` caches the `applyBackgroundToLine` result before the loop.
+- The no-background padding path in `renderContentLines` measures the wrapped line alone instead of the margin-concatenated string.
+- `renderContentLines` and `renderTokenInner` in `markdown.ts` replace `push(...spread)` with for loops, avoiding stack argument explosion for large content blocks.
+- `containsMermaidFence` in `assistant-message.ts` replaces `message.content.slice().some()` with a for loop, avoiding subarray allocation.
+- `formatCellOutputLines` in `code-cell.ts` replaces `text.split(/\r?\n/).map()` with a single-pass `charCodeAt` newline scan, and replaces `filter+spread` max, `Array.from`, and `" ".repeat()` with for loops and `padding()`.
+- `appendOutput` in `bash-execution.ts` replaces spread+slice patterns with for loops in the streaming chunk path.
+- `getPreviewLines` in `render-utils.ts` replaces `split+filter+slice+map` with a single-pass `charCodeAt` scan.
+- `truncateDiffByHunk` in `render-utils.ts` replaces `filter+reduce` with single-pass counting and adds `pushAll`/`pushRange` helpers to eliminate 10 `push(...spread)` calls.
+- `renderDiff` in `diff.ts` reuses the pre-parsed `parsedLines` array instead of re-calling `parseDiffLine` in the main loop.
+- `highlightCode` in `highlight.ts` counts newlines via `charCodeAt` instead of `split("\n")` for the line-count parity check, avoiding an array allocation in the common case.
+- `getUserMessageText` in `ui-helpers.ts` replaces `filter().map().join()` with a single-pass string concatenation loop.
+- `event-controller.ts` replaces `filter().map()` for images, `slice().some()` for child scan, and `Array.from().filter()` for set cleanup with single-pass loops.
+- `agent-loop.ts` replaces `push(...toolResults)` spread with a for loop.
+- `eval-render.ts` caches `split("\n")` result, replaces double `filter()` with single-pass partition, and replaces `push(...spread)` with for loops.
+- `output-block.ts` replaces `flatMap+split` with an in-place `charCodeAt` newline scan.
+- `read-tool-group.ts` replaces `filter+map+filter` chain with a single-pass loop for display target extraction.
+- `edit/renderer.ts` replaces `slice()` loop, `map().filter()+Set`, and `filter()` with single-pass loops.
+- `stream-markup-healing.ts` replaces `push(...flush())` and `push(...feed())` spreads with for loops in the per-text-chunk healing path.
+- `gitlab-duo-workflow.ts` replaces `push(...active.pauseBuffer)` spreads with for loops in the replay loop.
+- `glob.ts` replaces `push(...filePatterns)` spread with a for loop in gitignore pattern collection.
+- `hashline/apply.ts` replaces 6 `push(...spread)` calls with for loops in `computeProjectedPrefixBalance` and `repairReplacementBoundaries`.
+- `hashline/parser.ts` replaces `push(...deferredBlanks)` spread with a for loop in `#commitDeferredBlanks`.
+- `agent.ts` replaces `push(...images)` spread with a for loop in message building.
+- `compaction/pruning.ts` replaces `push(...collectUselessResults())` spread with a for loop.
+- `validation.ts` and `schema/compatibility.ts` replace 6 `push(...spread)` calls with for loops in schema validation.
+- `schema/normalize.ts` replaces `push(...branch.anyOf)` spread with a for loop in anyOf flattening.
+- `model-registry.ts` replaces 3 `push(...spread)` calls with for loops in cached model and discovery collection.
+- `model-resolver.ts` replaces `push(...allowedByKey.values())` spread with a for loop in synthetic model inclusion.
+- `collab/guest.ts` replaces `push(...frame.entries.map())` spread with a for loop in snapshot chunk processing.
+- `edit/renderer.ts` replaces `push(...fileComponents[i].render(width))` spread with a for loop in multi-file diff rendering.
+- `lsp/edits.ts` replaces 2 `push(...edits)` spreads with for loops in TextEdit accumulation.
+- `lsp/index.ts` replaces 4 `push(...spread)` calls with for loops in diagnostic, message, and workspace symbol collection.
+- `lsp/utils.ts` replaces `push(...formatDocumentSymbol(child))` spread with a for loop in symbol tree formatting.
+- `anthropic.ts` replaces `push(...claudeCodeAgentPostEffortBetas)` spread with a for loop in beta header building.
+- All 8 discovery files replace 52 `push(...spread)` calls with for loops across items, warnings, and roots collection.
+- `extensibility` loader, runner, and shim files replace 13 `push(...spread)` calls with for loops in plugin, skill, and extension path collection.
+- `capability/index.ts` replaces 2 `push(...spread)` calls with for loops in warning and provider collection.
+- `hindsight/mental-models.ts` replaces 2 `push(...spread)` calls with for loops in tag collection.
+- `markit` PDF grid and PPTX converters replace 5 `push(...spread)` calls with for loops in consumed ID and slide path collection.
+- `cli/gc-cli.ts`, `ttsr-cli.ts`, `usage-cli.ts` replace 4 `push(...spread)` calls with for loops in session listing and AST matching.
+- `commit` validation files replace 10 `push(...spread)` calls with for loops in error and warning collection.
+- `config/model-registry.ts`, `settings.ts`, `prompt-templates.ts` replace 5 `push(...spread)` calls with for loops in model overlay, settings, and template loading.
+- `mcp/client.ts` replaces 4 `push(...spread)` calls with for loops in paginated tools, resources, templates, and prompts collection.
+- `mcp/manager.ts` replaces 3 `push(...spread)` calls with for loops in MCP tool collection from connections.
+- `mcp/smithery-registry.ts` replaces `push(...pageEntries)` spread with a for loop in paginated entry collection.
+- `memories/index.ts` replaces `push(...subFiles)` spread with a for loop in recursive file listing.
+- `catalog/variant-collapse.ts` and `openai-compat.ts` replace 2 `push(...spread)` calls with for loops in model collection.
+- `mnemopi` consolidate, recall (5), and episodic-graph replace 7 `push(...spread)` calls with for loops in memory candidate and feature collection.
+- `stats/parser.ts` replaces 2 `push(...spread)` calls with for loops in tool call extraction and session file listing.
+- `tui/select-list.ts` and `settings-list.ts` replace 4 `push(...spread)` calls with for loops in scroll view and description line rendering.
+- `task/render.ts` replaces 17 `push(...spread)` calls with for loops across all task section, findings, review, and agent progress/result rendering.
+- `session/session-history-format.ts`, `session-manager.ts`, `steering-envelope.ts`, `todo-reminder.ts` replace 7 `push(...spread)` calls with for loops in history formatting, tree traversal, image wrapping, and todo preview rendering.
+- `task/index.ts` replaces `push(...merged.results)` spread with a for loop in sync result collection.
+- 15 tool files (approval, ask, conflict-detect, grep, image-gen, irc-render, job, gh-renderer, gh, gh-fetch, ast-edit, ast-grep, eval-render, jtd-to-typescript, launch, output-schema-validator, cwd-boundary, path-utils, todo, vibe-render) replace 60+ `push(...spread)` calls with for loops in tool output rendering.
+- 22 modes files replace 42 `push(...spread)` calls with for loops across setup wizard scenes, inspector panel, model hub, ask dialog, advisor components, tree selector, MCP command controller, input controller, and settings selector.
+- Web scrapers, slash-command helpers, and secret command replace 10 `push(...spread)` calls with for loops in permission, comment, and line collection.
+- Benchmark and harness files (metaharness, deepswe-bench, typescript-edit-benchmark, stats scripts, natives bench) replace 22 `push(...spread)` calls with for loops.
+- `event-controller.ts` replaces `.filter().length` with a for-loop count and `.some()` with `timeline.hasToolCalls` in `#handleMessageUpdate`, eliminating an intermediate array and a second iteration on every streaming delta.
+- `event-controller.ts` converts three `for…of` loops over `streamingMessage.content` in `#handleMessageUpdate` to index-based `for` loops, eliminating 3 iterator allocations per streaming token.
+- `streaming-reveal.ts` converts `for…of` over `message.content` in `visibleUnits` to an index-based `for` loop, eliminating iterator allocation per reveal tick (30fps).
+- `assistant-message.ts` converts `for…of` loops in `#shouldAnimateThinking`, `#computeShapeKey`, and `#canFastPath` to index-based `for` loops, eliminating iterator allocations per render.
+- `chat-transcript-builder.ts` converts `for…of` over `message.content` in `#appendAssistantMessage` to an index-based `for` loop.
+- `transcript-render-helpers.ts` converts `for…of` over `message.content` in `splitAssistantMessageToolTimeline` to an index-based `for` loop, eliminating iterator allocation per streaming token.
+- `ui-helpers.ts` converts `for…of` loops in transcript rebuild and `extractAssistantText` to index-based `for` loops.
+- `agent-loop.ts` replaces `.map()` in `snapshotAssistantMessage` with a pre-allocated array + index-based `for` loop, eliminating iterator allocation per streaming token.
+- `streaming-reveal.ts` replaces two `.some()` closures in `begin` and `setTarget` with a shared `messageHasToolCall` helper using an index-based `for` loop.
+- `agent-dashboard.ts` replaces `.filter().length` in `#commsSummary` with a counting `for` loop, eliminating intermediate array allocation per frame.
+- `todo-board.ts` replaces `.filter().length` in `phaseLines` with a counting `for` loop, eliminating intermediate array allocation per frame.
+- `tui.ts` replaces `.some()` closures in `hasOverlay` and the `#doRender` cursorMarkers check with index-based `for` loops.
+- `keys.ts` replaces `[...data].some()` in `hasControlChars` with a direct `charCodeAt` scan, eliminating spread array allocation per key input event.
+- `command-controller.ts` replaces three `.some()` closures in `resolveAggregateStatus` with a single `for` loop that computes all three flags in one pass.
+- `assistant-message.ts` replaces three `.some()` closures in `#shouldPaintTrail`, mermaid source detection, and `hasVisibleContent` with index-based `for` loops in `updateContent` (per streaming token).
+- `tool-execution.ts` replaces `.filter().map().join()` chain in `#getTextOutput` with single-pass string build, and `.some()` closure in `#buildRenderContext` with index-based `for` loop.
+- `output-block.ts` replaces `[header, headerMeta].filter(Boolean).join()` with a conditional string build, eliminating array allocation + filter closure per render.
+- `bash-execution.ts` replaces two `.some(Boolean)` closures with index-based `for` loops in `#updateDisplay` and `#clampLinesPreservingSixel`.
+- `inspector-panel.ts` eliminates duplicate `split("/")` and `split("\n")` calls in path and instruction rendering.
+- `eval-execution.ts` replaces `.split().map()` with pre-allocated array + `for` loop in `appendOutput` and `#setOutput`.
+- `diff.ts` replaces `.map()` + `.reduce()` with single-pass `for` loop in `renderDiff`, eliminating two iterator allocations per frame.
+- `read-tool-group.ts` replaces three `.split().map().filter()` chains with single-pass `for` loops in `splitSelectorDisplayParts`.
+- `history-search.ts` replaces `.split().filter()` with `for` loop in `queryTokens`, eliminating intermediate array per keystroke.
+- `state-manager.ts` replaces `.split().filter(Boolean)` with `for` loop in extension search.
+- `command-controller.ts` replaces `.map().filter().reduce()` chains in `formatAggregateAmount` and `resolveResetRange` with single-pass `for` loops.
+- `status-line/component.ts` converts `for…of` to index-based `for` loop in quiet line bounds clamping.
+- `event-controller.ts` replaces `.filter()` with counting `for` loop in user message image count.
+- `tool-execution.ts` replaces `.filter()` + spread with pre-allocated array in `#getAllImageBlocks`.
+- `tool-execution.ts` replaces `new Set(.map().filter(Boolean)).size` with `for` loop in totalFiles count.
+- `agent-dashboard.ts` converts `for…of` loops to index-based `for` loops in `CommsPane.layout` and `#renderTabBar`.
+- `modal-shell.ts` replaces `.map().filter(Boolean)` with `for` loop in `resolveShortcutLabels`, and `.map(c => c.w)` with pre-allocated array in `layoutShortcutRows`.
+- `status-line/component.ts` converts `for…of` loops to index-based `for` loops in config segment iteration and bounds building.
+- `agent-dashboard.ts` replaces O(n²) `.includes()` with `Set` in `commsParticipants`, `.filter()` closures with for loops in `scopedComms`/`filteredComms`, `.find()` closures with for loops in `observableFor`/`callSignFor`, and `for…of` with index-based loops in comms message rendering.
+- `status-line/component.ts` replaces `.map().join()` with single-pass `joinContents` helper in `renderQuietLine`, `.map()` with pre-allocated arrays in `renderQuietLines`, and `Array.from.sort.map.join` with single-pass in hook status `render`.
+- `tool-execution.ts` replaces `for…of` and `.map()` with index-based loops in `dedent` and displayLines rendering.
+- `diff.ts` replaces `for…of` string iteration with `charCodeAt` in `visualizeIndent`, and `for…of` array iteration with index-based loops in `renderIntraLineDiff` and removedLines/addedLines rendering.
+- `bash-execution.ts` replaces `.map().join()` with single-pass string build in expanded and collapsed output views, and `.map()` with pre-allocated arrays in `clampLinesPreservingSixel`.
+- `eval-execution.ts` replaces `.map().join()` with single-pass string build in header and output rendering.
+- `read-tool-group.ts` replaces `for…of`, `.filter()`, `.every()`, and `.map().filter()` with index-based loops across `displayTargetsForEntries`, `buildSummaryRows`, `statusForTargets`, `correctedFromForTargets`, `conflictCountForTargets`, `previewEntriesForRow`, and `splitReadDisplayPathSpecs`.
+- `modal-shell.ts` replaces `.map()` closures with pre-allocated arrays in `layoutShortcutRows`, `renderModalShortcuts`, and `resolveShortcutLabels`, and `for…of` with index-based loops in `fitTipLine` and modal card body/shortcut/frame rendering.
+- `tui.ts` replaces `for…of` iterator allocations with index-based loops in per-frame render paths: frame segment ingestion, transcript replay, cursor marker check, overlay compositing, ConPTY truncate check, overlay visibility check, image transmit/purge buffers, committed rows publish, and modal image transmit.
+- `markdown.ts` replaces `for…of` with index-based loops in `renderContentLines` and `#applyQuoteBorder`.
+- `render-utils.ts` replaces `.map()`, `for…of`, and spread+map with index-based loops in `renderCollapsedOutputLines`, `getDiffStats`, `parseDiffSegments`, `truncateDiffByHunk`, `dedupeParseErrors`, `formatParseErrors`, `appendParseErrorsBulletList`, and `createCachedComponent`.
+- `assistant-message.ts` replaces `for…of` and `Array.from().flatMap().map()` with index-based loops in `getSpeed`, `getTranscriptBlockSettledRows`, and `#renderToolImages`.
+- `model-hub.ts` replaces `for…of`, `.map()`, and `.filter().join()` with index-based loops in roles row rendering, `#sidebarWidth`, `#renderLockedView`, cycle label and chip width computation.
+- `account-manager.ts` replaces `.map()` closures with index-based for loops in `#wrapNote`, `#buildBodyLines` header, and scrollable list pane rendering. Replaces `for…of` with index-based loop in `#sidebarWidth`.
+- `account-manager-rows.ts` replaces `.map().map()` chain and `.slice().map()` spread with single-pass for loops in `accountUsageLines` and `accountPlanLine`.
+- `hook-selector.ts` replaces `.map()` closures with index-based for loops in `#wrapDescriptionRows`.
+- `advisor-config.ts` replaces `.map()` closures with index-based for loops in `#previewContent` and `#advisorPreview`.
+- `agent-activity.ts` replaces `.map()` closure and `[…refs]` spread with index-based for loop and `.slice()` in `collectLiveAgents`.
+- `paint-columns.ts` replaces `.map()` closure with index-based for loop in `paintBlockBackground`.
+- `motion-paint.ts` replaces `.map()` closure and `[…lines]` spread with index-based for loop and `.slice()` in `fadeLinesTowards`.
+- `tab-bar.ts` replaces `.map()`, `.reduce()`, and `.map().filter()` chains with index-based for loops in label and collapse computation.
+- `settings-list.ts` replaces `.filter().map()` and `.map()` closures with single-pass and index-based for loops in flat and split layout rendering.
+- `markdown.ts` replaces `.map()` closures with index-based for loops in table border/header/row rendering, `#terminalLineWidths`, and `#renderHtmlBlockquote`.
+- `error-banner.ts` replaces `for…of` with index-based for loop in constructor.
+- `advisor-message.ts` replaces `for…of` with index-based for loop in note rendering.
+- `inspector-panel.ts` replaces `for…of` with index-based for loops in description wrapping and file preview rendering.
+- `agent-transcript-viewer.ts` replaces `for…of` with index-based for loops in body line assembly.
+- `chat-transcript-builder.ts` replaces `.filter().map().join()` chain with single-pass for loop in `userMessageText`.
+- `message-frame.ts` replaces `.filter().map().join()` chain with single-pass for loop in text extraction.
+- `collab-prompt-message.ts` replaces `.filter().map().join()` chain with single-pass for loop in text extraction.
+- `compaction-summary-message.ts` replaces `for…of` with index-based for loop in `getCustomMessageText`.
+- `composer-shortcuts.ts` replaces `for…of` with index-based for loop in chip hit-zone collection.
+- `assistant-message.ts` replaces `for…of` with index-based for loops in `containsMermaidFence`, `#appendThinkingExtensions`, and `#canFastPath`.
+- `latex-block.ts` replaces `for…of` and `.map()` closures with index-based for loops in `textBox`, `padBox`, `colorizeBox`, and `splitCells`.
+- `autocomplete.ts` replaces `.map()` destructure closure with index-based for loop in score stripping.
+- `fuzzy.ts` replaces `.map()` closures and `for…of` with index-based for loops in `fuzzyRank` and `fuzzyFilter`.
+- `settings-search.ts` replaces `.map()` closure with index-based for loop in `filterSettingItems`.
+- `extension-dashboard.ts` replaces `.map()` closure with index-based for loop in `buildTabBarTabs`.
+- `model-browser.ts` replaces `.map()` closure with index-based for loop in `buildBrowserItems`.
+- `ask-dialog.ts` replaces `.map().filter()` and `.map()` closures with single-pass for loops in `renderAnswerSummary` and `#buildResults`.
+- `ast-grep.ts` replaces `.map()`, `.filter().map().map()`, and spread+`.map()` with index-based for loops in `renderResult`.
+- `ast-edit.ts` replaces `.map()`, `.filter().map().map()`, and spread+`.map()` with index-based for loops in `renderResult`.
+- `bash-interactive.ts` replaces `.map()` closure and spread+`.map()` with index-based for loops in `#readViewport` and `render`.
+- `bash.ts` replaces `.map()` closure with index-based for loop in `formatBashCommandLines`.
+- `browser.ts` replaces `.filter().map().join()` chain with single-pass for loop in text extraction.
+- `command-controller.ts` replaces `.map()` and `.reduce()` closures with index-based for loops in `formatAccountHeaderRow` and `renderUsageSection`.
+- `agent-dashboard.ts` replaces `.reduce()` closure with for loop in `widest` roster column measurement.
+- `status-line/component.ts` replaces `.reduce()` closure with for loop in `#backgroundJobBadgeCount`.
+- `modal-shell.ts` replaces `.reduce()` closure with for loop in `groupWidth`.
+- `agent-transcript-viewer.ts` replaces `.find()` closure with for loop in `#statsLine`.
+- `todo-board.ts` replaces `.filter()`, `.some()`, `.findIndex()` closures with for loops in `collapsedTasks`, `renderTodoBoardLines`, `activeTodoPhaseIndex`, and `todoBoardIsLive`.
+- `welcome.ts` replaces `.map()` and `.reduce()` closures with a fused index-based for loop in `pickWeightedTip`.
+- `box.ts` replaces five `for-of` iterator allocations with index-based for loops in `render` (child width measurement, content building, border/no-border result building).
+- `select-list.ts` replaces `for-of` iterator in render item rows and `.map()` closures in filter path with index-based for loops and pre-allocated arrays.
+- `text.ts` replaces `for-of` iterator in render with index-based for loop.
+- `editor.ts` replaces `for-of` token loop in `#wrapLine` and chunk loop in `#buildVisualLineMap` with index-based for loops.
+- `markdown.ts` replaces `for-of` iterator loops with index-based for loops in `#renderCodeBodyLines`, `#highlightStreamingDiffLines`, `#renderTokenInner`, `#renderListItem`, `#renderHtmlBlock`, table row iteration, `soleDisplayMath`, `plainInlineTokens`, `collapseInlineHtml`, `#renderInlineTokens`, and `renderInlineMarkdown`; replaces `.map().join()` in `renderInlineMarkdown` list rendering with a single-pass for loop.
+- `tab-bar.ts` replaces `for-of` iterators in collapse order, chunk layout, and hit-zone check with index-based for loops.
+- `settings-search.ts` replaces `for-of` iterators in `scoreToken` and `rankSettingItems` with index-based for loops.
+- `settings-list.ts` replaces `for-of` iterators in inline and split description wrapping with index-based for loops.
+- `latex-block.ts` replaces `.map()` closures, `.map().filter().map()` chains, nested `.map(row => row.map(cell => ...))`, `for-of` iterators, and `.forEach()` in `fracBox`, `binomBox`, `parseEnvironment`, segBoxes, and `latexToBlock` with index-based for loops and pre-allocated arrays.
+- `tui.ts` replaces `.map()` closure and `for-of` iterator in `#isAttached` with pre-allocated array and index-based for loop.
+- `ast-grep.ts` and `ast-edit.ts` replace `.map()`, `.filter().map().map()`, and spread+`.map()` in `renderResult` with pre-allocated arrays and for loops.
+- `bash-interactive.ts` replaces `.map()` closure and spread+`.map()` in `#readViewport` and `render` with for loops.
+- `bash.ts` replaces `.map()` closure in `formatBashCommandLines` with index-based for loop.
+- `browser.ts` replaces `.filter().map().join()` in text extraction with single-pass for loop.
+- `command-controller.ts` replaces `.map()` and `.reduce()` closures in `formatAccountHeaderRow` and `renderUsageSection` with for loops.
+- `extension-ui-controller.ts` replaces `.map().filter()` and `.map()` closures in `#runGuestAskQuestion` with single-pass for loops.
+- `subagent-hud.ts` replaces `for-of` iterator in `renderSubagentHudLines` with index-based for loop.
+- `pause-screen.ts` replaces `for-of` iterator in `renderPauseScreen` with index-based for loop.
+- `session-selector.ts` replaces `for-of` iterators in render method with index-based for loops.
+- `plan-review-overlay.ts` replaces `for-of` iterators in `#buildBody` and `#buildContent` with index-based for loops.
+- `status-line/component.ts` replaces `for-of` iterators in `quietSegmentAt`, report processing, and `structuralTextSize` with index-based for loops.
+- `select-list-mouse-routing.ts` replaces `for-of` iterator in `renderTrackingChild` with index-based for loop.
+- `read-tool-group.ts` replaces `for-of` iterator in preview entry iteration with index-based for loop.
+- `command-controller.ts` replaces `.flatMap().map().reduce()` chain, `.map()`, `.map().join()`, and `for-of` destructuring in `resolveProviderUsageTotal` and `renderUsageReports` with index-based for loops.
+- `input-controller.ts` replaces `.filter().map()` chains, `.flatMap()`, `for-of`, and `.map().join()` in `restoreQueuedMessagesToEditor` with index-based for loops.
+- `edit/renderer.ts` replaces `.flatMap()` closures with index-based for loops in body line wrapping.
+- `setup-wizard/scenes/approvals.ts` and `sign-in.ts` replace `.flatMap()` closures with index-based for loops in scene render methods.
+- `command-controller.ts` replaces `.flatMap()` closures with for loops in usage notes; restores missing bars push line.
+- `latex-block.ts` replaces remaining `for-of` iterators with index loops in `hconcat`, `vconcat`, `limitsBox`, `attachScripts`, `gridBox`.
+- `autocomplete.ts` replaces `for-of` iterators with index loops in category setup, alias scoring, and file entry filtering.
+- `deccara.ts` replaces `for-of` iterator with index loop in `planDeccaraFills` group emission.
+- `fuzzy.ts` replaces remaining `for-of` iterators with index loops in `buildIndex`, `scoreAcronym`, `scoreTokenDirect`, `scoreToken`, `hasDistinctWordsForRepeatedTokens`, `fuzzyMatchCore`, `matchPositions`.
+- `motion.ts` replaces `for-of` iterator with index loop in animation tick.
+- `stdin-buffer.ts` replaces `for-of` iterators with index loops in sequence emission paths.
+- `tui.ts` replaces `for-of` iterators with index loops in container methods and render path resolution.
+- `tui/utils.ts` replaces `for-of` iterators with index loops in `correctedBunWidth` and OSC66 metadata parsing.
+- `box.ts` replaces `for-of` iterator with index loop in `invalidate`.
+- `sun.ts` replaces `for-of` iterators with index loops in ripple computation and grid rendering.
+- `welcome.ts` replaces `for-of` iterators and `.map()` closure with index loops in render paths and `gradientLogo`.
+- `status-line/segments.ts` replaces `for-of` iterators with index loops in `stripDisplayRoot`, `classifyProjectDir`, `renderBaseMode`.
+- `transcript-note.ts` replaces `for-of` iterator with index loop in row rendering.
+- `ttsr-notification.ts` replaces `for-of` iterator with index loop in rules rendering.
+- `todo-reminder.ts` replaces `for-of` iterator with index loop in preview rendering.
+- `markdown.ts` replaces `.split().map().join()` with single-pass for loop in `applyTextWithNewlines` (both cached and uncached paths).
+- `plan-review-overlay.ts` replaces `for-of`, `.filter()`, and `.map()` closures with index loops in `invalidate`, `rebuildToc`, `deleteSelectedSection`, `recomputeFeedback`, `renderOptionLines`.
+- `tool-execution.ts` replaces `for-of` iterators with index loops in multi-file box cleanup, image cleanup, and path candidate search.
+- `tree-selector.ts` replaces `for-of` iterators with index loops in entryMap build, containsActive check, orderedChildren, content extraction, `updateNodeLabel`.
+- `settings-selector.ts` replaces `.map()` and `.filter().length` closures with index loops in section items rendering.
+- `copy-selector.ts` replaces `.forEach()` closure with index loop in flatten walk.
+- `canonicalize-tool-call-ids.ts`, `relativize-paths.ts`, `messages.ts`, and `session-manager.ts` replace `[...arr]` spreads with `.slice()`/`.concat()`/`Array.from()` in message canonicalization, path relativization, and session entry management paths.
+- `segment-track.ts` replaces `.forEach()` closure with index loop in segment track render.
+- `autocomplete.ts` replaces `.flatMap()` closure with single-pass for loop in command ranking; replaces `.filter()` closure and `for-of` with index loops in file path autocomplete.
+- `settings-list.ts` replaces `.filter()` closure with in-place compaction in sections computation; replaces `.forEach()` with index loop in hit row mapping.
+- `markdown.ts` replaces `.flatMap()` with single-pass for loop in table cell wrapping.
+- `eval-render.ts` replaces `.map()`, `.flatMap()`, and `.split().map().join()` closures with index loops and for-loop string building in render paths.
+- `advisor-message.ts` replaces `.map()` closure with in-place for loop in line truncation.
+- `input-controller.ts` replaces `images.map(() => undefined)` with `new Array(n)` at 8 call sites.
+- `status-line/segments.ts` replaces `.filter(Boolean).join()` with direct string building in cache segments.
+- `status-line/state-grammar.ts` replaces `.filter().join()` with single-pass for loop in `joinStates`.
+- `grep.ts` replaces `.map()` closures with pre-allocated arrays + for loops in simple and detailed render paths, match group construction, and body line truncation.
+- `glob.ts` replaces spread + `.map()` closure with pre-allocated array + for loop in body line truncation.
+- `fetch.ts` replaces `.split().map()` and double `.map()` closures with single-pass for loops in error and preview line rendering.
+- `launch.ts` replaces `.map()` and spread + `.map()` closures with pre-allocated arrays + for loops in logs and list render.
+- `memory-render.ts` replaces `.map(truncateToWidth)` closures with in-place for loops in retain, recall, and reflect components.
+- `irc-render.ts` replaces `.map()` closures with pre-allocated array + for loop in preview lines and in-place for loop in message card truncation.
+- `debug.ts` replaces `Math.max(...spread)` and nested `.map()` closures with index loops in `formatDisassembly` and `formatTable`.
+- `subagent-hud.ts` replaces `.map()` closure with pre-allocated array + for loop in per-frame agent row rendering.
+- `todo-reminder.ts` replaces `.map()` closure with pre-allocated array + for loop in preview rendering.
+- `transcript-note.ts` replaces spread + `.map()` and `Math.max(...spread)` with for loops in note rendering.
+- `welcome.ts` replaces `.map()` closure with pre-allocated array + for loop in tip block rendering.
+- `tiny-title-download-progress.ts` replaces `.filter().map()` with single-pass for loop in progress details.
+- `tool-execution.ts` replaces `.map()` closure with for loop in `stabilizeStreamingPreviews`.
+- `skill-message.ts` replaces `.filter().map().join()` with single-pass for loop in `extractText`.
+- `subagent-hud.ts` replaces `.filter()` closure with for loop in per-frame running session filtering.
+- `irc-render.ts` replaces `.map()` and `.reduce()` closures with for loops in peer status meta rendering.
+- `ask.ts` replaces `.map()`, `.flatMap()`, and `.split().map()` closures with for loops in note, question, result, and chat redirect render paths.
+- `ssh.ts` replaces `.map()` closure with pre-allocated array + for loop in command line formatting.
+- `read.ts` replaces `.map().join()` with for-loop string building in `prependLineNumbers`.
+- `resolve.ts` replaces `.map()` closure with pre-allocated array + for loop in framed line rendering.
+- `launch.ts` replaces spread + `.map()` and `.filter().map()` with for loops in list render and settled set construction.
+- `sqlite-reader.ts` replaces `.map().join()` and `.split().map()` with for loops in vertical blocks, table list, and schema rendering.
+- `todo.ts` replaces `.flatMap()` and `.filter().length` with for loops in todo tool result rendering.
+- `settings-selector.ts` replaces spread + `.split().map()` closure with for loop in appearance preview rendering.
+- `settings-list.ts` replaces `[...render(width)]` spread with `.slice()` in submenu render to avoid iterator allocation.
+- `debug.ts` replaces `.filter().join()` and `.map()` closures with for loops in `formatDisassembly`, `formatSessions`, and render snapshot/output paths.
+- `job.ts` replaces `.filter()`, `for-of`, `[...jobs].sort()`, `.slice().map()`, and spread + `.map()` closures with index loops and `.slice()` in render path.
+- `read.ts` replaces `.split().map()` closure with split + for loop in error render path.
+- `gh-renderer.ts` replaces `.map()`, `.forEach()`, `for-of`, and `.split().filter()` closures with index loops in `formatRunLine`, `renderRunBlock`, `buildWatchSections`, `renderFailedLogs`, and `extractText`.
+- `vibe-render.ts` replaces `.map()`, `.filter()`, and `.slice().map()` closures with single-pass for loops in `composerRows`, `linesComponent`, and `renderResult` builder.
+- `search-tool-bm25.ts` replaces `.split().map()` and `.filter().map().filter().join()` with split + for loops in `renderFallbackResult` and `renderResult` fallback.
+- `status-line/component.ts` caches `visibleWidth()` results in `renderQuietLine` and `renderQuietLines`, eliminating redundant width computations in shed loops and final line assembly.
+- `status-line/component.ts` hoists `LOCATION_SEGMENT_IDS` and `CONTEXT_SEGMENT_IDS` lookup tables to module-level constants, eliminating per-frame object literal allocation in `#gatherQuietSegments`.
+- `hook-selector.ts` replaces `.split().map().filter().map()` chain with a single-pass for loop in `#shortcuts`, and uses `.slice()` instead of spread for `SELECT_LIST_SHORTCUTS` copy.
+- `ask-dialog.ts` replaces spread+`.map()` and `.map()` closures with pre-allocated arrays in `#renderHeader` and `#questionRows` render paths.
+- `agent-dashboard.ts` fuses 4 `widest()` closure calls into a single for loop in the roster render path, and hoists the ScrollView theme to a module-level constant.
+- `selector-helpers.ts` exports `SCROLL_LIST_THEME` as a shared module-level constant; 10 files replace inline `{ track: t => ..., thumb: t => ... }` closures with the shared constant, eliminating per-frame closure allocation in ScrollView render paths.
+- `fitLine` in the setup wizard theme scene pads to width in the native `truncateToWidth` call instead of a separate `visibleWidth` scan plus `padding` concatenation.
+- `agent-dashboard.ts`, `extension-dashboard.ts`, `command-controller.ts`, `bash-interactive.ts`, and `tab-bar.ts` replace `truncateToWidth` + `visibleWidth` + `padding` with the native `truncateToWidth` `pad` parameter, eliminating a redundant width scan per padded row.
+- `ask-dialog.ts`, `modal-shell.ts`, `extension-dashboard.ts`, `history-search.ts`, `modal-select-list.ts`, `rollback-panel.ts`, and `text.ts` replace `[...array]` spread copies with `.slice()` / `.concat()`, avoiding spread iterator allocation in per-frame render paths.
+- `task/render.ts` replaces `[...arr]` spreads with `.slice()`/`.concat()` in subagent progress, recent output, findings sort, and recursive tree prefix building.
+- `extension-dashboard.ts` replaces `[...EXT_SHORTCUTS]` spread with `.slice()` in modal shell construction.
+- `read.ts`, `output-meta.ts`, `result-notice.ts`, `irc.ts`, and `job.ts` replace `[...arr]` spreads with `.slice()`/`.concat()` in tool result construction paths.
+- `emoji-autocomplete.ts`, `internal-url-autocomplete.ts`, and `prompt-action-autocomplete.ts` replace `[...lines]` spread with `.slice()` in insert handlers.
+- `interactive-mode.ts` replaces `[...event.messages].reverse().find()` with a backward for loop, eliminating array copy + reverse + iterator.
+- Setup wizard scenes (approvals, glyph, outro, theme, providers) replace `[...arr, elem]` and `[...a, ...b]` spreads with `.concat()` in render paths.
+- `input-controller.ts` replaces 27 `[...arr]` spread copies with `.slice()` across image array copies in submission handlers.
+- `extension-ui-controller.ts`, `mcp-command-controller.ts`, `tan-command-controller.ts`, and `selector-controller.ts` replace `[...arr]` spreads with `.slice()`/`.concat()`/`Array.from()` in dialog, tool activation, and selector construction paths.
+- `rpc-subagents.ts`, `host-uris.ts`, and `rpc-client.ts` replace `[...arr]` spreads with `.slice()`/`Array.from()` in RPC paths.
+- `model-hub.ts`, `model-browser.ts`, `read-tool-group.ts`, `tree-selector.ts`, `settings-selector.ts`, `plan-review-overlay.ts`, and `copy-selector.ts` replace remaining `[...arr]` spreads with `.slice()`/`.concat()`/`Array.from()` in sidebar, tree walk, and undo/redo paths.
+- `model-registry.ts`, `model-resolver.ts`, `settings.ts`, and `keybindings.ts` replace `[...arr]` spreads with `.slice()`/`.concat()`/`Array.from()` in model resolution, settings fork/clone, and keybinding config paths.
+- `child-environment.ts`, `config-commands.ts`, `config-writer.ts`, `manager.ts`, `smithery-registry.ts`, and `unattributable-error.ts` replace array spreads with `.slice()`/`.concat()`/`Array.from()` in MCP server management, environment baseline, and resource subscription paths.
+- `loading/policy.ts`, `path-utils.ts`, `todo.ts`, `output-schema-validator.ts`, `secret-use-boundary.ts`, `sqlite-reader.ts`, `write.ts`, `image-gen.ts`, `reroot-hint.ts`, and `jtd-to-json-schema.ts` replace array spreads with `.slice()`/`.concat()`/`Array.from()` in tool loading, search path resolution, todo operations, and schema validation.
+- `interactive-mode.ts`, `acp-agent.ts`, `session-observer-registry.ts`, `input-controller.ts`, `model-hub.ts`, and `agent-dashboard.ts` replace array spreads with `.slice()`/`.concat()`/`Array.from()` and backward for loops in command merging, MCP server status, image handling, tool set construction, and agent_end message search paths.
+- `settings-selector.ts`, `ask-dialog.ts`, `ttsr-notification.ts`, `custom-editor.ts`, `oauth-selector.ts`, `plugin-settings.ts`, `agent-transcript-viewer.ts`, `advisor-config.ts`, `status-line/segments.ts`, and `task/discovery.ts` replace array spreads with `.slice()`/`.concat()`/`Array.from()` in settings chain persistence, rule toggling, agent discovery, OAuth validation, and plugin feature management.
+- `repology.ts`, `spdx.ts`, `gemini.ts`, `perplexity.ts`, `public.ts`, and `streaming-player.ts` replace array spreads with `.slice()`/`.concat()`/`Array.from()` in web scraping, search result merging, and TTS audio player command construction.
+- `autoresearch/state.ts`, `discovery/helpers.ts`, `task/worktree.ts`, `conflict-detect.ts`, `secrets/vault.ts`, `repair/schema-repair.ts`, and `extensibility/typebox.ts` replace array spreads with `.slice()`/`.concat()`/`Array.from()` in experiment state cloning, extension discovery, worktree patch merging, conflict resolution, vault loading, schema repair, and typebox schema construction.
+- `usage-cli.ts` and browser tab management files (`handle-release.ts`, `launch.ts`, `tab-api-guard.ts`, `tab-supervisor.ts`, `tab-worker.ts`) replace Set/Map spreads with `Array.from()` and array copies with `.slice()` in usage report rendering and browser tab lifecycle management.
+- `edit/modes/patch.ts`, `tools/grep.ts`, and `tools/bash-guard.ts` replace array spreads with `.slice()`/`.concat()`/`Array.from()` in patch application, grep match merging, and bash command tracking.
+- `utils/git.ts` and extensibility plugin registries (`installed-registry.ts`, `legacy-pi-compat.ts`, `marketplace/registry.ts`) replace array spreads with `.slice()`/`.concat()`/`Array.from()` in git command construction and plugin registration.
+- `argot-cache.ts`, `advisor/config.ts`, `advisor/runtime.ts`, `autoresearch/git.ts`, `autoresearch/helpers.ts`, `autoresearch/index.ts`, `autoresearch/tools/log-experiment.ts`, `capability/index.ts`, and 11 CLI files (`agents-cli.ts`, `args.ts`, `auth-gateway-cli.ts`, `bench-cli.ts`, `completion-gen.ts`, `dry-balance-cli.ts`, `gallery-cli.ts`, `gc-cli.ts`, `install-health.ts`, `models-cli.ts`, `plugin-cli.ts`) replace Set/Map/array spreads with `Array.from()`, `.slice()`, and `.concat()` across advisor configuration, autoresearch tool management, capability snapshots, and CLI command paths.
+- `debug/log-viewer.ts`, `debug/protocol-probe.ts`, `discovery/claude.ts`, `discovery/opencode.ts`, `discovery/veyyon-extension-roots.ts`, `edit/diff.ts`, `edit/index.ts`, `edit/streaming.ts`, `edit/apply-patch/index.ts`, `eval/runtime-env.ts`, and eval kernel executors (`jl/executor.ts`, `js/context-manager.ts`, `py/executor.ts`, `rb/executor.ts`) replace Set/Map/array spreads with `Array.from()`, `.slice()`, and `.concat()` across debug rendering, command discovery, diff/patch application, streaming edit previews, and kernel session disposal.
+- `hindsight/`, `internal-urls/`, `irc/bus.ts`, `launch/`, `lsp/`, `memories/index.ts`, and `mnemopi/` files replace Set/Map/array spreads with `Array.from()`, `.slice()`, and `.concat()` across hindsight message slicing, URL protocol completion, IRC mailbox copies, daemon broker listing, LSP edit merging, memory file serialization, and mnemopi recall queries.
+- `secrets/`, `session/`, `slash-commands/`, `ssh/connection-manager.ts`, and `stt/` files replace Set/Map/array spreads with `Array.from()`, `.slice()`, and `.concat()` across secret spend tracking, account inventory, session history, slash command aliases, SSH command construction, and speech-to-text stream management.
+- `tools/ask.ts`, `tools/ast-edit.ts`, `tools/ast-grep.ts`, `tools/bash.ts`, `tools/browser.ts`, `tools/cwd-boundary.ts`, `tools/eval-render.ts`, `tools/eval.ts`, `tools/fetch.ts`, `tools/gh-fetch.ts`, `tui/rail-motion.ts`, `utils/block-context.ts`, `utils/external-editor.ts`, `utils/file-mentions.ts`, and `utils/jj.ts` replace Set/Map/array spreads with `Array.from()`, `.slice()`, and `.concat()` across tool execution, path resolution, eval rendering, fetch notes, rail motion rendering, block context spans, file mention extraction, and Jujutsu command construction.
 - `veyyon --help` renders its command list from registry summaries verified against command statics and loads only the hidden default command for its flag table, reducing a measured warm Windows invocation from 1.2 seconds to 0.13 seconds.
 - The CPU model is read once per process instead of on every system prompt build, removing about 30ms from the window before the composer accepts input.
 - No user-visible change: the once-per-process CPU model cache gained a reset the test suite calls, so a suite that fakes the platform reads its own answer instead of the one an earlier suite in the same process cached.
@@ -72,8 +353,18 @@
 - The browser tab worker and supervisor state why each teardown step and each optional probe discards its failure; behavior is unchanged.
 - The browser tab worker and supervisor reach `bestEffort` and `optionalResult` through `@veyyon/utils/discarded-fault` rather than the package barrel; behavior is unchanged.
 - Daemon completion parsing and eval-store serialization errors use shared type guards; behavior is unchanged.
-- Compaction imports `ProviderHttpError` from its owning module rather than the `@veyyon/ai/error` barrel, cutting 14 modules off the engine's load graph with no change in behavior.
+- `FilterProviderReplayMessages` and `InstrumentedCompleteSimple` named function types are exported from their owning modules so consumers can import them as types without aliasing function values.
 - Streaming `message_update` snapshots share tool-call arguments by reference instead of deep-cloning them on every delta, cutting a large structured tool call's per-delta snapshot cost from ~0.5 s to ~8 ms, while terminal messages and the authoritative tool call a `toolcall_end` carries keep the sanitizing deep clone.
+- `agent-loop.ts` replaces `[...arr]` spreads with `.slice()`/`.concat()` in streaming setup, message merge, content deduplication, and schema injection paths.
+- `append-only-context.ts` replaces `[...context.systemPrompt]` spread with `.slice()` in snapshot.
+- `run-collector.ts` replaces 10 `[...set].sort()` patterns with `Array.from(set).sort()` in telemetry collection.
+- `telemetry.ts` replaces `[...arr]` spreads with `.slice()` in stop sequence and coverage attribute setting.
+- `compaction/shake.ts` replaces two `[...arr].sort()` patterns with `arr.slice().sort()` in range merge and shake region application.
+- `compaction/cache-aligned-context.ts` replaces `[...arr, elem]` spread with `.concat([elem])` in token estimation.
+- `compaction/remote-compaction.ts` replaces `[...a, ...b]` spread with `a.concat(b)` in LLM message preparation.
+- `compaction/utils.ts` builds the modified file Set directly from Set iterators instead of spreading into an intermediate array; replaces Map.keys() spread with `Array.from()` in file operation formatting.
+- `compaction/compaction.ts` replaces const array spread with `.concat()` in non-reusable summary key construction.
+- Compaction imports `ProviderHttpError` from its owning module rather than the `@veyyon/ai/error` barrel, cutting 14 modules off the engine's load graph with no change in behavior.
 - Superseded and useless tool results are now pruned as a batch whose combined size pays for the prompt-cache rewrite it forces, instead of only when a single result sits within 8,000 tokens of the end of the conversation.
 - The tokenizer takes `estimateTokensFromText` from `@veyyon/utils/tokens` rather than the package barrel, cutting the modules a token estimate loads from 92 to 10.
 - Formatted tool-call loop guard whitespace; behavior is unchanged.
@@ -84,14 +375,39 @@
 - A message that names a dead socket reads the same everywhere: `namesDeadSocket` in `@veyyon/ai/error/flags` is the one list of errnos and phrases, and `ENETUNREACH`, `EHOSTUNREACH` and `EAI_AGAIN` now count as transient transport failures like the rest of them.
 - Formatted source files for Biome compliance.
 - `withAuth` imports the two error classes it throws from their owning modules instead of the `@veyyon/ai/error` barrel, so a consumer of the auth-retry wrapper no longer loads the provider-error registry and every error domain behind it; behavior is unchanged.
+- Usage provider backends are loaded lazily on first `AuthStorage.reload()` instead of at `@veyyon/ai` barrel import time, reducing idle memory by deferring the Google auth stack and eleven provider usage modules.
+- The `@veyyon/ai` barrel re-exports provider modules as types only (`export type *`), so importing the barrel no longer eagerly loads provider transport code; five provider modules are deferred to first stream.
+- The GitLab Duo Workflow provider loads the zod-dependent discovery module lazily on first namespace resolution instead of at module import, deferring 28 MiB of zod and its locale files from the static boot graph.
+- `mapAnthropicToolChoice` is extracted to `@veyyon/ai/tool-choice-mapping` so providers that only need tool-choice mapping no longer import `@veyyon/ai/stream` (23 MiB) transitively.
+- Provider modules import `getEnvApiKey` from `@veyyon/ai/env-api-key` (the owner) instead of re-export through `@veyyon/ai/stream`, removing the last static-graph path into the streaming engine.
+- `openai-completions.ts` replaces `[...pendingToolCallBlocks]` spread with `.slice()` in stream finish handler.
+- `openai-responses-server.ts` replaces `[...map.values()]` spread with `Array.from(...)` in close handler.
+- `openai-codex-responses.ts` replaces `[...event.raw]` spread with `.slice()` in SSE callback.
+- `openai-codex/request-transformer.ts` replaces two `[...a, ...b]` spreads with `a.concat(b)` and `[...options.include]` with `.slice()`.
+- `usage/zai.ts` replaces `[...limits]` spread with `limits.slice()` in request limit ranking.
+- `usage/google-antigravity.ts` replaces `[...new Set(...)].sort()` with `Array.from(new Set(...)).sort()` and `[...ANTIGRAVITY_ENDPOINTS]` with `.slice()`.
+- `validation.ts`, `json-schema-validator.ts`, `draft.ts`, `equality.ts`, `normalize.ts`, `wire.ts`, `registry.ts`, `oauth/index.ts`, and `github-copilot.ts` replace `[...arr]` spreads with `.slice()`/`.concat()`/`Array.from()` in schema validation, normalization, path building, usage provider listing, and OAuth provider enumeration.
+- Auth, broker, gateway, dialect, error, and provider files replace Set/Map/array spreads with `Array.from()`, `.slice()`, and `.concat()` across credential identifier extraction, auth storage listener fan-out, snapshot credential management, usage report merging, tag prefix construction, error trace deduplication, and provider request building.
+- `codec.ts`, `corpus.ts`, `generate.ts`, and `session.ts` replace array spreads with `.concat()`, `Array.from()`, and `.slice()` to avoid iterator allocation on hot paths.
+- The GitLab Duo Workflow provider descriptor in `provider-models/special.ts` loads the zod-dependent discovery module lazily on first model manager construction instead of at module import, deferring 28 MiB of zod and its locale files from the static boot graph.
+- `model-manager.ts`, `variant-collapse.ts`, `discovery/codex.ts`, `discovery/cursor.ts`, `discovery/devin.ts`, `identity/id.ts`, `identity/reference.ts`, `openai-compat.ts`, `wire-capabilities.ts`, and `ollama.ts` replace `[...arr]` spreads with `.slice()`/`.concat()`/`Array.from()` in model management, discovery, identity resolution, and capability declaration paths.
+- `identity/markers.ts` replaces const array spread with `.concat()` in reference trailing marker pattern construction.
+- `apply.ts`, `input.ts`, `messages.ts`, `parser.ts`, and `patcher.ts` replace array spreads with `.concat()`, `Array.from()`, and `.slice()` to avoid iterator allocation on hot paths.
 - `MNEMOPI_NO_EMBEDDINGS=0`, `false`, `no` or `off` now leaves embeddings on everywhere instead of disabling them on the API path.
 - Every `MNEMOPI_*` value is read by `config.ts` alone; the local-model, extraction and embedding modules ask it instead of parsing the variable again.
 - `getDiagnostics` is now `extractionDiagnostics` in `core/extraction/diagnostics` and `recallDiagnostics` in `core/recall-diagnostics`, so the two registries are no longer reached by one name.
 - `core/embeddings.ts` imports `ProviderHttpError` from `@veyyon/ai/error/classes` instead of the error barrel, cutting twelve modules off the import graph of every module that can remember something; behavior is unchanged.
+- `App.tsx`, `chart-shared.tsx`, `view-models.ts`, `BehaviorRoute.tsx`, `ModelsRoute.tsx`, `ToolsRoute.tsx`, and `generate-client-bundle.ts` replace array spreads with `.concat()`, `Array.from()`, and `.slice()` to avoid iterator allocation on hot paths.
+- No user-facing effect; the spread-to-concat optimization this rebase repaired was already released in 1.2.0.
 - `imageFallback` takes the file name, media type, pixel size and cause of an undrawn image and returns a row naming all four; `ImageFallbackReason` states the cause.
 - Settings rows can open nested panels, used by Files → LSP to keep its dependent switches behind one parent row.
 - `bestEffort` and `optionalResult` are imported from `@veyyon/utils/discarded-fault`, which the barrel does not re-export, so a consumer reaching them names the module instead.
 - `winston` and `winston-daily-rotate-file` are resolved on the first log write instead of at module load, taking 4.7ms off every process that imports the logger without logging, which is every entry point.
+- `bestEffort` and `optionalResult` are imported from `@veyyon/utils/discarded-fault`. The barrel does not re-export them, so a consumer reaching them through `@veyyon/utils` names the module instead.
+- `winston` and `winston-daily-rotate-file` are loaded synchronously on first log emission via `createRequire` instead of at module import, reducing idle memory by 2.4 MiB.
+- `file-lock` and its transitive imports (`process-liveness` via `bun:ffi`, `logger` via `winston`) are loaded synchronously on first use via `createRequire` from `dirs.ts`, reducing idle memory by 3.3 MiB. The barrel re-exports `file-lock` as types only; callers that need `withFileLock` or `tryWithFileLock` import from `@veyyon/utils/file-lock`.
+- `glob.ts`, `bench-harness.ts`, `cli.ts`, `fault-sink.ts`, `levenshtein.ts`, `logger.ts`, and `tls-fetch.ts` replace array spreads with `.slice()`/`.concat()`/`Array.from()` in glob exclude merging, benchmark stats, CLI help rendering, fault sink iteration, fuzzy matching, module timing, and TLS CA merging.
+- `module-reach.ts`, `module-timer.ts`, `process-liveness.ts`, `prompt-variables.ts`, and `yaml-sync.ts` replace array/Set/Map spreads with `Array.from()`, `.slice()`, and `.concat()` across import clause extraction, module timing, process identity queries, Handlebars prompt variable analysis, and YAML document synchronization.
 
 ### Removed
 
@@ -280,6 +596,8 @@
 - A numeric-keyed body whose values are `true`, `false` or `null` keeps its `N:` keys instead of being stripped as read-tool output.
 - A wide line clipped in the unseen-line reveal is cut at a code point rather than a UTF-16 code unit, so an emoji or rare CJK character sitting at the column limit is no longer split into an invalid lone surrogate.
 - Mnemopi cost log SQLite database (`cost_log.db`) manages schema migrations via `PRAGMA user_version` and dynamically backfills missing columns on legacy databases.
+- `conformance-boundary.ts`, `beam/consolidate.ts`, `beam/index.ts`, and `beam/recall.ts` replace Set/Map/array spreads with `Array.from()`, `.concat()`, and `.slice()` across word set sorting, memory consolidation events, extraction flushing, and recall query expansion.
+- `bench/grep.ts` renames a redeclared `df` variable introduced by the spread-to-loop optimization, so the biome `noRedeclare` gate passes.
 - The tracked-process renice test states which direction it can move a nice value on the host running it, so a host whose cargo wrapper already starts the test binary at nice 19 lowers where it can, raises where the host permits it, and reports a skip naming the reason where it can do neither, instead of failing an assertion about headroom that host never had.
 - A `cargo` run under `--message-format=json` that fails before rustc, such as a build script exiting non-zero, reports the text cargo printed, so the `Caused by:` chain and the script's own stderr reach the operator instead of a bare failure verdict.
 - A `cargo nextest` run whose profile sets `failure-output = "final"` keeps its panic bodies, so the assertion diff, message, file and line survive the summary instead of being dropped and leaving a failure count with no evidence.
@@ -297,6 +615,11 @@
 - Nested optional-argument LaTeX constructs parse in linear time without character-by-character concatenation allocations.
 - Exclude pinned footer rows from the scroll-isolation snapshot and scroll space so the composer does not duplicate inside scrolled-back history.
 - Extract LaTeX argument text by slicing the source rather than appending one character at a time, so a deeply nested optional-argument chain degrades linearly instead of quadratically.
+- `padLineToWidth` and `ScrollView` scrollbar rows pad to width in the native `truncateToWidth` call instead of a separate `visibleWidth` scan plus `padding` concatenation, removing a redundant width measurement from every padded row.
+- `padLineToWidth`, `ScrollView` scrollbar rows, and `TabBar` vertical render pad to width in the native `truncateToWidth` call instead of a separate `visibleWidth` scan plus `padding` concatenation, removing a redundant width measurement from every padded row.
+- `editor.ts` replaces `visibleWidth` + `padding` with `padLineToWidth` for gutter continuation, eliminating a redundant width scan per editor render frame.
+- `autocomplete.ts`, `fuzzy.ts`, `keybindings.ts`, `latex-block.ts`, `motion-hover.ts`, `paint-surface.ts`, `terminal-capabilities.ts`, `tui.ts`, `scroll-view.ts`, `image.ts`, and `editor.ts` replace array spreads with `.slice()`/`.concat()`/`Array.from()` in line copying, Set/Map iteration, scroll tape merging, and OSC99 chunking.
+- `terminal-capabilities.ts`, `components/editor.ts`, `components/input.ts`, `components/select-list.ts`, and `components/settings-list.ts` replace array/string spreads with `Array.from()` and `.concat()` across OSC99 hyperlink construction, grapheme segmenter iteration, and filter query character manipulation.
 - `extractHttpStatusFromError` reads the status line a message opens with whatever wording follows it, so `401 Your session has expired`, `403 You have run out of credits` and `503 {"type":"error",...}` report their codes again; pinning a reason phrase to its own code had also stopped a status line naming its own reason from reporting anything, and 401 is what credential rotation reads.
 - `extractHttpStatusFromError` reads a status field anywhere in an error's cause chain before falling back to prose anywhere in it, and matches the `status_code: 503` and `429 Too Many Requests` spellings it previously missed.
 - `extractHttpStatusFromError` reads a reason phrase only when it is the phrase that belongs to the code beside it, so `Processed 200 Total Records` and `gave up after 401 Failed Attempts` no longer report a status, the second of which reached credential rotation.
@@ -397,11 +720,13 @@
 - `provider-models/wire-capabilities.ts` declares what each provider realizes on the wire, so a service tier's effect is read from one per-provider entry instead of the provider-name comparisons that decided it in four functions.
 - Strict tool schemas, a local chat-template renderer and a loopback proxy that forwards upstream are declared per provider in `provider-models/wire-capabilities.ts`, so `compat/openai.ts` reads one entry instead of a six-provider comparison chain and two provider sets.
 - Applying a patch no longer builds a per-line origin table nothing read, cutting the cost of a single edit by 36% on a 100,000-line file and 22% on a 1,000,000-line one. Output is byte-identical.
+- `apply.ts`, `input.ts`, `messages.ts`, `parser.ts`, `patcher.ts`, `recovery.ts`, and `snapshots.ts` replace array/Set spreads with `.concat()`, `Array.from()`, and `.slice()` across edit merging, warning collection, anchor line sorting, and snapshot history merging.
 - A grep that matches in every file it searches no longer allocates a vector per file to decide which of that file's matches to return. The aggregator collected each file's selected matches into a temporary `Vec` and then pushed the rows out of it, and it grew the row vector by doubling: on 50,000 files of 1KiB with a match in each, four workers spent 15.4ms of a 91.2ms pass inside aggregation. Selection is arithmetic on counts now — how many of this file's matches the offset skips, how many the limit still allows — applied to the file's own iterator, and the row vector is sized by one counting pass before the first row is pushed, because 50,000 `GrepMatch` rows is about 6MiB and the doubling copied more than the rows. The same query is 83.8ms with 10.6ms in aggregation, and a query dense in matches but sparse in files (2,500 files of twenty matches, the same 50,000 matches) is unchanged at 59.9ms. The residual gap between those two shapes is per-file result-object and N-API cost, not ripgrep's per-match collection, which is what the stage split was built to tell apart: a 20x difference in result objects with an identical match count. Row selection is proved against the algorithm it replaces, swept over file shapes, offsets, limits and all three output modes.
 - A filtered directory scan no longer copies the entries it is about to discard. Globbing and listing ask the walker for a small slice of a large tree, and the answer was assembled by cloning every cached entry and then dropping the rejects, so a glob keeping 10 entries of 100,000 still allocated 100,000 owned paths: 101,373 allocations and 13.8MiB per cache hit, with peak resident memory rising by the same 13.8MiB. The filter now runs where the entries live — inside the cache entry, or inside the fresh scan before it is handed to the cache — and only a survivor is cloned: the same hit costs 283 allocations and 0.0MiB, and a cold fill of it drops from 306,954 allocations and 45.2MiB to 205,864 and 31.4MiB, with peak growth of 1.0MiB instead of 15.7MiB. Survivors are marked in a one-bit-per-entry mask so the result vector is allocated once at its exact size (an unknown-count `collect` doubles a buffer of 48-byte entries and cost 9.8MiB of churn, a vector of indices cost 2MiB, the mask costs 12KiB), and a filter that accepts everything still clones the slice in one shot, as cheap as before. `crates/veyyon-walker/examples/walk-cache-copy.rs` is the instrument, and it keeps permanent "filter after copy" arms so the difference is re-measured on every run rather than remembered.
 - The parallel grep's worker scaling is now measured by a committed instrument, and the shared results mutex it was suspected of queueing behind is cleared by that measurement. `bench/grep-workers.ts` runs one child process per `VEYYON_WALK_WORKERS` value (the walker reads that variable once per process, so a worker count cannot change inside a run), on disk and on tmpfs, and checks every worker count returns byte-identical path-sorted rows and identical counters before it reports a ratio. It carries three corpus densities on purpose: 50,000 files with one match each and 2,500 files with twenty each collect the same 50,000 matches while differing twentyfold in how often the accumulator is locked, so scaling can be attributed. At four workers the arms reach 2.37x, 2.70x and 3.22x one worker on disk (2.49x, 2.38x, 2.80x on tmpfs), and cutting lock acquisitions twentyfold moves that by 0.33x on disk and by nothing on tmpfs, while cutting match volume eightfold at a fixed lock count moves it by 0.52x. A temporary build that timed every acquisition confirmed it and was not kept: summed across workers, lock wait was 0.9% of aggregate cpu wall at four workers and 4.1% at eight, hold 4-12ms, the path sort under 4ms. The corpus generator gained the density knobs this needed (`matchEvery`, `matchesPerFile`, `fileBytes`), each recorded in the manifest so a corpus of another shape is regenerated rather than silently reused.
 - The grep benchmark measures a corpus it generates and refuses a speed claim it cannot support. It used to search this repository and the local Cargo registry, so its numbers described a different workload on every machine and after every commit; it compared a single total match count, which cannot see a path, line or text difference between the two engines; and it ran `rg` with stderr discarded and the exit code unread, so an `rg` that failed to start measured as a very fast search of no files and still printed `Nx faster`. It now generates a versioned, fixed-seed corpus of 10,000 files (~40MiB, one constant path length, 5% matching, with hidden, gitignored and `node_modules` controls), compares content, files-with-matches and count modes row for row against `rg`, records the `rg` and addon versions, the runtime, the CPU and the corpus identity, separates a cold pass from the warm medians, and prints a ratio only when parity held, the provenance is complete and the run's own halves agreed within 5%. Parity covers path, line number and line text; the addon exposes no column, so column drift is outside what any comparison here can see.
 - A running tool card builds its streaming tail incrementally. It re-stripped the whole accumulated output on every arrival and then sliced the last 2048 characters, so a 1MiB stream delivered as 256 arrivals scanned 128MiB and grew from 0.23ms per arrival to 2.30ms; it now scans 1MiB total at a flat 0.09ms (211.7ms to 27.2ms overall). The displayed text is unchanged, including for bytes that arrive mid-sequence, and `PartialTail` retains only the visible window plus a sequence that has not closed — a rewound or restarted buffer starts over rather than concatenating two runs.
+- `ast-grep.tsx`, `eval.tsx`, `generate-image.tsx`, `job.tsx`, and `task.tsx` replace array/Set spreads with `.concat()`, `Array.from()`, and `.slice()` across badge rendering, language deduplication, image content merging, and job/task result sorting.
 - A streamed markdown frame reads, scans and copies only what arrived. The renderer re-read the settled transcript on every token: two whole-text regex scans for reference definitions and over-nesting, a whole-text normalization pass, a rescan of the frozen token range for a new freeze boundary, three whole-prefix string comparisons, and three copies of every settled row. All of it is now bounded by the arrived tail or answered by string identity, and the settled rows are held as one immutable array copied once, into the array the frame returns — that array is what the render contract hands to callers, so that one copy stays. Streaming 10,000 prose tokens through one component falls from 624ms to 216ms, and the marginal frame at the end of that stream from 0.082ms to 0.010ms. Rendered bytes are unchanged: every frame still byte-matches a cold full render, reference definitions and CR input still fall back to a full lex, and settled-row exposure still resets on a rewritten lineage. `packages/tui/bench/markdown-stream.bench.ts` fails if a frame starts scanning or normalizing the settled prefix again.
 - `sweepSurface`, `SweepSpec` and the sweep entry in `MOTION` are gone: a surface no longer carries a travelling specular highlight, and `fillSurface` is the one material treatment left.
 
@@ -1582,6 +1907,7 @@
 - `StreamDecoder` and `ArgotSession` use ES `#` private fields instead of the `private` keyword, which TypeScript erases and so never actually hid anything at runtime. `fork()` reaches a sibling instance's fields through `copy.#entries`, which is the spelling a private name needs when the receiver is another object of the same class. No public API changed.
 - A dictionary entry is now priced in the channel it is actually emitted in, which changes what the generator selects. Line structure (a newline plus its indentation) costs about one token in a plain message, but a tool call carries its arguments as JSON, where the same run arrives escaped as `\` + `n` and each tab costs an escape of its own. The two prices differ by enough to flip whether a structure run is worth a handle at all, so `emittedTokenCost` blends them at `DEFAULT_TOOL_CALL_STRUCTURE_SHARE`, the measured share of structure runs emitted inside tool-call arguments: 41.76%, over 307 transcripts and 23,467 assistant turns. Pass `toolCallStructureShare` to `generate` if your own harness splits differently.
 - `GENERATOR_REVISION` is 3. It is part of the cache key, so the first run after upgrading regenerates every cached dictionary rather than serving one selected under the old prices.
+- `codec.ts`, `corpus.ts`, `generate.ts`, and `session.ts` replace Map/Set/array spreads with `Array.from()`, `.slice()`, and `.concat()` across regex construction, corpus file sorting, handle generation, and session vocabulary management.
 - `discovery/devin.ts` exports `DEVIN_IDE_VERSION` and `DEVIN_EXTENSION_VERSION`, and `discovery/antigravity.ts` exports `FETCH_AVAILABLE_MODELS_PATH`. All three go on the wire and all three had a second declaration in `@veyyon/ai`, so the catalog was being bypassed rather than read. Devin's two versions are request metadata sent by model discovery here and by the chat provider there, and the two halves of one session identifying themselves as different client builds is the kind of mismatch a provider notices before we do. The Antigravity path is spelled by discovery here and by the usage reader there, and a usage reader that 404s reports no quota information rather than a wrong URL.
 - `provider-endpoints.ts` also owns `OPENROUTER_API_ENDPOINT`. The host was declared four times across two packages under three names, and it carries a `/v1` path segment, so an API version bump had four declarations to find. `@veyyon/mnemopi` held three of them, and its embedding path and its extraction path pointing at different versions of the same host is a mismatch that shows up only as a request the endpoint rejects.
 - `wire/anthropic.ts` owns `ANTHROPIC_WEB_SEARCH_TOOL`, the server-side tool name that the search provider in `@veyyon/coding-agent` asks for and the Anthropic provider in `@veyyon/ai` matches in the response. A drift between them is a miss rather than an error: the search runs, the results come back, and nothing renders them.
