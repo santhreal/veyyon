@@ -125,6 +125,10 @@ Re-parse trial results and regenerate `results.json` and `report.md` without re-
 bun src/suites/deep-swe/run.ts --reaggregate runs/2026-08-25T09-10-52-052Z
 ```
 
+A comparison run exits 1 when its gates did not pass, from a live run and from a re-aggregation
+alike. The report is written either way. `reaggregate()` and `runBench()` return the comparison, so
+importing either leaves the calling process's exit code alone.
+
 ## Merging runs
 
 Pool multiple run directories into a combined report:
