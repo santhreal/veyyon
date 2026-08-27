@@ -84,13 +84,23 @@ function thinkingGlyph(display: string): string {
 	return space === -1 ? display : display.slice(0, space);
 }
 
-function stripDisplayRoot(pwd: string): string {
-	const roots = [HOME_PROJECTS, "/work"];
-	for (let ri = 0; ri < roots.length; ri++) {
-		const relative = relativePathWithinRoot(roots[ri]!, pwd);
-		if (relative) return relative;
-	}
-	return pwd;
+/**
+ * Workspace roots the path segment shows a project RELATIVE to, when no root is configured.
+ *
+ * Two conventions, and that is all they are: a `Projects` directory in the home directory, and
+ * a `/work` mount. They are the default because they are what this segment has always
+ * stripped, not because they are anyone's layout -- `path.displayRoots` is how a session names
+ * its own, and `/work` on Windows resolves against whichever drive the process is on, which is
+ * an accident of `path.resolve` rather than a place anything lives.
+ *
+ * READ WHEN USED, NOT AT IMPORT. As a module const this joined the home directory once, at the
+ * moment the module loaded, and a home resolved after that -- a different `HOME` in a worker, a
+ * test that answers `os.homedir()` for a fixture -- never matched a default root again, so the
+ * whole default silently stopped stripping. `os.homedir()` reads an environment variable; a
+ * render can afford it.
+ */
+export function defaultDisplayRoots(): readonly string[] {
+	return [path.join(os.homedir(), "Projects"), "/work"];
 }
 
 /** Display roots already reported as unusable, so a bad entry is named once and not per frame. */
@@ -172,11 +182,10 @@ function scratchRoots(): readonly string[] {
 		}
 	}
 	return Array.from(roots);
-})();
+}
 
 function classifyProjectDir(pwd: string): { scratch: boolean; relative: string | null } {
-	for (let ri = 0; ri < SCRATCH_ROOTS.length; ri++) {
-		const root = SCRATCH_ROOTS[ri]!;
+	for (const root of scratchRoots()) {
 		if (pathIsWithin(root, pwd)) {
 			return { scratch: true, relative: relativePathWithinRoot(root, pwd) };
 		}
@@ -489,8 +498,8 @@ export const BASE_MODE_STATES: readonly BaseModeState[] = [
 
 /** The active mode label (plan/prewalk/goal/vibe/loop), independent of the bypass marker. */
 function renderBaseMode(ctx: SegmentContext): string {
-	for (let mi = 0; mi < BASE_MODE_STATES.length; mi++) {
-		const content = BASE_MODE_STATES[mi]!.render(ctx);
+	for (const mode of BASE_MODE_STATES) {
+		const content = mode.render(ctx);
 		if (content !== "") return content;
 	}
 	return "";
@@ -781,8 +790,6 @@ const costSegment: StatusLineSegment = {
 /** The context bar's fixed cell count — small enough to whisper, wide enough
  *  that one cell is a meaningful 12.5% step. */
 const CONTEXT_BAR_CELLS = 8;
-const CONTEXT_BAR_SOLIDS: readonly string[] = Array.from({ length: CONTEXT_BAR_CELLS + 1 }, (_, i) => "▰".repeat(i));
-const CONTEXT_BAR_EMPTIES: readonly string[] = Array.from({ length: CONTEXT_BAR_CELLS + 1 }, (_, i) => "▱".repeat(i));
 /** Live-tip pulse cadence; past the error threshold the pulse doubles — the
  *  bar visibly quickens as compaction nears. */
 const CONTEXT_BAR_TIP_STEP_MS = 1000;
@@ -812,20 +819,19 @@ export function renderContextBar(ratio: number, level: ContextUsageLevel, nowMs:
 	const clamped = Math.min(1, Math.max(0, Number.isFinite(ratio) ? ratio : 0));
 	const filled = Math.min(CONTEXT_BAR_CELLS, Math.round(clamped * CONTEXT_BAR_CELLS));
 	const levelColor = getContextUsageThemeColor(level);
-	const emptyCount = CONTEXT_BAR_CELLS - filled;
-	// When live, the last filled cell pulses: on phase keeps the level hue, off
-	// phase drops to dim. When the tip is off it joins the empty cells, so the
-	// whole bar is two runs — one solid, one dim — instead of eight per-cell fg() calls.
-	const tipOff =
-		live &&
-		filled > 0 &&
-		Math.floor(nowMs / (level === "error" ? CONTEXT_BAR_TIP_STEP_URGENT_MS : CONTEXT_BAR_TIP_STEP_MS)) % 2 !== 0;
-	const solidCount = tipOff ? filled - 1 : filled;
-	const dimCount = tipOff ? emptyCount + 1 : emptyCount;
-	return (
-		(solidCount > 0 ? theme.fg(levelColor, CONTEXT_BAR_SOLIDS[solidCount]!) : "") +
-		(dimCount > 0 ? theme.fg("dim", CONTEXT_BAR_EMPTIES[dimCount]!) : "")
-	);
+	let bar = "";
+	for (let cell = 0; cell < CONTEXT_BAR_CELLS; cell++) {
+		if (live && cell === filled - 1) {
+			const stepMs = level === "error" ? CONTEXT_BAR_TIP_STEP_URGENT_MS : CONTEXT_BAR_TIP_STEP_MS;
+			const tipOn = Math.floor(nowMs / stepMs) % 2 === 0;
+			bar += tipOn ? theme.fg(levelColor, "▰") : theme.fg("dim", "▱");
+		} else if (cell < filled) {
+			bar += theme.fg(levelColor, "▰");
+		} else {
+			bar += theme.fg("dim", "▱");
+		}
+	}
+	return bar;
 }
 
 /**
@@ -1034,9 +1040,8 @@ const cacheReadSegment: StatusLineSegment = {
 		const { cacheRead } = ctx.usageStats;
 		if (!cacheRead) return { content: "", visible: false };
 
-		const icon = theme.icon.cache;
-		const num = formatNumber(cacheRead);
-		const content = icon && num ? `${icon} ${num}` : icon || num || "";
+		const parts = [theme.icon.cache, formatNumber(cacheRead)].filter(Boolean);
+		const content = parts.join(" ");
 		return { content: theme.fg("statusLineSpend", content), visible: true };
 	},
 };
@@ -1046,9 +1051,9 @@ const cacheWriteSegment: StatusLineSegment = {
 	render(ctx) {
 		const { cacheWrite } = ctx.usageStats;
 		if (!cacheWrite) return { content: "", visible: false };
-		const icon = theme.icon.cache;
-		const num = formatNumber(cacheWrite);
-		const content = icon && num ? `${icon} ${num}` : icon || num || "";
+
+		const parts = [theme.icon.cache, formatNumber(cacheWrite)].filter(Boolean);
+		const content = parts.join(" ");
 		return { content: theme.fg("statusLineOutput", content), visible: true };
 	},
 };

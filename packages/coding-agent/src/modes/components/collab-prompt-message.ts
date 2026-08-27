@@ -1,4 +1,3 @@
-import type { TextContent } from "@veyyon/ai";
 import { Container, Markdown, Text } from "@veyyon/tui";
 import type { CollabPromptDetails } from "../../collab/protocol";
 import type { CustomMessage } from "../../session/messages";

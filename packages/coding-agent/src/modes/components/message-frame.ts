@@ -105,7 +105,7 @@ export function renderFramedMessage<M extends FramedMessage>(opts: RebuildFrameO
 		const parts: string[] = [];
 		for (let ci = 0; ci < opts.message.content.length; ci++) {
 			const c = opts.message.content[ci]!;
-			if (c.type === "text") parts.push(c.text);
+			if (c.type === "text") parts.push((c as TextContent).text);
 		}
 		text = parts.join("\n");
 	}

@@ -1295,7 +1295,9 @@ export const askToolRenderer = {
 		if (questions && questions.length > 0) {
 			const header = `${label} ${uiTheme.fg("muted", `${questions.length} questions`)}`;
 			return framedBlock(uiTheme, width => {
-				const sections: FramedSection[] = new Array(questions.length);
+				const sections: Array<{ label?: string; lines: readonly string[]; separator?: boolean }> = new Array(
+					questions.length,
+				);
 				for (let qi = 0; qi < questions.length; qi++) {
 					const q = questions[qi]!;
 					const meta: string[] = [];
@@ -1405,7 +1407,9 @@ export const askToolRenderer = {
 				uiTheme,
 			);
 			return framedBlock(uiTheme, width => {
-				const sections: FramedSection[] = new Array(results.length);
+				const sections: Array<{ label?: string; lines: readonly string[]; separator?: boolean }> = new Array(
+					results.length,
+				);
 				for (let ri = 0; ri < results.length; ri++) {
 					const r = results[ri]!;
 					// md() returns a shared cached array (module-level Markdown LRU) — copy before appending.

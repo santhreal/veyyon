@@ -1173,23 +1173,11 @@ export function paintBand(text: string, background: ThemeBg, strength: number): 
 
 	const mode = theme.getColorMode();
 	const ground = visibleGroundHex();
-	const groundRgb = parseHexColor(ground);
-	const fullStrength = strength >= 1;
+	const arriving = (hex: string): string => (strength >= 1 ? hex : blendHex(ground, hex, strength));
 	const head = theme.getBgColorHex(background);
 	const inserts = new Map<number, string>();
 	// The leading edge. One cell of accent is what gives the band an end the cursor came from.
-	const accentHex = theme.getAccentColorHex();
-	inserts.set(
-		0,
-		bgAnsi(
-			fullStrength
-				? accentHex
-				: groundRgb === null
-					? blendHex(ground, accentHex, strength)
-					: blendRgbParsed(groundRgb, parseHexColor(accentHex) ?? { r: 0, g: 0, b: 0 }, strength),
-			mode,
-		),
-	);
+	inserts.set(0, bgAnsi(arriving(theme.getAccentColorHex()), mode));
 
 	const bodyWidth = width - 1;
 	const spans = Math.min(bodyWidth, clamp(Math.round(width / BAND_COLUMNS_PER_SPAN), BAND_MIN_SPANS, BAND_MAX_SPANS));
@@ -1199,22 +1187,10 @@ export function paintBand(text: string, background: ThemeBg, strength: number): 
 		// it: every suite that looks for `theme.getBgAnsi(background)` in a selected row is asking
 		// whether the band is still the theme's, and a byte-equal recomputation is a coincidence
 		// rather than a guarantee.
-		const mixedRgb = blendRgbToRgb(
-			headRgb ?? { r: 0, g: 0, b: 0 },
-			groundRgb ?? { r: 0, g: 0, b: 0 },
-			BAND_TRAIL_MIX * t ** BAND_RAMP_EASE,
-		);
 		const fill =
-			index === 0 && fullStrength
+			index === 0 && strength >= 1
 				? theme.getBgAnsi(background)
-				: bgAnsi(
-						fullStrength
-							? toHexColor(mixedRgb.r, mixedRgb.g, mixedRgb.b)
-							: groundRgb === null
-								? blendHex(ground, toHexColor(mixedRgb.r, mixedRgb.g, mixedRgb.b), strength)
-								: blendRgbParsed(groundRgb, mixedRgb, strength),
-						mode,
-					);
+				: bgAnsi(arriving(blendHex(head, ground, BAND_TRAIL_MIX * t ** BAND_RAMP_EASE)), mode);
 		inserts.set(1 + Math.floor((index * bodyWidth) / spans), fill);
 	}
 

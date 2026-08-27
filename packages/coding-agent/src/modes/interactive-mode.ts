@@ -1056,7 +1056,7 @@ export class InteractiveMode implements InteractiveModeContext {
 
 		const builtinCommands = buildTuiBuiltinSlashCommands({ ctx: this });
 		// Store pending commands for init() where file commands are loaded async
-		this.#pendingSlashCommands = builtinCommands.concat(hookCommands, customCommands, skillCommandList);
+		this.#pendingSlashCommands = [...builtinCommands, ...hookCommands, ...customCommands, ...skillCommandList];
 
 		this.#uiHelpers = new UiHelpers(this);
 		this.#btwController = new BtwController(this);

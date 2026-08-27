@@ -446,7 +446,7 @@ export class AdvisorConfigOverlayComponent implements Component {
 			case "tools":
 				this.#showToolsEditor(
 					index,
-					new Set(this.#doc.advisors[index].tools ?? ADVISOR_DEFAULT_TOOL_NAMES.slice()),
+					new Set(this.#doc.advisors[index].tools ?? Array.from(ADVISOR_DEFAULT_TOOL_NAMES)),
 					0,
 				);
 				return;

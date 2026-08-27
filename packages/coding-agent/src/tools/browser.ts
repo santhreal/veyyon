@@ -378,7 +378,7 @@ export class BrowserTool implements AgentTool<typeof browserSchema, BrowserToolD
 		if (cappedText !== textOnly) {
 			const nonText = content.filter(c => c.type !== "text");
 			return toolResult(details)
-				.content(nonText.concat([{ type: "text", text: cappedText }]))
+				.content([...nonText, { type: "text", text: cappedText }])
 				.done();
 		}
 		return toolResult(details).content(content).done();

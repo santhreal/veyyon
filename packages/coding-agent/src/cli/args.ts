@@ -332,7 +332,7 @@ export function parseArgs(inputArgs: string[], extensionFlags?: Map<string, { ty
  * offered, which degrades to the previous behaviour rather than to a confident wrong answer.
  */
 function knownFlagNames(): string[] {
-	return Array.from(new Set(STRING_VALUE_FLAGS.concat(OPTIONAL_VALUE_FLAGS, VALUELESS_FLAGS)));
+	return Array.from(new Set([...STRING_VALUE_FLAGS, ...OPTIONAL_VALUE_FLAGS, ...VALUELESS_FLAGS]));
 }
 
 /**

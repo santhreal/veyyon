@@ -1,5 +1,5 @@
 import type { AgentMessage } from "@veyyon/agent-core";
-import type { AssistantMessage, ImageContent, Message, Usage } from "@veyyon/ai";
+import type { AssistantMessage, ImageContent, Message, TextContent, Usage } from "@veyyon/ai";
 import { getStreamingPartialJson } from "@veyyon/ai/utils/block-symbols";
 import { type Component, Spacer, Text, TruncatedText } from "@veyyon/tui";
 import { APP_NAME, errorMessage, formatCount } from "@veyyon/utils";
@@ -110,7 +110,6 @@ export type UiHelpersContext = Pick<
 	| "withLocalSubmission"
 >;
 
-type TextBlock = { type: "text"; text: string };
 interface RenderInitialMessagesOptions {
 	preserveExistingChat?: boolean;
 	clearTerminalHistory?: boolean;
@@ -1138,7 +1137,7 @@ export class UiHelpers {
 		const blocks = message.content;
 		for (let ci = 0; ci < blocks.length; ci++) {
 			if (blocks[ci]!.type === "text") {
-				text += blocks[ci]!.text;
+				text += (blocks[ci] as TextContent).text;
 			}
 		}
 		return text.trim();

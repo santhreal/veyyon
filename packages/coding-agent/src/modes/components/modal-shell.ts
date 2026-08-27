@@ -419,7 +419,7 @@ export function layoutShortcutRows(
 ): ShortcutLayoutRow[] {
 	if (width <= 0 || shortcuts.length === 0) return [];
 	const resolvedShortcuts = resolveShortcutLabels(shortcuts);
-	const chips = new Array<{ id: string; clickable: boolean; plain: string; styled: string; w: number }>(
+	const chips = new Array<{ id: string | undefined; clickable: boolean; plain: string; styled: string; w: number }>(
 		resolvedShortcuts.length,
 	);
 	for (let si = 0; si < resolvedShortcuts.length; si++) {

@@ -512,7 +512,7 @@ function fetchCandidates(
 			.split(", ")
 			.map(column => `m.${column}`)
 			.join(", ")} FROM ${table} m WHERE m.${keyColumn} IN (${sqlPlaceholders(idsOrRowids.length)}) AND ${where}`,
-		idsOrRowids.concat(params),
+		[...idsOrRowids, ...params],
 	);
 	const out: MemoryCandidate[] = [];
 	for (const row of rows) {
@@ -1047,7 +1047,7 @@ export function factRecall(beam: BeamMemoryState, query: string, topK = 30): Fac
 		 WHERE rowid IN (${sqlPlaceholders(rowids.length)}) AND ${visibility.where}
 		 ORDER BY confidence DESC
 		 LIMIT ?`,
-		rowids.concat(visibility.params, rowids.length),
+		[...rowids, ...visibility.params, rowids.length],
 	);
 	return rows
 		.map(row => {

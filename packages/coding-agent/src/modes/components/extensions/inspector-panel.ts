@@ -9,7 +9,7 @@ import { type Component, truncateToWidth, wrapTextWithAnsi } from "@veyyon/tui";
 import { collapseWhitespace, errorMessage, logger } from "@veyyon/utils";
 import type { ThemeColor } from "../../../modes/theme/color";
 import { theme } from "../../../modes/theme/theme";
-import { PREVIEW_LIMITS, replaceTabs, shortenPath, TRUNCATE_LENGTHS } from "../../../tools/render-utils";
+import { replaceTabs, shortenPath } from "../../../tools/render-utils";
 import type { ExtensionRow, ExtensionState } from "./types";
 
 /** Structural views over extension payloads whose concrete shape varies by source (zod tool, wire tool, MCP config, skill). Each renderer narrows `unknown` once to the optional fields it reads. */
@@ -99,8 +99,6 @@ export class InspectorPanel implements Component {
 		const levelLabel = ext.source.level === "user" ? "User" : ext.source.level === "project" ? "Project" : "Native";
 		lines.push(`  ${theme.italic(`via ${ext.source.providerName} (${levelLabel})`)}`);
 		const shortened = replaceTabs(shortenPath(ext.path, os.homedir()));
-		const parts = shortened.split(/[/\\]/);
-		const sep = shortened.includes("\\") ? "\\" : "/";
 		// If path is very long, show just the last parts
 		const segments = shortened.split("/");
 		const displayPath =

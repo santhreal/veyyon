@@ -131,7 +131,7 @@ if (process.env.VEYYON_TIMING) {
 			start,
 			durationMs: end - start,
 			bodyMs: bodyStart === undefined ? undefined : end - bodyStart,
-			imports: imports ? imports.slice() : [],
+			imports: imports ? Array.from(imports) : [],
 		});
 	};
 

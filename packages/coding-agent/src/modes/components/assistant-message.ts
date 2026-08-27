@@ -345,7 +345,7 @@ export class AssistantMessageComponent extends Container {
 			const phase = shimmerPhase(performance.now());
 			for (let i = rows.length - 1; i >= 0; i--) {
 				const row = rows[i]!;
-				if (!isBlankRow(row)) {
+				if (stripAnsi(row).trim().length > 0) {
 					const painted = rows.slice();
 					painted[i] = paintHotTail(row, theme, TERMINAL.trueColor, "thinkingText", phase);
 					return painted;

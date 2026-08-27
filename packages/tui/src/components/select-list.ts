@@ -794,13 +794,13 @@ export class SelectList implements Component, MouseRoutable {
 			pushLoopPhase("ui.select-filter");
 			try {
 				if (!this.#searchable) {
-					const searchable = new Array<{ item: T; text: string }>(this.items.length);
+					const searchable = new Array<{ item: SelectItem; text: string }>(this.items.length);
 					for (let ii = 0; ii < this.items.length; ii++)
 						searchable[ii] = { item: this.items[ii]!, text: this.#getFilterText(this.items[ii]!) };
 					this.#searchable = searchable;
 				}
 				const filtered = fuzzyFilter(this.#searchable, filter, entry => entry.text);
-				const filteredItems: T[] = new Array(filtered.length);
+				const filteredItems: SelectItem[] = new Array(filtered.length);
 				for (let fi = 0; fi < filtered.length; fi++) filteredItems[fi] = filtered[fi]!.item;
 				this.#filteredItems = filteredItems;
 			} finally {

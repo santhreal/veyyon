@@ -2503,7 +2503,7 @@ export class SessionManager {
 			if (entry.type !== "ttsr_injection") continue;
 			for (const name of entry.injectedRules) names.add(name);
 		}
-		return names.slice();
+		return Array.from(names);
 	}
 
 	getLeafId(): string | null {

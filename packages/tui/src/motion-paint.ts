@@ -148,7 +148,7 @@ function fadeLineWithParsedGround(line: string, gr: number, gg: number, gb: numb
 						pos = valEnd;
 					}
 					if (rVal >= 0 && gVal >= 0 && bVal >= 0) {
-						out += params.slice(i, j) + params[j] + "2";
+						out += `${params.slice(i, j) + params[j]}2`;
 						out += sep0 + CHANNEL_STR[clampChannel(gr + (rVal - gr) * k)]!;
 						out += sep1 + CHANNEL_STR[clampChannel(gg + (gVal - gg) * k)]!;
 						out += sep2 + CHANNEL_STR[clampChannel(gb + (bVal - gb) * k)]!;

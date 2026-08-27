@@ -670,7 +670,7 @@ export class PlanReviewOverlay implements Component {
 	}
 
 	#recomputeFeedback(): void {
-		const annotated: typeof this.#sections = [];
+		const annotated: OverlaySection[] = [];
 		for (let si = 0; si < this.#sections.length; si++) {
 			const section = this.#sections[si]!;
 			if (section.level >= 1 && section.annotations.length > 0) annotated.push(section);

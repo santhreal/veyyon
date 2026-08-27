@@ -94,7 +94,6 @@ function substrStartsWith(s: string, start: number, len: number, lit: string): b
 
 function trackBackground(current: string | undefined, params: string): string | undefined {
 	// `\x1b[m` is `\x1b[0m`: an empty parameter list is a full reset.
-	const codes = params === "" ? ["0"] : params.split(";");
 	let background = current;
 	let i = 0;
 	const n = params.length;
@@ -111,13 +110,13 @@ function trackBackground(current: string | undefined, params: string): string | 
 			while (modeEnd < n && params.charCodeAt(modeEnd) !== 0x3b) modeEnd++;
 			const modeLen = modeEnd - modeStart;
 			if (substrEq(params, modeStart, modeLen, "2")) {
-				let p = modeEnd + 1;
+				const p = modeEnd + 1;
 				let rEnd = p;
 				while (rEnd < n && params.charCodeAt(rEnd) !== 0x3b) rEnd++;
-				let gStart = rEnd + 1;
+				const gStart = rEnd + 1;
 				let gEnd = gStart;
 				while (gEnd < n && params.charCodeAt(gEnd) !== 0x3b) gEnd++;
-				let bStart = gEnd + 1;
+				const bStart = gEnd + 1;
 				let bEnd = bStart;
 				while (bEnd < n && params.charCodeAt(bEnd) !== 0x3b) bEnd++;
 				const r = parseSgrInt(params, p, rEnd - p);

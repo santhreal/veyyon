@@ -948,7 +948,13 @@ function statePlacedImageVisibility(message: ToolResultMessage): ToolResultMessa
 	if (images === 0) return message;
 	const notice = imageVisibilityNotice(imageDisplayStateForCall(message.toolCallId, images), images);
 	if (!notice) return message;
-	return { ...message, content: message.content.concat([{ type: "text", text: notice }]) };
+	const cached = imageVisibilityCache.get(message);
+	if (cached && cached.sourceContent === message.content && cached.notice === notice) {
+		return cached.stamped;
+	}
+	const stamped: ToolResultMessage = { ...message, content: message.content.concat([{ type: "text", text: notice }]) };
+	imageVisibilityCache.set(message, { sourceContent: message.content, notice, stamped });
+	return stamped;
 }
 
 interface CachedBashExecution {

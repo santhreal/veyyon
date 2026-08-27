@@ -1937,10 +1937,10 @@ export const grepToolRenderer = {
 			uiTheme,
 		);
 		const groupIndices = groupLineIndicesByBlank(allLines);
-		const matchGroups: string[][] = new Array(groupIndices.length);
+		const matchGroups: RenderedSearchLine[][] = new Array(groupIndices.length);
 		for (let gi = 0; gi < groupIndices.length; gi++) {
 			const indices = groupIndices[gi]!;
-			const group: string[] = new Array(indices.length);
+			const group: RenderedSearchLine[] = new Array(indices.length);
 			for (let ii = 0; ii < indices.length; ii++) group[ii] = renderedLines[indices[ii]!]!;
 			matchGroups[gi] = group;
 		}

@@ -831,7 +831,6 @@ function isSgrParamByte(c: number): boolean {
 // form (`38:2::r:g:b`) is unambiguous — its tokens never equal a bare `38`, so
 // the scan treats it as a complete unit and merging stays safe.
 function endsWithIncompleteExtendedColor(params: string): boolean {
-	const t = params.split(";");
 	let i = 0;
 	const n = params.length;
 	while (i < n) {
@@ -845,7 +844,7 @@ function endsWithIncompleteExtendedColor(params: string): boolean {
 			(params.charCodeAt(i) === 0x33 || params.charCodeAt(i) === 0x34 || params.charCodeAt(i) === 0x35)
 		) {
 			// Parse mode token after the semicolon.
-			let p = j + 1;
+			const p = j + 1;
 			let modeEnd = p;
 			while (modeEnd < n && params.charCodeAt(modeEnd) !== 0x3b) modeEnd++;
 			const modeLen = modeEnd - p;

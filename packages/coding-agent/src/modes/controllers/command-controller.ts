@@ -1528,7 +1528,7 @@ function formatAccountHeaderRow(
 		for (let pi = 0; pi < parts.length; pi++) {
 			const p = parts[pi]!;
 			const full = p.suffix ? `${p.label} ${p.suffix}` : p.label;
-			const cell = padColumn(truncateJobLabel(full, columnWidth), columnWidth);
+			const cell = padColumn(truncateToWidth(full, columnWidth), columnWidth);
 			result[pi] = p.active ? uiTheme.fg("accent", cell) : cell;
 		}
 		return result;
@@ -1537,7 +1537,8 @@ function formatAccountHeaderRow(
 	const result = new Array<string>(parts.length);
 	for (let pi = 0; pi < parts.length; pi++) {
 		const p = parts[pi]!;
-		const prefixCell = truncateToWidth(prefix, prefixBudget, undefined, true);
+		const prefix = truncateToWidth(p.label, prefixBudget);
+		const prefixCell = prefix + " ".repeat(prefixBudget - visibleWidth(prefix));
 		const styledPrefix = p.active ? uiTheme.fg("accent", prefixCell) : prefixCell;
 		if (!p.suffix) {
 			result[pi] = styledPrefix + padding(maxSuffixWidth + gap);
@@ -1550,7 +1551,9 @@ function formatAccountHeaderRow(
 }
 
 function padColumn(text: string, width: number): string {
-	return truncateToWidth(text, width, undefined, true);
+	const visible = visibleWidth(text);
+	if (visible >= width) return text;
+	return `${text}${padding(width - visible)}`;
 }
 
 function resolveAggregateStatus(limits: UsageLimit[]): UsageLimit["status"] {
@@ -1819,15 +1822,15 @@ export function renderUsageReports(
 		const renderableGroups = new Array<{
 			group: (typeof groupList)[number];
 			sortedLimits: UsageLimit[];
-			sortedReports: (UsageReport | undefined)[];
+			sortedReports: UsageReport[];
 			amountText: string;
 		}>(groupList.length);
 		for (let gi = 0; gi < groupList.length; gi++) {
 			const group = groupList[gi]!;
 			const entries = new Array<{
 				limit: UsageLimit;
-				report: UsageReport | undefined;
-				fraction: number | null;
+				report: UsageReport;
+				fraction: number | undefined;
 				index: number;
 			}>(group.limits.length);
 			for (let li = 0; li < group.limits.length; li++) {
@@ -1845,7 +1848,7 @@ export function renderUsageReports(
 				return a.index - b.index;
 			});
 			const sortedLimits = new Array<UsageLimit>(entries.length);
-			const sortedReports = new Array<UsageReport | undefined>(entries.length);
+			const sortedReports = new Array<UsageReport>(entries.length);
 			for (let ei = 0; ei < entries.length; ei++) {
 				sortedLimits[ei] = entries[ei]!.limit;
 				sortedReports[ei] = entries[ei]!.report;

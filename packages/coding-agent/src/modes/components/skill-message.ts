@@ -1,4 +1,3 @@
-import type { TextContent } from "@veyyon/ai";
 import type { Component } from "@veyyon/tui";
 import { Box, Container, Markdown, Spacer, Text } from "@veyyon/tui";
 import { collapseWhitespace } from "@veyyon/utils";

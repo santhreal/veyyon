@@ -1145,6 +1145,7 @@ export class AccountManagerComponent implements Component {
 				width: bodyWidth,
 				visibleRows: splitRows,
 				totalRows: this.#bodyLines.length,
+				scrollOffset: this.#bodyScroll,
 			},
 			rowWidth => {
 				const out = new Array<string>(window.length);

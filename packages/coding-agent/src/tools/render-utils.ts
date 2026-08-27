@@ -976,7 +976,7 @@ export function createCachedComponent(
 			const paddingX = Math.max(0, options.paddingX ?? 0);
 			const innerWidth = Math.max(1, width - paddingX * 2);
 			const lines = compute(innerWidth, expanded);
-			const pad = paddingX === 0 ? "" : padding(paddingX);
+			const pad = paddingX === 0 ? "" : " ".repeat(paddingX);
 			const paddedLines =
 				paddingX === 0
 					? lines

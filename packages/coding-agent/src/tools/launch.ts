@@ -666,7 +666,7 @@ export const launchToolRenderer = {
 					if (!daemon) pushTextLines(body, text, theme);
 					break;
 				}
-				case "send":
+				case "send": {
 					const cm = callMeta(params);
 					for (let mi = 0; mi < cm.length; mi++) meta.push(cm[mi]!);
 					if (daemon) {
@@ -674,6 +674,7 @@ export const launchToolRenderer = {
 						for (let mi = 0; mi < dm.length; mi++) meta.push(dm[mi]!);
 					}
 					break;
+				}
 				case "stop":
 				case "restart":
 					if (daemon) {

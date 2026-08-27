@@ -609,11 +609,20 @@ export function renderRootHelp(config: CliConfig): void {
 	}
 
 	// List visible subcommands; diagnostic/dev tools get their own section so the
-	// main list reads as the product surface.
-	const visible = Array.from(commands.entries()).filter(([, C]) => !C.hidden);
-	const sections: Array<[string, typeof visible]> = [
-		["COMMANDS", visible.filter(([, C]) => !C.devTool)],
-		["DIAGNOSTIC COMMANDS", visible.filter(([, C]) => C.devTool)],
+	// main list reads as the product surface. Rows come from the registry
+	// summaries when the config was built without loading every module, and
+	// from the loaded statics otherwise — both describe the same classes.
+	type ListingRow = { name: string; description?: string; devTool?: boolean };
+	const listing: ListingRow[] = summaries
+		? Array.from(summaries.entries())
+				.filter(([, s]) => !s.hidden)
+				.map(([name, s]) => ({ name, description: s.description, devTool: s.devTool }))
+		: Array.from(commands.entries())
+				.filter(([, C]) => !C.hidden)
+				.map(([name, C]) => ({ name, description: C.description, devTool: C.devTool }));
+	const sections: Array<[string, ListingRow[]]> = [
+		["COMMANDS", listing.filter(r => !r.devTool)],
+		["DIAGNOSTIC COMMANDS", listing.filter(r => r.devTool)],
 	];
 	const width = helpWidth();
 	const column = gutter(

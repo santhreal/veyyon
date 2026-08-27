@@ -61,10 +61,10 @@ function normalizeHtmlEntitiesForTerminal(raw: string): string {
 				return "&";
 			default: {
 				if (lower.charCodeAt(0) === 0x23 && lower.charCodeAt(1) === 0x78) {
-					return parseHtmlEntityCodePoint(Number.parseInt(lower.slice(2), 16));
+					return parseCodePoint(Number.parseInt(lower.slice(2), 16));
 				}
 				if (lower.charCodeAt(0) === 0x23) {
-					return parseHtmlEntityCodePoint(Number(lower.slice(1)));
+					return parseCodePoint(Number(lower.slice(1)));
 				}
 				return match;
 			}
@@ -1888,7 +1888,7 @@ export class Markdown implements Component {
 				} else {
 					styledHeading = this.#theme.heading(
 						this.#theme.bold(
-							(HEADING_PREFIXES[headingLevel - 1] ?? "#".repeat(headingLevel) + " ") + headingText,
+							(HEADING_PREFIXES[headingLevel - 1] ?? `${"#".repeat(headingLevel)} `) + headingText,
 						),
 					);
 				}

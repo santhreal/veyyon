@@ -1639,7 +1639,7 @@ export const todoToolRenderer = {
 			}
 			keys.add(task.content);
 		}
-		const allTasks: TodoTask[] = [];
+		const allTasks: TodoItem[] = [];
 		for (let pi = 0; pi < phases.length; pi++) {
 			const phaseTasks = phases[pi]!.tasks;
 			for (let ti = 0; ti < phaseTasks.length; ti++) allTasks.push(phaseTasks[ti]!);
@@ -1695,7 +1695,7 @@ export const todoToolRenderer = {
 			const multiPhase = phases.length > 1;
 			let bodyLines: string[];
 			if (!expanded && multiPhase) {
-				const collapsedItems: Array<TodoTask & { phase: string }> = [];
+				const collapsedItems: Array<TodoItem & { phase: string }> = [];
 				for (let pi = 0; pi < phases.length; pi++) {
 					const p = phases[pi]!;
 					for (let ti = 0; ti < p.tasks.length; ti++) {

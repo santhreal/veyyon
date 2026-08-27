@@ -859,7 +859,6 @@ export class SessionSelectorComponent extends Container {
 	 * that no longer exists.
 	 */
 	#bodyRowsHighWater = 0;
-	#highWaterWidth = -1;
 
 	constructor(
 		sessions: SessionInfo[],

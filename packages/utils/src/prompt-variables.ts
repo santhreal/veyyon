@@ -193,7 +193,7 @@ export interface AnalyzeOptions {
 export function analyzeTemplate(template: string, options: AnalyzeOptions = {}): TemplateVariables {
 	const ast = Handlebars.parse(template) as unknown as Node;
 	const sightings = new Map<string, Sighting[]>();
-	const helperNames = new Set(Object.keys(Handlebars.helpers).concat(options.helperNames ?? []));
+	const helperNames = new Set(Object.keys(Handlebars.helpers).concat(Array.from(options.helperNames ?? [])));
 
 	function record(path: PathExpressionNode, use: TemplateVariableUse, frame: Frame): void {
 		const root = contextRoot(path);

@@ -427,7 +427,7 @@ const LINE_HINT_REGEX = /^lines?\s+(\d+)(?:\s*-\s*(\d+))?(?:\s*@@)?$/i;
 const TOP_OF_FILE_REGEX = /^(top|start|beginning)\s+of\s+file$/i;
 // `diff --git ` is git's own marker, not part of the apply-patch envelope, so it is
 // added here rather than kept in the shared marker list.
-const MULTI_FILE_MARKERS = FILE_OP_MARKERS.concat(["diff --git "]);
+const MULTI_FILE_MARKERS = [...FILE_OP_MARKERS, "diff --git "];
 const DIFF_METADATA_PREFIXES = [
 	...FILE_OP_MARKERS,
 	"diff --git ",
