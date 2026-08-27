@@ -543,12 +543,16 @@ function computeProjectedPrefixBalance(
 	const prefix: string[] = [];
 	for (let line = 1; line < group.startLine; line++) {
 		const inserted = insertedByLine.get(line);
-		if (inserted) prefix.push(...inserted);
+		if (inserted) {
+			for (let ii = 0; ii < inserted.length; ii++) prefix.push(inserted[ii]!);
+		}
 		if (!deletedLines.has(line)) prefix.push(fileLines[line - 1] ?? "");
 	}
 	const insertedAtStart = insertedLineMaps.before.get(group.startLine);
-	if (insertedAtStart) prefix.push(...insertedAtStart);
-	prefix.push(...group.payload);
+	if (insertedAtStart) {
+		for (let ii = 0; ii < insertedAtStart.length; ii++) prefix.push(insertedAtStart[ii]!);
+	}
+	for (let ii = 0; ii < group.payload.length; ii++) prefix.push(group.payload[ii]!);
 	return computeDelimiterBalance(prefix);
 }
 
@@ -944,7 +948,8 @@ function repairReplacementBoundaries(
 
 	const projected: AppliedEdit[] = [];
 	for (const slot of slots) {
-		projected.push(...(slot.kind === "candidate" ? [...slot.inserts, ...slot.deletes] : slot.edits));
+		const slotEdits = slot.kind === "candidate" ? [...slot.inserts, ...slot.deletes] : slot.edits;
+		for (let ei = 0; ei < slotEdits.length; ei++) projected.push(slotEdits[ei]!);
 	}
 	const deletedLines = new Set<number>();
 	for (const edit of projected) {
@@ -977,7 +982,7 @@ function repairReplacementBoundaries(
 	for (const slot of slots) {
 		if (slot.kind !== "candidate") {
 			if (slot.warning !== undefined) warnings.push(slot.warning);
-			out.push(...slot.edits);
+			for (let ei = 0; ei < slot.edits.length; ei++) out.push(slot.edits[ei]!);
 			continue;
 		}
 		const deletedPrefixBalance = netDeletedPrefixBalance(slot.group, deletedLines, insertedByLine, fileLines);
