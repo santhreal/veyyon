@@ -510,30 +510,74 @@ describe("InteractiveMode goal mode integration", () => {
 	});
 
 	/**
-	 * WHY: an unattended goal ended a turn with prose and no tool call and then sat `active`
-	 * forever while the process stayed alive and idle. The fire-time guard discarded the tick
-	 * because the session was still draining post-turn maintenance, and relied on "the next
-	 * `agent_end`" to reschedule — but the turn that armed the tick was the LAST one, so no
-	 * `agent_end` was coming and every other re-arm edge (an operator submission, `/goal resume`)
-	 * was already behind it. A human had to type to get the goal moving again.
+	 * BACKTEST of a recorded run. An unattended goal ran for hours, ended a turn with prose and no
+	 * tool call, and then sat `active` and idle while the process stayed alive — the log kept
+	 * writing for another eight minutes and never opened another turn. A human had to type.
 	 *
-	 * The class this closes: a TRANSIENT block delays the continuation goal mode owes, it never
-	 * discards it, and the wait is bounded and reported rather than silent.
+	 * The recorded shape, minimized and sanitized, is the event sequence below: goal active, an
+	 * operator-opened turn that DID call tools (so nothing suppressed the goal), a clean text-only
+	 * `agent_end`, and post-turn maintenance still draining when the continuation tick landed. The
+	 * fire-time guard discarded that tick and relied on "the next `agent_end`" to reschedule, but
+	 * that `agent_end` was the last one and every other re-arm edge was already behind it.
 	 *
-	 * What it does not catch: a block that is not transient (an operator draft in the composer, a
+	 * One boundary is substituted: the DURATION of the maintenance, held busy across the window
+	 * rather than run for real. The sequence the guards read is driven through the mode itself.
+	 *
+	 * What it does not catch: a non-transient block (an operator draft left in the composer, a
 	 * suppressed goal), a stall upstream of the mode in the session's own continuation path, or a
 	 * fault that produces no `agent_end` at all because the process died.
 	 */
-	it("opens the continuation it owes once post-turn maintenance drains, with no operator input", async () => {
+	it("opens the continuation it owes after the last turn of a run settles", async () => {
+		await harness.mode.init();
 		await harness.mode.handleGoalModeCommand("Ship the release");
 
-		vi.useFakeTimers();
-		const waiter = await armInputWaiter(harness.mode);
+		const emit = (event: AgentEvent) => harness.session.agent.emitExternalEvent(event);
+		const deliver = async (event: AgentEvent): Promise<void> => {
+			const delivered = Promise.withResolvers<void>();
+			const unsubscribe = harness.session.subscribe(received => {
+				if (received.type === event.type) delivered.resolve();
+			});
+			emit(event);
+			await delivered.promise;
+			unsubscribe();
+			await waitForMicrotasks();
+		};
 
+		// The recorded turn: opened by the operator, carried real tool work, ended on its own terms
+		// with text and no tool call. `turnsCompleted` went 0 -> 1 on exactly this `agent_end`.
+		emit({ type: "turn_start" });
+		await waitForMicrotasks();
+		await deliver({ type: "agent_start" });
+		await deliver({
+			type: "message_start",
+			message: { role: "user", content: [{ type: "text", text: "Keep going." }], timestamp: Date.now() },
+		});
+		await deliver({
+			type: "tool_execution_start",
+			toolCallId: "bash-1",
+			toolName: "bash",
+			args: { command: "git commit -m 'record the run'" },
+		});
+		const ended = Promise.withResolvers<void>();
+		const unsubscribeEnd = harness.session.subscribe(event => {
+			if (event.type === "agent_end") ended.resolve();
+		});
+		emit({ type: "agent_end", messages: [] });
+		await ended.promise;
+		await harness.session.waitForIdle();
+		unsubscribeEnd();
+		await waitForMicrotasks();
+
+		// The recorded state at the stall: the goal is still driving and counted the turn.
+		expect(harness.session.getGoalModeState()?.goal.status).toBe("active");
+		expect(harness.session.getGoalModeState()?.goal.turnsCompleted).toBe(1);
+
+		vi.useFakeTimers();
 		let draining = true;
 		Object.defineProperty(harness.session, "hasPostPromptWork", { configurable: true, get: () => draining });
+		const waiter = await armInputWaiter(harness.mode);
 
-		// The recorded window: maintenance outlives the delay and nothing else will re-arm.
+		// Maintenance outlives the delay window, and no further `agent_end` is coming.
 		vi.advanceTimersByTime(800);
 		await waitForMicrotasks();
 		expect(waiter.getResolvedText()).toBeUndefined();
