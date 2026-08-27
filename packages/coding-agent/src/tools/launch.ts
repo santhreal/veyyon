@@ -25,15 +25,18 @@ import { renderTerminalOutput } from "../launch/terminal-output";
 import type { Theme, ThemeColor } from "../modes/theme/theme";
 import { toolsPrompts } from "../prompts/tools/rows";
 import { sessionBudgetLimits, sessionCpuAdoption, sessionCpuLimit } from "../session/cpu-limit";
+import { truncateHead, truncateTail } from "../session/streaming-output";
 import { framedBlock, outputBlockContentWidth, renderStatusLine } from "../tui";
 import type { ToolSession } from ".";
 import { releaseLaunchExitWatch, watchLaunchedProcessExit } from "./launch-exit-watch";
+import { type InlinePricingSource, inlineBudgetFor } from "./output-artifact";
 import { foldToolOutputBookkeeping } from "./output-fold";
 import { resolveToCwd } from "./path-utils";
 import {
 	capPreviewLines,
 	createCachedComponent,
 	DEFAULT_TERMINAL_PREVIEW_LINES,
+	formatBytes,
 	formatDuration,
 	formatExpandHint,
 	formatMoreItems,
@@ -276,7 +279,7 @@ function readyPendingSummary(daemon: DaemonSnapshot, ready?: LaunchParams["ready
 	return parts;
 }
 
-export function toolContent(result: DaemonRpcResult, params: LaunchParams): string {
+export function toolContent(result: DaemonRpcResult, params: LaunchParams, pricing: InlinePricingSource): string {
 	switch (result.op) {
 		case "ping":
 		case "shutdown":
@@ -339,8 +342,23 @@ export function toolContent(result: DaemonRpcResult, params: LaunchParams): stri
 			return lines.join("\n");
 		}
 		case "logs": {
-			const text = sanitizeText(result.text);
-			return `${text}${text && !text.endsWith("\n") ? "\n" : ""}[${result.name}: ${result.state}; cursor=${result.cursor}${result.timedOut ? "; follow timed out" : ""}]`;
+			// A log read is a tool result: it stays in the transcript and is sent again on every
+			// later request, so it takes the same budget every other tool result takes. The broker
+			// caps its own read at a fixed 256KB, which is what the daemon may hold in memory, not
+			// what a request may carry. A tail read drops the oldest lines, a `head` read the
+			// newest, and the notice names which end went.
+			const raw = sanitizeText(result.text);
+			const head = params.head ?? false;
+			const maxBytes = inlineBudgetFor(pricing);
+			const options = { maxBytes, maxLines: Number.MAX_SAFE_INTEGER };
+			const bounded = head ? truncateHead(raw, options) : truncateTail(raw, options);
+			const body = bounded.content;
+			const notice = bounded.truncated
+				? `[${head ? "Newest" : "Oldest"} log lines dropped: ${bounded.outputLines} of ${bounded.totalLines} shown, ${formatBytes(maxBytes)} output budget. Ask for fewer lines, or grep the output]\n`
+				: "";
+			const separator = body && !body.endsWith("\n") ? "\n" : "";
+			const status = `[${result.name}: ${result.state}; cursor=${result.cursor}${result.timedOut ? "; follow timed out" : ""}]`;
+			return `${body}${separator}${notice}${status}`;
 		}
 		case "wait": {
 			const lines = [daemonLabel(result.daemon)];
@@ -488,7 +506,12 @@ export class LaunchTool implements AgentTool<typeof launchSchema, LaunchToolDeta
 			// through a launched process lands in context identically, and its
 			// per-test bookkeeping is re-read on every later turn. A no-op unless
 			// the output carries a real run's worth of pass/skip lines.
-			content: [{ type: "text", text: replaceTabs(foldToolOutputBookkeeping(toolContent(result, params)).text) }],
+			content: [
+				{
+					type: "text",
+					text: replaceTabs(foldToolOutputBookkeeping(toolContent(result, params, this.session)).text),
+				},
+			],
 			details: await toolDetails(result, params),
 		};
 	}
