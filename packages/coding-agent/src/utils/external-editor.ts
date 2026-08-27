@@ -65,7 +65,7 @@ export function resolveEditorInvocation(editorCmd: string): { command: string; a
 	const waitFlags = EDITOR_WAIT_FLAGS.get(editorBinaryName(command));
 	if (!waitFlags) return { command, args };
 	const alreadyWaits = args.includes("-w") || waitFlags.some(flag => args.includes(flag));
-	return { command, args: alreadyWaits ? args : [...args, ...waitFlags] };
+	return { command, args: alreadyWaits ? args : args.concat(waitFlags) };
 }
 
 export interface OpenInEditorOptions {

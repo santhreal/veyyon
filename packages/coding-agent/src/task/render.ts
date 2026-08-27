@@ -1476,7 +1476,7 @@ function orderProgressForDisplay(progress: readonly AgentProgress[]): AgentProgr
  * {@link orderProgressForDisplay}.
  */
 function orderResultsForDisplay(results: readonly SingleResult[]): SingleResult[] {
-	return [...results].sort((a, b) => a.durationMs - b.durationMs || a.index - b.index);
+	return results.slice().sort((a, b) => a.durationMs - b.durationMs || a.index - b.index);
 }
 
 /**

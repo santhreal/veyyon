@@ -39,7 +39,7 @@ function stringEnumWireSchema<T extends string | number>(
 	values: readonly T[] | Record<string, T>,
 	options: StringEnumOptions<any> | undefined,
 ) {
-	const enumValues = Array.isArray(values) ? [...values] : Object.values(values);
+	const enumValues = Array.isArray(values) ? values.slice() : Object.values(values);
 	const schema: Record<string, unknown> = {
 		type: "string",
 		enum: enumValues,

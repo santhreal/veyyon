@@ -35,7 +35,7 @@ function canonicalizeSectionKeys(entries: Record<string, string[]>): Record<stri
 	const result: Record<string, string[]> = {};
 	for (const [section, items] of Object.entries(entries)) {
 		const key = canonicalizeSectionName(section);
-		result[key] = result[key] ? [...result[key], ...items] : [...items];
+		result[key] = result[key] ? result[key].concat(items) : items.slice();
 	}
 	return result;
 }

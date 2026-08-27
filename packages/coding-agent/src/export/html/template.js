@@ -190,7 +190,7 @@
           const multipleChildren = children.length > 1;
 
           // Order children (active branch first)
-          const orderedChildren = [...children].sort((a, b) => 
+          const orderedChildren = children.slice().sort((a, b) => 
             Number(containsActive.get(b)) - Number(containsActive.get(a))
           );
 

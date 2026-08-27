@@ -601,7 +601,7 @@ function parseTuiValue(args: string, tokens: readonly SecretToken[]): SecretComm
  */
 export function parseSecretCommand(args: string, surface: SecretCommandSurface = "tui"): SecretCommandRequest {
 	const usageText = secretCommandUsage(surface);
-	const tokens = [...args.matchAll(/\S+/gu)].map(match => ({
+	const tokens = Array.from(args.matchAll(/\S+/gu)).map(match => ({
 		value: match[0],
 		start: match.index,
 		end: match.index + match[0].length,
@@ -1378,7 +1378,7 @@ export function renderSecretList(
 		return masked === undefined ? help : `${masked}\n\n${help}`;
 	}
 
-	const sorted = [...entries].sort((a, b) => a.name.localeCompare(b.name));
+	const sorted = entries.slice().sort((a, b) => a.name.localeCompare(b.name));
 	const rows = sorted.map(entry => {
 		const urgency = expiryUrgency(entry, options.now);
 		return [

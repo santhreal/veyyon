@@ -623,7 +623,7 @@ export function createLsToolDefinition(cwd: string, options?: LsToolOptions): To
 				return { content: [{ type: "text", text: rawPath }] };
 			}
 			const entries = ops ? await ops.readdir(absolutePath) : await fs.readdir(absolutePath);
-			const sorted = [...entries].sort((a, b) => a.localeCompare(b));
+			const sorted = entries.slice().sort((a, b) => a.localeCompare(b));
 			const limited = sorted.slice(0, limit);
 			const output = limited.join("\n");
 			const details = sorted.length > limited.length ? { entryLimitReached: limit } : undefined;

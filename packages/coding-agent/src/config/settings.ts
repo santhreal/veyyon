@@ -1587,7 +1587,7 @@ export class Settings {
 				);
 				continue;
 			}
-			setByPath(raw, [...segments], flat);
+			setByPath(raw, segments.slice(), flat);
 		}
 	}
 

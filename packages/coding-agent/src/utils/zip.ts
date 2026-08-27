@@ -818,7 +818,7 @@ export class ArchiveReader {
 			});
 		}
 
-		return [...children.values()].sort((left, right) =>
+		return Array.from(children.values()).sort((left, right) =>
 			left.name.toLowerCase().localeCompare(right.name.toLowerCase()),
 		);
 	}

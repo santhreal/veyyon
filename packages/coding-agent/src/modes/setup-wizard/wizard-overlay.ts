@@ -497,10 +497,10 @@ export class SetupWizardComponent implements Component, OverlayFocusOwner {
 	 */
 	#clipBody(lines: readonly string[], budget: number): string[] {
 		if (budget <= 0) return [];
-		if (lines.length <= budget) return [...lines];
+		if (lines.length <= budget) return lines.slice();
 		const hidden = lines.length - budget + 1;
 		const notice = theme.fg("warning", `↓ ${hidden} more ${hidden === 1 ? "row" : "rows"} below`);
-		return [...lines.slice(0, budget - 1), notice];
+		return lines.slice(0, budget - 1).concat(notice);
 	}
 
 	#fitToScreen(lines: string[], width: number, height: number): string[] {

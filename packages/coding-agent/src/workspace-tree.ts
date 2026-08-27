@@ -361,7 +361,7 @@ function applyLineCap(
 	lines: readonly RenderedLine[],
 	lineCap: number | null,
 ): { lines: RenderedLine[]; elidedCount: number } {
-	if (lineCap === null || lines.length <= lineCap) return { lines: [...lines], elidedCount: 0 };
+	if (lineCap === null || lines.length <= lineCap) return { lines: lines.slice(), elidedCount: 0 };
 
 	const PROTECTED_DEPTH = 1;
 	const target = Math.max(1, lineCap - 1);
@@ -370,7 +370,7 @@ function applyLineCap(
 		.filter(({ line }) => !line.isRoot && line.depth > PROTECTED_DEPTH)
 		.sort((a, b) => b.line.depth - a.line.depth || b.index - a.index)
 		.slice(0, lines.length - target);
-	if (removable.length === 0) return { lines: [...lines], elidedCount: 0 };
+	if (removable.length === 0) return { lines: lines.slice(), elidedCount: 0 };
 
 	const removed = new Set(removable.map(item => item.index));
 	const kept = lines.filter((_, index) => !removed.has(index));

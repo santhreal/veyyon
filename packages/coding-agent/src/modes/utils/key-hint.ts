@@ -30,7 +30,7 @@ import { formatKeyHints, type KeyId } from "../../config/keybindings";
  * to press something that does nothing; the callers drop the hint instead.
  */
 export function keyHint(keys: readonly KeyId[]): string {
-	return keys.length === 0 ? "" : formatKeyHints([...keys]).toLowerCase();
+	return keys.length === 0 ? "" : formatKeyHints(keys.slice()).toLowerCase();
 }
 
 /** The live chord for an action, from the process-wide manager. */

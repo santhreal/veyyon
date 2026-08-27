@@ -80,7 +80,7 @@ export function inheritResolvedCollection<T>(args: InheritResolvedCollectionArgs
 		logger.debug("Subagent resolves its own layer: parent resolved zero items", { agent: agentName, kind });
 		return undefined;
 	}
-	return [...items];
+	return items.slice();
 }
 
 /**
