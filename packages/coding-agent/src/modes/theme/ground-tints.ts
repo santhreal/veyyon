@@ -100,11 +100,17 @@ export function resetGroundTintsForTest(): void {
 	listeners.length = 0;
 }
 
+function hexVal(c: number): number {
+	if (c >= 0x30 && c <= 0x39) return c - 0x30;
+	if (c >= 0x41 && c <= 0x46) return c - 0x41 + 10;
+	return c - 0x61 + 10;
+}
+
 function channels(hex: string): [number, number, number] {
 	return [
-		Number.parseInt(hex.slice(1, 3), 16),
-		Number.parseInt(hex.slice(3, 5), 16),
-		Number.parseInt(hex.slice(5, 7), 16),
+		(hexVal(hex.charCodeAt(1)) << 4) | hexVal(hex.charCodeAt(2)),
+		(hexVal(hex.charCodeAt(3)) << 4) | hexVal(hex.charCodeAt(4)),
+		(hexVal(hex.charCodeAt(5)) << 4) | hexVal(hex.charCodeAt(6)),
 	];
 }
 
