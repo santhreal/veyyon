@@ -4,11 +4,18 @@ from __future__ import annotations
 
 import json
 import shlex
+import sys
 from pathlib import Path
 from typing import ClassVar
 
+# `common` is a package under the agents root, appended rather than prepended so the
+# installed `pier` SDK keeps priority over this directory's sibling modules.
+_agents_dir = str(Path(__file__).resolve().parents[1])
+if _agents_dir not in sys.path:
+    sys.path.append(_agents_dir)
+
+from common.model_catalog_bootstrap import build_status_preserving_tee_command
 from factory_session_driver import EXACT_MODEL
-from model_catalog_bootstrap import build_status_preserving_tee_command
 from pier.agents.installed.base import BaseInstalledAgent
 from pier.agents.network import allowlist_from_urls
 from pier.environments.base import BaseEnvironment

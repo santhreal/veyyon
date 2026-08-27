@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { requireBackendBinding, resolveCellVariant } from "../../core/cell-variant";
+import { containerProgramPath, programDirFor, stageHarnessProgram } from "../../core/container-program";
 import { requireHarness } from "../../core/harness-registry";
 import { trialTimeoutFromOptions } from "../../core/trial-deadline";
 import { resolveTrialModel } from "../../core/trial-model";
@@ -12,6 +13,7 @@ import type {
 	RunContext,
 	TrialArtifacts,
 	TrialCell,
+	Variant,
 	VariantAxis,
 } from "../../core/types";
 import { authDbPath, pierAgentDir, veyBinaryPath } from "../../paths";
@@ -75,10 +77,32 @@ export class PierExecutionBackend implements ExecutionBackend {
 		return this.#authDb;
 	}
 
+	/**
+	 * The variants whose harness delivers itself through a container program, and so needs
+	 * neither the vey binary nor a seeded credential store.
+	 */
+	#programVariants(context: RunContext): readonly Variant[] {
+		const variants = context.options?.variants ?? [];
+		return variants.filter(variant => requireHarness(variant.harness).containerProgram !== undefined);
+	}
+
+	/** Whether this run stages the veyyon assets: a vey binary and a credential store. */
+	#needsVeyyonAssets(context: RunContext): boolean {
+		const variants = context.options?.variants ?? [];
+		if (variants.length === 0) return true;
+		return this.#programVariants(context).length !== variants.length;
+	}
+
 	async preflight(context: RunContext): Promise<PreflightVerdict> {
 		const pierVerdict = this.#checkPreflight(context.options);
 		if (!pierVerdict.ok) {
 			return pierVerdict;
+		}
+
+		// A run made entirely of program-delivered arms never reads the vey binary or the
+		// credential store, so requiring them refused runs that had no use for them.
+		if (!this.#needsVeyyonAssets(context)) {
+			return { ok: true };
 		}
 
 		const veyBinary = this.#resolveVeyBinary(context);
@@ -112,16 +136,24 @@ export class PierExecutionBackend implements ExecutionBackend {
 		fs.mkdirSync(assetsDir, { recursive: true });
 
 		const variants = context.options?.variants ?? [];
-		const veyBinary = this.#resolveVeyBinary(context);
-		const authDb = this.#resolveAuthDb(context);
 
-		const staged = this.#stageAssets({
-			assetsDir,
-			variants,
-			veyBinary,
-			authDb,
-		});
-		this.#binarySha = staged.binarySha;
+		if (this.#needsVeyyonAssets(context)) {
+			const staged = this.#stageAssets({
+				assetsDir,
+				variants,
+				veyBinary: this.#resolveVeyBinary(context),
+				authDb: this.#resolveAuthDb(context),
+			});
+			this.#binarySha = staged.binarySha;
+		}
+
+		for (const variant of this.#programVariants(context)) {
+			const harness = requireHarness(variant.harness);
+			stageHarnessProgram(harness, programDirFor(assetsDir, harness.name, variant.name), {
+				model: resolveTrialModel(variant, harness, context).id,
+				options: context.options ?? {},
+			});
+		}
 	}
 	async runTrial(cell: TrialCell, context: RunContext): Promise<TrialArtifacts> {
 		const taskDescriptor = await context.suite.describeTask(cell.task, context);
@@ -142,12 +174,18 @@ export class PierExecutionBackend implements ExecutionBackend {
 		}
 		const modelName = resolveTrialModel(variant, harness, context).id;
 
-		const kwargs: Record<string, unknown> = {
-			arm_name: variant.name,
-			assets_dir: assetsDir,
-			binary_sha: (context.options?.binarySha as string | undefined) ?? this.#binarySha ?? "nosha",
-			...(pierBinding.extra ?? {}),
-		};
+		const kwargs: Record<string, unknown> = harness.containerProgram
+			? {
+					program_path: containerProgramPath(programDirFor(assetsDir, harness.name, variant.name)),
+					binary_sha: (context.options?.binarySha as string | undefined) ?? this.#binarySha ?? "nosha",
+					...(pierBinding.extra ?? {}),
+				}
+			: {
+					arm_name: variant.name,
+					assets_dir: assetsDir,
+					binary_sha: (context.options?.binarySha as string | undefined) ?? this.#binarySha ?? "nosha",
+					...(pierBinding.extra ?? {}),
+				};
 
 		const configPath = writePierJobConfig({
 			jobName,

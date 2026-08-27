@@ -27,7 +27,7 @@ import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { AuthStorage } from "@veyyon/ai";
-import { listHarnesses, sanitizeVariantName, type Variant } from "../../src/core";
+import { listHarnesses, programDirFor, sanitizeVariantName, type Variant } from "../../src/core";
 import { preflightHarnesses } from "../../src/core/harness-preflight";
 import { registerBuiltinHarnesses } from "../../src/harnesses";
 import { internalScratchDir } from "../../src/paths";
@@ -301,8 +301,14 @@ describe("harness preflight fails closed and keys staged variant paths", () => {
 				options: fixture.options,
 			});
 
-			const pathA = path.join(targetDir, sanitizeVariantName(variantA.name));
-			const pathB = path.join(targetDir, sanitizeVariantName(variantB.name));
+			// A harness whose container run is one declaration files it where every backend
+			// looks for it; the rest key the arm's directory directly off the target.
+			const stagedDirFor = (variant: Variant): string =>
+				harness.containerProgram
+					? programDirFor(targetDir, harness.name, variant.name)
+					: path.join(targetDir, sanitizeVariantName(variant.name));
+			const pathA = stagedDirFor(variantA);
+			const pathB = stagedDirFor(variantB);
 
 			// Staging directories must exist and be strictly disjoint
 			expect(fs.existsSync(pathA)).toBe(true);

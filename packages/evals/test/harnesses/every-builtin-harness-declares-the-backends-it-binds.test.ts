@@ -33,7 +33,7 @@ import { veyyonAdapter } from "../../src/harnesses/adapters/veyyon";
  */
 const EXPECTED_BINDINGS: Readonly<Record<string, readonly BackendId[]>> = {
 	veyyon: ["pier", "harbor", "in-process"],
-	omp: ["pier"],
+	omp: ["pier", "harbor"],
 	factory: ["pier"],
 	hermes: ["pier"],
 };

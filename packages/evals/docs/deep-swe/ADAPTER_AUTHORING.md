@@ -32,7 +32,7 @@ the container agents.
 | Harness | Capabilities | Pier import path | Harbor agent |
 |---|---|---|---|
 | `veyyon` | replay, compaction, arm attachments, prompt overrides | `veyyon_agent:VeyyonAgent` | `veyyon` |
-| `omp` | none | `omp_agent:OmpAgent` | — |
+| `omp` | none | `omp_agent:OmpAgent` | `omp` (`program_agent:ProgramAgent`) |
 | `factory` | replay, compaction | `factory_agent:FactoryAgent` | — |
 | `hermes` | replay, compaction | `hermes_agent:HermesAgent` | — |
 
@@ -134,80 +134,77 @@ backend is absent from `backends` fails with `UnboundHarnessBackendError` naming
 `SystemStageContext` is the DeepSWE runner's path: `system`, `assetsDir`, `outRoot`, `binarySha`,
 `args`, `model`. Discriminate on `"targetDir" in context`.
 
-## Step 2: the container agent
+## Step 2: the container program
 
-Create `packages/evals/agents/pier/<name>_agent.py` subclassing `BaseInstalledAgent`:
+A harness that runs a CLI inside the task container adds no Python module. It returns a
+`StagedProgram` from `containerProgram()`, and the generic executor in
+`packages/evals/agents/common/container_program.py` uploads the files, runs the setup lines,
+substitutes the command placeholders, streams the log and collects the sessions. Pier receives the
+staged path as the `program_path` job-config kwarg, Harbor as the `VEYYON_BENCH_AGENT_PROGRAM`
+environment variable, and both execute the same file.
 
-```python
-from __future__ import annotations
-
-import shlex
-from typing import ClassVar
-
-from model_catalog_bootstrap import build_status_preserving_tee_command
-from pier.agents.installed.base import BaseInstalledAgent
-from pier.agents.network import allowlist_from_urls
-from pier.environments.base import BaseEnvironment
-from pier.models.agent.context import AgentContext
-from pier.models.agent.install import AgentInstallSpec, InstallStep
-
-CONTAINER_ASSETS_DIR = "/opt/myharness-assets"
-
-
-class MyHarnessAgent(BaseInstalledAgent):
-    SUPPORTS_ATIF: ClassVar[bool] = False
-
-    @staticmethod
-    def name() -> str:
-        return "myharness"
-
-    def __init__(self, *args, assets_dir: str = "", binary_sha: str = "nosha", **kwargs):
-        self._assets_dir = assets_dir
-        self._binary_sha = binary_sha
-        super().__init__(*args, **kwargs)
-
-    def install_spec(self) -> AgentInstallSpec:
-        return AgentInstallSpec(
-            agent_name=self.name(),
-            cache_key=f"myharness-{self._binary_sha[:16]}",
-            steps=[InstallStep(user="agent", run="true")],
-        )
-
-    def network_allowlist(self):
-        return allowlist_from_urls([], default_domains=[".my-provider.com"])
-
-    async def run(self, instruction: str, environment: BaseEnvironment, context: AgentContext) -> None:
-        if not self.model_name:
-            raise ValueError("MyHarnessAgent requires --model (provider/model-id)")
-        instruction = self.render_instruction(instruction)
-        command = f"{CONTAINER_ASSETS_DIR}/myharness --model {shlex.quote(self.model_name)} --print {shlex.quote(instruction)}"
-        logged = build_status_preserving_tee_command(command, "/logs/agent/myharness.txt")
-        await self.exec_as_agent(environment, command=logged)
-
-    def populate_context_post_run(self, context: AgentContext) -> None:
-        # Parse the session log for token usage, cost and tool calls, then set
-        # context.n_input_tokens, context.n_output_tokens, context.cost_usd and context.metadata.
-        ...
+```typescript
+containerProgram(context: ContainerProgramContext): StagedProgram {
+	const model = context.model || this.defaultModel;
+	const apiKey = typeof context.options["myharness-api-key"] === "string" ? context.options["myharness-api-key"] : "";
+	return {
+		program: {
+			version: CONTAINER_PROGRAM_VERSION,
+			harness: this.name,
+			containerDir: "/opt/myharness-assets",
+			assets: [
+				{ file: "myharness", dest: "/opt/myharness-assets/myharness", mode: "0755" },
+				{ file: "myharness.env", dest: "/opt/myharness-assets/myharness.env", mode: "0600" },
+			],
+			setup: ["mkdir -p /tmp/myharness-sessions"],
+			command: "{{assets}}/myharness --model {{model}} --print {{instruction}}",
+			envFile: "/opt/myharness-assets/myharness.env",
+			logPath: "/logs/agent/myharness.txt",
+			sessions: { sources: ["/tmp/myharness-sessions"], pattern: "*.jsonl" },
+			allowedDomains: [".my-provider.com"],
+			usage: "omp",
+		},
+		files: [
+			{ file: "myharness", source: { copy: resolveBinary(context.options) }, mode: 0o755 },
+			{ file: "myharness.env", source: { text: `MYHARNESS_API_KEY=${apiKey}\n` }, mode: 0o600 },
+		],
+	};
+}
 ```
 
-The kwargs the constructor accepts are exactly the keys `buildJobConfigKwargs` returns.
+`stageAssets` writes it: `stageHarnessProgram(this, programDirFor(root, this.name, arm), { model, options })`.
+`buildJobConfigKwargs` returns `{ program_path: containerProgramPath(programDirFor(context.assetsDir, this.name, context.system)) }`.
+
+Rules the builder enforces, each a refusal naming the value: `command` carries only
+`{{instruction}}`, `{{model}}` and `{{assets}}`, the first two shlex-quoted; every container path is
+absolute with no whitespace; an asset `file` is relative to the program directory with no `..`; a
+declared asset with no staged source is a refusal unless marked `optional`. `usage` names the
+session dialect the executor reads token counts from.
+
+The provider key travels in the env file, sourced before the command, so it never appears in argv, a
+process listing or the log.
+
+A harness whose container run cannot be expressed this way writes its own agent under
+`packages/evals/agents/<backend>/`, and the kwargs its constructor accepts are exactly the keys
+`buildJobConfigKwargs` returns. veyyon is the one that does: it mounts local source, seeds a
+credential store and replays recorded sessions.
 
 ### Network allowlists
 
-Agents run inside containers behind an egress proxy. `network_allowlist()` returns the allowed
-domains. The ones already in use:
+Agents run inside containers behind an egress proxy. `allowedDomains` in the program, or
+`network_allowlist()` in a bespoke agent, returns the allowed domains. The ones already in use:
 
-- `.opencode.ai` — OpenCode API and models.dev metadata
-- `.models.dev` — model metadata overlay
-- `.github.com` — git clone and fetch
-- `public.ecr.aws` — container image pulls for task environments
+- `.opencode.ai`: OpenCode API and models.dev metadata
+- `.models.dev`: model metadata overlay
+- `.github.com`: git clone and fetch
+- `public.ecr.aws`: container image pulls for task environments
 
 ### Model resolution
 
-A model the harness's bundled catalog does not carry is supplied as a staged file. `stageAssets` in
-`src/harnesses/adapters/omp.ts` runs `vey models refresh --json`, which includes the models.dev
-overlay, and writes a `models.yml` carrying `contextWindow`, `maxTokens` and reasoning metadata into
-the container assets directory. `buildModelsYml` in that file is the implementation.
+A model the harness's bundled catalog does not carry is supplied as a staged file. The omp adapter
+runs `vey models refresh --json`, which includes the models.dev overlay, and stages a `models.yml`
+carrying `contextWindow`, `maxTokens` and reasoning metadata as an optional asset; the program's
+setup step installs it. `buildModelsYml` in `src/harnesses/adapters/omp.ts` is the implementation.
 
 ## Step 3: registration
 

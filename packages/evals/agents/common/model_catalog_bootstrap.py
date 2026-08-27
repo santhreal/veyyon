@@ -1,4 +1,8 @@
-"""Build the model-catalog priming command for isolated benchmark containers."""
+"""Build the model-catalog priming and status-preserving tee commands for containers.
+
+Shared by every container agent under either framework: a benchmark that logs an agent run
+and proves the model exists before spending on it does so through these two builders.
+"""
 
 from __future__ import annotations
 
@@ -10,7 +14,7 @@ _PROVIDER_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 _MODEL_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+:@/-]*")
 
 
-def _parse_model_selector(model_name: str) -> tuple[str, str]:
+def parse_model_selector(model_name: str) -> tuple[str, str]:
     provider, separator, model_id = model_name.partition("/")
     if (
         not separator
@@ -31,7 +35,7 @@ def build_model_catalog_refresh_command(
     timeout_seconds: int = 120,
 ) -> str:
     """Refresh and prove the exact dynamic selector exists before the paid run."""
-    provider, _model_id = _parse_model_selector(model_name)
+    provider, _model_id = parse_model_selector(model_name)
     if not binary or not log_path or "\0" in binary or "\0" in log_path:
         raise ValueError("binary and catalog log paths must be non-empty shell data")
     if isinstance(timeout_seconds, bool) or timeout_seconds <= 0:

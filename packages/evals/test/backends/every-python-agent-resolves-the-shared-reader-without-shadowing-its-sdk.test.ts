@@ -40,8 +40,10 @@ const IMPORT_TIMEOUT_MS = 60_000;
 
 /**
  * Imports one agent module against a generated SDK, and reports where each module it pulled in
- * came from. The stub tree is written from the module's own `from <sdk>.… import …` statements,
- * so it tracks the SDK surface the module actually names.
+ * came from. The stub tree is written from the `from <sdk>.… import …` statements of every
+ * module under the agents root, because an agent may name the SDK through a sibling shim
+ * (`harbor/harbor_api.py`) rather than directly, and the stub has to cover whichever module
+ * performs the import.
  */
 const DRIVER = `
 import ast, json, pathlib, sys, tempfile
@@ -49,16 +51,20 @@ import ast, json, pathlib, sys, tempfile
 target = pathlib.Path(sys.argv[1])
 sdk = sys.argv[2]
 agent_dir = str(target.parent)
+agents_root = target.parent.parent
 
 wanted: dict[str, set[str]] = {}
-for node in ast.walk(ast.parse(target.read_text(encoding="utf-8"))):
-    if isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
-        if node.module.split(".")[0] == sdk:
-            wanted.setdefault(node.module, set()).update(alias.name for alias in node.names)
-    elif isinstance(node, ast.Import):
-        for alias in node.names:
-            if alias.name.split(".")[0] == sdk:
-                wanted.setdefault(alias.name, set())
+for source in sorted(agents_root.rglob("*.py")):
+    if source.name.endswith("_test.py") or "__pycache__" in source.parts:
+        continue
+    for node in ast.walk(ast.parse(source.read_text(encoding="utf-8"))):
+        if isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+            if node.module.split(".")[0] == sdk:
+                wanted.setdefault(node.module, set()).update(alias.name for alias in node.names)
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name.split(".")[0] == sdk:
+                    wanted.setdefault(alias.name, set())
 
 stub_root = pathlib.Path(tempfile.mkdtemp(prefix="sdk-stub-"))
 PREAMBLE = (

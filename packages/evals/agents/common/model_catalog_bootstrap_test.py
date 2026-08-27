@@ -9,7 +9,7 @@ import time
 import unittest
 from pathlib import Path
 
-from model_catalog_bootstrap import (
+from common.model_catalog_bootstrap import (
     build_model_catalog_refresh_command,
     build_status_preserving_tee_command,
 )

@@ -7,7 +7,9 @@ registered — `veyyon`, `omp`, `factory`, `hermes` — and a run names one or m
 `src/core/types.ts` declares the `HarnessAdapter` contract. `src/core/harness-registry.ts` is the
 registry. `src/harnesses/index.ts` holds `builtinHarnesses` and `registerBuiltinHarnesses()`.
 `src/harnesses/adapters/` holds the adapters. `agents/pier/` and `agents/harbor/` hold the Python
-classes the container backends import.
+classes the container backends import, and `agents/common/` the modules both frameworks share:
+the container-program executor, the session-usage readers, the attachment reader and the
+model-catalog bootstrap.
 
 To add one, follow [`deep-swe/ADAPTER_AUTHORING.md`](deep-swe/ADAPTER_AUTHORING.md).
 
@@ -28,7 +30,7 @@ To add one, follow [`deep-swe/ADAPTER_AUTHORING.md`](deep-swe/ADAPTER_AUTHORING.
 | Harness | Backends | Capabilities | Default model |
 |---|---|---|---|
 | `veyyon` | pier, harbor, in-process | replay, compaction, arm attachments, prompt overrides | none — the run must name one |
-| `omp` | pier | none | `opencode-go/deepseek-v4-flash` |
+| `omp` | pier, harbor | none | `opencode-go/deepseek-v4-flash` |
 | `factory` | pier | replay, compaction | `google-antigravity/gemini-3.6-flash` |
 | `hermes` | pier | replay, compaction | `google-antigravity/gemini-3.6-flash` |
 
@@ -52,9 +54,27 @@ facts:
 - `agentName` — the name a backend's CLI selects the harness by (`harbor run --agent <name>`);
   defaults to the harness name.
 - `containerAssetsDir` — where staged assets are mounted inside the container.
+- `authGateway` — whether the harness reaches its provider through the host authentication
+  gateway. A harness carrying its own credentials leaves it unset, and the harbor environment
+  builder then writes no gateway variables for it.
 
 A (harness, suite) pair whose backend is absent from `backends` fails run planning with
 `UnboundHarnessBackendError` naming the harness, the suite and the backend.
+
+## Container programs
+
+A harness that runs a CLI inside a task container declares that run once, as
+`containerProgram(context)` returning a `StagedProgram`: the files to upload, the setup lines, the
+invocation with `{{instruction}}`, `{{model}}` and `{{assets}}` substituted, the env file sourced
+before it, the log path, the session sources and the usage dialect. `src/core/container-program.ts`
+validates it and stages it as `program.json`; `agents/common/container_program.py` executes it under
+either framework. Pier passes the staged path as the `program_path` job-config kwarg, harbor as
+`VEYYON_BENCH_AGENT_PROGRAM`, and every backend files it at
+`<assets-root>/programs/<harness>/<arm>` through `programDirFor`.
+
+`omp` is delivered this way, which is what gives it harbor and therefore Terminal-Bench. `veyyon`
+declares no program: it mounts local source, seeds a credential store and replays recorded sessions,
+so it keeps its own agent class per backend.
 
 ## Registry behavior
 

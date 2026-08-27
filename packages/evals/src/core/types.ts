@@ -11,6 +11,8 @@
  * Plus the ExecutionBackend (containerized or in-process execution engine).
  */
 
+import type { ContainerProgramContext, StagedProgram } from "./container-program";
+
 /**
  * Identifier for an execution backend (e.g. "pier", "harbor", "in-process").
  */
@@ -250,6 +252,16 @@ export interface HarnessAdapter {
 	readonly backends: Readonly<Partial<Record<BackendId, HarnessBackendBinding>>>;
 	preflight(context: HarnessPreflightContext): Promise<PreflightVerdict>;
 	stageAssets(context: HarnessStageContext | SystemStageContext): Promise<void> | void;
+	/**
+	 * The one declaration of how this harness runs inside a task container: the files a
+	 * backend uploads, the setup, the invocation, the log and the session sources.
+	 *
+	 * A harness that declares it needs no per-backend staging code and no per-backend agent
+	 * class: `core/container-program.ts` stages it and one Python executor runs it under both
+	 * Pier and Harbor. A harness whose container delivery is bespoke (veyyon builds from a
+	 * source mount and seeds a credential store) declares none and keeps its own agents.
+	 */
+	containerProgram?(context: ContainerProgramContext): StagedProgram;
 	validatePreflight?(context: SystemPreflightContext): Promise<SystemPreflightResult> | SystemPreflightResult;
 	buildJobConfigKwargs?(context: SystemJobConfigContext): Record<string, unknown>;
 }

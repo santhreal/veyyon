@@ -206,10 +206,19 @@ describe("a harbor harness resolves its agent name and log path from the registr
 		expect(env.VEYYON_BENCH_AGENT_ARGS).toBe('["--flag"]');
 		expect(env.VEYYON_BENCH_GATEWAY).toBe("1");
 
-		const unboundEnv = buildHarborEnv({ ...mockConfig, agent: "omp" }, "/path/to/models.yaml", null, "1.0.0");
+		// factory reaches pier only, so harbor's agent channel stays silent for it.
+		const unboundEnv = buildHarborEnv({ ...mockConfig, agent: "factory" }, "/path/to/models.yaml", null, "1.0.0");
 		expect(unboundEnv.VEYYON_BENCH_INSTALL).toBeUndefined();
 		expect(unboundEnv.VEYYON_BENCH_AGENT_ARGS).toBeUndefined();
 		expect(unboundEnv.VEYYON_BENCH_GATEWAY).toBeUndefined();
+
+		// omp is harbor-bound and carries its own credentials in its program env file, so
+		// it gets the agent channel with the gateway switched off rather than announced.
+		const programEnv = buildHarborEnv({ ...mockConfig, agent: "omp" }, "/path/to/models.yaml", null, "1.0.0");
+		expect(programEnv.VEYYON_BENCH_AGENT_ARGS).toBe('["--flag"]');
+		expect(programEnv.VEYYON_BENCH_GATEWAY).toBe("0");
+		expect(programEnv.VEYYON_BENCH_GATEWAY_URL).toBeUndefined();
+		expect(programEnv.VEYYON_BENCH_GATEWAY_TOKEN).toBeUndefined();
 	});
 
 	it("the progress frame labels whichever harness the run drove", () => {

@@ -7,9 +7,15 @@ Python agent adapters invoked inside Docker containers by Pier during DeepSWE ev
 | File | Agent | Binary | Output file |
 |---|---|---|---|
 | `veyyon_agent.py` | VeyyonAgent | `vey` | `veyyon.txt` |
-| `omp_agent.py` | OmpAgent | `cli.js` (via Bun) | `omp.txt` (NDJSON stream) |
+| `omp_agent.py` | OmpAgent | declared by `program.json` | declared by `program.json` |
 | `factory_agent.py` | FactoryAgent | `droid` | `factory.txt` |
 | `hermes_agent.py` | HermesAgent | (native) | `hermes.txt` |
+
+`omp_agent.py` holds no asset list, command, or log path of its own. It loads the
+`program.json` the run staged and hands it to `common/container_program.py`, the executor
+Harbor's `program_agent.py` also uses. The declaration is written in
+`packages/evals/src/harnesses/adapters/omp.ts` and reaches the container as the
+`program_path` job-config kwarg. A harness added this way needs no new Python module.
 
 ## Common Interface
 
@@ -50,15 +56,15 @@ Missing domains cause DNS resolution failures inside the container. If a new API
 
 ## Model Resolution
 
-### Veyvon
+### Veyyon
 
 The veyyon binary has a synchronous model discovery fallback: when an explicit `--model` pattern does not resolve against the static catalog, it runs a cache-aware discovery pass before model resolution. This handles dynamically-discovered models (not in the bundled catalog) without requiring a `models refresh` before the agent starts.
 
-The `model-catalog-bootstrap.py` module runs `vey models refresh <provider> --json` before the agent starts, writing model metadata to a cache the agent reads at startup.
+`common/model_catalog_bootstrap.py` builds the command that runs `vey models refresh <provider> --json` before the agent starts, writing model metadata to a cache the agent reads at startup.
 
 ### Omp
 
-Omp's release binary does not have the synchronous discovery fallback. For dynamically-discovered models, the omp adapter's `stageAssets()` method generates a `models.yml` with full metadata using the veyyon binary's `models.dev` overlay. The omp agent copies this to `~/.omp/agent/models.yml` before starting the agent, which adds the model to omp's static catalog at startup.
+Omp's release binary has no synchronous discovery fallback. For a dynamically-discovered model the omp adapter builds a `models.yml` from the veyyon binary's `models.dev` overlay and stages it as an optional asset of the program; the program's setup step copies it to `~/.omp/agent/models.yml`, which adds the model to omp's static catalog at startup. A host with no veyyon binary stages no `models.yml` and omp resolves the model through its own discovery.
 
 The `models.yml` includes:
 
@@ -69,7 +75,7 @@ The `models.yml` includes:
 
 ## Output Formats
 
-### Veyvon (`veyyon.txt`)
+### Veyyon (`veyyon.txt`)
 
 Plain text with `[veyyon] warning:` lines for native addon issues, then `Working...` while the agent runs. The session JSONL is captured separately.
 

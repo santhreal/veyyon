@@ -279,6 +279,7 @@ describe("a trial runs the model the run named", () => {
 		expect(driven.sort()).toEqual([
 			"factory:pier",
 			"hermes:pier",
+			"omp:harbor",
 			"omp:pier",
 			"veyyon:harbor",
 			"veyyon:in-process",

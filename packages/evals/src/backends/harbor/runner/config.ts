@@ -183,8 +183,11 @@ export function buildHarborEnv(
 	if (cfg.thinking) env.VEYYON_BENCH_THINKING = cfg.thinking;
 	if (cfg.agentArgs.length > 0) env.VEYYON_BENCH_AGENT_ARGS = JSON.stringify(cfg.agentArgs);
 	if (cfg.webSearch) env.VEYYON_BENCH_WEB_SEARCH = "1";
-	env.VEYYON_BENCH_GATEWAY = cfg.gateway ? "1" : "0";
-	if (cfg.gateway) {
+	// The gateway is a property of the binding: a harness whose credentials travel in its
+	// own program env file never announces a gateway it will not use, on either path.
+	const gateway = cfg.gateway && binding.authGateway === true;
+	env.VEYYON_BENCH_GATEWAY = gateway ? "1" : "0";
+	if (gateway) {
 		env.VEYYON_BENCH_MODELS_YAML = modelsYaml;
 		env.VEYYON_BENCH_GATEWAY_URL = cfg.gatewayUrl;
 		env.VEYYON_BENCH_GATEWAY_TOKEN = cfg.gatewayToken;

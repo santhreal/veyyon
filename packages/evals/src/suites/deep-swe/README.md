@@ -162,7 +162,7 @@ runs/<timestamp>/
 ├── results.json       # Machine-readable trial results
 ├── assets/            # Staged binaries, auth DB, arm configs
 │   ├── vey            # Pinned veyyon binary
-│   ├── cli.js         # omp CLI (if omp arm present)
+│   ├── programs/      # One container program per arm of a program-delivered harness
 │   ├── bun            # Bun runtime
 │   ├── auth-agent.db  # Seeded auth credentials
 │   └── arms/          # Resolved arm configurations

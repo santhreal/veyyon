@@ -157,7 +157,7 @@ src/
 └── cli.ts       the cross-suite entrypoint
 test/            every test, in the directory of the code it drives, named for the behavior it defends
 datasets/        task lists, corpora, fixtures, dictionaries
-agents/          Python container agents (pier/, harbor/)
+agents/          Python container agents (pier/, harbor/) and the modules they share (common/)
 docs/            per-suite and per-layer reference (see docs/ below)
 runs/            trial output, gitignored
 .cache/          vendored datasets, gitignored
