@@ -119,7 +119,7 @@ export async function loadGitignorePatterns(baseDir: string): Promise<string[]> 
 		try {
 			const content = await Bun.file(gitignorePath).text();
 			const filePatterns = parseGitignorePatterns(content, current, absoluteBase);
-			patterns.push(...filePatterns);
+			for (let pi = 0; pi < filePatterns.length; pi++) patterns.push(filePatterns[pi]!);
 		} catch {
 			// .gitignore doesn't exist or can't be read, continue
 		}
