@@ -114,7 +114,7 @@ export function renderPauseScreen(width: number, height: number, elapsedMs: numb
 
 	const topPad = Math.max(0, Math.floor((height - content.length) / 2));
 	const lines: string[] = new Array(topPad).fill("");
-	lines.push(...content);
+	for (let i = 0; i < content.length; i++) lines.push(content[i]!);
 	while (lines.length < height) lines.push("");
 	return lines.slice(0, Math.max(1, height));
 }
