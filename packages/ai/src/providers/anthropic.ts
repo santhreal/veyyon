@@ -2836,10 +2836,10 @@ const streamAnthropicOnce = (
 			output.duration = performance.now() - startTime;
 			if (firstTokenTime) output.ttft = firstTokenTime - startTime;
 			if (dropFastMode && realizesPriorityServiceTier(options?.serviceTier, model)) {
-				output.disabledFeatures = [...(output.disabledFeatures ?? []), "priority"];
+				output.disabledFeatures = (output.disabledFeatures ?? []).concat(["priority"]);
 			}
 			if (forceDemoteUnsignedThinking && model.compat.replayUnsignedThinking) {
-				output.disabledFeatures = [...(output.disabledFeatures ?? []), "unsigned-thinking-replay"];
+				output.disabledFeatures = (output.disabledFeatures ?? []).concat(["unsigned-thinking-replay"]);
 			}
 			stream.push({ type: "done", reason: output.stopReason, message: output });
 			stream.end();

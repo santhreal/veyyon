@@ -251,7 +251,7 @@ function rewriteZodNode(node: JsonObject, seen: WeakSet<object>): unknown {
 				if (Array.isArray(inner.type)) {
 					return (inner.type as string[]).includes("null")
 						? inner
-						: { ...inner, type: [...(inner.type as string[]), "null"] };
+						: { ...inner, type: (inner.type as string[]).concat(["null"]) };
 				}
 				// anyOf / allOf / $ref shapes — no scalar `type` field
 				return { anyOf: [inner, { type: "null" }] };
