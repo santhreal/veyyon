@@ -2451,10 +2451,15 @@ export class StatusLineComponent implements Component {
 			return [];
 		}
 
-		const sortedStatuses = Array.from(this.#hookStatuses.entries())
-			.sort(([a], [b]) => a.localeCompare(b))
-			.map(([, text]) => sanitizeStatusText(text));
-		const hookLine = sortedStatuses.join(" ");
+		const entries = new Array<[string, string]>(this.#hookStatuses.size);
+		let ei = 0;
+		for (const entry of this.#hookStatuses) entries[ei++] = entry;
+		entries.sort(([a], [b]) => a.localeCompare(b));
+		let hookLine = "";
+		for (let i = 0; i < entries.length; i++) {
+			if (i > 0) hookLine += " ";
+			hookLine += sanitizeStatusText(entries[i]![1]);
+		}
 		return [truncateToWidth(hookLine, width)];
 	}
 }
