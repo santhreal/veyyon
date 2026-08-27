@@ -11,6 +11,10 @@
 - Bundled model resolution persists a content-verified enriched snapshot, and a registry cache stamp moves on every row-content write, and on a row crossing the freshness window it is read under, without treating SQLite sidecar churn or a provider re-verifying models it already had as a change.
 - Added `supportsServerCompaction` capability data for ChatGPT Codex backend models on the Responses API.
 
+### Fixed
+
+- LM Studio discovery reports the context window the running server accepts (`loaded_context_length`) rather than the model's compiled ceiling (`max_context_length`), so a model loaded below its ceiling no longer plans a session for context the server refuses.
+
 ### Removed
 
 - Removed `derive-tmp.ts`, a scratch probe swept into the package by accident; nothing imported it and no entry point exposed it.
