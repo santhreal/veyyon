@@ -2403,9 +2403,12 @@ export class StatusLineComponent implements Component {
 		extras?: { locationRight?: string | null },
 	): { locationLine: string | null; capabilityLine: string | null } {
 		const gathered = this.#gatherQuietSegments(width);
-		const location = gathered.location.map(part => part.content);
-		const capLeft = gathered.capLeft.map(part => part.content);
-		const capRight = gathered.capRight.map(part => part.content);
+		const location = new Array<string>(gathered.location.length);
+		for (let li = 0; li < gathered.location.length; li++) location[li] = gathered.location[li]!.content;
+		const capLeft = new Array<string>(gathered.capLeft.length);
+		for (let cli = 0; cli < gathered.capLeft.length; cli++) capLeft[cli] = gathered.capLeft[cli]!.content;
+		const capRight = new Array<string>(gathered.capRight.length);
+		for (let cri = 0; cri < gathered.capRight.length; cri++) capRight[cri] = gathered.capRight[cri]!.content;
 		const sep = segmentSeparator();
 		// One cell of right margin, always — nothing kisses the terminal edge.
 		const budget = Math.max(1, width - 1);
@@ -2426,7 +2429,7 @@ export class StatusLineComponent implements Component {
 		let capabilityLine: string | null = null;
 		if (capLeft.length > 0 || capRight.length > 0) {
 			const left = capLeft.join(sep);
-			const rightParts = [...capRight];
+			const rightParts = capRight;
 			let right = rightParts.join(sep);
 			// Free space between the groups is the design; on narrow terminals the
 			// right group sheds parts before the gap closes below breathing room.
