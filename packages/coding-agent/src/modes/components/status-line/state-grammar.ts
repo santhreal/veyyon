@@ -35,7 +35,23 @@
  * run time; a constant captured at import would keep the first theme's
  * separator for the life of the process.
  */
-import { theme } from "../../theme/theme";
+import { getThemeEpoch, theme } from "../../theme/theme";
+
+// Separator strings are pure functions of the theme. Cache them by epoch so
+// the `theme.fg("dim", …)` concatenation runs once per theme swap, not once
+// per frame. The epoch bumps on every theme change (see theme.ts).
+let sepEpoch = -1;
+let stateSep = "";
+let segmentSep = "";
+
+function ensureSeparators(): void {
+	const epoch = getThemeEpoch();
+	if (epoch === sepEpoch) return;
+	sepEpoch = epoch;
+	const d = theme.sep.dot.trim();
+	stateSep = theme.fg("dim", ` ${d} `);
+	segmentSep = theme.fg("dim", `  ${d}  `);
+}
 
 /** The glyph the active preset divides things with, without its padding. */
 function dot(): string {
@@ -50,7 +66,8 @@ function dot(): string {
  * reader has to be able to see.
  */
 export function stateSeparator(): string {
-	return theme.fg("dim", ` ${dot()} `);
+	ensureSeparators();
+	return stateSep;
 }
 
 /**
@@ -61,7 +78,8 @@ export function stateSeparator(): string {
  * glyph to learn.
  */
 export function segmentSeparator(): string {
-	return theme.fg("dim", `  ${dot()}  `);
+	ensureSeparators();
+	return segmentSep;
 }
 
 /**
