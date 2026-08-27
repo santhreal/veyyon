@@ -60,6 +60,25 @@ so `--count-per-type` and every other count must be a positive integer, an undec
 the invocation with exit code 2 and the usage text, and `--help` prints that text. `--dry-run`
 reports what would be generated and writes nothing.
 
+## One attempt's bounds
+
+`src/suites/typescript-edit/adapter/runner/events.ts` collects one prompt attempt. Two deadlines
+cover it: `connectionTimeout` (30 s by default) until the first event arrives, then `timeout` for the
+rest of the attempt. On expiry it aborts the client and fails the attempt with `PromptTimeoutError`,
+carrying the events, tool calls and last event type it saw.
+
+`BenchmarkClient.abort` is optional, and a client that implements it may not unblock its own stream,
+so the attempt races the prompt call against those deadlines instead of awaiting it. When a deadline
+ends the wait, the client's stream gets `PROMPT_UNWIND_GRACE_MS` (1 s) to unwind and the attempt then
+ends regardless. A deadline that fired outranks the abort error the client raises in response,
+because the attempt's retry accounting reads `PromptTimeoutError`; a failure the client raises on its
+own is reported as itself.
+
+A turn count above `maxTurns` fails the attempt with `PromptTurnLimitError`. `runSingleTask` retries
+a timed-out attempt up to `maxTimeoutRetries` (3), a no-op attempt up to `noOpRetryLimit` (2) and a
+provider failure up to `maxProviderFailureRetries` (3); each counter only rises, so the attempt loop
+ends.
+
 ## Prompts
 
 Every prompt is a `.md` file imported with `{ type: "text" }` and rendered with Handlebars — none is
