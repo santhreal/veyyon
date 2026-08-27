@@ -52,7 +52,6 @@
 ### Changed
 
 - `veyyon --help` renders its command list from registry summaries verified against command statics and loads only the hidden default command for its flag table, reducing a measured warm Windows invocation from 1.2 seconds to 0.13 seconds.
-- Reading a file measures only the lines its window can reach instead of every remaining line to end of file, cutting a default 50-line read of a 3982-line file from 3982 measured lines to 51 for a byte-identical result.
 - Row band painting compiles its escape pattern once for the process rather than once per painted row.
 - The default launch command imports the session runtime and ACP terminal authentication only when it runs, so loading its flag table no longer imports the runtime graph.
 - Classified runner output (cargo, bun, Go, ctest, dotnet, clippy, golangci-lint, Gradle lint, pytest, and tsc/eslint-family) opens with a result-contract header, `[clean] <command>` or `[errors]` / `[errors N] <command>`, carrying the verdict above a body of retained diagnostics.
