@@ -2088,7 +2088,9 @@ export class Markdown implements Component {
 	/** Render the inner content of an HTML `<blockquote>` with quote styling. */
 	#renderHtmlBlockquote(inner: string, width: number): string[] {
 		const cleaned = normalizeHtmlForTerminal(inner, createHtmlNormalizationState(), text => this.#theme.code(text));
-		const innerLines = splitTerminalLines(cleaned).map(line => line.trimEnd());
+		const rawLines = splitTerminalLines(cleaned);
+		const innerLines = new Array<string>(rawLines.length);
+		for (let li = 0; li < rawLines.length; li++) innerLines[li] = rawLines[li]!.trimEnd();
 		while (innerLines.length > 0 && innerLines[innerLines.length - 1] === "") innerLines.pop();
 		return this.#applyQuoteBorder(innerLines, width);
 	}
@@ -2306,7 +2308,10 @@ export class Markdown implements Component {
 	}
 
 	#terminalLineWidths(text: string): number[] {
-		return splitTerminalLines(text).map(line => visibleWidth(line));
+		const lines = splitTerminalLines(text);
+		const widths = new Array<number>(lines.length);
+		for (let li = 0; li < lines.length; li++) widths[li] = visibleWidth(lines[li]!);
+		return widths;
 	}
 
 	/**
@@ -2457,23 +2462,25 @@ export class Markdown implements Component {
 		for (let i = 0; i < numCols; i++) align[i] = token.align?.[i] ?? null;
 
 		// Render top border
-		const borderCells = columnWidths.map(w => h.repeat(w));
+		const borderCells = new Array<string>(columnWidths.length);
+		for (let ci = 0; ci < columnWidths.length; ci++) borderCells[ci] = h.repeat(columnWidths[ci]!);
 		lines.push(`${t.topLeft}${h}${borderCells.join(`${h}${t.teeDown}${h}`)}${h}${t.topRight}`);
 
-		// Render header with wrapping
-		const headerCellLines: string[][] = token.header.map((cell, i) => {
-			const text = this.#renderInlineTokens(cell.tokens || [], styleContext);
-			return this.#wrapCellText(text, columnWidths[i]);
-		});
+		const headerCellLines: string[][] = new Array<string[]>(token.header.length);
+		for (let ci = 0; ci < token.header.length; ci++) {
+			const text = this.#renderInlineTokens(token.header[ci]!.tokens || [], styleContext);
+			headerCellLines[ci] = this.#wrapCellText(text, columnWidths[ci]!);
+		}
 		let headerLineCount = 0;
 		for (let i = 0; i < headerCellLines.length; i++)
 			headerLineCount = Math.max(headerLineCount, headerCellLines[i].length);
 
 		for (let lineIdx = 0; lineIdx < headerLineCount; lineIdx++) {
-			const rowParts = headerCellLines.map((cellLines, colIdx) => {
-				const text = cellLines[lineIdx] || "";
-				return this.#theme.bold(alignCellText(text, columnWidths[colIdx], align[colIdx]));
-			});
+			const rowParts = new Array<string>(headerCellLines.length);
+			for (let ci = 0; ci < headerCellLines.length; ci++) {
+				const text = headerCellLines[ci]![lineIdx] || "";
+				rowParts[ci] = this.#theme.bold(alignCellText(text, columnWidths[ci]!, align[ci]!));
+			}
 			lines.push(`${v} ${rowParts.join(` ${v} `)} ${v}`);
 		}
 
@@ -2487,10 +2494,11 @@ export class Markdown implements Component {
 		let prevRowWrapped = false;
 		for (let rowIndex = 0; rowIndex < token.rows.length; rowIndex++) {
 			const row = token.rows[rowIndex];
-			const rowCellLines: string[][] = row.map((cell, i) => {
-				const text = this.#renderInlineTokens(cell.tokens || [], styleContext);
-				return this.#wrapCellText(text, columnWidths[i]);
-			});
+			const rowCellLines: string[][] = new Array<string[]>(row.length);
+			for (let ci = 0; ci < row.length; ci++) {
+				const text = this.#renderInlineTokens(row[ci]!.tokens || [], styleContext);
+				rowCellLines[ci] = this.#wrapCellText(text, columnWidths[ci]!);
+			}
 			let rowLineCount = 0;
 			for (let i = 0; i < rowCellLines.length; i++) rowLineCount = Math.max(rowLineCount, rowCellLines[i].length);
 
@@ -2500,10 +2508,11 @@ export class Markdown implements Component {
 			prevRowWrapped = rowLineCount > 1;
 
 			for (let lineIdx = 0; lineIdx < rowLineCount; lineIdx++) {
-				const rowParts = rowCellLines.map((cellLines, colIdx) => {
-					const text = cellLines[lineIdx] || "";
-					return alignCellText(text, columnWidths[colIdx], align[colIdx]);
-				});
+				const rowParts = new Array<string>(rowCellLines.length);
+				for (let ci = 0; ci < rowCellLines.length; ci++) {
+					const text = rowCellLines[ci]![lineIdx] || "";
+					rowParts[ci] = alignCellText(text, columnWidths[ci]!, align[ci]!);
+				}
 				lines.push(`${v} ${rowParts.join(` ${v} `)} ${v}`);
 			}
 		}
