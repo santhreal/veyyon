@@ -92,6 +92,7 @@
 
 ### Fixed
 
+- A bash working directory on a different Windows drive from the project renders as the absolute path it is, instead of being reported as a path inside the project.
 - A collapsed `ssh` result measures its preview in rendered rows at the frame's inner width and shows the newest three lines with a count of what was hidden, instead of slicing the first five newlines and overflowing the frame whenever a remote line wrapped.
 - A terminal resize, theme switch or session switch no longer seals a backgrounded subagent's tool card mid-flight, so the progress it reports afterwards still reaches the card instead of being dropped for the rest of the turn.
 - The composer defect oracle counts only the prompt glyph the frame states, so a transcript row opening with `$`, `>` or `!` is no longer reported as a second composer prompt.
