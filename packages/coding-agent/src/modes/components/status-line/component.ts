@@ -1224,6 +1224,10 @@ export class StatusLineComponent implements Component {
 		this.#cachedBranchRepoId = undefined;
 		this.#cachedBranchCwd = undefined;
 		this.#cachedPrContext = undefined;
+		this.#cachedGitCtx = undefined;
+		this.#cachedGitCtxBranch = undefined;
+		this.#cachedGitCtxStatus = undefined;
+		this.#cachedGitCtxPr = undefined;
 	}
 	#getCurrentBranch(effectiveGitCwd?: string): string | null {
 		if (!this.#gitEnabled()) return null;
@@ -1783,15 +1787,41 @@ export class StatusLineComponent implements Component {
 			subagentCount: this.#subagentCount,
 			backgroundSessionCount: this.#backgroundSessionCount,
 			activeMs: this.getActiveMs(),
-			git: {
-				branch: gitBranch,
-				status: gitStatus,
-				pr: gitPr,
-			},
+			git: this.#gitContext(gitBranch, gitStatus, gitPr),
 			worktree: activeRepoCache.worktree,
 			account: this.#servingAccount(this.session),
 			usage: this.#cachedUsage,
 		};
+	}
+
+	// Git context sub-object cache: { branch, status, pr } are all individually cached, but
+	// the wrapper object was allocated every frame. Cache by reference identity of the three
+	// values so the same object is reused when nothing changed.
+	#cachedGitCtx:
+		| { branch: string | null; status: git.GitStatusSummary | null; pr: { number: number; url: string } | null }
+		| undefined;
+	#cachedGitCtxBranch: string | null | undefined = undefined;
+	#cachedGitCtxStatus: git.GitStatusSummary | null | undefined = undefined;
+	#cachedGitCtxPr: { number: number; url: string } | null | undefined = undefined;
+
+	#gitContext(
+		branch: string | null,
+		status: git.GitStatusSummary | null,
+		pr: { number: number; url: string } | null,
+	): { branch: string | null; status: git.GitStatusSummary | null; pr: { number: number; url: string } | null } {
+		if (
+			branch === this.#cachedGitCtxBranch &&
+			status === this.#cachedGitCtxStatus &&
+			pr === this.#cachedGitCtxPr &&
+			this.#cachedGitCtx !== undefined
+		) {
+			return this.#cachedGitCtx;
+		}
+		this.#cachedGitCtxBranch = branch;
+		this.#cachedGitCtxStatus = status;
+		this.#cachedGitCtxPr = pr;
+		this.#cachedGitCtx = { branch, status, pr };
+		return this.#cachedGitCtx;
 	}
 
 	#resolveSettings(): EffectiveStatusLineSettings {
