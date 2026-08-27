@@ -47,6 +47,7 @@
 - `Theme` class symbol-category getters (`sep`, `icon`, `thinking`, `status`, `nav`, `tree`, `boxRound`, `boxSharp`, `checkbox`, `radio`, `format`, `md`) now return objects cached at construction time instead of allocating a fresh object literal on every access, eliminating ~100+ short-lived object allocations per frame across the status line and component rendering.
 - `appendRecentOutputTail` in `task/executor.ts` mutates `progress.recentOutput[0]` in-place on the streaming fast path instead of allocating a new array via spread + slice on every text delta token.
 - Composer zone components (`CardPadRow`, `ComposerHairline`, `QuietZoneLine`, `ComposerShortcutsBar`, `StatusLineComponent.render`) now cache their render output and return stable array references across frames when content is unchanged, letting the TUI engine's `stableRows` tracking skip re-ingesting composer zone rows on every frame.
+- `#gatherQuietSegments` in `status-line/component.ts` caches the `quietOptions` segment-options spread by `(segmentOptions ref, pathBudget)`, avoiding 3 nested object allocations per frame; the object is reused across frames when only the path budget is unchanged (the common case outside the ~300ms expansion animation).
 
 
 

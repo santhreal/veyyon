@@ -992,6 +992,7 @@ export class StatusLineComponent implements Component {
 	updateSettings(settings: StatusLineSettings): void {
 		this.#settings = settings;
 		this.#effectiveSettings = undefined;
+		this.#cachedQuietOptsBaseRef = undefined;
 		if (this.#onBranchChange) this.#setupGitWatcher();
 	}
 
@@ -1909,14 +1910,7 @@ export class StatusLineComponent implements Component {
 		// would make the click cut the path shorter than the clamp already had it.
 		const expandedPathBudget = Math.max(collapsedPathBudget, width);
 		const pathBudget = Math.round(collapsedPathBudget + (expandedPathBudget - collapsedPathBudget) * expansion);
-		const quietOptions = {
-			...effectiveSettings.segmentOptions,
-			path: {
-				...effectiveSettings.segmentOptions?.path,
-				maxLength: pathBudget,
-			},
-			model: { ...effectiveSettings.segmentOptions?.model, roomy: true },
-		};
+		const quietOptions = this.#quietOptions(effectiveSettings.segmentOptions, pathBudget);
 		const ctx = this.#buildSegmentContext(
 			width,
 			quietOptions,
@@ -1965,6 +1959,27 @@ export class StatusLineComponent implements Component {
 		if (badgeSlot !== null) capRight.unshift({ id: "badges", content: badgeSlot });
 		capRight.unshift({ id: "subagents", content: subagentBadge });
 		return { location, capLeft, capRight };
+	}
+
+	// Cached quiet options: the base spread (segmentOptions + model.roomy) is constant
+	// between settings changes; only path.maxLength varies (with the expansion animation).
+	// Caching by (segmentOptions ref, pathBudget) avoids 3 nested object allocations per frame.
+	#cachedQuietOptsBaseRef: object | undefined;
+	#cachedQuietOptsBudget = -1;
+	#cachedQuietOpts: StatusLineSegmentOptions | undefined;
+
+	#quietOptions(base: StatusLineSegmentOptions | undefined, pathBudget: number): StatusLineSegmentOptions {
+		if (base === this.#cachedQuietOptsBaseRef && pathBudget === this.#cachedQuietOptsBudget) {
+			return this.#cachedQuietOpts!;
+		}
+		this.#cachedQuietOptsBaseRef = base;
+		this.#cachedQuietOptsBudget = pathBudget;
+		this.#cachedQuietOpts = {
+			...base,
+			path: { ...base?.path, maxLength: pathBudget },
+			model: { ...base?.model, roomy: true },
+		};
+		return this.#cachedQuietOpts;
 	}
 
 	// Layout of the last rendered quiet footline, for click hit-testing
