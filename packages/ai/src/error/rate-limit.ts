@@ -19,6 +19,14 @@ const SERVER_ERROR_BACKOFF_MS = 20 * 1000; // 20s
 const ACCOUNT_RATE_LIMIT_PATTERN =
 	/\baccount(?:'s)?\b[^\n]{0,80}\brate.?limit\b|\brate.?limit\b[^\n]{0,80}\baccount\b/i;
 const INSUFFICIENT_BALANCE_PATTERN = /insufficient.?balance/i;
+// A status code named in prose is a whole number. `lower.includes("503")` also
+// fired inside `5030 credits remaining` and inside a request id, which routed an
+// exhausted balance to a 45-second capacity backoff instead of rotating the
+// credential. Digit boundaries, not substrings. A bare `500ms` latency figure
+// still reads as a status, which no report has produced and which a unit suffix
+// would have to be enumerated to exclude.
+const CAPACITY_STATUS_PATTERN = /(?<!\d)(?:503|529)(?!\d)/;
+const SERVER_ERROR_STATUS_PATTERN = /(?<!\d)500(?!\d)/;
 
 /**
  * Classify a rate-limit error message into a reason category.
@@ -43,8 +51,7 @@ export function parseRateLimitReason(errorMessage: string): RateLimitReason {
 	if (
 		lower.includes("capacity") ||
 		lower.includes("overloaded") ||
-		lower.includes("529") ||
-		lower.includes("503") ||
+		CAPACITY_STATUS_PATTERN.test(lower) ||
 		lower.includes("resource exhausted")
 	) {
 		return "MODEL_CAPACITY_EXHAUSTED";
@@ -78,7 +85,11 @@ export function parseRateLimitReason(errorMessage: string): RateLimitReason {
 		return "QUOTA_EXHAUSTED";
 	}
 
-	if (lower.includes("500") || lower.includes("internal error") || lower.includes("internal server error")) {
+	if (
+		SERVER_ERROR_STATUS_PATTERN.test(lower) ||
+		lower.includes("internal error") ||
+		lower.includes("internal server error")
+	) {
 		return "SERVER_ERROR";
 	}
 
