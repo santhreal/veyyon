@@ -2098,7 +2098,8 @@ export class TUI extends Container {
 	#isAttached(component: Component): boolean {
 		const seen = new Set<Component>();
 		const search = (children: readonly Component[]): boolean => {
-			for (const child of children) {
+			for (let ci = 0; ci < children.length; ci++) {
+				const child = children[ci]!;
 				if (child === component) return true;
 				if (seen.has(child)) continue;
 				seen.add(child);
@@ -2108,7 +2109,9 @@ export class TUI extends Container {
 			return false;
 		};
 		if (search(this.children)) return true;
-		return search(this.overlayStack.map(entry => entry.component));
+		const overlayComponents: Component[] = new Array(this.overlayStack.length);
+		for (let oi = 0; oi < this.overlayStack.length; oi++) overlayComponents[oi] = this.overlayStack[oi]!.component;
+		return search(overlayComponents);
 	}
 
 	/**
