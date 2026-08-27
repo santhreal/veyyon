@@ -303,6 +303,9 @@
 - `status-line/component.ts`, `account-manager.ts`, `model-hub.ts`, `model-browser.ts`, and `command-controller.ts` replace `" ".repeat(n)` with `padding(n)` in badge slot padding, sidebar gap fill, annotation alignment, model row gap, and command prefix cell padding.
 - Twenty modal and overlay components replace `Array.from({ length: n }, () => padding(w))` with `new Array(n).fill(padding(w))` in blank-fill render paths, eliminating the callback allocation per render.
 - `tool-execution.ts` replaces `Object.keys(argsObject).length > 0` with a `for...in` check in the call preview gate, eliminating a keys array allocation per tool call render.
+- `output-meta.ts` and `bash.ts` replace `Object.keys(obj).length` checks with `for...in` loops in OutputMetaBuilder.get, normalizeBashEnv, formatBashEnvAssignments, and extractPartialBashEnv, eliminating a keys array allocation per tool result render.
+- `assistant-message.ts` replaces the local `lerpHex` function with `blendHex` from `@veyyon/tui`, eliminating 6 `Number.parseInt`+`slice` allocations per streaming speed-badge render.
+- `assistant-message.ts`, `rail-motion.ts`, and `ground-tints.ts` replace `toString(16).padStart`/`slice` hex encoding with `toHexColor` from `@veyyon/tui`, using the pre-computed `HEX_BYTE` lookup table.
 
 ### Added
 

@@ -13,6 +13,7 @@
 - `imageFallback` takes the file name, media type, pixel size and cause of an undrawn image and returns a row naming all four; `ImageFallbackReason` states the cause.
 - Settings rows can open nested panels, used by Files → LSP to keep its dependent switches behind one parent row.
 - `paint-columns.ts` and `tui.ts` replace `" ".repeat(n)` with `padding(n)` in line background padding and overlay compositing, using the pre-allocated space buffer for widths up to 512.
+- `motion-paint.ts` pre-computes a `HEX_BYTE` lookup table for `toHexColor`, eliminating `toString(16).padStart(2, "0")` per channel per truecolor SGR during animation.
 
 ### Fixed
 
