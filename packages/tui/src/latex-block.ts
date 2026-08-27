@@ -780,7 +780,11 @@ function parseEnvironment(src: string, start: number, ctx: Ctx): { box: Box; end
 		let colSpec: CellAlign[] | null = null;
 		if (base === "array" && src[p] === "{") {
 			const spec = readBraceGroup(src, p);
-			colSpec = [...spec.text].filter((ch): ch is CellAlign => ch === "l" || ch === "c" || ch === "r");
+			colSpec = [];
+			for (let si = 0; si < spec.text.length; si++) {
+				const ch = spec.text.charCodeAt(si);
+				if (ch === 0x6c || ch === 0x63 || ch === 0x72) colSpec.push(String.fromCharCode(ch) as CellAlign);
+			}
 			p = spec.end;
 		}
 		const rawRows = splitRows(src.slice(p, env.bodyEnd));
