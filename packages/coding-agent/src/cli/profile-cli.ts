@@ -72,7 +72,7 @@ export const PROFILE_COPY_ITEMS: readonly ProfileCopyItem[] = [
 		key: "settings",
 		label: "Settings",
 		description: "Everything `veyyon config list` shows",
-		files: [...MAIN_CONFIG_FILENAMES],
+		files: MAIN_CONFIG_FILENAMES.slice(),
 	},
 	{ key: "mcp", label: "MCP servers", description: "mcp.json server config", files: ["mcp.json"] },
 	{ key: "ssh", label: "SSH targets", description: "ssh.json remote targets", files: ["ssh.json"] },

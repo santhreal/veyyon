@@ -18,7 +18,7 @@ export default class AuthGateway extends Command {
 		action: Args.string({
 			description: "Sub-command",
 			required: false,
-			options: [...AUTH_GATEWAY_ACTIONS],
+			options: AUTH_GATEWAY_ACTIONS.slice(),
 		}),
 	};
 

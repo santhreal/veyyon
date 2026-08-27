@@ -18,7 +18,7 @@ export default class AuthBroker extends Command {
 		action: Args.string({
 			description: "Sub-command",
 			required: false,
-			options: [...AUTH_BROKER_ACTIONS],
+			options: AUTH_BROKER_ACTIONS.slice(),
 		}),
 		// Second positional: provider id (login/logout) or filesystem path (import).
 		source: Args.string({

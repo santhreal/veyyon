@@ -132,7 +132,7 @@ export default class Index extends Command {
 		}),
 		thinking: Flags.string({
 			description: `Set thinking level: ${CLI_THINKING_LEVELS.join(", ")}`,
-			options: [...CLI_THINKING_LEVELS],
+			options: CLI_THINKING_LEVELS.slice(),
 		}),
 		"hide-thinking": Flags.boolean({
 			description: "Hide thinking blocks in TUI output (display only, does not disable model thinking)",
