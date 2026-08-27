@@ -204,7 +204,12 @@ import {
 	resolveAdvisorDeliveryChannel,
 	slugifyAdvisorName,
 } from "../advisor";
-import { ArgotStreamDisplayDecoder, expandAssistantContent, expandSessionContext } from "../argot-wire";
+import {
+	ArgotStreamDisplayDecoder,
+	expandAssistantContent,
+	expandSessionContext,
+	expandSessionMessageEntries,
+} from "../argot-wire";
 import { type AsyncJob, type AsyncJobDeliveryState, AsyncJobManager } from "../async";
 import { classifyDifficulty } from "../auto-thinking/classifier";
 import { reset as resetCapabilities } from "../capability";
@@ -9972,6 +9977,17 @@ export class AgentSession {
 	 */
 	#expandArgot(context: SessionContext): SessionContext {
 		return this.#argot?.loaded ? expandSessionContext(this.#argot, context) : context;
+	}
+
+	/**
+	 * Expand argot handles across transcript entries a viewer parsed off disk.
+	 *
+	 * The Agent Control Center reads a subagent's or advisor's session file
+	 * directly, so it never passes through `buildDisplaySessionContext`. It gets
+	 * the same codec through this accessor rather than reaching for `#argot`.
+	 */
+	expandArgotEntries(entries: SessionMessageEntry[]): SessionMessageEntry[] {
+		return this.#argot?.loaded ? expandSessionMessageEntries(this.#argot, entries) : entries;
 	}
 
 	/**

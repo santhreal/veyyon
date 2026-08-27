@@ -100,6 +100,7 @@
 
 - `plugin install <name>@<marketplace> --dry-run` no longer performs the install: the marketplace branch never read the flag, so it fetched the plugin, wrote the cache and both registries, and reported a completed install; it now resolves the version from the catalog and writes nothing.
 - `plugin link <path>` no longer fails with `EISDIR` when the plugin is already installed as a real directory from npm or a marketplace, which is the state a local checkout replaces.
+- The Agent Control Center's read-only transcript viewer expands argot shorthand instead of showing the model's raw `§handle` text; it parses a subagent's or advisor's persisted transcript directly, and the persisted form keeps the handles.
 - Characters typed in the same terminal read as a paste are no longer discarded; the editor read the pasted payload and the bytes following it but dropped the ones preceding it, so the last thing typed before `Cmd+V` disappeared.
 - Backspace works at the launch card: the startup gate refused any chunk carrying a control byte, so a character typed by mistake before the composer mounted could not be taken back and the typo was what the session started with.
 - An unattended goal keeps driving after a turn whose post-turn maintenance outlasts the continuation delay, instead of sitting active and idle until someone types.

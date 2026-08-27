@@ -22,6 +22,7 @@ import {
 import { type JsonWithOptionalFields, mapJsonStrings } from "./json-transform";
 import { mapAgentMessageStrings, mapAssistantContentStrings } from "./secrets/obfuscator";
 import type { SessionContext } from "./session/session-context";
+import type { SessionMessageEntry } from "./session/session-entries";
 
 /**
  * Adapt veyyon's three settings fields to an argot gate. The gate SHAPE and its
@@ -496,4 +497,33 @@ export function expandSessionContext(argot: ArgotSession, context: SessionContex
 	if (!argot.loaded) return context;
 	const messages = mapAgentMessageStrings(context.messages, s => argot.expand(s), DISPLAY_WALK);
 	return messages === context.messages ? context : { ...context, messages };
+}
+
+/**
+ * Expand handles across persisted transcript entries read straight off disk.
+ *
+ * `expandSessionContext` covers a rebuild that goes through `SessionManager`.
+ * The Agent Control Center's transcript viewer does not: it parses a subagent's
+ * or advisor's `.jsonl` itself, because those two cases have no live session to
+ * hand the view over to. The persisted file keeps the cheap handles (see
+ * {@link expandSessionContext}), so that viewer was the one display that showed
+ * the model's raw `§handle` text. Same walk, same codec, one entry list instead
+ * of a `SessionContext`.
+ *
+ * Identity until a dictionary loads, and identity when nothing changed, so the
+ * viewer's append path can keep comparing entry arrays by reference.
+ */
+export function expandSessionMessageEntries(
+	argot: ArgotSession,
+	entries: SessionMessageEntry[],
+): SessionMessageEntry[] {
+	if (!argot.loaded) return entries;
+	const source = entries.map(entry => entry.message);
+	const expanded = mapAgentMessageStrings(source, s => argot.expand(s), DISPLAY_WALK);
+	// `mapAgentMessageStrings` hands the input array back untouched when no
+	// string moved, which is the common case once a transcript is fully read.
+	if (expanded === source) return entries;
+	return entries.map((entry, index) =>
+		expanded[index] === entry.message ? entry : { ...entry, message: expanded[index] },
+	);
 }
