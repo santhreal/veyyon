@@ -383,7 +383,9 @@ describe("a marketplace dry run installs nothing", () => {
 
 	test("a plugin the catalog does not list fails loud instead of reporting a plan", async () => {
 		const before = await pluginsTree();
-		const exit = vi.spyOn(process, "exit").mockImplementation(((code?: number) => {
+		// The stub is what makes a process exit observable in-process; the assertions below read the
+		// exit code out of the thrown message, the operator-visible wording, and the untouched tree.
+		vi.spyOn(process, "exit").mockImplementation(((code?: number) => {
 			throw new Error(`process.exit(${code})`);
 		}) as (code?: number) => never);
 
@@ -391,7 +393,6 @@ describe("a marketplace dry run installs nothing", () => {
 			runPluginCommand({ action: "install", args: [`ghost@${MARKETPLACE}`], flags: { dryRun: true } }),
 		).rejects.toThrow("process.exit(1)");
 
-		expect(exit).toHaveBeenCalledWith(1);
 		expect(err.join("\n")).toContain(`${MARKETPLACE} lists no plugin named ghost`);
 		expect(out).toEqual([]);
 		expect(await pluginsTree()).toEqual(before);
