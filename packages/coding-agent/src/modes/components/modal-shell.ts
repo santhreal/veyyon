@@ -361,7 +361,8 @@ export interface ShortcutLayoutRow {
 /** Chip labels with live keybindings resolved. A chip whose every action is unbound disappears. */
 function resolveShortcutLabels(shortcuts: readonly ModalShortcut[]): ModalShortcut[] {
 	const resolved: ModalShortcut[] = [];
-	for (const shortcut of shortcuts) {
+	for (let si = 0; si < shortcuts.length; si++) {
+		const shortcut = shortcuts[si]!;
 		if (!shortcut.keybindings) {
 			resolved.push(shortcut);
 			continue;
@@ -418,13 +419,19 @@ export function layoutShortcutRows(
 ): ShortcutLayoutRow[] {
 	if (width <= 0 || shortcuts.length === 0) return [];
 	const resolvedShortcuts = resolveShortcutLabels(shortcuts);
-	const chips = resolvedShortcuts.map(s => ({
-		id: s.id,
-		clickable: Boolean(s.clickable && s.id),
-		plain: s.label,
-		styled: styleShortcutChip(s.label, Boolean(s.id && s.id === hoveredId)),
-		w: visibleWidth(s.label),
-	}));
+	const chips = new Array<{ id: string; clickable: boolean; plain: string; styled: string; w: number }>(
+		resolvedShortcuts.length,
+	);
+	for (let si = 0; si < resolvedShortcuts.length; si++) {
+		const s = resolvedShortcuts[si]!;
+		chips[si] = {
+			id: s.id,
+			clickable: Boolean(s.clickable && s.id),
+			plain: s.label,
+			styled: styleShortcutChip(s.label, Boolean(s.id && s.id === hoveredId)),
+			w: visibleWidth(s.label),
+		};
+	}
 	const sepW = visibleWidth(SHORTCUT_SEP);
 	const chipWidths = new Array<number>(chips.length);
 	for (let ci = 0; ci < chips.length; ci++) chipWidths[ci] = chips[ci]!.w;
@@ -452,13 +459,15 @@ export function layoutShortcutRows(
 		}
 	}
 
-	return groups.map(indices => {
+	const rows = new Array<ShortcutLayoutRow>(groups.length);
+	for (let gi = 0; gi < groups.length; gi++) {
+		const indices = groups[gi]!;
 		let plain = "";
 		let styled = "";
 		let w = 0;
 		const rowChips: ShortcutLayoutRow["chips"] = [];
-		for (const idx of indices) {
-			const chip = chips[idx]!;
+		for (let ii = 0; ii < indices.length; ii++) {
+			const chip = chips[indices[ii]!]!;
 			if (w === 0) {
 				plain = chip.plain;
 				styled = chip.styled;
@@ -472,8 +481,9 @@ export function layoutShortcutRows(
 				rowChips.push({ id: chip.id, clickable: chip.clickable, offset, width: chip.w });
 			}
 		}
-		return { plain, styled, chips: rowChips };
-	});
+		rows[gi] = { plain, styled, chips: rowChips };
+	}
+	return rows;
 }
 
 /**
@@ -484,18 +494,22 @@ export function renderModalShortcuts(
 	width: number,
 	hoveredId?: string | null,
 ): string[] {
-	return layoutShortcutRows(shortcuts, width, hoveredId).map(({ plain, styled }) => {
+	const rows = layoutShortcutRows(shortcuts, width, hoveredId);
+	const lines = new Array<string>(rows.length);
+	for (let ri = 0; ri < rows.length; ri++) {
+		const { plain, styled } = rows[ri]!;
 		const pad = Math.max(0, width - visibleWidth(plain));
 		const left = Math.floor(pad / 2);
-		return padding(left) + styled + padding(pad - left);
-	});
+		lines[ri] = padding(left) + styled + padding(pad - left);
+	}
+	return lines;
 }
 
 /** First tip candidate that fits; else truncate the last. */
 export function fitTipLine(candidates: readonly string[], width: number): string {
 	if (width <= 0 || candidates.length === 0) return "";
-	for (const c of candidates) {
-		if (visibleWidth(c) <= width) return c;
+	for (let ci = 0; ci < candidates.length; ci++) {
+		if (visibleWidth(candidates[ci]!) <= width) return candidates[ci]!;
 	}
 	return truncateToWidth(candidates[candidates.length - 1] ?? "", width);
 }
@@ -694,8 +708,8 @@ export function renderModalShell(input: ModalShellInput): ModalShellResult {
 	}
 
 	const bodyRowStartInCard = card.length;
-	for (const line of body) {
-		card.push(row(fit(line, contentWidth), modalWidth));
+	for (let bi = 0; bi < body.length; bi++) {
+		card.push(row(fit(body[bi]!, contentWidth), modalWidth));
 	}
 
 	for (let i = 0; i < vPad; i++) {
@@ -718,7 +732,8 @@ export function renderModalShell(input: ModalShellInput): ModalShellResult {
 		const left = Math.floor(pad / 2);
 		card.push(row(padding(left) + layout.styled + padding(pad - left), modalWidth));
 		const screenRow = cardTopPad + shortcutStartInCard + i;
-		for (const chip of layout.chips) {
+		for (let ci = 0; ci < layout.chips.length; ci++) {
+			const chip = layout.chips[ci]!;
 			if (!chip.clickable || !chip.id) continue;
 			shortcutHits.push({
 				id: chip.id,
@@ -741,8 +756,8 @@ export function renderModalShell(input: ModalShellInput): ModalShellResult {
 	const rightPad = Math.max(0, input.areaWidth - leftPad - modalWidth);
 	const frame: string[] = [];
 	for (let i = 0; i < cardTopPad; i++) frame.push(padding(input.areaWidth));
-	for (const line of clipped) {
-		frame.push(padding(leftPad) + line + padding(rightPad));
+	for (let ci = 0; ci < clipped.length; ci++) {
+		frame.push(padding(leftPad) + clipped[ci]! + padding(rightPad));
 	}
 	while (frame.length < input.areaHeight) frame.push(padding(input.areaWidth));
 
