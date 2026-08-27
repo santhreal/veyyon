@@ -75,7 +75,7 @@ export function validateSummaryRules(summary: string): { errors: string[]; warni
 	const warnings: string[] = [];
 	const basic = validateSummary(summary, SUMMARY_MAX_CHARS);
 	if (!basic.valid) {
-		errors.push(...basic.errors);
+		for (let ei = 0; ei < basic.errors.length; ei++) errors.push(basic.errors[ei]!);
 	}
 
 	const words = summary.trim().split(/\s+/);

@@ -2605,7 +2605,7 @@ export class ModelRegistry {
 			}
 			// Store as runtime overlays so they survive #reloadStaticModels()
 			this.#runtimeModelOverlays = this.#runtimeModelOverlays.filter(m => m.provider !== providerName);
-			this.#runtimeModelOverlays.push(...newOverlays);
+			for (let oi = 0; oi < newOverlays.length; oi++) this.#runtimeModelOverlays.push(newOverlays[oi]!);
 
 			// Also update #models immediately for the current cycle
 			const nextModels = this.#models.filter(m => m.provider !== providerName);

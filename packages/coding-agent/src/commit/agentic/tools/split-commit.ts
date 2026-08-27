@@ -71,7 +71,8 @@ export function createSplitCommitTool(
 				const summary = normalizeSummary(commit.summary, commit.type, scope);
 				const detailInput = normalizeDetails(commit.details ?? []);
 				const detailResult = capDetails(detailInput);
-				warnings.push(...detailResult.warnings.map(warning => `Commit ${index + 1}: ${warning}`));
+				const detailWarnings = detailResult.warnings.map(warning => `Commit ${index + 1}: ${warning}`);
+				for (let wi = 0; wi < detailWarnings.length; wi++) warnings.push(detailWarnings[wi]!);
 				const issueRefs = commit.issue_refs ?? [];
 				const dependencies = (commit.dependencies ?? []).map(dep => Math.floor(dep));
 				const changes = commit.changes.map(change => ({
@@ -89,20 +90,26 @@ export function createSplitCommitTool(
 				});
 
 				if (summaryValidation.errors.length > 0) {
-					errors.push(...summaryValidation.errors.map(error => `Commit ${index + 1}: ${error}`));
+					const summaryErrors = summaryValidation.errors.map(error => `Commit ${index + 1}: ${error}`);
+					for (let ei = 0; ei < summaryErrors.length; ei++) errors.push(summaryErrors[ei]!);
 				}
 				if (!scopeValidation.valid) {
-					errors.push(...scopeValidation.errors.map(error => `Commit ${index + 1}: ${error}`));
+					const scopeErrors = scopeValidation.errors.map(error => `Commit ${index + 1}: ${error}`);
+					for (let ei = 0; ei < scopeErrors.length; ei++) errors.push(scopeErrors[ei]!);
 				}
 				if (typeValidation.errors.length > 0) {
-					errors.push(...typeValidation.errors.map(error => `Commit ${index + 1}: ${error}`));
+					const typeErrors = typeValidation.errors.map(error => `Commit ${index + 1}: ${error}`);
+					for (let ei = 0; ei < typeErrors.length; ei++) errors.push(typeErrors[ei]!);
 				}
-				warnings.push(...summaryValidation.warnings.map(warning => `Commit ${index + 1}: ${warning}`));
-				warnings.push(...typeValidation.warnings.map(warning => `Commit ${index + 1}: ${warning}`));
+				const summaryWarnings = summaryValidation.warnings.map(warning => `Commit ${index + 1}: ${warning}`);
+				for (let wi = 0; wi < summaryWarnings.length; wi++) warnings.push(summaryWarnings[wi]!);
+				const typeWarnings = typeValidation.warnings.map(warning => `Commit ${index + 1}: ${warning}`);
+				for (let wi = 0; wi < typeWarnings.length; wi++) warnings.push(typeWarnings[wi]!);
 				const hunkValidation = validateHunkSelectors(index, changes, files, validateHunksForDiff);
-				warnings.push(...hunkValidation.warnings);
-				errors.push(...hunkValidation.errors);
-				errors.push(...validateDependencies(index, dependencies, params.commits.length));
+				for (let wi = 0; wi < hunkValidation.warnings.length; wi++) warnings.push(hunkValidation.warnings[wi]!);
+				for (let ei = 0; ei < hunkValidation.errors.length; ei++) errors.push(hunkValidation.errors[ei]!);
+				const depErrors = validateDependencies(index, dependencies, params.commits.length);
+				for (let ei = 0; ei < depErrors.length; ei++) errors.push(depErrors[ei]!);
 
 				return {
 					changes,

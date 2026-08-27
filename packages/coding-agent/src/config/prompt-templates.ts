@@ -203,11 +203,13 @@ export async function loadPromptTemplates(options: LoadPromptTemplatesOptions = 
 	// 1. Load global templates from agentDir/prompts/
 	// Note: if agentDir is provided, it should be the agent dir, not the prompts dir
 	const globalPromptsDir = options.agentDir ? path.join(options.agentDir, "prompts") : resolvedAgentDir;
-	templates.push(...(await loadTemplatesFromDir(globalPromptsDir, "user")));
+	const globalTemplates = await loadTemplatesFromDir(globalPromptsDir, "user");
+	for (let ti = 0; ti < globalTemplates.length; ti++) templates.push(globalTemplates[ti]!);
 
 	// 2. Load project templates from cwd/.veyyon/prompts/
 	const projectPromptsDir = getProjectPromptsDir(resolvedCwd);
-	templates.push(...(await loadTemplatesFromDir(projectPromptsDir, "project")));
+	const projectTemplates = await loadTemplatesFromDir(projectPromptsDir, "project");
+	for (let ti = 0; ti < projectTemplates.length; ti++) templates.push(projectTemplates[ti]!);
 
 	return templates;
 }

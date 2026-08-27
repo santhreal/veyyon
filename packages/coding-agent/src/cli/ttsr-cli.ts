@@ -647,7 +647,8 @@ async function scanRulePlanMatchesContent(
 	let astHit = false;
 	if ((includeDetails || !regexHit) && lang && plan.astConditions.length > 0) {
 		if (includeDetails) {
-			matchedAst.push(...(await astMatches(plan.rule, fileContent, lang)));
+			const astMatchesResult = await astMatches(plan.rule, fileContent, lang);
+			for (let ai = 0; ai < astMatchesResult.length; ai++) matchedAst.push(astMatchesResult[ai]!);
 			astHit = matchedAst.length > 0;
 		} else {
 			try {

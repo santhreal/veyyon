@@ -414,7 +414,7 @@ function resolvePathScopedStringArray(settingPath: SettingPath, value: unknown, 
 						...stringArrayFromUnknown(scoped.items),
 						...stringArrayFromUnknown(scoped.providers),
 					];
-		resolved.push(...values);
+		for (let vi = 0; vi < values.length; vi++) resolved.push(values[vi]!);
 	}
 
 	return resolved;

@@ -560,7 +560,8 @@ export function formatUsageBreakdown(
 			for (const template of providerLimitTemplates) {
 				const limit = limitsById.get(template.id);
 				if (limit) {
-					lines.push(...formatLimitLine(limit, labelWidth, nowMs));
+					const limitLines = formatLimitLine(limit, labelWidth, nowMs);
+					for (let li = 0; li < limitLines.length; li++) lines.push(limitLines[li]!);
 				} else {
 					lines.push(formatMissingLimitLine(template, labelWidth));
 				}
