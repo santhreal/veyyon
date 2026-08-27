@@ -245,6 +245,7 @@
 - `settings-selector.ts` replaces spread + `.split().map()` closure with for loop in appearance preview rendering.
 - `settings-list.ts` replaces `[...render(width)]` spread with `.slice()` in submenu render to avoid iterator allocation.
 - `debug.ts` replaces `.filter().join()` and `.map()` closures with for loops in `formatDisassembly`, `formatSessions`, and render snapshot/output paths.
+- `job.ts` replaces `.filter()`, `for-of`, `[...jobs].sort()`, `.slice().map()`, and spread + `.map()` closures with index loops and `.slice()` in render path.
 ### Added
 
 - `/advisor` reports advisor status, opens the `WATCHDOG.yml` roster editor and applies a save to the running session, starts or stops the advisor for the session, and copies the advisor's own transcript; the subsystem shipped complete but no command, key or menu row reached it.
