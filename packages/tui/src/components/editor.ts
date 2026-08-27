@@ -22,6 +22,7 @@ import {
 	moveWordLeft,
 	moveWordRight,
 	padding,
+	padLineToWidth,
 	reopenBackgroundAfterResets,
 	replaceTabs,
 	sliceByColumn,
@@ -721,7 +722,7 @@ export class Editor implements Component, Focusable, MouseRoutable {
 		let continuation = padding(gutterWidth);
 		if (continuationSource !== undefined) {
 			const sliced = sliceByColumn(continuationSource, 0, gutterWidth, true);
-			continuation = sliced + padding(Math.max(0, gutterWidth - visibleWidth(sliced)));
+			continuation = padLineToWidth(sliced, gutterWidth);
 		}
 		return {
 			firstLine: sliceByColumn(this.#promptGutter, 0, gutterWidth, true),
