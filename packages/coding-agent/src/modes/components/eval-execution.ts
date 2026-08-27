@@ -84,7 +84,9 @@ export class EvalExecutionComponent extends Container {
 
 	appendOutput(chunk: string): void {
 		// Chunk is pre-sanitized by OutputSink.push() — no need to sanitize again.
-		const newLines = chunk.split("\n").map(line => clampExecutionDisplayLine(line));
+		const rawLines = chunk.split("\n");
+		const newLines: string[] = new Array(rawLines.length);
+		for (let li = 0; li < rawLines.length; li++) newLines[li] = clampExecutionDisplayLine(rawLines[li]!);
 		if (this.#outputLines.length > 0 && newLines.length > 0) {
 			this.#outputLines[this.#outputLines.length - 1] = clampExecutionDisplayLine(
 				`${this.#outputLines[this.#outputLines.length - 1]}${newLines[0]}`,
@@ -154,7 +156,13 @@ export class EvalExecutionComponent extends Container {
 
 	#setOutput(output: string): void {
 		const clean = sanitizeText(output);
-		this.#outputLines = clean ? clean.split("\n").map(line => clampExecutionDisplayLine(line)) : [];
+		if (!clean) {
+			this.#outputLines = [];
+		} else {
+			const raw = clean.split("\n");
+			this.#outputLines = new Array(raw.length);
+			for (let li = 0; li < raw.length; li++) this.#outputLines[li] = clampExecutionDisplayLine(raw[li]!);
+		}
 		// The authoritative output replaces whatever streaming kept, so nothing is missing any more.
 		this.#droppedLineCount = 0;
 	}
