@@ -225,8 +225,10 @@ export class SignInTab implements SetupTab {
 			for (let li = 0; li < ul.length; li++) lines.push(ul[li]!);
 		}
 		if (this.#statusLines.length > 0) {
-			const sl = this.#statusLines.flatMap(line => wrapTextWithAnsi(line, width));
-			for (let li = 0; li < sl.length; li++) lines.push(sl[li]!);
+			for (let si = 0; si < this.#statusLines.length; si++) {
+				const wrapped = wrapTextWithAnsi(this.#statusLines[si]!, width);
+				for (let wi = 0; wi < wrapped.length; wi++) lines.push(wrapped[wi]!);
+			}
 		}
 		return lines;
 	}

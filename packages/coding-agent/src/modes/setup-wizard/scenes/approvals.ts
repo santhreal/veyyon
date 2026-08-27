@@ -137,7 +137,11 @@ export class ApprovalsSceneController implements SetupSceneController {
 		const ll = this.#list.render(width);
 		for (let li = 0; li < ll.length; li++) lines.push(ll[li]!);
 		if (this.#status.length > 0) {
-			lines.push("", ...this.#status.flatMap(line => wrapTextWithAnsi(line, width)));
+			lines.push("");
+			for (let si = 0; si < this.#status.length; si++) {
+				const wrapped = wrapTextWithAnsi(this.#status[si]!, width);
+				for (let wi = 0; wi < wrapped.length; wi++) lines.push(wrapped[wi]!);
+			}
 		}
 		return lines;
 	}
