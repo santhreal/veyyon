@@ -216,20 +216,26 @@ function center(line: string, width: number): string {
 function textBox(text: string): Box {
 	const raw = text.split("\n");
 	let width = 0;
-	for (const line of raw) width = Math.max(width, visibleWidth(line));
-	return { lines: raw.map(line => padRight(line, width)), baseline: (raw.length - 1) >> 1, width };
+	for (let li = 0; li < raw.length; li++) width = Math.max(width, visibleWidth(raw[li]!));
+	const lines = new Array<string>(raw.length);
+	for (let li = 0; li < raw.length; li++) lines[li] = padRight(raw[li]!, width);
+	return { lines, baseline: (raw.length - 1) >> 1, width };
 }
 
 /** Pad every line of `b` to `width` per `align`, keeping the baseline. */
 function padBox(b: Box, width: number, align: CellAlign): Box {
 	if (b.width >= width) return b;
-	const lines = b.lines.map(line => {
+	const lines = new Array<string>(b.lines.length);
+	for (let li = 0; li < b.lines.length; li++) {
+		const line = b.lines[li]!;
 		const extra = width - visibleWidth(line);
-		if (align === "l") return line + spaces(extra);
-		if (align === "r") return spaces(extra) + line;
-		const left = extra >> 1;
-		return spaces(left) + line + spaces(extra - left);
-	});
+		if (align === "l") lines[li] = line + spaces(extra);
+		else if (align === "r") lines[li] = spaces(extra) + line;
+		else {
+			const left = extra >> 1;
+			lines[li] = spaces(left) + line + spaces(extra - left);
+		}
+	}
 	return { lines, baseline: b.baseline, width };
 }
 
@@ -711,7 +717,8 @@ function splitCells(row: string): string[] {
 		i++;
 	}
 	cells.push(row.slice(last));
-	return cells.map(cell => cell.trim());
+	for (let ci = 0; ci < cells.length; ci++) cells[ci] = cells[ci]!.trim();
+	return cells;
 }
 
 /** Append a script (`^`/`_`) and its argument to the inline run verbatim. */
@@ -824,7 +831,9 @@ function parseEnvironment(src: string, start: number, ctx: Ctx): { box: Box; end
  * enclosing color scope while nested color runs still restore to it.
  */
 function colorizeBox(box: Box, scope: (text: string) => string): Box {
-	return { lines: box.lines.map(scope), baseline: box.baseline, width: box.width };
+	const lines = new Array<string>(box.lines.length);
+	for (let li = 0; li < box.lines.length; li++) lines[li] = scope(box.lines[li]!);
+	return { lines, baseline: box.baseline, width: box.width };
 }
 
 /**
