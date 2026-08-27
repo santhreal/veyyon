@@ -32,7 +32,11 @@ import { setTimeout } from "node:timers/promises";
 import { type Api, AuthStorage, completeSimple, type Model, SqliteAuthCredentialStore } from "@veyyon/ai";
 import { type GeneratedProvider, getBundledModel } from "@veyyon/catalog/models";
 import { collapseWhitespace, errorMessage, getAgentDbPath } from "@veyyon/utils";
+import { fetchWithin } from "../core/bounded-fetch";
 import { type FlagGrammar, flagCount, parseArgv } from "../core/flags";
+
+/** A trace body runs to megabytes, so it gets longer than a dashboard poll. */
+const TRACE_FETCH_TIMEOUT_MS = 60_000;
 
 const DEFAULT_TINY = "openrouter/inclusionai/ling-2.6-flash";
 const DEFAULT_SYNTH = "openrouter/openai/gpt-oss-120b";
@@ -354,7 +358,9 @@ async function main(): Promise<void> {
 	}
 	const [, run, trace] = match;
 
-	const traceResponse = await fetch(`${values.base}/api/runs/${run}/traces/${trace}`);
+	const traceResponse = await fetchWithin(`${values.base}/api/runs/${run}/traces/${trace}`, undefined, {
+		timeoutMs: TRACE_FETCH_TIMEOUT_MS,
+	});
 	if (!traceResponse.ok)
 		throw new Error(`trace fetch failed: HTTP ${traceResponse.status} ${await traceResponse.text()}`);
 	const traceData = (await traceResponse.json()) as TraceResponse;
@@ -362,7 +368,7 @@ async function main(): Promise<void> {
 	let meta = "";
 	let status: string | undefined;
 	try {
-		const runResponse = await fetch(`${values.base}/api/runs/${run}`);
+		const runResponse = await fetchWithin(`${values.base}/api/runs/${run}`);
 		if (runResponse.ok) {
 			const runData = (await runResponse.json()) as RunResponse;
 			const row = runData.traces.find(candidate => candidate.name === trace);

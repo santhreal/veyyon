@@ -7,6 +7,7 @@ export * from "./arm-result";
 export * from "./auth-preflight";
 export * from "./auth-seed";
 export * from "./backend-registry";
+export * from "./bounded-fetch";
 export * from "./cell-variant";
 
 export * from "./external-command";

@@ -1,25 +1,28 @@
 /**
- * WHY: every dashboard request was unbounded.
+ * WHY: every HTTP request this package sent was unbounded.
  *
  * A manager wedged on a locked SQLite file, or a laptop that slept through a run, left the page
  * waiting on a promise that never settled: no rows, no error, a spinner that stayed. The poll behind
  * it never fired again either, because a poll cycle waits for the request it started, so one hung
- * request stopped the page updating for the rest of the session.
+ * request stopped the page updating for the rest of the session. The trace report and the vmnet
+ * forward that carries an agent's auth request out of a container had the same shape.
  *
  * THE CLASS THIS CLOSES: a request with no end and a failure with no words. `fetchWithin` in
- * `src/web/api.ts` is the single fetch every request in that module goes through — the token request,
- * both `authedFetch` branches and `getJson` — so a route added later is bounded by construction. The
- * cases drive a request that is never answered, one the caller cancels itself, and a normal answer,
- * and assert the bound produces a message naming the manager rather than a bare `AbortError`.
+ * `src/core/bounded-fetch.ts` is the one bounded request; the dashboard's token request, both
+ * `authedFetch` branches and `getJson` go through it, and the sweep here observes the bound on the
+ * signal each of those routes hands to `fetch`, so a route added later is covered. A request that is
+ * never answered, one the caller cancels itself, a normal answer and the named peer are all driven.
  *
- * WHAT IT DOES NOT CATCH: the SSE stream, which is a long-lived connection and must not be bounded —
- * its own heartbeat and unread-frame drop bound it. It also does not prove a component renders the
- * message; `test/web/a-progress-bar-draws-every-decided-trial.test.tsx` and the poll suite own that.
+ * WHAT IT DOES NOT CATCH: the SSE stream, which is long-lived by design and must not be bounded —
+ * its heartbeat and unread-frame drop bound it. The trace report's and the vmnet forward's own call
+ * sites are not driven here either: one is a CLI entrypoint and the other lives inside a
+ * `Bun.serve` handler, so what is proven for them is the runner they call, not the wiring.
  */
 
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { setTimeout as sleepFor } from "node:timers/promises";
-import { authedFetch, fetchWithin, forgetAuthToken, getJson, REQUEST_TIMEOUT_MS } from "../../src/web/api";
+import { fetchWithin, REQUEST_TIMEOUT_MS } from "../../src/core/bounded-fetch";
+import { authedFetch, forgetAuthToken, getJson } from "../../src/web/api";
 
 /** Short enough to keep the suite fast; that the request ends at all is the behaviour under test. */
 const BOUND_MS = 30;
@@ -51,7 +54,7 @@ describe("a request the manager never answers", () => {
 	it("ends at the bound and names what did not answer", async () => {
 		neverAnswers();
 
-		const hanging = fetchWithin("http://127.0.0.1:7391/api/runs", undefined, BOUND_MS);
+		const hanging = fetchWithin("http://127.0.0.1:7391/api/runs", undefined, { timeoutMs: BOUND_MS });
 
 		// Raced against real time on purpose: a request with no bound never settles, and a case that
 		// only awaits it would hang the file rather than fail it. The outcome is asserted, never a
@@ -67,12 +70,33 @@ describe("a request the manager never answers", () => {
 		expect(outcome).toBe(`the manager did not answer http://127.0.0.1:7391/api/runs within ${BOUND_MS}ms`);
 	});
 
+	it("names the peer that went quiet, which is not always the manager", async () => {
+		neverAnswers();
+
+		const outcome = await Promise.race([
+			fetchWithin("http://192.168.64.1:8787/token", undefined, {
+				timeoutMs: BOUND_MS,
+				subject: "the auth gateway",
+			}).then(
+				() => "answered",
+				(err: unknown) => (err instanceof Error ? err.message : String(err)),
+			),
+			sleepFor(OBSERVATION_MS).then(() => "still waiting"),
+		]);
+
+		expect(outcome).toBe(`the auth gateway did not answer http://192.168.64.1:8787/token within ${BOUND_MS}ms`);
+	});
+
 	it("keeps the caller's own cancellation distinct from the bound", async () => {
 		neverAnswers();
 		const controller = new AbortController();
 
 		// A bound far longer than this test could wait: only the caller's abort can end this.
-		const cancelling = fetchWithin("http://127.0.0.1:7391/api/runs", { signal: controller.signal }, 60_000);
+		const cancelling = fetchWithin(
+			"http://127.0.0.1:7391/api/runs",
+			{ signal: controller.signal },
+			{ timeoutMs: 60_000 },
+		);
 		controller.abort(new Error("the operator navigated away"));
 
 		await expect(cancelling).rejects.toThrow(/the operator navigated away/);
@@ -85,7 +109,7 @@ describe("a request the manager never answers", () => {
 				headers: { "content-type": "application/json" },
 			})) as unknown as typeof globalThis.fetch;
 
-		const res = await fetchWithin("http://127.0.0.1:7391/api/runs", undefined, BOUND_MS);
+		const res = await fetchWithin("http://127.0.0.1:7391/api/runs", undefined, { timeoutMs: BOUND_MS });
 
 		expect(res.status).toBe(200);
 		expect(await res.json()).toEqual({ runs: [] });
