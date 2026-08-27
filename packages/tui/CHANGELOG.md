@@ -23,6 +23,8 @@
 - `deccara.ts` scans SGR parameters in-place in `nextBackground` via `charCodeAt`, eliminating `line.slice()` and `params.split(";")` allocations per SGR sequence in `analyzeBgFillLine`.
 - `deccara.ts` parses SGR parameter integers via `charCodeAt` in `parseSgrInt`, avoiding `line.slice()` + `Number()` for every token; the slice is now allocated only for basic color tokens that become the background state.
 - `tui.ts` removes a dead `" ".repeat(afterPad)` expression in overlay compositing, a no-op left from the `padding()` migration.
+- `select-list.ts` and `settings-list.ts` replace `Array.from(filterQuery).pop().join("")` in the backspace handler with a `charCodeAt` surrogate-pair check and `slice`, eliminating an intermediate array allocation per backspace.
+
 
 
 - `motion-paint.ts` uses `CHANNEL_STR` lookup instead of `String()` for channel value emission in `fadeLineTowards`, avoiding per-channel string conversion during truecolor SGR fading.
