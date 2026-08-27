@@ -244,17 +244,18 @@ function hconcat(boxes: Box[]): Box {
 	if (boxes.length === 1) return boxes[0];
 	let above = 0;
 	let below = 0;
-	for (const b of boxes) {
-		above = Math.max(above, b.baseline);
-		below = Math.max(below, b.lines.length - 1 - b.baseline);
+	for (let bi = 0; bi < boxes.length; bi++) {
+		above = Math.max(above, boxes[bi]!.baseline);
+		below = Math.max(below, boxes[bi]!.lines.length - 1 - boxes[bi]!.baseline);
 	}
 	const height = above + below + 1;
 	const lines: string[] = [];
 	let width = 0;
-	for (const b of boxes) width += b.width;
+	for (let bi = 0; bi < boxes.length; bi++) width += boxes[bi]!.width;
 	for (let row = 0; row < height; row++) {
 		let line = "";
-		for (const b of boxes) {
+		for (let bi = 0; bi < boxes.length; bi++) {
+			const b = boxes[bi]!;
 			const local = row - (above - b.baseline);
 			line += local >= 0 && local < b.lines.length ? b.lines[local] : spaces(b.width);
 		}
@@ -267,10 +268,13 @@ function hconcat(boxes: Box[]): Box {
 function vconcat(boxes: Box[], align: CellAlign = "l"): Box {
 	if (boxes.length === 1) return boxes[0];
 	let width = 0;
-	for (const b of boxes) width = Math.max(width, b.width);
+	for (let bi = 0; bi < boxes.length; bi++) width = Math.max(width, boxes[bi]!.width);
 	const lines: string[] = [];
-	for (const b of boxes) {
-		for (const line of b.lines) lines.push(align === "c" ? center(line, width) : padRight(line, width));
+	for (let bi = 0; bi < boxes.length; bi++) {
+		const bLines = boxes[bi]!.lines;
+		for (let li = 0; li < bLines.length; li++) {
+			lines.push(align === "c" ? center(bLines[li]!, width) : padRight(bLines[li]!, width));
+		}
 	}
 	return { lines, baseline: (lines.length - 1) >> 1, width };
 }
@@ -360,10 +364,10 @@ function radicalBox(inner: Box, degree: string | null): Box {
 function limitsBox(glyph: Box, sub: Box | null, sup: Box | null): Box {
 	const width = Math.max(glyph.width, sub?.width ?? 0, sup?.width ?? 0);
 	const lines: string[] = [];
-	if (sup) for (const line of sup.lines) lines.push(center(line, width));
+	if (sup) for (let li = 0; li < sup.lines.length; li++) lines.push(center(sup.lines[li]!, width));
 	const baseline = lines.length + glyph.baseline;
-	for (const line of glyph.lines) lines.push(center(line, width));
-	if (sub) for (const line of sub.lines) lines.push(center(line, width));
+	for (let li = 0; li < glyph.lines.length; li++) lines.push(center(glyph.lines[li]!, width));
+	if (sub) for (let li = 0; li < sub.lines.length; li++) lines.push(center(sub.lines[li]!, width));
 	return { lines, baseline, width };
 }
 
@@ -382,7 +386,7 @@ function attachScripts(base: Box, sub: Box | null, sup: Box | null): Box {
 	let baseline = 0;
 	if (sup) {
 		const lift = single ? 1 : base.baseline;
-		for (const line of sup.lines) lines.push(padRight(line, width));
+		for (let li = 0; li < sup.lines.length; li++) lines.push(padRight(sup.lines[li]!, width));
 		for (let k = 0; k < lift; k++) lines.push(blank);
 		baseline = lines.length - 1;
 	}
@@ -393,7 +397,7 @@ function attachScripts(base: Box, sub: Box | null, sup: Box | null): Box {
 		// Rows between the baseline row and the subscript's top row.
 		const gap = lines.length === 0 ? drop : drop - 1;
 		for (let k = 0; k < gap; k++) lines.push(blank);
-		for (const line of sub.lines) lines.push(padRight(line, width));
+		for (let li = 0; li < sub.lines.length; li++) lines.push(padRight(sub.lines[li]!, width));
 	}
 	return hconcat([base, { lines, baseline, width }]);
 }
@@ -407,16 +411,18 @@ function attachScripts(base: Box, sub: Box | null, sup: Box | null): Box {
  */
 function gridBox(rows: Box[][], align: (col: number) => CellAlign, gap: (col: number) => number, rowGap = 0): Box {
 	let ncols = 0;
-	for (const row of rows) ncols = Math.max(ncols, row.length);
+	for (let ri = 0; ri < rows.length; ri++) ncols = Math.max(ncols, rows[ri]!.length);
 	if (ncols === 0 || rows.length === 0) return textBox("");
 	const widths = new Array<number>(ncols).fill(0);
-	for (const row of rows) {
-		row.forEach((cell, j) => {
-			widths[j] = Math.max(widths[j], cell.width);
-		});
+	for (let ri = 0; ri < rows.length; ri++) {
+		const row = rows[ri]!;
+		for (let j = 0; j < row.length; j++) {
+			widths[j] = Math.max(widths[j], row[j]!.width);
+		}
 	}
 	const rowBoxes: Box[] = [];
-	for (const row of rows) {
+	for (let ri = 0; ri < rows.length; ri++) {
+		const row = rows[ri]!;
 		if (rowGap > 0 && rowBoxes.length > 0) {
 			for (let g = 0; g < rowGap; g++) rowBoxes.push({ lines: [""], baseline: 0, width: 0 });
 		}
