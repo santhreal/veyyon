@@ -22,6 +22,7 @@
 
 ### Fixed
 
+- A Gemini or Cloud Code Assist body that carried a whole turn and then ended without a `finishReason` settles on what arrived rather than failing as a truncated response, matching the four dialects that already read the shared end-of-stream judgement; a body carrying nothing usable is still refused.
 - A stream that ended without a terminal finish reason is classified as the truncation it is whatever the provider called it, so an OpenAI completions turn that stopped early is retried like the identically-worded Cloud Code Assist one instead of ending the turn; an empty response body is the same fault and is classified with it.
 - A turn that ended on an error finish reason is retried whichever provider reported it: Amazon Bedrock said "Generation failed with stop reason: error" and both Google paths "Generation failed with finish reason: error", neither of which the turn domain's pattern matched, so the identical failure retried on OpenAI and ended the turn on the other three.
 - A refusal spelled as a finish reason (`PROHIBITED_CONTENT`, `SAFETY`, `RECITATION`, `BLOCKLIST`, `SPII` and their `IMAGE_` forms), as `finish_reason: sensitive`, or as a Codex event carrying `code=cyber_policy` is classified as a content verdict and vetoes a retry, where only `MALFORMED_FUNCTION_CALL` had a rule.

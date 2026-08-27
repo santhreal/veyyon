@@ -46,6 +46,7 @@ import { fetchProviderWithRetry } from "../utils/provider-fetch";
 // the stream provider trusts the access token threaded through `options.apiKey`.
 import { normalizeSchemaForCCA } from "../utils/schema";
 import { StreamMarkupHealing, type StreamMarkupHealingEvent } from "../utils/stream-markup-healing";
+import { stopReasonForTerminallessEof } from "../utils/terminalless-eof";
 import { interleavedThinkingBeta } from "./anthropic";
 import type { Content, FunctionCallingConfigMode, ThinkingConfig, ThinkingLevel } from "./google-shared";
 import {
@@ -1039,11 +1040,24 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli"> = (
 						throw new AIError.RequestAbortError("Request was aborted");
 					}
 
+					// Same judgement as every other dialect, and for the same reason:
+					// a body that ends without a `finishReason` is a clean EOF, not a
+					// dropped transport, and rejecting all of them failed turns that
+					// had arrived whole. `stopReasonForTerminallessEof` owns it. A
+					// Cloud Code Assist function call arrives whole in one part with
+					// parsed `args`, so a missing name is the only partial shape.
 					if (!sawFinishReason) {
-						throw new AIError.ProviderResponseError(
-							"Cloud Code Assist stream ended without a finish reason (connection dropped or response truncated)",
-							{ provider: model.provider, kind: "incomplete-stream" },
+						const toolBatchIsComplete = output.content.every(
+							block => block.type !== "toolCall" || block.name.length > 0,
 						);
+						const stopReason = stopReasonForTerminallessEof(output.content, toolBatchIsComplete);
+						if (stopReason === undefined) {
+							throw new AIError.ProviderResponseError(
+								"Cloud Code Assist stream ended without a finish reason (connection dropped or response truncated)",
+								{ provider: model.provider, kind: "incomplete-stream" },
+							);
+						}
+						output.stopReason = stopReason;
 					}
 
 					// Succeeded! Break the endpoints loop.
