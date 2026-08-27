@@ -1,8 +1,11 @@
 /**
  * WHY:
- * Tests that listFiles in shared.ts is the single owner of recursive directory file listing
- * for the TypeScript edit benchmark, correctly sorting paths, resolving valid file symlinks,
- * and skipping dangling symlinks without throwing.
+ * `listFiles` in `src/core/fs-walk.ts` is the single owner of recursive directory listing for
+ * every suite, so a caller never writes a second walk that sorts differently or throws on a
+ * dangling symlink. This suite pins alphabetical order, resolved file symlinks, and skipped
+ * dangling symlinks.
+ *
+ * What it does not catch: a caller that walks a tree without going through `listFiles`.
  */
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
@@ -10,7 +13,7 @@ import * as path from "node:path";
 import { TempDir } from "@veyyon/utils";
 import { listFiles } from "../../../src/core/fs-walk";
 
-describe("shared listFiles", () => {
+describe("one file walker answers every caller", () => {
 	it("recursively lists files in alphabetical order", async () => {
 		const tempDir = await TempDir.create("@evals-listfiles-");
 		try {
