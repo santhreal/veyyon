@@ -175,28 +175,7 @@ export function fadeLineTowards(line: string, groundHex: string, strength: numbe
 	if (k >= 1) return line;
 	const ground = parseHexColor(groundHex);
 	if (ground === null) return line;
-	const channels = [ground.r, ground.g, ground.b];
-	SGR.lastIndex = 0;
-	return line.replace(SGR, (whole, params: string) => {
-		if (params === "") return whole;
-		// Even indices are values, odd indices the `;` or `:` between them.
-		const tokens = params.split(/([;:])/);
-		let changed = false;
-		for (let i = 0; i < tokens.length; i += 2) {
-			const code = tokens[i];
-			if ((code !== "38" && code !== "48") || tokens[i + 2] !== "2") continue;
-			const first = i + 4;
-			if (tokens[first + 4] === undefined) break; // truncated triple: leave it alone
-			for (let c = 0; c < 3; c++) {
-				const from = Number(tokens[first + c * 2]);
-				if (!Number.isFinite(from)) continue;
-				tokens[first + c * 2] = CHANNEL_STR[clampChannel(channels[c]! + (from - channels[c]!) * k)];
-				changed = true;
-			}
-			i = first + 4;
-		}
-		return changed ? `\x1b[${tokens.join("")}m` : whole;
-	});
+	return fadeLineWithParsedGround(line, ground.r, ground.g, ground.b, k);
 }
 
 /** Fade a block of rendered lines toward the ground behind it. */
