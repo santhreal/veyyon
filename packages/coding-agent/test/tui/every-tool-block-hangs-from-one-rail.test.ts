@@ -61,12 +61,19 @@ const CARDS_WITHOUT_A_TITLE_ROW: Record<string, string> = {
  * border of its own lands here and the suite goes red until someone records the
  * decision. `vibe_*`, `inspect_image` and an LSP hover code block used to sit in
  * this set, drawing a box, a connector and a code frame inside the rail.
+ *
+ * A third case reaches this set without being chrome at all: a renderer that
+ * echoes a remote command's stdout carries whatever glyphs that command printed,
+ * and no renderer can forbid a byte in content it did not author. The sweep
+ * cannot tell an echoed glyph from a drawn one, which is this suite's blind
+ * spot; an entry of that kind says so and names the command its fixture runs.
  */
 const RENDERERS_THAT_DRAW_A_TREE: Record<string, string> = {
 	eval: "a value tree: each row is a child of the expression above it",
 	grep: "a line-number gutter separating the number from its source line",
 	job: "a job tree: an output row belongs to the job row above it",
 	lsp: "a reference tree: a line belongs to the file above it",
+	ssh: "not chrome: the fixture echoes `systemctl status`, which prints a CGroup tree",
 };
 
 /** Box-drawing and rounded-corner glyphs, the alphabet a second edge is drawn in. */

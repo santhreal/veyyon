@@ -1,7 +1,68 @@
 import { afterAll, beforeAll, expect } from "bun:test";
-import type { Theme, ThemeColor } from "@veyyon/coding-agent/modes/theme/theme";
-import { getAnsiPolicy, setAnsiPolicy } from "@veyyon/tui";
+import {
+	getThemeByName,
+	setThemeInstance,
+	type Theme,
+	type ThemeColor,
+	theme,
+} from "@veyyon/coding-agent/modes/theme/theme";
+import { type AnsiPolicy, getAnsiPolicy, setAnsiPolicy, TERMINAL } from "@veyyon/tui";
 import { sanitizeText } from "@veyyon/utils";
+
+/**
+ * Install `name` as the process-wide theme for the calling suite, built TRUECOLOR, and put the
+ * previous instance back afterwards.
+ *
+ * WHY A SUITE MUST NOT HAND-ROLL THIS. Two things about the theme are easy to get half right, and
+ * a suite that gets either one wrong is green for the wrong reason.
+ *
+ * The first is the build. A mix — a fading band, a card unfolding out of the ground — only runs on
+ * the truecolor branch, and a `Theme` fixes its colour mode at CONSTRUCTION from the environment.
+ * A suite that loads a theme without pinning `COLORTERM` first asserts the 256-colour branch on a
+ * plain terminal, which is how a band test passes while the band is broken.
+ *
+ * The second is the restore, and it is the one that bites somebody else. `setThemeInstance` is
+ * process-wide and `bun test` runs a bucket's files in one process, so a suite that installs a
+ * truecolor theme and restores only `COLORTERM` and the ANSI policy leaves the INSTANCE behind —
+ * and the instance still reports truecolor however the environment reads afterwards. Every later
+ * file then renders a gradient where it expects the flat switched band. Three suites did exactly
+ * this and the bill landed on seventeen innocent tests in `modes/components`: pointer bands,
+ * selector overlays, the session tree card and `HistorySearchComponent` all failed in the full
+ * bucket and passed alone, which reads as flake rather than as a leak.
+ *
+ * Call it at the top level of the `describe` that needs colour, like {@link useFullColor}, which
+ * this also does — a truecolor theme with the policy off still paints nothing.
+ */
+export function useTruecolorTheme(name: string): void {
+	// `TERMINAL` declares the capability readonly; a suite that drives colour has to write it.
+	const terminalCaps: { trueColor: boolean } = TERMINAL;
+	let previousPolicy: AnsiPolicy;
+	let previousTheme: Theme | undefined;
+	let previousColorterm: string | undefined;
+	let previousTrueColor: boolean;
+	beforeAll(async () => {
+		previousPolicy = getAnsiPolicy();
+		previousTheme = theme;
+		previousColorterm = Bun.env.COLORTERM;
+		previousTrueColor = terminalCaps.trueColor;
+		setAnsiPolicy("full");
+		Bun.env.COLORTERM = "truecolor";
+		terminalCaps.trueColor = true;
+		const loaded = await getThemeByName(name);
+		if (!loaded) throw new Error(`${name} theme unavailable in test env`);
+		if (loaded.getColorMode() !== "truecolor") throw new Error(`${name} built as ${loaded.getColorMode()}`);
+		setThemeInstance(loaded);
+	});
+	afterAll(() => {
+		// `trueColor` first, and never omitted: it is the one a later `initTheme` reads, so leaving it
+		// set hands every subsequent suite a truecolor theme however its own environment reads.
+		terminalCaps.trueColor = previousTrueColor;
+		setAnsiPolicy(previousPolicy);
+		if (previousColorterm === undefined) delete (Bun.env as Record<string, string | undefined>).COLORTERM;
+		else Bun.env.COLORTERM = previousColorterm;
+		if (previousTheme !== undefined) setThemeInstance(previousTheme);
+	});
+}
 
 /**
  * Pin the ANSI policy to `full` for the calling suite, and restore it after.
