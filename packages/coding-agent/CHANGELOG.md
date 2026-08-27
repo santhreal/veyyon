@@ -186,6 +186,24 @@
 - `read-tool-group.ts` replaces `for-of` iterator in preview entry iteration with index-based for loop.
 - `command-controller.ts` replaces `.flatMap().map().reduce()` chain, `.map()`, `.map().join()`, and `for-of` destructuring in `resolveProviderUsageTotal` and `renderUsageReports` with index-based for loops.
 - `input-controller.ts` replaces `.filter().map()` chains, `.flatMap()`, `for-of`, and `.map().join()` in `restoreQueuedMessagesToEditor` with index-based for loops.
+- `edit/renderer.ts` replaces `.flatMap()` closures with index-based for loops in body line wrapping.
+- `setup-wizard/scenes/approvals.ts` and `sign-in.ts` replace `.flatMap()` closures with index-based for loops in scene render methods.
+- `command-controller.ts` replaces `.flatMap()` closures with for loops in usage notes; restores missing bars push line.
+- `latex-block.ts` replaces remaining `for-of` iterators with index loops in `hconcat`, `vconcat`, `limitsBox`, `attachScripts`, `gridBox`.
+- `autocomplete.ts` replaces `for-of` iterators with index loops in category setup, alias scoring, and file entry filtering.
+- `deccara.ts` replaces `for-of` iterator with index loop in `planDeccaraFills` group emission.
+- `fuzzy.ts` replaces remaining `for-of` iterators with index loops in `buildIndex`, `scoreAcronym`, `scoreTokenDirect`, `scoreToken`, `hasDistinctWordsForRepeatedTokens`, `fuzzyMatchCore`, `matchPositions`.
+- `motion.ts` replaces `for-of` iterator with index loop in animation tick.
+- `stdin-buffer.ts` replaces `for-of` iterators with index loops in sequence emission paths.
+- `tui.ts` replaces `for-of` iterators with index loops in container methods and render path resolution.
+- `tui/utils.ts` replaces `for-of` iterators with index loops in `correctedBunWidth` and OSC66 metadata parsing.
+- `box.ts` replaces `for-of` iterator with index loop in `invalidate`.
+- `sun.ts` replaces `for-of` iterators with index loops in ripple computation and grid rendering.
+- `welcome.ts` replaces `for-of` iterators and `.map()` closure with index loops in render paths and `gradientLogo`.
+- `status-line/segments.ts` replaces `for-of` iterators with index loops in `stripDisplayRoot`, `classifyProjectDir`, `renderBaseMode`.
+- `transcript-note.ts` replaces `for-of` iterator with index loop in row rendering.
+- `ttsr-notification.ts` replaces `for-of` iterator with index loop in rules rendering.
+- `todo-reminder.ts` replaces `for-of` iterator with index loop in preview rendering.
 ### Added
 
 - `/advisor` reports advisor status, opens the `WATCHDOG.yml` roster editor and applies a save to the running session, starts or stops the advisor for the session, and copies the advisor's own transcript; the subsystem shipped complete but no command, key or menu row reached it.
