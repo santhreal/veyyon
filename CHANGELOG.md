@@ -52,6 +52,8 @@
 ### Changed
 
 - `veyyon --help` renders its command list from registry summaries verified against command statics and loads only the hidden default command for its flag table, reducing a measured warm Windows invocation from 1.2 seconds to 0.13 seconds.
+- Reading a file measures only the lines its window can reach instead of every remaining line to end of file, cutting a default 50-line read of a 3982-line file from 3982 measured lines to 51 for a byte-identical result.
+- Row band painting compiles its escape pattern once for the process rather than once per painted row.
 - The default launch command imports the session runtime and ACP terminal authentication only when it runs, so loading its flag table no longer imports the runtime graph.
 - Classified runner output (cargo, bun, Go, ctest, dotnet, clippy, golangci-lint, Gradle lint, pytest, and tsc/eslint-family) opens with a result-contract header, `[clean] <command>` or `[errors]` / `[errors N] <command>`, carrying the verdict above a body of retained diagnostics.
 - Files → LSP is one enterable row whose nested page independently controls language servers, the agent tool, diagnostics after write or edit, format after write, lazy startup, and diagnostics deduplication; `--no-lsp` still disables the full stack.
@@ -93,6 +95,7 @@
 ### Fixed
 
 - A bash working directory on a different Windows drive from the project renders as the absolute path it is, instead of being reported as a path inside the project.
+- The `VEYYON_TINY_DEVICE` and `VEYYON_TINY_DTYPE` reference states the `providers.tinyModelDevice` and `providers.tinyModelDtype` defaults as the `default` sentinel each setting actually holds, and names what that sentinel selects, instead of listing `CPU` and `q4` as the stored values.
 - A collapsed `ssh` result measures its preview in rendered rows at the frame's inner width and shows the newest three lines with a count of what was hidden, instead of slicing the first five newlines and overflowing the frame whenever a remote line wrapped.
 - A terminal resize, theme switch or session switch no longer seals a backgrounded subagent's tool card mid-flight, so the progress it reports afterwards still reaches the card instead of being dropped for the rest of the turn.
 - The composer defect oracle counts only the prompt glyph the frame states, so a transcript row opening with `$`, `>` or `!` is no longer reported as a second composer prompt.

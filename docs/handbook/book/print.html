@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-dd8698e9.js";
+            window.path_to_searchindex_js = "searchindex-0da784d5.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-a2abefc1.js"></script>
@@ -9219,8 +9219,8 @@ rather than from each kernel formatting its own name.</li>
 <tr><td><code>VEYYON_PLAN_MODEL</code></td><td>Ephemeral model-role override for <code>plan</code> (CLI <code>--plan</code> takes precedence)</td></tr>
 <tr><td><code>VEYYON_NO_TITLE</code></td><td>If set (any non-empty value), disables auto session title generation on first user message</td></tr>
 <tr><td><code>VEYYON_SKIP_SETUP</code></td><td>If set to any value other than empty/<code>0</code>/<code>false</code>/<code>no</code> (case-insensitive), skips the first-run setup wizard (no setup scenes are shown).</td></tr>
-<tr><td><code>VEYYON_TINY_DEVICE</code></td><td>ONNX execution provider for local tiny models; overrides the <code>providers.tinyModelDevice</code> setting (default: CPU; supports <code>cpu</code>, <code>gpu</code>, <code>metal</code>/<code>webgpu</code>, <code>auto</code>, <code>cuda</code>, <code>dml</code>, <code>coreml</code>, <code>wasm</code>, <code>webnn</code>, <code>webnn-gpu</code>, <code>webnn-cpu</code>, <code>webnn-npu</code>)</td></tr>
-<tr><td><code>VEYYON_TINY_DTYPE</code></td><td>ONNX quantization/precision for local tiny models; overrides the <code>providers.tinyModelDtype</code> setting (default: each model’s shipped dtype, currently <code>q4</code>; supports <code>auto</code>, <code>fp32</code>, <code>fp16</code>, <code>q8</code>, <code>int8</code>, <code>uint8</code>, <code>q4</code>, <code>bnb4</code>, <code>q4f16</code>, <code>q2</code>, <code>q2f16</code>, <code>q1</code>, <code>q1f16</code>)</td></tr>
+<tr><td><code>VEYYON_TINY_DEVICE</code></td><td>ONNX execution provider for local tiny models; overrides the <code>providers.tinyModelDevice</code> setting (setting default: <code>default</code>, which selects CPU-only inference; also supports <code>cpu</code>, <code>gpu</code>, <code>metal</code>/<code>webgpu</code>, <code>auto</code>, <code>cuda</code>, <code>dml</code>, <code>coreml</code>, <code>wasm</code>, <code>webnn</code>, <code>webnn-gpu</code>, <code>webnn-cpu</code>, <code>webnn-npu</code>)</td></tr>
+<tr><td><code>VEYYON_TINY_DTYPE</code></td><td>ONNX quantization/precision for local tiny models; overrides the <code>providers.tinyModelDtype</code> setting (setting default: <code>default</code>, which selects each model’s shipped dtype, currently <code>q4</code>; also supports <code>auto</code>, <code>fp32</code>, <code>fp16</code>, <code>q8</code>, <code>int8</code>, <code>uint8</code>, <code>q4</code>, <code>bnb4</code>, <code>q4f16</code>, <code>q2</code>, <code>q2f16</code>, <code>q1</code>, <code>q1f16</code>)</td></tr>
 <tr><td><code>VEYYON_NO_INTERLEAVED_THINKING</code></td><td>If <code>1</code>, disables Anthropic interleaved thinking budget behavior and uses output-token inflation for older thinking mode</td></tr>
 <tr><td><code>VEYYON_NO_INTENT</code></td><td>If <code>1</code>, tool schemas ship without the injected <code>i</code> intent parameter, so the model stops stating what each call is for. Tools that already opt out are unaffected</td></tr>
 <tr><td><code>NULL_PROMPT</code></td><td>If <code>true</code>, system prompt builder returns empty string</td></tr>
