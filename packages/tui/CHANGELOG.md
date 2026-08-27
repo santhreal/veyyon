@@ -16,6 +16,7 @@
 - `motion-paint.ts` pre-computes a `HEX_BYTE` lookup table for `toHexColor`, eliminating `toString(16).padStart(2, "0")` per channel per truecolor SGR during animation.
 - `motion-paint.ts` exports `CHANNEL_STR` so callers in `coding-agent` can share the pre-computed 0–255 string table for truecolor SGR emission.
 - `tui.ts` replaces `Array.from(Set)` with direct `for...of` iteration in partial compose root resolution and input listener dispatch, eliminating an intermediate array allocation per render frame.
+- `motion.ts` replaces `Array.from(Set)` snapshot with `for...of` and deferred delete in the animation tick, eliminating a per-tick array allocation.
 
 ### Fixed
 
