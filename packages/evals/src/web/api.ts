@@ -8,6 +8,34 @@ function reason(err: unknown): string {
 }
 
 /**
+ * How long the dashboard waits for the manager before it reports it as unreachable.
+ *
+ * Every request here was unbounded. A manager wedged on a locked SQLite file, or a laptop that slept
+ * through a run, left the page waiting on a promise that never settled: no rows, no error, a spinner
+ * that stayed. The poll behind it never fired again either, because it waits for the request it
+ * started.
+ */
+export const REQUEST_TIMEOUT_MS = 15_000;
+
+/**
+ * One request, bounded, with the timeout named in the failure. A caller's own signal still cancels:
+ * whichever fires first ends the request, and only the bound produces the timeout message.
+ */
+export async function fetchWithin(url: string, init?: RequestInit, timeoutMs = REQUEST_TIMEOUT_MS): Promise<Response> {
+	const bound = AbortSignal.timeout(timeoutMs);
+	const signal = init?.signal ? AbortSignal.any([init.signal, bound]) : bound;
+	try {
+		return await fetch(url, { ...init, signal });
+	} catch (err) {
+		if (bound.aborted) {
+			const bounds = timeoutMs >= 1000 ? `${Math.round(timeoutMs / 1000)}s` : `${timeoutMs}ms`;
+			throw new Error(`the manager did not answer ${url} within ${bounds}`);
+		}
+		throw err;
+	}
+}
+
+/**
  * The session token every mutating request carries.
  *
  * A failure here used to be swallowed and the request sent with no token, which the manager rejects
@@ -18,7 +46,7 @@ export async function getAuthToken(): Promise<string> {
 	if (cachedAuthToken) return cachedAuthToken;
 	let res: Response;
 	try {
-		res = await fetch(resolveRoute("GET", "/api/token"));
+		res = await fetchWithin(resolveRoute("GET", "/api/token"));
 	} catch (err) {
 		throw new Error(`the manager did not answer a request for a session token: ${reason(err)}`);
 	}
@@ -91,20 +119,20 @@ export async function authedFetch(
 ): Promise<Response> {
 	const url = resolveRoute(method, template, params);
 	if (method === "GET") {
-		return fetch(url, { ...init, method });
+		return fetchWithin(url, { ...init, method });
 	}
 	const token = await getAuthToken();
 	const headers = new Headers(init?.headers);
 	if (token && !headers.has("x-evals-token") && !headers.has("authorization")) {
 		headers.set("x-evals-token", token);
 	}
-	return fetch(url, { ...init, method, headers });
+	return fetchWithin(url, { ...init, method, headers });
 }
 
 export async function getJson<T>(template: string, params?: Record<string, string>, query?: string): Promise<T> {
 	let url = resolveRoute("GET", template, params);
 	if (query) url += query;
-	const res = await fetch(url);
+	const res = await fetchWithin(url);
 	if (!res.ok) throw new Error(`${url}: ${res.status}`);
 	return (await res.json()) as T;
 }
