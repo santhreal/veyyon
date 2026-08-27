@@ -344,11 +344,16 @@ const GOAL_SPINNER_PERIOD_MS = 120;
 /** Recolor to warning once the goal has burned this fraction of its token budget. */
 const GOAL_NEAR_BUDGET_FRACTION = 0.9;
 
+/** Pre-computed filled/empty bar strings for each 0..GOAL_BAR_WIDTH fill level. */
+const GOAL_BAR_STRINGS: readonly string[] = Array.from(
+	{ length: GOAL_BAR_WIDTH + 1 },
+	(_, i) => "▰".repeat(i) + "▱".repeat(GOAL_BAR_WIDTH - i),
+);
+
 /** Compact filled/empty unicode bar for a 0..1 fraction (clamped). */
 export function goalProgressBar(fraction: number): string {
-	const clamped = clamp01(fraction);
-	const filled = Math.round(clamped * GOAL_BAR_WIDTH);
-	return `${"▰".repeat(filled)}${"▱".repeat(GOAL_BAR_WIDTH - filled)}`;
+	const filled = Math.round(clamp01(fraction) * GOAL_BAR_WIDTH);
+	return GOAL_BAR_STRINGS[filled]!;
 }
 
 /**
