@@ -1537,8 +1537,7 @@ function formatAccountHeaderRow(
 	const result = new Array<string>(parts.length);
 	for (let pi = 0; pi < parts.length; pi++) {
 		const p = parts[pi]!;
-		const prefix = truncateJobLabel(p.label, prefixBudget);
-		const prefixCell = prefix + padding(prefixBudget - visibleWidth(prefix));
+		const prefixCell = truncateToWidth(prefix, prefixBudget, undefined, true);
 		const styledPrefix = p.active ? uiTheme.fg("accent", prefixCell) : prefixCell;
 		if (!p.suffix) {
 			result[pi] = styledPrefix + padding(maxSuffixWidth + gap);
@@ -1551,9 +1550,7 @@ function formatAccountHeaderRow(
 }
 
 function padColumn(text: string, width: number): string {
-	const visible = visibleWidth(text);
-	if (visible >= width) return text;
-	return `${text}${padding(width - visible)}`;
+	return truncateToWidth(text, width, undefined, true);
 }
 
 function resolveAggregateStatus(limits: UsageLimit[]): UsageLimit["status"] {

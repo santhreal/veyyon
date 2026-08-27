@@ -258,6 +258,7 @@
 - `agent-dashboard.ts` fuses 4 `widest()` closure calls into a single for loop in the roster render path, and hoists the ScrollView theme to a module-level constant.
 - `selector-helpers.ts` exports `SCROLL_LIST_THEME` as a shared module-level constant; 10 files replace inline `{ track: t => ..., thumb: t => ... }` closures with the shared constant, eliminating per-frame closure allocation in ScrollView render paths.
 - `fitLine` in the setup wizard theme scene pads to width in the native `truncateToWidth` call instead of a separate `visibleWidth` scan plus `padding` concatenation.
+- `agent-dashboard.ts`, `extension-dashboard.ts`, `command-controller.ts`, `bash-interactive.ts`, and `tab-bar.ts` replace `truncateToWidth` + `visibleWidth` + `padding` with the native `truncateToWidth` `pad` parameter, eliminating a redundant width scan per padded row.
 
 ### Added
 

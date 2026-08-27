@@ -22,7 +22,6 @@ import {
 	type Tab,
 	TabBar,
 	truncateToWidth,
-	visibleWidth,
 } from "@veyyon/tui";
 import { clampLow, getMCPConfigPath, logger } from "@veyyon/utils";
 import { Settings } from "../../../config/settings";
@@ -569,8 +568,7 @@ class TwoColumnBody implements Component {
 		const combined: string[] = [];
 		const separator = theme.fg("dim", ` ${theme.boxSharp.vertical} `);
 		for (let i = 0; i < numLines; i++) {
-			const left = truncateToWidth(leftLines[i] ?? "", leftWidth);
-			const leftPadded = left + padding(Math.max(0, leftWidth - visibleWidth(left)));
+			const leftPadded = truncateToWidth(leftLines[i] ?? "", leftWidth, undefined, true);
 			const right = rightRendered[i] ?? "";
 			combined.push(leftPadded + separator + right);
 		}

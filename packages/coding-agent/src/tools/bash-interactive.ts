@@ -277,7 +277,7 @@ class BashInteractiveOverlayComponent implements Component {
 		const borderHorizontal = this.uiTheme.fg("border", this.uiTheme.boxSharp.horizontal.repeat(innerWidth));
 		const borderVertical = this.uiTheme.fg("border", this.uiTheme.boxSharp.vertical);
 		const boxLine = (line: string) =>
-			`${borderVertical}${line}${padding(Math.max(0, innerWidth - visibleWidth(line)))}${borderVertical}`;
+			`${borderVertical}${truncateToWidth(line, innerWidth, undefined, true)}${borderVertical}`;
 		const lines: string[] = [
 			`${this.uiTheme.fg("border", this.uiTheme.boxSharp.topLeft)}${borderHorizontal}${this.uiTheme.fg("border", this.uiTheme.boxSharp.topRight)}`,
 			boxLine(header),

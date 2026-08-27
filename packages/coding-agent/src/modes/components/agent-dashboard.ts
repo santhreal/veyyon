@@ -460,14 +460,12 @@ class LiveRosterPane implements Component {
 			doing && gistWidth >= 12
 				? `${head}  ${theme.fg("muted", truncateToWidth(sanitizeSingleLine(doing), gistWidth))}`
 				: head;
-		const contentPadded =
-			truncateToWidth(content, contentWidth) + padding(Math.max(0, contentWidth - visibleWidth(content)));
+		const contentPadded = truncateToWidth(content, contentWidth, undefined, true);
 		const actionWidth = 4;
 		const prefixWidth = Math.max(0, width - actionWidth);
-		const actionPrefix = truncateToWidth(content, prefixWidth);
 		const line =
 			terminable && hovered
-				? `${actionPrefix}${padding(Math.max(0, prefixWidth - visibleWidth(actionPrefix)))} ${theme.fg("error", "[x]")}`
+				? `${truncateToWidth(content, prefixWidth, undefined, true)} ${theme.fg("error", "[x]")}`
 				: contentPadded;
 		if (!selected) return line;
 		// `width` here is the view's content width, so the band stops exactly where

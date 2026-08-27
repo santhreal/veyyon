@@ -22,6 +22,7 @@
 - Exclude pinned footer rows from the scroll-isolation snapshot and scroll space so the composer does not duplicate inside scrolled-back history.
 - Extract LaTeX argument text by slicing the source rather than appending one character at a time, so a deeply nested optional-argument chain degrades linearly instead of quadratically.
 - `padLineToWidth` and `ScrollView` scrollbar rows pad to width in the native `truncateToWidth` call instead of a separate `visibleWidth` scan plus `padding` concatenation, removing a redundant width measurement from every padded row.
+- `padLineToWidth`, `ScrollView` scrollbar rows, and `TabBar` vertical render pad to width in the native `truncateToWidth` call instead of a separate `visibleWidth` scan plus `padding` concatenation, removing a redundant width measurement from every padded row.
 
 ## [1.2.0] - 2026-08-23
 
