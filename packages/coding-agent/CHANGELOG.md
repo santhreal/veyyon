@@ -25,6 +25,7 @@
 - `agent-dashboard.ts` pre-computes a `PAD2` lookup table for `clockTime`, replacing `String(value).padStart(2, "0")` per agent roster row.
 - `segments.ts` pre-computes `GOAL_BAR_STRINGS` for the goal progress bar, replacing `"▰".repeat() + "▱".repeat()` per status line frame with a 9-entry lookup table.
 - `segments.ts` replaces `os.hostname().split(".")[0]` with `indexOf` + `slice` in the hostname segment, avoiding an intermediate array per status line frame.
+- `getSessionAccentHex` in `session-color.ts` replaces `.map().filter()` on theme color hexes with a single for loop, eliminating two intermediate array allocations per session accent computation.
 
 
 

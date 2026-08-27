@@ -106,7 +106,11 @@ export function getSessionAccentHex(name: string, themeColorHexes: string[], sur
 	let targetHue = hueStart + (nameToHue(name) % range);
 
 	// 3. Shift away if too close to any theme color — stays within [hueStart, hueEnd]
-	const themeHues = themeColorHexes.map(hexToHue).filter((h): h is number => h !== undefined);
+	const themeHues: number[] = [];
+	for (let ti = 0; ti < themeColorHexes.length; ti++) {
+		const h = hexToHue(themeColorHexes[ti]!);
+		if (h !== undefined) themeHues.push(h);
+	}
 	targetHue = findSafeHue(targetHue, themeHues, hueStart, hueEnd);
 
 	// 4. Lightness/contrast — vivid on dark, bisected for AA on light
