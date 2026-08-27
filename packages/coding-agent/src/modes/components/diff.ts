@@ -25,8 +25,8 @@ function visualizeIndent(text: string): string {
 	const rightPadding = Math.max(0, tabWidth - leftPadding - 1);
 	const tabMarker = `${DIM}${" ".repeat(leftPadding)}→${" ".repeat(rightPadding)}${SGR_INTENSITY_RESET}`;
 	let visible = "";
-	for (const ch of indent) {
-		if (ch === "\t") {
+	for (let ci = 0; ci < indent.length; ci++) {
+		if (indent.charCodeAt(ci) === 9) {
 			visible += tabMarker;
 		} else {
 			visible += `${DIM}·${SGR_INTENSITY_RESET}`;
@@ -62,7 +62,8 @@ function renderIntraLineDiff(oldContent: string, newContent: string): { removedL
 	let isFirstRemoved = true;
 	let isFirstAdded = true;
 
-	for (const part of wordDiff) {
+	for (let pi = 0; pi < wordDiff.length; pi++) {
+		const part = wordDiff[pi]!;
 		if (part.removed) {
 			let value = part.value;
 			// Strip leading whitespace from the first removed part
@@ -186,12 +187,14 @@ export function renderDiff(diffText: string, options: RenderDiffOptions = {}): s
 				result.push(theme.fg("toolDiffRemoved", formatLine("-", removed.lineNum, visualizeIndent(removedLine))));
 				result.push(theme.fg("toolDiffAdded", formatLine("+", added.lineNum, visualizeIndent(addedLine))));
 			} else {
-				for (const removed of removedLines) {
+				for (let ri = 0; ri < removedLines.length; ri++) {
+					const removed = removedLines[ri]!;
 					result.push(
 						theme.fg("toolDiffRemoved", formatLine("-", removed.lineNum, visualizeIndent(removed.content))),
 					);
 				}
-				for (const added of addedLines) {
+				for (let ai = 0; ai < addedLines.length; ai++) {
+					const added = addedLines[ai]!;
 					result.push(theme.fg("toolDiffAdded", formatLine("+", added.lineNum, visualizeIndent(added.content))));
 				}
 			}
