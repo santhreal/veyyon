@@ -49,6 +49,9 @@ export interface StructureSearchInput {
 	skip?: number;
 }
 
+/** Bytes a metavariable value may restate before the name alone stands for it. */
+export const META_VALUE_MAX_BYTES = 60;
+
 function compareAstFindMatch(left: AstFindMatch, right: AstFindMatch): number {
 	const pathCmp = left.path.localeCompare(right.path);
 	if (pathCmp !== 0) return pathCmp;
@@ -398,13 +401,28 @@ export async function executeStructureSearch(
 					modelOut.push(formatMatchLine(lineNumber, line, isMatch, { useHashLines: hashContext !== undefined }));
 					displayOut.push(formatCodeFrameLine(isMatch ? "*" : " ", lineNumber, line, lineNumberWidth));
 				}
-				if (match.metaVariables && Object.keys(match.metaVariables).length > 0) {
-					const serializedMeta = Object.entries(match.metaVariables)
+				if (match.metaVariables) {
+					// An ast-grep binding is a source range inside the match printed just
+					// above, so its value restates bytes already delivered. A multi-node
+					// capture is joined onto one line, which makes `$$$BODY` a second copy
+					// of the whole body; a single-node capture spanning lines arrives with
+					// its newlines and entered the body carrying no line number at all, so
+					// no hashline anchor covered it. Over five patterns of this repository
+					// the bindings cost 8,414 tokens against 9,052 tokens of match text.
+					// A value stays while it is short enough to be a convenience; past that
+					// the name alone says the capture bound and the lines above hold it.
+					const parts = Object.entries(match.metaVariables)
 						.sort(([left], [right]) => left.localeCompare(right))
-						.map(([key, value]) => `${key}=${value}`)
-						.join(", ");
-					modelOut.push(`  meta: ${serializedMeta}`);
-					displayOut.push(`  meta: ${serializedMeta}`);
+						.map(([key, value]) =>
+							value.includes("\n") || Buffer.byteLength(value, "utf-8") > META_VALUE_MAX_BYTES
+								? `${key}=…`
+								: `${key}=${value}`,
+						);
+					if (parts.length > 0) {
+						const serializedMeta = parts.join(", ");
+						modelOut.push(`  meta: ${serializedMeta}`);
+						displayOut.push(`  meta: ${serializedMeta}`);
+					}
 				}
 				fileMatchCounts.set(relativePath, (fileMatchCounts.get(relativePath) ?? 0) + 1);
 			}
@@ -454,7 +472,15 @@ export async function executeStructureSearch(
 			displayContent: displayLines.join("\n"),
 		};
 		if (result.limitReached) {
-			outputLines.push("", "Result limit reached; narrow path or increase limit.");
+			// `limit` is a files-only field of the search tool, so advice to raise it
+			// costs a rejected call and a round trip. `skip` is what structure search
+			// accepts, and the offset is over the unfiltered page the native layer
+			// returned, not over the matches left after the prose-grammar exclusion.
+			const nextSkip = skip + result.matches.length;
+			outputLines.push(
+				"",
+				`Match limit reached: ${result.totalMatches} found, ${result.matches.length} returned. Use skip=${nextSkip} for the next page, or narrow path or input.`,
+			);
 		}
 		if (proseNote) {
 			outputLines.push("", proseNote);
@@ -611,13 +637,13 @@ export const structureSearchRenderer = {
 		const matchGroups = groupLineIndicesByBlank(allLines)
 			.filter(indices => {
 				const first = allLines[indices[0]!]!;
-				return !first.startsWith("Result limit reached") && !first.startsWith("Parse issues:");
+				return !first.startsWith("Match limit reached") && !first.startsWith("Parse issues:");
 			})
 			.map(indices => indices.map(index => styledLines[index]!));
 
 		const extraLines: string[] = [];
 		if (limitReached) {
-			extraLines.push(uiTheme.fg("warning", "limit reached; narrow path or increase limit"));
+			extraLines.push(uiTheme.fg("warning", "limit reached; page with skip or narrow path"));
 		}
 		if (details?.parseErrors?.length) {
 			extraLines.push(
