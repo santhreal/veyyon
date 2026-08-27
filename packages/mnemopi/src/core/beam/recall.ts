@@ -917,7 +917,7 @@ export async function recallEnhanced(
 	});
 	if (options.includeFacts === true) {
 		const facts = factRecall(beam, query, factRecallLimit(topK));
-		results.push(...facts);
+		for (let fi = 0; fi < facts.length; fi++) results.push(facts[fi]!);
 	}
 	results.sort((left, right) => (right.score ?? 0) - (left.score ?? 0));
 	const finalResults = rerankRecallResults(results, options.mmrLambda ?? 0.7, topK);
