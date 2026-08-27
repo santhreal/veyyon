@@ -103,7 +103,8 @@ export class ComposerShortcutsBar implements Component, MouseRoutable {
 		// One row in every state: on a narrow terminal the layout would wrap to
 		// two, so keep the first row and drop the rest rather than grow the band.
 		const first = rows[0]!;
-		for (const chip of first.chips) {
+		for (let ci = 0; ci < first.chips.length; ci++) {
+			const chip = first.chips[ci]!;
 			if (!chip.clickable || !chip.id) continue;
 			this.#hits.push({
 				id: chip.id,
