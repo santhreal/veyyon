@@ -13,6 +13,7 @@ import { resolveFileDisplayMode } from "../utils/file-display-mode";
 import type { ToolSession } from ".";
 import { searchPathFilesystemTargets } from "./cwd-boundary";
 import { executeFileSearch, type FileSearchDetails } from "./file-search";
+import type { OutputMeta } from "./output-meta";
 import { executeStructureSearch, type StructureSearchDetails } from "./structure-search";
 import { executeTextSearch, type TextSearchDetails, textSearchApproval } from "./text-search";
 import { ToolError } from "./tool-errors";
@@ -51,12 +52,24 @@ export const searchSchema = z.strictObject({
 export type SearchToolInput = z.infer<typeof searchSchema>;
 export type SearchType = SearchToolInput["type"];
 
+/**
+ * The three sub-searches attach their own `OutputMeta`, and the shared layer in
+ * `output-meta.ts` reads it at `details.meta`: it appends the truncation and
+ * limit notice to the model text, and skips a result the tool already spilled.
+ * Nesting the sub-result under `result` put that meta one level out of reach, so
+ * a capped `search` said nothing to the model about the cap and an already
+ * spilled result was spilled a second time. The renderer keeps reading the inner
+ * copy through `details.result`.
+ */
 export type SearchToolDetails =
-	| { type: "files"; result: FileSearchDetails }
-	| { type: "text"; result: TextSearchDetails }
-	| { type: "structure"; result: StructureSearchDetails };
+	| { type: "files"; result: FileSearchDetails; meta?: OutputMeta }
+	| { type: "text"; result: TextSearchDetails; meta?: OutputMeta }
+	| { type: "structure"; result: StructureSearchDetails; meta?: OutputMeta };
 
-const TYPE_FIELDS: Record<SearchType, ReadonlySet<keyof SearchToolInput>> = {
+/** Fields each search type accepts. A result that advises a field outside its own
+ * set costs the caller a rejected call and a round trip, so this is the set a
+ * pagination or limit notice may name. */
+export const TYPE_FIELDS: Record<SearchType, ReadonlySet<keyof SearchToolInput>> = {
 	files: new Set(["type", "input", "hidden", "gitignore", "limit"]),
 	text: new Set(["type", "input", "path", "case", "paths", "gitignore", "skip"]),
 	structure: new Set(["type", "input", "path", "skip"]),
@@ -195,7 +208,7 @@ export class SearchTool implements AgentTool<typeof searchSchema, SearchToolDeta
 				{ rootPathAlias: true },
 			);
 			if (!result.details) throw new ToolError("File search returned no result details");
-			return { ...result, details: { type: "files", result: result.details } };
+			return { ...result, details: { type: "files", result: result.details, meta: result.details.meta } };
 		}
 
 		if (params.type === "text") {
@@ -212,7 +225,7 @@ export class SearchTool implements AgentTool<typeof searchSchema, SearchToolDeta
 			);
 			const projected = params.paths === true ? projectToMatchingPaths(result) : result;
 			if (!projected.details) throw new ToolError("Text search returned no result details");
-			return { ...projected, details: { type: "text", result: projected.details } };
+			return { ...projected, details: { type: "text", result: projected.details, meta: projected.details.meta } };
 		}
 
 		const result = await executeStructureSearch(
@@ -221,6 +234,6 @@ export class SearchTool implements AgentTool<typeof searchSchema, SearchToolDeta
 			signal,
 		);
 		if (!result.details) throw new ToolError("Structure search returned no result details");
-		return { ...result, details: { type: "structure", result: result.details } };
+		return { ...result, details: { type: "structure", result: result.details, meta: result.details.meta } };
 	}
 }

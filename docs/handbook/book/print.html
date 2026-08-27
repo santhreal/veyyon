@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-c8048a3e.js";
+            window.path_to_searchindex_js = "searchindex-5ff4e886.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-a2abefc1.js"></script>
@@ -18484,12 +18484,13 @@ takes two required ordered fields followed by type-specific options:</p>
 <ul>
 <li><strong><code>path</code></strong> scopes the search (file, directory, glob, local or materialized internal URL, or semicolon-delimited list). <code>ssh://</code> is not supported; inspect remote code with <code>read</code> before structural matching.</li>
 <li><strong><code>skip</code></strong> specifies match offset for pagination (default limit <code>50</code> matches).</li>
-<li>Metavariable syntax supports <code>$NAME</code> (single node), <code>$_</code> (anonymous node), <code>$$$NAME</code> (multi-node sequence), and <code>$$$</code> (anonymous sequence).</li>
+<li>Metavariable syntax supports <code>$NAME</code> (single node), <code>$_</code> (anonymous node), <code>$$$NAME</code> (multi-node sequence), and <code>$$$</code> (anonymous sequence). Each match lists its bindings on a <code>meta:</code> line; a value over 60 bytes (<code>META_VALUE_MAX_BYTES</code>) or containing a newline renders as <code>KEY=…</code>, because the binding is a range inside the match the result has already printed line by line.</li>
+<li>A capped result states how many matches were found and returned, and names the <code>skip</code> value that continues them. <code>limit</code> is a file-search field and a structure search rejects it.</li>
 </ul>
 </li>
 </ul>
 <h3 id="unified-result-contract-and-settings"><a class="header" href="#unified-result-contract-and-settings">Unified result contract and settings</a></h3>
-<p>Results return formatted text plus structured details <code>{ type, result }</code> corresponding to the search type (<code>FileSearchDetails</code>, <code>TextSearchDetails</code>, or <code>StructureSearchDetails</code>).</p>
+<p>Results return formatted text plus structured details <code>{ type, result, meta }</code> corresponding to the search type (<code>FileSearchDetails</code>, <code>TextSearchDetails</code>, or <code>StructureSearchDetails</code>). <code>meta</code> carries the limit and truncation record the output layer reads to append the notice and to skip re-spilling an already-spilled result.</p>
 <p>Broad grouped multi-file text searches use progressive disclosure when the full formatted match set exceeds the session’s discovery budget (scaled from an 8 KiB search-specific ceiling through the turn curve to ~2 KiB at turn 0). The full pre-disclosure output is saved to an artifact before compacting. The inline result emits up to two representative matches per file, total match and file counts, warnings, and an <code>artifact://&lt;id&gt;</code> recovery footer. Explicit single-file searches and line-range queries keep detailed output without compacting. Only the visible representative lines emitted with snapshot tags are recorded as seen for anchored editing; un-emitted matches remain unseen. If artifact storage is unavailable, broad searches fall back to generic turn-scaled head truncation.</p>
 <p>The tool is part of the default inventory. Text matching uses two settings:</p>
 <ul>

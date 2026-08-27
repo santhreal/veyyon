@@ -1,31 +1,23 @@
 # Hide non-essential built-in tools behind search_tool_bm25 instead of carrying
 # their documentation in the prompt.
 #
-# WHY THIS ARM EXISTS. Tool docs are in-band for this model: the `# Tool: <name>`
-# sections in the prompt ARE the tool definitions, not a second copy of a native
-# schema. They are therefore re-read as cache tokens on every single turn, and
-# cache reads are 64% of the bill (run 2026-07-25T07-59-48-212Z, priced at
-# published rates).
+# WHY THIS ARM EXISTS. Tool text is re-sent on every request, so it is priced per
+# request rather than per session, and cache reads were 64% of the bill of run
+# 2026-07-25T07-59-48-212Z at published rates. The default is 17 tools and 13,964
+# tokens of tool text; `tools.discoveryMode: all` leaves 9 tools and 9,201, which
+# is 4,763 tokens off every request.
 #
-# The measured default is 21 active tools. The agent called four of them all
-# session (eval 58, read 5, glob 1, bash 1). At least eight of the twenty-one
-# already declare `loadMode = "discoverable"`, which is supposed to keep them out
-# of the prompt, but `sdk.ts` only applies that to tools which are not already
-# active, so the default configuration carries them at full length anyway. The
-# mechanism is built, tested, and inert.
+# The always-loaded set is read, bash, launch, edit, write, search, eval, plus
+# goal and resolve. Hidden: ast_edit, debug, ssh, task, job, todo, web_search,
+# set_cwd.
 #
-# `tools.discoveryMode: all` is the switch that turns it on: non-essential
-# built-ins move behind `search_tool_bm25` and their docs leave the prompt. The
-# always-loaded set stays read, bash, edit, write, glob, eval, which covers every
-# tool this workload actually used.
+# WHAT THIS ARM IS TESTING, and it is two-sided. Fewer tokens per request against
+# a capability cost: a hidden tool costs a discovery round trip on the turn that
+# first needs it, the call itself about 21 tokens, and each tool it activates
+# carries its schema on every request after. Reward must hold; a token saving is
+# not a result on its own.
 #
-# WHAT THIS ARM IS TESTING, and it is genuinely two-sided. Fewer prompt tokens on
-# every turn, against a real capability cost: a tool the model cannot see is one
-# it has to search for first, which is an extra turn, and an extra turn is itself
-# expensive. Reward must hold. Do not read a token saving here as a win on its
-# own, and do not ship the setting change on the token argument alone.
-#
-# Its control is `baseline` (argot off, defaults otherwise), so baseline ↔
+# Its control is `baseline` (argot off, defaults otherwise), so baseline against
 # discovery-all varies exactly one thing.
 argot:
   enabled: false
