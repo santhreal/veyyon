@@ -86,6 +86,28 @@ export const thinkingLoopDomain: ErrorDomain = {
 };
 
 const CONTENT_FILTER_PATTERN = /\b(?:incomplete:\s*)?content_filter\b/i;
+/**
+ * The other spellings of the same verdict.
+ *
+ * `content_filter` is OpenAI's word for it. Google ends the turn with a finish reason
+ * (`PROHIBITED_CONTENT`, `SAFETY`, `RECITATION`, `BLOCKLIST`, `SPII`, and the `IMAGE_` forms of the
+ * same verdicts), some hosts send `finish_reason: sensitive`, and Codex reports a policy refusal as
+ * an error event carrying `code=cyber_policy`. Every one is the provider answering the request
+ * rather than failing at it, so every one belongs to this family and vetoes a retry. Only
+ * `MALFORMED_FUNCTION_CALL` had a rule, so its siblings reached the turn unclassified: they walled
+ * by default rather than by decision, and a reworded refusal would have started being retried
+ * against a filter that returns the same answer.
+ *
+ * The names come from `FinishReason` in `providers/google-types.ts`, which is the mirror of the
+ * provider's own enum. `every-provider-failure-the-field-produced-reaches-a-decision.test.ts` maps
+ * that union member by member, so adding one to the mirror fails the type check until somebody
+ * says whether it is a content verdict — which is the step that was skipped when these were added.
+ *
+ * The finish-reason names are anchored to the phrase that introduces them. Unanchored, a
+ * case-insensitive `SAFETY` or `BLOCKLIST` would match any prose using the word.
+ */
+const CONTENT_VERDICT_PATTERN =
+	/\bfinish[_\s]?reason:?\s*(?:IMAGE_)?(?:PROHIBITED_CONTENT|SAFETY|RECITATION|BLOCKLIST|SPII|sensitive)\b|\b(?:PROHIBITED_CONTENT|IMAGE_SAFETY|IMAGE_PROHIBITED_CONTENT|IMAGE_RECITATION)\b|\bcode=cyber_policy\b/i;
 
 export const contentDomain: ErrorDomain = {
 	id: "content",
@@ -103,6 +125,12 @@ export const contentDomain: ErrorDomain = {
 			name: "content-filter",
 			why: "A content filter is a verdict on the request, not a fault: it is the one kind that must never be retried.",
 			text: text => CONTENT_FILTER_PATTERN.test(text),
+		},
+		{
+			flags: Flag.ContentBlocked,
+			name: "content-verdict",
+			why: "A refusal spelled as a finish reason or a policy code is the same verdict as `content_filter`, and it reaches the turn from providers that never use that word.",
+			text: text => CONTENT_VERDICT_PATTERN.test(text),
 		},
 	],
 };

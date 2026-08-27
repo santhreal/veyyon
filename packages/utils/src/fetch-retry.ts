@@ -510,8 +510,22 @@ function messageStatus(error: unknown, depth: number): number | undefined {
 /**
  * The union of the two lists that used to disagree, most specific first. A
  * reason phrase is read separately, by {@link statusFromReasonPhrase}.
+ *
+ * The anchored pattern is the shape a provider error takes when the status line
+ * is followed by the response body verbatim: `503 {"type":"error",...}`. The
+ * body settles what a bare leading code cannot. A code followed by arbitrary
+ * words is what {@link statusFromReasonPhrase} refuses on purpose, so that
+ * `Processed 200 Total Records` is not a success and `503 Service
+ * Unavailableish` is not a status; a code followed by a JSON document is not
+ * that shape and cannot be a sentence about counting. Without this the status
+ * of an Anthropic or Console failure survived only on the error object, so
+ * every reader handed the message alone — a replayed session error, or
+ * `{ message }` handed to `isAuthError` — saw none and let the wording decide.
+ * A 503 whose body says `Authentication service is temporarily unavailable`
+ * then read as an auth verdict instead of the transient the server reported.
  */
 const STATUS_MESSAGE_PATTERNS = [
+	/^(\d{3})\s+[[{]/,
 	/\bstatus(?:_code)?\s*[:=]?\s*(\d{3})\b/i,
 	/\bhttp\s*(\d{3})\b/i,
 	/error\s*\((\d{3})\)/i,

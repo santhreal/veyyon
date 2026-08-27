@@ -82,6 +82,11 @@ describe("the classification rule set", () => {
 	 * purpose rather than the path of least resistance. It is a SET: the rules are grouped by the
 	 * failure family that owns them and applied in any order, so their sequence in the registry is
 	 * the recovery precedence and says nothing about classification.
+	 *
+	 * `AuthFailed` used to be in this set and is not any more. Reading `authentication` out of a
+	 * sentence with no other evidence walled a `503 overloaded_error` whose body named an
+	 * authentication service as the thing that was busy, so the rule now declines a 5xx: an auth
+	 * verdict is 401 or 403, and a status the server sent outranks a word in the prose beside it.
 	 */
 	it("decides on prose alone only for the failures that arrive without structure", () => {
 		const proseOnly = CLASSIFICATION_RULES.filter(rule => rule.structural === undefined)
@@ -93,7 +98,10 @@ describe("the classification rule set", () => {
 			)
 			.sort();
 		expect(proseOnly).toEqual([
-			"AuthFailed",
+			// Two content rules, because a refusal arrives as text by definition: `content_filter` is
+			// OpenAI's spelling and `content-verdict` covers the finish reasons and policy codes the
+			// other providers use for the same verdict.
+			"ContentBlocked",
 			"ContentBlocked",
 			"ContextOverflow",
 			"MalformedFunctionCall",
@@ -163,6 +171,7 @@ describe("a classification names the rules that produced it", () => {
 			"codex-retryable-stream",
 			"codex-websocket-transport",
 			"content-filter",
+			"content-verdict",
 			"context-overflow-prose",
 			"copilot-model-not-supported-flap",
 			"fast-mode-entitlement-wall",
