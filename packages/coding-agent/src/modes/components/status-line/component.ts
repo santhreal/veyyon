@@ -1982,12 +1982,13 @@ export class StatusLineComponent implements Component {
 	 * jumping. */
 	#animatedBadgeSlot(badgeParts: string[]): string | null {
 		const sep = stateSeparator();
-		const targetWidth = badgeParts.length > 0 ? visibleWidth(badgeParts.join(sep)) : 0;
+		const joined = badgeParts.length > 0 ? badgeParts.join(sep) : "";
+		const targetWidth = joined ? visibleWidth(joined) : 0;
 		if (targetWidth !== this.#badgeSlotTargetWidth) {
 			this.#badgeSlotFromWidth = this.#badgeSlotCurrentWidth();
 			this.#badgeSlotTargetWidth = targetWidth;
 			this.#badgeSlotAnimStartMs = Date.now();
-			if (targetWidth > 0) this.#badgeSlotText = badgeParts.join(sep);
+			if (targetWidth > 0) this.#badgeSlotText = joined;
 		}
 		const width = this.#badgeSlotCurrentWidth();
 		if (width === 0) return null;
