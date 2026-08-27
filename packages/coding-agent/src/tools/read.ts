@@ -3830,7 +3830,11 @@ export const readToolRenderer = {
 				title += `:${startLine}${endLine ? `-${endLine}` : ""}`;
 			}
 			const header = renderStatusLine({ icon: "error", title }, uiTheme);
-			const errorLines = errorText.split("\n").map(line => uiTheme.fg("error", replaceTabs(line)));
+			const errorRawLines = errorText.split("\n");
+			const errorLines: string[] = new Array(errorRawLines.length);
+			for (let li = 0; li < errorRawLines.length; li++) {
+				errorLines[li] = uiTheme.fg("error", replaceTabs(errorRawLines[li]!));
+			}
 			const outputBlock = new CachedOutputBlock();
 			return markFramedBlockComponent({
 				render: (width: number) =>
