@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-1b11b392.js";
+            window.path_to_searchindex_js = "searchindex-5902088c.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-a2abefc1.js"></script>
@@ -9832,9 +9832,9 @@ thinkingBudgets:
 <tr><td><code>tools.maxTimeout</code></td><td>number</td><td><code>0</code></td><td>Max tool runtime in seconds; <code>0</code> = no cap.</td></tr>
 <tr><td><code>tools.intentTracing</code></td><td>boolean</td><td><code>true</code></td><td>Record per-call intent strings.</td></tr>
 <tr><td><code>tools.outputMaxColumns</code></td><td>number</td><td><code>768</code></td><td>Per-line byte cap for streaming output; <code>0</code> disables.</td></tr>
-<tr><td><code>tools.artifactSpillThreshold</code></td><td>number</td><td><code>50</code></td><td>KB of tool output above which output spills to an artifact, for every tool including the streaming ones (bash, eval, ssh, interactive shell). The result keeps a window plus the <code>artifact://</code> id that reads the full text back.</td></tr>
-<tr><td><code>tools.artifactHeadBytes</code></td><td>number</td><td><code>20</code></td><td>KB of head kept inline on spill; <code>0</code> = tail-only.</td></tr>
-<tr><td><code>tools.artifactTailBytes</code></td><td>number</td><td><code>20</code></td><td>KB of tail kept inline on spill.</td></tr>
+<tr><td><code>tools.artifactSpillThreshold</code></td><td>number</td><td><code>50</code></td><td>KB of tool output above which output spills to an artifact, for every tool including the streaming ones (bash, eval, ssh, interactive shell). The result keeps a window no larger than this, plus the <code>artifact://</code> id that reads the full text back.</td></tr>
+<tr><td><code>tools.artifactHeadBytes</code></td><td>number</td><td><code>20</code></td><td>KB of head kept inline on spill, bounded with the tail by the threshold; <code>0</code> = tail-only.</td></tr>
+<tr><td><code>tools.artifactTailBytes</code></td><td>number</td><td><code>20</code></td><td>KB of tail kept inline on spill, bounded by the threshold.</td></tr>
 <tr><td><code>tools.artifactTailLines</code></td><td>number</td><td><code>500</code></td><td>Max tail lines kept inline on spill.</td></tr>
 </tbody>
 </table>
@@ -11156,9 +11156,9 @@ veyyon config get compaction.threshold
 <tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
 </thead>
 <tbody>
-<tr><td><code>tools.artifactSpillThreshold</code></td><td>Artifact Spill Threshold (KB)</td><td>number</td><td><code>50</code></td><td>Tool output above this size is saved as an artifact and the result keeps a head/tail window plus the artifact:// id that reads the full text back, so a lower threshold costs a re-read rather than losing output. It governs every tool that streams output, including bash, eval, ssh and the interactive shell, as well as search and the browser.</td></tr>
-<tr><td><code>tools.artifactTailBytes</code></td><td>Artifact Tail Size (KB)</td><td>number</td><td><code>20</code></td><td>Amount of tail content kept inline when output spills to artifact.</td></tr>
-<tr><td><code>tools.artifactHeadBytes</code></td><td>Artifact Head Size (KB)</td><td>number</td><td><code>20</code></td><td>Amount of head content kept inline alongside the tail when output spills to artifact (middle elision). 0 disables — keep tail only.</td></tr>
+<tr><td><code>tools.artifactSpillThreshold</code></td><td>Artifact Spill Threshold (KB)</td><td>number</td><td><code>50</code></td><td>Tool output above this size is saved as an artifact and the result keeps a head/tail window no larger than this size, plus the artifact:// id that reads the full text back, so a lower threshold costs a re-read rather than losing output. It governs every tool that streams output, including bash, eval, ssh and the interactive shell, as well as search and the browser.</td></tr>
+<tr><td><code>tools.artifactTailBytes</code></td><td>Artifact Tail Size (KB)</td><td>number</td><td><code>20</code></td><td>Amount of tail content kept inline when output spills to artifact, bounded by the spill threshold.</td></tr>
+<tr><td><code>tools.artifactHeadBytes</code></td><td>Artifact Head Size (KB)</td><td>number</td><td><code>20</code></td><td>Amount of head content kept inline alongside the tail when output spills to artifact (middle elision), bounded with the tail by the spill threshold. 0 disables — keep tail only.</td></tr>
 <tr><td><code>tools.outputMaxColumns</code></td><td>Output Column Cap</td><td>number</td><td><code>768</code></td><td>Per-line byte cap for streaming tool outputs (bash, ssh, python, js eval) and <code>read</code>. Lines wider than this are ellipsis-truncated; remaining bytes up to the next newline are dropped. 0 disables.</td></tr>
 <tr><td><code>tools.artifactTailLines</code></td><td>Artifact Tail Lines</td><td>number</td><td><code>500</code></td><td>Maximum lines of tail content kept inline when output spills to artifact.</td></tr>
 <tr><td><code>tools.inlineOutputFloor</code></td><td>Inline Output Floor</td><td>number</td><td><code>0.25</code></td><td>Smallest share of the inline output budget an early tool result may use before the rest spills to an artifact. A result that arrives early is re-read on every later turn, so it is charged more tightly than one that arrives near the end. Lower spills sooner and costs fewer context tokens; 1 keeps the flat cap and never spills early. This governs every tool that streams output, including eval, bash, ssh and the interactive shell, as well as search and the browser. Shown under the tab’s Advanced fold.</td></tr>
@@ -18422,9 +18422,13 @@ bounded by <code>tools.artifactSpillThreshold</code>, the same budget a tool res
 mention stays in the transcript and is billed on every later request. A capped mention states the
 lines it showed and the selector that pages the rest. A file over 5 MB, a binary file, or an image
 over 25 MB is not read: the message carries the path and the reason.</p>
-<p><code>tools.artifactSpillThreshold</code> bounds every model-visible result the same way: a file window, a
-directory listing, an archive listing, a <code>search</code> path list, a notebook or converted document, a URL
-body, and a <code>launch</code> log read. A capped result states what it carried and how to reach the rest.</p>
+<p><code>tools.artifactSpillThreshold</code> bounds every model-visible result. <code>read</code> applies it directly to a
+file window, a directory listing, an archive listing, a notebook or converted document and a URL
+body, and states what it carried and how to reach the rest. Every other tool passes the shared spill
+layer: output over the threshold is written to an artifact and the result keeps a head and tail
+window no larger than the threshold, sized by <code>tools.artifactHeadBytes</code> and
+<code>tools.artifactTailBytes</code> in the ratio they name, plus the <code>artifact://</code> id that reads the full text
+back.</p>
 <h2 id="the-search-tool-toolssearchts"><a class="header" href="#the-search-tool-toolssearchts">The <code>search</code> tool (<code>tools/search.ts</code>)</a></h2>
 <p>Workspace discovery and searching are unified in the <code>search</code> tool, covering file path lookup,
 text/regex search, and structural code search through one canonical model-facing interface. It

@@ -31,7 +31,7 @@ describe("launch list caps the terminal tail (DOG-1)", () => {
 		const live = [snapshot("live-a", "running"), snapshot("live-b", "ready")];
 		// 15 exited daemons with increasing exitedAt: exited-14 is the most recent.
 		const exited = Array.from({ length: 15 }, (_, i) => snapshot(`exited-${i}`, "exited", 1000 + i));
-		const text = toolContent({ op: "list", daemons: [...live, ...exited], completions: [] }, LIST_PARAMS, {});
+		const text = toolContent({ op: "list", daemons: [...live, ...exited], completions: [] }, LIST_PARAMS);
 
 		// Both live daemons are always shown.
 		expect(text).toContain("live-a");
@@ -47,7 +47,7 @@ describe("launch list caps the terminal tail (DOG-1)", () => {
 
 	it("does not add a summary line when the exited count is within the cap", () => {
 		const daemons = [snapshot("live", "running"), snapshot("done-1", "exited", 10), snapshot("done-2", "failed", 20)];
-		const text = toolContent({ op: "list", daemons, completions: [] }, LIST_PARAMS, {});
+		const text = toolContent({ op: "list", daemons, completions: [] }, LIST_PARAMS);
 
 		expect(text).toContain("live");
 		expect(text).toContain("done-1");
@@ -56,6 +56,6 @@ describe("launch list caps the terminal tail (DOG-1)", () => {
 	});
 
 	it("still reports no daemons when the list is empty", () => {
-		expect(toolContent({ op: "list", daemons: [], completions: [] }, LIST_PARAMS, {})).toBe("No daemons.");
+		expect(toolContent({ op: "list", daemons: [], completions: [] }, LIST_PARAMS)).toBe("No daemons.");
 	});
 });

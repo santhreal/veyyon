@@ -51,9 +51,13 @@ mention stays in the transcript and is billed on every later request. A capped m
 lines it showed and the selector that pages the rest. A file over 5 MB, a binary file, or an image
 over 25 MB is not read: the message carries the path and the reason.
 
-`tools.artifactSpillThreshold` bounds every model-visible result the same way: a file window, a
-directory listing, an archive listing, a `search` path list, a notebook or converted document, a URL
-body, and a `launch` log read. A capped result states what it carried and how to reach the rest.
+`tools.artifactSpillThreshold` bounds every model-visible result. `read` applies it directly to a
+file window, a directory listing, an archive listing, a notebook or converted document and a URL
+body, and states what it carried and how to reach the rest. Every other tool passes the shared spill
+layer: output over the threshold is written to an artifact and the result keeps a head and tail
+window no larger than the threshold, sized by `tools.artifactHeadBytes` and
+`tools.artifactTailBytes` in the ratio they name, plus the `artifact://` id that reads the full text
+back.
 
 ## The `search` tool (`tools/search.ts`)
 

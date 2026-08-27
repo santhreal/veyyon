@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-1b11b392.js";
+            window.path_to_searchindex_js = "../searchindex-5902088c.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-a2abefc1.js"></script>
@@ -241,9 +241,13 @@ bounded by <code>tools.artifactSpillThreshold</code>, the same budget a tool res
 mention stays in the transcript and is billed on every later request. A capped mention states the
 lines it showed and the selector that pages the rest. A file over 5 MB, a binary file, or an image
 over 25 MB is not read: the message carries the path and the reason.</p>
-<p><code>tools.artifactSpillThreshold</code> bounds every model-visible result the same way: a file window, a
-directory listing, an archive listing, a <code>search</code> path list, a notebook or converted document, a URL
-body, and a <code>launch</code> log read. A capped result states what it carried and how to reach the rest.</p>
+<p><code>tools.artifactSpillThreshold</code> bounds every model-visible result. <code>read</code> applies it directly to a
+file window, a directory listing, an archive listing, a notebook or converted document and a URL
+body, and states what it carried and how to reach the rest. Every other tool passes the shared spill
+layer: output over the threshold is written to an artifact and the result keeps a head and tail
+window no larger than the threshold, sized by <code>tools.artifactHeadBytes</code> and
+<code>tools.artifactTailBytes</code> in the ratio they name, plus the <code>artifact://</code> id that reads the full text
+back.</p>
 <h2 id="the-search-tool-toolssearchts"><a class="header" href="#the-search-tool-toolssearchts">The <code>search</code> tool (<code>tools/search.ts</code>)</a></h2>
 <p>Workspace discovery and searching are unified in the <code>search</code> tool, covering file path lookup,
 text/regex search, and structural code search through one canonical model-facing interface. It

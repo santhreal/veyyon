@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-1b11b392.js";
+            window.path_to_searchindex_js = "../searchindex-5902088c.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-a2abefc1.js"></script>
@@ -671,9 +671,9 @@ thinkingBudgets:
 <tr><td><code>tools.maxTimeout</code></td><td>number</td><td><code>0</code></td><td>Max tool runtime in seconds; <code>0</code> = no cap.</td></tr>
 <tr><td><code>tools.intentTracing</code></td><td>boolean</td><td><code>true</code></td><td>Record per-call intent strings.</td></tr>
 <tr><td><code>tools.outputMaxColumns</code></td><td>number</td><td><code>768</code></td><td>Per-line byte cap for streaming output; <code>0</code> disables.</td></tr>
-<tr><td><code>tools.artifactSpillThreshold</code></td><td>number</td><td><code>50</code></td><td>KB of tool output above which output spills to an artifact, for every tool including the streaming ones (bash, eval, ssh, interactive shell). The result keeps a window plus the <code>artifact://</code> id that reads the full text back.</td></tr>
-<tr><td><code>tools.artifactHeadBytes</code></td><td>number</td><td><code>20</code></td><td>KB of head kept inline on spill; <code>0</code> = tail-only.</td></tr>
-<tr><td><code>tools.artifactTailBytes</code></td><td>number</td><td><code>20</code></td><td>KB of tail kept inline on spill.</td></tr>
+<tr><td><code>tools.artifactSpillThreshold</code></td><td>number</td><td><code>50</code></td><td>KB of tool output above which output spills to an artifact, for every tool including the streaming ones (bash, eval, ssh, interactive shell). The result keeps a window no larger than this, plus the <code>artifact://</code> id that reads the full text back.</td></tr>
+<tr><td><code>tools.artifactHeadBytes</code></td><td>number</td><td><code>20</code></td><td>KB of head kept inline on spill, bounded with the tail by the threshold; <code>0</code> = tail-only.</td></tr>
+<tr><td><code>tools.artifactTailBytes</code></td><td>number</td><td><code>20</code></td><td>KB of tail kept inline on spill, bounded by the threshold.</td></tr>
 <tr><td><code>tools.artifactTailLines</code></td><td>number</td><td><code>500</code></td><td>Max tail lines kept inline on spill.</td></tr>
 </tbody>
 </table>

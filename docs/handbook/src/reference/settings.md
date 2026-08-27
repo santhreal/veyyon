@@ -511,9 +511,9 @@ tools:
 | `tools.maxTimeout` | number | `0` | Max tool runtime in seconds; `0` = no cap. |
 | `tools.intentTracing` | boolean | `true` | Record per-call intent strings. |
 | `tools.outputMaxColumns` | number | `768` | Per-line byte cap for streaming output; `0` disables. |
-| `tools.artifactSpillThreshold` | number | `50` | KB of tool output above which output spills to an artifact, for every tool including the streaming ones (bash, eval, ssh, interactive shell). The result keeps a window plus the `artifact://` id that reads the full text back. |
-| `tools.artifactHeadBytes` | number | `20` | KB of head kept inline on spill; `0` = tail-only. |
-| `tools.artifactTailBytes` | number | `20` | KB of tail kept inline on spill. |
+| `tools.artifactSpillThreshold` | number | `50` | KB of tool output above which output spills to an artifact, for every tool including the streaming ones (bash, eval, ssh, interactive shell). The result keeps a window no larger than this, plus the `artifact://` id that reads the full text back. |
+| `tools.artifactHeadBytes` | number | `20` | KB of head kept inline on spill, bounded with the tail by the threshold; `0` = tail-only. |
+| `tools.artifactTailBytes` | number | `20` | KB of tail kept inline on spill, bounded by the threshold. |
 | `tools.artifactTailLines` | number | `500` | Max tail lines kept inline on spill. |
 
 Most optional built-in tools are toggled by their own keys, e.g. `bash.enabled`, `launch.enabled`, `eval.py`, `eval.js`, `fetch.enabled`, `browser.enabled`, `astEdit.enabled`, `web_search.enabled`, `inspect_image.enabled`. Workspace `search` is part of the default tool inventory.
