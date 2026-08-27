@@ -95,6 +95,7 @@ import {
 	renderReadUrlResult,
 } from "./fetch";
 import { applyListLimit } from "./list-limit";
+import { type InlinePricingSource, inlineBudgetFor } from "./output-artifact";
 import {
 	formatFullOutputReference,
 	formatStyledTruncationWarning,
@@ -530,6 +531,27 @@ function formatContextPaddingNotice(options: {
 	if (leading > 0) padding.push(`${formatCount("line", leading)} of leading context`);
 	if (trailing > 0) padding.push(`${formatCount("line", trailing)} of trailing context`);
 	return `[Showing lines ${options.displayedFirstLine}-${options.displayedLastLine}: you requested ${requested}, plus ${padding.join(" and ")}]`;
+}
+
+/**
+ * The byte budget for one read window.
+ *
+ * A caller who named a line count is asking for those lines, so the budget
+ * scales to hold them at about 512 bytes a line and never falls below the
+ * session's inline budget. A caller who named none is reading the head of a
+ * file whose line lengths it does not know yet, and the 300-line default over
+ * prose returned 79KB in a single result: more than the whole tool prelude,
+ * re-sent on every later request of the session. That window is bounded by
+ * `inlineBudgetFor`, the one owner of how many bytes a tool result may carry,
+ * and the truncation notice states the selector that pages the rest.
+ */
+function readWindowMaxBytes(
+	session: InlinePricingSource,
+	requestedLimit: number | undefined,
+	maxLinesToCollect: number,
+): number {
+	const budget = inlineBudgetFor(session);
+	return requestedLimit === undefined ? budget : Math.max(budget, maxLinesToCollect * 512);
 }
 
 /** What a bounded window of a file's lines came to, however the lines were obtained. */
@@ -1913,19 +1935,24 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 
 		for (const range of ranges) {
 			const rangeStart = range.startLine - 1; // 0-indexed
-			const requestedLength = range.endLine !== undefined ? range.endLine - range.startLine + 1 : this.#defaultLimit;
-			const maxLines = Math.min(requestedLength, DEFAULT_MAX_LINES);
+			const requestedLength = range.endLine !== undefined ? range.endLine - range.startLine + 1 : undefined;
+			const maxLines = Math.min(requestedLength ?? this.#defaultLimit, DEFAULT_MAX_LINES);
+			const maxBytesForRead = readWindowMaxBytes(this.session, requestedLength, maxLines);
 
 			// When the full file is already in memory (the common case for files
-			// within the snapshot byte cap), slice ranges from it instead of
-			// re-streaming the file once per range.
+			// within the snapshot byte cap), take ranges from it instead of
+			// re-streaming the file once per range. The window is collected rather
+			// than sliced so an open-ended range is priced the same however the
+			// lines were obtained.
 			let collectedLines: string[];
 			let totalFileLines: number;
+			let stoppedByByteLimit: boolean;
 			if (fullLines) {
-				totalFileLines = fullLines.length;
-				collectedLines = fullLines.slice(rangeStart, rangeStart + maxLines);
+				const window = collectWindowFromLines(fullLines, rangeStart, maxLines, maxBytesForRead, maxLines);
+				totalFileLines = window.totalFileLines;
+				collectedLines = window.lines;
+				stoppedByByteLimit = window.stoppedByByteLimit;
 			} else {
-				const maxBytesForRead = Math.max(DEFAULT_MAX_BYTES, maxLines * 512);
 				const streamResult = await streamLinesFromFile(
 					absolutePath,
 					rangeStart,
@@ -1937,12 +1964,20 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 				);
 				totalFileLines = streamResult.totalFileLines;
 				collectedLines = streamResult.lines;
+				stoppedByByteLimit = streamResult.stoppedByByteLimit;
 			}
 
 			if (rangeStart >= totalFileLines) {
 				const bound = range.endLine !== undefined ? `${range.startLine}-${range.endLine}` : `${range.startLine}`;
 				notices.push(`[Range ${bound} is beyond end of file (${totalFileLines} lines total); skipped]`);
 				continue;
+			}
+
+			if (stoppedByByteLimit) {
+				const shown = range.startLine + collectedLines.length - 1;
+				notices.push(
+					`[Lines ${range.startLine}-${shown} reached the ${formatBytes(maxBytesForRead)} output budget. Use :${shown + 1} to continue]`,
+				);
 			}
 
 			// Column truncation is display-only; clone before stamping ellipsis so
@@ -2860,9 +2895,7 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 					const effectiveLimit = limit ?? DEFAULT_LIMIT;
 					const maxLinesToCollect = Math.min(effectiveLimit + leadingContext + trailingContext, DEFAULT_MAX_LINES);
 					const selectedLineLimit = effectiveLimit + leadingContext + trailingContext;
-					// Scale byte budget with line limit so the configured line count actually fits.
-					// Assume ~512 bytes/line average; never go below the shared default.
-					const maxBytesForRead = Math.max(DEFAULT_MAX_BYTES, maxLinesToCollect * 512);
+					const maxBytesForRead = readWindowMaxBytes(this.session, limit, maxLinesToCollect);
 
 					// One materialization, three consumers: this window, the bracket context below, and
 					// the snapshot tag. A file over the snapshot cap, or one whose raw bytes and
@@ -3322,7 +3355,7 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 		const effectiveLimit = limit ?? this.#defaultLimit;
 		const maxLinesToCollect = Math.min(effectiveLimit + leadingContext + trailingContext, DEFAULT_MAX_LINES);
 		const selectedLineLimit = effectiveLimit + leadingContext + trailingContext;
-		const maxBytesForRead = Math.max(DEFAULT_MAX_BYTES, maxLinesToCollect * 512);
+		const maxBytesForRead = readWindowMaxBytes(this.session, limit, maxLinesToCollect);
 		const streamResult = await streamLinesFromFile(
 			artifact.path,
 			startLine,

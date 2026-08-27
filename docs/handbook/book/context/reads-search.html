@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-1cdd7ee7.js";
+            window.path_to_searchindex_js = "../searchindex-a761b097.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-a2abefc1.js"></script>
@@ -212,13 +212,14 @@ to a budget:</p>
 appended after a colon: <code>src/foo.ts:50-200</code> (inclusive range), <code>src/foo.ts:50</code> / <code>:50-</code> (from line 50
 on), <code>src/foo.ts:50+150</code> (150 lines from line 50), or <code>src/foo.ts:5-16,960-973</code> (multiple ranges in
 one call). <code>:raw</code> reads verbatim with no anchors or line prefixes.</li>
-<li><strong>Dual budget, whichever is hit first:</strong> a line cap (<code>DEFAULT_MAX_LINES = 3000</code>) and a byte cap
-(<code>DEFAULT_MAX_BYTES</code>, 50 KB). A file that is short in lines but huge in bytes (minified JS, a data
-blob) is bounded by bytes; a file with many short lines is bounded by lines. Both are compiled, not
-configured, and <code>read</code> is deliberately the one tool exempt from artifact spilling: it is bounded by
-LINES, so spilling on bytes would hand back fewer lines than you asked for and break the contract
-the tool has. Every other tool’s output is bounded by <code>tools.artifactSpillThreshold</code>, described
-under <a href="#the-search-tool-toolssearchts">The <code>search</code> tool</a> below.</li>
+<li><strong>Dual budget, whichever is hit first:</strong> a line cap and a byte cap. The line cap is
+<code>read.defaultLimit</code> (300) when the call names no line count, the requested count when it does, and
+<code>DEFAULT_MAX_LINES</code> (3000) at the ceiling. The byte cap is <code>tools.artifactSpillThreshold</code> (50 KB),
+the same budget every other tool result carries; a call that names a line count raises it to hold
+those lines, at about 512 bytes a line. So a file that is short in lines but huge in bytes
+(minified JS, a data blob) is bounded by bytes, and a file of many short lines by lines. <code>read</code> is
+bounded rather than spilled to an artifact: a paged window with a continuation selector is more use
+than a truncated one with a link.</li>
 <li><strong>Structural summaries for parseable code.</strong> A read with no selector on a parseable source file
 returns declarations with bodies elided (<code>…</code>), and the footer states the recovery selector so the model
 re-issues only the ranges it actually needs instead of re-reading the whole file.</li>

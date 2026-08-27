@@ -392,7 +392,7 @@ veyyon config get compaction.threshold
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
 | `readLineNumbers` | Line Numbers | boolean | `false` | Prepend line numbers to read tool output by default. |
-| `read.defaultLimit` | Default Read Limit | number | `300` | Default number of lines returned when agent calls read without a limit. |
+| `read.defaultLimit` | Default Read Limit | number | `300` | Line count returned when read is called without one. The window also stops at the tool output budget, so a file of long lines returns fewer lines than this. |
 | `read.toolResultPreview` | Inline Read Previews | boolean | `false` | Render read tool results inline in the transcript instead of summary rows. |
 
 ### Read Summaries
@@ -490,7 +490,7 @@ veyyon config get compaction.threshold
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
 | `search.contextBefore` | Text Context Before | number | `1` | Lines of context before each text search match. |
-| `search.contextAfter` | Text Context After | number | `3` | Lines of context after each text search match. |
+| `search.contextAfter` | Text Context After | number | `1` | Lines of context after each text search match. |
 
 ### Browser
 

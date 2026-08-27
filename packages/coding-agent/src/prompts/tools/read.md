@@ -13,7 +13,7 @@ Read files, directories (optionally bounded by `depth`/`limit`), archives, SQLit
 
 ## Selectors
 
-- _(none)_ — parseable code → structural summary; other files → from start (up to {{DEFAULT_LIMIT}} lines).
+- _(none)_ — parseable code → structural summary; other files → from start (up to {{DEFAULT_LIMIT}} lines or the output budget).
 - `:50` / `:50-` — from line 50 onward.
 - `:50-200` — lines 50–200 inclusive.
 - `:50+150` — 150 lines from 50.

@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-1cdd7ee7.js";
+            window.path_to_searchindex_js = "../searchindex-a761b097.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-a2abefc1.js"></script>
@@ -757,7 +757,7 @@ veyyon config get compaction.threshold
 </thead>
 <tbody>
 <tr><td><code>readLineNumbers</code></td><td>Line Numbers</td><td>boolean</td><td><code>false</code></td><td>Prepend line numbers to read tool output by default.</td></tr>
-<tr><td><code>read.defaultLimit</code></td><td>Default Read Limit</td><td>number</td><td><code>300</code></td><td>Default number of lines returned when agent calls read without a limit.</td></tr>
+<tr><td><code>read.defaultLimit</code></td><td>Default Read Limit</td><td>number</td><td><code>300</code></td><td>Line count returned when read is called without one. The window also stops at the tool output budget, so a file of long lines returns fewer lines than this.</td></tr>
 <tr><td><code>read.toolResultPreview</code></td><td>Inline Read Previews</td><td>boolean</td><td><code>false</code></td><td>Render read tool results inline in the transcript instead of summary rows.</td></tr>
 </tbody>
 </table>
@@ -893,7 +893,7 @@ veyyon config get compaction.threshold
 </thead>
 <tbody>
 <tr><td><code>search.contextBefore</code></td><td>Text Context Before</td><td>number</td><td><code>1</code></td><td>Lines of context before each text search match.</td></tr>
-<tr><td><code>search.contextAfter</code></td><td>Text Context After</td><td>number</td><td><code>3</code></td><td>Lines of context after each text search match.</td></tr>
+<tr><td><code>search.contextAfter</code></td><td>Text Context After</td><td>number</td><td><code>1</code></td><td>Lines of context after each text search match.</td></tr>
 </tbody>
 </table>
 </div>
