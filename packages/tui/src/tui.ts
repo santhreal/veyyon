@@ -2619,7 +2619,7 @@ export class TUI extends Container {
 	#replayTranscriptToNormalScreen(): number {
 		if (!this.#altTranscriptReplayPending) return 0;
 		this.#altTranscriptReplayPending = false;
-		const rows = [...this.#scrollTape, ...this.#altTailRows];
+		const rows = this.#scrollTape.concat(this.#altTailRows);
 		if (rows.length === 0) return 0;
 		// Written as prepared rows with an explicit terminator each, exactly like the
 		// native surface commits them, so styles and hyperlinks cannot bleed between
@@ -4261,8 +4261,7 @@ export class TUI extends Container {
 			// under it can shift a row the reader is looking at. The footer is
 			// always the live frame's last rows, so the composer keeps typing,
 			// spinning, and updating while the history above it holds still.
-			const uncommittedEnd = Math.max(this.#committedRows, frameLength - this.#pinnedFooterRows);
-			this.#scrollSnapshot ??= [...this.#scrollTape, ...frame.slice(this.#committedRows, uncommittedEnd)];
+			this.#scrollSnapshot ??= this.#scrollTape.concat(frame.slice(this.#committedRows));
 			const snapshot = this.#scrollSnapshot;
 			const footerRows = Math.min(this.#pinnedFooterRows, height - 1);
 			const regionRows = height - footerRows;

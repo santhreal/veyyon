@@ -605,7 +605,7 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 			const beforeSlash = currentLine.slice(0, trailingSlashStart);
 			const insert = `/${item.value} `;
 			const newLine = `${beforeSlash}${insert}${afterCursor}`;
-			const newLines = [...lines];
+			const newLines = lines.slice();
 			newLines[cursorLine] = newLine;
 			return {
 				lines: newLines,
@@ -626,7 +626,7 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 			if (!slashPrefix.includes(" ") && !slashPrefix.slice(1).includes("/")) {
 				const beforeSlash = currentLine.slice(0, leadingSlashStart);
 				const newLine = `${beforeSlash}/${item.value} ${afterCursor}`;
-				const newLines = [...lines];
+				const newLines = lines.slice();
 				newLines[cursorLine] = newLine;
 
 				return {
@@ -647,7 +647,7 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 			}
 			// This is a file attachment completion
 			const newLine = `${beforePrefix + item.value} ${afterCursor}`;
-			const newLines = [...lines];
+			const newLines = lines.slice();
 			newLines[cursorLine] = newLine;
 
 			return {
@@ -663,7 +663,7 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 		// `package.json` for `/swarm run pac<Tab>` keeps the `run` token intact).
 		// For file paths, complete the path
 		const newLine = beforePrefix + item.value + afterCursor;
-		const newLines = [...lines];
+		const newLines = lines.slice();
 		newLines[cursorLine] = newLine;
 
 		return {
@@ -806,7 +806,7 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 		this.#dirCache.set(searchDir, { entries, timestamp: now });
 
 		if (this.#dirCache.size > 100) {
-			const sortedKeys = [...this.#dirCache.entries()]
+			const sortedKeys = Array.from(this.#dirCache.entries())
 				.sort((a, b) => a[1].timestamp - b[1].timestamp)
 				.slice(0, 50)
 				.map(([key]) => key);

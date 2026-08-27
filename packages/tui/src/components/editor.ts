@@ -1617,7 +1617,7 @@ export class Editor implements Component, Focusable, MouseRoutable {
 	}
 
 	getLines(): string[] {
-		return [...this.#state.lines];
+		return this.#state.lines.slice();
 	}
 
 	getCursor(): { line: number; col: number } {

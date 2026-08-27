@@ -438,7 +438,7 @@ function gridBox(rows: Box[][], align: (col: number) => CellAlign, gap: (col: nu
 	}
 	const grid = vconcat(rowBoxes);
 	if (rowGap > 0 && rows.length > 1 && grid.lines.length % 2 === 0) {
-		return { lines: [...grid.lines, spaces(grid.width)], baseline: grid.lines.length >> 1, width: grid.width };
+		return { lines: grid.lines.concat([spaces(grid.width)]), baseline: grid.lines.length >> 1, width: grid.width };
 	}
 	return grid;
 }

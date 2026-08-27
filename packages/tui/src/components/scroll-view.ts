@@ -65,7 +65,7 @@ export class ScrollView implements Component {
 	#fastScrollLines: number;
 
 	constructor(lines: readonly string[], options: ScrollViewOptions) {
-		this.#lines = [...lines];
+		this.#lines = lines.slice();
 		this.#height = Number.isFinite(options.height) ? Math.max(0, Math.trunc(options.height)) : 0;
 		this.#totalRows = options.totalRows === undefined ? undefined : Math.max(0, Math.trunc(options.totalRows));
 		this.#scrollbar = normalizeScrollbarMode(options.scrollbar);
@@ -87,7 +87,7 @@ export class ScrollView implements Component {
 		// the agent-hub transcript tail froze exactly that way (2026-07-24).
 		// The copy is O(content) but ~20us at 10k rows; render() stays
 		// O(viewport) regardless.
-		this.#lines = [...lines];
+		this.#lines = lines.slice();
 		this.#clampScrollOffset();
 	}
 

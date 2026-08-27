@@ -204,7 +204,7 @@ function buildAlphanumericSwapQueries(queryLower: string): string[] {
 		const swapped = queryLower.slice(0, i) + next + current + queryLower.slice(i + 2);
 		variants.add(swapped);
 	}
-	return [...variants];
+	return Array.from(variants);
 }
 
 function withPosition(score: number, index: number): number {
@@ -584,5 +584,5 @@ export function matchPositions(query: string, text: string): number[] {
 			}
 		}
 	}
-	return [...hits].sort((a, b) => a - b);
+	return Array.from(hits).sort((a, b) => a - b);
 }

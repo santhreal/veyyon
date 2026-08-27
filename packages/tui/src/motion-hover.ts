@@ -78,7 +78,7 @@ export class HoverFade<K = number> {
 		this.#key = key;
 		// Iterating a copy: a settled fade-out deletes its own entry from `onDone`,
 		// which `#retarget` reaches synchronously when motion is off.
-		for (const [row, fade] of [...this.#fades]) {
+		for (const [row, fade] of Array.from(this.#fades)) {
 			if (row === key) continue;
 			this.#retarget(row, fade, 0);
 		}

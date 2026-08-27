@@ -1261,7 +1261,7 @@ function osc99Payload(meta: string[], payload: string, holdUntilLaterPayload: bo
 	const chunks = chunkUtf8(payload);
 	let out = "";
 	for (let i = 0; i < chunks.length; i++) {
-		const chunkMeta = [...meta];
+		const chunkMeta = meta.slice();
 		if (holdUntilLaterPayload || i < chunks.length - 1) chunkMeta.push("d=0");
 		out += osc99Chunk(chunkMeta, chunks[i]!);
 	}
