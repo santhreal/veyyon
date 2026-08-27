@@ -66,6 +66,13 @@ window no larger than the threshold, sized by `tools.artifactHeadBytes` and
 `tools.artifactTailBytes` in the ratio they name, plus the `artifact://` id that reads the full text
 back.
 
+A directory read that names no `depth` lists the top level: every entry, up to 100, with each
+subdirectory's direct-child count beside it, and a footer naming `depth: 2` for the recursive
+listing. Orientation is what a selector-free listing is for, and the recursive one costs 8,163
+tokens for `packages/coding-agent/src` against 962 for its top level. A directory wider than 100
+entries states how many it held back and names `depth: 1` for the flat listing of all of them.
+`depth` and `limit` are honored in full when named.
+
 ## The `search` tool (`tools/search.ts`)
 
 Workspace discovery and searching are unified in the `search` tool, covering file path lookup,
@@ -93,7 +100,7 @@ Options are strictly validated per `type`; cross-type fields are rejected with a
   - **`path`** scopes the search (file, directory, glob, internal URL like `veyyon://`, or a semicolon-delimited list). `ssh://` scopes are supported here. Pass the narrowest known scope; omit it only when the workspace root (`"."`) is intended. Line-range selectors (e.g. `:50-100`) on a single file target constrain matches.
   - **`case` (default `true`)** toggles case sensitivity.
   - **`gitignore` (default `true`)** respects `.gitignore`.
-  - **`skip`** pages past already-returned files; results are paginated at `20` files per call (`DEFAULT_FILE_LIMIT`) with an internal cap of `2000` matches. Context lines around matches are governed by `search.contextBefore` (default `1`) and `search.contextAfter` (default `3`).
+  - **`skip`** pages past already-returned files; results are paginated at `20` files per call (`DEFAULT_FILE_LIMIT`) with an internal cap of `2000` matches. Context lines around matches are governed by `search.contextBefore` (default `1`) and `search.contextAfter` (default `1`).
 - **`type: "structure"`** accepts `path` and `skip`:
   - **`path`** scopes the search (file, directory, glob, local or materialized internal URL, or semicolon-delimited list). `ssh://` is not supported; inspect remote code with `read` before structural matching.
   - **`skip`** specifies match offset for pagination (default limit `50` matches).

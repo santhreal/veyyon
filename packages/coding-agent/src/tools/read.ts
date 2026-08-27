@@ -988,7 +988,7 @@ const readSchema = type({
 		"Local path, internal URI (e.g. memory://, skill://), or URL. Inline selectors are supported.",
 	),
 	"depth?": type("number.integer > 0").describe(
-		"Directory listings only: recursion depth (1 = top level). Default 2.",
+		"Directory listings only: recursion depth. Omitted lists the top level with per-subdirectory entry counts; 2 recurses one level.",
 	),
 	"limit?": type("number.integer > 0").describe(
 		"Directory listings only: max entries returned; omitted entries are reported with the limit and how to see more.",
@@ -3715,36 +3715,39 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 	): Promise<AgentToolResult<ReadToolDetails>> {
 		const READ_DIRECTORY_MAX_DEPTH = 2;
 		const READ_DIRECTORY_CHILD_LIMIT = 12;
-		// Top-level cap for the concise session-root listing. Generous enough
-		// that an ordinary project root fits whole; a monorepo root gets the
-		// omission notice naming how to see the rest.
-		const ROOT_LISTING_ENTRY_LIMIT = 100;
+		// Top-level cap for the concise listing. Generous enough that an ordinary
+		// directory fits whole; a monorepo root gets the omission notice naming
+		// how to see the rest.
+		const TOP_LEVEL_LISTING_ENTRY_LIMIT = 100;
 
 		throwIfAborted(signal);
-		// Field feedback: `read('.')` on a large workspace usually needs the
-		// top-level convention, not a recursive tree. Default the session
-		// working directory root to a concise depth-1 listing with per-
-		// subdirectory entry counts; an explicit `depth`/`limit`, or any other
-		// directory, keeps the full recursive listing.
-		const conciseRoot =
-			directory.depth === undefined &&
-			directory.entryLimit === undefined &&
-			path.resolve(absolutePath) === path.resolve(this.session.cwd);
+		// A selector-free directory read is orientation, so it answers at the top
+		// level: every entry with each subdirectory's direct-child count beside
+		// it. The second level is a default nobody asked for, and it is expensive
+		// because the result is re-sent on every later request of the session —
+		// `packages/coding-agent/src` of this repository costs 8,163 tokens at
+		// depth 2 against 962 at its top level, and the recursive listing also
+		// caps each directory's fanout at READ_DIRECTORY_CHILD_LIMIT, so it hides
+		// entries the concise listing shows. A named `depth` or `limit` is a
+		// request and is honored in full.
+		const conciseTopLevel = directory.depth === undefined && directory.entryLimit === undefined;
 
 		let tree: DirectoryTree;
 		let rootFooter: string | undefined;
-		// Both listing paths report a failure the same way. The concise root path
-		// used to have no handler at all, so a scan that could not run reached
-		// line 3629 as a zero-line tree and was rendered "(empty directory)" —
-		// the answer a genuinely empty directory gets.
+		// Both listing paths report a failure the same way. The concise path used
+		// to have no handler at all, so a scan that could not run reached line
+		// 3629 as a zero-line tree and was rendered "(empty directory)" — the
+		// answer a genuinely empty directory gets.
 		try {
-			if (conciseRoot) {
-				const listing = await buildTopLevelDirectoryListing(absolutePath, { entryLimit: ROOT_LISTING_ENTRY_LIMIT });
+			if (conciseTopLevel) {
+				const listing = await buildTopLevelDirectoryListing(absolutePath, {
+					entryLimit: TOP_LEVEL_LISTING_ENTRY_LIMIT,
+				});
 				if (listing.totalLines > 1) {
 					rootFooter =
 						listing.omittedTopLevel > 0
-							? `[${listing.omittedTopLevel} more top-level entries not shown (capped at ${ROOT_LISTING_ENTRY_LIMIT}). Re-issue read with depth: 2 for the recursive listing, or read a subdirectory by name.]`
-							: "[Top-level listing of the working directory root. Re-issue read with depth: 2 for the recursive listing, or read a subdirectory by name.]";
+							? `[${listing.omittedTopLevel} more top-level entries not shown (capped at ${TOP_LEVEL_LISTING_ENTRY_LIMIT}). Re-issue read with depth: 1 for every entry, depth: 2 for the recursive listing, or read a subdirectory by name.]`
+							: "[Top-level listing. Re-issue read with depth: 2 for the recursive listing, or read a subdirectory by name.]";
 				}
 				tree = listing;
 			} else {

@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-58b21a75.js";
+            window.path_to_searchindex_js = "../searchindex-de0d933f.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-a2abefc1.js"></script>
@@ -255,6 +255,12 @@ layer: output over the threshold is written to an artifact and the result keeps 
 window no larger than the threshold, sized by <code>tools.artifactHeadBytes</code> and
 <code>tools.artifactTailBytes</code> in the ratio they name, plus the <code>artifact://</code> id that reads the full text
 back.</p>
+<p>A directory read that names no <code>depth</code> lists the top level: every entry, up to 100, with each
+subdirectory’s direct-child count beside it, and a footer naming <code>depth: 2</code> for the recursive
+listing. Orientation is what a selector-free listing is for, and the recursive one costs 8,163
+tokens for <code>packages/coding-agent/src</code> against 962 for its top level. A directory wider than 100
+entries states how many it held back and names <code>depth: 1</code> for the flat listing of all of them.
+<code>depth</code> and <code>limit</code> are honored in full when named.</p>
 <h2 id="the-search-tool-toolssearchts"><a class="header" href="#the-search-tool-toolssearchts">The <code>search</code> tool (<code>tools/search.ts</code>)</a></h2>
 <p>Workspace discovery and searching are unified in the <code>search</code> tool, covering file path lookup,
 text/regex search, and structural code search through one canonical model-facing interface. It
@@ -290,7 +296,7 @@ takes two required ordered fields followed by type-specific options:</p>
 <li><strong><code>path</code></strong> scopes the search (file, directory, glob, internal URL like <code>veyyon://</code>, or a semicolon-delimited list). <code>ssh://</code> scopes are supported here. Pass the narrowest known scope; omit it only when the workspace root (<code>"."</code>) is intended. Line-range selectors (e.g. <code>:50-100</code>) on a single file target constrain matches.</li>
 <li><strong><code>case</code> (default <code>true</code>)</strong> toggles case sensitivity.</li>
 <li><strong><code>gitignore</code> (default <code>true</code>)</strong> respects <code>.gitignore</code>.</li>
-<li><strong><code>skip</code></strong> pages past already-returned files; results are paginated at <code>20</code> files per call (<code>DEFAULT_FILE_LIMIT</code>) with an internal cap of <code>2000</code> matches. Context lines around matches are governed by <code>search.contextBefore</code> (default <code>1</code>) and <code>search.contextAfter</code> (default <code>3</code>).</li>
+<li><strong><code>skip</code></strong> pages past already-returned files; results are paginated at <code>20</code> files per call (<code>DEFAULT_FILE_LIMIT</code>) with an internal cap of <code>2000</code> matches. Context lines around matches are governed by <code>search.contextBefore</code> (default <code>1</code>) and <code>search.contextAfter</code> (default <code>1</code>).</li>
 </ul>
 </li>
 <li><strong><code>type: "structure"</code></strong> accepts <code>path</code> and <code>skip</code>:
