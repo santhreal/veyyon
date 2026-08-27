@@ -68,7 +68,8 @@ export function renderSegmentTrack(segments: TrackSegment[], activeIndex: number
 	const palette = resolveSegmentPalette(segments.length);
 
 	let track = "";
-	segments.forEach((segment, i) => {
+	for (let i = 0; i < segments.length; i++) {
+		const segment = segments[i]!;
 		if (i > 0) {
 			// A thin separator reads cleanly only between two plain labels; the chip
 			// caps already delimit the active segment, so pad around it instead.
@@ -78,12 +79,12 @@ export function renderSegmentTrack(segments: TrackSegment[], activeIndex: number
 		const fg = theme.getFgAnsi(color);
 		if (i !== activeIndex) {
 			track += `${fg}${segment.label}${SGR_FG_RESET}`;
-			return;
+			continue;
 		}
 		const bg = fg.replace("\x1b[38;", "\x1b[48;");
 		const label = `${bg}${theme.getContrastFgAnsi(color)}\x1b[1m ${segment.label} ${SGR_INTENSITY_RESET}${SGR_BG_RESET}`;
 		track += `${fg}${capLeft}${label}${fg}${capRight}${SGR_FG_RESET}`;
-	});
+	}
 	return track;
 }
 

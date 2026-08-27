@@ -139,11 +139,12 @@ export class CopySelectorComponent implements Component {
 	#flatten(): FlatNode[] {
 		const out: FlatNode[] = [];
 		const walk = (nodes: CopyTarget[], depth: number, ancestorHasNext: boolean[]) => {
-			nodes.forEach((target, i) => {
+			for (let i = 0; i < nodes.length; i++) {
+				const target = nodes[i]!;
 				const isLast = i === nodes.length - 1;
 				out.push({ target, depth, isLast, ancestorHasNext });
 				if (target.children?.length) walk(target.children, depth + 1, [...ancestorHasNext, !isLast]);
-			});
+			}
 		};
 		walk(this.#roots, 0, []);
 		return out;
