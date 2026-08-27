@@ -239,8 +239,9 @@ export class TabBar implements Component {
 				if (ti !== this.#activeIndex && this.#tabs[ti]!.short !== undefined) collapseOrder.push(ti);
 			}
 			collapseOrder.sort((a, b) => Math.abs(b - this.#activeIndex) - Math.abs(a - this.#activeIndex));
-			for (const index of collapseOrder) {
-				labels[index] = this.#tabs[index].short ?? this.#tabs[index].label;
+			for (let ci = 0; ci < collapseOrder.length; ci++) {
+				const index = collapseOrder[ci]!;
+				labels[index] = this.#tabs[index]!.short ?? this.#tabs[index]!.label;
 				chunks = buildChunks(labels);
 				if (totalWidth(chunks) <= maxWidth) break;
 			}
@@ -251,7 +252,8 @@ export class TabBar implements Component {
 		let currentLine = "";
 		let currentWidth = 0;
 
-		for (const chunk of chunks) {
+		for (let chi = 0; chi < chunks.length; chi++) {
+			const chunk = chunks[chi]!;
 			const chunkWidth = visibleWidth(chunk.text);
 			if (chunkWidth <= 0) {
 				continue;
@@ -334,7 +336,8 @@ export class TabBar implements Component {
 	 * 0-based column.
 	 */
 	tabAt(line: number, col: number): Tab | undefined {
-		for (const zone of this.#hitZones) {
+		for (let zi = 0; zi < this.#hitZones.length; zi++) {
+			const zone = this.#hitZones[zi]!;
 			if (zone.line === line && col >= zone.start && col < zone.end) {
 				return this.#tabs[zone.index];
 			}
