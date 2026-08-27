@@ -71,6 +71,16 @@ Harbor rejects a missing container runtime, and the in-process backend rejects a
 read. The verdict carries `missingRequirements`, so a caller reports every absent prerequisite at
 once instead of one per run attempt.
 
+## External commands
+
+`src/core/external-command.ts` owns the bound on every command a backend spawns.
+`runBoundedCommand` runs a cleanup or a probe asynchronously under 30s, so a `docker ps` waiting on a
+restarting daemon costs one trial's cleanup rather than the thread every worker and every trial
+deadline runs on. `syncCommandOptions()` carries the same bound to a launch probe that has to stay
+synchronous, and `BUILD_COMMAND_TIMEOUT_MS` gives a pack, an image pull or a binary build fifteen
+minutes. A command that ignores the bound is killed with SIGKILL. Cleanup is best effort: a caller
+catches the rejection and continues.
+
 ## Termination
 
 `src/core/process-tree.ts` ends a trial's process tree for every backend: `SIGTERM` to the child's

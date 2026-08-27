@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { readPipeText } from "@veyyon/utils";
-import { awaitTrialProcessOutput, DEFAULT_GRACE_PERIOD_MS, terminateProcessTree } from "../../core";
+import { awaitTrialProcessOutput, DEFAULT_GRACE_PERIOD_MS, runBoundedCommand, terminateProcessTree } from "../../core";
 import { boundRawOutput, resolveTrialTimeoutSec } from "../../core/trial-deadline";
 import type { PreflightVerdict, TrialArtifacts } from "../../core/types";
 import { MINIMUM_DEEPSWE_PIER_VERSION, pierSupportsSeparateVerifierCollect } from "./version";
@@ -104,15 +104,7 @@ export async function cleanupPierContainers(
 	jobName: string,
 	exec?: (file: string, args: readonly string[]) => Promise<{ stdout: string; stderr: string }>,
 ): Promise<void> {
-	const runExec =
-		exec ??
-		(async (file: string, args: readonly string[]) => {
-			const res = spawnSync(file, args as string[], { encoding: "utf8" });
-			if (res.status !== 0) {
-				throw new Error(res.stderr || `exit ${res.status}`);
-			}
-			return { stdout: res.stdout ?? "", stderr: res.stderr ?? "" };
-		});
+	const runExec = exec ?? runBoundedCommand;
 
 	try {
 		const psRes = await runExec("docker", [

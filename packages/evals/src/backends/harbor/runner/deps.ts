@@ -6,6 +6,7 @@ import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { tryParseJson } from "@veyyon/utils";
+import { BUILD_COMMAND_TIMEOUT_MS, syncCommandOptions } from "../../../core/external-command";
 import { codingAgentDir, repoRootDir } from "../../../paths";
 import type { Config } from "./config";
 
@@ -29,8 +30,8 @@ export function readPkgVersion(): string {
 export function buildTarball(benchDir: string): string {
 	process.stdout.write("packing local veyyon (bun pm pack)…\n");
 	const r = spawnSync("bun", ["pm", "pack", "--destination", benchDir], {
+		...syncCommandOptions(BUILD_COMMAND_TIMEOUT_MS),
 		cwd: codingAgentDir(),
-		encoding: "utf8",
 	});
 	if (r.status !== 0) {
 		throw new Error(`bun pm pack failed: ${r.stderr || r.stdout || `exit ${r.status}`}`);
@@ -79,7 +80,7 @@ function repoBunVersion(): string {
 
 /** Native arch of the docker daemon (what non-emulated task containers run as). */
 function dockerServerArch(): "arm64" | "x64" {
-	const r = spawnSync("docker", ["version", "--format", "{{.Server.Arch}}"], { encoding: "utf8" });
+	const r = spawnSync("docker", ["version", "--format", "{{.Server.Arch}}"], syncCommandOptions());
 	const a = (r.stdout ?? "").trim();
 	if (a === "arm64" || a === "aarch64") return "arm64";
 	return "x64";
@@ -249,7 +250,7 @@ export function prepareSourceDeps(cfg: Config): SourceMount {
 		"bun install --frozen-lockfile && mkdir -p /work/_bin && cp $(which bun) /work/_bin/bun",
 	];
 
-	const res = spawnSync(runtime, runArgs, { encoding: "utf8" });
+	const res = spawnSync(runtime, runArgs, syncCommandOptions(BUILD_COMMAND_TIMEOUT_MS));
 	if (res.status !== 0) {
 		throw new Error(`Failed to prepare Linux source dependencies via ${runtime}:\n${res.stderr || res.stdout}`);
 	}

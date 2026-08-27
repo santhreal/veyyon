@@ -8,6 +8,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { AUTH_DB_SOURCES, requireStagedAuthCanServeToken } from "../../../core";
 import { decideAuthSeed, probeCredentialStore, snapshotCredentialStore } from "../../../core/auth-seed";
+import { BUILD_COMMAND_TIMEOUT_MS, syncCommandOptions } from "../../../core/external-command";
 import { assetsDir, authDbPath, codingAgentDir, evalsPackageDir, veyBinaryPath } from "../../../paths";
 import { BinaryBuildFailedError, MissingCredentialStoreError, MissingRequiredFileError } from "./errors";
 
@@ -130,6 +131,7 @@ export async function ensureBinaryUpToDate(): Promise<void> {
 	if (!status.needsBuild) return;
 	console.log("deep-swe: building fresh vey binary...");
 	const built = spawnSync("bun", ["scripts/build-binary.ts"], {
+		...syncCommandOptions(BUILD_COMMAND_TIMEOUT_MS),
 		cwd: getCodingAgentDir(),
 		stdio: "inherit",
 	});

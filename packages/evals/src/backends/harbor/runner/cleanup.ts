@@ -4,6 +4,14 @@
  */
 import { spawnSync } from "node:child_process";
 import { errorMessage } from "@veyyon/utils";
+import { runBoundedCommand, syncCommandOptions } from "../../../core/external-command";
+
+/**
+ * The two functions below run before and after a whole harbor invocation rather than inside a trial,
+ * so they stay synchronous — and take the same bound, because a `docker ps` that never returns
+ * otherwise holds the launch with nothing printed.
+ */
+const SYNC_COMMAND_OPTIONS = syncCommandOptions();
 
 /** Harbor names each trial's compose project `<task>__<7-char-suffix>`. */
 const HARBOR_PROJECT_RE = /^[a-z0-9_.-]+__[a-zA-Z0-9]{7}$/;
@@ -25,7 +33,7 @@ export function listHarborContainers(): DockerContainer[] {
 			"--format",
 			'{{.ID}}\t{{.State}}\t{{.Label "com.docker.compose.project"}}\t{{.Label "com.docker.compose.project.working_dir"}}',
 		],
-		{ encoding: "utf8" },
+		SYNC_COMMAND_OPTIONS,
 	);
 	if (res.status !== 0 || !res.stdout) return [];
 	const out: DockerContainer[] = [];
@@ -56,7 +64,7 @@ export function runDockerCleanup(force: boolean): void {
 			process.stdout.write(
 				`${force ? "Force-removing" : "Removing"} ${ids.length} leftover Harbor container(s)...\n`,
 			);
-			const rm = spawnSync("docker", force ? ["rm", "-f", ...ids] : ["rm", ...ids], { encoding: "utf8" });
+			const rm = spawnSync("docker", force ? ["rm", "-f", ...ids] : ["rm", ...ids], SYNC_COMMAND_OPTIONS);
 			if (rm.status !== 0) {
 				process.stdout.write(`  docker rm failed: ${(rm.stderr ?? "").trim() || `exit ${rm.status}`}\n`);
 			}
@@ -70,9 +78,11 @@ export function runDockerCleanup(force: boolean): void {
 			}
 		}
 
-		const netInspect = spawnSync("docker", ["network", "ls", "--format", "{{.ID}}\t{{.Labels}}"], {
-			encoding: "utf8",
-		});
+		const netInspect = spawnSync(
+			"docker",
+			["network", "ls", "--format", "{{.ID}}\t{{.Labels}}"],
+			SYNC_COMMAND_OPTIONS,
+		);
 		if (netInspect.status === 0 && netInspect.stdout) {
 			const netIdsToRemove: string[] = [];
 			for (const netLine of netInspect.stdout.trim().split("\n")) {
@@ -87,7 +97,7 @@ export function runDockerCleanup(force: boolean): void {
 			if (netIdsToRemove.length > 0) {
 				process.stdout.write(`Removing ${netIdsToRemove.length} stale trial Docker network(s)...\n`);
 				for (const netId of netIdsToRemove) {
-					const rmNet = spawnSync("docker", ["network", "rm", netId], { encoding: "utf8" });
+					const rmNet = spawnSync("docker", ["network", "rm", netId], SYNC_COMMAND_OPTIONS);
 					if (rmNet.status !== 0) {
 						process.stdout.write(
 							`  docker network rm ${netId} failed: ${(rmNet.stderr ?? "").trim() || `exit ${rmNet.status}`}\n`,
@@ -112,15 +122,7 @@ export async function cleanupHarborTrialContainers(
 	options: ScopedHarborCleanupOptions,
 	exec?: (file: string, args: readonly string[]) => Promise<{ stdout: string; stderr: string }>,
 ): Promise<void> {
-	const runExec =
-		exec ??
-		(async (file: string, args: readonly string[]) => {
-			const res = spawnSync(file, args as string[], { encoding: "utf8" });
-			if (res.status !== 0) {
-				throw new Error(res.stderr || `exit ${res.status}`);
-			}
-			return { stdout: res.stdout ?? "", stderr: res.stderr ?? "" };
-		});
+	const runExec = exec ?? runBoundedCommand;
 
 	try {
 		const psRes = await runExec("docker", [
