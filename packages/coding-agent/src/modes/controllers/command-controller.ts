@@ -1556,21 +1556,34 @@ function resolveAggregateStatus(limits: UsageLimit[]): UsageLimit["status"] {
 }
 
 function formatAggregateAmount(limits: UsageLimit[]): string {
-	const fractions = limits
-		.map(limit => resolveUsedFraction(limit))
-		.filter((value): value is number => value !== undefined);
-	if (fractions.length === limits.length && fractions.length > 0) {
-		const sum = fractions.reduce((total, value) => total + value, 0);
-		const avgRemaining = Math.max(0, ((limits.length - sum) / limits.length) * 100);
+	let allFractions = true;
+	let fractionSum = 0;
+	for (let fi = 0; fi < limits.length; fi++) {
+		const value = resolveUsedFraction(limits[fi]!);
+		if (value === undefined) {
+			allFractions = false;
+			break;
+		}
+		fractionSum += value;
+	}
+	if (allFractions && limits.length > 0) {
+		const avgRemaining = Math.max(0, ((limits.length - fractionSum) / limits.length) * 100);
 		return `${formatDecimal(avgRemaining)}% free`;
 	}
 
-	const amounts = limits
-		.map(limit => limit.amount)
-		.filter(amount => amount.used !== undefined && amount.limit !== undefined && amount.limit > 0);
-	if (amounts.length === limits.length && amounts.length > 0) {
-		const totalUsed = amounts.reduce((sum, amount) => sum + (amount.used ?? 0), 0);
-		const totalLimit = amounts.reduce((sum, amount) => sum + (amount.limit ?? 0), 0);
+	let allAmounts = true;
+	let totalUsed = 0;
+	let totalLimit = 0;
+	for (let ai = 0; ai < limits.length; ai++) {
+		const amount = limits[ai]!.amount;
+		if (amount.used === undefined || amount.limit === undefined || amount.limit <= 0) {
+			allAmounts = false;
+			break;
+		}
+		totalUsed += amount.used ?? 0;
+		totalLimit += amount.limit ?? 0;
+	}
+	if (allAmounts && limits.length > 0) {
 		const remainingPct = totalLimit > 0 ? Math.max(0, 100 - (totalUsed / totalLimit) * 100) : 0;
 		return `${formatDecimal(remainingPct)}% free`;
 	}
@@ -1586,13 +1599,16 @@ function formatAggregateAmount(limits: UsageLimit[]): string {
 }
 
 function resolveResetRange(limits: UsageLimit[], nowMs: number): string | null {
-	const absolute = limits
-		.map(limit => limit.window?.resetsAt)
-		.filter((value): value is number => value !== undefined && Number.isFinite(value) && value > nowMs);
-	if (absolute.length === 0) return null;
-	const offsets = absolute.map(value => value - nowMs);
-	const minReset = Math.min(...offsets);
-	const maxReset = Math.max(...offsets);
+	let minReset = Infinity;
+	let maxReset = -Infinity;
+	for (let ri = 0; ri < limits.length; ri++) {
+		const value = limits[ri]!.window?.resetsAt;
+		if (value === undefined || !Number.isFinite(value) || value <= nowMs) continue;
+		const offset = value - nowMs;
+		if (offset < minReset) minReset = offset;
+		if (offset > maxReset) maxReset = offset;
+	}
+	if (minReset === Infinity) return null;
 	if (maxReset - minReset > 60_000) {
 		return `resets in ${formatDuration(minReset)}–${formatDuration(maxReset)}`;
 	}
