@@ -1953,11 +1953,13 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 			let collectedLines: string[];
 			let totalFileLines: number;
 			let stoppedByByteLimit: boolean;
+			let firstLineByteLength: number | undefined;
 			if (fullLines) {
 				const window = collectWindowFromLines(fullLines, rangeStart, maxLines, maxBytesForRead, maxLines);
 				totalFileLines = window.totalFileLines;
 				collectedLines = window.lines;
 				stoppedByByteLimit = window.stoppedByByteLimit;
+				firstLineByteLength = window.firstLineByteLength;
 			} else {
 				const streamResult = await streamLinesFromFile(
 					absolutePath,
@@ -1971,6 +1973,7 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 				totalFileLines = streamResult.totalFileLines;
 				collectedLines = streamResult.lines;
 				stoppedByByteLimit = streamResult.stoppedByByteLimit;
+				firstLineByteLength = streamResult.firstLineByteLength;
 			}
 
 			if (rangeStart >= totalFileLines) {
@@ -1980,10 +1983,21 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 			}
 
 			if (stoppedByByteLimit) {
-				const shown = range.startLine + collectedLines.length - 1;
-				notices.push(
-					`[Lines ${range.startLine}-${shown} reached the ${formatBytes(maxBytesForRead)} output budget. Use :${shown + 1} to continue]`,
-				);
+				// Zero lines collected means the range's own first line is over the
+				// budget, so `${startLine}-${startLine - 1}` would be a backwards range
+				// and the continuation selector would point back at the line that just
+				// failed. Name the line instead.
+				if (collectedLines.length === 0) {
+					const size = firstLineByteLength === undefined ? "" : `${formatBytes(firstLineByteLength)}, `;
+					notices.push(
+						`[Line ${range.startLine} is ${size}over the ${formatBytes(maxBytesForRead)} output budget; nothing shown for this range]`,
+					);
+				} else {
+					const shown = range.startLine + collectedLines.length - 1;
+					notices.push(
+						`[Lines ${range.startLine}-${shown} reached the ${formatBytes(maxBytesForRead)} output budget. Use :${shown + 1} to continue]`,
+					);
+				}
 			}
 
 			// Column truncation is display-only; clone before stamping ellipsis so

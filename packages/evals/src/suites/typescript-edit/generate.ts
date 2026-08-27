@@ -29,15 +29,21 @@ import { type FlagGrammar, flagCount, flagNumber, flagText, parseFlags } from ".
 import { formatContent } from "./formatter";
 import { allMutations, type Mutation, type MutationInfo, mutationCategoryMap } from "./mutations";
 import { typescriptEditFixturesArchive } from "./paths";
-import generateTaskEasyText from "./prompts/generate-task-easy.md" with { type: "text" };
-import generateTaskHardText from "./prompts/generate-task-hard.md" with { type: "text" };
-import generateTaskMediumText from "./prompts/generate-task-medium.md" with { type: "text" };
-import generateTaskNightmareText from "./prompts/generate-task-nightmare.md" with { type: "text" };
+import { typescriptEditSuitePrompts } from "./prompts/registry";
 
-const generateTaskEasyTemplate = Handlebars.compile(generateTaskEasyText, { noEscape: true });
-const generateTaskMediumTemplate = Handlebars.compile(generateTaskMediumText, { noEscape: true });
-const generateTaskHardTemplate = Handlebars.compile(generateTaskHardText, { noEscape: true });
-const generateTaskNightmareTemplate = Handlebars.compile(generateTaskNightmareText, { noEscape: true });
+const generateTaskEasyTemplate = Handlebars.compile(typescriptEditSuitePrompts.require("generate-task-easy"), {
+	noEscape: true,
+});
+const generateTaskMediumTemplate = Handlebars.compile(typescriptEditSuitePrompts.require("generate-task-medium"), {
+	noEscape: true,
+});
+const generateTaskHardTemplate = Handlebars.compile(typescriptEditSuitePrompts.require("generate-task-hard"), {
+	noEscape: true,
+});
+const generateTaskNightmareTemplate = Handlebars.compile(
+	typescriptEditSuitePrompts.require("generate-task-nightmare"),
+	{ noEscape: true },
+);
 const execFile = util.promisify(childProcess.execFile);
 
 const SUPPORTED_EXTENSIONS = new Set([".js", ".jsx", ".ts", ".tsx"]);

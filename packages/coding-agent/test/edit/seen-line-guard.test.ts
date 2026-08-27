@@ -189,7 +189,11 @@ describe("read → edit seen-line guard", () => {
 		const tag = store.record(canonicalSnapshotKey(file), content, [4]);
 
 		const read = await new ReadTool(session).execute("r1", { path: `${file}:raw:1-1,3-3` });
-		expect(resultText(read)).toBe("");
+		// Line 1 alone is over the budget, so the range shows nothing and says so
+		// rather than returning a silent empty window.
+		const text = resultText(read);
+		expect(text).toContain("[Line 1 is 50.0KB, over the 50.0KB output budget; nothing shown for this range]");
+		expect(text).not.toContain("xxx");
 
 		const seen = store.byHash(canonicalSnapshotKey(file), tag)?.seenLines;
 		expect(seen?.has(1)).toBe(false);

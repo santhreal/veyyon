@@ -11163,11 +11163,16 @@ export class AgentSession {
 			// Auto-read @filepath mentions
 			const fileMentions = extractFileMentions(expandedText);
 			if (fileMentions.length > 0) {
-				const fileMentionMessages = await generateFileMentionMessages(fileMentions, this.sessionManager.getCwd(), {
-					autoResizeImages: this.settings.get("images.autoResize"),
-					useHashLines: resolveFileDisplayMode(this).hashLines,
-					snapshotStore: getFileSnapshotStore(this),
-				});
+				const fileMentionMessages = await generateFileMentionMessages(
+					fileMentions,
+					this.sessionManager.getCwd(),
+					this,
+					{
+						autoResizeImages: this.settings.get("images.autoResize"),
+						useHashLines: resolveFileDisplayMode(this).hashLines,
+						snapshotStore: getFileSnapshotStore(this),
+					},
+				);
 				for (const fileMentionMessage of fileMentionMessages) {
 					messages.push(await this.#normalizeAgentMessageImages(fileMentionMessage));
 				}
