@@ -748,9 +748,14 @@ export class AgentTranscriptViewer implements Component {
 	}
 
 	#statsLine(): string {
-		const observed: ObservableSession | undefined = this.deps.observers
-			?.getSessions()
-			.find(s => s.id === this.deps.agentId);
+		const sessions = this.deps.observers?.getSessions() ?? [];
+		let observed: ObservableSession | undefined;
+		for (let si = 0; si < sessions.length; si++) {
+			if (sessions[si]!.id === this.deps.agentId) {
+				observed = sessions[si]!;
+				break;
+			}
+		}
 		const progress = observed?.progress;
 		if (!progress) return "";
 		const stats: string[] = [];
