@@ -161,7 +161,8 @@ export class Text implements Component {
 		const rightMargin = padding(paddingX);
 		const contentLines: string[] = [];
 
-		for (const line of wrappedLines) {
+		for (let li = 0; li < wrappedLines.length; li++) {
+			const line = wrappedLines[li]!;
 			// Add margins
 			const lineWithMargins = leftMargin + line + rightMargin;
 

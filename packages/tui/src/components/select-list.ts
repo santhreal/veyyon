@@ -401,10 +401,10 @@ export class SelectList implements Component, MouseRoutable {
 			const band = this.theme.hovered;
 			const strength = this.#hoverStrength(i);
 			const itemRows = this.#renderItem(item, i === this.#selectedIndex, rowWidth, primaryColumnWidth);
-			for (const row of itemRows) {
+			for (let ri = 0; ri < itemRows.length; ri++) {
 				if (rows.length >= visualBudget) break;
 				this.#hitRows[rows.length] = i;
-				rows.push(band !== undefined && strength > 0 ? band(row, strength) : row);
+				rows.push(band !== undefined && strength > 0 ? band(itemRows[ri]!, strength) : itemRows[ri]!);
 			}
 		}
 
