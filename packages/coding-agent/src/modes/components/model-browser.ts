@@ -130,12 +130,17 @@ export function resolveRoleAssignments(settings: Settings, allModels: ReadonlyAr
 
 /** Wrap raw models into browser items. */
 export function buildBrowserItems(models: ReadonlyArray<Model>): ModelBrowserItem[] {
-	return models.map(model => ({
-		provider: model.provider,
-		id: model.id,
-		model,
-		selector: `${model.provider}/${model.id}`,
-	}));
+	const result = new Array<ModelBrowserItem>(models.length);
+	for (let mi = 0; mi < models.length; mi++) {
+		const model = models[mi]!;
+		result[mi] = {
+			provider: model.provider,
+			id: model.id,
+			model,
+			selector: `${model.provider}/${model.id}`,
+		};
+	}
+	return result;
 }
 
 /** Selector of the pinned clear-to-inherit action row. Never a real `provider/id` key. */
@@ -1022,7 +1027,8 @@ export class ModelBrowser implements Component {
 				theme: { track: t => theme.fg("muted", t), thumb: t => theme.fg("accent", t) },
 			});
 			scrollView.setScrollOffset(startIndex);
-			lines.push(...scrollView.render(width));
+			const svLines = scrollView.render(width);
+			for (let li = 0; li < svLines.length; li++) lines.push(svLines[li]!);
 			for (let i = rows.length; i < this.#maxVisible; i++) lines.push("");
 		}
 
