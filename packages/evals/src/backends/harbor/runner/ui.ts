@@ -6,6 +6,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { escapeMarkdownTableCell } from "@veyyon/coding-agent/utils/markdown-table";
 import { clampLow } from "@veyyon/utils";
+import { getHarness } from "../../../core/harness-registry";
+import type { HarnessBackendBinding } from "../../../core/types";
 import type { TrialStatus } from "../../../wire";
 import { formatUsd } from "../../../wire";
 import type { Config } from "./config";
@@ -61,6 +63,16 @@ export function pad(s: string, w: number): string {
 export function agentArgsLabel(cfg: Config): string | null {
 	return cfg.agentArgs.length > 0 ? cfg.agentArgs.join(" ") : null;
 }
+/**
+ * The agent segment of a frame: the harness the run drove, the install mode when that harness is
+ * built from this repository, and the agent args the run passed. The install mode is meaningless for
+ * a harness the container brings itself, so the binding decides rather than the name.
+ */
+export function agentLabel(cfg: Config, binding: HarnessBackendBinding | undefined): string {
+	const built = binding?.sourceMount === true || binding?.localTarball === true;
+	const args = agentArgsLabel(cfg);
+	return `${cfg.agent}${built ? ` (${cfg.install})` : ""}${args ? ` [${args}]` : ""}`;
+}
 
 export interface RenderState {
 	cfg: Config;
@@ -107,13 +119,10 @@ export function render(st: RenderState): void {
 	const out: string[] = [];
 	if (isTTY) out.push(`${CSI}H${CSI}2J`); // home + clear
 	const spin = SPINNER[st.tick % SPINNER.length];
-	const agentLabel =
-		st.cfg.agent === "veyyon"
-			? `veyyon (${st.cfg.install})${agentArgsLabel(st.cfg) ? ` [${agentArgsLabel(st.cfg)}]` : ""}`
-			: st.cfg.agent;
+	const agentSegment = agentLabel(st.cfg, getHarness(st.cfg.agent)?.backends.harbor);
 	const modelsLabel = st.cfg.models.length > 0 ? st.cfg.models.join(", ") : "no model (oracle/nop)";
 	out.push(
-		`${bold(`${st.cfg.dataset}`)}  ${dim("•")}  ${modelsLabel}  ${dim("•")}  ${agentLabel}  ${dim("•")}  ${st.cfg.envType}  ${yellow(spin)}\n`,
+		`${bold(`${st.cfg.dataset}`)}  ${dim("•")}  ${modelsLabel}  ${dim("•")}  ${agentSegment}  ${dim("•")}  ${st.cfg.envType}  ${yellow(spin)}\n`,
 	);
 	out.push(
 		`  ${bar(frac, 30)}  ${(frac * 100).toFixed(0)}%  ${tot.done}/${tot.total} done  ${dim("•")}  ${green(`${tot.pass} pass`)} (${successPct.toFixed(1)}%)  ${red(`${tot.fail} fail`)}  ${yellow(`${tot.error} err`)}  ${dim(`${tot.running} run`)}\n`,

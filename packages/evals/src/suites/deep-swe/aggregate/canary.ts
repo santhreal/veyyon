@@ -45,5 +45,5 @@ export function mostCommonAgentReason(reasons: readonly string[]): string {
 			bestCount = count;
 		}
 	}
-	return best ?? "(no agent-side reason captured; check a failed job's agent/veyyon.txt)";
+	return best ?? "(no agent-side reason captured; check the agent log in a failed job's trial directory)";
 }

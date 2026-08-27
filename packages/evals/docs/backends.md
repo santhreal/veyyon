@@ -49,6 +49,12 @@ are routed to the host authentication gateway. Per-trial status, token counts an
 come from polling each trial's `result.json`. `src/backends/harbor/launch-args.ts` builds the argv and
 is the only place the container agent's import path and CLI flags are assembled.
 
+Nothing in the runner tests the harness by name. The agent name, the container import path, the
+source mount, the local tarball and the gateway all come from the harness's harbor binding, and the
+progress frame's agent segment (`agentLabel`) takes that binding too: the install mode appears for a
+harness this repository mounts or packs and for no other, and the agent args appear for every
+harness that was given some.
+
 `parseFinishedTrialResult` in `src/backends/harbor/runner/results.ts` is the only reader of a
 trial's `result.json`. It resolves the reward (top-level `verifier_result.rewards`, else the last
 step result's; the `reward` key when present, else the highest recorded value), sums usage across
