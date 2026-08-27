@@ -159,7 +159,8 @@ export function renderSunField(o: SunFieldOptions): string[] {
 
 			// Ripples: damped ring wavelets, like a struck pond, cell-space distance.
 			let rp = 0;
-			for (const r of ripples) {
+			for (let ri = 0; ri < ripples.length; ri++) {
+				const r = ripples[ri]!;
 				if (r.age < 0 || r.age > 3.2) continue;
 				const rd = Math.hypot((x - r.x) * 0.5, y - r.y);
 				rp += Math.sin(rd * 0.9 - r.age * 7) * Math.exp(-r.age * 1.7) * Math.exp(-rd * 0.12) * r.amp;
@@ -360,7 +361,9 @@ export function renderSunsetField(o: SunsetFieldOptions): string[] {
 		}
 		let line = "";
 		let lastKey = "";
-		for (const cell of grid[y]) {
+		const gridRow = grid[y]!;
+		for (let ci = 0; ci < gridRow.length; ci++) {
+			const cell = gridRow[ci]!;
 			if (cell.kind === "sky" && cell.band < 0) {
 				if (lastKey !== "reset") {
 					line += SGR_RESET;
