@@ -90,15 +90,18 @@ export class UserMessageComponent extends Container {
 		// Ember glyph while this prompt is being worked; dim once it is history.
 		const gutter = `  ${theme.fg(this.#working ? "borderAccent" : "dim", "›")} `;
 		let gutterPlaced = false;
-		const wrapped = lines.map(line => {
+		const wrapped: string[] = new Array(lines.length);
+		for (let li = 0; li < lines.length; li++) {
+			const line = lines[li]!;
 			// ANSI-aware blankness: padding rows carry color codes, so a raw
 			// trim() would mistake them for content and misplace the gutter.
 			if (!gutterPlaced && stripAnsi(line).trim().length > 0) {
 				gutterPlaced = true;
-				return gutter + line;
+				wrapped[li] = gutter + line;
+			} else {
+				wrapped[li] = line.length > 0 ? `    ${line}` : line;
 			}
-			return line.length > 0 ? `    ${line}` : line;
-		});
+		}
 		this.#zoneSource = lines;
 		this.#zoneLines = wrapped;
 		return wrapped;

@@ -385,13 +385,23 @@ export class WelcomeComponent implements Component {
 	#centeredTipBlock(termWidth: number): string[] {
 		// renderWelcomeTip prefixes every line with one indent space; drop that
 		// single space (keeping the continuation indent) before re-centring.
-		const tipLines = this.#renderTip(Math.min(64, termWidth - 4)).map(line =>
-			line.startsWith(" ") ? line.slice(1) : line,
-		);
+		const rawTipLines = this.#renderTip(Math.min(64, termWidth - 4));
+		const tipLines: string[] = new Array(rawTipLines.length);
+		for (let li = 0; li < rawTipLines.length; li++) {
+			const line = rawTipLines[li]!;
+			tipLines[li] = line.startsWith(" ") ? line.slice(1) : line;
+		}
 		if (tipLines.length === 0) return [];
-		const blockWidth = Math.max(...tipLines.map(line => visibleWidth(line)));
+		let blockWidth = 0;
+		for (let li = 0; li < tipLines.length; li++) {
+			const w = visibleWidth(tipLines[li]!);
+			if (w > blockWidth) blockWidth = w;
+		}
 		const pad = padding(Math.max(0, Math.floor((termWidth - blockWidth) / 2)));
-		return ["", ...tipLines.map(line => pad + line)];
+		const result: string[] = new Array(tipLines.length + 1);
+		result[0] = "";
+		for (let li = 0; li < tipLines.length; li++) result[li + 1] = pad + tipLines[li]!;
+		return result;
 	}
 
 	/** Fit string to exact width with ANSI-aware truncation/padding. */
