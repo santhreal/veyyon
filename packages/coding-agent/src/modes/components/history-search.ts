@@ -39,10 +39,12 @@ const MAX_VISIBLE = 10;
 
 /** Split a query the same way `HistoryStorage` tokenizes it, so highlights align with matches. */
 function queryTokens(query: string): string[] {
-	return query
-		.toLowerCase()
-		.split(NON_ALNUM_RUN_RE)
-		.filter(tok => tok.length > 0);
+	const raw = query.toLowerCase().split(NON_ALNUM_RUN_RE);
+	const out: string[] = [];
+	for (let ti = 0; ti < raw.length; ti++) {
+		if (raw[ti]!.length > 0) out.push(raw[ti]!);
+	}
+	return out;
 }
 
 /** Wrap every case-insensitive occurrence of any token in `text` with the accent color. */
