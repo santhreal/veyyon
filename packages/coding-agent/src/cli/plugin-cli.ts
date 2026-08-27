@@ -286,6 +286,40 @@ async function handleInstall(
 		const target = classifyInstallTarget(spec, knownMarketplaces);
 
 		if (target.type === "marketplace") {
+			if (flags.dryRun) {
+				// Resolve against the catalog the way the npm path resolves through bun. Echoing the
+				// spec back proves nothing (#911), and this branch used to skip the check entirely:
+				// a marketplace `--dry-run` fetched, extracted, wrote the cache and the registries,
+				// and reported a completed install.
+				const planned = await mktMgr.getPluginInfo(target.name, target.marketplace);
+				if (!planned) {
+					console.error(
+						chalk.red(
+							`${theme.status.error} Failed to install ${spec}: ${target.marketplace} lists no plugin named ${target.name}`,
+						),
+					);
+					process.exit(1);
+				}
+				if (flags.json) {
+					console.log(
+						JSON.stringify(
+							{
+								dryRun: true,
+								action: "install",
+								name: target.name,
+								marketplace: target.marketplace,
+								version: planned.version,
+							},
+							null,
+							2,
+						),
+					);
+				} else {
+					const resolved = planned.version ? `${target.name}@${planned.version}` : target.name;
+					console.log(chalk.dim(`[dry-run] Would install ${resolved} from ${target.marketplace}`));
+				}
+				continue;
+			}
 			try {
 				const entry = await mktMgr.installPlugin(target.name, target.marketplace, {
 					force: flags.force,

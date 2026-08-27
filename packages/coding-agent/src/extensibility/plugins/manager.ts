@@ -957,15 +957,11 @@ export class PluginManager {
 			await fs.promises.mkdir(scopeDir, { recursive: true });
 		}
 
-		// Remove existing
-		try {
-			const stats = await fs.promises.lstat(linkPath);
-			if (stats.isSymbolicLink() || stats.isDirectory()) {
-				await fs.promises.unlink(linkPath);
-			}
-		} catch (err) {
-			if (!isEnoent(err)) throw err;
-		}
+		// Whatever is already there is the plugin's whole presence on disk, and `#unlinkPluginPath`
+		// is the one place that knows how to remove it. Open-coding it here called `unlink` on a
+		// real directory, which is EISDIR, so linking a local checkout over an npm-installed copy
+		// failed instead of replacing it.
+		await this.#unlinkPluginPath(pkg.name);
 
 		await fs.promises.symlink(absolutePath, linkPath);
 
