@@ -241,6 +241,9 @@ export function reopenBackgroundAfterResets(text: string, background: string): s
  * end. Compacts at every step so the carry never grows past the live run.
  */
 export function sgrCarryAfter(carry: string, text: string): string {
+	// No escape in text means no SGR sequences to carry forward; the carry
+	// compacts to its current value without a regex scan or allocation.
+	if (!text.includes(ESC)) return compactSgrCarry(carry);
 	return compactSgrCarry(carry + (text.match(SGR_SEQUENCE_GLOBAL)?.join("") ?? ""));
 }
 
