@@ -23,7 +23,8 @@
 
 import { describe, expect, test } from "bun:test";
 import { parseArgs } from "../src/cli/args";
-import { runStartupPrologue, shouldPrepaintLaunchCard, takeStartupPrologue } from "../src/startup/launch-card";
+import { runStartupPrologue, shouldPrepaintLaunchCard } from "../src/startup/launch-card";
+import { takeStartupPrologue } from "../src/startup/prologue-handoff";
 
 /** Swap the TTY flags for one case; both are read as plain properties. */
 function withTty<T>(stdin: boolean, stdout: boolean, body: () => T): T {

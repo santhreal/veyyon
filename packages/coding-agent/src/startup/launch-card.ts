@@ -31,21 +31,13 @@
 import { $env, getProjectDir, VERSION } from "@veyyon/utils";
 import type { Args } from "../cli/args";
 import { applySessionWorkdir, applyStartupCwd } from "../cli/startup-cwd";
-import type { Settings } from "../config/settings";
-import { Settings as SettingsClass } from "../config/settings";
+import { Settings } from "../config/settings";
 import { paintFirstFrame, shouldPaintFirstFrame } from "../modes/first-frame";
 import { CURRENT_SETUP_VERSION, resolveOnboardingGeneration } from "../modes/setup-version";
 import { initTheme } from "../modes/theme/theme";
 import { shouldShowStartupSplash } from "../startup-splash";
 
-/** What the prologue resolved, handed to `runRootCommand` so it repeats none of it. */
-export interface StartupPrologue {
-	/** `$HOME` relocation target, or undefined. Announced by the caller, after `applySessionWorkdir`. */
-	readonly autoChdirTarget: string | undefined;
-	readonly settings: Settings;
-	readonly workdirApplied: boolean;
-	readonly showStartupSplash: boolean;
-}
+import { type StartupPrologue, setStartupPrologue } from "./prologue-handoff";
 
 /**
  * True only for a bare interactive launch that lands on the home screen.
@@ -62,9 +54,6 @@ export function shouldPrepaintLaunchCard(parsed: Args): boolean {
 	if (parsed.print || parsed.mode !== undefined) return false;
 	return process.stdin.isTTY === true && process.stdout.isTTY === true;
 }
-
-let shared: StartupPrologue | undefined;
-
 /**
  * Settle cwd, settings and the theme, then paint the card.
  *
@@ -78,7 +67,7 @@ export async function runStartupPrologue(parsed: Args, forceSetupWizard = false)
 	await initTheme();
 	const autoChdirTarget = await applyStartupCwd(parsed);
 
-	const settings = await SettingsClass.init({ cwd: getProjectDir(), configFiles: parsed.config });
+	const settings = await Settings.init({ cwd: getProjectDir(), configFiles: parsed.config });
 	const workdirApplied = await applySessionWorkdir(settings, parsed.cwd);
 
 	await initTheme(
@@ -111,22 +100,21 @@ export async function runStartupPrologue(parsed: Args, forceSetupWizard = false)
 		stdoutIsTTY: process.stdout.isTTY,
 		resuming,
 	});
-	if (paint) paintFirstFrame(VERSION);
+	if (paint) {
+		paintFirstFrame(VERSION);
+		// `TUI.start` composes the frame and queues the write with `setImmediate`
+		// rather than writing it, so the card is NOT on screen when
+		// `paintFirstFrame` returns. The caller's very next statement is
+		// `import("../main")`, whose module evaluation holds the loop for about
+		// 200ms; without this yield the composed frame waits behind it and the
+		// card lands at ~310ms having been ready at ~115ms. One turn suffices:
+		// the render was queued first and the check phase is FIFO.
+		const flushed = Promise.withResolvers<void>();
+		setImmediate(flushed.resolve);
+		await flushed.promise;
+	}
 
 	const prologue: StartupPrologue = { autoChdirTarget, settings, workdirApplied, showStartupSplash };
-	shared = prologue;
-	return prologue;
-}
-
-/**
- * The prologue this process already ran, once.
- *
- * Clears on read: a second `runRootCommand` in the same process builds its own
- * cwd, settings and screen rather than inheriting a handoff that is no longer
- * true of the terminal.
- */
-export function takeStartupPrologue(): StartupPrologue | undefined {
-	const prologue = shared;
-	shared = undefined;
+	setStartupPrologue(prologue);
 	return prologue;
 }

@@ -87,7 +87,7 @@ import { formatNotice, OperatorNotices, stderrNoticeSink } from "./session/opera
 import { resolveResumableSession, type SessionInfo } from "./session/session-listing";
 import { SessionManager } from "./session/session-manager";
 import { executeBuiltinSlashCommand } from "./slash-commands/builtin-registry";
-import { takeStartupPrologue } from "./startup/launch-card";
+import { takeStartupPrologue } from "./startup/prologue-handoff";
 import { shouldShowStartupSplash } from "./startup-splash";
 import { discoverTitleSystemPromptFile, resolvePromptInput } from "./system-prompt";
 import { createPersistedSubagentReviverFactory } from "./task/persisted-revive";
