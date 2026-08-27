@@ -280,6 +280,7 @@
 - `repology.ts`, `spdx.ts`, `gemini.ts`, `perplexity.ts`, `public.ts`, and `streaming-player.ts` replace array spreads with `.slice()`/`.concat()`/`Array.from()` in web scraping, search result merging, and TTS audio player command construction.
 - `autoresearch/state.ts`, `discovery/helpers.ts`, `task/worktree.ts`, `conflict-detect.ts`, `secrets/vault.ts`, `repair/schema-repair.ts`, and `extensibility/typebox.ts` replace array spreads with `.slice()`/`.concat()`/`Array.from()` in experiment state cloning, extension discovery, worktree patch merging, conflict resolution, vault loading, schema repair, and typebox schema construction.
 - `usage-cli.ts` and browser tab management files (`handle-release.ts`, `launch.ts`, `tab-api-guard.ts`, `tab-supervisor.ts`, `tab-worker.ts`) replace Set/Map spreads with `Array.from()` and array copies with `.slice()` in usage report rendering and browser tab lifecycle management.
+- `edit/modes/patch.ts`, `tools/grep.ts`, and `tools/bash-guard.ts` replace array spreads with `.slice()`/`.concat()`/`Array.from()` in patch application, grep match merging, and bash command tracking.
 
 ### Added
 
