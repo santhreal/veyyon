@@ -75,7 +75,7 @@ function appendLine(component: Component, line: string | undefined): Component {
 	const wrapped = {
 		render: (width: number): readonly string[] => {
 			const base = component.render(width);
-			return [...base, line];
+			return base.concat(line);
 		},
 		invalidate: () => component.invalidate?.(),
 	};
