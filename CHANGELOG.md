@@ -127,6 +127,7 @@
 
 ### Fixed
 
+- A directory listing reports a native addon that could not load instead of answering "(empty directory)". A container whose glibc was older than the shipped addon required got an empty listing for a full checkout on the first `read .`, both in the tool result and in the workspace tree the system prompt carries.
 - An explicit `--model` pointing at a dynamically-discovered model (a provider`s `/v1/models` entry or models.dev overlay absent from the bundled catalog) no longer fails with "not found among N models" when the background discovery refresh has not completed before model resolution. The deferred pattern path does a synchronous cache-aware discovery pass when none of the patterns resolve against the static catalog, mirroring the fallback already present for default-role models.
 - Unified search now preserves purpose-specific field semantics through the Antigravity tool-schema adapter, replaces primitive search tools in explicit tool lists, keeps plan/subagent/bash guidance aligned with the active tool, and redirects intercepted shell searches to `search`.
 - A bash-interceptor rule that still names a retired search primitive (`grep`, `glob`, `find`, `ast_grep`) now redirects to `search` naming the `type` field the tool accepts, instead of the `purpose` field it rejects.
@@ -249,6 +250,7 @@
 - `--dry-run` refuses an overlay the real run would refuse: the backend's preflight now receives the plan's variants, so a missing overlay file, an unknown setting key or a prompt id no registry holds is reported before any quota is spent instead of hours into the run.
 - A wide line clipped in the unseen-line reveal is cut at a code point rather than a UTF-16 code unit, so an emoji or rare CJK character sitting at the column limit is no longer split into an invalid lone surrogate.
 - Mnemopi cost log SQLite database (`cost_log.db`) manages schema migrations via `PRAGMA user_version` and dynamically backfills missing columns on legacy databases.
+- A load failure carries `code: "VEYYON_NATIVE_ADDON_UNAVAILABLE"`, exported as `NATIVE_ADDON_UNAVAILABLE_CODE` with `isNativeAddonUnavailable` from `@veyyon/natives/loader-state`, so a caller that catches a native call can tell an unavailable addon from a scan that found nothing.
 - A native addon load that fails is reported once instead of once per native call; the failed pipeline is memoized, so a run that reached a hundred native calls no longer prints a hundred copies of the candidate report ([#917](https://github.com/santhreal/veyyon/issues/917)).
 - Fixed stock Windows AVX2 detection by trying PowerShell 7 before an isolated modern-addon trial; only explicit shell answers or illegal-instruction exits become verdicts, while missing, incompatible, timed-out, and unexpectedly crashing addons remain unknown.
 - Persisted AVX2 verdicts are schema-versioned and keyed by platform, architecture, and CPU model, so copied or stale caches cannot select a native variant for different hardware.
