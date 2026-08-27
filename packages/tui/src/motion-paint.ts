@@ -190,7 +190,7 @@ export function fadeLineTowards(line: string, groundHex: string, strength: numbe
 			for (let c = 0; c < 3; c++) {
 				const from = Number(tokens[first + c * 2]);
 				if (!Number.isFinite(from)) continue;
-				tokens[first + c * 2] = String(clampChannel(channels[c]! + (from - channels[c]!) * k));
+				tokens[first + c * 2] = CHANNEL_STR[clampChannel(channels[c]! + (from - channels[c]!) * k)];
 				changed = true;
 			}
 			i = first + 4;
