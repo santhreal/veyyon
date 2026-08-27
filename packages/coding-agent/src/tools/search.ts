@@ -34,7 +34,10 @@ export const searchSchema = z.strictObject({
 		.describe(
 			'TEXT/STRUCTURE ONLY — NEVER use with files; files put the complete scope/glob in input. Narrow scope: file, directory, glob, internal URL, or semicolon-delimited set. ssh:// is text-only. Omitted -> workspace root (".")',
 		),
-	case: z.boolean().optional().describe("text only: case-sensitive matching"),
+	case: z
+		.boolean()
+		.optional()
+		.describe("text only: case-sensitive matching, on by default; pass false to match case-insensitively"),
 	hidden: z.boolean().optional().describe("files only: include hidden files"),
 	gitignore: z.boolean().optional().describe("files or text only: respect gitignore"),
 	limit: z.number().optional().describe("files only: maximum results"),
