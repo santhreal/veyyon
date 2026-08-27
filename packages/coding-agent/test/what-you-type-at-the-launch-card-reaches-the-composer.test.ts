@@ -52,10 +52,20 @@ beforeAll(async () => {
 interface PaintedCard {
 	readonly frame: FirstFrame;
 	readonly send: (data: string) => void;
+	/** How many times the paint discarded the kernel's tty queue. */
+	readonly flushCount: () => number;
 }
 
-function paintCard(options: { flushed: boolean }): PaintedCard {
-	spyOn(ttyInputFlush, "flushPendingTtyInput").mockReturnValue(options.flushed);
+/** Defaults describe an ordinary launch, which is every launch but a relaunch. */
+interface LaunchKind {
+	readonly relaunched?: boolean;
+	readonly flushed?: boolean;
+}
+
+function paintCard(options: LaunchKind): PaintedCard {
+	const flush = spyOn(ttyInputFlush, "flushPendingTtyInput").mockReturnValue(options.flushed ?? true);
+	if (options.relaunched) process.env[ttyInputFlush.RELAUNCH_MARKER] = "1";
+	else delete process.env[ttyInputFlush.RELAUNCH_MARKER];
 	let onInput: ((data: string) => void) | undefined;
 	spyOn(ProcessTerminal.prototype, "start").mockImplementation((handler: (data: string) => void): void => {
 		onInput = handler;
@@ -64,11 +74,11 @@ function paintCard(options: { flushed: boolean }): PaintedCard {
 	const frame = paintFirstFrame("1.1.1");
 	if (!onInput) throw new Error("the painted card never started its terminal");
 	const send = onInput;
-	return { frame, send };
+	return { frame, send, flushCount: () => flush.mock.calls.length };
 }
 
 const cards: PaintedCard[] = [];
-function card(options: { flushed: boolean } = { flushed: true }): PaintedCard {
+function card(options: LaunchKind = {}): PaintedCard {
 	const painted = paintCard(options);
 	cards.push(painted);
 	return painted;
@@ -80,6 +90,8 @@ afterEach(() => {
 		painted.frame.ui.stop();
 	}
 	cards.length = 0;
+	// A paint that is not reached leaves the marker set for the next file.
+	delete process.env[ttyInputFlush.RELAUNCH_MARKER];
 	takeFirstFrame();
 	// The paint reports the terminal's ground to a module-level cache, and a
 	// cached ground changes every band and card rendered after this file in the
@@ -176,12 +188,43 @@ describe("what you type at the launch card reaches the composer", () => {
 		expect(held).toBe("x".repeat(4096));
 	});
 
-	it("discards everything when the tty queue could not be flushed", () => {
-		// Without the flush the pre-launch backlog is still queued and cannot be
-		// told apart from typing, so the documented degrade is to drop it all
-		// rather than paste a previous session's keystrokes into the composer.
-		const { frame, send } = card({ flushed: false });
-		send("this was queued before launch");
-		expect(frame.releaseInput()).toBe("");
+	describe("which launches may discard the kernel's tty queue", () => {
+		it("keeps what was typed before the card painted, without discarding the queue", () => {
+			// The reported defect. Startup runs for most of a second before the
+			// card appears, and the paint used to `tcflush` unconditionally, so
+			// every keystroke inside that window was destroyed rather than
+			// delayed: measured at a live pty, text sent 0.05s, 0.30s and 0.50s
+			// after exec never reached the composer, while 0.70s onward arrived
+			// within 40ms.
+			const { frame, send, flushCount } = card();
+			send("fix the parser");
+			expect(flushCount()).toBe(0);
+			expect(frame.releaseInput()).toBe("fix the parser");
+		});
+
+		it("discards the queue a relaunch inherited", () => {
+			// `/profile <name>` respawns the CLI, and nothing reads fd 0 between
+			// the parent restoring the terminal and the child starting, so the
+			// queue holds the dead session's backlog rather than typing.
+			const { frame, send, flushCount } = card({ relaunched: true });
+			expect(flushCount()).toBe(1);
+			// Bytes arriving after the flush are this session's, so they are held.
+			send("typed at the new profile");
+			expect(frame.releaseInput()).toBe("typed at the new profile");
+		});
+
+		it("discards everything when a relaunch could not flush the queue", () => {
+			// Windows consoles have no termios. Without the flush the backlog is
+			// still queued and cannot be told apart from typing, so the degrade
+			// is to drop both rather than paste a dead session's keystrokes.
+			const { frame, send } = card({ relaunched: true, flushed: false });
+			send("this was queued before launch");
+			expect(frame.releaseInput()).toBe("");
+		});
+
+		it("clears the marker, so a process this session spawns is not read as a relaunch", () => {
+			card({ relaunched: true });
+			expect(process.env[ttyInputFlush.RELAUNCH_MARKER]).toBeUndefined();
+		});
 	});
 });

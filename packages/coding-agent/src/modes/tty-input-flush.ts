@@ -86,3 +86,25 @@ export function flushPendingTtyInput(): boolean {
 	// that stdin is the tty being flushed.
 	return flush ? flush(0, TCIFLUSH) === 0 : false;
 }
+
+/**
+ * Env marker a relaunch sets on its child, so the child knows the bytes already
+ * queued on the tty predate it.
+ *
+ * The queue is the operator's typing on an ordinary launch and stale backlog on
+ * a relaunch, and nothing about the bytes tells the two apart — only who
+ * started the process does. Without this the flush had to assume the worst
+ * every time and discarded what was typed before the launch card painted.
+ */
+export const RELAUNCH_MARKER = "VEYYON_RELAUNCHED";
+
+/**
+ * Whether this process was started by a relaunch, clearing the marker as it
+ * reads it so a child this session spawns for any other reason does not inherit
+ * the answer.
+ */
+export function consumeRelaunchMarker(): boolean {
+	const relaunched = process.env[RELAUNCH_MARKER] === "1";
+	delete process.env[RELAUNCH_MARKER];
+	return relaunched;
+}

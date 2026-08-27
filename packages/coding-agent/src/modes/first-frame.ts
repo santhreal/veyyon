@@ -41,7 +41,7 @@ import { WelcomeComponent } from "./components/welcome";
 import { HomeAnchorLayout } from "./controllers/home-anchor-layout";
 import { applyGroundPaint, setDetectedTerminalGround } from "./theme/ground-tints";
 import { theme } from "./theme/theme";
-import { flushPendingTtyInput } from "./tty-input-flush";
+import { consumeRelaunchMarker, flushPendingTtyInput } from "./tty-input-flush";
 
 /** Inputs used to decide whether the launch card may be painted this early. */
 export interface FirstFrameDecisionOptions {
@@ -152,27 +152,35 @@ export function paintFirstFrame(version: string): FirstFrame {
 	// No frame has been composed, so this measures the children directly.
 	layout.sync(true);
 
-	// The tty handover, which `InteractiveMode.init` used to own: a relaunch
-	// (`/profile <name>` respawns the CLI) leaves whatever arrived while no one
-	// was reading fd 0 queued in the kernel, and starting the terminal delivers
-	// that backlog as this session's first input -- a queued carriage return
-	// submits a turn nobody typed. Drop the queue outright, then hold what is
-	// typed afterwards and swallow the rest, except ctrl+c (which must stay
-	// live to abort a launch), until the composer is mounted.
-	const flushed = flushPendingTtyInput();
-	// What arrives from here on is the operator's. The queue that predates this
-	// session went out with the flush above, and the card already carries a
-	// composer frame, so a printable chunk arriving now was typed at something
-	// that looks ready to receive it. Hold it and hand it to the real composer
-	// at mount instead of discarding it: session startup runs for over a
-	// second, and every keystroke inside that window was being dropped. Control
-	// input is still swallowed, and ctrl+c still passes through so a launch can
-	// be aborted. Without the flush the pre-launch backlog is still queued and
-	// cannot be told apart from typing, so that degrade discards as before.
+	// The tty handover, which `InteractiveMode.init` used to own. Two different
+	// things can be sitting in the kernel's input queue by now, and the bytes do
+	// not say which:
+	//
+	//   A RELAUNCH (`/profile <name>` respawns the CLI) leaves whatever arrived
+	//   while nobody was reading fd 0. That backlog belongs to the session that
+	//   exited, and a queued carriage return in it submits a turn nobody typed,
+	//   so it is dropped outright.
+	//
+	//   AN ORDINARY LAUNCH queues what the operator typed at a terminal that is
+	//   not painting yet. Startup runs for most of a second before the card
+	//   appears, and flushing here destroyed every keystroke inside that window:
+	//   the characters were gone, not late, so the composer came up empty and
+	//   the session read as unresponsive.
+	//
+	// Only who started the process separates them, which is what the relaunch
+	// marker records. On an ordinary launch the queue is handed to the gate
+	// below, where `isTypedText` keeps the printable text and swallows control
+	// input — including the carriage return the flush existed to catch.
+	const relaunched = consumeRelaunchMarker();
+	const flushed = relaunched ? flushPendingTtyInput() : false;
+	// Hold what is typed and swallow the rest, except ctrl+c, which stays live
+	// so a launch can be aborted, until the composer is mounted.
 	let typeahead = "";
 	let inputGate: (() => void) | undefined = ui.addInputListener(data => {
 		if (matchesKey(data, "ctrl+c")) return undefined;
-		if (flushed && isTypedText(data)) {
+		// A relaunch that could not flush (Windows has no termios) cannot tell
+		// the stale queue from typing, so it degrades to discarding both.
+		if ((flushed || !relaunched) && isTypedText(data)) {
 			typeahead = (typeahead + data).slice(0, STARTUP_TYPEAHEAD_LIMIT);
 			// Echo it. Holding the text is only half of the handover: the card
 			// paints a composer for the whole of startup, and one that shows
@@ -185,7 +193,7 @@ export function paintFirstFrame(version: string): FirstFrame {
 		}
 		return { consume: true };
 	});
-	if (!flushed) {
+	if (relaunched && !flushed) {
 		logger.debug("No tty input flush available at startup; discarding buffered input until mount completes");
 	}
 	// The first paint always clears the viewport (ED 2) so the card never
