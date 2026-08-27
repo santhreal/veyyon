@@ -123,6 +123,9 @@ interface ViewTab {
 
 const VIEW_ORDER: readonly ViewId[] = ["live", "comms"];
 
+/** Shared ScrollView theme for roster and comms lists — avoids per-frame closure allocation. */
+const SCROLL_VIEW_THEME = { track: (t: string) => theme.fg("muted", t), thumb: (t: string) => theme.fg("accent", t) };
+
 /**
  * ModalShell footer chips for the Live roster.
  *
@@ -320,14 +323,25 @@ class LiveRosterPane implements Component {
 		// the subtle one, because `formatAge` returns an EMPTY string for an agent
 		// that just moved, so those rows lost the column entirely and everything
 		// after them slid left.
-		const widest = (measure: (agent: LiveAgent) => string): number => {
-			let width = 0;
-			for (let ai = 0; ai < this.agents.length; ai++) {
-				const w = visibleWidth(measure(this.agents[ai]!));
-				if (w > width) width = w;
-			}
-			return width;
-		};
+		let signWidth = 0;
+		let typeWidth = 0;
+		let statusWidth = 0;
+		let ageWidth = 0;
+		for (let ai = 0; ai < this.agents.length; ai++) {
+			const agent = this.agents[ai]!;
+			const sw = visibleWidth(agent.callSign);
+			if (sw > signWidth) signWidth = sw;
+			const tw = visibleWidth(agentType(agent));
+			if (tw > typeWidth) typeWidth = tw;
+			// The DISPLAYED word, not `agent.status`: a waiting agent's word is
+			// longer than the `parked` it is derived from, and measuring the raw
+			// status padded the column one cell short, sliding every following
+			// column left on exactly the rows that most need reading.
+			const dw = visibleWidth(agentDisplayState(agent));
+			if (dw > statusWidth) statusWidth = dw;
+			const aw = visibleWidth(formatAge(ageSeconds(now, agent.lastActivity)));
+			if (aw > ageWidth) ageWidth = aw;
+		}
 		// No column may take more than a quarter of the row. Status and age are
 		// short words and cap themselves, but the two NAME columns are whatever an
 		// agent was called: one subagent spawned as
@@ -337,20 +351,10 @@ class LiveRosterPane implements Component {
 		// truncated rather than paid for.
 		const cap = Math.max(MIN_NAME_COLUMN, Math.floor(width / 4));
 		const columns: RosterColumns = {
-			sign: Math.min(
-				widest(agent => agent.callSign),
-				cap,
-			),
-			type: Math.min(
-				widest(agent => agentType(agent)),
-				cap,
-			),
-			// The DISPLAYED word, not `agent.status`: a waiting agent's word is
-			// longer than the `parked` it is derived from, and measuring the raw
-			// status padded the column one cell short, sliding every following
-			// column left on exactly the rows that most need reading.
-			status: widest(agent => agentDisplayState(agent)),
-			age: widest(agent => formatAge(ageSeconds(now, agent.lastActivity))),
+			sign: Math.min(signWidth, cap),
+			type: Math.min(typeWidth, cap),
+			status: statusWidth,
+			age: ageWidth,
 		};
 
 		const start = this.scrollOffset;
@@ -365,7 +369,7 @@ class LiveRosterPane implements Component {
 			height: end - start,
 			scrollbar: "auto",
 			totalRows: this.agents.length,
-			theme: { track: t => theme.fg("muted", t), thumb: t => theme.fg("accent", t) },
+			theme: SCROLL_VIEW_THEME,
 		});
 		const contentWidth = sv.contentWidth(width);
 		this.onContentWidth(contentWidth);
@@ -782,7 +786,7 @@ class CommsPane implements Component {
 			height: windowed.length,
 			scrollbar: "auto",
 			totalRows: rows.length,
-			theme: { track: t => theme.fg("muted", t), thumb: t => theme.fg("accent", t) },
+			theme: SCROLL_VIEW_THEME,
 		});
 		sv.setScrollOffset(start);
 		return sv.render(width);
