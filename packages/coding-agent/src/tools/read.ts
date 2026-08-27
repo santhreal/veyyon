@@ -1456,12 +1456,24 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 		const imageDir = await this.#ensurePdfImageCache(absolutePdfPath, signal);
 		const members = await this.#listPdfImageMembers(imageDir);
 		if (member.length === 0) {
+			// A scanned document extracts thousands of members, and this list is a
+			// tool result: it takes the same budget as a directory or archive
+			// listing rather than riding on how many images the file happens to
+			// hold.
+			const bounded = truncateHead(members.map(entry => `- read \`${pdfDisplayPath}:${entry}\``).join("\n"), {
+				maxBytes: inlineBudgetFor(this.session),
+				maxLines: Number.MAX_SAFE_INTEGER,
+			});
+			const shown = bounded.content.length === 0 ? 0 : bounded.content.split("\n").length;
+			const remaining = members.length - shown;
 			const text =
 				members.length === 0
 					? "No extractable PDF image members found."
-					: `Extractable PDF image members:\n${members
-							.map(imageMember => `- read \`${pdfDisplayPath}:${imageMember}\``)
-							.join("\n")}`;
+					: `Extractable PDF image members:\n${bounded.content}${
+							remaining > 0
+								? `\n[${formatMoreLines(remaining)} of members; read one of the above to continue]`
+								: ""
+						}`;
 			return toolResult<ReadToolDetails>({ resolvedPath: absolutePdfPath, suffixResolution })
 				.text(prependSuffixResolutionNotice(text, suffixResolution))
 				.sourcePath(absolutePdfPath)
@@ -3599,9 +3611,20 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 		});
 		const details: ReadToolDetails = { resolvedPath: resource.sourcePath, contentType: resource.contentType };
 
-		// If extraction was used, return directly (no pagination)
+		// An extracted field carries no line selector (rejected above), so nothing
+		// pages it: bound it here and state the size, and the caller reads the
+		// resource without extraction to page the rest.
 		if (hasExtraction) {
-			return toolResult(details).text(resource.content).sourceInternal(url).done();
+			const budget = inlineBudgetFor(this.session);
+			const totalBytes = Buffer.byteLength(resource.content, "utf-8");
+			// Byte truncation, not line truncation: an extracted field is routinely
+			// one long line, and a line-based cap drops it whole rather than
+			// carrying the part that fits.
+			const text =
+				totalBytes > budget
+					? `${truncateHeadBytes(resource.content, budget).text}\n[Extracted value reached the ${formatBytes(budget)} output budget; ${formatBytes(totalBytes)} in total. Read ${url} without the extraction to page it]`
+					: resource.content;
+			return toolResult(details).text(text).sourceInternal(url).done();
 		}
 
 		const raw = isRawSelector(parsedSel);

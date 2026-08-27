@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-8e0d80af.js";
+            window.path_to_searchindex_js = "../searchindex-6e813b71.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-a2abefc1.js"></script>
@@ -246,7 +246,9 @@ lines it showed and the selector that pages the rest. A file over 5 MB, a binary
 over 25 MB is not read: the message carries the path and the reason.</p>
 <p><code>tools.artifactSpillThreshold</code> bounds every model-visible result. <code>read</code> applies it directly to a
 file window, a structural summary, a directory listing, an archive listing, a notebook or converted
-document and a URL body, and states what it carried and how to reach the rest. Every other tool
+document, a URL body, a PDF image-member list and an <code>agent://&lt;id&gt;/&lt;field&gt;</code> extraction, and states
+what it carried and how to reach the rest. An extraction takes no line selector, so it is cut by
+bytes and the notice names its full size and the URL that pages it. Every other tool
 passes the shared spill
 layer: output over the threshold is written to an artifact and the result keeps a head and tail
 window no larger than the threshold, sized by <code>tools.artifactHeadBytes</code> and
