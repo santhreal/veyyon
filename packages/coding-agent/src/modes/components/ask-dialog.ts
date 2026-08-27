@@ -257,7 +257,11 @@ function normalizedInlineInput(input: string): string {
 }
 
 function renderAnswerSummary(question: ExtensionAskDialogQuestion, state: QuestionState): string {
-	const selected = question.options.map(option => option.label).filter(label => state.selectedOptions.has(label));
+	const selected: string[] = [];
+	for (let oi = 0; oi < question.options.length; oi++) {
+		const label = question.options[oi]!.label;
+		if (state.selectedOptions.has(label)) selected.push(label);
+	}
 	if (question.multi) {
 		const answers = [...selected];
 		if (state.customInput !== undefined) answers.push(`Other: “${normalizedInlineInput(state.customInput)}”`);
@@ -1174,13 +1178,17 @@ export class AskDialogComponent implements Component {
 			const question = this.questions[index];
 			const state = this.#states[index];
 			if (!question || !state) continue;
-			const selectedOptions = question.options
-				.map(option => option.label)
-				.filter(label => state.selectedOptions.has(label));
+			const selectedOptions: string[] = [];
+			const allOptionLabels = new Array<string>(question.options.length);
+			for (let oi = 0; oi < question.options.length; oi++) {
+				const label = question.options[oi]!.label;
+				allOptionLabels[oi] = label;
+				if (state.selectedOptions.has(label)) selectedOptions.push(label);
+			}
 			results.push({
 				id: question.id,
 				question: question.question,
-				options: question.options.map(option => option.label),
+				options: allOptionLabels,
 				multi: question.multi ?? false,
 				selectedOptions,
 				customInput: state.customInput,
