@@ -32,13 +32,10 @@ export interface PtyCapture {
 }
 
 /**
- * Strip terminal control sequences.
+ * Strip terminal control sequences from raw PTY byte streams.
  *
- * Deliberately narrow: CSI, OSC, single-character escapes and carriage returns. It does NOT
- * replay cursor motion, because collapsing a redraw into a final screen is precisely the
- * normalisation that makes tmux captures useless as evidence. Assertions run over everything the
- * child ever emitted, so a message that was printed and then overdrawn still counts as printed,
- * which is what matters when the question is "did it refuse".
+ * Differs from `packages/utils/src/strip-ansi.ts`: converts `\r` to `\n` so
+ * overdrawn lines across PTY redraws remain visible to assertions.
  */
 export function stripAnsi(text: string): string {
 	return text

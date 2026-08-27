@@ -4,8 +4,10 @@
  * `--resume` uses it to rebuild the original invocation from a job dir's
  * manager.json launch record when no runner-config.json snapshot exists.
  */
+
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { $which } from "@veyyon/utils";
 import { getHarness } from "../../core/harness-registry";
 import { codingAgentDir } from "../../paths";
 import type { LaunchRequest, RunRole } from "../../wire";
@@ -144,7 +146,7 @@ export function harborRunnerArgs(
 	// Prefer Apple Container when its CLI is present: native arm64 task
 	// containers with no Docker daemon. The runner itself defaults to
 	// docker, so the preference must be stated here.
-	const environment = request.environment ?? (Bun.which("container") ? "apple-container" : "docker");
+	const environment = request.environment ?? ($which("container") ? "apple-container" : "docker");
 	argv.push("--environment", environment);
 	if (request.agent) argv.push("--agent", request.agent);
 	// An explicit include list IS the sample — never let the runner's
