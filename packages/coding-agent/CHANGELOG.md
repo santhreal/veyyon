@@ -49,6 +49,7 @@
 - Composer zone components (`CardPadRow`, `ComposerHairline`, `QuietZoneLine`, `ComposerShortcutsBar`, `StatusLineComponent.render`) now cache their render output and return stable array references across frames when content is unchanged, letting the TUI engine's `stableRows` tracking skip re-ingesting composer zone rows on every frame.
 - `#gatherQuietSegments` in `status-line/component.ts` caches the `quietOptions` segment-options spread by `(segmentOptions ref, pathBudget)`, avoiding 3 nested object allocations per frame; the object is reused across frames when only the path budget is unchanged (the common case outside the ~300ms expansion animation).
 - `#buildSegmentContext` in `status-line/component.ts` caches the `git` sub-object (`{ branch, status, pr }`) by reference identity of its three values, avoiding a wrapper object allocation per frame when git state is unchanged.
+- `#subagentBadgeText` in `status-line/component.ts` caches the themed badge string by subagent count, avoiding a `theme.fg()` + template literal allocation per frame when the count is unchanged. `prewalk` in `#buildSegmentContext` uses a constant `PREWALK_ENABLED` object instead of allocating `{ enabled: true }` per frame.
 
 
 

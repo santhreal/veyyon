@@ -758,6 +758,7 @@ interface ActiveMeter {
 const EMPTY_MESSAGES: readonly AgentMessage[] = [];
 const STATUS_USAGE_START_DELAY_MS = 0;
 const STATUS_USAGE_REFRESH_TIMEOUT_MS = 2_000;
+const PREWALK_ENABLED = { enabled: true } as const;
 
 function hasContextSegment(segments: readonly StatusLineSegmentId[]): boolean {
 	return segments.includes("context_pct") || segments.includes("context_total");
@@ -1208,6 +1209,7 @@ export class StatusLineComponent implements Component {
 		this.#invalidateGitCaches();
 		this.#cachedHookSig = "";
 		this.#cachedHookRows = EMPTY_HOOK_ROWS;
+		this.#cachedSubagentBadgeCount = -1;
 	}
 	#invalidateSessionCaches(): void {
 		this.#clearUsageStartTimer();
@@ -1773,7 +1775,7 @@ export class StatusLineComponent implements Component {
 			loopMode: this.#loopModeStatus,
 			prewalk:
 				typeof this.session.getPrewalkState === "function" && this.session.getPrewalkState()
-					? { enabled: true }
+					? PREWALK_ENABLED
 					: null,
 			goalMode: this.#goalModeStatus,
 			vibeMode: this.#vibeModeStatus,
@@ -1864,8 +1866,17 @@ export class StatusLineComponent implements Component {
 		};
 	}
 
+	#cachedSubagentBadgeCount = -1;
+	#cachedSubagentBadge = "";
+
 	#subagentBadgeText(): string {
-		return theme.fg("statusLineSubagents", withIcon(theme.icon.agents, `${this.#subagentCount}`));
+		if (this.#subagentCount === this.#cachedSubagentBadgeCount) return this.#cachedSubagentBadge;
+		this.#cachedSubagentBadgeCount = this.#subagentCount;
+		this.#cachedSubagentBadge = theme.fg(
+			"statusLineSubagents",
+			withIcon(theme.icon.agents, `${this.#subagentCount}`),
+		);
+		return this.#cachedSubagentBadge;
 	}
 
 	/**
