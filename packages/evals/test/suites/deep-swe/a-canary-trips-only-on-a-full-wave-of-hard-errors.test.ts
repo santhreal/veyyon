@@ -137,10 +137,13 @@ describe("mostCommonAgentReason — the single cause behind an all-errored canar
 	});
 
 	test("all-blank or empty input returns a guidance string, never throws", () => {
-		// The abort path must not itself crash. With nothing usable, point the
-		// operator at where the real reason lives instead of throwing.
-		expect(mostCommonAgentReason([])).toContain("agent/veyyon.txt");
-		expect(mostCommonAgentReason(["", "  "])).toContain("agent/veyyon.txt");
+		// The abort path must not itself crash. With nothing usable, the hint states where the real
+		// reason lives. It names the trial directory rather than one harness's log file, because the
+		// log is named after whichever harness the arm drove.
+		const hint = mostCommonAgentReason([]);
+		expect(hint).toContain("trial directory");
+		expect(hint).not.toContain("veyyon");
+		expect(mostCommonAgentReason(["", "  "])).toBe(hint);
 	});
 
 	test("reasons are trimmed so trailing whitespace does not split the mode", () => {
