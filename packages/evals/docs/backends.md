@@ -70,3 +70,16 @@ Every backend rejects rather than degrades. Pier rejects a missing or incompatib
 Harbor rejects a missing container runtime, and the in-process backend rejects a corpus it cannot
 read. The verdict carries `missingRequirements`, so a caller reports every absent prerequisite at
 once instead of one per run attempt.
+
+## Termination
+
+`src/core/process-tree.ts` ends a trial's process tree for every backend: `SIGTERM` to the child's
+process group, then `SIGKILL` after a 5s grace, then a 500ms wait for the tree to disappear. It
+returns whether the tree is gone. A tree that outlasts both signals is reported as abandoned rather
+than awaited, and its pipes are not read, because a pipe a surviving descendant holds never reaches
+EOF. Signalling the group reaches the container, the compose project and the agent process a child
+spawned; a child that is not its own group leader falls back to the pid.
+
+A trial's own teardown — the in-process backend's client, the TypeScript-edit adapter's session —
+is bounded by `teardownWithin` in `src/core/trial-deadline.ts` instead, and reports the reason it
+was abandoned beside the score the trial already earned.

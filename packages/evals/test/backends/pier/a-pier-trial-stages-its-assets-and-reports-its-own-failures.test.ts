@@ -7,11 +7,11 @@ import { registerPierBackend } from "../../../src/backends/pier/register";
 import {
 	checkPierPreflight,
 	cleanupPierContainers,
-	terminateProcessTree,
 	trialArtifactsFromExecution,
 	writePierJobConfig,
 } from "../../../src/backends/pier/runner";
 import { BackendRegistry, hasBackend, requireBackend } from "../../../src/core/backend-registry";
+import { terminateProcessTree } from "../../../src/core/process-tree";
 import { boundRawOutput } from "../../../src/core/trial-deadline";
 import type { EvalSuite, RunContext, SuiteProvenance, TaskDescriptor, TrialScore } from "../../../src/core/types";
 
