@@ -519,19 +519,35 @@ fn filter_nextest(input: &str, exit_code: i32, subject: &str) -> String {
 	let mut canceled = false;
 	let mut past_summary = false;
 
+	// Set once a failure body has been captured inline, which distinguishes the
+	// two layouts nextest can emit.  Under the default `failure-output =
+	// "immediate"` the panic body streams as each test fails and everything past
+	// the Summary line is a recap.  Under `failure-output = "final"` nothing
+	// streams: the Summary comes first and every panic body follows it, so
+	// dropping past the Summary discarded the assertion diff, the message and the
+	// file and line, leaving a count with no evidence.  `immediate-final` emits
+	// both, and the inline copy wins.
+	let mut captured_evidence = false;
+
 	for line in input.lines() {
 		let trimmed = line.trim();
-		// Once the Summary line is seen, nextest re-lists the failing tests as a
-		// recap (duplicate `FAIL [...]` rows + trailing noise).  Drop everything
-		// after it; the captured Summary line is re-emitted verbatim at the end.
-		if past_summary {
-			continue;
-		}
 		if is_compiling_noise(trimmed)
 			|| trimmed.starts_with("PASS ")
 			|| trimmed.starts_with("────")
 			|| trimmed.starts_with("Starting ")
 		{
+			continue;
+		}
+		if past_summary {
+			if captured_evidence
+				|| trimmed.is_empty()
+				|| trimmed.starts_with("FAIL ")
+				|| trimmed.starts_with("error: test run failed")
+			{
+				continue;
+			}
+			out.push_str(line);
+			out.push('\n');
 			continue;
 		}
 		if trimmed.starts_with("Summary [") {
@@ -551,6 +567,7 @@ fn filter_nextest(input: &str, exit_code: i32, subject: &str) -> String {
 			continue;
 		}
 		if in_failure && !trimmed.starts_with("error: test run failed") {
+			captured_evidence = true;
 			out.push_str(line);
 			out.push('\n');
 		}
@@ -904,6 +921,72 @@ mod tests {
 		assert_eq!(out, "[clean] cargo test: 262 passed (1 suite, 17 warnings)\n");
 	}
 
+	/// `failure-output = "final"` defers every panic body until after the
+	/// Summary line.  Captured from a real `cargo nextest run` (0.9.143)
+	/// against a crate with that profile set, reduced to one test and with the
+	/// crate name and paths replaced.  Before the fix the filter dropped
+	/// everything past `Summary [`, so this whole body — the assertion diff,
+	/// the message, the file and line — was discarded and the operator saw a
+	/// count alone.
+	#[test]
+	fn keeps_a_panic_body_that_nextest_defers_until_after_the_summary() {
+		let out = filter_nextest(
+			"    Starting 1 test across 1 binary\n        FAIL [   0.002s] (1/1) probe \
+			 a_failing_assertion\n  Cancelling due to test failure: \n────────────\n     Summary [   \
+			 0.005s] 1 test run: 0 passed, 1 failed, 0 skipped\n        FAIL [   0.002s] (1/1) probe \
+			 a_failing_assertion\n  stdout ───\n\n    running 1 test\n    test a_failing_assertion \
+			 ... FAILED\n\n  stderr ───\n\n    thread 'a_failing_assertion' panicked at \
+			 src/lib.rs:3:5:\n    assertion `left == right` failed: the distinctive evidence \
+			 string\n      left: 2\n     right: 3\n\nerror: test run failed\n",
+			1,
+			"cargo nextest",
+		);
+		assert!(out.starts_with("[errors 1] cargo nextest"), "must classify: {out:?}");
+		for evidence in [
+			"panicked at src/lib.rs:3:5",
+			"assertion `left == right` failed: the distinctive evidence string",
+			"left: 2",
+			"right: 3",
+		] {
+			assert!(out.contains(evidence), "deferred evidence {evidence:?} was dropped: {out:?}");
+		}
+		assert!(out.contains("Summary [   0.005s] 1 test run: 0 passed, 1 failed, 0 skipped"));
+		// The recap row and the trailer are duplicates in either layout.
+		assert_eq!(
+			out.matches("a_failing_assertion").count(),
+			3,
+			"recap row must not repeat: {out:?}"
+		);
+		assert!(!out.contains("error: test run failed"), "trailer must be dropped: {out:?}");
+	}
+
+	/// `failure-output = "immediate-final"` prints each panic body inline AND
+	/// repeats it after the Summary line.  Captured from a real `cargo nextest
+	/// run` (0.9.143), reduced and with the crate name and paths replaced.  The
+	/// deferred copy must not be appended a second time, which is why the filter
+	/// tracks whether a body was already captured inline rather than always
+	/// keeping what follows the Summary.
+	#[test]
+	fn does_not_repeat_a_panic_body_that_nextest_prints_both_inline_and_deferred() {
+		let body =
+			"  stderr ───\n\n    thread 'a_failing_assertion' panicked at src/lib.rs:3:5:\n    \
+			 assertion `left == right` failed: the distinctive evidence string\n      left: 2\n     \
+			 right: 3\n";
+		let input = format!(
+			"    Starting 1 test across 1 binary\n        FAIL [   0.003s] (1/1) probe \
+			 a_failing_assertion\n{body}  Cancelling due to test failure: \n────────────\n     \
+			 Summary [   0.003s] 1 test run: 0 passed, 1 failed, 0 skipped\n        FAIL [   0.003s] \
+			 (1/1) probe a_failing_assertion\n{body}error: test run failed\n"
+		);
+		let out = filter_nextest(&input, 1, "cargo nextest");
+		assert!(out.starts_with("[errors 1] cargo nextest"), "must classify: {out:?}");
+		assert_eq!(
+			out.matches("the distinctive evidence string").count(),
+			1,
+			"the deferred copy must not be appended again: {out:?}"
+		);
+		assert!(out.contains("panicked at src/lib.rs:3:5"), "the inline body must survive: {out:?}");
+	}
 	#[test]
 	fn supports_nextest_and_keeps_failures_with_summary() {
 		assert!(supports(Some("nextest")));
