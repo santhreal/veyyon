@@ -266,9 +266,13 @@ function snapshotAssistantContentBlock(block: AssistantContentBlock, mode: Snaps
 }
 
 function snapshotAssistantMessage(message: AssistantMessage, mode: SnapshotMode = "full"): AssistantMessage {
+	const content = new Array<AssistantContentBlock>(message.content.length);
+	for (let i = 0; i < message.content.length; i++) {
+		content[i] = snapshotAssistantContentBlock(message.content[i]!, mode);
+	}
 	return {
 		...message,
-		content: message.content.map(block => snapshotAssistantContentBlock(block, mode)),
+		content,
 		usage: {
 			...message.usage,
 			cost: { ...message.usage.cost },
