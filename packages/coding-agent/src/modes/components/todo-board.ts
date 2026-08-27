@@ -212,7 +212,10 @@ export function renderTodoBoardLines(phases: readonly TodoPhase[], options: Todo
 	// the plan has as many phases as it has, and the board is a region above the
 	// composer that does not scroll.
 	const phaseLines = (phase: TodoPhase, oneBased: number, active: boolean): string[] => {
-		const done = phase.tasks.filter(task => task.status === "completed").length;
+		let done = 0;
+		for (let ti = 0; ti < phase.tasks.length; ti++) {
+			if (phase.tasks[ti]!.status === "completed") done++;
+		}
 		const tally = ` · ${done}/${phase.tasks.length}`;
 		const label = boundedTodoPreviewText(
 			multiPhase ? formatPhaseDisplayName(phase.name, oneBased) : phase.name,
