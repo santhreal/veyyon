@@ -405,7 +405,7 @@ export class HistorySearchComponent implements Component {
 		}
 
 		const searchLine = this.#searchInput.render(dims.contentWidth)[0] ?? "";
-		const body = [...this.#resultsList.render(dims.contentWidth)];
+		const body = this.#resultsList.render(dims.contentWidth).slice();
 
 		const shell = renderModalShell({
 			title: "Search History",

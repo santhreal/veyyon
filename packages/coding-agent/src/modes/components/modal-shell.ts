@@ -652,7 +652,7 @@ export function renderModalShell(input: ModalShellInput): ModalShellResult {
 	// Re-centre: the card shrank, so the pad above it grew by half the difference.
 	const cardTopPad = Math.max(0, Math.floor((input.areaHeight - cardHeight) / 2));
 
-	const body = [...input.body.slice(0, bodyBudget)];
+	const body = input.body.slice(0, bodyBudget);
 	while (body.length < bodyBudget) body.push("");
 
 	const card: string[] = [];

@@ -259,6 +259,7 @@
 - `selector-helpers.ts` exports `SCROLL_LIST_THEME` as a shared module-level constant; 10 files replace inline `{ track: t => ..., thumb: t => ... }` closures with the shared constant, eliminating per-frame closure allocation in ScrollView render paths.
 - `fitLine` in the setup wizard theme scene pads to width in the native `truncateToWidth` call instead of a separate `visibleWidth` scan plus `padding` concatenation.
 - `agent-dashboard.ts`, `extension-dashboard.ts`, `command-controller.ts`, `bash-interactive.ts`, and `tab-bar.ts` replace `truncateToWidth` + `visibleWidth` + `padding` with the native `truncateToWidth` `pad` parameter, eliminating a redundant width scan per padded row.
+- `ask-dialog.ts`, `modal-shell.ts`, `extension-dashboard.ts`, `history-search.ts`, `modal-select-list.ts`, `rollback-panel.ts`, and `text.ts` replace `[...array]` spread copies with `.slice()` / `.concat()`, avoiding spread iterator allocation in per-frame render paths.
 
 ### Added
 

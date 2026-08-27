@@ -106,20 +106,19 @@ export class RollbackPanelComponent implements Component {
 	}
 
 	render(width: number): string[] {
-		if (this.#state.kind === "ready") return [...this.#state.picker.render(width)];
+		if (this.#state.kind === "ready") return this.#state.picker.render(width).slice();
 		if (this.#state.kind === "loading") {
-			return [...new Text(theme.fg("muted", "Reading published versions..."), 1, 1).render(width)];
+			return new Text(theme.fg("muted", "Reading published versions..."), 1, 1).render(width).slice();
 		}
-		return [
-			...new Text(theme.fg("warning", `Could not read the published versions: ${this.#state.reason}`), 1, 1).render(
-				width,
-			),
-			// Not "check your connection": the commonest failure here is GitHub's
-			// per-address API limit, where the connection is fine and the advice
-			// would send the operator looking in the wrong place. The reason above
-			// already says what to do, so this line only says how to retry.
-			...new Text(theme.fg("dim", "Esc to go back, then open it again to retry."), 1, 0).render(width),
-		];
+		return new Text(theme.fg("warning", `Could not read the published versions: ${this.#state.reason}`), 1, 1)
+			.render(width)
+			.concat(
+				// Not "check your connection": the commonest failure here is GitHub's
+				// per-address API limit, where the connection is fine and the advice
+				// would send the operator looking in the wrong place. The reason above
+				// already says what to do, so this line only says how to retry.
+				new Text(theme.fg("dim", "Esc to go back, then open it again to retry."), 1, 0).render(width),
+			);
 	}
 
 	invalidate(): void {

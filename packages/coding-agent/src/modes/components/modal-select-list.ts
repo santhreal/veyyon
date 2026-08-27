@@ -188,7 +188,7 @@ export class ModalSelectListComponent implements Component {
 			return Array.from({ length: termHeight }, () => padding(width));
 		}
 
-		const body = [...this.#list.render(dims.contentWidth)];
+		const body = this.#list.render(dims.contentWidth).slice();
 		if (this.#highWaterWidth !== dims.contentWidth) {
 			this.#highWaterWidth = dims.contentWidth;
 			this.#bodyRowsHighWater = 0;

@@ -218,7 +218,7 @@ export class ExtensionDashboard implements Component {
 		this.#mainList.setMaxVisible(Math.max(1, contentRows - 2));
 		this.#body.setMaxHeight(contentRows);
 		const bodyLines = this.#body.render(contentWidth);
-		const body: string[] = [...tabLines];
+		const body: string[] = tabLines.slice();
 		for (let i = 0; i < contentRows; i++) body.push(bodyLines[i] ?? "");
 
 		const shell = renderModalShell({

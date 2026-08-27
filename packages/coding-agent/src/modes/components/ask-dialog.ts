@@ -582,7 +582,7 @@ export class AskDialogComponent implements Component {
 			sizing,
 			areaWidth: width,
 			areaHeight: termHeight,
-			body: [...headerLines, ...bodyLines.lines],
+			body: headerLines.concat(bodyLines.lines),
 			shortcuts: this.#buildShortcuts(bodyLines.indicator),
 			hoveredShortcutId: this.#hoveredShortcutId,
 			showClose: true,
@@ -996,7 +996,7 @@ export class AskDialogComponent implements Component {
 		const previewLines = this.#renderPreviewPane(preview, width, clampLow(Math.floor(maxRows * 0.4), 3, 8));
 		const listRows = Math.max(3, maxRows - previewLines.length - 1);
 		const list = this.#renderQuestionList(question, state, rowItems, width, listRows);
-		const lines = [...list.lines, theme.fg("borderAccent", "─".repeat(Math.max(1, width))), ...previewLines];
+		const lines = list.lines.concat([theme.fg("borderAccent", "─".repeat(Math.max(1, width)))], previewLines);
 		while (lines.length < maxRows) lines.push("");
 		return { lines: lines.slice(0, maxRows), scrollOffset: list.scrollOffset, indicator: list.indicator };
 	}
@@ -1049,7 +1049,7 @@ export class AskDialogComponent implements Component {
 			theme: SCROLL_LIST_THEME,
 		});
 		scrollView.setScrollOffset(state.scrollOffset);
-		const lines = [...scrollView.render(width)];
+		const lines = scrollView.render(width).slice();
 		while (lines.length < rows) lines.push("");
 		return {
 			lines: lines.slice(0, rows),
@@ -1066,7 +1066,9 @@ export class AskDialogComponent implements Component {
 		if (content.length <= maxRows) return content;
 		const visibleCount = Math.max(1, maxRows - 1);
 		const hidden = content.length - visibleCount;
-		return [...content.slice(0, visibleCount), theme.fg("dim", `… ${formatMoreLines(hidden)}`)];
+		const lines = content.slice(0, visibleCount);
+		lines.push(theme.fg("dim", `… ${formatMoreLines(hidden)}`));
+		return lines;
 	}
 
 	#renderSubmitBody(width: number, rows: number): RenderedList {
@@ -1100,8 +1102,7 @@ export class AskDialogComponent implements Component {
 			theme: SCROLL_LIST_THEME,
 		});
 		scrollView.setScrollOffset(this.#submitScrollOffset);
-		const rendered = scrollView.render(width);
-		const lines = [...rendered];
+		const lines = scrollView.render(width).slice();
 		while (lines.length < rows) lines.push("");
 		return {
 			lines: lines.slice(0, rows),
