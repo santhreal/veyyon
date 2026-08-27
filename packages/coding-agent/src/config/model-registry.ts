@@ -312,7 +312,7 @@ function mergeByModelKey<T extends { provider: string; id: string }>(
 	incoming: readonly T[],
 	combine: (existing: Model<Api> | undefined, entry: T) => Model<Api>,
 ): Model<Api>[] {
-	const merged = [...base];
+	const merged = base.slice();
 	const indexByKey = new Map<string, number>();
 	for (let i = 0; i < merged.length; i += 1) {
 		indexByKey.set(`${merged[i].provider}\u0000${merged[i].id}`, i);
@@ -472,7 +472,7 @@ function createLiveConfigHeaders(
 	if (liveSources.length === 0 && (!options?.authHeader || !options.apiKeyConfig)) return undefined;
 
 	const localHeaders: Record<string, string> = {};
-	const allSources = [...liveSources, localHeaders];
+	const allSources = liveSources.concat([localHeaders]);
 	const current = () => materializeConfigHeaderSources(allSources, options) ?? {};
 	return new Proxy(localHeaders, {
 		get(target, property, receiver) {
@@ -1691,7 +1691,7 @@ export class ModelRegistry {
 			configuredDiscoveriesPromise,
 			this.#discoverBuiltInProviderModels(strategy, providerFilter),
 		]);
-		const discovered = [...configuredDiscovered, ...builtInDiscovery.models];
+		const discovered = configuredDiscovered.concat(builtInDiscovery.models);
 		if (discovered.length === 0 && builtInDiscovery.authoritativeProviders.size === 0) {
 			return;
 		}

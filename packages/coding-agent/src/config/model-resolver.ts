@@ -72,7 +72,7 @@ export function pickDefaultAvailableModel(availableModels: Model<Api>[]): Model<
 			isKnownProvider(model.provider) &&
 			DEFAULT_MODEL_PER_PROVIDER[model.provider] === model.id,
 	);
-	return [...sharedDefaultMatches].sort((a, b) => {
+	return sharedDefaultMatches.slice().sort((a, b) => {
 		const aRank = providerPriority.get(a.provider.toLowerCase()) ?? Number.POSITIVE_INFINITY;
 		const bRank = providerPriority.get(b.provider.toLowerCase()) ?? Number.POSITIVE_INFINITY;
 		if (aRank !== bRank) return aRank - bRank;
@@ -554,7 +554,7 @@ function mergeModelMatchPreferences(
 
 function pickPreferredModel(candidates: Model<Api>[], context: ModelPreferenceContext): Model<Api> {
 	if (candidates.length <= 1) return candidates[0];
-	return [...candidates].sort((a, b) => {
+	return candidates.slice().sort((a, b) => {
 		if (context.hasConfiguredAuth) {
 			const aAuth = context.hasConfiguredAuth(a);
 			const bAuth = context.hasConfiguredAuth(b);
@@ -767,7 +767,7 @@ function matchModel(
 		return datedVersions[0];
 	}
 
-	const sortedById = [...datedVersions].sort((a, b) => b.id.localeCompare(a.id));
+	const sortedById = datedVersions.slice().sort((a, b) => b.id.localeCompare(a.id));
 	const topId = sortedById[0]?.id;
 	if (!topId) return undefined;
 	const topCandidates = sortedById.filter(model => model.id === topId);

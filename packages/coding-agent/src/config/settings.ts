@@ -927,7 +927,7 @@ export class Settings {
 			inMemory: true,
 		});
 		forked.#activateProcessHooks = false;
-		forked.#configFiles = [...this.#configFiles];
+		forked.#configFiles = this.#configFiles.slice();
 		forked.#global = structuredClone(this.#global);
 		forked.#configOverlay = structuredClone(this.#configOverlay);
 		forked.#overrides = structuredClone(this.#overrides);
@@ -949,7 +949,7 @@ export class Settings {
 		cloned.#configPath = this.#configPath;
 		cloned.#activateProcessHooks = this.#activateProcessHooks;
 		cloned.#global = structuredClone(this.#global);
-		cloned.#configFiles = [...this.#configFiles];
+		cloned.#configFiles = this.#configFiles.slice();
 		cloned.#configOverlay = structuredClone(this.#configOverlay);
 		cloned.#overrides = structuredClone(this.#overrides);
 		cloned.#rebuildMerged();
@@ -2523,7 +2523,7 @@ export class Settings {
 		if (!this.#persist || !this.#configPath || this.#modified.size === 0) return;
 
 		const configPath = this.#configPath;
-		const modifiedPaths = [...this.#modified];
+		const modifiedPaths = Array.from(this.#modified);
 		this.#modified.clear();
 
 		try {
@@ -2696,7 +2696,7 @@ class SettingSignal<A extends unknown[] = []> {
 	 * rest.
 	 */
 	fire(...args: A): void {
-		for (const cb of [...this.#permanent, ...this.#listeners]) {
+		for (const cb of Array.from(this.#permanent).concat(Array.from(this.#listeners))) {
 			try {
 				cb(...args);
 			} catch (err) {
