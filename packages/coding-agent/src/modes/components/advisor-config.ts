@@ -260,7 +260,9 @@ export class AdvisorConfigOverlayComponent implements Component {
 			const text = this.#doc.instructions?.trim();
 			const wl = text ? wrap(text, bodyWidth) : [theme.fg("muted", "(none)")];
 			for (let li = 0; li < wl.length; li++) lines.push(wl[li]!);
-			return lines.map(line => truncateToWidth(line, bodyWidth));
+			const out = new Array<string>(lines.length);
+			for (let li = 0; li < lines.length; li++) out[li] = truncateToWidth(lines[li]!, bodyWidth);
+			return out;
 		}
 		const help =
 			value === "add"
@@ -272,7 +274,11 @@ export class AdvisorConfigOverlayComponent implements Component {
 						: value === "close"
 							? "Close the editor. Unsaved changes are discarded."
 							: "";
-		return wrap(help, bodyWidth).map(line => truncateToWidth(theme.fg("muted", line), bodyWidth));
+		const helpWrapped = wrap(help, bodyWidth);
+		const helpOut = new Array<string>(helpWrapped.length);
+		for (let hi = 0; hi < helpWrapped.length; hi++)
+			helpOut[hi] = truncateToWidth(theme.fg("muted", helpWrapped[hi]!), bodyWidth);
+		return helpOut;
 	}
 
 	#advisorPreview(advisor: AdvisorConfig, bodyWidth: number): string[] {
@@ -289,7 +295,9 @@ export class AdvisorConfigOverlayComponent implements Component {
 		const instr = advisor.instructions?.trim();
 		const wl = instr ? wrap(instr, bodyWidth) : [theme.fg("muted", "(none)")];
 		for (let li = 0; li < wl.length; li++) lines.push(wl[li]!);
-		return lines.map(line => truncateToWidth(line, bodyWidth));
+		const out = new Array<string>(lines.length);
+		for (let li = 0; li < lines.length; li++) out[li] = truncateToWidth(lines[li]!, bodyWidth);
+		return out;
 	}
 
 	// ───────────────────────────── screens ───────────────────────────
