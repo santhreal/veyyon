@@ -684,8 +684,9 @@ export class SettingsList implements Component {
 			) {
 				const wrappedDesc = wrapTextWithAnsi(selectedForDesc.description, Math.max(1, width - 4));
 				const cap = Math.min(8, Math.max(1, this.#maxVisible - 4));
-				for (const line of wrappedDesc.slice(0, cap)) {
-					inlineDesc.push(this.#theme.description(`    ${line}`));
+				const descLines = wrappedDesc.slice(0, cap);
+				for (let di = 0; di < descLines.length; di++) {
+					inlineDesc.push(this.#theme.description(`    ${descLines[di]!}`));
 				}
 			}
 			const computeStart = (vh: number) =>
@@ -787,8 +788,9 @@ export class SettingsList implements Component {
 			const descLines: string[] = [];
 			if (selectedItem?.description && !selectedItem.heading) {
 				const wrappedDesc = wrapTextWithAnsi(selectedItem.description, width - 4);
-				for (const line of wrappedDesc.slice(0, 3)) {
-					descLines.push(this.#theme.description(`  ${line}`));
+				const splitDescLines = wrappedDesc.slice(0, 3);
+				for (let di = 0; di < splitDescLines.length; di++) {
+					descLines.push(this.#theme.description(`  ${splitDescLines[di]!}`));
 				}
 				if (wrappedDesc.length > 3) {
 					descLines[2] = truncateToWidth(`${descLines[2]}…`, width);
