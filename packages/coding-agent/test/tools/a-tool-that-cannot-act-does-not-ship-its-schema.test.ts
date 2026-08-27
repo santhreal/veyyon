@@ -19,6 +19,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { BUILTIN_TOOLS, createTools, type ToolSession } from "@veyyon/coding-agent/tools";
+import { makeToolSession } from "../helpers/tool-session";
 
 const CAPABILITY_GATED_TOOLS = ["debug", "ssh"] as const;
 
@@ -31,14 +32,12 @@ const sessionFor = (cwd: string, overrides?: Record<string, unknown>): ToolSessi
 	for (const [key, value] of Object.entries(overrides ?? {})) {
 		settings.set(key as never, value as never);
 	}
-	return {
+	return makeToolSession({
 		cwd,
-		hasUI: false,
-		getSessionFile: () => null,
 		getSessionSpawns: () => "*",
 		settings,
 		skipPythonPreflight: true,
-	} as unknown as ToolSession;
+	});
 };
 
 const toolNamesFor = async (session: ToolSession): Promise<string[]> =>

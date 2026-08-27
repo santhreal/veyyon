@@ -29,7 +29,10 @@ to a budget:
   than a truncated one with a link.
 - **Structural summaries for parseable code.** A read with no selector on a parseable source file
   returns declarations with bodies elided (`…`), and the footer states the recovery selector so the model
-  re-issues only the ranges it actually needs instead of re-reading the whole file.
+  re-issues only the ranges it actually needs instead of re-reading the whole file. The summary takes
+  the same byte budget as a file window, and lines wider than `tools.outputMaxColumns` are clipped, so
+  a declaration-dense file (generated protobuf bindings, a large `.d.ts`) returns a bounded window
+  with the line that continues it rather than the whole projection.
 - **Truncation is explicit.** A summary footer or a `[Showing lines …]`-style notice states the
   continuation selector.
 - **Beyond plain text files:** the same tool also reads directories (depth-limited listing), archives
@@ -52,8 +55,9 @@ lines it showed and the selector that pages the rest. A file over 5 MB, a binary
 over 25 MB is not read: the message carries the path and the reason.
 
 `tools.artifactSpillThreshold` bounds every model-visible result. `read` applies it directly to a
-file window, a directory listing, an archive listing, a notebook or converted document and a URL
-body, and states what it carried and how to reach the rest. Every other tool passes the shared spill
+file window, a structural summary, a directory listing, an archive listing, a notebook or converted
+document and a URL body, and states what it carried and how to reach the rest. Every other tool
+passes the shared spill
 layer: output over the threshold is written to an artifact and the result keeps a head and tail
 window no larger than the threshold, sized by `tools.artifactHeadBytes` and
 `tools.artifactTailBytes` in the ratio they name, plus the `artifact://` id that reads the full text
