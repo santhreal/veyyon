@@ -6,7 +6,7 @@
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { isProcessAlive } from "@veyyon/utils";
+import { getProcessStartIdentity, isProcessAlive, isProcessInstanceAlive } from "@veyyon/utils";
 import type { Subprocess } from "bun";
 import { harborRunnerArgs } from "../backends/harbor/launch-args";
 import { requireBenchmark } from "../manager/benchmarks";
@@ -25,6 +25,41 @@ interface ManagedChild {
 function pidAlive(pid: number | null): boolean {
 	return pid != null && isProcessAlive(pid);
 }
+
+/** How long a signalled runner has to exit before the manager escalates to SIGKILL. */
+export const CANCEL_ESCALATION_MS = 5000;
+
+/**
+ * Everything `cancel` needs from the operating system, in one injectable seam.
+ *
+ * A cancel of a run the manager did not spawn — one that survived a manager restart — signals a pid
+ * recorded on disk. The escalation ran on an unconditional timer, so five seconds after a runner
+ * exited on SIGTERM the manager sent SIGKILL to whatever owned that pid by then. A pid is reused,
+ * and the second signal has no relationship to the run being cancelled: on a busy host it lands on
+ * an unrelated process. The escalation now proves the pid is still the same incarnation it
+ * signalled, which is what `identityOf` records and `instanceAlive` checks.
+ */
+export interface ProcessControl {
+	identityOf(pid: number): string | null;
+	instanceAlive(pid: number, identity: string | null): boolean;
+	signal(pid: number, signal: NodeJS.Signals | number): void;
+	/** Runs `escalate` after `delayMs`. The returned function cancels it. */
+	schedule(escalate: () => void, delayMs: number): () => void;
+}
+
+const DEFAULT_PROCESS_CONTROL: ProcessControl = {
+	identityOf: pid => getProcessStartIdentity(pid),
+	instanceAlive: (pid, identity) => isProcessInstanceAlive(pid, identity),
+	signal: (pid, signal) => {
+		process.kill(pid, signal);
+	},
+	schedule: (escalate, delayMs) => {
+		// Unreferenced: a pending escalation must not be the reason the manager stays up.
+		const timer = setTimeout(escalate, delayMs);
+		timer.unref();
+		return () => clearTimeout(timer);
+	},
+};
 
 /**
  * Exception types recorded in a job's result.json — the errored trials a
@@ -70,12 +105,19 @@ export class RunnerManager {
 	readonly #store: RunStore;
 	readonly #onTick: () => void;
 	readonly #children = new Map<string, ManagedChild>();
+	readonly #control: ProcessControl;
 	#stopped = false;
 
-	constructor(jobsDir: string, store: RunStore, onTick: () => void) {
+	constructor(
+		jobsDir: string,
+		store: RunStore,
+		onTick: () => void,
+		control: ProcessControl = DEFAULT_PROCESS_CONTROL,
+	) {
 		this.#jobsDir = jobsDir;
 		this.#store = store;
 		this.#onTick = onTick;
+		this.#control = control;
 	}
 
 	stop(): void {
@@ -222,12 +264,14 @@ export class RunnerManager {
 		if (child) {
 			child.cancelled = true;
 			child.proc.kill("SIGTERM");
-			const escalate = setTimeout(() => {
+			// A child handle names one process for as long as the handle exists, so escalating on it
+			// cannot reach a reused pid the way the recorded-pid branch below could.
+			const cancelEscalation = this.#control.schedule(() => {
 				try {
 					child.proc.kill(9);
 				} catch {}
-			}, 5000);
-			child.proc.exited.then(() => clearTimeout(escalate));
+			}, CANCEL_ESCALATION_MS);
+			child.proc.exited.then(cancelEscalation, cancelEscalation);
 			return { jobName, cancelled: true };
 		}
 		const run = this.#store.getRun(jobName);
@@ -241,14 +285,18 @@ export class RunnerManager {
 				this.#store.syncActive();
 				return { jobName, cancelled: false };
 			}
+			// Recorded before the signal: the escalation below sends SIGKILL only while this pid
+			// still names the incarnation the SIGTERM went to.
+			const identity = this.#control.identityOf(pid);
 			try {
-				process.kill(pid, "SIGTERM");
+				this.#control.signal(pid, "SIGTERM");
 			} catch {}
-			setTimeout(() => {
+			this.#control.schedule(() => {
+				if (!this.#control.instanceAlive(pid, identity)) return;
 				try {
-					process.kill(pid, "SIGKILL");
+					this.#control.signal(pid, "SIGKILL");
 				} catch {}
-			}, 5000);
+			}, CANCEL_ESCALATION_MS);
 			this.#store.markExit(jobName, null, true);
 			return { jobName, cancelled: true };
 		}

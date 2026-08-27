@@ -33,7 +33,7 @@ bun --cwd=packages/evals run serve --port 4700
 - `GET /api/runs[?experiment=&status=&benchmark=]`: List runs filtered by experiment, status, or benchmark adapter.
 - `POST /api/runs`: Launch a run with parameters (benchmark, model, tasks, concurrency, attempts, jobName). A `jobName` that already names a run is rejected, whatever that run's status: resume it, delete it, or pick another name.
 - `GET /api/runs/:name`: Run metadata and execution traces.
-- `POST /api/runs/:name/cancel`: Cancel an active run. The response states whether anything was signalled; a run whose process is already gone reports `cancelled: false` and its status is reconciled from disk.
+- `POST /api/runs/:name/cancel`: Cancel an active run. The response states whether anything was signalled; a run whose process is already gone reports `cancelled: false` and its status is reconciled from disk. A signalled runner that has not exited 5 seconds later is escalated to `SIGKILL`, and for a run the manager did not spawn the escalation first re-proves that the recorded pid is still the process incarnation it signalled, so a pid the kernel handed to something else is left alone.
 - `DELETE /api/runs/:name`: Delete a completed run and on-disk job files.
 - `POST /api/runs/:name/resume`: Resume incomplete run trials.
 - `GET /api/runs/:name/traces/:trace[?raw=1]`: Fetch normalized or native execution trace. A harbor trace links to the agent log the trial wrote, discovered from the trial's `agent/` directory rather than assumed, so a run of any harness links to its own `agent/<agent>.txt`. A trial whose `result.json` cannot be read is reported as an error naming the unreadable file, not as a trial still running.
