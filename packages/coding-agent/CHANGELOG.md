@@ -28,6 +28,7 @@
 - `getSessionAccentHex` in `session-color.ts` replaces `.map().filter()` on theme color hexes with a single for loop, eliminating two intermediate array allocations per session accent computation.
 - `#animatedBadgeSlot` in `status-line/component.ts` hoists the `stateSeparator()` call, eliminating a duplicate `theme.fg()` + `.trim()` chain per status-line frame when badge parts are present.
 - `updateRecentOutputLines` in `task/executor.ts` replaces `.filter().slice().reverse()` with a single backward pass, eliminating two intermediate array allocations per subagent output update.
+- `#getUsageContextKey` in `status-line/component.ts` replaces a 5-element array `.join()` with a template literal, eliminating an intermediate array allocation per status-line frame.
 
 
 

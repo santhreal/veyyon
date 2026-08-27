@@ -1386,13 +1386,7 @@ export class StatusLineComponent implements Component {
 		// orgId is part of the key: rotating between two same-email Anthropic
 		// subscriptions must invalidate the cached usage immediately instead of
 		// showing the previous org's quota for the rest of the cache TTL.
-		return [
-			activeProvider,
-			identity?.accountId ?? "",
-			identity?.email ?? "",
-			identity?.projectId ?? "",
-			identity?.orgId ?? "",
-		].join("\0");
+		return `${activeProvider}\0${identity?.accountId ?? ""}\0${identity?.email ?? ""}\0${identity?.projectId ?? ""}\0${identity?.orgId ?? ""}`;
 	}
 
 	/**
