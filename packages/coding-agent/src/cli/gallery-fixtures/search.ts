@@ -76,6 +76,7 @@ export const searchFixtures: Record<string, GalleryFixture> = {
 					text: JSON.stringify({
 						query: "read pdf and extract tables",
 						activated_tools: ["docling_extract_tables", "docling_convert", "pdf_read_text"],
+						also_matched: ["tabula_scan"],
 						match_count: 4,
 						total_tools: 142,
 					}),
@@ -86,6 +87,7 @@ export const searchFixtures: Record<string, GalleryFixture> = {
 				limit: 5,
 				total_tools: 142,
 				activated_tools: ["docling_extract_tables", "docling_convert", "pdf_read_text"],
+				also_matched: ["tabula_scan"],
 				active_selected_tools: ["read", "search", "edit", "bash"],
 				tools: [
 					{
