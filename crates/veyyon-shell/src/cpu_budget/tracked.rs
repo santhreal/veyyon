@@ -407,14 +407,32 @@ mod tests {
 		let pid_b = b.0.id() as i32;
 
 		// A child inherits the test runner's nice value, which is NOT
-		// necessarily 0: run under a deprioritised harness it starts at 15.
-		// Targets are therefore chosen relative to the observed baseline so
-		// that both writes are LOWERINGS, which need no privilege, and the
-		// assertions stay exact absolute values.
+		// necessarily 0: run under a deprioritised harness it starts at 15, and
+		// under one already at the floor it starts at 19. Targets are chosen
+		// relative to the observed baseline so the assertions stay exact
+		// absolute values.
 		let baseline = nice_of(pid_a);
 		assert_eq!(nice_of(pid_b), baseline, "both children start equal");
-		assert!(baseline <= 17, "need two steps of headroom below nice 19, baseline is {baseline}");
-		let (lower, lowest) = (baseline + 1, baseline + 2);
+
+		// Lowering priority needs no privilege, so it is the preferred
+		// direction. A baseline with no room below 19 leaves only raises, which
+		// need CAP_SYS_NICE or RLIMIT_NICE headroom; without either there is no
+		// pair of values this host can write, and the test says so rather than
+		// failing for the priority the harness happened to run it at.
+		let targets = if baseline <= 17 {
+			Some((baseline + 1, baseline + 2))
+		} else if host_allows_raising_priority(baseline - 2) {
+			Some((baseline - 1, baseline - 2))
+		} else {
+			None
+		};
+		let Some((lower, lowest)) = targets else {
+			println!(
+				"SKIP: baseline nice is {baseline}, leaving no headroom below 19, and this host \
+				 forbids an unprivileged process raising a nice value"
+			);
+			return;
+		};
 
 		let budget = TrackedBudget::new();
 		budget.adopt(pid_a);
@@ -429,7 +447,10 @@ mod tests {
 		assert_eq!(nice_of(pid_b), lowest);
 
 		budget.renice(baseline);
-		if host_allows_raising_priority(baseline) {
+		// Restoring is a raise only when the test walked DOWNWARD; from a raised
+		// value it is a lowering, which every host permits, so the restore half
+		// is unconditional there.
+		if lowest < baseline || host_allows_raising_priority(baseline) {
 			assert_eq!(nice_of(pid_a), baseline, "recovery restores the original priority");
 			assert_eq!(nice_of(pid_b), baseline);
 		} else {
