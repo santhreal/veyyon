@@ -2232,7 +2232,7 @@ export class AcpAgent implements Agent {
 		if (options.includeStart === false) {
 			return notifications;
 		}
-		return [...mapAgentSessionEventToAcpSessionUpdates(startEvent, sessionId, { cwd }), ...notifications];
+		return mapAgentSessionEventToAcpSessionUpdates(startEvent, sessionId, { cwd }).concat(notifications);
 	}
 
 	#buildReplayToolArgs(details: unknown): { path?: string } {
