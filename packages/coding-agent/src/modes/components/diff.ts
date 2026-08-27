@@ -110,17 +110,14 @@ export interface RenderDiffOptions {
 export function renderDiff(diffText: string, options: RenderDiffOptions = {}): string {
 	const lines = sanitizeText(diffText).split("\n");
 	const result: string[] = [];
-	const parsedLines = lines.map(parseDiffLine);
-	// Reserve 3 gutter digits: a streaming preview re-renders this diff as it
-	// grows, and a width derived purely from the current max line number widens
-	// at the 100-line crossing — re-padding every already-rendered row, which
-	// breaks the transcript's append-only commit detection and forces a full
-	// recommit of the block into native scrollback. A constant gutter through
-	// 999 lines keeps streamed rows byte-identical to the final result render.
-	const lineNumberWidth = parsedLines.reduce((width, parsed) => {
+	const parsedLines = new Array(lines.length);
+	let lineNumberWidth = 3;
+	for (let pi = 0; pi < lines.length; pi++) {
+		const parsed = parseDiffLine(lines[pi]!);
+		parsedLines[pi] = parsed;
 		const lineNumber = parsed?.lineNum.trim() ?? "";
-		return Math.max(width, lineNumber.length);
-	}, 3);
+		if (lineNumber.length > lineNumberWidth) lineNumberWidth = lineNumber.length;
+	}
 
 	// Batch-highlight context (unedited) lines so consecutive lines tokenize
 	// with full multi-line context. Highlighting is a no-op when no language
