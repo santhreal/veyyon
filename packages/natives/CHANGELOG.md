@@ -4,6 +4,7 @@
 
 ### Fixed
 
+- The tracked-process renice test states which direction it can move a nice value on the host running it, so a host whose cargo wrapper already starts the test binary at nice 19 lowers where it can, raises where the host permits it, and reports a skip naming the reason where it can do neither, instead of failing an assertion about headroom that host never had.
 - A `cargo` run under `--message-format=json` that fails before rustc, such as a build script exiting non-zero, reports the text cargo printed, so the `Caused by:` chain and the script's own stderr reach the operator instead of a bare failure verdict.
 - A `cargo nextest` run whose profile sets `failure-output = "final"` keeps its panic bodies, so the assertion diff, message, file and line survive the summary instead of being dropped and leaving a failure count with no evidence.
 - A native addon load that fails is reported once instead of once per native call; the failed pipeline is memoized, so a run that reached a hundred native calls no longer prints a hundred copies of the candidate report ([#917](https://github.com/santhreal/veyyon/issues/917)).
