@@ -1074,8 +1074,11 @@ const BAND_LIFT = 0.4;
  * of pure cells, which is the only thing the native column slicer cuts as a plain prefix — handed a
  * run with an escape in it, it appends the SGR carry it thinks the caller needs and the result is
  * no longer a prefix of the input, so byte offsets computed from it are wrong.
+ *
+ * Compiled once. `spliceAtColumns` is the only reader, is not reentrant, and resets `lastIndex`
+ * before its first `exec`, so the shared instance carries no state between rows.
  */
-const BAND_ESCAPE_PATTERN = "\\x1b(?:\\[[0-9;:?]*[ -/]*[@-~]|\\][\\s\\S]*?(?:\\x07|\\x1b\\\\)|[@-Z\\\\-_])";
+const BAND_ESCAPE_PATTERN = /\x1b(?:\[[0-9;:?]*[ -/]*[@-~]|\][\s\S]*?(?:\x07|\x1b\\)|[@-Z\\-_])/g;
 
 /** Background reset. Spelled out rather than imported for the same reason `Theme` spells it out. */
 const BAND_BG_RESET = "\x1b[49m";
@@ -1096,7 +1099,8 @@ const BAND_FG_RESET = "\x1b[39m";
  */
 function spliceAtColumns(text: string, inserts: ReadonlyMap<number, string>): string {
 	const columns = [...inserts.keys()].sort((a, b) => a - b);
-	const escapes = new RegExp(BAND_ESCAPE_PATTERN, "g");
+	const escapes = BAND_ESCAPE_PATTERN;
+	escapes.lastIndex = 0;
 	let ansi = escapes.exec(text);
 	let out = "";
 	let column = 0;
