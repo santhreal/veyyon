@@ -13,6 +13,7 @@
 
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { isRecord, tryParseJson } from "@veyyon/utils";
 import type { TrialArtifacts, TrialCell, TrialResultRecord } from "../core";
 import { boundRawOutput } from "../core/trial-deadline";
 import { requirePathSegment } from "../paths";
@@ -115,14 +116,8 @@ export async function journalExists(runsDir: string, runId: string): Promise<boo
 
 /** The header a journal opens with, or null when the first line is not one. */
 function parseHeader(line: string): RunJournalHeader | null {
-	let parsed: unknown;
-	try {
-		parsed = JSON.parse(line);
-	} catch {
-		return null;
-	}
-	if (!parsed || typeof parsed !== "object") return null;
-	const header = parsed as Record<string, unknown>;
+	const header = tryParseJson(line);
+	if (!isRecord(header)) return null;
 	if (header.journal !== RUN_JOURNAL_KIND) return null;
 	if (typeof header.version !== "number") return null;
 	return {
@@ -286,19 +281,16 @@ export async function readRunJournal(runsDir: string, runId: string): Promise<re
 	for (let i = 0; i < lines.length; i++) {
 		const trimmed = lines[i].trim();
 		if (!trimmed) continue;
-		let parsed: unknown;
-		try {
-			parsed = JSON.parse(trimmed);
-		} catch {
+		const parsed = tryParseJson<TrialResultRecord>(trimmed);
+		if (parsed === null) {
 			// A torn write leaves one unparseable line, always the last one.
 			if (i === lines.length - 1) continue;
 			throw new CorruptRunJournalError(journalPath, i + 2);
 		}
-		const record = parsed as TrialResultRecord;
-		if (!record?.cell || !record.score) {
+		if (!parsed.cell || !parsed.score) {
 			throw new CorruptRunJournalError(journalPath, i + 2);
 		}
-		records.push(sanitizeTrialRecord(record));
+		records.push(sanitizeTrialRecord(parsed));
 	}
 
 	return records;

@@ -4,7 +4,7 @@
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { tryParseJson } from "@veyyon/utils";
+import { isRecord, tryParseJson } from "@veyyon/utils";
 import { sumOfMeasured } from "../../../core/scoring";
 import type { TrialStatus } from "../../../wire";
 import { harborAgentLogPath } from "../backend";
@@ -100,8 +100,8 @@ export function parseTrial(dir: string, name: string, agentName = "veyyon"): Tri
 export function parseFinishedTrialResult(raw: unknown, name: string): Trial | null {
 	// An array is an object, and a `result.json` holding one records no trial: reading it as a
 	// record produced a trial with no reward, which is a graded outcome the file never carried.
-	if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
-	const r = raw as Record<string, unknown>;
+	if (!isRecord(raw)) return null;
+	const r = raw;
 
 	// token/cost: prefer top-level agent_result, fall back to step_results[].agent_result
 	const ctxs: AgentCtxLike[] = [];
@@ -190,8 +190,8 @@ export interface JobInfo {
 
 export function readJobResult(jobDir: string): JobInfo | null {
 	const raw = readJson(path.join(jobDir, "result.json"));
-	if (!raw || typeof raw !== "object") return null;
-	const r = raw as Record<string, unknown>;
+	if (!isRecord(raw)) return null;
+	const r = raw;
 	const nTotal = typeof r.n_total_trials === "number" ? r.n_total_trials : 0;
 	let running: number | null = null;
 	let pending: number | null = null;

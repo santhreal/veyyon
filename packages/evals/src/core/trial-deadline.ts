@@ -16,7 +16,7 @@
  */
 
 import { setTimeout as sleepFor } from "node:timers/promises";
-import { errorMessage } from "@veyyon/utils";
+import { clamp, errorMessage } from "@veyyon/utils";
 
 /** Used when a task states no budget of its own. */
 export const DEFAULT_TRIAL_TIMEOUT_SEC = 1800;
@@ -59,8 +59,8 @@ export function resolveTrialTimeoutSec(inputs: TrialDeadlineInputs): number {
 	const budget = positiveOr(inputs.overrideSec, positiveOr(inputs.timeBudgetSec, DEFAULT_TRIAL_TIMEOUT_SEC));
 	const scaled = Math.round(budget * positiveOr(inputs.multiplier, 1));
 	// A stated budget raises the ceiling for itself; a multiplier cannot push past it.
-	const limit = Math.min(Math.max(HARD_CEILING_TRIAL_TIMEOUT_SEC, Math.round(budget)), MAX_TRIAL_TIMEOUT_SEC);
-	return Math.min(Math.max(scaled, MIN_TRIAL_TIMEOUT_SEC), limit);
+	const limit = clamp(Math.round(budget), HARD_CEILING_TRIAL_TIMEOUT_SEC, MAX_TRIAL_TIMEOUT_SEC);
+	return clamp(scaled, MIN_TRIAL_TIMEOUT_SEC, limit);
 }
 
 /**
@@ -121,7 +121,7 @@ export const MAX_TEARDOWN_GRACE_MS = 300_000;
 export function teardownGraceFromOptions(options?: Readonly<Record<string, unknown>>): number {
 	const stated = options?.teardownGraceMs;
 	if (typeof stated !== "number" || !Number.isFinite(stated)) return TEARDOWN_GRACE_MS;
-	return Math.min(Math.max(Math.trunc(stated), MIN_TEARDOWN_GRACE_MS), MAX_TEARDOWN_GRACE_MS);
+	return clamp(Math.trunc(stated), MIN_TEARDOWN_GRACE_MS, MAX_TEARDOWN_GRACE_MS);
 }
 
 /**

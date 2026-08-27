@@ -12,6 +12,8 @@
  * for an answer already in hand and would bias the arm toward whichever attempt read better.
  */
 
+import { clamp, errorMessage } from "@veyyon/utils";
+
 /** Attempts per trial when nothing states otherwise: the first one, plus one retry of a throw. */
 export const DEFAULT_TRIAL_ATTEMPTS = 2;
 
@@ -32,7 +34,7 @@ export const TRIAL_RETRY_MAX_DELAY_MS = 30_000;
 export function resolveTrialAttempts(options?: Readonly<Record<string, unknown>>): number {
 	const stated = options?.trialAttempts;
 	if (typeof stated !== "number" || !Number.isFinite(stated)) return DEFAULT_TRIAL_ATTEMPTS;
-	return Math.min(Math.max(Math.trunc(stated), 1), MAX_TRIAL_ATTEMPTS);
+	return clamp(Math.trunc(stated), 1, MAX_TRIAL_ATTEMPTS);
 }
 
 /** Backoff before attempt `attempt` (2 for the first retry), bounded by the cap above. */
@@ -50,7 +52,7 @@ export function trialRetryDelayMs(attempt: number): number {
  */
 export function isRetryableTrialFailure(cause: unknown, signal?: AbortSignal): boolean {
 	if (signal?.aborted) return false;
-	const message = cause instanceof Error ? cause.message : String(cause);
+	const message = errorMessage(cause);
 	if (/\babort(ed)?\b/i.test(message)) return false;
 	return !/\b(timed out|timeout|exceeded deadline|deadline)\b/i.test(message);
 }

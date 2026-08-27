@@ -1,3 +1,4 @@
+import { errorMessage } from "@veyyon/utils/type-guards";
 import { useCallback, useEffect, useState } from "react";
 import { getJson } from "../api";
 
@@ -36,7 +37,7 @@ export function usePolled<T>(
 					setError(null);
 				})
 				.catch((reason: unknown) => {
-					if (live) setError(reason instanceof Error ? reason.message : String(reason));
+					if (live) setError(errorMessage(reason));
 				});
 		load();
 		const timer = setInterval(load, intervalMs);

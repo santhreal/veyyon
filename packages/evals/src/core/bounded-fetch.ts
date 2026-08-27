@@ -10,6 +10,8 @@
  * No node imports here: the dashboard bundle imports this module directly.
  */
 
+import { scopedTimeoutSignal } from "@veyyon/utils/scoped-timeout";
+
 /** How long a caller waits for an answer before it reports the peer as unreachable. */
 export const REQUEST_TIMEOUT_MS = 15_000;
 
@@ -29,15 +31,19 @@ export async function fetchWithin(
 	options: BoundedFetchOptions = {},
 ): Promise<Response> {
 	const timeoutMs = options.timeoutMs ?? REQUEST_TIMEOUT_MS;
-	const bound = AbortSignal.timeout(timeoutMs);
-	const signal = init?.signal ? AbortSignal.any([init.signal, bound]) : bound;
+	// Scoped, not a bare abort-signal timeout: the backing timer is cleared the instant the request
+	// settles, so a long-lived dashboard never accumulates armed timers.
+	const bound = scopedTimeoutSignal(timeoutMs);
+	const signal = init?.signal ? AbortSignal.any([init.signal, bound.signal]) : bound.signal;
 	try {
 		return await fetch(url, { ...init, signal });
 	} catch (err) {
-		if (bound.aborted) {
+		if (bound.signal.aborted) {
 			const bounds = timeoutMs >= 1000 ? `${Math.round(timeoutMs / 1000)}s` : `${timeoutMs}ms`;
 			throw new Error(`${options.subject ?? "the manager"} did not answer ${url} within ${bounds}`);
 		}
 		throw err;
+	} finally {
+		bound.cancel();
 	}
 }
