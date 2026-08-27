@@ -11,11 +11,17 @@ import { Database } from "bun:sqlite";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { atomicWriteFileSync, isProcessAlive, logger } from "@veyyon/utils";
-import { readJobResult } from "../backends/harbor/runner/results";
 import type { BackendId } from "../core/types";
 import { requirePathSegment } from "../paths";
 import { type BenchmarkKind, isTrialStatus, type RunRole, type RunStatus, type TraceRow } from "../wire";
-import { getBenchmark, getBenchmarkByBackend, readBenchmarkSnapshot } from "./benchmarks";
+import {
+	canonicalSuiteOf,
+	getBenchmark,
+	getBenchmarkByBackend,
+	listBenchmarks,
+	readBenchmarkSnapshot,
+	requireDefaultBenchmark,
+} from "./benchmarks";
 
 /**
  * A job name is one directory name under the jobs directory. The rule is the same rule every
@@ -126,42 +132,30 @@ export function inferSuiteAndBackend(record: {
 	dataset?: string;
 }): { suite: string; backend: BackendId; benchmark: BenchmarkKind } {
 	const dataset = record.dataset ?? "";
-	let suite = record.suite;
-	let backend = record.backend;
-	let benchmark = record.benchmark as BenchmarkKind | undefined;
+	const named = record.benchmark ? getBenchmark(record.benchmark) : undefined;
 
-	if (suite && backend) {
-		benchmark = benchmark ?? getBenchmarkByBackend(backend)?.kind ?? (backend as unknown as BenchmarkKind);
-		return { suite, backend, benchmark };
+	if (record.suite && record.backend) {
+		const benchmark =
+			(record.benchmark as BenchmarkKind | undefined) ??
+			getBenchmarkByBackend(record.backend)?.kind ??
+			(record.backend as unknown as BenchmarkKind);
+		return { suite: record.suite, backend: record.backend, benchmark };
 	}
 
-	if (dataset.startsWith("terminal-bench@3") || dataset === "terminal-bench-3") {
-		suite = suite ?? "terminal-bench@3.0";
-		backend = backend ?? "harbor";
-		benchmark = benchmark ?? getBenchmarkByBackend(backend)?.kind ?? "harbor";
-	} else if (
-		dataset.startsWith("terminal-bench") ||
-		dataset === "terminal-bench-2" ||
-		dataset === "terminal-bench@2.0"
-	) {
-		suite = suite ?? (dataset.includes("@") ? dataset : "terminal-bench@2.0");
-		backend = backend ?? "harbor";
-		benchmark = benchmark ?? getBenchmarkByBackend(backend)?.kind ?? "harbor";
-	} else if (dataset === "deep-swe" || (benchmark && getBenchmark(benchmark)?.backend === "pier")) {
-		suite = suite ?? "deep-swe";
-		backend = backend ?? "pier";
-		benchmark = benchmark ?? getBenchmarkByBackend(backend)?.kind ?? "deepswe";
-	} else if (dataset === "typescript-edit" || (benchmark && getBenchmark(benchmark)?.backend === "in-process")) {
-		suite = suite ?? "typescript-edit";
-		backend = backend ?? "in-process";
-		benchmark = benchmark ?? getBenchmarkByBackend(backend)?.kind ?? "edit";
-	} else {
-		suite = suite ?? (dataset || "terminal-bench@2.0");
-		backend = backend ?? (benchmark ? getBenchmark(benchmark)?.backend : undefined) ?? "harbor";
-		benchmark = benchmark ?? getBenchmarkByBackend(backend)?.kind ?? (backend as unknown as BenchmarkKind);
-	}
-
-	return { suite, backend, benchmark };
+	// The dataset a run recorded is the strongest signal, and each adapter states which datasets it
+	// claims. A dataset nothing claims belongs to the benchmark the record named, else to the default
+	// adapter, and then names its own suite.
+	const claiming = listBenchmarks().find(adapter => adapter.suiteForDataset(dataset) !== undefined);
+	const adapter = claiming ?? named ?? requireDefaultBenchmark();
+	const suite =
+		record.suite ??
+		adapter.suiteForDataset(dataset) ??
+		(named ? canonicalSuiteOf(named) : dataset || canonicalSuiteOf(adapter));
+	return {
+		suite,
+		backend: record.backend ?? adapter.backend,
+		benchmark: (record.benchmark as BenchmarkKind | undefined) ?? adapter.kind,
+	};
 }
 
 /**
@@ -607,7 +601,7 @@ export class RunStore {
 			// or directory freshness — an orphaned harbor child may still be
 			// running and writing trials, so a fresh dir stays "running".
 			if (row.pid === null && row.finishedAt === null && row.status !== "cancelled") {
-				const result = row.benchmark === "harbor" ? readJobResult(jobDir) : null;
+				const result = getBenchmark(row.benchmark)?.readTerminalState?.(jobDir) ?? null;
 				let status: RunStatus;
 				let finishedAt: number | null = null;
 				if (result?.finishedAt != null) {

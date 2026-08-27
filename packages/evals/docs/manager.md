@@ -7,6 +7,24 @@ Evaluation run manager for benchmark suites in `@veyyon/evals`. Manages runs acr
 - `terminal-bench` (Harbor backend): Terminal-bench task execution via Harbor runner.
 - `typescript-edit` (In-process backend): TypeScript edit benchmark via `src/suites/typescript-edit/adapter/cli.ts`.
 - `deep-swe` (Pier backend): DeepSWE multi-arm evaluations via `src/suites/deep-swe/run.ts`.
+
+## Benchmark adapters
+
+`src/manager/benchmarks.ts` holds the registry every manager surface reads. A `BenchmarkAdapter`
+declares its wire metadata (`kind`, `label`, `metrics`), its backend, the dataset a launch drives
+when the request names none (`defaultDataset`), the suite a dataset resolves to
+(`suiteForDataset`), the runner argv for one launch (`launchArgv`), the argv that resumes a job in
+place (`resumeArgv`, absent for a benchmark that cannot), the snapshot reader (`readSnapshot`), and
+the terminal state a finished job's own artifacts record (`readTerminalState`, absent for a
+benchmark that writes none).
+
+`POST /api/runs` resolves the adapter and spawns `launchArgv` from the package directory;
+`POST /api/runs/:name/resume` refuses a benchmark whose adapter declares no `resumeArgv`;
+`inferSuiteAndBackend` in `src/manager/store.ts` asks each adapter whether it claims a legacy row's
+dataset, and falls back to `DEFAULT_BENCHMARK_KIND`; `GET /api/benchmarks` serves the definitions
+the dashboard's launch form and resume control are built from. Registering an adapter is the whole
+of adding a benchmark. None of those sites states a benchmark name.
+
 ## Usage
 
 Start the dashboard server and API:

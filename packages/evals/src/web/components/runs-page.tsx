@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+	type BenchmarkDefinition,
 	type CancelRunResponse,
 	formatMinutes,
 	formatUsd,
@@ -15,6 +16,9 @@ import { Chip, Progress, StaleNotice } from "./ui";
 
 export function RunsPage({ selected }: { selected: string | null }) {
 	const { runs, error: runsError } = useRunsSse();
+	// Which benchmarks can resume a settled run is the manager's registry to state, not this table's.
+	const [benchmarks] = usePolled<BenchmarkDefinition[]>("/api/benchmarks", 600_000);
+	const resumable = new Set((benchmarks ?? []).filter(b => b.resumable).map(b => b.kind));
 	const [detail, , detailError] = usePolled<RunDetailResponse>(selected ? "/api/runs/:name" : null, 2500, {
 		params: selected ? { name: selected } : undefined,
 	});
@@ -113,7 +117,7 @@ export function RunsPage({ selected }: { selected: string | null }) {
 											stop
 										</button>
 									) : (
-										r.benchmark === "harbor" &&
+										resumable.has(r.benchmark) &&
 										(r.done < r.nTotal || r.error > 0) && (
 											<button
 												type="button"

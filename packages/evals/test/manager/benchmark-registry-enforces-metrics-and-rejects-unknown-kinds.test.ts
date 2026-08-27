@@ -287,6 +287,9 @@ describe("benchmark adapter registry runtime invariants", () => {
 			label: "Empty Fourth Benchmark",
 			backend: "in-process",
 			metrics: [],
+			defaultDataset: "empty-fourth",
+			suiteForDataset: dataset => (dataset === "empty-fourth" ? "empty-fourth@1.0" : undefined),
+			launchArgv: () => ["bun", "-e", "process.exit(0)"],
 			readSnapshot: () => ({
 				traces: [],
 				total: 0,
