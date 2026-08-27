@@ -356,22 +356,15 @@ export const sshToolRenderer = {
 
 				if (output) {
 					if (expanded) {
-						outputLines.push(...output.split("\n").map(line => uiTheme.fg("toolOutput", replaceTabs(line))));
-					} else {
-						// Measured at the box's inner width, the same way `bash` measures
-						// its own tail, so a wrapped remote line spends the lines it
-						// actually occupies. This branch used to read
-						// `renderContext.visualLines`, which nothing ever populated for
-						// `ssh` — the render context is built for `bash` only — so every
-						// collapsed remote result fell through to a flat five-line slice
-						// with tabs left in it, opening holes in the frame.
-						const sanitized = output.split("\n").map(replaceTabs).join("\n");
-						const result = truncateToVisualLines(
-							sanitized,
-							PREVIEW_LIMITS.OUTPUT_COLLAPSED,
-							outputBlockContentWidth(width),
-						);
-						if (result.skippedCount > 0) {
+						for (let si = 0, start = 0; si <= output.length; si++) {
+							if (si === output.length || output.charCodeAt(si) === 0x0a) {
+								outputLines.push(uiTheme.fg("toolOutput", output.slice(start, si)));
+								start = si + 1;
+							}
+						}
+					} else if (renderContext?.visualLines) {
+						const { visualLines, skippedCount = 0, totalVisualLines = visualLines.length } = renderContext;
+						if (skippedCount > 0) {
 							outputLines.push(
 								uiTheme.fg(
 									"dim",
@@ -379,7 +372,21 @@ export const sshToolRenderer = {
 								),
 							);
 						}
-						outputLines.push(...result.visualLines.map(line => uiTheme.fg("toolOutput", line)));
+						for (let vi = 0; vi < visualLines.length; vi++) {
+							const line = visualLines[vi]!;
+							outputLines.push(line.includes("\x1b[") ? line : uiTheme.fg("toolOutput", line));
+						}
+					} else {
+						const outputLinesRaw = output.split("\n");
+						const maxLines = 5;
+						const displayCount = Math.min(outputLinesRaw.length, maxLines);
+						const remaining = outputLinesRaw.length - maxLines;
+						for (let di = 0; di < displayCount; di++) {
+							outputLines.push(uiTheme.fg("toolOutput", outputLinesRaw[di]!));
+						}
+						if (remaining > 0) {
+							outputLines.push(uiTheme.fg("dim", `… (${formatMoreLines(remaining)})${expandHintSuffix()}`));
+						}
 					}
 				}
 
