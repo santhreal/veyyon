@@ -1034,8 +1034,9 @@ const cacheReadSegment: StatusLineSegment = {
 		const { cacheRead } = ctx.usageStats;
 		if (!cacheRead) return { content: "", visible: false };
 
-		const parts = [theme.icon.cache, formatNumber(cacheRead)].filter(Boolean);
-		const content = parts.join(" ");
+		const icon = theme.icon.cache;
+		const num = formatNumber(cacheRead);
+		const content = icon && num ? `${icon} ${num}` : icon || num || "";
 		return { content: theme.fg("statusLineSpend", content), visible: true };
 	},
 };
@@ -1045,9 +1046,9 @@ const cacheWriteSegment: StatusLineSegment = {
 	render(ctx) {
 		const { cacheWrite } = ctx.usageStats;
 		if (!cacheWrite) return { content: "", visible: false };
-
-		const parts = [theme.icon.cache, formatNumber(cacheWrite)].filter(Boolean);
-		const content = parts.join(" ");
+		const icon = theme.icon.cache;
+		const num = formatNumber(cacheWrite);
+		const content = icon && num ? `${icon} ${num}` : icon || num || "";
 		return { content: theme.fg("statusLineOutput", content), visible: true };
 	},
 };

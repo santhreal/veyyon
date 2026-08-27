@@ -76,5 +76,14 @@ export function segmentSeparator(): string {
  * one of them is empty, and the mode segment could produce all three.
  */
 export function joinStates(...states: (string | null | undefined | false)[]): string {
-	return states.filter((state): state is string => typeof state === "string" && state !== "").join(stateSeparator());
+	const sep = stateSeparator();
+	let result = "";
+	for (let i = 0; i < states.length; i++) {
+		const state = states[i];
+		if (typeof state === "string" && state !== "") {
+			if (result) result += sep;
+			result += state;
+		}
+	}
+	return result;
 }
