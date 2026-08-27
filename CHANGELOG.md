@@ -6,6 +6,7 @@
 
 ### Added
 
+- `search` takes `paths` for a text search, returning the matching files with per-file counts instead of match lines; the shell route it replaces (`rg -l`) is intercepted, and searching `buildSystemPrompt` under `packages/coding-agent/src` costs 3,492 tokens as match lines against 215 as a file list.
 - `prewalk.cheapModel` and `prewalk.strongModel` configure the cheap model prewalk switches into at the first edit and the strong model it starts on.
 - `/prewalk` accepts an optional model argument to arm a per-session target model override.
 - `edit.critiqueCodeMutations` prompts a bounded self-review before finalization after one turn modifies at least two distinct code files.
