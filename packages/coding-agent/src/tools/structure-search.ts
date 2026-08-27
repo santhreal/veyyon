@@ -18,6 +18,7 @@ import {
 	truncateToWidth,
 } from "../tui";
 import { resolveFileDisplayMode } from "../utils/file-display-mode";
+import { getLanguageFromPath } from "../utils/lang-from-path";
 import type { ToolSession } from ".";
 import { materializeReadUrlToFile, parseReadUrlTarget } from "./fetch";
 import { createFileRecorder, formatResultPath } from "./file-recorder";
@@ -197,6 +198,27 @@ export interface StructureSearchDetails {
 	cwd?: string;
 }
 
+// ast-grep picks a grammar per file extension, and a prose grammar parses
+// arbitrary text. Measured against this repository's CHANGELOG.md, the pattern
+// `logger.warn($$$ARGS)` returned three matches averaging 2,000 characters of
+// English prose, none of which contains the string `logger.warn`: the markdown
+// grammar produces an inline node that swallows a whole paragraph. An unscoped
+// structure search returned 8 of 40 matches from documentation files that way.
+// A prose grammar cannot represent a code pattern, so a match in one is noise.
+// Diff and patch files are NOT here: a hunk body carries real code lines.
+// A grammar ast-grep does not yet search stays listed, because the entry is the
+// policy, not the current reach of the engine.
+export const PROSE_GRAMMARS: Record<string, true> = {
+	asciidoc: true,
+	csv: true,
+	latex: true,
+	log: true,
+	markdown: true,
+	restructuredtext: true,
+	text: true,
+	tsv: true,
+};
+
 export async function executeStructureSearch(
 	session: ToolSession,
 	params: StructureSearchInput,
@@ -272,14 +294,26 @@ export async function executeStructureSearch(
 		const { record: recordFile, list: fileList } = createFileRecorder();
 		const fileMatchCounts = new Map<string, number>();
 		const matchesByFile = new Map<string, AstFindMatch[]>();
+		let proseMatchCount = 0;
+		const proseFiles = new Set<string>();
 		for (const match of result.matches) {
+			const grammar = getLanguageFromPath(match.path);
 			const relativePath = formatPath(match.path);
+			if (grammar !== undefined && PROSE_GRAMMARS[grammar]) {
+				proseMatchCount++;
+				proseFiles.add(relativePath);
+				continue;
+			}
 			recordFile(relativePath);
 			if (!matchesByFile.has(relativePath)) {
 				matchesByFile.set(relativePath, []);
 			}
 			matchesByFile.get(relativePath)!.push(match);
 		}
+		const proseNote =
+			proseMatchCount > 0
+				? `Excluded ${proseMatchCount} match${proseMatchCount === 1 ? "" : "es"} in ${proseFiles.size} documentation file${proseFiles.size === 1 ? "" : "s"} (${[...proseFiles].slice(0, 3).join(", ")}): a code pattern cannot match a prose grammar.`
+				: "";
 
 		const baseDetails: StructureSearchDetails = {
 			matchCount: result.totalMatches,
@@ -294,7 +328,7 @@ export async function executeStructureSearch(
 			fileMatches: [],
 		};
 
-		if (result.matches.length === 0) {
+		if (matchesByFile.size === 0) {
 			const skipPastEnd = skip > 0 && result.totalMatches > 0 && skip >= result.totalMatches;
 			if (skipPastEnd) {
 				const parseMessage = cappedParseErrors.length
@@ -315,11 +349,14 @@ export async function executeStructureSearch(
 			// language) searches ZERO files and still says "no matches" — a
 			// silent recall hole (Law 10). Surface the file-search count so a
 			// zero-file search reads as a scoping problem, not proven absence.
-			const noMatchMessage = cappedParseErrors.length
-				? "No matches found. Parse issues mean the query may be mis-scoped; narrow `path` before concluding absence."
-				: searched === 0
-					? `No matches found because NO FILES were searched (0 files under ${where}). Structure search selects files by language, so this usually means the path has no files of the target language, the path is wrong, or the language was not detected. Verify the path and language before concluding the pattern does not match.`
-					: `No matches found (searched ${searched} file${searched === 1 ? "" : "s"}). If you expected matches, check the pattern syntax for this language and that the path covers the intended files.`;
+			const noMatchMessage =
+				proseMatchCount > 0
+					? `No code matches (searched ${searched} file${searched === 1 ? "" : "s"}). ${proseNote} Scope \`path\` to the language the pattern is written for.`
+					: cappedParseErrors.length
+						? "No matches found. Parse issues mean the query may be mis-scoped; narrow `path` before concluding absence."
+						: searched === 0
+							? `No matches found because NO FILES were searched (0 files under ${where}). Structure search selects files by language, so this usually means the path has no files of the target language, the path is wrong, or the language was not detected. Verify the path and language before concluding the pattern does not match.`
+							: `No matches found (searched ${searched} file${searched === 1 ? "" : "s"}). If you expected matches, check the pattern syntax for this language and that the path covers the intended files.`;
 			const parseMessage = cappedParseErrors.length
 				? `\n${formatParseErrors(cappedParseErrors, parseErrorsTotal).join("\n")}`
 				: "";
@@ -418,6 +455,9 @@ export async function executeStructureSearch(
 		};
 		if (result.limitReached) {
 			outputLines.push("", "Result limit reached; narrow path or increase limit.");
+		}
+		if (proseNote) {
+			outputLines.push("", proseNote);
 		}
 		if (cappedParseErrors.length) {
 			outputLines.push("", ...formatParseErrors(cappedParseErrors, parseErrorsTotal));
