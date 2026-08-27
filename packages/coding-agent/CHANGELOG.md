@@ -37,6 +37,46 @@
 - `output-block.ts` replaces `flatMap+split` with an in-place `charCodeAt` newline scan.
 - `read-tool-group.ts` replaces `filter+map+filter` chain with a single-pass loop for display target extraction.
 - `edit/renderer.ts` replaces `slice()` loop, `map().filter()+Set`, and `filter()` with single-pass loops.
+- `stream-markup-healing.ts` replaces `push(...flush())` and `push(...feed())` spreads with for loops in the per-text-chunk healing path.
+- `gitlab-duo-workflow.ts` replaces `push(...active.pauseBuffer)` spreads with for loops in the replay loop.
+- `glob.ts` replaces `push(...filePatterns)` spread with a for loop in gitignore pattern collection.
+- `hashline/apply.ts` replaces 6 `push(...spread)` calls with for loops in `computeProjectedPrefixBalance` and `repairReplacementBoundaries`.
+- `hashline/parser.ts` replaces `push(...deferredBlanks)` spread with a for loop in `#commitDeferredBlanks`.
+- `agent.ts` replaces `push(...images)` spread with a for loop in message building.
+- `compaction/pruning.ts` replaces `push(...collectUselessResults())` spread with a for loop.
+- `validation.ts` and `schema/compatibility.ts` replace 6 `push(...spread)` calls with for loops in schema validation.
+- `schema/normalize.ts` replaces `push(...branch.anyOf)` spread with a for loop in anyOf flattening.
+- `model-registry.ts` replaces 3 `push(...spread)` calls with for loops in cached model and discovery collection.
+- `model-resolver.ts` replaces `push(...allowedByKey.values())` spread with a for loop in synthetic model inclusion.
+- `collab/guest.ts` replaces `push(...frame.entries.map())` spread with a for loop in snapshot chunk processing.
+- `edit/renderer.ts` replaces `push(...fileComponents[i].render(width))` spread with a for loop in multi-file diff rendering.
+- `lsp/edits.ts` replaces 2 `push(...edits)` spreads with for loops in TextEdit accumulation.
+- `lsp/index.ts` replaces 4 `push(...spread)` calls with for loops in diagnostic, message, and workspace symbol collection.
+- `lsp/utils.ts` replaces `push(...formatDocumentSymbol(child))` spread with a for loop in symbol tree formatting.
+- `anthropic.ts` replaces `push(...claudeCodeAgentPostEffortBetas)` spread with a for loop in beta header building.
+- All 8 discovery files replace 52 `push(...spread)` calls with for loops across items, warnings, and roots collection.
+- `extensibility` loader, runner, and shim files replace 13 `push(...spread)` calls with for loops in plugin, skill, and extension path collection.
+- `capability/index.ts` replaces 2 `push(...spread)` calls with for loops in warning and provider collection.
+- `hindsight/mental-models.ts` replaces 2 `push(...spread)` calls with for loops in tag collection.
+- `markit` PDF grid and PPTX converters replace 5 `push(...spread)` calls with for loops in consumed ID and slide path collection.
+- `cli/gc-cli.ts`, `ttsr-cli.ts`, `usage-cli.ts` replace 4 `push(...spread)` calls with for loops in session listing and AST matching.
+- `commit` validation files replace 10 `push(...spread)` calls with for loops in error and warning collection.
+- `config/model-registry.ts`, `settings.ts`, `prompt-templates.ts` replace 5 `push(...spread)` calls with for loops in model overlay, settings, and template loading.
+- `mcp/client.ts` replaces 4 `push(...spread)` calls with for loops in paginated tools, resources, templates, and prompts collection.
+- `mcp/manager.ts` replaces 3 `push(...spread)` calls with for loops in MCP tool collection from connections.
+- `mcp/smithery-registry.ts` replaces `push(...pageEntries)` spread with a for loop in paginated entry collection.
+- `memories/index.ts` replaces `push(...subFiles)` spread with a for loop in recursive file listing.
+- `catalog/variant-collapse.ts` and `openai-compat.ts` replace 2 `push(...spread)` calls with for loops in model collection.
+- `mnemopi` consolidate, recall (5), and episodic-graph replace 7 `push(...spread)` calls with for loops in memory candidate and feature collection.
+- `stats/parser.ts` replaces 2 `push(...spread)` calls with for loops in tool call extraction and session file listing.
+- `tui/select-list.ts` and `settings-list.ts` replace 4 `push(...spread)` calls with for loops in scroll view and description line rendering.
+- `task/render.ts` replaces 17 `push(...spread)` calls with for loops across all task section, findings, review, and agent progress/result rendering.
+- `session/session-history-format.ts`, `session-manager.ts`, `steering-envelope.ts`, `todo-reminder.ts` replace 7 `push(...spread)` calls with for loops in history formatting, tree traversal, image wrapping, and todo preview rendering.
+- `task/index.ts` replaces `push(...merged.results)` spread with a for loop in sync result collection.
+- 15 tool files (approval, ask, conflict-detect, grep, image-gen, irc-render, job, gh-renderer, gh, gh-fetch, ast-edit, ast-grep, eval-render, jtd-to-typescript, launch, output-schema-validator, cwd-boundary, path-utils, todo, vibe-render) replace 60+ `push(...spread)` calls with for loops in tool output rendering.
+- 22 modes files replace 42 `push(...spread)` calls with for loops across setup wizard scenes, inspector panel, model hub, ask dialog, advisor components, tree selector, MCP command controller, input controller, and settings selector.
+- Web scrapers, slash-command helpers, and secret command replace 10 `push(...spread)` calls with for loops in permission, comment, and line collection.
+- Benchmark and harness files (metaharness, deepswe-bench, typescript-edit-benchmark, stats scripts, natives bench) replace 22 `push(...spread)` calls with for loops.
 ### Added
 
 - `/advisor` reports advisor status, opens the `WATCHDOG.yml` roster editor and applies a save to the running session, starts or stops the advisor for the session, and copies the advisor's own transcript; the subsystem shipped complete but no command, key or menu row reached it.
