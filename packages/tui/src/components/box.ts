@@ -119,8 +119,8 @@ export class Box implements Component {
 
 	invalidate(): void {
 		this.#invalidateCache();
-		for (const child of this.children) {
-			child.invalidate?.();
+		for (let ci = 0; ci < this.children.length; ci++) {
+			this.children[ci]!.invalidate?.();
 		}
 	}
 
