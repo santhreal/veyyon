@@ -217,7 +217,9 @@ export async function searchPublicWeb(
 	// their `catch` on a later microtask than this line, so an engine cancelled at the deadline
 	// usually has neither field set. Reading the failure side would make the answer a race.
 	if (merged.size === 0) {
-		const unanswered = engineIds.filter((_, index) => responses[index] === undefined && failures[index] === undefined);
+		const unanswered = engineIds.filter(
+			(_, index) => responses[index] === undefined && failures[index] === undefined,
+		);
 		if (unanswered.length === 0 && orderedFailures.length > 0) {
 			throw new SearchProviderError(
 				"public",
