@@ -20,6 +20,8 @@
 - `motion-hover.ts` replaces `Array.from(Map)` with direct `for...of` in `HoverFade.set`, eliminating an intermediate array allocation per hover change.
 - `tui.ts` skips `window.slice()` in overlay compositing when no visible overlays are present, using copy-on-write so the array is only copied when an overlay actually modifies a row.
 - `latex-block.ts` replaces `" ".repeat(n)` with `padding(n)` in the `spaces` function, using the pre-allocated space buffer for widths up to 512.
+- `deccara.ts` scans SGR parameters in-place in `nextBackground` via `charCodeAt`, eliminating `line.slice()` and `params.split(";")` allocations per SGR sequence in `analyzeBgFillLine`.
+
 
 ### Fixed
 
