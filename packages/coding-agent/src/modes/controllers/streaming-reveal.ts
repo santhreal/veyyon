@@ -135,7 +135,9 @@ function sliceGraphemes(text: string, units: number): string {
 
 export function visibleUnits(message: AssistantMessage, hideThinking: boolean, proseOnly = true): number {
 	let total = 0;
-	for (const block of message.content) {
+	const blocks = message.content;
+	for (let bi = 0; bi < blocks.length; bi++) {
+		const block = blocks[bi]!;
 		if (block.type === "text") {
 			total += countGraphemes(block.text);
 		} else if (block.type === "thinking" && !hideThinking) {
