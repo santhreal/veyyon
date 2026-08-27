@@ -198,25 +198,30 @@ describe("Pier ExecutionBackend", () => {
 			os.tmpdir() === "/tmp" ? "packages/evals/runs" : os.tmpdir(),
 			`pier-runid-${Date.now()}`,
 		);
+		// Distinct directories, because the run's output belongs under the one it names: with
+		// both set to the same root, a backend deriving the path from either passed.
+		const outRoot = path.join(tmpRoot, "out");
+		const checkout = path.join(tmpRoot, "checkout");
 		try {
 			const contextA: RunContext = {
 				runId: "run_alpha",
 				suite: createMockSuite(),
-				workDir: tmpRoot,
-				runsDir: tmpRoot,
+				workDir: checkout,
+				runsDir: outRoot,
 			};
 			const contextB: RunContext = {
 				runId: "run_beta",
 				suite: createMockSuite(),
-				workDir: tmpRoot,
-				runsDir: tmpRoot,
+				workDir: checkout,
+				runsDir: outRoot,
 			};
 
 			await pierBackend.prepare(contextA);
 			await pierBackend.prepare(contextB);
 
-			expect(fs.existsSync(path.join(tmpRoot, "runs", "run_alpha", "jobs"))).toBe(true);
-			expect(fs.existsSync(path.join(tmpRoot, "runs", "run_beta", "jobs"))).toBe(true);
+			expect(fs.existsSync(path.join(outRoot, "run_alpha", "jobs"))).toBe(true);
+			expect(fs.existsSync(path.join(outRoot, "run_beta", "jobs"))).toBe(true);
+			expect(fs.existsSync(path.join(checkout, "runs"))).toBe(false);
 		} finally {
 			try {
 				fs.rmSync(tmpRoot, { recursive: true, force: true });

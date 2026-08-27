@@ -17,7 +17,7 @@ import type {
 	Variant,
 	VariantAxis,
 } from "../../core/types";
-import { authDbPath, pierAgentDir, veyBinaryPath } from "../../paths";
+import { authDbPath, runsDir as defaultRunsDir, pierAgentDir, veyBinaryPath } from "../../paths";
 import { stagePierAssets } from "./asset-staging";
 import {
 	checkPierPreflight,
@@ -128,7 +128,13 @@ export class PierExecutionBackend implements ExecutionBackend {
 	}
 
 	async prepare(context: RunContext): Promise<void> {
-		const runDir = runDirFor(path.join(context.workDir, "runs"), context.runId);
+		// Where the run says its output goes, which harbor and in-process already read off the
+		// context. This read `workDir/runs` instead, so `--runs-dir` split one run in two: the
+		// journal and the record landed where it named, the configs, jobs and staged binary
+		// under the checkout. A run whose trials execute on a host that mounts the checkout
+		// over the network had no way to keep its staging off that mount, and staging a
+		// binary from one network path to another stalled in an NFS server-side copy.
+		const runDir = runDirFor(context.runsDir || defaultRunsDir(), context.runId);
 		const configsDir = path.join(runDir, "configs");
 		const jobsDir = path.join(runDir, "jobs");
 		const assetsDir = path.join(runDir, "assets");
@@ -159,7 +165,7 @@ export class PierExecutionBackend implements ExecutionBackend {
 	async runTrial(cell: TrialCell, context: RunContext): Promise<TrialArtifacts> {
 		const taskDescriptor = await context.suite.describeTask(cell.task, context);
 		const jobName = trialJobName(context.runId, cell);
-		const runDir = runDirFor(path.join(context.workDir, "runs"), context.runId);
+		const runDir = runDirFor(context.runsDir || defaultRunsDir(), context.runId);
 		const configsDir = path.join(runDir, "configs");
 		const jobsDir = path.join(runDir, "jobs");
 		const assetsDir = path.join(runDir, "assets");
