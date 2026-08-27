@@ -86,8 +86,21 @@ export function parseTrial(dir: string, name: string, agentName = "veyyon"): Tri
 	}
 	// Trial finished: usage now comes from result.json; drop the live-parse state.
 	dropCostProbe(path.join(dir, harborAgentLogPath(agentName)));
-	const raw = readJson(resultPath);
-	if (!raw || typeof raw !== "object") return null;
+	return parseFinishedTrialResult(readJson(resultPath), name);
+}
+
+/**
+ * One finished harbor `result.json` as a trial.
+ *
+ * The manager held a second parser of this same file, and the two disagreed twice: on a trial whose
+ * verifier recorded no reward, and on a trial whose agent context reported no token counts, which
+ * one reader summed as zero. This is the only reader of the shape; the manager adds its trace path
+ * around it.
+ */
+export function parseFinishedTrialResult(raw: unknown, name: string): Trial | null {
+	// An array is an object, and a `result.json` holding one records no trial: reading it as a
+	// record produced a trial with no reward, which is a graded outcome the file never carried.
+	if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
 	const r = raw as Record<string, unknown>;
 
 	// token/cost: prefer top-level agent_result, fall back to step_results[].agent_result

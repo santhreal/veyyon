@@ -2,7 +2,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { errorMessage, isRecord } from "@veyyon/utils";
-import { aggregate, type JobInfo } from "../backends/harbor/runner/results";
+import { aggregate, type JobInfo, parseFinishedTrialResult, type Trial } from "../backends/harbor/runner/results";
 import { sumOfMeasured } from "../core/scoring";
 import type { BackendId } from "../core/types";
 import { pathSegmentFrom } from "../paths";
@@ -477,19 +477,11 @@ function readDeepsweSnapshot(jobDir: string): BenchmarkSnapshot {
 	return snapshot;
 }
 
-interface HarborParsedTrial {
-	name: string;
-	status: TrialStatus;
-	reward: number | null;
-	costUsd: number | null;
-	tokIn: number;
-	tokOut: number;
-	tokCache: number | null;
-	durationMs: number;
-	detail: string;
+/** A harbor trial as the runner's reader parses it, plus the agent log this job wrote. */
+type HarborParsedTrial = Trial & {
 	/** Job-relative path to the agent's own log, or null when the trial wrote none. */
 	tracePath: string | null;
-}
+};
 
 /**
  * The agent's log inside one harbor trial directory, as a job-relative path.
@@ -523,82 +515,10 @@ function findAgentLogPath(jobDir: string, trialName: string): string | null {
 	return path.join(trialName, "agent", logs[0].name);
 }
 
+/** One finished harbor trial, from the single reader of that shape, plus the trace this job wrote. */
 function parseHarborTrialFromJson(raw: unknown, name: string, tracePath: string | null): HarborParsedTrial | null {
-	if (!isRecord(raw)) return null;
-	const ctxs: Array<Record<string, unknown>> = [];
-	if (isRecord(raw.agent_result)) {
-		ctxs.push(raw.agent_result);
-	}
-	if (Array.isArray(raw.step_results)) {
-		for (const st of raw.step_results) {
-			if (isRecord(st) && isRecord(st.agent_result)) {
-				ctxs.push(st.agent_result);
-			}
-		}
-	}
-	let tokIn = 0;
-	let tokOut = 0;
-	const costs: (number | null)[] = [];
-	const caches: (number | null)[] = [];
-	for (const ctx of ctxs) {
-		if (typeof ctx.cost_usd === "number" && Number.isFinite(ctx.cost_usd)) {
-			costs.push(ctx.cost_usd);
-		}
-		if (typeof ctx.n_input_tokens === "number" && Number.isFinite(ctx.n_input_tokens)) {
-			tokIn += ctx.n_input_tokens;
-		}
-		if (typeof ctx.n_output_tokens === "number" && Number.isFinite(ctx.n_output_tokens)) {
-			tokOut += ctx.n_output_tokens;
-		}
-		if (typeof ctx.n_cache_tokens === "number" && Number.isFinite(ctx.n_cache_tokens)) {
-			caches.push(ctx.n_cache_tokens);
-		}
-	}
-	const costUsd = sumOfMeasured(costs);
-	const tokCache = sumOfMeasured(caches);
-
-	let rewards: Record<string, number> | null = null;
-	if (isRecord(raw.verifier_result) && isRecord(raw.verifier_result.rewards)) {
-		rewards = raw.verifier_result.rewards as Record<string, number>;
-	}
-	if (!rewards && Array.isArray(raw.step_results)) {
-		for (const st of raw.step_results) {
-			if (isRecord(st) && isRecord(st.verifier_result) && isRecord(st.verifier_result.rewards)) {
-				rewards = st.verifier_result.rewards as Record<string, number>;
-			}
-		}
-	}
-	let reward: number | null = null;
-	if (rewards) {
-		const vals = Object.values(rewards).filter((v): v is number => typeof v === "number");
-		if (vals.length > 0) {
-			reward = typeof rewards.reward === "number" ? rewards.reward : Math.max(...vals);
-		}
-	}
-
-	const exc = isRecord(raw.exception_info) ? raw.exception_info : null;
-	let durationMs = 0;
-	const start = typeof raw.started_at === "string" ? Date.parse(raw.started_at) : NaN;
-	const end = typeof raw.finished_at === "string" ? Date.parse(raw.finished_at) : NaN;
-	if (Number.isFinite(start) && Number.isFinite(end)) durationMs = end - start;
-
-	let status: TrialStatus;
-	let detail = "";
-	if (exc) {
-		status = "error";
-		detail = typeof exc.exception_type === "string" ? exc.exception_type : "error";
-	} else if (reward === null) {
-		// A verifier that recorded no reward graded nothing. Reading that as a fail states a result the
-		// run never produced, and puts it in the denominator of the pass rate. The runner's own reader
-		// of the same result.json calls it an error; both readers of one file report the same thing.
-		status = "error";
-		detail = "missing or unparsable reward";
-	} else if (reward >= 1 - 1e-9) {
-		status = "pass";
-	} else {
-		status = "fail";
-	}
-	return { name, status, reward, costUsd, tokIn, tokOut, tokCache, durationMs, detail, tracePath };
+	const trial = parseFinishedTrialResult(raw, name);
+	return trial === null ? null : { ...trial, tracePath };
 }
 
 function parseRunningHarborTrial(dir: string, name: string, tracePath: string | null): HarborParsedTrial {
@@ -611,8 +531,8 @@ function parseRunningHarborTrial(dir: string, name: string, tracePath: string | 
 		status: "running",
 		reward: null,
 		costUsd: null,
-		tokIn: 0,
-		tokOut: 0,
+		tokIn: null,
+		tokOut: null,
 		tokCache: null,
 		durationMs: Math.max(0, Date.now() - started),
 		detail: "",
@@ -633,8 +553,8 @@ function unreadableHarborTrial(name: string, tracePath: string | null, detail: s
 		status: "error",
 		reward: null,
 		costUsd: null,
-		tokIn: 0,
-		tokOut: 0,
+		tokIn: null,
+		tokOut: null,
 		tokCache: null,
 		durationMs: 0,
 		detail,
@@ -738,8 +658,8 @@ function readHarborSnapshot(jobDir: string): BenchmarkSnapshot {
 		error: totals.error,
 		running: totals.running,
 		costUsd: totals.costUsd,
-		// Every harbor trial this reader parses counts its own tokens, so an absent sum means it read
-		// no trial at all — and no trial is a measured zero, unlike an unpriced one.
+		// A run whose trials counted no tokens has no token total to report, and this row's columns
+		// hold a number: it reads as zero here, while cost and cache tokens stay absent.
 		tokIn: totals.tokIn ?? 0,
 		tokOut: totals.tokOut ?? 0,
 		tokCache: totals.tokCache,

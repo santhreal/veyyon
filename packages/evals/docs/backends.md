@@ -49,6 +49,14 @@ are routed to the host authentication gateway. Per-trial status, token counts an
 come from polling each trial's `result.json`. `src/backends/harbor/launch-args.ts` builds the argv and
 is the only place the container agent's import path and CLI flags are assembled.
 
+`parseFinishedTrialResult` in `src/backends/harbor/runner/results.ts` is the only reader of a
+trial's `result.json`. It resolves the reward (top-level `verifier_result.rewards`, else the last
+step result's; the `reward` key when present, else the highest recorded value), sums usage across
+every `agent_result` while keeping an unmeasured field absent, and maps the outcome: an exception is
+an error, a missing reward is an error, a reward at 1 is a pass, anything lower a fail. The manager's
+snapshot reader wraps it to attach the trace path — `test/backends/harbor/one-reader-parses-a-harbor-result-and-both-callers-agree.test.ts`
+drives both entry points over one fixture table and fails when they diverge.
+
 ## in-process
 
 Drives an `AgentSession` inside this process, used by the TypeScript-edit suite. No container, no
