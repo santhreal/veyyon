@@ -727,15 +727,20 @@ export class HookSelectorComponent extends Container {
 	 */
 	#shortcuts(): readonly ModalShortcut[] {
 		if (this.#helpText !== undefined) {
-			return this.#helpText
-				.split(/\s{2,}/)
-				.map(segment => segment.trim())
-				.filter(segment => segment.length > 0)
-				.map(label => {
-					if (label.startsWith("enter ")) return { label, clickable: true, id: "confirm" };
-					if (label.toLowerCase().startsWith("esc")) return { label, clickable: true, id: "close" };
-					return { label };
-				});
+			const segments = this.#helpText.split(/\s{2,}/);
+			const result: ModalShortcut[] = [];
+			for (let si = 0; si < segments.length; si++) {
+				const label = segments[si]!.trim();
+				if (label.length === 0) continue;
+				if (label.startsWith("enter ")) {
+					result.push({ label, clickable: true, id: "confirm" });
+				} else if (label.toLowerCase().startsWith("esc")) {
+					result.push({ label, clickable: true, id: "close" });
+				} else {
+					result.push({ label });
+				}
+			}
+			return result;
 		}
 		// Every other list surface names these keys the same way, and the labels
 		// carry the live keybinding rather than a hardcoded "enter"/"esc".
@@ -746,7 +751,7 @@ export class HookSelectorComponent extends Container {
 		}
 		if (extras.length === 0) return SELECT_LIST_SHORTCUTS;
 		// The close chip stays last; the surface's own keys sit in front of it.
-		const shortcuts = [...SELECT_LIST_SHORTCUTS];
+		const shortcuts = SELECT_LIST_SHORTCUTS.slice();
 		shortcuts.splice(shortcuts.length - 1, 0, ...extras);
 		return shortcuts;
 	}
