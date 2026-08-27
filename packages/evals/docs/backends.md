@@ -80,10 +80,13 @@ than awaited, and its pipes are not read, because a pipe a surviving descendant 
 EOF. Signalling the group reaches the container, the compose project and the agent process a child
 spawned; a child that is not its own group leader falls back to the pid.
 
-The harbor and pier backends start their pipe reads before the deadline can fire, and after a kill
-they drain those same promises through `drainTrialOutput` under a 2s bound. Each pipe is bounded
-separately, so text from the pipe that closed is kept when a survivor holds the other one open. A
-partial read is stated in the trial's error text.
+`awaitTrialProcessOutput` in the same module is the single wait the harbor and pier backends use. It
+races the trial's exit and its two pipe reads against the trial's deadline and the run's
+cancellation signal. A deadline and a cancel take the same path: terminate the tree, then drain the
+reads already in flight through `drainTrialOutput` under a 2s bound. Each pipe is bounded separately,
+so text from the pipe that closed is kept when a survivor holds the other one open, and a partial
+read is stated in the trial's error text. The result states which of the three ended the wait, so a
+cancelled trial reports a cancel rather than a timeout.
 
 A trial's own teardown — the in-process backend's client, the TypeScript-edit adapter's session —
 is bounded by `teardownWithin` in `src/core/trial-deadline.ts` instead, and reports the reason it
