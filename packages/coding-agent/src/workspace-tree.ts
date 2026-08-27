@@ -1,5 +1,6 @@
 import * as path from "node:path";
 import { FileType, type GlobMatch, listWorkspace } from "@veyyon/natives";
+import { isNativeAddonUnavailable } from "@veyyon/natives/loader-state";
 // Owners, not the `@veyyon/utils` barrel: 1 module against 74.
 import { formatAge, formatBytes } from "@veyyon/utils/format";
 
@@ -67,7 +68,8 @@ export async function buildDirectoryTree(cwd: string, options: BuildDirectoryTre
 		});
 		entries = result.entries;
 		nativeTruncated = result.truncated;
-	} catch {
+	} catch (error) {
+		refuseWithoutAddon(error);
 		return emptyTree(rootPath);
 	}
 
@@ -118,7 +120,8 @@ export async function buildTopLevelDirectoryListing(
 		});
 		entries = result.entries;
 		nativeTruncated = result.truncated;
-	} catch {
+	} catch (error) {
+		refuseWithoutAddon(error);
 		return { ...emptyTree(rootPath), omittedTopLevel: 0 };
 	}
 
@@ -195,7 +198,8 @@ export async function buildWorkspaceTree(cwd: string, options: BuildWorkspaceTre
 			ageMode: "absolute",
 		});
 		return { ...tree, agentsMdFiles: result.agentsMdFiles };
-	} catch {
+	} catch (error) {
+		refuseWithoutAddon(error);
 		return { ...emptyTree(rootPath), agentsMdFiles: [] };
 	}
 }
@@ -401,6 +405,19 @@ function formatLines(lines: readonly RenderedLine[]): string {
 			return `${line.label.padEnd(maxLabelLength + 2)}${sizeColumn}  ${line.age.padEnd(4)}`.trimEnd();
 		})
 		.join("\n");
+}
+
+/**
+ * Re-throw a scan failure that means the native addon could not load.
+ *
+ * A missing or unreadable directory is a finding: an empty tree is the honest
+ * answer and every caller renders it as one. An addon that never loaded is not
+ * a finding, because the scan did not run. Returning an empty tree for it
+ * rendered a full checkout as an empty workspace, both in the tool's directory
+ * listing and in the workspace tree the system prompt carries.
+ */
+function refuseWithoutAddon(error: unknown): void {
+	if (isNativeAddonUnavailable(error)) throw error;
 }
 
 function emptyTree(rootPath: string): DirectoryTree {

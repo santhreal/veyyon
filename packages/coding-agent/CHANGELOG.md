@@ -46,6 +46,7 @@
 
 ### Fixed
 
+- A directory listing reports a native addon that could not load instead of answering "(empty directory)". A container whose glibc was older than the shipped addon required got an empty listing for a full checkout on the first `read .`, both in the tool result and in the workspace tree the system prompt carries.
 - An explicit `--model` pointing at a dynamically-discovered model (a provider`s `/v1/models` entry or models.dev overlay absent from the bundled catalog) no longer fails with "not found among N models" when the background discovery refresh has not completed before model resolution. The deferred pattern path does a synchronous cache-aware discovery pass when none of the patterns resolve against the static catalog, mirroring the fallback already present for default-role models.
 - Unified search now preserves purpose-specific field semantics through the Antigravity tool-schema adapter, replaces primitive search tools in explicit tool lists, keeps plan/subagent/bash guidance aligned with the active tool, and redirects intercepted shell searches to `search`.
 - A bash-interceptor rule that still names a retired search primitive (`grep`, `glob`, `find`, `ast_grep`) now redirects to `search` naming the `type` field the tool accepts, instead of the `purpose` field it rejects.
