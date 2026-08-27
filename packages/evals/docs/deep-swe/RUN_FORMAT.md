@@ -21,7 +21,7 @@ Binaries and credentials staged by the harness before trials start. All arms in 
 
 | File | Purpose |
 |---|---|
-| `vey` | Pinned veyvon binary (copy of `--binary` or `packages/coding-agent/dist/vey`) |
+| `vey` | Pinned veyyon binary (copy of `--binary` or `packages/coding-agent/dist/vey`) |
 | `cli.js` | omp CLI (if an omp arm is present) |
 | `bun` | Bun runtime copy for container use |
 | `auth-agent.db` | Seeded auth credentials (copied from `~/.veyyon/shared-auth/agent.db`) |

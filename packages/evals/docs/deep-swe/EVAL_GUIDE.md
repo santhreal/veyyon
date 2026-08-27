@@ -8,11 +8,11 @@ Step-by-step workflows for running DeepSWE evaluations with the benchmark harnes
 2. **Pier** installed: `uv tool install datacurve-pier`.
 3. **Bun** runtime for the harness.
 4. **OpenCode API key** for models routed through OpenCode (DeepSeek, Muse Spark, etc.).
-5. **A veyvon binary** at `packages/coding-agent/dist/vey` (build with `bun run build:binary` or pin with `--binary`).
+5. **A veyyon binary** at `packages/coding-agent/dist/vey` (build with `bun --cwd=packages/coding-agent run build` or pin with `--binary`).
 
 ### Seeding auth credentials
 
-The harness reads API keys from `~/.veyyon/shared-auth/agent.db`. If you have a veyvon auth store with the OpenCode provider configured, it is seeded automatically. To pass the key explicitly:
+The harness reads API keys from `~/.veyyon/shared-auth/agent.db`. If you have a veyyon auth store with the OpenCode provider configured, it is seeded automatically. To pass the key explicitly:
 
 ```bash
 export OPENCODE_API_KEY=sk-...
@@ -67,13 +67,13 @@ The report includes:
 Runs different agent binaries (veyyon, omp, factory, hermes) on the same tasks and model. System adapters can be mixed with config arms.
 
 ```bash
-# veyvon baseline vs omp
+# veyyon baseline vs omp
 bun src/suites/deep-swe/run.ts --arms baseline,omp \
   --model opencode-go/deepseek-v4-flash \
   --tasks datasets/deep-swe/tasks/pilot-10.txt \
   --jobs 2 --repeats 2
 
-# Pin a specific veyvon binary
+# Pin a specific veyyon binary
 bun src/suites/deep-swe/run.ts --arms baseline,omp \
   --model opencode-go/deepseek-v4-flash \
   --binary packages/coding-agent/dist/vey \
@@ -87,7 +87,7 @@ Both arms receive the same `model_name` in their job config. The harness does no
 
 ### Omp model resolution
 
-Omp's release binary does not have veyvon's synchronous model discovery fallback. For dynamically-discovered models (not in omp's bundled catalog), the harness generates a `models.yml` with full metadata using the veyvon binary's models.dev overlay and stages it into the container at `~/.omp/agent/models.yml`. This bypasses omp's background discovery race entirely.
+Omp's release binary does not have veyyon's synchronous model discovery fallback. For dynamically-discovered models (not in omp's bundled catalog), the harness generates a `models.yml` with full metadata using the veyyon binary's models.dev overlay and stages it into the container at `~/.omp/agent/models.yml`. This bypasses omp's background discovery race entirely.
 
 ## Workflow 4: Headline evaluation
 
@@ -133,7 +133,7 @@ Task lists with `@biased` headers are not suitable for headline reporting. The r
 | `opencode-go/deepseek-v4-pro` | OpenCode | Higher quality, higher cost |
 | `opencode-go/muse-spark-1.2-contributor` | OpenCode | Requires data collection opt-in |
 
-Models not in the bundled catalog require a `models refresh` before the agent can resolve them. The veyvon binary handles this with a synchronous discovery fallback. For omp, the harness generates a `models.yml` with full metadata.
+Models not in the bundled catalog require a `models refresh` before the agent can resolve them. The veyyon binary handles this with a synchronous discovery fallback. For omp, the harness generates a `models.yml` with full metadata.
 
 ## Interpreting the report
 

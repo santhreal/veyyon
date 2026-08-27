@@ -116,13 +116,13 @@ export function printHelp(): void {
 DeepSWE Bench Runner — Evaluation and comparison harness for coding agents.
 
 Usage:
-  bun run.ts --list                          List available arms, systems, and task sets
-  bun run.ts --tasks tasks/smoke.txt --arms baseline --dry-run
-  bun run.ts --tasks tasks/pilot-10.txt --arms baseline,candidate-bash-trim
-  bun run.ts --tasks tasks/pilot-10.txt --arms baseline,omp --model opencode/deepseek-ai/DeepSeek-V3.2
-  bun run.ts --arms veyyon,omp --model opencode/deepseek-ai/DeepSeek-V3.2
-  bun run.ts --reaggregate runs/<run-name>
-  bun run.ts --merge runs/run1,runs/run2 --out runs/merged
+  bun src/suites/deep-swe/run.ts --list                          List available arms, systems, and task sets
+  bun src/suites/deep-swe/run.ts --tasks tasks/smoke.txt --arms baseline --dry-run
+  bun src/suites/deep-swe/run.ts --tasks tasks/pilot-10.txt --arms baseline,candidate-bash-trim
+  bun src/suites/deep-swe/run.ts --tasks tasks/pilot-10.txt --arms baseline,omp --model opencode/deepseek-ai/DeepSeek-V3.2
+  bun src/suites/deep-swe/run.ts --arms veyyon,omp --model opencode/deepseek-ai/DeepSeek-V3.2
+  bun src/suites/deep-swe/run.ts --reaggregate runs/<run-name>
+  bun src/suites/deep-swe/run.ts --merge runs/run1,runs/run2 --out runs/merged
 
 Options:
   --list                    List available arms, systems, and task sets, then exit

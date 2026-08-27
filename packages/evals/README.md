@@ -200,6 +200,7 @@ stored as NULL and reported as absent, never as zero. `docs/manager.md` covers t
 |[`docs/typescript-edit.md`](docs/typescript-edit.md)|The TypeScript-edit suite, its mutations and corpus|
 |[`docs/terminal-bench.md`](docs/terminal-bench.md)|The Terminal-Bench suite on the Harbor backend|
 |[`docs/search-bench.md`](docs/search-bench.md)|The offline search bench: corpora, case suites, arms|
+|[`docs/runs.md`](docs/runs.md)|The run engine: plan, plan identity, journal, resume and the trial loop|
 |[`docs/manager.md`](docs/manager.md)|The run store, REST/SSE API and launch parameters|
 |[`docs/dashboard.md`](docs/dashboard.md)|The wire contract and how unmeasured values render|
 |[`docs/deep-swe/`](docs/deep-swe/)|The DeepSWE suite: eval guide, arms, run format, measurement tools, adapter authoring|
