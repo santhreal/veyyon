@@ -78,6 +78,12 @@
 - Web scrapers, slash-command helpers, and secret command replace 10 `push(...spread)` calls with for loops in permission, comment, and line collection.
 - Benchmark and harness files (metaharness, deepswe-bench, typescript-edit-benchmark, stats scripts, natives bench) replace 22 `push(...spread)` calls with for loops.
 - `event-controller.ts` replaces `.filter().length` with a for-loop count and `.some()` with `timeline.hasToolCalls` in `#handleMessageUpdate`, eliminating an intermediate array and a second iteration on every streaming delta.
+- `event-controller.ts` converts three `for…of` loops over `streamingMessage.content` in `#handleMessageUpdate` to index-based `for` loops, eliminating 3 iterator allocations per streaming token.
+- `streaming-reveal.ts` converts `for…of` over `message.content` in `visibleUnits` to an index-based `for` loop, eliminating iterator allocation per reveal tick (30fps).
+- `assistant-message.ts` converts `for…of` loops in `#shouldAnimateThinking`, `#computeShapeKey`, and `#canFastPath` to index-based `for` loops, eliminating iterator allocations per render.
+- `chat-transcript-builder.ts` converts `for…of` over `message.content` in `#appendAssistantMessage` to an index-based `for` loop.
+- `transcript-render-helpers.ts` converts `for…of` over `message.content` in `splitAssistantMessageToolTimeline` to an index-based `for` loop, eliminating iterator allocation per streaming token.
+- `ui-helpers.ts` converts `for…of` loops in transcript rebuild and `extractAssistantText` to index-based `for` loops.
 ### Added
 
 - `/advisor` reports advisor status, opens the `WATCHDOG.yml` roster editor and applies a save to the running session, starts or stops the advisor for the session, and copies the advisor's own transcript; the subsystem shipped complete but no command, key or menu row reached it.
