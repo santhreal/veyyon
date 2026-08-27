@@ -911,11 +911,14 @@ export class EventController {
 			const timeline = splitAssistantMessageToolTimeline(this.ctx.streamingMessage);
 			this.#streamingReveal.setTarget(timeline.beforeTools);
 
-			const visibleBlockCount = this.ctx.streamingMessage.content.filter(
-				content =>
+			let visibleBlockCount = 0;
+			for (const content of this.ctx.streamingMessage.content) {
+				if (
 					(content.type === "text" && canonicalizeMessage(content.text)) ||
-					(content.type === "thinking" && canonicalizeMessage(content.thinking)),
-			).length;
+					(content.type === "thinking" && canonicalizeMessage(content.thinking))
+				)
+					visibleBlockCount++;
+			}
 			if (visibleBlockCount > this.#lastVisibleBlockCount) {
 				// A new visible block after the first (e.g. thinking closed, next text
 				// block) changes transcript layout; the first block's growth is paced
@@ -936,7 +939,7 @@ export class EventController {
 			// stream (a big write/edit/eval) sits below a still-live block and
 			// can never reach native scrollback: the head of the preview is
 			// neither committed nor on screen and the transcript reads as cut.
-			if (this.ctx.streamingMessage.content.some(content => content.type === "toolCall")) {
+			if (timeline.hasToolCalls) {
 				streamingComponent.markTranscriptBlockFinalized();
 				repaintTargets.add(streamingComponent);
 			}
