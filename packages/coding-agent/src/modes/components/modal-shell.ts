@@ -366,7 +366,13 @@ function resolveShortcutLabels(shortcuts: readonly ModalShortcut[]): ModalShortc
 			resolved.push(shortcut);
 			continue;
 		}
-		const keys = shortcut.keybindings.map(actionKeyHint).filter(Boolean);
+		const keys: string[] = [];
+		if (shortcut.keybindings) {
+			for (let ki = 0; ki < shortcut.keybindings.length; ki++) {
+				const hint = actionKeyHint(shortcut.keybindings[ki]!);
+				if (hint) keys.push(hint);
+			}
+		}
 		if (keys.length === 0) continue;
 		resolved.push({ ...shortcut, label: `${keys.join("/")} ${shortcut.label}` });
 	}
