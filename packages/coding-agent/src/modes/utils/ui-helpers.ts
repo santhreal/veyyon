@@ -467,7 +467,9 @@ export class UiHelpers {
 				};
 
 				// Render tool call components
-				for (const content of message.content) {
+				const blocks = message.content;
+				for (let ci = 0; ci < blocks.length; ci++) {
+					const content = blocks[ci]!;
 					if (content.type !== "toolCall") {
 						continue;
 					}
@@ -1133,9 +1135,10 @@ export class UiHelpers {
 
 	extractAssistantText(message: AssistantMessage): string {
 		let text = "";
-		for (const content of message.content) {
-			if (content.type === "text") {
-				text += content.text;
+		const blocks = message.content;
+		for (let ci = 0; ci < blocks.length; ci++) {
+			if (blocks[ci]!.type === "text") {
+				text += blocks[ci]!.text;
 			}
 		}
 		return text.trim();
