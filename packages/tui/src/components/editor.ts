@@ -1114,7 +1114,8 @@ export class Editor implements Component, Focusable, MouseRoutable {
 			// Row N of the popup is still row N of the frame, so a click during the
 			// grow lands on the suggestion it looks like it landed on, and a row that
 			// has not arrived yet is not in the frame to be clicked at all.
-			result.push(...(this.#autocompleteReveal?.apply(autocompleteResult) ?? autocompleteResult));
+			const autocompleteRows = this.#autocompleteReveal?.apply(autocompleteResult) ?? autocompleteResult;
+			for (let ai = 0; ai < autocompleteRows.length; ai++) result.push(autocompleteRows[ai]!);
 		} else {
 			this.#autocompleteRowStart = -1;
 		}
