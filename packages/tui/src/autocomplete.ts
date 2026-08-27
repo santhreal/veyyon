@@ -984,19 +984,26 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 			const fuzzyQuery = scopedQuery?.query ?? query;
 			const result = await fuzzyFind(buildAutocompleteFuzzyDiscoveryProfile(fuzzyQuery, searchPath));
 			const lowerQuery = fuzzyQuery.toLowerCase();
-			const filteredMatches = result.matches.filter(entry => {
+			const filteredMatches: typeof result.matches = [];
+			for (let mi = 0; mi < result.matches.length; mi++) {
+				const entry = result.matches[mi]!;
 				const p = entry.path.endsWith("/") ? entry.path.slice(0, -1) : entry.path;
 				const normalized = p.replaceAll("\\", "/");
 				if (/(^|\/)\.git(\/|$)/.test(normalized)) {
-					return false;
+					continue;
 				}
-				return lowerQuery.length === 0 || isSubsequenceMatch(lowerQuery, normalized.toLowerCase());
-			});
+				if (lowerQuery.length > 0 && !isSubsequenceMatch(lowerQuery, normalized.toLowerCase())) {
+					continue;
+				}
+				filteredMatches.push(entry);
+			}
 			// `fuzzyFind` is already capped via `maxResults` in
 			// `buildAutocompleteFuzzyDiscoveryProfile`; no extra slice here.
 			const topEntries = filteredMatches;
 			const suggestions: AutocompleteItem[] = [];
-			for (const { path: entryPath, isDirectory } of topEntries) {
+			for (let ti = 0; ti < topEntries.length; ti++) {
+				const entryPath = topEntries[ti]!.path;
+				const isDirectory = topEntries[ti]!.isDirectory;
 				const pathWithoutSlash = isDirectory ? entryPath.slice(0, -1) : entryPath;
 				const displayPath = scopedQuery
 					? this.#scopedPathForDisplay(scopedQuery.displayBase, pathWithoutSlash)
