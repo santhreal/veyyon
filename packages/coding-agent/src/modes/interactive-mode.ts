@@ -1121,8 +1121,10 @@ export class InteractiveMode implements InteractiveModeContext {
 	 * itself (see {@link ComposerHairline}), not a glyph parked at the edge.
 	 */
 	#locationRightZone(): string | null {
-		const zones = [this.#draftTokenZone(), this.#mcpZoneText()].filter((z): z is string => z !== null);
-		return zones.length > 0 ? zones.join(theme.fg("dim", " · ")) : null;
+		const draft = this.#draftTokenZone();
+		const mcp = this.#mcpZoneText();
+		if (draft !== null && mcp !== null) return `${draft}${theme.fg("dim", " · ")}${mcp}`;
+		return draft ?? mcp;
 	}
 
 	/**
