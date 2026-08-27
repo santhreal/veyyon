@@ -389,8 +389,34 @@ describe("extractHttpStatusFromError", () => {
 		expect(extractHttpStatusFromError(new Error("Processed 200 Total Records"))).toBeUndefined();
 		expect(extractHttpStatusFromError(new Error("gave up after 401 Failed Attempts"))).toBeUndefined();
 		expect(extractHttpStatusFromError(new Error("Read 503 Bytes Total"))).toBeUndefined();
-		// The phrase has to end on a word boundary.
-		expect(extractHttpStatusFromError(new Error("503 Service Unavailableish"))).toBeUndefined();
+		// The phrase has to end on a word boundary. Mid-sentence, so position cannot answer for it.
+		expect(extractHttpStatusFromError(new Error("upstream said 503 Service Unavailableish"))).toBeUndefined();
+	});
+
+	/**
+	 * WHY: the pattern that read `Processed 200 Total Records` as a status accepted a code anywhere
+	 * in a sentence. Removing it took the true positives with the false ones, and every one of those
+	 * was a status line: `401 Your session has expired` stopped reporting 401, which is the number
+	 * `isAuthError` rotates a credential on, so a dead grant stopped being recognised as one.
+	 *
+	 * POSITION is the evidence. A status line opens the message; a sentence that counts something
+	 * does not open with the count. The phrase after the code is not consulted, which is the whole
+	 * point — a gateway inventing its own wording for a standard code still reports the code.
+	 *
+	 * Not caught: a message that genuinely opens with a three-digit quantity. No provider error in
+	 * this workspace is written that way, and the callers are all handed failures.
+	 */
+	it("reads a status line the message opens with, whatever wording follows it", () => {
+		expect(extractHttpStatusFromError(new Error("401 Your session has expired"))).toBe(401);
+		expect(extractHttpStatusFromError(new Error("403 You have run out of credits"))).toBe(403);
+		expect(extractHttpStatusFromError(new Error("429 Rate limit exceeded. Please try again later."))).toBe(429);
+		expect(extractHttpStatusFromError(new Error('503 {"type":"error","error":{"type":"overloaded_error"}}'))).toBe(
+			503,
+		);
+		expect(extractHttpStatusFromError(new Error("503 Service Unavailableish"))).toBe(503);
+		// Still not a status: the number is inside the sentence, not opening it.
+		expect(extractHttpStatusFromError(new Error("Processed 200 Total Records"))).toBeUndefined();
+		expect(extractHttpStatusFromError(new Error("gave up after 401 Failed Attempts"))).toBeUndefined();
 	});
 
 	it("prefers an explicitly labelled status over a reason phrase later in the message", () => {

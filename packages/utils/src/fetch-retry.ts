@@ -511,21 +511,23 @@ function messageStatus(error: unknown, depth: number): number | undefined {
  * The union of the two lists that used to disagree, most specific first. A
  * reason phrase is read separately, by {@link statusFromReasonPhrase}.
  *
- * The anchored pattern is the shape a provider error takes when the status line
- * is followed by the response body verbatim: `503 {"type":"error",...}`. The
- * body settles what a bare leading code cannot. A code followed by arbitrary
- * words is what {@link statusFromReasonPhrase} refuses on purpose, so that
- * `Processed 200 Total Records` is not a success and `503 Service
- * Unavailableish` is not a status; a code followed by a JSON document is not
- * that shape and cannot be a sentence about counting. Without this the status
- * of an Anthropic or Console failure survived only on the error object, so
- * every reader handed the message alone — a replayed session error, or
- * `{ message }` handed to `isAuthError` — saw none and let the wording decide.
- * A 503 whose body says `Authentication service is temporarily unavailable`
- * then read as an auth verdict instead of the transient the server reported.
+ * The anchored pattern is a status line: the code the response carried, at the
+ * start of the message, followed by the body. `503 {"type":"error",...}`,
+ * `401 Your session has expired`, `403 You have run out of credits`.
+ *
+ * POSITION IS WHAT SEPARATES IT from the reason-phrase rule, which refuses a
+ * bare code followed by arbitrary words so that `Processed 200 Total Records`
+ * is not a success and `gave up after 401 Failed Attempts` is not an expired
+ * credential. Both of those carry the number MID-SENTENCE. Every status line a
+ * provider in this workspace writes carries it FIRST, which is a shape a
+ * sentence about counting cannot take. The rule that replaced the old
+ * `(?:^|\s)(\d{3})\s+[A-Z]...` pattern kept its false positives out and took
+ * the true ones with them: a `401` naming its own reason stopped reporting 401
+ * at all, and `isAuthError` rotates a credential on exactly that number, so a
+ * dead grant stopped being recognised as one. Anchoring keeps both answers.
  */
 const STATUS_MESSAGE_PATTERNS = [
-	/^(\d{3})\s+[[{]/,
+	/^(\d{3})\s/,
 	/\bstatus(?:_code)?\s*[:=]?\s*(\d{3})\b/i,
 	/\bhttp\s*(\d{3})\b/i,
 	/error\s*\((\d{3})\)/i,
