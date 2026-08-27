@@ -212,7 +212,7 @@ function mergeRangesInto(map: Map<string, LineRange[]>, absKey: string, ranges: 
 	// duplicates/overlaps only cost a few extra comparisons per match.
 	const existing = map.get(absKey);
 	if (existing) {
-		existing.push(...ranges);
+		for (let i = 0; i < ranges.length; i++) existing.push(ranges[i]!);
 	} else {
 		map.set(absKey, [...ranges]);
 	}
@@ -724,7 +724,7 @@ async function searchVirtualResources(
 			if (matchedIndexes.length > 0) filesWithMatches.add(resource.path);
 			totalMatches += matchedIndexes.length;
 			limitReached = limitReached || matchedIndexes.length > resourceMatches.length;
-			matches.push(...resourceMatches);
+			for (let ri = 0; ri < resourceMatches.length; ri++) matches.push(resourceMatches[ri]!);
 		}
 	} finally {
 		// Same as `cleanup` above: the search result stands, and the leaked directory is named in the log.
@@ -1372,7 +1372,7 @@ export class GrepTool implements AgentTool<typeof searchSchema, GrepToolDetails>
 				const oversizedNote = await (async (): Promise<string | undefined> => {
 					const explicitFileTargets: string[] = [];
 					if (exactFilePaths) {
-						explicitFileTargets.push(...exactFilePaths);
+						for (let ei = 0; ei < exactFilePaths.length; ei++) explicitFileTargets.push(exactFilePaths[ei]!);
 					} else if (searchablePaths.length > 0 && !isDirectory && !multiTargets) {
 						explicitFileTargets.push(searchPath);
 					}
@@ -1548,8 +1548,8 @@ export class GrepTool implements AgentTool<typeof searchSchema, GrepToolDetails>
 							skip: rendered.model.length === 0,
 						};
 					});
-					outputLines.push(...grouped.model);
-					displayLines.push(...grouped.display);
+					for (let gi = 0; gi < grouped.model.length; gi++) outputLines.push(grouped.model[gi]!);
+					for (let gi = 0; gi < grouped.display.length; gi++) displayLines.push(grouped.display[gi]!);
 				} else {
 					for (const relativePath of fileList) {
 						const rendered = renderMatchesForFile(relativePath);
