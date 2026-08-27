@@ -8,6 +8,8 @@
  * (no manager, no store, no core).
  */
 
+import { isRecord } from "@veyyon/utils/type-guards";
+
 /** Benchmark implementation that produced a run. */
 export type BenchmarkKind = "harbor" | "edit" | "deepswe" | (string & {});
 
@@ -409,20 +411,20 @@ function checkFields(
 		} else if (kind === "boolean") {
 			if (typeof value !== "boolean") throw new InvalidRequestBodyError(what, `${at} must be true or false`);
 		} else {
-			if (typeof value !== "object" || Array.isArray(value)) {
+			if (!isRecord(value)) {
 				throw new InvalidRequestBodyError(what, `${at} must be an object`);
 			}
 			const inner = spec.nested?.[key];
 			if (!inner) continue;
 			if (kind === "object") {
-				checkFields(what, value as Record<string, unknown>, inner, key, spec);
+				checkFields(what, value, inner, key, spec);
 				continue;
 			}
-			for (const [entryKey, entry] of Object.entries(value as Record<string, unknown>)) {
-				if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
+			for (const [entryKey, entry] of Object.entries(value)) {
+				if (!isRecord(entry)) {
 					throw new InvalidRequestBodyError(what, `"${key}.${entryKey}" must be an object`);
 				}
-				checkFields(what, entry as Record<string, unknown>, inner, `${key}.${entryKey}`, spec);
+				checkFields(what, entry, inner, `${key}.${entryKey}`, spec);
 			}
 		}
 	}
@@ -439,26 +441,25 @@ function checkFields(
  * the reason, and the router maps it to 400.
  */
 export function parseRequestBody<T>(body: unknown, spec: BodySpec<T>): T {
-	if (!body || typeof body !== "object" || Array.isArray(body)) {
+	if (!isRecord(body)) {
 		throw new InvalidRequestBodyError(spec.what, "the body is not a JSON object");
 	}
-	const raw = body as Record<string, unknown>;
 	checkFields(
 		spec.what,
-		raw,
+		body,
 		spec.fields as Readonly<Record<string, BodyFieldKind>>,
 		"the body",
 		spec as BodySpec<unknown>,
 	);
 
 	for (const field of spec.required ?? []) {
-		const value = raw[field];
+		const value = body[field];
 		const blank = typeof value === "string" && value.trim().length === 0;
 		if (value === undefined || value === null || blank) {
 			throw new InvalidRequestBodyError(spec.what, `"${field}" is required`);
 		}
 	}
-	return raw as T;
+	return body as T;
 }
 
 /**

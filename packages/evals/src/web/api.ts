@@ -1,12 +1,9 @@
+import { errorMessage } from "@veyyon/utils/type-guards";
 import { fetchWithin } from "../core/bounded-fetch";
 import type { ApiErrorResponse, ApiTokenResponse, ExperimentMetaUpdate, HttpMethod } from "../wire";
 import { resolveRoute } from "./routes";
 
 let cachedAuthToken = "";
-
-function reason(err: unknown): string {
-	return err instanceof Error ? err.message : String(err);
-}
 
 /**
  * The session token every mutating request carries.
@@ -21,14 +18,14 @@ export async function getAuthToken(): Promise<string> {
 	try {
 		res = await fetchWithin(resolveRoute("GET", "/api/token"));
 	} catch (err) {
-		throw new Error(`the manager did not answer a request for a session token: ${reason(err)}`);
+		throw new Error(`the manager did not answer a request for a session token: ${errorMessage(err)}`);
 	}
 	if (!res.ok) throw new Error(`the manager refused to issue a session token (${res.status})`);
 	let data: ApiTokenResponse;
 	try {
 		data = (await res.json()) as ApiTokenResponse;
 	} catch (err) {
-		throw new Error(`the manager's session token could not be read: ${reason(err)}`);
+		throw new Error(`the manager's session token could not be read: ${errorMessage(err)}`);
 	}
 	if (!data.token) throw new Error("the manager issued an empty session token");
 	cachedAuthToken = data.token;
@@ -76,7 +73,7 @@ export async function mutate<T>(
 			res = await authedFetch(method, template, params, init);
 		}
 	} catch (err) {
-		return { data: null, error: reason(err) };
+		return { data: null, error: errorMessage(err) };
 	}
 	const body = (await res.json().catch(() => null)) as (T & Partial<ApiErrorResponse>) | null;
 	if (!res.ok) return { data: null, error: body?.error ?? `${template}: the manager answered ${res.status}` };

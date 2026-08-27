@@ -23,6 +23,7 @@ import {
 	resolveModelReference,
 } from "@veyyon/catalog/identity";
 import { CATALOG_PROVIDERS } from "@veyyon/catalog/provider-models/descriptors";
+import { collapseWhitespace } from "@veyyon/utils";
 import { authDbPath as defaultAuthDbPath } from "../paths";
 
 export const AUTH_DB_SOURCES = [
@@ -246,7 +247,7 @@ export function describeExhaustedPool(pool: { pool: string; resetsAt?: number },
 export function summarizeCredentialReason(reason: string): string {
 	const beforeStack = reason.split("; stack=")[0] ?? reason;
 	const firstLine = beforeStack.split("\n")[0] ?? beforeStack;
-	const collapsed = firstLine.replace(/\s+/g, " ").trim();
+	const collapsed = collapseWhitespace(firstLine);
 	return collapsed.length > 0 ? collapsed : "no reason reported";
 }
 
