@@ -345,12 +345,13 @@ export class EventController {
 		if (!settings.get("terminal.showImages")) return false;
 		const assistantComponent = this.#readToolCallAssistantComponents.get(toolCallId);
 		if (!assistantComponent) return false;
-		const images: ImageContent[] = result.content
-			.filter(
-				(content): content is ImageContent =>
-					content.type === "image" && typeof content.data === "string" && typeof content.mimeType === "string",
-			)
-			.map(content => ({ type: "image", data: content.data, mimeType: content.mimeType }));
+		const images: ImageContent[] = [];
+		for (let i = 0; i < result.content.length; i++) {
+			const content = result.content[i]!;
+			if (content.type === "image" && typeof content.data === "string" && typeof content.mimeType === "string") {
+				images.push({ type: "image", data: content.data, mimeType: content.mimeType });
+			}
+		}
 		if (images.length === 0) return false;
 		assistantComponent.setToolResultImages(toolCallId, images);
 		return true;
@@ -360,8 +361,8 @@ export class EventController {
 		const children = this.ctx.chatContainer.children;
 		const anchorIndex = anchor ? children.indexOf(anchor) : -1;
 		if (anchorIndex < 0) return false;
-		if (children.slice(anchorIndex + 1).some(child => !this.ctx.chatContainer.isBlockUncommitted(child))) {
-			return false;
+		for (let ci = anchorIndex + 1; ci < children.length; ci++) {
+			if (!this.ctx.chatContainer.isBlockUncommitted(children[ci]!)) return false;
 		}
 		this.ctx.chatContainer.addChild(component);
 		children.splice(children.length - 1, 1);
@@ -1470,9 +1471,11 @@ export class EventController {
 				this.ctx.settledToolCalls.add(toolCallId);
 			}
 		}
-		this.#backgroundTaskCallIds = new Set(
-			Array.from(this.#backgroundTaskCallIds).filter(toolCallId => this.ctx.pendingTools.has(toolCallId)),
-		);
+		const filtered = new Set<string>();
+		for (const toolCallId of this.#backgroundTaskCallIds) {
+			if (this.ctx.pendingTools.has(toolCallId)) filtered.add(toolCallId);
+		}
+		this.#backgroundTaskCallIds = filtered;
 		this.#readToolCallArgs.clear();
 		this.#readToolCallAssistantComponents.clear();
 		this.#toolTimelineComponents.clear();
