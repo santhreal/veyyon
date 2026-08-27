@@ -346,7 +346,12 @@ function buildSlashCommandCompletions(
 			g === undefined ? Number.MAX_SAFE_INTEGER : (categoryOrder.get(g) ?? Number.MAX_SAFE_INTEGER);
 		ranked.sort((a, b) => rank(a.group) - rank(b.group) || b.score - a.score);
 	}
-	return ranked.map(({ score: _, ...rest }) => rest);
+	const result = new Array<AutocompleteItem>(ranked.length);
+	for (let ri = 0; ri < ranked.length; ri++) {
+		const { score: _, ...rest } = ranked[ri]!;
+		result[ri] = rest;
+	}
+	return result;
 }
 
 function hasPromptTextBeforeSlash(
