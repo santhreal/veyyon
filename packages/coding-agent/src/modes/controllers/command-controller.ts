@@ -16,6 +16,7 @@ import {
 	Snowflake,
 	sanitizeText,
 } from "@veyyon/utils";
+import { advisorStatusNextStep } from "../../advisor/messages";
 import { shouldEnableAppendOnlyContext } from "../../config/append-only-context-mode";
 import { type LoadedCustomShare, loadCustomShare } from "../../export/custom-share";
 import { shareSession } from "../../export/share";
@@ -398,23 +399,15 @@ export class CommandController {
 
 	/**
 	 * `/advisor status`: what the advisor is doing, and the next move when it is
-	 * doing nothing.
-	 *
-	 * "Off" and "on but no model resolved" need different fixes — the
-	 * `advisor.enabled` setting versus a `modelRoles.advisor` assignment — so each
-	 * carries its own instruction instead of one generic line.
+	 * doing nothing. The next step comes from `advisorStatusNextStep`, which the
+	 * text-mode handler reports too, so a headless client is not left at the
+	 * report without the fix.
 	 */
 	async handleAdvisorStatusCommand(): Promise<void> {
 		const stats = this.ctx.session.getAdvisorStats();
-		const lines = [this.ctx.session.formatAdvisorStatus()];
-		if (!stats.configured) {
-			lines.push("Turn it on for this session with /advisor on, or set advisor.enabled in /settings.");
-		} else if (!stats.active) {
-			lines.push("Assign an advisor model with /model, under the advisor role.");
-		} else {
-			lines.push("Edit the roster with /advisor configure.");
-		}
-		this.ctx.showStatus(lines.join("\n"));
+		this.ctx.showStatus(
+			`${this.ctx.session.formatAdvisorStatus()}\n${advisorStatusNextStep(stats.configured, stats.active)}`,
+		);
 	}
 
 	async handleJobsCommand(): Promise<void> {
