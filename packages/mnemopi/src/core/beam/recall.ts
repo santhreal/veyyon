@@ -160,11 +160,11 @@ function recallSynonyms(token: string, useSynonyms: boolean): string[] {
 	const variants = getSynonyms(token);
 	switch (token) {
 		case "branding":
-			return [...variants, "positioning", "wording", "headline"];
+			return variants.concat(["positioning", "wording", "headline"]);
 		case "preference":
 		case "prefer":
 		case "preferred":
-			return [...variants, "wants", "want", "prefers"];
+			return variants.concat(["wants", "want", "prefers"]);
 		default:
 			return variants;
 	}
@@ -177,7 +177,7 @@ function expandedTokens(query: string, useSynonyms = true): string[] {
 			for (const part of tokenize(variant)) seen.add(part);
 		}
 	}
-	return [...seen];
+	return Array.from(seen);
 }
 
 function expandedTokenGroups(query: string, useSynonyms = true): string[][] {
@@ -187,7 +187,7 @@ function expandedTokenGroups(query: string, useSynonyms = true): string[][] {
 		for (const variant of recallSynonyms(token, useSynonyms)) {
 			for (const part of tokenize(variant)) seen.add(part);
 		}
-		if (seen.size > 0) groups.push([...seen]);
+		if (seen.size > 0) groups.push(Array.from(seen));
 	}
 	return groups;
 }
@@ -208,7 +208,7 @@ function factExpandedTokenGroups(query: string, content: string): string[][] {
 				}
 			}
 		}
-		if (seen.size > 0) groups.push([...seen]);
+		if (seen.size > 0) groups.push(Array.from(seen));
 	}
 	return groups;
 }
@@ -512,7 +512,7 @@ function fetchCandidates(
 			.split(", ")
 			.map(column => `m.${column}`)
 			.join(", ")} FROM ${table} m WHERE m.${keyColumn} IN (${sqlPlaceholders(idsOrRowids.length)}) AND ${where}`,
-		[...idsOrRowids, ...params],
+		idsOrRowids.concat(params),
 	);
 	const out: MemoryCandidate[] = [];
 	for (const row of rows) {
@@ -681,7 +681,7 @@ function dedupCrossTierSummaryLinks(beam: BeamMemoryState, results: readonly Rec
 		.filter(result => (result.tier_label ?? result.tier) === "episodic")
 		.map(result => result.id)
 		.filter(id => id.length > 0);
-	if (episodicIds.length === 0) return [...results];
+	if (episodicIds.length === 0) return results.slice();
 
 	const workingScores = new Map<string, number>();
 	const episodicScores = new Map<string, number>();
@@ -690,7 +690,7 @@ function dedupCrossTierSummaryLinks(beam: BeamMemoryState, results: readonly Rec
 		if (tier === "working") workingScores.set(result.id, result.score ?? 0);
 		else if (tier === "episodic") episodicScores.set(result.id, result.score ?? 0);
 	}
-	if (workingScores.size === 0 || episodicScores.size === 0) return [...results];
+	if (workingScores.size === 0 || episodicScores.size === 0) return results.slice();
 
 	const summaryRows = queryAll(
 		beam,
@@ -710,7 +710,7 @@ function dedupCrossTierSummaryLinks(beam: BeamMemoryState, results: readonly Rec
 		if (covered.length === 0) continue;
 		dropEpisodic.add(episodicId);
 	}
-	if (dropWorking.size === 0 && dropEpisodic.size === 0) return [...results];
+	if (dropWorking.size === 0 && dropEpisodic.size === 0) return results.slice();
 	return results.filter(result => {
 		const tier = result.tier_label ?? result.tier;
 		if (tier === "working") return !dropWorking.has(result.id);
@@ -759,8 +759,8 @@ function collectMemoryCandidates(
 	const wmFts = normalizeRanks(wmFtsRows, "id");
 	const emFts = normalizeRanks(emFtsRows, "rowid");
 
-	let wmIds = [...wmFts.keys()].filter((id): id is string => typeof id === "string");
-	let emRowids = [...emFts.keys()].filter((id): id is number => typeof id === "number");
+	let wmIds = Array.from(wmFts.keys()).filter((id): id is string => typeof id === "string");
+	let emRowids = Array.from(emFts.keys()).filter((id): id is number => typeof id === "number");
 	const queryEmbedding = options.queryEmbedding ?? null;
 	let wmVec = new Map<string, number>();
 	let emVec = new Map<string, number>();
@@ -769,16 +769,17 @@ function collectMemoryCandidates(
 		const allEmIds = allVisibleIds(beam, "episodic_memory", options);
 		wmVec = vectorSimilarities(beam, allWmIds, queryEmbedding);
 		emVec = vectorSimilarities(beam, allEmIds, queryEmbedding);
-		wmIds = [
-			...new Set([
-				...wmIds,
-				...[...wmVec.entries()]
-					.sort((a, b) => b[1] - a[1])
-					.slice(0, limit)
-					.map(([id]) => id),
-			]),
-		];
-		const emIds = [...emVec.entries()]
+		wmIds = Array.from(
+			new Set(
+				wmIds.concat(
+					Array.from(wmVec.entries())
+						.sort((a, b) => b[1] - a[1])
+						.slice(0, limit)
+						.map(([id]) => id),
+				),
+			),
+		);
+		const emIds = Array.from(emVec.entries())
 			.sort((a, b) => b[1] - a[1])
 			.slice(0, limit)
 			.map(([id]) => id);
@@ -788,7 +789,9 @@ function collectMemoryCandidates(
 				`SELECT rowid, id FROM episodic_memory WHERE id IN (${sqlPlaceholders(emIds.length)})`,
 				emIds,
 			);
-			emRowids = [...new Set([...emRowids, ...rows.map(row => numberOrDefault(row.rowid)).filter(n => n > 0)])];
+			emRowids = Array.from(
+				new Set(emRowids.concat(rows.map(row => numberOrDefault(row.rowid)).filter(n => n > 0))),
+			);
 		}
 	}
 
@@ -872,7 +875,7 @@ function diversifyByCoverage(
 ): RecallResult[] {
 	const selected: RecallResult[] = [];
 	const covered = new Set<string>();
-	const pool = [...results];
+	const pool = results.slice();
 	const querySet = new Set(tokens);
 	while (pool.length > 0 && selected.length < topK) {
 		let bestIdx = 0;
@@ -936,7 +939,7 @@ function sandwichOrder(results: readonly RecallResult[]): {
 	medium: RecallResult[];
 	closing: RecallResult[];
 } {
-	const scored = [...results].sort((left, right) => (right.score ?? 0) - (left.score ?? 0));
+	const scored = results.slice().sort((left, right) => (right.score ?? 0) - (left.score ?? 0));
 	const highLimit = scored.length > 0 && scored.length < 4 ? 1 : 3;
 	const high = scored.slice(0, highLimit);
 	const medium = scored.slice(high.length, high.length + 5);
@@ -1044,7 +1047,7 @@ export function factRecall(beam: BeamMemoryState, query: string, topK = 30): Fac
 		 WHERE rowid IN (${sqlPlaceholders(rowids.length)}) AND ${visibility.where}
 		 ORDER BY confidence DESC
 		 LIMIT ?`,
-		[...rowids, ...visibility.params, rowids.length],
+		rowids.concat(visibility.params, rowids.length),
 	);
 	return rows
 		.map(row => {

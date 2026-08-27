@@ -79,7 +79,7 @@ function Body({ args, result }: ToolRenderProps): ReactNode {
 
 	return (
 		<>
-			<Badges items={[...argBadges, ...resultBadges]} />
+			<Badges items={argBadges.concat(resultBadges)} />
 			{patterns.length === 0 ? (
 				<InvalidArg what="pat" />
 			) : (

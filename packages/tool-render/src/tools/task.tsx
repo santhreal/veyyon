@@ -204,9 +204,9 @@ function Body({ args, result, host }: ToolRenderProps): ReactNode {
 	}
 
 	// Finished agents first, by runtime ascending — same order as the TUI.
-	const ordered = [...results].sort(
-		(a, b) => (num(a.durationMs) ?? 0) - (num(b.durationMs) ?? 0) || (num(a.index) ?? 0) - (num(b.index) ?? 0),
-	);
+	const ordered = results
+		.slice()
+		.sort((a, b) => (num(a.durationMs) ?? 0) - (num(b.durationMs) ?? 0) || (num(a.index) ?? 0) - (num(b.index) ?? 0));
 
 	return (
 		<>

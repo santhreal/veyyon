@@ -848,10 +848,10 @@ function buildMnemonicNames(allExpansions: Iterable<string>, reserved: Iterable<
 	// (pinned) name already holds it — then it defers to disambiguation so the two
 	// never collide.
 	const deferred: string[] = [];
-	for (const stem of [...byStem.keys()].sort()) {
+	for (const stem of Array.from(byStem.keys()).sort()) {
 		const group = byStem.get(stem)!;
 		if (group.size === 1 && !used.has(stem)) {
-			const only = [...group][0]!;
+			const only = Array.from(group)[0]!;
 			names.set(only, stem);
 			used.add(stem);
 		} else {
@@ -987,7 +987,7 @@ export function generateDict(corpus: string | string[], options: GenerateOptions
 	// When regenerating monotonically, the pinned vocabulary's sigil is
 	// authoritative: the cache was written with it and every frozen handle keys on
 	// it, so an option that disagreed would split the marker.
-	const pinnedEntries: Array<[string, string]> = options.pinned ? [...options.pinned.handles] : [];
+	const pinnedEntries: Array<[string, string]> = options.pinned ? Array.from(options.pinned.handles) : [];
 	const hasPinned = pinnedEntries.length > 0;
 	const sigil = hasPinned && options.pinned ? options.pinned.sigil : (options.sigil ?? DEFAULT_SIGIL);
 	const pinnedNames = new Set<string>();
@@ -1244,7 +1244,7 @@ export function generateDict(corpus: string | string[], options: GenerateOptions
 	// Present pinned and new together, highest savings first. Order is cosmetic
 	// (the loader keys on names, not position); a deterministic sort keeps
 	// regeneration stable. Tie-break by name so the result is fully determined.
-	const chosen: GeneratedHandle[] = [...pinnedHandles, ...chosenNew].sort((a, b) => {
+	const chosen: GeneratedHandle[] = pinnedHandles.concat(chosenNew).sort((a, b) => {
 		if (b.savedTokens !== a.savedTokens) {
 			return b.savedTokens - a.savedTokens;
 		}

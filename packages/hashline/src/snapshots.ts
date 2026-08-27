@@ -274,7 +274,7 @@ export class InMemorySnapshotStore extends SnapshotStore {
 		} else {
 			const seen = new Set<string>();
 			const merged: Snapshot[] = [];
-			for (const version of [...relocated, ...destHistory]) {
+			for (const version of relocated.concat(destHistory)) {
 				if (seen.has(version.hash)) continue;
 				seen.add(version.hash);
 				merged.push(version);

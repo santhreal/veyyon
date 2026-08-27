@@ -21,7 +21,7 @@ export function formatAnchoredContext(anchorLines: readonly number[], fileLines:
 	const anchorSet = new Set(anchorLines);
 	const rows: string[] = [];
 	let previous = -1;
-	for (const lineNum of [...displayLines].sort((a, b) => a - b)) {
+	for (const lineNum of Array.from(displayLines).sort((a, b) => a - b)) {
 		if (previous !== -1 && lineNum > previous + 1) rows.push("...");
 		previous = lineNum;
 		const marker = anchorSet.has(lineNum) ? "*" : " ";
@@ -239,7 +239,7 @@ export function pathRecoveredFromTagMessage(authoredPath: string, resolvedPath: 
 
 /** Compress a line list into a sorted `1-4, 7, 10-12` range string. */
 function formatLineRanges(lines: readonly number[]): string {
-	const sorted = [...new Set(lines)].sort((a, b) => a - b);
+	const sorted = Array.from(new Set(lines)).sort((a, b) => a - b);
 	if (sorted.length === 0) return "";
 	const parts: string[] = [];
 	let start = sorted[0];

@@ -19,7 +19,7 @@ function withDetailImages(result: ToolResultLike | undefined): ToolResultLike | 
 		}
 	}
 	if (extra.length === 0) return result;
-	return { content: [...result.content, ...extra], details: result.details, isError: result.isError };
+	return { content: result.content.concat(extra), details: result.details, isError: result.isError };
 }
 
 function Summary({ args }: ToolRenderProps): ReactNode {

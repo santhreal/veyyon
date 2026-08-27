@@ -77,10 +77,10 @@ export class ArgotSession {
 	load(key: string, vocab: Vocabulary, opts?: { teach?: boolean }): void {
 		// Validate against every other key before mutating, so a conflict throws
 		// without half-applying. Rebuilding after the set cannot then throw.
-		const others = [...this.#entries.entries()]
+		const others = Array.from(this.#entries.entries())
 			.filter(([existing]) => existing !== key)
 			.map(([, entry]) => entry.vocab);
-		unionVocabularies([...others, vocab]);
+		unionVocabularies(others.concat([vocab]));
 
 		this.#entries.set(key, { vocab, teach: opts?.teach ?? true });
 		this.#rebuild();
@@ -180,7 +180,7 @@ export class ArgotSession {
 	 * decoder uses.
 	 */
 	vocabulary(): Vocabulary {
-		return unionVocabularies([...this.#entries.values()].map(entry => entry.vocab));
+		return unionVocabularies(Array.from(this.#entries.values()).map(entry => entry.vocab));
 	}
 
 	/**
@@ -219,8 +219,10 @@ export class ArgotSession {
 
 	/** Rebuild the decode and teach views from the current entries. */
 	#rebuild(): void {
-		const all = [...this.#entries.values()].map(entry => entry.vocab);
-		const taught = [...this.#entries.values()].filter(entry => entry.teach).map(entry => entry.vocab);
+		const all = Array.from(this.#entries.values()).map(entry => entry.vocab);
+		const taught = Array.from(this.#entries.values())
+			.filter(entry => entry.teach)
+			.map(entry => entry.vocab);
 		this.#decoder = makeDict(unionVocabularies(all));
 		this.#teacher = makeDict(unionVocabularies(taught));
 	}

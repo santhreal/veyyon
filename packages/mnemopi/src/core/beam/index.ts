@@ -199,7 +199,7 @@ export class BeamMemory implements BeamMemoryState {
 
 	async flushExtractions(): Promise<void> {
 		while (this.pendingExtractions.size > 0) {
-			await Promise.allSettled([...this.pendingExtractions]);
+			await Promise.allSettled(Array.from(this.pendingExtractions));
 		}
 	}
 

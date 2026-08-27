@@ -431,7 +431,7 @@ export function consolidateToEpisodic(
 	ingestIntoEpisodicGraph(beam, memoryId, summary);
 	scheduleEmbedding(beam, [{ memoryId, content: summary }]);
 	emitEvent(beam, "MEMORY_CONSOLIDATED", memoryId, summary, source, importance, {
-		summary_of: [...sourceWmIds],
+		summary_of: Array.from(sourceWmIds),
 		...metadata,
 	});
 	return memoryId;
