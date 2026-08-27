@@ -912,7 +912,9 @@ export class EventController {
 			this.#streamingReveal.setTarget(timeline.beforeTools);
 
 			let visibleBlockCount = 0;
-			for (const content of this.ctx.streamingMessage.content) {
+			const streamingContent = this.ctx.streamingMessage.content;
+			for (let ci = 0; ci < streamingContent.length; ci++) {
+				const content = streamingContent[ci]!;
 				if (
 					(content.type === "text" && canonicalizeMessage(content.text)) ||
 					(content.type === "thinking" && canonicalizeMessage(content.thinking))
@@ -943,7 +945,8 @@ export class EventController {
 				streamingComponent.markTranscriptBlockFinalized();
 				repaintTargets.add(streamingComponent);
 			}
-			for (const content of this.ctx.streamingMessage.content) {
+			for (let ci = 0; ci < streamingContent.length; ci++) {
+				const content = streamingContent[ci]!;
 				if (content.type !== "toolCall") continue;
 				if (content.name === "read") {
 					if (!readArgsHaveTarget(content.arguments)) {
@@ -1041,7 +1044,8 @@ export class EventController {
 			}
 
 			// Update working message with intent from streamed tool arguments
-			for (const content of this.ctx.streamingMessage.content) {
+			for (let ci = 0; ci < streamingContent.length; ci++) {
+				const content = streamingContent[ci]!;
 				if (content.type !== "toolCall") continue;
 				const args = content.arguments;
 				if (!args || typeof args !== "object") continue;
