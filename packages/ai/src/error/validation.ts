@@ -42,7 +42,7 @@ export class ToolNotFoundError extends ValidationError {
 const MAX_AVAILABLE_TOOLS_LISTED = 40;
 
 function describeAvailableTools(names: readonly string[]): string {
-	const sorted = [...names].sort();
+	const sorted = names.slice().sort();
 	if (sorted.length <= MAX_AVAILABLE_TOOLS_LISTED) return sorted.join(", ");
 	const shown = sorted.slice(0, MAX_AVAILABLE_TOOLS_LISTED).join(", ");
 	return `${shown}, and ${sorted.length - MAX_AVAILABLE_TOOLS_LISTED} more`;

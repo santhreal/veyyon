@@ -491,7 +491,7 @@ export class AnthropicInbandScanner implements InbandScanner {
 	}
 }
 
-const ALL_TAG_PREFIXES = [...BASE_TAG_PREFIXES, ...ANTHROPIC_THINKING_TAG_PREFIXES] as const;
+const ALL_TAG_PREFIXES = BASE_TAG_PREFIXES.concat(ANTHROPIC_THINKING_TAG_PREFIXES) as const;
 
 function parseTag(raw: string): ParsedTag | undefined {
 	const match = /^<\s*(\/?)\s*(?:(?<prefix>[A-Za-z_][\w.-]*):)?(?<localName>[A-Za-z_][\w.-]*)(?<attrs>[^>]*)>$/s.exec(

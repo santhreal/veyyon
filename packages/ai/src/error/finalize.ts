@@ -89,7 +89,7 @@ export async function finalize(error: unknown, opts: FinalizeOptions = {}): Prom
 		status: currentStatus,
 		stopReason: aborted ? "aborted" : "error",
 		logLevel: aborted ? "debug" : "error",
-		rules: [...new Set(trace)],
+		rules: Array.from(new Set(trace)),
 		message,
 	};
 }

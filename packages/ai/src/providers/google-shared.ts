@@ -1011,7 +1011,7 @@ export function buildGoogleGenerateContentParams<T extends "google-generative-ai
 			config.toolConfig = {
 				functionCallingConfig: {
 					mode: "ANY",
-					allowedFunctionNames: [...choice.allowedFunctionNames],
+					allowedFunctionNames: choice.allowedFunctionNames.slice(),
 				},
 			};
 		}
@@ -1172,7 +1172,7 @@ export function streamGoogleGenAI<T extends "google-generative-ai" | "google-ver
 			// silently halts mid-task, so retry a bounded number of times before giving up.
 			for (let emptyAttempt = 0; ; emptyAttempt++) {
 				const googleStream = readSseJson<GenerateContentResponse>(body, options?.signal, event =>
-					options?.onSseEvent?.({ event: event.event, data: event.data, raw: [...event.raw] }, model),
+					options?.onSseEvent?.({ event: event.event, data: event.data, raw: event.raw.slice() }, model),
 				);
 				await consumeGoogleStream({
 					googleStream,

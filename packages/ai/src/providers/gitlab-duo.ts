@@ -162,7 +162,7 @@ export function getGitLabDuoModels(): Model<Api>[] {
 			provider: "gitlab-duo",
 			baseUrl: mapping.provider === "anthropic" ? ANTHROPIC_PROXY_URL : OPENAI_PROXY_URL,
 			reasoning: mapping.reasoning,
-			input: [...mapping.input],
+			input: mapping.input.slice(),
 			cost: { ...mapping.cost },
 			contextWindow: mapping.contextWindow,
 			maxTokens: mapping.maxTokens,

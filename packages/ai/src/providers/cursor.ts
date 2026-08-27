@@ -3172,7 +3172,7 @@ function buildRootPromptMessagesJson(
 	blobStore: Map<string, Uint8Array>,
 	activeUserMessageIndex = findLastUserMessageIndex(messages),
 ): Uint8Array[] {
-	const entries: Uint8Array[] = [...systemPromptIds];
+	const entries: Uint8Array[] = systemPromptIds.slice();
 	const pushJson = (obj: unknown) => {
 		const bytes = new TextEncoder().encode(JSON.stringify(obj));
 		entries.push(storeCursorBlob(blobStore, bytes));

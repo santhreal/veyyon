@@ -591,7 +591,7 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli"> = (
 							endpoints = [baseUrl];
 							if (providerState) providerState.lastGoodEndpoint = undefined;
 						} else {
-							const defaultFallbacks = [...ANTIGRAVITY_ENDPOINTS] as string[];
+							const defaultFallbacks = ANTIGRAVITY_ENDPOINTS.slice() as string[];
 							const lastGood = providerState?.lastGoodEndpoint;
 							if (lastGood && defaultFallbacks.includes(lastGood)) {
 								endpoints = [lastGood, ...defaultFallbacks.filter(e => e !== lastGood)];
@@ -600,7 +600,7 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli"> = (
 							}
 						}
 					} else {
-						const defaultFallbacks = [...ANTIGRAVITY_ENDPOINTS] as string[];
+						const defaultFallbacks = ANTIGRAVITY_ENDPOINTS.slice() as string[];
 						const lastGood = providerState?.lastGoodEndpoint;
 						if (lastGood && defaultFallbacks.includes(lastGood)) {
 							endpoints = [lastGood, ...defaultFallbacks.filter(e => e !== lastGood)];
@@ -771,7 +771,7 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli"> = (
 				for await (const chunk of readSseJson<CloudCodeAssistResponseChunk>(
 					activeResponse.body!,
 					options?.signal,
-					event => options?.onSseEvent?.({ event: event.event, data: event.data, raw: [...event.raw] }, model),
+					event => options?.onSseEvent?.({ event: event.event, data: event.data, raw: event.raw.slice() }, model),
 				)) {
 					if (chunk.error) {
 						const detail = chunk.error.message || chunk.error.status || "unknown error";
@@ -1335,7 +1335,7 @@ export function buildRequest(
 				request.toolConfig = {
 					functionCallingConfig: {
 						mode: "ANY",
-						allowedFunctionNames: [...choice.allowedFunctionNames],
+						allowedFunctionNames: choice.allowedFunctionNames.slice(),
 					},
 				};
 			}

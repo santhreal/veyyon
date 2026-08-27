@@ -344,7 +344,7 @@ async function seedSharedCredentialStore(sourceDbPaths: readonly string[], share
 				logger.info("Promoted per-profile credentials to the shared store", {
 					source: sourceDbPath,
 					shared: sharedDbPath,
-					providers: [...byProvider.keys()],
+					providers: Array.from(byProvider.keys()),
 					count: rows.length,
 				});
 			} finally {

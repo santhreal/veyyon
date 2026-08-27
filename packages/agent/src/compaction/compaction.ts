@@ -1205,7 +1205,7 @@ export interface CompactionPreparation {
  * is not dead at all: its entry simply has no summary, because the window the
  * provider returned is the artifact for that span.
  */
-const NON_REUSABLE_SUMMARY_KEYS: readonly string[] = [...LEGACY_REMOTE_PRESERVE_KEYS, REMOTE_COMPACTION_PRESERVE_KEY];
+const NON_REUSABLE_SUMMARY_KEYS: readonly string[] = LEGACY_REMOTE_PRESERVE_KEYS.concat([REMOTE_COMPACTION_PRESERVE_KEY]);
 
 /**
  * Whether a prior compaction entry carries summary text a later local pass can

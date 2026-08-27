@@ -683,7 +683,7 @@ export function encodeStream(
 							closeBlock(ev.contentIndex);
 							break;
 						case "done": {
-							for (const idx of [...open.keys()]) closeBlock(idx);
+							for (const idx of Array.from(open.keys())) closeBlock(idx);
 							controller.enqueue(
 								sseFrame("message_delta", {
 									type: "message_delta",
@@ -711,7 +711,7 @@ export function encodeStream(
 				// (message_start + message_delta carrying a stop_reason) so strict
 				// clients don't reject the response as a protocol error.
 				ensureStart(lastPartial);
-				for (const idx of [...open.keys()]) closeBlock(idx);
+				for (const idx of Array.from(open.keys())) closeBlock(idx);
 				controller.enqueue(
 					sseFrame("message_delta", {
 						type: "message_delta",

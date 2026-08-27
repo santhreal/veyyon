@@ -136,7 +136,7 @@ export function normalizeAnthropicBaseUrl(baseUrl?: string): string | undefined 
 export function buildBetaHeader(baseBetas: readonly string[], extraBetas: readonly string[]): string {
 	const seen = new Set<string>();
 	const result: string[] = [];
-	for (const beta of [...baseBetas, ...extraBetas]) {
+	for (const beta of baseBetas.concat(extraBetas)) {
 		const trimmed = beta.trim();
 		if (trimmed && !seen.has(trimmed)) {
 			seen.add(trimmed);
@@ -244,7 +244,7 @@ const reportedDroppedEnforcedHeaders = new Set<string>();
  * dropped.
  */
 function reportDroppedEnforcedHeaders(keys: string[]): void {
-	const signature = [...keys].sort().join(",");
+	const signature = Array.from(keys).sort().join(",");
 	const detail = { headers: keys };
 	if (reportedDroppedEnforcedHeaders.has(signature)) {
 		logger.debug("anthropic: still ignoring caller-supplied enforced headers", detail);
@@ -1359,7 +1359,7 @@ function resolveFoundryTlsOptions(model: Model<"anthropic-messages">): FoundryTl
 	}
 
 	const options: FoundryTlsOptions = {};
-	if (ca) options.ca = [...tls.rootCertificates, ca];
+	if (ca) options.ca = tls.rootCertificates.concat([ca]);
 	if (cert) options.cert = cert;
 	if (key) options.key = key;
 	const resolved = Object.keys(options).length > 0 ? options : undefined;
@@ -2988,7 +2988,7 @@ export function buildAnthropicClientOptions(args: AnthropicClientOptionsArgs): A
 		// features (and the catalog already forces `supportsEagerToolInputStreaming
 		// = false` for this host, so `needsFineGrainedToolStreamingBeta` is true
 		// whenever tools are present). Forward only caller-supplied betas.
-		const betaFeatures = [...extraBetas];
+		const betaFeatures = extraBetas.slice();
 		const defaultHeaders = mergeHeaders(
 			{
 				Accept: stream ? "text/event-stream" : "application/json",
@@ -3015,7 +3015,7 @@ export function buildAnthropicClientOptions(args: AnthropicClientOptionsArgs): A
 		};
 	}
 
-	const betaFeatures = [...extraBetas];
+	const betaFeatures = extraBetas.slice();
 	if (needsFineGrainedToolStreamingBeta) {
 		betaFeatures.push(fineGrainedToolStreamingBeta);
 	}
@@ -4301,10 +4301,10 @@ function makeAnthropicNullableSchema(schema: unknown, budget: AnthropicStrictBud
 	if (isRecord(schema)) {
 		if (hasNullVariant(schema)) return schema;
 		if (Array.isArray(schema.anyOf)) {
-			return { ...schema, anyOf: [...schema.anyOf, { type: "null" }] };
+			return { ...schema, anyOf: schema.anyOf.concat([{ type: "null" }]) };
 		}
 		if (Array.isArray(schema.type)) {
-			return { ...schema, type: [...schema.type, "null"] };
+			return { ...schema, type: schema.type.concat(["null"]) };
 		}
 	}
 

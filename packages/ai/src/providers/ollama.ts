@@ -250,7 +250,7 @@ function convertMessages(model: Model<"ollama-chat">, context: Context): OllamaM
 		content: systemPrompt,
 		timestamp: Date.now(),
 	}));
-	const messages: Message[] = [...systemMessages, ...context.messages];
+	const messages: Message[] = systemMessages.concat(context.messages);
 	const isCloud = model.provider === "ollama-cloud";
 	const supportsImages = model.input.includes("image");
 	return transformMessages(messages, model).map((msg, index) => {
