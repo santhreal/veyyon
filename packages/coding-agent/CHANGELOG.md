@@ -55,6 +55,8 @@
 
 ### Fixed
 
+- Characters typed in the same terminal read as a paste are no longer discarded; the editor read the pasted payload and the bytes following it but dropped the ones preceding it, so the last thing typed before `Cmd+V` disappeared.
+- Backspace works at the launch card: the startup gate refused any chunk carrying a control byte, so a character typed by mistake before the composer mounted could not be taken back and the typo was what the session started with.
 - An unattended goal keeps driving after a turn whose post-turn maintenance outlasts the continuation delay, instead of sitting active and idle until someone types.
 - Text typed at the launch card appears there as it is typed, instead of staying invisible until session startup finishes and the composer mounts.
 - Text typed before the launch card paints reaches the composer instead of being destroyed, because the startup tty flush now runs only for the relaunch backlog it was written for.

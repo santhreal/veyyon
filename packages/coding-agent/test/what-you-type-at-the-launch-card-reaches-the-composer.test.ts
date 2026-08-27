@@ -145,7 +145,6 @@ describe("what you type at the launch card reaches the composer", () => {
 			["a carriage return", "\r"],
 			["a newline", "\n"],
 			["a tab", "\t"],
-			["a backspace", "\x7f"],
 			["ctrl+c", "\x03"],
 		];
 
@@ -171,6 +170,51 @@ describe("what you type at the launch card reaches the composer", () => {
 			send("draft");
 			send("\x1b[?62;c");
 			expect(frame.releaseInput()).toBe("draft");
+		});
+	});
+
+	describe("correcting a mistake typed at the card", () => {
+		// A backspace is a C0 byte, so the printable rule refused the whole chunk carrying one and
+		// the correction did nothing: the operator watched the typo stay on screen and the composer
+		// was handed the typo on mount. It is the one control byte that IS typing.
+		it("takes back the last character", () => {
+			const { frame, send } = card();
+			send("hello");
+			send("\x7f");
+			expect(frame.releaseInput()).toBe("hell");
+		});
+
+		it("applies a backspace that shares a chunk with the text around it", () => {
+			const { frame, send } = card();
+			send("hellp\x7fo");
+			expect(frame.releaseInput()).toBe("hello");
+		});
+
+		it("treats ctrl+h as the same edit, which is what some terminals send", () => {
+			const { frame, send } = card();
+			send("ab\x08");
+			expect(frame.releaseInput()).toBe("a");
+		});
+
+		it("does not underflow on an empty draft", () => {
+			const { frame, send } = card();
+			send("\x7f\x7f\x7f");
+			expect(frame.releaseInput()).toBe("");
+		});
+
+		it("still refuses a chunk where a backspace travels with a carriage return", () => {
+			const { frame, send } = card();
+			// The queued-return guard is what stops a launch submitting a turn nobody typed, and
+			// accepting backspace must not open a hole in it.
+			send("ab\x7f\r");
+			expect(frame.releaseInput()).toBe("");
+		});
+
+		it("shrinks a draft that had reached the cap", () => {
+			const { frame, send } = card();
+			for (let i = 0; i < 200; i++) send("x".repeat(100));
+			send("\x7f");
+			expect(frame.releaseInput().length).toBe(4095);
 		});
 	});
 
