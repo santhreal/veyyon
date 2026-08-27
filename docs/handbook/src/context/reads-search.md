@@ -128,6 +128,19 @@ capture path (`tools/bash-interactive.ts`):
 - **Zero-cost when clean.** Well-formed input with no control/ANSI bytes returns the original string
   reference after one regex probe; only output that actually carries escapes pays for `Bun.stripANSI()`.
 
+## Tool text per request
+
+Every request carries the name, description and JSON schema of every active tool. At the defaults
+that is 17 tools and about 14,000 tokens, paid on each request rather than once per session. The
+largest entries are `edit`, `eval`, `read`, `launch` and `bash`.
+
+`tools.discoveryMode: "all"` keeps the seven essential tools (`read`, `bash`, `launch`, `edit`,
+`write`, `search`, `eval`) plus `goal` and `resolve`, and hides `ast_edit`, `debug`, `ssh`, `task`,
+`job`, `todo`, `web_search` and `set_cwd` behind the discovery search tool, which removes about
+4,800 tokens from each request. A hidden tool costs a discovery round trip on the turn that first
+needs it, so the setting trades a fixed per-request cost for an occasional one.
+`tools.essentialOverride` sets which tools stay visible.
+
 ## Why these are grouped with context
 
 A read that bounds and a search that bounds its output are both about keeping the working context

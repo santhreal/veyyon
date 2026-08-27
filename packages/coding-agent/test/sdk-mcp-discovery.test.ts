@@ -75,6 +75,13 @@ describe("createAgentSession MCP discovery prompt gating", () => {
 	beforeEach(() => {
 		tempDir = path.join(os.tmpdir(), `pi-sdk-mcp-discovery-${Snowflake.next()}`);
 		fs.mkdirSync(tempDir, { recursive: true });
+		// `debug` stands in for a discoverable built-in here, and it loads only where a debug
+		// adapter command resolves. An adapter whose command is this very binary keeps the tool
+		// set the same on a machine with no debugger installed.
+		fs.writeFileSync(
+			path.join(tempDir, "dap.json"),
+			JSON.stringify({ adapters: { "test-adapter": { command: process.execPath, languages: ["javascript"] } } }),
+		);
 	});
 
 	afterEach(() => {

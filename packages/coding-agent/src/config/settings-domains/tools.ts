@@ -253,7 +253,8 @@ export const TOOLS_SETTINGS = {
 			tab: "tools",
 			group: "Available Tools",
 			label: "Debug",
-			description: "Enable the debug tool for DAP-based debugging",
+			description:
+				"Enable the debug tool for DAP-based debugging. The tool loads only where a configured adapter command resolves.",
 		},
 	},
 

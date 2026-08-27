@@ -457,7 +457,7 @@ veyyon config get compaction.threshold
 |---|---|---|---|---|
 | `todo.enabled` | Todos | boolean | `true` | Enable the todo tool for task tracking. |
 | `astEdit.enabled` | AST Edit | boolean | `true` | Enable the ast_edit tool for structural AST rewrites. |
-| `debug.enabled` | Debug | boolean | `true` | Enable the debug tool for DAP-based debugging. |
+| `debug.enabled` | Debug | boolean | `true` | Enable the debug tool for DAP-based debugging. The tool loads only where a configured adapter command resolves. |
 | `launch.enabled` | Launch | boolean | `true` | Enable the launch tool for supervising shared long-running project processes. |
 | `speechgen.enabled` | Speech Generation | boolean | `false` | Enable the tts tool for on-device (Kokoro) or xAI Grok Voice speech-file synthesis. |
 | `generate_image.enabled` | Generate Image | boolean | `false` | Enable the generate_image tool for text-to-image generation and editing. |

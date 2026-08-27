@@ -377,6 +377,12 @@ describe("an eval cell cannot run a tool with arguments its schema rejects", () 
 			path.join(sweepAgentDir.path(), "ssh.json"),
 			JSON.stringify({ hosts: { probe: { host: "127.0.0.1" } } }),
 		);
+		// `debug` is gated the same way on a resolvable adapter command, so a host with no
+		// debugger installed would drop it out of the sweep. This binary is the adapter.
+		await fs.writeFile(
+			path.join(sweepAgentDir.path(), "dap.json"),
+			JSON.stringify({ adapters: { probe: { command: process.execPath, languages: ["javascript"] } } }),
+		);
 	});
 
 	afterAll(async () => {
@@ -406,10 +412,12 @@ describe("an eval cell cannot run a tool with arguments its schema rejects", () 
 		// below turns on every feature that gates a factory: `ask` needs a UI,
 		// `debug`, the four memory tools, `learn`, `manage_skill` and the two
 		// Argot tools read settings, `irc` needs a registry and an agent id,
-		// `search_tool_bm25` needs the three discovery callbacks, and `ssh`
-		// resolves its hosts from `ssh.json` in the profile dir, which
-		// `sweepAgentDir` supplies.
+		// `search_tool_bm25` needs the three discovery callbacks, `ssh`
+		// resolves its hosts from `ssh.json` and `debug` its adapters from
+		// `dap.json`, both in the profile dir `sweepAgentDir` supplies.
 		const session = makeToolSession({
+			// `dap.json` sits here, and `getAdapterConfigs` reads it from the session cwd.
+			cwd: sweepAgentDir.path(),
 			hasUI: true,
 			agentRegistry: new AgentRegistry(),
 			getAgentId: () => "Main",
