@@ -50,6 +50,7 @@
 
 ### Fixed
 
+- A terminal resize, theme switch or session switch no longer seals a backgrounded subagent's tool card mid-flight, so the progress it reports afterwards still reaches the card instead of being dropped for the rest of the turn.
 - The composer defect oracle counts only the prompt glyph the frame states, so a transcript row opening with `$`, `>` or `!` is no longer reported as a second composer prompt.
 - An exported or shared session escapes quotes in every value it places in an HTML attribute, so a link target, link title or image mime type carrying a `"` renders as text instead of closing the attribute and adding an event handler that runs on the share origin.
 - An exported or shared session escapes the model names in its header, so a model name carrying markup renders as text.
