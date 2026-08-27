@@ -19,6 +19,7 @@ import {
 	type HoverFadeOptions,
 	Input,
 	matchesKey,
+	padding,
 	ScrollView,
 	type SgrMouseEvent,
 	truncateToWidth,
@@ -372,7 +373,7 @@ function formatTtft(ms: number): string {
 /** Pad `text` on the left to `width` terminal columns (ANSI/emoji aware). */
 function padLeftVisible(text: string, width: number): string {
 	const missing = width - visibleWidth(text);
-	return missing > 0 ? " ".repeat(missing) + text : text;
+	return missing > 0 ? padding(missing) + text : text;
 }
 
 /** Behavior switches for {@link ModelBrowser}. */
@@ -899,7 +900,7 @@ export class ModelBrowser implements Component {
 		left = truncateToWidth(left, available);
 		const gap = Math.max(0, available - visibleWidth(left));
 
-		let line = `${left}${" ".repeat(gap)} ${meta}`;
+		let line = `${left}${padding(gap)} ${meta}`;
 		if (disabled) {
 			line = theme.fg("dim", Bun.stripANSI(line));
 		}

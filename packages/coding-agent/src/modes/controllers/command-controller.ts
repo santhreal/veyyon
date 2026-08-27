@@ -1538,7 +1538,7 @@ function formatAccountHeaderRow(
 	for (let pi = 0; pi < parts.length; pi++) {
 		const p = parts[pi]!;
 		const prefix = truncateToWidth(p.label, prefixBudget);
-		const prefixCell = prefix + " ".repeat(prefixBudget - visibleWidth(prefix));
+		const prefixCell = prefix + padding(prefixBudget - visibleWidth(prefix));
 		const styledPrefix = p.active ? uiTheme.fg("accent", prefixCell) : prefixCell;
 		if (!p.suffix) {
 			result[pi] = styledPrefix + padding(maxSuffixWidth + gap);
