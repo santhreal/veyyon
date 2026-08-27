@@ -19,7 +19,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { experimentOf, knownExperimentIds } from "../../src/manager/experiments";
-import { RunStore, StaleSchemaError } from "../../src/manager/store";
+import { CURRENT_SCHEMA_VERSION, RunStore, UnreadableSchemaError } from "../../src/manager/store";
 
 const cleanups: Array<() => void> = [];
 
@@ -245,12 +245,13 @@ describe("a row this build can no longer read", () => {
 			models: ["m/x"],
 			pid: process.pid,
 		});
-		// Stamp the row with a schema this build has moved past.
+		// Stamp the row with a schema this build does not read. An older stamp is migrated when a store
+		// opens; a newer one cannot be, and this one appears under a store already open.
 		const db = new Database(dbPath);
-		db.run("UPDATE runs SET schema_version = 1 WHERE job_name = 'ancient'");
+		db.run("UPDATE runs SET schema_version = ? WHERE job_name = 'ancient'", [CURRENT_SCHEMA_VERSION + 1]);
 		db.close();
 
 		expect(store.listRuns().map(r => r.jobName)).toEqual([]);
-		expect(() => store.getRun("ancient")).toThrow(StaleSchemaError);
+		expect(() => store.getRun("ancient")).toThrow(UnreadableSchemaError);
 	});
 });

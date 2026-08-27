@@ -65,6 +65,19 @@ never fires again, because a poll cycle waits for the request it started. A call
 cancels; only the bound produces the timeout message. The SSE stream is exempt: it is long-lived by
 design and bounded by its heartbeat.
 
+## Arm identity
+
+An `ArmSummary` carries two names. `recordedArm` is the arm the run's coordinates state, computed by
+`experiments.ts` from the recorded `experiment`/`arm` fields, or from the job name split at a
+registered experiment id, or the whole job name when nothing registered a prefix to strip. `arm` is
+what a reader shows: the label an operator set, falling back to `recordedArm`.
+
+The matrix is keyed by `arm`, so a labelled row and its cells agree. A re-run merged into its base
+arm reports the canonical arm, without the `-fix` or `-backfill` suffix.
+
+No component derives either name. Slicing a job name at its first hyphen turned `sb-v2-base` into
+`v2-base`, and a job name with no hyphen into the whole name.
+
 ## Absent is not zero
 
 A cost, a token count or an ETA that nothing measured is `null` on the wire, `NULL` in the store, and

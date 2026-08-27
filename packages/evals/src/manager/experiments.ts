@@ -202,9 +202,11 @@ export function summarizeArm(run: RunRow, traces: TraceRow[], registeredIds?: Re
 			meanTrialMs: meanTrialMs ?? 0,
 		};
 	}
+	const recordedArm = armOf(run, registeredIds);
 	return {
 		run,
-		arm: run.label || armOf(run, registeredIds),
+		arm: run.label || recordedArm,
+		recordedArm,
 		config: `${run.benchmark} · ${run.models}${prewalkLabel(run.prewalk)}`,
 		passPct,
 		costPerTask,
@@ -419,6 +421,7 @@ export function experimentDetail(store: RunStore, id: string): ExperimentDetail 
 		};
 		const summary = summarizeArm(mergedRun, merged, registeredIds);
 		summary.arm = armLabel;
+		summary.recordedArm = canonical;
 		if (members.length > 1) summary.config += ` · merged ${members.length} runs`;
 		arms.push(summary);
 		const cells: ExperimentDetail["matrix"][string] = {};

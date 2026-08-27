@@ -148,6 +148,16 @@ The run and the trace are positional, and one argument holding both (`"<run>|<tr
 because that is how the dashboard spells a trace link. A third positional, an undeclared flag, or a
 valued flag given without its value ends the invocation with exit code 2 and the usage text.
 
+## Run record schema
+
+Every row in `runs.sqlite` carries the schema version that wrote it. Opening the store upgrades any
+row below `CURRENT_SCHEMA_VERSION`: the suite and backend are inferred from the dataset the row did
+record, through the same benchmark-adapter sweep a fresh launch uses, and the row is stamped
+current. The upgrade is one transaction and is logged once.
+
+A row written by a NEWER build is not readable and is not guessed at. `getRun` rejects it by name and
+`listRuns` omits it, both stating the version the row holds and the version this build reads.
+
 ## Runtime notes
 
 - Docker network access in Harbor task containers is limited to public registries; LLM requests route through the host gateway.

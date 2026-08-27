@@ -131,10 +131,12 @@ describe("multi-hyphen job names group by recorded coordinates", () => {
 		});
 		const summaryWithCoords = summarizeArm(runWithCoords, []);
 		expect(summaryWithCoords.arm).toBe("baseline");
+		expect(summaryWithCoords.recordedArm).toBe("baseline");
 
 		const uncoordinatedRun = fakeRun("deep-swe-baseline", { config: {} });
 		const summaryUncoordinated = summarizeArm(uncoordinatedRun, []);
 		expect(summaryUncoordinated.arm).toBe("deep-swe-baseline");
+		expect(summaryUncoordinated.recordedArm).toBe("deep-swe-baseline");
 
 		const labeledRun = fakeRun("deep-swe-baseline", {
 			label: "Custom Baseline Label",
@@ -142,6 +144,9 @@ describe("multi-hyphen job names group by recorded coordinates", () => {
 		});
 		const summaryLabeled = summarizeArm(labeledRun, []);
 		expect(summaryLabeled.arm).toBe("Custom Baseline Label");
+		// A label renames the row; it never renames the coordinates the run recorded, which is what
+		// the dashboard shows beside the label and offers as the label field's placeholder.
+		expect(summaryLabeled.recordedArm).toBe("baseline");
 	});
 
 	it("canonicalArmOf preserves multi-hyphen arms and strips only re-run suffixes", () => {
@@ -191,6 +196,28 @@ describe("multi-hyphen job names group by recorded coordinates", () => {
 		expect(detail?.id).toBe("deep-swe");
 		const armNames = detail?.arms.map(a => a.arm).sort();
 		expect(armNames).toEqual(["baseline", "treatment-variant-1"]);
+
+		store.close();
+	});
+
+	it("reports the canonical arm a re-run merged into, not the re-run's own suffix", () => {
+		const dir = makeStoreDir();
+		const store = new RunStore(dir);
+
+		// Only the re-run exists: its own arm is `treatment-v2-fix`, and the arm it belongs to is
+		// `treatment-v2`. A reader that showed the run's own arm would name a row nobody launched.
+		store.registerLaunch({
+			jobName: "deep-swe-treatment-v2-fix",
+			dataset: "bench-dataset",
+			agent: "veyyon",
+			models: ["claude-opus"],
+			pid: 10003,
+			config: { experiment: "deep-swe", arm: "treatment-v2-fix" },
+		});
+
+		const detail = experimentDetail(store, "deep-swe");
+		expect(detail?.arms.map(a => a.recordedArm)).toEqual(["treatment-v2"]);
+		expect(Object.keys(detail?.matrix ?? {})).toEqual(["treatment-v2"]);
 
 		store.close();
 	});
