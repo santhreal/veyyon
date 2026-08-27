@@ -374,7 +374,8 @@ export function planDeccaraFills(lines: string[], width: number, firstScreenRow 
 		return { texts, sequence: "" };
 	}
 	let sequence = DECSACE_RECT;
-	for (const group of groups) {
+	for (let gi = 0; gi < groups.length; gi++) {
+		const group = groups[gi]!;
 		for (let r = group.start; r <= group.end; r++) {
 			const c = candidates[r];
 			if (c) texts[r] = c.short;
