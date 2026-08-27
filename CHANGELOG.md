@@ -239,6 +239,7 @@
 - A numeric-keyed body whose values are `true`, `false` or `null` keeps its `N:` keys instead of being stripped as read-tool output.
 - A wide line clipped in the unseen-line reveal is cut at a code point rather than a UTF-16 code unit, so an emoji or rare CJK character sitting at the column limit is no longer split into an invalid lone surrogate.
 - Mnemopi cost log SQLite database (`cost_log.db`) manages schema migrations via `PRAGMA user_version` and dynamically backfills missing columns on legacy databases.
+- A `cargo` run under `--message-format=json` that fails before rustc, such as a build script exiting non-zero, reports the text cargo printed, so the `Caused by:` chain and the script's own stderr reach the operator instead of a bare failure verdict.
 - A `cargo nextest` run whose profile sets `failure-output = "final"` keeps its panic bodies, so the assertion diff, message, file and line survive the summary instead of being dropped and leaving a failure count with no evidence.
 - A native addon load that fails is reported once instead of once per native call; the failed pipeline is memoized, so a run that reached a hundred native calls no longer prints a hundred copies of the candidate report ([#917](https://github.com/santhreal/veyyon/issues/917)).
 - Fixed stock Windows AVX2 detection by trying PowerShell 7 before an isolated modern-addon trial; only explicit shell answers or illegal-instruction exits become verdicts, while missing, incompatible, timed-out, and unexpectedly crashing addons remain unknown.

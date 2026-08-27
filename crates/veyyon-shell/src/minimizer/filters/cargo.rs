@@ -123,12 +123,32 @@ fn classify_json(subject: &str, input: &str, exit_code: i32) -> String {
 		.take(20)
 		.collect();
 	let count = json_error_count(input);
-	let body = if error_lines.is_empty() {
-		String::new()
-	} else {
+	// A failure that never reaches rustc emits no `compiler-message` at all: a
+	// build script that exits non-zero, a manifest that does not resolve, a
+	// missing target. cargo reports those as plain text on stderr — `error:
+	// failed to run custom build command`, the `Caused by:` chain and the script's
+	// own `--- stderr` body — interleaved with the JSON stream. Emitting an empty
+	// body there dropped the only actionable line the run produced and left a
+	// bare verdict.
+	let body = if !error_lines.is_empty() {
 		let mut body = error_lines.join("\n");
 		body.push('\n');
 		body
+	} else if exit_code == 0 {
+		// A clean run carries no body; the verdict line is the whole result.
+		String::new()
+	} else {
+		// Only the JSON stream is dropped here; `compact_general` already strips
+		// cargo's progress lines.
+		let mut plain = String::new();
+		for line in input
+			.lines()
+			.filter(|l| !l.trim_start().starts_with('{') && !l.trim().is_empty())
+		{
+			plain.push_str(line);
+			plain.push('\n');
+		}
+		compact_general(&plain)
 	};
 	let verdict = if exit_code == 0 && count == 0 {
 		contract::clean(subject)
@@ -1541,6 +1561,58 @@ mod tests {
 		let out = filter_cargo("check", "cargo check --message-format=json", err, 101);
 		assert!(out.starts_with("[errors 1] cargo check\n"), "{out:?}");
 		assert!(out.contains("\"level\":\"error\""));
+	}
+
+	/// A build script that exits non-zero never reaches rustc, so the JSON
+	/// stream carries no `compiler-message` and cargo reports the failure as
+	/// plain text beside it. Captured from a real `cargo build
+	/// --message-format=json`, reduced and with paths replaced. Before the fix
+	/// the body was empty and the operator got `[errors] cargo build` with
+	/// nothing to act on.
+	#[test]
+	fn a_build_script_failure_under_json_keeps_the_text_cargo_printed() {
+		let input = concat!(
+			"   Compiling json-probe v0.0.0 (/repo/probe)\n",
+			"{\"reason\":\"compiler-artifact\",\"package_id\":\"json-probe\",\"fresh\":false}\n",
+			"error: failed to run custom build command for `json-probe v0.0.0 (/repo/probe)`\n",
+			"\n",
+			"Caused by:\n",
+			"  process didn't exit successfully: `/repo/target/build-script-build` (exit status: 1)\n",
+			"  --- stderr\n",
+			"  pkg-config could not find libfoo: install libfoo-dev\n",
+			"{\"reason\":\"build-finished\",\"success\":false}\n",
+		);
+		let out = filter_cargo("build", "cargo build --message-format=json", input, 101);
+		assert!(out.starts_with("[errors] cargo build"), "must classify as failed: {out:?}");
+		for evidence in [
+			"error: failed to run custom build command",
+			"Caused by:",
+			"pkg-config could not find libfoo: install libfoo-dev",
+		] {
+			assert!(out.contains(evidence), "cargo's own text {evidence:?} was dropped: {out:?}");
+		}
+		// The JSON stream itself is not evidence and stays out.
+		assert!(!out.contains("\"reason\":\"build-finished\""), "json must not be echoed: {out:?}");
+		assert!(!out.contains("Compiling json-probe"), "compile noise must stay out: {out:?}");
+	}
+
+	/// A build script may write to stderr on a run that still succeeds, so plain
+	/// text beside the JSON stream is not by itself a failure. A clean verdict
+	/// carries no body, and the fallback above must not turn that chatter into
+	/// one.
+	#[test]
+	fn a_clean_json_build_stays_a_bare_verdict_even_with_plain_output() {
+		let input = concat!(
+			"   Compiling json-probe v0.0.0 (/repo/probe)\n",
+			"{\"reason\":\"compiler-artifact\",\"package_id\":\"json-probe\",\"fresh\":false}\n",
+			"probe build script: using bundled libfoo\n",
+			"{\"reason\":\"build-finished\",\"success\":true}\n",
+			"    Finished `dev` profile [unoptimized] target(s) in 1.14s\n",
+		);
+		assert_eq!(
+			filter_cargo("build", "cargo build --message-format=json", input, 0),
+			"[clean] cargo build\n"
+		);
 	}
 
 	#[test]
