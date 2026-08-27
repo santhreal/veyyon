@@ -638,16 +638,16 @@ export class EventController {
 			this.ctx.ui.requestRender();
 		} else if (event.message.role === "user") {
 			const textContent = this.ctx.getUserMessageText(event.message);
-			const imageBlocks =
-				typeof event.message.content === "string"
-					? []
-					: event.message.content.filter(
-							(content): content is ImageContent =>
-								content.type === "image" &&
-								typeof content.data === "string" &&
-								typeof content.mimeType === "string",
-						);
-			const imageCount = imageBlocks.length;
+			let imageCount = 0;
+			if (typeof event.message.content !== "string") {
+				const blocks = event.message.content;
+				for (let bi = 0; bi < blocks.length; bi++) {
+					const block = blocks[bi]!;
+					if (block.type === "image" && typeof block.data === "string" && typeof block.mimeType === "string") {
+						imageCount++;
+					}
+				}
+			}
 			const signature = `${textContent}\u0000${imageCount}`;
 
 			this.#resetReadGroup();
