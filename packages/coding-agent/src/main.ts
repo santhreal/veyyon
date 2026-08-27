@@ -87,6 +87,7 @@ import { formatNotice, OperatorNotices, stderrNoticeSink } from "./session/opera
 import { resolveResumableSession, type SessionInfo } from "./session/session-listing";
 import { SessionManager } from "./session/session-manager";
 import { executeBuiltinSlashCommand } from "./slash-commands/builtin-registry";
+import { takeStartupPrologue } from "./startup/launch-card";
 import { shouldShowStartupSplash } from "./startup-splash";
 import { discoverTitleSystemPromptFile, resolvePromptInput } from "./system-prompt";
 import { createPersistedSubagentReviverFactory } from "./task/persisted-revive";
@@ -1317,16 +1318,25 @@ export function __startupWatchdogArmedForTests(): boolean {
 }
 
 async function runRootCommandInner(parsed: Args, rawArgs: string[], deps: RunRootCommandDependencies): Promise<void> {
-	// Initialize theme early with defaults (CLI commands need symbols)
-	// Will be re-initialized with user preferences later
-	await logger.time("initTheme:initial", initTheme);
+	// The card may already be on screen: `commands/launch.ts` runs the prologue
+	// -- cwd, settings, theme, paint -- ahead of this module's runtime graph, so
+	// a bare interactive launch reaches a typable composer without waiting for
+	// it. Single-use: a second `runRootCommand` in this process is handed
+	// nothing and settles its own cwd, settings and screen.
+	const prologue = takeStartupPrologue();
+	// Initialize theme early with defaults (CLI commands need symbols).
+	// Re-initialized with user preferences below, and skipped outright when the
+	// prologue already settled it from those same preferences.
+	if (!prologue) await logger.time("initTheme:initial", initTheme);
 
 	const parsedArgs = parsed;
 	// Relocates away from a bare $HOME launch (before Settings.init, since
 	// discovery is cwd-relative). The announcement is deferred until after
 	// applySessionWorkdir below, so a profile session.workdir that re-roots
 	// elsewhere doesn't leave a false "Started in /tmp instead" line.
-	const autoChdirTarget = await logger.time("applyStartupCwd", applyStartupCwd, parsedArgs);
+	const autoChdirTarget = prologue
+		? prologue.autoChdirTarget
+		: await logger.time("applyStartupCwd", applyStartupCwd, parsedArgs);
 
 	const notifs: (InteractiveModeNotify | null)[] = [];
 
@@ -1386,16 +1396,15 @@ async function runRootCommandInner(parsed: Args, rawArgs: string[], deps: RunRoo
 
 	let cwd = getProjectDir();
 	const settingsInstance =
-		deps.settings ?? (await logger.time("settings:init", Settings.init, { cwd, configFiles: parsedArgs.config }));
+		deps.settings ??
+		prologue?.settings ??
+		(await logger.time("settings:init", Settings.init, { cwd, configFiles: parsedArgs.config }));
 	// Profile session.workdir outranks process cwd but loses to an explicit --cwd.
 	// Applied after Settings.init so the profile layer is available; re-sync `cwd`
 	// so session construction and discovery see the resolved root.
-	const workdirApplied = await logger.time(
-		"applySessionWorkdir",
-		applySessionWorkdir,
-		settingsInstance,
-		parsedArgs.cwd,
-	);
+	const workdirApplied = prologue
+		? prologue.workdirApplied
+		: await logger.time("applySessionWorkdir", applySessionWorkdir, settingsInstance, parsedArgs.cwd);
 	if (workdirApplied) {
 		cwd = getProjectDir();
 	}
@@ -1528,31 +1537,38 @@ async function runRootCommandInner(parsed: Args, rawArgs: string[], deps: RunRoo
 		settingsInstance.override("advisor.enabled", true);
 	}
 
-	await logger.time(
-		"initTheme:final",
-		initTheme,
-		isInteractive,
-		settingsInstance.get("symbolPreset"),
-		settingsInstance.get("colorBlindMode"),
-		settingsInstance.get("theme.dark"),
-		settingsInstance.get("theme.light"),
-	);
-	const showStartupSplash = shouldShowStartupSplash({
-		configured: settingsInstance.get("startup.showSplash"),
-		isInteractive,
-		resuming: Boolean(parsedArgs.continue || parsedArgs.resume || parsedArgs.fork),
-		quiet: settingsInstance.get("startup.quiet"),
-		timing: Boolean($env.VEYYON_TIMING),
-		stdinIsTTY: process.stdin.isTTY,
-		stdoutIsTTY: process.stdout.isTTY,
-	});
+	// The prologue settled the theme from these same settings before it painted,
+	// so re-running it here would reload the same theme files and change nothing.
+	if (!prologue) {
+		await logger.time(
+			"initTheme:final",
+			initTheme,
+			isInteractive,
+			settingsInstance.get("symbolPreset"),
+			settingsInstance.get("colorBlindMode"),
+			settingsInstance.get("theme.dark"),
+			settingsInstance.get("theme.light"),
+		);
+	}
+	const showStartupSplash =
+		prologue?.showStartupSplash ??
+		shouldShowStartupSplash({
+			configured: settingsInstance.get("startup.showSplash"),
+			isInteractive,
+			resuming: Boolean(parsedArgs.continue || parsedArgs.resume || parsedArgs.fork),
+			quiet: settingsInstance.get("startup.quiet"),
+			timing: Boolean($env.VEYYON_TIMING),
+			stdinIsTTY: process.stdin.isTTY,
+			stdoutIsTTY: process.stdout.isTTY,
+		});
 
 	// Paint the launch card immediately once settings and the theme are up.
 	// The sun, the wordmark, the version, and the tips need no session, no models,
 	// and no plugins. Everything below — model registry, plugin preload, extension
 	// discovery, and session construction — runs while the finished resting frame
-	// is already in front of the operator.
-	if (isInteractive && !isProtocolMode) {
+	// is already in front of the operator. An ordinary interactive launch has one
+	// already: the prologue painted it before this module's graph was loaded.
+	if (!prologue && isInteractive && !isProtocolMode) {
 		const onboarding = resolveOnboardingGeneration(settingsInstance);
 		const { paintFirstFrame, shouldPaintFirstFrame } = await loadFirstFrame();
 		const paint = shouldPaintFirstFrame({

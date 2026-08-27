@@ -1,0 +1,132 @@
+/**
+ * The launch card, painted before the runtime graph is loaded.
+ *
+ * `main.ts` imports the whole agent runtime at module scope — the SDK, the
+ * model registry, the builtin slash commands, the system-prompt loader, the
+ * subagent reviver. Evaluating that graph costs ~0.7s in the compiled binary,
+ * and until this module existed `commands/launch.ts` awaited `import("../main")`
+ * before anything reached the terminal, so the operator watched a blank screen
+ * for the whole of it and the card arrived at ~760ms.
+ *
+ * Nothing the card draws needs any of that. The sun, the wordmark, the version
+ * and the resting composer need settings and a theme, and both are cheap:
+ * measured on a compiled binary that imports only this path, `Settings.init` is
+ * 4ms, `initTheme` is 1ms and `paintFirstFrame` is 8ms, for a card on screen
+ * 60ms after exec. Keystrokes are live from that moment — `paintFirstFrame`
+ * installs the typeahead gate that buffers, echoes and later replays them into
+ * the mounted composer.
+ *
+ * So the prologue runs here, ahead of the runtime import, and it ends AT the
+ * paint rather than just before it. An earlier attempt moved settings, cwd and
+ * stdin ahead of the runtime import but left `paintFirstFrame` behind it; the
+ * card still waited for the runtime graph and the change measured as a wash.
+ * The paint is the thing that has to move.
+ *
+ * `main.ts` does not repeat this work: it adopts the handoff through
+ * {@link takeStartupPrologue}. The handoff is single-use rather than a cache,
+ * because a second in-process `runRootCommand` (a test harness, a relaunch)
+ * must not inherit the first caller's settings, theme and painted screen.
+ */
+
+import { $env, getProjectDir, VERSION } from "@veyyon/utils";
+import type { Args } from "../cli/args";
+import { applySessionWorkdir, applyStartupCwd } from "../cli/startup-cwd";
+import type { Settings } from "../config/settings";
+import { Settings as SettingsClass } from "../config/settings";
+import { paintFirstFrame, shouldPaintFirstFrame } from "../modes/first-frame";
+import { CURRENT_SETUP_VERSION, resolveOnboardingGeneration } from "../modes/setup-version";
+import { initTheme } from "../modes/theme/theme";
+import { shouldShowStartupSplash } from "../startup-splash";
+
+/** What the prologue resolved, handed to `runRootCommand` so it repeats none of it. */
+export interface StartupPrologue {
+	/** `$HOME` relocation target, or undefined. Announced by the caller, after `applySessionWorkdir`. */
+	readonly autoChdirTarget: string | undefined;
+	readonly settings: Settings;
+	readonly workdirApplied: boolean;
+	readonly showStartupSplash: boolean;
+}
+
+/**
+ * True only for a bare interactive launch that lands on the home screen.
+ *
+ * Read from argv alone, before settings exist, because the whole point is to
+ * decide without loading anything. A run that exits early (`--version`,
+ * `--export`), prints (`--print`, a piped prompt) or speaks a protocol never
+ * paints a card, and must not pay for settings or a theme here. Piped stdin
+ * needs no separate test: `autoPrint` requires input on stdin, and stdin is a
+ * TTY on this path.
+ */
+export function shouldPrepaintLaunchCard(parsed: Args): boolean {
+	if (parsed.version || parsed.export !== undefined) return false;
+	if (parsed.print || parsed.mode !== undefined) return false;
+	return process.stdin.isTTY === true && process.stdout.isTTY === true;
+}
+
+let shared: StartupPrologue | undefined;
+
+/**
+ * Settle cwd, settings and the theme, then paint the card.
+ *
+ * `applyStartupCwd` runs before `Settings.init` because settings discovery is
+ * cwd-relative, and `applySessionWorkdir` runs after it because the profile
+ * layer it reads only exists once settings are loaded. That is the same order
+ * `runRootCommand` used; it moved here whole rather than being split.
+ */
+export async function runStartupPrologue(parsed: Args, forceSetupWizard = false): Promise<StartupPrologue> {
+	// Defaults only: CLI symbols need a theme before settings are readable.
+	await initTheme();
+	const autoChdirTarget = await applyStartupCwd(parsed);
+
+	const settings = await SettingsClass.init({ cwd: getProjectDir(), configFiles: parsed.config });
+	const workdirApplied = await applySessionWorkdir(settings, parsed.cwd);
+
+	await initTheme(
+		true,
+		settings.get("symbolPreset"),
+		settings.get("colorBlindMode"),
+		settings.get("theme.dark"),
+		settings.get("theme.light"),
+	);
+
+	const resuming = Boolean(parsed.continue || parsed.resume || parsed.fork);
+	const showStartupSplash = shouldShowStartupSplash({
+		configured: settings.get("startup.showSplash"),
+		isInteractive: true,
+		resuming,
+		quiet: settings.get("startup.quiet"),
+		timing: Boolean($env.VEYYON_TIMING),
+		stdinIsTTY: process.stdin.isTTY,
+		stdoutIsTTY: process.stdout.isTTY,
+	});
+
+	const onboarding = resolveOnboardingGeneration(settings);
+	const paint = shouldPaintFirstFrame({
+		isInteractive: true,
+		protocolMode: false,
+		quiet: settings.get("startup.quiet"),
+		splash: showStartupSplash,
+		setupWizard: forceSetupWizard || (!onboarding.unreadable && onboarding.version < CURRENT_SETUP_VERSION),
+		stdinIsTTY: process.stdin.isTTY,
+		stdoutIsTTY: process.stdout.isTTY,
+		resuming,
+	});
+	if (paint) paintFirstFrame(VERSION);
+
+	const prologue: StartupPrologue = { autoChdirTarget, settings, workdirApplied, showStartupSplash };
+	shared = prologue;
+	return prologue;
+}
+
+/**
+ * The prologue this process already ran, once.
+ *
+ * Clears on read: a second `runRootCommand` in the same process builds its own
+ * cwd, settings and screen rather than inheriting a handoff that is no longer
+ * true of the terminal.
+ */
+export function takeStartupPrologue(): StartupPrologue | undefined {
+	const prologue = shared;
+	shared = undefined;
+	return prologue;
+}

@@ -52,6 +52,7 @@
 
 ### Changed
 
+- The launch card is painted before the agent runtime graph is loaded, taking an interactive launch from a blank terminal for 760ms to a typable composer at 310ms.
 - `veyyon --help` renders its command list from registry summaries verified against command statics and loads only the hidden default command for its flag table, reducing a measured warm Windows invocation from 1.2 seconds to 0.13 seconds.
 - The CPU model is read once per process instead of on every system prompt build, removing about 30ms from the window before the composer accepts input.
 - Row band painting compiles its escape pattern once for the process rather than once per painted row.
