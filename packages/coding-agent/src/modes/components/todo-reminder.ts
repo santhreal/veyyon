@@ -35,7 +35,10 @@ export class TodoReminderComponent extends TranscriptNoteComponent {
 		for (let ti = 0; ti < prioritized.length; ti++) {
 			if (!preview.push(prefix, prioritized[ti]!.content)) break;
 		}
-		const rows = preview.lines.map(row => theme.italic(theme.fg("text", row)));
+		const rows: string[] = new Array(preview.lines.length);
+		for (let ri = 0; ri < preview.lines.length; ri++) {
+			rows[ri] = theme.italic(theme.fg("text", preview.lines[ri]!));
+		}
 		const hidden = count - preview.lines.length;
 		if (hidden > 0) rows.push(theme.italic(theme.fg("muted", `… ${hidden} more in todo state`)));
 

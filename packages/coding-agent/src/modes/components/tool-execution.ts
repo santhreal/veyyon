@@ -125,13 +125,21 @@ function displaceableToolName(
 
 function stabilizeStreamingPreviews(previews: PerFileDiffPreview[]): PerFileDiffPreview[] {
 	let changed = false;
-	const next = previews.map(preview => {
-		if (!preview.diff) return preview;
+	const next: PerFileDiffPreview[] = new Array(previews.length);
+	for (let pi = 0; pi < previews.length; pi++) {
+		const preview = previews[pi]!;
+		if (!preview.diff) {
+			next[pi] = preview;
+			continue;
+		}
 		const trimmed = stripTrailingUnbalancedRemoval(preview.diff);
-		if (trimmed === preview.diff) return preview;
+		if (trimmed === preview.diff) {
+			next[pi] = preview;
+			continue;
+		}
 		changed = true;
-		return { ...preview, diff: trimmed ?? "" };
-	});
+		next[pi] = { ...preview, diff: trimmed ?? "" };
+	}
 	return changed ? next : previews;
 }
 

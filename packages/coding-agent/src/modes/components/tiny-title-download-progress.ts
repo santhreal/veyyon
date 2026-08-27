@@ -140,10 +140,12 @@ export class TinyTitleDownloadProgressComponent implements Component {
 		// With no repaint hook there is nothing settling and the two agree, which
 		// is exactly what this rendered before.
 		const reported = this.#event?.progress === undefined ? undefined : clamp01(this.#event.progress / 100);
-		const details = [
-			progressBar(this.#ratio?.value ?? reported, Math.max(8, width - COMPOSER_INSET_COLS - 36)),
-			...[pct, bytes, file].filter((part): part is string => Boolean(part)).map(part => theme.fg("dim", part)),
-		].join(" ");
+		const parts = [progressBar(this.#ratio?.value ?? reported, Math.max(8, width - COMPOSER_INSET_COLS - 36))];
+		for (let pi = 0; pi < 3; pi++) {
+			const part = [pct, bytes, file][pi];
+			if (part) parts.push(theme.fg("dim", part));
+		}
+		const details = parts.join(" ");
 
 		return [`${inset}${title}`, `${inset}${details}`];
 	}

@@ -67,18 +67,30 @@ export function renderTranscriptNote(note: TranscriptNote, contentWidth: number)
 		for (let li = 0; li < wtLines.length; li++) rows.push(wtLines[li]!);
 	}
 
-	const lines = [
-		...headline.map(line => `${rail} ${theme.bold(theme.fg(note.tone, line))}`),
-		...(rows.length > 0 ? [rail] : []),
-		...rows.map(row => (row === "" ? rail : `${rail} ${row}`)),
-	];
+	const lines: string[] = new Array(headline.length + (rows.length > 0 ? 1 : 0) + rows.length);
+	let li = 0;
+	for (let hi = 0; hi < headline.length; hi++) {
+		lines[li++] = `${rail} ${theme.bold(theme.fg(note.tone, headline[hi]!))}`;
+	}
+	if (rows.length > 0) lines[li++] = rail;
+	for (let ri = 0; ri < rows.length; ri++) {
+		lines[li++] = rows[ri] === "" ? rail : `${rail} ${rows[ri]!}`;
+	}
 
 	// A surface is only painted onto a ground that is actually on screen, and only
 	// where 24-bit colour can express the step. Everything else keeps the rail and
 	// the colours, which is a readable note on any terminal.
 	const ground = TERMINAL.trueColor ? getVisibleGround() : undefined;
 	if (ground === undefined) return lines;
-	const widest = Math.max(...headline.map(visibleWidth), ...rows.map(visibleWidth));
+	let widest = 0;
+	for (let hi = 0; hi < headline.length; hi++) {
+		const w = visibleWidth(headline[hi]!);
+		if (w > widest) widest = w;
+	}
+	for (let ri = 0; ri < rows.length; ri++) {
+		const w = visibleWidth(rows[ri]!);
+		if (w > widest) widest = w;
+	}
 	const noteWidth = Math.min(contentWidth, widest + NOTE_CHROME_COLS);
 	return fillSurface(lines, noteWidth, { ground, lift: NOTE_LIFT });
 }

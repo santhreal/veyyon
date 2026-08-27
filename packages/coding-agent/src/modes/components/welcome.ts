@@ -130,11 +130,12 @@ export function renderWelcomeTip(tip: string, boxWidth: number, _phase = 0): str
 	// titanium), keeping tips visually distinct from session/mode/share chrome.
 	const styledLabel = theme.fg("infoAccent", label);
 
-	const lines = wrappedBody.map((line, index) => {
-		const styledBody = theme.fg("muted", line);
-		const content = index === 0 ? `${styledLabel}${styledBody}` : `${continuationIndent}${styledBody}`;
-		return ` ${theme.italic(content)}`;
-	});
+	const lines: string[] = new Array(wrappedBody.length);
+	for (let li = 0; li < wrappedBody.length; li++) {
+		const styledBody = theme.fg("muted", wrappedBody[li]!);
+		const content = li === 0 ? `${styledLabel}${styledBody}` : `${continuationIndent}${styledBody}`;
+		lines[li] = ` ${theme.italic(content)}`;
+	}
 
 	if (isNew) {
 		const tag = renderNewTag();
