@@ -1172,10 +1172,17 @@ export class AgentDashboard extends Container {
 	 * first-appearance is stable for a log that only ever grows at the end.
 	 */
 	#commsParticipants(): string[] {
+		const seenSet = new Set<string>();
 		const seen: string[] = [];
-		for (const entry of this.#comms) {
-			for (const id of [entry.message.from, entry.message.to]) {
-				if (!seen.includes(id)) seen.push(id);
+		for (let ei = 0; ei < this.#comms.length; ei++) {
+			const entry = this.#comms[ei]!;
+			const ids = [entry.message.from, entry.message.to];
+			for (let ii = 0; ii < ids.length; ii++) {
+				const id = ids[ii]!;
+				if (!seenSet.has(id)) {
+					seenSet.add(id);
+					seen.push(id);
+				}
 			}
 		}
 		return seen;
