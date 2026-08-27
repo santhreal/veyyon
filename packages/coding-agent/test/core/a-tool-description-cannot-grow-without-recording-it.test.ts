@@ -31,15 +31,22 @@
  */
 import { describe, expect, it } from "bun:test";
 import { toolsPrompts } from "@veyyon/coding-agent/prompts/tools/rows";
+import { hashlinePrompts } from "@veyyon/hashline/prompts/registry";
 import { estimateTokensFromText } from "@veyyon/utils";
 
 /**
- * What each `tools/` description costs today, in `estimateTokensFromText` tokens.
+ * What each tool description costs today, in `estimateTokensFromText` tokens.
  *
  * Lower a number when a trim lands. Do not raise one without saying, in the commit, what
  * the tokens buy.
+ *
+ * `hashline/prompt` is the `edit` tool's description, which ships from hashline's registry
+ * rather than from `prompts/tools/`. It is the largest single tool description in the
+ * product and it sat outside this ratchet, which is the one thing the ratchet exists to
+ * prevent: the description nobody counted is the one that grows.
  */
 const RECORDED_TOKENS: Record<string, number> = {
+	"hashline/prompt": 2013,
 	"tools/apply-patch": 726,
 	"tools/ask": 285,
 	"tools/ast-edit": 375,
@@ -92,9 +99,14 @@ const RECORDED_TOKENS: Record<string, number> = {
 };
 
 /** The sum the recorded table claims, so the total is in the diff of any trim. */
-const RECORDED_TOTAL = 21893;
+const RECORDED_TOTAL = 23906;
 
-const measured = new Map(Object.entries(toolsPrompts).map(([id, entry]) => [id, estimateTokensFromText(entry.text)]));
+const measured = new Map<string, number>([
+	...Object.entries(toolsPrompts).map(([id, entry]) => [id, estimateTokensFromText(entry.text)] as const),
+	...hashlinePrompts.ids.map(
+		id => [`hashline/${id}`, estimateTokensFromText(hashlinePrompts.require(id).text)] as const,
+	),
+]);
 
 describe("the tools prompt budget", () => {
 	it("measures the shipped text, not an override", () => {
