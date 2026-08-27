@@ -73,10 +73,13 @@ export class TtsrNotificationComponent extends TranscriptNoteComponent {
 		let displayText = desc;
 		let truncated = false;
 		if (!this.#expanded) {
-			const lines = desc.split("\n");
-			if (lines.length > 2) {
-				displayText = `${lines.slice(0, 2).join("\n")}…`;
-				truncated = true;
+			const firstNl = desc.indexOf("\n");
+			if (firstNl !== -1) {
+				const secondNl = desc.indexOf("\n", firstNl + 1);
+				if (secondNl !== -1) {
+					displayText = `${desc.slice(0, secondNl)}…`;
+					truncated = true;
+				}
 			}
 		}
 
