@@ -26,7 +26,7 @@ import { type ProviderTextTransformResolver, resolveProviderTextTransform } from
 import type { ToolSession } from "../sdk";
 import type { AgentStorage } from "../session/agent-storage";
 import { primarySessionCpuAdoption } from "../session/cpu-limit";
-import { DEFAULT_MAX_BYTES, truncateHead } from "../session/streaming-output";
+import { truncateHead } from "../session/streaming-output";
 // Each from its owner, not the `../tui` barrel: the barrel is 768 modules because it re-exports the
 // hyperlink module, and `read.ts` imports this file.
 import { urlHyperlink } from "../tui/hyperlink";
@@ -52,6 +52,7 @@ import {
 } from "../web/scrapers/types";
 import { convertWithMarkit, fetchBinary } from "../web/scrapers/utils";
 import { applyListLimit } from "./list-limit";
+import { inlineBudgetFor } from "./output-artifact";
 import { formatStyledArtifactReference, type OutputMeta } from "./output-meta";
 import { isReadableUrlPath, type LineRange, parseLineRanges } from "./path-utils";
 import { formatBytes, formatExpandHint, getDomain, replaceTabs } from "./render-utils";
@@ -2083,7 +2084,7 @@ export async function executeReadUrl(
 ): Promise<AgentToolResult<ReadUrlToolDetails>> {
 	let cacheEntry = await loadReadUrlCacheEntry(session, params, signal, { preferCached: true });
 	const truncation = truncateHead(cacheEntry.output, {
-		maxBytes: DEFAULT_MAX_BYTES,
+		maxBytes: inlineBudgetFor(session),
 		maxLines: FETCH_DEFAULT_MAX_LINES,
 	});
 	const needsArtifact = truncation.truncated;

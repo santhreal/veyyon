@@ -1645,7 +1645,12 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 		const endLine = endLineExpanded;
 		const selectedContent = allLines.slice(startLine, endLine).join("\n");
 		const userLimitedLines = limit !== undefined ? endLine - startLine : undefined;
-		const truncation = ignoreResultLimits ? noTruncResult(selectedContent) : truncateHead(selectedContent);
+		// A notebook, document, archive entry, URL body or internal resource is
+		// bounded by the same budget as a file window: the setting that states how
+		// many bytes a tool result carries, not a constant it cannot reach.
+		const truncation = ignoreResultLimits
+			? noTruncResult(selectedContent)
+			: truncateHead(selectedContent, { maxBytes: inlineBudgetFor(this.session), maxLines: DEFAULT_MAX_LINES });
 
 		const shouldAddHashLines = displayMode.hashLines;
 		const shouldAddLineNumbers = shouldAddHashLines ? false : displayMode.lineNumbers;
@@ -1700,12 +1705,13 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 		if (truncation.firstLineExceedsLimit) {
 			const firstLine = allLines[startLine] ?? "";
 			const firstLineBytes = Buffer.byteLength(firstLine, "utf-8");
-			const snippet = truncateHeadBytes(firstLine, DEFAULT_MAX_BYTES);
+			const budget = inlineBudgetFor(this.session);
+			const snippet = truncateHeadBytes(firstLine, budget);
 
 			if (shouldAddHashLines) {
 				outputText = `[Line ${startLineDisplay} is ${formatBytes(
 					firstLineBytes,
-				)}, exceeds ${formatBytes(DEFAULT_MAX_BYTES)} limit. Hashline output requires full lines; cannot emit an editable numbered preview for a truncated line.]`;
+				)}, exceeds ${formatBytes(budget)} limit. Hashline output requires full lines; cannot emit an editable numbered preview for a truncated line.]`;
 			} else {
 				outputText = formatText(snippet.text, startLineDisplay);
 			}
@@ -1713,7 +1719,7 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 			if (snippet.text.length === 0) {
 				outputText = `[Line ${startLineDisplay} is ${formatBytes(
 					firstLineBytes,
-				)}, exceeds ${formatBytes(DEFAULT_MAX_BYTES)} limit. Unable to display a valid UTF-8 snippet.]`;
+				)}, exceeds ${formatBytes(budget)} limit. Unable to display a valid UTF-8 snippet.]`;
 			}
 
 			details.truncation = truncation;

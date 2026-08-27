@@ -64,6 +64,21 @@ describe("a read with no line bound costs what a tool result may cost", () => {
 		const line = "x".repeat(LINE_WIDTH);
 		await fs.writeFile(path.join(dir, FIXTURE), `${Array.from({ length: LINE_COUNT }, () => line).join("\n")}\n`);
 		await fs.writeFile(path.join(dir, "short.md"), "one\ntwo\nthree\n");
+		await fs.writeFile(
+			path.join(dir, "book.ipynb"),
+			JSON.stringify({
+				cells: Array.from({ length: LINE_COUNT }, () => ({
+					cell_type: "code",
+					source: [`${line}\n`],
+					metadata: {},
+					outputs: [],
+					execution_count: null,
+				})),
+				metadata: {},
+				nbformat: 4,
+				nbformat_minor: 5,
+			}),
+		);
 	});
 
 	afterAll(async () => {
@@ -81,6 +96,16 @@ describe("a read with no line bound costs what a tool result may cost", () => {
 			expect(bytes).toBeLessThan(budgetKb * 1024 + LINE_WIDTH * 3);
 			expect(bytes).toBeGreaterThan(budgetKb * 512);
 		}
+	});
+
+	it("holds a rendered notebook to the configured budget too", async () => {
+		// The notebook, document, archive-entry, URL and internal-resource reads
+		// share one in-memory window, which priced itself against the compiled
+		// constant while every other tool result followed the setting.
+		const small = Buffer.byteLength(await readText(await toolFor(dir, 8), "book.ipynb"), "utf-8");
+		const large = Buffer.byteLength(await readText(await toolFor(dir, 64), "book.ipynb"), "utf-8");
+		expect(small).toBeLessThan(8 * 1024 + LINE_WIDTH * 3);
+		expect(large).toBeGreaterThan(small * 4);
 	});
 
 	it("scales the window with the configured budget rather than a compiled constant", async () => {
