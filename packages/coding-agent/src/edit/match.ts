@@ -22,6 +22,15 @@ import { countLeadingWhitespace, normalizeForFuzzy, normalizeUnicode } from "./n
  * puts the cycle back.
  */
 
+/** Count `\n` occurrences in `text[0..end)` via charCodeAt, avoiding `slice().split("\n").length`. */
+function countNewlinesTo(text: string, end: number): number {
+	let count = 0;
+	for (let i = 0; i < end; i++) {
+		if (text.charCodeAt(i) === 0x0a) count++;
+	}
+	return count;
+}
+
 export interface FuzzyMatch {
 	actualText: string;
 	startIndex: number;
@@ -276,7 +285,7 @@ function findExactMatchOutcome(content: string, target: string): MatchOutcome | 
 		for (let i = 0; i < MAX_RECORDED_MATCHES; i++) {
 			const idx = content.indexOf(target, searchStart);
 			if (idx === -1) break;
-			const lineNumber = content.slice(0, idx).split("\n").length;
+			const lineNumber = countNewlinesTo(content, idx) + 1;
 			occurrenceLines.push(lineNumber);
 			occurrencePreviews.push(
 				formatPreviewWindow(contentLines, lineNumber - 1, {
@@ -290,7 +299,7 @@ function findExactMatchOutcome(content: string, target: string): MatchOutcome | 
 		return { occurrences, occurrenceLines, occurrencePreviews };
 	}
 
-	const startLine = content.slice(0, exactIndex).split("\n").length;
+	const startLine = countNewlinesTo(content, exactIndex) + 1;
 	return {
 		match: {
 			actualText: target,
@@ -758,8 +767,7 @@ export function seekSequence(
 
 	if (matchOutcome.match) {
 		// Convert character index back to line index
-		const matchedContent = contentText.substring(0, matchOutcome.match.startIndex);
-		const lineIndex = start + matchedContent.split("\n").length - 1;
+		const lineIndex = start + countNewlinesTo(contentText, matchOutcome.match.startIndex);
 		const fallbackMatchCount = matchOutcome.occurrences ?? matchOutcome.fuzzyMatches ?? 1;
 		return {
 			index: lineIndex,
