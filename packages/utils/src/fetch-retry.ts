@@ -145,7 +145,7 @@ export function resetHeaderTargetMs(value: number): { atMs: number } | { delta: 
  *  - `retry-after-ms` (milliseconds)
  *  - `Retry-After` (numeric seconds, or HTTP date)
  *  - `x-ratelimit-reset-ms` (delta ms, or Unix epoch ms/s for large values)
- *  - `x-ratelimit-reset` (Unix epoch seconds)
+ *  - `x-ratelimit-reset` (delta seconds, or Unix epoch s/ms for large values)
  *  - `x-ratelimit-reset-after` (seconds)
  *  - `anthropic-ratelimit-*-reset` (see {@link anthropicResetDelayMs})
  *
@@ -186,9 +186,15 @@ export function extractRetryHint(source: Response | Headers | null | undefined, 
 		}
 		const rateLimitReset = headers.get("x-ratelimit-reset");
 		if (rateLimitReset) {
-			const resetSeconds = Number.parseInt(rateLimitReset, 10);
-			if (!Number.isNaN(resetSeconds)) {
-				const delta = resetSeconds * 1000 - Date.now();
+			const value = Number.parseInt(rateLimitReset, 10);
+			if (Number.isFinite(value) && value > 0) {
+				// Same three shapes as the `-ms` variant above, so the same owner
+				// disambiguates them. Read as a bare epoch this branch discarded every
+				// delta a gateway sent: `x-ratelimit-reset: 60` computed 60000 - now,
+				// which is negative, so the server's own wait was dropped.
+				const target = resetHeaderTargetMs(value);
+				if ("delta" in target) return value * 1000; // header's own unit is seconds
+				const delta = target.atMs - Date.now();
 				if (delta > 0) return delta;
 			}
 		}
