@@ -363,11 +363,19 @@ function hangWrapTreeGuideLines(text: string, width: number): string[] | undefin
 		if (width - visibleWidth(prefix.guides) < MIN_TREE_CONTENT_WIDTH) return undefined;
 		return prefix;
 	};
-	if (!sourceLines.some(line => hangs(line) !== undefined)) return undefined;
+	let hasAny = false;
+	for (let li = 0; li < sourceLines.length; li++) {
+		if (hangs(sourceLines[li]!) !== undefined) {
+			hasAny = true;
+			break;
+		}
+	}
+	if (!hasAny) return undefined;
 
 	const out: string[] = [];
 	let carry = "";
-	for (const line of sourceLines) {
+	for (let li = 0; li < sourceLines.length; li++) {
+		const line = sourceLines[li]!;
 		const prefix = hangs(line);
 		if (!prefix) {
 			out.push(carry ? carry + line : line);
@@ -380,7 +388,7 @@ function hangWrapTreeGuideLines(text: string, width: number): string[] | undefin
 		const activeCodes = carry + prefix.codes;
 		const rows = wrapTextWithAnsi(activeCodes + line.slice(prefix.end), width - visibleWidth(prefix.guides));
 		let hang = "";
-		for (const guide of prefix.guides) hang += TREE_GUIDE_CONTINUATION[guide] ?? " ";
+		for (let gi = 0; gi < prefix.guides.length; gi++) hang += TREE_GUIDE_CONTINUATION[prefix.guides[gi]!] ?? " ";
 		const hangShortfall = visibleWidth(prefix.guides) - visibleWidth(hang);
 		if (hangShortfall > 0) hang += padding(hangShortfall);
 		out.push(carry + line.slice(0, prefix.end) + rows[0]!.slice(activeCodes.length));
