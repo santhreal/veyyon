@@ -1538,7 +1538,8 @@ export class Markdown implements Component {
 		const contentLines: string[] = [];
 		let previousLineWasOsc66 = false;
 
-		for (const line of renderedLines) {
+		for (let li = 0; li < renderedLines.length; li++) {
+			const line = renderedLines[li]!;
 			// Skip wrapping for image protocol lines and OSC 66 sized headings
 			// (would corrupt escape sequences / split the indivisible sized span).
 			const isOsc66 = isOsc66Line(line);
@@ -2040,10 +2041,11 @@ export class Markdown implements Component {
 		};
 		const quoteContentWidth = Math.max(1, width - 2);
 		const lines: string[] = [];
-		for (const quoteLine of renderedLines) {
-			const styledLine = applyQuoteStyle(quoteLine);
-			for (const wrappedLine of wrapTextWithAnsi(styledLine, quoteContentWidth)) {
-				lines.push(this.#theme.quoteBorder(`${this.#theme.symbols.quoteBorder} `) + wrappedLine);
+		for (let qi = 0; qi < renderedLines.length; qi++) {
+			const styledLine = applyQuoteStyle(renderedLines[qi]!);
+			const wrapped = wrapTextWithAnsi(styledLine, quoteContentWidth);
+			for (let wi = 0; wi < wrapped.length; wi++) {
+				lines.push(this.#theme.quoteBorder(`${this.#theme.symbols.quoteBorder} `) + wrapped[wi]!);
 			}
 		}
 		return lines;
