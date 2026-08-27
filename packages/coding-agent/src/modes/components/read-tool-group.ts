@@ -456,8 +456,9 @@ export class ReadToolGroupComponent extends Container implements ToolExecutionHa
 				);
 				this.addChild(this.#text);
 			}
-			for (const entry of this.#previewEntriesForRow(row)) {
-				this.#addContentPreview(entry);
+			const previewEntries = this.#previewEntriesForRow(row);
+			for (let pi = 0; pi < previewEntries.length; pi++) {
+				this.#addContentPreview(previewEntries[pi]!);
 			}
 			return;
 		}

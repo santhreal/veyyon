@@ -1424,10 +1424,14 @@ export function renderProviderSection(details: ProviderDetails, uiTheme: Pick<ty
 }
 
 function resolveProviderUsageTotal(reports: UsageReport[]): number {
-	return reports
-		.flatMap(report => report.limits)
-		.map(limit => resolveUsedFraction(limit) ?? 0)
-		.reduce((sum, value) => sum + value, 0);
+	let total = 0;
+	for (let ri = 0; ri < reports.length; ri++) {
+		const limits = reports[ri]!.limits;
+		for (let li = 0; li < limits.length; li++) {
+			total += resolveUsedFraction(limits[li]!) ?? 0;
+		}
+	}
+	return total;
 }
 
 function formatLimitTitle(limit: UsageLimit): string {
@@ -1700,7 +1704,11 @@ export function renderUsageReports(
 	resolveActiveAccount?: (provider: string) => OAuthAccountIdentity | undefined,
 ): string {
 	const lines: string[] = [];
-	const latestFetchedAt = Math.max(...reports.map(report => report.fetchedAt ?? 0));
+	let latestFetchedAt = 0;
+	for (let ri = 0; ri < reports.length; ri++) {
+		const fetchedAt = reports[ri]!.fetchedAt ?? 0;
+		if (fetchedAt > latestFetchedAt) latestFetchedAt = fetchedAt;
+	}
 	const headerSuffix = latestFetchedAt ? ` (${formatDuration(nowMs - latestFetchedAt)} ago)` : "";
 	lines.push(uiTheme.bold(uiTheme.fg("accent", `Usage${headerSuffix}`)));
 	const grouped = new Map<string, UsageReport[]>();
@@ -1756,9 +1764,11 @@ export function renderUsageReports(
 		// above the per-account sections instead of duplicating onto every limit.
 		const providerNotes = [...new Set(providerReports.flatMap(report => report.notes ?? []))];
 		if (providerNotes.length > 0) {
-			lines.push(
-				`  ${uiTheme.fg("dim", replaceTabs(truncateToWidth(sanitizeText(providerNotes.map(n => n.replace(/[\r\n]+/g, " ")).join(" • ")), 110)))}`.trimEnd(),
-			);
+			let notesJoined = "";
+			for (let ni = 0; ni < providerNotes.length; ni++) {
+				notesJoined += (ni > 0 ? " • " : "") + providerNotes[ni]!.replace(/[\r\n]+/g, " ");
+			}
+			lines.push(`  ${uiTheme.fg("dim", replaceTabs(truncateToWidth(sanitizeText(notesJoined), 110)))}`.trimEnd());
 		}
 
 		const resetAccountLines: string[] = [];
@@ -1851,7 +1861,8 @@ export function renderUsageReports(
 		}
 		const sectionColumnWidth = resolveColumnWidth(sectionCount, availableWidth, sectionTrailing);
 
-		for (const { group, sortedLimits, sortedReports, amountText } of renderableGroups) {
+		for (let gi = 0; gi < renderableGroups.length; gi++) {
+			const { group, sortedLimits, sortedReports, amountText } = renderableGroups[gi]!;
 			const status = resolveAggregateStatus(sortedLimits);
 			const statusIcon = resolveStatusIcon(status, uiTheme);
 
@@ -1866,9 +1877,10 @@ export function renderUsageReports(
 				activeAccount,
 			);
 			lines.push(`  ${accountLabels.join(" ")}`.trimEnd());
-			const bars = sortedLimits.map(limit =>
-				padColumn(renderUsageBar(limit, uiTheme, sectionColumnWidth), sectionColumnWidth),
-			);
+			const bars: string[] = new Array(sortedLimits.length);
+			for (let bi = 0; bi < sortedLimits.length; bi++) {
+				bars[bi] = padColumn(renderUsageBar(sortedLimits[bi]!, uiTheme, sectionColumnWidth), sectionColumnWidth);
+			}
 			lines.push(`  ${bars.join(" ")} ${amountText}`.trimEnd());
 			const resetText = sortedLimits.length <= 1 ? resolveResetRange(sortedLimits, nowMs) : null;
 			if (resetText) {
@@ -1876,8 +1888,12 @@ export function renderUsageReports(
 			}
 			const notes = [...new Set(sortedLimits.flatMap(limit => limit.notes ?? []))];
 			if (notes.length > 0) {
+				let acctNotesJoined = "";
+				for (let ni = 0; ni < notes.length; ni++) {
+					acctNotesJoined += (ni > 0 ? " • " : "") + notes[ni]!.replace(/[\r\n]+/g, " ");
+				}
 				lines.push(
-					`  ${uiTheme.fg("dim", replaceTabs(truncateToWidth(sanitizeText(notes.map(n => n.replace(/[\r\n]+/g, " ")).join(" • ")), 110)))}`.trimEnd(),
+					`  ${uiTheme.fg("dim", replaceTabs(truncateToWidth(sanitizeText(acctNotesJoined), 110)))}`.trimEnd(),
 				);
 			}
 		}
