@@ -227,7 +227,9 @@ export class ImageBudget {
 	/** All image ids believed to be loaded in the terminal store; clears tracking. */
 	takeAllTransmittedIds(): readonly number[] {
 		if (this.#transmitted.size === 0) return EMPTY_IDS;
-		const ids = Array.from(this.#transmitted);
+		const ids = new Array<number>(this.#transmitted.size);
+		let ii = 0;
+		for (const id of this.#transmitted) ids[ii++] = id;
 		this.#transmitted.clear();
 		this.#purgeIds = [];
 		this.#pendingTransmits = [];
