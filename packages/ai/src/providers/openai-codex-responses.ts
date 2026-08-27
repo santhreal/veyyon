@@ -4184,7 +4184,7 @@ function convertMessages(model: Model<"openai-codex-responses">, context: Contex
 						customCallIds.add(maybe.call_id);
 					}
 				}
-				messages.push(...historyItems);
+				for (let hi = 0; hi < historyItems.length; hi++) messages.push(historyItems[hi]!);
 				msgIndex += 1;
 				continue;
 			}
@@ -4235,7 +4235,7 @@ function convertMessages(model: Model<"openai-codex-responses">, context: Contex
 						}
 					}
 					if (providerPayload?.dt) {
-						messages.push(...sanitizedHistoryItems);
+						for (let hi = 0; hi < sanitizedHistoryItems.length; hi++) messages.push(sanitizedHistoryItems[hi]!);
 					} else {
 						messages.splice(0, messages.length, ...sanitizedHistoryItems);
 						// Keep customCallIds from the pre-splice state since historyItems may re-introduce them.
@@ -4258,7 +4258,7 @@ function convertMessages(model: Model<"openai-codex-responses">, context: Contex
 				? sanitizeOpenAIResponsesAssistantFallbackItemsForReplay(convertedOutputItems)
 				: convertedOutputItems;
 			if (outputItems.length > 0) {
-				messages.push(...outputItems);
+				for (let oi = 0; oi < outputItems.length; oi++) messages.push(outputItems[oi]!);
 			}
 			msgIndex += 1;
 			continue;
