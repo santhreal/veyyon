@@ -22,6 +22,21 @@
 - Math tokenizer and HTML entity decoder in `markdown.ts` use `charCodeAt` instead of `startsWith` for prefix checks.
 - `renderEmptyPaddingLines` in `markdown.ts` caches the `applyBackgroundToLine` result before the loop.
 - The no-background padding path in `renderContentLines` measures the wrapped line alone instead of the margin-concatenated string.
+- `renderContentLines` and `renderTokenInner` in `markdown.ts` replace `push(...spread)` with for loops, avoiding stack argument explosion for large content blocks.
+- `containsMermaidFence` in `assistant-message.ts` replaces `message.content.slice().some()` with a for loop, avoiding subarray allocation.
+- `formatCellOutputLines` in `code-cell.ts` replaces `text.split(/\r?\n/).map()` with a single-pass `charCodeAt` newline scan, and replaces `filter+spread` max, `Array.from`, and `" ".repeat()` with for loops and `padding()`.
+- `appendOutput` in `bash-execution.ts` replaces spread+slice patterns with for loops in the streaming chunk path.
+- `getPreviewLines` in `render-utils.ts` replaces `split+filter+slice+map` with a single-pass `charCodeAt` scan.
+- `truncateDiffByHunk` in `render-utils.ts` replaces `filter+reduce` with single-pass counting and adds `pushAll`/`pushRange` helpers to eliminate 10 `push(...spread)` calls.
+- `renderDiff` in `diff.ts` reuses the pre-parsed `parsedLines` array instead of re-calling `parseDiffLine` in the main loop.
+- `highlightCode` in `highlight.ts` counts newlines via `charCodeAt` instead of `split("\n")` for the line-count parity check, avoiding an array allocation in the common case.
+- `getUserMessageText` in `ui-helpers.ts` replaces `filter().map().join()` with a single-pass string concatenation loop.
+- `event-controller.ts` replaces `filter().map()` for images, `slice().some()` for child scan, and `Array.from().filter()` for set cleanup with single-pass loops.
+- `agent-loop.ts` replaces `push(...toolResults)` spread with a for loop.
+- `eval-render.ts` caches `split("\n")` result, replaces double `filter()` with single-pass partition, and replaces `push(...spread)` with for loops.
+- `output-block.ts` replaces `flatMap+split` with an in-place `charCodeAt` newline scan.
+- `read-tool-group.ts` replaces `filter+map+filter` chain with a single-pass loop for display target extraction.
+- `edit/renderer.ts` replaces `slice()` loop, `map().filter()+Set`, and `filter()` with single-pass loops.
 ### Added
 
 - `/advisor` reports advisor status, opens the `WATCHDOG.yml` roster editor and applies a save to the running session, starts or stops the advisor for the session, and copies the advisor's own transcript; the subsystem shipped complete but no command, key or menu row reached it.
