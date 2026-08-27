@@ -823,6 +823,9 @@ export interface TextSearchDetails {
 	fileLimitReached?: number;
 	perFileLimitReached?: number;
 	linesTruncated?: boolean;
+	/** Set when the result lists matching files instead of match lines, so the
+	 * frame counts rows in files rather than in matches. */
+	pathsOnly?: boolean;
 	meta?: OutputMeta;
 	scopePath?: string;
 	matchCount?: number;
@@ -1744,6 +1747,7 @@ function renderBudgetedSearchGroups(
 	matchCount: number,
 	uiTheme: Theme,
 	compact: boolean,
+	unit: "match" | "file" = "match",
 ): string[] {
 	if (maxLines <= 0) return [];
 	const renderedGroups = groups
@@ -1790,7 +1794,7 @@ function renderBudgetedSearchGroups(
 	}
 	if (hasSummary) {
 		const hiddenLabel =
-			hiddenMatches > 0 ? formatMoreItems(hiddenMatches, "match") : formatMoreItems(hiddenLines, "line");
+			hiddenMatches > 0 ? formatMoreItems(hiddenMatches, unit) : formatMoreItems(hiddenLines, "line");
 		lines.push(uiTheme.fg("dim", hiddenLabel));
 	}
 	return lines;
@@ -1934,7 +1938,9 @@ export const textSearchRenderer = {
 				(options.expanded ? EXPANDED_TEXT_LIMIT : COLLAPSED_TEXT_LIMIT) - extraLines.length,
 				0,
 			);
-			const matchLines = renderBudgetedSearchGroups(matchGroups, budget, matchCount, uiTheme, !options.expanded);
+			const matchLines = details?.pathsOnly
+				? renderBudgetedSearchGroups(matchGroups, budget, fileCount, uiTheme, !options.expanded, "file")
+				: renderBudgetedSearchGroups(matchGroups, budget, matchCount, uiTheme, !options.expanded);
 			const innerWidth = outputBlockContentWidth(width);
 			const bodyLines = [...matchLines, ...extraLines].map(l => truncateToWidth(l, innerWidth, Ellipsis.Omit));
 			return {
