@@ -144,7 +144,9 @@ async function runMultiTargetAstGrep(
 		filesWithMatches += targetResult.filesWithMatches;
 		filesSearched += targetResult.filesSearched;
 		limitReached = limitReached || targetResult.limitReached;
-		if (targetResult.parseErrors) parseErrors.push(...targetResult.parseErrors);
+		if (targetResult.parseErrors) {
+			for (let pi = 0; pi < targetResult.parseErrors.length; pi++) parseErrors.push(targetResult.parseErrors[pi]!);
+		}
 		for (const match of targetResult.matches) {
 			const absolute = targetInfo.isFile ? targetInfo.basePath : path.resolve(targetInfo.basePath, match.path);
 			// Overlapping targets (a directory plus a file nested
@@ -408,8 +410,8 @@ export class AstGrepTool implements AgentTool<typeof astGrepSchema, AstGrepToolD
 						skip: rendered.model.length === 0,
 					};
 				});
-				outputLines.push(...grouped.model);
-				displayLines.push(...grouped.display);
+				for (let li = 0; li < grouped.model.length; li++) outputLines.push(grouped.model[li]!);
+				for (let li = 0; li < grouped.display.length; li++) displayLines.push(grouped.display[li]!);
 			} else {
 				for (const relativePath of fileList) {
 					const rendered = renderMatchesForFile(relativePath);
@@ -422,8 +424,8 @@ export class AstGrepTool implements AgentTool<typeof astGrepSchema, AstGrepToolD
 					if (hashContext?.tag) {
 						outputLines.push(formatHashlineHeader(relativePath, hashContext.tag));
 					}
-					outputLines.push(...rendered.model);
-					displayLines.push(...rendered.display);
+					for (let li = 0; li < rendered.model.length; li++) outputLines.push(rendered.model[li]!);
+					for (let li = 0; li < rendered.display.length; li++) displayLines.push(rendered.display[li]!);
 				}
 			}
 

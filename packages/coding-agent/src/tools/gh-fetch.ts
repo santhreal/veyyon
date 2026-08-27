@@ -362,7 +362,7 @@ async function fetchPrReviewComments(
 		const pageComments = response
 			.map(comment => normalizePrReviewComment(comment))
 			.filter((comment): comment is GhPrReviewComment => comment !== null);
-		reviewComments.push(...pageComments);
+		for (let ci = 0; ci < pageComments.length; ci++) reviewComments.push(pageComments[ci]!);
 
 		// Compare the raw page length: a dropped malformed item must not end
 		// pagination early and silently lose the remaining pages.
@@ -488,7 +488,8 @@ function formatIssueView(data: GhIssueViewData, input: { issue: string; repo?: s
 		const commentSection = formatCommentsSection(data.comments);
 		if (commentSection.length > 0) {
 			lines.push("");
-			lines.push(...commentSection);
+			const cs = commentSection;
+			for (let li = 0; li < cs.length; li++) lines.push(cs[li]!);
 		}
 	}
 
@@ -537,14 +538,16 @@ function formatPrView(data: GhPrViewData, input: { pr?: string; repo?: string; c
 	const fileSection = formatPrFiles(data.files);
 	if (fileSection.length > 0) {
 		lines.push("");
-		lines.push(...fileSection);
+		const fs = fileSection;
+		for (let li = 0; li < fs.length; li++) lines.push(fs[li]!);
 	}
 
 	if ((input.comments ?? true) && data.reviews) {
 		const reviewSection = formatReviewsSection(data.reviews);
 		if (reviewSection.length > 0) {
 			lines.push("");
-			lines.push(...reviewSection);
+			const rs = reviewSection;
+			for (let li = 0; li < rs.length; li++) lines.push(rs[li]!);
 		}
 	}
 
@@ -552,7 +555,8 @@ function formatPrView(data: GhPrViewData, input: { pr?: string; repo?: string; c
 		const reviewCommentsSection = formatReviewCommentsSection(data.reviewComments);
 		if (reviewCommentsSection.length > 0) {
 			lines.push("");
-			lines.push(...reviewCommentsSection);
+			const rcs = reviewCommentsSection;
+			for (let li = 0; li < rcs.length; li++) lines.push(rcs[li]!);
 		}
 	}
 
@@ -560,7 +564,8 @@ function formatPrView(data: GhPrViewData, input: { pr?: string; repo?: string; c
 		const commentSection = formatCommentsSection(data.comments);
 		if (commentSection.length > 0) {
 			lines.push("");
-			lines.push(...commentSection);
+			const cs = commentSection;
+			for (let li = 0; li < cs.length; li++) lines.push(cs[li]!);
 		}
 	}
 

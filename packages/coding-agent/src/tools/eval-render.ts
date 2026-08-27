@@ -746,7 +746,7 @@ export const evalToolRenderer = {
 					);
 					outputLines.push(truncateToWidth(skippedLine, width));
 				}
-				outputLines.push(...cachedLines);
+				for (let li = 0; li < cachedLines.length; li++) outputLines.push(cachedLines[li]!);
 				if (statusLines.length > 0) {
 					outputLines.push(truncateToWidth(uiTheme.fg("dim", "Status"), width));
 					for (const statusLine of statusLines) {

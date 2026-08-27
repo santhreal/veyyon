@@ -1171,7 +1171,8 @@ function renderRunSection(run: GhRunSnapshot): string[] {
 	pushLine(lines, "Updated", run.updatedAt);
 	pushLine(lines, "URL", run.url);
 	lines.push("");
-	lines.push(...renderJobsSection(run.jobs));
+	const js = renderJobsSection(run.jobs);
+	for (let li = 0; li < js.length; li++) lines.push(js[li]!);
 	return lines;
 }
 
@@ -1202,7 +1203,8 @@ function formatRunWatchSnapshot(
 	}
 
 	lines.push("");
-	lines.push(...renderJobsSection(run.jobs));
+	const js = renderJobsSection(run.jobs);
+	for (let li = 0; li < js.length; li++) lines.push(js[li]!);
 
 	if (includeOutcome) {
 		lines.push("");
@@ -1231,7 +1233,8 @@ function formatRunWatchResult(
 	pushLine(lines, "Updated", run.updatedAt);
 	pushLine(lines, "URL", run.url);
 	lines.push("");
-	lines.push(...renderJobsSection(run.jobs));
+	const js = renderJobsSection(run.jobs);
+	for (let li = 0; li < js.length; li++) lines.push(js[li]!);
 
 	if (failedJobs.length > 0) {
 		lines.push("");
@@ -1282,7 +1285,8 @@ function formatCommitRunWatchSnapshot(
 
 	for (const run of runs) {
 		lines.push("");
-		lines.push(...renderRunSection(run));
+		const rs = renderRunSection(run);
+		for (let li = 0; li < rs.length; li++) lines.push(rs[li]!);
 	}
 
 	return lines.join("\n").trim();
@@ -1306,7 +1310,8 @@ function formatCommitRunWatchResult(
 
 	for (const run of runs) {
 		lines.push("");
-		lines.push(...renderRunSection(run));
+		const rs = renderRunSection(run);
+		for (let li = 0; li < rs.length; li++) lines.push(rs[li]!);
 	}
 
 	if (failedJobLogs.length > 0) {
@@ -1592,7 +1597,7 @@ async function fetchRunJobs(
 		);
 		const rawPage = response.jobs ?? [];
 		const pageJobs = rawPage.map(job => normalizeRunJob(job)).filter((job): job is GhRunJobSnapshot => job !== null);
-		jobs.push(...pageJobs);
+		for (let ji = 0; ji < pageJobs.length; ji++) jobs.push(pageJobs[ji]!);
 
 		// Compare the raw page length: normalizeRunJob drops malformed items,
 		// and a post-filter short page must not end pagination early.
