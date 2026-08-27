@@ -82,7 +82,7 @@ function combineSchemas(left: unknown, right: unknown): unknown {
 
 /** Union two arrays of JSON values, deduping by deep equality. Used to merge `dependentRequired` arrays. */
 function mergeArrayValues(left: unknown[], right: unknown[]): unknown[] {
-	const merged = [...left];
+	const merged = left.slice();
 	for (const value of right) {
 		if (!merged.some(existing => areJsonValuesEqual(existing, value))) {
 			merged.push(value);
@@ -98,7 +98,7 @@ function mergeArrayValues(left: unknown[], right: unknown[]): unknown[] {
  */
 function mergePrefixItems(existing: unknown, convertedItems: unknown[]): unknown[] {
 	if (!Array.isArray(existing)) return convertedItems;
-	const merged = [...existing];
+	const merged = existing.slice();
 	for (let index = 0; index < convertedItems.length; index += 1) {
 		merged[index] = index in merged ? combineSchemas(merged[index], convertedItems[index]) : convertedItems[index];
 	}
@@ -169,11 +169,11 @@ function makeNullable(schema: JsonObject): JsonObject {
 		return schema;
 	}
 	if (Array.isArray(type)) {
-		if (!type.includes("null")) schema.type = [...type, "null"];
+		if (!type.includes("null")) schema.type = type.concat(["null"]);
 		return schema;
 	}
 	if (Array.isArray(schema.anyOf)) {
-		if (!hasNullVariant(schema.anyOf)) schema.anyOf = [...schema.anyOf, { type: "null" }];
+		if (!hasNullVariant(schema.anyOf)) schema.anyOf = schema.anyOf.concat([{ type: "null" }]);
 		return schema;
 	}
 	return { anyOf: [schema, { type: "null" }] };

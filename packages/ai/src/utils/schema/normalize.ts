@@ -407,7 +407,7 @@ function foldOneOfIntoAnyOf(schema: JsonObject): JsonObject {
 	if (!Array.isArray(schema.oneOf)) return schema;
 	const rest = copySchemaWithout(schema, "oneOf");
 	const existing = Array.isArray(rest.anyOf) ? (rest.anyOf as unknown[]) : [];
-	rest.anyOf = [...existing, ...(schema.oneOf as unknown[])];
+	rest.anyOf = existing.concat(schema.oneOf as unknown[]);
 	return rest;
 }
 
@@ -481,7 +481,7 @@ function mergeObjectCombinerVariants(schema: JsonObject, combiner: "anyOf" | "on
 			? variant.required.filter((r): r is string => typeof r === "string")
 			: [];
 		if (requiredIntersection === undefined) {
-			requiredIntersection = [...variantRequired];
+			requiredIntersection = variantRequired.slice();
 		} else {
 			const reqSet = new Set(variantRequired);
 			requiredIntersection = requiredIntersection.filter(r => reqSet.has(r));
@@ -1108,7 +1108,7 @@ export function sanitizeSchemaForOllama(schema: JsonObject): JsonObject {
 			}
 			if (key === "type" && Array.isArray(child)) {
 				const variants = child.filter((entry): entry is string => typeof entry === "string");
-				const uniqueVariants = [...new Set(variants)];
+				const uniqueVariants = Array.from(new Set(variants));
 				const nonNull = uniqueVariants.filter(entry => entry !== "null");
 				if (nonNull.length <= 1) {
 					output.type = nonNull[0] ?? uniqueVariants[0] ?? child[0];
@@ -1293,7 +1293,7 @@ function normalizeOpenAIResponsesSchemaNode(value: unknown, cache: WeakMap<JsonO
 		const rewrittenOneOf = normalizeOpenAIResponsesSchemaArray(value.oneOf, cache);
 		const existingAnyOf = output.anyOf;
 		output.anyOf = Array.isArray(existingAnyOf)
-			? [...existingAnyOf, ...(rewrittenOneOf as unknown[])]
+			? (existingAnyOf as unknown[]).concat(rewrittenOneOf as unknown[])
 			: rewrittenOneOf;
 	}
 
@@ -1362,7 +1362,7 @@ function appendOpenAIResponsesFallbackPatternProperty(output: JsonObject, schema
 		return;
 	}
 	if (isRecord(existing) && Array.isArray(existing.anyOf) && Object.keys(existing).length === 1) {
-		existing.anyOf = [...existing.anyOf, schema];
+		existing.anyOf = existing.anyOf.concat([schema]);
 		return;
 	}
 	output[OPENAI_RESPONSES_PATTERN_PROPERTIES_FALLBACK] = { anyOf: [existing, schema] };
@@ -1905,7 +1905,7 @@ function enforceStrictSchemaBody(
 					continue;
 				}
 				if (isPureAnyOfNode(processed)) {
-					strictProperties[key] = { ...processed, anyOf: [...processed.anyOf, { type: "null" }] };
+					strictProperties[key] = { ...processed, anyOf: processed.anyOf.concat([{ type: "null" }]) };
 					continue;
 				}
 				if (isRecord(processed) && typeof processed.description === "string") {

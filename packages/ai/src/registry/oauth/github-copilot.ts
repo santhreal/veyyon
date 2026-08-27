@@ -287,7 +287,9 @@ async function enableAllGitHubCopilotModels(
 ): Promise<void> {
 	// Synthesized catalog variants (Copilot long-context `-1m` entries) share
 	// the upstream model id; enable each wire id exactly once.
-	const wireModelIds = [...new Set(getBundledModels("github-copilot").map(model => model.requestModelId ?? model.id))];
+	const wireModelIds = Array.from(
+		new Set(getBundledModels("github-copilot").map(model => model.requestModelId ?? model.id)),
+	);
 	const BATCH_SIZE = 5;
 	for (const batch of batched(wireModelIds, BATCH_SIZE)) {
 		await Promise.all(

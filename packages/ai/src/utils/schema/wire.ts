@@ -254,7 +254,7 @@ function copyNullableScalarConstraints(schema: Record<string, unknown>, scalarVa
 
 	const enumValues = scalarVariant.enum;
 	if (Array.isArray(enumValues)) {
-		schema.enum = enumValues.includes(null) ? enumValues : [...enumValues, null];
+		schema.enum = enumValues.includes(null) ? enumValues : enumValues.concat([null]);
 	}
 }
 

@@ -74,7 +74,7 @@ function pushIssue(
 	message: string,
 	options: { expectedTypes?: string[]; keyword?: string } = {},
 ): void {
-	issues.push({ path: [...path], message, ...options });
+	issues.push({ path: path.slice(), message, ...options });
 }
 
 function typeOfJsonValue(value: unknown): string {
@@ -118,7 +118,7 @@ function schemaTypes(schema: Record<string, unknown>): string[] {
 				? raw.filter((entry): entry is string => typeof entry === "string")
 				: [];
 	if (schema.nullable === true && !types.includes("null")) {
-		return [...types, "null"];
+		return types.concat(["null"]);
 	}
 	return types;
 }
@@ -348,7 +348,7 @@ function validateObjectKeywords(
 	if (isRequiredSet(schema.required)) {
 		for (const key of schema.required) {
 			if (!Object.hasOwn(value, key)) {
-				pushIssue(issues, [...path, key], "is required", { keyword: "required" });
+				pushIssue(issues, path.concat([key]), "is required", { keyword: "required" });
 				valid = false;
 			}
 		}
@@ -356,12 +356,12 @@ function validateObjectKeywords(
 
 	for (const key in properties) {
 		if (!Object.hasOwn(value, key)) continue;
-		valid = validateSchemaNode(properties[key], value[key], [...path, key], ctx, issues) && valid;
+		valid = validateSchemaNode(properties[key], value[key], path.concat([key]), ctx, issues) && valid;
 	}
 
 	if (schema.propertyNames !== undefined) {
 		for (const key of Object.keys(value)) {
-			valid = validateSchemaNode(schema.propertyNames, key, [...path, key], ctx, issues) && valid;
+			valid = validateSchemaNode(schema.propertyNames, key, path.concat([key]), ctx, issues) && valid;
 		}
 	}
 
@@ -381,7 +381,7 @@ function validateObjectKeywords(
 			for (const key of Object.keys(value)) {
 				if (!re.test(key)) continue;
 				known.add(key);
-				valid = validateSchemaNode(patternSchema, value[key], [...path, key], ctx, issues) && valid;
+				valid = validateSchemaNode(patternSchema, value[key], path.concat([key]), ctx, issues) && valid;
 			}
 		}
 	}
@@ -395,7 +395,7 @@ function validateObjectKeywords(
 			for (const dep of deps) {
 				if (typeof dep !== "string") continue;
 				if (!Object.hasOwn(value, dep)) {
-					pushIssue(issues, [...path, dep], `is required when "${key}" is present`, {
+					pushIssue(issues, path.concat([dep]), `is required when "${key}" is present`, {
 						keyword: "dependentRequired",
 					});
 					valid = false;
@@ -418,13 +418,13 @@ function validateObjectKeywords(
 	if (additional === false) {
 		for (const key of Object.keys(value)) {
 			if (known.has(key)) continue;
-			pushIssue(issues, [...path, key], "must not be present", { keyword: "additionalProperties" });
+			pushIssue(issues, path.concat([key]), "must not be present", { keyword: "additionalProperties" });
 			valid = false;
 		}
 	} else if (additional !== undefined && additional !== true) {
 		for (const key of Object.keys(value)) {
 			if (known.has(key)) continue;
-			valid = validateSchemaNode(additional, value[key], [...path, key], ctx, issues) && valid;
+			valid = validateSchemaNode(additional, value[key], path.concat([key]), ctx, issues) && valid;
 		}
 	}
 
@@ -461,7 +461,7 @@ function validateArrayKeywords(
 		for (let i = 0; i < value.length; i += 1) {
 			for (let j = i + 1; j < value.length; j += 1) {
 				if (!areJsonValuesEqual(value[i], value[j])) continue;
-				pushIssue(issues, [...path, j], "must be unique", { keyword: "uniqueItems" });
+				pushIssue(issues, path.concat([j]), "must be unique", { keyword: "uniqueItems" });
 				valid = false;
 			}
 		}
@@ -479,16 +479,16 @@ function validateArrayKeywords(
 	} else if (prefixItems) {
 		const limit = Math.min(prefixItems.length, value.length);
 		for (let i = 0; i < limit; i += 1) {
-			valid = validateSchemaNode(prefixItems[i], value[i], [...path, i], ctx, issues) && valid;
+			valid = validateSchemaNode(prefixItems[i], value[i], path.concat([i]), ctx, issues) && valid;
 		}
 		if (items !== undefined) {
 			for (let i = prefixItems.length; i < value.length; i += 1) {
-				valid = validateSchemaNode(items, value[i], [...path, i], ctx, issues) && valid;
+				valid = validateSchemaNode(items, value[i], path.concat([i]), ctx, issues) && valid;
 			}
 		}
 	} else if (items !== undefined) {
 		for (let i = 0; i < value.length; i += 1) {
-			valid = validateSchemaNode(items, value[i], [...path, i], ctx, issues) && valid;
+			valid = validateSchemaNode(items, value[i], path.concat([i]), ctx, issues) && valid;
 		}
 	}
 
@@ -498,7 +498,7 @@ function validateArrayKeywords(
 		let count = 0;
 		for (let i = 0; i < value.length; i += 1) {
 			const containsIssues: JsonSchemaValidationIssue[] = [];
-			if (validateSchemaNode(schema.contains, value[i], [...path, i], ctx, containsIssues)) {
+			if (validateSchemaNode(schema.contains, value[i], path.concat([i]), ctx, containsIssues)) {
 				count += 1;
 			}
 		}

@@ -776,7 +776,7 @@ function normalizeOptionalNullsForSchema(
 			const normalized = normalizeOptionalNullsForSchema(itemSchema, value[i], false);
 			if (!normalized.changed) continue;
 			if (!changed) {
-				nextValue = [...value];
+				nextValue = value.slice();
 				changed = true;
 			}
 			nextValue[i] = normalized.value;
@@ -909,7 +909,9 @@ function normalizeEnumStringWhitespace(
 		if (refs.has(ref)) return { value, changed: false };
 		const resolved = resolveLocalJsonSchemaRef(root, ref);
 		if (resolved === undefined) return { value, changed: false };
-		return normalizeEnumStringWhitespace(resolved, value, root, new Set([...refs, ref]));
+		const nextRefs = new Set(refs);
+		nextRefs.add(ref);
+		return normalizeEnumStringWhitespace(resolved, value, root, nextRefs);
 	}
 
 	const branchMatches = (branch: unknown, candidate: unknown): boolean => {
@@ -979,7 +981,7 @@ function normalizeEnumStringWhitespace(
 				const normalized = normalizeEnumStringWhitespace(itemSchema, value[i], root, refs);
 				if (!normalized.changed) continue;
 				if (!changed) {
-					nextValue = [...value];
+					nextValue = value.slice();
 					changed = true;
 				}
 				nextValue[i] = normalized.value;
@@ -993,7 +995,7 @@ function normalizeEnumStringWhitespace(
 				const normalized = normalizeEnumStringWhitespace(itemSchema, nextValue[i], root, refs);
 				if (!normalized.changed) continue;
 				if (!changed) {
-					nextValue = [...value];
+					nextValue = value.slice();
 					changed = true;
 				}
 				nextValue[i] = normalized.value;
@@ -1115,7 +1117,7 @@ function normalizeIdentifierStringWhitespace(value: unknown, depth = 0): { value
 			const normalized = normalizeIdentifierStringWhitespace(value[i], depth + 1);
 			if (!normalized.changed) continue;
 			if (!changed) {
-				next = [...value];
+				next = value.slice();
 				changed = true;
 			}
 			next[i] = normalized.value;
@@ -1205,7 +1207,7 @@ function normalizeDoubleEncodedKeys(value: unknown, depth = 0): { value: unknown
 			const normalized = normalizeDoubleEncodedKeys(value[i], depth + 1);
 			if (!normalized.changed) continue;
 			if (!changed) {
-				next = [...value];
+				next = value.slice();
 				changed = true;
 			}
 			next[i] = normalized.value;
@@ -1361,7 +1363,7 @@ function normalizeStringEncodedArrayUnions(schema: unknown, value: unknown): { v
 			const normalized = normalizeStringEncodedArrayUnions(itemSchema, value[i]);
 			if (!normalized.changed) continue;
 			if (!changed) {
-				nextValue = [...value];
+				nextValue = value.slice();
 				changed = true;
 			}
 			nextValue[i] = normalized.value;
@@ -1485,7 +1487,7 @@ function mapZodExpectedToJsonSchemaType(expected: unknown): string | null {
 function flattenIssues(issues: ReadonlyArray<ZodIssue>): FlatIssue[] {
 	const out: FlatIssue[] = [];
 	const walk = (issue: ZodIssue, prefix: ReadonlyArray<PropertyKey>, unionBranch: boolean): void => {
-		const fullPath = prefix.length === 0 ? issue.path : [...prefix, ...issue.path];
+		const fullPath = prefix.length === 0 ? issue.path : prefix.concat(issue.path);
 		if (issue.code === "invalid_type") {
 			const mapped = mapZodExpectedToJsonSchemaType((issue as { expected?: unknown }).expected);
 			if (mapped) {
@@ -1498,7 +1500,7 @@ function flattenIssues(issues: ReadonlyArray<ZodIssue>): FlatIssue[] {
 			for (const key of keys) {
 				out.push({
 					keyword: "unrecognized",
-					instancePath: pathToPointer([...fullPath, key]),
+					instancePath: pathToPointer(fullPath.concat([key])),
 					expectedTypes: [],
 					unionBranch,
 				});
@@ -2042,9 +2044,10 @@ function annotateIssuesWithAcceptedValues(json: unknown, messages: readonly stri
 	// so a wide rejection spent the whole budget on generic "is required" lines
 	// and cut the one line that names a legal value. The set-naming lines are
 	// the actionable ones; they lead, stably.
-	return [...annotated.filter(line => line.namesTheSet), ...annotated.filter(line => !line.namesTheSet)].map(
-		line => line.message,
-	);
+	return annotated
+		.filter(line => line.namesTheSet)
+		.concat(annotated.filter(line => !line.namesTheSet))
+		.map(line => line.message);
 }
 
 /**
