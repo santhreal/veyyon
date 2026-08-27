@@ -25,6 +25,7 @@ import {
 	type Component,
 	Editor,
 	matchesKey,
+	padding,
 	routeSgrMouseInput,
 	ScrollView,
 	type SgrMouseEvent,
@@ -649,7 +650,7 @@ export class AgentTranscriptViewer implements Component {
 		const dims = computeModalDims(width, termHeight, sizing);
 		if (!dims) {
 			this.#shellGeometry = null;
-			return new Array(termHeight).fill(" ".repeat(width));
+			return new Array(termHeight).fill(padding(width));
 		}
 		// The transcript components carry their own rail inset, and ScrollView
 		// reserves the last column for the scrollbar, so the body is widthed to
