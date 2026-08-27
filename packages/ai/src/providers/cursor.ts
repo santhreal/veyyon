@@ -141,6 +141,7 @@ import type {
 } from "../types";
 import { normalizeSystemPrompts } from "../utils";
 import {
+	type CursorExecResolvedCarrier,
 	clearStreamingPartialJson,
 	kCursorExecResolved,
 	kStreamingBlockIndex,
@@ -577,6 +578,7 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 				get currentToolCall() {
 					return currentToolCall;
 				},
+				execDispatchedToolCalls: new Set<string>(),
 				get firstTokenTime() {
 					return firstTokenTime;
 				},
@@ -1050,6 +1052,16 @@ export interface BlockState {
 	currentTextBlock: (TextContent & { [kStreamingBlockIndex]: number }) | null;
 	currentThinkingBlock: (ThinkingContent & { [kStreamingBlockIndex]: number }) | null;
 	currentToolCall: ToolCallState | null;
+	/**
+	 * Tool-call ids the exec channel has dispatched this turn.
+	 *
+	 * Cursor surfaces an MCP call on two channels at once: `mcpArgs` on the exec
+	 * channel, which this provider runs through the caller's handler and answers,
+	 * and an `mcpToolCall` block on the assistant stream. The two arrive in either
+	 * order, so the id is recorded here as well as stamped onto any block that
+	 * already exists, and a block that opens later reads this set.
+	 */
+	execDispatchedToolCalls: Set<string>;
 	firstTokenTime: number | undefined;
 	/** This turn's token account. See {@link CursorUsageAccount}. */
 	usage: CursorUsageAccount;
@@ -1785,6 +1797,16 @@ async function handleExecServerMessage(
 		case "mcpArgs": {
 			const args = execMsg.message.value;
 			const mcpCall = decodeMcpCall(args);
+			// This call is about to run HERE, through the caller's handler, and its
+			// result goes back on the exec channel. The same call also reaches the
+			// assistant stream as an `mcpToolCall` block, and an unmarked block is
+			// runnable, so `agent-loop.ts` executed every one of these a second time
+			// after the turn closed — a duplicate side effect when the arguments had
+			// streamed, and a validation failure against `{}` when they had not,
+			// either way a second `toolResult` under an id that already had one.
+			// Cursor's own exec tools never had this problem because
+			// `synthesizeCursorExecToolCall` builds their block already stamped.
+			markCursorExecDispatched(mcpCall.toolCallId, output, state);
 			const { execResult } = await resolveExecHandler(
 				mcpCall,
 				execHandlers?.mcp?.bind(execHandlers),
@@ -2441,6 +2463,26 @@ function decodeMcpArgValue(value: Uint8Array): unknown {
 	return parseToolArgsJson(text);
 }
 
+/**
+ * Record that the exec channel has dispatched `toolCallId`, and stamp the
+ * assistant-stream block that names it so the agent loop treats the call as
+ * already run.
+ *
+ * Both halves are needed because the wire fixes no order between the exec
+ * request and the `toolCallStarted` update: a block that already exists is
+ * stamped now, and one that opens later reads
+ * {@link BlockState.execDispatchedToolCalls}.
+ */
+function markCursorExecDispatched(toolCallId: string, output: AssistantMessage, state: BlockState): void {
+	if (!toolCallId) return;
+	state.execDispatchedToolCalls.add(toolCallId);
+	for (const block of output.content) {
+		if (block.type === "toolCall" && block.id === toolCallId) {
+			(block as CursorExecResolvedCarrier)[kCursorExecResolved] = true;
+		}
+	}
+}
+
 function decodeMcpArgsMap(args?: Record<string, Uint8Array>): Record<string, unknown> | undefined {
 	if (!args) {
 		return undefined;
@@ -2770,14 +2812,18 @@ export function processInteractionUpdate(
 			const mcpCall = mcpToolCallOf(toolCall);
 			if (mcpCall) {
 				const args = mcpCall.args || {};
+				const toolCallId = args.toolCallId || crypto.randomUUID();
 				const block: ToolCallState = {
 					type: "toolCall",
-					id: args.toolCallId || crypto.randomUUID(),
+					id: toolCallId,
 					name: args.name || args.toolName || "",
 					arguments: {},
 					[kStreamingBlockIndex]: output.content.length,
 					[kStreamingPartialJson]: "",
 					[kStreamingBlockKind]: "mcp",
+					// The exec channel may have dispatched this call before its block
+					// opened, in which case the tool has already run and answered.
+					...(state.execDispatchedToolCalls.has(toolCallId) ? { [kCursorExecResolved]: true } : {}),
 				};
 				output.content.push(block);
 				state.setToolCall(block);
