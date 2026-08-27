@@ -13,6 +13,10 @@
 
 - `bestEffort` and `optionalResult` are imported from `@veyyon/utils/discarded-fault`, which the barrel does not re-export, so a consumer reaching them names the module instead.
 - `winston` and `winston-daily-rotate-file` are resolved on the first log write instead of at module load, taking 4.7ms off every process that imports the logger without logging, which is every entry point.
+- `bestEffort` and `optionalResult` are imported from `@veyyon/utils/discarded-fault`. The barrel does not re-export them, so a consumer reaching them through `@veyyon/utils` names the module instead.
+- `winston` and `winston-daily-rotate-file` are loaded synchronously on first log emission via `createRequire` instead of at module import, reducing idle memory by 2.4 MiB.
+- `file-lock` and its transitive imports (`process-liveness` via `bun:ffi`, `logger` via `winston`) are loaded synchronously on first use via `createRequire` from `dirs.ts`, reducing idle memory by 3.3 MiB. The barrel re-exports `file-lock` as types only; callers that need `withFileLock` or `tryWithFileLock` import from `@veyyon/utils/file-lock`.
+- `glob.ts`, `bench-harness.ts`, `cli.ts`, `fault-sink.ts`, `levenshtein.ts`, `logger.ts`, and `tls-fetch.ts` replace array spreads with `.slice()`/`.concat()`/`Array.from()` in glob exclude merging, benchmark stats, CLI help rendering, fault sink iteration, fuzzy matching, module timing, and TLS CA merging.
 
 ### Fixed
 

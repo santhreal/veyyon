@@ -11,6 +11,12 @@
 - `ProviderWireCapabilities.anthropicMessages` declares how a provider serves the Anthropic Messages API — its endpoint, credential placement, rejected request features and retryable model errors — and `declaredProviders()` and `declaredCapabilityNames()` derive the declaring sets from the table.
 - Bundled model resolution persists a content-verified enriched snapshot, and a registry cache stamp moves on every row-content write, and on a row crossing the freshness window it is read under, without treating SQLite sidecar churn or a provider re-verifying models it already had as a change.
 - Added `supportsServerCompaction` capability data for ChatGPT Codex backend models on the Responses API.
+
+### Changed
+
+- The GitLab Duo Workflow provider descriptor in `provider-models/special.ts` loads the zod-dependent discovery module lazily on first model manager construction instead of at module import, deferring 28 MiB of zod and its locale files from the static boot graph.
+- `model-manager.ts`, `variant-collapse.ts`, `discovery/codex.ts`, `discovery/cursor.ts`, `discovery/devin.ts`, `identity/id.ts`, `identity/reference.ts`, `openai-compat.ts`, `wire-capabilities.ts`, and `ollama.ts` replace `[...arr]` spreads with `.slice()`/`.concat()`/`Array.from()` in model management, discovery, identity resolution, and capability declaration paths.
+
 ## [1.2.0] - 2026-08-23
 
 ### Breaking Changes

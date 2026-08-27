@@ -272,6 +272,9 @@
 - `extension-ui-controller.ts`, `mcp-command-controller.ts`, `tan-command-controller.ts`, and `selector-controller.ts` replace `[...arr]` spreads with `.slice()`/`.concat()`/`Array.from()` in dialog, tool activation, and selector construction paths.
 - `rpc-subagents.ts`, `host-uris.ts`, and `rpc-client.ts` replace `[...arr]` spreads with `.slice()`/`Array.from()` in RPC paths.
 - `model-hub.ts`, `model-browser.ts`, `read-tool-group.ts`, `tree-selector.ts`, `settings-selector.ts`, `plan-review-overlay.ts`, and `copy-selector.ts` replace remaining `[...arr]` spreads with `.slice()`/`.concat()`/`Array.from()` in sidebar, tree walk, and undo/redo paths.
+- `model-registry.ts`, `model-resolver.ts`, `settings.ts`, and `keybindings.ts` replace `[...arr]` spreads with `.slice()`/`.concat()`/`Array.from()` in model resolution, settings fork/clone, and keybinding config paths.
+- `child-environment.ts`, `config-commands.ts`, `config-writer.ts`, `manager.ts`, `smithery-registry.ts`, and `unattributable-error.ts` replace array spreads with `.slice()`/`.concat()`/`Array.from()` in MCP server management, environment baseline, and resource subscription paths.
+- `loading/policy.ts`, `path-utils.ts`, `todo.ts`, `output-schema-validator.ts`, `secret-use-boundary.ts`, `sqlite-reader.ts`, `write.ts`, `image-gen.ts`, `reroot-hint.ts`, and `jtd-to-json-schema.ts` replace array spreads with `.slice()`/`.concat()`/`Array.from()` in tool loading, search path resolution, todo operations, and schema validation.
 
 ### Added
 
