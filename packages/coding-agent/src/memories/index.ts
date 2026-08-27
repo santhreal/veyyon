@@ -1118,7 +1118,8 @@ async function listRelativeFiles(rootDir: string, prefix = ""): Promise<string[]
 	for (const entry of entries) {
 		const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
 		if (entry.isDirectory()) {
-			files.push(...(await listRelativeFiles(path.join(rootDir, entry.name), relative)));
+			const subFiles = await listRelativeFiles(path.join(rootDir, entry.name), relative);
+			for (let fi = 0; fi < subFiles.length; fi++) files.push(subFiles[fi]!);
 			continue;
 		}
 		if (entry.isFile()) files.push(relative);

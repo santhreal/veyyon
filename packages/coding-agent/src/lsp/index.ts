@@ -1980,7 +1980,7 @@ export class LspTool implements AgentTool<typeof lspSchema, LspToolDetails, Them
 				}
 				if (serverNotes.length > 0) {
 					lines.push("  Server notes:");
-					lines.push(...serverNotes);
+					for (let ni = 0; ni < serverNotes.length; ni++) lines.push(serverNotes[ni]!);
 				}
 				return {
 					content: [{ type: "text", text: lines.join("\n") }],
@@ -2097,7 +2097,7 @@ export class LspTool implements AgentTool<typeof lspSchema, LspToolDetails, Them
 
 			if (serverNotes.length > 0) {
 				summary.push("  Server notes:");
-				summary.push(...serverNotes);
+				for (let ni = 0; ni < serverNotes.length; ni++) summary.push(serverNotes[ni]!);
 			}
 
 			const header = `Renamed ${fileCountLabel} → ${destLabel}`;
@@ -2671,11 +2671,13 @@ export class LspTool implements AgentTool<typeof lspSchema, LspToolDetails, Them
 						const summaryLines: string[] = [];
 						if (appliedAction.edits.length > 0) {
 							summaryLines.push("  Workspace edit:");
-							summaryLines.push(...appliedAction.edits.map(item => `    ${item}`));
+							const editLines = appliedAction.edits.map(item => `    ${item}`);
+							for (let li = 0; li < editLines.length; li++) summaryLines.push(editLines[li]!);
 						}
 						if (appliedAction.executedCommands.length > 0) {
 							summaryLines.push("  Executed command(s):");
-							summaryLines.push(...appliedAction.executedCommands.map(commandName => `    ${commandName}`));
+							const cmdLines = appliedAction.executedCommands.map(commandName => `    ${commandName}`);
+							for (let li = 0; li < cmdLines.length; li++) summaryLines.push(cmdLines[li]!);
 						}
 
 						output = `Applied "${appliedAction.title}":\n${summaryLines.join("\n")}`;

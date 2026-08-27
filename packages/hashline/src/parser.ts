@@ -328,7 +328,7 @@ export class Executor {
 	#commitDeferredBlanks(pending: Pending): void {
 		if (pending.deferredBlanks.length === 0) return;
 		if (!this.#warnings.includes(BARE_BODY_AUTO_PIPED_WARNING)) this.#warnings.push(BARE_BODY_AUTO_PIPED_WARNING);
-		pending.payloads.push(...pending.deferredBlanks);
+		for (let bi = 0; bi < pending.deferredBlanks.length; bi++) pending.payloads.push(pending.deferredBlanks[bi]!);
 		pending.deferredBlanks = [];
 	}
 

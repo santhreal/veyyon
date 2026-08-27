@@ -629,7 +629,8 @@ export class MCPManager {
 					const { connection, serverTools } = value;
 					connectedServers.add(name);
 					const reconnect = () => this.reconnectServer(name);
-					allTools.push(...MCPTool.fromTools(connection, serverTools, reconnect));
+					const mcpTools = MCPTool.fromTools(connection, serverTools, reconnect);
+					for (let ti = 0; ti < mcpTools.length; ti++) allTools.push(mcpTools[ti]!);
 				} else if (task.tracked.status === "rejected") {
 					const message = errorMessage(task.tracked.reason);
 					errors.set(name, message);
@@ -639,9 +640,14 @@ export class MCPManager {
 					if (cached) {
 						const source = this.#sources.get(name);
 						const reconnect = () => this.reconnectServer(name);
-						allTools.push(
-							...DeferredMCPTool.fromTools(name, cached, () => this.waitForConnection(name), source, reconnect),
+						const deferred = DeferredMCPTool.fromTools(
+							name,
+							cached,
+							() => this.waitForConnection(name),
+							source,
+							reconnect,
 						);
+						for (let ti = 0; ti < deferred.length; ti++) allTools.push(deferred[ti]!);
 					}
 				}
 			}
@@ -669,7 +675,7 @@ export class MCPManager {
 		// copy on every reconnect. See `mcpToolNamePrefix`.
 		const prefix = mcpToolNamePrefix(name);
 		this.#tools = this.#tools.filter(t => !t.name.startsWith(prefix));
-		this.#tools.push(...tools);
+		for (let ti = 0; ti < tools.length; ti++) this.#tools.push(tools[ti]!);
 		// Stable sort by name so reconnect order does not perturb the array.
 		// See `sortMCPToolsByName` for the cache-stability rationale.
 		sortMCPToolsByName(this.#tools);

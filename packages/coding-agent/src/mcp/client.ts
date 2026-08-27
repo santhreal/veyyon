@@ -259,7 +259,7 @@ export async function listTools(
 		// was a string got spread into one nameless tool per character.
 		const raw = await connection.transport.request<unknown>("tools/list", params, options);
 		const page = validateToolListPage(raw, connection.name);
-		allTools.push(...page.tools);
+		for (let ti = 0; ti < page.tools.length; ti++) allTools.push(page.tools[ti]!);
 		cursor = page.nextCursor;
 		pages++;
 
@@ -379,7 +379,7 @@ export async function listResources(
 		}
 
 		const result = await connection.transport.request<MCPResourcesListResult>("resources/list", params, options);
-		allResources.push(...result.resources);
+		for (let ri = 0; ri < result.resources.length; ri++) allResources.push(result.resources[ri]!);
 		cursor = result.nextCursor;
 	} while (cursor);
 
@@ -431,7 +431,7 @@ export async function listResourceTemplates(
 				params,
 				options,
 			);
-			allTemplates.push(...result.resourceTemplates);
+			for (let ti = 0; ti < result.resourceTemplates.length; ti++) allTemplates.push(result.resourceTemplates[ti]!);
 			cursor = result.nextCursor;
 		} while (cursor);
 	} catch (error) {
@@ -556,7 +556,7 @@ export async function listPrompts(
 		}
 
 		const result = await connection.transport.request<MCPPromptsListResult>("prompts/list", params, options);
-		allPrompts.push(...result.prompts);
+		for (let pi = 0; pi < result.prompts.length; pi++) allPrompts.push(result.prompts[pi]!);
 		cursor = result.nextCursor;
 	} while (cursor);
 
