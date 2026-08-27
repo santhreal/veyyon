@@ -320,8 +320,14 @@ class LiveRosterPane implements Component {
 		// the subtle one, because `formatAge` returns an EMPTY string for an agent
 		// that just moved, so those rows lost the column entirely and everything
 		// after them slid left.
-		const widest = (measure: (agent: LiveAgent) => string) =>
-			this.agents.reduce((width, agent) => Math.max(width, visibleWidth(measure(agent))), 0);
+		const widest = (measure: (agent: LiveAgent) => string): number => {
+			let width = 0;
+			for (let ai = 0; ai < this.agents.length; ai++) {
+				const w = visibleWidth(measure(this.agents[ai]!));
+				if (w > width) width = w;
+			}
+			return width;
+		};
 		// No column may take more than a quarter of the row. Status and age are
 		// short words and cap themselves, but the two NAME columns are whatever an
 		// agent was called: one subagent spawned as

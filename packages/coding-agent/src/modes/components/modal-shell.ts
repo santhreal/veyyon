@@ -437,8 +437,11 @@ export function layoutShortcutRows(
 	for (let ci = 0; ci < chips.length; ci++) chipWidths[ci] = chips[ci]!.w;
 	const groups = packChipRows(chipWidths, width, sepW);
 
-	const groupWidth = (indices: number[]): number =>
-		indices.reduce((w, idx, pos) => w + chips[idx]!.w + (pos > 0 ? sepW : 0), 0);
+	const groupWidth = (indices: number[]): number => {
+		let w = 0;
+		for (let ii = 0; ii < indices.length; ii++) w += chips[indices[ii]!]!.w + (ii > 0 ? sepW : 0);
+		return w;
+	};
 
 	// Orphan-avoidance pass: borrow chips backward from the previous row's
 	// tail so no row ends up alone beneath a fuller one above it. A donor row

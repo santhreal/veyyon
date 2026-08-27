@@ -1818,7 +1818,11 @@ export class StatusLineComponent implements Component {
 	#backgroundJobBadgeCount(): number {
 		const running = this.session.getAsyncJobSnapshot()?.running;
 		if (!running) return 0;
-		return running.reduce((count, job) => (job.type === "task" ? count : count + 1), 0);
+		let count = 0;
+		for (let ji = 0; ji < running.length; ji++) {
+			if (running[ji]!.type !== "task") count++;
+		}
+		return count;
 	}
 
 	/**
