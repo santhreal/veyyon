@@ -1107,7 +1107,7 @@ export async function listClaudePluginRoots(
 				// veyyon is authoritative: drop all Claude-sourced entries for this plugin ID
 				const filtered = roots.filter(r => r.id !== pluginId);
 				roots.length = 0;
-				roots.push(...filtered);
+				for (let ri = 0; ri < filtered.length; ri++) roots.push(filtered[ri]!);
 
 				for (const entry of entries) {
 					if (!entry.installPath || typeof entry.installPath !== "string") {
@@ -1194,7 +1194,8 @@ export async function listClaudePluginRoots(
 		const projectIds = new Set(projectRoots.map(r => r.id));
 		const deduped = roots.filter(r => !projectIds.has(r.id));
 		roots.length = 0;
-		roots.push(...projectRoots, ...deduped);
+		for (let ri = 0; ri < projectRoots.length; ri++) roots.push(projectRoots[ri]!);
+		for (let ri = 0; ri < deduped.length; ri++) roots.push(deduped[ri]!);
 	}
 
 	// Merge --plugin-dir roots (highest precedence) on every fresh load
@@ -1202,7 +1203,8 @@ export async function listClaudePluginRoots(
 		const injectedIds = new Set(injectedPluginDirRoots.map(r => r.id));
 		const filtered = roots.filter(r => !injectedIds.has(r.id));
 		roots.length = 0;
-		roots.push(...injectedPluginDirRoots, ...filtered);
+		for (let ri = 0; ri < injectedPluginDirRoots.length; ri++) roots.push(injectedPluginDirRoots[ri]!);
+		for (let ri = 0; ri < filtered.length; ri++) roots.push(filtered[ri]!);
 	}
 
 	const result = { roots, warnings };

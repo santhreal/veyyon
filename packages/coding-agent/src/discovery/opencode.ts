@@ -164,8 +164,10 @@ async function loadMCPServers(ctx: LoadContext): Promise<LoadResult<MCPServer>> 
 		const config = await loadJsonConfig(userConfigPath);
 		if (config) {
 			const result = extractMCPServers(config, userConfigPath);
-			items.push(...result.items);
-			if (result.warnings) warnings.push(...result.warnings);
+			for (let ii = 0; ii < result.items.length; ii++) items.push(result.items[ii]!);
+			if (result.warnings) {
+				for (let wi = 0; wi < result.warnings.length; wi++) warnings.push(result.warnings[wi]!);
+			}
 		}
 	}
 

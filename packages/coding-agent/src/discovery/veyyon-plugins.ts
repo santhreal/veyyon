@@ -244,8 +244,11 @@ async function loadTools(ctx: LoadContext): Promise<LoadResult<DiscoveredCustomT
 	const items: DiscoveredCustomTool[] = [];
 	const warnings: string[] = [];
 	for (const { filesResult, indexItems } of perRoot) {
-		items.push(...filesResult.items, ...indexItems);
-		if (filesResult.warnings) warnings.push(...filesResult.warnings);
+		for (let ii = 0; ii < filesResult.items.length; ii++) items.push(filesResult.items[ii]!);
+		for (let ii = 0; ii < indexItems.length; ii++) items.push(indexItems[ii]!);
+		if (filesResult.warnings) {
+			for (let wi = 0; wi < filesResult.warnings.length; wi++) warnings.push(filesResult.warnings[wi]!);
+		}
 	}
 	return { items, warnings };
 }

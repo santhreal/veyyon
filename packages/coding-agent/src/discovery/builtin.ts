@@ -231,7 +231,8 @@ async function loadMCPServers(ctx: LoadContext): Promise<LoadResult<MCPServer>> 
 	for (const result of contents) {
 		if (result.status === "fulfilled" && result.value) {
 			const { path, content, level } = result.value;
-			items.push(...parseMcpServers(content, path, level));
+			const mcpServers = parseMcpServers(content, path, level);
+			for (let pi = 0; pi < mcpServers.length; pi++) items.push(mcpServers[pi]!);
 		}
 	}
 
@@ -311,8 +312,10 @@ async function loadSlashCommands(ctx: LoadContext): Promise<LoadResult<SlashComm
 				_source: source,
 			}),
 		});
-		items.push(...result.items);
-		if (result.warnings) warnings.push(...result.warnings);
+		for (let ii = 0; ii < result.items.length; ii++) items.push(result.items[ii]!);
+		if (result.warnings) {
+			for (let wi = 0; wi < result.warnings.length; wi++) warnings.push(result.warnings[wi]!);
+		}
 	}
 
 	return { items, warnings };
@@ -338,8 +341,10 @@ async function loadRules(ctx: LoadContext): Promise<LoadResult<Rule>> {
 			transform: (name, content, path, source) =>
 				buildRuleFromMarkdown(name, content, path, source, { stripNamePattern: /\.(md|mdc)$/ }),
 		});
-		items.push(...result.items);
-		if (result.warnings) warnings.push(...result.warnings);
+		for (let ii = 0; ii < result.items.length; ii++) items.push(result.items[ii]!);
+		if (result.warnings) {
+			for (let wi = 0; wi < result.warnings.length; wi++) warnings.push(result.warnings[wi]!);
+		}
 	}
 
 	// Top-level RULES.md is a sticky always-apply rule. Documented in
@@ -393,8 +398,10 @@ async function loadPrompts(ctx: LoadContext): Promise<LoadResult<Prompt>> {
 				_source: source,
 			}),
 		});
-		items.push(...result.items);
-		if (result.warnings) warnings.push(...result.warnings);
+		for (let ii = 0; ii < result.items.length; ii++) items.push(result.items[ii]!);
+		if (result.warnings) {
+			for (let wi = 0; wi < result.warnings.length; wi++) warnings.push(result.warnings[wi]!);
+		}
 	}
 
 	return { items, warnings };
@@ -604,8 +611,10 @@ async function loadInstructions(ctx: LoadContext): Promise<LoadResult<Instructio
 				};
 			},
 		});
-		items.push(...result.items);
-		if (result.warnings) warnings.push(...result.warnings);
+		for (let ii = 0; ii < result.items.length; ii++) items.push(result.items[ii]!);
+		if (result.warnings) {
+			for (let wi = 0; wi < result.warnings.length; wi++) warnings.push(result.warnings[wi]!);
+		}
 	}
 
 	return { items, warnings };
@@ -765,8 +774,10 @@ async function loadTools(ctx: LoadContext): Promise<LoadResult<DiscoveredCustomT
 	]);
 
 	for (const result of fileResults) {
-		items.push(...result.items);
-		if (result.warnings) warnings.push(...result.warnings);
+		for (let ii = 0; ii < result.items.length; ii++) items.push(result.items[ii]!);
+		if (result.warnings) {
+			for (let wi = 0; wi < result.warnings.length; wi++) warnings.push(result.warnings[wi]!);
+		}
 	}
 
 	for (let i = 0; i < subDirCandidates.length; i++) {

@@ -197,7 +197,7 @@ async function loadSkills(ctx: LoadContext): Promise<LoadResult<DiscoveredSkill>
 		pluginsRootFor(ctx.agentDir ?? getAgentDir()),
 		ctx.agentDir ?? getAgentDir(),
 	);
-	warnings.push(...rootWarnings);
+	for (let wi = 0; wi < rootWarnings.length; wi++) warnings.push(rootWarnings[wi]!);
 	const results = await Promise.all(
 		roots.map(async root => {
 			const resolveWarnings: string[] = [];
@@ -208,7 +208,7 @@ async function loadSkills(ctx: LoadContext): Promise<LoadResult<DiscoveredSkill>
 				"skills",
 				includeFallback,
 			);
-			resolveWarnings.push(...dirWarnings);
+			for (let wi = 0; wi < dirWarnings.length; wi++) resolveWarnings.push(dirWarnings[wi]!);
 			const scanResults = await Promise.all(
 				skillsDirs.map(dir =>
 					scanSkillsFromDir({
@@ -223,15 +223,17 @@ async function loadSkills(ctx: LoadContext): Promise<LoadResult<DiscoveredSkill>
 		}),
 	);
 	for (const { scanResults, resolveWarnings } of results) {
-		warnings.push(...resolveWarnings);
+		for (let wi = 0; wi < resolveWarnings.length; wi++) warnings.push(resolveWarnings[wi]!);
 		// Intentionally do NOT prefix skill names with `root.plugin`.
 		// The `plugin:name` format breaks skill:// URL parsing (colons are
 		// ambiguous with port separators) and is unintuitive for callers.
 		// Dedup-by-key in the capability layer already handles name collisions
 		// across providers using priority ordering.
 		for (const result of scanResults) {
-			items.push(...result.items);
-			if (result.warnings) warnings.push(...result.warnings);
+			for (let ii = 0; ii < result.items.length; ii++) items.push(result.items[ii]!);
+			if (result.warnings) {
+				for (let wi = 0; wi < result.warnings.length; wi++) warnings.push(result.warnings[wi]!);
+			}
 		}
 	}
 	return { items, warnings };
@@ -251,7 +253,7 @@ async function loadSlashCommands(ctx: LoadContext): Promise<LoadResult<SlashComm
 		pluginsRootFor(ctx.agentDir ?? getAgentDir()),
 		ctx.agentDir ?? getAgentDir(),
 	);
-	warnings.push(...rootWarnings);
+	for (let wi = 0; wi < rootWarnings.length; wi++) warnings.push(rootWarnings[wi]!);
 
 	const results = await Promise.all(
 		roots.map(async root => {
@@ -317,10 +319,12 @@ async function loadSlashCommands(ctx: LoadContext): Promise<LoadResult<SlashComm
 	);
 
 	for (const { commandResults, resolveWarnings } of results) {
-		warnings.push(...resolveWarnings);
+		for (let wi = 0; wi < resolveWarnings.length; wi++) warnings.push(resolveWarnings[wi]!);
 		for (const commandResult of commandResults) {
-			items.push(...commandResult.items);
-			if (commandResult.warnings) warnings.push(...commandResult.warnings);
+			for (let ii = 0; ii < commandResult.items.length; ii++) items.push(commandResult.items[ii]!);
+			if (commandResult.warnings) {
+				for (let wi = 0; wi < commandResult.warnings.length; wi++) warnings.push(commandResult.warnings[wi]!);
+			}
 		}
 	}
 
@@ -341,7 +345,7 @@ async function loadHooks(ctx: LoadContext): Promise<LoadResult<Hook>> {
 		pluginsRootFor(ctx.agentDir ?? getAgentDir()),
 		ctx.agentDir ?? getAgentDir(),
 	);
-	warnings.push(...rootWarnings);
+	for (let wi = 0; wi < rootWarnings.length; wi++) warnings.push(rootWarnings[wi]!);
 
 	const hookTypes = ["pre", "post"] as const;
 
@@ -372,8 +376,10 @@ async function loadHooks(ctx: LoadContext): Promise<LoadResult<Hook>> {
 	);
 
 	for (const result of results) {
-		items.push(...result.items);
-		if (result.warnings) warnings.push(...result.warnings);
+		for (let ii = 0; ii < result.items.length; ii++) items.push(result.items[ii]!);
+		if (result.warnings) {
+			for (let wi = 0; wi < result.warnings.length; wi++) warnings.push(result.warnings[wi]!);
+		}
 	}
 
 	return { items, warnings };
@@ -393,7 +399,7 @@ async function loadTools(ctx: LoadContext): Promise<LoadResult<DiscoveredCustomT
 		pluginsRootFor(ctx.agentDir ?? getAgentDir()),
 		ctx.agentDir ?? getAgentDir(),
 	);
-	warnings.push(...rootWarnings);
+	for (let wi = 0; wi < rootWarnings.length; wi++) warnings.push(rootWarnings[wi]!);
 
 	const results = await Promise.all(
 		roots.map(async root => {
@@ -414,8 +420,10 @@ async function loadTools(ctx: LoadContext): Promise<LoadResult<DiscoveredCustomT
 	);
 
 	for (const result of results) {
-		items.push(...result.items);
-		if (result.warnings) warnings.push(...result.warnings);
+		for (let ii = 0; ii < result.items.length; ii++) items.push(result.items[ii]!);
+		if (result.warnings) {
+			for (let wi = 0; wi < result.warnings.length; wi++) warnings.push(result.warnings[wi]!);
+		}
 	}
 
 	return { items, warnings };
@@ -435,7 +443,7 @@ async function loadMCPServers(ctx: LoadContext): Promise<LoadResult<MCPServer>> 
 		pluginsRootFor(ctx.agentDir ?? getAgentDir()),
 		ctx.agentDir ?? getAgentDir(),
 	);
-	warnings.push(...rootWarnings);
+	for (let wi = 0; wi < rootWarnings.length; wi++) warnings.push(rootWarnings[wi]!);
 
 	for (const root of roots) {
 		const mcpPath = path.join(root.path, ".mcp.json");

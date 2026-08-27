@@ -97,7 +97,7 @@ async function loadMCPServers(ctx: LoadContext): Promise<LoadResult<MCPServer>> 
 	for (let i = 0; i < allPaths.length; i++) {
 		const servers = parseMcpServers(contents[i], allPaths[i].path, allPaths[i].level);
 		if (servers.length > 0) {
-			items.push(...servers);
+			for (let si = 0; si < servers.length; si++) items.push(servers[si]!);
 			break;
 		}
 	}
@@ -177,8 +177,9 @@ async function loadSkills(ctx: LoadContext): Promise<LoadResult<DiscoveredSkill>
 	const warnings: string[] = [];
 
 	if (userResult.status === "fulfilled") {
-		items.push(...userResult.value.items);
-		warnings.push(...(userResult.value.warnings ?? []));
+		for (let ii = 0; ii < userResult.value.items.length; ii++) items.push(userResult.value.items[ii]!);
+		const uw = userResult.value.warnings ?? [];
+		for (let wi = 0; wi < uw.length; wi++) warnings.push(uw[wi]!);
 	} else if (!isMissingPath(userResult.reason)) {
 		warnings.push(`Failed to scan Claude user skills in ${userSkillsDir}: ${String(userResult.reason)}`);
 	}
@@ -287,8 +288,11 @@ async function loadSlashCommands(ctx: LoadContext): Promise<LoadResult<SlashComm
 			}),
 		});
 
-		items.push(...addClaudeCommandNamespaceAliases(userResult.items, userCommandsDir));
-		if (userResult.warnings) warnings.push(...userResult.warnings);
+		const aliases = addClaudeCommandNamespaceAliases(userResult.items, userCommandsDir);
+		for (let ai = 0; ai < aliases.length; ai++) items.push(aliases[ai]!);
+		if (userResult.warnings) {
+			for (let wi = 0; wi < userResult.warnings.length; wi++) warnings.push(userResult.warnings[wi]!);
+		}
 	}
 
 	return { items, warnings };
@@ -331,8 +335,10 @@ async function loadHooks(ctx: LoadContext): Promise<LoadResult<Hook>> {
 	);
 
 	for (const result of results) {
-		items.push(...result.items);
-		if (result.warnings) warnings.push(...result.warnings);
+		for (let ii = 0; ii < result.items.length; ii++) items.push(result.items[ii]!);
+		if (result.warnings) {
+			for (let wi = 0; wi < result.warnings.length; wi++) warnings.push(result.warnings[wi]!);
+		}
 	}
 
 	return { items, warnings };
@@ -362,8 +368,10 @@ async function loadTools(ctx: LoadContext): Promise<LoadResult<DiscoveredCustomT
 		},
 	});
 
-	items.push(...userResult.items);
-	if (userResult.warnings) warnings.push(...userResult.warnings);
+	for (let ii = 0; ii < userResult.items.length; ii++) items.push(userResult.items[ii]!);
+	if (userResult.warnings) {
+		for (let wi = 0; wi < userResult.warnings.length; wi++) warnings.push(userResult.warnings[wi]!);
+	}
 
 	return { items, warnings };
 }
