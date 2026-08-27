@@ -254,6 +254,23 @@ export function loadFirstUsableAddon(input: {
 	initialErrors?: string[];
 }): { bindings?: Record<string, unknown>; candidate?: string; errors: string[] };
 
+/**
+ * The `code` stamped on every failure that means this process has no usable
+ * native addon: no `.node` on any candidate path, a GLIBC too old for the one
+ * that shipped, or a copy built for another release.
+ */
+export const NATIVE_ADDON_UNAVAILABLE_CODE: "VEYYON_NATIVE_ADDON_UNAVAILABLE";
+
+/** Stamp {@link NATIVE_ADDON_UNAVAILABLE_CODE} on a load failure and return the same error. */
+export function markNativeAddonUnavailable(error: unknown): unknown;
+
+/**
+ * True when the native addon could not be loaded at all, so a result derived
+ * from a native call carries no information and must never be reported as a
+ * finding.
+ */
+export function isNativeAddonUnavailable(error: unknown): boolean;
+
 /** The loaded bindings, loading them on first call and once only. */
 export function native(): Record<string, unknown>;
 

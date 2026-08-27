@@ -1395,6 +1395,49 @@ let loadedNativeBindings;
  */
 let nativeLoadFailure;
 
+/**
+ * The `code` stamped on every failure that means "this process has no usable
+ * native addon": no `.node` on any candidate path, a GLIBC too old for the one
+ * that shipped, or a copy built for another release.
+ *
+ * It exists so a caller can tell an unavailable addon from a scan that found
+ * nothing. Without it, a directory listing that caught this failure and
+ * returned an empty tree reported an EMPTY WORKSPACE for a full checkout, and
+ * the agent reading that listing searched for a repository it was already
+ * standing in.
+ */
+export const NATIVE_ADDON_UNAVAILABLE_CODE = "VEYYON_NATIVE_ADDON_UNAVAILABLE";
+
+/**
+ * Stamp `NATIVE_ADDON_UNAVAILABLE_CODE` on a load failure and return the same
+ * error, so the memoized failure and the thrown one are one object.
+ *
+ * @param {unknown} error
+ * @returns {unknown}
+ */
+export function markNativeAddonUnavailable(error) {
+	if (error !== null && typeof error === "object") {
+		/** @type {{ code?: unknown }} */ (error).code = NATIVE_ADDON_UNAVAILABLE_CODE;
+	}
+	return error;
+}
+
+/**
+ * True when this error means the native addon could not be loaded at all, so a
+ * result derived from a native call carries no information about the
+ * filesystem and must never be reported as a finding.
+ *
+ * @param {unknown} error
+ * @returns {boolean}
+ */
+export function isNativeAddonUnavailable(error) {
+	return (
+		error !== null &&
+		typeof error === "object" &&
+		/** @type {{ code?: unknown }} */ (error).code === NATIVE_ADDON_UNAVAILABLE_CODE
+	);
+}
+
 /** Load the native addon once (memoized), or throw loudly if it cannot load. */
 export function native() {
 	if (nativeLoadFailure !== undefined) throw nativeLoadFailure;
@@ -1402,7 +1445,7 @@ export function native() {
 		try {
 			loadedNativeBindings = loadNative();
 		} catch (error) {
-			nativeLoadFailure = error ?? new Error("The native addon failed to load.");
+			nativeLoadFailure = markNativeAddonUnavailable(error ?? new Error("The native addon failed to load."));
 			throw nativeLoadFailure;
 		}
 	}
