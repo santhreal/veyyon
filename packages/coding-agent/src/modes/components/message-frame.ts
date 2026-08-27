@@ -111,9 +111,22 @@ export function renderFramedMessage<M extends FramedMessage>(opts: RebuildFrameO
 	}
 
 	if (!opts.expanded && opts.collapseAfterLines !== undefined) {
-		const lines = text.split("\n");
-		if (lines.length > opts.collapseAfterLines) {
-			text = `${lines.slice(0, opts.collapseAfterLines).join("\n")}\n…`;
+		const limit = opts.collapseAfterLines;
+		if (limit === 0) {
+			text = "\n…";
+		} else {
+			let newlineCount = 0;
+			let cutPos = -1;
+			for (let i = 0; i < text.length; i++) {
+				if (text.charCodeAt(i) === 10) {
+					newlineCount++;
+					if (newlineCount === limit) {
+						cutPos = i;
+						break;
+					}
+				}
+			}
+			if (cutPos >= 0) text = `${text.slice(0, cutPos)}\n…`;
 		}
 	}
 

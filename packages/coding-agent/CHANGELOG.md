@@ -34,6 +34,7 @@
 - `usageSegment` in `status-line/segments.ts` replaces a `parts` array `.join()` with conditional concatenation, eliminating an intermediate array allocation per status-line frame.
 - `#getServingAccount` in `status-line/component.ts` replaces a 5-element array `.join()` with a template literal, eliminating an intermediate array allocation per status-line frame.
 - `appendOutput` in `eval-execution.ts` replaces `.slice(1)` with an index loop, eliminating an intermediate array allocation per eval output chunk.
+- `renderFramedMessage` in `message-frame.ts` replaces `split`/`slice`/`join` with a newline scan, eliminating two intermediate array allocations per framed message render.
 
 
 
