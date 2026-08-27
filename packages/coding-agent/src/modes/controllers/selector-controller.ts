@@ -9,8 +9,20 @@ import type { Component, OverlayHandle } from "@veyyon/tui";
 import { Loader, Spacer, setTuiTight, Text } from "@veyyon/tui";
 import { errorMessage, getActiveAuthDbPath, getProjectDir, normalizePathForComparison } from "@veyyon/utils";
 import * as logger from "@veyyon/utils/logger";
+import {
+	type AdvisorConfigScope,
+	discoverAdvisorConfigs,
+	loadWatchdogConfigFile,
+	resolveAdvisorConfigEditPath,
+	saveWatchdogConfigFile,
+	type WatchdogConfigDoc,
+} from "../../advisor";
 import { isRollbackSupported, rollbackToVersion } from "../../cli/update-cli";
-import { formatModelSelectorValue } from "../../config/model-resolver";
+import {
+	formatModelSelectorValue,
+	formatModelStringWithRouting,
+	resolveAdvisorRoleSelection,
+} from "../../config/model-resolver";
 import { DEFAULT_MODEL_SLOT, getRoleInfo, isDefaultModelSlot } from "../../config/model-roles";
 import { applySamplingKnob, optionalNumber, toNumberOrUndefined } from "../../config/optional-number";
 // The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
@@ -64,6 +76,7 @@ import {
 	setPreferredSearchProvider,
 } from "../../web/search";
 import { AccountManagerComponent } from "../components/account-manager";
+import { AdvisorConfigOverlayComponent } from "../components/advisor-config";
 import { AgentDashboard } from "../components/agent-dashboard";
 import { AssistantMessageComponent } from "../components/assistant-message";
 import { CopySelectorComponent } from "../components/copy-selector";
@@ -372,8 +385,84 @@ export class SelectorController {
 		});
 	}
 
-	showAdvisorConfigure(): void {
-		this.ctx.showStatus("Advisor/watchdog was removed from Veyyon.");
+	/**
+	 * Fullscreen `/advisor configure` overlay: edit a `WATCHDOG.yml` advisor roster
+	 * and apply it to the session already on screen.
+	 *
+	 * The overlay owns scope switching, so the host seeds the project doc and answers
+	 * `loadDoc` when the user moves between project and user level. `save` writes the
+	 * one file that was edited, then re-discovers the MERGED project+user roster and
+	 * hands it to `applyAdvisorConfigs`, so an edit lands in the running conversation
+	 * rather than at the next launch, and a project advisor that shadows a user one of
+	 * the same slug keeps shadowing it after the write.
+	 */
+	async showAdvisorConfigure(): Promise<void> {
+		const dirs = {
+			projectDir: this.ctx.sessionManager.getCwd(),
+			agentDir: this.ctx.settings.getAgentDir(),
+		};
+		const loadDoc = async (scope: AdvisorConfigScope): Promise<WatchdogConfigDoc> =>
+			loadWatchdogConfigFile(await resolveAdvisorConfigEditPath(scope, dirs));
+		let doc: WatchdogConfigDoc;
+		try {
+			doc = await loadDoc("project");
+		} catch (err) {
+			this.ctx.showError(`Failed to read the advisor configuration: ${errorMessage(err)}`);
+			return;
+		}
+		const advisorRole = resolveAdvisorRoleSelection(
+			this.ctx.settings,
+			this.ctx.session.modelRegistry.getAvailable(),
+			this.ctx.session.agent.state.model,
+		);
+		let overlay: OverlayHandle | undefined;
+		const component = new AdvisorConfigOverlayComponent(
+			this.ctx.ui,
+			{
+				modelRegistry: this.ctx.session.modelRegistry,
+				settings: this.ctx.settings,
+				scopedModels: this.ctx.session.scopedModels,
+				availableToolNames: this.ctx.session.getAdvisorAvailableToolNames(),
+				defaultModelLabel: advisorRole
+					? formatModelSelectorValue(formatModelStringWithRouting(advisorRole.model), advisorRole.thinkingLevel)
+					: undefined,
+			},
+			"project",
+			doc,
+			{
+				loadDoc,
+				save: async (scope, next) => {
+					await saveWatchdogConfigFile(await resolveAdvisorConfigEditPath(scope, dirs), next);
+					const merged = await discoverAdvisorConfigs(dirs.projectDir, dirs.agentDir);
+					const live = this.ctx.session.applyAdvisorConfigs(merged.advisors, merged.sharedInstructions);
+					this.ctx.showStatus(
+						this.ctx.session.isAdvisorEnabled()
+							? `Advisor configuration saved — ${live} advisor${live === 1 ? "" : "s"} running.`
+							: "Advisor configuration saved. The advisor is off; turn it on with /advisor on.",
+					);
+				},
+				close: () => {
+					overlay?.hide();
+					this.focusActiveEditorArea();
+					this.ctx.ui.requestRender();
+				},
+				requestRender: () => {
+					this.ctx.ui.requestRender();
+				},
+				notify: message => {
+					this.ctx.showStatus(message);
+				},
+			},
+		);
+		overlay = this.ctx.ui.showOverlay(component, {
+			width: "100%",
+			maxHeight: "100%",
+			anchor: "top-left",
+			margin: 0,
+			fullscreen: true,
+		});
+		this.ctx.ui.setFocus(component);
+		this.ctx.ui.requestRender();
 	}
 
 	showHistorySearch(): void {

@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-1f12f299.js";
+            window.path_to_searchindex_js = "searchindex-5dcdd457.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-a2abefc1.js"></script>
@@ -6112,7 +6112,22 @@ advisor:
   enabled: true
 </code></pre>
 <p>The advisor role uses normal model-role resolution, including provider-prefixed ids, canonical ids, and optional thinking suffixes.</p>
-<p>The <code>/advisor</code> slash commands were removed from Veyyon. Control the advisor through these surfaces instead:</p>
+<p><code>/advisor</code> controls the advisor from inside a session:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Command</th><th>Effect</th></tr>
+</thead>
+<tbody>
+<tr><td><code>/advisor status</code></td><td>Report whether the advisor is running, on what model, and what it has spent.</td></tr>
+<tr><td><code>/advisor configure</code></td><td>Open the full-screen <code>WATCHDOG.yml</code> roster editor; a save applies to the running session.</td></tr>
+<tr><td><code>/advisor on</code>, <code>/advisor off</code></td><td>Start or stop the advisor for this session.</td></tr>
+<tr><td><code>/advisor dump</code></td><td>Copy the advisor’s own transcript to the clipboard.</td></tr>
+</tbody>
+</table>
+</div>
+<p>A bare <code>/advisor</code> opens a picker listing those subcommands.</p>
+<p><code>/advisor on</code> and <code>/advisor off</code> last for the session. These surfaces set the persistent default:</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -8266,6 +8281,7 @@ act on a bare invocation: <code>/yolo</code>, <code>/fast</code>, and <code>/bro
 <tbody>
 <tr><td><code>/btw</code></td><td>Ephemeral side question</td></tr>
 <tr><td><code>/tan</code></td><td>Run a full background agent on tangential work</td></tr>
+<tr><td><code>/advisor …</code></td><td>Show, configure, start or stop the advisor that reviews each turn</td></tr>
 <tr><td><code>/omfg</code></td><td>Forge a TTSR rule from a complaint to stop a recurring behavior</td></tr>
 <tr><td><code>/vibe</code></td><td>Toggle vibe mode (director + <code>vibe_*</code> worker tools)</td></tr>
 <tr><td><code>/retry</code></td><td>Retry failed turn</td></tr>
@@ -8305,6 +8321,7 @@ own page; typing the bare command lists them with their descriptions.</p>
 <tr><td><code>/memory</code></td><td><code>view</code>, <code>stats</code>, <code>diagnose</code>, <code>clear</code>, <code>reset</code>, <code>enqueue</code>, <code>rebuild</code>, <code>mm list</code>, <code>mm show</code>, <code>mm refresh</code>, <code>mm history</code>, <code>mm seed</code>, <code>mm delete</code>, <code>mm reload</code></td></tr>
 <tr><td><code>/plugins</code></td><td><code>list</code></td></tr>
 <tr><td><code>/trust</code></td><td><code>approve</code>, <code>deny</code>, <code>forget</code></td></tr>
+<tr><td><code>/advisor</code></td><td><code>status</code>, <code>configure</code>, <code>on</code>, <code>off</code>, <code>dump</code></td></tr>
 </tbody>
 </table>
 </div>
@@ -18887,10 +18904,10 @@ a model or a role. Named <strong>roles</strong> (<code>modelRoles</code>, scoped
 Edit roles under Settings → Model → Roles and subagent policy under Settings → Subagents. See
 <a href="#compaction-and-project-memory">Compaction &amp; project memory</a> and
 <a href="#models-roles-and-profiles">Models, roles, and profiles</a>.</li>
-<li><strong>Plan / goal modes</strong> alter prompts and tool gating (<code>/plan</code>, <code>/goal</code>). There is no <code>/advisor</code> slash
-command, the <strong>advisor watchdog</strong> (<code>advisor.enabled</code> and related settings, in
-<code>packages/coding-agent/src/advisor/</code>) is a background continuous-review mechanism, not a mode you
-invoke. See <code>docs/handbook/src/features/advisor.md</code>.</li>
+<li><strong>Plan / goal modes</strong> alter prompts and tool gating (<code>/plan</code>, <code>/goal</code>). The <strong>advisor watchdog</strong>
+(<code>advisor.enabled</code> and related settings, in <code>packages/coding-agent/src/advisor/</code>) is a background
+continuous-review mechanism rather than a mode you invoke; <code>/advisor</code> reports and configures it.
+See <code>docs/handbook/src/features/advisor.md</code>.</li>
 <li><strong>Addressed inter-agent messaging</strong> via the <code>irc</code> tool (<code>packages/coding-agent/src/tools/irc.ts</code>,
 <code>packages/coding-agent/src/irc/bus.ts</code>): <code>send</code>/<code>wait</code>/<code>inbox</code>/<code>list</code> ops over a process-global bus.
 <code>send</code> is fire-and-forget with delivery receipts; the bus wakes an idle recipient with a real turn,

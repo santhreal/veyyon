@@ -187,6 +187,7 @@ act on a bare invocation: `/yolo`, `/fast`, and `/browser` flip a switch, `/goal
 | --- | --- |
 | `/btw` | Ephemeral side question |
 | `/tan` | Run a full background agent on tangential work |
+| `/advisor …` | Show, configure, start or stop the advisor that reviews each turn |
 | `/omfg` | Forge a TTSR rule from a complaint to stop a recurring behavior |
 | `/vibe` | Toggle vibe mode (director + `vibe_*` worker tools) |
 | `/retry` | Retry failed turn |
@@ -222,5 +223,6 @@ own page; typing the bare command lists them with their descriptions.
 | `/memory` | `view`, `stats`, `diagnose`, `clear`, `reset`, `enqueue`, `rebuild`, `mm list`, `mm show`, `mm refresh`, `mm history`, `mm seed`, `mm delete`, `mm reload` |
 | `/plugins` | `list` |
 | `/trust` | `approve`, `deny`, `forget` |
+| `/advisor` | `status`, `configure`, `on`, `off`, `dump` |
 
 Extension packages (for example swarm) register additional commands when installed. The live set is whatever the session registers; use `/help` or the command palette in the TUI. Status line: `/statusline` opens the Status Line settings group (see [Multi-agent monitoring](../features/cockpit.md)). Keybindings: `/hotkeys`. Memory: `/memory` and settings under the active memory backend.

@@ -739,6 +739,21 @@ function startProviderLogin(rawArgs: string, runtime: TuiSlashCommandRuntime): v
 }
 
 /**
+ * What to report after `/advisor on|off`.
+ *
+ * Turning it on can leave it not running: the setting is one half, a model resolving
+ * for the `advisor` role is the other. Echoing the request back ("Advisor enabled")
+ * would claim a thing that did not happen, so the outcome is read from
+ * `setAdvisorEnabled` and reported instead of the ask.
+ */
+function describeAdvisorToggle(enabled: boolean, running: boolean): string {
+	if (!enabled) return "Advisor stopped for this session.";
+	return running
+		? "Advisor started for this session."
+		: "Advisor enabled, but no model resolved for the advisor role — assign one with /model.";
+}
+
+/**
  * What each builtin command DOES, keyed by the name it is declared under.
  *
  * The declarations live in `builtin-declarations.ts`, which imports nothing; a handler body reaches
@@ -1894,6 +1909,61 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 			runtime.ctx.editor.setText("");
 		},
 	},
+	advisor: {
+		getTuiAutocompleteDescription: runtime => {
+			const stats = runtime.ctx.session.getAdvisorStats();
+			if (!stats.configured) return "Advisor · off";
+			if (!stats.active) return "Advisor · on, but no model resolved";
+			if (stats.advisors.length > 1) return `Advisor · ${stats.advisors.length} running`;
+			return `Advisor · ${stats.advisors[0].model.id}`;
+		},
+		handle: async (command, runtime) => {
+			const { verb } = parseSubcommand(command.args);
+			if (!verb || verb === "status") {
+				await runtime.output(runtime.session.formatAdvisorStatus());
+				return commandConsumed();
+			}
+			if (verb === "on" || verb === "off") {
+				const running = runtime.session.setAdvisorEnabled(verb === "on");
+				await runtime.output(describeAdvisorToggle(verb === "on", running));
+				return commandConsumed();
+			}
+			if (verb === "dump") {
+				const dump = runtime.session.formatAdvisorHistoryAsText({ compact: true });
+				await runtime.output(dump ?? "No advisor is running, so there is no advisor transcript to show.");
+				return commandConsumed();
+			}
+			if (verb === "configure") {
+				await runtime.output(
+					"/advisor configure needs the interactive TUI. Edit WATCHDOG.yml to change the roster from here.",
+				);
+				return commandConsumed();
+			}
+			return usage("Usage: /advisor [status|configure|on|off|dump]", runtime);
+		},
+		handleTui: async (command, runtime) => {
+			const { verb } = parseSubcommand(command.args);
+			runtime.ctx.editor.setText("");
+			if (verb === "status") {
+				await runtime.ctx.handleAdvisorStatusCommand();
+				return;
+			}
+			if (verb === "configure") {
+				await runtime.ctx.showAdvisorConfigure();
+				return;
+			}
+			if (verb === "on" || verb === "off") {
+				const running = runtime.ctx.session.setAdvisorEnabled(verb === "on");
+				runtime.ctx.showStatus(describeAdvisorToggle(verb === "on", running));
+				return;
+			}
+			if (verb === "dump") {
+				runtime.ctx.handleAdvisorDumpCommand();
+				return;
+			}
+			runtime.ctx.showStatus("Usage: /advisor [status|configure|on|off|dump]");
+		},
+	},
 	changelog: {
 		handle: async (_command, runtime) => {
 			await runtime.output(`Release notes: ${CHANGELOG_URL}`);
@@ -2874,6 +2944,8 @@ export const BUILTIN_SLASH_COMMAND_CATEGORIES: Readonly<Record<string, string>> 
 	effort: "model",
 	force: "model",
 	retry: "model",
+	// Beside the model roles: the advisor IS a model role, and its knobs sit under the Model tab.
+	advisor: "model",
 	share: "share",
 	collab: "share",
 	join: "share",

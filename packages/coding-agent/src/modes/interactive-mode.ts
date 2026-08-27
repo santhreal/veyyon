@@ -5116,8 +5116,8 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.#selectorController.showSettingsSelector(initialItemId);
 	}
 
-	showAdvisorConfigure(): void {
-		this.#selectorController.showAdvisorConfigure();
+	showAdvisorConfigure(): Promise<void> {
+		return this.#selectorController.showAdvisorConfigure();
 	}
 
 	showHistorySearch(): void {

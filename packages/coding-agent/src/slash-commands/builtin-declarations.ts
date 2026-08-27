@@ -884,6 +884,25 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 	},
 
 	{
+		name: "advisor",
+		textMode: true,
+		description: "Show, configure, start or stop the advisor that reviews this session",
+		acpDescription: "Inspect and configure the advisor",
+		acpInputHint: "[status|configure|on|off|dump]",
+		allowArgs: true,
+		// Bare /advisor opens the picker. `status` is a declared subcommand, so a bare form
+		// that reported status would hide `configure` behind knowledge nobody is given: the
+		// roster editor has no other entry point.
+		subcommands: [
+			{ name: "status", description: "Show whether the advisor is running, on what model, and what it has spent" },
+			{ name: "configure", description: "Edit the WATCHDOG.yml advisor roster and apply it to this session" },
+			{ name: "on", description: "Start the advisor for this session" },
+			{ name: "off", description: "Stop the advisor for this session" },
+			{ name: "dump", description: "Copy the advisor's own transcript to the clipboard" },
+		],
+	},
+
+	{
 		name: "pause",
 		description: "Freeze all agents (main, subagents, advisor) until resumed",
 	},
