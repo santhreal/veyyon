@@ -22,6 +22,7 @@
 
 ### Fixed
 
+- A `503 auth_unavailable` refusal is classified as an authentication failure rather than a bare server status, so compaction falls back to an authenticated model instead of failing the whole compaction ([#986](https://github.com/santhreal/veyyon/issues/986)).
 - A llama.cpp tool-call JSON parse failure explains itself and names the fix on every route to a local server, not only when the provider id is `ollama`, so an LM Studio or llama-cpp user sees why the turn stopped instead of a bare HTTP 500 whose retry was already being suppressed.
 - A rate-limit message reads `503`, `529` and `500` as the status codes they are rather than as digits inside a longer number, so an exhausted balance reporting `5030 credits remaining` rotates the credential instead of retrying the same account after a 45-second capacity backoff.
 - A Gemini or Cloud Code Assist body that carried a whole turn and then ended without a `finishReason` settles on what arrived rather than failing as a truncated response, matching the four dialects that already read the shared end-of-stream judgement; a body carrying nothing usable is still refused.
