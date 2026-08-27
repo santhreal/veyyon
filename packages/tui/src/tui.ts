@@ -2226,7 +2226,10 @@ export class TUI extends Container {
 
 	/** Check if there are any overlays that can still take input. */
 	hasOverlay(): boolean {
-		return this.overlayStack.some(o => this.#isOverlayInteractive(o));
+		for (let i = 0; i < this.overlayStack.length; i++) {
+			if (this.#isOverlayInteractive(this.overlayStack[i]!)) return true;
+		}
+		return false;
 	}
 
 	/** Check if an overlay entry is currently PAINTED. An exiting card is: that is the whole point. */
@@ -4134,14 +4137,20 @@ export class TUI extends Container {
 		const historyEnd = this.#historyEndRow(frameLength);
 		let windowTop: number;
 		let chunkTo: number;
+		let cursorBeyondCommitted = false;
+		if (frameLength - this.#committedRows < height) {
+			for (let mi = 0; mi < cursorMarkers.length; mi++) {
+				if (cursorMarkers[mi]!.row >= this.#committedRows) {
+					cursorBeyondCommitted = true;
+					break;
+				}
+			}
+		}
 		if (fullPaint) {
 			committedPrefixResliced = true;
 			windowTop = Math.max(0, frameLength - height);
 			chunkTo = Math.min(windowTop, historyEnd);
-		} else if (
-			frameLength <= this.#committedRows ||
-			(frameLength - this.#committedRows < height && cursorMarkers.some(marker => marker.row >= this.#committedRows))
-		) {
+		} else if (frameLength <= this.#committedRows || cursorBeyondCommitted) {
 			// Tail re-anchor (a direct terminal may instead take the
 			// divergenceRebuild full paint above when the prefix resynced):
 			// either the frame shrank into the committed prefix, or the live tail
