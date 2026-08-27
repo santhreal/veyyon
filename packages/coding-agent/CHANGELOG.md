@@ -204,6 +204,10 @@
 - `transcript-note.ts` replaces `for-of` iterator with index loop in row rendering.
 - `ttsr-notification.ts` replaces `for-of` iterator with index loop in rules rendering.
 - `todo-reminder.ts` replaces `for-of` iterator with index loop in preview rendering.
+- `markdown.ts` replaces `.split().map().join()` with single-pass for loop in `applyTextWithNewlines` (both cached and uncached paths).
+- `plan-review-overlay.ts` replaces `for-of`, `.filter()`, and `.map()` closures with index loops in `invalidate`, `rebuildToc`, `deleteSelectedSection`, `recomputeFeedback`, `renderOptionLines`.
+- `tool-execution.ts` replaces `for-of` iterators with index loops in multi-file box cleanup, image cleanup, and path candidate search.
+- `tree-selector.ts` replaces `for-of` iterators with index loops in entryMap build, containsActive check, orderedChildren, content extraction, `updateNodeLabel`.
 ### Added
 
 - `/advisor` reports advisor status, opens the `WATCHDOG.yml` roster editor and applies a save to the running session, starts or stops the advisor for the session, and copies the advisor's own transcript; the subsystem shipped complete but no command, key or menu row reached it.
