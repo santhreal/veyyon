@@ -88,6 +88,11 @@ so text from the pipe that closed is kept when a survivor holds the other one op
 read is stated in the trial's error text. The result states which of the three ended the wait, so a
 cancelled trial reports a cancel rather than a timeout.
 
+The in-process backend has no child to signal. Its deadline and the run's cancellation signal both
+reject the trial's wait and call the client's `abort()`, and the listener the trial put on that
+signal is removed when the trial returns: one signal serves every trial in the run, so a listener
+left behind holds that trial's client and session state until the run ends.
+
 A trial's own teardown — the in-process backend's client, the TypeScript-edit adapter's session —
 is bounded by `teardownWithin` in `src/core/trial-deadline.ts` instead, and reports the reason it
 was abandoned beside the score the trial already earned.
