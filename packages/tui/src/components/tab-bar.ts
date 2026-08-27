@@ -223,17 +223,22 @@ export class TabBar implements Component {
 			}
 			return chunks;
 		};
-		const totalWidth = (chunks: TabChunk[]): number =>
-			chunks.reduce((sum, chunk) => sum + visibleWidth(chunk.text), 0);
+		let totalWidth = (chunks: TabChunk[]): number => {
+			let sum = 0;
+			for (let ci = 0; ci < chunks.length; ci++) sum += visibleWidth(chunks[ci]!.text);
+			return sum;
+		};
 
-		const labels = this.#tabs.map(tab => tab.label);
+		const labels = new Array<string>(this.#tabs.length);
+		for (let ti = 0; ti < this.#tabs.length; ti++) labels[ti] = this.#tabs[ti]!.label;
 		let chunks = buildChunks(labels);
 
 		if (totalWidth(chunks) > maxWidth) {
-			const collapseOrder = this.#tabs
-				.map((_, index) => index)
-				.filter(index => index !== this.#activeIndex && this.#tabs[index].short !== undefined)
-				.sort((a, b) => Math.abs(b - this.#activeIndex) - Math.abs(a - this.#activeIndex));
+			const collapseOrder: number[] = [];
+			for (let ti = 0; ti < this.#tabs.length; ti++) {
+				if (ti !== this.#activeIndex && this.#tabs[ti]!.short !== undefined) collapseOrder.push(ti);
+			}
+			collapseOrder.sort((a, b) => Math.abs(b - this.#activeIndex) - Math.abs(a - this.#activeIndex));
 			for (const index of collapseOrder) {
 				labels[index] = this.#tabs[index].short ?? this.#tabs[index].label;
 				chunks = buildChunks(labels);

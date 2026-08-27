@@ -198,8 +198,15 @@ export function fadeLineTowards(line: string, groundHex: string, strength: numbe
 
 /** Fade a block of rendered lines toward the ground behind it. */
 export function fadeLinesTowards(lines: readonly string[], groundHex: string, strength: number): string[] {
-	if (strength >= 1) return [...lines];
-	return lines.map(line => fadeLineTowards(line, groundHex, strength));
+	if (strength >= 1) return lines.slice();
+	const k = clamp01(strength);
+	const ground = parseHexColor(groundHex);
+	if (ground === null) return lines.slice();
+	const result = new Array<string>(lines.length);
+	for (let li = 0; li < lines.length; li++) {
+		result[li] = fadeLineWithParsedGround(lines[li]!, ground.r, ground.g, ground.b, k);
+	}
+	return result;
 }
 
 /**
