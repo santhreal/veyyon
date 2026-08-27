@@ -154,6 +154,7 @@
 - `bash-interactive.ts` replaces `.map()` closure and spread+`.map()` with index-based for loops in `#readViewport` and `render`.
 - `bash.ts` replaces `.map()` closure with index-based for loop in `formatBashCommandLines`.
 - `browser.ts` replaces `.filter().map().join()` chain with single-pass for loop in text extraction.
+- `command-controller.ts` replaces `.map()` and `.reduce()` closures with index-based for loops in `formatAccountHeaderRow` and `renderUsageSection`.
 - `agent-dashboard.ts` replaces `.reduce()` closure with for loop in `widest` roster column measurement.
 - `status-line/component.ts` replaces `.reduce()` closure with for loop in `#backgroundJobBadgeCount`.
 - `modal-shell.ts` replaces `.reduce()` closure with for loop in `groupWidth`.
