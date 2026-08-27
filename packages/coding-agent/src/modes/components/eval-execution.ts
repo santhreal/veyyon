@@ -94,8 +94,7 @@ export class EvalExecutionComponent extends Container {
 			this.#outputLines[this.#outputLines.length - 1] = clampExecutionDisplayLine(
 				`${this.#outputLines[this.#outputLines.length - 1]}${newLines[0]}`,
 			);
-			const nl = newLines.slice(1);
-			for (let li = 0; li < nl.length; li++) this.#outputLines.push(nl[li]!);
+			for (let li = 1; li < newLines.length; li++) this.#outputLines.push(newLines[li]!);
 		} else {
 			for (let li = 0; li < newLines.length; li++) this.#outputLines.push(newLines[li]!);
 		}
