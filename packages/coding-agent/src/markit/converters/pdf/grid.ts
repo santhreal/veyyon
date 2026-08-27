@@ -81,7 +81,7 @@ const AXIS_EPSILON = 0.8;
 const PAGE_MARGIN = 20;
 
 function uniqueSorted(values: number[]): number[] {
-	const sorted = [...values].sort((a, b) => a - b);
+	const sorted = values.slice().sort((a, b) => a - b);
 	const result: number[] = [];
 	for (const v of sorted) {
 		if (result.length === 0 || Math.abs(result[result.length - 1] - v) > 1) result.push(v);
@@ -93,7 +93,7 @@ function uniqueSorted(values: number[]): number[] {
 // Y-line group splitting
 // ---------------------------------------------------------------------------
 function chainCoversRange(intervals: Interval[], lowerY: number, upperY: number, eps: number): boolean {
-	const sorted = [...intervals].sort((a, b) => a.min - b.min);
+	const sorted = intervals.slice().sort((a, b) => a.min - b.min);
 	let covered = lowerY;
 	for (const iv of sorted) {
 		if (iv.min > covered + eps) break;
@@ -144,7 +144,7 @@ function splitYLinesIntoGroups(yLines: number[], verticals: Segment[]): number[]
 			continue;
 		}
 		if (prevBridgingCols >= MIN_RICH_BRIDGING_COLS && cols < MIN_RICH_BRIDGING_COLS) {
-			const isOuterFrameOnly = [...bxs].every(
+			const isOuterFrameOnly = Array.from(bxs).every(
 				x => Math.abs(x - globalXMin) <= eps || Math.abs(x - globalXMax) <= eps,
 			);
 			if (!isOuterFrameOnly) {
@@ -198,7 +198,7 @@ function expandSubRowsByYClusters(
 		}
 		if (rowCellInfos.length === 0) continue;
 		const allMidYs = rowCellInfos.flatMap(({ boxes }) => boxes.map(b => (b.bounds.top + b.bounds.bottom) / 2));
-		const sortedY = [...new Set(allMidYs.map(y => Math.round(y * 10) / 10))].sort((a, b) => b - a);
+		const sortedY = Array.from(new Set(allMidYs.map(y => Math.round(y * 10) / 10))).sort((a, b) => b - a);
 		const clusters = [sortedY[0]];
 		for (let i = 1; i < sortedY.length; i++) {
 			if (clusters[clusters.length - 1] - sortedY[i] > Y_CLUSTER_GAP) {
@@ -302,7 +302,7 @@ function splitCrossColumnBoxes(textBoxes: TextBox[], xLines: number[]): TextBox[
 			continue;
 		}
 		// For each column boundary crossing, find the best word-boundary split
-		let remainingWords = [...words];
+		let remainingWords = words.slice();
 		let currentLeft = tb.bounds.left;
 		for (let col = leftCol; col <= rightCol && remainingWords.length > 0; col++) {
 			const colRight = col < xLines.length - 1 ? xLines[col + 1] : tb.bounds.right;
@@ -558,7 +558,7 @@ function buildHLineOnlyTable(
 		extensionBoxes.push(tb);
 		lastY = cy;
 	}
-	const allBoxes = [...inRange, ...extensionBoxes];
+	const allBoxes = inRange.concat(extensionBoxes);
 	if (allBoxes.length === 0) return null;
 	const leftEdges = allBoxes.map(tb => tb.bounds.left);
 	if (Math.max(...leftEdges) - Math.min(...leftEdges) < MIN_LEFT_SPREAD) return null;
@@ -567,7 +567,7 @@ function buildHLineOnlyTable(
 	const cols = xLines.length - 1;
 	// Build visual rows
 	const visualRows: Array<{ midY: number; boxes: TextBox[] }> = [];
-	const sortedBoxes = [...allBoxes].sort((a, b) => {
+	const sortedBoxes = allBoxes.slice().sort((a, b) => {
 		const ya = (a.bounds.top + a.bounds.bottom) / 2;
 		const yb = (b.bounds.top + b.bounds.bottom) / 2;
 		if (Math.abs(ya - yb) > 0.5) return yb - ya;
@@ -718,7 +718,7 @@ export function resolveTableGrids(pageNumber: number, textBoxes: TextBox[], segm
 	if (allYLines.length < 2) {
 		return { grids: [], consumedIds: [] };
 	}
-	const filteredSegments = [...filteredH, ...filteredV];
+	const filteredSegments = filteredH.concat(filteredV);
 	const yGroups = splitYLinesIntoGroups(allYLines, filteredV);
 	const grids: TableGrid[] = [];
 	const gridConsumedIds: string[][] = [];
