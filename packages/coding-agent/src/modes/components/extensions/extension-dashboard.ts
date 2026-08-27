@@ -53,6 +53,9 @@ import {
 } from "./state-manager";
 import type { DashboardState, ProviderTab } from "./types";
 
+/** Shared ScrollView theme — avoids per-frame closure allocation. */
+const SCROLL_LIST_THEME = { track: (t: string) => theme.fg("muted", t), thumb: (t: string) => theme.fg("accent", t) };
+
 const EXT_SHORTCUTS = [
 	{ label: "up/down navigate" },
 	{ label: "space toggle", clickable: true, id: "toggle" },
@@ -558,7 +561,7 @@ class TwoColumnBody implements Component {
 		const rightView = new ScrollView(rightLines, {
 			height: numLines,
 			scrollbar: "auto",
-			theme: { track: t => theme.fg("muted", t), thumb: t => theme.fg("accent", t) },
+			theme: SCROLL_LIST_THEME,
 		});
 		rightView.setScrollOffset(this.#rightScroll);
 		const rightRendered = rightView.render(rightWidth);

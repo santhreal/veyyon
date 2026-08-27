@@ -33,7 +33,7 @@ import {
 	renderModalShell,
 	sizingForArea,
 } from "./modal-shell";
-import { hoverBandAt } from "./selector-helpers";
+import { hoverBandAt, SCROLL_LIST_THEME } from "./selector-helpers";
 
 /**
  * Themed glyph + colored label for a session's lifecycle status, or `undefined`
@@ -705,7 +705,7 @@ class SessionList implements Component {
 			height: sessionLines.length,
 			scrollbar: "auto",
 			totalRows: Math.round(this.#filteredSessions.length * linesPerItem),
-			theme: { track: t => theme.fg("muted", t), thumb: t => theme.fg("accent", t) },
+			theme: SCROLL_LIST_THEME,
 		});
 		sv.setScrollOffset(Math.round(startIndex * linesPerItem));
 		const sessionRegionStart = lines.length;

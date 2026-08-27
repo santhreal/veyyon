@@ -22,7 +22,7 @@ import {
 	renderModalShell,
 	sizingForArea,
 } from "./modal-shell";
-import { hoverBandAt } from "./selector-helpers";
+import { hoverBandAt, SCROLL_LIST_THEME } from "./selector-helpers";
 
 const RESET_SELECTOR_MAX_VISIBLE = 10;
 
@@ -143,7 +143,7 @@ export class ResetUsageSelectorComponent implements Component {
 				height: rows.length,
 				scrollbar: "auto",
 				totalRows: total,
-				theme: { track: t => theme.fg("muted", t), thumb: t => theme.fg("accent", t) },
+				theme: SCROLL_LIST_THEME,
 			});
 			sv.setScrollOffset(startIndex);
 			const svLines = sv.render(width);

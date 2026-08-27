@@ -16,6 +16,9 @@ const VIEWER_CHROME_LINES = 6;
 // across multiple `data:` lines so streamed JSON blobs stop getting clipped by `truncateToWidth`.
 const PRETTY_PRINT_DATA_THRESHOLD = 100;
 
+/** Shared ScrollView theme — avoids per-frame closure allocation. */
+const SCROLL_LIST_THEME = { track: (t: string) => theme.fg("muted", t), thumb: (t: string) => theme.fg("accent", t) };
+
 function sanitizeFrameLine(line: string, width: number): string {
 	return truncateToWidth(replaceTabs(sanitizeText(line)), width);
 }
@@ -190,7 +193,7 @@ export class RawSseViewerComponent implements Component {
 			height: bodyHeight,
 			scrollbar: "auto",
 			totalRows: rawLines.length,
-			theme: { track: t => theme.fg("muted", t), thumb: t => theme.fg("accent", t) },
+			theme: SCROLL_LIST_THEME,
 		});
 		sv.setScrollOffset(this.#scrollOffset);
 		const bodyRows = sv.render(contentWidth);

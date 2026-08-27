@@ -24,7 +24,7 @@ import {
 	renderModalShell,
 	sizingForArea,
 } from "./modal-shell";
-import { hoverBandAt } from "./selector-helpers";
+import { hoverBandAt, SCROLL_LIST_THEME } from "./selector-helpers";
 
 interface UserMessageItem {
 	id: string; // Entry ID in the session
@@ -235,10 +235,11 @@ class UserMessageList implements Component {
 				height: messageLines.length,
 				scrollbar: "auto",
 				totalRows: Math.round(total * linesPerItem),
-				theme: { track: t => theme.fg("muted", t), thumb: t => theme.fg("accent", t) },
+				theme: SCROLL_LIST_THEME,
 			});
 			sv.setScrollOffset(Math.round(startIndex * linesPerItem));
-			lines.push(...sv.render(width));
+			const svLines = sv.render(width);
+			for (let li = 0; li < svLines.length; li++) lines.push(svLines[li]!);
 		}
 
 		// Add search indicator if needed

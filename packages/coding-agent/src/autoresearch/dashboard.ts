@@ -66,6 +66,10 @@ export function createDashboardController(): DashboardController {
 					}
 
 					let scrollOffset = 0;
+					const scrollViewTheme = {
+						track: (t: string) => theme.fg("dim", t),
+						thumb: (t: string) => theme.fg("accent", t),
+					};
 					return {
 						render(width: number): readonly string[] {
 							const terminalRows = process.stdout.rows ?? 40;
@@ -81,7 +85,7 @@ export function createDashboardController(): DashboardController {
 								height: viewportRows,
 								scrollbar: "auto",
 								totalRows: body.length,
-								theme: { track: t => theme.fg("dim", t), thumb: t => theme.fg("accent", t) },
+								theme: scrollViewTheme,
 							});
 							sv.setScrollOffset(scrollOffset);
 							return [header, ...sv.render(width), renderOverlayFooter(width, theme)];

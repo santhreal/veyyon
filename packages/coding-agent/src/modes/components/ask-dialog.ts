@@ -47,7 +47,7 @@ import {
 	pointerMotionEnabled,
 	renderModalShell,
 } from "./modal-shell";
-import { handleTabSwitchKey, hoverBandAt } from "./selector-helpers";
+import { handleTabSwitchKey, hoverBandAt, SCROLL_LIST_THEME } from "./selector-helpers";
 
 const SUBMIT_OPTION = "Submit";
 
@@ -1046,7 +1046,7 @@ export class AskDialogComponent implements Component {
 		const scrollView = new ScrollView(allLines, {
 			height: rows,
 			scrollbar: "auto",
-			theme: { track: t => theme.fg("muted", t), thumb: t => theme.fg("accent", t) },
+			theme: SCROLL_LIST_THEME,
 		});
 		scrollView.setScrollOffset(state.scrollOffset);
 		const lines = [...scrollView.render(width)];
@@ -1097,7 +1097,7 @@ export class AskDialogComponent implements Component {
 		const scrollView = new ScrollView(allLines, {
 			height: rows,
 			scrollbar: "auto",
-			theme: { track: t => theme.fg("muted", t), thumb: t => theme.fg("accent", t) },
+			theme: SCROLL_LIST_THEME,
 		});
 		scrollView.setScrollOffset(this.#submitScrollOffset);
 		const rendered = scrollView.render(width);

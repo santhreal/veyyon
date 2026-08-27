@@ -63,7 +63,7 @@ import {
 } from "./model-browser";
 import { fit } from "./overlay-box";
 import { renderSegmentTrack } from "./segment-track";
-import { hoverBandAt } from "./selector-helpers";
+import { hoverBandAt, SCROLL_LIST_THEME } from "./selector-helpers";
 
 /**
  * A row of the Roles view: a role, a model/wildcard chain-key header, one of a
@@ -1829,7 +1829,7 @@ export class ModelHubComponent implements Component {
 				height: rowLines.length,
 				scrollbar: "auto",
 				totalRows: this.#rolesRows.length,
-				theme: { track: t => theme.fg("muted", t), thumb: t => theme.fg("accent", t) },
+				theme: SCROLL_LIST_THEME,
 			});
 			scrollView.setScrollOffset(this.#rolesScroll);
 			const svLines = scrollView.render(fullWidth);

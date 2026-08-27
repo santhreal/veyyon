@@ -39,7 +39,7 @@ import {
 	matchesSelectPageUp,
 	matchesSelectUp,
 } from "../utils/keybinding-matchers";
-import { hoverBandAt } from "./selector-helpers";
+import { hoverBandAt, SCROLL_LIST_THEME } from "./selector-helpers";
 
 /** One selectable row. `selector` is a canonical model key or host-specific virtual key. */
 export interface ModelBrowserItem {
@@ -1024,7 +1024,7 @@ export class ModelBrowser implements Component {
 				height: rows.length,
 				scrollbar: "auto",
 				totalRows: total,
-				theme: { track: t => theme.fg("muted", t), thumb: t => theme.fg("accent", t) },
+				theme: SCROLL_LIST_THEME,
 			});
 			scrollView.setScrollOffset(startIndex);
 			const svLines = scrollView.render(width);

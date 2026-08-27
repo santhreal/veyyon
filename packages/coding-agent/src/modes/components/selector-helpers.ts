@@ -9,6 +9,12 @@ import { clampLow, Ellipsis, extractPrintableText, matchesKey, ScrollView, trunc
 import type { ThemeBg } from "../theme/theme";
 import { paintBand, theme } from "../theme/theme";
 
+/** Shared ScrollView theme (muted track / accent thumb) — avoids per-frame closure allocation. */
+export const SCROLL_LIST_THEME = {
+	track: (t: string) => theme.fg("muted", t),
+	thumb: (t: string) => theme.fg("accent", t),
+};
+
 /**
  * Paint `line` as a selection or hover band that fills the whole row.
  *
@@ -66,7 +72,7 @@ export function renderScrollableList(
 		height: options.visibleRows,
 		scrollbar: "auto",
 		totalRows: options.totalRows,
-		theme: { track: t => theme.fg("muted", t), thumb: t => theme.fg("accent", t) },
+		theme: SCROLL_LIST_THEME,
 	});
 	sv.setLines(buildRows(sv.contentWidth(options.width)));
 	sv.setScrollOffset(options.scrollOffset);
