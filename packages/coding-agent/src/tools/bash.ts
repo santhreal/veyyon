@@ -377,7 +377,14 @@ function summarizeBridgeOutput<T extends { exitCode: number | undefined; cancell
 	rest: T,
 ): T & OutputSummary {
 	const text = output.output;
-	const lines = text.length > 0 ? text.split("\n").length : 0;
+	let lineCount = 0;
+	if (text.length > 0) {
+		lineCount = 1;
+		for (let i = 0; i < text.length; i++) {
+			if (text.charCodeAt(i) === 0x0a) lineCount++;
+		}
+	}
+	const lines = lineCount;
 	return {
 		...rest,
 		output: text,
@@ -880,7 +887,8 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 			lines.push(trimmedPreview, "");
 		}
 		if (options.notices?.length) {
-			lines.push(...options.notices, "");
+			for (let ni = 0; ni < options.notices.length; ni++) lines.push(options.notices[ni]!);
+			lines.push("");
 		}
 		lines.push(formatBackgroundNotice(jobId, reason));
 		return {
@@ -1844,13 +1852,17 @@ export function createShellRenderer<TArgs>(config: ShellRendererConfig<TArgs>) {
 					const hasSixelOutput = sixelLineMask?.some(Boolean) ?? false;
 					if (hasOutput) {
 						if (hasSixelOutput) {
-							outputLines.push(
-								...rawOutputLines.map((line, index) =>
-									sixelLineMask?.[index] ? line : uiTheme.fg("toolOutput", replaceTabs(line)),
-								),
-							);
+							for (let oi = 0; oi < rawOutputLines.length; oi++) {
+								outputLines.push(
+									sixelLineMask?.[oi]
+										? rawOutputLines[oi]!
+										: uiTheme.fg("toolOutput", replaceTabs(rawOutputLines[oi]!)),
+								);
+							}
 						} else if (expanded) {
-							outputLines.push(...rawOutputLines.map(line => uiTheme.fg("toolOutput", replaceTabs(line))));
+							for (let oi = 0; oi < rawOutputLines.length; oi++) {
+								outputLines.push(uiTheme.fg("toolOutput", replaceTabs(rawOutputLines[oi]!)));
+							}
 						} else {
 							// Progress runs collapse BEFORE the tail window is measured, so a
 							// build's `Compiling …` wall cannot spend the whole window and push
@@ -1873,7 +1885,7 @@ export function createShellRenderer<TArgs>(config: ShellRendererConfig<TArgs>) {
 									),
 								);
 							}
-							outputLines.push(...result.visualLines);
+							for (let oi = 0; oi < result.visualLines.length; oi++) outputLines.push(result.visualLines[oi]!);
 							// The follow, on tools: while output is still streaming, the
 							// newest visible line carries the hot trail (cooling into
 							// toolOutput). Deterministic per content, so the render cache
