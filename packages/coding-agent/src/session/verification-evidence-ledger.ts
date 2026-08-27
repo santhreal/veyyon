@@ -410,7 +410,7 @@ export class VerificationEvidenceLedger {
 
 	snapshot(): VerificationLedgerSnapshot {
 		return {
-			mutations: this.#mutations.map(item => ({ ...item, paths: [...item.paths] })),
+			mutations: this.#mutations.map(item => ({ ...item, paths: Array.from(item.paths) })),
 			proofs: this.#proofs.map(item => ({ ...item })),
 			intervenedThisTurn: this.#intervenedThisTurn,
 			intervenedCodeReviewThisTurn: this.#intervenedCodeReviewThisTurn,

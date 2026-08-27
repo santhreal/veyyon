@@ -275,7 +275,7 @@ export function buildSessionContext(
 				injectedTtsrRulesSet.add(ruleName);
 			}
 		} else if (entry.type === "mcp_tool_selection") {
-			selectedMCPToolNames = [...entry.selectedToolNames];
+			selectedMCPToolNames = entry.selectedToolNames.slice();
 			hasPersistedMCPToolSelection = true;
 		} else if (entry.type === "mode_change") {
 			mode = entry.mode;

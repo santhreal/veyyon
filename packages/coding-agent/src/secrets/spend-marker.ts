@@ -58,7 +58,7 @@ function describeSpend(placeholders: readonly string[]): { names: string[]; unna
 		if (/^[0-9]/.test(body)) unnamed += 1;
 		else names.add(body);
 	}
-	return { names: [...names].sort(), unnamed };
+	return { names: Array.from(names).sort(), unnamed };
 }
 
 /** `one unnamed secret` / `3 unnamed secrets`, matching the approval prompt's wording. */

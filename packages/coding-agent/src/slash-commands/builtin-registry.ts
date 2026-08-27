@@ -2611,7 +2611,7 @@ function toSlashCommandSpec(declaration: BuiltinSlashCommandDeclaration): SlashC
 		description: declaration.description,
 		...BUILTIN_SLASH_COMMAND_HANDLERS[declaration.name as BuiltinSlashCommandName],
 	};
-	if (declaration.aliases) spec.aliases = [...declaration.aliases];
+	if (declaration.aliases) spec.aliases = Array.from(declaration.aliases);
 	if (declaration.allowArgs !== undefined) spec.allowArgs = declaration.allowArgs;
 	if (declaration.inlineHint !== undefined) spec.inlineHint = declaration.inlineHint;
 	if (declaration.acpDescription !== undefined) spec.acpDescription = declaration.acpDescription;

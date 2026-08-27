@@ -17,7 +17,7 @@ const isWindows = process.platform === "win32";
  * Returns available recording tools in priority order.
  */
 export function detectRecordingTools(): string[] {
-	return [...new Set(detectRecorders().map(recorder => recorder.tool))];
+	return Array.from(new Set(detectRecorders().map(recorder => recorder.tool)));
 }
 
 // ── ffmpeg dshow device detection ──────────────────────────────────

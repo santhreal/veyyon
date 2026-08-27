@@ -203,7 +203,7 @@ CREATE TRIGGER IF NOT EXISTS history_ai AFTER INSERT ON history BEGIN
 			if (!rowsById.has(row.id)) rowsById.set(row.id, row);
 		}
 
-		return [...rowsById.values()]
+		return Array.from(rowsById.values())
 			.sort((a, b) => b.created_at - a.created_at || b.id - a.id)
 			.slice(0, safeLimit)
 			.map(row => this.#toEntry(row));

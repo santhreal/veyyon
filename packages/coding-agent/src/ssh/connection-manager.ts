@@ -627,7 +627,7 @@ export async function buildRemoteCommand(
 	options?: SSHArgsOptions,
 ): Promise<string[]> {
 	await validateKeyPermissions(host.keyPath, options?.platform);
-	return [...buildCommonArgs(host, options), buildSshTarget(host.username, host.host), command];
+	return buildCommonArgs(host, options).concat([buildSshTarget(host.username, host.host), command]);
 }
 
 let registered = false;
@@ -691,7 +691,7 @@ export async function ensureConnection(host: SSHConnectionTarget): Promise<void>
 }
 
 export async function invalidateHostMetadata(hostNames: Iterable<string>): Promise<void> {
-	const names = [...hostNames];
+	const names = Array.from(hostNames);
 	for (const hostName of names) {
 		hostInfoCache.delete(hostName);
 		await deleteHostInfoFromDisk(hostName);

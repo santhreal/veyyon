@@ -240,7 +240,9 @@ export function renderAccountStatus(
 	// sentence seven times in an eight-provider block: it tripled the height, buried the accounts
 	// between repetitions of itself, and read as nagging rather than as an offer. The placeholder
 	// on each row is what marks WHICH accounts it applies to.
-	const unnamed = [...routed.values()].filter(rows => !(rows.find(r => r.activeForSession) ?? rows[0])?.name).length;
+	const unnamed = Array.from(routed.values()).filter(
+		rows => !(rows.find(r => r.activeForSession) ?? rows[0])?.name,
+	).length;
 	if (unnamed > 0) {
 		lines.push(
 			line(ROW_INDENT, `${unnamed === 1 ? "1 account has" : `${unnamed} accounts have`} no name · ${NAME_HINT}`),

@@ -21,15 +21,15 @@ export interface RelativizeResult {
 	bytesSaved: number;
 }
 
-/**
- * Normalize an active working directory root for wire-path relativization.
- * Trims whitespace and trailing slashes, rejecting non-absolute or root-only paths.
- */
-export function normalizeRoots(root: string): string[] {
-	let normalized = root.trim();
-	while (normalized.length > 1 && normalized.endsWith("/")) normalized = normalized.slice(0, -1);
-	if (normalized.length > 1 && normalized.startsWith("/")) return [normalized];
-	return [];
+/** Normalize, dedup, and sort roots longest-first so the longest prefix wins. */
+export function normalizeRoots(roots: readonly string[]): string[] {
+	const seen = new Set<string>();
+	for (const root of roots) {
+		let normalized = root.trim();
+		while (normalized.length > 1 && normalized.endsWith("/")) normalized = normalized.slice(0, -1);
+		if (normalized.length > 1 && normalized.startsWith("/")) seen.add(normalized);
+	}
+	return Array.from(seen).sort((a, b) => b.length - a.length);
 }
 
 const BOUNDARY_CHARS = new Set([" ", "\t", "\n", "\r", "(", "[", "{", "<", '"', "'", "`", "=", ":", ";", ","]);

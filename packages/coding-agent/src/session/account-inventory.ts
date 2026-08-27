@@ -322,7 +322,7 @@ export function buildAccountInventory(
 		if (!byProvider.has(provider)) byProvider.set(provider, []);
 	}
 
-	const providers = [...byProvider.entries()]
+	const providers = Array.from(byProvider.entries())
 		.map(([provider, rows]) => {
 			const entry: ProviderAccounts = { provider, label: formatProviderName(provider), rows };
 			const disabledCause = failedRefreshes.get(provider) ?? authStorage.disabledCredentialCause(provider);
@@ -555,7 +555,7 @@ function orderUsageWindows(
 		if (prior && prior.fetchedAt >= entry.fetchedAt) continue;
 		freshest.set(entry.window.label, { ...entry, position: prior?.position ?? freshest.size });
 	}
-	return [...freshest.values()]
+	return Array.from(freshest.values())
 		.sort((left, right) => {
 			const leftMs = left.window.durationMs;
 			const rightMs = right.window.durationMs;
@@ -618,7 +618,7 @@ export function applyUsageReports(inventory: AccountInventory, reports: readonly
 				// windows per account and a Team seat can carry both a shared and a personal pool,
 				// so two different tiers on one account means the label would have to pick a winner,
 				// and a plan badge that picked wrong is worse than a row with no badge.
-				if (tiers.size === 1) next.planTier = [...tiers][0];
+				if (tiers.size === 1) next.planTier = Array.from(tiers)[0];
 				return next;
 			}),
 		};
