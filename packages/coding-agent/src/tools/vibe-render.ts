@@ -336,7 +336,8 @@ export function createVibeToolRenderer(op: VibeOp) {
 				);
 				const lines = [header];
 				for (const screen of screens) {
-					lines.push(...tvScreen(uiTheme, screen, options, settledById.get(screen.id)));
+					const tvLines = tvScreen(uiTheme, screen, options, settledById.get(screen.id));
+					for (let li = 0; li < tvLines.length; li++) lines.push(tvLines[li]!);
 				}
 				return lines;
 			});

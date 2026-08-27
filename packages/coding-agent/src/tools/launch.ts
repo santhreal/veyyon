@@ -640,8 +640,12 @@ export const launchToolRenderer = {
 		} else {
 			switch (op) {
 				case "start": {
-					meta.push(...callMeta(params));
-					if (daemon) meta.push(...daemonMeta(daemon, theme));
+					const cm = callMeta(params);
+					for (let mi = 0; mi < cm.length; mi++) meta.push(cm[mi]!);
+					if (daemon) {
+						const dm = daemonMeta(daemon, theme);
+						for (let mi = 0; mi < dm.length; mi++) meta.push(dm[mi]!);
+					}
 					if (daemon?.readyMatch) body.push(theme.fg("dim", `log matched: ${replaceTabs(daemon.readyMatch)}`));
 					if (daemon?.state === "failed" && daemon.exitReason)
 						body.push(theme.fg("error", replaceTabs(daemon.exitReason)));
@@ -660,18 +664,27 @@ export const launchToolRenderer = {
 					break;
 				}
 				case "send":
-					meta.push(...callMeta(params));
-					if (daemon) meta.push(...daemonMeta(daemon, theme));
-					if (!daemon) pushTextLines(body, text, theme);
+					const cm = callMeta(params);
+					for (let mi = 0; mi < cm.length; mi++) meta.push(cm[mi]!);
+					if (daemon) {
+						const dm = daemonMeta(daemon, theme);
+						for (let mi = 0; mi < dm.length; mi++) meta.push(dm[mi]!);
+					}
 					break;
 				case "stop":
 				case "restart":
-					if (daemon) meta.push(...daemonMeta(daemon, theme));
-					if (!daemon) pushTextLines(body, text, theme);
+					if (daemon) {
+						const dm = daemonMeta(daemon, theme);
+						for (let mi = 0; mi < dm.length; mi++) meta.push(dm[mi]!);
+					}
 					break;
 				case "wait": {
-					meta.push(...callMeta(params));
-					if (daemon) meta.push(...daemonMeta(daemon, theme));
+					const cm = callMeta(params);
+					for (let mi = 0; mi < cm.length; mi++) meta.push(cm[mi]!);
+					if (daemon) {
+						const dm = daemonMeta(daemon, theme);
+						for (let mi = 0; mi < dm.length; mi++) meta.push(dm[mi]!);
+					}
 					if (details?.matched) body.push(theme.fg("dim", `matched: ${replaceTabs(details.matched)}`));
 					if (details?.timedOut) {
 						const pending = daemon ? readyPendingSummary(daemon) : [];
@@ -731,7 +744,10 @@ export const launchToolRenderer = {
 					break;
 				}
 				case "describe": {
-					if (daemon) meta.push(...daemonMeta(daemon, theme));
+					if (daemon) {
+						const dm = daemonMeta(daemon, theme);
+						for (let mi = 0; mi < dm.length; mi++) meta.push(dm[mi]!);
+					}
 					const spec = details?.spec;
 					if (spec) {
 						body.push(theme.fg("toolOutput", replaceTabs([spec.application, ...spec.args].join(" "))));

@@ -1127,8 +1127,9 @@ export async function expandDelimitedPathEntries(
 	for (const entry of entries) {
 		const normalizedEntry = normalizePathLikeInput(entry);
 		const split = await splitDelimitedPathEntry(normalizedEntry, cwd, options);
-		if (split) expanded.push(...split);
-		else expanded.push(normalizedEntry);
+		if (split) {
+			for (let si = 0; si < split.length; si++) expanded.push(split[si]!);
+		} else expanded.push(normalizedEntry);
 	}
 	return expanded;
 }

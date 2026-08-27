@@ -1266,8 +1266,14 @@ function renderAnswerOptionLines(
 		);
 		out.push(` ${markerStyled} ${labelStyled}`);
 	}
-	if (customInput !== undefined) out.push(...renderCustomInputLines(uiTheme, customInput));
-	if (note !== undefined) out.push(...renderNoteLines(uiTheme, note, width));
+	if (customInput !== undefined) {
+		const cl = renderCustomInputLines(uiTheme, customInput);
+		for (let li = 0; li < cl.length; li++) out.push(cl[li]!);
+	}
+	if (note !== undefined) {
+		const nl = renderNoteLines(uiTheme, note, width);
+		for (let li = 0; li < nl.length; li++) out.push(nl[li]!);
+	}
 	return out;
 }
 

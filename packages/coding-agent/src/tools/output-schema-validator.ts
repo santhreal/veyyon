@@ -178,7 +178,8 @@ function collectClosedTopLevelSchemas(jsonSchema: Record<string, unknown>): Reco
 	if (Array.isArray(allOf)) {
 		for (const raw of allOf) {
 			if (isRecord(raw)) {
-				schemas.push(...collectClosedTopLevelSchemas(raw as Record<string, unknown>));
+				const cs = collectClosedTopLevelSchemas(raw as Record<string, unknown>);
+				for (let si = 0; si < cs.length; si++) schemas.push(cs[si]!);
 			}
 		}
 	}
@@ -216,7 +217,10 @@ function collectClosedTopLevelUnions(jsonSchema: Record<string, unknown>): Close
 	const allOf = jsonSchema.allOf;
 	if (Array.isArray(allOf)) {
 		for (const raw of allOf) {
-			if (isRecord(raw)) unions.push(...collectClosedTopLevelUnions(raw));
+			if (isRecord(raw)) {
+				const cu = collectClosedTopLevelUnions(raw);
+				for (let ui = 0; ui < cu.length; ui++) unions.push(cu[ui]!);
+			}
 		}
 	}
 	return unions;

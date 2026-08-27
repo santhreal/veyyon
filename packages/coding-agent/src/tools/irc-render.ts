@@ -183,7 +183,8 @@ export function createIrcMessageCard(
 		(width, expanded) => {
 			const lines = [renderStatusLine({ iconOverride: ircGlyph(uiTheme), title, meta }, uiTheme)];
 			if (body.trim()) {
-				lines.push(...bodyLines(body, expanded, uiTheme, { indent: "  ", collapsedLines: 3 }));
+				const bl = bodyLines(body, expanded, uiTheme, { indent: "  ", collapsedLines: 3 });
+				for (let li = 0; li < bl.length; li++) lines.push(bl[li]!);
 			}
 			return lines.map(line => truncateToWidth(line, width, Ellipsis.Unicode));
 		},
@@ -237,7 +238,10 @@ function renderSendResult(
 	const body: string[] = [];
 
 	const sent = args?.message?.trim();
-	if (sent) body.push(...bodyLines(sent, expanded, theme, { tone: "dim" }));
+	if (sent) {
+		const bl = bodyLines(sent, expanded, theme, { tone: "dim" });
+		for (let li = 0; li < bl.length; li++) body.push(bl[li]!);
+	}
 
 	if (receipts.length > 1 || failedCount > 0) {
 		const maxItems = expanded ? receipts.length : Math.min(receipts.length, PREVIEW_LIMITS.COLLAPSED_ITEMS);
@@ -261,7 +265,8 @@ function renderSendResult(
 		body.push(
 			`${theme.fg("dim", theme.nav.back)} ${theme.fg("accent", waited.from)}${age ? ` ${theme.fg("dim", age)}` : ""}`,
 		);
-		body.push(...bodyLines(waited.body, expanded, theme, { indent: "  " }));
+		const bl = bodyLines(waited.body, expanded, theme, { indent: "  " });
+		for (let li = 0; li < bl.length; li++) body.push(bl[li]!);
 	} else if (timedOut) {
 		body.push(theme.fg("warning", "No reply yet — they may answer later; check inbox or wait again."));
 	}
@@ -326,7 +331,8 @@ function renderInboxResult(
 		const replyBadge = msg.replyTo ? ` ${formatBadge("reply", "muted", theme)}` : "";
 		const head = `${theme.fg("accent", msg.from)}${age ? ` ${theme.fg("dim", age)}` : ""}${replyBadge}`;
 		body.push(head);
-		body.push(...bodyLines(msg.body, expanded, theme, { indent: "  ", collapsedLines: 1 }));
+		const bl = bodyLines(msg.body, expanded, theme, { indent: "  ", collapsedLines: 1 });
+		for (let li = 0; li < bl.length; li++) body.push(bl[li]!);
 	}
 	if (!expanded && messages.length > maxItems) {
 		const remaining = messages.length - maxItems;
@@ -420,7 +426,8 @@ export const ircToolRenderer = {
 		);
 		const body: string[] = [];
 		if (args?.op === "send" && args.message?.trim()) {
-			body.push(...bodyLines(args.message, false, uiTheme, { tone: "dim", collapsedLines: 1 }));
+			const bl = bodyLines(args.message, false, uiTheme, { tone: "dim", collapsedLines: 1 });
+			for (let li = 0; li < bl.length; li++) body.push(bl[li]!);
 		}
 		return framedBlock(uiTheme, width => ({
 			header,

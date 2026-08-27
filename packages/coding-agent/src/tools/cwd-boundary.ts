@@ -139,9 +139,15 @@ export function searchPathFilesystemTargets(args: unknown, cwd = process.cwd()):
 	const legacy = "paths" in args ? args.paths : undefined;
 	const raw = typeof direct === "string" || Array.isArray(direct) ? direct : legacy;
 	const entries: string[] = [];
-	if (typeof raw === "string") entries.push(raw);
-	else if (Array.isArray(raw)) {
-		for (const item of raw) if (typeof item === "string") entries.push(item);
+	if (typeof raw === "string") {
+		const sp = raw.split(";");
+		for (let si = 0; si < sp.length; si++) entries.push(sp[si]!);
+	} else if (Array.isArray(raw)) {
+		for (const item of raw)
+			if (typeof item === "string") {
+				const sp = item.split(";");
+				for (let si = 0; si < sp.length; si++) entries.push(sp[si]!);
+			}
 	}
 	if (entries.length === 0) return [];
 	const expanded = expandDelimitedPathEntriesSync(entries, cwd);

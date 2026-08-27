@@ -539,7 +539,8 @@ export class JobTool implements AgentTool<typeof jobSchema, JobToolDetails> {
 
 		if (agents.length > 0) {
 			if (lines.length > 0) lines.push("");
-			lines.push(...this.#describeAgents(agents));
+			const al = this.#describeAgents(agents);
+			for (let li = 0; li < al.length; li++) lines.push(al[li]!);
 		}
 
 		// A tool result must never be empty text — the model cannot tell "no

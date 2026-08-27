@@ -252,7 +252,8 @@ function buildWatchSections(
 	}
 
 	if (watch.mode === "run" && watch.run) {
-		main.push(...renderRunBlock(watch.run, width, theme));
+		const rb = renderRunBlock(watch.run, width, theme);
+		for (let li = 0; li < rb.length; li++) main.push(rb[li]!);
 	} else if (watch.mode === "commit") {
 		const runs = watch.runs ?? [];
 		if (runs.length === 0) {
@@ -262,7 +263,8 @@ function buildWatchSections(
 				if (index > 0) {
 					main.push("");
 				}
-				main.push(...renderRunBlock(run, width, theme));
+				const rb = renderRunBlock(run, width, theme);
+				for (let li = 0; li < rb.length; li++) main.push(rb[li]!);
 			});
 		}
 	}

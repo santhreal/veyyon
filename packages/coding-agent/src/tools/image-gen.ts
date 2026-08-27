@@ -996,7 +996,7 @@ function combineParts(response: GeminiGenerateContentResponse): GeminiPart[] {
 	const parts: GeminiPart[] = [];
 	for (const candidate of response.candidates ?? []) {
 		const candidateParts = candidate.content?.parts ?? [];
-		parts.push(...candidateParts);
+		for (let pi = 0; pi < candidateParts.length; pi++) parts.push(candidateParts[pi]!);
 	}
 	return parts;
 }

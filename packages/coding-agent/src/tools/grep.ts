@@ -1562,8 +1562,8 @@ export class GrepTool implements AgentTool<typeof searchSchema, GrepToolDetails>
 						if (hashContext?.tag) {
 							outputLines.push(formatHashlineHeader(relativePath, hashContext.tag));
 						}
-						outputLines.push(...rendered.model);
-						displayLines.push(...rendered.display);
+						for (let li = 0; li < rendered.model.length; li++) outputLines.push(rendered.model[li]!);
+						for (let li = 0; li < rendered.display.length; li++) displayLines.push(rendered.display[li]!);
 					}
 				}
 				if (limitMessage) {

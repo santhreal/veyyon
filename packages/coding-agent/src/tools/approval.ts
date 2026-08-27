@@ -472,7 +472,8 @@ export function formatApprovalPrompt(tool: ApprovalSubject, args: unknown, reaso
 		lines.push(`Reason: ${reason}`);
 	}
 
-	lines.push(...approvalDetailLines(tool, args));
+	const al = approvalDetailLines(tool, args);
+	for (let li = 0; li < al.length; li++) lines.push(al[li]!);
 	return lines.join("\n");
 }
 

@@ -1247,7 +1247,7 @@ function formatSummaryBody(phases: TodoPhase[], errors: string[], readOnly: bool
 		const marker = TODO_PREVIEW_MARKERS[item.status];
 		if (!preview.push(`- ${marker} `, `${item.content} (${item.phase})`)) break;
 	}
-	lines.push(...preview.lines);
+	for (let li = 0; li < preview.lines.length; li++) lines.push(preview.lines[li]!);
 	const hidden = tasks.length - preview.lines.length;
 	if (hidden > 0) lines.push(`- … ${hidden} more item(s) retained in machine todo state.`);
 	return lines.join("\n");
@@ -1728,7 +1728,7 @@ export const todoToolRenderer = {
 						},
 						uiTheme,
 					);
-					bodyLines.push(...treeLines);
+					for (let li = 0; li < treeLines.length; li++) bodyLines.push(treeLines[li]!);
 				}
 			}
 			return {
