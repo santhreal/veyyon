@@ -109,6 +109,14 @@
 - `agent-dashboard.ts` converts `for…of` loops to index-based `for` loops in `CommsPane.layout` and `#renderTabBar`.
 - `modal-shell.ts` replaces `.map().filter(Boolean)` with `for` loop in `resolveShortcutLabels`, and `.map(c => c.w)` with pre-allocated array in `layoutShortcutRows`.
 - `status-line/component.ts` converts `for…of` loops to index-based `for` loops in config segment iteration and bounds building.
+- `agent-dashboard.ts` replaces O(n²) `.includes()` with `Set` in `commsParticipants`, `.filter()` closures with for loops in `scopedComms`/`filteredComms`, `.find()` closures with for loops in `observableFor`/`callSignFor`, and `for…of` with index-based loops in comms message rendering.
+- `status-line/component.ts` replaces `.map().join()` with single-pass `joinContents` helper in `renderQuietLine`, `.map()` with pre-allocated arrays in `renderQuietLines`, and `Array.from.sort.map.join` with single-pass in hook status `render`.
+- `tool-execution.ts` replaces `for…of` and `.map()` with index-based loops in `dedent` and displayLines rendering.
+- `diff.ts` replaces `for…of` string iteration with `charCodeAt` in `visualizeIndent`, and `for…of` array iteration with index-based loops in `renderIntraLineDiff` and removedLines/addedLines rendering.
+- `bash-execution.ts` replaces `.map().join()` with single-pass string build in expanded and collapsed output views, and `.map()` with pre-allocated arrays in `clampLinesPreservingSixel`.
+- `eval-execution.ts` replaces `.map().join()` with single-pass string build in header and output rendering.
+- `read-tool-group.ts` replaces `for…of`, `.filter()`, `.every()`, and `.map().filter()` with index-based loops across `displayTargetsForEntries`, `buildSummaryRows`, `statusForTargets`, `correctedFromForTargets`, `conflictCountForTargets`, `previewEntriesForRow`, and `splitReadDisplayPathSpecs`.
+- `modal-shell.ts` replaces `.map()` closures with pre-allocated arrays in `layoutShortcutRows`, `renderModalShortcuts`, and `resolveShortcutLabels`, and `for…of` with index-based loops in `fitTipLine` and modal card body/shortcut/frame rendering.
 ### Added
 
 - `/advisor` reports advisor status, opens the `WATCHDOG.yml` roster editor and applies a save to the running session, starts or stops the advisor for the session, and copies the advisor's own transcript; the subsystem shipped complete but no command, key or menu row reached it.
