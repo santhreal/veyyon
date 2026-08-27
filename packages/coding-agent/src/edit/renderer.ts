@@ -888,9 +888,14 @@ export const editToolRenderer = {
 			}
 			// Pre-wrap with the continuation gutter, as the landed result does, so a
 			// row too long for the frame keeps reading as one row of the diff.
-			const bodyLines = body
-				? body.split("\n").flatMap(line => wrapEditRendererLine(line, Math.max(1, width - 2)))
-				: [];
+			const bodyLines: string[] = [];
+			if (body) {
+				const rawBodyLines = body.split("\n");
+				for (let bi = 0; bi < rawBodyLines.length; bi++) {
+					const wrapped = wrapEditRendererLine(rawBodyLines[bi]!, Math.max(1, width - 2));
+					for (let wi = 0; wi < wrapped.length; wi++) bodyLines.push(wrapped[wi]!);
+				}
+			}
 			while (bodyLines.length > 0 && bodyLines[0].trim() === "") bodyLines.shift();
 			return {
 				header,
@@ -1035,7 +1040,14 @@ function renderSingleFileResult(
 		// inner width so renderOutputBlock's generic wrap is a no-op. Edit frames
 		// use a flush left border because code-frame gutters already provide padding.
 		const innerWidth = Math.max(1, width - 2);
-		const bodyLines = body.length > 0 ? body.split("\n").flatMap(line => wrapEditRendererLine(line, innerWidth)) : [];
+		const bodyLines: string[] = [];
+		if (body.length > 0) {
+			const rawBodyLines = body.split("\n");
+			for (let bi = 0; bi < rawBodyLines.length; bi++) {
+				const wrapped = wrapEditRendererLine(rawBodyLines[bi]!, innerWidth);
+				for (let wi = 0; wi < wrapped.length; wi++) bodyLines.push(wrapped[wi]!);
+			}
+		}
 		while (bodyLines.length > 0 && bodyLines[0].trim() === "") bodyLines.shift();
 
 		return {
