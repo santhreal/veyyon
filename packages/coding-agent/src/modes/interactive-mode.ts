@@ -232,7 +232,7 @@ import {
 	onThemeChange,
 	theme,
 } from "./theme/theme";
-import { flushPendingTtyInput, RELAUNCH_MARKER } from "./tty-input-flush";
+import { consumeRelaunchMarker, flushPendingTtyInput, RELAUNCH_MARKER } from "./tty-input-flush";
 import type {
 	CompactionQueuedMessage,
 	InteractiveModeContext,
@@ -1333,6 +1333,11 @@ export class InteractiveMode implements InteractiveModeContext {
 			// is source-agnostic: keystrokes, a terminal's replies to the dying
 			// parent's probes, or anything a multiplexer injected all go the same
 			// way, and no timing window is involved.
+			// This branch discards the queue either way, so the marker only has to
+			// be cleared: left set it would reach every child this session spawns,
+			// and a veyyon launched from one would read its operator's typing as a
+			// dead session's backlog.
+			consumeRelaunchMarker();
 			const flushed = flushPendingTtyInput();
 			// Windows consoles have no termios and an unusual libc may not resolve,
 			// so `tcflush` can be unavailable. The documented degrade is to discard
