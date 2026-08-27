@@ -58,8 +58,9 @@ over 25 MB is not read: the message carries the path and the reason.
 file window, a structural summary, a directory listing, an archive listing, a notebook or converted
 document, a URL body, a PDF image-member list and an `agent://<id>/<field>` extraction, and states
 what it carried and how to reach the rest. An extraction takes no line selector, so it is cut by
-bytes and the notice names its full size and the URL that pages it. Every other tool
-passes the shared spill
+bytes and the notice names its full size and the URL that pages it. A selector-free structural
+summary also stops at `read.defaultLimit` lines, the bound a selector-free file window already
+follows, and the notice names which of the two stopped it. Every other tool passes the shared spill
 layer: output over the threshold is written to an artifact and the result keeps a head and tail
 window no larger than the threshold, sized by `tools.artifactHeadBytes` and
 `tools.artifactTailBytes` in the ratio they name, plus the `artifact://` id that reads the full text

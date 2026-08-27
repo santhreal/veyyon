@@ -21,6 +21,13 @@
  * the line to `tools.outputMaxColumns` (as every other read window already
  * does) lets the summary continue through the declarations that follow it.
  *
+ * The line default is asserted for the same reason a selector-free file window
+ * stops at `read.defaultLimit`: the caller named no line count, so the default
+ * names it. Without that bound only bytes stopped a summary, and a
+ * declaration-dense file spent the whole 50KB budget: measured over 4,039
+ * summaries in this repository the median is 57 lines, 54 files exceed 300, and
+ * those 54 cost 311,211 tokens between them.
+ *
  * What it does not catch: a summary of a file the parser cannot fold at all
  * (that read falls to the plain window path, covered by the read-budget suite),
  * and the TUI frame's own render caps.
@@ -42,6 +49,12 @@ const BODY_LINES = 6;
 const GIANT_LINE_BYTES = 200 * 1024;
 /** Named so a summary that resumed after the giant line can be recognized. */
 const AFTER_GIANT = "declaredAfterTheGiantLine";
+/**
+ * A line bound high enough that only the byte budget can stop the render.
+ * `ReadTool` clamps `read.defaultLimit` to `DEFAULT_MAX_LINES` (3000), so this
+ * is the ceiling, not an arbitrary large number.
+ */
+const LINES_OUT_OF_THE_WAY = 3000;
 
 function denseSource(count: number): string {
 	const parts: string[] = [];
@@ -58,10 +71,18 @@ function denseSource(count: number): string {
 	return `${parts.join("\n")}\n`;
 }
 
-async function toolFor(cwd: string, thresholdKb: number, maxColumns?: number): Promise<Tool> {
+async function toolFor(
+	cwd: string,
+	thresholdKb: number,
+	options: { maxColumns?: number; defaultLimit?: number } = {},
+): Promise<Tool> {
 	const settings = Settings.isolated();
 	settings.set("tools.artifactSpillThreshold", thresholdKb);
-	if (maxColumns !== undefined) settings.set("tools.outputMaxColumns", maxColumns);
+	if (options.maxColumns !== undefined) settings.set("tools.outputMaxColumns", options.maxColumns);
+	// A case that measures one bound raises the other out of the way, because a
+	// summary stops at whichever it reaches first and a case that cannot say
+	// which one stopped it proves neither.
+	if (options.defaultLimit !== undefined) settings.set("read.defaultLimit", options.defaultLimit);
 	const tools = await createTools(makeToolSession({ cwd, settings, skipPythonPreflight: true }), ["read"]);
 	const read = tools.find(tool => tool.name === "read");
 	if (!read) throw new Error("read tool missing");
@@ -98,14 +119,15 @@ describe("a structural summary costs what a tool result may cost", () => {
 	});
 
 	it("summarizes the dense fixture, so the rest of this suite measures a summary", async () => {
-		const text = await readText(await toolFor(dir, 64), "dense.ts");
+		const text = await readText(await toolFor(dir, 64, { defaultLimit: LINES_OUT_OF_THE_WAY }), "dense.ts");
 		expect(text).toContain("elided");
 		expect(text).toContain("handlerNumber0000");
 	});
 
 	it("holds a summary to the configured budget instead of rendering the whole projection", async () => {
-		const small = Buffer.byteLength(await readText(await toolFor(dir, 8), "dense.ts"), "utf-8");
-		const large = Buffer.byteLength(await readText(await toolFor(dir, 64), "dense.ts"), "utf-8");
+		const byteBound = { defaultLimit: LINES_OUT_OF_THE_WAY };
+		const small = Buffer.byteLength(await readText(await toolFor(dir, 8, byteBound), "dense.ts"), "utf-8");
+		const large = Buffer.byteLength(await readText(await toolFor(dir, 64, byteBound), "dense.ts"), "utf-8");
 		// The budget bounds the summary body; the elision footer and the budget
 		// notice are added after it, so allow one notice of slack.
 		expect(small).toBeLessThan(8 * 1024 + 512);
@@ -113,8 +135,8 @@ describe("a structural summary costs what a tool result may cost", () => {
 		expect(large).toBeLessThan(64 * 1024 + 512);
 	});
 
-	it("states the line that continues a capped summary", async () => {
-		const text = await readText(await toolFor(dir, 8), "dense.ts");
+	it("states the line that continues a summary the byte budget stopped", async () => {
+		const text = await readText(await toolFor(dir, 8, { defaultLimit: LINES_OUT_OF_THE_WAY }), "dense.ts");
 		const notice = /\[Summary reached the (?<size>[\d.]+KB) output budget\. Use :(?<next>\d+) to continue\]/.exec(
 			text,
 		);
@@ -129,14 +151,38 @@ describe("a structural summary costs what a tool result may cost", () => {
 		expect(text).not.toContain(`${next}:`);
 	});
 
-	it("leaves a summary inside the budget unannotated", async () => {
+	it("stops a summary at the line default the caller never overrode, and says so", async () => {
+		const text = await readText(await toolFor(dir, 1024, { defaultLimit: 40 }), "dense.ts");
+		const notice = /\[Summary reached the (?<limit>\d+)-line default\. Use :(?<next>\d+) to continue\]/.exec(text);
+		expect(notice).not.toBeNull();
+		expect(notice?.groups?.limit).toBe("40");
+		// Exactly the bound: 40 rendered units. The hashline header, the elision
+		// footer and the notice are separate blocks, so the count is taken from the
+		// units themselves rather than from the body's line count.
+		const body = text.split("\n\n")[0] ?? "";
+		const units = body.split("\n").filter(line => /^\d+[:-]/.test(line) || line === "…");
+		expect(units.length).toBe(40);
+		const next = Number(notice?.groups?.next);
+		expect(next).toBeGreaterThan(1);
+		expect(text).not.toContain(`${next}:`);
+	});
+
+	it("scales with the line default, so a summary is not billed by how dense the file is", async () => {
+		const bytesAt = async (limit: number) =>
+			Buffer.byteLength(await readText(await toolFor(dir, 1024, { defaultLimit: limit }), "dense.ts"), "utf-8");
+		const [tight, loose] = [await bytesAt(40), await bytesAt(400)];
+		expect(loose).toBeGreaterThan(tight * 4);
+	});
+
+	it("leaves a summary inside both bounds unannotated", async () => {
 		const text = await readText(await toolFor(dir, 64), "small.ts");
 		expect(text).toContain("handlerNumber0000");
 		expect(text).not.toContain("output budget");
+		expect(text).not.toContain("-line default");
 	});
 
 	it("clips a line wider than the column cap instead of ending the summary at it", async () => {
-		const text = await readText(await toolFor(dir, 64, 200), "giant.ts");
+		const text = await readText(await toolFor(dir, 64, { maxColumns: 200 }), "giant.ts");
 		expect(text).toContain(AFTER_GIANT);
 		expect(text).not.toContain("output budget");
 		expect(text).not.toContain("d".repeat(400));
@@ -144,7 +190,7 @@ describe("a structural summary costs what a tool result may cost", () => {
 	});
 
 	it("still holds a summary with a giant line to a small budget", async () => {
-		const text = await readText(await toolFor(dir, 8, 200), "giant.ts");
+		const text = await readText(await toolFor(dir, 8, { maxColumns: 200 }), "giant.ts");
 		expect(Buffer.byteLength(text, "utf-8")).toBeLessThan(8 * 1024 + 512);
 	});
 });

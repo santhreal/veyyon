@@ -2377,23 +2377,26 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 	}
 
 	/**
-	 * Render a structural summary, stopping once the model-facing text reaches
-	 * `maxBytes`. A summary is a projection over the whole file, so a
-	 * declaration-dense file (generated protobuf bindings, a large `.d.ts`)
-	 * keeps nearly every line and renders hundreds of kilobytes from a
-	 * selector-free read. That text is re-sent on every later request of the
-	 * session, so it takes the same budget as every other read window, and the
-	 * caller states the line the summary stopped at.
+	 * Render a structural summary, stopping at whichever bound it reaches first:
+	 * `maxBytes` of model-facing text, or `maxLines` rendered lines. A summary is
+	 * a projection over the whole file, so a declaration-dense file (generated
+	 * protobuf bindings, a large `.d.ts`) keeps nearly every line and renders
+	 * hundreds of kilobytes from a selector-free read. That text is re-sent on
+	 * every later request of the session, so it takes the same two bounds a
+	 * selector-free file window takes — `read.defaultLimit` lines and the output
+	 * budget in bytes — and the caller states which bound stopped it and the line
+	 * that continues it.
 	 */
 	#renderSummary(
 		summary: SummaryResult,
 		maxBytes: number,
+		maxLines: number,
 	): {
 		text: string;
 		displayText: string;
 		elidedRanges: ElidedRange[];
 		elidedLines: number;
-		truncated: boolean;
+		stoppedBy: "bytes" | "lines" | undefined;
 		nextLine: number;
 		columnTruncated: number;
 	} {
@@ -2459,7 +2462,7 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 		const elidedRanges: ElidedRange[] = [];
 		let elidedLines = 0;
 		let modelBytes = 0;
-		let truncated = false;
+		let stoppedBy: "bytes" | "lines" | undefined;
 		let nextLine = 0;
 		let columnTruncated = 0;
 		const clip = (text: string): string => {
@@ -2493,8 +2496,13 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 			}
 
 			const cost = Buffer.byteLength(modelPart, "utf-8") + (modelParts.length > 0 ? 1 : 0);
+			if (modelParts.length > 0 && modelParts.length >= maxLines) {
+				stoppedBy = "lines";
+				nextLine = unitStartLine;
+				break;
+			}
 			if (modelParts.length > 0 && modelBytes + cost > maxBytes) {
-				truncated = true;
+				stoppedBy = "bytes";
 				nextLine = unitStartLine;
 				break;
 			}
@@ -2519,7 +2527,7 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 			displayText: displayParts.join("\n"),
 			elidedRanges,
 			elidedLines,
-			truncated,
+			stoppedBy,
 			nextLine,
 			columnTruncated,
 		};
@@ -2869,15 +2877,18 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 				const summary = await this.#trySummarize(absolutePath, fileSize, signal);
 				if (summary?.parsed && summary.elided) {
 					const summaryBudget = inlineBudgetFor(this.session);
-					const renderedSummary = this.#renderSummary(summary, summaryBudget);
+					const renderedSummary = this.#renderSummary(summary, summaryBudget, this.#defaultLimit);
 					const footer = formatSummaryElisionFooter(
 						localReadPath,
 						renderedSummary.elidedRanges,
 						renderedSummary.elidedLines,
 					);
-					const budgetNotice = renderedSummary.truncated
-						? `[Summary reached the ${formatBytes(summaryBudget)} output budget. Use :${renderedSummary.nextLine} to continue]`
-						: "";
+					const budgetNotice =
+						renderedSummary.stoppedBy === "lines"
+							? `[Summary reached the ${this.#defaultLimit}-line default. Use :${renderedSummary.nextLine} to continue]`
+							: renderedSummary.stoppedBy === "bytes"
+								? `[Summary reached the ${formatBytes(summaryBudget)} output budget. Use :${renderedSummary.nextLine} to continue]`
+								: "";
 					const summaryHashContext = displayMode.hashLines
 						? await readHashlineHeaderContext(this.session, absolutePath, this.session.cwd)
 						: undefined;
