@@ -173,8 +173,14 @@ export interface ArmProjection {
 /** Comparable arm summary within an experiment. */
 export interface ArmSummary {
 	run: RunRow;
-	/** Arm label: job name minus the experiment prefix. */
+	/** Arm label: the label an operator set, else the arm the run's coordinates state. */
 	arm: string;
+	/**
+	 * The arm the run's own coordinates state, whatever label an operator set over it. A job name
+	 * is only read as `<experiment>-<arm>` for an experiment somebody registered, so this is never
+	 * a guess at where a name splits.
+	 */
+	recordedArm: string;
 	/** Human config line: models plus prewalk description when known. */
 	config: string;
 	/** Observed pass% over decided trials. */

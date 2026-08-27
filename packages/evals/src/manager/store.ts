@@ -34,12 +34,20 @@ export function assertSafeJobName(jobName: string): void {
 
 export const CURRENT_SCHEMA_VERSION = 2;
 
-export class StaleSchemaError extends Error {
+/**
+ * A row a newer build wrote.
+ *
+ * A row from an OLDER schema is migrated when the store opens, so it is served rather than refused.
+ * A row from a newer one cannot be: its columns mean whatever that build decided, and reading them
+ * through this build's assumptions reports numbers nothing recorded.
+ */
+export class UnreadableSchemaError extends Error {
 	constructor(jobName: string, version: number) {
 		super(
-			`Rejected stale run record for '${jobName}': schema version ${version} is obsolete (expected ${CURRENT_SCHEMA_VERSION})`,
+			`Refused run record '${jobName}': schema version ${version} was written by a newer build ` +
+				`(this build reads ${CURRENT_SCHEMA_VERSION}). Upgrade veyyon, or point --jobs-dir at another store.`,
 		);
-		this.name = "StaleSchemaError";
+		this.name = "UnreadableSchemaError";
 	}
 }
 
@@ -357,6 +365,7 @@ export class RunStore {
 		// above must already have run.
 		relaxSpendColumns(this.#db, "runs");
 		relaxSpendColumns(this.#db, "trials");
+		this.#migrateRunRows();
 	}
 
 	close(): void {
@@ -655,17 +664,48 @@ export class RunStore {
 		for (const { job_name } of rows) this.syncRun(job_name);
 	}
 
+	/**
+	 * Bring every row a previous schema wrote up to `CURRENT_SCHEMA_VERSION`.
+	 *
+	 * A version-1 row predates the `suite`, `backend` and `benchmark` columns, so whatever those
+	 * columns hold for it is this table's `ALTER TABLE` default rather than anything that build
+	 * recorded: the dataset is the only thing it stated about its shape, and the benchmark registry
+	 * reads a suite and a backend off it. Without this the rows stayed unreadable forever — omitted
+	 * from every listing, and a refusal for anyone asking for one by name — so a store carrying them
+	 * showed a dashboard missing its own history with no way to recover it.
+	 */
+	#migrateRunRows(): void {
+		const stale = this.#db
+			.query("SELECT job_name, dataset FROM runs WHERE schema_version < ?")
+			.all(CURRENT_SCHEMA_VERSION) as Array<{ job_name: string; dataset: string | null }>;
+		if (stale.length === 0) return;
+		const update = this.#db.query(
+			"UPDATE runs SET schema_version = ?, suite = ?, backend = ?, benchmark = ? WHERE job_name = ?",
+		);
+		this.#db.transaction(() => {
+			for (const row of stale) {
+				const { suite, backend, benchmark } = inferSuiteAndBackend({ dataset: row.dataset ?? "" });
+				update.run(CURRENT_SCHEMA_VERSION, suite, backend, benchmark, row.job_name);
+			}
+		})();
+		logger.info("Migrated run records written by an older schema", {
+			count: stale.length,
+			to: CURRENT_SCHEMA_VERSION,
+		});
+	}
+
 	getRun(jobName: string): RunRow | null {
 		const r = this.#db.query("SELECT * FROM runs WHERE job_name = ?").get(jobName) as Record<string, unknown> | null;
 		return r ? rowToRun(r) : null;
 	}
 
 	/**
-	 * Every run whose record this build can still read.
+	 * Every run whose record this build can read.
 	 *
-	 * A row stamped by an older schema is omitted and named in the log. `getRun` refuses the
-	 * same row with `StaleSchemaError` instead: a listing that aborts on one obsolete row shows
-	 * nothing, while a request for one run by name must not answer "no such run".
+	 * An older schema's rows were migrated when the store opened, so the only row left out is one a
+	 * NEWER build wrote; it is omitted and named in the log. `getRun` refuses the same row with
+	 * `UnreadableSchemaError` instead: a listing that aborts on one such row shows nothing, while a
+	 * request for one run by name must not answer "no such run".
 	 */
 	listRuns(): RunRow[] {
 		const rows = this.#db.query("SELECT * FROM runs ORDER BY created_at DESC").all() as Array<
@@ -674,11 +714,11 @@ export class RunStore {
 		const out: RunRow[] = [];
 		for (const r of rows) {
 			const version = typeof r.schema_version === "number" ? r.schema_version : 1;
-			if (version >= CURRENT_SCHEMA_VERSION) {
+			if (version <= CURRENT_SCHEMA_VERSION) {
 				out.push(rowToRun(r));
 				continue;
 			}
-			logger.warn("Omitting run recorded by an obsolete schema", {
+			logger.warn("Omitting run recorded by a newer schema", {
 				jobName: String(r.job_name),
 				schemaVersion: version,
 				expected: CURRENT_SCHEMA_VERSION,
@@ -722,8 +762,8 @@ function optionalNumber(value: unknown): number | null {
 
 function rowToRun(r: Record<string, unknown>): RunRow {
 	const version = typeof r.schema_version === "number" ? r.schema_version : 1;
-	if (version < CURRENT_SCHEMA_VERSION) {
-		throw new StaleSchemaError(String(r.job_name), version);
+	if (version > CURRENT_SCHEMA_VERSION) {
+		throw new UnreadableSchemaError(String(r.job_name), version);
 	}
 	const { suite, backend, benchmark } = inferSuiteAndBackend({
 		suite: r.suite ? String(r.suite) : undefined,

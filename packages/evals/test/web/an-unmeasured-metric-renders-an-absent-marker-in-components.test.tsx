@@ -55,6 +55,7 @@ function makeArmSummary(overrides: Partial<ArmSummary> = {}): ArmSummary {
 	return {
 		run: makeRunRow(),
 		arm: "arm_a",
+		recordedArm: "arm_a",
 		config: "model1",
 		passPct: 80,
 		costPerTask: null,

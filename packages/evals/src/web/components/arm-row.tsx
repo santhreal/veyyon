@@ -37,7 +37,7 @@ export function ArmRow({
 				</button>
 				{arm.run.label && (
 					<span className="ml-1.5 text-[10px] text-zinc-600" title={`job ${arm.run.jobName}`}>
-						{arm.run.jobName.slice(arm.run.jobName.indexOf("-") + 1)}
+						{arm.recordedArm}
 					</span>
 				)}
 				{arm.run.role && <RoleTag role={arm.run.role} />}

@@ -56,7 +56,7 @@ export function ArmEditorRow({
 						<input
 							name="label"
 							defaultValue={arm.run.label}
-							placeholder={arm.run.jobName.slice(arm.run.jobName.indexOf("-") + 1)}
+							placeholder={arm.recordedArm}
 							autoFocus
 							spellCheck={false}
 							className={`${INPUT_CLASS} w-44`}
