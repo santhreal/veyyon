@@ -11,7 +11,7 @@ import {
 import { mutate } from "../api";
 import { usePolled } from "../hooks/use-polled";
 import { useRunsSse } from "../hooks/use-runs-sse";
-import { Chip, Progress } from "./ui";
+import { Chip, Progress, StaleNotice } from "./ui";
 
 export function RunsPage({ selected }: { selected: string | null }) {
 	const { runs, error: runsError } = useRunsSse();
@@ -19,7 +19,7 @@ export function RunsPage({ selected }: { selected: string | null }) {
 		params: selected ? { name: selected } : undefined,
 	});
 	const [trace, setTrace] = useState<string | null>(null);
-	const [traceData] = usePolled<TraceDetailResponse>(
+	const [traceData, , traceError] = usePolled<TraceDetailResponse>(
 		selected && trace ? "/api/runs/:name/traces/:trace" : null,
 		2500,
 		{ params: selected && trace ? { name: selected, trace } : undefined, query: "?tail=60" },
@@ -180,6 +180,9 @@ export function RunsPage({ selected }: { selected: string | null }) {
 						</div>
 						{trace && (
 							<div ref={traceRef} className="h-2/5 overflow-auto border-t border-zinc-800 bg-zinc-950/60">
+								{/* A transcript that could not be fetched otherwise rendered as an empty tail, which
+								    is what a trial that has written nothing yet looks like. */}
+								{traceError && <StaleNotice error={traceError} />}
 								{(traceData?.entries ?? []).map((e: TranscriptEntry, i: number) => (
 									// Index key: a tail window whose entries carry no ids.
 									<div key={i} className="border-b border-zinc-900 px-4 py-2">
