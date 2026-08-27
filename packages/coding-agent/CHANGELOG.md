@@ -279,6 +279,7 @@
 - `settings-selector.ts`, `ask-dialog.ts`, `ttsr-notification.ts`, `custom-editor.ts`, `oauth-selector.ts`, `plugin-settings.ts`, `agent-transcript-viewer.ts`, `advisor-config.ts`, `status-line/segments.ts`, and `task/discovery.ts` replace array spreads with `.slice()`/`.concat()`/`Array.from()` in settings chain persistence, rule toggling, agent discovery, OAuth validation, and plugin feature management.
 - `repology.ts`, `spdx.ts`, `gemini.ts`, `perplexity.ts`, `public.ts`, and `streaming-player.ts` replace array spreads with `.slice()`/`.concat()`/`Array.from()` in web scraping, search result merging, and TTS audio player command construction.
 - `autoresearch/state.ts`, `discovery/helpers.ts`, `task/worktree.ts`, `conflict-detect.ts`, `secrets/vault.ts`, `repair/schema-repair.ts`, and `extensibility/typebox.ts` replace array spreads with `.slice()`/`.concat()`/`Array.from()` in experiment state cloning, extension discovery, worktree patch merging, conflict resolution, vault loading, schema repair, and typebox schema construction.
+- `usage-cli.ts` and browser tab management files (`handle-release.ts`, `launch.ts`, `tab-api-guard.ts`, `tab-supervisor.ts`, `tab-worker.ts`) replace Set/Map spreads with `Array.from()` and array copies with `.slice()` in usage report rendering and browser tab lifecycle management.
 
 ### Added
 
