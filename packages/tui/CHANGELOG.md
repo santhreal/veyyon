@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Table column width calculation in `markdown.ts` replaces 10 `.reduce()` and `.map()` closures with `for` loops and pre-allocated arrays, eliminating 10 closure allocations and 3 intermediate arrays per table render.
+
 ### Added
 
 - `TUI.onBeforeCompose` runs at the top of every frame, before any root child renders, so a layout whose height is a function of its siblings' heights is sized against the children about to render rather than the previous frame's.

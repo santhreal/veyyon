@@ -2419,24 +2419,28 @@ export class Markdown implements Component {
 		}
 
 		let minColumnWidths = minWordWidths;
-		let minCellsWidth = minColumnWidths.reduce((a, b) => a + b, 0);
+		let minCellsWidth = 0;
+		for (let i = 0; i < minColumnWidths.length; i++) minCellsWidth += minColumnWidths[i]!;
 
 		if (minCellsWidth > availableForCells) {
 			minColumnWidths = new Array(numCols).fill(1);
 			const remaining = availableForCells - numCols;
 
 			if (remaining > 0) {
-				const totalWeight = minWordWidths.reduce((total, width) => total + Math.max(0, width - 1), 0);
-				const growth = minWordWidths.map(width => {
-					const weight = Math.max(0, width - 1);
-					return totalWeight > 0 ? Math.floor((weight / totalWeight) * remaining) : 0;
-				});
+				let totalWeight = 0;
+				for (let i = 0; i < minWordWidths.length; i++) totalWeight += Math.max(0, minWordWidths[i]! - 1);
+				const growth = new Array<number>(minWordWidths.length);
+				for (let i = 0; i < minWordWidths.length; i++) {
+					const weight = Math.max(0, minWordWidths[i]! - 1);
+					growth[i] = totalWeight > 0 ? Math.floor((weight / totalWeight) * remaining) : 0;
+				}
 
 				for (let i = 0; i < numCols; i++) {
 					minColumnWidths[i] += growth[i] ?? 0;
 				}
 
-				const allocated = growth.reduce((total, width) => total + width, 0);
+				let allocated = 0;
+				for (let i = 0; i < growth.length; i++) allocated += growth[i]!;
 				let leftover = remaining - allocated;
 				for (let i = 0; leftover > 0 && i < numCols; i++) {
 					minColumnWidths[i]++;
@@ -2444,39 +2448,49 @@ export class Markdown implements Component {
 				}
 			}
 
-			minCellsWidth = minColumnWidths.reduce((a, b) => a + b, 0);
+			minCellsWidth = 0;
+			for (let i = 0; i < minColumnWidths.length; i++) minCellsWidth += minColumnWidths[i]!;
 		}
 
 		// Calculate column widths that fit within available width
-		const totalNaturalWidth = naturalWidths.reduce((a, b) => a + b, 0) + borderOverhead;
+		let totalNaturalWidth = 0;
+		for (let i = 0; i < naturalWidths.length; i++) totalNaturalWidth += naturalWidths[i]!;
+		totalNaturalWidth += borderOverhead;
 		let columnWidths: number[];
 
 		if (totalNaturalWidth <= availableWidth) {
 			// Everything fits naturally
-			columnWidths = naturalWidths.map((width, index) => Math.max(width, minColumnWidths[index]));
+			columnWidths = new Array<number>(naturalWidths.length);
+			for (let i = 0; i < naturalWidths.length; i++) {
+				columnWidths[i] = Math.max(naturalWidths[i]!, minColumnWidths[i]!);
+			}
 		} else {
 			// Need to shrink columns to fit
-			const totalGrowPotential = naturalWidths.reduce((total, width, index) => {
-				return total + Math.max(0, width - minColumnWidths[index]);
-			}, 0);
+			let totalGrowPotential = 0;
+			for (let i = 0; i < naturalWidths.length; i++) {
+				totalGrowPotential += Math.max(0, naturalWidths[i]! - minColumnWidths[i]!);
+			}
 			const extraWidth = Math.max(0, availableForCells - minCellsWidth);
-			columnWidths = minColumnWidths.map((minWidth, index) => {
-				const naturalWidth = naturalWidths[index];
+			columnWidths = new Array<number>(minColumnWidths.length);
+			for (let i = 0; i < minColumnWidths.length; i++) {
+				const minWidth = minColumnWidths[i]!;
+				const naturalWidth = naturalWidths[i]!;
 				const minWidthDelta = Math.max(0, naturalWidth - minWidth);
 				let grow = 0;
 				if (totalGrowPotential > 0) {
 					grow = Math.floor((minWidthDelta / totalGrowPotential) * extraWidth);
 				}
-				return minWidth + grow;
-			});
+				columnWidths[i] = minWidth + grow;
+			}
 
 			// Adjust for rounding errors - distribute remaining space
-			const allocated = columnWidths.reduce((a, b) => a + b, 0);
+			let allocated = 0;
+			for (let i = 0; i < columnWidths.length; i++) allocated += columnWidths[i]!;
 			let remaining = availableForCells - allocated;
 			while (remaining > 0) {
 				let grew = false;
 				for (let i = 0; i < numCols && remaining > 0; i++) {
-					if (columnWidths[i] < naturalWidths[i]) {
+					if (columnWidths[i]! < naturalWidths[i]!) {
 						columnWidths[i]++;
 						remaining--;
 						grew = true;
