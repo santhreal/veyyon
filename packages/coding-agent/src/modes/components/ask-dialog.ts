@@ -760,13 +760,12 @@ export class AskDialogComponent implements Component {
 	#renderHeader(width: number): string[] {
 		const lines: string[] = [];
 		if (this.#hasSubmitTab()) {
-			const tabs: Tab[] = [
-				...this.questions.map((question, index) => ({
-					id: String(index),
-					label: questionTabLabel(question, index),
-				})),
-				{ id: "submit", label: "Submit" },
-			];
+			const questionTabs: Tab[] = new Array<Tab>(this.questions.length + 1);
+			for (let qi = 0; qi < this.questions.length; qi++) {
+				questionTabs[qi] = { id: String(qi), label: questionTabLabel(this.questions[qi]!, qi) };
+			}
+			questionTabs[this.questions.length] = { id: "submit", label: "Submit" };
+			const tabs: Tab[] = questionTabs;
 			this.#tabBar = new TabBar("", tabs, getTabBarTheme(), this.#activeTabIndex);
 			this.#tabBar.showHint = false;
 			// Hover is applied before the render that produces this frame's bytes, and re-applied every
@@ -788,13 +787,21 @@ export class AskDialogComponent implements Component {
 	}
 
 	#questionRows(question: ExtensionAskDialogQuestion): QuestionRow[] {
-		const rows: QuestionRow[] = question.options.map((option, index) => ({
-			kind: "option",
-			key: `option:${index}`,
-			label: this.#optionLabel(question, option.label, index),
-			optionIndex: index,
-		}));
-		rows.push({ kind: "other", key: "other", label: ASK_OTHER_OPTION_LABEL, optionIndex: undefined });
+		const rows: QuestionRow[] = new Array<QuestionRow>(question.options.length + 1);
+		for (let oi = 0; oi < question.options.length; oi++) {
+			rows[oi] = {
+				kind: "option",
+				key: `option:${oi}`,
+				label: this.#optionLabel(question, question.options[oi]!.label, oi),
+				optionIndex: oi,
+			};
+		}
+		rows[question.options.length] = {
+			kind: "other",
+			key: "other",
+			label: ASK_OTHER_OPTION_LABEL,
+			optionIndex: undefined,
+		};
 		return rows;
 	}
 
