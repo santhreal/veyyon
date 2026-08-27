@@ -144,6 +144,11 @@
 - `assistant-message.ts` replaces `for…of` with index-based for loops in `containsMermaidFence`, `#appendThinkingExtensions`, and `#canFastPath`.
 - `latex-block.ts` replaces `for…of` and `.map()` closures with index-based for loops in `textBox`, `padBox`, `colorizeBox`, and `splitCells`.
 - `autocomplete.ts` replaces `.map()` destructure closure with index-based for loop in score stripping.
+- `fuzzy.ts` replaces `.map()` closures and `for…of` with index-based for loops in `fuzzyRank` and `fuzzyFilter`.
+- `settings-search.ts` replaces `.map()` closure with index-based for loop in `filterSettingItems`.
+- `extension-dashboard.ts` replaces `.map()` closure with index-based for loop in `buildTabBarTabs`.
+- `model-browser.ts` replaces `.map()` closure with index-based for loop in `buildBrowserItems`.
+- `ask-dialog.ts` replaces `.map().filter()` and `.map()` closures with single-pass for loops in `renderAnswerSummary` and `#buildResults`.
 - `agent-dashboard.ts` replaces `.reduce()` closure with for loop in `widest` roster column measurement.
 - `status-line/component.ts` replaces `.reduce()` closure with for loop in `#backgroundJobBadgeCount`.
 - `modal-shell.ts` replaces `.reduce()` closure with for loop in `groupWidth`.
