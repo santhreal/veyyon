@@ -144,7 +144,15 @@ export class BashExecutionComponent extends Container {
 			TERMINAL.imageProtocol === ImageProtocol.Sixel && isSixelPassthroughEnabled()
 				? getSixelLineMask(availableLines)
 				: undefined;
-		const hasSixelOutput = sixelLineMask?.some(Boolean) ?? false;
+		let hasSixelOutput = false;
+		if (sixelLineMask) {
+			for (let si = 0; si < sixelLineMask.length; si++) {
+				if (sixelLineMask[si]) {
+					hasSixelOutput = true;
+					break;
+				}
+			}
+		}
 
 		// Rebuild content container
 		this.#contentContainer.clear();
@@ -185,7 +193,14 @@ export class BashExecutionComponent extends Container {
 	#clampLinesPreservingSixel(lines: string[]): string[] {
 		if (lines.length === 0) return [];
 		const sixelLineMask = getSixelLineMask(lines);
-		if (!sixelLineMask.some(Boolean)) {
+		let hasSixel = false;
+		for (let si = 0; si < sixelLineMask.length; si++) {
+			if (sixelLineMask[si]) {
+				hasSixel = true;
+				break;
+			}
+		}
+		if (!hasSixel) {
 			return lines.map(line => clampExecutionDisplayLine(line));
 		}
 		return lines.map((line, index) => (sixelLineMask[index] ? line : clampExecutionDisplayLine(line)));
