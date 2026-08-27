@@ -3207,15 +3207,14 @@ export class SettingsSelectorComponent implements Component {
 		const showPreview = !searching && this.#currentTabId === "appearance" && paneWidth >= 40;
 		// The preview is a live status-line render: clamp every line to the
 		// pane so a wide preview can't punch through the modal's right border.
-		const requestedPreviewLines = showPreview
-			? [
-					"",
-					theme.fg("muted", "Preview:"),
-					...this.#getStatusPreviewString()
-						.split("\n")
-						.map(line => truncateToWidth(line, paneWidth)),
-				]
-			: [];
+		const requestedPreviewLines: string[] = [];
+		if (showPreview) {
+			requestedPreviewLines.push("", theme.fg("muted", "Preview:"));
+			const previewLines = this.#getStatusPreviewString().split("\n");
+			for (let li = 0; li < previewLines.length; li++) {
+				requestedPreviewLines.push(truncateToWidth(previewLines[li]!, paneWidth));
+			}
+		}
 
 		// Ask the shell how many body rows it will give, rather than estimating.
 		// This read `dims.modalHeight - 10` under a comment admitting it "mirrors

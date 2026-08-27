@@ -590,7 +590,7 @@ export class SettingsList implements Component {
 		// If submenu is active, render it instead (padded to the list's stable
 		// height so opening/closing a submenu does not resize the panel).
 		if (this.#submenuComponent) {
-			return this.#padLines([...this.#submenuComponent.render(width)]);
+			return this.#padLines(this.#submenuComponent.render(width).slice());
 		}
 
 		return this.#padLines(this.#renderMainList(width));
