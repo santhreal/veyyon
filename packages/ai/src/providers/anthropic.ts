@@ -3947,7 +3947,8 @@ export function convertAnthropicMessages(
 					else nonToolUse.push(block);
 				}
 				blocks.length = 0;
-				blocks.push(...nonToolUse, ...toolUse);
+				for (let bi = 0; bi < nonToolUse.length; bi++) blocks.push(nonToolUse[bi]!);
+				for (let bi = 0; bi < toolUse.length; bi++) blocks.push(toolUse[bi]!);
 			}
 			if (blocks.length === 0) continue;
 			params.push({
