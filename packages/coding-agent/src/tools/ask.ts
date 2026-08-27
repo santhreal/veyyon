@@ -1305,7 +1305,7 @@ export const askToolRenderer = {
 					// md() returns a shared cached array (module-level Markdown LRU) — copy before appending.
 					const mdLines = md(q.question, width);
 					const lines = q.options?.length
-						? [...mdLines, ...renderQuestionOptionLines(uiTheme, mdTheme, q.options, q.multi)]
+						? mdLines.concat(renderQuestionOptionLines(uiTheme, mdTheme, q.options, q.multi))
 						: mdLines;
 					sections[qi] = { label: `${uiTheme.fg("dim", `[${q.id}]`)}${metaStr}`, lines };
 				}
@@ -1336,7 +1336,7 @@ export const askToolRenderer = {
 			// md() returns a shared cached array (module-level Markdown LRU) — copy before appending.
 			const mdLines = md(question, width);
 			const bodyLines = questionOptions?.length
-				? [...mdLines, ...renderQuestionOptionLines(uiTheme, mdTheme, questionOptions, multi)]
+				? mdLines.concat(renderQuestionOptionLines(uiTheme, mdTheme, questionOptions, multi))
 				: mdLines;
 			return {
 				header,
