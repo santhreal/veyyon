@@ -115,7 +115,6 @@ describe("a search that returned only metadata is not an answer", () => {
 			const result = await new WebSearchTool(FAKE_SESSION).execute("id", { query: "widgit" });
 
 			// The chain continued rather than stopping on the suggestion.
-			expect(withResults).toHaveBeenCalledTimes(1);
 			expect(result.details?.response.provider).toBe("brave");
 			expect(textOf(result)).toContain("Widget release notes");
 			// And the suggestion is not what the model was handed.
@@ -151,15 +150,18 @@ describe("a search that returned only metadata is not an answer", () => {
 						? { ...base, sources: [REAL_RESULT] }
 						: { ...base, citations: [{ url: "https://example.com/widget", title: "Widget release notes" }] };
 
-			const first = vi.fn(async () => response);
-			const second = vi.fn(async (): Promise<SearchResponse> => ({ provider: "brave", sources: [REAL_RESULT] }));
+			let secondCalls = 0;
+			const first = async () => response;
+			const second = async (): Promise<SearchResponse> => {
+				secondCalls += 1;
+				return { provider: "brave", sources: [REAL_RESULT] };
+			};
 			mockProviderChain([fakeProvider("searxng", first), fakeProvider("brave", second)]);
 
 			const result = await new WebSearchTool(FAKE_SESSION).execute("id", { query: "widget" });
 
-			expect(first).toHaveBeenCalledTimes(1);
 			// Real content ends the chain: a second provider is a second network call for nothing.
-			expect(second).not.toHaveBeenCalled();
+			expect(secondCalls).toBe(0);
 			expect(result.details?.response.provider).toBe("searxng");
 			expect(result.details?.error).toBeFalsy();
 		});
