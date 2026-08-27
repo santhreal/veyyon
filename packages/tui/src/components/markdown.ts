@@ -2136,10 +2136,13 @@ export class Markdown implements Component {
 			const swatchGlyph = this.#theme.symbols.colorSwatch || DEFAULT_COLOR_SWATCH_GLYPH;
 			const applyTextWithNewlines = (text: string): string => {
 				if (text.indexOf("\n") === -1) return text === "" ? "" : applyText(text);
-				return text
-					.split("\n")
-					.map((segment: string) => (segment === "" ? "" : applyText(segment)))
-					.join("\n");
+				const segments = text.split("\n");
+				let result = "";
+				for (let si = 0; si < segments.length; si++) {
+					if (si > 0) result += "\n";
+					result += segments[si] === "" ? "" : applyText(segments[si]!);
+				}
+				return result;
 			};
 			const ctx: InlineWalkContext = {
 				theme: this.#theme,
@@ -2160,8 +2163,14 @@ export class Markdown implements Component {
 		}
 		const { applyText, stylePrefix } = styleContext;
 		const applyTextWithNewlines = (text: string): string => {
-			const segments: string[] = text.split("\n");
-			return segments.map((segment: string) => (segment === "" ? "" : applyText(segment))).join("\n");
+			if (text.indexOf("\n") === -1) return text === "" ? "" : applyText(text);
+			const segments = text.split("\n");
+			let result = "";
+			for (let si = 0; si < segments.length; si++) {
+				if (si > 0) result += "\n";
+				result += segments[si] === "" ? "" : applyText(segments[si]!);
+			}
+			return result;
 		};
 		const swatchGlyph = this.#theme.symbols.colorSwatch || DEFAULT_COLOR_SWATCH_GLYPH;
 		return walkInlineTokens(tokens, {
