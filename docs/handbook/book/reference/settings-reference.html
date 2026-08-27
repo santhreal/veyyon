@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-5dcdd457.js";
+            window.path_to_searchindex_js = "../searchindex-89f274d4.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-a2abefc1.js"></script>
@@ -431,7 +431,7 @@ veyyon config get compaction.threshold
 <tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
 </thead>
 <tbody>
-<tr><td><code>session.newKeepsBackground</code></td><td>/new Keeps The Old Session</td><td>boolean</td><td><code>true</code></td><td>On /new while a response is still streaming, keep the old conversation running in the background and attach the screen to a fresh one. The status line counts running background conversations and /process-manager opens them. Off stops the old turn and closes its provider stream before the new session starts, so nothing keeps billing once it leaves the screen.</td></tr>
+<tr><td><code>session.newKeepsBackground</code></td><td>/new Keeps The Old Session</td><td>boolean</td><td><code>false</code></td><td>On /new while a response is still streaming, keep the old conversation running in the background and attach the screen to a fresh one. The status line counts running background conversations and /process-manager opens them. Off stops the old turn and closes its provider stream before the new session starts, so nothing keeps billing once it leaves the screen.</td></tr>
 </tbody>
 </table>
 </div>

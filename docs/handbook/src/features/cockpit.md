@@ -100,8 +100,8 @@ Two run clocks tick alongside the segments, both measuring model runtime, never 
 
 ### One conversation, or every conversation
 
-A process runs more than one conversation at a time. `/new` leaves the previous one
-streaming unless `session.newKeepsBackground` is off, and an ACP client keeps every
+A process runs more than one conversation at a time. `/new` stops the previous one
+unless `session.newKeepsBackground` is on, and an ACP client keeps every
 open session in the same process.
 
 `/agents` opens on the conversation on screen. `/process-manager` opens on all of

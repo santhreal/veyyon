@@ -135,6 +135,27 @@ export class BackgroundSessions {
 	}
 
 	/**
+	 * The entry describing a session that is on screen rather than handed over.
+	 *
+	 * `attachMainSession` returns a {@link KeptSession} whether or not anything moved,
+	 * and re-attaching the session already displayed moves nothing. Registering it
+	 * instead would count a visible conversation in {@link size}, which is the number
+	 * the status line shows for conversations nobody is watching.
+	 */
+	describeAttached(session: AgentSession): KeptSession {
+		return (
+			this.#kept.get(session) ?? {
+				session,
+				sessionId: session.sessionManager.getSessionId(),
+				sessionFile: session.sessionManager.getSessionFile(),
+				detachedAt: Date.now(),
+				handoff: 0,
+				settled: Promise.resolve(),
+			}
+		);
+	}
+
+	/**
 	 * Reclaim a kept session by the transcript it writes to, so `/resume` can
 	 * re-attach the LIVE object instead of replaying its file as finished text.
 	 * It leaves the background set: the UI is displaying it again, and its

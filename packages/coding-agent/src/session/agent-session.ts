@@ -12184,6 +12184,10 @@ export class AgentSession {
 			this.abortHandoff();
 			this.abortBash();
 			this.abortEval();
+			// The advisors are reviewing the turn being stopped. Without this they keep
+			// streaming after the interrupt, one model call per configured advisor, and
+			// bill for a review of work that no longer exists.
+			for (const a of this.#advisors) a.runtime.cancelInFlight(options?.reason ?? "primary aborted");
 			const postPromptDrain = this.#cancelPostPromptTasks();
 			this.agent.abort(options?.reason);
 			await postPromptDrain;

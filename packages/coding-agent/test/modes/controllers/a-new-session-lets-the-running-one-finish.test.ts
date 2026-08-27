@@ -16,6 +16,7 @@
 
 import { afterEach, beforeAll, describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
+import { Settings } from "@veyyon/coding-agent/config/settings";
 import { CommandController } from "@veyyon/coding-agent/modes/controllers/command-controller";
 import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
@@ -119,7 +120,9 @@ function harness(options: { streaming: boolean; withFactory?: boolean; keepBackg
 		// new setting silently take its off-value here.
 		settings: {
 			get(key: string): unknown {
-				if (key === "session.newKeepsBackground") return options.keepBackground ?? true;
+				// Mirrors the shipped default so a test that omits the flag exercises what an
+				// operator who never opened /settings gets.
+				if (key === "session.newKeepsBackground") return options.keepBackground ?? false;
 				throw new Error(`Unexpected setting read: ${key}`);
 			},
 		},
@@ -178,7 +181,7 @@ describe("/new while a turn is running", () => {
 	});
 
 	it("does not reset the running session, and displays a new one instead", async () => {
-		const h = harness({ streaming: true });
+		const h = harness({ streaming: true, keepBackground: true });
 
 		await h.controller.handleClearCommand();
 
@@ -255,6 +258,30 @@ describe("/new while a turn is running", () => {
 		expect(outcome).toContain("session-a");
 		expect(outcome).toContain("keeps running");
 		expect(outcome).not.toContain("stopped");
+	});
+
+	/**
+	 * The shipped default, read through the real settings machinery rather than
+	 * restated as a literal, so flipping the schema without revisiting this
+	 * contract turns the file red.
+	 *
+	 * `/new` stops the old turn unless the operator asked for otherwise. A
+	 * conversation that leaves the screen stops costing money by default;
+	 * keeping one alive is the deliberate choice, not the accident of having
+	 * typed `/new` while a turn happened to be streaming.
+	 */
+	it("stops the old turn under the shipped default, so /new costs nothing after it leaves the screen", async () => {
+		const shipped = Settings.isolated({}).get("session.newKeepsBackground");
+		expect(shipped).toBe(false);
+
+		const h = harness({ streaming: true, keepBackground: shipped });
+
+		await h.controller.handleClearCommand();
+
+		expect(h.counts.factoryCalls).toBe(0);
+		expect(h.attached).toEqual([]);
+		expect(BackgroundSessions.global().size).toBe(0);
+		expect(h.presented().join(" ")).toContain("previous session stopped");
 	});
 
 	/**

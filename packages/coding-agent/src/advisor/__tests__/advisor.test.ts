@@ -1715,6 +1715,68 @@ describe("advisor", () => {
 			expect(runtime.backlog).toBe(0);
 		});
 
+		/**
+		 * WHY. `AgentSession.abort()` stopped the primary agent, bash and eval, and left
+		 * every configured advisor streaming. An operator running a panel of advisors paid
+		 * for one full review per advisor of a turn they had just interrupted, and nothing
+		 * on screen said so.
+		 *
+		 * THE CLASS. A stop verb that does not stop every model the session is paying for.
+		 *
+		 * WHY IT IS SUBTLE. The drain loop treats a rejected prompt as transient and
+		 * requeues it, so aborting the agent WITHOUT bumping the epoch re-runs the very
+		 * review the operator interrupted. Degrading `cancelInFlight` into a bare
+		 * `agent.abort()` was mutation-tested here: the batch goes back on the queue and
+		 * `backlog` stays at 1, which is the assertion that goes red. The retry test
+		 * directly above is the control, proving this same harness DOES retry an
+		 * ordinary failure.
+		 *
+		 * WHAT IT DOES NOT CATCH. That `AgentSession.abort()` reaches every entry in
+		 * `#advisors` — this drives one runtime directly, not the session seam.
+		 */
+		it("cancels the review in flight without retrying it, unlike a transient failure", async () => {
+			const promptInputs: string[] = [];
+			const aborts: string[] = [];
+			const started = Promise.withResolvers<void>();
+			let rejectInFlight: ((err: Error) => void) | undefined;
+			const agent: AdvisorAgent = {
+				prompt: async input => {
+					promptInputs.push(input);
+					const inFlight = Promise.withResolvers<void>();
+					rejectInFlight = inFlight.reject;
+					started.resolve();
+					await inFlight.promise;
+				},
+				abort: reason => {
+					aborts.push(String(reason ?? ""));
+					rejectInFlight?.(new Error("aborted"));
+				},
+				reset: () => {},
+				state: { messages: [] },
+			};
+			const messages: AgentMessage[] = [{ role: "user", content: "aaa", timestamp: 1 } as AgentMessage];
+			const host: AdvisorRuntimeHost = {
+				snapshotMessages: () => messages,
+				enqueueAdvice: () => {},
+			};
+			const runtime = new AdvisorRuntime(agent, host, 0);
+
+			runtime.onTurnEnd(messages);
+			// Await the prompt the runtime actually issued rather than a delay, so the
+			// test never races the drain loop's scheduling.
+			await started.promise;
+			expect(promptInputs).toHaveLength(1);
+
+			runtime.cancelInFlight("user interrupt");
+			// Let the rejection propagate through the drain loop's catch. Microtasks
+			// only: a retry would be queued here, and this is where it would appear.
+			for (let tick = 0; tick < 8; tick++) await Promise.resolve();
+
+			expect(aborts).toEqual(["user interrupt"]);
+			expect(promptInputs).toHaveLength(1);
+			expect(runtime.backlog).toBe(0);
+		});
+
 		it("drops backlog after 3 consecutive failures to prevent permanent stall", async () => {
 			const promptInputs: string[] = [];
 			const agent: AdvisorAgent = {
