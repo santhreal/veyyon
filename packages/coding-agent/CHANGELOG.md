@@ -20,6 +20,8 @@
 - `buildSkillPromptMessage` in `skills.ts` replaces `body.split("\n").length` with a `charCodeAt` newline count.
 - `agent-transcript-viewer.ts` replaces `" ".repeat(width)` with `padding(width)` in the blank fill path, using the pre-allocated space buffer for widths up to 512.
 - `copy-selector.ts` and `tree-selector.ts` replace `Array.from(symbol)` with direct string indexing for tree connector cells, avoiding an intermediate array per node; box-drawing characters are all BMP so indexing is equivalent.
+- `printableInput` in `move-overlay.ts` replaces `Array.from(string).filter().join()` with a `charCodeAt` scan that builds the result directly, avoiding a code-point array allocation per keystroke.
+
 
 
 
