@@ -104,7 +104,10 @@ export function getMarkdownTheme(): MarkdownTheme {
 			const validLang = lang && nativeSupportsLanguage(lang) ? lang : undefined;
 			const highlighted = highlightCached(code, validLang, theme);
 			if (highlighted !== null) return highlighted.split("\n");
-			return code.split("\n").map(line => theme.fg("mdCodeBlock", line));
+			const codeLines = code.split("\n");
+			const themed: string[] = new Array<string>(codeLines.length);
+			for (let ci = 0; ci < codeLines.length; ci++) themed[ci] = theme.fg("mdCodeBlock", codeLines[ci]!);
+			return themed;
 		},
 	};
 	cachedMarkdownTheme = markdownTheme;
