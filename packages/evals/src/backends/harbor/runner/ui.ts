@@ -203,20 +203,3 @@ export function writeReport(st: RenderState, benchDir: string, exitCode: number)
 	fs.writeFileSync(reportPath, lines.join("\n"));
 	return reportPath;
 }
-
-export async function runDashboardLoop(
-	st: RenderState,
-	isFinished: () => boolean,
-	options?: { isTTY?: boolean; intervalMs?: number; maxTicks?: number },
-): Promise<void> {
-	const tty = options?.isTTY ?? isTTY;
-	const interval = options?.intervalMs ?? (tty ? 700 : 10000);
-	const maxTicks = options?.maxTicks ?? Number.POSITIVE_INFINITY;
-	while (!isFinished() && st.tick < maxTicks) {
-		render(st);
-		st.tick++;
-		if (isFinished() || st.tick >= maxTicks) break;
-		await Bun.sleep(interval);
-	}
-	render(st); // final frame
-}
