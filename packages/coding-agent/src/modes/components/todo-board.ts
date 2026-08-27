@@ -151,24 +151,46 @@ function taskLine(task: TodoItem, options: TodoBoardOptions, width: number): str
  * closed three tasks looked exactly like one that had done nothing.
  */
 function collapsedTasks(phase: TodoPhase): TodoItem[] {
-	const closed = phase.tasks.filter(isClosed);
-	const open = phase.tasks.filter(task => !isClosed(task));
+	const closed: TodoItem[] = [];
+	const open: TodoItem[] = [];
+	for (let ti = 0; ti < phase.tasks.length; ti++) {
+		const task = phase.tasks[ti]!;
+		if (isClosed(task)) closed.push(task);
+		else open.push(task);
+	}
 	if (open.length === 0) return closed.slice(-ACTIVE_TASK_CAP);
-	const keep = new Set<TodoItem>([...closed.slice(-DONE_TASK_CAP), ...open.slice(0, ACTIVE_TASK_CAP)]);
-	return phase.tasks.filter(task => keep.has(task));
+	const keep = new Set<TodoItem>();
+	const closedStart = Math.max(0, closed.length - DONE_TASK_CAP);
+	for (let ci = closedStart; ci < closed.length; ci++) keep.add(closed[ci]!);
+	for (let oi = 0; oi < Math.min(open.length, ACTIVE_TASK_CAP); oi++) keep.add(open[oi]!);
+	const result: TodoItem[] = [];
+	for (let ti = 0; ti < phase.tasks.length; ti++) {
+		if (keep.has(phase.tasks[ti]!)) result.push(phase.tasks[ti]!);
+	}
+	return result;
 }
 
 /** The phase the plan is on: the first with open work, else the last one. */
 export function activeTodoPhaseIndex(phases: readonly TodoPhase[]): number {
-	const index = phases.findIndex(phase => phase.tasks.some(task => !isClosed(task)));
-	return index >= 0 ? index : Math.max(0, phases.length - 1);
+	for (let pi = 0; pi < phases.length; pi++) {
+		const tasks = phases[pi]!.tasks;
+		for (let ti = 0; ti < tasks.length; ti++) {
+			if (!isClosed(tasks[ti]!)) return pi;
+		}
+	}
+	return Math.max(0, phases.length - 1);
 }
 
 /** Whether a board with this state has anything in flight, which is what the rail means. */
 export function todoBoardIsLive(phases: readonly TodoPhase[], owned: ReadonlySet<string>): boolean {
-	return phases.some(phase =>
-		phase.tasks.some(task => task.status === "in_progress" || (task.status === "pending" && owned.has(task.content))),
-	);
+	for (let pi = 0; pi < phases.length; pi++) {
+		const tasks = phases[pi]!.tasks;
+		for (let ti = 0; ti < tasks.length; ti++) {
+			const task = tasks[ti]!;
+			if (task.status === "in_progress" || (task.status === "pending" && owned.has(task.content))) return true;
+		}
+	}
+	return false;
 }
 
 /**
@@ -181,7 +203,10 @@ export function todoBoardIsLive(phases: readonly TodoPhase[], owned: ReadonlySet
  * closed plan could not draw that exit.
  */
 export function renderTodoBoardLines(phases: readonly TodoPhase[], options: TodoBoardOptions): string[] {
-	const live = phases.filter(phase => phase.tasks.length > 0);
+	const live: TodoPhase[] = [];
+	for (let pi = 0; pi < phases.length; pi++) {
+		if (phases[pi]!.tasks.length > 0) live.push(phases[pi]!);
+	}
 	if (live.length === 0) return [];
 
 	const rail = theme.symbol("block.rail");
@@ -271,9 +296,16 @@ export function renderTodoBoardLines(phases: readonly TodoPhase[], options: Todo
 		hidden = body.length - shown.length;
 	}
 
-	const lines = [`${railCell} ${header}`, ...shown.map(line => `${railCell} ${line}`.trimEnd())];
+	const lines = new Array<string>(shown.length + 1);
+	lines[0] = `${railCell} ${header}`;
+	for (let li = 0; li < shown.length; li++) {
+		lines[li + 1] = `${railCell} ${shown[li]!}`.trimEnd();
+	}
 	if (hidden > 0) {
 		lines.push(`${railCell} ${theme.fg("dim", boundedTodoPreviewText(`… ${hidden} more`, content))}`);
 	}
-	return ["", ...lines];
+	const result = new Array<string>(lines.length + 1);
+	result[0] = "";
+	for (let li = 0; li < lines.length; li++) result[li + 1] = lines[li]!;
+	return result;
 }
