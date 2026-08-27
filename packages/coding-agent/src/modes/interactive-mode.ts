@@ -5482,7 +5482,10 @@ export class InteractiveMode implements InteractiveModeContext {
 	 */
 	attachMainSession(next: AgentSession): KeptSession {
 		const previous = this.session;
-		if (next === previous) return BackgroundSessions.global().keep(previous);
+		// Re-attaching the displayed session hands nothing over, so it must not enter
+		// the background set: that set is what the status line counts, and a visible
+		// conversation counted there reports off-screen spend to someone watching it.
+		if (next === previous) return BackgroundSessions.global().describeAttached(previous);
 		this.unsubscribe?.();
 		this.unsubscribe = undefined;
 		this.#goalUnsubscribe?.();

@@ -152,6 +152,43 @@ describe("the keeper reports what it is holding", () => {
 		only.finish();
 	});
 
+	/**
+	 * `attachMainSession` returns an entry whether or not anything moved, and
+	 * re-attaching the session already on screen moves nothing. Describing it must
+	 * not register it: `size` is the number the chip states, and the chip's whole
+	 * claim is that it counts conversations nobody is looking at. Registering the
+	 * displayed one makes the chip report spend to the person watching it happen.
+	 */
+	it("describes the displayed conversation without counting it as backgrounded", () => {
+		const keeper = new BackgroundSessions();
+		const seen: number[] = [];
+		keeper.subscribe(() => seen.push(keeper.size));
+		const onScreen = pendingSession("a");
+
+		const entry = keeper.describeAttached(onScreen.session);
+
+		expect(entry.sessionId).toBe("a");
+		expect(entry.sessionFile).toBe("/repo/.veyyon/a.jsonl");
+		expect(keeper.size).toBe(0);
+		expect(seen).toEqual([]);
+		onScreen.finish();
+	});
+
+	/**
+	 * The other branch: a conversation it really is holding describes as the entry
+	 * it is holding, so a caller that settles what it was handed settles the real
+	 * one rather than a copy whose `settled` resolves immediately.
+	 */
+	it("describes a conversation it does hold with the entry it is holding", () => {
+		const keeper = new BackgroundSessions();
+		const only = pendingSession("a");
+		const kept = keeper.keep(only.session);
+
+		expect(keeper.describeAttached(only.session)).toBe(kept);
+		expect(keeper.size).toBe(1);
+		only.finish();
+	});
+
 	it("stops calling a listener that unsubscribed", () => {
 		const keeper = new BackgroundSessions();
 		let calls = 0;

@@ -301,6 +301,42 @@ export class AdvisorRuntime {
 		}
 	}
 
+	/**
+	 * Stop the review in flight and drop what is queued, leaving the transcript
+	 * cursor where it is.
+	 *
+	 * Called when the primary turn is aborted. The advisor is reviewing work that
+	 * is being stopped, so the answer it is paying for is already stale — and with
+	 * several advisors configured, an interrupt that leaves each one streaming is
+	 * spend the operator believes they just stopped.
+	 *
+	 * Bumping the epoch is what separates this from a provider failure: the drain
+	 * loop's catch retries an unchanged epoch, so aborting the agent without this
+	 * would requeue the batch and re-run the review a second later. It is NOT a
+	 * {@link reset}: the primary was interrupted, not rewritten, so `#lastCount`
+	 * and `#seenContext` stay and the next turn sends a delta rather than
+	 * replaying the whole transcript to every advisor.
+	 */
+	cancelInFlight(reason: string): void {
+		if (this.disposed) return;
+		this.#epoch++;
+		this.#pending = [];
+		this.#backlog = 0;
+		this.#consecutiveFailures = 0;
+		this.#failureNotified = false;
+		this.#wakeAllWaiters();
+		try {
+			this.agent.abort(reason);
+		} catch (error) {
+			// Same reasoning as dispose: an abort that did not take leaves the advisor's
+			// own agent running against a review nothing will consume, and the only
+			// symptom is provider spend.
+			logger.warn("Advisor agent did not abort on cancel; its review may still be running", {
+				error: errorMessage(error),
+			});
+		}
+	}
+
 	#resetAdvisorContext(clearBacklog: boolean, wakeWaiters: boolean): void {
 		this.#lastCount = 0;
 		this.#pending = [];

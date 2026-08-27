@@ -456,14 +456,17 @@ export const INTERACTION_SETTINGS = {
 	 * defensible, so this states which one happens rather than leaving it to
 	 * whether a turn happened to be in flight.
 	 *
-	 * Default is `true`, which is what `/new` already did: aborting a turn the
-	 * moment the operator wants a clean prompt loses whatever it had produced.
-	 * The background conversation is not hidden while it runs — the status line
-	 * counts it and `/process-manager` opens it.
+	 * Default is `false`: `/new` stops the old turn and closes its provider
+	 * stream. A conversation that leaves the screen stops costing money, which
+	 * is what an operator reaching for a clean prompt expects, and it is the
+	 * behavior `/new` had before a background conversation was possible at all.
+	 * Turning it on keeps the old turn running and is the deliberate choice:
+	 * the status line counts the background conversation and
+	 * `/process-manager` opens it.
 	 */
 	"session.newKeepsBackground": {
 		type: "boolean",
-		default: true,
+		default: false,
 		ui: {
 			tab: "interaction",
 			group: "Session",
