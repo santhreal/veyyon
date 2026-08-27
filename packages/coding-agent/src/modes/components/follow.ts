@@ -42,22 +42,36 @@ export function shimmerPhase(nowMs: number): number {
 }
 
 function hexChannel(hex: string, i: number): number {
-	return parseInt(hex.slice(1 + i * 2, 3 + i * 2), 16);
+	const hi = hex.charCodeAt(1 + i * 2);
+	const lo = hex.charCodeAt(2 + i * 2);
+	return (hexVal(hi) << 4) | hexVal(lo);
 }
 
-/** Linear blend of two `#rrggbb` colors, returning a `#rrggbb` string. */
-function mixHex(a: string, b: string, t: number): string {
+function hexVal(c: number): number {
+	if (c >= 0x30 && c <= 0x39) return c - 0x30;
+	if (c >= 0x41 && c <= 0x46) return c - 0x41 + 10;
+	return c - 0x61 + 10;
+}
+
+type Rgb = [number, number, number];
+
+function parseHex(hex: string): Rgb {
+	return [hexChannel(hex, 0), hexChannel(hex, 1), hexChannel(hex, 2)];
+}
+
+/** Linear blend of two `#rrggbb` colors, returning an RGB tuple. */
+function mixRgb(a: Rgb, b: Rgb, t: number): Rgb {
 	const c = t < 0 ? 0 : t > 1 ? 1 : t;
-	const ch = (i: number): string =>
-		Math.round(hexChannel(a, i) + (hexChannel(b, i) - hexChannel(a, i)) * c)
-			.toString(16)
-			.padStart(2, "0");
-	return `#${ch(0)}${ch(1)}${ch(2)}`;
+	return [
+		Math.round(a[0] + (b[0] - a[0]) * c),
+		Math.round(a[1] + (b[1] - a[1]) * c),
+		Math.round(a[2] + (b[2] - a[2]) * c),
+	];
 }
 
-/** Truecolor foreground SGR for a `#rrggbb` color. */
-function sgr(hex: string): string {
-	return `\x1b[38;2;${hexChannel(hex, 0)};${hexChannel(hex, 1)};${hexChannel(hex, 2)}m`;
+/** Truecolor foreground SGR for an RGB tuple. */
+function sgrRgb(rgb: Rgb): string {
+	return `\x1b[38;2;${rgb[0]};${rgb[1]};${rgb[2]}m`;
 }
 
 /** Smoothstep easing on [0,1] — the cool-in ramp reads softer than linear. */
@@ -104,11 +118,11 @@ export function paintHotTail(
 	const head = truncateToWidth(body, width - tip, "");
 	const tailPlain = plain.slice(plain.length - tip);
 
-	const cooled = theme.getColorHex(cooledToken);
-	const accent = theme.getColorHex("accent");
+	const cooledRgb = parseHex(theme.getColorHex(cooledToken));
+	const accentRgb = parseHex(theme.getColorHex("accent"));
 	// The sheen is a lightened accent — the liquid-glass highlight, not pure white
 	// (that would read as a colorless flare and lose the accent identity).
-	const sheenColor = mixHex(accent, "#ffffff", 0.55);
+	const sheenRgb = mixRgb(accentRgb, parseHex("#ffffff"), 0.55);
 
 	// Travel the sheen from just before the oldest cell to just past the tip so
 	// the highlight enters and exits the trail each period instead of ping-ponging.
@@ -118,7 +132,7 @@ export function paintHotTail(
 	for (let i = 0; i < tailPlain.length; i++) {
 		// 0 → oldest of the tail (cooled), 1 → the newest character (accent).
 		const p = tailPlain.length === 1 ? 1 : i / (tailPlain.length - 1);
-		const base = mixHex(cooled, accent, smoothstep(p));
+		const base = mixRgb(cooledRgb, accentRgb, smoothstep(p));
 		// Moving sheen: a gaussian bump at sheenPos, weighted toward the fresh edge.
 		const d = p - sheenPos;
 		const bump = Math.exp(-(d * d) / (2 * SHEEN_SIGMA * SHEEN_SIGMA));
@@ -127,7 +141,7 @@ export function paintHotTail(
 		// even at the moment the sheen band is elsewhere on the trail.
 		const tipGlow = p > 0.8 ? ((p - 0.8) / 0.2) * 0.5 : 0;
 		const amount = Math.min(1, sheen + tipGlow);
-		out += `${sgr(mixHex(base, sheenColor, amount))}${tailPlain[i]}`;
+		out += `${sgrRgb(mixRgb(base, sheenRgb, amount))}${tailPlain[i]}`;
 	}
 	return `${out}\x1b[39m${padding}`;
 }
