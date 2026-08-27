@@ -6,10 +6,9 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { tryParseJson } from "@veyyon/utils";
 import { sumOfMeasured } from "../../../core/scoring";
+import type { TrialStatus } from "../../../wire";
 import { harborAgentLogPath } from "../backend";
 import { dropCostProbe, probeTrialCost } from "./cost-probe";
-
-export type TrialStatus = "pass" | "fail" | "error" | "running";
 
 export interface Trial {
 	name: string;

@@ -5,7 +5,14 @@
  */
 import { isRecord } from "@veyyon/utils";
 import { sumOfMeasured } from "../core/scoring";
-import type { ArmProjection, ArmSummary, ExperimentDetail, ExperimentSummary } from "../wire";
+import {
+	type ArmProjection,
+	type ArmSummary,
+	type ExperimentDetail,
+	type ExperimentSummary,
+	isDecidedTrialStatus,
+	isGradedTrialStatus,
+} from "../wire";
 import type { RunRow, RunStore, TraceRow } from "./store";
 
 export type { ArmProjection, ArmSummary, ExperimentDetail, ExperimentSummary };
@@ -163,7 +170,7 @@ export function summarizeArm(run: RunRow, traces: TraceRow[], registeredIds?: Re
 	// denominator from the same population. `run.costUsd` includes in-flight
 	// trials' accumulating spend, so dividing it by the decided count wildly
 	// overstates $/task early in a run; per-trial trace costs don't.
-	const decided = traces.filter(t => t.status === "pass" || t.status === "fail" || t.status === "error");
+	const decided = traces.filter(t => isDecidedTrialStatus(t.status));
 	const durations = decided.filter(t => t.durationMs > 0).map(t => t.durationMs);
 	const meanTrialMs = durations.length > 0 ? durations.reduce((a, b) => a + b, 0) / durations.length : null;
 	const decidedPass = decided.filter(t => t.status === "pass").length;
@@ -351,14 +358,14 @@ export function canonicalArmOf(
  */
 export function pickMergedTrials(traces: TraceRow[]): TraceRow[] {
 	const byTask = new Map<string, TraceRow>();
-	const decided = (t: TraceRow): boolean => t.status === "pass" || t.status === "fail";
+	const graded = (t: TraceRow): boolean => isGradedTrialStatus(t.status);
 	for (const t of traces) {
 		const cur = byTask.get(t.task);
 		if (!cur) {
 			byTask.set(t.task, t);
 			continue;
 		}
-		const wins = decided(t) === decided(cur) ? t.updatedAt >= cur.updatedAt : decided(t);
+		const wins = graded(t) === graded(cur) ? t.updatedAt >= cur.updatedAt : graded(t);
 		if (wins) byTask.set(t.task, t);
 	}
 	return [...byTask.values()];
@@ -390,9 +397,7 @@ export function experimentDetail(store: RunStore, id: string): ExperimentDetail 
 		const armLabel = base.label || canonical;
 		const merged = pickMergedTrials(members.flatMap(m => store.listTraces(m.jobName)));
 		const running = members.some(m => m.status === "running");
-		const decidedCount = merged.filter(
-			t => t.status === "pass" || t.status === "fail" || t.status === "error",
-		).length;
+		const decidedCount = merged.filter(t => isDecidedTrialStatus(t.status)).length;
 		const nTotal = Math.max(merged.length, ...members.map(m => m.nTotal));
 		const mergedRun: RunRow = {
 			...base,
@@ -416,7 +421,7 @@ export function experimentDetail(store: RunStore, id: string): ExperimentDetail 
 		summary.arm = armLabel;
 		if (members.length > 1) summary.config += ` · merged ${members.length} runs`;
 		arms.push(summary);
-		const cells: Record<string, { status: string; reward: number | null }> = {};
+		const cells: ExperimentDetail["matrix"][string] = {};
 		for (const t of merged) {
 			tasks.add(t.task);
 			cells[t.task] = { status: t.status, reward: t.reward };
@@ -436,7 +441,9 @@ export function experimentDetail(store: RunStore, id: string): ExperimentDetail 
 			const cells = matrix[otherArm];
 			for (const task in cells) {
 				const cell = cells[task];
-				if (cell.status !== "pass" && cell.status !== "fail") continue;
+				// Task difficulty comes from graded outcomes only: an errored trial says nothing
+				// about whether the task is passable.
+				if (!isGradedTrialStatus(cell.status)) continue;
 				const s = siblings.get(task) ?? { passes: 0, decided: 0 };
 				s.decided++;
 				if (cell.status === "pass") s.passes++;
@@ -447,7 +454,7 @@ export function experimentDetail(store: RunStore, id: string): ExperimentDetail 
 		const decidedTasks = new Set<string>();
 		for (const task in own) {
 			const cell = own[task];
-			if (cell.status !== "pass" && cell.status !== "fail") continue;
+			if (!isGradedTrialStatus(cell.status)) continue;
 			decided.push({ task, passed: cell.status === "pass" });
 			decidedTasks.add(task);
 		}

@@ -6,9 +6,10 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { escapeMarkdownTableCell } from "@veyyon/coding-agent/utils/markdown-table";
 import { clampLow } from "@veyyon/utils";
+import type { TrialStatus } from "../../../wire";
 import { formatUsd } from "../../../wire";
 import type { Config } from "./config";
-import { aggregate, readJobResult, readTrials, type Trial, type TrialStatus } from "./results";
+import { aggregate, readJobResult, readTrials, type Trial } from "./results";
 
 const isTTY = Boolean(process.stdout.isTTY);
 const useColor = isTTY && !process.env.NO_COLOR;

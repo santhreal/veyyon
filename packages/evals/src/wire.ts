@@ -14,6 +14,55 @@ export type BenchmarkKind = "harbor" | "edit" | "deepswe" | (string & {});
 /** Lifecycle status of a managed benchmark run. */
 export type RunStatus = "running" | "complete" | "failed" | "cancelled";
 
+/**
+ * Every status one trial can carry, as a runtime inventory.
+ *
+ * Five modules each spelled this union inline and classified it by hand, and the two
+ * classifications disagreed: an arm's `done` count treated an errored trial as decided while the
+ * per-task comparison treated it as unrun. `status` also crossed the wire as a bare `string`, so a
+ * status added on the producer side was decided by nobody: it counted toward no denominator, made
+ * an arm's `done` sit below `nTotal` forever, and rendered as an unlabelled grey square.
+ */
+export const TRIAL_STATUSES = ["pass", "fail", "error", "running"] as const;
+
+/** Status of one trial. */
+export type TrialStatus = (typeof TRIAL_STATUSES)[number];
+
+/** Whether a recorded value is a status this package knows. */
+export function isTrialStatus(value: unknown): value is TrialStatus {
+	return typeof value === "string" && (TRIAL_STATUSES as readonly string[]).includes(value);
+}
+
+/**
+ * Whether the trial is over: it counts toward `done` and toward a pass-rate denominator.
+ * The switch is exhaustive, so a new status has to state its own answer here.
+ */
+export function isDecidedTrialStatus(status: TrialStatus): boolean {
+	switch (status) {
+		case "pass":
+		case "fail":
+		case "error":
+			return true;
+		case "running":
+			return false;
+	}
+}
+
+/**
+ * Whether a verifier produced a verdict for the trial. Narrower than decided: an errored trial is
+ * over but carries no reward, so it informs neither task difficulty nor a re-run's merge order.
+ */
+export function isGradedTrialStatus(status: TrialStatus): boolean {
+	switch (status) {
+		case "pass":
+		case "fail":
+			return true;
+		case "error":
+		case "running":
+			return false;
+	}
+}
+
 /** How a run relates to its experiment's question. */
 export type RunRole = "baseline" | "variant" | "";
 
@@ -96,7 +145,7 @@ export interface TraceRow {
 	jobName: string;
 	name: string;
 	task: string;
-	status: string;
+	status: TrialStatus;
 	reward: number | null;
 	/** null when the trial reported no cost. */
 	costUsd: number | null;
@@ -158,7 +207,7 @@ export interface ExperimentDetail {
 	/** Union of task ids across arms, sorted. */
 	tasks: string[];
 	/** arm label → task → cell. */
-	matrix: Record<string, Record<string, { status: string; reward: number | null }>>;
+	matrix: Record<string, Record<string, { status: TrialStatus; reward: number | null }>>;
 }
 
 /** Normalized event entry in a trial trace transcript. */

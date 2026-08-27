@@ -19,6 +19,24 @@ imports it without pulling in `bun:sqlite`.
 is what keeps the dashboard buildable as a DOM-typed project (`src/web/tsconfig.json`) while the
 server stays Node-typed.
 
+## Trial status
+
+`TRIAL_STATUSES` is the inventory of trial statuses — `pass`, `fail`, `error`, `running` — and
+`TrialStatus` is the type every row, cell and store read carries. Two classifications sit beside it:
+
+- `isDecidedTrialStatus` — the trial is over. It counts toward `done` and toward a pass-rate
+  denominator. `pass`, `fail` and `error`.
+- `isGradedTrialStatus` — a verifier produced a verdict. It informs task difficulty and which
+  attempt a re-run merge keeps. `pass` and `fail`.
+
+Both are exhaustive switches over the union, and `CELL_CLASS` in `task-matrix.tsx` is keyed by it, so
+adding a status fails the type check in `src/wire.ts`, `runner/ui.ts` and the matrix until each
+states its answer.
+
+`RunStore.listTraces` normalises a recorded status this build does not know: the trial reads as
+`error` and its `detail` states the value the row held. An unclassified status otherwise counted
+toward no total, so the arm's `done` stayed below `nTotal` and the run read as running forever.
+
 ## Routes
 
 `SERVER_ROUTES` is the inventory of all sixteen endpoints, each a `{ method, path }` pair. It is a

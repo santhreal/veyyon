@@ -1,10 +1,19 @@
-import type { ArmSummary, ExperimentDetail } from "../../wire";
+import {
+	type ArmSummary,
+	type ExperimentDetail,
+	isDecidedTrialStatus,
+	isTrialStatus,
+	type TrialStatus,
+} from "../../wire";
 import { TaskChips } from "./task-chips";
 import { RoleTag } from "./ui";
 
-/** Trial statuses that count as decided when comparing arms (error = fail). */
-export function isDecided(s: string | undefined): s is string {
-	return s === "pass" || s === "fail" || s === "error";
+/**
+ * Whether a cell the matrix may not hold counts as decided. The classification is the wire's, so
+ * the dashboard and the arm summaries it renders count the same trials.
+ */
+export function isDecided(status: TrialStatus | undefined): status is TrialStatus {
+	return isTrialStatus(status) && isDecidedTrialStatus(status);
 }
 
 export interface TaskStat {
@@ -50,9 +59,9 @@ export interface HeadToHead {
 }
 
 export function headToHead(
-	focusCells: Record<string, { status: string; reward: number | null }>,
+	focusCells: ExperimentDetail["matrix"][string],
 	arm: ArmSummary,
-	cells: Record<string, { status: string; reward: number | null }>,
+	cells: ExperimentDetail["matrix"][string],
 	tasks: string[],
 ): HeadToHead {
 	let focusWins = 0;
