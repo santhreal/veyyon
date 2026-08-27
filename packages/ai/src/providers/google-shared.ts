@@ -35,6 +35,7 @@ import { AssistantMessageEventStream } from "../utils/event-stream";
 import { materializeDumpBody, type RawHttpRequestDump } from "../utils/http-inspector";
 import { notifyProviderResponse } from "../utils/provider-response";
 import { normalizeSchemaForCCA, normalizeSchemaForGoogle, toolWireSchema } from "../utils/schema";
+import { stopReasonForTerminallessEof } from "../utils/terminalless-eof";
 import type {
 	Content,
 	FinishReason,
@@ -916,11 +917,23 @@ export async function consumeGoogleStream<T extends GoogleApiType>(args: {
 		throw new AIError.RequestAbortError();
 	}
 
+	// Reaching the end of the body without a `finishReason` is a transport-clean
+	// EOF, not a dropped connection, and several Gemini-compatible servers never
+	// send the marker at all. `stopReasonForTerminallessEof` owns that judgement
+	// for every dialect; see its header for why rejecting unconditionally — which
+	// this did — fails turns that were complete. Google delivers a function call
+	// whole in one part, with `args` already parsed and an id minted above, so a
+	// name is the only field a partial call can be missing.
 	if (!sawFinishReason) {
-		throw new AIError.ProviderResponseError(
-			"Google API stream ended without a finish reason (connection dropped or response truncated)",
-			{ provider: model.provider, kind: "incomplete-stream" },
-		);
+		const toolBatchIsComplete = output.content.every(block => block.type !== "toolCall" || block.name.length > 0);
+		const stopReason = stopReasonForTerminallessEof(output.content, toolBatchIsComplete);
+		if (stopReason === undefined) {
+			throw new AIError.ProviderResponseError(
+				"Google API stream ended without a finish reason (connection dropped or response truncated)",
+				{ provider: model.provider, kind: "incomplete-stream" },
+			);
+		}
+		output.stopReason = stopReason;
 	}
 
 	if (output.stopReason === "aborted" || output.stopReason === "error") {
