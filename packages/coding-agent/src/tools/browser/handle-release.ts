@@ -29,5 +29,5 @@ export async function releaseHandle(handle: DisposableHandle | null | undefined)
 
 /** Release many handles concurrently; one that is already gone does not stop the others. */
 export async function releaseHandles(handles: Iterable<DisposableHandle | null | undefined>): Promise<void> {
-	await Promise.all([...handles].map(handle => releaseHandle(handle)));
+	await Promise.all(Array.from(handles).map(handle => releaseHandle(handle)));
 }

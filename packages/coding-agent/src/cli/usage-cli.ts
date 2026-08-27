@@ -57,7 +57,7 @@ export interface UsageAccountIdentity {
  * Duplicate strings (same account on two providers) share a mask.
  */
 export function buildRedactionMap(values: Iterable<string>): Map<string, string> {
-	const unique = [...new Set(values)];
+	const unique = Array.from(new Set(values));
 	const map = new Map<string, string>();
 	const byAnchor = new Map<string, string[]>();
 	for (const value of unique) {
@@ -485,7 +485,7 @@ export function computeProviderWindowStats(reports: UsageReport[]): ProviderWind
 		}
 		for (const [key, fraction] of accountMax) buckets.get(key)!.fractions.push(fraction);
 	}
-	return [...buckets.values()]
+	return Array.from(buckets.values())
 		.sort((a, b) => (a.durationMs ?? Number.POSITIVE_INFINITY) - (b.durationMs ?? Number.POSITIVE_INFINITY))
 		.map(bucket => {
 			const usedAccounts = bucket.fractions.reduce((sum, fraction) => sum + fraction, 0);
@@ -524,9 +524,9 @@ export function formatUsageBreakdown(
 		unreportedByProvider.set(account.provider, list);
 	}
 
-	const providers = [...new Set([...reportsByProvider.keys(), ...unreportedByProvider.keys()])].sort((a, b) =>
-		a.localeCompare(b),
-	);
+	const providers = Array.from(
+		new Set(Array.from(reportsByProvider.keys()).concat(Array.from(unreportedByProvider.keys()))),
+	).sort((a, b) => a.localeCompare(b));
 
 	const lines: string[] = [];
 	const latestFetchedAt = Math.max(0, ...reports.map(report => report.fetchedAt ?? 0));
@@ -542,7 +542,7 @@ export function formatUsageBreakdown(
 			`${chalk.bold.cyan(formatProviderName(provider))} ${chalk.dim(`— ${formatCount("account", accountCount)}`)}`,
 		);
 		// Provider-wide disclaimers render once per provider, not per limit.
-		const providerNotes = [...new Set(providerReports.flatMap(report => report.notes ?? []))];
+		const providerNotes = Array.from(new Set(providerReports.flatMap(report => report.notes ?? [])));
 		for (const note of providerNotes)
 			lines.push(`  ${chalk.dim(sanitizeText(note.replace(/[\r\n]+/g, " ").replace(/\t/g, "  ")))}`);
 
@@ -691,17 +691,20 @@ export function formatUsageHistory(
 		`${chalk.bold("Usage history")}${chalk.dim(` · last ${formatDuration(nowMs - sinceMs)} · peak per bucket`)}`,
 	);
 
-	for (const provider of [...providers.keys()].sort((a, b) => a.localeCompare(b))) {
+	for (const provider of Array.from(providers.keys()).sort((a, b) => a.localeCompare(b))) {
 		const accounts = providers.get(provider) ?? new Map<string, HistoryAccount>();
 		lines.push("");
 		lines.push(
 			`${chalk.bold.cyan(formatProviderName(provider))} ${chalk.dim(`— ${formatCount("account", accounts.size)}`)}`,
 		);
-		const sortedAccounts = [...accounts.values()].sort((a, b) => a.label.localeCompare(b.label));
+		const sortedAccounts = Array.from(accounts.values()).sort((a, b) => a.label.localeCompare(b.label));
 		for (const account of sortedAccounts) {
 			lines.push(`  ${chalk.bold(redaction?.get(account.label) ?? account.label)}`);
-			const labelWidth = [...account.series.values()].reduce((max, series) => Math.max(max, series.title.length), 0);
-			const sortedSeries = [...account.series.values()].sort((a, b) => a.title.localeCompare(b.title));
+			const labelWidth = Array.from(account.series.values()).reduce(
+				(max, series) => Math.max(max, series.title.length),
+				0,
+			);
+			const sortedSeries = Array.from(account.series.values()).sort((a, b) => a.title.localeCompare(b.title));
 			for (const series of sortedSeries) {
 				const fractions = series.entries
 					.map(entry => entry.usedFraction)

@@ -82,7 +82,7 @@ function methodNames(target: object): string[] {
 		}
 		current = Object.getPrototypeOf(current) as object | null;
 	}
-	return [...names].sort();
+	return Array.from(names).sort();
 }
 
 function unknownMemberMessage(target: object, key: string): string {
