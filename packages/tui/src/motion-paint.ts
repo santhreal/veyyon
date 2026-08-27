@@ -16,7 +16,7 @@ import { sgrSequence } from "./ansi";
 import { parseHexColor } from "./paint-ground";
 
 /** Pre-computed string representations of 0–255 for channel value emission. */
-const CHANNEL_STR: readonly string[] = Array.from({ length: 256 }, (_, i) => String(i));
+export const CHANNEL_STR: readonly string[] = Array.from({ length: 256 }, (_, i) => String(i));
 
 /** Pre-computed two-digit hex for 0–255, avoiding `toString(16).padStart(2, "0")` per call. */
 const HEX_BYTE: readonly string[] = Array.from({ length: 256 }, (_, i) => i.toString(16).padStart(2, "0"));

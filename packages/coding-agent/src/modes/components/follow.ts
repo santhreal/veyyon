@@ -21,7 +21,7 @@
  * never a half-ramp in 16 colors).
  */
 
-import { truncateToWidth, visibleWidth } from "@veyyon/tui";
+import { CHANNEL_STR, truncateToWidth, visibleWidth } from "@veyyon/tui";
 import { stripAnsi } from "@veyyon/utils/strip-ansi";
 import type { Theme } from "../theme/theme";
 
@@ -71,7 +71,7 @@ function mixRgb(a: Rgb, b: Rgb, t: number): Rgb {
 
 /** Truecolor foreground SGR for an RGB tuple. */
 function sgrRgb(rgb: Rgb): string {
-	return `\x1b[38;2;${rgb[0]};${rgb[1]};${rgb[2]}m`;
+	return `\x1b[38;2;${CHANNEL_STR[rgb[0]]};${CHANNEL_STR[rgb[1]]};${CHANNEL_STR[rgb[2]]}m`;
 }
 
 /** Smoothstep easing on [0,1] — the cool-in ramp reads softer than linear. */

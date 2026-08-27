@@ -1,6 +1,7 @@
 // Owners, not the `@veyyon/utils` barrel: 1 module against 74.
 
 import { SGR_FG_RESET, SGR_INTENSITY_RESET } from "@veyyon/tui/ansi";
+import { CHANNEL_STR } from "@veyyon/tui/motion-paint";
 import { clamp01 } from "@veyyon/utils/math";
 // The slot leaf, not the 94-module store: this file reads values, it does not fill them.
 import { isSettingsInitialized, settings } from "../../config/settings-instance";
@@ -654,7 +655,7 @@ export function lavaAnsi(theme: LavaTheme, trueColor: boolean, now = Date.now(),
 	if (!trueColor) return undefined;
 	const p = now / LAVA_PERIOD_MS + cell * LAVA_CELL_PHASE;
 	const [r, g, b] = lavaRgbAt(theme, p);
-	return `\x1b[38;2;${r};${g};${b}m`;
+	return `\x1b[38;2;${CHANNEL_STR[r]};${CHANNEL_STR[g]};${CHANNEL_STR[b]}m`;
 }
 
 /**
