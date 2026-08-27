@@ -302,6 +302,7 @@
 - `checkNoOutputBleedPastComposer` and `checkNoMixedTranscriptAndChromeRows` in `composer-defect-oracle.ts` replace `.some()` closures with index-based for loops, eliminating closure allocation per viewport line per oracle evaluation.
 - Agent roster parent lookup in `agent-dashboard.ts` replaces `.some()` closure with index-based for loop, eliminating closure allocation per roster row per frame.
 - `isComposerPromptLine` and `checkSingleComposerPrompt` in `composer-defect-oracle.ts` replace `.find()` closures with index-based for loops, eliminating closure allocation per viewport line per oracle evaluation.
+- `renderQuietLine` in `status-line/component.ts` replaces `.filter().map()` chain on quiet segment bounds with a single for loop, eliminating two intermediate array allocations per status-line frame.
 - `renderQuietLine` and `renderQuietLines` in `status-line/component.ts` replace `.map(part => part.content)` with pre-allocated arrays and index-based for loops at 4 call sites, eliminating closure allocation per frame.
 - `#expansionProgress` click-trade path in `status-line/component.ts` replaces `.reduce()`, `.findIndex()`, `.map().filter()`, and `.reduce()` closures with index-based for loops, eliminating 4 closure allocations per expansion frame.
 - `hook-selector.ts` replaces `.split().map().filter().map()` chain with a single-pass for loop in `#shortcuts`, and uses `.slice()` instead of spread for `SELECT_LIST_SHORTCUTS` copy.
