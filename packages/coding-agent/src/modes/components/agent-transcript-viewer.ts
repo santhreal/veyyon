@@ -100,6 +100,14 @@ export interface AgentTranscriptViewerDeps {
 	cwd: string;
 	hideThinkingBlock?: () => boolean;
 	proseOnlyThinking?: () => boolean;
+	/**
+	 * Expand argot handles in entries parsed off disk, before they reach the
+	 * builder. The persisted transcript keeps the cheap handles, so without this
+	 * the viewer is the one display that shows the model's raw `§handle` text.
+	 * Absent for a collab guest, whose transcript is read on the host and who
+	 * holds no codec of their own.
+	 */
+	expandArgot?: (entries: SessionMessageEntry[]) => SessionMessageEntry[];
 	expandKeys: KeyId[];
 	/** Keys that toggle the whole hub closed (app.agents.hub + app.session.observe). */
 	hubKeys: KeyId[];
@@ -467,13 +475,22 @@ export class AgentTranscriptViewer implements Component {
 		return messages;
 	}
 
+	/**
+	 * The two builder feeds are the choke point: every source (full local load,
+	 * local append, remote read) ends at one of them, so the expansion is applied
+	 * here rather than at each parse site.
+	 */
+	#expand(entries: SessionMessageEntry[]): SessionMessageEntry[] {
+		return this.deps.expandArgot?.(entries) ?? entries;
+	}
+
 	#rebuild(entries: SessionMessageEntry[]): void {
-		this.#builder.rebuild(entries);
+		this.#builder.rebuild(this.#expand(entries));
 		this.deps.requestRender();
 	}
 
 	#append(entries: SessionMessageEntry[]): void {
-		this.#builder.append(entries);
+		this.#builder.append(this.#expand(entries));
 		this.deps.requestRender();
 	}
 
