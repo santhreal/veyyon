@@ -413,7 +413,11 @@ export function applyFilter(extensions: ExtensionRow[], query: string): Extensio
 		return extensions;
 	}
 
-	const tokens = query.toLowerCase().split(/\s+/).filter(Boolean);
+	const rawTokens = query.toLowerCase().split(/\s+/);
+	const tokens: string[] = [];
+	for (let ti = 0; ti < rawTokens.length; ti++) {
+		if (rawTokens[ti]!) tokens.push(rawTokens[ti]!);
+	}
 	if (tokens.length === 0) {
 		return extensions;
 	}
