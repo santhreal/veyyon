@@ -19,6 +19,7 @@ import { settings } from "../../../config/settings-instance";
 import { accountDisplayLabel, accountsForProvider, buildAccountInventory } from "../../../session/account-inventory";
 import type { AgentSession } from "../../../session/agent-session";
 import type { OAuthAccountIdentity } from "../../../session/auth-storage";
+import type { UsageStatistics } from "../../../session/session-entries";
 import { limitMatchesActiveAccount } from "../../../slash-commands/helpers/active-oauth-account";
 import { type ActiveRepoContext, resolveActiveRepoContextSync } from "../../../utils/active-repo-context";
 import * as git from "../../../utils/git";
@@ -45,6 +46,22 @@ import type {
  * as its own quiet zone at the end of the line rather than one more segment.
  */
 const SESSION_CLOCK_GAP = "      ";
+const EMPTY_USAGE_STATS: UsageStatistics = {
+	input: 0,
+	output: 0,
+	cacheRead: 0,
+	cacheWrite: 0,
+	totalTokens: 0,
+	orchestrationInput: 0,
+	orchestrationOutput: 0,
+	orchestrationCacheRead: 0,
+	premiumRequests: 0,
+	cost: 0,
+};
+const EMPTY_USAGE_STATS_WITH_RATE: SegmentContext["usageStats"] = {
+	...EMPTY_USAGE_STATS,
+	tokensPerSecond: null,
+};
 
 /**
  * One quiet-footline part: the segment id it came from plus its rendered
@@ -171,6 +188,16 @@ export const FLOOR_SPENDABLE: Record<string, true> = {
 };
 const LOCATION_SEGMENT_IDS: Record<string, true> = { path: true, git: true, pr: true };
 const CONTEXT_SEGMENT_IDS: Record<string, true> = { context_pct: true, context_total: true };
+const USAGE_SEGMENT_IDS: Record<string, true> = {
+	token_in: true,
+	token_out: true,
+	token_total: true,
+	token_rate: true,
+	cost: true,
+	cache_read: true,
+	cache_write: true,
+	cache_hit: true,
+};
 
 /**
  * The spendable part the location's floor takes next: lowest-ranked first, from the END, so
@@ -744,6 +771,12 @@ function hasPrSegment(segments: readonly StatusLineSegmentId[]): boolean {
 }
 function hasPathSegment(segments: readonly StatusLineSegmentId[]): boolean {
 	return segments.includes("path");
+}
+function hasUsageSegment(segments: readonly StatusLineSegmentId[]): boolean {
+	for (const id of segments) {
+		if (USAGE_SEGMENT_IDS[id]) return true;
+	}
+	return false;
 }
 
 function hasGitBackedSegment(segments: readonly StatusLineSegmentId[]): boolean {
@@ -1648,29 +1681,24 @@ export class StatusLineComponent implements Component {
 		includeContext: boolean,
 		includeGit: boolean,
 		includePr: boolean,
+		includeUsage: boolean,
 	): SegmentContext {
 		const state = this.session.state;
 
 		// Trigger background fetch (5-min TTL); render uses cached value
 		this.refreshUsageInBackground();
 
-		// Get usage statistics
-		const aggregateUsageStats = this.session.sessionManager?.getUsageStatistics() ?? {
-			input: 0,
-			output: 0,
-			cacheRead: 0,
-			cacheWrite: 0,
-			totalTokens: 0,
-			orchestrationInput: 0,
-			orchestrationOutput: 0,
-			orchestrationCacheRead: 0,
-			premiumRequests: 0,
-			cost: 0,
-		};
-		const usageStats = {
-			...aggregateUsageStats,
-			tokensPerSecond: this.#getTokensPerSecond(),
-		};
+		// Usage stats (token counts, tokensPerSecond) are only needed when a
+		// segment that reads them is configured. The default preset has none,
+		// so this skips getUsageStatistics() (object spread per frame) and
+		// #getTokensPerSecond() (O(N) message scan per frame) on every frame
+		// for the common case.
+		const usageStats = includeUsage
+			? {
+					...(this.session.sessionManager?.getUsageStatistics() ?? EMPTY_USAGE_STATS),
+					tokensPerSecond: this.#getTokensPerSecond(),
+				}
+			: EMPTY_USAGE_STATS_WITH_RATE;
 
 		let contextWindow = state.model?.contextWindow ?? this.session.model?.contextWindow ?? 0;
 		let contextLimit = contextWindow;
@@ -1858,6 +1886,7 @@ export class StatusLineComponent implements Component {
 		const includeContext = hasContextSegment(leftCfg) || hasContextSegment(rightCfg);
 		const includeGit = gitEnabled && (hasGitSegment(leftCfg) || hasGitSegment(rightCfg));
 		const includePr = gitEnabled && (hasPrSegment(leftCfg) || hasPrSegment(rightCfg));
+		const includeUsage = hasUsageSegment(leftCfg) || hasUsageSegment(rightCfg);
 		// The footline reads at a glance, so the model-effort gap is roomy. The
 		// per-kind git counts and the token-text context gauge that the other
 		// options here used to switch between are gone: nothing could reach
@@ -1893,7 +1922,15 @@ export class StatusLineComponent implements Component {
 			},
 			model: { ...effectiveSettings.segmentOptions?.model, roomy: true },
 		};
-		const ctx = this.#buildSegmentContext(width, quietOptions, includePath, includeContext, includeGit, includePr);
+		const ctx = this.#buildSegmentContext(
+			width,
+			quietOptions,
+			includePath,
+			includeContext,
+			includeGit,
+			includePr,
+			includeUsage,
+		);
 		const subagentBadge = this.#subagentBadgeText();
 		const location: QuietPart[] = [];
 		const capLeft: QuietPart[] = [];
