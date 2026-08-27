@@ -252,6 +252,7 @@
 - `gh-renderer.ts` replaces `.map()`, `.forEach()`, `for-of`, and `.split().filter()` closures with index loops in `formatRunLine`, `renderRunBlock`, `buildWatchSections`, `renderFailedLogs`, and `extractText`.
 - `search-tool-bm25.ts` replaces `.split().map()` and `.filter().map().filter().join()` with split + for loops in `renderFallbackResult` and `renderResult` fallback.
 - `status-line/component.ts` caches `visibleWidth()` results in `renderQuietLine` and `renderQuietLines`, eliminating redundant width computations in shed loops and final line assembly.
+- `status-line/component.ts` hoists `LOCATION_SEGMENT_IDS` and `CONTEXT_SEGMENT_IDS` lookup tables to module-level constants, eliminating per-frame object literal allocation in `#gatherQuietSegments`.
 ### Added
 
 - `/advisor` reports advisor status, opens the `WATCHDOG.yml` roster editor and applies a save to the running session, starts or stops the advisor for the session, and copies the advisor's own transcript; the subsystem shipped complete but no command, key or menu row reached it.
