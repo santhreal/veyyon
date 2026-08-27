@@ -166,8 +166,10 @@ export class AgentsSceneController implements SetupSceneController {
 			this.#rows = Math.max(1, rows - lines.length - detailBudget);
 			this.#list.setRowBudget(this.#rows);
 		}
-		lines.push(...this.#list.render(width));
-		lines.push(...this.#renderDetail(width, detailBudget));
+		const ll = this.#list.render(width);
+		for (let li = 0; li < ll.length; li++) lines.push(ll[li]!);
+		const rd = this.#renderDetail(width, detailBudget);
+		for (let li = 0; li < rd.length; li++) lines.push(rd[li]!);
 		return lines;
 	}
 }

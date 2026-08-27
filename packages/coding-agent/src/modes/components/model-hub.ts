@@ -1830,9 +1830,11 @@ export class ModelHubComponent implements Component {
 				theme: { track: t => theme.fg("muted", t), thumb: t => theme.fg("accent", t) },
 			});
 			scrollView.setScrollOffset(this.#rolesScroll);
-			lines.push(...scrollView.render(fullWidth));
+			const svLines = scrollView.render(fullWidth);
+			for (let li = 0; li < svLines.length; li++) lines.push(svLines[li]!);
 		} else {
-			lines.push(...rowLines);
+			const rl = rowLines;
+			for (let li = 0; li < rl.length; li++) lines.push(rl[li]!);
 		}
 
 		// Live preview of the quick-switch cycle, rendered with the exact
@@ -2121,13 +2123,16 @@ export class ModelHubComponent implements Component {
 		const entry = this.#activeEntry();
 		const paneLines: string[] = [this.#statusRow(bodyWidth)];
 		if (entry.kind === "roles" && this.#assigning === null) {
-			paneLines.push(...this.#renderRolesView(bodyWidth, splitRows - 1));
+			const rv = this.#renderRolesView(bodyWidth, splitRows - 1);
+			for (let li = 0; li < rv.length; li++) paneLines.push(rv[li]!);
 		} else if (entry.kind === "provider" && entry.locked && this.#assigning === null) {
-			paneLines.push(...this.#renderLockedView(entry, bodyWidth, splitRows - 1));
+			const lv = this.#renderLockedView(entry, bodyWidth, splitRows - 1);
+			for (let li = 0; li < lv.length; li++) paneLines.push(lv[li]!);
 		} else {
 			this.#browser.setMaxVisible(Math.max(1, splitRows - 1 - 5));
 			this.#browser.setFocused(this.#focus === "list");
-			paneLines.push(...this.#browser.render(bodyWidth));
+			const br = this.#browser.render(bodyWidth);
+			for (let li = 0; li < br.length; li++) paneLines.push(br[li]!);
 		}
 
 		const sidebarLines = this.#renderSidebar(sidebarWidth, splitRows);

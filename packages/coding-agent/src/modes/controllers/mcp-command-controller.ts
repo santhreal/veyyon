@@ -175,7 +175,8 @@ export class MCPAuthorizationLinkPrompt implements Component {
 			...wrapUrlRows("Copy URL:", this.#fullUrl, width),
 		];
 		if (this.#launchUrl) {
-			lines.push(...wrapUrlRows("Local shortcut (this machine only):", this.#launchUrl, width));
+			const wu = wrapUrlRows("Local shortcut (this machine only):", this.#launchUrl, width);
+			for (let li = 0; li < wu.length; li++) lines.push(wu[li]!);
 		}
 		return lines;
 	}
@@ -1341,7 +1342,8 @@ export class MCPCommandController {
 						config.enabled === false
 							? "inactive"
 							: (this.ctx.mcpManager?.getConnectionStatus(name) ?? "disconnected");
-					lines.push(...this.#serverStatusRows(name, state, type));
+					const ss = this.#serverStatusRows(name, state, type);
+					for (let li = 0; li < ss.length; li++) lines.push(ss[li]!);
 				}
 				lines.push("");
 			}
@@ -1352,7 +1354,8 @@ export class MCPCommandController {
 					lines.push(theme.fg("accent", providerName) + theme.fg("muted", ` (${shortPath}):`));
 					for (const { name } of entries) {
 						const state = this.ctx.mcpManager!.getConnectionStatus(name);
-						lines.push(...this.#serverStatusRows(name, state));
+						const ss = this.#serverStatusRows(name, state);
+						for (let li = 0; li < ss.length; li++) lines.push(ss[li]!);
 					}
 					lines.push("");
 				}

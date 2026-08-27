@@ -258,7 +258,8 @@ export class AdvisorConfigOverlayComponent implements Component {
 		if (value === "shared") {
 			const lines = [theme.bold("Shared instructions"), ""];
 			const text = this.#doc.instructions?.trim();
-			lines.push(...(text ? wrap(text, bodyWidth) : [theme.fg("muted", "(none)")]));
+			const wl = text ? wrap(text, bodyWidth) : [theme.fg("muted", "(none)")];
+			for (let li = 0; li < wl.length; li++) lines.push(wl[li]!);
 			return lines.map(line => truncateToWidth(line, bodyWidth));
 		}
 		const help =
@@ -286,7 +287,8 @@ export class AdvisorConfigOverlayComponent implements Component {
 			theme.fg("dim", "Instructions:"),
 		];
 		const instr = advisor.instructions?.trim();
-		lines.push(...(instr ? wrap(instr, bodyWidth) : [theme.fg("muted", "(none)")]));
+		const wl = instr ? wrap(instr, bodyWidth) : [theme.fg("muted", "(none)")];
+		for (let li = 0; li < wl.length; li++) lines.push(wl[li]!);
 		return lines.map(line => truncateToWidth(line, bodyWidth));
 	}
 

@@ -146,7 +146,8 @@ export class ResetUsageSelectorComponent implements Component {
 				theme: { track: t => theme.fg("muted", t), thumb: t => theme.fg("accent", t) },
 			});
 			sv.setScrollOffset(startIndex);
-			body.push(...sv.render(width));
+			const svLines = sv.render(width);
+			for (let li = 0; li < svLines.length; li++) body.push(svLines[li]!);
 		}
 
 		if (total === 0) {

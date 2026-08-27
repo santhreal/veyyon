@@ -155,7 +155,8 @@ class GlyphSceneController implements SetupSceneController {
 		const preview = renderGlyphPreview(rows === undefined ? undefined : rows - GLYPH_ITEMS.length - 1);
 		const lines = preview.length > 0 ? [...preview, ""] : [];
 		this.#listRowStart = lines.length;
-		lines.push(...this.#selectList.render(width));
+		const sl = this.#selectList.render(width);
+		for (let li = 0; li < sl.length; li++) lines.push(sl[li]!);
 		return lines;
 	}
 

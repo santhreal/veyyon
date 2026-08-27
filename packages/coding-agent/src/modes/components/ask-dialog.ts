@@ -241,11 +241,13 @@ function renderPreviewContent(preview: string, width: number): string[] {
 		if (segment.kind === "code") {
 			const highlighted = highlightCode(segment.text, segment.language);
 			const text = new Text(highlighted.join("\n"), 0, 0);
-			out.push(...text.render(Math.max(1, width)));
+			const tr = text.render(Math.max(1, width));
+			for (let li = 0; li < tr.length; li++) out.push(tr[li]!);
 			continue;
 		}
 		const markdown = new Markdown(segment.text, 0, 0, mdTheme, accentStyle);
-		out.push(...markdown.render(Math.max(1, width)));
+		const mr = markdown.render(Math.max(1, width));
+		for (let li = 0; li < mr.length; li++) out.push(mr[li]!);
 	}
 	return out;
 }
@@ -761,7 +763,8 @@ export class AskDialogComponent implements Component {
 			// Hover is applied before the render that produces this frame's bytes, and re-applied every
 			// frame because the bar is rebuilt each render; a band set after render would never paint.
 			if (this.#hoveredTabId !== null) this.#tabBar.setHoverTab(this.#hoveredTabId);
-			lines.push(...this.#tabBar.render(width));
+			const tbLines = this.#tabBar.render(width);
+			for (let li = 0; li < tbLines.length; li++) lines.push(tbLines[li]!);
 		}
 		if (this.#isSubmitTab()) {
 			lines.push(theme.bold(theme.fg("accent", "Review answers")));
@@ -770,7 +773,8 @@ export class AskDialogComponent implements Component {
 		const questionIndex = this.#currentQuestionIndex();
 		const question = this.questions[questionIndex];
 		if (!question) return lines;
-		lines.push(...renderQuestionTitle(question, width));
+		const rl = renderQuestionTitle(question, width);
+		for (let li = 0; li < rl.length; li++) lines.push(rl[li]!);
 		return lines;
 	}
 
@@ -1005,7 +1009,8 @@ export class AskDialogComponent implements Component {
 			lineStartByRow.push(allLines.length);
 			const rowItem = rowItems[index];
 			if (!rowItem) continue;
-			allLines.push(...renderRowLabel(rowItem, question, state, index === state.cursorIndex, mdTheme, width));
+			const rl = renderRowLabel(rowItem, question, state, index === state.cursorIndex, mdTheme, width);
+			for (let li = 0; li < rl.length; li++) allLines.push(rl[li]!);
 		}
 		// Pointer hover bands the whole row (label + description lines), the cursor row included: the
 		// row the keyboard already sits on has to answer the pointer, or it reads as a dead cell that

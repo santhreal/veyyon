@@ -448,7 +448,8 @@ export class SetupWizardComponent implements Component, OverlayFocusOwner {
 		while (lines.length + footer.length < height) {
 			lines.push("");
 		}
-		lines.push(...footer);
+		const fl = footer;
+		for (let li = 0; li < fl.length; li++) lines.push(fl[li]!);
 		this.#recordChipRects(chipRows, lines.length, marginX, height);
 		return lines;
 	}

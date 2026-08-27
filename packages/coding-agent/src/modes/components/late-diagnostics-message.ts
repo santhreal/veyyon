@@ -41,7 +41,9 @@ export class LateDiagnosticsMessageComponent extends Container {
 		const summaries: string[] = [];
 		let errored = false;
 		for (const file of this.files) {
-			if (file.messages?.length) messages.push(...file.messages);
+			if (file.messages?.length) {
+				for (let mi = 0; mi < file.messages.length; mi++) messages.push(file.messages[mi]!);
+			}
 			if (file.summary) summaries.push(file.summary);
 			if (file.errored) errored = true;
 		}

@@ -196,7 +196,8 @@ export class SignInTab implements SetupTab {
 			if (rows !== undefined) {
 				this.#selector.setMaxVisible(Math.max(1, rows - lines.length - this.#reservedRows()));
 			}
-			lines.push(...this.#selector.render(width));
+			const sl = this.#selector.render(width);
+			for (let li = 0; li < sl.length; li++) lines.push(sl[li]!);
 		}
 
 		// A short URL renders inline under the link; a long one renders exactly
@@ -220,10 +221,12 @@ export class SignInTab implements SetupTab {
 			lines.push(this.#prompt.input.render(width)[0] ?? "");
 		}
 		if (urlLines.length > 2) {
-			lines.push(...urlLines);
+			const ul = urlLines;
+			for (let li = 0; li < ul.length; li++) lines.push(ul[li]!);
 		}
 		if (this.#statusLines.length > 0) {
-			lines.push(...this.#statusLines.flatMap(line => wrapTextWithAnsi(line, width)));
+			const sl = this.#statusLines.flatMap(line => wrapTextWithAnsi(line, width));
+			for (let li = 0; li < sl.length; li++) lines.push(sl[li]!);
 		}
 		return lines;
 	}

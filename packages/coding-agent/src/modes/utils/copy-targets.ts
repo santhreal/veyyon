@@ -347,7 +347,7 @@ export function buildCopyTargets(source: CopySource): CopyTarget[] {
 
 		const text = assistantText(msg);
 		if (!text) {
-			pendingCommands.push(...commands);
+			for (let ci = 0; ci < commands.length; ci++) pendingCommands.push(commands[ci]!);
 			continue;
 		}
 

@@ -116,7 +116,8 @@ export class InspectorPanel implements Component {
 
 		// Preview section (routed based on kind)
 		const previewLines = this.#renderPreview(ext, width);
-		lines.push(...previewLines);
+		const pl = previewLines;
+		for (let li = 0; li < pl.length; li++) lines.push(pl[li]!);
 
 		return lines;
 	}
@@ -144,7 +145,8 @@ export class InspectorPanel implements Component {
 		}
 
 		if (content.length > 0) {
-			lines.push(...content);
+			const cl = content;
+			for (let li = 0; li < cl.length; li++) lines.push(cl[li]!);
 		}
 
 		return lines;
@@ -244,7 +246,8 @@ export class InspectorPanel implements Component {
 				}
 			}
 		} catch (err) {
-			lines.push(...unreadableRows("tool definition", err));
+			const ur = unreadableRows("tool definition", err);
+			for (let li = 0; li < ur.length; li++) lines.push(ur[li]!);
 		}
 
 		lines.push("");
@@ -273,7 +276,8 @@ export class InspectorPanel implements Component {
 				}
 			}
 		} catch (err) {
-			lines.push(...unreadableRows("skill content", err));
+			const ur = unreadableRows("skill content", err);
+			for (let li = 0; li < ur.length; li++) lines.push(ur[li]!);
 		}
 
 		lines.push("");
@@ -309,7 +313,8 @@ export class InspectorPanel implements Component {
 				}
 			}
 		} catch (err) {
-			lines.push(...unreadableRows("MCP configuration", err));
+			const ur = unreadableRows("MCP configuration", err);
+			for (let li = 0; li < ur.length; li++) lines.push(ur[li]!);
 		}
 
 		lines.push("");

@@ -273,7 +273,9 @@ class ThemeSceneController implements SetupSceneController {
 			rows === undefined
 				? undefined
 				: Math.max(0, rows - lines.length - messageRows - MIN_LIST_ROWS - PREVIEW_TRAILING_BLANK);
-		lines.push(...renderThemePreview(width, previewRows), "");
+		const tp = renderThemePreview(width, previewRows);
+		for (let li = 0; li < tp.length; li++) lines.push(tp[li]!);
+		lines.push("");
 		if (this.#loadingAllThemes) {
 			this.#listRowStart = -1;
 			lines.push(theme.fg("dim", "Loading themes…"));
@@ -287,7 +289,8 @@ class ThemeSceneController implements SetupSceneController {
 			if (rows !== undefined) {
 				this.#selectList.setRowBudget(Math.max(1, rows - lines.length - messageRows));
 			}
-			lines.push(...this.#selectList.render(width));
+			const sl = this.#selectList.render(width);
+			for (let li = 0; li < sl.length; li++) lines.push(sl[li]!);
 		}
 		if (this.#message) {
 			lines.push("", this.#message);

@@ -174,7 +174,8 @@ export class ImportSceneController implements SetupSceneController {
 			const statusRows = this.#status.length > 0 ? this.#status.length + 1 : 0;
 			this.#list.setRowBudget(Math.max(1, rows - lines.length - statusRows));
 		}
-		lines.push(...this.#list.render(width));
+		const ll = this.#list.render(width);
+		for (let li = 0; li < ll.length; li++) lines.push(ll[li]!);
 		if (this.#status.length > 0) {
 			lines.push("", ...this.#status.map(line => truncateToWidth(line, width)));
 		}

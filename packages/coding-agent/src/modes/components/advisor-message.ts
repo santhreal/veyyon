@@ -87,9 +87,11 @@ export function createAdvisorMessageCard(
 				for (let i = 0; i < paragraphs.length; i++) {
 					const p = paragraphs[i];
 					if (i === 0) {
-						bodyLines.push(...wrapVarying(p, w1, w2));
+						const wv = wrapVarying(p, w1, w2);
+						for (let li = 0; li < wv.length; li++) bodyLines.push(wv[li]!);
 					} else {
-						bodyLines.push(...wrapTextWithAnsi(p, w2));
+						const wt = wrapTextWithAnsi(p, w2);
+						for (let li = 0; li < wt.length; li++) bodyLines.push(wt[li]!);
 					}
 				}
 

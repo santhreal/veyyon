@@ -1489,8 +1489,9 @@ export class InputController {
 		// re-materialized lazily; the restored text already carries the
 		// renumbered `[Image #N, WxH]` markers).
 		if (queuedImages.length > 0) {
-			this.ctx.editor.pendingImages.push(...queuedImages);
-			this.ctx.editor.pendingImageLinks.push(...queuedImages.map(() => undefined));
+			for (let ii = 0; ii < queuedImages.length; ii++) this.ctx.editor.pendingImages.push(queuedImages[ii]!);
+			const qi = queuedImages.map(() => undefined);
+			for (let ii = 0; ii < qi.length; ii++) this.ctx.editor.pendingImageLinks.push(qi[ii]!);
 			this.ctx.editor.imageLinks = this.ctx.editor.pendingImageLinks;
 		}
 		this.ctx.updatePendingMessagesDisplay();

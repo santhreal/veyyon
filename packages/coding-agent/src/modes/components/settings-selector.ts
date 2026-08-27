@@ -3506,7 +3506,7 @@ export class SettingsSelectorComponent implements Component {
 				heading: true,
 			});
 			this.#searchFirstMatch.set(result.tab, result.matched[0]?.id ?? "");
-			items.push(...result.matched);
+			for (let mi = 0; mi < result.matched.length; mi++) items.push(result.matched[mi]!);
 		}
 
 		this.#searchList.setItems(items);

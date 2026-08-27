@@ -89,9 +89,10 @@ export class EvalExecutionComponent extends Container {
 			this.#outputLines[this.#outputLines.length - 1] = clampExecutionDisplayLine(
 				`${this.#outputLines[this.#outputLines.length - 1]}${newLines[0]}`,
 			);
-			this.#outputLines.push(...newLines.slice(1));
+			const nl = newLines.slice(1);
+			for (let li = 0; li < nl.length; li++) this.#outputLines.push(nl[li]!);
 		} else {
-			this.#outputLines.push(...newLines);
+			for (let li = 0; li < newLines.length; li++) this.#outputLines.push(newLines[li]!);
 		}
 
 		// Same bound bash has always had. Without it a long-running cell grew its retained lines without limit,

@@ -255,7 +255,7 @@ export class RpcClient {
 			args.push("--session-dir", this.options.sessionDir);
 		}
 		if (this.options.args) {
-			args.push(...this.options.args);
+			for (let ai = 0; ai < this.options.args.length; ai++) args.push(this.options.args[ai]!);
 		}
 
 		const child = ptree.spawn(["bun", cliPath, ...args], {
