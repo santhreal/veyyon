@@ -1716,7 +1716,16 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 					context.perFileDiffPreview = previews;
 				}
 			}
-			if (!previews?.some(preview => preview.diff)) {
+			let hasDiff = false;
+			if (previews) {
+				for (let pi = 0; pi < previews.length; pi++) {
+					if (previews[pi]!.diff) {
+						hasDiff = true;
+						break;
+					}
+				}
+			}
+			if (!hasDiff) {
 				const editMode = this.#editMode;
 				const strategy = editMode ? EDIT_MODE_STRATEGIES[editMode] : undefined;
 				const fallback = strategy?.renderStreamingFallback(getArgsWithStreamedTextInput(this.#args), theme);
@@ -1736,8 +1745,16 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 	#getTextOutput(): string {
 		if (!this.#result) return "";
 
-		const textBlocks = this.#result.content?.filter(c => c.type === "text") || [];
-		return textBlocks.map(c => sanitizeWithOptionalSixelPassthrough(c.text || "", sanitizeText)).join("\n");
+		const blocks = this.#result.content;
+		if (!blocks) return "";
+		let out = "";
+		for (let bi = 0; bi < blocks.length; bi++) {
+			const block = blocks[bi]!;
+			if (block.type !== "text") continue;
+			const sanitized = sanitizeWithOptionalSixelPassthrough(block.text || "", sanitizeText);
+			out = out ? `${out}\n${sanitized}` : sanitized;
+		}
+		return out;
 	}
 
 	/**
