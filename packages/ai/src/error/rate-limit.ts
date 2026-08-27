@@ -26,7 +26,12 @@ const INSUFFICIENT_BALANCE_PATTERN = /insufficient.?balance/i;
 // still reads as a status, which no report has produced and which a unit suffix
 // would have to be enumerated to exclude.
 const CAPACITY_STATUS_PATTERN = /(?<!\d)(?:503|529)(?!\d)/;
-const SERVER_ERROR_STATUS_PATTERN = /(?<!\d)500(?!\d)/;
+// 502 and 504 are the same claim 500 makes — an upstream broke or timed out, and the next attempt
+// reaches a peer that may not have. They were missing, so a bare `HTTP 502 Bad Gateway` matched no
+// branch, returned UNKNOWN, and the fallback selector was suppressed for five minutes over a
+// gateway blip that a twenty-second wait clears. Same digit-boundary guard as above: `5040` is a
+// token count, not a status.
+const SERVER_ERROR_STATUS_PATTERN = /(?<!\d)(?:500|502|504)(?!\d)/;
 
 /**
  * Classify a rate-limit error message into a reason category.
