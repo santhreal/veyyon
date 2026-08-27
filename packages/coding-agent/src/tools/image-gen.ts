@@ -1237,7 +1237,7 @@ export const imageGenTool: CustomTool<typeof imageGenSchema, ImageGenToolDetails
 							const bearer = rotated?.accessToken ?? key;
 							const projectId = rotated?.projectId ?? apiKey.projectId!;
 
-							let endpoints: string[] = [...ANTIGRAVITY_ENDPOINTS];
+							let endpoints: string[] = ANTIGRAVITY_ENDPOINTS.slice();
 							try {
 								const mode = settings.get("providers.antigravityEndpoint");
 								if (mode === "production") {

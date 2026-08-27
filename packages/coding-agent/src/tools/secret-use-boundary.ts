@@ -58,7 +58,7 @@ function describeSecrets(redactedStrings: readonly string[]): { names: string[];
 			else names.add(body);
 		}
 	}
-	return { names: [...names].sort(), unnamed };
+	return { names: Array.from(names).sort(), unnamed };
 }
 
 /** One sentence naming what the call would spend, and what approving it means. */

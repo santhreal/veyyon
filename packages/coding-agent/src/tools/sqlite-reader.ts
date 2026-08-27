@@ -529,7 +529,7 @@ export function parseSqliteSelector(subPath: string, queryString: string): Sqlit
 	const rawQuery = params.get("q");
 
 	if (rawQuery !== null) {
-		const otherKeys = [...params.keys()].filter(key => key !== "q");
+		const otherKeys = Array.from(params.keys()).filter(key => key !== "q");
 		if (normalizedSubPath || otherKeys.length > 0) {
 			throw new ToolError("SQLite raw queries cannot be combined with table selectors or pagination");
 		}
@@ -728,7 +728,7 @@ export function executeReadQuery(
 	if (statement.paramsCount > 0) {
 		throw new ToolError("SQLite raw queries do not support bound parameters");
 	}
-	const columns = [...statement.columnNames];
+	const columns = statement.columnNames.slice();
 	const rows: SqliteRow[] = [];
 	let truncated = false;
 	for (const row of statement.iterate()) {

@@ -499,7 +499,7 @@ function uniqueTaskReferences(
 			unique.set(key, phaseOnly ? { phase: ref.phase, phaseOrdinal: ref.phaseOrdinal } : ref);
 		}
 	}
-	return unique.size > 0 ? [...unique.values()] : undefined;
+	return unique.size > 0 ? Array.from(unique.values()) : undefined;
 }
 
 function buildTodoTelemetry(
@@ -685,7 +685,7 @@ function getTaskTargets(phases: TodoPhase[], entry: TodoOpEntryValue, errors: st
 	}
 	if (entry.phase) {
 		const phase = resolvePhaseOrError(phases, entry.phase, errors);
-		return phase ? [...phase.tasks] : [];
+		return phase ? phase.tasks.slice() : [];
 	}
 	return phases.flatMap(phase => phase.tasks);
 }
@@ -1385,7 +1385,7 @@ export class TodoTool implements AgentTool<typeof todoSchema, TodoToolDetails> {
 		const { phases: updated, errors, notes: applyNotes } = applyOpsToPhases(previousPhases, ops);
 		// Adjustments the adapter made to the caller's list come first: they
 		// explain the shape the ops below were built from.
-		const notes = [...adapterNotes, ...applyNotes];
+		const notes = adapterNotes.concat(applyNotes);
 		const failed = errors.length > 0;
 		const effective = failed ? previousPhases : updated;
 		const storage = this.session.getSessionFile() ? "session" : "memory";

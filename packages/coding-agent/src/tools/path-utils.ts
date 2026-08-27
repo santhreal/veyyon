@@ -1271,7 +1271,9 @@ function joinRelativeGlob(basePath: string | undefined, globPattern: string): st
 }
 
 function buildBraceUnion(patterns: string[]): string | undefined {
-	const uniquePatterns = [...new Set(patterns.map(pattern => normalizePosixPath(pattern).trim()).filter(Boolean))];
+	const uniquePatterns = Array.from(
+		new Set(patterns.map(pattern => normalizePosixPath(pattern).trim()).filter(Boolean)),
+	);
 	if (uniquePatterns.length === 0) return undefined;
 	if (uniquePatterns.length === 1) return uniquePatterns[0];
 	return `{${uniquePatterns.join(",")}}`;
@@ -1379,7 +1381,7 @@ export async function resolveExplicitSearchPaths(
 	suffixGlob?: string,
 	fanOutFileItems = false,
 ): Promise<ResolvedMultiSearchPath | undefined> {
-	return resolveSearchPathItems([...new Set(pathItems)], cwd, suffixGlob, fanOutFileItems);
+	return resolveSearchPathItems(Array.from(new Set(pathItems)), cwd, suffixGlob, fanOutFileItems);
 }
 
 async function resolveFindPatternItems(
@@ -1414,7 +1416,7 @@ export async function resolveExplicitFindPatterns(
 	patternItems: string[],
 	cwd: string,
 ): Promise<ResolvedMultiFindPattern | undefined> {
-	return resolveFindPatternItems([...new Set(patternItems)], cwd);
+	return resolveFindPatternItems(Array.from(new Set(patternItems)), cwd);
 }
 
 /**

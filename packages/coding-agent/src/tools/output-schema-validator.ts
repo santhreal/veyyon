@@ -272,7 +272,7 @@ export function extractRequiredFields(jsonSchema: unknown): string[] {
 
 export function computeMissingRequired(required: readonly string[], value: unknown): string[] {
 	if (required.length === 0) return [];
-	if (value === null || value === undefined) return [...required];
+	if (value === null || value === undefined) return required.slice();
 	if (typeof value !== "object" || Array.isArray(value)) return [];
 	const record = value as Record<string, unknown>;
 	return required.filter(key => !(key in record) || record[key] === undefined);

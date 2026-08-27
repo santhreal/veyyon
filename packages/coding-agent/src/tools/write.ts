@@ -857,7 +857,7 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 		const directives = parseBulkDirectives(replacementContent);
 		if (directives) {
 			const known = new Set(allEntries.map(entry => entry.id));
-			const unknown = [...directives.keys()].filter(id => !known.has(id));
+			const unknown = Array.from(directives.keys()).filter(id => !known.has(id));
 			if (unknown.length > 0) {
 				throw new ToolError(
 					`Bulk directive references unknown conflict id(s) ${unknown.map(id => `#${id}`).join(", ")}. Currently registered: ${allEntries.map(e => `#${e.id}`).join(", ")}.`,

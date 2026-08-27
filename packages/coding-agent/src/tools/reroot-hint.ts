@@ -871,7 +871,7 @@ export function wrapToolWithRerootHint<T extends AgentTool<any, any, any>>(
 			// swallowing it and still saying "call set_cwd" is the original bug.
 			text = `${formatRerootHint(target, hint.fileCount, session.cwd, { callable: false })} (Activating ${SET_CWD_TOOL_NAME} failed: ${errorMessage(error)}.)`;
 		}
-		return { ...result, content: [...result.content, { type: "text" as const, text }] };
+		return { ...result, content: result.content.concat([{ type: "text" as const, text }]) };
 	};
 
 	return Object.defineProperties(tool, {

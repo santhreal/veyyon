@@ -139,7 +139,7 @@ export function resolveEssentialToolNames(inputs: EssentialToolNamesInputs): str
 	if (cleaned.length > 0) {
 		return cleaned.filter(inputs.isBuiltinName);
 	}
-	return [...DEFAULT_ESSENTIAL_TOOL_NAMES];
+	return DEFAULT_ESSENTIAL_TOOL_NAMES.slice();
 }
 
 /**
@@ -408,7 +408,7 @@ export function augmentRequestedToolNames(
 	requestedToolNames: readonly string[],
 	inputs: RequestedToolNamesInputs,
 ): string[] {
-	const requested = [...requestedToolNames];
+	const requested = requestedToolNames.slice();
 	const push = (name: string): void => {
 		if (!requested.includes(name)) requested.push(name);
 	};
@@ -443,8 +443,8 @@ export function augmentRequestedToolNames(
  * @returns A NEW array; the input is not mutated.
  */
 export function withYieldToolAppended(requestedToolNames: readonly string[]): string[] {
-	if (requestedToolNames.includes(TOOL.yield)) return [...requestedToolNames];
-	return [...requestedToolNames, TOOL.yield];
+	if (requestedToolNames.includes(TOOL.yield)) return requestedToolNames.slice();
+	return requestedToolNames.concat([TOOL.yield]);
 }
 
 export interface BaseToolSelectionInputs {
@@ -540,7 +540,7 @@ export function applyHarnessToolAllowlist(
 	toolNames: readonly string[],
 	allowlist: readonly string[] | undefined,
 ): string[] {
-	if (!allowlist || allowlist.length === 0) return [...toolNames];
+	if (!allowlist || allowlist.length === 0) return toolNames.slice();
 	const allowed = new Set(allowlist);
 	return toolNames.filter(name => allowed.has(name));
 }
@@ -566,7 +566,7 @@ export function resolveInitialActiveToolNames(inputs: InitialActiveToolNamesInpu
 	const hasExplicitToolNames = inputs.explicitToolNames !== undefined;
 
 	// 1 + 2.
-	const requestedActiveToolNames = [...inputs.requestedToolNames];
+	const requestedActiveToolNames = inputs.requestedToolNames.slice();
 	if (inputs.goalEnabled && inputs.hasRegistryTool(TOOL.goal) && !requestedActiveToolNames.includes(TOOL.goal)) {
 		requestedActiveToolNames.push(TOOL.goal);
 	}
@@ -580,7 +580,7 @@ export function resolveInitialActiveToolNames(inputs: InitialActiveToolNamesInpu
 	// 3.
 	let initialSelectedMCPToolNames: string[] = [];
 	let defaultSelectedMCPToolNames: string[] = [];
-	let initialToolNames = [...initialRequestedActiveToolNames];
+	let initialToolNames = initialRequestedActiveToolNames.slice();
 	if (inputs.mcpDiscoveryEnabled) {
 		// Normalized, NOT filtered through the discoverable-MCP index: built-in activations are
 		// persisted under this same key for back-compat (see stage 5's `restored` input), so a
@@ -588,18 +588,19 @@ export function resolveInitialActiveToolNames(inputs: InitialActiveToolNamesInpu
 		const restoredSelectedMCPToolNames = inputs.persistedSelectedMCPToolNames
 			.map(normalizeToolName)
 			.filter(inputs.hasRegistryTool);
-		defaultSelectedMCPToolNames = [
-			...new Set([...inputs.discoveryDefaultServerToolNames, ...explicitlyRequestedMCPToolNames]),
-		];
+		defaultSelectedMCPToolNames = Array.from(
+			new Set(inputs.discoveryDefaultServerToolNames.concat(explicitlyRequestedMCPToolNames)),
+		);
 		initialSelectedMCPToolNames = inputs.hasPersistedMCPToolSelection
 			? restoredSelectedMCPToolNames
-			: [...new Set([...restoredSelectedMCPToolNames, ...defaultSelectedMCPToolNames])];
-		initialToolNames = [
-			...new Set([
-				...initialRequestedActiveToolNames.filter(name => !isMCPToolNamePrefix(name)),
-				...initialSelectedMCPToolNames,
-			]),
-		];
+			: Array.from(new Set(restoredSelectedMCPToolNames.concat(defaultSelectedMCPToolNames)));
+		initialToolNames = Array.from(
+			new Set(
+				initialRequestedActiveToolNames
+					.filter(name => !isMCPToolNamePrefix(name))
+					.concat(initialSelectedMCPToolNames),
+			),
+		);
 	}
 
 	// 4.
