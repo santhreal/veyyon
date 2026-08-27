@@ -23,11 +23,53 @@ import {
 } from "../../src/backends/harbor/backend";
 import { buildHarborArgs } from "../../src/backends/harbor/launch-args";
 import { buildHarborEnv, type Config } from "../../src/backends/harbor/runner/config";
+import { agentLabel } from "../../src/backends/harbor/runner/ui";
 import { listHarnesses, requireHarness } from "../../src/core/harness-registry";
 import type { HarnessAdapter, HarnessCapabilities, PreflightVerdict } from "../../src/core/types";
 import { registerBuiltinHarnesses } from "../../src/harnesses/index";
 
 registerBuiltinHarnesses();
+
+/** A runner config with every field the frame and the env builder read. */
+function mockRunnerConfig(): Config {
+	return {
+		agent: "veyyon",
+		install: "source",
+		version: null,
+		tarball: null,
+		thinking: null,
+		agentArgs: ["--flag"],
+		webSearch: false,
+		gateway: true,
+		gatewayUrl: "http://127.0.0.1:4000",
+		gatewayToken: "token-1",
+		envType: "docker" as const,
+		env: {},
+		models: ["test/model"],
+		tasks: 1,
+		dataset: "ds",
+		concurrency: 1,
+		attempts: 1,
+		jobsDir: "/runs",
+		jobName: "j1",
+		build: false,
+		dryRun: false,
+		cleanup: false,
+		cleanupForce: false,
+		hostNetwork: false,
+		resume: null,
+		filterErrorTypes: [],
+		passthrough: [],
+		binaryArm64: null,
+		binaryX64: null,
+		providers: [],
+		include: [],
+		exclude: [],
+		allowHosts: [],
+		timeoutMultiplier: 1,
+		yes: false,
+	};
+}
 
 describe("a harbor harness resolves its agent name and log path from the registry", () => {
 	it("every harness declaring a harbor binding produces a resolvable agent name and log path", () => {
@@ -157,43 +199,7 @@ describe("a harbor harness resolves its agent name and log path from the registr
 	});
 
 	it("buildHarborEnv produces agent env only for harbor-bound harnesses", () => {
-		const mockConfig: Config = {
-			agent: "veyyon",
-			install: "source",
-			version: null,
-			tarball: null,
-			thinking: null,
-			agentArgs: ["--flag"],
-			webSearch: false,
-			gateway: true,
-			gatewayUrl: "http://127.0.0.1:4000",
-			gatewayToken: "token-1",
-			envType: "docker" as const,
-			env: {},
-			models: ["test/model"],
-			tasks: 1,
-			dataset: "ds",
-			concurrency: 1,
-			attempts: 1,
-			jobsDir: "/runs",
-			jobName: "j1",
-			build: false,
-			dryRun: false,
-			cleanup: false,
-			cleanupForce: false,
-			hostNetwork: false,
-			resume: null,
-			filterErrorTypes: [],
-			passthrough: [],
-			binaryArm64: null,
-			binaryX64: null,
-			providers: [],
-			include: [],
-			exclude: [],
-			allowHosts: [],
-			timeoutMultiplier: 1,
-			yes: false,
-		};
+		const mockConfig = mockRunnerConfig();
 
 		const env = buildHarborEnv(mockConfig, "/path/to/models.yaml", null, "1.0.0");
 		expect(env.VEYYON_BENCH_INSTALL).toBe("source");
@@ -204,5 +210,36 @@ describe("a harbor harness resolves its agent name and log path from the registr
 		expect(unboundEnv.VEYYON_BENCH_INSTALL).toBeUndefined();
 		expect(unboundEnv.VEYYON_BENCH_AGENT_ARGS).toBeUndefined();
 		expect(unboundEnv.VEYYON_BENCH_GATEWAY).toBeUndefined();
+	});
+
+	it("the progress frame labels whichever harness the run drove", () => {
+		const base: Config = { ...mockRunnerConfig(), agentArgs: [] };
+
+		for (const harness of listHarnesses()) {
+			const binding = harness.backends.harbor;
+			if (!binding) continue;
+			const label = agentLabel({ ...base, agent: harness.name }, binding);
+			expect(label.startsWith(harness.name)).toBe(true);
+			// The install mode describes source this repository mounts or packs, so it belongs on the
+			// frame only for a harness whose binding asks for one of those.
+			const built = binding.sourceMount === true || binding.localTarball === true;
+			expect(label.includes(`(${base.install})`)).toBe(built);
+		}
+	});
+
+	it("states the install mode for a mounted or packed harness and for no other", () => {
+		const base: Config = { ...mockRunnerConfig(), agent: "contender", agentArgs: [] };
+
+		expect(agentLabel(base, { sourceMount: true })).toBe("contender (source)");
+		expect(agentLabel(base, { localTarball: true })).toBe("contender (source)");
+		expect(agentLabel(base, { agentName: "contender" })).toBe("contender");
+		expect(agentLabel(base, undefined)).toBe("contender");
+	});
+
+	it("states the agent args of any harness, not only the built-in one", () => {
+		const withArgs = { ...mockRunnerConfig(), agent: "oracle", agentArgs: ["--flag", "value"] };
+
+		expect(agentLabel(withArgs, undefined)).toBe("oracle [--flag value]");
+		expect(agentLabel({ ...withArgs, agentArgs: [] }, undefined)).toBe("oracle");
 	});
 });
