@@ -121,6 +121,21 @@
 - `markdown.ts` replaces `for…of` with index-based loops in `renderContentLines` and `#applyQuoteBorder`.
 - `render-utils.ts` replaces `.map()`, `for…of`, and spread+map with index-based loops in `renderCollapsedOutputLines`, `getDiffStats`, `parseDiffSegments`, `truncateDiffByHunk`, `dedupeParseErrors`, `formatParseErrors`, `appendParseErrorsBulletList`, and `createCachedComponent`.
 - `assistant-message.ts` replaces `for…of` and `Array.from().flatMap().map()` with index-based loops in `getSpeed`, `getTranscriptBlockSettledRows`, and `#renderToolImages`.
+- `model-hub.ts` replaces `for…of`, `.map()`, and `.filter().join()` with index-based loops in roles row rendering, `#sidebarWidth`, `#renderLockedView`, cycle label and chip width computation.
+- `account-manager.ts` replaces `.map()` closures with index-based for loops in `#wrapNote`, `#buildBodyLines` header, and scrollable list pane rendering. Replaces `for…of` with index-based loop in `#sidebarWidth`.
+- `account-manager-rows.ts` replaces `.map().map()` chain and `.slice().map()` spread with single-pass for loops in `accountUsageLines` and `accountPlanLine`.
+- `hook-selector.ts` replaces `.map()` closures with index-based for loops in `#wrapDescriptionRows`.
+- `advisor-config.ts` replaces `.map()` closures with index-based for loops in `#previewContent` and `#advisorPreview`.
+- `agent-activity.ts` replaces `.map()` closure and `[…refs]` spread with index-based for loop and `.slice()` in `collectLiveAgents`.
+- `paint-columns.ts` replaces `.map()` closure with index-based for loop in `paintBlockBackground`.
+- `motion-paint.ts` replaces `.map()` closure and `[…lines]` spread with index-based for loop and `.slice()` in `fadeLinesTowards`.
+- `tab-bar.ts` replaces `.map()`, `.reduce()`, and `.map().filter()` chains with index-based for loops in label and collapse computation.
+- `settings-list.ts` replaces `.filter().map()` and `.map()` closures with single-pass and index-based for loops in flat and split layout rendering.
+- `markdown.ts` replaces `.map()` closures with index-based for loops in table border/header/row rendering, `#terminalLineWidths`, and `#renderHtmlBlockquote`.
+- `error-banner.ts` replaces `for…of` with index-based for loop in constructor.
+- `advisor-message.ts` replaces `for…of` with index-based for loop in note rendering.
+- `inspector-panel.ts` replaces `for…of` with index-based for loops in description wrapping and file preview rendering.
+- `agent-transcript-viewer.ts` replaces `for…of` with index-based for loops in body line assembly.
 - `agent-dashboard.ts` replaces `.reduce()` closure with for loop in `widest` roster column measurement.
 - `status-line/component.ts` replaces `.reduce()` closure with for loop in `#backgroundJobBadgeCount`.
 - `modal-shell.ts` replaces `.reduce()` closure with for loop in `groupWidth`.
