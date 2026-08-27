@@ -37,7 +37,7 @@
  * static bytes rather than to a half-drawn state.
  */
 
-import { blendHex } from "@veyyon/tui";
+import { blendHex, toHexColor } from "@veyyon/tui";
 import { clamp01 } from "@veyyon/utils/math";
 import type { Theme } from "../modes/theme/theme";
 
@@ -174,8 +174,7 @@ export function railSettleHead(frame: number, railRows: number): number {
 
 /** A `#rrggbb` string for one truecolor SGR's channels. */
 function hexOf(r: number, g: number, b: number): string {
-	const two = (c: number): string => (c < 16 ? `0${c.toString(16)}` : c.toString(16));
-	return `#${two(r)}${two(g)}${two(b)}`;
+	return toHexColor(r, g, b);
 }
 
 interface RailCell {

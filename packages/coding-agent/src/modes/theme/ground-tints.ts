@@ -18,7 +18,7 @@
  * exact pre-detection rendering, never a wrong guess at the ground.
  */
 
-import type { PaintGroundPlan } from "@veyyon/tui";
+import { type PaintGroundPlan, toHexColor } from "@veyyon/tui";
 
 /** Currently detected terminal background (`#rrggbb`), if any. */
 let detectedGround: string | undefined;
@@ -109,13 +109,7 @@ function channels(hex: string): [number, number, number] {
 }
 
 function toHex(rgb: [number, number, number]): string {
-	return `#${rgb
-		.map(c =>
-			Math.round(Math.min(255, Math.max(0, c)))
-				.toString(16)
-				.padStart(2, "0"),
-		)
-		.join("")}`;
+	return toHexColor(rgb[0], rgb[1], rgb[2]);
 }
 
 /** Perceived lightness in [0,1] (Rec. 601 luma — enough to pick a direction). */

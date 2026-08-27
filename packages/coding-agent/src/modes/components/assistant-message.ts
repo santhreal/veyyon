@@ -10,6 +10,7 @@ import {
 	Spacer,
 	TERMINAL,
 	Text,
+	toHexColor,
 } from "@veyyon/tui";
 import { formatNumber } from "@veyyon/utils";
 import { stripAnsi } from "@veyyon/utils/strip-ansi";
@@ -185,7 +186,7 @@ function lerpHex(from: string, to: string, t: number): string {
 	const r = Math.round(fr + (tr - fr) * k);
 	const g = Math.round(fg + (tg - fg) * k);
 	const b = Math.round(fb + (tb - fb) * k);
-	return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`;
+	return toHexColor(r, g, b);
 }
 
 /**
