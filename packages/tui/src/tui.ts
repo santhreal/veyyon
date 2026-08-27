@@ -621,8 +621,8 @@ export class Container implements Component, MouseRoutable {
 
 	setIgnoreTight(ignore: boolean): this {
 		this.#ignoreTight = ignore;
-		for (const child of this.children) {
-			child.setIgnoreTight?.(ignore);
+		for (let ci = 0; ci < this.children.length; ci++) {
+			this.children[ci]!.setIgnoreTight?.(ignore);
 		}
 		this.invalidate();
 		return this;
@@ -657,8 +657,8 @@ export class Container implements Component, MouseRoutable {
 
 	invalidate(): void {
 		this.#memoLines = undefined;
-		for (const child of this.children) {
-			child.invalidate?.();
+		for (let ci = 0; ci < this.children.length; ci++) {
+			this.children[ci]!.invalidate?.();
 		}
 	}
 
@@ -668,8 +668,8 @@ export class Container implements Component, MouseRoutable {
 	 * {@link clear} for that). Idempotent per child via each child's own dispose.
 	 */
 	dispose(): void {
-		for (const child of this.children) {
-			child.dispose?.();
+		for (let ci = 0; ci < this.children.length; ci++) {
+			this.children[ci]!.dispose?.();
 		}
 	}
 
@@ -2276,7 +2276,9 @@ export class TUI extends Container {
 
 	override invalidate(): void {
 		super.invalidate();
-		for (const overlay of this.overlayStack) overlay.component.invalidate?.();
+		for (let oi = 0; oi < this.overlayStack.length; oi++) {
+			this.overlayStack[oi]!.component.invalidate?.();
+		}
 	}
 
 	start(options?: TUIStartOptions): void {
@@ -2929,8 +2931,9 @@ export class TUI extends Container {
 		}
 		const roots = this.#partialComposeRootsScratch;
 		roots.clear();
-		for (const target of this.#componentRenderTargets) {
-			const root = this.#resolveComponentRoot(target);
+		const targets = Array.from(this.#componentRenderTargets);
+		for (let ti = 0; ti < targets.length; ti++) {
+			const root = this.#resolveComponentRoot(targets[ti]!);
 			if (root === null) return null;
 			roots.add(root);
 		}
@@ -2943,10 +2946,10 @@ export class TUI extends Container {
 		if (cached !== undefined && this.children.includes(cached) && subtreeContains(cached, target)) {
 			return cached;
 		}
-		for (const child of this.children) {
-			if (subtreeContains(child, target)) {
-				this.#componentRootCache.set(target, child);
-				return child;
+		for (let ci = 0; ci < this.children.length; ci++) {
+			if (subtreeContains(this.children[ci]!, target)) {
+				this.#componentRootCache.set(target, this.children[ci]!);
+				return this.children[ci]!;
 			}
 		}
 		this.#componentRootCache.delete(target);
@@ -3280,8 +3283,9 @@ export class TUI extends Container {
 		}
 		if (this.#inputListeners.size > 0) {
 			let current = data;
-			for (const listener of this.#inputListeners) {
-				const result = listener(current);
+			const listeners = Array.from(this.#inputListeners);
+			for (let li = 0; li < listeners.length; li++) {
+				const result = listeners[li]!(current);
 				if (result?.consume) {
 					return;
 				}
