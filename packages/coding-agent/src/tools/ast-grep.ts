@@ -367,7 +367,10 @@ export class AstGrepTool implements AgentTool<typeof astGrepSchema, AstGrepToolD
 				const fileMatches = matchesByFile.get(relativePath) ?? [];
 				const hashContext = hashContexts.get(relativePath);
 				const lineNumberWidth = fileMatches.reduce((width, match) => {
-					const lineCount = match.text.split("\n").length;
+					let lineCount = 1;
+					for (let ci = 0; ci < match.text.length; ci++) {
+						if (match.text.charCodeAt(ci) === 0x0a) lineCount++;
+					}
 					const endLine = match.startLine + lineCount - 1;
 					return Math.max(width, String(match.startLine).length, String(endLine).length);
 				}, 0);
