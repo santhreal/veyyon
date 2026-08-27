@@ -2351,7 +2351,13 @@ export class Markdown implements Component {
 	 */
 	#wrapCellText(text: string, maxWidth: number): string[] {
 		const cellWidth = Math.max(1, maxWidth);
-		return splitTerminalLines(text).flatMap(line => wrapTextWithAnsi(line, cellWidth));
+		const cellLines = splitTerminalLines(text);
+		const result: string[] = [];
+		for (let li = 0; li < cellLines.length; li++) {
+			const wrapped = wrapTextWithAnsi(cellLines[li]!, cellWidth);
+			for (let wi = 0; wi < wrapped.length; wi++) result.push(wrapped[wi]!);
+		}
+		return result;
 	}
 
 	/**

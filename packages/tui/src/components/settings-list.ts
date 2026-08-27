@@ -760,10 +760,11 @@ export class SettingsList implements Component {
 				itemRows.splice(selectedVisiblePos + 1, 0, ...inlineDesc);
 			}
 			const hitOffset = stickyHeadingIndex >= 0 ? 1 : 0;
-			visibleItems.forEach((item, index) => {
+			for (let index = 0; index < visibleItems.length; index++) {
+				const item = visibleItems[index]!;
 				const shift = descInView && index > selectedVisiblePos ? inlineDesc.length : 0;
 				this.#hitRows[index + hitOffset + shift] = item.heading ? undefined : item.id;
-			});
+			}
 			const scrollView = new ScrollView(itemRows, {
 				height: viewportHeight + (descInView ? inlineDesc.length : 0),
 				scrollbar: "auto",

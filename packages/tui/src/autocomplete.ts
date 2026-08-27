@@ -276,72 +276,68 @@ function buildSlashCommandCompletions(
 			if (category && !categoryOrder.has(category)) categoryOrder.set(category, categoryOrder.size);
 		}
 	}
-	const ranked = commands
-		.flatMap(cmd => {
-			const name = getCommandName(cmd);
-			if (!name) return [];
-			const category = browsing && "category" in cmd ? cmd.category : undefined;
-			const hint = "argumentHint" in cmd && cmd.argumentHint ? cmd.argumentHint : undefined;
-			const staticDesc = getStaticCommandDescription(cmd);
-			let fullDescMemo: string | undefined;
-			let fullDescComputed = false;
-			// Resolve the (possibly live) display description lazily, only once a
-			// candidate actually matches — getAutocompleteDescription reads live
-			// session state and must not run for every command on each keystroke.
-			const resolveFullDesc = (): string | undefined => {
-				if (!fullDescComputed) {
-					const displayDesc = getAutocompleteCommandDescription(cmd);
-					fullDescMemo = hint ? (displayDesc ? `${hint} - ${displayDesc}` : hint) : displayDesc;
-					fullDescComputed = true;
-				}
-				return fullDescMemo;
-			};
-			const candidates: Array<AutocompleteItem & { score: number }> = [];
+	const ranked: Array<AutocompleteItem & { score: number }> = [];
+	for (let ci = 0; ci < commands.length; ci++) {
+		const cmd = commands[ci]!;
+		const name = getCommandName(cmd);
+		if (!name) continue;
+		const category = browsing && "category" in cmd ? cmd.category : undefined;
+		const hint = "argumentHint" in cmd && cmd.argumentHint ? cmd.argumentHint : undefined;
+		const staticDesc = getStaticCommandDescription(cmd);
+		let fullDescMemo: string | undefined;
+		let fullDescComputed = false;
+		// Resolve the (possibly live) display description lazily, only once a
+		// candidate actually matches — getAutocompleteDescription reads live
+		// session state and must not run for every command on each keystroke.
+		const resolveFullDesc = (): string | undefined => {
+			if (!fullDescComputed) {
+				const displayDesc = getAutocompleteCommandDescription(cmd);
+				fullDescMemo = hint ? (displayDesc ? `${hint} - ${displayDesc}` : hint) : displayDesc;
+				fullDescComputed = true;
+			}
+			return fullDescMemo;
+		};
 
-			const isSkillCommand = name.startsWith("skill:");
-			const nameScore =
-				lowerPrefix.length === 0 && isSkillCommand ? 950 : scoreCommandTextMatch(lowerPrefix, name.toLowerCase());
-			const lowerDesc = staticDesc.toLowerCase();
-			const descScore =
-				lowerDesc && isSubsequenceMatch(lowerPrefix, lowerDesc)
-					? subsequenceScore(lowerPrefix, lowerDesc) * 0.5
-					: 0;
-			const primaryScore = Math.max(nameScore, descScore);
-			if (primaryScore > 0) {
+		const isSkillCommand = name.startsWith("skill:");
+		const nameScore =
+			lowerPrefix.length === 0 && isSkillCommand ? 950 : scoreCommandTextMatch(lowerPrefix, name.toLowerCase());
+		const lowerDesc = staticDesc.toLowerCase();
+		const descScore =
+			lowerDesc && isSubsequenceMatch(lowerPrefix, lowerDesc) ? subsequenceScore(lowerPrefix, lowerDesc) * 0.5 : 0;
+		const primaryScore = Math.max(nameScore, descScore);
+		if (primaryScore > 0) {
+			const fullDesc = resolveFullDesc();
+			ranked.push({
+				value: name,
+				label: "name" in cmd ? cmd.name : cmd.label,
+				score: primaryScore,
+				...(fullDesc && { description: fullDesc }),
+				...(category && { group: category }),
+			});
+		}
+
+		// Alias rows exist so an alias the user actually typed still completes
+		// (`/models` → the model command). When the primary NAME already
+		// matched the prefix, its row is present and an alias row would be a
+		// duplicate with the identical description — pure menu clutter.
+		if (lowerPrefix.length > 0 && nameScore === 0) {
+			const aliases = getCommandAliases(cmd);
+			for (let ai = 0; ai < aliases.length; ai++) {
+				const alias = aliases[ai]!;
+				if (alias === name) continue;
+				const aliasScore = scoreCommandTextMatch(lowerPrefix, alias.toLowerCase());
+				if (aliasScore === 0) continue;
 				const fullDesc = resolveFullDesc();
-				candidates.push({
-					value: name,
-					label: "name" in cmd ? cmd.name : cmd.label,
-					score: primaryScore,
+				ranked.push({
+					value: alias,
+					label: alias,
+					score: aliasScore,
 					...(fullDesc && { description: fullDesc }),
-					...(category && { group: category }),
 				});
 			}
-
-			// Alias rows exist so an alias the user actually typed still completes
-			// (`/models` → the model command). When the primary NAME already
-			// matched the prefix, its row is present and an alias row would be a
-			// duplicate with the identical description — pure menu clutter.
-			if (lowerPrefix.length > 0 && nameScore === 0) {
-				const aliases = getCommandAliases(cmd);
-				for (let ai = 0; ai < aliases.length; ai++) {
-					const alias = aliases[ai]!;
-					if (alias === name) continue;
-					const aliasScore = scoreCommandTextMatch(lowerPrefix, alias.toLowerCase());
-					if (aliasScore === 0) continue;
-					const fullDesc = resolveFullDesc();
-					candidates.push({
-						value: alias,
-						label: alias,
-						score: aliasScore,
-						...(fullDesc && { description: fullDesc }),
-					});
-				}
-			}
-
-			return candidates;
-		})
-		.sort((a, b) => b.score - a.score);
+		}
+	}
+	ranked.sort((a, b) => b.score - a.score);
 	if (browsing) {
 		// Stable partition into category-contiguous runs so SelectList renders one
 		// header per category. Score order is preserved inside each category, and
