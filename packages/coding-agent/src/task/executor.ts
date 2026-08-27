@@ -1465,7 +1465,7 @@ function createSubagentRunMonitor(args: RunMonitorArgs): SubagentRunMonitor {
 		if (truncated || text.includes("\n") || !tailLastLineRepresentable || progress.recentOutput.length === 0) {
 			updateRecentOutputLines();
 		} else {
-			progress.recentOutput = [progress.recentOutput[0] + text, ...progress.recentOutput.slice(1)];
+			progress.recentOutput[0] = progress.recentOutput[0] + text;
 		}
 	};
 
