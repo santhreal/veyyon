@@ -2086,36 +2086,26 @@ export class StatusLineComponent implements Component {
 		let left = this.#locationWithRunClock(locationContents, sep);
 		if (extras?.locationRight) rightParts.push({ id: "location_right", content: extras.locationRight });
 		let right = joinContents(rightParts, sep);
+		// Cache widths to avoid redundant visibleWidth() calls in the shed loop below.
+		let leftWidth = visibleWidth(left);
+		let rightWidth = visibleWidth(right);
 		// The run clock is comfort chrome; the capability segments (context
 		// gauge, mode, badges) are operating data. On a tight width the clock
 		// degrades FIRST — its roomy gap shrinks to two cells, then the clock
 		// drops entirely — so it can never squeeze a segment off the line.
 		let clockStage = 0;
 		let locationShortened = false;
-		// Painted extents of the location parts once the fitter has had them, or null while
-		// the location is still whole and its parts sit where the join put them.
-		let locationSlots: QuietSegmentBounds[] | null = null;
-		// Whether the fitter had to cut the location below its own floors to fit it.
-		let locationCramped = false;
-		// Fit the location into the room the CURRENT right group leaves, for the caller to take.
-		// Asked again every time the group loses a part on the zone's behalf, because the room a
-		// shed frees belongs to the location: fitting once and latching a flag is what put an
-		// empty zone on a row with twenty-one cells of slack. The zone was fitted to the budget
-		// left by a right group that still held the session name and the context gauge -- a
-		// budget of ZERO -- and when those two left a moment later nothing asked the fitter
-		// again, so the row rendered the directory and the branch as nothing at all.
-		const favour = this.#expansionProgress() > 0 ? this.#expandedHalf : undefined;
-		const fitToTheRoomLeft = () =>
-			fitLocation(location, sep, Math.max(0, budget - visibleWidth(right) - (right ? 2 : 0)), favour);
-		while (rightParts.length > 0 && visibleWidth(left) + visibleWidth(right) + (left && right ? 2 : 0) > budget) {
+		while (rightParts.length > 0 && leftWidth + rightWidth + (left && right ? 2 : 0) > budget) {
 			if (clockStage === 0) {
 				clockStage = 1;
 				left = this.#locationWithRunClock(locationContents, sep, "  ");
+				leftWidth = visibleWidth(left);
 				continue;
 			}
 			if (clockStage === 1) {
 				clockStage = 2;
 				left = locationContents.join(sep);
+				leftWidth = visibleWidth(left);
 				continue;
 			}
 			// Shed the LOWEST-RANKED remaining part, walking from the end so equally
@@ -2130,16 +2120,16 @@ export class StatusLineComponent implements Component {
 			if (dropRank === 0 && dropIndex >= 0) {
 				rightParts.splice(dropIndex, 1);
 				right = joinContents(rightParts, sep);
+				rightWidth = visibleWidth(right);
 				continue;
 			}
 			// Only ranked parts are left. Shorten the location before touching any of
 			// them: a clipped path still says where you are, and these do not degrade.
 			if (!locationShortened) {
 				locationShortened = true;
-				const fitted = fitToTheRoomLeft();
-				left = fitted.text;
-				locationSlots = fitted.slots;
-				locationCramped = fitted.cramped;
+				const leftBudget = Math.max(0, budget - rightWidth - (right ? 2 : 0));
+				left = truncateToWidth(locationContents.join(sep), leftBudget);
+				leftWidth = visibleWidth(left);
 				continue;
 			}
 			// The ranked parts still do not fit, so the ranking has to resolve. Shedding the
@@ -2154,6 +2144,7 @@ export class StatusLineComponent implements Component {
 			if (rightParts.length > 1 && dropIndex >= 0) {
 				rightParts.splice(dropIndex, 1);
 				right = joinContents(rightParts, sep);
+				rightWidth = visibleWidth(right);
 				continue;
 			}
 			break;
@@ -2306,12 +2297,7 @@ export class StatusLineComponent implements Component {
 				col += partWidth + sepWidth;
 			}
 		}
-		// The right group is anchored to the right edge whether or not a location shares the
-		// row with it. Anchoring it only when a location survived is what left a row of state
-		// hanging off the LEFT margin at the widths where the zone could not fit: the model
-		// chip, the rungs and the counters all jumped a screen-width left, and the eye that
-		// had learnt where to find them on every other row had to hunt for them on this one.
-		const rightStart = right ? Math.max(0, budget - visibleWidth(right)) : 0;
+		const rightStart = left && right ? budget - rightWidth : 0;
 		if (right) {
 			let col = rightStart;
 			for (let rpi = 0; rpi < rightParts.length; rpi++) {
@@ -2338,7 +2324,7 @@ export class StatusLineComponent implements Component {
 		}
 		this.#quietLineBounds = clampedBounds;
 		if (left && right) {
-			return badge + left + padding(budget - visibleWidth(left) - visibleWidth(right)) + right;
+			return badge + left + padding(budget - leftWidth - rightWidth) + right;
 		}
 		// A location alone on the row is what a click on a name longer than the whole bar comes
 		// to: the reader asked for that name, and the row spent every readout it had to show as
@@ -2423,10 +2409,14 @@ export class StatusLineComponent implements Component {
 		if (location.length > 0) {
 			const left = this.#locationWithRunClock(location, sep);
 			const right = extras?.locationRight ?? null;
-			if (right && visibleWidth(left) + visibleWidth(right) + 2 <= budget) {
-				locationLine = left + padding(budget - visibleWidth(left) - visibleWidth(right)) + right;
-			} else if (visibleWidth(left) <= budget) {
-				locationLine = left;
+			if (right) {
+				const leftW = visibleWidth(left);
+				const rightW = visibleWidth(right);
+				if (leftW + rightW + 2 <= budget) {
+					locationLine = left + padding(budget - leftW - rightW) + right;
+				} else {
+					locationLine = truncateToWidth(left, budget);
+				}
 			} else {
 				// Same fitter as the one-line row: the branch goes before the directory does.
 				// The run clock is dropped with it, since it is chrome and this row is full.
@@ -2438,14 +2428,17 @@ export class StatusLineComponent implements Component {
 			const left = capLeft.join(sep);
 			const rightParts = capRight;
 			let right = rightParts.join(sep);
+			const leftWidth = visibleWidth(left);
+			let rightWidth = visibleWidth(right);
 			// Free space between the groups is the design; on narrow terminals the
 			// right group sheds parts before the gap closes below breathing room.
-			while (rightParts.length > 0 && visibleWidth(left) + visibleWidth(right) + 2 > budget) {
+			while (rightParts.length > 0 && leftWidth + rightWidth + 2 > budget) {
 				rightParts.pop();
 				right = rightParts.join(sep);
+				rightWidth = visibleWidth(right);
 			}
 			if (left && right) {
-				capabilityLine = left + padding(budget - visibleWidth(left) - visibleWidth(right)) + right;
+				capabilityLine = left + padding(budget - leftWidth - rightWidth) + right;
 			} else {
 				capabilityLine = truncateToWidth(left || right, budget);
 			}
