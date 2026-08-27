@@ -1239,14 +1239,19 @@ class RulesSubmenu extends MouseRoutedSubmenu {
 			return;
 		}
 
-		const items: SelectItem[] = sections.map(section => {
-			const off = section.rules.filter(rule => this.#isOff(rule, disabled, experiments, builtinOff)).length;
-			return {
+		const items: SelectItem[] = new Array(sections.length);
+		for (let si = 0; si < sections.length; si++) {
+			const section = sections[si]!;
+			let off = 0;
+			for (let ri = 0; ri < section.rules.length; ri++) {
+				if (this.#isOff(section.rules[ri]!, disabled, experiments, builtinOff)) off++;
+			}
+			items[si] = {
 				value: section.label,
 				label: section.label,
 				description: this.#sectionSummary(section.rules, off),
 			};
-		});
+		}
 		this.#finishList(items, this.#focusedSection, "Enter to open", "Esc to go back");
 		if (this.#selectList) {
 			this.#selectList.onSelect = item => {
