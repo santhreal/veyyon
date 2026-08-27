@@ -233,6 +233,15 @@
 - `tiny-title-download-progress.ts` replaces `.filter().map()` with single-pass for loop in progress details.
 - `tool-execution.ts` replaces `.map()` closure with for loop in `stabilizeStreamingPreviews`.
 - `skill-message.ts` replaces `.filter().map().join()` with single-pass for loop in `extractText`.
+- `subagent-hud.ts` replaces `.filter()` closure with for loop in per-frame running session filtering.
+- `irc-render.ts` replaces `.map()` and `.reduce()` closures with for loops in peer status meta rendering.
+- `ask.ts` replaces `.map()`, `.flatMap()`, and `.split().map()` closures with for loops in note, question, result, and chat redirect render paths.
+- `ssh.ts` replaces `.map()` closure with pre-allocated array + for loop in command line formatting.
+- `read.ts` replaces `.map().join()` with for-loop string building in `prependLineNumbers`.
+- `resolve.ts` replaces `.map()` closure with pre-allocated array + for loop in framed line rendering.
+- `launch.ts` replaces spread + `.map()` and `.filter().map()` with for loops in list render and settled set construction.
+- `sqlite-reader.ts` replaces `.map().join()` and `.split().map()` with for loops in vertical blocks, table list, and schema rendering.
+- `todo.ts` replaces `.flatMap()` and `.filter().length` with for loops in todo tool result rendering.
 ### Added
 
 - `/advisor` reports advisor status, opens the `WATCHDOG.yml` roster editor and applies a save to the running session, starts or stops the advisor for the session, and copies the advisor's own transcript; the subsystem shipped complete but no command, key or menu row reached it.
