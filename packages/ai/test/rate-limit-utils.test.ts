@@ -4,6 +4,34 @@ import { isUsageLimit } from "@veyyon/ai/error/flags";
 import { calculateRateLimitBackoffMs, parseRateLimitReason } from "@veyyon/ai/error/rate-limit";
 
 describe("parseRateLimitReason", () => {
+	/**
+	 * A status code was matched as a bare substring, so any longer number
+	 * containing 503, 529 or 500 was read as that status. The consequence is not
+	 * a wrong label: MODEL_CAPACITY_EXHAUSTED backs off for 45 seconds and
+	 * retries the same credential, where QUOTA_EXHAUSTED rotates, so a balance
+	 * that had actually run out retried against the account that could not serve
+	 * it. These pin the digit boundary; the prose branches above and below the
+	 * status checks are unchanged and still win where they match first.
+	 */
+	it("reads a status code named in prose, not one buried in a longer number", () => {
+		expect(parseRateLimitReason("insufficient balance: 5030 credits remaining")).toBe("QUOTA_EXHAUSTED");
+		expect(parseRateLimitReason("quota exhausted after 1500 requests")).toBe("QUOTA_EXHAUSTED");
+
+		// One case per boundary, each on a message no other branch claims, so the
+		// classification observes that guard alone. A digit before the run
+		// (`4503`, `2500`) and a digit after it (`5291`, `15000`) are both
+		// "somebody else's number" and neither is a status.
+		expect(parseRateLimitReason("request 5291 failed")).toBe("UNKNOWN");
+		expect(parseRateLimitReason("request id 4503 failed")).toBe("UNKNOWN");
+		expect(parseRateLimitReason("request id 2500 failed")).toBe("UNKNOWN");
+		expect(parseRateLimitReason("request 15000 failed")).toBe("UNKNOWN");
+		expect(parseRateLimitReason("request id 5001 failed")).toBe("UNKNOWN");
+
+		expect(parseRateLimitReason("HTTP 503 upstream unavailable")).toBe("MODEL_CAPACITY_EXHAUSTED");
+		expect(parseRateLimitReason("Anthropic returned 529")).toBe("MODEL_CAPACITY_EXHAUSTED");
+		expect(parseRateLimitReason("500 upstream failure")).toBe("SERVER_ERROR");
+	});
+
 	it("classifies Google Quota exceeded as QUOTA_EXHAUSTED", () => {
 		expect(
 			parseRateLimitReason("Cloud Code Assist API error (429): Quota exceeded for aiplatform.googleapis.com"),
