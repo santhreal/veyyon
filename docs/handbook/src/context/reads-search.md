@@ -163,6 +163,11 @@ largest entries are `edit`, `eval`, `read`, `launch` and `bash`.
 needs it, so the setting trades a fixed per-request cost for an occasional one.
 `tools.essentialOverride` sets which tools stay visible.
 
+A discovery search activates every match scoring at least half the best one. A weaker match is
+returned in `also_matched`, and a query naming it activates it. Rank order alone activated the whole
+tail: "keep track of what is left to do" activated `todo`, `set_cwd`, `task` and `web_search`, and
+an activated tool's schema is carried by every later request of the session.
+
 ## Why these are grouped with context
 
 A read that bounds and a search that bounds its output are both about keeping the working context

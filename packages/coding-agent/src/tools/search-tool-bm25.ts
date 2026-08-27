@@ -26,6 +26,17 @@ const TOOL_DISCOVERY_TITLE = "Tool Discovery";
 const COLLAPSED_MATCH_LIMIT = 5;
 const MATCH_LABEL_LEN = 72;
 const MATCH_DESCRIPTION_LEN = 96;
+/**
+ * How close to the best match a tool must score to be activated by the same
+ * call. BM25 rank order is not a decision: a natural-language query matches the
+ * tail of the inventory weakly, and activating that tail bills its schema on
+ * every later request of the session, silently. Measured on the default hidden
+ * set, "keep track of what is left to do" activated `todo` plus `set_cwd`,
+ * `task` and `web_search`, costing 2,239 tokens a request where `todo` alone
+ * costs 1,048. A near-tie is still activated, because a fuzzy query whose best
+ * answer is rank two is what this tool exists to serve.
+ */
+const ACTIVATION_SCORE_FLOOR = 0.5;
 
 const searchToolBm25Schema = type({
 	query: type("string").describe("tool search query"),
@@ -49,6 +60,8 @@ export interface SearchToolBm25Details {
 	limit: number;
 	total_tools: number;
 	activated_tools: string[];
+	/** Ranked matches the score floor kept out of the activation, names only. */
+	also_matched: string[];
 	active_selected_tools: string[];
 	tools: SearchToolBm25Match[];
 }
@@ -69,6 +82,7 @@ function buildSearchToolBm25Content(details: SearchToolBm25Details): string {
 	return JSON.stringify({
 		query: details.query,
 		activated_tools: details.activated_tools,
+		...(details.also_matched.length > 0 ? { also_matched: details.also_matched } : {}),
 		match_count: details.tools.length,
 		total_tools: details.total_tools,
 	});
@@ -301,19 +315,26 @@ export class SearchToolBm25Tool implements AgentTool<typeof searchToolBm25Schema
 			}
 			throw error;
 		}
+		// An activation is billed on every later request of the session, so it
+		// follows the score band and not the rank order: a weak tail match is
+		// reported instead, and a second query by name activates it for 20 tokens.
+		const bestScore = ranked[0]?.score ?? 0;
+		const activating = ranked.filter(result => result.score >= bestScore * ACTIVATION_SCORE_FLOOR);
 		const activated =
-			ranked.length > 0
+			activating.length > 0
 				? await activateTools(
 						this.session,
-						ranked.map(result => result.tool.name),
+						activating.map(result => result.tool.name),
 					)
 				: [];
+		const alsoMatched = ranked.filter(result => !activating.includes(result)).map(result => result.tool.name);
 
 		const details: SearchToolBm25Details = {
 			query,
 			limit,
 			total_tools: searchIndex.documents.length,
 			activated_tools: activated,
+			also_matched: alsoMatched,
 			active_selected_tools: getSelectedToolNames(this.session),
 			tools: ranked.map(result => formatMatch(result.tool, result.score)),
 		};
