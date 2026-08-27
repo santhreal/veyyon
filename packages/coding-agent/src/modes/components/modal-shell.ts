@@ -623,7 +623,7 @@ export function renderModalShell(input: ModalShellInput): ModalShellResult {
 	const dims = computeModalDims(input.areaWidth, input.areaHeight, input.sizing);
 	if (!dims) {
 		return {
-			lines: Array.from({ length: input.areaHeight }, () => padding(input.areaWidth)),
+			lines: new Array(input.areaHeight).fill(padding(input.areaWidth)),
 			geometry: null,
 		};
 	}

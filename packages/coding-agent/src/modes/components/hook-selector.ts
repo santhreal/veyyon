@@ -899,7 +899,7 @@ export class HookSelectorComponent extends Container {
 		const dims = computeModalDims(renderWidth, height, sizing);
 		if (!dims) {
 			this.#shellGeometry = null;
-			return Array.from({ length: height }, () => padding(renderWidth));
+			return new Array(height).fill(padding(renderWidth));
 		}
 		if (this.#lastRenderWidth !== dims.contentWidth) {
 			this.#lastRenderWidth = dims.contentWidth;

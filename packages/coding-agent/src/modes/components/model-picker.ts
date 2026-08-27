@@ -259,7 +259,7 @@ export class ModelPickerComponent implements Component {
 		const dims = computeModalDims(width, termRows, sizing);
 		if (!dims) {
 			this.#shellGeometry = null;
-			return Array.from({ length: termRows }, () => padding(width));
+			return new Array(termRows).fill(padding(width));
 		}
 
 		const shortcuts = [

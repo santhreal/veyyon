@@ -2092,7 +2092,7 @@ export class ModelHubComponent implements Component {
 		const dims = computeModalDims(width, height, sizing);
 		if (!dims) {
 			this.#shellGeometry = null;
-			return Array.from({ length: height }, () => padding(width));
+			return new Array(height).fill(padding(width));
 		}
 		const contentWidth = dims.contentWidth;
 		const sidebarWidth = this.#sidebarWidth();

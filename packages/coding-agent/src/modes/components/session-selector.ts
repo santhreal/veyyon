@@ -1036,7 +1036,7 @@ export class SessionSelectorComponent extends Container {
 		const dims = computeModalDims(width, termHeight, sizing);
 		if (!dims) {
 			this.#shellGeometry = null;
-			return Array.from({ length: termHeight }, () => padding(width));
+			return new Array(termHeight).fill(padding(width));
 		}
 
 		const body: string[] = [];

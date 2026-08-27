@@ -546,7 +546,7 @@ class AgentTerminationDialog implements Component {
 		const dims = computeModalDims(width, height, sizing);
 		if (!dims) {
 			this.#shellGeometry = null;
-			return Array.from({ length: height }, () => padding(width));
+			return new Array(height).fill(padding(width));
 		}
 
 		const type = agentType(this.agent);
@@ -1373,7 +1373,7 @@ export class AgentDashboard extends Container {
 		const dims = computeModalDims(width, area, sizing);
 		if (!dims) {
 			this.#shellGeometry = null;
-			return Array.from({ length: area }, () => padding(width));
+			return new Array(area).fill(padding(width));
 		}
 
 		this.#contentWidth = dims.contentWidth;
