@@ -94,7 +94,7 @@ export class SessionObserverRegistry {
 	}
 
 	getSessions(): ObservableSession[] {
-		const sessions = [...this.#sessions.values()];
+		const sessions = Array.from(this.#sessions.values());
 		sessions.sort((a, b) => {
 			if (a.kind === "main" && b.kind !== "main") return -1;
 			if (b.kind === "main" && a.kind !== "main") return 1;

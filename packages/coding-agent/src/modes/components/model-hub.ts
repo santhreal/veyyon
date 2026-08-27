@@ -1051,7 +1051,7 @@ export class ModelHubComponent implements Component {
 
 	#cycleOrder(): string[] {
 		try {
-			return [...this.#settings.get("cycleOrder")];
+			return this.#settings.get("cycleOrder").slice();
 		} catch {
 			// An empty cycle is what an unset `cycleOrder` means, and quick-switch simply has nothing to
 			// cycle through. Reachable only without a settings context, which is also without this panel.

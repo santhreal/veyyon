@@ -1541,8 +1541,8 @@ export class AgentDashboard extends Container {
 			hideThinkingBlock: this.#deps.hideThinkingBlock,
 			proseOnlyThinking: this.#deps.proseOnlyThinking,
 			expandArgot: this.#deps.expandArgot,
-			expandKeys: [...this.#expandKeys],
-			hubKeys: [...this.#hubKeys],
+			expandKeys: this.#expandKeys.slice(),
+			hubKeys: this.#hubKeys.slice(),
 			requestRender: () => this.onRequestRender?.(),
 			onClose: () => this.#closeTranscriptOverlay({ restoreFocus: true }),
 			onHubClose: () => {

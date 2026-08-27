@@ -1247,8 +1247,12 @@ export class InputController {
 
 		const messages = splitMessages.length > 0 ? splitMessages : [""];
 		const originalDraft = this.ctx.editor.getText();
-		const images = options.images?.length ? [...options.images] : undefined;
-		const imageLinks = options.imageLinks ? [...options.imageLinks] : images ? new Array(images.length) : undefined;
+		const images = options.images?.length ? options.images.slice() : undefined;
+		const imageLinks = options.imageLinks
+			? options.imageLinks.slice()
+			: images
+				? new Array(images.length)
+				: undefined;
 		this.ctx.editor.clearDraft(options.historyText);
 
 		if (this.ctx.session.isCompacting) {
@@ -1439,7 +1443,7 @@ export class InputController {
 		// Alt+Up reports "No queued messages to restore".
 		const compactionQueued = this.ctx.compactionQueuedMessages;
 		this.ctx.compactionQueuedMessages = [];
-		const allQueued = [...steering];
+		const allQueued = steering.slice();
 		for (let qi = 0; qi < compactionQueued.length; qi++) {
 			const e = compactionQueued[qi]!;
 			if (e.mode === "steer") allQueued.push({ text: e.text, images: e.images });
