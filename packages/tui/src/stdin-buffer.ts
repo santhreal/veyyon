@@ -415,8 +415,8 @@ export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
 			if (startIndex > 0) {
 				const beforePaste = this.#buffer.slice(0, startIndex);
 				const result = extractCompleteSequences(beforePaste, 0);
-				for (const sequence of result.sequences) {
-					this.#emitDataSequence(sequence);
+				for (let si = 0; si < result.sequences.length; si++) {
+					this.#emitDataSequence(result.sequences[si]!);
 				}
 			}
 
@@ -437,8 +437,8 @@ export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
 		this.#buffer = result.remainder;
 		this.#escapeSearchOffset = result.resumeSearchFrom;
 
-		for (const sequence of result.sequences) {
-			this.#emitDataSequence(sequence);
+		for (let si = 0; si < result.sequences.length; si++) {
+			this.#emitDataSequence(result.sequences[si]!);
 		}
 
 		if (this.#buffer.length > 0) {
@@ -617,8 +617,9 @@ export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
 			}
 		}
 		this.#partialHoldStartMs = 0;
-		for (const sequence of this.flush()) {
-			this.#emitDataSequence(sequence);
+		const flushed = this.flush();
+		for (let si = 0; si < flushed.length; si++) {
+			this.#emitDataSequence(flushed[si]!);
 		}
 	}
 
