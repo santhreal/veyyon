@@ -53,7 +53,8 @@ function highlightTokens(text: string, tokens: string[]): string {
 
 	const lower = text.toLowerCase();
 	const ranges: Array<[number, number]> = [];
-	for (const tok of tokens) {
+	for (let ti = 0; ti < tokens.length; ti++) {
+		const tok = tokens[ti]!;
 		let from = lower.indexOf(tok);
 		while (from !== -1) {
 			ranges.push([from, from + tok.length]);
@@ -65,8 +66,10 @@ function highlightTokens(text: string, tokens: string[]): string {
 	ranges.sort((a, b) => a[0] - b[0]);
 	let out = "";
 	let pos = 0;
-	for (const [start, end] of ranges) {
-		if (end <= pos) continue; // fully covered by a previous (merged) range
+	for (let ri = 0; ri < ranges.length; ri++) {
+		const start = ranges[ri]![0];
+		const end = ranges[ri]![1];
+		if (end <= pos) continue;
 		const from = Math.max(start, pos);
 		if (from > pos) out += text.slice(pos, from);
 		out += theme.fg("accent", text.slice(from, end));
