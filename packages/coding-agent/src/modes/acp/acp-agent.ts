@@ -1815,8 +1815,9 @@ export class AcpAgent implements Agent {
 		// Include a short preview of the plan so the user has context in the
 		// dialog. Keep the body bounded — Zed renders elicitation messages
 		// inline and a multi-thousand-line plan blows out the dialog.
-		const previewLines = planContent.split("\n").slice(0, 12).join("\n");
-		const ellipsis = planContent.split("\n").length > 12 ? "\n…" : "";
+		const allLines = planContent.split("\n");
+		const previewLines = allLines.slice(0, 12).join("\n");
+		const ellipsis = allLines.length > 12 ? "\n…" : "";
 		const message = `Approve plan "${title}" and start implementation?\n\n${previewLines}${ellipsis}`;
 		const value = await elicitFromAcpClient(
 			this.#connection,
