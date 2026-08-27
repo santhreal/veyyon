@@ -102,7 +102,7 @@ export function nearestNames(typed: string, candidates: Iterable<string>, limit 
 	const needle = typed.trim().toLowerCase();
 	if (needle.length === 0) return [];
 
-	const all = [...candidates];
+	const all = Array.from(candidates);
 	const out: string[] = [];
 	const seen = new Set<string>();
 	const take = (names: readonly string[]): void => {

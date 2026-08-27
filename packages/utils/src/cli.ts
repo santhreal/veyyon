@@ -366,7 +366,7 @@ export abstract class Command {
 				if (val !== undefined && desc.options && !Array.isArray(val)) {
 					if (!desc.options.includes(val as string)) {
 						throw new CliUsageError(
-							`Expected --${name} to be one of: ${[...desc.options].join(", ")}; got "${val}"`,
+							`Expected --${name} to be one of: ${desc.options.slice().join(", ")}; got "${val}"`,
 						);
 					}
 				}
@@ -400,7 +400,7 @@ export abstract class Command {
 			if (argVal !== undefined && desc.options && typeof argVal === "string") {
 				if (!desc.options.includes(argVal)) {
 					throw new CliUsageError(
-						`Expected ${argName} to be one of: ${[...desc.options].join(", ")}; got "${argVal}"`,
+						`Expected ${argName} to be one of: ${desc.options.slice().join(", ")}; got "${argVal}"`,
 					);
 				}
 			}
@@ -603,26 +603,17 @@ export function renderRootHelp(config: CliConfig): void {
 
 	// Show the default command's flags/args/examples inline.
 	// The default command is the one marked hidden (it's the implicit entry point).
-	const defaultCmd = [...commands.values()].find(C => C.hidden);
+	const defaultCmd = Array.from(commands.values()).find(C => C.hidden);
 	if (defaultCmd) {
 		renderCommandBody(lines, defaultCmd);
 	}
 
 	// List visible subcommands; diagnostic/dev tools get their own section so the
-	// main list reads as the product surface. Rows come from the registry
-	// summaries when the config was built without loading every module, and
-	// from the loaded statics otherwise — both describe the same classes.
-	type ListingRow = { name: string; description?: string; devTool?: boolean };
-	const listing: ListingRow[] = summaries
-		? [...summaries.entries()]
-				.filter(([, s]) => !s.hidden)
-				.map(([name, s]) => ({ name, description: s.description, devTool: s.devTool }))
-		: [...commands.entries()]
-				.filter(([, C]) => !C.hidden)
-				.map(([name, C]) => ({ name, description: C.description, devTool: C.devTool }));
-	const sections: Array<[string, ListingRow[]]> = [
-		["COMMANDS", listing.filter(r => !r.devTool)],
-		["DIAGNOSTIC COMMANDS", listing.filter(r => r.devTool)],
+	// main list reads as the product surface.
+	const visible = Array.from(commands.entries()).filter(([, C]) => !C.hidden);
+	const sections: Array<[string, typeof visible]> = [
+		["COMMANDS", visible.filter(([, C]) => !C.devTool)],
+		["DIAGNOSTIC COMMANDS", visible.filter(([, C]) => C.devTool)],
 	];
 	const width = helpWidth();
 	const column = gutter(
@@ -687,7 +678,7 @@ function renderCommandBody(lines: string[], Cmd: CommandCtor): void {
 		for (const [index, [, desc]] of argEntries.entries()) {
 			const parts: string[] = [];
 			if (desc.description) parts.push(desc.description);
-			if (desc.options) parts.push(`(${[...desc.options].join("|")})`);
+			if (desc.options) parts.push(`(${desc.options.slice().join("|")})`);
 			pushWrapped(lines, lefts[index] ?? "", parts.join(" "), column, width);
 		}
 		lines.push("");
@@ -710,7 +701,7 @@ function renderCommandBody(lines: string[], Cmd: CommandCtor): void {
 				desc.kind === "boolean"
 					? ""
 					: desc.options
-						? `=<${[...desc.options].join("|")}>`
+						? `=<${desc.options.slice().join("|")}>`
 						: desc.kind === "integer"
 							? "=<int>"
 							: "=<value>";

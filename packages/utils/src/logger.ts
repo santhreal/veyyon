@@ -651,7 +651,7 @@ function printModuleLoadSummary(loads: Span[], depth: number, lines: string[]): 
 	if (nodes.length === 0) return;
 
 	const showAll = timingModeIncludes("full");
-	const byBody = [...nodes].sort(compareModuleNodes);
+	const byBody = nodes.slice().sort(compareModuleNodes);
 	const topBody = showAll ? byBody : byBody.slice(0, MODULE_LOAD_VERBOSE_TOP);
 	lines.push(`${grandIndent}top body/TLA:`);
 	for (const node of topBody) {
@@ -694,7 +694,7 @@ function buildModuleTimingGraph(loads: Span[]): ModuleTimingNode[] {
 	for (const node of nodes.values()) {
 		node.children.sort(compareModuleNodes);
 	}
-	return [...nodes.values()];
+	return Array.from(nodes.values());
 }
 
 function compareModuleNodes(a: ModuleTimingNode, b: ModuleTimingNode): number {

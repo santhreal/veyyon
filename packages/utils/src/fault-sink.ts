@@ -116,7 +116,7 @@ export function faultSinkCount(): number {
  */
 export function reportFault(fault: Fault): void {
 	logger.warn(`${fault.source}: ${fault.text}`, fault.context ?? {});
-	for (const sink of [...attached]) {
+	for (const sink of Array.from(attached)) {
 		try {
 			sink(fault);
 		} catch (error) {
