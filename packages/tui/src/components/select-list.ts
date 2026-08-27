@@ -415,7 +415,8 @@ export class SelectList implements Component, MouseRoutable {
 			theme: { track: t => this.theme.scrollInfo(t), thumb: t => this.theme.selectedPrefix(t) },
 		});
 		sv.setScrollOffset(visualOffset);
-		lines.push(...sv.render(width));
+		const svLines = sv.render(width);
+		for (let li = 0; li < svLines.length; li++) lines.push(svLines[li]!);
 
 		// Add search status when relevant (scrollbar now indicates overflow)
 		if (showSearchStatus) {

@@ -668,7 +668,7 @@ export class SettingsList implements Component {
 				? this.#renderSplitList(width, sections)
 				: null;
 		if (splitLines) {
-			lines.push(...splitLines);
+			for (let li = 0; li < splitLines.length; li++) lines.push(splitLines[li]!);
 		} else {
 			// Expand-mode description renders inline, directly under the selected
 			// row inside the viewport (never detached below the padded panel), so
@@ -766,7 +766,8 @@ export class SettingsList implements Component {
 				},
 			});
 			scrollView.setScrollOffset(startIndex);
-			lines.push(...scrollView.render(width));
+			const scrollLines = scrollView.render(width);
+			for (let li = 0; li < scrollLines.length; li++) lines.push(scrollLines[li]!);
 			// Pad short lists to the full viewport so the panel height is constant.
 			while (lines.length < this.#maxVisible) lines.push("");
 		}
@@ -787,7 +788,7 @@ export class SettingsList implements Component {
 				}
 			}
 			while (descLines.length < 3) descLines.push("");
-			lines.push(...descLines);
+			for (let li = 0; li < descLines.length; li++) lines.push(descLines[li]!);
 		}
 
 		// External-search mode: the host renders the query; skip the status row.
