@@ -24,7 +24,7 @@ function clampChannel(value: number): number {
 
 /** `#rrggbb` from channels, each clamped to a byte. */
 export function toHexColor(r: number, g: number, b: number): string {
-	return `#${[r, g, b].map(c => clampChannel(c).toString(16).padStart(2, "0")).join("")}`;
+	return `#${clampChannel(r).toString(16).padStart(2, "0")}${clampChannel(g).toString(16).padStart(2, "0")}${clampChannel(b).toString(16).padStart(2, "0")}`;
 }
 
 /**
