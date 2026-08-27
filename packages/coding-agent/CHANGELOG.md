@@ -136,6 +136,14 @@
 - `advisor-message.ts` replaces `for…of` with index-based for loop in note rendering.
 - `inspector-panel.ts` replaces `for…of` with index-based for loops in description wrapping and file preview rendering.
 - `agent-transcript-viewer.ts` replaces `for…of` with index-based for loops in body line assembly.
+- `chat-transcript-builder.ts` replaces `.filter().map().join()` chain with single-pass for loop in `userMessageText`.
+- `message-frame.ts` replaces `.filter().map().join()` chain with single-pass for loop in text extraction.
+- `collab-prompt-message.ts` replaces `.filter().map().join()` chain with single-pass for loop in text extraction.
+- `compaction-summary-message.ts` replaces `for…of` with index-based for loop in `getCustomMessageText`.
+- `composer-shortcuts.ts` replaces `for…of` with index-based for loop in chip hit-zone collection.
+- `assistant-message.ts` replaces `for…of` with index-based for loops in `containsMermaidFence`, `#appendThinkingExtensions`, and `#canFastPath`.
+- `latex-block.ts` replaces `for…of` and `.map()` closures with index-based for loops in `textBox`, `padBox`, `colorizeBox`, and `splitCells`.
+- `autocomplete.ts` replaces `.map()` destructure closure with index-based for loop in score stripping.
 - `agent-dashboard.ts` replaces `.reduce()` closure with for loop in `widest` roster column measurement.
 - `status-line/component.ts` replaces `.reduce()` closure with for loop in `#backgroundJobBadgeCount`.
 - `modal-shell.ts` replaces `.reduce()` closure with for loop in `groupWidth`.
