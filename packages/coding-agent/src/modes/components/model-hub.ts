@@ -457,10 +457,10 @@ export class ModelHubComponent implements Component {
 		];
 
 		this.#fixedEntries = fixed;
-		this.#unlockedProviderEntries = [...unlocked]
+		this.#unlockedProviderEntries = Array.from(unlocked)
 			.sort((a, b) => a.localeCompare(b))
 			.map(provider => providerEntry(provider, false));
-		this.#lockedProviderEntries = [...locked]
+		this.#lockedProviderEntries = Array.from(locked)
 			.sort((a, b) => a.localeCompare(b))
 			.map(provider => providerEntry(provider, true));
 		this.#composeEntries();
@@ -476,7 +476,7 @@ export class ModelHubComponent implements Component {
 		const counts = this.#searchCounts;
 		let providers = this.#unlockedProviderEntries;
 		if (counts) {
-			providers = [...providers].sort((a, b) => {
+			providers = providers.slice().sort((a, b) => {
 				const aMatched = (counts.get(a.providerId ?? "") ?? 0) > 0;
 				const bMatched = (counts.get(b.providerId ?? "") ?? 0) > 0;
 				if (aMatched !== bMatched) return aMatched ? -1 : 1;
@@ -484,12 +484,14 @@ export class ModelHubComponent implements Component {
 			});
 		}
 
-		const entries: SidebarEntry[] = [...this.#fixedEntries];
+		const entries: SidebarEntry[] = this.#fixedEntries.slice();
 		if (providers.length > 0) {
-			entries.push({ id: "sep:providers", kind: "separator", label: "" }, ...providers);
+			entries.push({ id: "sep:providers", kind: "separator", label: "" });
+			for (let i = 0; i < providers.length; i++) entries.push(providers[i]!);
 		}
 		if (this.#lockedProviderEntries.length > 0) {
-			entries.push({ id: "sep:locked", kind: "separator", label: "" }, ...this.#lockedProviderEntries);
+			entries.push({ id: "sep:locked", kind: "separator", label: "" });
+			for (let i = 0; i < this.#lockedProviderEntries.length; i++) entries.push(this.#lockedProviderEntries[i]!);
 		}
 
 		this.#entries = entries;
@@ -525,7 +527,7 @@ export class ModelHubComponent implements Component {
 		switch (entry.kind) {
 			case "recent":
 				this.#browser.setShowProvider(true);
-				this.#browser.setItems([...this.#recentItems]);
+				this.#browser.setItems(this.#recentItems.slice());
 				break;
 			case "provider": {
 				if (entry.locked) {
@@ -544,7 +546,7 @@ export class ModelHubComponent implements Component {
 				break;
 			default:
 				this.#browser.setShowProvider(true);
-				this.#browser.setItems([...this.#availableItems]);
+				this.#browser.setItems(this.#availableItems.slice());
 				break;
 		}
 	}
@@ -934,7 +936,7 @@ export class ModelHubComponent implements Component {
 		this.#assigning = { kind: "role", role };
 		this.#focus = "scope";
 		this.#browser.setShowProvider(true);
-		this.#browser.setItems([...this.#availableItems]);
+		this.#browser.setItems(this.#availableItems.slice());
 		this.#browser.setQuery("");
 		const current = this.#roles[role];
 		if (current) {
@@ -947,7 +949,7 @@ export class ModelHubComponent implements Component {
 		this.#assigning = { kind: "fallback", role, index };
 		this.#focus = "scope";
 		this.#browser.setShowProvider(true);
-		this.#browser.setItems([...this.#availableItems]);
+		this.#browser.setItems(this.#availableItems.slice());
 		this.#browser.setQuery("");
 		if (index !== null) {
 			const selector = this.#fallbackChains()[role]?.[index];
@@ -960,7 +962,7 @@ export class ModelHubComponent implements Component {
 		this.#assigning = { kind: "fallbackKey" };
 		this.#focus = "scope";
 		this.#browser.setShowProvider(true);
-		this.#browser.setItems([...this.#availableItems]);
+		this.#browser.setItems(this.#availableItems.slice());
 		this.#browser.setQuery("");
 	}
 

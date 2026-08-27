@@ -143,7 +143,7 @@ export class CopySelectorComponent implements Component {
 				const target = nodes[i]!;
 				const isLast = i === nodes.length - 1;
 				out.push({ target, depth, isLast, ancestorHasNext });
-				if (target.children?.length) walk(target.children, depth + 1, [...ancestorHasNext, !isLast]);
+				if (target.children?.length) walk(target.children, depth + 1, ancestorHasNext.concat([!isLast]));
 			}
 		};
 		walk(this.#roots, 0, []);

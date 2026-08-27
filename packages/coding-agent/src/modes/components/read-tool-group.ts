@@ -432,7 +432,7 @@ export class ReadToolGroupComponent extends Container implements ToolExecutionHa
 	}
 
 	#updateDisplay(): void {
-		const entries = [...this.#entries.values()];
+		const entries = Array.from(this.#entries.values());
 		const displayTargets = this.#displayTargetsForEntries(entries);
 		const displayRows = this.#buildSummaryRows(displayTargets);
 

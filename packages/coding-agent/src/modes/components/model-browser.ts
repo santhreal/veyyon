@@ -111,7 +111,7 @@ export function resolveRoleAssignments(settings: Settings, allModels: ReadonlyAr
 
 	const roles: RoleAssignments = {};
 	const matchPreferences = getModelMatchPreferences(settings);
-	const catalog = [...allModels];
+	const catalog = allModels.slice();
 
 	for (const role of [DEFAULT_MODEL_SLOT, ...getKnownRoleIds(settings)]) {
 		const roleValue = settings.getModelRole(role);

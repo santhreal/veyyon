@@ -685,7 +685,7 @@ class ProviderLimitsSubmenu extends MouseRoutedSubmenu {
 
 	#providerIds(): string[] {
 		const limits = normalizeProviderMaxInFlightRequests(settings.get("providers.maxInFlightRequests"));
-		return [...new Set([...this.providers, ...Object.keys(limits)])].sort((a, b) => a.localeCompare(b));
+		return Array.from(new Set(this.providers.concat(Object.keys(limits)))).sort((a, b) => a.localeCompare(b));
 	}
 
 	#showProviderList(): void {
@@ -717,7 +717,7 @@ class ProviderLimitsSubmenu extends MouseRoutedSubmenu {
 			Object.keys(limits).length === 0
 				? []
 				: [{ value: "__clear_all", label: "Clear all limits", description: "Make every provider unlimited" }];
-		const items = [...providerItems, ...clearItem];
+		const items = providerItems.concat(clearItem);
 		this.#selectList = new SelectList(items, clamp(items.length, 1, 12), getSelectListTheme());
 		this.#selectList.onSelect = item => {
 			if (item.value === "__clear_all") {

@@ -184,7 +184,7 @@ class TreeList implements Component {
 		{
 			// Build list in pre-order, then process in reverse for post-order effect
 			const allNodes: SessionTreeNode[] = [];
-			const preOrderStack: SessionTreeNode[] = [...roots];
+			const preOrderStack: SessionTreeNode[] = roots.slice();
 			while (preOrderStack.length > 0) {
 				const node = preOrderStack.pop()!;
 				allNodes.push(node);
@@ -209,7 +209,7 @@ class TreeList implements Component {
 		// Add roots in reverse order, prioritizing the one containing the active leaf
 		// If multiple roots, treat them as children of a virtual root that branches
 		const multipleRoots = roots.length > 1;
-		const orderedRoots = [...roots].sort((a, b) => Number(containsActive.get(b)) - Number(containsActive.get(a)));
+		const orderedRoots = roots.slice().sort((a, b) => Number(containsActive.get(b)) - Number(containsActive.get(a)));
 		for (let i = orderedRoots.length - 1; i >= 0; i--) {
 			const isLast = i === orderedRoots.length - 1;
 			stack.push([orderedRoots[i], multipleRoots ? 1 : 0, multipleRoots, multipleRoots, isLast, [], multipleRoots]);
@@ -250,7 +250,7 @@ class TreeList implements Component {
 						rest.push(child);
 					}
 				}
-				return [...prioritized, ...rest];
+				return prioritized.concat(rest);
 			})();
 
 			// Calculate child indent
@@ -275,7 +275,7 @@ class TreeList implements Component {
 			const currentDisplayIndent = this.#multipleRoots ? Math.max(0, indent - 1) : indent;
 			const connectorPosition = Math.max(0, currentDisplayIndent - 1);
 			const childGutters: GutterInfo[] = connectorDisplayed
-				? [...gutters, { position: connectorPosition, show: !isLast }]
+				? gutters.concat([{ position: connectorPosition, show: !isLast }])
 				: gutters;
 
 			// Add children in reverse order

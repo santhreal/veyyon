@@ -607,8 +607,8 @@ export class PlanReviewOverlay implements Component {
 	#pushUndo(): void {
 		this.#undo.push({
 			text: joinPlanSections(this.#sections),
-			annotations: this.#sections.map(section => [...section.annotations]),
-			deleted: [...this.#deleted],
+			annotations: this.#sections.map(section => section.annotations.slice()),
+			deleted: Array.from(this.#deleted),
 		});
 	}
 
@@ -637,9 +637,9 @@ export class PlanReviewOverlay implements Component {
 		if (!entry) return;
 		this.#setSections(entry.text);
 		for (let i = 0; i < this.#sections.length; i++) {
-			this.#sections[i]!.annotations = entry.annotations[i] ? [...entry.annotations[i]!] : [];
+			this.#sections[i]!.annotations = entry.annotations[i] ? entry.annotations[i]!.slice() : [];
 		}
-		this.#deleted = [...entry.deleted];
+		this.#deleted = Array.from(entry.deleted);
 		this.#tocCursor = Math.min(this.#tocCursor, Math.max(0, this.#toc.length - 1));
 		this.#pendingScrollToToc = true;
 		this.callbacks.onPlanEdited?.(joinPlanSections(this.#sections));
