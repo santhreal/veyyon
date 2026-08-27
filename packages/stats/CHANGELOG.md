@@ -29,6 +29,7 @@
 - Improved negation and blame detection to exclude determiners (e.g., "no auto start") and compounds (e.g., "no-op") while adding support for phrases like "why did you" and "makes no sense".
 - Added sad emoticons as a signal for anguish while excluding code-like patterns.
 - Triggered a one-time automatic re-ingestion of sessions on the next database sync to apply the updated metrics.
+- `App.tsx`, `chart-shared.tsx`, `view-models.ts`, `BehaviorRoute.tsx`, `ModelsRoute.tsx`, and `ToolsRoute.tsx` replace Set/Map/array spreads with `Array.from()`, `.slice()`, and `.concat()` across route mounting, chart data sorting, folder row building, and tool call series construction.
 
 ## [16.3.7] - 2026-07-05
 
