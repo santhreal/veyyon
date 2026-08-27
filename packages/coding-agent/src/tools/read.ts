@@ -2095,14 +2095,15 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 		const limitedEntries = listLimit.items;
 		const limitMeta = listLimit.meta;
 
-		for (let index = 0; index < limitedEntries.length; index++) {
-			throwIfAborted(signal);
-		}
+		throwIfAborted(signal);
 		const results = formatArchiveEntryLines(limitedEntries);
 
 		const output = results.length > 0 ? results.join("\n") : "(empty archive directory)";
 		const text = prependSuffixResolutionNotice(output, details.suffixResolution);
-		const truncation = truncateHead(text, { maxLines: Number.MAX_SAFE_INTEGER });
+		const truncation = truncateHead(text, {
+			maxBytes: inlineBudgetFor(this.session),
+			maxLines: Number.MAX_SAFE_INTEGER,
+		});
 		const directoryDetails: ReadToolDetails = { ...details, isDirectory: true };
 		const resultBuilder = toolResult<ReadToolDetails>(directoryDetails).text(truncation.content);
 		resultBuilder.sourcePath(archivePath).limits({ resultLimit: limitMeta.resultLimit?.reached });
@@ -2225,27 +2226,22 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 			db.run("PRAGMA busy_timeout = 3000");
 			throwIfAborted(signal);
 
+			// Every selector's rendered output is a tool result, so it takes the byte budget every
+			// other result takes. One wide TEXT or BLOB cell, or a raw query over many columns,
+			// used to arrive whole whatever `tools.artifactSpillThreshold` said: the row and column
+			// caps below bound how many rows are rendered, never how many bytes a row carries.
+			let output: string;
+			let resultLimitReached: number | undefined;
 			switch (selector.kind) {
 				case "list": {
 					const listLimit = applyListLimit(listTables(db), { limit: 500 });
-					const output = prependSuffixResolutionNotice(
-						renderTableList(listLimit.items),
-						resolvedSqlitePath.suffixResolution,
-					);
-					const truncation = truncateHead(output, { maxLines: Number.MAX_SAFE_INTEGER });
-					details.truncation = truncation.truncated ? truncation : undefined;
-					const resultBuilder = toolResult<ReadToolDetails>(details)
-						.text(truncation.content)
-						.sourcePath(resolvedSqlitePath.absolutePath)
-						.limits({ resultLimit: listLimit.meta.resultLimit?.reached });
-					if (truncation.truncated) {
-						resultBuilder.truncation(truncation, { direction: "head" });
-					}
-					return resultBuilder.done();
+					output = renderTableList(listLimit.items);
+					resultLimitReached = listLimit.meta.resultLimit?.reached;
+					break;
 				}
 				case "schema": {
 					const sampleRows = queryRows(db, selector.table, { limit: selector.sampleLimit, offset: 0 });
-					let output = renderSchema(getTableSchema(db, selector.table), {
+					output = renderSchema(getTableSchema(db, selector.table), {
 						columns: sampleRows.columns,
 						rows: sampleRows.rows,
 					});
@@ -2253,10 +2249,7 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 						const remaining = sampleRows.totalCount - sampleRows.rows.length;
 						output += `\n[${remaining} more rows; append :${selector.table}?limit=20&offset=${sampleRows.rows.length} to the database path to continue]`;
 					}
-					return toolResult<ReadToolDetails>(details)
-						.text(prependSuffixResolutionNotice(output, resolvedSqlitePath.suffixResolution))
-						.sourcePath(resolvedSqlitePath.absolutePath)
-						.done();
+					break;
 				}
 				case "row": {
 					const lookup = resolveTableRowLookup(db, selector.table);
@@ -2264,43 +2257,23 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 						lookup.kind === "pk"
 							? getRowByKey(db, selector.table, lookup, selector.key)
 							: getRowByRowId(db, selector.table, selector.key);
-					if (!row) {
-						return toolResult<ReadToolDetails>(details)
-							.text(
-								prependSuffixResolutionNotice(
-									`No row found in table '${selector.table}' for key '${selector.key}'.`,
-									resolvedSqlitePath.suffixResolution,
-								),
-							)
-							.sourcePath(resolvedSqlitePath.absolutePath)
-							.done();
-					}
-					return toolResult<ReadToolDetails>(details)
-						.text(prependSuffixResolutionNotice(renderRow(row), resolvedSqlitePath.suffixResolution))
-						.sourcePath(resolvedSqlitePath.absolutePath)
-						.done();
+					output = row ? renderRow(row) : `No row found in table '${selector.table}' for key '${selector.key}'.`;
+					break;
 				}
 				case "query": {
 					const page = queryRows(db, selector.table, selector);
-					return toolResult<ReadToolDetails>(details)
-						.text(
-							prependSuffixResolutionNotice(
-								renderTable(page.columns, page.rows, {
-									totalCount: page.totalCount,
-									offset: selector.offset,
-									limit: selector.limit,
-									table: selector.table,
-									dbPath: resolvedSqlitePath.absolutePath,
-								}),
-								resolvedSqlitePath.suffixResolution,
-							),
-						)
-						.sourcePath(resolvedSqlitePath.absolutePath)
-						.done();
+					output = renderTable(page.columns, page.rows, {
+						totalCount: page.totalCount,
+						offset: selector.offset,
+						limit: selector.limit,
+						table: selector.table,
+						dbPath: resolvedSqlitePath.absolutePath,
+					});
+					break;
 				}
 				case "raw": {
 					const result = executeReadQuery(db, selector.sql);
-					let output = renderTable(result.columns, result.rows, {
+					output = renderTable(result.columns, result.rows, {
 						totalCount: result.rows.length,
 						offset: 0,
 						limit: result.rows.length || DEFAULT_MAX_LINES,
@@ -2310,14 +2283,25 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 					if (result.truncated) {
 						output += `\n[Output capped at ${MAX_RAW_QUERY_ROWS} rows; add a LIMIT/OFFSET clause to the query to page through more]`;
 					}
-					return toolResult<ReadToolDetails>(details)
-						.text(prependSuffixResolutionNotice(output, resolvedSqlitePath.suffixResolution))
-						.sourcePath(resolvedSqlitePath.absolutePath)
-						.done();
+					break;
 				}
+				default:
+					throw new ToolError("Unsupported SQLite selector");
 			}
 
-			throw new ToolError("Unsupported SQLite selector");
+			const truncation = truncateHead(prependSuffixResolutionNotice(output, resolvedSqlitePath.suffixResolution), {
+				maxBytes: inlineBudgetFor(this.session),
+				maxLines: Number.MAX_SAFE_INTEGER,
+			});
+			details.truncation = truncation.truncated ? truncation : undefined;
+			const resultBuilder = toolResult<ReadToolDetails>(details)
+				.text(truncation.content)
+				.sourcePath(resolvedSqlitePath.absolutePath)
+				.limits({ resultLimit: resultLimitReached });
+			if (truncation.truncated) {
+				resultBuilder.truncation(truncation, { direction: "head" });
+			}
+			return resultBuilder.done();
 		} catch (error) {
 			if (error instanceof ToolError) {
 				throw error;

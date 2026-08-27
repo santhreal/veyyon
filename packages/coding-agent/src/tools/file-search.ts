@@ -21,6 +21,7 @@ import {
 import { isTimeoutError, scopedTimeoutSignal } from "../utils/fetch-timeout";
 import type { ToolSession } from ".";
 import { applyListLimit } from "./list-limit";
+import { inlineBudgetFor } from "./output-artifact";
 import { formatFullOutputReference, type OutputMeta } from "./output-meta";
 import {
 	expandDelimitedPathEntries,
@@ -276,7 +277,12 @@ export async function executeFileSearch(
 			if (notice) trailingNotes.push(notice);
 			if (missingPathsNote) trailingNotes.push(missingPathsNote);
 			const rawOutput = trailingNotes.length > 0 ? `${baseOutput}\n\n${trailingNotes.join("\n")}` : baseOutput;
-			const truncation = truncateHead(rawOutput, { maxLines: Number.MAX_SAFE_INTEGER });
+			// A path list is a tool result: the entry limit bounds how many paths are rendered, the
+			// budget bounds how many bytes they may cost.
+			const truncation = truncateHead(rawOutput, {
+				maxBytes: inlineBudgetFor(session),
+				maxLines: Number.MAX_SAFE_INTEGER,
+			});
 
 			const details: FileSearchDetails = {
 				scopePath,
