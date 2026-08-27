@@ -233,14 +233,19 @@ export default class Index extends Command {
 			}
 			throw error;
 		}
-		// The card is painted BEFORE the runtime graph loads, so a bare
-		// interactive launch reaches a typable composer in ~60ms rather than
-		// waiting ~760ms for `../main` to evaluate. Dynamic for the same reason
-		// as the import above -- this path is not on the `--help` route -- and
-		// it owns its own decision, so a run that paints no card no-ops here.
-		// The runs that skip the paint (`--version`, `--export`, `--print`, a
-		// protocol mode) load `../main` immediately below regardless, so the
-		// module load this costs them is noise against that.
+		// Painted BEFORE the runtime graph loads, so a bare interactive launch
+		// reaches a typable composer in ~60ms rather than waiting ~760ms for
+		// `../main` to evaluate.
+		//
+		// Dynamic because a static import cannot work here: this module's flag
+		// table is what `veyyon --help` loads, and a top-level import would put
+		// the 582-module first-frame paint graph on the help route, which is the
+		// exact cost the comment above exists to keep off it. The specifier is
+		// literal, so the graph stays reviewable; only its evaluation is
+		// deferred. `runStartupPrologue` owns its own decision, so a run that
+		// paints no card no-ops, and the runs that skip the paint (`--version`,
+		// `--export`, `--print`, a protocol mode) load `../main` immediately
+		// below regardless, making this module load noise against that.
 		const { runStartupPrologue, shouldPrepaintLaunchCard } = await import("../startup/launch-card");
 		if (shouldPrepaintLaunchCard(parsed)) await runStartupPrologue(parsed);
 		const { runRootCommand } = await import("../main");
