@@ -17,9 +17,11 @@
 // in SELECTORS below, and the artifact read path shares the budget owner but is
 // exercised by the artifact suites rather than here.
 //
-// A directory listing is included because it is the same class: the unsliced
-// listing priced itself against the compiled constant, and the sliced listing
-// carried no byte bound at all.
+// A directory listing is included because it is the same class: the listing
+// priced itself against the compiled constant, and the sliced listing carried
+// no byte bound at all. Those cases name `depth`, because a selector-free
+// directory read answers with the concise top-level listing instead and so
+// never reaches the size the byte bound exists for.
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
@@ -52,8 +54,8 @@ async function toolFor(cwd: string, spillThresholdKb?: number): Promise<Tool> {
 	return read;
 }
 
-async function readText(tool: Tool, target: string): Promise<string> {
-	const result = await tool.execute("probe", { path: target } as never, undefined, undefined, undefined);
+async function readText(tool: Tool, target: string, extra: Record<string, unknown> = {}): Promise<string> {
+	const result = await tool.execute("probe", { path: target, ...extra } as never, undefined, undefined, undefined);
 	return result.content
 		.filter((block): block is { type: "text"; text: string } => block.type === "text" && "text" in block)
 		.map(block => block.text)
@@ -192,11 +194,19 @@ describe("a read with no line bound costs what a tool result may cost", () => {
 		expect(text).not.toContain("limit). Use :");
 	});
 
-	it("holds a directory listing to the configured budget", async () => {
-		const small = Buffer.byteLength(await readText(await toolFor(dir, 8), "many"), "utf-8");
-		const large = Buffer.byteLength(await readText(await toolFor(dir, 64), "many"), "utf-8");
+	it("holds a listing the caller asked to recurse to the configured budget", async () => {
+		const small = Buffer.byteLength(await readText(await toolFor(dir, 8), "many", { depth: 1 }), "utf-8");
+		const large = Buffer.byteLength(await readText(await toolFor(dir, 64), "many", { depth: 1 }), "utf-8");
 		expect(small).toBeLessThan(8 * 1024 + 512);
 		expect(large).toBeGreaterThan(small * 2);
+	});
+
+	it("holds the concise top-level listing to the configured budget", async () => {
+		// The entry cap is a count, so a directory of long names still reaches the
+		// byte budget on the path a caller takes when it names nothing at all.
+		const text = await readText(await toolFor(dir, 4), "many");
+		expect(Buffer.byteLength(text, "utf-8")).toBeLessThan(4 * 1024 + 512);
+		expect(text).toContain("to continue");
 	});
 
 	it("holds an archive listing to the configured budget", async () => {
@@ -207,7 +217,7 @@ describe("a read with no line bound costs what a tool result may cost", () => {
 	});
 
 	it("bounds a sliced directory listing and names the line that continues it", async () => {
-		const text = await readText(await toolFor(dir, 8), "many:1-400");
+		const text = await readText(await toolFor(dir, 8), "many:1-400", { depth: 1 });
 		expect(Buffer.byteLength(text, "utf-8")).toBeLessThan(8 * 1024 + 512);
 		const notice = /\[(\d+) more lines? in listing\. Use :(\d+) to continue\]/.exec(text);
 		expect(notice).not.toBeNull();
