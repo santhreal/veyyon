@@ -362,7 +362,7 @@ function renderJsonTreeLines(
 			pushLine(`${prefix}${iconArray} ${header}`);
 			if (val.length === 0) {
 				pushLine(
-					`${buildTreePrefix([...ancestors, !isLast], theme)}${theme.fg("dim", theme.tree.last)} ${theme.fg(
+					`${buildTreePrefix(ancestors.concat(!isLast), theme)}${theme.fg("dim", theme.tree.last)} ${theme.fg(
 						"dim",
 						"[]",
 					)}`,
@@ -371,14 +371,14 @@ function renderJsonTreeLines(
 			}
 			if (depth >= maxDepth) {
 				pushLine(
-					`${buildTreePrefix([...ancestors, !isLast], theme)}${theme.fg("dim", theme.tree.last)} ${theme.fg(
+					`${buildTreePrefix(ancestors.concat(!isLast), theme)}${theme.fg("dim", theme.tree.last)} ${theme.fg(
 						"dim",
 						"…",
 					)}`,
 				);
 				return;
 			}
-			const nextAncestors = [...ancestors, !isLast];
+			const nextAncestors = ancestors.concat(!isLast);
 			for (let i = 0; i < val.length; i++) {
 				renderNode(val[i], `[${i}]`, nextAncestors, i === val.length - 1, depth + 1);
 				if (lines.length >= maxLines) {
@@ -395,7 +395,7 @@ function renderJsonTreeLines(
 			const entries = Object.entries(val as Record<string, unknown>);
 			if (entries.length === 0) {
 				pushLine(
-					`${buildTreePrefix([...ancestors, !isLast], theme)}${theme.fg("dim", theme.tree.last)} ${theme.fg(
+					`${buildTreePrefix(ancestors.concat(!isLast), theme)}${theme.fg("dim", theme.tree.last)} ${theme.fg(
 						"dim",
 						"{}",
 					)}`,
@@ -404,14 +404,14 @@ function renderJsonTreeLines(
 			}
 			if (depth >= maxDepth) {
 				pushLine(
-					`${buildTreePrefix([...ancestors, !isLast], theme)}${theme.fg("dim", theme.tree.last)} ${theme.fg(
+					`${buildTreePrefix(ancestors.concat(!isLast), theme)}${theme.fg("dim", theme.tree.last)} ${theme.fg(
 						"dim",
 						"…",
 					)}`,
 				);
 				return;
 			}
-			const nextAncestors = [...ancestors, !isLast];
+			const nextAncestors = ancestors.concat(!isLast);
 			for (let i = 0; i < entries.length; i++) {
 				const [childKey, child] = entries[i];
 				renderNode(child, childKey, nextAncestors, i === entries.length - 1, depth + 1);
@@ -1099,7 +1099,7 @@ function renderAgentProgress(
 	const completedTaskCalls = (progress.extractedToolData?.task as TaskToolDetails[] | undefined) ?? [];
 	const inflight = progress.inflightTaskDetails;
 	if (completedTaskCalls.length > 0 || inflight) {
-		const snapshots = inflight ? [...completedTaskCalls, inflight] : completedTaskCalls;
+		const snapshots = inflight ? completedTaskCalls.concat([inflight]) : completedTaskCalls;
 		const nestedLines = renderNestedTaskTree(
 			snapshots,
 			expanded,
@@ -1118,7 +1118,7 @@ function renderAgentProgress(
 	if (expanded && progress.status === "running") {
 		const previewRows = previewWindowRows();
 		const output = capPreviewLines(
-			sanitizeRecentOutput([...progress.recentOutput].reverse().join("\n")).split("\n"),
+			sanitizeRecentOutput(progress.recentOutput.slice().reverse().join("\n")).split("\n"),
 			theme,
 			{
 				max: previewRows,
@@ -1199,7 +1199,7 @@ function renderFindings(
 	// Sort by priority (lower = more severe) when collapsed to show most important first
 	const sortedFindings = expanded
 		? findings
-		: [...findings].sort((a, b) => getPriorityInfo(a.priority).ord - getPriorityInfo(b.priority).ord);
+		: findings.slice().sort((a, b) => getPriorityInfo(a.priority).ord - getPriorityInfo(b.priority).ord);
 	const displayCount = expanded ? sortedFindings.length : Math.min(3, sortedFindings.length);
 
 	for (let i = 0; i < displayCount; i++) {
