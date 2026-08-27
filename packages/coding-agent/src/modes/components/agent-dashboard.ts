@@ -1651,7 +1651,9 @@ export class AgentDashboard extends Container {
 		const parts: string[] = [" "];
 		this.#tabHits = [];
 		let column = 1; // the leading space above
-		for (const tab of this.#viewTabs()) {
+		const tabs = this.#viewTabs();
+		for (let ti = 0; ti < tabs.length; ti++) {
+			const tab = tabs[ti]!;
 			const isActive = tab.id === this.#activeView;
 			const text = `${tab.label} (${tab.count})`;
 			const label = isActive ? `[${text}]` : ` ${text} `;
