@@ -72,6 +72,10 @@ either framework. Pier passes the staged path as the `program_path` job-config k
 `VEYYON_BENCH_AGENT_PROGRAM`, and every backend files it at
 `<assets-root>/programs/<harness>/<arm>` through `programDirFor`.
 
+`binaryAsset` names the declared asset holding the build a trial measures. `programBinarySha`
+hashes the staged bytes and the backend records that digest as the trial's `binary_sha`, so a
+program-delivered arm states which build it ran rather than the build another arm staged.
+
 `omp` is delivered this way, which is what gives it harbor and therefore Terminal-Bench. `veyyon`
 declares no program: it mounts local source, seeds a credential store and replays recorded sessions,
 so it keeps its own agent class per backend.

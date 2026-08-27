@@ -16,6 +16,7 @@
  * that carries its path (a Pier job-config kwarg, a Harbor environment variable), nothing
  * more.
  */
+import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { sanitizeVariantName } from "./trial-naming";
@@ -57,6 +58,12 @@ export interface ContainerProgram {
 	readonly harness: string;
 	readonly containerDir: string;
 	readonly assets: readonly ProgramAsset[];
+	/**
+	 * The asset holding the build a trial measures, named so a run records which bytes ran
+	 * instead of a sentinel. A program whose agent is installed by its setup lines declares
+	 * none, and a run of it records no build.
+	 */
+	readonly binaryAsset?: string;
 	readonly setup: readonly string[];
 	readonly command: string;
 	/**
@@ -181,6 +188,21 @@ export function validateContainerProgram(program: ContainerProgram): void {
 			);
 		}
 	}
+	if (program.binaryAsset !== undefined) {
+		const named = program.assets.find(asset => asset.file === program.binaryAsset);
+		if (!named) {
+			throw new ContainerProgramError(
+				harness,
+				`binaryAsset ${JSON.stringify(program.binaryAsset)} names no declared asset`,
+			);
+		}
+		if (named.optional) {
+			throw new ContainerProgramError(
+				harness,
+				`binaryAsset ${JSON.stringify(program.binaryAsset)} names an optional asset, so a run could record no build while still measuring one`,
+			);
+		}
+	}
 	if (program.command.trim() === "") {
 		throw new ContainerProgramError(harness, "command must not be empty");
 	}
@@ -260,6 +282,34 @@ export function stageContainerProgram(dir: string, staged: StagedProgram): strin
 	const programPath = containerProgramPath(dir);
 	fs.writeFileSync(programPath, `${JSON.stringify(program, null, "\t")}\n`);
 	return programPath;
+}
+
+/**
+ * The sha256 of the build staged in `dir`, or null when there is no build to hash.
+ *
+ * Provenance is read off the staged bytes rather than the flag that selected them, so a run
+ * records what it uploaded. An omp arm recorded `nosha` and its report row read
+ * `unrecorded`, which left three finished trials unable to say which build they measured.
+ *
+ * A directory holding no program has nothing to say and answers null: a trial whose staging
+ * never ran fails on the program the agent cannot load, and provenance never decides that.
+ * A directory that holds a program and not the build the program requires contradicts its
+ * own manifest, which is a staging defect and a refusal.
+ */
+export function programBinarySha(dir: string): string | null {
+	const programPath = containerProgramPath(dir);
+	if (!fs.existsSync(programPath)) return null;
+	const program = JSON.parse(fs.readFileSync(programPath, "utf8")) as ContainerProgram;
+	validateContainerProgram(program);
+	if (program.binaryAsset === undefined) return null;
+	const binary = path.join(dir, program.binaryAsset);
+	if (!fs.existsSync(binary)) {
+		throw new ContainerProgramError(
+			program.harness,
+			`binaryAsset ${JSON.stringify(program.binaryAsset)} was never staged at ${binary}`,
+		);
+	}
+	return createHash("sha256").update(fs.readFileSync(binary)).digest("hex");
 }
 
 /**

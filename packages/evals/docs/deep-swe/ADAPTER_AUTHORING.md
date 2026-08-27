@@ -156,6 +156,7 @@ containerProgram(context: ContainerProgramContext): StagedProgram {
 				{ file: "myharness", dest: "/opt/myharness-assets/myharness", mode: "0755" },
 				{ file: "myharness.env", dest: "/opt/myharness-assets/myharness.env", mode: "0600" },
 			],
+			binaryAsset: "myharness",
 			setup: ["mkdir -p /tmp/myharness-sessions"],
 			command: "{{assets}}/myharness --model {{model}} --print {{instruction}}",
 			envFile: "/opt/myharness-assets/myharness.env",
@@ -178,8 +179,13 @@ containerProgram(context: ContainerProgramContext): StagedProgram {
 Rules the builder enforces, each a refusal naming the value: `command` carries only
 `{{instruction}}`, `{{model}}` and `{{assets}}`, the first two shlex-quoted; every container path is
 absolute with no whitespace; an asset `file` is relative to the program directory with no `..`; a
-declared asset with no staged source is a refusal unless marked `optional`. `usage` names the
-session dialect the executor reads token counts from.
+declared asset with no staged source is a refusal unless marked `optional`; `binaryAsset` names a
+declared, non-optional asset. `usage` names the session dialect the executor reads token counts
+from.
+
+`binaryAsset` names the asset holding the build a trial measures. `programBinarySha` hashes those
+staged bytes and the backend records the digest as the trial's `binary_sha`, so a run states which
+build each arm ran. A program that names none records no build.
 
 The provider key travels in the env file, sourced before the command, so it never appears in argv, a
 process listing or the log.

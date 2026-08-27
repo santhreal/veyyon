@@ -237,6 +237,7 @@ export class OmpAdapter implements HarnessAdapter {
 					{ file: "omp.env", dest: `${CONTAINER_DIR}/omp.env`, mode: "0600" },
 					{ file: "models.yml", dest: `${CONTAINER_DIR}/models.yml`, optional: true },
 				],
+				binaryAsset: "omp",
 				setup: [
 					`mkdir -p ${SESSION_DIR} ~/.omp/agent`,
 					`if [ -f ${CONTAINER_DIR}/models.yml ]; then cp ${CONTAINER_DIR}/models.yml ~/.omp/agent/models.yml; fi`,

@@ -1,7 +1,12 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { requireBackendBinding, resolveCellVariant } from "../../core/cell-variant";
-import { containerProgramPath, programDirFor, stageHarnessProgram } from "../../core/container-program";
+import {
+	containerProgramPath,
+	programBinarySha,
+	programDirFor,
+	stageHarnessProgram,
+} from "../../core/container-program";
 import { requireHarness } from "../../core/harness-registry";
 import { containerLocalEndpointEnv } from "../../core/local-endpoint";
 import { trialTimeoutFromOptions } from "../../core/trial-deadline";
@@ -54,6 +59,7 @@ export class PierExecutionBackend implements ExecutionBackend {
 	readonly #checkPreflight: CheckPierPreflightFn;
 	readonly #exec?: PierCommandExecutor;
 	#binarySha: string | null = null;
+	readonly #programShas = new Map<string, string | null>();
 
 	constructor(options: PierBackendOptions = {}) {
 		this.#stageAssets = options.stageAssets ?? stagePierAssets;
@@ -61,6 +67,20 @@ export class PierExecutionBackend implements ExecutionBackend {
 		this.#authDb = options.authDb ?? authDbPath();
 		this.#checkPreflight = options.checkPreflight ?? checkPierPreflight;
 		this.#exec = options.exec;
+	}
+
+	/**
+	 * The build a program-delivered arm staged, hashed once per program directory.
+	 *
+	 * A run is resumable and a trial may be the first thing this instance does, so the digest
+	 * is read off the staged directory instead of a field `prepare` filled in.
+	 */
+	#programSha(dir: string): string | null {
+		const known = this.#programShas.get(dir);
+		if (known !== undefined) return known;
+		const sha = programBinarySha(dir);
+		this.#programShas.set(dir, sha);
+		return sha;
 	}
 
 	#resolveVeyBinary(context: RunContext): string {
@@ -180,14 +200,18 @@ export class PierExecutionBackend implements ExecutionBackend {
 			);
 		}
 		const modelName = resolveTrialModel(variant, harness, context).id;
+		const programDir = programDirFor(assetsDir, harness.name, variant.name);
 
 		// A program-delivered harness carries its own environment in the program's env file,
 		// so only a bespoke agent needs the endpoint named here.
 		const localEndpoint = containerLocalEndpointEnv(modelName);
 		const kwargs: Record<string, unknown> = harness.containerProgram
 			? {
-					program_path: containerProgramPath(programDirFor(assetsDir, harness.name, variant.name)),
-					binary_sha: (context.options?.binarySha as string | undefined) ?? this.#binarySha ?? "nosha",
+					program_path: containerProgramPath(programDir),
+					// The staged program's own bytes outrank the run's `--binary`, which names the
+					// vey build: a mixed run would otherwise stamp every program arm with it.
+					binary_sha:
+						this.#programSha(programDir) ?? (context.options?.binarySha as string | undefined) ?? "nosha",
 					...(pierBinding.extra ?? {}),
 				}
 			: {
