@@ -210,6 +210,7 @@
 - `tree-selector.ts` replaces `for-of` iterators with index loops in entryMap build, containsActive check, orderedChildren, content extraction, `updateNodeLabel`.
 - `settings-selector.ts` replaces `.map()` and `.filter().length` closures with index loops in section items rendering.
 - `copy-selector.ts` replaces `.forEach()` closure with index loop in flatten walk.
+- `canonicalize-tool-call-ids.ts`, `relativize-paths.ts`, `messages.ts`, and `session-manager.ts` replace `[...arr]` spreads with `.slice()`/`.concat()`/`Array.from()` in message canonicalization, path relativization, and session entry management paths.
 - `segment-track.ts` replaces `.forEach()` closure with index loop in segment track render.
 - `autocomplete.ts` replaces `.flatMap()` closure with single-pass for loop in command ranking; replaces `.filter()` closure and `for-of` with index loops in file path autocomplete.
 - `settings-list.ts` replaces `.filter()` closure with in-place compaction in sections computation; replaces `.forEach()` with index loop in hit row mapping.
