@@ -2068,11 +2068,18 @@ export class StatusLineComponent implements Component {
 			this.#quietLineBounds = [];
 			return badge === "" ? null : badge;
 		}
-		const locationContents = location.map(part => part.content);
-		let left = this.#locationWithRunClock(locationContents, sep);
+		const joinContents = (parts: QuietPart[], separator: string): string => {
+			if (parts.length === 0) return "";
+			let out = parts[0]!.content;
+			for (let ji = 1; ji < parts.length; ji++) out = `${out}${separator}${parts[ji]!.content}`;
+			return out;
+		};
+		const locationContents = new Array<string>(location.length);
+		for (let li = 0; li < location.length; li++) locationContents[li] = location[li]!.content;
 		const rightParts = [...capLeft, ...capRight];
+		let left = this.#locationWithRunClock(locationContents, sep);
 		if (extras?.locationRight) rightParts.push({ id: "location_right", content: extras.locationRight });
-		let right = rightParts.map(part => part.content).join(sep);
+		let right = joinContents(rightParts, sep);
 		// The run clock is comfort chrome; the capability segments (context
 		// gauge, mode, badges) are operating data. On a tight width the clock
 		// degrades FIRST — its roomy gap shrinks to two cells, then the clock
@@ -2116,7 +2123,7 @@ export class StatusLineComponent implements Component {
 			const dropRank = weakest.rank;
 			if (dropRank === 0 && dropIndex >= 0) {
 				rightParts.splice(dropIndex, 1);
-				right = rightParts.map(part => part.content).join(sep);
+				right = joinContents(rightParts, sep);
 				continue;
 			}
 			// Only ranked parts are left. Shorten the location before touching any of
@@ -2140,7 +2147,7 @@ export class StatusLineComponent implements Component {
 			// that DOES end it is accounted for below, once the group has stopped moving.
 			if (rightParts.length > 1 && dropIndex >= 0) {
 				rightParts.splice(dropIndex, 1);
-				right = rightParts.map(part => part.content).join(sep);
+				right = joinContents(rightParts, sep);
 				continue;
 			}
 			break;
