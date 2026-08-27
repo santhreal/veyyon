@@ -9,6 +9,7 @@ import type { ComparisonSystem } from "../../../harnesses/system-comparison";
 import {
 	emptyArmResult,
 	finishedWithoutPatch,
+	isAgentTimeoutException,
 	NO_REWARD_ERROR,
 	noRewardError,
 	providerFinishReason,
@@ -207,6 +208,17 @@ export function parseTrialResult(
 		result.reward = 0;
 		result.partial = 0;
 		result.f2p = 0;
+		result.exceptionInfo = isRecord(trial.exception_info) ? trial.exception_info : { detail: trial.exception_info };
+		return result;
+	}
+
+	// A bounded agent phase is not a failed trial. Pier catches its own agent timeout,
+	// downloads the logs, collects the artifacts and still runs the verifier, so the grade
+	// the verifier produced is this trial's grade. Reporting the exception as the row's
+	// error discarded it, and a run that bounded the agent phase to fit a window measured
+	// nothing at all: every row read as a trial that never reached a grader. The bound stays
+	// recorded on the row, so a report can state the phase was cut short.
+	if (isAgentTimeoutException(trial.exception_info) && result.reward !== null && agentProducedWork(result, agent)) {
 		result.exceptionInfo = isRecord(trial.exception_info) ? trial.exception_info : { detail: trial.exception_info };
 		return result;
 	}

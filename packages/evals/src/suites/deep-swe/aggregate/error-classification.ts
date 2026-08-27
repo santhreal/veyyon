@@ -1,6 +1,8 @@
 /**
  * Error grouping, failure classification, and quota stop detection.
  */
+import { isRecord } from "@veyyon/utils";
+
 export function providerFinishReason(text: string): string | null {
 	const m = text.match(/finish[ _]reason:?\s*([A-Z][A-Z_]{2,})/);
 	return m?.[1] ?? null;
@@ -35,6 +37,21 @@ export function noRewardError(reward: number | null): boolean {
 export function isAgentTimeout(error: string | null): boolean {
 	if (error === null) return false;
 	return /trial timed out after \d+s/i.test(error) || error.includes("AgentTimeoutError");
+}
+
+/**
+ * Whether the exception record pier attached to a trial is its own agent-phase timeout.
+ *
+ * Pier catches that timeout, downloads the logs, collects the artifacts and still runs the
+ * verifier, so a trial carrying this exception can hold a grade. Every other exception
+ * reached the verifier by accident or not at all.
+ */
+export function isAgentTimeoutException(info: unknown): boolean {
+	if (typeof info === "string") return info.includes("AgentTimeoutError");
+	if (!isRecord(info)) return false;
+	if (info.exception_type === "AgentTimeoutError") return true;
+	const message = info.exception_message;
+	return typeof message === "string" && /agent execution timed out/i.test(message);
 }
 
 const NO_PATCH_IN_CONTAINER = "Could not find the file /logs/artifacts/model.patch in container";
