@@ -219,6 +219,13 @@
 - `input-controller.ts` replaces `images.map(() => undefined)` with `new Array(n)` at 8 call sites.
 - `status-line/segments.ts` replaces `.filter(Boolean).join()` with direct string building in cache segments.
 - `status-line/state-grammar.ts` replaces `.filter().join()` with single-pass for loop in `joinStates`.
+- `grep.ts` replaces `.map()` closures with pre-allocated arrays + for loops in simple and detailed render paths, match group construction, and body line truncation.
+- `glob.ts` replaces spread + `.map()` closure with pre-allocated array + for loop in body line truncation.
+- `fetch.ts` replaces `.split().map()` and double `.map()` closures with single-pass for loops in error and preview line rendering.
+- `launch.ts` replaces `.map()` and spread + `.map()` closures with pre-allocated arrays + for loops in logs and list render.
+- `memory-render.ts` replaces `.map(truncateToWidth)` closures with in-place for loops in retain, recall, and reflect components.
+- `irc-render.ts` replaces `.map()` closures with pre-allocated array + for loop in preview lines and in-place for loop in message card truncation.
+- `debug.ts` replaces `Math.max(...spread)` and nested `.map()` closures with index loops in `formatDisassembly` and `formatTable`.
 ### Added
 
 - `/advisor` reports advisor status, opens the `WATCHDOG.yml` roster editor and applies a save to the running session, starts or stops the advisor for the session, and copies the advisor's own transcript; the subsystem shipped complete but no command, key or menu row reached it.
