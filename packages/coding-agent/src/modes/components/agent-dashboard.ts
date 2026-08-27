@@ -709,11 +709,15 @@ class CommsPane implements Component {
 			rows.push(CommsPane.#head(entry, replyToSender, nameFor, width));
 
 			const wrapped: string[] = [];
-			for (const raw of message.body.split("\n")) {
-				for (const line of wrapTextWithAnsi(replaceTabs(raw), Math.max(10, width - 4))) wrapped.push(line);
+			const bodyLines = message.body.split("\n");
+			for (let bli = 0; bli < bodyLines.length; bli++) {
+				const wrappedLines = wrapTextWithAnsi(replaceTabs(bodyLines[bli]!), Math.max(10, width - 4));
+				for (let wli = 0; wli < wrappedLines.length; wli++) wrapped.push(wrappedLines[wli]!);
 			}
 			const shown = expanded ? wrapped : wrapped.slice(0, COMMS_PREVIEW_LINES);
-			for (const line of shown) rows.push(truncateToWidth(`  ${theme.fg("muted", line)}`, width));
+			for (let si = 0; si < shown.length; si++) {
+				rows.push(truncateToWidth(`  ${theme.fg("muted", shown[si]!)}`, width));
+			}
 			if (wrapped.length > shown.length) {
 				const more = `  … ${formatMoreLines(wrapped.length - shown.length)}`;
 				rows.push(theme.fg("dim", expandHint ? `${more} · ${expandHint}` : more));
