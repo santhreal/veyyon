@@ -383,10 +383,16 @@ export class HookSelectorComponent extends Container {
 		const bodyWidth = Math.max(1, innerWidth - indent.length);
 		const colored = renderInlineMarkdown(description, mdTheme, t => theme.fg(color, t));
 		const wrapped = wrapTextWithAnsi(colored, bodyWidth);
-		if (wrapped.length <= maxRows) return wrapped.map(row => indent + row);
+		if (wrapped.length <= maxRows) {
+			const out = new Array<string>(wrapped.length);
+			for (let ri = 0; ri < wrapped.length; ri++) out[ri] = indent + wrapped[ri]!;
+			return out;
+		}
 		const kept = wrapped.slice(0, maxRows);
 		kept[maxRows - 1] = truncateToWidth(wrapped.slice(maxRows - 1).join(" "), bodyWidth, Ellipsis.Unicode);
-		return kept.map(row => indent + row);
+		const out = new Array<string>(kept.length);
+		for (let ri = 0; ri < kept.length; ri++) out[ri] = indent + kept[ri]!;
+		return out;
 	}
 
 	#renderedLineRowCount(line: string, renderWidth: number): number {
