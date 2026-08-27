@@ -51,7 +51,7 @@
 - `fadeLineWithParsedGround` in `motion-paint.ts` uses a pre-computed channel-string lookup table and `charCodeAt` comparisons, eliminating `String()` calls and slice allocations per truecolor SGR during animation.
 - `coalesceAdjacentSgr` in `tui.ts` skips the params array allocation for single SGR sequences and `endsWithIncompleteExtendedColor` uses `charCodeAt` instead of `slice()` for token comparisons.
 - `analyzeBgFillLine` in `deccara.ts` skips `line.slice()` and `visibleWidth()` for pure ASCII printable runs, scanning trailing spaces in-place via `charCodeAt`.
-- `paintBand` in `theme.ts` inlines the `arriving`/`arrivingRgb` closures, eliminating per-call closure allocation and hoisting constant branch checks out of the per-span loop.
+- `paintBand` in `theme.ts` inlines the `arriving` closure as a hoisted `fullStrength` boolean, eliminating per-call closure allocation; the previous inlining was reverted by the rebase repair because it referenced non-existent helpers, this version uses only `blendHex`.
 - `renderSignature` in `markdown.ts` caches the `bgColor` and `heading` probe strings keyed on theme/style object identity, eliminating two styled-string function calls per frame during streaming.
 - `getDefaultInlineStyleContext` in `markdown.ts` caches its object and `applyText` closure keyed on `defaultTextStyle` identity, eliminating per-paragraph allocation during rendering.
 - `#renderList` and `htmlListIndent` in `markdown.ts` use the pre-allocated `padding()` buffer instead of `"  ".repeat(depth)`.
