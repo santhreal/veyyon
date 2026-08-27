@@ -216,7 +216,7 @@ async function evaluate(
 		context.source === "tool" && context.filePaths && context.filePaths.length > 0
 			? await manager.checkAstSnapshot(snippet, context)
 			: [];
-	const hitNames = new Set<string>([...regexHit, ...astHit].map(r => r.name));
+	const hitNames = new Set<string>(regexHit.concat(astHit).map(r => r.name));
 
 	const lang = deriveLang(context.filePaths);
 	const astEligible = context.source === "tool" && !!lang;

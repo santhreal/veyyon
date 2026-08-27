@@ -64,8 +64,8 @@ export function createProposeCommitTool(cwd: string, state: CommitAgentState): C
 				details: cappedDetails,
 			});
 
-			const errors = [...summaryValidation.errors, ...analysisValidation.errors, ...typeValidation.errors];
-			const warnings = [...summaryValidation.warnings, ...detailWarnings, ...typeValidation.warnings];
+			const errors = summaryValidation.errors.concat(analysisValidation.errors, typeValidation.errors);
+			const warnings = summaryValidation.warnings.concat(detailWarnings, typeValidation.warnings);
 
 			const response: ProposalResponse = {
 				valid: errors.length === 0,

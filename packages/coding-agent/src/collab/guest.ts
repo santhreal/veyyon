@@ -497,7 +497,7 @@ export class CollabGuestLink {
 				const entry = fromWireSessionEntry(frame.entry);
 				this.#ctx.sessionManager.ingestReplicatedEntry(entry);
 				if (entry.type === "message") {
-					this.#ctx.session.agent.replaceMessages([...this.#ctx.session.messages, entry.message]);
+					this.#ctx.session.agent.replaceMessages(this.#ctx.session.messages.concat([entry.message]));
 				}
 				break;
 			}
@@ -702,7 +702,7 @@ export class CollabGuestLink {
 	 */
 	#clearUiRequests(): void {
 		if (this.#pendingUiRequests.size === 0) return;
-		const aborts = [...this.#pendingUiRequests.values()];
+		const aborts = Array.from(this.#pendingUiRequests.values());
 		this.#pendingUiRequests.clear();
 		for (const abort of aborts.reverse()) abort.abort();
 	}

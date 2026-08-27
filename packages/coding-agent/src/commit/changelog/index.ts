@@ -219,7 +219,7 @@ export function applyChangelogEntries(
 	// before a heading, so insert exactly one separator when there is following
 	// content, and none at end-of-file so the changelog gains no trailing blank.
 	const separator = after.length > 0 ? [""] : [];
-	return [...before, ...sectionLines, ...separator, ...after].join("\n");
+	return before.concat(sectionLines, separator, after).join("\n");
 }
 
 function applyDeletions(

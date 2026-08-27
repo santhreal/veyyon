@@ -102,7 +102,7 @@ export default class Say extends Command {
 				text = "";
 			}
 			const splitter = new SpeakableStream();
-			const segments = [...splitter.push(text), ...splitter.flush()];
+			const segments = splitter.push(text).concat(splitter.flush());
 			if (segments.length === 0) {
 				process.stderr.write(chalk.red("error: nothing speakable in the input\n"));
 				exitCode = 1;
