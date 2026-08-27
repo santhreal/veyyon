@@ -159,9 +159,14 @@ function truncateForPersistence(obj: unknown, blobStore: BlobStore, key?: string
 			typeof lineCountEntry[1] === "number"
 		) {
 			const content = contentEntry[1];
-			const updatedEntries = entries.map(([childKey, value]) =>
-				childKey === "lineCount" ? ([childKey, content.split("\n").length] as const) : ([childKey, value] as const),
-			);
+			const updatedEntries = entries.map(([childKey, value]) => {
+				if (childKey !== "lineCount") return [childKey, value] as const;
+				let lc = 1;
+				for (let i = 0; i < content.length; i++) {
+					if (content.charCodeAt(i) === 0x0a) lc++;
+				}
+				return [childKey, lc] as const;
+			});
 			return Object.fromEntries(updatedEntries);
 		}
 		return Object.fromEntries(entries);
