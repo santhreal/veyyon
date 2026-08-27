@@ -1497,38 +1497,53 @@ function formatAccountHeaderRow(
 	uiTheme: typeof theme,
 	activeAccount?: OAuthAccountIdentity,
 ): string[] {
-	const parts = limits.map((limit, index) => {
+	const parts = new Array<{ label: string; suffix: string; active: boolean }>(limits.length);
+	for (let li = 0; li < limits.length; li++) {
+		const limit = limits[li]!;
 		const reset = formatResetShort(limit, nowMs);
-		const report = reports[index];
+		const report = reports[li];
 		const active = report !== undefined && limitMatchesActiveAccount(report, limit, activeAccount);
-		const label = formatAccountLabel(limit, report, index);
-		return {
+		const label = formatAccountLabel(limit, report, li);
+		parts[li] = {
 			label: active ? `${theme.status.active} ${label}` : label,
 			suffix: reset ? `(${reset})` : "",
 			active,
 		};
-	});
-	const maxSuffixWidth = parts.reduce((max, p) => Math.max(max, visibleWidth(p.suffix)), 0);
+	}
+	let maxSuffixWidth = 0;
+	for (let pi = 0; pi < parts.length; pi++) {
+		const sw = visibleWidth(parts[pi]!.suffix);
+		if (sw > maxSuffixWidth) maxSuffixWidth = sw;
+	}
 	const gap = maxSuffixWidth > 0 ? 1 : 0;
 	const prefixBudget = columnWidth - maxSuffixWidth - gap;
 
 	// If suffix can't share the cell with at least `x…`, fall back to whole-label truncation.
 	if (prefixBudget < 2) {
-		return parts.map(p => {
+		const result = new Array<string>(parts.length);
+		for (let pi = 0; pi < parts.length; pi++) {
+			const p = parts[pi]!;
 			const full = p.suffix ? `${p.label} ${p.suffix}` : p.label;
-			const cell = padColumn(truncateToWidth(full, columnWidth), columnWidth);
-			return p.active ? uiTheme.fg("accent", cell) : cell;
-		});
+			const cell = padColumn(truncateJobLabel(full, columnWidth), columnWidth);
+			result[pi] = p.active ? uiTheme.fg("accent", cell) : cell;
+		}
+		return result;
 	}
 
-	return parts.map(p => {
-		const prefix = truncateToWidth(p.label, prefixBudget);
-		const prefixCell = prefix + " ".repeat(prefixBudget - visibleWidth(prefix));
+	const result = new Array<string>(parts.length);
+	for (let pi = 0; pi < parts.length; pi++) {
+		const p = parts[pi]!;
+		const prefix = truncateJobLabel(p.label, prefixBudget);
+		const prefixCell = prefix + padding(prefixBudget - visibleWidth(prefix));
 		const styledPrefix = p.active ? uiTheme.fg("accent", prefixCell) : prefixCell;
-		if (!p.suffix) return styledPrefix + " ".repeat(maxSuffixWidth + gap);
-		const suffixPad = " ".repeat(maxSuffixWidth - visibleWidth(p.suffix));
-		return `${styledPrefix} ${suffixPad}${uiTheme.fg("dim", p.suffix)}`;
-	});
+		if (!p.suffix) {
+			result[pi] = styledPrefix + padding(maxSuffixWidth + gap);
+		} else {
+			const suffixPad = padding(maxSuffixWidth - visibleWidth(p.suffix));
+			result[pi] = `${styledPrefix} ${suffixPad}${uiTheme.fg("dim", p.suffix)}`;
+		}
+	}
+	return result;
 }
 
 function padColumn(text: string, width: number): string {
