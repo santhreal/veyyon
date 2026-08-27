@@ -21,6 +21,16 @@
  *     alternative, trusting an under-resolved lexical path, is how an unreadable
  *     directory would become an auto-approved one.
  *
+ *   - A target may carry a SELECTOR suffix (`link.env:1-10`, `db:users:42`,
+ *     `zip:dir/f.ts:5-9`). The full string never exists on disk, so the walk
+ *     above stops at the containing directory and the symlink in the last
+ *     component is never resolved. Every `:` cut is therefore resolved too.
+ *
+ * WHAT THIS SUITE DOES NOT CATCH. The colon scan starts past index 1 so a
+ * Windows drive letter is not read as a selector. That guard is not observable
+ * here: these targets are absolute POSIX paths, which cannot carry a colon
+ * below index 2, so removing the offset changes no result on this platform.
+ *
  * These build the symlinks on a real filesystem rather than mocking, because the
  * property being tested is exactly what the kernel does with them. No agent
  * session is constructed: the boundary is a pure function of tool, args and cwd.
@@ -29,7 +39,10 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { cwdEscapingTargets } from "@veyyon/coding-agent/tools/cwd-boundary";
+import { cwdEscapingTargets, searchPathFilesystemTargets } from "@veyyon/coding-agent/tools/cwd-boundary";
+import { inspectImageFilesystemTargets } from "@veyyon/coding-agent/tools/inspect-image";
+import { readFilesystemTargets } from "@veyyon/coding-agent/tools/read";
+import { writeFilesystemTargets } from "@veyyon/coding-agent/tools/write";
 
 /** A minimal tool whose filesystem targets are just the paths handed to it. */
 const pathTool = { filesystemTargets: (args: unknown) => (args as { paths: string[] }).paths };
@@ -54,6 +67,11 @@ beforeAll(() => {
 	symlinkSync(join(outside, "secrets", "creds.env"), join(workspace, "escape-file.env"));
 	// A symlink that stays inside; it must NOT be treated as an escape.
 	symlinkSync(join(workspace, "src"), join(workspace, "inside-link"));
+	// A directory whose own name carries a colon, holding a symlink out of the
+	// workspace. The real file is only found past the SECOND colon, so a scan
+	// that stops at the first one misses it.
+	mkdirSync(join(workspace, "my:dir"), { recursive: true });
+	symlinkSync(join(outside, "secrets", "creds.env"), join(workspace, "my:dir", "link.env"));
 });
 
 afterAll(() => {
@@ -175,6 +193,84 @@ describe("an unresolvable path fails closed", () => {
 		} finally {
 			// Restore before cleanup, or the rmSync in afterAll cannot descend.
 			chmodSync(locked, 0o755);
+		}
+	});
+});
+
+/**
+ * WHY: the boundary documented that a selector suffix "may be left attached: it
+ * appends to the filename and cannot introduce `../` traversal". True of the
+ * LEXICAL check and false of the physical one. `escape-file.env:1-10` is a path
+ * that does not exist, so `physicalPath` walked up to the workspace, resolved
+ * it, and re-appended the whole suffixed name as a tail it had proven
+ * introduces no symlink. The base the read tool then opens does exist and is a
+ * symlink out of the workspace, so `read escape-file.env` prompted and `read
+ * escape-file.env:1-10` read the same file silently.
+ *
+ * The class this closes: any suffix that makes a real target spell a
+ * non-existent path — line ranges, `:raw`, an archive member, a sqlite table
+ * and row. Every form is swept, and the tools that declare filesystem targets
+ * are enumerated from their modules so a new one cannot join without a
+ * decision here.
+ *
+ * What it does NOT catch: a tool that resolves its own path by some route other
+ * than `filesystemTargets`. That tool is outside the boundary entirely, which
+ * the module doc states is the one way to escape it.
+ */
+describe("a selector suffix does not hide a symlink escape", () => {
+	const SELECTORS = [":1-10", ":raw", ":50+150", ":1-5,20-30", ":conflicts"];
+
+	it.each(SELECTORS)("reports escape-file.env%s as escaping", selector => {
+		expect(escaping(workspace, `escape-file.env${selector}`)).toEqual([
+			join(workspace, `escape-file.env${selector}`),
+		]);
+	});
+
+	it("reports an archive member reached through a symlinked archive", () => {
+		expect(escaping(workspace, "escape-file.env:inner/file.ts:10-20")).toEqual([
+			join(workspace, "escape-file.env:inner/file.ts:10-20"),
+		]);
+	});
+
+	it("reports a sqlite row reached through a symlinked database", () => {
+		expect(escaping(workspace, "escape-file.env:users:42")).toEqual([join(workspace, "escape-file.env:users:42")]);
+	});
+
+	it("reports a selector on a path under a symlinked directory", () => {
+		expect(escaping(workspace, "escape-dir/secrets/creds.env:1-10")).toEqual([
+			join(workspace, "escape-dir/secrets/creds.env:1-10"),
+		]);
+	});
+
+	it("reports an escape whose real file is only found past the second colon", () => {
+		// `my:dir` does not exist as a file, so a scan that stops at the first
+		// colon concludes the target is inside and auto-approves.
+		expect(escaping(workspace, "my:dir/link.env:1-10")).toEqual([join(workspace, "my:dir/link.env:1-10")]);
+	});
+
+	it("does not report a colon-named directory holding a file that stays inside", () => {
+		expect(escaping(workspace, "my:dir:raw")).toEqual([]);
+	});
+
+	it("still does not report a selector on a target that stays inside", () => {
+		expect(escaping(workspace, "src/real.ts:1-10")).toEqual([]);
+		expect(escaping(workspace, "inside-link/real.ts:raw")).toEqual([]);
+	});
+
+	it("reports the escape for every tool that declares filesystem targets by path", () => {
+		const byTool: Record<string, string[]> = {
+			read: readFilesystemTargets({ path: `${workspace}/escape-file.env:1-10` }, workspace),
+			write: writeFilesystemTargets({ path: `${workspace}/escape-file.env:1-10`, content: "x" }),
+			inspect_image: inspectImageFilesystemTargets({ path: `${workspace}/escape-file.env:1-10` }),
+			grep: searchPathFilesystemTargets({ path: `${workspace}/escape-file.env:1-10` }, workspace),
+		};
+		// Pinned by exact equality: a tool added to the boundary must be given a
+		// case here rather than inheriting coverage it does not have.
+		expect(Object.keys(byTool).sort()).toEqual(["grep", "inspect_image", "read", "write"]);
+		for (const [tool, targets] of Object.entries(byTool)) {
+			expect(targets.length, `${tool} declared no target`).toBeGreaterThan(0);
+			const realTool = { filesystemTargets: () => targets };
+			expect(cwdEscapingTargets(realTool, {}, workspace), `${tool} did not report the escape`).not.toEqual([]);
 		}
 	});
 });

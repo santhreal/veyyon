@@ -92,6 +92,7 @@
 
 ### Fixed
 
+- A read, write, grep or image target that reaches outside the working directory through a symlink asks for approval even when it carries a selector suffix, so `link.env:1-10`, `db.sqlite:users:42` and `archive.zip:dir/file.ts:5-9` are no longer auto-approved where the bare path would have prompted.
 - A server-side compaction failure states the reason once instead of wrapping it in its own prefix, so a host without the compact route reports "Server-side compaction is not available for openai-codex/… (404 Not Found); falling back to local compaction." rather than nesting the message inside itself.
 - A tool status line shortens the paths it was given, so `grep`, `glob`, `ast_grep`, `ast_edit`, `debug` and `set_cwd` show `~/project/src` instead of printing the home directory into the transcript, and a long path list is truncated rather than pushing the row past the terminal width.
 - The `/omfg` panel names the rule it saved under `~`, truncates it to one row, and shortens the paths embedded in a failure message, instead of printing the home directory in its subheader, footer and error text.

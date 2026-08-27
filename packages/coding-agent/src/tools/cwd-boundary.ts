@@ -184,6 +184,35 @@ export function cwdEscapingTargets(tool: unknown, args: unknown, cwd: string): s
 		const physical = physicalPath(resolved);
 		if (physical === UNRESOLVABLE || !isPathWithinCwd(physical, cwdBase)) {
 			escaping.push(resolved);
+			continue;
+		}
+		// A suffix makes the spelled target a path that does not exist, so the
+		// check above resolved the parent directory and re-appended the whole
+		// suffixed name as a tail it had proven introduces no symlink. The file
+		// the tool then opens is a PREFIX of that string cut at a `:`, and that
+		// prefix does exist and can be a symlink out of cwd — `read
+		// secret_link:1-10` escaped where `read secret_link` prompted.
+		//
+		// Every `:` is tried rather than the read tool's selector grammar,
+		// because the forms do not share one: `f:1-10` is a line range,
+		// `db:users:42` a sqlite row, `zip:dir/f.ts:5-9` an archive member, and
+		// a directory may itself carry a colon (`my:dir/link.env:1-10`), which
+		// puts the real file after the second one. A prefix that does not exist
+		// resolves to itself and stays in bounds, so sweeping costs a walk and
+		// reports nothing extra. The scan starts past index 1 so a Windows
+		// drive letter is never read as a selector.
+		//
+		// A prefix cannot be UNRESOLVABLE here: it shares every ancestor with
+		// the full string, so an ancestor that fails for any reason other than
+		// "does not exist" already failed the check above and never reached
+		// this loop. Only containment is left to decide.
+		if (!resolved.includes(":")) continue;
+		for (let cut = resolved.indexOf(":", 2); cut > 0; cut = resolved.indexOf(":", cut + 1)) {
+			const physicalPrefix = physicalPath(resolved.slice(0, cut));
+			if (physicalPrefix !== UNRESOLVABLE && !isPathWithinCwd(physicalPrefix, cwdBase)) {
+				escaping.push(resolved);
+				break;
+			}
 		}
 	}
 	return escaping;
