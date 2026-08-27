@@ -12,6 +12,7 @@ export * from "./flags";
 export * from "./fs-walk";
 export * from "./harness-preflight";
 export * from "./harness-registry";
+export * from "./process-tree";
 export * from "./prompt-overrides";
 export * from "./run-model";
 export * from "./scoring";

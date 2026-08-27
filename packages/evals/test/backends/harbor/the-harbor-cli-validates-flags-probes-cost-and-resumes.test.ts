@@ -2,10 +2,11 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { cleanupHarborTrialContainers, terminateProcessTree } from "../../../src/backends/harbor/runner/cleanup";
+import { cleanupHarborTrialContainers } from "../../../src/backends/harbor/runner/cleanup";
 import { parseArgs, resolveResumeConfig } from "../../../src/backends/harbor/runner/cli";
 import { buildHarborEnv, buildResumeArgs, collectForwardEnv } from "../../../src/backends/harbor/runner/config";
 import { readTrials } from "../../../src/backends/harbor/runner/results";
+import { terminateProcessTree } from "../../../src/core/process-tree";
 import {
 	boundRawOutput,
 	DEFAULT_GRACE_PERIOD_MS,

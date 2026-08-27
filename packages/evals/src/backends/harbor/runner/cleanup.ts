@@ -1,72 +1,9 @@
 /**
- * Docker resource cleanup, process-tree termination, and output truncation for
- * Harbor benchmark trials and compose projects.
+ * Docker resource cleanup and output truncation for Harbor benchmark trials and compose projects.
+ * A trial's process tree is terminated by `src/core/process-tree.ts`.
  */
 import { spawnSync } from "node:child_process";
 import { errorMessage } from "@veyyon/utils";
-import { DEFAULT_GRACE_PERIOD_MS } from "../../../core/trial-deadline";
-
-export interface TerminableProcess {
-	readonly pid?: number;
-	kill(signal?: "SIGTERM" | "SIGKILL" | number): unknown;
-	readonly exited: Promise<number>;
-}
-
-export async function terminateProcessTree(
-	proc: TerminableProcess,
-	gracePeriodMs = DEFAULT_GRACE_PERIOD_MS,
-): Promise<void> {
-	const pid = proc.pid;
-	try {
-		proc.kill("SIGTERM");
-	} catch {
-		/* process may already be dead */
-	}
-	if (typeof pid === "number" && pid > 0) {
-		try {
-			process.kill(-pid, "SIGTERM");
-		} catch {
-			try {
-				process.kill(pid, "SIGTERM");
-			} catch {
-				/* already dead */
-			}
-		}
-	}
-
-	const { promise: timeoutPromise, resolve: resolveTimeout } = Promise.withResolvers<"timed_out">();
-	const timer = setTimeout(() => resolveTimeout("timed_out"), gracePeriodMs);
-
-	const result = await Promise.race([
-		proc.exited.then(() => "exited" as const).catch(() => "exited" as const),
-		timeoutPromise,
-	]);
-
-	clearTimeout(timer);
-
-	if (result === "timed_out") {
-		try {
-			proc.kill("SIGKILL");
-		} catch {
-			/* ignore */
-		}
-		if (typeof pid === "number" && pid > 0) {
-			try {
-				process.kill(-pid, "SIGKILL");
-			} catch {
-				try {
-					process.kill(pid, "SIGKILL");
-				} catch {
-					/* already dead */
-				}
-			}
-		}
-		const { promise: killGracePromise, resolve: resolveKillGrace } = Promise.withResolvers<void>();
-		const killTimer = setTimeout(() => resolveKillGrace(), 500);
-		await Promise.race([proc.exited.catch(() => {}), killGracePromise]);
-		clearTimeout(killTimer);
-	}
-}
 
 /** Harbor names each trial's compose project `<task>__<7-char-suffix>`. */
 const HARBOR_PROJECT_RE = /^[a-z0-9_.-]+__[a-zA-Z0-9]{7}$/;

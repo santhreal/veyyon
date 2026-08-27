@@ -17,6 +17,7 @@ import {
 	listHarnessNames,
 	requireHarness,
 } from "../../../core/harness-registry";
+import { terminateProcessTree } from "../../../core/process-tree";
 import type { HarnessAdapter } from "../../../core/types";
 import { registerBuiltinHarnesses } from "../../../harnesses";
 import {
@@ -807,15 +808,23 @@ export async function runBench(argv: string[]): Promise<void> {
 		if (!resolvedTimeout) throw new Error(`internal: no resolved trial timeout for task ${task}`);
 		const trialTimeoutSec = resolvedTimeout.timeoutSec;
 		let timedOut = false;
+		// A killed child is not a stopped child: pier runs a Python process that blocks on a
+		// container wait and ignores SIGTERM, and awaiting its exit unconditionally ended the run
+		// here with no row and no error. Termination escalates and reports whether the tree is gone;
+		// an abandoned tree still holds its pipes, so its output is not read.
+		const abandoned = Promise.withResolvers<"abandoned">();
 		const timer = setTimeout(() => {
 			timedOut = true;
-			proc.kill();
+			void terminateProcessTree(proc).then(outcome => {
+				if (outcome === "abandoned") abandoned.resolve("abandoned");
+			});
 		}, trialTimeoutSec * 1000);
 
-		const exitCode = await proc.exited;
+		const settled = await Promise.race([proc.exited, abandoned.promise]);
 		clearTimeout(timer);
-		const stdout = await readPipeText(proc.stdout);
-		const stderr = await readPipeText(proc.stderr);
+		const stdout = settled === "abandoned" ? "" : await readPipeText(proc.stdout);
+		const stderr = settled === "abandoned" ? "" : await readPipeText(proc.stderr);
+		const exitCode = settled === "abandoned" ? -1 : settled;
 
 		let result: ComparisonArmResult;
 		try {

@@ -10,6 +10,7 @@ import { $which, errorMessage, isRecord, readPipeText } from "@veyyon/utils";
 import { type BackendRegistry, defaultBackendRegistry } from "../../core/backend-registry";
 import { resolveCellVariant } from "../../core/cell-variant";
 import { getHarness, listHarnesses, requireHarness } from "../../core/harness-registry";
+import { terminateProcessTree } from "../../core/process-tree";
 import { boundRawOutput, DEFAULT_GRACE_PERIOD_MS, trialTimeoutFromOptions } from "../../core/trial-deadline";
 import { resolveTrialModel } from "../../core/trial-model";
 import { runDirFor, trialJobName } from "../../core/trial-naming";
@@ -27,7 +28,7 @@ import type {
 } from "../../core/types";
 import { runsDir as defaultRunsDir } from "../../paths";
 import { buildHarborArgs, type HarborRunArgsOptions } from "./launch-args";
-import { cleanupHarborTrialContainers, terminateProcessTree } from "./runner/cleanup";
+import { cleanupHarborTrialContainers } from "./runner/cleanup";
 import { buildHarborEnv, type Config, defaultConfig } from "./runner/config";
 import { prepareSourceDeps, type SourceMount } from "./runner/deps";
 import { gatewayHealthOk, writeModelsYaml } from "./runner/gateway";
