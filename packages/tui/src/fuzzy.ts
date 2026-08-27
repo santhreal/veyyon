@@ -361,9 +361,7 @@ function hasDistinctWordsForRepeatedTokens(tokens: readonly string[], index: Sea
 		const token = tokens[ti]!;
 		needed.set(token, (needed.get(token) ?? 0) + 1);
 	}
-	const neededEntries = Array.from(needed);
-	for (let ei = 0; ei < neededEntries.length; ei++) {
-		const [token, count] = neededEntries[ei]!;
+	for (const [token, count] of needed) {
 		if (count < 2) continue;
 		let available = 0;
 		for (let wi = 0; wi < index.words.length; wi++) {
