@@ -11,6 +11,8 @@
 
 - `maskNonProse` in `markdown-prose.ts` replaces `text.split("")` + `arr.join("")` with a single-pass `charCodeAt` string build, eliminating an intermediate character array allocation per text block during gradient highlighting.
 - `truncationFromText` in `output-meta.ts` replaces `text.split("\n").length` with a `charCodeAt` newline counter, avoiding an intermediate array allocation per tool output truncation check.
+- `split("\n").length` replaced with `charCodeAt` newline counting in `write.ts`, `session-history-format.ts`, `copy-targets.ts`, `file-mentions.ts`, `eval.ts`, `fetch.ts`, `executor.ts`, and `render.ts`, avoiding an intermediate array allocation per line count; `render.ts` consolidates three `split("\n")` calls on the same string into one pass.
+
 
 
 - Hook status rendering in `status-line/component.ts` replaces `Array.from(entries()).sort().map().join()` with a single-pass array sort and direct string concatenation, eliminating two intermediate arrays per frame.
