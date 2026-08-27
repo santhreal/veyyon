@@ -285,7 +285,8 @@ export class TranscriptContainer
 		// (render only fills from #compactedChildStart), so the loop below must
 		// skip undefined entries.
 		if (index >= 0 && index < this.#compactedChildStart) return false;
-		for (const segment of this.#segments) {
+		for (let si = 0; si < this.#segments.length; si++) {
+			const segment = this.#segments[si];
 			if (segment === undefined || segment.component !== component) continue;
 			return segment.rowCount === 0 || segment.startRow >= this.#committedRows;
 		}
