@@ -158,7 +158,7 @@ export class RpcHostUriBridge {
 			content,
 			contentType,
 			size: Buffer.byteLength(content, "utf-8"),
-			notes: result.notes && result.notes.length > 0 ? [...result.notes] : undefined,
+			notes: result.notes && result.notes.length > 0 ? result.notes.slice() : undefined,
 			immutable: result.immutable ?? definition?.immutable === true,
 		};
 	}
