@@ -90,6 +90,13 @@ export interface OracleEvaluationResult {
 
 const PROMPT_GLYPHS = ["›", "!", "$", "◈", ">"] as const;
 
+/**
+ * The prompt glyphs that also open an ordinary transcript row: a shell command,
+ * a markdown blockquote, a CSS rule. `›` and `◈` open none, so only these need
+ * the composer's inset before they count as a prompt.
+ */
+const AMBIGUOUS_PROMPT_GLYPHS = new Set(["!", "$", ">"]);
+
 const SGR = sgrSequence("g");
 
 /**
@@ -123,22 +130,28 @@ function paintsBackground(rawLine: string): boolean {
 	return false;
 }
 
-/** Check if a line is a composer prompt row */
+/**
+ * Check if a line is a composer prompt row.
+ *
+ * `expectedGlyph` is the glyph the frame states the composer painted. When it is
+ * given, only it counts. The wider `PROMPT_GLYPHS` set exists for a frame that
+ * does not say, and three of its members — `!`, `$` and `>` — open ordinary
+ * transcript rows: a shell command, a markdown blockquote, a CSS rule. Matching
+ * the whole set against a known glyph counted those as extra prompt rows and
+ * reported a composer defect that the frame does not contain.
+ */
 export function isComposerPromptLine(plainLine: string, expectedGlyph?: string): boolean {
 	const trimmedLeading = plainLine.trimStart();
 	if (trimmedLeading.length === 0) return false;
 	const leadingSpaces = plainLine.length - trimmedLeading.length;
+	const glyphs: readonly string[] = expectedGlyph ? [expectedGlyph] : PROMPT_GLYPHS;
+	const glyph = glyphs.find(g => trimmedLeading.startsWith(g));
+	if (glyph === undefined) return false;
 
-	// Inset must be at least COMPOSER_INSET_COLS (2) or start with glyph
-	if (leadingSpaces < COMPOSER_INSET_COLS && !PROMPT_GLYPHS.some(g => trimmedLeading.startsWith(g))) {
-		return false;
-	}
-
-	if (expectedGlyph && trimmedLeading.startsWith(expectedGlyph)) {
-		return true;
-	}
-
-	return PROMPT_GLYPHS.some(g => trimmedLeading.startsWith(g));
+	// A narrow terminal collapses the inset, so an unambiguous glyph counts at any
+	// column. `!`, `$` and `>` are ASCII that opens ordinary transcript rows, so
+	// they count only where the composer would actually paint them.
+	return leadingSpaces >= COMPOSER_INSET_COLS || !AMBIGUOUS_PROMPT_GLYPHS.has(glyph);
 }
 
 /** Check if a line is a hairline row (consisting of box drawing horizontal line chars) */
