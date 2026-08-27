@@ -106,7 +106,13 @@ const HASHLINE_OP_RE =
 const UNIFIED_DIFF_HUNK_RE = /^@@\s+[-+]?\d+(?:,\d+)?\s+[-+]?\d+(?:,\d+)?\s+@@/;
 const APPLY_PATCH_MARKER_RE = /^\*\*\*\s+(?:Update File|Add File|Delete File|Move to):/;
 const READ_TRUNCATION_NOTICE_RE = /^\[(?:Showing lines \d+-\d+ of \d+|\d+ more lines? in (?:file|\S+))\b.*\bUse :L?\d+/;
-const SEARCH_PREFIX_RE = /^\s*(?:\*\d+:|\s\d+:|>>>\s*\d+:)/;
+// The grep match marker sits at column 0 (`*42:code`) and the context marker is
+// exactly one leading space with no space after the colon (` 43:code`). Neither
+// tolerates arbitrary indentation: `^\s*` before the one-space form matched any
+// indented numeric mapping key, so a docker-compose `  80: http` or a k8s
+// manifest port was rejected as pasted search output. The `(?! )` keeps a YAML
+// key, which always separates its value with a space, out of the one-space form.
+const SEARCH_PREFIX_RE = /^(?:\*\d+:|[ ]\d+:(?! )|\s*>>>\s*\d+:)/;
 const LINE_PREFIX_RE = /^\s*(\d+):/;
 const EXECUTABLE_NOTICE = "[Notice: Made executable via chmod +x]";
 
