@@ -45,6 +45,14 @@ const SOFT_DEADLINE_MS = 5_000;
  */
 const HARD_DEADLINE_MS = 30_000;
 
+/**
+ * A deadline as a reader would say it. Seconds carry the production deadlines; a sub-second
+ * override rounds to `0s`, which reads as no deadline at all, so those keep their milliseconds.
+ */
+function formatDeadline(ms: number): string {
+	return ms >= 1_000 ? `${Math.round(ms / 1_000)}s` : `${Math.round(ms)}ms`;
+}
+
 /** Deadline overrides — test seam; production callers use the defaults. */
 export interface PublicWebDeadlines {
 	softMs?: number;
@@ -199,12 +207,34 @@ export async function searchPublicWeb(
 		(failure): failure is { provider: { id: SearchProviderId; label: string }; error: unknown } =>
 			failure !== undefined,
 	);
-	if (merged.size === 0 && orderedFailures.length === engineIds.length) {
-		throw new SearchProviderError(
-			"public",
-			`All public engines failed: ${formatSearchProviderFailures(orderedFailures)}`,
-			503,
-		);
+	// Nothing merged has three causes, and they are not the same news. Every engine failed; some
+	// engine never answered and was cancelled at the deadline; or every engine answered and the web
+	// genuinely holds nothing for this query. Only the third is an empty result, and reporting the
+	// other two as one told the caller the web was empty when the deadline was what ran out.
+	//
+	// An engine is counted as unanswered on the absence of a RESPONSE, never on the presence of a
+	// failure: `straggler.abort()` above rejects the in-flight fetches, but those rejections reach
+	// their `catch` on a later microtask than this line, so an engine cancelled at the deadline
+	// usually has neither field set. Reading the failure side would make the answer a race.
+	if (merged.size === 0) {
+		const unanswered = engineIds.filter((_, index) => responses[index] === undefined && failures[index] === undefined);
+		if (unanswered.length === 0 && orderedFailures.length > 0) {
+			throw new SearchProviderError(
+				"public",
+				`All public engines failed: ${formatSearchProviderFailures(orderedFailures)}`,
+				503,
+			);
+		}
+		if (unanswered.length > 0) {
+			const alsoFailed =
+				orderedFailures.length > 0 ? ` Other engines failed: ${formatSearchProviderFailures(orderedFailures)}` : "";
+			throw new SearchProviderError(
+				"public",
+				`No public engine returned a result within ${formatDeadline(hardMs)}; ` +
+					`${unanswered.join(", ")} did not answer.${alsoFailed}`,
+				504,
+			);
+		}
 	}
 
 	const sources = [...merged.values()]
