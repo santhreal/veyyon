@@ -14,6 +14,7 @@ import * as path from "node:path";
 import { RpcClient } from "@veyyon/coding-agent";
 import { errorMessage, estimateTokensFromText, isRecord } from "@veyyon/utils";
 import { InProcessClient, type SharedInfra } from "../../../../backends/in-process/client";
+import { teardownWithin } from "../../../../core/trial-deadline";
 import { repoRootDir, runsDir } from "../../../../paths";
 import { formatDirectory } from "../../formatter";
 import type { EditTask } from "../../tasks";
@@ -432,7 +433,13 @@ export async function runSingleTask(
 				conversationSnapshot = await snapshotConversationDump(client);
 			}
 		} finally {
-			await client.dispose();
+			// Bounded, and reported rather than thrown: a teardown that hangs would hold this
+			// process past its trial's deadline, and one that throws would replace the
+			// verification result this trial already earned.
+			const teardownReason = await teardownWithin(() => client.dispose());
+			if (teardownReason) {
+				await logEvent({ type: "teardown_abandoned", reason: teardownReason });
+			}
 		}
 	} catch (err) {
 		error = errorMessage(err);

@@ -59,6 +59,11 @@ to 5. Each attempt cleans up after itself and the run holds one row per cell, wh
 includes a trial that spent its whole deadline, because the budget is gone and a second answer would
 favour whichever attempt read better; and a cancelled run. Backoff doubles from 2s to a 30s cap.
 
+A trial's deadline bounds the trial, and a teardown gets 30s of its own — `teardownGraceMs` in a
+run's options, 10ms to 5min. A client that never finishes disposing is abandoned rather than waited
+for, and the reason is recorded beside the score the trial already earned, so one hung socket costs
+a file descriptor instead of the remaining tasks.
+
 A run id names one plan. The journal header records a digest of the suite version, dataset sha,
 backend, and every variant's harness, overlay paths, model and attachments, and an invocation that
 plans anything else under that run id is rejected — with or without `--resume`. A settled trial is
