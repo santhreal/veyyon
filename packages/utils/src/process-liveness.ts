@@ -80,7 +80,7 @@ function readBoundedTextFileSync(filePath: string): string | null {
 
 function querySystemTextSync(executable: string, args: readonly string[]): string | null {
 	try {
-		const output = execFileSync(executable, [...args], {
+		const output = execFileSync(executable, args.slice(), {
 			encoding: "utf8",
 			env: { ...process.env, LC_ALL: "C", LANG: "C" },
 			maxBuffer: MAX_PROC_IDENTITY_BYTES + 1,

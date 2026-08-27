@@ -779,7 +779,7 @@ export class Editor implements Component, Focusable, MouseRoutable {
 		maxWidth: number,
 		replacement?: { text: string; width: number },
 	): { text: string; width: number } {
-		const beforeGraphemes = [...segmenter.segment(before)];
+		const beforeGraphemes = Array.from(segmenter.segment(before));
 		const lastGrapheme = beforeGraphemes[beforeGraphemes.length - 1]?.segment;
 		const lastGraphemeWidth = lastGrapheme ? visibleWidth(lastGrapheme) : 0;
 		const builtInCursor = this.#getStyledInputCursor();
@@ -932,7 +932,7 @@ export class Editor implements Component, Focusable, MouseRoutable {
 						: this.#getStyledInputCursor();
 					if (showPromptGutter && zeroWidthCursorBudget > 0) {
 						// Keep the leading prompt glyph visible when the gutter consumes the whole row.
-						const promptGlyph = [...segmenter.segment(gutterText)][0]?.segment ?? "";
+						const promptGlyph = Array.from(segmenter.segment(gutterText))[0]?.segment ?? "";
 						const promptGlyphWidth = visibleWidth(promptGlyph);
 						const remainingCursorWidth = Math.max(0, zeroWidthCursorBudget - promptGlyphWidth);
 						if (remainingCursorWidth === 0) {
@@ -989,7 +989,7 @@ export class Editor implements Component, Focusable, MouseRoutable {
 				if (after.length > 0) {
 					// Cursor is on a character (grapheme) - replace it with highlighted version
 					// Get the first grapheme from 'after'
-					const afterGraphemes = [...segmenter.segment(after)];
+					const afterGraphemes = Array.from(segmenter.segment(after));
 					const firstGrapheme = afterGraphemes[0]?.segment || "";
 					const restAfter = after.slice(firstGrapheme.length);
 					const cursor = `\x1b[7m${firstGrapheme}\x1b[0m`;
@@ -1819,7 +1819,9 @@ export class Editor implements Component, Focusable, MouseRoutable {
 		this.#exitHistoryForEditing();
 		// Undo coalescing: consecutive word typing collapses into one undo unit
 		// (mirrors Input); any other action resets the run via #lastAction.
-		const isWordChunk = [...segmenter.segment(char)].every(seg => getWordNavKind(seg.segment) !== "whitespace");
+		const isWordChunk = Array.from(segmenter.segment(char)).every(
+			seg => getWordNavKind(seg.segment) !== "whitespace",
+		);
 		if (!isWordChunk || this.#lastAction !== "type-word") {
 			this.#recordUndoState();
 		}
@@ -2145,7 +2147,7 @@ export class Editor implements Component, Focusable, MouseRoutable {
 				const beforeCursor = line.slice(0, this.#state.cursorCol);
 
 				// Find the last grapheme in the text before cursor
-				const graphemes = [...segmenter.segment(beforeCursor)];
+				const graphemes = Array.from(segmenter.segment(beforeCursor));
 				const lastGrapheme = graphemes[graphemes.length - 1];
 				const graphemeLength = lastGrapheme ? lastGrapheme.segment.length : 1;
 
@@ -2664,7 +2666,7 @@ export class Editor implements Component, Focusable, MouseRoutable {
 				const afterCursor = currentLine.slice(this.#state.cursorCol);
 
 				// Find the first grapheme at cursor
-				const graphemes = [...segmenter.segment(afterCursor)];
+				const graphemes = Array.from(segmenter.segment(afterCursor));
 				const firstGrapheme = graphemes[0];
 				const graphemeLength = firstGrapheme ? firstGrapheme.segment.length : 1;
 
@@ -2791,7 +2793,7 @@ export class Editor implements Component, Focusable, MouseRoutable {
 				// Moving right - move by one grapheme (handles emojis, combining characters, etc.)
 				if (this.#state.cursorCol < currentLine.length) {
 					const afterCursor = currentLine.slice(this.#state.cursorCol);
-					const graphemes = [...segmenter.segment(afterCursor)];
+					const graphemes = Array.from(segmenter.segment(afterCursor));
 					const firstGrapheme = graphemes[0];
 					this.#setCursorCol(this.#state.cursorCol + (firstGrapheme ? firstGrapheme.segment.length : 1));
 				} else if (this.#state.cursorLine < this.#state.lines.length - 1) {
@@ -2810,7 +2812,7 @@ export class Editor implements Component, Focusable, MouseRoutable {
 				// Moving left - move by one grapheme (handles emojis, combining characters, etc.)
 				if (this.#state.cursorCol > 0) {
 					const beforeCursor = currentLine.slice(0, this.#state.cursorCol);
-					const graphemes = [...segmenter.segment(beforeCursor)];
+					const graphemes = Array.from(segmenter.segment(beforeCursor));
 					const lastGrapheme = graphemes[graphemes.length - 1];
 					this.#setCursorCol(this.#state.cursorCol - (lastGrapheme ? lastGrapheme.segment.length : 1));
 				} else if (this.#state.cursorLine > 0) {

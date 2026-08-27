@@ -199,7 +199,7 @@ export class Input implements Component, Focusable {
 			this.#lastAction = null;
 			if (this.#cursor > 0) {
 				const beforeCursor = this.#value.slice(0, this.#cursor);
-				const graphemes = [...segmenter.segment(beforeCursor)];
+				const graphemes = Array.from(segmenter.segment(beforeCursor));
 				const lastGrapheme = graphemes[graphemes.length - 1];
 				this.#cursor -= lastGrapheme ? lastGrapheme.segment.length : 1;
 			}
@@ -210,7 +210,7 @@ export class Input implements Component, Focusable {
 			this.#lastAction = null;
 			if (this.#cursor < this.#value.length) {
 				const afterCursor = this.#value.slice(this.#cursor);
-				const graphemes = [...segmenter.segment(afterCursor)];
+				const graphemes = Array.from(segmenter.segment(afterCursor));
 				const firstGrapheme = graphemes[0];
 				this.#cursor += firstGrapheme ? firstGrapheme.segment.length : 1;
 			}
@@ -253,7 +253,9 @@ export class Input implements Component, Focusable {
 	}
 
 	#insertCharacter(text: string): void {
-		const isWordChunk = [...segmenter.segment(text)].every(seg => getWordNavKind(seg.segment) !== "whitespace");
+		const isWordChunk = Array.from(segmenter.segment(text)).every(
+			seg => getWordNavKind(seg.segment) !== "whitespace",
+		);
 		// Undo coalescing: consecutive word typing coalesces into one undo unit.
 		if (!isWordChunk || this.#lastAction !== "type-word") {
 			this.#pushUndo();
@@ -273,7 +275,7 @@ export class Input implements Component, Focusable {
 		this.#pushUndo();
 
 		const beforeCursor = this.#value.slice(0, this.#cursor);
-		const graphemes = [...segmenter.segment(beforeCursor)];
+		const graphemes = Array.from(segmenter.segment(beforeCursor));
 		const lastGrapheme = graphemes[graphemes.length - 1];
 		const graphemeLength = lastGrapheme ? lastGrapheme.segment.length : 1;
 
@@ -290,7 +292,7 @@ export class Input implements Component, Focusable {
 		this.#pushUndo();
 
 		const afterCursor = this.#value.slice(this.#cursor);
-		const graphemes = [...segmenter.segment(afterCursor)];
+		const graphemes = Array.from(segmenter.segment(afterCursor));
 		const firstGrapheme = graphemes[0];
 		const graphemeLength = firstGrapheme ? firstGrapheme.segment.length : 1;
 
@@ -502,7 +504,7 @@ export class Input implements Component, Focusable {
 		cursorDisplay = clampLow(cursorDisplay, 0, visibleText.length);
 
 		// Build the visible line and insert the cursor marker at the buffer cursor.
-		const graphemes = [...segmenter.segment(visibleText.slice(cursorDisplay))];
+		const graphemes = Array.from(segmenter.segment(visibleText.slice(cursorDisplay)));
 		const cursorGrapheme = graphemes[0];
 
 		const beforeCursor = visibleText.slice(0, cursorDisplay);

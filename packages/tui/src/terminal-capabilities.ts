@@ -1252,7 +1252,7 @@ function chunkUtf8(payload: string): string[] {
 
 function osc99Chunk(meta: string[], payload: string): string {
 	if (OSC99_UNSAFE.test(payload)) {
-		return `\x1b]99;${[...meta, "e=1"].join(":")};${base64Utf8(payload)}\x1b\\`;
+		return `\x1b]99;${meta.concat(["e=1"]).join(":")};${base64Utf8(payload)}\x1b\\`;
 	}
 	return `\x1b]99;${meta.join(":")};${payload}\x1b\\`;
 }
