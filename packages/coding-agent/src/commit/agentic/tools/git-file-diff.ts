@@ -4,6 +4,15 @@ import { isTestFilePath } from "../../../commit/utils/test-paths";
 import type { CustomTool } from "../../../extensibility/custom-tools/types";
 import * as git from "../../../utils/git";
 
+/** Count `\n` occurrences via charCodeAt, avoiding `split("\n").length` allocation. */
+function countNewlines(text: string): number {
+	let count = 0;
+	for (let i = 0; i < text.length; i++) {
+		if (text.charCodeAt(i) === 0x0a) count++;
+	}
+	return count;
+}
+
 const TARGET_TOKENS = 30000;
 const CHARS_PER_TOKEN = 4;
 const MAX_CHARS = TARGET_TOKENS * CHARS_PER_TOKEN;
@@ -107,7 +116,7 @@ function processDiffs(files: string[], diffs: Map<string, string>): { result: st
 		}
 
 		let content = diff;
-		if (content.length > remaining || content.split("\n").length > TRUNCATE_THRESHOLD_LINES) {
+		if (content.length > remaining || countNewlines(content) + 1 > TRUNCATE_THRESHOLD_LINES) {
 			const { content: truncated, truncated: wasTruncated } = truncateDiffContent(content);
 			if (wasTruncated) {
 				truncatedFiles.push(file);
