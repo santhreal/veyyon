@@ -294,7 +294,7 @@ export class KeybindingsManager {
 	}
 
 	getKeys(keybinding: Keybinding): KeyId[] {
-		return [...(this.#keysById.get(keybinding) ?? [])];
+		return Array.from(this.#keysById.get(keybinding) ?? []);
 	}
 
 	getDefinition(keybinding: Keybinding): KeybindingDefinition {

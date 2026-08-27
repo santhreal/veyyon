@@ -1466,7 +1466,9 @@ async function streamAssistantResponse(
 		promptToolWireTools = llmContext.tools;
 		llmContext = {
 			...llmContext,
-			systemPrompt: [...(llmContext.systemPrompt ?? []), renderInbandToolPrompt(promptToolWireTools, ownedDialect)],
+			systemPrompt: (llmContext.systemPrompt ?? []).concat(
+				renderInbandToolPrompt(promptToolWireTools, ownedDialect),
+			),
 			messages: encodeInbandToolHistory(llmContext.messages, ownedDialect, promptToolWireTools),
 			tools: undefined,
 		};

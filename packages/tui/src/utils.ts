@@ -849,7 +849,7 @@ export function moveWordLeft(text: string, cursor: number): number {
 	let i = floorToGraphemeBoundary(text, clamp(cursor, 0, len));
 	if (i === 0) return 0;
 
-	const graphemes = [...segmenter.segment(text.slice(0, i))];
+	const graphemes = Array.from(segmenter.segment(text.slice(0, i)));
 	if (graphemes.length === 0) return 0;
 
 	// Skip trailing whitespace.

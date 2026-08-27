@@ -106,7 +106,7 @@ export function formatBytes(bytes: number): string {
  */
 export function truncate(str: string, maxLen: number, ellipsis = "…"): string {
 	if (str.length <= maxLen) return str;
-	const chars = [...str];
+	const chars = Array.from(str);
 	if (chars.length <= maxLen) return str;
 	const sliceLen = Math.max(0, maxLen - ellipsis.length);
 	return `${chars.slice(0, sliceLen).join("")}${ellipsis}`;

@@ -352,7 +352,8 @@ export class ArgotStreamDisplayDecoder {
 			if (content !== source.partial.content) patch.partial = { ...source.partial, content };
 		}
 
-		return Object.keys(patch).length === 0 ? event : { ...event, ...patch };
+		for (const _ in patch) return { ...event, ...patch };
+		return event;
 	}
 
 	/**
