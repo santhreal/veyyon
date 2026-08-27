@@ -220,11 +220,8 @@ export default class Index extends Command {
 	async run(): Promise<void> {
 		// Loaded HERE, not at module scope: this module's flag table is the only
 		// thing root help needs, and `../main` pulls the entire runtime graph
-		// (~0.8s of module load) that `veyyon --help` must not pay for.
-		const [{ runRootCommand }, { prepareAcpTerminalAuthArgs }] = await Promise.all([
-			import("../main"),
-			import("../modes/acp/terminal-auth"),
-		]);
+		// (~0.7s of module load) that `veyyon --help` must not pay for.
+		const { prepareAcpTerminalAuthArgs } = await import("../modes/acp/terminal-auth");
 		const { args } = prepareAcpTerminalAuthArgs(this.argv);
 		let parsed: ParsedArgs;
 		try {
@@ -236,6 +233,17 @@ export default class Index extends Command {
 			}
 			throw error;
 		}
+		// The card is painted BEFORE the runtime graph loads, so a bare
+		// interactive launch reaches a typable composer in ~60ms rather than
+		// waiting ~760ms for `../main` to evaluate. Dynamic for the same reason
+		// as the import above -- this path is not on the `--help` route -- and
+		// it owns its own decision, so a run that paints no card no-ops here.
+		// The runs that skip the paint (`--version`, `--export`, `--print`, a
+		// protocol mode) load `../main` immediately below regardless, so the
+		// module load this costs them is noise against that.
+		const { runStartupPrologue, shouldPrepaintLaunchCard } = await import("../startup/launch-card");
+		if (shouldPrepaintLaunchCard(parsed)) await runStartupPrologue(parsed);
+		const { runRootCommand } = await import("../main");
 		await runRootCommand(parsed, args);
 	}
 }
