@@ -26,6 +26,8 @@
 - `editor.ts` replaces `visibleWidth` + `padding` with `padLineToWidth` for gutter continuation, eliminating a redundant width scan per editor render frame.
 - `autocomplete.ts`, `fuzzy.ts`, `keybindings.ts`, `latex-block.ts`, `motion-hover.ts`, `paint-surface.ts`, `terminal-capabilities.ts`, `tui.ts`, `scroll-view.ts`, `image.ts`, and `editor.ts` replace array spreads with `.slice()`/`.concat()`/`Array.from()` in line copying, Set/Map iteration, scroll tape merging, and OSC99 chunking.
 - `terminal-capabilities.ts`, `components/editor.ts`, `components/input.ts`, `components/select-list.ts`, and `components/settings-list.ts` replace array/string spreads with `Array.from()` and `.concat()` across OSC99 hyperlink construction, grapheme segmenter iteration, and filter query character manipulation.
+- `keybindings.ts` and `utils.ts` replace remaining `Set`/`Segment` spreads with `Array.from()`.
+- `toHexColor` in `motion-paint.ts` emits hex channels via three direct template interpolations, eliminating an intermediate array allocation per truecolor color construction.
 
 ## [1.2.0] - 2026-08-23
 

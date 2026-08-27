@@ -18,6 +18,7 @@
 - `file-lock` and its transitive imports (`process-liveness` via `bun:ffi`, `logger` via `winston`) are loaded synchronously on first use via `createRequire` from `dirs.ts`, reducing idle memory by 3.3 MiB. The barrel re-exports `file-lock` as types only; callers that need `withFileLock` or `tryWithFileLock` import from `@veyyon/utils/file-lock`.
 - `glob.ts`, `bench-harness.ts`, `cli.ts`, `fault-sink.ts`, `levenshtein.ts`, `logger.ts`, and `tls-fetch.ts` replace array spreads with `.slice()`/`.concat()`/`Array.from()` in glob exclude merging, benchmark stats, CLI help rendering, fault sink iteration, fuzzy matching, module timing, and TLS CA merging.
 - `module-reach.ts`, `module-timer.ts`, `process-liveness.ts`, `prompt-variables.ts`, and `yaml-sync.ts` replace array/Set/Map spreads with `Array.from()`, `.slice()`, and `.concat()` across import clause extraction, module timing, process identity queries, Handlebars prompt variable analysis, and YAML document synchronization.
+- `format.ts` replaces `[...str]` with `Array.from(str)` for grapheme-aware truncation, and `tab-spacing.ts` replaces two `[...pattern].filter()` passes with a single `charCodeAt` loop for brace counting.
 
 ### Fixed
 
