@@ -74,6 +74,78 @@ export async function drainTrialOutput(
 	}
 }
 
+/** Why a trial stopped producing output. */
+export type TrialWaitKind = "exited" | "timed_out" | "aborted";
+
+export interface TrialProcessWaitOptions {
+	/** The spawned trial's exit promise. */
+	readonly exited: Promise<number>;
+	/** Pipe reads started before the deadline or the cancel could fire. */
+	readonly stdout: Promise<string>;
+	readonly stderr: Promise<string>;
+	/** The trial's own time budget, in milliseconds. */
+	readonly timeoutMs: number;
+	/** The run's cancellation signal, when the caller has one. */
+	readonly signal?: AbortSignal;
+	/** Ends the trial's process tree and whatever it left behind. */
+	readonly terminate: () => Promise<void>;
+	readonly drainGraceMs?: number;
+}
+
+export interface TrialProcessWaitResult {
+	readonly kind: TrialWaitKind;
+	readonly exitCode: number;
+	readonly stdout: string;
+	readonly stderr: string;
+	/** False when a killed tree held a pipe open past the drain grace. */
+	readonly outputComplete: boolean;
+}
+
+/**
+ * Waits for one trial's process and output, and stops waiting on a deadline or a cancel.
+ *
+ * The harbor and pier backends each raced the exit against a timer while a separate abort listener
+ * killed the tree without settling that race. A cancel therefore terminated the child and then kept
+ * waiting on `Promise.all([exited, stdout, stderr])`: when the kill abandoned a descendant holding a
+ * pipe, the worker sat on a cancelled trial until the trial's own timeout — up to five hours for a
+ * terminal-bench cell. A cancel now ends the wait itself, under the same bounded drain a timeout
+ * uses.
+ */
+export async function awaitTrialProcessOutput(options: TrialProcessWaitOptions): Promise<TrialProcessWaitResult> {
+	const { promise: interrupted, resolve: interrupt } = Promise.withResolvers<"timed_out" | "aborted">();
+	const timer = setTimeout(() => interrupt("timed_out"), options.timeoutMs);
+	const onAbort = (): void => interrupt("aborted");
+	options.signal?.addEventListener("abort", onAbort, { once: true });
+	// A signal aborted before the wait began still ends it; `addEventListener` fires for no such
+	// listener.
+	if (options.signal?.aborted) interrupt("aborted");
+	try {
+		return await Promise.race([
+			Promise.all([options.exited, options.stdout, options.stderr]).then(([code, out, err]) => ({
+				kind: "exited" as const,
+				exitCode: code,
+				stdout: out,
+				stderr: err,
+				outputComplete: true,
+			})),
+			interrupted.then(async kind => {
+				await options.terminate();
+				const drained = await drainTrialOutput(options.stdout, options.stderr, options.drainGraceMs);
+				return {
+					kind,
+					exitCode: -1,
+					stdout: drained.stdout,
+					stderr: drained.stderr,
+					outputComplete: drained.complete,
+				};
+			}),
+		]);
+	} finally {
+		clearTimeout(timer);
+		options.signal?.removeEventListener("abort", onAbort);
+	}
+}
+
 function signalTree(proc: TerminableProcess, signal: "SIGTERM" | "SIGKILL"): void {
 	try {
 		proc.kill(signal);

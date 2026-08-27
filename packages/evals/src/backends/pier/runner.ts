@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { readPipeText } from "@veyyon/utils";
-import { DEFAULT_GRACE_PERIOD_MS, drainTrialOutput, terminateProcessTree } from "../../core";
+import { awaitTrialProcessOutput, DEFAULT_GRACE_PERIOD_MS, terminateProcessTree } from "../../core";
 import { boundRawOutput, resolveTrialTimeoutSec } from "../../core/trial-deadline";
 import type { PreflightVerdict, TrialArtifacts } from "../../core/types";
 import { MINIMUM_DEEPSWE_PIER_VERSION, pierSupportsSeparateVerifierCollect } from "./version";
@@ -217,57 +217,19 @@ export async function runPierTrial(options: PierTrialRunOptions): Promise<PierEx
 		await cleanupPierContainers(options.jobName, options.exec);
 	};
 
-	const onAbort = (): void => {
-		void killTrial();
-	};
+	const wait = await awaitTrialProcessOutput({
+		exited: proc.exited,
+		stdout: readPipeText(proc.stdout),
+		stderr: readPipeText(proc.stderr),
+		timeoutMs: timeoutSec * 1000,
+		signal: options.signal,
+		terminate: killTrial,
+	});
 
-	if (options.signal) {
-		options.signal.addEventListener("abort", onAbort, { once: true });
-	}
-
-	const { promise: timeoutPromise, resolve: resolveTimeout } = Promise.withResolvers<"timed_out">();
-	const timer = setTimeout(() => resolveTimeout("timed_out"), timeoutSec * 1000);
-
-	let stdout = "";
-	let stderr = "";
-	let exitCode = 0;
-	let timedOut = false;
-	let outputComplete = true;
-
-	try {
-		const stdoutPromise = readPipeText(proc.stdout);
-		const stderrPromise = readPipeText(proc.stderr);
-		const raceResult = await Promise.race([
-			Promise.all([proc.exited, stdoutPromise, stderrPromise]).then(([code, out, err]) => ({
-				kind: "exited" as const,
-				code,
-				out,
-				err,
-			})),
-			timeoutPromise.then(kind => ({ kind, code: -1, out: "", err: "" })),
-		]);
-
-		if (raceResult.kind === "timed_out") {
-			timedOut = true;
-			await killTrial();
-			// The reads started above still hold their streams; reading again returns nothing. A
-			// descendant the kill left behind keeps a pipe open, so the wait for EOF is bounded.
-			const drained = await drainTrialOutput(stdoutPromise, stderrPromise);
-			outputComplete = drained.complete;
-			stdout = boundRawOutput(drained.stdout) ?? "";
-			stderr = boundRawOutput(drained.stderr) ?? "";
-			exitCode = -1;
-		} else {
-			exitCode = raceResult.code;
-			stdout = boundRawOutput(raceResult.out) ?? "";
-			stderr = boundRawOutput(raceResult.err) ?? "";
-		}
-	} finally {
-		clearTimeout(timer);
-		if (options.signal) {
-			options.signal.removeEventListener("abort", onAbort);
-		}
-	}
+	const stdout = boundRawOutput(wait.stdout) ?? "";
+	const stderr = boundRawOutput(wait.stderr) ?? "";
+	const exitCode = wait.exitCode;
+	const timedOut = wait.kind === "timed_out";
 
 	const durationMs = Date.now() - started;
 
@@ -288,14 +250,14 @@ export async function runPierTrial(options: PierTrialRunOptions): Promise<PierEx
 			trialDirPath,
 			durationMs,
 			timedOut: true,
-			error: outputComplete
+			error: wait.outputComplete
 				? `trial timed out after ${timeoutSec}s`
 				: `trial timed out after ${timeoutSec}s; its process tree held its output open, so the text above is partial`,
 		};
 	}
 
-	if (options.signal?.aborted) {
-		await killTrial();
+	// The wait already terminated the tree for an abort, so this path only reports it.
+	if (wait.kind === "aborted" || options.signal?.aborted) {
 		throw new Error("Trial aborted: pier execution cancelled");
 	}
 

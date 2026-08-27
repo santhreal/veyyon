@@ -10,7 +10,7 @@ import { $which, errorMessage, isRecord, readPipeText } from "@veyyon/utils";
 import { type BackendRegistry, defaultBackendRegistry } from "../../core/backend-registry";
 import { resolveCellVariant } from "../../core/cell-variant";
 import { getHarness, listHarnesses, requireHarness } from "../../core/harness-registry";
-import { drainTrialOutput, terminateProcessTree } from "../../core/process-tree";
+import { awaitTrialProcessOutput, terminateProcessTree } from "../../core/process-tree";
 import { boundRawOutput, DEFAULT_GRACE_PERIOD_MS, trialTimeoutFromOptions } from "../../core/trial-deadline";
 import { resolveTrialModel } from "../../core/trial-model";
 import { runDirFor, trialJobName } from "../../core/trial-naming";
@@ -413,65 +413,28 @@ export class HarborBackend implements ExecutionBackend {
 			}
 		};
 
-		const onAbort = (): void => {
-			void killTrial();
-		};
+		const wait = await awaitTrialProcessOutput({
+			exited: proc.exited,
+			stdout: readPipeText(proc.stdout),
+			stderr: readPipeText(proc.stderr),
+			timeoutMs: trialTimeoutSec * 1000,
+			signal: context.signal,
+			terminate: killTrial,
+		});
 
-		if (context.signal) {
-			context.signal.addEventListener("abort", onAbort, { once: true });
-		}
+		const exitCode = wait.exitCode;
+		const stdout = wait.kind === "exited" ? wait.stdout : (boundRawOutput(wait.stdout) ?? "");
+		const stderr = wait.kind === "exited" ? wait.stderr : (boundRawOutput(wait.stderr) ?? "");
 
-		const { promise: timeoutPromise, resolve: resolveTimeout } = Promise.withResolvers<"timed_out">();
-		const timer = setTimeout(() => resolveTimeout("timed_out"), trialTimeoutSec * 1000);
-
-		let stdout = "";
-		let stderr = "";
-		let exitCode = 0;
-		let timedOut = false;
-		let outputComplete = true;
-
-		try {
-			const stdoutPromise = readPipeText(proc.stdout);
-			const stderrPromise = readPipeText(proc.stderr);
-			const raceResult = await Promise.race([
-				Promise.all([proc.exited, stdoutPromise, stderrPromise]).then(([code, out, err]) => ({
-					kind: "exited" as const,
-					code,
-					out,
-					err,
-				})),
-				timeoutPromise.then(kind => ({ kind, code: -1, out: "", err: "" })),
-			]);
-
-			if (raceResult.kind === "timed_out") {
-				timedOut = true;
-				await killTrial();
-				// The reads started above still hold their streams; reading again returns nothing. A
-				// descendant the kill left behind keeps a pipe open, so the wait for EOF is bounded.
-				const drained = await drainTrialOutput(stdoutPromise, stderrPromise);
-				outputComplete = drained.complete;
-				stdout = boundRawOutput(drained.stdout) ?? "";
-				stderr = boundRawOutput(drained.stderr) ?? "";
-				exitCode = -1;
-			} else {
-				exitCode = raceResult.code;
-				stdout = raceResult.out;
-				stderr = raceResult.err;
-			}
-		} finally {
-			clearTimeout(timer);
-			if (context.signal) context.signal.removeEventListener("abort", onAbort);
-		}
-
-		if (timedOut) {
+		if (wait.kind === "timed_out") {
 			throw new Error(
-				outputComplete
+				wait.outputComplete
 					? `Trial timed out after ${trialTimeoutSec}s (watchdog ceiling)`
 					: `Trial timed out after ${trialTimeoutSec}s (watchdog ceiling); its process tree held its output open, so the trial's text is partial`,
 			);
 		}
-		if (context.signal?.aborted) {
-			await killTrial();
+		// The wait already terminated the tree for an abort, so this path only reports it.
+		if (wait.kind === "aborted" || context.signal?.aborted) {
 			throw new Error(`Trial aborted: harbor exited with code ${exitCode}`);
 		}
 
