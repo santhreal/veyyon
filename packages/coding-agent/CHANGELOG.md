@@ -41,6 +41,7 @@
 - `#animatedBadgeSlot` in `status-line/component.ts` eliminates a duplicate `badgeParts.join(sep)` call by computing the joined string once and reusing it for both width measurement and text storage.
 - `messagePersistenceKey` in `assistant-message.ts` replaces a 6-element array `.join()` with a template literal, eliminating an intermediate array allocation per assistant message persistence key computation.
 - `fillLocation` in `status-line/component.ts` hoists the `["preferred", "readable"]` stage tuple to a module-level constant, avoiding a per-call array allocation during location fitting.
+- `highlightCached` in `highlight.ts` uses a nested per-language LRU cache keyed on the code string directly, avoiding a `${lang}\x00${code}` template literal that copied the entire code body on every cache lookup — a 100 KB block repainted at ~30 fps allocated that much per frame just for the key.
 
 
 

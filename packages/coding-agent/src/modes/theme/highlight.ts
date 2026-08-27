@@ -63,7 +63,13 @@ function getHighlightColors(t: Theme): NativeHighlightColors {
  * the 33ms frame budget and starving the spinner/render timers (the "TUI freeze").
  */
 const HIGHLIGHT_CACHE_MAX = 256;
-const highlightCache = new LRUCache<string, string>({ max: HIGHLIGHT_CACHE_MAX });
+// Nested by language so the cache key is the code string itself, not a
+// `${lang}\x00${code}` concatenation that copies the entire code body on
+// every lookup — a 100 KB block repainted at ~30 fps allocated that much
+// per frame just to miss or hit the cache. Each language gets its own LRU
+// bounded at HIGHLIGHT_CACHE_MAX; the set of languages in a session is
+// small (typically 1–5), so the total stays bounded.
+const highlightLangCaches = new Map<string, LRUCache<string, string>>();
 let highlightCacheTheme: Theme | undefined;
 
 /** Languages already reported as failing to highlight, so the warning below fires once each. */
@@ -85,11 +91,16 @@ function reportHighlightFailureOnce(lang: string | undefined, error: unknown): v
 
 export function highlightCached(code: string, validLang: string | undefined, highlightTheme: Theme): string | null {
 	if (highlightCacheTheme !== highlightTheme) {
-		highlightCache.clear();
+		highlightLangCaches.clear();
 		highlightCacheTheme = highlightTheme;
 	}
-	const key = `${validLang ?? ""}\x00${code}`;
-	const hit = highlightCache.get(key);
+	const langKey = validLang ?? "";
+	let cache = highlightLangCaches.get(langKey);
+	if (cache === undefined) {
+		cache = new LRUCache<string, string>({ max: HIGHLIGHT_CACHE_MAX });
+		highlightLangCaches.set(langKey, cache);
+	}
+	const hit = cache.get(code);
 	if (hit !== undefined) {
 		return hit;
 	}
@@ -103,7 +114,7 @@ export function highlightCached(code: string, validLang: string | undefined, hig
 		reportHighlightFailureOnce(validLang, error);
 		return null;
 	}
-	highlightCache.set(key, highlighted);
+	cache.set(code, highlighted);
 	return highlighted;
 }
 
