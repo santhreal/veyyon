@@ -143,7 +143,7 @@ const TOOLCHAIN_BASELINE = [
 /** The baseline for one platform, in the order the groups are documented above. */
 export function mcpBaselineEnvNames(platform: NodeJS.Platform): readonly string[] {
 	const platformNames = platform === "win32" ? WINDOWS_BASELINE : POSIX_BASELINE;
-	return [...platformNames, ...NETWORK_BASELINE, ...TOOLCHAIN_BASELINE];
+	return platformNames.concat(NETWORK_BASELINE, TOOLCHAIN_BASELINE);
 }
 
 export interface McpChildEnvironment {
@@ -179,7 +179,7 @@ export function buildMcpChildEnv(
 		return { env: { ...env, ...declared }, withheld: [], inherited: true };
 	}
 
-	const wanted = new Set<string>([...mcpBaselineEnvNames(platform), ...(config.envPassthrough ?? [])]);
+	const wanted = new Set<string>(mcpBaselineEnvNames(platform).concat(config.envPassthrough ?? []));
 	const matches = matcherFor(wanted, platform);
 
 	const env: Record<string, string> = {};

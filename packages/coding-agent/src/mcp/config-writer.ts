@@ -341,7 +341,7 @@ export interface SetMcpServerEnabledOptions {
  */
 export async function setMcpServerEnabled(options: SetMcpServerEnabledOptions): Promise<void> {
 	const { userPath, projectPath, sourcePath, name, enabled } = options;
-	const candidatePaths = [...new Set([sourcePath, projectPath, userPath].filter(path => path !== undefined))];
+	const candidatePaths = Array.from(new Set([sourcePath, projectPath, userPath].filter(path => path !== undefined)));
 	let updatedInConfig = false;
 
 	for (const filePath of candidatePaths) {

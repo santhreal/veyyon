@@ -576,7 +576,9 @@ export async function searchSmitheryRegistry(
 		if (pageEntries.length < pageSize) break;
 	}
 
-	const entries = isSemantic ? [...allEntries] : [...allEntries].filter(entry => matchesIdentityQuery(query, entry));
+	const entries = isSemantic
+		? allEntries.slice()
+		: allEntries.slice().filter(entry => matchesIdentityQuery(query, entry));
 
 	// Only apply local useCount sort when not in semantic mode (preserve API relevance ranking).
 	if (!isSemantic) {

@@ -853,9 +853,10 @@ export class MCPManager {
 	 * Get all known server names (connected, connecting, or discovered).
 	 */
 	getAllServerNames(): string[] {
-		return Array.from(
-			new Set([...this.#sources.keys(), ...this.#connections.keys(), ...this.#pendingConnections.keys()]),
-		);
+		const names = new Set<string>(this.#sources.keys());
+		for (const name of this.#connections.keys()) names.add(name);
+		for (const name of this.#pendingConnections.keys()) names.add(name);
+		return Array.from(names);
 	}
 
 	/**
@@ -975,7 +976,7 @@ export class MCPManager {
 	invalidateCommandCredentials(name?: string): number {
 		const configs =
 			name === undefined
-				? [...this.#serverConfigs.values()]
+				? Array.from(this.#serverConfigs.values())
 				: [this.#connections.get(name)?.config ?? this.#serverConfigs.get(name)].filter(
 						(config): config is MCPServerConfig => config !== undefined,
 					);
@@ -1246,7 +1247,7 @@ export class MCPManager {
 
 				// Unsubscribe URIs that were removed
 				if (oldUris) {
-					const removed = [...oldUris].filter(uri => !newUris.has(uri));
+					const removed = Array.from(oldUris).filter(uri => !newUris.has(uri));
 					if (removed.length > 0) {
 						try {
 							await unsubscribeFromResources(connection, removed);
@@ -1258,7 +1259,7 @@ export class MCPManager {
 
 				// Subscribe to the current set and update tracking atomically
 				try {
-					const allUris = [...newUris];
+					const allUris = Array.from(newUris);
 					await subscribeToResources(connection, allUris);
 					const action = resolveSubscriptionPostAction(
 						this.#notificationsEnabled,

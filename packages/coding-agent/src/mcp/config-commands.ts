@@ -25,7 +25,7 @@ export function mcpConfigCommandValues(config: MCPServerConfig): string[] {
 	for (const value of Object.values(source)) {
 		if (isConfigValueCommand(value)) commands.add(value);
 	}
-	return [...commands];
+	return Array.from(commands);
 }
 
 /** Whether this server's credentials come from a command that can be re-run. */
