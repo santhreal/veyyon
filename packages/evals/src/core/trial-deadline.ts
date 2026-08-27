@@ -15,6 +15,9 @@
  * This module is the one place any of it is decided.
  */
 
+import { setTimeout as sleepFor } from "node:timers/promises";
+import { errorMessage } from "@veyyon/utils";
+
 /** Used when a task states no budget of its own. */
 export const DEFAULT_TRIAL_TIMEOUT_SEC = 1800;
 
@@ -92,4 +95,65 @@ export function boundRawOutput(text: string | null | undefined, maxBytes = RAW_O
 		.subarray(buffer.byteLength - maxBytes)
 		.toString("utf-8")
 		.replace(/^\uFFFD/, "");
+}
+
+/**
+ * How long a trial's teardown gets before it is abandoned.
+ *
+ * A trial's deadline bounds the trial. It did not bound what came after it: the teardown ran
+ * `await client.dispose()` with no ceiling, and a client with a socket still open, a provider
+ * request still pending, or an MCP child that ignores SIGTERM never settled it. The trial had
+ * already produced its score, and the row was never written: the worker stopped inside the
+ * `finally`, the pool never freed the slot, and a run of 400 tasks ended with 137 rows, no error,
+ * and no process to look at.
+ */
+export const TEARDOWN_GRACE_MS = 30_000;
+
+/** A grace period never rounds to zero, and never becomes a second deadline of its own. */
+export const MIN_TEARDOWN_GRACE_MS = 10;
+export const MAX_TEARDOWN_GRACE_MS = 300_000;
+
+/**
+ * The grace period from a run's loose options bag, under the name `teardownGraceMs`. A value
+ * outside the bounds is clamped rather than refused: a run that already staged its assets should
+ * not die over how long a teardown may take.
+ */
+export function teardownGraceFromOptions(options?: Readonly<Record<string, unknown>>): number {
+	const stated = options?.teardownGraceMs;
+	if (typeof stated !== "number" || !Number.isFinite(stated)) return TEARDOWN_GRACE_MS;
+	return Math.min(Math.max(Math.trunc(stated), MIN_TEARDOWN_GRACE_MS), MAX_TEARDOWN_GRACE_MS);
+}
+
+/**
+ * Run one teardown under a ceiling. Returns null when it finished, or the reason it did not:
+ * either the error it threw or the grace period it outlasted.
+ *
+ * An abandoned teardown keeps running — nothing here can stop code that ignores an abort — but it
+ * no longer holds the worker that was waiting for it. The caller has already scored its trial, so
+ * the reason belongs beside the row, never in place of it.
+ */
+export async function teardownWithin(
+	teardown: () => Promise<void>,
+	graceMs: number = TEARDOWN_GRACE_MS,
+): Promise<string | null> {
+	const abandon = new AbortController();
+	let running: Promise<void>;
+	try {
+		running = teardown();
+	} catch (cause) {
+		return errorMessage(cause);
+	}
+	try {
+		// `Promise.race` attaches its own handler to the teardown in this same tick, so a teardown
+		// that rejects after it was abandoned is already handled and cannot take the process down.
+		const outcome = await Promise.race([
+			running.then(() => "settled" as const),
+			sleepFor(graceMs, "abandoned" as const, { signal: abandon.signal }),
+		]);
+		return outcome === "settled" ? null : `teardown did not finish within ${graceMs}ms`;
+	} catch (cause) {
+		return errorMessage(cause);
+	} finally {
+		abandon.abort();
+	}
 }

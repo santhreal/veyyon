@@ -6,7 +6,12 @@ import { type BackendRegistry, defaultBackendRegistry } from "../../core/backend
 import { resolveCellVariant } from "../../core/cell-variant";
 import { listFiles } from "../../core/fs-walk";
 import { requireHarness } from "../../core/harness-registry";
-import { boundRawOutput, trialTimeoutFromOptions } from "../../core/trial-deadline";
+import {
+	boundRawOutput,
+	teardownGraceFromOptions,
+	teardownWithin,
+	trialTimeoutFromOptions,
+} from "../../core/trial-deadline";
 import { resolveTrialModel } from "../../core/trial-model";
 import { trialDirFor } from "../../core/trial-naming";
 import type {
@@ -219,6 +224,7 @@ export class InProcessBackend implements ExecutionBackend {
 		let trialError: string | null = null;
 		let state: InProcessSessionState | undefined;
 		let timedOut = false;
+		let teardownReason: string | null = null;
 		let timeoutTimer: NodeJS.Timeout | undefined;
 		const timeoutAbort = new AbortController();
 
@@ -280,7 +286,9 @@ export class InProcessBackend implements ExecutionBackend {
 			trialError = errorMessage(err);
 		} finally {
 			clearTimeout(timeoutTimer);
-			await client.dispose().catch(() => {});
+			// The trial's deadline bounds the trial; this bounds what comes after it, so a client
+			// that never finishes disposing cannot hold the worker that already scored this trial.
+			teardownReason = await teardownWithin(() => client.dispose(), teardownGraceFromOptions(context.options));
 		}
 
 		const durationSec = (Date.now() - startTime) / 1000;
@@ -317,6 +325,8 @@ export class InProcessBackend implements ExecutionBackend {
 				durationSec,
 				sessionStats,
 				error: trialError,
+				// A teardown that was abandoned is reported beside the score it could not affect.
+				teardownReason,
 				timedOut,
 				infrastructureError: timedOut ? trialError : undefined,
 				timeoutSec,
