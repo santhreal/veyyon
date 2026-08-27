@@ -987,7 +987,7 @@ export function sleep(beam: BeamMemoryState, dryRun = false): SleepResult {
 					metadata,
 				});
 			}
-			consolidatedIds.push(...ids);
+			for (let ii = 0; ii < ids.length; ii++) consolidatedIds.push(ids[ii]!);
 			summariesCreated++;
 		}
 	}

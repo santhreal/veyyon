@@ -1176,7 +1176,7 @@ export function collapseEffortVariantsAcrossProviders<TSpec extends VariantSpecL
 		if (derived.length > 0) {
 			result = collapseEffortVariants(result, { families: derived });
 		}
-		out.push(...result);
+		for (let ri = 0; ri < result.length; ri++) out.push(result[ri]!);
 	}
 	return out;
 }

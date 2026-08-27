@@ -4720,7 +4720,7 @@ export function mapModelsDevToModels(
 				const result = desc.transformModel(mapped, modelId, m);
 				if (result === null) continue;
 				if (Array.isArray(result)) {
-					models.push(...result);
+					for (let ri = 0; ri < result.length; ri++) models.push(result[ri]!);
 				} else {
 					models.push(result);
 				}

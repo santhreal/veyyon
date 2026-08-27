@@ -793,10 +793,20 @@ function collectMemoryCandidates(
 	}
 
 	const candidates: MemoryCandidate[] = [];
-	if (wmIds.length > 0) candidates.push(...fetchCandidates(beam, "working", wmIds, wmFts, wmVec, options));
-	else if (options.includeWorking !== false) candidates.push(...fallbackCandidates(beam, "working", options));
-	if (emRowids.length > 0) candidates.push(...fetchCandidates(beam, "episodic", emRowids, emFts, emVec, options));
-	else candidates.push(...fallbackCandidates(beam, "episodic", options));
+	if (wmIds.length > 0) {
+		const wm = fetchCandidates(beam, "working", wmIds, wmFts, wmVec, options);
+		for (let ci = 0; ci < wm.length; ci++) candidates.push(wm[ci]!);
+	} else if (options.includeWorking !== false) {
+		const wm = fallbackCandidates(beam, "working", options);
+		for (let ci = 0; ci < wm.length; ci++) candidates.push(wm[ci]!);
+	}
+	if (emRowids.length > 0) {
+		const em = fetchCandidates(beam, "episodic", emRowids, emFts, emVec, options);
+		for (let ci = 0; ci < em.length; ci++) candidates.push(em[ci]!);
+	} else {
+		const em = fallbackCandidates(beam, "episodic", options);
+		for (let ci = 0; ci < em.length; ci++) candidates.push(em[ci]!);
+	}
 	if (candidates.length === 0) return candidates;
 	void useSynonyms;
 	return candidates;
