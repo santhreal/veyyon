@@ -67,7 +67,7 @@ async function handleEmbed(
 		// holds the cached `LocalEmbeddingModel` wrapper from before.
 		const { instance } = await ensureLoaded(message.model, message.cacheDir);
 		const vectors: number[][] = [];
-		const batches = instance.embed([...message.texts], message.batchSize);
+		const batches = instance.embed(message.texts.slice(), message.batchSize);
 		for await (const batch of batches) {
 			for (const row of batch) vectors.push(row);
 		}

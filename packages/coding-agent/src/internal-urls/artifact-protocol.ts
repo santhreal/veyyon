@@ -119,7 +119,7 @@ export async function resolveArtifactFile(url: InternalUrl, context?: ResolveCon
 
 	const foundPath = matches[0];
 	if (!foundPath) {
-		const sorted = [...availableIds].sort((a, b) => Number(a) - Number(b));
+		const sorted = Array.from(availableIds).sort((a, b) => Number(a) - Number(b));
 		const availableStr = sorted.length > 0 ? sorted.join(", ") : "none";
 		throw new Error(`Artifact ${id} not found. Available: ${availableStr}`);
 	}
@@ -182,6 +182,8 @@ export class ArtifactProtocolHandler implements ProtocolHandler {
 				if (m) ids.add(m[1]!);
 			}
 		}
-		return [...ids].sort((a, b) => Number(a) - Number(b)).map(value => ({ value }));
+		return Array.from(ids)
+			.sort((a, b) => Number(a) - Number(b))
+			.map(value => ({ value }));
 	}
 }

@@ -319,7 +319,7 @@ export class IrcBus {
 	 * a live reference would mutate under them mid-render.
 	 */
 	log(): IrcLogEntry[] {
-		return [...this.#log];
+		return this.#log.slice();
 	}
 
 	/**
@@ -773,7 +773,7 @@ export class IrcBus {
 	inbox(agentId: string, opts?: { peek?: boolean }): IrcMessage[] {
 		const mailbox = this.#mailboxes.get(agentId);
 		if (!mailbox || mailbox.length === 0) return [];
-		if (opts?.peek) return [...mailbox];
+		if (opts?.peek) return mailbox.slice();
 		this.#mailboxes.delete(agentId);
 		return mailbox;
 	}

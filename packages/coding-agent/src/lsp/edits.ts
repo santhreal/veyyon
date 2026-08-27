@@ -106,7 +106,7 @@ export function flattenWorkspaceTextEdits(edit: WorkspaceEdit): Map<string, Text
 		const prev = out.get(uri);
 		if (prev) {
 			for (let ei = 0; ei < edits.length; ei++) prev.push(edits[ei]!);
-		} else out.set(uri, [...edits]);
+		} else out.set(uri, edits.slice());
 	};
 	if (edit.changes) {
 		const changes = edit.changes;
@@ -183,7 +183,7 @@ function planDocumentChanges(documentChanges: NonNullable<WorkspaceEdit["documen
 				const prev = pending.get(uri);
 				if (prev) {
 					for (let ei = 0; ei < textEdits.length; ei++) prev.push(textEdits[ei]!);
-				} else pending.set(uri, [...textEdits]);
+				} else pending.set(uri, textEdits.slice());
 			}
 		} else if ("kind" in change && change.kind) {
 			if (change.kind === "create") {
@@ -209,7 +209,7 @@ function planDocumentChanges(documentChanges: NonNullable<WorkspaceEdit["documen
 	}
 
 	// Flush text edits not followed by a resource op.
-	for (const uri of [...pending.keys()]) {
+	for (const uri of Array.from(pending.keys())) {
 		flushUri(uri);
 	}
 

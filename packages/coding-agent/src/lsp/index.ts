@@ -620,7 +620,7 @@ function parseGoWorkspaceBuildPatterns(output: string): string[] {
 		const pattern = goWorkspaceBuildPattern(entry.DiskPath);
 		if (pattern) patterns.add(pattern);
 	}
-	return [...patterns];
+	return Array.from(patterns);
 }
 
 /** Resolve the `go build` command for a `go.work` workspace. */
@@ -2018,7 +2018,7 @@ export class LspTool implements AgentTool<typeof lspSchema, LspToolDetails, Them
 					if (!existing) {
 						acceptedByUri.set(uri, {
 							primaryServer: serverName,
-							edits: [...edits],
+							edits: edits.slice(),
 							discarded: 0,
 							conflictServers: new Set(),
 						});
@@ -2037,7 +2037,7 @@ export class LspTool implements AgentTool<typeof lspSchema, LspToolDetails, Them
 						if (discardedOld > 0) existing.conflictServers.add(existing.primaryServer);
 						existing.discarded += discardedOld;
 						existing.primaryServer = serverName;
-						existing.edits = [...edits, ...keptOld];
+						existing.edits = edits.concat(keptOld);
 					} else {
 						// Existing wins; discard incoming edits that overlap any accepted edit.
 						let discardedNew = 0;

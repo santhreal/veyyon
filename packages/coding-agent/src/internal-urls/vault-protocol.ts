@@ -930,7 +930,7 @@ export class VaultProtocolHandler implements ProtocolHandler {
 		context?: ResolveContext,
 	): Promise<InternalResource> {
 		const invocation = buildObsidianCliInvocation(parsed);
-		const args = [...invocation.args, ...this.#vaultCliArg(parsed.ref)];
+		const args = invocation.args.concat(this.#vaultCliArg(parsed.ref));
 		const result = await this.#spawn(args, context);
 		assertCliSuccess(invocation.opLabel, result);
 		return {

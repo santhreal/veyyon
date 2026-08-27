@@ -1083,7 +1083,7 @@ async function applyConsolidation(
 			files.set(path.posix.join("examples", item.path), `${item.content.trim()}\n`);
 		}
 
-		for (const [relativePath, content] of [...files.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+		for (const [relativePath, content] of Array.from(files.entries()).sort(([a], [b]) => a.localeCompare(b))) {
 			await Bun.write(path.join(dir, ...relativePath.split("/")), content);
 		}
 
@@ -1245,7 +1245,7 @@ function parseConsolidationOutputSchema(value: Record<string, unknown>): Consoli
 
 function hasExactKeys(value: Record<string, unknown>, expectedKeys: string[], allowMissing = false): boolean {
 	const sortedKeys = Object.keys(value).sort();
-	const sortedExpected = [...expectedKeys].sort();
+	const sortedExpected = Array.from(expectedKeys).sort();
 	if (!allowMissing && sortedKeys.length !== sortedExpected.length) return false;
 	for (const key of sortedKeys) {
 		if (!sortedExpected.includes(key)) return false;
@@ -1311,7 +1311,7 @@ function sanitizeConsolidationSkillFiles(
 		if (!content) continue;
 		sanitized.set(path.posix.join(bucket, relativePath), content);
 	}
-	return [...sanitized.entries()]
+	return Array.from(sanitized.entries())
 		.sort(([a], [b]) => a.localeCompare(b))
 		.map(([fullPath, content]) => ({
 			path: fullPath.slice(bucket.length + 1),
@@ -1534,7 +1534,7 @@ async function runWithConcurrency<T>(
 	concurrency: number,
 	worker: (item: T) => Promise<void>,
 ): Promise<void> {
-	const queue = [...items];
+	const queue = items.slice();
 	const workers = new Array(Math.max(1, concurrency)).fill(0).map(async () => {
 		while (queue.length > 0) {
 			const item = queue.shift();

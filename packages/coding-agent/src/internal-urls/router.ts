@@ -71,7 +71,7 @@ export class InternalUrlRouter {
 	 * `tools/path-utils.ts` that decide selector peeling and filesystem-vs-URL.
 	 */
 	schemes(): string[] {
-		return [...this.#handlers.keys()];
+		return Array.from(this.#handlers.keys());
 	}
 
 	getHandler(scheme: string): ProtocolHandler | undefined {

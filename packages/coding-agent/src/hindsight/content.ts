@@ -104,7 +104,7 @@ export function sliceLastTurnsByUserBoundary(messages: HindsightMessage[], turns
 		}
 	}
 
-	return startIndex === -1 ? [...messages] : messages.slice(startIndex);
+	return startIndex === -1 ? messages.slice() : messages.slice(startIndex);
 }
 
 /**

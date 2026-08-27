@@ -106,7 +106,7 @@ export class AgentProtocolHandler implements ProtocolHandler {
 
 		const foundPath = matches[0];
 		if (!foundPath) {
-			const availableStr = availableIds.size > 0 ? [...availableIds].join(", ") : "none";
+			const availableStr = availableIds.size > 0 ? Array.from(availableIds).join(", ") : "none";
 			throw new Error(`Not found: ${outputId}\nAvailable: ${availableStr}`);
 		}
 
@@ -163,6 +163,8 @@ export class AgentProtocolHandler implements ProtocolHandler {
 				if (f.endsWith(".md")) ids.add(f.slice(0, -3));
 			}
 		}
-		return [...ids].sort().map(value => ({ value }));
+		return Array.from(ids)
+			.sort()
+			.map(value => ({ value }));
 	}
 }

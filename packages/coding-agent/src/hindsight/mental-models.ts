@@ -130,7 +130,7 @@ function collectSeedTags(seed: RawSeed, scope: BankScope): string[] {
 }
 
 function dedupe<T>(items: T[]): T[] {
-	return [...new Set(items)];
+	return Array.from(new Set(items));
 }
 
 /**
