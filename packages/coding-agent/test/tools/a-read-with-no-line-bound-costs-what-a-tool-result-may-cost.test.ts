@@ -39,17 +39,17 @@ const SELECTORS = ["", ":50", ":50-", ":1-2,50-"];
 // The truncation notice is rendered by the layer `createTools` installs, not by
 // the tool class, so a suite that constructs `ReadTool` directly cannot see the
 // bytes a real caller is told about.
-async function toolFor(cwd: string, spillThresholdKb?: number): Promise<Tool> {
+async function toolFor(cwd: string, spillThresholdKb?: number, name = "read"): Promise<Tool> {
 	const session = makeToolSession({
 		cwd,
 		settings: {
 			get: (key: string) => (key === "tools.artifactSpillThreshold" ? spillThresholdKb : undefined),
 		},
 	});
-	const tools = await createTools(session, ["read"]);
-	const read = tools.find(tool => tool.name === "read");
-	if (!read) throw new Error("read tool missing");
-	return read;
+	const tools = await createTools(session, [name]);
+	const tool = tools.find(entry => entry.name === name);
+	if (!tool) throw new Error(`${name} tool missing`);
+	return tool;
 }
 
 async function readText(tool: Tool, target: string): Promise<string> {
@@ -58,6 +58,33 @@ async function readText(tool: Tool, target: string): Promise<string> {
 		.filter((block): block is { type: "text"; text: string } => block.type === "text" && "text" in block)
 		.map(block => block.text)
 		.join("\n");
+}
+
+/**
+ * A ustar archive of empty members, built here so the archive-listing case needs no
+ * external tar binary and no committed binary fixture.
+ */
+function tarOfEmptyMembers(names: readonly string[]): Buffer {
+	const blocks: Buffer[] = [];
+	for (const name of names) {
+		const header = Buffer.alloc(512);
+		header.write(name, 0, 100, "utf-8");
+		header.write("0000644\0", 100, 8, "utf-8");
+		header.write("0000000\0", 108, 8, "utf-8");
+		header.write("0000000\0", 116, 8, "utf-8");
+		header.write("00000000000\0", 124, 12, "utf-8");
+		header.write("00000000000\0", 136, 12, "utf-8");
+		header.write("        ", 148, 8, "utf-8");
+		header.write("0", 156, 1, "utf-8");
+		header.write("ustar\0", 257, 6, "utf-8");
+		header.write("00", 263, 2, "utf-8");
+		let checksum = 0;
+		for (const byte of header) checksum += byte;
+		header.write(`${checksum.toString(8).padStart(6, "0")}\0 `, 148, 8, "utf-8");
+		blocks.push(header);
+	}
+	blocks.push(Buffer.alloc(1024));
+	return Buffer.concat(blocks);
 }
 
 let dir: string;
@@ -89,6 +116,12 @@ describe("a read with no line bound costs what a tool result may cost", () => {
 		await Promise.all(
 			Array.from({ length: 400 }, (_, index) =>
 				fs.writeFile(path.join(wide, `${String(index).padStart(4, "0")}-${"n".repeat(74)}.txt`), "x"),
+			),
+		);
+		await fs.writeFile(
+			path.join(dir, "wide.tar"),
+			tarOfEmptyMembers(
+				Array.from({ length: 400 }, (_, index) => `many/${String(index).padStart(4, "0")}-${"n".repeat(74)}.txt`),
 			),
 		);
 	});
@@ -166,6 +199,13 @@ describe("a read with no line bound costs what a tool result may cost", () => {
 		expect(large).toBeGreaterThan(small * 2);
 	});
 
+	it("holds an archive listing to the configured budget", async () => {
+		const small = Buffer.byteLength(await readText(await toolFor(dir, 8), "wide.tar:many"), "utf-8");
+		const large = Buffer.byteLength(await readText(await toolFor(dir, 64), "wide.tar:many"), "utf-8");
+		expect(small).toBeLessThan(8 * 1024 + 512);
+		expect(large).toBeGreaterThan(small * 2);
+	});
+
 	it("bounds a sliced directory listing and names the line that continues it", async () => {
 		const text = await readText(await toolFor(dir, 8), "many:1-400");
 		expect(Buffer.byteLength(text, "utf-8")).toBeLessThan(8 * 1024 + 512);
@@ -176,5 +216,31 @@ describe("a read with no line bound costs what a tool result may cost", () => {
 		const shown = text.slice(0, notice?.index).trimEnd().split("\n").length;
 		expect(Number(notice?.[2])).toBe(shown + 1);
 		expect(Number(notice?.[1])).toBe(401 - shown);
+	});
+
+	it("holds a glob path list to the configured budget", async () => {
+		// `search` in files mode renders a path list, which is a tool result like any other: the
+		// entry limit bounds how many paths render, the budget bounds what they cost.
+		const listBytes = async (kb: number): Promise<number> => {
+			const search = await toolFor(dir, kb, "search");
+			const result = await search.execute(
+				"probe",
+				{ type: "files", input: "many/*.txt", limit: 400 } as never,
+				undefined,
+				undefined,
+				undefined,
+			);
+			return Buffer.byteLength(
+				result.content
+					.filter((block): block is { type: "text"; text: string } => block.type === "text" && "text" in block)
+					.map(block => block.text)
+					.join("\n"),
+				"utf-8",
+			);
+		};
+		const small = await listBytes(8);
+		const large = await listBytes(64);
+		expect(small).toBeLessThan(8 * 1024 + 512);
+		expect(large).toBeGreaterThan(small * 2);
 	});
 });
