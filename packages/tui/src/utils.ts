@@ -225,6 +225,10 @@ export function compactSgrCarry(carry: string): string {
  * and one rule is easier to read than two.
  */
 export function reopenBackgroundAfterResets(text: string, background: string): string {
+	// All three reset patterns start with ESC. If the text carries no escape,
+	// none can match and the input is returned unchanged, skipping three full
+	// scans and three string allocations.
+	if (!text.includes(ESC)) return text;
 	return text
 		.replaceAll(SGR_RESET, `${SGR_RESET}${background}`)
 		.replaceAll(SGR_RESET_SHORT, `${SGR_RESET_SHORT}${background}`)
