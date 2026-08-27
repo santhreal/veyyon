@@ -1657,7 +1657,10 @@ export function formatBashCommandLines(args: BashRenderArgs, uiTheme: Theme): st
 	const prefix = uiTheme.fg("dim", `${prefixParts.join(" ")} `);
 	const highlightedLines = highlightCode(command, "bash");
 	if (highlightedLines.length === 0) return [prefix.trimEnd()];
-	return highlightedLines.map((line, i) => (i === 0 ? `${prefix}${line}` : line));
+	const result = new Array<string>(highlightedLines.length);
+	for (let li = 0; li < highlightedLines.length; li++)
+		result[li] = li === 0 ? `${prefix}${highlightedLines[li]!}` : highlightedLines[li]!;
+	return result;
 }
 
 function toBashRenderArgs<TArgs>(args: TArgs | undefined, config: ShellRendererConfig<TArgs>): BashRenderArgs {
