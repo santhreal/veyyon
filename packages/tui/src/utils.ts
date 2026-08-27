@@ -271,7 +271,7 @@ const MAX_PADDING = 1 << 20; // 1,048,576
  * Replace tabs with the fixed display tab width for consistent rendering.
  */
 export function replaceTabs(text: string): string {
-	return text.replaceAll("\t", TAB_SPACES);
+	return text.includes("\t") ? text.replaceAll("\t", TAB_SPACES) : text;
 }
 
 /**

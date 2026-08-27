@@ -5,6 +5,7 @@
 ### Changed
 - `utils.ts` `reopenBackgroundAfterResets` returns the input unchanged when it contains no escape byte, skipping three `replaceAll` scans and three string allocations on plain-text lines.
 - `utils.ts` `sgrCarryAfter` skips the regex scan and match-array allocation when the text contains no escape byte, returning the compacted carry directly.
+- `utils.ts` `replaceTabs` returns the input unchanged when it contains no tab, skipping a full `replaceAll` scan on tab-free text.
 
 - Table column width calculation in `markdown.ts` replaces 10 `.reduce()` and `.map()` closures with `for` loops and pre-allocated arrays, eliminating 10 closure allocations and 3 intermediate arrays per table render.
 
