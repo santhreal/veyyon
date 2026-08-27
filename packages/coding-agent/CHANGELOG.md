@@ -7,6 +7,8 @@
 - Classified runner output (cargo, bun, Go, ctest, dotnet, clippy, golangci-lint, Gradle lint, pytest, and tsc/eslint-family) now opens with a result-contract header: `[clean] <command>` or `[errors]` / `[errors N] <command>`. The header is the verdict and the body contains retained diagnostics.
 - `nextBackground` in `deccara.ts` scans SGR parameters in-place via byte offsets, eliminating a `line.slice()` allocation per SGR sequence in `analyzeBgFillLine`.
 - `fgHexOf` in `rail-motion.ts` scans SGR parameters in-place via `charCodeAt`, eliminating `line.slice()` and `params.split(";")` allocations per SGR sequence in `findRailCell` during rail animation.
+- `fgHexOf` in `rail-motion.ts` parses SGR parameter integers via `charCodeAt` in `parseSgrInt`, eliminating 1–3 `line.slice()` allocations per SGR sequence during rail animation.
+
 - Hook status rendering in `status-line/component.ts` replaces `Array.from(entries()).sort().map().join()` with a single-pass array sort and direct string concatenation, eliminating two intermediate arrays per frame.
 - `assistant-message.ts` replaces `Array.from(Set)` with direct `for...of` in kitty image cleanup, eliminating intermediate array allocation when a tool result arrives.
 
