@@ -769,9 +769,9 @@ export class SelectList implements Component, MouseRoutable {
 		const kb = getKeybindings();
 		if (kb.matches(keyData, "tui.editor.deleteCharBackward")) {
 			if (!this.#canClearFilter()) return false;
-			const chars = Array.from(this.#filterQuery);
-			chars.pop();
-			this.#setFilter(chars.join(""), true, true);
+			const len = this.#filterQuery.length;
+			const cut = len > 0 && (this.#filterQuery.charCodeAt(len - 1) & 0xfc00) === 0xdc00 ? 2 : 1;
+			this.#setFilter(this.#filterQuery.slice(0, len - cut), true, true);
 			return true;
 		}
 

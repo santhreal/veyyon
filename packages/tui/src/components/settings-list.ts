@@ -540,9 +540,9 @@ export class SettingsList implements Component {
 		const kb = getKeybindings();
 		if (kb.matches(data, "tui.editor.deleteCharBackward")) {
 			if (this.#filterQuery.length === 0) return false;
-			const chars = Array.from(this.#filterQuery);
-			chars.pop();
-			this.#setFilter(chars.join(""));
+			const len = this.#filterQuery.length;
+			const cut = len > 0 && (this.#filterQuery.charCodeAt(len - 1) & 0xfc00) === 0xdc00 ? 2 : 1;
+			this.#setFilter(this.#filterQuery.slice(0, len - cut));
 			return true;
 		}
 
