@@ -21,7 +21,6 @@ import {
 import { isTimeoutError, scopedTimeoutSignal } from "../utils/fetch-timeout";
 import type { ToolSession } from ".";
 import { applyListLimit } from "./list-limit";
-import { inlineBudgetFor } from "./output-artifact";
 import { formatFullOutputReference, type OutputMeta } from "./output-meta";
 import {
 	expandDelimitedPathEntries,
@@ -277,10 +276,12 @@ export async function executeFileSearch(
 			if (notice) trailingNotes.push(notice);
 			if (missingPathsNote) trailingNotes.push(missingPathsNote);
 			const rawOutput = trailingNotes.length > 0 ? `${baseOutput}\n\n${trailingNotes.join("\n")}` : baseOutput;
-			// A path list is a tool result: the entry limit bounds how many paths are rendered, the
-			// budget bounds how many bytes they may cost.
+			// No byte bound here. Every tool result except `read` passes the shared spill layer in
+			// `output-meta.ts`, which holds the inline window to `tools.artifactSpillThreshold` and
+			// keeps the elided paths recoverable through an `artifact://` id. A cap here would
+			// deliver the same bytes, lose that recovery, and ignore a threshold raised past it.
 			const truncation = truncateHead(rawOutput, {
-				maxBytes: inlineBudgetFor(session),
+				maxBytes: Number.MAX_SAFE_INTEGER,
 				maxLines: Number.MAX_SAFE_INTEGER,
 			});
 

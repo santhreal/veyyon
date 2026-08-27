@@ -544,7 +544,6 @@ describe("job list output shows the lifetime before it bites", () => {
 				completions: [],
 			},
 			{ op: "list" },
-			{},
 		);
 		expect(text).toContain("defaulted: running");
 		expect(text).toContain("lifetime=last-client-exit");
@@ -569,7 +568,6 @@ describe("job list output shows the lifetime before it bites", () => {
 				completions: [],
 			},
 			{ op: "list" },
-			{},
 		);
 		expect(text).toContain("terminated-by=idle-reaper");
 		expect(text).toContain("the last veyyon client disconnected");
@@ -589,7 +587,7 @@ describe("job list output shows the lifetime before it bites", () => {
 			outputBytes: 40,
 			outputTail: "line one\nFINAL LINE\n",
 		};
-		const text = toolContent({ op: "list", daemons: [], completions: [record] }, { op: "list" }, {});
+		const text = toolContent({ op: "list", daemons: [], completions: [record] }, { op: "list" });
 		expect(text).toContain("Recently completed");
 		expect(text).toContain("cooldown: exit=0 terminated-by=process-exit");
 		expect(text).toContain("FINAL LINE");

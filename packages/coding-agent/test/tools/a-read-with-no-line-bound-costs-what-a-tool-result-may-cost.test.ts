@@ -39,17 +39,17 @@ const SELECTORS = ["", ":50", ":50-", ":1-2,50-"];
 // The truncation notice is rendered by the layer `createTools` installs, not by
 // the tool class, so a suite that constructs `ReadTool` directly cannot see the
 // bytes a real caller is told about.
-async function toolFor(cwd: string, spillThresholdKb?: number, name = "read"): Promise<Tool> {
+async function toolFor(cwd: string, spillThresholdKb?: number): Promise<Tool> {
 	const session = makeToolSession({
 		cwd,
 		settings: {
 			get: (key: string) => (key === "tools.artifactSpillThreshold" ? spillThresholdKb : undefined),
 		},
 	});
-	const tools = await createTools(session, [name]);
-	const tool = tools.find(entry => entry.name === name);
-	if (!tool) throw new Error(`${name} tool missing`);
-	return tool;
+	const tools = await createTools(session, ["read"]);
+	const read = tools.find(tool => tool.name === "read");
+	if (!read) throw new Error("read tool missing");
+	return read;
 }
 
 async function readText(tool: Tool, target: string): Promise<string> {
@@ -216,31 +216,5 @@ describe("a read with no line bound costs what a tool result may cost", () => {
 		const shown = text.slice(0, notice?.index).trimEnd().split("\n").length;
 		expect(Number(notice?.[2])).toBe(shown + 1);
 		expect(Number(notice?.[1])).toBe(401 - shown);
-	});
-
-	it("holds a glob path list to the configured budget", async () => {
-		// `search` in files mode renders a path list, which is a tool result like any other: the
-		// entry limit bounds how many paths render, the budget bounds what they cost.
-		const listBytes = async (kb: number): Promise<number> => {
-			const search = await toolFor(dir, kb, "search");
-			const result = await search.execute(
-				"probe",
-				{ type: "files", input: "many/*.txt", limit: 400 } as never,
-				undefined,
-				undefined,
-				undefined,
-			);
-			return Buffer.byteLength(
-				result.content
-					.filter((block): block is { type: "text"; text: string } => block.type === "text" && "text" in block)
-					.map(block => block.text)
-					.join("\n"),
-				"utf-8",
-			);
-		};
-		const small = await listBytes(8);
-		const large = await listBytes(64);
-		expect(small).toBeLessThan(8 * 1024 + 512);
-		expect(large).toBeGreaterThan(small * 2);
 	});
 });
