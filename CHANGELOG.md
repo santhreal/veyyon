@@ -121,6 +121,10 @@
 - `bestEffort` and `optionalResult` are imported from `@veyyon/utils/discarded-fault`. The barrel does not re-export them, so a consumer reaching them through `@veyyon/utils` names the module instead.
 - `relativePathWithinRoot` returns the candidate's own spelling instead of the case-folded copy the containment check used, so on Windows a path under `C:\Users\dev\Projects` no longer comes back lowercased, and a root configured in a different case than the directory on disk resolves to the tail rather than to a `..` walk.
 
+### Removed
+
+- Removed `derive-tmp.ts`, a scratch probe swept into the package by accident; nothing imported it and no entry point exposed it.
+
 ### Fixed
 
 - An explicit `--model` pointing at a dynamically-discovered model (a provider`s `/v1/models` entry or models.dev overlay absent from the bundled catalog) no longer fails with "not found among N models" when the background discovery refresh has not completed before model resolution. The deferred pattern path does a synchronous cache-aware discovery pass when none of the patterns resolve against the static catalog, mirroring the fallback already present for default-role models.
