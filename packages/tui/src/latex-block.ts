@@ -278,11 +278,10 @@ function vconcat(boxes: Box[], align: CellAlign = "l"): Box {
 /** Stack `num` over `den`, separated by a bar; the bar becomes the baseline. */
 function fracBox(num: Box, den: Box): Box {
 	const width = Math.max(num.width, den.width) + 2;
-	const lines = [
-		...num.lines.map(line => center(line, width)),
-		BAR.repeat(width),
-		...den.lines.map(line => center(line, width)),
-	];
+	const lines: string[] = [];
+	for (let i = 0; i < num.lines.length; i++) lines.push(center(num.lines[i]!, width));
+	lines.push(BAR.repeat(width));
+	for (let i = 0; i < den.lines.length; i++) lines.push(center(den.lines[i]!, width));
 	return { lines, baseline: num.lines.length, width };
 }
 
@@ -334,11 +333,10 @@ function delimBox(inner: Box, left: string, right: string): Box {
 /** `\binom{n}{k}`: `n` over `k` (no bar) inside stretched parentheses. */
 function binomBox(top: Box, bottom: Box): Box {
 	const width = Math.max(top.width, bottom.width);
-	const lines = [
-		...top.lines.map(line => center(line, width)),
-		spaces(width),
-		...bottom.lines.map(line => center(line, width)),
-	];
+	const lines: string[] = [];
+	for (let i = 0; i < top.lines.length; i++) lines.push(center(top.lines[i]!, width));
+	lines.push(spaces(width));
+	for (let i = 0; i < bottom.lines.length; i++) lines.push(center(bottom.lines[i]!, width));
 	return delimBox({ lines, baseline: top.lines.length, width }, "(", ")");
 }
 
@@ -779,10 +777,16 @@ function parseEnvironment(src: string, start: number, ctx: Ctx): { box: Box; end
 			colSpec = [...spec.text].filter((ch): ch is CellAlign => ch === "l" || ch === "c" || ch === "r");
 			p = spec.end;
 		}
-		const cells = splitRows(src.slice(p, env.bodyEnd))
-			.map(row => row.trim())
-			.filter(row => row !== "")
-			.map(row => splitCells(row).map(cell => parseExpr(cell, ctx)));
+		const rawRows = splitRows(src.slice(p, env.bodyEnd));
+		const cells: Box[][] = [];
+		for (let ri = 0; ri < rawRows.length; ri++) {
+			const trimmed = rawRows[ri]!.trim();
+			if (trimmed === "") continue;
+			const rowCells = splitCells(trimmed);
+			const parsed: Box[] = new Array(rowCells.length);
+			for (let ci = 0; ci < rowCells.length; ci++) parsed[ci] = parseExpr(rowCells[ci]!, ctx);
+			cells.push(parsed);
+		}
 		const isCases = base === "cases" || base === "dcases" || base === "rcases" || base === "drcases";
 		const align: (col: number) => CellAlign = colSpec ? col => colSpec[col] ?? "c" : isCases ? () => "l" : () => "c";
 		const grid = gridBox(cells, align, () => 2, 1);
@@ -798,27 +802,37 @@ function parseEnvironment(src: string, start: number, ctx: Ctx): { box: Box; end
 		while (src[p] === " " || src[p] === "\n") p++;
 		if (src[p] === "{") bodyStart = readBraceGroup(src, p).end;
 	}
-	const rows = splitRows(src.slice(bodyStart, env.bodyEnd))
-		.map(row => row.trim())
-		.filter(row => row !== "");
+	const rawBodyRows = splitRows(src.slice(bodyStart, env.bodyEnd));
+	const rows: string[] = [];
+	for (let ri = 0; ri < rawBodyRows.length; ri++) {
+		const trimmed = rawBodyRows[ri]!.trim();
+		if (trimmed !== "") rows.push(trimmed);
+	}
 	if (rows.length === 0) return { box: textBox(""), end: env.end };
-	const cellRows = rows.map(splitCells);
+	const cellRows: string[][] = new Array(rows.length);
+	for (let ri = 0; ri < rows.length; ri++) cellRows[ri] = splitCells(rows[ri]!);
 	let ncols = 0;
-	for (const row of cellRows) ncols = Math.max(ncols, row.length);
+	for (let ri = 0; ri < cellRows.length; ri++) ncols = Math.max(ncols, cellRows[ri]!.length);
 	if (ncols <= 1) {
 		const centered = base === "gather" || base === "gathered" || base === "multline";
+		const parsedRows: Box[] = new Array(rows.length);
+		for (let ri = 0; ri < rows.length; ri++) parsedRows[ri] = parseExpr(rows[ri]!, ctx);
 		return {
-			box: vconcat(
-				rows.map(row => parseExpr(row, ctx)),
-				centered ? "c" : "l",
-			),
+			box: vconcat(parsedRows, centered ? "c" : "l"),
 			end: env.end,
 		};
 	}
 	// `align`-family semantics: columns alternate right/left in `rl` pairs, a
 	// thin gap inside each pair and a wide gap between pairs.
+	const parsedGrid: Box[][] = new Array(cellRows.length);
+	for (let ri = 0; ri < cellRows.length; ri++) {
+		const row = cellRows[ri]!;
+		const parsedRow: Box[] = new Array(row.length);
+		for (let ci = 0; ci < row.length; ci++) parsedRow[ci] = parseExpr(row[ci]!, ctx);
+		parsedGrid[ri] = parsedRow;
+	}
 	const grid = gridBox(
-		cellRows.map(row => row.map(cell => parseExpr(cell, ctx))),
+		parsedGrid,
 		col => (col % 2 === 0 ? "r" : "l"),
 		col => (col % 2 === 1 ? 1 : 3),
 	);
@@ -939,10 +953,12 @@ function parseExprInner(src: string, ctx: Ctx = ROOT_CTX): Box {
 			if (name === "left") {
 				const lr = readLeftRight(src, i);
 				if (lr) {
-					const segBoxes = lr.segments.map(segment => parseExpr(segment, inner()));
+					const segBoxes: Box[] = new Array(lr.segments.length);
+					for (let si = 0; si < lr.segments.length; si++) segBoxes[si] = parseExpr(lr.segments[si]!, inner());
 					let above = 0;
 					let below = 0;
-					for (const b of segBoxes) {
+					for (let bi = 0; bi < segBoxes.length; bi++) {
+						const b = segBoxes[bi]!;
 						above = Math.max(above, b.baseline);
 						below = Math.max(below, b.lines.length - 1 - b.baseline);
 					}
@@ -960,10 +976,10 @@ function parseExprInner(src: string, ctx: Ctx = ROOT_CTX): Box {
 						if (col) parts.push(col);
 					};
 					push(delimColumn(delimKey(lr.left), height, above));
-					segBoxes.forEach((segment, s) => {
-						parts.push(segment);
+					for (let s = 0; s < segBoxes.length; s++) {
+						parts.push(segBoxes[s]!);
 						if (s < lr.middles.length) push(delimColumn(delimKey(lr.middles[s]), height, above));
-					});
+					}
 					push(delimColumn(delimKey(lr.right), height, above));
 					boxes.push(paint(hconcat(parts)));
 					i = lr.end;
@@ -1259,10 +1275,12 @@ function splitLines(src: string): string[] {
  */
 export function latexToBlock(src: string): string[] {
 	if (typeof src !== "string" || src.trim() === "") return [];
-	const rows = splitLines(src.trim())
-		.map(line => line.trim())
-		.filter(line => line !== "")
-		.map(line => parseExpr(line));
+	const rawLines = splitLines(src.trim());
+	const rows: Box[] = [];
+	for (let ri = 0; ri < rawLines.length; ri++) {
+		const trimmed = rawLines[ri]!.trim();
+		if (trimmed !== "") rows.push(parseExpr(trimmed));
+	}
 	if (rows.length === 0) return [];
 	let lines = vconcat(rows).lines;
 	while (lines.length > 1 && lines[lines.length - 1].trim() === "") lines = lines.slice(0, -1);
