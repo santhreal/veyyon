@@ -73,11 +73,15 @@ function scoreToken(item: SettingItem, token: string): number | undefined {
 		scoreField(token, item.group, FIELD_PENALTY.group),
 		scoreField(token, item.description, FIELD_PENALTY.description),
 	];
-	for (const keyword of item.keywords ?? []) {
-		scores.push(scoreField(token, keyword, FIELD_PENALTY.keywords));
+	const keywords = item.keywords;
+	if (keywords) {
+		for (let ki = 0; ki < keywords.length; ki++) {
+			scores.push(scoreField(token, keywords[ki]!, FIELD_PENALTY.keywords));
+		}
 	}
 	let best: number | undefined;
-	for (const score of scores) {
+	for (let si = 0; si < scores.length; si++) {
+		const score = scores[si];
 		if (score !== undefined && (best === undefined || score < best)) best = score;
 	}
 	return best;
@@ -103,12 +107,13 @@ export function rankSettingItems(items: readonly SettingItem[], query: string): 
 	if (tokens.length === 0) return [];
 
 	const results: SettingSearchResult[] = [];
-	for (const item of items) {
+	for (let ii = 0; ii < items.length; ii++) {
+		const item = items[ii]!;
 		if (item.heading) continue;
 		let total = 0;
 		let matchedAll = true;
-		for (const token of tokens) {
-			const best = scoreToken(item, token);
+		for (let ti = 0; ti < tokens.length; ti++) {
+			const best = scoreToken(item, tokens[ti]!);
 			if (best === undefined) {
 				matchedAll = false;
 				break;
