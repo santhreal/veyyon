@@ -1,3 +1,4 @@
+import { fetchWithin } from "../core/bounded-fetch";
 import type { ApiErrorResponse, ApiTokenResponse, ExperimentMetaUpdate, HttpMethod } from "../wire";
 import { resolveRoute } from "./routes";
 
@@ -5,34 +6,6 @@ let cachedAuthToken = "";
 
 function reason(err: unknown): string {
 	return err instanceof Error ? err.message : String(err);
-}
-
-/**
- * How long the dashboard waits for the manager before it reports it as unreachable.
- *
- * Every request here was unbounded. A manager wedged on a locked SQLite file, or a laptop that slept
- * through a run, left the page waiting on a promise that never settled: no rows, no error, a spinner
- * that stayed. The poll behind it never fired again either, because it waits for the request it
- * started.
- */
-export const REQUEST_TIMEOUT_MS = 15_000;
-
-/**
- * One request, bounded, with the timeout named in the failure. A caller's own signal still cancels:
- * whichever fires first ends the request, and only the bound produces the timeout message.
- */
-export async function fetchWithin(url: string, init?: RequestInit, timeoutMs = REQUEST_TIMEOUT_MS): Promise<Response> {
-	const bound = AbortSignal.timeout(timeoutMs);
-	const signal = init?.signal ? AbortSignal.any([init.signal, bound]) : bound;
-	try {
-		return await fetch(url, { ...init, signal });
-	} catch (err) {
-		if (bound.aborted) {
-			const bounds = timeoutMs >= 1000 ? `${Math.round(timeoutMs / 1000)}s` : `${timeoutMs}ms`;
-			throw new Error(`the manager did not answer ${url} within ${bounds}`);
-		}
-		throw err;
-	}
 }
 
 /**

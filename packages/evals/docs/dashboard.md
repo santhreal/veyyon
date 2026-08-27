@@ -58,7 +58,8 @@ unauthenticated. The token is cached, and a 401 drops the cached copy and re-iss
 a manager that restarted minted a new token, and a second rejection is the manager's answer rather
 than a stale token.
 
-Every request goes through `fetchWithin`, which bounds it at 15s and reports a manager that did not
+Every request goes through `fetchWithin` in `src/core/bounded-fetch.ts`, which bounds it at 15s and
+reports a peer that did not
 answer by name. A page whose request never settles shows no rows and no error, and the poll behind it
 never fires again, because a poll cycle waits for the request it started. A caller's own signal still
 cancels; only the bound produces the timeout message. The SSE stream is exempt: it is long-lived by

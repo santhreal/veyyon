@@ -7,6 +7,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { trimTrailingSlashes } from "@veyyon/utils";
 import type { Server } from "bun";
+import { fetchWithin } from "../../../core/bounded-fetch";
 import { syncCommandOptions } from "../../../core/external-command";
 import { type Config, VMNET_HOST_IP } from "./config";
 
@@ -80,7 +81,13 @@ export function startVmnetGatewayForward(cfg: Config): VmnetGatewayForwarder | n
 				fetch(req) {
 					const target = new URL(req.url);
 					target.hostname = "127.0.0.1";
-					return fetch(target, { method: req.method, headers: req.headers, body: req.body, redirect: "manual" });
+					// An agent inside the container waits on this request; a gateway that stops
+					// answering would otherwise hold it until the trial's own deadline.
+					return fetchWithin(
+						target.toString(),
+						{ method: req.method, headers: req.headers, body: req.body, redirect: "manual" },
+						{ subject: "the auth gateway" },
+					);
 				},
 			});
 			process.stdout.write(`gateway forward: ${VMNET_HOST_IP}:${port} → 127.0.0.1:${port}\n`);
