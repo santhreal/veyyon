@@ -212,7 +212,7 @@
           const currentDisplayIndent = multipleRoots ? Math.max(0, indent - 1) : indent;
           const connectorPosition = Math.max(0, currentDisplayIndent - 1);
           const childGutters = connectorDisplayed
-            ? [...gutters, { position: connectorPosition, show: !isLast }]
+            ? gutters.concat([{ position: connectorPosition, show: !isLast }])
             : gutters;
 
           // Add children in reverse order for stack
