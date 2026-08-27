@@ -144,6 +144,25 @@ export interface EvalSuite {
 	provenance(context: SuiteContext): Promise<SuiteProvenance>;
 	scoreTrial(cell: TrialCell, artifacts: TrialArtifacts): Promise<TrialScore>;
 	preflight(context: SuiteContext): Promise<PreflightVerdict>;
+	/**
+	 * Write the suite's own report into a finished run's directory, reading whatever the
+	 * backend left there. Optional: a suite whose rows are read from `run.json` declares
+	 * none, and the run says so rather than writing an empty report.
+	 */
+	writeRunReport?(context: SuiteReportContext): Promise<void> | void;
+}
+
+/**
+ * What a suite renders a finished run from. The run directory holds the journal, the run
+ * record and every artifact a backend filed; the model, tasks and repeats are the plan's,
+ * so a report names them without re-deriving them from the rows.
+ */
+export interface SuiteReportContext {
+	readonly runDir: string;
+	/** Every model the run used, joined when it used more than one. */
+	readonly model: string;
+	readonly tasks: readonly string[];
+	readonly repeats: number;
 }
 
 /**

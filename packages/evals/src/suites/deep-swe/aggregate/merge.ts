@@ -18,10 +18,21 @@ export function jobNameOf(arm: string, task: string, repeat: number, repeats: nu
 	return repeats > 1 ? `${arm}__${task}__r${repeat}` : `${arm}__${task}`;
 }
 
-export function parseJobName(jobName: string): { arm: string; task: string; repeat: number } {
-	const sep = jobName.indexOf("__");
-	const arm = jobName.slice(0, sep);
-	let task = jobName.slice(sep + 2);
+/**
+ * Split a job name into the cell it names.
+ *
+ * Two shapes are filed. The deep-swe executor writes `<arm>__<task>[__r<n>]` under a
+ * timestamped directory. The modular engine writes `<run>__<variant>__<task>__r<n>`, which
+ * a three-part read decoded as arm `<run>` and task `<variant>__<task>`: every row of every
+ * modular run carried a task name no task list holds. The run id resolves it, because only
+ * the modular shape starts with it.
+ */
+export function parseJobName(jobName: string, runId?: string): { arm: string; task: string; repeat: number } {
+	const prefix = runId ? `${runId}__` : "";
+	const rest = prefix && jobName.startsWith(prefix) ? jobName.slice(prefix.length) : jobName;
+	const sep = rest.indexOf("__");
+	const arm = rest.slice(0, sep);
+	let task = rest.slice(sep + 2);
 	let repeat = 0;
 	const m = task.match(/__r(\d+)$/);
 	if (m && m.index !== undefined) {

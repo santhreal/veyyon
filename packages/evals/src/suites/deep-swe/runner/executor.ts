@@ -131,13 +131,26 @@ interface PriorRunResults {
 }
 
 /**
+ * What a run knows about itself that its artifacts do not carry: the model it ran, the task
+ * order it planned, and how many repeats each cell had. A directory that has been aggregated
+ * before states these in its own `results.json` and that record wins; these are the values a
+ * first aggregation would otherwise report as "unknown".
+ */
+export interface ReaggregateDefaults {
+	readonly model?: string;
+	readonly tasks?: readonly string[];
+	readonly repeats?: number;
+}
+
+/**
  * Recompute a finished run's aggregation and rewrite its report. Returns the cross-system
  * comparison when the run recorded one, so a caller states the verdict; a library function never
  * sets the host process's exit code.
  */
-export function reaggregate(runDir: string): SystemComparison | null {
+export function reaggregate(runDir: string, defaults?: ReaggregateDefaults): SystemComparison | null {
 	const configDir = path.join(runDir, "configs");
 	const jobsRoot = path.join(runDir, "jobs");
+	const runId = path.basename(runDir);
 	let prior: PriorRunResults | null = null;
 	try {
 		const raw = JSON.parse(fs.readFileSync(path.join(runDir, "results.json"), "utf8"));
@@ -157,7 +170,7 @@ export function reaggregate(runDir: string): SystemComparison | null {
 	if (fs.existsSync(configDir)) {
 		for (const file of fs.readdirSync(configDir).filter(f => f.endsWith(".yaml"))) {
 			const jobName = file.slice(0, -".yaml".length);
-			const { arm, task, repeat } = parseJobName(jobName);
+			const { arm, task, repeat } = parseJobName(jobName, runId);
 			try {
 				const refreshed = parseTrialResult(arm, task, repeat, path.join(jobsRoot, jobName));
 				const old = priorByCell.get(`${arm}\u0000${task}\u0000${repeat}`);
@@ -187,7 +200,7 @@ export function reaggregate(runDir: string): SystemComparison | null {
 	results.sort((a, b) => a.arm.localeCompare(b.arm) || a.task.localeCompare(b.task) || a.repeat - b.repeat);
 	const arms = [...new Set(results.map(r => r.arm))];
 	const tasks = [...new Set(results.map(r => r.task))];
-	let model = "unknown";
+	let model = defaults?.model ?? "unknown";
 	let limit: number | null = null;
 	let totalTasksAvailable: number | null = null;
 	let sampling: unknown = null;
@@ -205,10 +218,17 @@ export function reaggregate(runDir: string): SystemComparison | null {
 		taskSet = prior.taskSet ?? undefined;
 		incomplete = prior.incomplete === true;
 	}
-	const repeats = results.length ? Math.max(...results.map(r => r.repeat)) + 1 : 1;
+	// A modular job name carries a 1-based repeat, a legacy one a 0-based index, so the
+	// derived count is right for the old shape and one too many for the new. The plan's own
+	// count settles it whenever the caller passed it.
+	const repeats = defaults?.repeats ?? (results.length ? Math.max(...results.map(r => r.repeat)) + 1 : 1);
 	const comparisonRun = prior?.comparison?.run ?? prior?.comparison ?? null;
 	const comparisonMode = Array.isArray(comparisonRun?.systems);
-	const orderedTasks: string[] = Array.isArray(prior?.tasks) ? prior.tasks : tasks;
+	const orderedTasks: string[] = Array.isArray(prior?.tasks)
+		? prior.tasks
+		: defaults?.tasks
+			? [...defaults.tasks]
+			: tasks;
 	let systemComparison: SystemComparison | null = null;
 	let comparisonRejection: string | null = null;
 	if (comparisonMode) {

@@ -7,6 +7,7 @@ import type {
 	PreflightVerdict,
 	SuiteContext,
 	SuiteProvenance,
+	SuiteReportContext,
 	TaskDescriptor,
 	TrialArtifacts,
 	TrialCell,
@@ -16,6 +17,7 @@ import type {
 import { comparisonTaskListPath, resolvePackagePath, taskCorpusDir, taskListsDir } from "../../paths";
 import { parseTaskListProvenance } from "./aggregate";
 import { resolveBinaryPin } from "./binary-pin";
+import { reaggregate } from "./runner/executor";
 import { checkBinaryBuildNeeded } from "./runner/preflight";
 import { parseTrialResult } from "./runner/trial-result";
 import { budgetedTrialTimeoutSec, parseTaskTimeBudget } from "./trial-timeout";
@@ -299,6 +301,19 @@ export class DeepSweSuite implements EvalSuite {
 		}
 
 		return { ok: true };
+	}
+
+	/**
+	 * Re-derive every row from the trial artifacts and write `results.json` and `report.md`
+	 * beside them. The artifacts are the source: a scoring fix that landed after a trial ran
+	 * reaches it here, and a run that was resumed reports one set of rows rather than two.
+	 */
+	writeRunReport(context: SuiteReportContext): void {
+		reaggregate(context.runDir, {
+			model: context.model,
+			tasks: context.tasks,
+			repeats: context.repeats,
+		});
 	}
 }
 
