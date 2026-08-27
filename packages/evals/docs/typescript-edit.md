@@ -48,6 +48,12 @@ The corpus is the archive `datasets/typescript-edit/fixtures.tar.gz`.
 extracts into `.cache/`. A missing or unreadable archive fails closed; a caller that wants the soft
 answer passes `allowMissingArchive: true` and receives `{ ok: false }` explicitly.
 
+A refusal states its kind in a field, one of `FIXTURE_ARCHIVE_FAILURES`: `not-a-file`, `empty`,
+`no-files`, `unreadable`. The hard path throws `FixtureArchiveError` carrying that kind, the soft
+path returns it beside the message, and both spell the message identically. The suite preflight maps
+the kind to a missing requirement (`no-files` is `fixture-archive-contents`, the rest are
+`fixture-archive`) and reports the reader's message unchanged.
+
 `src/suites/typescript-edit/provenance.ts` reports `{ suite, version, sha }` for a run. The sha is
 the archive digest, so two runs claiming the same corpus can be compared, and a run whose corpus
 could not be read reports `sha: null` rather than a digest of nothing.

@@ -14,7 +14,7 @@ import type {
 	TrialScore,
 } from "../../core/types";
 
-import { ensureFixturesExtracted, readFixturesArchive } from "./extract";
+import { ensureFixturesExtracted, type FixtureArchiveFailure, readFixturesArchive } from "./extract";
 import { TYPESCRIPT_EDIT_SUITE_NAME, typescriptEditFixturesArchive } from "./paths";
 import { computeTypescriptEditProvenance, TYPESCRIPT_EDIT_VERSION } from "./provenance";
 import { type EditTask, loadTasksFromDir } from "./tasks";
@@ -29,6 +29,14 @@ export interface TypescriptEditSuiteOptions {
 /**
  * EvalSuite implementation for the TypeScript edit benchmark.
  */
+/** The requirement a refused archive leaves unmet; only an archive with no entries is a contents problem. */
+const ARCHIVE_REQUIREMENT: Record<FixtureArchiveFailure, string> = {
+	"not-a-file": "fixture-archive",
+	empty: "fixture-archive",
+	"no-files": "fixture-archive-contents",
+	unreadable: "fixture-archive",
+};
+
 export class TypescriptEditSuite implements EvalSuite {
 	readonly name = TYPESCRIPT_EDIT_SUITE_NAME;
 	readonly version: string;
@@ -181,39 +189,16 @@ export class TypescriptEditSuite implements EvalSuite {
 			}
 		}
 
-		const archivePath = this.#resolveArchivePath(context);
-		try {
-			await readFixturesArchive({ archivePath });
-			return { ok: true };
-		} catch (error) {
-			const err = errorMessage(error);
-			if (err.includes("not a file")) {
-				return {
-					ok: false,
-					reason: `TypeScript-edit fixture archive at ${archivePath} is not a file. Ensure datasets/typescript-edit/fixtures.tar.gz exists.`,
-					missingRequirements: ["fixture-archive"],
-				};
-			}
-			if (err.includes("empty (0 bytes)")) {
-				return {
-					ok: false,
-					reason: `TypeScript-edit fixture archive at ${archivePath} is empty (0 bytes). Re-generate or restore datasets/typescript-edit/fixtures.tar.gz.`,
-					missingRequirements: ["fixture-archive"],
-				};
-			}
-			if (err.includes("contains no files")) {
-				return {
-					ok: false,
-					reason: `TypeScript-edit fixture archive at ${archivePath} contains no files.`,
-					missingRequirements: ["fixture-archive-contents"],
-				};
-			}
-			return {
-				ok: false,
-				reason: `TypeScript-edit fixture archive is missing or unreadable at ${archivePath} (${err}). Ensure datasets/typescript-edit/fixtures.tar.gz exists.`,
-				missingRequirements: ["fixture-archive"],
-			};
-		}
+		const archive = await readFixturesArchive({
+			archivePath: this.#resolveArchivePath(context),
+			allowMissingArchive: true,
+		});
+		if (archive.ok) return { ok: true };
+		return {
+			ok: false,
+			reason: archive.error,
+			missingRequirements: [ARCHIVE_REQUIREMENT[archive.failure]],
+		};
 	}
 
 	async scoreTrial(cell: TrialCell, artifacts: TrialArtifacts): Promise<TrialScore> {

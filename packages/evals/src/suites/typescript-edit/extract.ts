@@ -18,6 +18,29 @@ export interface FixturesArchiveMissing {
 	readonly ok: false;
 	readonly path: string;
 	readonly error: string;
+	readonly failure: FixtureArchiveFailure;
+}
+
+/** Every way the fixtures archive can be unusable, in the order a read encounters them. */
+export const FIXTURE_ARCHIVE_FAILURES = ["not-a-file", "empty", "no-files", "unreadable"] as const;
+
+export type FixtureArchiveFailure = (typeof FIXTURE_ARCHIVE_FAILURES)[number];
+
+/**
+ * Refusal from the one reader of the fixtures archive. It carries the classification, so a caller
+ * mapping a refusal to its own vocabulary reads a field instead of matching substrings of a message
+ * this module wrote.
+ */
+export class FixtureArchiveError extends Error {
+	readonly failure: FixtureArchiveFailure;
+	readonly archivePath: string;
+
+	constructor(failure: FixtureArchiveFailure, archivePath: string, message: string) {
+		super(message);
+		this.name = "FixtureArchiveError";
+		this.failure = failure;
+		this.archivePath = archivePath;
+	}
 }
 
 export type FixturesArchiveResult = FixturesArchiveInfo | FixturesArchiveMissing;
@@ -50,12 +73,16 @@ export async function readFixturesArchive(options: ReadFixturesArchiveOptions = 
 	try {
 		const stat = await fs.stat(archivePath);
 		if (!stat.isFile()) {
-			throw new Error(
+			throw new FixtureArchiveError(
+				"not-a-file",
+				archivePath,
 				`TypeScript edit fixture archive at ${archivePath} is not a file. Ensure datasets/typescript-edit/fixtures.tar.gz exists.`,
 			);
 		}
 		if (stat.size === 0) {
-			throw new Error(
+			throw new FixtureArchiveError(
+				"empty",
+				archivePath,
 				`TypeScript edit fixture archive at ${archivePath} is empty (0 bytes). Re-generate or restore datasets/typescript-edit/fixtures.tar.gz.`,
 			);
 		}
@@ -66,7 +93,11 @@ export async function readFixturesArchive(options: ReadFixturesArchiveOptions = 
 		const archive = new Bun.Archive(buffer.buffer);
 		const files = await archive.files();
 		if (files.size === 0) {
-			throw new Error(`TypeScript edit fixture archive at ${archivePath} contains no files.`);
+			throw new FixtureArchiveError(
+				"no-files",
+				archivePath,
+				`TypeScript edit fixture archive at ${archivePath} contains no files.`,
+			);
 		}
 
 		return {
@@ -79,18 +110,18 @@ export async function readFixturesArchive(options: ReadFixturesArchiveOptions = 
 			fileCount: files.size,
 		};
 	} catch (error) {
-		const err = errorMessage(error);
+		const refusal =
+			error instanceof FixtureArchiveError
+				? error
+				: new FixtureArchiveError(
+						"unreadable",
+						archivePath,
+						`TypeScript edit fixtures archive not found or unreadable at "${archivePath}": ${errorMessage(error)}`,
+					);
 		if (options.allowMissingArchive === true) {
-			return {
-				ok: false,
-				path: archivePath,
-				error: err,
-			};
+			return { ok: false, path: archivePath, error: refusal.message, failure: refusal.failure };
 		}
-		if (err.includes("fixture archive at") || err.includes("fixtures archive not found")) {
-			throw error;
-		}
-		throw new Error(`TypeScript edit fixtures archive not found or unreadable at "${archivePath}": ${err}`);
+		throw refusal;
 	}
 }
 

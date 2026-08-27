@@ -116,7 +116,7 @@ describe("TypeScript Edit Benchmark — EvalSuite & ExecutionBackend contracts",
 			});
 			const verdict = await suite.preflight();
 			expect(verdict.ok).toBe(false);
-			expect(verdict.reason).toContain("fixture archive is missing or unreadable");
+			expect(verdict.reason).toContain("fixtures archive not found or unreadable");
 			expect(verdict.missingRequirements).toContain("fixture-archive");
 		});
 
