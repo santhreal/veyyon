@@ -1461,7 +1461,14 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 
 				// Show pending indicator for remaining files
 				const argEdits = (this.#args as { edits?: Array<{ path?: unknown }> } | undefined)?.edits;
-				const totalFiles = argEdits ? new Set(argEdits.map(e => e?.path).filter(Boolean)).size : 0;
+				const seenPaths = new Set<string>();
+				if (argEdits) {
+					for (let ei = 0; ei < argEdits.length; ei++) {
+						const p = argEdits[ei]?.path;
+						if (typeof p === "string" && p.length > 0) seenPaths.add(p);
+					}
+				}
+				const totalFiles = seenPaths.size;
 				const remaining = Math.max(0, totalFiles - perFileResults.length);
 				if (remaining > 0 && this.#isPartial) {
 					const pendingSpacer = new Spacer(1);
