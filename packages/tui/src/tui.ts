@@ -1625,7 +1625,8 @@ export class TUI extends Container {
 			// cursor markers, record their positions.
 			frame.length = stableRows;
 			this.#pruneFrameCursorMarkers(stableRows);
-			for (const segment of segments) {
+			for (let si = 0; si < segments.length; si++) {
+				const segment = segments[si]!;
 				const lines = segment.lines;
 				const from = segment.start >= stableRows ? 0 : stableRows - segment.start;
 				for (let i = from; i < lines.length; i++) this.#ingestFrameRow(lines[i]!);
@@ -2619,7 +2620,7 @@ export class TUI extends Container {
 		// native surface commits them, so styles and hyperlinks cannot bleed between
 		// lines once they are in the terminal's own history.
 		let buffer = "";
-		for (const row of rows) buffer += `${row}${LINE_TERMINATOR}\r\n`;
+		for (let ri = 0; ri < rows.length; ri++) buffer += `${rows[ri]!}${LINE_TERMINATOR}\r\n`;
 		this.terminal.write(buffer);
 		return rows.length;
 	}
@@ -2806,8 +2807,8 @@ export class TUI extends Container {
 			this.requestComponentRender(component);
 			return;
 		}
-		for (const line of nextLines) {
-			if (line.includes(CURSOR_MARKER)) {
+		for (let li = 0; li < nextLines.length; li++) {
+			if (nextLines[li]!.includes(CURSOR_MARKER)) {
 				this.requestComponentRender(component);
 				return;
 			}
@@ -3565,8 +3566,9 @@ export class TUI extends Container {
 	 * native scrollback.
 	 */
 	#compositeOverlaysIntoWindow(window: string[], termWidth: number, termHeight: number): string[] {
-		const result = [...window];
-		for (const entry of this.overlayStack) {
+		const result = window.slice();
+		for (let oi = 0; oi < this.overlayStack.length; oi++) {
+			const entry = this.overlayStack[oi]!;
 			if (!this.#isOverlayVisible(entry)) continue;
 			const { component, options } = entry;
 			// Get layout with height=0 first to determine width and maxHeight
@@ -3702,8 +3704,8 @@ export class TUI extends Container {
 
 		let totalBytes = 0;
 		let exceedsThreshold = false;
-		for (const line of lines) {
-			totalBytes += Buffer.byteLength(line, "utf8") + 8;
+		for (let li = 0; li < lines.length; li++) {
+			totalBytes += Buffer.byteLength(lines[li]!, "utf8") + 8;
 			if (totalBytes > TUI.#CONPTY_FRAME_TRUNCATE_THRESHOLD_BYTES) {
 				exceedsThreshold = true;
 				break;
@@ -4074,8 +4076,8 @@ export class TUI extends Container {
 
 		// 3. Window and commit math (lengths only; content prepared below).
 		let hasVisibleOverlay = false;
-		for (const entry of this.overlayStack) {
-			if (this.#isOverlayVisible(entry)) {
+		for (let oi = 0; oi < this.overlayStack.length; oi++) {
+			if (this.#isOverlayVisible(this.overlayStack[oi]!)) {
 				hasVisibleOverlay = true;
 				break;
 			}
@@ -4298,7 +4300,8 @@ export class TUI extends Container {
 		// transmit after a destructive clear (ED2/ED3) but before row replay, so
 		// build the buffer here and let the emitter decide where it lands.
 		let imageTransmitBuffer = "";
-		for (const seq of this.#imageBudget.takeTransmits()) imageTransmitBuffer += seq;
+		const transmits = this.#imageBudget.takeTransmits();
+		for (let ti = 0; ti < transmits.length; ti++) imageTransmitBuffer += transmits[ti]!;
 		// Purge graphics for images the budget demoted to text. Kitty keeps
 		// images in a store that text clears don't touch; demoted rows still
 		// visible re-render as text and the window diff repaints them.
@@ -4306,7 +4309,8 @@ export class TUI extends Container {
 		// their rows are not rewritten.
 		let purgeSequence = "";
 		if (TERMINAL.imageProtocol === ImageProtocol.Kitty) {
-			for (const id of this.#imageBudget.takePurgeIds()) purgeSequence += encodeKittyDeleteImage(id);
+			const purgeIds = this.#imageBudget.takePurgeIds();
+			for (let pi = 0; pi < purgeIds.length; pi++) purgeSequence += encodeKittyDeleteImage(purgeIds[pi]!);
 		} else {
 			this.#imageBudget.takePurgeIds();
 		}
@@ -4465,7 +4469,8 @@ export class TUI extends Container {
 	 * orphaned copy above the repainted block.
 	 */
 	#publishCommittedRows(): void {
-		for (const segment of this.#frameSegments) {
+		for (let si = 0; si < this.#frameSegments.length; si++) {
+			const segment = this.#frameSegments[si]!;
 			setNativeScrollbackCommittedRows(
 				segment.component,
 				Math.min(segment.rowCount, Math.max(0, this.#committedRows - segment.start)),
@@ -5118,7 +5123,7 @@ export class TUI extends Container {
 		const imageTransmits = this.#imageBudget.takeTransmits();
 		if (imageTransmits.length > 0) {
 			let transmitBuffer = "";
-			for (const seq of imageTransmits) transmitBuffer += seq;
+			for (let si = 0; si < imageTransmits.length; si++) transmitBuffer += imageTransmits[si]!;
 			this.terminal.write(transmitBuffer);
 		}
 		// Skip an identical repaint (the modal is mostly static between
