@@ -360,10 +360,12 @@ export class BrowserTool implements AgentTool<typeof browserSchema, BrowserToolD
 		if (!content.length) {
 			content.push({ type: "text", text: `Ran code on tab ${JSON.stringify(name)}` });
 		}
-		const textOnly = content
-			.filter((c): c is { type: "text"; text: string } => c.type === "text")
-			.map(c => c.text)
-			.join("\n");
+		const textParts: string[] = [];
+		for (let ci = 0; ci < content.length; ci++) {
+			const c = content[ci]!;
+			if (c.type === "text") textParts.push(c.text);
+		}
+		const textOnly = textParts.join("\n");
 		// Final defense at the tool-result boundary: a single run can display
 		// tens of KB (large JSON returns, dumped observations). Cap the combined
 		// text inline; the full text stays recoverable via the artifact footer
