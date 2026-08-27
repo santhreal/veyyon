@@ -17,6 +17,8 @@
 - `match.ts` replaces `content.slice(0, idx).split("\n").length` with `countNewlinesTo` (charCodeAt scan of `text[0..end)`) at three call sites in `findMatch` and `resolveStartLine`, eliminating slice and split allocations per match.
 - `git-file-diff.ts` replaces `content.split("\n").length` with a `charCodeAt` newline count in the truncation threshold check.
 - `acp-agent.ts` consolidates two `planContent.split("\n")` calls into one for the plan preview and line count check.
+- `buildSkillPromptMessage` in `skills.ts` replaces `body.split("\n").length` with a `charCodeAt` newline count.
+
 
 
 
