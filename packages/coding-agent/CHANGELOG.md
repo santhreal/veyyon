@@ -117,6 +117,15 @@
 - `eval-execution.ts` replaces `.map().join()` with single-pass string build in header and output rendering.
 - `read-tool-group.ts` replaces `for…of`, `.filter()`, `.every()`, and `.map().filter()` with index-based loops across `displayTargetsForEntries`, `buildSummaryRows`, `statusForTargets`, `correctedFromForTargets`, `conflictCountForTargets`, `previewEntriesForRow`, and `splitReadDisplayPathSpecs`.
 - `modal-shell.ts` replaces `.map()` closures with pre-allocated arrays in `layoutShortcutRows`, `renderModalShortcuts`, and `resolveShortcutLabels`, and `for…of` with index-based loops in `fitTipLine` and modal card body/shortcut/frame rendering.
+- `tui.ts` replaces `for…of` iterator allocations with index-based loops in per-frame render paths: frame segment ingestion, transcript replay, cursor marker check, overlay compositing, ConPTY truncate check, overlay visibility check, image transmit/purge buffers, committed rows publish, and modal image transmit.
+- `markdown.ts` replaces `for…of` with index-based loops in `renderContentLines` and `#applyQuoteBorder`.
+- `render-utils.ts` replaces `.map()`, `for…of`, and spread+map with index-based loops in `renderCollapsedOutputLines`, `getDiffStats`, `parseDiffSegments`, `truncateDiffByHunk`, `dedupeParseErrors`, `formatParseErrors`, `appendParseErrorsBulletList`, and `createCachedComponent`.
+- `assistant-message.ts` replaces `for…of` and `Array.from().flatMap().map()` with index-based loops in `getSpeed`, `getTranscriptBlockSettledRows`, and `#renderToolImages`.
+- `agent-dashboard.ts` replaces `.reduce()` closure with for loop in `widest` roster column measurement.
+- `status-line/component.ts` replaces `.reduce()` closure with for loop in `#backgroundJobBadgeCount`.
+- `modal-shell.ts` replaces `.reduce()` closure with for loop in `groupWidth`.
+- `agent-transcript-viewer.ts` replaces `.find()` closure with for loop in `#statsLine`.
+- `todo-board.ts` replaces `.filter()`, `.some()`, `.findIndex()` closures with for loops in `collapsedTasks`, `renderTodoBoardLines`, `activeTodoPhaseIndex`, and `todoBoardIsLive`.
 ### Added
 
 - `/advisor` reports advisor status, opens the `WATCHDOG.yml` roster editor and applies a save to the running session, starts or stops the advisor for the session, and copies the advisor's own transcript; the subsystem shipped complete but no command, key or menu row reached it.
