@@ -139,11 +139,13 @@ export class UiHelpers {
 	/** Extract text content from a user message */
 	getUserMessageText(message: Message): string {
 		if (message.role !== "user") return "";
-		const textBlocks =
-			typeof message.content === "string"
-				? [{ type: "text", text: message.content }]
-				: message.content.filter((content): content is TextBlock => content.type === "text");
-		return textBlocks.map(block => block.text).join("");
+		if (typeof message.content === "string") return message.content;
+		let result = "";
+		for (let i = 0; i < message.content.length; i++) {
+			const block = message.content[i]!;
+			if (block.type === "text") result += block.text;
+		}
+		return result;
 	}
 
 	/**
