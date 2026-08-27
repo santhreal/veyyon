@@ -98,7 +98,17 @@ export function buildSidebarEntries(
 	providers: readonly AccountProviderChoice[],
 ): AccountSidebarEntry[] {
 	const entries = new Map<string, AccountSidebarEntry>();
-	for (const group of inventory.providers) {
+	for (let gi = 0; gi < inventory.providers.length; gi++) {
+		const group = inventory.providers[gi]!;
+		let hasFailure = group.disabledCause !== undefined;
+		if (!hasFailure) {
+			for (let ri = 0; ri < group.rows.length; ri++) {
+				if (group.rows[ri]!.health === "failed") {
+					hasFailure = true;
+					break;
+				}
+			}
+		}
 		entries.set(group.provider, {
 			providerId: group.provider,
 			label: sanitizeAccountText(group.label),
@@ -107,10 +117,11 @@ export function buildSidebarEntries(
 			// A torn-down login counts as needing attention even when a sibling still works: the
 			// provider is the only place that fact can surface, and a provider whose ONLY login died
 			// has no row left to carry it.
-			hasFailure: group.rows.some(row => row.health === "failed") || group.disabledCause !== undefined,
+			hasFailure,
 		});
 	}
-	for (const provider of providers) {
+	for (let pi = 0; pi < providers.length; pi++) {
+		const provider = providers[pi]!;
 		if (entries.has(provider.id)) continue;
 		entries.set(provider.id, {
 			providerId: provider.id,
@@ -121,8 +132,15 @@ export function buildSidebarEntries(
 		});
 	}
 	const all = Array.from(entries.values());
-	const populated = all.filter(entry => entry.accountCount > 0).sort((a, b) => a.label.localeCompare(b.label));
-	const empty = all.filter(entry => entry.accountCount === 0).sort((a, b) => a.label.localeCompare(b.label));
+	const populated: AccountSidebarEntry[] = [];
+	const empty: AccountSidebarEntry[] = [];
+	for (let ei = 0; ei < all.length; ei++) {
+		const entry = all[ei]!;
+		if (entry.accountCount > 0) populated.push(entry);
+		else empty.push(entry);
+	}
+	populated.sort((a, b) => a.label.localeCompare(b.label));
+	empty.sort((a, b) => a.label.localeCompare(b.label));
 	return [...populated, ...empty];
 }
 
@@ -151,7 +169,10 @@ export function providerDisabledNote(entry: { disabledCause?: string; rows: read
 export function providerHeaderLine(label: string, rows: readonly AccountRow[]): string {
 	const clean = sanitizeAccountText(label);
 	if (rows.length === 0) return `${clean} · no accounts yet`;
-	const unhealthy = rows.filter(row => row.health === "failed").length;
+	let unhealthy = 0;
+	for (let ri = 0; ri < rows.length; ri++) {
+		if (rows[ri]!.health === "failed") unhealthy++;
+	}
 	const counted = `${clean} · ${rows.length} ${rows.length === 1 ? "account" : "accounts"}`;
 	return unhealthy === 0 ? counted : `${counted} · ${unhealthy} ${unhealthy === 1 ? "needs" : "need"} attention`;
 }
