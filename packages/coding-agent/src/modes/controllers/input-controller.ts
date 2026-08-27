@@ -888,9 +888,7 @@ export class InputController {
 					this.ctx.editor.setText(text);
 					if (images && images.length > 0) {
 						this.ctx.editor.pendingImages = [...images];
-						this.ctx.editor.pendingImageLinks = inputImageLinks
-							? [...inputImageLinks]
-							: images.map(() => undefined);
+						this.ctx.editor.pendingImageLinks = inputImageLinks ? [...inputImageLinks] : new Array(images.length);
 						this.ctx.editor.imageLinks = this.ctx.editor.pendingImageLinks;
 					}
 					this.ctx.showError(errorMessage(error));
@@ -988,9 +986,7 @@ export class InputController {
 					this.ctx.editor.setText(text);
 					if (images && images.length > 0) {
 						this.ctx.editor.pendingImages = [...images];
-						this.ctx.editor.pendingImageLinks = inputImageLinks
-							? [...inputImageLinks]
-							: images.map(() => undefined);
+						this.ctx.editor.pendingImageLinks = inputImageLinks ? [...inputImageLinks] : new Array(images.length);
 						this.ctx.editor.imageLinks = this.ctx.editor.pendingImageLinks;
 					}
 					this.ctx.showError(errorMessage(error));
@@ -1033,7 +1029,7 @@ export class InputController {
 			this.ctx.editor.setText(text);
 			if (images && images.length > 0) {
 				this.ctx.editor.pendingImages = [...images];
-				this.ctx.editor.pendingImageLinks = imageLinks ? [...imageLinks] : images.map(() => undefined);
+				this.ctx.editor.pendingImageLinks = imageLinks ? [...imageLinks] : new Array(images.length);
 				this.ctx.editor.imageLinks = this.ctx.editor.pendingImageLinks;
 			}
 			this.ctx.showError(errorMessage(error));
@@ -1179,9 +1175,7 @@ export class InputController {
 			this.ctx.editor.setText(text);
 			if (draftImages && draftImages.length > 0) {
 				this.ctx.editor.pendingImages = [...draftImages];
-				this.ctx.editor.pendingImageLinks = draftImageLinks
-					? [...draftImageLinks]
-					: draftImages.map(() => undefined);
+				this.ctx.editor.pendingImageLinks = draftImageLinks ? [...draftImageLinks] : new Array(draftImages.length);
 				this.ctx.editor.imageLinks = this.ctx.editor.pendingImageLinks;
 			}
 		};
@@ -1248,11 +1242,7 @@ export class InputController {
 		const messages = splitMessages.length > 0 ? splitMessages : [""];
 		const originalDraft = this.ctx.editor.getText();
 		const images = options.images?.length ? [...options.images] : undefined;
-		const imageLinks = options.imageLinks
-			? [...options.imageLinks]
-			: images
-				? images.map(() => undefined)
-				: undefined;
+		const imageLinks = options.imageLinks ? [...options.imageLinks] : images ? new Array(images.length) : undefined;
 		this.ctx.editor.clearDraft(options.historyText);
 
 		if (this.ctx.session.isCompacting) {
@@ -1311,7 +1301,7 @@ export class InputController {
 				this.ctx.editor.setText(originalDraft);
 				if (images) {
 					this.ctx.editor.pendingImages = images;
-					this.ctx.editor.pendingImageLinks = imageLinks ?? images.map(() => undefined);
+					this.ctx.editor.pendingImageLinks = imageLinks ?? new Array(images.length);
 					this.ctx.editor.imageLinks = this.ctx.editor.pendingImageLinks;
 				}
 			} else {
@@ -1397,7 +1387,7 @@ export class InputController {
 			this.ctx.editor.setText(text);
 			if (images && images.length > 0) {
 				this.ctx.editor.pendingImages = [...images];
-				this.ctx.editor.pendingImageLinks = imageLinks ? [...imageLinks] : images.map(() => undefined);
+				this.ctx.editor.pendingImageLinks = imageLinks ? [...imageLinks] : new Array(images.length);
 				this.ctx.editor.imageLinks = this.ctx.editor.pendingImageLinks;
 			}
 			this.ctx.showError(errorMessage(error));
@@ -1504,7 +1494,7 @@ export class InputController {
 		// renumbered `[Image #N, WxH]` markers).
 		if (queuedImages.length > 0) {
 			for (let ii = 0; ii < queuedImages.length; ii++) this.ctx.editor.pendingImages.push(queuedImages[ii]!);
-			const qi = queuedImages.map(() => undefined);
+			const qi = new Array(queuedImages.length);
 			for (let ii = 0; ii < qi.length; ii++) this.ctx.editor.pendingImageLinks.push(qi[ii]!);
 			this.ctx.editor.imageLinks = this.ctx.editor.pendingImageLinks;
 		}
