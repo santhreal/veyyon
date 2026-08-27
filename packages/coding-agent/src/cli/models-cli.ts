@@ -313,7 +313,7 @@ export async function runModelsListing(options: RunModelsListingOptions): Promis
 				configuredPaths: additionalExtensionPaths,
 			})
 		: await discoverAndLoadExtensions(
-				[...additionalExtensionPaths, ...settingsExtensions],
+				additionalExtensionPaths.concat(settingsExtensions),
 				cwd,
 				eventBus,
 				disabledExtensionIds,

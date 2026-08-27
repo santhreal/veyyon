@@ -145,7 +145,7 @@ export function parseArgs(inputArgs: string[], extensionFlags?: Map<string, { ty
 	// into the array, and callers reuse the same argv (the post-extension
 	// reparse in `runRootCommand` parses it a second time). Mutating the input
 	// would corrupt that later parse, so never touch the caller's array.
-	const args = [...inputArgs];
+	const args = inputArgs.slice();
 	const result: Args = {
 		messages: [],
 		fileArgs: [],
@@ -332,7 +332,7 @@ export function parseArgs(inputArgs: string[], extensionFlags?: Map<string, { ty
  * offered, which degrades to the previous behaviour rather than to a confident wrong answer.
  */
 function knownFlagNames(): string[] {
-	return [...new Set([...STRING_VALUE_FLAGS, ...OPTIONAL_VALUE_FLAGS, ...VALUELESS_FLAGS])];
+	return Array.from(new Set(STRING_VALUE_FLAGS.concat(OPTIONAL_VALUE_FLAGS, VALUELESS_FLAGS)));
 }
 
 /**

@@ -112,7 +112,7 @@ export function createLogExperimentTool(
 						ctx.cwd,
 						pendingRun.preRunDirtyPaths,
 					);
-					allModified = [...modifiedTracked, ...modifiedUntracked];
+					allModified = modifiedTracked.concat(modifiedUntracked);
 				}
 			} catch (err) {
 				// Refusing to log is the right answer: every field this run would record -- modified paths,

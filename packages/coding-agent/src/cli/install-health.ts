@@ -222,7 +222,7 @@ export async function runInstallHealthChecks(deps: InstallHealthDeps = {}): Prom
 			message: `No completion files found. Re-run the installer to write them, or use \`${APP_NAME} completions\`.`,
 		});
 	} else {
-		const shells = [...new Set(present.map(file => file.shell))].sort();
+		const shells = Array.from(new Set(present.map(file => file.shell))).sort();
 		checks.push({
 			name: "Shell completions",
 			status: "ok",

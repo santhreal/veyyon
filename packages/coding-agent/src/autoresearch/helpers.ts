@@ -174,7 +174,7 @@ export function pathMatchesSpec(pathValue: string, specValue: string): boolean {
  * whitespace-only entry is a value.
  */
 export function dedupeStrings(values: readonly string[]): string[] {
-	return [...new Set(nonEmptyTrimmed(values))];
+	return Array.from(new Set(nonEmptyTrimmed(values)));
 }
 
 export function ensureNumericMetricMap(value: NumericMetricMap | undefined): NumericMetricMap {

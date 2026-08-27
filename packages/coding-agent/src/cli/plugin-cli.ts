@@ -626,7 +626,7 @@ async function handleFeatures(
 			}
 		}
 
-		await manager.setEnabledFeatures(pluginName, [...currentFeatures]);
+		await manager.setEnabledFeatures(pluginName, Array.from(currentFeatures));
 		console.log(chalk.green(`${theme.status.success} Updated features for ${pluginName}`));
 	}
 

@@ -90,7 +90,7 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 		const activeTools = api.getActiveTools();
 		const experimentTools = new Set(EXPERIMENT_TOOL_NAMES);
 		const nextActiveTools = runtime.autoresearchMode
-			? [...new Set([...activeTools, ...EXPERIMENT_TOOL_NAMES])]
+			? Array.from(new Set(activeTools.concat(EXPERIMENT_TOOL_NAMES)))
 			: activeTools.filter(name => !experimentTools.has(name));
 		const toolsChanged =
 			nextActiveTools.length !== activeTools.length ||
@@ -199,7 +199,7 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 				runtime.goal = refreshed.goal ?? goalArg;
 				setMode(ctx, true, runtime.goal, "on");
 				dashboard.updateWidget(ctx, runtime);
-				await api.setActiveTools([...new Set([...api.getActiveTools(), ...EXPERIMENT_TOOL_NAMES])]);
+				await api.setActiveTools(Array.from(new Set(api.getActiveTools().concat(EXPERIMENT_TOOL_NAMES))));
 				api.sendUserMessage(
 					prompt.render(autoresearchPrompts["autoresearch/command-resume"].text, {
 						branch_status_line: branchStatusLine,
@@ -212,7 +212,7 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 
 			setMode(ctx, true, goalArg, "on");
 			dashboard.updateWidget(ctx, runtime);
-			await api.setActiveTools([...new Set([...api.getActiveTools(), ...EXPERIMENT_TOOL_NAMES])]);
+			await api.setActiveTools(Array.from(new Set(api.getActiveTools().concat(EXPERIMENT_TOOL_NAMES))));
 			if (goalArg !== null) {
 				api.sendUserMessage(goalArg);
 			} else {

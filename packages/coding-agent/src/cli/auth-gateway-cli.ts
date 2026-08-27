@@ -479,7 +479,7 @@ async function runCheck(flags: AuthGatewayCommandArgs["flags"]): Promise<void> {
 				list.push(row);
 				grouped.set(row.provider, list);
 			}
-			const providers = [...grouped.keys()].sort();
+			const providers = Array.from(grouped.keys()).sort();
 			process.stdout.write(`broker: ${brokerConfig.url}${flags.strict ? chalk.dim(" [strict]") : ""}\n`);
 			for (const provider of providers) {
 				const rows = grouped.get(provider) ?? [];

@@ -618,7 +618,7 @@ function sortedStats(
 	map: Map<string, number>,
 	samples: number,
 ): Array<{ label: string; count: number; percent: number }> {
-	return [...map.entries()]
+	return Array.from(map.entries())
 		.map(([label, count]) => ({ label, count, percent: (count / samples) * 100 }))
 		.sort((left, right) => right.count - left.count || left.label.localeCompare(right.label));
 }

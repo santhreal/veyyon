@@ -348,7 +348,7 @@ async function collectBlobCandidates(blobDir: string): Promise<BlobCandidate[]> 
 		candidate.mtimeMs = Math.max(candidate.mtimeMs, stat.mtimeMs);
 		byHash.set(hash, candidate);
 	}
-	return [...byHash.values()].sort((a, b) => a.hash.localeCompare(b.hash));
+	return Array.from(byHash.values()).sort((a, b) => a.hash.localeCompare(b.hash));
 }
 
 async function runBlobGc(options: ResolvedGcOptions, archiveSessionsRoot: string): Promise<BlobGcResult> {
@@ -407,7 +407,7 @@ async function listActiveSessions(sessionsRoot: string): Promise<SessionInfo[]> 
 
 async function listNestedSessionsReadOnly(artifactsRoot: string): Promise<SessionInfo[]> {
 	const files = await collectJsonlFiles(artifactsRoot);
-	const dirs = [...new Set(files.map(file => path.dirname(file)))].sort();
+	const dirs = Array.from(new Set(files.map(file => path.dirname(file)))).sort();
 	const storage = new FileSessionStorage();
 	const sessions: SessionInfo[] = [];
 	for (const dir of dirs) {
@@ -613,7 +613,7 @@ async function collectArchivedSessionIds(archiveRoot: string): Promise<string[]>
 		const id = await archivedSessionIdFromFile(file);
 		if (id) ids.add(id);
 	}
-	return [...ids].sort();
+	return Array.from(ids).sort();
 }
 
 async function cleanupHistoryRowsForArchivedSessions(
@@ -633,7 +633,7 @@ async function cleanupHistoryRowsForArchivedSessions(
 	}
 
 	try {
-		const cleanup = deleteHistoryRowsForSessions(dbPath, [...cleanupIds]);
+		const cleanup = deleteHistoryRowsForSessions(dbPath, Array.from(cleanupIds));
 		result.historyRowsDeleted = cleanup.deleted;
 		result.ftsRebuilt = cleanup.ftsRebuilt;
 	} catch (error) {
