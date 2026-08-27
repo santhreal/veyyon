@@ -175,16 +175,24 @@ function renderOpenOrCloseLine(
 			? renderStatusLine({ iconOverride: theme.styledSymbol("tool.browser", "accent"), title, meta }, theme)
 			: renderStatusLine({ icon, title, meta }, theme);
 	if (!output) return new Text(header, 0, 0);
-	const outputLines = output.split("\n").map(line => theme.fg("toolOutput", replaceTabs(line)));
-	return new Text([header, ...outputLines].join("\n"), 0, 0);
+	const parts = [header];
+	for (let i = 0, start = 0; i <= output.length; i++) {
+		if (i === output.length || output.charCodeAt(i) === 0x0a) {
+			parts.push(theme.fg("toolOutput", replaceTabs(output.slice(start, i))));
+			start = i + 1;
+		}
+	}
+	return new Text(parts.join("\n"), 0, 0);
 }
 
 function extractTextOutput(content: Array<{ type: string; text?: string }> | undefined): string {
 	if (!content) return "";
-	const text = content
-		.filter(c => c.type === "text")
-		.map(c => c.text ?? "")
-		.join("\n");
+	const parts: string[] = [];
+	for (let i = 0; i < content.length; i++) {
+		const c = content[i]!;
+		if (c.type === "text") parts.push(c.text ?? "");
+	}
+	const text = parts.join("\n");
 	return dropTrailingBlankLines(text);
 }
 
