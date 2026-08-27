@@ -163,13 +163,20 @@ export class BashExecutionComponent extends Container {
 		// Output
 		if (availableLines.length > 0) {
 			if (this.#expanded || hasSixelOutput) {
-				const displayText = availableLines
-					.map((line, index) => (sixelLineMask?.[index] ? line : theme.fg("muted", line)))
-					.join("\n");
+				let displayText = "";
+				for (let li = 0; li < availableLines.length; li++) {
+					const line = availableLines[li]!;
+					const styled = sixelLineMask?.[li] ? line : theme.fg("muted", line);
+					displayText = displayText ? `${displayText}\n${styled}` : styled;
+				}
 				this.#contentContainer.addChild(new Text(`\n${displayText}`, 2, 0));
 			} else {
 				// Use shared visual truncation utility, recomputed per render width
-				const styledOutput = previewLogicalLines.map(line => theme.fg("muted", line)).join("\n");
+				let styledOutput = "";
+				for (let li = 0; li < previewLogicalLines.length; li++) {
+					const styled = theme.fg("muted", previewLogicalLines[li]!);
+					styledOutput = styledOutput ? `${styledOutput}\n${styled}` : styled;
+				}
 				this.#contentContainer.addChild(createCollapsedPreview(`\n${styledOutput}`, EXECUTION_PREVIEW_LINES));
 			}
 		}
@@ -201,9 +208,15 @@ export class BashExecutionComponent extends Container {
 			}
 		}
 		if (!hasSixel) {
-			return lines.map(line => clampExecutionDisplayLine(line));
+			const result = new Array<string>(lines.length);
+			for (let li = 0; li < lines.length; li++) result[li] = clampExecutionDisplayLine(lines[li]!);
+			return result;
 		}
-		return lines.map((line, index) => (sixelLineMask[index] ? line : clampExecutionDisplayLine(line)));
+		const result = new Array<string>(lines.length);
+		for (let li = 0; li < lines.length; li++) {
+			result[li] = sixelLineMask[li] ? lines[li]! : clampExecutionDisplayLine(lines[li]!);
+		}
+		return result;
 	}
 
 	#setOutput(output: string): void {
