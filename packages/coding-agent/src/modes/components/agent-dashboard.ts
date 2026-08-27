@@ -198,10 +198,11 @@ function ageSeconds(now: number, at: number): number {
 }
 
 /** `HH:MM:SS` for a bus timestamp, so the stream reads as a log. */
+const PAD2: readonly string[] = Array.from({ length: 60 }, (_, i) => String(i).padStart(2, "0"));
+
 function clockTime(at: number): string {
 	const date = new Date(at);
-	const pad = (value: number) => String(value).padStart(2, "0");
-	return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+	return `${PAD2[date.getHours()]}:${PAD2[date.getMinutes()]}:${PAD2[date.getSeconds()]}`;
 }
 
 /** Everything one roster row needs that does not come from the registry ref. */
