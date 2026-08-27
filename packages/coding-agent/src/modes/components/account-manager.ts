@@ -894,22 +894,25 @@ export class AccountManagerComponent implements Component {
 		// an ordinary setting in the active profile's `agent/config.yml`, so another profile can have
 		// it the other way. One line saying "shared by every profile · balancing on" read as though
 		// the toggle travelled with the accounts, which is the opposite of true.
-		for (const wrapped of this.#wrapNote(
+		const scopeWrapped = this.#wrapNote(
 			`accounts shared by every profile and session on this machine · quota load balancing ${
 				this.#loadBalancing ? "on" : "off"
 			} for this profile`,
 			"",
 			width,
-		)) {
-			lines.push({ text: theme.fg("dim", wrapped) });
+		);
+		for (let wi = 0; wi < scopeWrapped.length; wi++) {
+			lines.push({ text: theme.fg("dim", scopeWrapped[wi]!) });
 		}
 		lines.push({ text: "" });
 
 		const group = this.#inventory.providers.find(candidate => candidate.provider === this.#activeProviderId);
 		if (group) {
-			for (const note of providerDisabledNote(group)) {
-				for (const wrapped of this.#wrapNote(note, "  ", width)) {
-					lines.push({ text: theme.fg("warning", wrapped) });
+			const providerNotes = providerDisabledNote(group);
+			for (let ni = 0; ni < providerNotes.length; ni++) {
+				const noteWrapped = this.#wrapNote(providerNotes[ni]!, "  ", width);
+				for (let wi = 0; wi < noteWrapped.length; wi++) {
+					lines.push({ text: theme.fg("warning", noteWrapped[wi]!) });
 				}
 			}
 			if (group.disabledCause) lines.push({ text: "" });
@@ -917,15 +920,18 @@ export class AccountManagerComponent implements Component {
 
 		const divergence = selectedButRotated(this.#inventory, this.#activeProviderId);
 		if (divergence) {
-			for (const line of divergenceLines(divergence, nowMs)) {
-				for (const wrapped of this.#wrapNote(line, "  ", width)) {
-					lines.push({ text: theme.fg("warning", wrapped) });
+			const divLines = divergenceLines(divergence, nowMs);
+			for (let di = 0; di < divLines.length; di++) {
+				const divWrapped = this.#wrapNote(divLines[di]!, "  ", width);
+				for (let wi = 0; wi < divWrapped.length; wi++) {
+					lines.push({ text: theme.fg("warning", divWrapped[wi]!) });
 				}
 			}
 			lines.push({ text: "" });
 		}
 
-		for (const row of rows) {
+		for (let ri = 0; ri < rows.length; ri++) {
+			const row = rows[ri]!;
 			const target: BodyTarget = { kind: "account", credentialId: row.credentialId };
 			const selected = this.#isSelected(target);
 			const head = accountHeadLine(row, nowMs);
@@ -956,14 +962,16 @@ export class AccountManagerComponent implements Component {
 			// usage bars underneath it, and rendering it quieter than they are inverted the hierarchy.
 			const plan = accountPlanLine(row);
 			if (plan) lines.push({ text: theme.fg("muted", truncateToWidth(`       ${plan}`, width)), target });
-			for (const usage of accountUsageLines(row, nowMs)) {
-				lines.push({ text: truncateToWidth(`       ${usage}`, width), target });
+			const usageLines = accountUsageLines(row, nowMs);
+			for (let ui = 0; ui < usageLines.length; ui++) {
+				lines.push({ text: truncateToWidth(`       ${usageLines[ui]!}`, width), target });
 			}
-			for (const notice of accountNoticeLines(row, nowMs)) {
-				// Wrapped for the same reason as the provider note: a failed row's upstream reason is
-				// the remedy, and its useful half is at the END of the string.
-				for (const wrapped of this.#wrapNote(notice, "       ", width)) {
-					lines.push({ text: theme.fg("error", wrapped), target });
+			const noticeLines = accountNoticeLines(row, nowMs);
+			for (let ni = 0; ni < noticeLines.length; ni++) {
+				const notice = noticeLines[ni]!;
+				const wrappedNotice = this.#wrapNote(notice, "       ", width);
+				for (let wi = 0; wi < wrappedNotice.length; wi++) {
+					lines.push({ text: theme.fg("error", wrappedNotice[wi]!), target });
 				}
 			}
 			if (this.#pendingLogoutCredentialId === row.credentialId) {
@@ -971,20 +979,22 @@ export class AccountManagerComponent implements Component {
 				// width it truncated to `log out of Groq cr…`, which loses both which credential is
 				// about to go and that `esc` backs out. A confirmation prompt missing its escape is a
 				// worse defect than a clipped label.
-				for (const wrapped of this.#wrapNote(
+				const logoutWrapped = this.#wrapNote(
 					`press x again to log out of ${head.label} · esc cancels`,
 					"       ",
 					width,
-				)) {
-					lines.push({ text: theme.fg("warning", wrapped), target });
+				);
+				for (let wi = 0; wi < logoutWrapped.length; wi++) {
+					lines.push({ text: theme.fg("warning", logoutWrapped[wi]!), target });
 				}
 			}
 			lines.push({ text: "" });
 		}
 
 		if (rows.length === 0) {
-			for (const wrapped of this.#wrapNote("No accounts stored for this provider yet.", "  ", width)) {
-				lines.push({ text: theme.fg("muted", wrapped) });
+			const emptyWrapped = this.#wrapNote("No accounts stored for this provider yet.", "  ", width);
+			for (let wi = 0; wi < emptyWrapped.length; wi++) {
+				lines.push({ text: theme.fg("muted", emptyWrapped[wi]!) });
 			}
 			lines.push({ text: "" });
 		}
