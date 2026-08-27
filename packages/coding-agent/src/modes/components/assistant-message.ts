@@ -1,5 +1,6 @@
 import type { AssistantMessage, ImageContent } from "@veyyon/ai";
 import {
+	blendHex,
 	Container,
 	getImageDimensions,
 	Image,
@@ -10,7 +11,6 @@ import {
 	Spacer,
 	TERMINAL,
 	Text,
-	toHexColor,
 } from "@veyyon/tui";
 import { formatNumber } from "@veyyon/utils";
 import { stripAnsi } from "@veyyon/utils/strip-ansi";
@@ -168,25 +168,6 @@ const sharedSpeedTracker = new SpeedTracker();
 /** Test-only: clear the shared gauge so observations don't leak across cases. */
 export function resetThinkingSpeedTracker(): void {
 	sharedSpeedTracker.reset();
-}
-
-/**
- * Linear-interpolate two `#rrggbb` colors in sRGB space. `t` clamps to [0,1]:
- * `t = 0` → `from`, `t = 1` → `to`. Drives the streaming speed badge, fading
- * from a dim gray toward the theme accent as tok/s rises.
- */
-function lerpHex(from: string, to: string, t: number): string {
-	const k = t < 0 ? 0 : t > 1 ? 1 : t;
-	const fr = Number.parseInt(from.slice(1, 3), 16);
-	const fg = Number.parseInt(from.slice(3, 5), 16);
-	const fb = Number.parseInt(from.slice(5, 7), 16);
-	const tr = Number.parseInt(to.slice(1, 3), 16);
-	const tg = Number.parseInt(to.slice(3, 5), 16);
-	const tb = Number.parseInt(to.slice(5, 7), 16);
-	const r = Math.round(fr + (tr - fr) * k);
-	const g = Math.round(fg + (tg - fg) * k);
-	const b = Math.round(fb + (tb - fb) * k);
-	return toHexColor(r, g, b);
 }
 
 /**
@@ -412,7 +393,7 @@ export class AssistantMessageComponent extends Container {
 		// mid-stream rates already read as clearly accent-tinted instead of staying
 		// gray until the rarely-hit SPEED_MAX ceiling.
 		const ratio = Math.sqrt(rate / SPEED_MAX);
-		const hex = lerpHex(theme.getColorHex("dim"), theme.getAccentColorHex(), ratio);
+		const hex = blendHex(theme.getColorHex("dim"), theme.getAccentColorHex(), ratio);
 		const rateText = ` · ${rate.toFixed(1)} toks/s`;
 		const rateSpan = theme.getColorMode() === "truecolor" ? chalk.hex(hex)(rateText) : theme.fg("muted", rateText);
 		return coloredGlyph + thinkingLabel + totalSpan + rateSpan;
