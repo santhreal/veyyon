@@ -510,7 +510,7 @@ function structuralTextSize(value: unknown): number {
 	if (typeof value === "boolean" || value === null || value === undefined) return 1;
 	if (Array.isArray(value)) {
 		let sum = 2;
-		for (const item of value) sum += 1 + structuralTextSize(item);
+		for (let ii = 0; ii < value.length; ii++) sum += 1 + structuralTextSize(value[ii]);
 		return sum;
 	}
 	if (typeof value === "object") {
@@ -1524,13 +1524,15 @@ export class StatusLineComponent implements Component {
 		let fiveHourTier: string | undefined;
 		let sevenDayTier: string | undefined;
 		const now = Date.now();
-		for (const report of reports) {
+		for (let ri = 0; ri < reports.length; ri++) {
+			const report = reports[ri];
 			if (!report || typeof report !== "object") continue;
 			const provider = (report as { provider?: unknown }).provider;
 			if (activeProvider && provider !== activeProvider) continue;
 			const limits = (report as { limits?: unknown }).limits;
 			if (!Array.isArray(limits)) continue;
-			for (const limit of limits) {
+			for (let li = 0; li < limits.length; li++) {
+				const limit = limits[li];
 				if (!limit || typeof limit !== "object") continue;
 				if (
 					activeIdentity &&
@@ -2359,7 +2361,8 @@ export class StatusLineComponent implements Component {
 	 * ("badges", "location_right"); the run clock is unaddressable chrome.
 	 */
 	quietSegmentAt(col: number): string | null {
-		for (const entry of this.#quietLineBounds) {
+		for (let ei = 0; ei < this.#quietLineBounds.length; ei++) {
+			const entry = this.#quietLineBounds[ei]!;
 			if (col >= entry.start && col < entry.end) return entry.id;
 		}
 		return null;
