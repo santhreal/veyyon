@@ -349,7 +349,8 @@ export class OutputMetaBuilder {
 
 	/** Get the built OutputMeta, or undefined if empty. */
 	get(): OutputMeta | undefined {
-		return Object.keys(this.#meta).length > 0 ? this.#meta : undefined;
+		for (const _ in this.#meta) return this.#meta;
+		return undefined;
 	}
 }
 

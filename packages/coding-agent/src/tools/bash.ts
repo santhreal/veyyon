@@ -397,7 +397,13 @@ function summarizeBridgeOutput<T extends { exitCode: number | undefined; cancell
 }
 
 function normalizeBashEnv(env: Record<string, string> | undefined): Record<string, string> | undefined {
-	if (!env || Object.keys(env).length === 0) return undefined;
+	if (!env) return undefined;
+	let hasOwn = false;
+	for (const _ in env) {
+		hasOwn = true;
+		break;
+	}
+	if (!hasOwn) return undefined;
 	const normalized: Record<string, string> = {};
 	for (const [key, value] of Object.entries(env)) {
 		if (!BASH_ENV_NAME_PATTERN.test(key)) {
@@ -420,7 +426,13 @@ function escapeBashEnvValueForDisplay(value: string): string {
 }
 
 function formatBashEnvAssignments(env: Record<string, string> | undefined): string {
-	if (!env || Object.keys(env).length === 0) return "";
+	if (!env) return "";
+	let hasEnv = false;
+	for (const _ in env) {
+		hasEnv = true;
+		break;
+	}
+	if (!hasEnv) return "";
 	return Object.entries(env)
 		.sort(([a], [b]) => a.localeCompare(b))
 		.map(([key, value]) => `${key}="${escapeBashEnvValueForDisplay(value)}"`)
@@ -495,7 +507,8 @@ function extractPartialBashEnv(partialJson: string | undefined): Record<string, 
 	for (const match of envBody.matchAll(matcher)) {
 		env[match[1]!] = unescapePartialJsonString(match[2]!);
 	}
-	return Object.keys(env).length > 0 ? env : undefined;
+	for (const _ in env) return env;
+	return undefined;
 }
 
 function formatWallTimeSeconds(wallTimeMs: number): string {
