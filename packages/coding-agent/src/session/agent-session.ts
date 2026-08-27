@@ -14476,7 +14476,9 @@ export class AgentSession {
 		const persistenceKey = sessionMessagePersistenceKey(message);
 		if (!persistenceKey) return;
 		let branchEntry: SessionEntry | undefined;
-		for (const entry of this.sessionManager.getBranch().slice().reverse()) {
+		const branch = this.sessionManager.getBranch();
+		for (let i = branch.length - 1; i >= 0; i--) {
+			const entry = branch[i]!;
 			if (entry.type !== "message" || entry.message.role !== "assistant") continue;
 			if (sessionMessagePersistenceKey(entry.message) !== persistenceKey) continue;
 			if (!sameMessageContent(entry.message, message) && !this.#isSameAssistantMessage(entry.message, message)) {
@@ -14519,15 +14521,17 @@ export class AgentSession {
 		for (const pending of this.#pendingRecoveredRetryErrors) {
 			let entry = branchById.get(pending.entryId);
 			if (entry?.type !== "message" || entry.message.role !== "assistant") {
-				entry = branch
-					.slice()
-					.reverse()
-					.find(
-						candidate =>
-							candidate.type === "message" &&
-							candidate.message.role === "assistant" &&
-							sessionMessagePersistenceKey(candidate.message) === pending.persistenceKey,
-					);
+				for (let i = branch.length - 1; i >= 0; i--) {
+					const candidate = branch[i]!;
+					if (
+						candidate.type === "message" &&
+						candidate.message.role === "assistant" &&
+						sessionMessagePersistenceKey(candidate.message) === pending.persistenceKey
+					) {
+						entry = candidate;
+						break;
+					}
+				}
 			}
 			if (entry?.type !== "message" || entry.message.role !== "assistant") continue;
 			const retryRecovery: AssistantRetryRecovery = {
@@ -14880,15 +14884,18 @@ export class AgentSession {
 
 	#discardAcceptedTerminalEmptyStop(assistantMessage: AssistantMessage): void {
 		const branch = this.sessionManager.getBranch();
-		const branchEntry = branch
-			.slice()
-			.reverse()
-			.find(
-				entry =>
-					entry.type === "message" &&
-					entry.message.role === "assistant" &&
-					this.#isSameAssistantMessage(entry.message, assistantMessage),
-			);
+		let branchEntry: SessionEntry | undefined;
+		for (let i = branch.length - 1; i >= 0; i--) {
+			const entry = branch[i]!;
+			if (
+				entry.type === "message" &&
+				entry.message.role === "assistant" &&
+				this.#isSameAssistantMessage(entry.message, assistantMessage)
+			) {
+				branchEntry = entry;
+				break;
+			}
+		}
 		const parentEntry =
 			branchEntry?.parentId === null || branchEntry?.parentId === undefined
 				? undefined
@@ -14920,16 +14927,19 @@ export class AgentSession {
 	#discardAssistantTurn(assistantMessage: AssistantMessage): void {
 		this.#removeAssistantMessageFromActiveContext(assistantMessage);
 
-		const branchEntry = this.sessionManager
-			.getBranch()
-			.slice()
-			.reverse()
-			.find(
-				entry =>
-					entry.type === "message" &&
-					entry.message.role === "assistant" &&
-					this.#isSameAssistantMessage(entry.message as AssistantMessage, assistantMessage),
-			);
+		const branch = this.sessionManager.getBranch();
+		let branchEntry: SessionEntry | undefined;
+		for (let i = branch.length - 1; i >= 0; i--) {
+			const entry = branch[i]!;
+			if (
+				entry.type === "message" &&
+				entry.message.role === "assistant" &&
+				this.#isSameAssistantMessage(entry.message as AssistantMessage, assistantMessage)
+			) {
+				branchEntry = entry;
+				break;
+			}
+		}
 		if (!branchEntry) {
 			return;
 		}
