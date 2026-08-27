@@ -306,6 +306,8 @@
 - `output-meta.ts` and `bash.ts` replace `Object.keys(obj).length` checks with `for...in` loops in OutputMetaBuilder.get, normalizeBashEnv, formatBashEnvAssignments, and extractPartialBashEnv, eliminating a keys array allocation per tool result render.
 - `assistant-message.ts` replaces the local `lerpHex` function with `blendHex` from `@veyyon/tui`, eliminating 6 `Number.parseInt`+`slice` allocations per streaming speed-badge render.
 - `assistant-message.ts`, `rail-motion.ts`, and `ground-tints.ts` replace `toString(16).padStart`/`slice` hex encoding with `toHexColor` from `@veyyon/tui`, using the pre-computed `HEX_BYTE` lookup table.
+- `follow.ts` and `shimmer.ts` use the exported `CHANNEL_STR` lookup table from `@veyyon/tui` for truecolor SGR channel emission in `sgrRgb` and `lavaAnsi`, eliminating `Number.toString` per channel per cell in the shimmer and lava animation paths.
+- `ground-tints.ts` replaces `Number.parseInt`+`slice` hex parsing with `charCodeAt`-based `hexVal` in the `channels` function, eliminating 3 substring allocations per ground tint computation.
 
 ### Added
 
