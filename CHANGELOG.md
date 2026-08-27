@@ -95,6 +95,7 @@
 
 ### Fixed
 
+- Text typed at the launch card appears there as it is typed, instead of staying invisible until session startup finishes and the composer mounts.
 - The advisor roster editor reports a failed save instead of clearing the buffer and claiming the write reached disk.
 - The advisor roster editor states why the model list is unavailable when the model registry fails, instead of opening a picker holding nothing.
 - `/advisor status` names the next move on a text client too — the setting to change or the model role to assign — instead of reporting the state and stopping.

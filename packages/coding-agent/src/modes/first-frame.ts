@@ -134,6 +134,7 @@ export function paintFirstFrame(version: string): FirstFrame {
 
 	const hero = new WelcomeComponent(version, "", "");
 	const layout = new HomeAnchorLayout({ ui, transcriptChildCount: () => 0, hasHero: () => true });
+	const composerFrame = new StaticComposerFrame();
 	const children = [
 		layout.topFill,
 		new Spacer(1),
@@ -145,7 +146,7 @@ export function paintFirstFrame(version: string): FirstFrame {
 		// screen before the zone exists: this paints the resting zone's exact
 		// row count with its real chrome, and the mounted zone swaps text into
 		// those rows rather than arriving under them.
-		new StaticComposerFrame(),
+		composerFrame,
 	];
 	for (const child of children) ui.addChild(child);
 	// No frame has been composed, so this measures the children directly.
@@ -173,6 +174,14 @@ export function paintFirstFrame(version: string): FirstFrame {
 		if (matchesKey(data, "ctrl+c")) return undefined;
 		if (flushed && isTypedText(data)) {
 			typeahead = (typeahead + data).slice(0, STARTUP_TYPEAHEAD_LIMIT);
+			// Echo it. Holding the text is only half of the handover: the card
+			// paints a composer for the whole of startup, and one that shows
+			// nothing back reads as a composer that is not listening. Forced,
+			// because the ordinary path waits for the next throttle frame and a
+			// keystroke that appears a frame late is the lag this exists to
+			// remove; the card is a handful of rows, so the repaint is cheap.
+			composerFrame.setDraft(typeahead);
+			ui.requestRender(true);
 		}
 		return { consume: true };
 	});
