@@ -414,7 +414,7 @@ function buildUsage(entryLines: readonly string[], footerLines: readonly string[
 		// The blank line after each group is what makes the grouping visible at all.
 		lines.push(heading, ...entries.map(entry => `${OUTPUT_INDENT}${entry}`), "");
 	}
-	lines.push(...footerLines);
+	for (let li = 0; li < footerLines.length; li++) lines.push(footerLines[li]!);
 	return lines.join("\n");
 }
 

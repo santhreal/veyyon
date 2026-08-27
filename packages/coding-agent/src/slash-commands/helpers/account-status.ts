@@ -211,9 +211,13 @@ export function renderAccountStatus(
 		}
 
 		const rotated = selectedButRotated(inventory, provider);
-		if (rotated) lines.push(...divergenceLines(provider, rotated.chosen, now));
+		if (rotated) {
+			const dl = divergenceLines(provider, rotated.chosen, now);
+			for (let li = 0; li < dl.length; li++) lines.push(dl[li]!);
+		}
 
-		lines.push(...usageLines(row, now));
+		const ul = usageLines(row, now);
+		for (let li = 0; li < ul.length; li++) lines.push(ul[li]!);
 
 		if (row.health === "failed" && row.healthReason) {
 			lines.push(line(DETAIL_INDENT, cell(row.healthReason, TRUNCATE_LENGTHS.CONTENT)));

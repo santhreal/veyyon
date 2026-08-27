@@ -176,7 +176,7 @@ async function fetchGitHubIssueComments(
 			break;
 		}
 
-		comments.push(...pageComments);
+		for (let ci = 0; ci < pageComments.length; ci++) comments.push(pageComments[ci]!);
 		if (pageComments.length < perPage) {
 			break;
 		}

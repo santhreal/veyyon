@@ -95,14 +95,15 @@ function extractInstalls(app: FlathubAppStream): number | null {
 
 function extractPermissions(app: FlathubAppStream): string[] {
 	const permissions: string[] = [];
-	permissions.push(...normalizeStringList(app.permissions));
+	const np = normalizeStringList(app.permissions);
+	for (let pi = 0; pi < np.length; pi++) permissions.push(np[pi]!);
 
 	if (app.metadata) {
 		for (const [key, value] of Object.entries(app.metadata)) {
 			if (!key.toLowerCase().includes("permission")) continue;
 			const list = normalizeStringList(value);
 			if (list.length) {
-				permissions.push(...list);
+				for (let li = 0; li < list.length; li++) permissions.push(list[li]!);
 				continue;
 			}
 			if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {

@@ -130,7 +130,7 @@ export async function getAvailableAuthMethods(
 
 	// 3. API key configs (direct, then openrouter)
 	const apiConfigs = await getApiConfigs(authStorage, sessionId, options);
-	methods.push(...apiConfigs);
+	for (let mi = 0; mi < apiConfigs.length; mi++) methods.push(apiConfigs[mi]!);
 
 	// 4. Fallback to Perplexity free (anonymous)
 	if (methods.length === 0) {

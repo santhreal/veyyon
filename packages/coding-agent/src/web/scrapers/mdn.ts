@@ -83,7 +83,8 @@ async function convertMDNBody(sections: MDNSection[]): Promise<string> {
 
 			case "table":
 				if (value.rows && value.rows.length > 0) {
-					parts.push(...(await buildMarkdownTableFromHtmlRows(value.rows)));
+					const mt = await buildMarkdownTableFromHtmlRows(value.rows);
+					for (let pi = 0; pi < mt.length; pi++) parts.push(mt[pi]!);
 				}
 				break;
 
