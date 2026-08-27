@@ -246,7 +246,7 @@ export class MarketplaceManager {
 		const all: MarketplacePluginEntry[] = [];
 		for (const entry of reg.marketplaces) {
 			const catalog = await this.#readCatalog(entry);
-			all.push(...catalog.plugins);
+			for (let pi = 0; pi < catalog.plugins.length; pi++) all.push(catalog.plugins[pi]!);
 		}
 		return all;
 	}

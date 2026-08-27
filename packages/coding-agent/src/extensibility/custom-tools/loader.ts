@@ -195,7 +195,7 @@ export class CustomToolLoader {
 	async load(pathsWithSources: ToolPathWithSource[]): Promise<void> {
 		for (const { path: toolPath, source } of pathsWithSources) {
 			const { tools: loadedTools, errors } = await loadTool(toolPath, this.#sharedApi.cwd, this.#sharedApi, source);
-			this.errors.push(...errors);
+			for (let ei = 0; ei < errors.length; ei++) this.errors.push(errors[ei]!);
 
 			for (const loadedTool of loadedTools) {
 				// Check for name conflicts

@@ -608,7 +608,8 @@ function buildHLineOnlyTable(
 				rowSpan: 1,
 				colSpan: 1,
 			});
-			consumedIds.push(...cbs.map(b => b.id));
+			const cbIds = cbs.map(b => b.id);
+			for (let ci = 0; ci < cbIds.length; ci++) consumedIds.push(cbIds[ci]!);
 		}
 	}
 	const contentTopY = visualRows.length > 0 ? visualRows[0].midY : yMax;
@@ -743,7 +744,7 @@ export function resolveTableGrids(pageNumber: number, textBoxes: TextBox[], segm
 			if (result) {
 				grids.push(result.grid);
 				gridConsumedIds.push(result.consumedIds);
-				allConsumedIds.push(...result.consumedIds);
+				for (let ci = 0; ci < result.consumedIds.length; ci++) allConsumedIds.push(result.consumedIds[ci]!);
 			}
 			continue;
 		}
@@ -751,7 +752,7 @@ export function resolveTableGrids(pageNumber: number, textBoxes: TextBox[], segm
 		const result = buildTableGrid(pageNumber, yLines, groupXLines, filteredSegments, textBoxes);
 		grids.push(result.grid);
 		gridConsumedIds.push(result.consumedIds);
-		allConsumedIds.push(...result.consumedIds);
+		for (let ci = 0; ci < result.consumedIds.length; ci++) allConsumedIds.push(result.consumedIds[ci]!);
 	}
 	// Filter out grids that look like vector diagrams, not data tables.
 	// Their consumed text box IDs are released so the text becomes free text.
@@ -760,7 +761,8 @@ export function resolveTableGrids(pageNumber: number, textBoxes: TextBox[], segm
 	for (let i = 0; i < grids.length; i++) {
 		if (isDiagram(grids[i])) continue;
 		filteredGrids.push(grids[i]);
-		filteredConsumedIds.push(...gridConsumedIds[i]);
+		const gci = gridConsumedIds[i]!;
+		for (let ci = 0; ci < gci.length; ci++) filteredConsumedIds.push(gci[ci]!);
 	}
 	return { grids: filteredGrids, consumedIds: filteredConsumedIds };
 }

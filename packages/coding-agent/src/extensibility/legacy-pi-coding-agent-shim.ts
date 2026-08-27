@@ -996,7 +996,7 @@ export class DefaultResourceLoader implements ResourceLoader {
 					dir: skillDir,
 					source: "legacy-resource-loader",
 				});
-				skills.push(...result.skills);
+				for (let si = 0; si < result.skills.length; si++) skills.push(result.skills[si]!);
 				diagnostics.push(
 					...result.warnings.map(w => ({
 						type: "warning" as const,

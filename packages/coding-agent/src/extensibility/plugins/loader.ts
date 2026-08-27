@@ -363,7 +363,7 @@ function resolveDirectoryEntries(dir: string): string[] {
 		if (childStats.isDirectory()) {
 			const childManifest = readDeclaredManifestEntries(childPath);
 			if (childManifest.declared) {
-				resolved.push(...childManifest.files);
+				for (let fi = 0; fi < childManifest.files.length; fi++) resolved.push(childManifest.files[fi]!);
 			} else {
 				const index = findDirectoryIndex(childPath);
 				if (index) resolved.push(index);
@@ -450,7 +450,8 @@ export function resolvePluginManifestEntries(
 	if (base) {
 		const entries = Array.isArray(base) ? base : [base];
 		for (const entry of entries) {
-			declared.push(...resolveEntry(entry));
+			const resolvedEntry = resolveEntry(entry);
+			for (let ri = 0; ri < resolvedEntry.length; ri++) declared.push(resolvedEntry[ri]!);
 		}
 	}
 
@@ -460,7 +461,8 @@ export function resolvePluginManifestEntries(
 			if (!enabledSet.has(featName)) continue;
 			if (feat[key]) {
 				for (const entry of feat[key]) {
-					declared.push(...resolveEntry(entry));
+					const resolvedEntry = resolveEntry(entry);
+					for (let ri = 0; ri < resolvedEntry.length; ri++) declared.push(resolvedEntry[ri]!);
 				}
 			}
 		}
@@ -470,7 +472,8 @@ export function resolvePluginManifestEntries(
 			if (!feat.default) continue;
 			if (feat[key]) {
 				for (const entry of feat[key]) {
-					declared.push(...resolveEntry(entry));
+					const resolvedEntry = resolveEntry(entry);
+					for (let ri = 0; ri < resolvedEntry.length; ri++) declared.push(resolvedEntry[ri]!);
 				}
 			}
 		}
@@ -513,7 +516,8 @@ export async function getAllPluginToolPaths(cwd: string, pluginsRoot?: string): 
 	const paths: string[] = [];
 
 	for (const plugin of plugins) {
-		paths.push(...resolvePluginToolPaths(plugin));
+		const pluginPaths = resolvePluginToolPaths(plugin);
+		for (let pi = 0; pi < pluginPaths.length; pi++) paths.push(pluginPaths[pi]!);
 	}
 
 	return paths;
@@ -527,7 +531,8 @@ export async function getAllPluginHookPaths(cwd: string): Promise<string[]> {
 	const paths: string[] = [];
 
 	for (const plugin of plugins) {
-		paths.push(...resolvePluginHookPaths(plugin));
+		const pluginPaths = resolvePluginHookPaths(plugin);
+		for (let pi = 0; pi < pluginPaths.length; pi++) paths.push(pluginPaths[pi]!);
 	}
 
 	return paths;
@@ -541,7 +546,8 @@ export async function getAllPluginCommandPaths(cwd: string): Promise<string[]> {
 	const paths: string[] = [];
 
 	for (const plugin of plugins) {
-		paths.push(...resolvePluginCommandPaths(plugin));
+		const pluginPaths = resolvePluginCommandPaths(plugin);
+		for (let pi = 0; pi < pluginPaths.length; pi++) paths.push(pluginPaths[pi]!);
 	}
 
 	return paths;
@@ -555,7 +561,8 @@ export async function getAllPluginExtensionPaths(cwd: string): Promise<string[]>
 	const paths: string[] = [];
 
 	for (const plugin of plugins) {
-		paths.push(...resolvePluginExtensionPaths(plugin));
+		const pluginPaths = resolvePluginExtensionPaths(plugin);
+		for (let pi = 0; pi < pluginPaths.length; pi++) paths.push(pluginPaths[pi]!);
 	}
 
 	return paths;

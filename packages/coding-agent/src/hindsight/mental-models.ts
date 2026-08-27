@@ -120,8 +120,12 @@ function seedIdSuffixFromProjectTag(tag: string): string {
 }
 function collectSeedTags(seed: RawSeed, scope: BankScope): string[] {
 	const collected: string[] = [];
-	if (seed.projectTagged && scope.retainTags) collected.push(...scope.retainTags);
-	if (seed.extra_tags) collected.push(...seed.extra_tags);
+	if (seed.projectTagged && scope.retainTags) {
+		for (let ti = 0; ti < scope.retainTags.length; ti++) collected.push(scope.retainTags[ti]!);
+	}
+	if (seed.extra_tags) {
+		for (let ti = 0; ti < seed.extra_tags.length; ti++) collected.push(seed.extra_tags[ti]!);
+	}
 	return dedupe(collected);
 }
 

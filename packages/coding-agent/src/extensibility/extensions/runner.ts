@@ -913,13 +913,16 @@ export class ExtensionRunner {
 				const result = handlerResult as ResourcesDiscoverResult | undefined;
 
 				if (result?.skillPaths?.length) {
-					skillPaths.push(...result.skillPaths.map(path => ({ path, extensionPath: ext.path })));
+					const sp = result.skillPaths.map(path => ({ path, extensionPath: ext.path }));
+					for (let si = 0; si < sp.length; si++) skillPaths.push(sp[si]!);
 				}
 				if (result?.promptPaths?.length) {
-					promptPaths.push(...result.promptPaths.map(path => ({ path, extensionPath: ext.path })));
+					const pp = result.promptPaths.map(path => ({ path, extensionPath: ext.path }));
+					for (let pi = 0; pi < pp.length; pi++) promptPaths.push(pp[pi]!);
 				}
 				if (result?.themePaths?.length) {
-					themePaths.push(...result.themePaths.map(path => ({ path, extensionPath: ext.path })));
+					const tp = result.themePaths.map(path => ({ path, extensionPath: ext.path }));
+					for (let ti = 0; ti < tp.length; ti++) themePaths.push(tp[ti]!);
 				}
 			}
 		}

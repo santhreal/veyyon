@@ -146,7 +146,7 @@ export class PptxConverter implements Converter {
 					const nb = parseInt(b.match(/slide(\d+)/)?.[1] || "0", 10);
 					return na - nb;
 				});
-			slidePaths.push(...slideFiles);
+			for (let si = 0; si < slideFiles.length; si++) slidePaths.push(slideFiles[si]!);
 		}
 		const imageDir = streamInfo.imageDir;
 		const sections: string[] = [];

@@ -183,7 +183,8 @@ async function loadImpl<T>(
 		if (!result) continue;
 
 		if (result.warnings) {
-			allWarnings.push(...result.warnings.map(w => `[${provider.displayName}] ${w}`));
+			const mapped = result.warnings.map(w => `[${provider.displayName}] ${w}`);
+			for (let wi = 0; wi < mapped.length; wi++) allWarnings.push(mapped[wi]!);
 		}
 
 		let contributedItemCount = 0;
@@ -559,7 +560,7 @@ export function restoreRegistryForTests(snapshot: RegistrySnapshot): void {
 		}
 		const providers = capabilities.get(id)!.providers as Provider<unknown>[];
 		providers.length = 0;
-		providers.push(...captured);
+		for (let pi = 0; pi < captured.length; pi++) providers.push(captured[pi]!);
 	}
 
 	providerCapabilities.clear();
