@@ -150,7 +150,7 @@ class SpeedTracker {
 		this.#prune(now);
 		if (this.#observations.length === 0) return 0;
 		let sum = 0;
-		for (const o of this.#observations) sum += o.rate;
+		for (let oi = 0; oi < this.#observations.length; oi++) sum += this.#observations[oi]!.rate;
 		return sum / this.#observations.length;
 	}
 
@@ -520,7 +520,9 @@ export class AssistantMessageComponent extends Container {
 		// Items are captured in child order: match completed mds positionally.
 		let itemIndex = 0;
 		let settled = 0;
-		for (const child of this.#contentContainer.children) {
+		const children = this.#contentContainer.children;
+		for (let ci = 0; ci < children.length; ci++) {
+			const child = children[ci]!;
 			if (child === streaming) return settled + streaming.getLastRenderSettledRows();
 			if (itemIndex < items.length - 1 && items[itemIndex]!.md === child) {
 				itemIndex++;
@@ -651,13 +653,17 @@ export class AssistantMessageComponent extends Container {
 	}
 
 	#renderToolImages(): void {
-		const imageEntries = Array.from(this.#toolImagesByCallId.entries()).flatMap(([toolCallId, images]) =>
-			images.map((image, index) => ({ image, key: `${toolCallId}:${index}` })),
-		);
+		const imageEntries: { image: ImageContent; key: string }[] = [];
+		for (const [toolCallId, images] of this.#toolImagesByCallId.entries()) {
+			for (let ii = 0; ii < images.length; ii++) {
+				imageEntries.push({ image: images[ii]!, key: `${toolCallId}:${ii}` });
+			}
+		}
 		if (imageEntries.length === 0) return;
 
 		this.#contentContainer.addChild(new Spacer(1));
-		for (const { image, key } of imageEntries) {
+		for (let ei = 0; ei < imageEntries.length; ei++) {
+			const { image, key } = imageEntries[ei]!;
 			const displayImage =
 				TERMINAL.imageProtocol === ImageProtocol.Kitty && image.mimeType !== "image/png"
 					? this.#convertedKittyImages.get(key)
