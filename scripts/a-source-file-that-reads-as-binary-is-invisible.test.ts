@@ -36,7 +36,7 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import { readdirSync, readFileSync } from "node:fs";
+import { type Dirent, readdirSync, readFileSync } from "node:fs";
 import * as path from "node:path";
 
 const repoRoot = path.resolve(import.meta.dir, "..");
@@ -91,13 +91,13 @@ function trackedSources(): Array<{ file: string; bytes: Buffer }> {
 }
 
 function collect(dir: string, found: Array<{ file: string; bytes: Buffer }>): void {
-	let entries: ReturnType<typeof readdirSync>;
+	let entries: Dirent[];
 	try {
-		entries = readdirSync(dir, { withFileTypes: true }) as never;
+		entries = readdirSync(dir, { withFileTypes: true });
 	} catch {
 		return;
 	}
-	for (const entry of entries as unknown as Array<{ name: string; isDirectory(): boolean }>) {
+	for (const entry of entries) {
 		const full = path.join(dir, entry.name);
 		if (entry.isDirectory()) {
 			if (!SKIP_DIRS.has(entry.name)) {

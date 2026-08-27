@@ -12,18 +12,22 @@ import { ARGOT_LOAD_TOOL, ARGOT_UNLOAD_TOOL, type ArgotSession } from "argot";
 import type { AsyncJobManager } from "../async/job-manager";
 import type { ContextFile } from "../capability/context-file";
 import type { Rule } from "../capability/rule";
+import type { ModelRegistry } from "../config/model-registry";
 import type { PromptTemplate } from "../config/prompt-templates";
 import type { Settings } from "../config/settings";
+import type { NoopLoopGuard } from "../edit/hashline/noop-loop-guard";
 import type { ToolPathWithSource } from "../extensibility/custom-tools";
 import type { Skill } from "../extensibility/skills";
 import type { GoalModeState, GoalRuntime } from "../goals";
 import type { HindsightSessionState } from "../hindsight/state";
 import type { LocalProtocolOptions } from "../internal-urls";
+import type { DiagnosticsLedger } from "../lsp/diagnostics-ledger";
 import type { MCPManager } from "../mcp";
 import type { MnemopiSessionState } from "../mnemopi/state";
 import type { PlanModeState } from "../plan-mode/state";
 import type { AgentRegistry } from "../registry/agent-registry";
 import type { ArtifactManager } from "../session/artifacts";
+import type { AuthStorage } from "../session/auth-storage";
 import type { ClientBridge } from "../session/client-bridge";
 import type { CustomMessage } from "../session/messages";
 import type { SubagentSpawnRecord, UsageStatistics } from "../session/session-entries";
@@ -34,11 +38,16 @@ import { delegationEnabled, resolveSessionMaxNestedSpawnDepth } from "../task/su
 import { canSpawnAtDepth } from "../task/types";
 import type { ConfiguredThinkingLevel } from "../thinking";
 import { resolveEffectiveToolDiscoveryMode } from "../tool-discovery/mode";
-import type { DiscoverableTool, DiscoverableToolSearchIndex } from "../tool-discovery/tool-index";
+import type {
+	DiscoverableTool,
+	DiscoverableToolSearchIndex,
+	DiscoverableToolSource,
+} from "../tool-discovery/tool-index";
 import type { EventBus } from "../utils/event-bus";
 import type { WorkspaceTree } from "../workspace-tree";
 import { type BuiltinToolName, type HiddenToolName, normalizeToolNames, TOOL } from "./builtin-names";
 import type { CheckpointState, CompletedRewindState } from "./checkpoint";
+import type { ConflictHistory } from "./conflict-detect";
 import { resolveEvalBackends } from "./eval-backends";
 import { isIrcEnabled } from "./irc-enabled";
 import {
@@ -320,9 +329,9 @@ export interface ToolSession {
 	/** Get the session's live per-family service tiers (undefined = none). Source of truth for subagent `tier.subagent: inherit`. */
 	getServiceTierByFamily?: () => ServiceTierByFamily | undefined;
 	/** Auth storage for passing to subagents (avoids re-discovery) */
-	authStorage?: import("../session/auth-storage").AuthStorage;
+	authStorage?: AuthStorage;
 	/** Model registry for passing to subagents (avoids re-discovery) */
-	modelRegistry?: import("../config/model-registry").ModelRegistry;
+	modelRegistry?: ModelRegistry;
 	/** Agent output manager for unique agent:// IDs across task invocations */
 	agentOutputManager?: AgentOutputManager;
 	/**
@@ -376,9 +385,7 @@ export interface ToolSession {
 	/** Whether any form of tool discovery is active (tools.discoveryMode !== "off" or mcp.discoveryMode). */
 	isToolDiscoveryEnabled?: () => boolean;
 	/** Get all hidden-but-discoverable tools for search_tool_bm25 prompts. */
-	getDiscoverableTools?: (filter?: {
-		source?: import("../tool-discovery/tool-index").DiscoverableToolSource;
-	}) => DiscoverableTool[];
+	getDiscoverableTools?: (filter?: { source?: DiscoverableToolSource }) => DiscoverableTool[];
 	/** Get the cached generic discoverable search index. */
 	getDiscoverableToolSearchIndex?: () => DiscoverableToolSearchIndex;
 	/** Get tool names activated by prior search_tool_bm25 calls (all sources). */
@@ -422,18 +429,18 @@ export interface ToolSession {
 	 *  `read`. Each entry gets a stable id N referenced by `write conflict://N`
 	 *  to splice the recorded region with replacement content. Lazily initialized
 	 *  by `getConflictHistory`. */
-	conflictHistory?: import("./conflict-detect").ConflictHistory;
+	conflictHistory?: ConflictHistory;
 
 	/** Per-session ledger of post-edit LSP diagnostics already surfaced to the
 	 *  model for each file. Lazily initialized by `getDiagnosticsLedger`. */
-	diagnosticsLedger?: import("../lsp/diagnostics-ledger").DiagnosticsLedger;
+	diagnosticsLedger?: DiagnosticsLedger;
 
 	/** Per-session ledger of consecutive byte-identical no-op edits, keyed by
 	 *  canonical file path. The hashline executor escalates a soft no-op hint
 	 *  to a thrown error once the same payload no-ops `NOOP_HARD_LIMIT` times,
 	 *  breaking subagent loops that ignore the textual hint (issue #2081).
 	 *  Lazily initialized by `getNoopLoopGuard`. */
-	noopLoopGuard?: import("../edit/hashline/noop-loop-guard").NoopLoopGuard;
+	noopLoopGuard?: NoopLoopGuard;
 
 	/** Queue a hidden message to be injected at the next agent turn. */
 	queueDeferredMessage?(message: CustomMessage): void;

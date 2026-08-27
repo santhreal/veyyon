@@ -5,6 +5,7 @@ import {
 	googleModelManagerOptions,
 	googleVertexModelManagerOptions,
 } from "../src/provider-models/google";
+import type { FetchImpl } from "../src/types";
 
 // The Google-family builders gate dynamic discovery on a credential and adapt
 // the caller's `fetch` into a discovery-shaped fetcher. Lock the gating, the
@@ -57,7 +58,7 @@ describe("googleAntigravityModelManagerOptions", () => {
 					headers: { "content-type": "application/json" },
 				}),
 			);
-		}) as unknown as import("../src/types").FetchImpl;
+		}) as unknown as FetchImpl;
 
 		const options = googleAntigravityModelManagerOptions({
 			oauthToken: "oauth-secret",
@@ -106,7 +107,7 @@ describe("googleGeminiCliModelManagerOptions", () => {
 					headers: { "content-type": "application/json" },
 				}),
 			);
-		}) as unknown as import("../src/types").FetchImpl;
+		}) as unknown as FetchImpl;
 
 		const options = googleGeminiCliModelManagerOptions({
 			oauthToken: "oauth-secret",

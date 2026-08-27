@@ -983,8 +983,8 @@ function getGitLabDuoWorkflowErrorField(payload: unknown, field: "message" | "er
 
 // Everything `setupForNamespace` resolves for a chosen namespace: the REST/root ids,
 // the discovered project scoping, the prepared START payload, and the direct_access
-// connection. Named (not `ReturnType<...>`) per repo convention so the contract stays
-// explicit for the cached-namespace and re-discovery branches that consume it.
+// connection. Named rather than derived from the function return type per repo convention
+// so the contract stays explicit for the cached-namespace and re-discovery branches that consume it.
 interface GitLabDuoWorkflowNamespaceSetup {
 	rootNamespaceId: string;
 	restNamespaceId: string;
