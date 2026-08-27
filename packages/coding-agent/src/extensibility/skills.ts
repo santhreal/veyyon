@@ -15,6 +15,15 @@ import { PROVIDER_ID as VEYYON_PLUGINS_SKILL_PROVIDER } from "../discovery/veyyo
 import { skillsPrompts } from "../prompts/skills/rows";
 import type { SkillPromptDetails } from "../session/messages";
 
+/** Count `\n` occurrences via charCodeAt, avoiding `split("\n").length` allocation. */
+function countNewlines(text: string): number {
+	let count = 0;
+	for (let i = 0; i < text.length; i++) {
+		if (text.charCodeAt(i) === 0x0a) count++;
+	}
+	return count;
+}
+
 // The active-skill snapshot lives in its own leaf so a reader does not have to import the loader.
 export { getActiveSkills, resetActiveSkillsForTests, setActiveSkills } from "./active-skills";
 
@@ -434,7 +443,7 @@ export async function buildSkillPromptMessage(
 			name: skill.name,
 			path: skill.filePath,
 			args: trimmedArgs || undefined,
-			lineCount: body ? body.split("\n").length : 0,
+			lineCount: body ? countNewlines(body) + 1 : 0,
 		},
 	};
 }
