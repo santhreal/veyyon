@@ -38,6 +38,7 @@ from common.arm_attachments import (
 from common.model_catalog_bootstrap import (
     build_model_catalog_refresh_command,
     build_status_preserving_tee_command,
+    build_workspace_probe_command,
 )
 from veyyon_replay_driver import EXACT_MODEL, load_replay_manifest
 
@@ -49,6 +50,7 @@ from pier.models.agent.install import AgentInstallSpec, InstallStep
 
 CONTAINER_ASSETS_DIR = "/opt/veyyon-assets"
 MODEL_CATALOG_REFRESH_TIMEOUT_SECONDS = 120
+WORKSPACE_PROBE_TIMEOUT_SECONDS = 60
 
 
 class VeyyonAgent(BaseInstalledAgent):
@@ -255,7 +257,13 @@ class VeyyonAgent(BaseInstalledAgent):
                 agent_command,
                 "/logs/agent/veyyon.txt",
             )
-        command = f"{setup} && {catalog_refresh} && {logged_agent_command}"
+        workspace_probe = build_workspace_probe_command(
+            f"{CONTAINER_ASSETS_DIR}/vey",
+            ".",
+            "/logs/agent/workspace-probe.txt",
+            timeout_seconds=WORKSPACE_PROBE_TIMEOUT_SECONDS,
+        )
+        command = f"{setup} && {catalog_refresh} && {workspace_probe} && {logged_agent_command}"
         try:
             await self.exec_as_agent(environment, command=command)
         finally:
