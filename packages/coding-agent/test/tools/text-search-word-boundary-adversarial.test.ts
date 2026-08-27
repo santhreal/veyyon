@@ -14,6 +14,19 @@ function textOf(result: { content: Array<{ type: string; text?: string }> }): st
 		.join("\n");
 }
 
+/**
+ * Bodies of the match rows only. A search result also carries context rows,
+ * whose count follows `search.contextBefore` / `search.contextAfter`, so an
+ * assertion over the whole text measures the context window rather than the
+ * pattern.
+ */
+function matchRows(text: string): string[] {
+	return text
+		.split("\n")
+		.filter(line => line.startsWith("*"))
+		.map(line => line.replace(/^\*\d+:/, ""));
+}
+
 describe("SearchTool (text) word-boundary style adversarial", () => {
 	let tmpDir: string;
 
@@ -37,20 +50,15 @@ describe("SearchTool (text) word-boundary style adversarial", () => {
 		});
 	}
 
-	it("pattern foo matches lines containing foo as substring", async () => {
+	it("pattern foo matches every line that contains it as a substring", async () => {
 		const tool = new SearchTool(session());
 		const text = textOf(await tool.execute("g1", { type: "text", input: "foo", path: path.join(tmpDir, "w.ts") }));
-		expect(text).toContain("foo");
-		// foobar and barfoo also contain foo as substring.
-		expect(text.includes("foobar") || text.includes("foo")).toBe(true);
+		expect(matchRows(text)).toEqual(["foo", "foobar", "barfoo", "food"]);
 	});
 
-	it("anchored ^foo$ matches only the exact line when supported", async () => {
+	it("anchored ^foo$ matches the exact line and nothing else", async () => {
 		const tool = new SearchTool(session());
 		const text = textOf(await tool.execute("g2", { type: "text", input: "^foo$", path: path.join(tmpDir, "w.ts") }));
-		// Exact line foo should match; foobar should not appear as a match line.
-		expect(text.includes("foobar") && !text.includes("food")).toBe(false);
-		// At minimum: either exact foo hit or empty/no-match without crash.
-		expect(typeof text).toBe("string");
+		expect(matchRows(text)).toEqual(["foo"]);
 	});
 });
