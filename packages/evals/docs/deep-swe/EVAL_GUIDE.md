@@ -77,7 +77,7 @@ bun src/suites/deep-swe/run.ts --arms baseline,omp \
 bun src/suites/deep-swe/run.ts --arms baseline,omp \
   --model opencode-go/deepseek-v4-flash \
   --binary packages/coding-agent/dist/vey \
-  --omp-cli ~/node_modules/@oh-my-pi/pi-coding-agent/dist/cli.js \
+  --omp-binary ~/.bun/bin/omp \
   --tasks datasets/deep-swe/tasks/pilot-10.txt
 ```
 
@@ -87,7 +87,7 @@ Both arms receive the same `model_name` in their job config. The harness does no
 
 ### Omp model resolution
 
-Omp's release binary does not have veyyon's synchronous model discovery fallback. For dynamically-discovered models (not in omp's bundled catalog), the harness generates a `models.yml` with full metadata using the veyyon binary's models.dev overlay and stages it into the container at `~/.omp/agent/models.yml`. This bypasses omp's background discovery race entirely.
+Omp's release binary does not have veyyon's synchronous model discovery fallback. For dynamically-discovered models (not in omp's bundled catalog), the harness builds a `models.yml` with full metadata using the veyyon binary's models.dev overlay and stages it as an optional asset of omp's container program; the program's setup step copies it to `~/.omp/agent/models.yml`. This bypasses omp's background discovery race entirely.
 
 ## Workflow 4: Headline evaluation
 

@@ -9,6 +9,7 @@ export * from "./auth-seed";
 export * from "./backend-registry";
 export * from "./bounded-fetch";
 export * from "./cell-variant";
+export * from "./container-program";
 
 export * from "./external-command";
 export * from "./flags";

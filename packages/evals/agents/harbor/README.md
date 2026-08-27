@@ -1,10 +1,10 @@
-# Veyyon Harbor Agent Adapter
+# Harbor Agent Adapters
 
-This directory provides the Harbor (`harbor-framework`) agent adapter for evaluating veyyon (the compiled `vey` binary) on benchmark suites such as **Terminal-Bench 3.0**.
+This directory provides the Harbor (`harbor-framework`) agent adapters used on benchmark suites such as **Terminal-Bench 3.0**: `VeyyonAgent` in `veyyon_agent.py` for veyyon (the compiled `vey` binary), and `ProgramAgent` in `program_agent.py` for every harness whose container run is one declaration.
 
 ## Overview
 
-The adapter (`VeyyonAgent` in `veyyon_agent.py`) implements Harbor's `BaseInstalledAgent` interface to run compiled veyyon binaries inside containerized task environments.
+Both adapters implement Harbor's `BaseInstalledAgent` interface to run a coding agent inside a containerized task environment. `VeyyonAgent` is specific to veyyon, which is mounted or packed from a local revision and reaches its provider through the auth gateway. `ProgramAgent` runs whatever `program.json` the run staged.
 
 ### Delivery & Staging Model
 
@@ -27,6 +27,12 @@ Because veyyon is evaluated at local development revisions rather than published
    - Streams output through a status-preserving `tee` to `/logs/agent/veyyon.txt`.
    - Collects session `.jsonl` files from `~/.veyyon/profiles/default/agent/sessions` to `/logs/agent/sessions/`.
    - Populates `AgentContext` (`n_input_tokens`, `n_cache_tokens`, `n_output_tokens`, `cost_usd`, and metadata) from session logs or replay results.
+
+## Program-Driven Harnesses
+
+`ProgramAgent` carries no harness knowledge. `VEYYON_BENCH_AGENT_PROGRAM` names the staged `program.json` on the host, and `common/container_program.py` uploads the assets it declares, runs its setup lines, substitutes `{{assets}}`, `{{model}}` and `{{instruction}}` into its command, streams the output to the log path it names, and collects the session files it names. The declaration is written once in TypeScript, under `packages/evals/src/harnesses/adapters/`, and Pier's shim in `../pier/omp_agent.py` executes the same file through the same module.
+
+`ProgramAgent.name()` returns the harness the program names, so the run directory and the log path carry that harness rather than `program`. Adding a harness to Terminal-Bench 3.0 means declaring its program and binding it to the harbor backend; no Python module is added.
 
 ## Error Handling & Error Patterns
 

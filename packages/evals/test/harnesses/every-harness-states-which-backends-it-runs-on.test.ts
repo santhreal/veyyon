@@ -109,7 +109,6 @@ describe("every harness states which backends it runs on", () => {
 		// Refused pairs are pinned with exact equality - adding any suite/harness turns this RED
 		expect(refused).toEqual([
 			{ harness: "omp", suite: "typescript-edit", backend: "in-process" },
-			{ harness: "omp", suite: "terminal-bench", backend: "harbor" },
 			{ harness: "factory", suite: "typescript-edit", backend: "in-process" },
 			{ harness: "factory", suite: "terminal-bench", backend: "harbor" },
 			{ harness: "hermes", suite: "typescript-edit", backend: "in-process" },

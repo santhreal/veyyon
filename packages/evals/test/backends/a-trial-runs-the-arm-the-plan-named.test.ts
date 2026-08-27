@@ -27,6 +27,7 @@ import { builtinBackends } from "../../src/backends/index";
 import { PierExecutionBackend } from "../../src/backends/pier/backend";
 import * as pierRunner from "../../src/backends/pier/runner";
 import { UnknownCellVariantError } from "../../src/core/cell-variant";
+import { containerProgramPath, programDirFor } from "../../src/core/container-program";
 import { listHarnesses } from "../../src/core/harness-registry";
 import type {
 	BackendId,
@@ -193,7 +194,14 @@ describe("a trial runs the arm the plan named", () => {
 			if (!expectedImportPath) throw new Error(`harness ${harness.name} declares no pier agent import path`);
 			expect(config.agentImportPath).toBe(expectedImportPath);
 			expect(config.modelName).toBe(MODEL);
-			expect(config.kwargs.arm_name).toBe(variant.name);
+			// A program-delivered harness names the arm in the path of the program it runs; a
+			// veyyon-shaped one names it as a kwarg the agent reads its overlay from.
+			if (harness.containerProgram) {
+				const suffix = containerProgramPath(programDirFor("", harness.name, variant.name));
+				expect(String(config.kwargs.program_path).endsWith(suffix)).toBe(true);
+			} else {
+				expect(config.kwargs.arm_name).toBe(variant.name);
+			}
 			for (const [key, value] of Object.entries(binding.extra ?? {})) {
 				expect(config.kwargs[key]).toEqual(value);
 			}

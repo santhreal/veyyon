@@ -35,7 +35,7 @@ from common.arm_attachments import (
     read_arm_attachments,
     rules_setup_command,
 )
-from model_catalog_bootstrap import (
+from common.model_catalog_bootstrap import (
     build_model_catalog_refresh_command,
     build_status_preserving_tee_command,
 )

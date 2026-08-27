@@ -7,6 +7,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { setTimeout as sleepFor } from "node:timers/promises";
 import { errorMessage, isRecord, tryParseJson } from "@veyyon/utils";
+import { containerProgramPath, programDirFor, stageHarnessProgram } from "../../../core/container-program";
 import { syncCommandOptions } from "../../../core/external-command";
 import { requireHarness } from "../../../core/harness-registry";
 import { terminateProcessTree } from "../../../core/process-tree";
@@ -473,6 +474,15 @@ export async function runBenchmark(cfg: Config): Promise<BenchmarkRun> {
 			);
 		}
 	}
+
+	// A harness delivered by a container program is staged here too, so `--agent omp` on the
+	// standalone runner reaches the same executor the unified backend uses. A dry run computes
+	// the path it would pass and writes nothing.
+	const programDir = harness.containerProgram ? programDirFor(benchDir, harness.name, jobName) : null;
+	const programPath = programDir ? containerProgramPath(programDir) : null;
+	if (programDir && !cfg.dryRun) {
+		stageHarnessProgram(harness, programDir, { model: cfg.models[0] ?? "", options: {} });
+	}
 	const composeOverlayPath = cfg.envType === "docker" ? writeComposeOverlay(benchDir, cfg, source) : null;
 	const mountsJson = cfg.envType === "docker" ? null : buildMountsJson(source);
 
@@ -498,6 +508,7 @@ export async function runBenchmark(cfg: Config): Promise<BenchmarkRun> {
 				passthrough: cfg.passthrough,
 			});
 	const harborEnv = buildHarborEnv(cfg, modelsYaml, tarball, version, source);
+	if (programPath) harborEnv.VEYYON_BENCH_AGENT_PROGRAM = programPath;
 	const logPath = path.join(benchDir, "harbor.log");
 	if (cfg.dryRun) {
 		process.stdout.write(`${bold("\nharbor command:\n")}harbor ${harborArgs.join(" ")}\n\n`);

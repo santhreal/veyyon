@@ -3,11 +3,17 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { $which, errorMessage, logger } from "@veyyon/utils";
 import {
+	CONTAINER_PROGRAM_VERSION,
+	type ContainerProgramContext,
+	containerProgramPath,
+	type ProgramFile,
+	programDirFor,
+	type StagedProgram,
 	type SystemJobConfigContext,
 	type SystemPreflightContext,
 	type SystemPreflightResult,
 	type SystemStageContext,
-	sanitizeVariantName,
+	stageHarnessProgram,
 } from "../../core";
 import { parseModelId } from "../../core/trial-model";
 import type {
@@ -18,6 +24,48 @@ import type {
 	PreflightVerdict,
 } from "../../core/types";
 import { veyBinaryPath } from "../../paths";
+
+/** Where the staged omp files land inside a task container. */
+const CONTAINER_DIR = "/opt/omp-assets";
+
+/**
+ * Where omp writes its session transcripts inside the container. The assets directory is
+ * root-owned, so the agent user cannot create a directory in it; the container's own `/tmp`
+ * is writable and is discarded with the container.
+ */
+const SESSION_DIR = "/tmp/omp-sessions";
+
+/** Provider keys the container may reach. */
+const ALLOWED_DOMAINS: readonly string[] = [
+	".googleapis.com",
+	".google.com",
+	".anthropic.com",
+	".openai.com",
+	".openrouter.ai",
+	".opencode.ai",
+	".models.dev",
+];
+
+/** The environment variable a provider's key is read from, derived from the model selector. */
+function authEnvVarFor(model: string): string {
+	const slashIndex = model.indexOf("/");
+	const provider = slashIndex > 0 ? model.slice(0, slashIndex) : model;
+	return `${provider.toUpperCase().replace(/[^A-Z0-9]/g, "_")}_API_KEY`;
+}
+
+/** The omp binary the run measures: an explicit flag, else the one on PATH. */
+function resolveOmpBinary(options: Readonly<Record<string, unknown>>): string | null {
+	const flag = options["omp-binary"];
+	if (typeof flag === "string") return path.resolve(flag);
+	return $which("omp");
+}
+
+/** The provider key: an explicit flag, else the provider's variable, else the opencode one. */
+function resolveApiKey(options: Readonly<Record<string, unknown>>, authEnvVar: string): string | null {
+	const flag = options["omp-api-key"];
+	if (typeof flag === "string") return flag;
+	return process.env[authEnvVar] ?? process.env.OPENCODE_API_KEY ?? null;
+}
 
 /**
  * Parse `vey models refresh <provider> --json` output and build a models.yml
@@ -89,10 +137,37 @@ function buildModelsYml(refreshJson: string, modelSelector: string, apiKey: stri
 	return null;
 }
 
+/**
+ * Ask the vey binary for the provider's catalog and turn it into a models.yml.
+ *
+ * Best effort: a run whose host has no vey binary, or whose refresh fails, stages no
+ * models.yml and omp resolves the model through its own discovery. The program marks the
+ * file optional for that reason.
+ */
+function ompModelsYml(model: string, apiKey: string, options: Readonly<Record<string, unknown>>): string | null {
+	if (!apiKey) return null;
+	const flag = options.binary ?? options["vey-binary"];
+	const candidate = typeof flag === "string" ? path.resolve(flag) : veyBinaryPath();
+	const veyBinary = fs.existsSync(candidate) ? candidate : null;
+	if (!veyBinary) return null;
+	const provider = parseModelId(model).provider;
+	try {
+		const refreshOutput = execFileSync(veyBinary, ["models", "refresh", provider, "--json"], {
+			encoding: "utf8",
+			timeout: 30_000,
+			env: { ...process.env, [authEnvVarFor(model)]: apiKey },
+		});
+		return buildModelsYml(refreshOutput, model, apiKey);
+	} catch (err) {
+		logger.warn(`warning: failed to build models.yml for omp via 'vey models refresh': ${errorMessage(err)}`);
+		return null;
+	}
+}
+
 export class OmpAdapter implements HarnessAdapter {
 	readonly name = "omp";
 	readonly displayName = "Oh My Pi (omp)";
-	readonly description = "Oh My Pi (omp) CLI agent headlessly executing DeepSWE benchmark tasks.";
+	readonly description = "Oh My Pi (omp) CLI agent headlessly executing containerized benchmark tasks.";
 	readonly flags: readonly string[] = ["omp-binary", "omp-api-key"];
 	readonly defaultModel = "opencode-go/deepseek-v4-flash";
 
@@ -106,19 +181,73 @@ export class OmpAdapter implements HarnessAdapter {
 	readonly backends = {
 		pier: {
 			agentImportPath: "omp_agent:OmpAgent",
-			containerAssetsDir: "/opt/omp-assets",
+			containerAssetsDir: CONTAINER_DIR,
+		},
+		harbor: {
+			agentName: "omp",
+			agentImportPath: "program_agent:ProgramAgent",
+			containerAssetsDir: CONTAINER_DIR,
+			requiresDocker: true,
 		},
 	} as const;
+
+	/**
+	 * The one declaration of an omp trial: the compiled binary, the provider key, the
+	 * optional static catalog, the headless invocation and where its transcripts land.
+	 *
+	 * Pier and Harbor both stage this and both hand it to the same executor, so an asset this
+	 * names is an asset the container agent reads. The provider key travels in `omp.env`,
+	 * never on the command line.
+	 */
+	containerProgram(context: ContainerProgramContext): StagedProgram {
+		const options = context.options;
+		const model = context.model || this.defaultModel;
+		const authEnvVar = authEnvVarFor(model);
+		const apiKey = resolveApiKey(options, authEnvVar) ?? "";
+		const binary = resolveOmpBinary(options);
+		const modelsYml = ompModelsYml(model, apiKey, options);
+
+		const files: ProgramFile[] = [];
+		if (binary) files.push({ file: "omp", source: { copy: binary }, mode: 0o755 });
+		files.push({
+			file: "omp.env",
+			source: { text: `${authEnvVar}=${apiKey}\nOPENCODE_API_KEY=${apiKey}\n` },
+			mode: 0o600,
+		});
+		if (modelsYml) files.push({ file: "models.yml", source: { text: modelsYml } });
+
+		return {
+			program: {
+				version: CONTAINER_PROGRAM_VERSION,
+				harness: this.name,
+				containerDir: CONTAINER_DIR,
+				assets: [
+					{ file: "omp", dest: `${CONTAINER_DIR}/omp`, mode: "0755" },
+					{ file: "omp.env", dest: `${CONTAINER_DIR}/omp.env`, mode: "0600" },
+					{ file: "models.yml", dest: `${CONTAINER_DIR}/models.yml`, optional: true },
+				],
+				setup: [
+					`mkdir -p ${SESSION_DIR} ~/.omp/agent`,
+					`if [ -f ${CONTAINER_DIR}/models.yml ]; then cp ${CONTAINER_DIR}/models.yml ~/.omp/agent/models.yml; fi`,
+				],
+				// --mode json streams NDJSON events (thinking deltas, tool calls, text) to
+				// stdout instead of buffering the result until exit, so a long trial is
+				// observable in the log while it runs.
+				command: `{{assets}}/omp --model {{model}} --auto-approve --print --mode json --session-dir ${SESSION_DIR} {{instruction}}`,
+				envFile: `${CONTAINER_DIR}/omp.env`,
+				logPath: "/logs/agent/omp.txt",
+				sessions: { sources: [SESSION_DIR], pattern: "*.jsonl" },
+				allowedDomains: ALLOWED_DOMAINS,
+				usage: "omp",
+			},
+			files,
+		};
+	}
 
 	async preflight(context: HarnessPreflightContext): Promise<PreflightVerdict> {
 		const options = context.options ?? {};
 		const missing: string[] = [];
-		const ompBinary =
-			typeof options["omp-binary"] === "string"
-				? path.resolve(options["omp-binary"])
-				: typeof options.ompBinary === "string"
-					? path.resolve(options.ompBinary)
-					: ($which("omp") ?? null);
+		const ompBinary = resolveOmpBinary(options);
 
 		if (!ompBinary || !fs.existsSync(ompBinary)) {
 			missing.push("omp binary on PATH or --omp-binary (install omp or pass --omp-binary <path>)");
@@ -133,16 +262,8 @@ export class OmpAdapter implements HarnessAdapter {
 		}
 
 		const model = typeof options.model === "string" ? options.model : this.defaultModel;
-		const provider = parseModelId(model).provider;
-		const authEnvVar = `${provider.toUpperCase().replace(/[^A-Z0-9]/g, "_")}_API_KEY`;
-		const explicitKey =
-			typeof options["omp-api-key"] === "string"
-				? options["omp-api-key"]
-				: typeof options.ompApiKey === "string"
-					? options.ompApiKey
-					: null;
-		const envKey = process.env[authEnvVar] ?? process.env.OPENCODE_API_KEY ?? null;
-		if (!explicitKey && !envKey) {
+		const authEnvVar = authEnvVarFor(model);
+		if (!resolveApiKey(options, authEnvVar)) {
 			missing.push(`omp requires an API key for ${model}; set $${authEnvVar} or pass --omp-api-key <key>`);
 		}
 
@@ -160,21 +281,15 @@ export class OmpAdapter implements HarnessAdapter {
 		const errors: string[] = [];
 		const warnings: string[] = [];
 
-		const ompBinary =
-			typeof context.args["omp-binary"] === "string" ? path.resolve(context.args["omp-binary"]) : $which("omp");
-
+		const ompBinary = resolveOmpBinary(context.args);
 		if (!ompBinary || !fs.existsSync(ompBinary)) {
 			errors.push("omp CLI binary unavailable; pass --omp-binary or install omp on PATH");
 		} else if (!fs.statSync(ompBinary).isFile()) {
 			errors.push(`omp CLI path is not a file: ${ompBinary}`);
 		}
 
-		const slashIndex = context.model.indexOf("/");
-		const provider = slashIndex > 0 ? context.model.slice(0, slashIndex) : context.model;
-		const authEnvVar = `${provider.toUpperCase().replace(/[^A-Z0-9]/g, "_")}_API_KEY`;
-		const explicitKey = typeof context.args["omp-api-key"] === "string" ? context.args["omp-api-key"] : null;
-		const envKey = process.env[authEnvVar] ?? process.env.OPENCODE_API_KEY ?? null;
-		if (!explicitKey && !envKey) {
+		const authEnvVar = authEnvVarFor(context.model);
+		if (!resolveApiKey(context.args, authEnvVar)) {
 			errors.push(`omp requires an API key for ${context.model}; set $${authEnvVar} or pass --omp-api-key <key>`);
 		}
 
@@ -182,115 +297,15 @@ export class OmpAdapter implements HarnessAdapter {
 	}
 
 	async stageAssets(context: HarnessStageContext | SystemStageContext): Promise<void> {
-		if ("targetDir" in context) {
-			// HarnessStageContext
-			const options = context.options ?? {};
-			const variantKey = sanitizeVariantName(context.variant.name);
-			const destDir = path.join(context.targetDir, variantKey);
-			fs.mkdirSync(destDir, { recursive: true });
-
-			const ompBinary =
-				typeof options["omp-binary"] === "string"
-					? path.resolve(options["omp-binary"])
-					: typeof options.ompBinary === "string"
-						? path.resolve(options.ompBinary)
-						: ($which("omp") ?? null);
-			if (ompBinary && fs.existsSync(ompBinary)) {
-				fs.copyFileSync(ompBinary, path.join(destDir, "omp"));
-				fs.chmodSync(path.join(destDir, "omp"), 0o755);
-			}
-
-			const model = context.variant.model || (typeof options.model === "string" ? options.model : this.defaultModel);
-			const provider = parseModelId(model).provider;
-			const authEnvVar = `${provider.toUpperCase().replace(/[^A-Z0-9]/g, "_")}_API_KEY`;
-			const apiKey =
-				(typeof options["omp-api-key"] === "string" ? options["omp-api-key"] : null) ??
-				(typeof options.ompApiKey === "string" ? options.ompApiKey : null) ??
-				process.env[authEnvVar] ??
-				process.env.OPENCODE_API_KEY ??
-				"";
-
-			if (apiKey) {
-				const envContent = [`${authEnvVar}=${apiKey}`, `OPENCODE_API_KEY=${apiKey}`, ""].join("\n");
-				fs.writeFileSync(path.join(destDir, "omp.env"), envContent);
-				fs.chmodSync(path.join(destDir, "omp.env"), 0o600);
-			}
-
-			const veyBinary =
-				typeof options.binary === "string"
-					? path.resolve(options.binary)
-					: typeof options["vey-binary"] === "string"
-						? path.resolve(options["vey-binary"])
-						: path.join(context.targetDir, "vey");
-			const effectiveVeyBinary = fs.existsSync(veyBinary) ? veyBinary : veyBinaryPath();
-			if (fs.existsSync(effectiveVeyBinary) && apiKey) {
-				try {
-					const refreshOutput = execFileSync(effectiveVeyBinary, ["models", "refresh", provider, "--json"], {
-						encoding: "utf8",
-						timeout: 30_000,
-						env: { ...process.env, [authEnvVar]: apiKey },
-					});
-					const modelsYml = buildModelsYml(refreshOutput, model, apiKey);
-					if (modelsYml) {
-						fs.writeFileSync(path.join(destDir, "models.yml"), modelsYml);
-					}
-				} catch (err) {
-					logger.warn(
-						`warning: failed to build models.yml for omp via 'vey models refresh': ${errorMessage(err)}`,
-					);
-				}
-			}
-			return;
-		}
-
-		// SystemStageContext
-		const ompBinary =
-			typeof context.args["omp-binary"] === "string"
-				? path.resolve(context.args["omp-binary"])
-				: ($which("omp") ?? null);
-		if (ompBinary && fs.existsSync(ompBinary)) {
-			fs.copyFileSync(ompBinary, path.join(context.assetsDir, "omp"));
-			fs.chmodSync(path.join(context.assetsDir, "omp"), 0o755);
-		}
-
-		const slashIndex = context.model.indexOf("/");
-		const provider = slashIndex > 0 ? context.model.slice(0, slashIndex) : context.model;
-		const authEnvVar = `${provider.toUpperCase().replace(/[^A-Z0-9]/g, "_")}_API_KEY`;
-		const apiKey =
-			(typeof context.args["omp-api-key"] === "string" ? context.args["omp-api-key"] : null) ??
-			process.env[authEnvVar] ??
-			process.env.OPENCODE_API_KEY ??
-			"";
-
-		if (apiKey) {
-			const envContent = [`${authEnvVar}=${apiKey}`, `OPENCODE_API_KEY=${apiKey}`, ""].join("\n");
-			fs.writeFileSync(path.join(context.assetsDir, "omp.env"), envContent);
-			fs.chmodSync(path.join(context.assetsDir, "omp.env"), 0o600);
-		}
-
-		const veyBinary = path.join(context.assetsDir, "vey");
-		if (fs.existsSync(veyBinary) && apiKey) {
-			try {
-				const refreshOutput = execFileSync(veyBinary, ["models", "refresh", provider, "--json"], {
-					encoding: "utf8",
-					timeout: 30_000,
-					env: { ...process.env, [authEnvVar]: apiKey },
-				});
-				const modelsYml = buildModelsYml(refreshOutput, context.model, apiKey);
-				if (modelsYml) {
-					fs.writeFileSync(path.join(context.assetsDir, "models.yml"), modelsYml);
-				}
-			} catch (err) {
-				logger.warn(`warning: failed to build models.yml for omp via 'vey models refresh': ${errorMessage(err)}`);
-			}
-		}
+		const [root, arm, model, options] =
+			"targetDir" in context
+				? ([context.targetDir, context.variant.name, context.variant.model, context.options ?? {}] as const)
+				: ([context.assetsDir, context.system, context.model, context.args] as const);
+		stageHarnessProgram(this, programDirFor(root, this.name, arm), { model, options });
 	}
 
 	buildJobConfigKwargs(context: SystemJobConfigContext): Record<string, unknown> {
-		return {
-			assets_dir: context.assetsDir,
-			auth_path: path.join(context.assetsDir, "omp.env"),
-		};
+		return { program_path: containerProgramPath(programDirFor(context.assetsDir, this.name, context.system)) };
 	}
 }
 

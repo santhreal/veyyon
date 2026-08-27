@@ -22,13 +22,11 @@ Binaries and credentials staged by the harness before trials start. All arms in 
 | File | Purpose |
 |---|---|
 | `vey` | Pinned veyyon binary (copy of `--binary` or `packages/coding-agent/dist/vey`) |
-| `cli.js` | omp CLI (if an omp arm is present) |
 | `bun` | Bun runtime copy for container use |
 | `auth-agent.db` | Seeded auth credentials (copied from `~/.veyyon/shared-auth/agent.db`) |
-| `opencode-key` | OpenCode API key file (mode 0600) |
-| `omp-models.yml` | Generated models.yml for omp (when model is dynamically discovered) |
 | `arms/` | Resolved arm configuration files |
 | `attachments.json` | Arm attachment manifest |
+| `programs/<harness>/<arm>/` | One container program per arm of a program-delivered harness: `program.json` and the files it names |
 
 ## configs/
 

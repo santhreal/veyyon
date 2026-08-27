@@ -9,6 +9,7 @@ import { promisify } from "node:util";
 import { $which, errorMessage, isRecord, readPipeText } from "@veyyon/utils";
 import { type BackendRegistry, defaultBackendRegistry } from "../../core/backend-registry";
 import { resolveCellVariant } from "../../core/cell-variant";
+import { containerProgramPath, programDirFor, stageHarnessProgram } from "../../core/container-program";
 import { getHarness, listHarnesses, requireHarness } from "../../core/harness-registry";
 import { awaitTrialProcessOutput, terminateProcessTree } from "../../core/process-tree";
 import { boundRawOutput, DEFAULT_GRACE_PERIOD_MS, trialTimeoutFromOptions } from "../../core/trial-deadline";
@@ -111,10 +112,20 @@ interface HarborConfigParams {
 	readonly jobName: string;
 	readonly envType: "docker" | "apple-container";
 	readonly build: boolean;
+	/** Whether this harness routes model calls through the host auth gateway. */
+	readonly authGateway: boolean;
 }
 
 function harborEnvType(context: RunContext): "docker" | "apple-container" {
 	return context.options?.envType === "apple-container" ? "apple-container" : "docker";
+}
+
+/**
+ * Where a run files the container programs its arms run. Harbor reads a leading underscore
+ * as internal, so a job scan never mistakes the directory for a trial.
+ */
+function harborProgramRoot(runDir: string): string {
+	return path.join(runDir, "_assets");
 }
 
 /**
@@ -261,7 +272,7 @@ export class HarborBackend implements ExecutionBackend {
 		if (typeof options?.gatewayUrl === "string") cfg.gatewayUrl = options.gatewayUrl;
 		if (typeof options?.gatewayToken === "string") cfg.gatewayToken = options.gatewayToken;
 		if (Array.isArray(options?.providers)) cfg.providers = options.providers as string[];
-		cfg.gateway = options?.gateway !== false;
+		cfg.gateway = params.authGateway && options?.gateway !== false;
 		cfg.webSearch = Boolean(options?.webSearch);
 		if (Array.isArray(options?.allowHosts)) cfg.allowHosts = options.allowHosts as string[];
 		cfg.envType = params.envType;
@@ -290,9 +301,21 @@ export class HarborBackend implements ExecutionBackend {
 				jobName: context.runId,
 				envType: harborEnvType(context),
 				build: true,
+				authGateway: binding.authGateway === true,
 			});
 			this.#sourceMount = this.#prepareDeps(cfg);
 			this.#composeOverlayPath = writeComposeOverlay(path.join(runsDir, "_bench"), cfg, this.#sourceMount);
+		}
+
+		// An arm whose harness ships a container program is staged once here, so the trial hands
+		// the agent one declaration instead of a directory whose contents it has to assume.
+		for (const variant of context.options?.variants ?? []) {
+			const armHarness = requireHarness(variant.harness);
+			if (!armHarness.containerProgram) continue;
+			stageHarnessProgram(armHarness, programDirFor(harborProgramRoot(runDir), armHarness.name, variant.name), {
+				model: resolveTrialModel(variant, armHarness, context).id,
+				options: context.options ?? {},
+			});
 		}
 	}
 
@@ -329,6 +352,11 @@ export class HarborBackend implements ExecutionBackend {
 		const jobName = `${trialJobName(context.runId, cell)}_${Date.now()}`;
 		const jobDir = path.join(runDir, jobName);
 		await fs.mkdir(jobDir, { recursive: true });
+
+		const programPath =
+			binding && harness.containerProgram
+				? containerProgramPath(programDirFor(harborProgramRoot(runDir), harness.name, variant.name))
+				: null;
 
 		const trialTimeoutSec = trialTimeoutFromOptions(descriptor.timeBudgetSec, context.options);
 
@@ -388,16 +416,17 @@ export class HarborBackend implements ExecutionBackend {
 			jobName,
 			envType: envType === "apple-container" ? "apple-container" : "docker",
 			build: false,
+			authGateway: binding?.authGateway === true,
 		});
 
 		const modelsYaml = cfg.gateway ? writeModelsYaml(jobDir, cfg) : "";
-		const harborEnv: Record<string, string> =
-			binding?.sourceMount || binding?.authGateway
-				? buildHarborEnv(cfg, modelsYaml, null, "latest", this.#sourceMount)
-				: {
-						...(process.env as Record<string, string>),
-						...((context.options?.env as Record<string, string>) ?? {}),
-					};
+		const harborEnv: Record<string, string> = binding
+			? buildHarborEnv(cfg, modelsYaml, null, "latest", this.#sourceMount)
+			: { ...(process.env as Record<string, string>) };
+		Object.assign(harborEnv, (context.options?.env as Record<string, string>) ?? {});
+		// The generic agent both frameworks load reads its program through this variable, so a
+		// program-delivered harness needs no harbor-side agent class of its own.
+		if (programPath) harborEnv.VEYYON_BENCH_AGENT_PROGRAM = programPath;
 
 		const proc = Bun.spawn(["harbor", ...harborArgs], {
 			cwd: context.workDir,
