@@ -462,7 +462,12 @@ export class SettingsList implements Component {
 			if (current.firstItemIndex < 0) current.firstItemIndex = i;
 			current.lastItemIndex = i;
 		}
-		return sections.filter(section => section.firstItemIndex >= 0);
+		let w = 0;
+		for (let si = 0; si < sections.length; si++) {
+			if (sections[si]!.firstItemIndex >= 0) sections[w++] = sections[si]!;
+		}
+		sections.length = w;
+		return sections;
 	}
 
 	#activeSectionIndex(sections: SettingSection[]): number {
