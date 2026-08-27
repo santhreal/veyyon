@@ -52,6 +52,7 @@
 - `coalesceAdjacentSgr` in `tui.ts` skips the params array allocation for single SGR sequences and `endsWithIncompleteExtendedColor` uses `charCodeAt` instead of `slice()` for token comparisons.
 - `analyzeBgFillLine` in `deccara.ts` skips `line.slice()` and `visibleWidth()` for pure ASCII printable runs, scanning trailing spaces in-place via `charCodeAt`.
 - `paintBand` in `theme.ts` inlines the `arriving` closure as a hoisted `fullStrength` boolean, eliminating per-call closure allocation; the previous inlining was reverted by the rebase repair because it referenced non-existent helpers, this version uses only `blendHex`.
+- `status-line/component.ts` hoists `LOCATION_SEGMENT_IDS` and `CONTEXT_SEGMENT_IDS` to module level, eliminating per-frame `Record<string, true>` allocation in `#gatherQuietSegments`.
 - `renderSignature` in `markdown.ts` caches the `bgColor` and `heading` probe strings keyed on theme/style object identity, eliminating two styled-string function calls per frame during streaming.
 - `getDefaultInlineStyleContext` in `markdown.ts` caches its object and `applyText` closure keyed on `defaultTextStyle` identity, eliminating per-paragraph allocation during rendering.
 - `#renderList` and `htmlListIndent` in `markdown.ts` use the pre-allocated `padding()` buffer instead of `"  ".repeat(depth)`.
