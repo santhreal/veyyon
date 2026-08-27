@@ -31,7 +31,7 @@ import { canReuseCachedPr, createPrCacheContext, isSamePrCacheContext, type PrCa
 import { getPreset } from "./presets";
 import { focusExitBadge, renderSegment, type SegmentContext } from "./segments";
 import { segmentSeparator, stateSeparator } from "./state-grammar";
-import { calculateTokensPerSecond } from "./token-rate";
+import { getLastRateableAssistantMessage, tokensPerSecondForMessage } from "./token-rate";
 import type {
 	CollabStatus,
 	EffectiveStatusLineSettings,
@@ -857,7 +857,7 @@ export class StatusLineComponent implements Component {
 	#defaultBranch?: string;
 	#defaultBranchCwd: string | undefined = undefined;
 	#lastTokensPerSecond: number | null = null;
-	#lastTokensPerSecondTimestamp: number | null = null;
+	#lastTokensPerSecondMsg: { timestamp: number } | null = null;
 
 	// Provider usage caching (5-min TTL, OAuth/sub only)
 	#cachedUsage: {
@@ -1207,7 +1207,7 @@ export class StatusLineComponent implements Component {
 		this.#usageInFlight = false;
 		this.#contextUsageCache = undefined;
 		this.#lastTokensPerSecond = null;
-		this.#lastTokensPerSecondTimestamp = null;
+		this.#lastTokensPerSecondMsg = null;
 	}
 
 	#invalidateGitCaches(): void {
@@ -1384,32 +1384,19 @@ export class StatusLineComponent implements Component {
 	}
 
 	#getTokensPerSecond(): number | null {
-		let lastAssistantTimestamp: number | null = null;
-		for (let i = this.session.state.messages.length - 1; i >= 0; i--) {
-			const message = this.session.state.messages[i];
-			if (message?.role === "assistant") {
-				lastAssistantTimestamp = message.timestamp;
-				break;
-			}
-		}
-
-		if (lastAssistantTimestamp === null) {
+		const last = getLastRateableAssistantMessage(this.session.state.messages);
+		if (!last) {
 			this.#lastTokensPerSecond = null;
-			this.#lastTokensPerSecondTimestamp = null;
+			this.#lastTokensPerSecondMsg = null;
 			return null;
 		}
-
-		const rate = calculateTokensPerSecond(this.session.state.messages, this.session.isStreaming);
+		const rate = tokensPerSecondForMessage(last, this.session.isStreaming);
 		if (rate !== null) {
 			this.#lastTokensPerSecond = rate;
-			this.#lastTokensPerSecondTimestamp = lastAssistantTimestamp;
+			this.#lastTokensPerSecondMsg = last;
 			return rate;
 		}
-
-		if (this.#lastTokensPerSecondTimestamp === lastAssistantTimestamp) {
-			return this.#lastTokensPerSecond;
-		}
-
+		if (this.#lastTokensPerSecondMsg === last) return this.#lastTokensPerSecond;
 		return null;
 	}
 

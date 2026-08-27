@@ -32,6 +32,7 @@
 - `renderGoalMode` in `status-line/segments.ts` replaces a `parts` array `.join()` with conditional concatenation, eliminating an intermediate array allocation per status-line frame when goal mode is active.
 - `costSegment` and `secretsSegment` in `status-line/segments.ts` replace small `parts` array `.join()` with conditional concatenation, eliminating intermediate array allocations per status-line frame.
 - `#buildSegmentContext` in `status-line/component.ts` gates `getUsageStatistics()` and `#getTokensPerSecond()` on whether any usage segment is configured, skipping an object spread and an O(N) message scan per frame for presets (including the default) that render no usage segments.
+- `#getTokensPerSecond` in `status-line/component.ts` eliminates a redundant reverse message scan by calling `getLastRateableAssistantMessage` and `tokensPerSecondForMessage` directly instead of scanning for the timestamp then calling `calculateTokensPerSecond` (which scanned again). Cache key changes from timestamp to message reference.
 - `usageSegment` in `status-line/segments.ts` replaces a `parts` array `.join()` with conditional concatenation, eliminating an intermediate array allocation per status-line frame.
 - `#getServingAccount` in `status-line/component.ts` replaces a 5-element array `.join()` with a template literal, eliminating an intermediate array allocation per status-line frame.
 - `appendOutput` in `eval-execution.ts` replaces `.slice(1)` with an index loop, eliminating an intermediate array allocation per eval output chunk.

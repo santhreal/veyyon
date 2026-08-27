@@ -32,7 +32,7 @@ type AssistantUsage = {
 	output: number;
 };
 
-type AssistantLikeMessage = {
+export type AssistantLikeMessage = {
 	role: "assistant";
 	timestamp: number;
 	duration?: number;
@@ -66,7 +66,9 @@ function isRateableAssistantTurn(message: MaybeAssistantMessage | undefined): me
 	);
 }
 
-function getLastAssistantMessage(messages: ReadonlyArray<MaybeAssistantMessage>): AssistantLikeMessage | null {
+export function getLastRateableAssistantMessage(
+	messages: ReadonlyArray<MaybeAssistantMessage>,
+): AssistantLikeMessage | null {
 	for (let i = messages.length - 1; i >= 0; i--) {
 		const message = messages[i];
 		if (isRateableAssistantTurn(message)) {
@@ -76,14 +78,11 @@ function getLastAssistantMessage(messages: ReadonlyArray<MaybeAssistantMessage>)
 	return null;
 }
 
-export function calculateTokensPerSecond(
-	messages: ReadonlyArray<MaybeAssistantMessage>,
+export function tokensPerSecondForMessage(
+	assistant: AssistantLikeMessage,
 	isStreaming: boolean,
 	nowMs: number = Date.now(),
 ): number | null {
-	const assistant = getLastAssistantMessage(messages);
-	if (!assistant) return null;
-
 	const resolvedDurationMs =
 		typeof assistant.duration === "number" && Number.isFinite(assistant.duration) && assistant.duration > 0
 			? assistant.duration
@@ -92,4 +91,14 @@ export function calculateTokensPerSecond(
 				: null;
 
 	return tokensPerSecond(assistant.usage.output, resolvedDurationMs);
+}
+
+export function calculateTokensPerSecond(
+	messages: ReadonlyArray<MaybeAssistantMessage>,
+	isStreaming: boolean,
+	nowMs: number = Date.now(),
+): number | null {
+	const assistant = getLastRateableAssistantMessage(messages);
+	if (!assistant) return null;
+	return tokensPerSecondForMessage(assistant, isStreaming, nowMs);
 }
