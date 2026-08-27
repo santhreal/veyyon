@@ -1226,7 +1226,10 @@ export class AgentDashboard extends Container {
 	 */
 	#commsSummary(): string {
 		const shown = this.#filteredComms();
-		const failed = shown.filter(entry => entry.outcome === "failed").length;
+		let failed = 0;
+		for (let fi = 0; fi < shown.length; fi++) {
+			if (shown[fi]!.outcome === "failed") failed++;
+		}
 		const parts = [`${shown.length} ${shown.length === 1 ? "message" : "messages"}`];
 		if (failed > 0) parts.push(theme.fg("error", `${failed} undelivered`));
 		const filterHint = this.#canFilterComms() ? " (f)" : "";
