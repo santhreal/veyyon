@@ -174,9 +174,10 @@ export class Box implements Component {
 				// Only bare trailing spaces are trimmed — bg-painted padding ends
 				// in escape bytes and is preserved as part of the visual design.
 				let maxChildWidth = 0;
-				for (const lines of childLines) {
-					for (const line of lines) {
-						const w = visibleWidth(line.replace(/ +$/, ""));
+				for (let ci = 0; ci < childLines.length; ci++) {
+					const lines = childLines[ci]!;
+					for (let li = 0; li < lines.length; li++) {
+						const w = visibleWidth(lines[li]!.replace(/ +$/, ""));
 						if (w > maxChildWidth) maxChildWidth = w;
 					}
 				}
@@ -189,8 +190,10 @@ export class Box implements Component {
 				interior.push(this.#applyBg("", emitWidth));
 			}
 			// Content
-			for (const lines of childLines) {
-				for (const line of lines) {
+			for (let ci = 0; ci < childLines.length; ci++) {
+				const lines = childLines[ci]!;
+				for (let li = 0; li < lines.length; li++) {
+					const line = lines[li]!;
 					interior.push(
 						this.#applyBg(this.#hugContent ? leftPad + line.replace(/ +$/, "") : leftPad + line, emitWidth),
 					);
@@ -206,13 +209,13 @@ export class Box implements Component {
 				const rule = border.chars.horizontal.repeat(Math.max(0, emitWidth));
 				const side = paint(border.chars.vertical);
 				result.push(paint(border.chars.topLeft + rule + border.chars.topRight));
-				for (const row of interior) {
-					result.push(side + row + side);
+				for (let ri = 0; ri < interior.length; ri++) {
+					result.push(side + interior[ri]! + side);
 				}
 				result.push(paint(border.chars.bottomLeft + rule + border.chars.bottomRight));
 			} else {
-				for (const row of interior) {
-					result.push(row);
+				for (let ri = 0; ri < interior.length; ri++) {
+					result.push(interior[ri]!);
 				}
 			}
 		}
