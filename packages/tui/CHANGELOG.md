@@ -29,6 +29,8 @@
 - `image.ts` replaces `Array.from(Set)` with a pre-sized array in `takeAllTransmittedIds`, avoiding an intermediate array allocation.
 
 - `editor.ts` replaces `Array.from(segmenter.segment())` with direct `for...of` iteration at seven call sites that only need the first or last grapheme, avoiding an intermediate array allocation per keystroke.
+- `input.ts` replaces `Array.from(segmenter.segment())` with direct `for...of` iteration at five call sites that only need the first or last grapheme, avoiding an intermediate array allocation per keystroke.
+
 
 
 
