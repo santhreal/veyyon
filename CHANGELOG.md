@@ -52,6 +52,7 @@
 ### Changed
 
 - `veyyon --help` renders its command list from registry summaries verified against command statics and loads only the hidden default command for its flag table, reducing a measured warm Windows invocation from 1.2 seconds to 0.13 seconds.
+- The CPU model is read once per process instead of on every system prompt build, removing about 30ms from the window before the composer accepts input.
 - Row band painting compiles its escape pattern once for the process rather than once per painted row.
 - The default launch command imports the session runtime and ACP terminal authentication only when it runs, so loading its flag table no longer imports the runtime graph.
 - Classified runner output (cargo, bun, Go, ctest, dotnet, clippy, golangci-lint, Gradle lint, pytest, and tsc/eslint-family) opens with a result-contract header, `[clean] <command>` or `[errors]` / `[errors N] <command>`, carrying the verdict above a body of retained diagnostics.
@@ -93,6 +94,8 @@
 
 ### Fixed
 
+- A prompt typed at the launch card while the session is still starting is carried into the composer instead of being discarded, and the terminal's own probe replies are still excluded so no escape sequence reaches the draft.
+- The welcome tip for the advisor names the Enable Advisor setting under Model, instead of a `/advisor` slash command that does not exist.
 - A bash working directory on a different Windows drive from the project renders as the absolute path it is, instead of being reported as a path inside the project.
 - Web search keeps trying the next provider when one returns only follow-up suggestions or intermediate search queries, instead of counting that metadata as a result and handing the model a list of questions; a SearXNG "did you mean" on a misspelled query no longer ends the search.
 - Public Web search reports which engines did not answer within the deadline instead of reporting an empty web, so a slow or bot-walled engine no longer surfaces as "returned no renderable search content".
