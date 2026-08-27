@@ -579,25 +579,30 @@ export const astGrepToolRenderer = {
 		// Resolve hyperlinks over the whole output so nested directory headers
 		// reconstruct across the blank-line groups the tree list collapses by.
 		const contexts = classifyGroupedLines(allLines, details?.cwd ?? details?.searchPath, details?.searchPath);
-		const styledLines = allLines.map((line, index) => {
-			const ctx = contexts[index]!;
+		const styledLines = new Array<string>(allLines.length);
+		for (let li = 0; li < allLines.length; li++) {
+			const line = allLines[li]!;
+			const ctx = contexts[li]!;
 			if (ctx.kind === "dir") {
 				const styled = uiTheme.fg("accent", line);
-				return ctx.headerPath ? fileHyperlink(ctx.headerPath, styled) : styled;
-			}
-			if (ctx.kind === "file") {
+				styledLines[li] = ctx.headerPath ? fileHyperlink(ctx.headerPath, styled) : styled;
+			} else if (ctx.kind === "file") {
 				const styled = uiTheme.fg(ctx.depth === 1 ? "accent" : "dim", line);
-				return ctx.headerPath ? fileHyperlink(ctx.headerPath, styled) : styled;
+				styledLines[li] = ctx.headerPath ? fileHyperlink(ctx.headerPath, styled) : styled;
+			} else if (line.startsWith("  meta:")) {
+				styledLines[li] = uiTheme.fg("dim", line);
+			} else {
+				styledLines[li] = uiTheme.fg("toolOutput", line);
 			}
-			if (line.startsWith("  meta:")) return uiTheme.fg("dim", line);
-			return uiTheme.fg("toolOutput", line);
-		});
-		const matchGroups = groupLineIndicesByBlank(allLines)
-			.filter(indices => {
-				const first = allLines[indices[0]!]!;
-				return !first.startsWith("Result limit reached") && !first.startsWith("Parse issues:");
-			})
-			.map(indices => indices.map(index => styledLines[index]!));
+		}
+		const matchGroups: string[][] = [];
+		for (const indices of groupLineIndicesByBlank(allLines)) {
+			const first = allLines[indices[0]!]!;
+			if (first.startsWith("Result limit reached") || first.startsWith("Parse issues:")) continue;
+			const group = new Array<string>(indices.length);
+			for (let ii = 0; ii < indices.length; ii++) group[ii] = styledLines[indices[ii]!]!;
+			matchGroups.push(group);
+		}
 
 		const extraLines: string[] = [];
 		if (limitReached) {
@@ -613,7 +618,12 @@ export const astGrepToolRenderer = {
 			const budget = Math.max((options.expanded ? Infinity : COLLAPSED_MATCH_LIMIT) - extraLines.length, 0);
 			const matchLines = renderBudgetedAstGrepGroups(matchGroups, budget, uiTheme, Boolean(options.expanded));
 			const innerWidth = outputBlockContentWidth(width);
-			const bodyLines = [...matchLines, ...extraLines].map(l => truncateToWidth(l, innerWidth, Ellipsis.Omit));
+			const allBody = matchLines.length + extraLines.length;
+			const bodyLines = new Array<string>(allBody);
+			for (let mi = 0; mi < matchLines.length; mi++)
+				bodyLines[mi] = truncateToWidth(matchLines[mi]!, innerWidth, Ellipsis.Omit);
+			for (let ei = 0; ei < extraLines.length; ei++)
+				bodyLines[matchLines.length + ei] = truncateToWidth(extraLines[ei]!, innerWidth, Ellipsis.Omit);
 			return {
 				header,
 				sections: [{ lines: bodyLines }],
