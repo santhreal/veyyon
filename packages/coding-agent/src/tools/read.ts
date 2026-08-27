@@ -3890,7 +3890,7 @@ export const readToolRenderer = {
 				uiTheme,
 			);
 			const detailLines = contentText ? contentText.split("\n").map(line => uiTheme.fg("toolOutput", line)) : [];
-			const lines = [...detailLines, ...warningLines];
+			const lines = detailLines.concat(warningLines);
 			const outputBlock = new CachedOutputBlock();
 			return markFramedBlockComponent({
 				render: (width: number) =>

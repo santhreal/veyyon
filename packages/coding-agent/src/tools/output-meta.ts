@@ -398,7 +398,7 @@ function appendOutputNotice(
 	const notice = formatOutputNotice(meta);
 	if (!notice) return content;
 
-	const result = [...content];
+	const result = content.slice();
 	for (let i = result.length - 1; i >= 0; i--) {
 		const item = result[i];
 		if (item.type === "text") {

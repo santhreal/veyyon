@@ -21,7 +21,7 @@ export function prependResultNotice<TDetails>(
 	result: AgentToolResult<TDetails>,
 	notice: string,
 ): AgentToolResult<TDetails> {
-	const content = [...result.content];
+	const content = result.content.slice();
 	const firstText = content.findIndex(block => block.type === "text");
 	if (firstText >= 0) {
 		const block = content[firstText] as TextContent;

@@ -238,7 +238,7 @@ export class JobTool implements AgentTool<typeof jobSchema, JobToolDetails> {
 		const runningJobs = jobsToWatch.filter(j => j.status === "running");
 		if (runningJobs.length === 0) {
 			const cancelledJobs = cancelIds.map(id => manager.getJob(id)).filter(j => j != null);
-			return this.#buildResult(manager, [...cancelledJobs, ...jobsToWatch], cancelOutcomes);
+			return this.#buildResult(manager, cancelledJobs.concat(jobsToWatch), cancelOutcomes);
 		}
 
 		// Wait until at least one running job finishes, the wait window elapses,
@@ -259,7 +259,7 @@ export class JobTool implements AgentTool<typeof jobSchema, JobToolDetails> {
 		manager.watchJobs(watchedJobIds);
 
 		const cancelledJobs = this.#visibleJobs(manager, cancelIds, ownerId);
-		const allTrackedJobs = [...cancelledJobs, ...jobsToWatch];
+		const allTrackedJobs = cancelledJobs.concat(jobsToWatch);
 
 		const PROGRESS_INTERVAL_MS = 500;
 		const emitProgress = () => {
