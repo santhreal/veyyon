@@ -165,7 +165,7 @@ export function renderOutputBlock(options: OutputBlockOptions, theme: Theme): st
 
 	// ── Layout pass: collect row descriptors before emitting the railed lines. ──
 	const rows: BlockRow[] = [];
-	const headerText = [header, headerMeta].filter(Boolean).join(theme.sep.dot);
+	const headerText = header && headerMeta ? `${header}${theme.sep.dot}${headerMeta}` : header || headerMeta || "";
 	if (headerText) rows.push({ kind: "header", text: headerText });
 
 	const normalizedSections = sections.length > 0 ? sections : [{ lines: [] as string[] }];
