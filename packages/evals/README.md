@@ -167,15 +167,9 @@ A suite, backend or harness exists because an index module registers it. Nothing
 filesystem: `src/suites/index.ts`, `src/backends/index.ts` and `src/harnesses/index.ts` are the
 complete list, and a member missing from them is invisible to the CLI, the store and the dashboard.
 
-A module is named for its role inside its own directory, so `suite.ts`, `backend.ts`,
-`register.ts`, `index.ts` and `types.ts` each appear several times across the tree. The repetition
-is the convention: `backends/harbor/backend.ts` states which backend it is by its directory, and a
-file named `harbor-backend.ts` inside `backends/harbor/` would say it twice. Every import states
-the full module path, so no two of them are ambiguous at a call site.
-
-A test file is named for the behavior it defends and may not carry a module's name, which
-`test/a-suite-is-named-for-the-behavior-it-defends-not-the-module-it-imports.test.ts` sweeps off
-disk on every run.
+A module is named for its role in its own directory, so `suite.ts`, `backend.ts`, `register.ts`,
+`index.ts` and `types.ts` recur: the directory states which one it is, and every import gives the
+full path.
 
 ## Adding a suite
 

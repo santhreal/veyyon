@@ -91,7 +91,9 @@ Extracts project vocabularies into static dictionary files:
 
 - Analyzes repository directory structures, imports, build definitions, and commit histories.
 - Produces `.AGENTS.dict` files under `datasets/dicts/`, and the savings table
-  `datasets/dicts/report.md` that ranks tasks by typeable saving.
+  `datasets/dicts/report.md` that ranks tasks by typeable saving. Both are committed and stamped
+  with their run, because `datasets/deep-swe/tasks/argot-10.txt` names the report and date its
+  repositories were ranked from.
 
 ```bash
 # Every task in the corpus
@@ -100,10 +102,3 @@ bun src/suites/deep-swe/gen-dicts.ts --all
 # The tasks named by one task list, eight at a time
 bun src/suites/deep-swe/gen-dicts.ts --tasks datasets/deep-swe/tasks/argot-10.txt --jobs 8
 ```
-
-`datasets/dicts/report.md` and `datasets/dicts/report.json` are committed even though `gen-dicts.ts`
-writes them. Each is stamped with the run that produced it, and
-`datasets/deep-swe/tasks/argot-10.txt` states which report and which date its ten repositories were
-ranked from. A task list whose ranking source is absent from the tree cannot be checked. The
-`.AGENTS.dict` files beside them are the same: the corpus a run encodes against is fixed by the
-committed bytes, not regenerated per run.
