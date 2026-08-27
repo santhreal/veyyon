@@ -137,7 +137,9 @@ function buildUncachedSearchIndex(text: string): SearchIndex {
 	let index = 0;
 	let compactIndex = 0;
 	let ordinal = 0;
-	for (const word of normalized.split(" ")) {
+	const normalizedWords = normalized.split(" ");
+	for (let wi = 0; wi < normalizedWords.length; wi++) {
+		const word = normalizedWords[wi]!;
 		words.push({ text: word, index, ordinal });
 		compactWordStarts.set(compactIndex, word.length);
 		index += word.length + 1;
@@ -271,7 +273,8 @@ function scoreAcronym(token: string, index: SearchIndex): FuzzyMatch | null {
 	let lastOrdinal = -1;
 	let firstTextIndex = 0;
 
-	for (const word of index.words) {
+	for (let wi = 0; wi < index.words.length; wi++) {
+		const word = index.words[wi]!;
 		if (word.text[0] !== token[queryIndex]) continue;
 		if (firstOrdinal < 0) {
 			firstOrdinal = word.ordinal;
@@ -298,9 +301,8 @@ function scoreTokenDirect(token: string, index: SearchIndex): FuzzyMatch {
 	if (compactIndex >= 0 && isCompactWordAligned(index, compactIndex, token.length)) {
 		best = { matches: true, score: withPosition(-140, compactIndex) };
 	}
-
-	for (const word of index.words) {
-		const match = scoreTokenAgainstWord(token, word);
+	for (let wi = 0; wi < index.words.length; wi++) {
+		const match = scoreTokenAgainstWord(token, index.words[wi]!);
 		if (match && (!best || match.score < best.score)) {
 			best = match;
 		}
@@ -318,8 +320,9 @@ function scoreToken(token: string, index: SearchIndex): FuzzyMatch {
 	let best = scoreTokenDirect(token, index);
 	if (best.matches) return best;
 
-	for (const variant of buildAlphanumericSwapQueries(token)) {
-		const match = scoreTokenDirect(variant, index);
+	const variants = buildAlphanumericSwapQueries(token);
+	for (let vi = 0; vi < variants.length; vi++) {
+		const match = scoreTokenDirect(variants[vi]!, index);
 		if (!match.matches) continue;
 		const score = match.score + ALPHANUMERIC_SWAP_PENALTY;
 		if (!best.matches || score < best.score) {
@@ -354,12 +357,17 @@ function prepareQuery(query: string): PreparedQuery | null {
 function hasDistinctWordsForRepeatedTokens(tokens: readonly string[], index: SearchIndex): boolean {
 	if (tokens.length < 2) return true;
 	const needed = new Map<string, number>();
-	for (const token of tokens) needed.set(token, (needed.get(token) ?? 0) + 1);
-	for (const [token, count] of needed) {
+	for (let ti = 0; ti < tokens.length; ti++) {
+		const token = tokens[ti]!;
+		needed.set(token, (needed.get(token) ?? 0) + 1);
+	}
+	const neededEntries = Array.from(needed);
+	for (let ei = 0; ei < neededEntries.length; ei++) {
+		const [token, count] = neededEntries[ei]!;
 		if (count < 2) continue;
 		let available = 0;
-		for (const word of index.words) {
-			if (scoreTokenAgainstWord(token, word) !== null) available++;
+		for (let wi = 0; wi < index.words.length; wi++) {
+			if (scoreTokenAgainstWord(token, index.words[wi]!) !== null) available++;
 			if (available >= count) break;
 		}
 		if (available < count) return false;
@@ -389,8 +397,8 @@ function fuzzyMatchCore(pq: PreparedQuery | null, index: SearchIndex): FuzzyMatc
 		totalScore += compactPhraseIndex * 0.01;
 	}
 
-	for (const token of pq.tokens) {
-		const match = scoreToken(token, index);
+	for (let ti = 0; ti < pq.tokens.length; ti++) {
+		const match = scoreToken(pq.tokens[ti]!, index);
 		if (!match.matches) {
 			return { matches: false, score: 0 };
 		}
@@ -549,7 +557,9 @@ export function matchPositions(query: string, text: string): number[] {
 	if (q.length === 0) return [];
 	const t = text.toLowerCase();
 	const hits = new Set<number>();
-	for (const token of q.split(/\s+/)) {
+	const qTokens = q.split(/\s+/);
+	for (let qi = 0; qi < qTokens.length; qi++) {
+		const token = qTokens[qi]!;
 		if (token.length === 0) continue;
 		// Word-boundary substring first, then any substring.
 		let at = -1;
@@ -566,11 +576,11 @@ export function matchPositions(query: string, text: string): number[] {
 			continue;
 		}
 		// In-order subsequence fallback.
-		let qi = 0;
-		for (let ti = 0; ti < t.length && qi < token.length; ti++) {
-			if (t[ti] === token[qi]) {
+		let qii = 0;
+		for (let ti = 0; ti < t.length && qii < token.length; ti++) {
+			if (t[ti] === token[qii]) {
 				hits.add(ti);
-				qi++;
+				qii++;
 			}
 		}
 	}
