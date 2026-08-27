@@ -106,6 +106,9 @@
 - `event-controller.ts` replaces `.filter()` with counting `for` loop in user message image count.
 - `tool-execution.ts` replaces `.filter()` + spread with pre-allocated array in `#getAllImageBlocks`.
 - `tool-execution.ts` replaces `new Set(.map().filter(Boolean)).size` with `for` loop in totalFiles count.
+- `agent-dashboard.ts` converts `for…of` loops to index-based `for` loops in `CommsPane.layout` and `#renderTabBar`.
+- `modal-shell.ts` replaces `.map().filter(Boolean)` with `for` loop in `resolveShortcutLabels`, and `.map(c => c.w)` with pre-allocated array in `layoutShortcutRows`.
+- `status-line/component.ts` converts `for…of` loops to index-based `for` loops in config segment iteration and bounds building.
 ### Added
 
 - `/advisor` reports advisor status, opens the `WATCHDOG.yml` roster editor and applies a save to the running session, starts or stops the advisor for the session, and copies the advisor's own transcript; the subsystem shipped complete but no command, key or menu row reached it.
