@@ -37,6 +37,7 @@ import { getAnsiPolicy, setAnsiPolicy, visibleWidth } from "@veyyon/tui";
 
 const originalColorterm = Bun.env.COLORTERM;
 const originalAnsiPolicy = getAnsiPolicy();
+let originalTheme: typeof theme | undefined;
 
 /** `48;2;r;g;b` from a rendered band, or null when the row carries no truecolor background. */
 function bandRgb(row: string): [number, number, number] | null {
@@ -96,12 +97,17 @@ beforeAll(() => {
 	// A test runtime with no TTY emits no color at all, so every band would come back as bare text
 	// and each assertion would pass by comparing nothing to nothing. The bytes are the subject here.
 	setAnsiPolicy("full");
+	originalTheme = theme;
 });
 
 afterAll(() => {
 	setAnsiPolicy(originalAnsiPolicy);
 	if (originalColorterm === undefined) delete (Bun.env as Record<string, string | undefined>).COLORTERM;
 	else Bun.env.COLORTERM = originalColorterm;
+	// `useTheme` swaps the process-wide theme for a TRUECOLOR build, and a Theme reports the mode it
+	// was constructed with regardless of the environment afterwards. Left in place it makes every
+	// later suite render gradients where it expects the flat switched band, so it goes back.
+	if (originalTheme !== undefined) setThemeInstance(originalTheme);
 });
 
 describe("a fading hover band is mixed out of the ground", () => {

@@ -32,7 +32,7 @@
 // says nothing about timing (the clock suites own that) or about how a fade looks to an eye — that
 // is what the recorded proof is for.
 
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test";
+import { afterEach, beforeAll, describe, expect, it } from "bun:test";
 import { modalRevealGround } from "@veyyon/coding-agent/modes/components/modal-shell";
 import {
 	applyGroundPaint,
@@ -41,17 +41,8 @@ import {
 	resetGroundTintsForTest,
 	setDetectedTerminalGround,
 } from "@veyyon/coding-agent/modes/theme/ground-tints";
-import {
-	getThemeByName,
-	hoverBand,
-	setThemeInstance,
-	theme,
-	visibleGroundHex,
-} from "@veyyon/coding-agent/modes/theme/theme";
-import { getAnsiPolicy, setAnsiPolicy } from "@veyyon/tui";
-
-const originalColorterm = Bun.env.COLORTERM;
-const originalAnsiPolicy = getAnsiPolicy();
+import { hoverBand, theme, visibleGroundHex } from "@veyyon/coding-agent/modes/theme/theme";
+import { useTruecolorTheme } from "./helpers/theme-assertions";
 
 /** The grey a real terminal reports; nothing like titanium's declared black. */
 const TERMINAL_GREY = "#1e2127";
@@ -96,29 +87,20 @@ function recordingTerminal(): {
 	};
 }
 
-beforeAll(async () => {
-	// No TTY means no color at all, and every band would come back as bare text with each
-	// assertion comparing nothing to nothing. The bytes are the subject.
-	setAnsiPolicy("full");
-	Bun.env.COLORTERM = "truecolor";
-	const titanium = await getThemeByName("titanium");
-	if (!titanium) throw new Error("titanium theme unavailable in test env");
-	if (titanium.getColorMode() !== "truecolor") throw new Error(`titanium built as ${titanium.getColorMode()}`);
-	setThemeInstance(titanium);
+// Titanium, built truecolor, for the whole file. The helper owns the restore: this suite used to
+// put back only the ANSI policy and COLORTERM, and the truecolor instance it left installed made
+// seventeen later tests in `modes/components` render gradients where they expect a flat band.
+useTruecolorTheme("titanium");
+
+beforeAll(() => {
 	// The premise of the whole suite: the default theme's declared ground is NOT the terminal's.
-	if (titanium.getResolvedGroundHex() !== "#000000") {
-		throw new Error(`titanium's declared ground moved to ${titanium.getResolvedGroundHex()}`);
+	if (theme.getResolvedGroundHex() !== "#000000") {
+		throw new Error(`titanium's declared ground moved to ${theme.getResolvedGroundHex()}`);
 	}
 });
 
 afterEach(() => {
 	resetGroundTintsForTest();
-});
-
-afterAll(() => {
-	setAnsiPolicy(originalAnsiPolicy);
-	if (originalColorterm === undefined) delete (Bun.env as Record<string, string | undefined>).COLORTERM;
-	else Bun.env.COLORTERM = originalColorterm;
 });
 
 describe("a band is mixed out of the ground the terminal is showing", () => {
