@@ -216,7 +216,8 @@ function getCustomMessageText(message: CustomMessage<unknown>): string {
 	if (typeof message.content === "string") return message.content;
 	let firstText: string | undefined;
 	let parts: string[] | undefined;
-	for (const content of message.content) {
+	for (let ci = 0; ci < message.content.length; ci++) {
+		const content = message.content[ci]!;
 		if (content.type !== "text") continue;
 		if (firstText === undefined) {
 			firstText = content.text;

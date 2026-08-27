@@ -102,10 +102,12 @@ export function renderFramedMessage<M extends FramedMessage>(opts: RebuildFrameO
 	if (typeof opts.message.content === "string") {
 		text = opts.message.content;
 	} else {
-		text = opts.message.content
-			.filter((c): c is TextContent => c.type === "text")
-			.map(c => c.text)
-			.join("\n");
+		const parts: string[] = [];
+		for (let ci = 0; ci < opts.message.content.length; ci++) {
+			const c = opts.message.content[ci]!;
+			if (c.type === "text") parts.push(c.text);
+		}
+		text = parts.join("\n");
 	}
 
 	if (!opts.expanded && opts.collapseAfterLines !== undefined) {

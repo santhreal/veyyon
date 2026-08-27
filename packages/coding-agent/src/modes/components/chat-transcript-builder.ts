@@ -73,10 +73,12 @@ export interface ChatTranscriptBuilderDeps {
 /** Extracts the plain-text content of a user message (string or text blocks). */
 function userMessageText(message: Extract<AgentMessage, { role: "user" }>): string {
 	if (typeof message.content === "string") return message.content;
-	return message.content
-		.filter((block): block is { type: "text"; text: string } => block.type === "text")
-		.map(block => block.text)
-		.join("");
+	let result = "";
+	for (let bi = 0; bi < message.content.length; bi++) {
+		const block = message.content[bi]!;
+		if (block.type === "text") result += block.text;
+	}
+	return result;
 }
 
 export class ChatTranscriptBuilder {

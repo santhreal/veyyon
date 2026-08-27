@@ -16,13 +16,16 @@ export class CollabPromptMessageComponent extends Container {
 		const authorText = new Text(theme.fg("accent", `\x1b[1m«${from}»\x1b[22m ›`), 1, 0);
 		authorText.setIgnoreTight(true);
 		this.addChild(authorText);
-		const text =
-			typeof message.content === "string"
-				? message.content
-				: message.content
-						.filter((content): content is TextContent => content.type === "text")
-						.map(content => content.text)
-						.join("");
+		let text: string;
+		if (typeof message.content === "string") {
+			text = message.content;
+		} else {
+			text = "";
+			for (let ci = 0; ci < message.content.length; ci++) {
+				const content = message.content[ci]!;
+				if (content.type === "text") text += content.text;
+			}
+		}
 		const md = new Markdown(text, 1, 1, getMarkdownTheme(), {
 			color: (value: string) => theme.fg("userMessageText", value),
 		});
