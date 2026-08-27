@@ -546,7 +546,7 @@ export function parseJsonlLenient<T>(buffer: string, options?: ParseJsonlLenient
 			if (!entries) {
 				entries = ext;
 			} else {
-				entries.push(...ext);
+				for (let ei = 0; ei < ext.length; ei++) entries.push(ext[ei]!);
 			}
 		}
 		if (error) {
