@@ -707,8 +707,14 @@ export class SettingsList implements Component {
 					startIndex = computeStart(viewportHeight);
 				}
 			}
-			const labelWidths = this.#filteredItems.filter(item => !item.heading).map(item => visibleWidth(item.label));
-			const maxLabelWidth = Math.min(30, labelWidths.length > 0 ? Math.max(...labelWidths) : 0);
+			let maxLabelWidth = 0;
+			for (let fi = 0; fi < this.#filteredItems.length; fi++) {
+				const item = this.#filteredItems[fi]!;
+				if (item.heading) continue;
+				const lw = visibleWidth(item.label);
+				if (lw > maxLabelWidth) maxLabelWidth = lw;
+			}
+			maxLabelWidth = Math.min(30, maxLabelWidth);
 			// Reserved fold/cursor gutter (2) + label column + separator (2) —
 			// the always-aligned start of the value column for this frame.
 			this.#valueColStart = 2 + maxLabelWidth + 2;
@@ -733,16 +739,17 @@ export class SettingsList implements Component {
 				);
 				this.#hitRows[0] = undefined;
 			}
-			const itemRows = visibleItems.map((item, index) =>
-				this.#renderItemRow(
-					item,
-					startIndex + index,
+			const itemRows = new Array<string>(visibleItems.length);
+			for (let ii = 0; ii < visibleItems.length; ii++) {
+				itemRows[ii] = this.#renderItemRow(
+					visibleItems[ii]!,
+					startIndex + ii,
 					maxLabelWidth,
 					itemRowWidth,
 					false,
-					startIndex + index === focusedHeadingIndex,
-				),
-			);
+					startIndex + ii === focusedHeadingIndex,
+				);
+			}
 			// Splice the expanded description directly under the selected row;
 			// rows below it shift down by the description height in the hit map.
 			const selectedVisiblePos = this.#selectedIndex - startIndex;
@@ -815,9 +822,12 @@ export class SettingsList implements Component {
 	 * both panes, falling back to the flat single-column layout.
 	 */
 	#renderSplitList(width: number, sections: SettingSection[]): string[] | null {
-		const sectionNames = sections.map(section => section.name || "Other");
 		let nameWidth = 0;
-		for (const name of sectionNames) nameWidth = Math.max(nameWidth, visibleWidth(name));
+		const sectionNames = new Array<string>(sections.length);
+		for (let si = 0; si < sections.length; si++) {
+			sectionNames[si] = sections[si]!.name || "Other";
+			nameWidth = Math.max(nameWidth, visibleWidth(sectionNames[si]!));
+		}
 		const sidebarWidth = this.#options.sidebarWidth ?? Math.min(22, nameWidth) + 4; // 2-space indent + 2-space gap
 		const paneWidth = width - sidebarWidth - 2; // "│ " separator
 		// Below this the value column starves (2 prefix + 30 label + 2 gap + ~25 value).
@@ -830,12 +840,14 @@ export class SettingsList implements Component {
 			this.#theme.section ??
 			((text: string, isActive: boolean) =>
 				isActive ? this.#theme.label(text, true, false) : this.#theme.hint(text));
-		const sidebarRows = sectionNames.map((name, i) => {
-			const label = truncateToWidth(name, sidebarWidth - 4, Ellipsis.Omit);
+		const sidebarRows = new Array<string>(sectionNames.length);
+		for (let si = 0; si < sectionNames.length; si++) {
+			const label = truncateToWidth(sectionNames[si]!, sidebarWidth - 4, Ellipsis.Omit);
 			// Section focus parks the cursor glyph on the active sidebar entry.
-			const prefix = this.#sectionFocus && i === activeIndex ? this.#theme.cursor : "  ";
-			return `${prefix}${sectionStyle(label, i === activeIndex)}${padding(sidebarWidth - visibleWidth(prefix) - visibleWidth(label))}`;
-		});
+			const prefix = this.#sectionFocus && si === activeIndex ? this.#theme.cursor : "  ";
+			sidebarRows[si] =
+				`${prefix}${sectionStyle(label, si === activeIndex)}${padding(sidebarWidth - visibleWidth(prefix) - visibleWidth(label))}`;
+		}
 
 		// Right pane: the whole list, continuously scrollable. The active
 		// section's heading row belongs to its dim-exempt range.
@@ -846,8 +858,14 @@ export class SettingsList implements Component {
 			Math.min(this.#selectedIndex - Math.floor(viewportHeight / 2), this.#filteredItems.length - viewportHeight),
 		);
 		// Label column width spans all items so the layout stays stable across sections.
-		const labelWidths = this.#filteredItems.filter(item => !item.heading).map(item => visibleWidth(item.label));
-		const maxLabelWidth = Math.min(30, labelWidths.length > 0 ? Math.max(...labelWidths) : 0);
+		let maxLabelWidth = 0;
+		for (let fi = 0; fi < this.#filteredItems.length; fi++) {
+			const item = this.#filteredItems[fi]!;
+			if (item.heading) continue;
+			const lw = visibleWidth(item.label);
+			if (lw > maxLabelWidth) maxLabelWidth = lw;
+		}
+		maxLabelWidth = Math.min(30, maxLabelWidth);
 		// Sidebar + "│ " separator (2) + reserved fold/cursor gutter (2) + label
 		// column + separator (2) — the always-aligned start of the value column.
 		this.#valueColStart = sidebarWidth + 2 + 2 + maxLabelWidth + 2;
