@@ -93,7 +93,8 @@ describe("a search result never advises a field the tool rejects", () => {
 	it("covers every search type the tool declares", () => {
 		const declared = Object.keys(TYPE_FIELDS).sort();
 		expect(Object.keys(SCENARIOS).sort()).toEqual(declared);
-		expect([...searchSchema.shape.type.options].sort()).toEqual(declared);
+		const declaredOptions: string[] = [...searchSchema.shape.type.options];
+		expect(declaredOptions.sort()).toEqual(declared);
 	});
 
 	it("names only accepted fields in every type's limit notice", async () => {
