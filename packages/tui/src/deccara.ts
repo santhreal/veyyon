@@ -56,40 +56,59 @@ type BgState = string | null;
  * about (colon-form extended color, malformed params). Foreground and style
  * parameters are skipped; only background state is tracked.
  */
-function nextBackground(bg: BgState, params: string): BgState | typeof BAIL {
+function nextBackground(bg: BgState, line: string, start: number, end: number): BgState | typeof BAIL {
 	// CSI m with no parameters is SGR 0 (reset everything).
-	if (params.length === 0) return null;
-	const tokens = params.split(";");
+	if (end <= start) return null;
 	let result: BgState = bg;
-	for (let i = 0; i < tokens.length; i++) {
-		const token = tokens[i];
+	let pos = start;
+	while (pos <= end) {
+		// Find the next ';' or end of params.
+		let semi = pos;
+		while (semi < end && line.charCodeAt(semi) !== 0x3b) semi++;
+		const tokenLen = semi - pos;
 		// An empty parameter defaults to 0 (reset), matching terminal behavior.
-		const n = token.length === 0 ? 0 : Number(token);
-		if (!Number.isInteger(n)) return BAIL;
+		const n = tokenLen === 0 ? 0 : Number(line.slice(pos, semi));
+		if (tokenLen > 0 && !Number.isInteger(n)) return BAIL;
 		if (n === 0 || n === 49) {
 			result = null;
+			pos = semi + 1;
 			continue;
 		}
 		if ((n >= 40 && n <= 47) || (n >= 100 && n <= 107)) {
-			result = token;
+			result = line.slice(pos, semi);
+			pos = semi + 1;
 			continue;
 		}
 		if (n === 48) {
-			const mode = tokens[i + 1];
-			if (mode === "5") {
-				const idx = tokens[i + 2];
-				if (idx === undefined) return BAIL;
-				result = `48;5;${idx}`;
-				i += 2;
+			// Read the next token (mode).
+			pos = semi + 1;
+			let semi2 = pos;
+			while (semi2 < end && line.charCodeAt(semi2) !== 0x3b) semi2++;
+			const modeLen = semi2 - pos;
+			if (modeLen === 1 && line.charCodeAt(pos) === 0x35) {
+				// Mode "5": indexed color. Read idx token.
+				pos = semi2 + 1;
+				let semi3 = pos;
+				while (semi3 < end && line.charCodeAt(semi3) !== 0x3b) semi3++;
+				if (semi3 > end) return BAIL;
+				result = `48;5;${line.slice(pos, semi3)}`;
+				pos = semi3 + 1;
 				continue;
 			}
-			if (mode === "2") {
-				const r = tokens[i + 2];
-				const g = tokens[i + 3];
-				const b = tokens[i + 4];
-				if (r === undefined || g === undefined || b === undefined) return BAIL;
-				result = `48;2;${r};${g};${b}`;
-				i += 4;
+			if (modeLen === 1 && line.charCodeAt(pos) === 0x32) {
+				// Mode "2": truecolor. Read r;g;b tokens.
+				const rStart = semi2 + 1;
+				let rEnd = rStart;
+				while (rEnd < end && line.charCodeAt(rEnd) !== 0x3b) rEnd++;
+				const gStart = rEnd + 1;
+				let gEnd = gStart;
+				while (gEnd < end && line.charCodeAt(gEnd) !== 0x3b) gEnd++;
+				const bStart = gEnd + 1;
+				let bEnd = bStart;
+				while (bEnd < end && line.charCodeAt(bEnd) !== 0x3b) bEnd++;
+				if (rEnd > end || gEnd > end || bEnd > end) return BAIL;
+				result = `48;2;${line.slice(rStart, rEnd)};${line.slice(gStart, gEnd)};${line.slice(bStart, bEnd)}`;
+				pos = bEnd + 1;
 				continue;
 			}
 			// Colon-form (`48:2:...`) collapses to a single non-integer token and is
@@ -98,18 +117,30 @@ function nextBackground(bg: BgState, params: string): BgState | typeof BAIL {
 		}
 		if (n === 38) {
 			// Foreground extended color: skip its sub-parameters, leave bg alone.
-			const mode = tokens[i + 1];
-			if (mode === "5") {
-				i += 2;
+			pos = semi + 1;
+			let semi2 = pos;
+			while (semi2 < end && line.charCodeAt(semi2) !== 0x3b) semi2++;
+			const modeLen = semi2 - pos;
+			if (modeLen === 1 && line.charCodeAt(pos) === 0x35) {
+				pos = semi2 + 1;
+				// Skip the idx token.
+				while (pos <= end && line.charCodeAt(pos) !== 0x3b) pos++;
+				pos++;
 				continue;
 			}
-			if (mode === "2") {
-				i += 4;
+			if (modeLen === 1 && line.charCodeAt(pos) === 0x32) {
+				// Skip r;g;b tokens.
+				pos = semi2 + 1;
+				for (let skip = 0; skip < 3; skip++) {
+					while (pos <= end && line.charCodeAt(pos) !== 0x3b) pos++;
+					pos++;
+				}
 				continue;
 			}
 			return BAIL;
 		}
 		// Every other parameter (foreground 30-39/90-97, styles) leaves bg alone.
+		pos = semi + 1;
 	}
 	return result;
 }
@@ -163,7 +194,7 @@ export function analyzeBgFillLine(line: string, width: number): BgFillAnalysis |
 			}
 			if (j >= line.length) return null; // unterminated CSI
 			if (line.charCodeAt(j) !== 0x6d) return null; // non-SGR CSI (final byte != 'm')
-			const next = nextBackground(bg, line.slice(i + 2, j));
+			const next = nextBackground(bg, line, i + 2, j);
 			if (next === BAIL) return null;
 			bg = next;
 			i = j + 1;
