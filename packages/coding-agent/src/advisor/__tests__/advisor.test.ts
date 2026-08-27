@@ -5,7 +5,7 @@ import type { TUI } from "@veyyon/tui";
 import { stripAnsi } from "@veyyon/utils/strip-ansi";
 import { type } from "arktype";
 import type { ModelRegistry } from "../../config/model-registry";
-import type { Settings } from "../../config/settings";
+import { Settings } from "../../config/settings";
 import { type AdvisorConfigDeps, AdvisorConfigOverlayComponent } from "../../modes/components/advisor-config";
 import { createAdvisorMessageCard } from "../../modes/components/advisor-message";
 import { getThemeByName, setThemeInstance } from "../../modes/theme/theme";
@@ -2754,6 +2754,88 @@ describe("advisor", () => {
 			const text = strip(overlay.render(200));
 			expect(text).toContain("default");
 			expect(text).toContain("anthropic/claude-opus");
+		});
+
+		/**
+		 * A failed write must not report success. `save` carries the host's disk and live-runtime
+		 * effects and it can fail — a read-only checkout, a full disk, a rebuild that throws. The
+		 * rejection used to escape the SelectList callback unhandled while the overlay cleared its
+		 * dirty flag regardless, so the editor claimed a save that never reached the file and the
+		 * next Close discarded the edit as already-persisted.
+		 */
+		it("reports a failed save instead of clearing the buffer", async () => {
+			const uiTheme = await getThemeByName("dark");
+			if (!uiTheme) throw new Error("theme unavailable");
+			setThemeInstance(uiTheme);
+			const notices: string[] = [];
+			const overlay = new AdvisorConfigOverlayComponent(
+				{} as unknown as TUI,
+				deps,
+				"project",
+				{ advisors: [{ name: "Architecture" }] },
+				{
+					...callbacks,
+					save: async () => {
+						throw new Error("read-only file system");
+					},
+					notify: (message: string) => {
+						notices.push(message);
+					},
+				},
+			);
+			const frame = overlay.render(120);
+			const saveRow = frame.findIndex(line => stripAnsi(line).includes("Save & apply"));
+			expect(saveRow).toBeGreaterThan(0);
+
+			// Rows are hit-tested against the rendered frame from screen row 0, so frame index N is
+			// SGR row N+1; column 4 lands inside the sidebar.
+			overlay.handleInput(`\x1b[<0;4;${saveRow + 1}M`);
+			for (let tick = 0; tick < 8; tick++) await Promise.resolve();
+
+			expect(notices.join("\n")).toContain("read-only file system");
+		});
+
+		/**
+		 * WHY: a model-registry failure reached this picker as an empty list, which reads as "you have
+		 * no models" — a different answer from "the catalog could not be read", and the one a user
+		 * acts on wrongly. CLASS: a swallowed dependency failure rendered as an empty successful
+		 * result. GAP: does not cover the scoped-model path, which never consults the registry.
+		 */
+		it("states a model-registry failure instead of offering an empty model list", async () => {
+			const uiTheme = await getThemeByName("dark");
+			if (!uiTheme) throw new Error("theme unavailable");
+			setThemeInstance(uiTheme);
+			const notices: string[] = [];
+			const overlay = new AdvisorConfigOverlayComponent(
+				{} as unknown as TUI,
+				{
+					...deps,
+					settings: Settings.isolated({}),
+					modelRegistry: {
+						getAvailable: () => {
+							throw new Error("catalog unreadable");
+						},
+					} as unknown as ModelRegistry,
+				},
+				"project",
+				{ advisors: [{ name: "Architecture" }] },
+				{
+					...callbacks,
+					notify: (message: string) => {
+						notices.push(message);
+					},
+				},
+			);
+
+			// The roster list opens on the first advisor and its detail screen opens on "Name", so
+			// Enter, Down, Enter is the keyboard route to the model picker.
+			overlay.handleInput("\r");
+			overlay.handleInput("\x1b[B");
+			overlay.handleInput("\r");
+
+			expect(notices.join("\n")).toContain("catalog unreadable");
+			// The picker still opens; it is the reason that was missing, not the screen.
+			expect(stripAnsi(overlay.render(120).join("\n"))).toContain("Type to search");
 		});
 	});
 });

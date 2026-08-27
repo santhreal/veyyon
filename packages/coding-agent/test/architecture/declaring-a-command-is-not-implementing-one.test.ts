@@ -177,9 +177,16 @@ describe("the split kept one set of commands", () => {
 	 *     session that replaced it. `/agents` opens the same card on the current conversation,
 	 *     and `a` toggles between them; the separate command exists because the question "is
 	 *     this process spending anywhere" cannot be answered from the screen you are on.
+	 *   - UP to 75: `/advisor` was added. The advisor subsystem shipped complete — a roster loaded
+	 *     from `WATCHDOG.yml`, per-advisor models, tools and instructions, `getAdvisorStats`,
+	 *     `formatAdvisorStatus`, `formatAdvisorHistoryAsText`, and a full-screen roster editor with
+	 *     its own tests — and nothing in the product reached any of it. The three handlers behind it
+	 *     answered "Advisor/watchdog was removed from Veyyon", which was inherited from upstream and
+	 *     had stopped being true the moment the subsystem was re-added. Declaring the command is what
+	 *     makes the editor reachable and those handlers report the running session.
 	 */
-	it("there are the 74 builtins the declarations hold", () => {
-		expect(BUILTIN_SLASH_COMMAND_DECLARATIONS.length).toBe(74);
+	it("there are the 75 builtins the declarations hold", () => {
+		expect(BUILTIN_SLASH_COMMAND_DECLARATIONS.length).toBe(75);
 	});
 
 	/**

@@ -38,7 +38,18 @@ advisor:
 
 The advisor role uses normal model-role resolution, including provider-prefixed ids, canonical ids, and optional thinking suffixes.
 
-The `/advisor` slash commands were removed from Veyyon. Control the advisor through these surfaces instead:
+`/advisor` controls the advisor from inside a session:
+
+| Command | Effect |
+|---|---|
+| `/advisor status` | Report whether the advisor is running, on what model, and what it has spent. |
+| `/advisor configure` | Open the full-screen `WATCHDOG.yml` roster editor; a save applies to the running session. |
+| `/advisor on`, `/advisor off` | Start or stop the advisor for this session. |
+| `/advisor dump` | Copy the advisor's own transcript to the clipboard. |
+
+A bare `/advisor` opens a picker listing those subcommands.
+
+`/advisor on` and `/advisor off` last for the session. These surfaces set the persistent default:
 
 | Surface | Effect |
 |---|---|

@@ -377,7 +377,15 @@ export class AdvisorConfigOverlayComponent implements Component {
 			return;
 		}
 		if (value === "save") {
-			await this.#cb.save(this.#scope, this.#isBareDefaultDoc(this.#doc) ? { advisors: [] } : this.#doc);
+			try {
+				await this.#cb.save(this.#scope, this.#isBareDefaultDoc(this.#doc) ? { advisors: [] } : this.#doc);
+			} catch (err) {
+				// A failed write leaves the edit on screen and still dirty. Clearing the flag
+				// here would report a save that did not happen, and the scope switch and Close
+				// both read `#dirty` to decide whether the buffer is safe to discard.
+				this.#cb.notify(`Save failed: ${errorMessage(err)}`);
+				return;
+			}
 			this.#dirty = false;
 			this.#showList();
 			return;
@@ -474,8 +482,12 @@ export class AdvisorConfigOverlayComponent implements Component {
 		} else {
 			try {
 				models = this.#modelRegistry.getAvailable();
-			} catch {
+			} catch (err) {
+				// A registry failure presented as a picker holding nothing, with no reason given. The
+				// sibling pickers capture it into a visible error; this surface has the notify channel,
+				// so it states what happened instead of showing an empty list as if that were the answer.
 				models = [];
+				this.#cb.notify(`Model list unavailable: ${errorMessage(err)}`);
 			}
 		}
 		const items = buildBrowserItems(models);

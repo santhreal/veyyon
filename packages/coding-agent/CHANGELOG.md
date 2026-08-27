@@ -4,6 +4,7 @@
 
 ### Added
 
+- `/advisor` reports advisor status, opens the `WATCHDOG.yml` roster editor and applies a save to the running session, starts or stops the advisor for the session, and copies the advisor's own transcript; the subsystem shipped complete but no command, key or menu row reached it.
 - `session.newKeepsBackground` decides what `/new` does to a turn still streaming: on (the default) keeps the old conversation running and says which one, off stops it and closes its provider stream before the new session starts.
 - The status line carries a background chip counting conversations this process is still running that no screen is showing, present in every preset and silent at zero.
 - `/process-manager` opens the Agent Control Center across every conversation this process is running rather than only the one on screen, and `a` switches the roster, the comms stream and the transcript guard between the two scopes together.
@@ -52,8 +53,9 @@
 
 ### Fixed
 
+- The advisor roster editor reports a failed save instead of clearing the buffer and claiming the write reached disk.
+- The advisor roster editor states why the model list is unavailable when the model registry fails, instead of opening a picker holding nothing.
 - A prompt typed at the launch card while the session is still starting is carried into the composer instead of being discarded, and the terminal's own probe replies are still excluded so no escape sequence reaches the draft.
-- The welcome tip for the advisor names the Enable Advisor setting under Model, instead of a `/advisor` slash command that does not exist.
 - A bash working directory on a different Windows drive from the project renders as the absolute path it is, instead of being reported as a path inside the project.
 - Web search keeps trying the next provider when one returns only follow-up suggestions or intermediate search queries, instead of counting that metadata as a result and handing the model a list of questions; a SearXNG "did you mean" on a misspelled query no longer ends the search.
 - Public Web search reports which engines did not answer within the deadline instead of reporting an empty web, so a slow or bot-walled engine no longer surfaces as "returned no renderable search content".

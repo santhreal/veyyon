@@ -404,7 +404,7 @@ export interface InteractiveModeContext {
 	// Selector handling
 	/** Opens the settings overlay, optionally pre-selecting a setting path on the appearance tab (e.g. `/statusline`). */
 	showSettingsSelector(initialItemId?: string): void;
-	showAdvisorConfigure(): void;
+	showAdvisorConfigure(): Promise<void>;
 	showHistorySearch(): void;
 	showExtensionsDashboard(): void;
 	showAgentsDashboard(options?: { requireContent?: boolean; processScope?: boolean }): void;

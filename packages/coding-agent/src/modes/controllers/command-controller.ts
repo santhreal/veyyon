@@ -170,8 +170,22 @@ export class CommandController {
 		}
 	}
 
-	handleAdvisorDumpCommand(_isRaw = false) {
-		this.ctx.showError("Advisor/watchdog was removed from Veyyon.");
+	/**
+	 * `/advisor dump`: copy the advisor's OWN transcript — its system prompt, the
+	 * deltas it was fed, and its thinking/advise calls — rather than the main
+	 * conversation's. Compact by default; `isRaw` asks for the full dump with the
+	 * system prompt and tool schemas attached.
+	 */
+	handleAdvisorDumpCommand(isRaw = false) {
+		const dump = this.ctx.session.formatAdvisorHistoryAsText({ compact: !isRaw });
+		if (!dump) {
+			this.ctx.showError("No advisor is running, so there is no advisor transcript to copy.");
+			return;
+		}
+		copyToClipboard(dump).then(
+			() => this.ctx.showStatus("Advisor transcript copied to clipboard."),
+			(error: unknown) => this.ctx.showError(`Failed to copy the advisor transcript: ${errorMessage(error)}`),
+		);
 	}
 
 	async handleDebugTranscriptCommand(): Promise<void> {
@@ -382,8 +396,25 @@ export class CommandController {
 		this.ctx.present([new Spacer(1), new Text(info, 1, 0)]);
 	}
 
+	/**
+	 * `/advisor status`: what the advisor is doing, and the next move when it is
+	 * doing nothing.
+	 *
+	 * "Off" and "on but no model resolved" need different fixes — the
+	 * `advisor.enabled` setting versus a `modelRoles.advisor` assignment — so each
+	 * carries its own instruction instead of one generic line.
+	 */
 	async handleAdvisorStatusCommand(): Promise<void> {
-		this.ctx.showError("Advisor/watchdog was removed from Veyyon.");
+		const stats = this.ctx.session.getAdvisorStats();
+		const lines = [this.ctx.session.formatAdvisorStatus()];
+		if (!stats.configured) {
+			lines.push("Turn it on for this session with /advisor on, or set advisor.enabled in /settings.");
+		} else if (!stats.active) {
+			lines.push("Assign an advisor model with /model, under the advisor role.");
+		} else {
+			lines.push("Edit the roster with /advisor configure.");
+		}
+		this.ctx.showStatus(lines.join("\n"));
 	}
 
 	async handleJobsCommand(): Promise<void> {
