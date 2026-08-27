@@ -91,7 +91,7 @@ function relativizeArguments(value: unknown, roots: readonly string[], state: { 
 		for (let i = 0; i < value.length; i++) {
 			const next = relativizeArguments(value[i], roots, state);
 			if (next !== value[i]) {
-				items ??= [...value];
+				items ??= value.slice();
 				items[i] = next;
 			}
 		}
@@ -123,7 +123,7 @@ function relativizeAssistant(
 		if (block.type === "text") {
 			const next = relativizeText(block.text, compiled);
 			if (next) {
-				content ??= [...message.content];
+				content ??= message.content.slice();
 				content[i] = { ...block, text: next.text };
 				state.saved += next.saved;
 			}
@@ -131,7 +131,7 @@ function relativizeAssistant(
 			const argState = { changed: false };
 			const args = relativizeArguments(block.arguments, roots, argState);
 			if (argState.changed) {
-				content ??= [...message.content];
+				content ??= message.content.slice();
 				content[i] = { ...block, arguments: args as Record<string, unknown> };
 			}
 		}
@@ -166,7 +166,7 @@ function relativizeMessage(
 			if (block.type !== "text") continue;
 			const next = relativizeText(block.text, compiled);
 			if (next) {
-				content ??= [...result.content];
+				content ??= result.content.slice();
 				content[i] = { ...block, text: next.text } as TextContent;
 				state.saved += next.saved;
 			}
@@ -186,7 +186,7 @@ function relativizeMessage(
 		if (block.type !== "text") continue;
 		const next = relativizeText(block.text, compiled);
 		if (next) {
-			content ??= [...message.content];
+			content ??= message.content.slice();
 			content[i] = { ...block, text: next.text };
 			state.saved += next.saved;
 		}
@@ -225,7 +225,7 @@ export function relativizePathsUnderRoots(messages: Message[], roots: readonly s
 		const next = relativizer.transform(messages[i]);
 		bytesSaved += next.bytesSaved;
 		if (next.message !== messages[i]) {
-			out ??= [...messages];
+			out ??= messages.slice();
 			out[i] = next.message;
 		}
 	}

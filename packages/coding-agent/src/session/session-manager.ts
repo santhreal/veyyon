@@ -362,7 +362,7 @@ class SessionEntryIndex {
 			else roots.push(node);
 		}
 
-		const stack = [...roots];
+		const stack = roots.slice();
 		while (stack.length > 0) {
 			const node = stack.pop()!;
 			node.children.sort(orderedByTimestamp);
@@ -1456,7 +1456,7 @@ export class SessionManager {
 	}
 
 	#notifySessionNameListeners(): void {
-		for (const callback of [...this.#sessionNameChangedCallbacks]) {
+		for (const callback of Array.from(this.#sessionNameChangedCallbacks)) {
 			try {
 				callback();
 			} catch (err) {
@@ -1466,7 +1466,7 @@ export class SessionManager {
 	}
 
 	#notifyCwdListeners(previous: string, next: string): void {
-		for (const callback of [...this.#cwdChangedCallbacks]) {
+		for (const callback of Array.from(this.#cwdChangedCallbacks)) {
 			try {
 				callback(previous, next);
 			} catch (err) {
@@ -1511,7 +1511,7 @@ export class SessionManager {
 			// Snapshot header + entries by reference: switch/reload replaces the
 			// active header/array wholesale, so rollback needs no deep clone.
 			header: this.#header,
-			entries: [...this.#entries],
+			entries: this.#entries.slice(),
 		};
 	}
 
@@ -1530,7 +1530,7 @@ export class SessionManager {
 		this.#rewriteRequired = snapshot.needsRewrite;
 		this.#forceFileCreation = snapshot.onDisk;
 		this.#draftOnlySessionCleanupArmed = snapshot.draftOnlySessionCleanupArmed;
-		this.#applyEntries(snapshot.header, [...snapshot.entries]);
+		this.#applyEntries(snapshot.header, snapshot.entries.slice());
 		this.#forgetForeignWriter();
 		this.#nextSequence = snapshot.nextSequence;
 		this.#lifecycleStarted = snapshot.lifecycleStarted;
@@ -2479,7 +2479,7 @@ export class SessionManager {
 		const entry: MCPToolSelectionEntry = {
 			type: "mcp_tool_selection",
 			...this.#freshEntryFields(),
-			selectedToolNames: [...selectedToolNames],
+			selectedToolNames: selectedToolNames.slice(),
 		};
 		this.#recordEntry(entry);
 		return entry.id;
@@ -2490,7 +2490,7 @@ export class SessionManager {
 		const entry: TtsrInjectionEntry = {
 			type: "ttsr_injection",
 			...this.#freshEntryFields(),
-			injectedRules: [...ruleNames],
+			injectedRules: ruleNames.slice(),
 		};
 		this.#recordEntry(entry);
 		return entry.id;
@@ -2503,7 +2503,7 @@ export class SessionManager {
 			if (entry.type !== "ttsr_injection") continue;
 			for (const name of entry.injectedRules) names.add(name);
 		}
-		return [...names];
+		return names.slice();
 	}
 
 	getLeafId(): string | null {
@@ -2589,7 +2589,7 @@ export class SessionManager {
 
 	/** All session entries (excludes header). Returns a shallow copy. */
 	getEntries(): SessionEntry[] {
-		return [...this.#entries];
+		return this.#entries.slice();
 	}
 
 	/** Latest persisted lifecycle state, or `unknown` for old/off files. */
@@ -2721,7 +2721,7 @@ export class SessionManager {
 		for (const carried of labelsToCarry) {
 			const labelEntry: LabelEntry = {
 				type: "label",
-				id: generateId(new Set([...keptIds, ...labels.map(entry => entry.id)])),
+				id: generateId(new Set(Array.from(keptIds).concat(labels.map(entry => entry.id)))),
 				parentId,
 				timestamp: nowIso(),
 				targetId: carried.targetId,
@@ -2732,7 +2732,7 @@ export class SessionManager {
 		}
 
 		this.#header = header;
-		this.#entries = [...entriesToKeep, ...labels];
+		this.#entries = entriesToKeep.concat(labels);
 		this.#setSessionId(newSessionId);
 		this.#sessionName = header.title;
 		this.#titleSource = header.titleSource;
