@@ -77,7 +77,7 @@ export function addMarketplaceEntry(reg: MarketplacesRegistry, entry: Marketplac
 	if (reg.marketplaces.some(m => m.name === entry.name)) {
 		throw new Error(`Marketplace "${entry.name}" already exists`);
 	}
-	return { ...reg, marketplaces: [...reg.marketplaces, entry] };
+	return { ...reg, marketplaces: reg.marketplaces.concat([entry]) };
 }
 
 export function removeMarketplaceEntry(reg: MarketplacesRegistry, name: string): MarketplacesRegistry {

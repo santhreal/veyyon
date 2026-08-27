@@ -1369,9 +1369,9 @@ function installExtensionGraphHook(
 	}
 
 	if (asyncModules.size > 0) {
-		const alternation = [...asyncModules.keys()].map(escapeRegExp).join("|");
+		const alternation = Array.from(asyncModules.keys()).map(escapeRegExp).join("|");
 		const filter = new RegExp(`^(?:${alternation})(?:\\?mtime=\\d+)?$`);
-		const hookId = Bun.hash(`${entryRealPath}\0async\0${[...asyncModules.keys()].join("\0")}`).toString(36);
+		const hookId = Bun.hash(`${entryRealPath}\0async\0${Array.from(asyncModules.keys()).join("\0")}`).toString(36);
 		Bun.plugin({
 			name: `veyyon:legacy-pi-ext:${hookId}`,
 			setup(build) {
@@ -1398,9 +1398,11 @@ function installExtensionGraphHook(
 	}
 
 	if (syncCommonJsModules.size > 0) {
-		const alternation = [...syncCommonJsModules.keys()].map(escapeRegExp).join("|");
+		const alternation = Array.from(syncCommonJsModules.keys()).map(escapeRegExp).join("|");
 		const filter = new RegExp(`^(?:${alternation})(?:\\?mtime=\\d+)?$`);
-		const hookId = Bun.hash(`${entryRealPath}\0sync-cjs\0${[...syncCommonJsModules.keys()].join("\0")}`).toString(36);
+		const hookId = Bun.hash(
+			`${entryRealPath}\0sync-cjs\0${Array.from(syncCommonJsModules.keys()).join("\0")}`,
+		).toString(36);
 		Bun.plugin({
 			name: `veyyon:legacy-pi-ext:${hookId}`,
 			setup(build) {

@@ -201,7 +201,7 @@ export class GitCommandError extends Error {
 	constructor(args: readonly string[], result: GitCommandResult) {
 		super(formatCommandFailure(args, result));
 		this.name = "GitCommandError";
-		this.args = [...args];
+		this.args = args.slice();
 		this.result = result;
 	}
 }
@@ -447,7 +447,7 @@ function formatCommandFailure(
 }
 
 async function git(cwd: string, args: readonly string[], options: CommandOptions = {}): Promise<GitCommandResult> {
-	const commandArgs = withShortLivedGitConfig(options.readOnly ? withNoOptionalLocks(args) : [...args]);
+	const commandArgs = withShortLivedGitConfig(options.readOnly ? withNoOptionalLocks(args) : args.slice());
 	const child = Bun.spawn(["git", ...commandArgs], {
 		cwd,
 		env: buildGitEnv(options.env),
@@ -463,8 +463,8 @@ async function git(cwd: string, args: readonly string[], options: CommandOptions
 }
 
 function withNoOptionalLocks(args: readonly string[]): string[] {
-	if (args.includes(NO_OPTIONAL_LOCKS)) return [...args];
-	return [NO_OPTIONAL_LOCKS, ...args];
+	if (args.includes(NO_OPTIONAL_LOCKS)) return args.slice();
+	return [NO_OPTIONAL_LOCKS].concat(args);
 }
 
 function withShortLivedGitConfig(args: readonly string[]): string[] {
@@ -473,7 +473,7 @@ function withShortLivedGitConfig(args: readonly string[]): string[] {
 		if (hasGitConfig(args, key, value)) continue;
 		prefix.push("-c", `${key}=${value}`);
 	}
-	return [...prefix, ...args];
+	return prefix.concat(args);
 }
 
 function hasGitConfig(args: readonly string[], key: string, value: string): boolean {

@@ -84,7 +84,7 @@ export function addInstalledPlugin(
 	const existing = reg.plugins[id] ?? [];
 	return {
 		...reg,
-		plugins: { ...reg.plugins, [id]: [...existing, entry] },
+		plugins: { ...reg.plugins, [id]: existing.concat([entry]) },
 	};
 }
 
