@@ -12,6 +12,7 @@
 ### Changed
 
 - `bestEffort` and `optionalResult` are imported from `@veyyon/utils/discarded-fault`, which the barrel does not re-export, so a consumer reaching them names the module instead.
+- `winston` and `winston-daily-rotate-file` are resolved on the first log write instead of at module load, taking 4.7ms off every process that imports the logger without logging, which is every entry point.
 
 ### Fixed
 

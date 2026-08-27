@@ -12,11 +12,39 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import * as fs from "node:fs";
 import { isPromise } from "node:util/types";
-import winston from "winston";
-import DailyRotateFile from "winston-daily-rotate-file";
+import type * as winston from "winston";
+import type DailyRotateFile from "winston-daily-rotate-file";
 import { getLogsDir } from "./dirs";
 import { drainModuleLoadEvents } from "./timing-buffer";
 import { errorMessage } from "./type-guards";
+
+/**
+ * `winston` and `winston-daily-rotate-file` are resolved on first use, not
+ * imported at module scope.
+ *
+ * Every entry point reaches this module: `dirs.ts` pulls it through
+ * `file-lock.ts`, so `veyyon --version` and the interactive launch card both
+ * evaluate whatever this module's imports evaluate. Those two packages cost
+ * about 6.6ms of module evaluation between them, which was paid before the
+ * first frame reached the terminal even though nothing had logged yet.
+ *
+ * A static import cannot express that: it evaluates the graph whether or not a
+ * line is ever written. `await import()` cannot either, because every log
+ * method here is synchronous and callers depend on that. `require` is the only
+ * form that is both deferred and synchronous, and the specifier is literal, so
+ * the bundler still resolves both packages into the compiled binary.
+ */
+let winstonLib: typeof winston | undefined;
+function w(): typeof winston {
+	winstonLib ??= require("winston") as typeof winston;
+	return winstonLib;
+}
+
+let rotateFile: typeof DailyRotateFile | undefined;
+function rotateFileCtor(): typeof DailyRotateFile {
+	rotateFile ??= require("winston-daily-rotate-file") as typeof DailyRotateFile;
+	return rotateFile;
+}
 
 /** Ensure a logs directory exists; return the resolved path. */
 function ensureDir(dir: string): string {
@@ -52,9 +80,10 @@ function jsonReplacer(_key: string, value: unknown): unknown {
 let logFormat: winston.Logform.Format | undefined;
 
 function getLogFormat(): winston.Logform.Format {
-	logFormat ??= winston.format.combine(
-		winston.format.timestamp({ format: "YYYY-MM-DDTHH:mm:ss.SSSZ" }),
-		winston.format.printf(({ timestamp, level, message, ...meta }) => {
+	const wf = w().format;
+	logFormat ??= wf.combine(
+		wf.timestamp({ format: "YYYY-MM-DDTHH:mm:ss.SSSZ" }),
+		wf.printf(({ timestamp, level, message, ...meta }) => {
 			const entry: Record<string, unknown> = {
 				timestamp,
 				level,
@@ -98,7 +127,7 @@ let failedRebindTarget: string | undefined;
 function makeFileTransport(dir?: string): winston.transport {
 	fileTransportFollowsDirs = dir === undefined;
 	fileTransportDir = ensureDir(dir ?? getLogsDir());
-	const transport = new DailyRotateFile({
+	const transport = new (rotateFileCtor())({
 		dirname: fileTransportDir,
 		filename: "veyyon.%DATE%.log",
 		datePattern: "YYYY-MM-DD",
@@ -209,7 +238,7 @@ function rebindFileTransportIfMoved(logger: winston.Logger): void {
 }
 
 function makeConsoleTransport(): winston.transport {
-	return new winston.transports.Console({ format: getLogFormat() });
+	return new (w().transports.Console)({ format: getLogFormat() });
 }
 
 /**
@@ -236,7 +265,7 @@ function buildTransports(opts: { console?: boolean; file?: boolean | string }): 
 function getWinstonLogger(): winston.Logger {
 	if (!winstonLogger) {
 		const transports = buildTransports(transportOpts);
-		winstonLogger = winston.createLogger({
+		winstonLogger = w().createLogger({
 			level: "debug",
 			format: getLogFormat(),
 			transports,
