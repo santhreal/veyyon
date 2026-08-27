@@ -1762,7 +1762,12 @@ export function renderUsageReports(
 
 		// Provider-wide disclaimers (e.g. "Veyyon-observed spend only") render once
 		// above the per-account sections instead of duplicating onto every limit.
-		const providerNotes = [...new Set(providerReports.flatMap(report => report.notes ?? []))];
+		const providerNotesSet = new Set<string>();
+		for (let ri = 0; ri < providerReports.length; ri++) {
+			const notes = providerReports[ri]!.notes;
+			if (notes) for (let ni = 0; ni < notes.length; ni++) providerNotesSet.add(notes[ni]!);
+		}
+		const providerNotes = Array.from(providerNotesSet);
 		if (providerNotes.length > 0) {
 			let notesJoined = "";
 			for (let ni = 0; ni < providerNotes.length; ni++) {
@@ -1882,11 +1887,16 @@ export function renderUsageReports(
 				bars[bi] = padColumn(renderUsageBar(sortedLimits[bi]!, uiTheme, sectionColumnWidth), sectionColumnWidth);
 			}
 			lines.push(`  ${bars.join(" ")} ${amountText}`.trimEnd());
+			const notesSet = new Set<string>();
+			for (let li = 0; li < sortedLimits.length; li++) {
+				const notes = sortedLimits[li]!.notes;
+				if (notes) for (let ni = 0; ni < notes.length; ni++) notesSet.add(notes[ni]!);
+			}
+			const notes = Array.from(notesSet);
 			const resetText = sortedLimits.length <= 1 ? resolveResetRange(sortedLimits, nowMs) : null;
 			if (resetText) {
 				lines.push(`  ${uiTheme.fg("dim", resetText)}`.trimEnd());
 			}
-			const notes = [...new Set(sortedLimits.flatMap(limit => limit.notes ?? []))];
 			if (notes.length > 0) {
 				let acctNotesJoined = "";
 				for (let ni = 0; ni < notes.length; ni++) {
