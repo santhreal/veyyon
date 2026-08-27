@@ -155,17 +155,22 @@ const ROW_INDENT_PATTERN = /^((?:\x1b\[[0-9;]*m)*)( *)/;
  */
 function dedent(rows: readonly string[]): string[] {
 	let shared = Number.POSITIVE_INFINITY;
-	for (const row of rows) {
+	for (let ri = 0; ri < rows.length; ri++) {
+		const row = rows[ri]!;
 		if (row.trim() === "") continue;
 		shared = Math.min(shared, ROW_INDENT_PATTERN.exec(row)?.[2]?.length ?? 0);
-		if (shared === 0) return [...rows];
+		if (shared === 0) return rows.slice();
 	}
-	if (!Number.isFinite(shared) || shared === 0) return [...rows];
-	return rows.map(row =>
-		row.trim() === ""
-			? row
-			: row.replace(ROW_INDENT_PATTERN, (_, color: string, indent: string) => color + indent.slice(shared)),
-	);
+	if (!Number.isFinite(shared) || shared === 0) return rows.slice();
+	const result = new Array<string>(rows.length);
+	for (let ri = 0; ri < rows.length; ri++) {
+		const row = rows[ri]!;
+		result[ri] =
+			row.trim() === ""
+				? row
+				: row.replace(ROW_INDENT_PATTERN, (_, color: string, indent: string) => color + indent.slice(shared));
+	}
+	return result;
 }
 
 function resolveEditModeForTool(toolName: string, tool: AnyAgentTool | undefined): EditMode | undefined {
@@ -1858,8 +1863,8 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 		const maxOutputLines = this.#expanded ? 12 : 4;
 		const displayLines = outputLines.slice(0, maxOutputLines);
 
-		for (const line of displayLines) {
-			lines.push(theme.fg("toolOutput", truncateToWidth(replaceTabs(line), contentWidth)));
+		for (let di = 0; di < displayLines.length; di++) {
+			lines.push(theme.fg("toolOutput", truncateToWidth(replaceTabs(displayLines[di]!), contentWidth)));
 		}
 
 		if (outputLines.length > maxOutputLines) {
