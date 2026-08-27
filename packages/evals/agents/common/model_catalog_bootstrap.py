@@ -68,6 +68,59 @@ def build_model_catalog_refresh_command(
     )
 
 
+def build_workspace_probe_command(
+    binary: str,
+    workspace: str,
+    log_path: str,
+    timeout_seconds: int = 60,
+) -> str:
+    """Prove the binary can read the workspace before the agent phase spends on it.
+
+    `<binary> grep` is the standalone native text-search probe, so this one
+    command answers both questions a trial silently failed on: whether the
+    native addon loads in THIS container, and whether the working directory
+    holds any file to work on. A binary built against a newer glibc than the
+    task image ships loads no addon, and a directory scan that cannot run used
+    to be reported to the agent as an empty workspace; a trial then spent its
+    whole bound searching for the repository it was standing in and committed
+    nothing. Both now fail here, in a second, naming the cause.
+    """
+    if not binary or not workspace or not log_path:
+        raise ValueError("binary, workspace, and probe log paths are required")
+    if any("\0" in value for value in (binary, workspace, log_path)):
+        raise ValueError("workspace probe inputs cannot contain NUL bytes")
+    if isinstance(timeout_seconds, bool) or timeout_seconds <= 0:
+        raise ValueError("workspace probe timeout must be a positive integer")
+
+    binary_arg = shlex.quote(binary)
+    workspace_arg = shlex.quote(workspace)
+    log_arg = shlex.quote(log_path)
+    timeout_arg = shlex.quote(f"{timeout_seconds}s")
+    # A pattern no source tree contains: the match count is irrelevant, the
+    # file count is the answer, and a hit would only add output.
+    pattern_arg = shlex.quote("veyyon-workspace-probe-no-match")
+    failed_message = shlex.quote(
+        f"veyyon cannot read the workspace at {workspace}: the native text search probe failed"
+    )
+    empty_message = shlex.quote(
+        f"veyyon searched no file under {workspace}: the agent has no workspace to work on"
+    )
+    return (
+        "{ "
+        f"NO_COLOR=1 FORCE_COLOR=0 timeout -k 5s {timeout_arg} {binary_arg} grep "
+        f"-c --no-gitignore -- {pattern_arg} {workspace_arg} >{log_arg} 2>&1; "
+        "veyyon_probe_status=$?; "
+        'if [ "$veyyon_probe_status" -ne 0 ]; then '
+        f"printf '%s\\n' {failed_message} >&2; cat {log_arg} >&2; "
+        'exit "$veyyon_probe_status"; '
+        "fi; "
+        f"if ! grep -E -- 'Files searched: [1-9]' {log_arg} >/dev/null; then "
+        f"printf '%s\\n' {empty_message} >&2; cat {log_arg} >&2; exit 1; "
+        "fi; "
+        "}"
+    )
+
+
 def build_status_preserving_tee_command(
     command: str,
     log_path: str,

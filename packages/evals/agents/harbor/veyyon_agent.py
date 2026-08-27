@@ -22,6 +22,7 @@ from typing import Any, ClassVar, Literal, Self, Sequence
 
 CONTAINER_ASSETS_DIR = "/opt/veyyon-assets"
 MODEL_CATALOG_REFRESH_TIMEOUT_SECONDS = 120
+WORKSPACE_PROBE_TIMEOUT_SECONDS = 60
 
 # ---------------------------------------------------------------------------
 # Harbor base classes and error hierarchy (shared via harbor_api)
@@ -87,6 +88,7 @@ from common.arm_attachments import (
 from common.model_catalog_bootstrap import (
     build_model_catalog_refresh_command,
     build_status_preserving_tee_command,
+    build_workspace_probe_command,
     parse_model_selector,
 )
 
@@ -267,7 +269,13 @@ class VeyyonAgent(BaseInstalledAgent):
                 "/logs/agent/veyyon.txt",
             )
 
-        command = f"{catalog_refresh} && {logged_agent_command}"
+        workspace_probe = build_workspace_probe_command(
+            f"{CONTAINER_ASSETS_DIR}/vey",
+            ".",
+            "/logs/agent/workspace-probe.txt",
+            timeout_seconds=WORKSPACE_PROBE_TIMEOUT_SECONDS,
+        )
+        command = f"{catalog_refresh} && {workspace_probe} && {logged_agent_command}"
 
         try:
             await self.exec_as_agent(
