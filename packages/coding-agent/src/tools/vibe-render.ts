@@ -101,18 +101,31 @@ function miniFrame(header: string, body: string[], footer?: string): string[] {
 /** The `>` composer rows of the mini CLI: the director's message being typed in. */
 function composerRows(uiTheme: Theme, message: string, options: { cursor: boolean; expanded: boolean }): string[] {
 	const promptGlyph = uiTheme.fg("accent", ">");
-	const rawLines = message.split(/\r?\n/).filter(line => line.trim().length > 0);
+	const rawAll = message.split(/\r?\n/);
+	const rawLines: string[] = [];
+	for (let li = 0; li < rawAll.length; li++) {
+		if (rawAll[li]!.trim().length > 0) rawLines.push(rawAll[li]!);
+	}
 	const maxRows = options.expanded ? 6 : 2;
-	const visible = rawLines.slice(0, maxRows).map(line => frameText(line, COMPOSER_LINE_MAX));
+	const rowLimit = Math.min(rawLines.length, maxRows);
+	const visible: string[] = new Array(rowLimit);
+	for (let li = 0; li < rowLimit; li++) {
+		visible[li] = frameText(rawLines[li]!, COMPOSER_LINE_MAX);
+	}
 	if (visible.length === 0) visible.push("");
 	if (rawLines.length > maxRows) {
-		visible[visible.length - 1] = `${visible[visible.length - 1]} …`;
+		visible[visible.length - 1] = `${visible[visible.length - 1]!} …`;
 	} else if (options.cursor) {
-		visible[visible.length - 1] = `${visible[visible.length - 1]}${uiTheme.fg("accent", CURSOR_GLYPH)}`;
+		visible[visible.length - 1] = `${visible[visible.length - 1]!}${uiTheme.fg("accent", CURSOR_GLYPH)}`;
 	}
-	return visible.map((line, index) =>
-		index === 0 ? `${promptGlyph} ${uiTheme.fg("toolOutput", line)}` : `  ${uiTheme.fg("toolOutput", line)}`,
-	);
+	const result: string[] = new Array(visible.length);
+	for (let li = 0; li < visible.length; li++) {
+		result[li] =
+			li === 0
+				? `${promptGlyph} ${uiTheme.fg("toolOutput", visible[li]!)}`
+				: `  ${uiTheme.fg("toolOutput", visible[li]!)}`;
+	}
+	return result;
 }
 
 /** Render one worker "TV": header + live tool calls + streamed text tail. */
@@ -194,7 +207,11 @@ function linesComponent(lines: string[] | (() => string[])): Component {
 	return {
 		render(width: number): readonly string[] {
 			const rows = typeof lines === "function" ? lines() : lines;
-			return rows.map(line => truncateToWidth(line, width, Ellipsis.Unicode));
+			const out: string[] = new Array(rows.length);
+			for (let ri = 0; ri < rows.length; ri++) {
+				out[ri] = truncateToWidth(rows[ri]!, width, Ellipsis.Unicode);
+			}
+			return out;
 		},
 		invalidate() {},
 	};
@@ -314,7 +331,11 @@ export function createVibeToolRenderer(op: VibeOp) {
 			const waiting = details.wait?.waiting === true;
 			const settledById = new Map(details.wait?.settled.map(entry => [entry.id, entry.status] as const) ?? []);
 			return linesComponent(() => {
-				const running = screens.filter(screen => screen.state === "running" || screen.state === "starting").length;
+				let running = 0;
+				for (let si = 0; si < screens.length; si++) {
+					const state = screens[si]!.state;
+					if (state === "running" || state === "starting") running++;
+				}
 				const meta: string[] = [];
 				if (running > 0) meta.push(uiTheme.fg("accent", `${running} on air`));
 				if (settledById.size > 0) meta.push(uiTheme.fg("success", `${settledById.size} settled`));
