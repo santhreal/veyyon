@@ -266,10 +266,12 @@ function buildSlashCommandCompletions(
 	const browsing = lowerPrefix.length === 0;
 	const categoryOrder = new Map<string, number>();
 	if (browsing) {
-		for (const category of preferredCategoryOrder ?? []) {
-			if (!categoryOrder.has(category)) categoryOrder.set(category, categoryOrder.size);
+		const preferred = preferredCategoryOrder ?? [];
+		for (let ci = 0; ci < preferred.length; ci++) {
+			if (!categoryOrder.has(preferred[ci]!)) categoryOrder.set(preferred[ci]!, categoryOrder.size);
 		}
-		for (const cmd of commands) {
+		for (let ci = 0; ci < commands.length; ci++) {
+			const cmd = commands[ci]!;
 			const category = "category" in cmd ? cmd.category : undefined;
 			if (category && !categoryOrder.has(category)) categoryOrder.set(category, categoryOrder.size);
 		}
@@ -321,7 +323,9 @@ function buildSlashCommandCompletions(
 			// matched the prefix, its row is present and an alias row would be a
 			// duplicate with the identical description — pure menu clutter.
 			if (lowerPrefix.length > 0 && nameScore === 0) {
-				for (const alias of getCommandAliases(cmd)) {
+				const aliases = getCommandAliases(cmd);
+				for (let ai = 0; ai < aliases.length; ai++) {
+					const alias = aliases[ai]!;
 					if (alias === name) continue;
 					const aliasScore = scoreCommandTextMatch(lowerPrefix, alias.toLowerCase());
 					if (aliasScore === 0) continue;
@@ -887,7 +891,8 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 			const entries = await this.#getCachedDirEntries(searchDir);
 			const suggestions: AutocompleteItem[] = [];
 
-			for (const entry of entries) {
+			for (let ei = 0; ei < entries.length; ei++) {
+				const entry = entries[ei]!;
 				if (!entry.name.toLowerCase().startsWith(searchPrefix.toLowerCase())) {
 					continue;
 				}
