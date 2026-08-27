@@ -18,13 +18,16 @@ import { parseHexColor } from "./paint-ground";
 /** Pre-computed string representations of 0–255 for channel value emission. */
 const CHANNEL_STR: readonly string[] = Array.from({ length: 256 }, (_, i) => String(i));
 
+/** Pre-computed two-digit hex for 0–255, avoiding `toString(16).padStart(2, "0")` per call. */
+const HEX_BYTE: readonly string[] = Array.from({ length: 256 }, (_, i) => i.toString(16).padStart(2, "0"));
+
 function clampChannel(value: number): number {
 	return clamp(Math.round(value), 0, 255);
 }
 
 /** `#rrggbb` from channels, each clamped to a byte. */
 export function toHexColor(r: number, g: number, b: number): string {
-	return `#${clampChannel(r).toString(16).padStart(2, "0")}${clampChannel(g).toString(16).padStart(2, "0")}${clampChannel(b).toString(16).padStart(2, "0")}`;
+	return `#${HEX_BYTE[clampChannel(r)]}${HEX_BYTE[clampChannel(g)]}${HEX_BYTE[clampChannel(b)]}`;
 }
 
 /**
