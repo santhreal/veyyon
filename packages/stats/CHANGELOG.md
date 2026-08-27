@@ -5,6 +5,7 @@
 ### Changed
 
 - `App.tsx`, `chart-shared.tsx`, `view-models.ts`, `BehaviorRoute.tsx`, `ModelsRoute.tsx`, `ToolsRoute.tsx`, and `generate-client-bundle.ts` replace array spreads with `.concat()`, `Array.from()`, and `.slice()` to avoid iterator allocation on hot paths.
+- `ToolsRoute.tsx` replaces `[...new Set()]` spread with `Array.from()` in tool model panel.
 
 
 ## [1.2.0] - 2026-08-23

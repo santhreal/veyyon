@@ -28,6 +28,7 @@
 - `terminal-capabilities.ts`, `components/editor.ts`, `components/input.ts`, `components/select-list.ts`, and `components/settings-list.ts` replace array/string spreads with `Array.from()` and `.concat()` across OSC99 hyperlink construction, grapheme segmenter iteration, and filter query character manipulation.
 - `keybindings.ts` and `utils.ts` replace remaining `Set`/`Segment` spreads with `Array.from()`.
 - `toHexColor` in `motion-paint.ts` emits hex channels via three direct template interpolations, eliminating an intermediate array allocation per truecolor color construction.
+- `latex-block.ts` replaces `[...spec.text].filter()` with a `charCodeAt` loop for array column spec extraction, eliminating a character array allocation.
 
 ## [1.2.0] - 2026-08-23
 

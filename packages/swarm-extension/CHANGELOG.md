@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- `cli.ts`, `extension.ts`, `swarm/dag.ts`, and `swarm/schema.ts` replace `Map`/`Set` spreads with `Array.from()` in agent key extraction, cycle detection, and mode validation.
+
 ## [1.2.0] - 2026-08-23
 
 ### Breaking Changes
