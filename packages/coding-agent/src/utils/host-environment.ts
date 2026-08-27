@@ -308,6 +308,10 @@ export function __resetGpuStateForTests(): void {
 	processGpu = undefined;
 	gpuProbe = undefined;
 }
+/** Forget the cached CPU model, so one test file can act as several launches. */
+export function __resetCpuStateForTests(): void {
+	processCpuModel = undefined;
+}
 
 /**
  * Forget this process's CPU answer, the way `__resetGpuStateForTests` forgets the GPU one.

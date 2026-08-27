@@ -450,6 +450,7 @@ describe.skipIf(process.platform !== "linux")("system prompt CPU model", () => {
 
 describe("non-Linux system prompt CPU model", () => {
 	it("includes the model returned by os.cpus", async () => {
+		__resetCpuStateForTests();
 		const originalPlatform = process.platform;
 		Object.defineProperty(process, "platform", { value: "darwin" });
 		__resetCpuStateForTests();

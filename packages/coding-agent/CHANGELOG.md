@@ -412,6 +412,7 @@
 - The Agent Control Center's read-only transcript viewer expands argot shorthand instead of showing the model's raw `§handle` text; it parses a subagent's or advisor's persisted transcript directly, and the persisted form keeps the handles.
 - Characters typed in the same terminal read as a paste are no longer discarded; the editor read the pasted payload and the bytes following it but dropped the ones preceding it, so the last thing typed before `Cmd+V` disappeared.
 - Backspace works at the launch card: the startup gate refused any chunk carrying a control byte, so a character typed by mistake before the composer mounted could not be taken back and the typo was what the session started with.
+- The non-Linux system prompt CPU model test resets the process-level CPU cache before mocking `process.platform`, so `os.cpus()` is called as expected on a Linux CI runner where a prior test already populated the cache from `/proc/cpuinfo`.
 - An unattended goal keeps driving after a turn whose post-turn maintenance outlasts the continuation delay, instead of sitting active and idle until someone types.
 - Text typed at the launch card appears there as it is typed, instead of staying invisible until session startup finishes and the composer mounts.
 - Text typed before the launch card paints reaches the composer instead of being destroyed, because the startup tty flush now runs only for the relaunch backlog it was written for.
