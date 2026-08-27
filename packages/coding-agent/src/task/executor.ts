@@ -1439,13 +1439,13 @@ function createSubagentRunMonitor(args: RunMonitorArgs): SubagentRunMonitor {
 
 	const updateRecentOutputLines = () => {
 		const lines = recentOutputTail.split("\n");
-		const filtered = lines.filter(line => line.trim());
-		progress.recentOutput = filtered.slice(-8).reverse();
-		// The tail's last raw segment (after its final newline) is "represented"
-		// in recentOutput only when it trims non-empty — an empty/whitespace-only
-		// trailing segment is filtered out, so recentOutput[0] is then the line
-		// before it, not the tail's true last line.
-		tailLastLineRepresentable = lines[lines.length - 1].trim().length > 0;
+		tailLastLineRepresentable = lines[lines.length - 1]!.trim().length > 0;
+		const recent: string[] = [];
+		for (let li = lines.length - 1; li >= 0 && recent.length < 8; li--) {
+			const line = lines[li]!;
+			if (line.trim()) recent.push(line);
+		}
+		progress.recentOutput = recent;
 	};
 
 	const appendRecentOutputTail = (text: string) => {

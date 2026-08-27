@@ -27,6 +27,7 @@
 - `segments.ts` replaces `os.hostname().split(".")[0]` with `indexOf` + `slice` in the hostname segment, avoiding an intermediate array per status line frame.
 - `getSessionAccentHex` in `session-color.ts` replaces `.map().filter()` on theme color hexes with a single for loop, eliminating two intermediate array allocations per session accent computation.
 - `#animatedBadgeSlot` in `status-line/component.ts` hoists the `stateSeparator()` call, eliminating a duplicate `theme.fg()` + `.trim()` chain per status-line frame when badge parts are present.
+- `updateRecentOutputLines` in `task/executor.ts` replaces `.filter().slice().reverse()` with a single backward pass, eliminating two intermediate array allocations per subagent output update.
 
 
 
