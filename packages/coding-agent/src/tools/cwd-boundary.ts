@@ -62,14 +62,14 @@ function physicalPath(target: string): string | typeof UNRESOLVABLE {
 	for (;;) {
 		try {
 			const real = fs.realpathSync(current);
-			return tail.length ? path.join(real, ...[...tail].reverse()) : real;
+			return tail.length ? path.join(real, ...tail.slice().reverse()) : real;
 		} catch (err) {
 			if (!isMissingPath(err)) return UNRESOLVABLE;
 			const parent = path.dirname(current);
 			if (parent === current) {
 				// Reached the filesystem root without resolving anything (pathological):
 				// nothing along the path is a symlink, so the lexical form is physical.
-				return tail.length ? path.join(current, ...[...tail].reverse()) : current;
+				return tail.length ? path.join(current, ...tail.slice().reverse()) : current;
 			}
 			tail.push(path.basename(current));
 			current = parent;

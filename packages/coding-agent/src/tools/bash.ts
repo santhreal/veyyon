@@ -112,7 +112,7 @@ export function wrapShellLineForClientTerminal(
 	shellConfig: { shell: string; args: string[]; prefix?: string | undefined },
 ): { command: string; args: string[] } {
 	const finalLine = shellConfig.prefix ? `${shellConfig.prefix} ${line}` : line;
-	return { command: shellConfig.shell, args: [...shellConfig.args, finalLine] };
+	return { command: shellConfig.shell, args: shellConfig.args.concat([finalLine]) };
 }
 
 export { FLAGGED_BASH_PATTERNS } from "./bash-guard";

@@ -648,8 +648,8 @@ export const astEditToolRenderer = {
 		}
 
 		const summaryParts = [formatCount("replacement", totalReplacements), formatCount("file", filesTouched)];
-		const meta = [...summaryParts];
-		if (details?.scopePath) meta.push(formatScopeMeta(details.scopePath));
+		const meta = summaryParts.slice();
+		if (details?.scopePath) meta.push(`in ${details.scopePath}`);
 		meta.push(`searched ${filesSearched}`);
 		if (limitReached) meta.push(uiTheme.fg("warning", "limit reached"));
 		const rewriteCount = args?.ops?.length ?? 0;

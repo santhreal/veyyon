@@ -170,7 +170,7 @@ async function buildDirectoryListing(absolutePath: string): Promise<{ output: st
 
 /** Extract all @filepath mentions from text */
 export function extractFileMentions(text: string): string[] {
-	const matches = [...text.matchAll(FILE_MENTION_REGEX)];
+	const matches = Array.from(text.matchAll(FILE_MENTION_REGEX));
 	const mentions: string[] = [];
 
 	for (const match of matches) {
@@ -186,7 +186,7 @@ export function extractFileMentions(text: string): string[] {
 		mentions.push(cleaned);
 	}
 
-	return [...new Set(mentions)];
+	return Array.from(new Set(mentions));
 }
 
 /**

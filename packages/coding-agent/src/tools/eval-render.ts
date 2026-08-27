@@ -660,9 +660,9 @@ export const evalToolRenderer = {
 					// The cells drew themselves as railed cards. What follows them belongs
 					// to the same call, so it takes the same rail instead of sitting at the
 					// rail's column with nothing in it.
-					const trailing = [...jsonLines, timeoutLine, noticeLine, warningLine].filter(
-						(line): line is string => line !== undefined,
-					);
+					const trailing = jsonLines
+						.concat([timeoutLine, noticeLine, warningLine])
+						.filter((line): line is string => line !== undefined);
 					if (trailing.length > 0) {
 						if (lines.length > 0) {
 							lines.push("");

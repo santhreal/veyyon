@@ -251,13 +251,13 @@ function pickCustomInputOptionWindow(
 	};
 	addIfRoom(selectedIndex);
 	addIfRoom(0);
-	for (const i of [...checked].sort((a, b) => a - b)) {
+	for (const i of Array.from(checked).sort((a, b) => a - b)) {
 		addIfRoom(i);
 	}
 	for (let i = 0; i < total && keep.size < MAX_CUSTOM_INPUT_OPTION_ROWS; i++) {
 		addIfRoom(i);
 	}
-	const indices = [...keep].sort((a, b) => a - b);
+	const indices = Array.from(keep).sort((a, b) => a - b);
 	const gapBefore = new Map<number, CustomInputOptionGap>();
 	const countCheckedBetween = (startInclusive: number, endExclusive: number): number => {
 		let count = 0;
@@ -623,7 +623,7 @@ async function askSingleQuestion(
 	} else {
 		while (true) {
 			const displayOptions = addRecommendedSuffix(questionOptions, recommended);
-			const optionsWithNavigation: ExtensionUISelectItem[] = [...displayOptions, ASK_OTHER_OPTION_LABEL];
+			const optionsWithNavigation: ExtensionUISelectItem[] = displayOptions.concat([ASK_OTHER_OPTION_LABEL]);
 
 			let initialIndex = recommended;
 			const previouslySelected = selectedOptions[0];

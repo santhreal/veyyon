@@ -115,7 +115,7 @@ function ghJsonErrorNamesField(err: unknown, field: string): boolean {
 }
 
 function dropJsonField(args: readonly string[], field: string): string[] | undefined {
-	const next = [...args];
+	const next = args.slice();
 	const jsonIndex = next.indexOf("--json");
 	if (jsonIndex < 0) return undefined;
 	const fields = next[jsonIndex + 1];
@@ -135,7 +135,7 @@ export async function githubIssueJsonWithStateReasonFallback<T>(
 	options?: git.GhCommandOptions,
 ): Promise<T> {
 	try {
-		return await git.github.json<T>(cwd, [...args], signal, options);
+		return await git.github.json<T>(cwd, args.slice(), signal, options);
 	} catch (err) {
 		if (!ghJsonErrorNamesField(err, GH_ISSUE_STATE_REASON_FIELD)) throw err;
 		const retryArgs = dropJsonField(args, GH_ISSUE_STATE_REASON_FIELD);

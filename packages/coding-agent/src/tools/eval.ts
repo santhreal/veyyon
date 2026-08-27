@@ -563,7 +563,7 @@ export class EvalTool implements AgentTool<typeof evalSchema> {
 						cells: [
 							{
 								...cellResult,
-								statusEvents: cellResult.statusEvents ? [...cellResult.statusEvents] : undefined,
+								statusEvents: cellResult.statusEvents ? cellResult.statusEvents.slice() : undefined,
 							},
 						],
 					};

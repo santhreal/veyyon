@@ -353,7 +353,7 @@ export class BrowserTool implements AgentTool<typeof browserSchema, BrowserToolD
 
 		if (screenshots.length) details.screenshots = screenshots;
 
-		const content = [...displays];
+		const content = displays.slice();
 		if (returnValue !== undefined) {
 			content.push({ type: "text", text: stringifyReturnValue(returnValue) });
 		}
@@ -378,7 +378,7 @@ export class BrowserTool implements AgentTool<typeof browserSchema, BrowserToolD
 		if (cappedText !== textOnly) {
 			const nonText = content.filter(c => c.type !== "text");
 			return toolResult(details)
-				.content([...nonText, { type: "text", text: cappedText }])
+				.content(nonText.concat([{ type: "text", text: cappedText }]))
 				.done();
 		}
 		return toolResult(details).content(content).done();

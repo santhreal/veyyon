@@ -380,7 +380,7 @@ export function paintRailMotion(
 		if (hex === cell.hex) continue;
 		const ansi = theme.fgHexAnsi(hex);
 		if (!ansi) return lines;
-		out ??= [...lines];
+		out ??= lines.slice();
 		const row = lines[line]!;
 		out[line] = `${row.slice(0, cell.start)}${ansi}${row.slice(cell.end)}`;
 	}
