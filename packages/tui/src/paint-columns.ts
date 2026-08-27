@@ -287,8 +287,10 @@ export function paintBlockBackground(
 	painter: (row: number) => ColumnPainter | null,
 	window?: ColumnWindow,
 ): string[] {
-	return lines.map((line, row) => {
-		const columnPainter = painter(row);
-		return columnPainter === null ? line : paintLineBackground(line, width, columnPainter, window);
-	});
+	const result = new Array<string>(lines.length);
+	for (let li = 0; li < lines.length; li++) {
+		const columnPainter = painter(li);
+		result[li] = columnPainter === null ? lines[li]! : paintLineBackground(lines[li]!, width, columnPainter, window);
+	}
+	return result;
 }
