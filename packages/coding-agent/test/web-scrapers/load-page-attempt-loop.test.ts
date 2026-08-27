@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import { ToolAbortError } from "@veyyon/coding-agent/tools/tool-errors";
 import { loadPage } from "@veyyon/coding-agent/web/scrapers/types";
-import { CHROME_WINDOWS_USER_AGENT } from "@veyyon/coding-agent/web/search/providers/browser-headers";
+import { CHROME_WINDOWS_USER_AGENT } from "@veyyon/coding-agent/web/search/providers/browser-fingerprint-constants";
 
 /**
  * `loadPage` retries across a list of user agents, and the reason it exists is

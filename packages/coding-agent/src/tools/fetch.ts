@@ -19,7 +19,7 @@ import { LRUCache } from "lru-cache/raw";
 import type { Settings } from "../config/settings";
 import { readEditableNotebookText } from "../edit/notebook";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
-import { CONVERTIBLE_EXTENSIONS } from "../markit";
+import { CONVERTIBLE_EXTENSIONS } from "../markit/convertible-extensions";
 import { theme } from "../modes/theme/theme-binding";
 import type { Theme } from "../modes/theme/theme-class";
 import { type ProviderTextTransformResolver, resolveProviderTextTransform } from "../provider-boundary";

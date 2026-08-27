@@ -35,7 +35,7 @@ import { SearchProviderError } from "../../../web/search/types";
 import { dateToAgeSeconds, sanitizeResultLimit } from "../utils";
 import type { SearchParams } from "./base";
 import { SearchProvider } from "./base";
-import { CHROME_DESKTOP_USER_AGENT } from "./browser-headers";
+import { CHROME_DESKTOP_USER_AGENT } from "./browser-fingerprint-constants";
 import { type ApiConfig, getAvailableAuthMethods } from "./perplexity-auth";
 import { classifyProviderHttpError, withHardTimeout } from "./utils";
 
