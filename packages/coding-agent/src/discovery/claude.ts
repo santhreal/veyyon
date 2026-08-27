@@ -264,7 +264,7 @@ function addClaudeCommandNamespaceAliases(commands: SlashCommand[], commandsDir:
 		aliases.push({ ...command, name: relativeName.replace(/[\\/]+/g, ":") });
 	}
 
-	return nestedCommands.length === 0 ? commands : [...rootCommands, ...nestedCommands, ...aliases];
+	return nestedCommands.length === 0 ? commands : rootCommands.concat(nestedCommands, aliases);
 }
 
 async function loadSlashCommands(ctx: LoadContext): Promise<LoadResult<SlashCommand>> {

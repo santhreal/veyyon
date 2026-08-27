@@ -303,7 +303,7 @@ async function executeApplyPatchPerFile(
 						.filter(Boolean)
 						.join("\n"),
 					firstChangedLine: perFileResults.find(r => r.firstChangedLine)?.firstChangedLine,
-					perFileResults: [...perFileResults],
+					perFileResults: perFileResults.slice(),
 				},
 			});
 		}

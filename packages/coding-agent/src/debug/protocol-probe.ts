@@ -177,7 +177,7 @@ class RawLines implements Component {
 	}
 	invalidate(): void {}
 	render(): string[] {
-		return [...this.#lines];
+		return this.#lines.slice();
 	}
 }
 

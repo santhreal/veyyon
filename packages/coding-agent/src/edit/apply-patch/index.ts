@@ -67,7 +67,7 @@ export class PartialApplyPatchError extends ApplyPatchError {
 		unappliedPaths: string[],
 		cause: unknown,
 	): string {
-		const appliedPaths = [...affected.added, ...affected.modified, ...affected.deleted];
+		const appliedPaths = affected.added.concat(affected.modified, affected.deleted);
 		const lines = [`Failed to apply ${failedPath}: ${errorMessage(cause)}`];
 		if (appliedPaths.length > 0) {
 			lines.push(`Files already applied: ${appliedPaths.join(", ")}.`);

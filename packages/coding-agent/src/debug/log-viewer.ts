@@ -335,9 +335,9 @@ export class DebugLogViewerModel {
 			return 0;
 		}
 		const offset = newEntries.length;
-		this.#entries = [...newEntries, ...this.#entries];
+		this.#entries = newEntries.concat(this.#entries);
 		this.#loadedStartIndex += offset;
-		this.#expandedLogIndices = new Set([...this.#expandedLogIndices].map(logIndex => logIndex + offset));
+		this.#expandedLogIndices = new Set(Array.from(this.#expandedLogIndices).map(logIndex => logIndex + offset));
 		const adjustedCursor: CursorToken | undefined =
 			previousCursor?.kind === "log" ? { kind: "log", logIndex: previousCursor.logIndex + offset } : previousCursor;
 		const adjustedAnchor = previousAnchorLogIndex === undefined ? undefined : previousAnchorLogIndex + offset;

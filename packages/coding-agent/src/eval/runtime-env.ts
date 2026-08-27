@@ -113,7 +113,7 @@ export function createEnvFilter(
 	options: EnvFilterOptions,
 ): (env: Record<string, string | undefined>) => Record<string, string | undefined> {
 	const normalizedAllowList = new Set(
-		[...options.allowList, ...options.windowsAllowList].map(key => (CASE_INSENSITIVE_ENV ? key.toUpperCase() : key)),
+		options.allowList.concat(options.windowsAllowList).map(key => (CASE_INSENSITIVE_ENV ? key.toUpperCase() : key)),
 	);
 	const normalizedDenyList = new Set(options.denyList.map(key => (CASE_INSENSITIVE_ENV ? key.toUpperCase() : key)));
 	const normalizedAllowPrefixes = CASE_INSENSITIVE_ENV

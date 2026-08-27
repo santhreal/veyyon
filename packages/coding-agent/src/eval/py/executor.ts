@@ -283,10 +283,10 @@ async function resetSession(sessionKey: string): Promise<void> {
 // ---------------------------------------------------------------------------
 
 export async function disposeAllKernelSessions(): Promise<void> {
-	const pending = [...startingSessions.values()];
+	const pending = Array.from(startingSessions.values());
 	startingSessions.clear();
 	const started = await Promise.allSettled(pending);
-	const all = [...sessions.entries()];
+	const all = Array.from(sessions.entries());
 	for (const result of started) {
 		if (result.status !== "fulfilled") continue;
 		if (!all.some(([, session]) => session === result.value)) {
@@ -314,7 +314,7 @@ export async function disposeAllKernelSessions(): Promise<void> {
 
 export async function disposeKernelSessionsByOwner(ownerId: string): Promise<void> {
 	const toShutdown: PythonSession[] = [];
-	for (const session of [...sessions.values()]) {
+	for (const session of Array.from(sessions.values())) {
 		if (!session.ownerIds.has(ownerId)) continue;
 		if (session.ownerIds.size === 1) {
 			toShutdown.push(session);

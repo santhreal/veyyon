@@ -132,16 +132,16 @@ export interface EditStreamingStrategy<Args = unknown> {
  * preview from showing an incomplete edit.
  */
 export function dropIncompleteLastEdit<T>(edits: readonly T[], partialJson: string | undefined, listKey: string): T[] {
-	if (!Array.isArray(edits) || edits.length === 0) return [...(edits ?? [])];
-	if (!partialJson) return [...edits];
+	if (!Array.isArray(edits) || edits.length === 0) return (edits ?? []).slice();
+	if (!partialJson) return edits.slice();
 
 	const keyMarker = `"${listKey}"`;
 	const keyIdx = partialJson.indexOf(keyMarker);
-	if (keyIdx === -1) return [...edits];
+	if (keyIdx === -1) return edits.slice();
 
 	// Find the `[` that opens the list value.
 	let i = partialJson.indexOf("[", keyIdx + keyMarker.length);
-	if (i === -1) return [...edits];
+	if (i === -1) return edits.slice();
 	i++;
 
 	let depth = 0;
@@ -187,7 +187,7 @@ export function dropIncompleteLastEdit<T>(edits: readonly T[], partialJson: stri
 	if (lastClose === -1 || (listIsStillOpen && sawNewObjectAfterLastClose)) {
 		return edits.slice(0, -1);
 	}
-	return [...edits];
+	return edits.slice();
 }
 
 // -----------------------------------------------------------------------------

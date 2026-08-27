@@ -331,11 +331,11 @@ async function resetSession(sessionKey: string): Promise<void> {
 }
 
 export async function disposeAllJuliaKernelSessions(): Promise<void> {
-	const pending = [...startingSessions.values()].map(starting => starting.promise);
+	const pending = Array.from(startingSessions.values()).map(starting => starting.promise);
 	startingSessions.clear();
 	resettingSessions.clear();
 	const started = await Promise.allSettled(pending);
-	const all = [...sessions.entries()];
+	const all = Array.from(sessions.entries());
 	for (const result of started) {
 		if (result.status !== "fulfilled") continue;
 		if (!all.some(([, session]) => session === result.value)) {
@@ -364,7 +364,7 @@ export async function disposeAllJuliaKernelSessions(): Promise<void> {
 export async function disposeJuliaKernelSessionsByOwner(ownerId: string): Promise<void> {
 	const toShutdown: JuliaSession[] = [];
 	const startingToShutdown: StartingJuliaSession[] = [];
-	for (const session of [...sessions.values()]) {
+	for (const session of Array.from(sessions.values())) {
 		if (!session.ownerIds.has(ownerId)) continue;
 		if (session.ownerIds.size === 1) {
 			toShutdown.push(session);
@@ -372,7 +372,7 @@ export async function disposeJuliaKernelSessionsByOwner(ownerId: string): Promis
 		}
 		session.ownerIds.delete(ownerId);
 	}
-	for (const [sessionKey, starting] of [...startingSessions.entries()]) {
+	for (const [sessionKey, starting] of Array.from(startingSessions.entries())) {
 		if (sessions.has(sessionKey) || !starting.ownerIds.has(ownerId)) continue;
 		if (starting.ownerIds.size === 1) {
 			startingSessions.delete(sessionKey);
