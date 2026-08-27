@@ -239,7 +239,7 @@ export async function searchPublicWeb(
 		}
 	}
 
-	const sources = [...merged.values()]
+	const sources = Array.from(merged.values())
 		.sort((a, b) => b.engines - a.engines || a.bestRank - b.bestRank || a.order - b.order)
 		.slice(0, numResults)
 		.map(entry => entry.source);

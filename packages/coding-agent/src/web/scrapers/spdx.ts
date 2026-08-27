@@ -36,7 +36,7 @@ function collectCrossReferences(license: SpdxLicense): string[] {
 		.map(ref => ref.url as string);
 
 	const seeAlso = (license.seeAlso ?? []).filter(url => url);
-	const combined = [...ordered, ...seeAlso];
+	const combined = ordered.concat(seeAlso);
 	return combined.filter((url, index) => combined.indexOf(url) === index);
 }
 
