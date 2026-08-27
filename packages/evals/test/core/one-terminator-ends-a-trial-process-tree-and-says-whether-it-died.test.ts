@@ -15,7 +15,8 @@
  * deep-swe executor call it, and it returns whether the tree is gone so a caller can decide not to
  * read pipes a survivor still holds. Every path through it is driven here: exits on SIGTERM, exits
  * on SIGKILL, survives both, a rejecting `exited`, a process with no pid, and a pid that is not its
- * own group leader.
+ * own group leader. `drainTrialOutput` is the bounded read the two container backends use after a
+ * kill, and its cases cover a pipe that never closes, one of two that does, and a read that threw.
  *
  * The grace periods are real time — bounding real time is the behaviour under test — so every case
  * passes a grace of a few milliseconds and asserts the outcome rather than the duration.
@@ -26,7 +27,9 @@
 
 import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import {
+	drainTrialOutput,
 	KILL_GRACE_PERIOD_MS,
+	OUTPUT_DRAIN_GRACE_MS,
 	type TerminableProcess,
 	type TerminationOutcome,
 	terminateProcessTree,
@@ -174,5 +177,53 @@ describe("one terminator ends a trial's process tree", () => {
 		// Pinned as a literal: the abandoned case above reads this constant, so a grace that drifted
 		// to a minute would leave this file green while a run stalled a minute per dead trial.
 		expect(KILL_GRACE_PERIOD_MS).toBe(500);
+	});
+});
+
+describe("the output a killed trial produced", () => {
+	/** Short enough to keep the suite fast; the bound, not the duration, is what is asserted. */
+	const DRAIN_MS = 20;
+
+	it("keeps both pipes when both close", async () => {
+		const drained = await drainTrialOutput(Promise.resolve("out"), Promise.resolve("err"), DRAIN_MS);
+
+		expect(drained).toEqual({ stdout: "out", stderr: "err", complete: true });
+	});
+
+	it("returns rather than waiting on a pipe a survivor holds open", async () => {
+		// Nothing resolves these: the only way this call returns is the bound.
+		const held = Promise.withResolvers<string>();
+		const also = Promise.withResolvers<string>();
+
+		const drained = await drainTrialOutput(held.promise, also.promise, DRAIN_MS);
+
+		expect(drained).toEqual({ stdout: "", stderr: "", complete: false });
+		held.resolve("");
+		also.resolve("");
+	});
+
+	it("keeps the pipe that closed and states the read was partial", async () => {
+		const held = Promise.withResolvers<string>();
+
+		const drained = await drainTrialOutput(Promise.resolve("the agent's last words"), held.promise, DRAIN_MS);
+
+		expect(drained).toEqual({ stdout: "the agent's last words", stderr: "", complete: false });
+		held.resolve("");
+	});
+
+	it("treats a failed read as empty rather than raising it at the caller", async () => {
+		const drained = await drainTrialOutput(
+			Promise.reject(new Error("stream already locked")),
+			Promise.resolve("err"),
+			DRAIN_MS,
+		);
+
+		expect(drained).toEqual({ stdout: "", stderr: "err", complete: true });
+	});
+
+	it("bounds the drain at two seconds", () => {
+		// Pinned as a literal: every case above passes its own grace, so a default that drifted to a
+		// minute would leave this file green while each timed-out trial cost a minute of nothing.
+		expect(OUTPUT_DRAIN_GRACE_MS).toBe(2000);
 	});
 });
