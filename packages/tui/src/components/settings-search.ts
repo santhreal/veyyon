@@ -126,5 +126,8 @@ export function rankSettingItems(items: readonly SettingItem[], query: string): 
 
 /** Matching items only, best first. */
 export function filterSettingItems(items: readonly SettingItem[], query: string): SettingItem[] {
-	return rankSettingItems(items, query).map(result => result.item);
+	const ranked = rankSettingItems(items, query);
+	const result = new Array<SettingItem>(ranked.length);
+	for (let ri = 0; ri < ranked.length; ri++) result[ri] = ranked[ri]!.item;
+	return result;
 }
