@@ -789,8 +789,16 @@ export class SelectList implements Component, MouseRoutable {
 			// large-list filter stall instead of logging it as "unknown".
 			pushLoopPhase("ui.select-filter");
 			try {
-				this.#searchable ??= this.items.map(item => ({ item, text: this.#getFilterText(item) }));
-				this.#filteredItems = fuzzyFilter(this.#searchable, filter, entry => entry.text).map(entry => entry.item);
+				if (!this.#searchable) {
+					const searchable = new Array<{ item: T; text: string }>(this.items.length);
+					for (let ii = 0; ii < this.items.length; ii++)
+						searchable[ii] = { item: this.items[ii]!, text: this.#getFilterText(this.items[ii]!) };
+					this.#searchable = searchable;
+				}
+				const filtered = fuzzyFilter(this.#searchable, filter, entry => entry.text);
+				const filteredItems: T[] = new Array(filtered.length);
+				for (let fi = 0; fi < filtered.length; fi++) filteredItems[fi] = filtered[fi]!.item;
+				this.#filteredItems = filteredItems;
 			} finally {
 				popLoopPhase();
 			}
