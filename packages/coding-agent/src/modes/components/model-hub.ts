@@ -1522,7 +1522,8 @@ export class ModelHubComponent implements Component {
 
 	#sidebarWidth(): number {
 		let longest = 0;
-		for (const entry of this.#entries) {
+		for (let ei = 0; ei < this.#entries.length; ei++) {
+			const entry = this.#entries[ei]!;
 			const annotation = entry.annotation ?? "";
 			longest = Math.max(longest, visibleWidth(entry.label) + visibleWidth(annotation) + 5);
 		}
@@ -1708,7 +1709,8 @@ export class ModelHubComponent implements Component {
 		this.#rolesRowStart = lines.length;
 
 		let tagWidth = 0;
-		for (const rowDef of this.#rolesRows) {
+		for (let ri = 0; ri < this.#rolesRows.length; ri++) {
+			const rowDef = this.#rolesRows[ri]!;
 			if (rowDef.kind !== "role") continue;
 			const info = getRoleInfo(rowDef.role, this.#settings);
 			tagWidth = Math.max(tagWidth, visibleWidth(info.tag ?? info.name ?? rowDef.role));
@@ -1812,7 +1814,7 @@ export class ModelHubComponent implements Component {
 			const cycleStyled = cycleIndex >= 0 ? theme.fg("accent", `${theme.icon.loop}${cycleIndex + 1}`) : "";
 
 			let line = ` ${cursor} ${dot} ${tagStyled}  ${value}`;
-			const right = [levelStyled, cycleStyled].filter(part => part.length > 0).join("  ");
+			const right = levelStyled && cycleStyled ? `${levelStyled}  ${cycleStyled}` : levelStyled || cycleStyled;
 			const rightWidth = visibleWidth(right);
 			const lineWidth = visibleWidth(line);
 			if (rightWidth > 0 && lineWidth + rightWidth + 2 <= width) {
@@ -1847,10 +1849,9 @@ export class ModelHubComponent implements Component {
 				const selectedRole =
 					selectedRow && (selectedRow.kind === "role" || selectedRow.kind === "fallback") ? selectedRow.role : "";
 				const activeIndex = cycleOrder.indexOf(selectedRole);
-				const track = renderSegmentTrack(
-					cycleOrder.map(role => ({ label: role })),
-					activeIndex,
-				);
+				const cycleLabels = new Array<{ label: string }>(cycleOrder.length);
+				for (let ci = 0; ci < cycleOrder.length; ci++) cycleLabels[ci] = { label: cycleOrder[ci]! };
+				const track = renderSegmentTrack(cycleLabels, activeIndex);
 				lines[rows - 1] = truncateToWidth(`  ${theme.fg("dim", `${cycleKey} cycle:`)} ${track}`, fullWidth);
 			} else {
 				lines[rows - 1] = truncateToWidth(
@@ -1888,7 +1889,8 @@ export class ModelHubComponent implements Component {
 		if (catalogCount > 0) {
 			lines.push(truncateToWidth(theme.fg("dim", `  ${catalogCount} models in catalog:`), width));
 			const preview = this.#scopedModels.length > 0 ? [] : this.#registry.getAll();
-			for (const model of preview) {
+			for (let mi = 0; mi < preview.length; mi++) {
+				const model = preview[mi]!;
 				if (model.provider !== entry.providerId) continue;
 				if (lines.length >= rows) break;
 				lines.push(truncateToWidth(theme.fg("dim", `    ${model.id}`), width));
@@ -1973,9 +1975,10 @@ export class ModelHubComponent implements Component {
 		// fits) stays visible while cycling right.
 		const prefixWidth = visibleWidth(prefix);
 		const available = Math.max(1, width - prefixWidth);
-		const chipWidths = strip.chips.map(
-			(chip, i) => visibleWidth(` ${chip.styled} `) + (i === strip.index ? 2 : 0) + 1,
-		);
+		const chipWidths = new Array<number>(strip.chips.length);
+		for (let ci = 0; ci < strip.chips.length; ci++) {
+			chipWidths[ci] = visibleWidth(` ${strip.chips[ci]!.styled} `) + (ci === strip.index ? 2 : 0) + 1;
+		}
 		// Smallest start index whose window [start..target] (with its "… " lead-in
 		// when start > 0) fits in the available width; `target` itself may still
 		// overflow when a single chip is wider than the row.
