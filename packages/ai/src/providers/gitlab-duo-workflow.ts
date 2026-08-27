@@ -2099,7 +2099,7 @@ export function runGitLabDuoWorkflowSocket(
 			while (!settled) {
 				if (pending.length === 0) {
 					if (active?.pauseBuffer && active.pauseBuffer.length > 0) {
-						pending.push(...active.pauseBuffer);
+						for (let pi = 0; pi < active.pauseBuffer.length; pi++) pending.push(active.pauseBuffer[pi]!);
 						active.pauseBuffer = [];
 						continue;
 					}
@@ -2123,7 +2123,7 @@ export function runGitLabDuoWorkflowSocket(
 					return;
 				}
 				if (active?.pauseBuffer && active.pauseBuffer.length > 0) {
-					pending.push(...active.pauseBuffer);
+					for (let pi = 0; pi < active.pauseBuffer.length; pi++) pending.push(active.pauseBuffer[pi]!);
 					active.pauseBuffer = [];
 				}
 			}
