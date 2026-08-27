@@ -310,9 +310,16 @@ function formatDisassembly(instructions: DapDisassembledInstruction[]): string {
 		lines.push("(empty)");
 		return lines.join("\n");
 	}
-	const addressWidth = Math.max(...instructions.map(instruction => instruction.address.length));
-	const bytesWidth = Math.max(...instructions.map(instruction => instruction.instructionBytes?.length ?? 0), 2);
-	for (const instruction of instructions) {
+	let addressWidth = 0;
+	let bytesWidth = 2;
+	for (let ii = 0; ii < instructions.length; ii++) {
+		const instruction = instructions[ii]!;
+		if (instruction.address.length > addressWidth) addressWidth = instruction.address.length;
+		const instructionBytesLen = instruction.instructionBytes?.length ?? 0;
+		if (instructionBytesLen > bytesWidth) bytesWidth = instructionBytesLen;
+	}
+	for (let ii = 0; ii < instructions.length; ii++) {
+		const instruction = instructions[ii]!;
 		const location = formatSourceLabel(instruction.location, instruction.line, instruction.column);
 		const parts = [
 			instruction.address.padEnd(addressWidth),
@@ -357,11 +364,30 @@ function formatMemoryRead(address: string, data: string | undefined, unreadableB
 }
 
 function formatTable(headers: string[], rows: string[][]): string {
-	const widths = headers.map((header, index) =>
-		Math.max(header.length, ...rows.map(row => (row[index] ?? "").length)),
-	);
-	const formatRow = (row: string[]) => row.map((cell, index) => (cell ?? "").padEnd(widths[index])).join("  ");
-	return [formatRow(headers), formatRow(widths.map(width => "-".repeat(width))), ...rows.map(formatRow)].join("\n");
+	const widths: number[] = new Array(headers.length);
+	for (let ci = 0; ci < headers.length; ci++) {
+		let w = headers[ci]!.length;
+		for (let ri = 0; ri < rows.length; ri++) {
+			const cellLen = (rows[ri]![ci] ?? "").length;
+			if (cellLen > w) w = cellLen;
+		}
+		widths[ci] = w;
+	}
+	const formatRow = (row: readonly string[]): string => {
+		let result = "";
+		for (let ci = 0; ci < row.length; ci++) {
+			if (ci > 0) result += "  ";
+			result += (row[ci] ?? "").padEnd(widths[ci]);
+		}
+		return result;
+	};
+	const separatorRow: string[] = new Array(headers.length);
+	for (let ci = 0; ci < headers.length; ci++) separatorRow[ci] = "-".repeat(widths[ci]!);
+	const allRows: string[] = new Array(2 + rows.length);
+	allRows[0] = formatRow(headers);
+	allRows[1] = formatRow(separatorRow);
+	for (let ri = 0; ri < rows.length; ri++) allRows[ri + 2] = formatRow(rows[ri]!);
+	return allRows.join("\n");
 }
 
 function formatModules(modules: DapModule[]): string {
