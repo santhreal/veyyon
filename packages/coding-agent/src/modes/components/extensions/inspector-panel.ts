@@ -102,10 +102,9 @@ export class InspectorPanel implements Component {
 		const parts = shortened.split(/[/\\]/);
 		const sep = shortened.includes("\\") ? "\\" : "/";
 		// If path is very long, show just the last parts
+		const segments = shortened.split("/");
 		const displayPath =
-			shortened.length > TRUNCATE_LENGTHS.SHORT && parts.length > PREVIEW_LIMITS.COLLAPSED_LINES
-				? `...${sep}${parts.slice(-PREVIEW_LIMITS.COLLAPSED_LINES).join(sep)}`
-				: shortened;
+			shortened.length > 40 && segments.length > 3 ? `.../${segments.slice(-3).join("/")}` : shortened;
 		lines.push(`  ${theme.fg("dim", displayPath)}`);
 		lines.push("");
 
@@ -266,12 +265,12 @@ export class InspectorPanel implements Component {
 			if (!instruction) {
 				lines.push(theme.fg("dim", "  (no instruction text)"));
 			} else {
-				const instructionLines = instruction.split("\n").slice(0, 15);
-				for (const line of instructionLines) {
-					lines.push(truncateToWidth(line, width - 2));
+				const allInstructionLines = instruction.split("\n");
+				const instructionLines = allInstructionLines.slice(0, 15);
+				for (let li = 0; li < instructionLines.length; li++) {
+					lines.push(truncateToWidth(instructionLines[li]!, width - 2));
 				}
-
-				if (instruction.split("\n").length > 15) {
+				if (allInstructionLines.length > 15) {
 					lines.push(theme.fg("dim", "(truncated at line 15)"));
 				}
 			}
