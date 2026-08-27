@@ -1030,7 +1030,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			syncSpawns.map(spawn => ({ item: spawn.item, index: spawn.index })),
 			payloads,
 		);
-		syncResults.push(...merged.results);
+		for (let ri = 0; ri < merged.results.length; ri++) syncResults.push(merged.results[ri]!);
 		syncUsage = merged.usage;
 		syncOutputPaths = merged.outputPaths;
 		syncProjectAgentsDir = merged.projectAgentsDir;

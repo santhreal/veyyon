@@ -366,7 +366,7 @@ class SessionEntryIndex {
 		while (stack.length > 0) {
 			const node = stack.pop()!;
 			node.children.sort(orderedByTimestamp);
-			stack.push(...node.children);
+			for (let ci = 0; ci < node.children.length; ci++) stack.push(node.children[ci]!);
 		}
 
 		return roots;

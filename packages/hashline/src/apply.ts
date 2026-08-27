@@ -1041,7 +1041,8 @@ function repairReplacementBoundaries(
 			remainingDelta = balanceSum(remainingDelta, droppedClosers.balance);
 			continue;
 		}
-		out.push(...slot.inserts, ...slot.deletes);
+		for (let ii = 0; ii < slot.inserts.length; ii++) out.push(slot.inserts[ii]!);
+		for (let ii = 0; ii < slot.deletes.length; ii++) out.push(slot.deletes[ii]!);
 	}
 	return { edits: out, warnings };
 }

@@ -732,7 +732,8 @@ function renderTaskCallLines(args: Partial<TaskParams> | undefined, theme: Theme
 		line += agentTypeBadge(args.agent, theme);
 		lines.push(line);
 	}
-	lines.push(...renderTaskItemLines(args.tasks, theme));
+	const rl = renderTaskItemLines(args.tasks, theme);
+	for (let li = 0; li < rl.length; li++) lines.push(rl[li]!);
 	return lines;
 }
 
@@ -964,7 +965,8 @@ function renderAgentProgress(
 
 	lines.push(statusLine);
 
-	lines.push(...renderTaskSection(progress.assignment ?? progress.task, continuePrefix, expanded, theme));
+	const rl = renderTaskSection(progress.assignment ?? progress.task, continuePrefix, expanded, theme);
+	for (let li = 0; li < rl.length; li++) lines.push(rl[li]!);
 
 	// Current tool (if running) or most recent completed tool
 	if (progress.status === "running") {
@@ -1039,7 +1041,8 @@ function renderAgentProgress(
 			if (reviewData.length > 0) {
 				const summary = reviewData[reviewData.length - 1];
 				const findings = reportFindingData;
-				lines.push(...renderReviewResult(summary, findings, continuePrefix, expanded, theme));
+				const rl = renderReviewResult(summary, findings, continuePrefix, expanded, theme);
+				for (let li = 0; li < rl.length; li++) lines.push(rl[li]!);
 				return lines; // Review result handles its own rendering
 			}
 		}
@@ -1047,7 +1050,8 @@ function renderAgentProgress(
 		for (const toolName in progress.extractedToolData) {
 			const dataArray = progress.extractedToolData[toolName];
 			if (toolName === YIELD_TOOL_NAME) {
-				lines.push(...renderTypedYieldSections(dataArray, continuePrefix, expanded, theme));
+				const rl = renderTypedYieldSections(dataArray, continuePrefix, expanded, theme);
+				for (let li = 0; li < rl.length; li++) lines.push(rl[li]!);
 				continue;
 			}
 
@@ -1056,7 +1060,8 @@ function renderAgentProgress(
 				const findings = normalizeReportFindings(dataArray);
 				if (findings.length === 0) continue;
 				lines.push(`${continuePrefix}${formatFindingSummary(findings, theme)}`);
-				lines.push(...renderFindings(findings, continuePrefix, expanded, theme));
+				const rl = renderFindings(findings, continuePrefix, expanded, theme);
+				for (let li = 0; li < rl.length; li++) lines.push(rl[li]!);
 				continue;
 			}
 
@@ -1120,7 +1125,8 @@ function renderAgentProgress(
 				expandHint: false,
 			},
 		).join("\n");
-		lines.push(...renderOutputSection(output, continuePrefix, expanded, theme, 2, previewRows));
+		const rl = renderOutputSection(output, continuePrefix, expanded, theme, 2, previewRows);
+		for (let li = 0; li < rl.length; li++) lines.push(rl[li]!);
 	}
 
 	return lines;
@@ -1172,7 +1178,8 @@ function renderReviewResult(
 	lines.push(`${continuePrefix}${formatFindingSummary(findings, theme)}`);
 
 	if (findings.length > 0) {
-		lines.push(...renderFindings(findings, continuePrefix, expanded, theme));
+		const rl = renderFindings(findings, continuePrefix, expanded, theme);
+		for (let li = 0; li < rl.length; li++) lines.push(rl[li]!);
 	}
 
 	return lines;
@@ -1298,7 +1305,8 @@ function renderAgentResult(
 
 	lines.push(statusLine);
 
-	lines.push(...renderTaskSection(result.assignment ?? result.task, continuePrefix, expanded, theme));
+	const rl = renderTaskSection(result.assignment ?? result.task, continuePrefix, expanded, theme);
+	for (let li = 0; li < rl.length; li++) lines.push(rl[li]!);
 
 	if (aborted && result.abortReason) {
 		lines.push(
@@ -1334,7 +1342,8 @@ function renderAgentResult(
 	if (submitReviewData) {
 		const summary = submitReviewData[submitReviewData.length - 1];
 		const findings = reportFindingData;
-		lines.push(...renderReviewResult(summary, findings, continuePrefix, expanded, theme));
+		const rl = renderReviewResult(summary, findings, continuePrefix, expanded, theme);
+		for (let li = 0; li < rl.length; li++) lines.push(rl[li]!);
 		return lines;
 	}
 	if (reportFindingData.length > 0) {
@@ -1344,7 +1353,8 @@ function renderAgentResult(
 			: "Review incomplete (yield not called)";
 		lines.push(`${continuePrefix}${theme.fg("warning", theme.status.warning)} ${theme.fg("dim", message)}`);
 		lines.push(`${continuePrefix}${formatFindingSummary(reportFindingData, theme)}`);
-		lines.push(...renderFindings(reportFindingData, continuePrefix, expanded, theme));
+		const rl = renderFindings(reportFindingData, continuePrefix, expanded, theme);
+		for (let li = 0; li < rl.length; li++) lines.push(rl[li]!);
 		return lines;
 	}
 
@@ -1358,7 +1368,8 @@ function renderAgentResult(
 				const yieldLines = renderTypedYieldSections(dataArray, continuePrefix, expanded, theme);
 				if (yieldLines.length > 0) {
 					hasCustomRendering = true;
-					lines.push(...yieldLines);
+					const yl = yieldLines;
+					for (let li = 0; li < yl.length; li++) lines.push(yl[li]!);
 				}
 				continue;
 			}
@@ -1422,7 +1433,8 @@ function renderAgentResult(
 	}
 
 	if (deferredToolLines.length > 0) {
-		lines.push(...deferredToolLines);
+		const dl = deferredToolLines;
+		for (let li = 0; li < dl.length; li++) lines.push(dl[li]!);
 	}
 
 	if (result.patchPath && !aborted && result.exitCode === 0) {
@@ -1641,13 +1653,15 @@ export function renderResult(
 				lines.push(formatHiddenProgressLine(ordered.slice(0, ordered.length - visible.length), theme));
 			}
 			for (const progress of visible) {
-				lines.push(...renderAgentProgress(progress, "", "  ", expanded, theme, spinnerFrame, frozen));
+				const rl = renderAgentProgress(progress, "", "  ", expanded, theme, spinnerFrame, frozen);
+				for (let li = 0; li < rl.length; li++) lines.push(rl[li]!);
 			}
 		} else if (details.results && details.results.length > 0) {
 			const ordered = orderResultsForDisplay(details.results);
 			const visible = expanded ? ordered : selectCollapsedResults(ordered);
 			for (const res of visible) {
-				lines.push(...renderAgentResult(res, "", "  ", expanded, theme));
+				const rl = renderAgentResult(res, "", "  ", expanded, theme);
+				for (let li = 0; li < rl.length; li++) lines.push(rl[li]!);
 			}
 			if (visible.length < ordered.length) {
 				const hint = formatExpandHint(theme, false, true);
@@ -1666,7 +1680,8 @@ export function renderResult(
 					)
 				: [];
 			for (const progress of supplementalProgress) {
-				lines.push(...renderAgentProgress(progress, "", "  ", expanded, theme, spinnerFrame, frozen));
+				const rl = renderAgentProgress(progress, "", "  ", expanded, theme, spinnerFrame, frozen);
+				for (let li = 0; li < rl.length; li++) lines.push(rl[li]!);
 			}
 
 			const summaryParts: string[] = [];
@@ -1790,7 +1805,8 @@ function renderNestedTaskResults(
 		const hiddenCount = ordered.length - visible.length;
 		visible.forEach((result, index) => {
 			const { prefix, continuePrefix } = nestedMarkers(hiddenCount === 0 && index === visible.length - 1, theme);
-			lines.push(...renderAgentResult(result, prefix, continuePrefix, expanded, theme, seen, depth + 1));
+			const rl = renderAgentResult(result, prefix, continuePrefix, expanded, theme, seen, depth + 1);
+			for (let li = 0; li < rl.length; li++) lines.push(rl[li]!);
 		});
 		if (hiddenCount > 0) {
 			const { prefix } = nestedMarkers(true, theme);
@@ -1833,7 +1849,8 @@ function renderNestedTaskTree(
 			const hiddenCount = ordered.length - visible.length;
 			visible.forEach((result, index) => {
 				const { prefix, continuePrefix } = nestedMarkers(hiddenCount === 0 && index === visible.length - 1, theme);
-				lines.push(...renderAgentResult(result, prefix, continuePrefix, expanded, theme, seen, depth + 1));
+				const rl = renderAgentResult(result, prefix, continuePrefix, expanded, theme, seen, depth + 1);
+				for (let li = 0; li < rl.length; li++) lines.push(rl[li]!);
 			});
 			if (hiddenCount > 0) {
 				const { prefix } = nestedMarkers(true, theme);

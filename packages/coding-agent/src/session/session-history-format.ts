@@ -327,13 +327,18 @@ export function formatSessionHistoryMarkdown(messages: unknown[], opts?: History
 				if (opts?.watchedRoles) {
 					const label = "**agent**:";
 					if (lastWatchedLabel === label) {
-						lines.push(...body, "");
+						for (let bi = 0; bi < body.length; bi++) lines.push(body[bi]!);
+						lines.push("");
 					} else {
-						lines.push(label, ...body, "");
+						lines.push(label);
+						for (let bi = 0; bi < body.length; bi++) lines.push(body[bi]!);
+						lines.push("");
 						lastWatchedLabel = label;
 					}
 				} else {
-					lines.push("## assistant", "", ...body, "");
+					lines.push("## assistant", "");
+					for (let bi = 0; bi < body.length; bi++) lines.push(body[bi]!);
+					lines.push("");
 				}
 				break;
 			}
