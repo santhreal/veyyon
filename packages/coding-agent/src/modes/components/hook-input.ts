@@ -229,8 +229,9 @@ export class HookInputComponent extends Container {
 		});
 
 		const body: string[] = [];
-		for (const child of this.children) {
-			for (const line of child.render(dims.contentWidth)) body.push(line);
+		for (let ci = 0; ci < this.children.length; ci++) {
+			const childLines = this.children[ci]!.render(dims.contentWidth);
+			for (let li = 0; li < childLines.length; li++) body.push(childLines[li]!);
 		}
 
 		const shell = renderModalShell({
