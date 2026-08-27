@@ -1538,9 +1538,15 @@ function padColumn(text: string, width: number): string {
 }
 
 function resolveAggregateStatus(limits: UsageLimit[]): UsageLimit["status"] {
-	const hasOk = limits.some(limit => limit.status === "ok");
-	const hasWarning = limits.some(limit => limit.status === "warning");
-	const hasExhausted = limits.some(limit => limit.status === "exhausted");
+	let hasOk = false;
+	let hasWarning = false;
+	let hasExhausted = false;
+	for (let li = 0; li < limits.length; li++) {
+		const status = limits[li]!.status;
+		if (status === "ok") hasOk = true;
+		else if (status === "warning") hasWarning = true;
+		else if (status === "exhausted") hasExhausted = true;
+	}
 	if (!hasOk && !hasWarning && !hasExhausted) return "unknown";
 	if (hasOk) {
 		return hasWarning || hasExhausted ? "warning" : "ok";
