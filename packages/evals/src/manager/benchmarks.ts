@@ -6,7 +6,7 @@ import { aggregate, type JobInfo } from "../backends/harbor/runner/results";
 import { sumOfMeasured } from "../core/scoring";
 import type { BackendId } from "../core/types";
 import { pathSegmentFrom } from "../paths";
-import type { BenchmarkDefinition, BenchmarkKind, MetricDefinition } from "../wire";
+import type { BenchmarkDefinition, BenchmarkKind, MetricDefinition, TrialStatus } from "../wire";
 
 /** Adapter for a benchmark system, declaring its wire metadata, backend binding, and snapshot reader. */
 export interface BenchmarkAdapter {
@@ -177,7 +177,7 @@ registerBuiltinBenchmarks();
 export interface BenchmarkTrace {
 	name: string;
 	task: string;
-	status: "pass" | "fail" | "error" | "running";
+	status: TrialStatus;
 	reward: number | null;
 	costUsd: number | null;
 	durationMs: number;
@@ -479,7 +479,7 @@ function readDeepsweSnapshot(jobDir: string): BenchmarkSnapshot {
 
 interface HarborParsedTrial {
 	name: string;
-	status: "pass" | "fail" | "error" | "running";
+	status: TrialStatus;
 	reward: number | null;
 	costUsd: number | null;
 	tokIn: number;
@@ -582,7 +582,7 @@ function parseHarborTrialFromJson(raw: unknown, name: string, tracePath: string 
 	const end = typeof raw.finished_at === "string" ? Date.parse(raw.finished_at) : NaN;
 	if (Number.isFinite(start) && Number.isFinite(end)) durationMs = end - start;
 
-	let status: "pass" | "fail" | "error";
+	let status: TrialStatus;
 	let detail = "";
 	if (exc) {
 		status = "error";

@@ -14,7 +14,7 @@ import { atomicWriteFileSync, isProcessAlive, logger } from "@veyyon/utils";
 import { readJobResult } from "../backends/harbor/runner/results";
 import type { BackendId } from "../core/types";
 import { requirePathSegment } from "../paths";
-import type { BenchmarkKind, RunRole, RunStatus } from "../wire";
+import { type BenchmarkKind, isTrialStatus, type RunRole, type RunStatus, type TraceRow } from "../wire";
 import { getBenchmark, getBenchmarkByBackend, readBenchmarkSnapshot } from "./benchmarks";
 
 /**
@@ -87,20 +87,11 @@ export interface RunRow {
 	metrics: Record<string, number | null>;
 }
 
-export interface TraceRow {
-	jobName: string;
-	name: string;
-	task: string;
-	status: string;
-	reward: number | null;
-	/** `null` when the trial reported no cost. */
-	costUsd: number | null;
-	durationMs: number;
-	detail: string;
-	updatedAt: number;
-	/** Adapter-owned locator used by the uniform trace endpoint. */
-	tracePath: string | null;
-}
+/**
+ * A trial row as stored and as served. The wire declares the shape; the store held a second copy
+ * whose `status` was a bare string, which is how a status nothing classifies reached the dashboard.
+ */
+export type { TraceRow } from "../wire";
 
 /** Row in the `experiments` table: goal metadata keyed by experiment id. */
 export interface ExperimentMeta {
@@ -706,18 +697,27 @@ export class RunStore {
 		const rows = this.#db.query("SELECT * FROM trials WHERE job_name = ? ORDER BY name").all(jobName) as Array<
 			Record<string, unknown>
 		>;
-		return rows.map(r => ({
-			jobName: String(r.job_name),
-			name: String(r.name),
-			task: String(r.task),
-			status: String(r.status),
-			reward: r.reward === null ? null : Number(r.reward),
-			costUsd: optionalNumber(r.cost_usd),
-			durationMs: Number(r.duration_ms),
-			detail: String(r.detail),
-			updatedAt: Number(r.updated_at),
-			tracePath: r.trace_path === null ? null : String(r.trace_path),
-		}));
+		return rows.map(r => {
+			// A recorded status this build does not know cannot be classified, so it is over and
+			// carries no verdict: reading it as an error keeps the trial in `done` and out of every
+			// pass rate, and the detail states what the row held. Reading it verbatim let a status
+			// written by another build count toward no total and leave the arm running forever.
+			const recorded = String(r.status);
+			const known = isTrialStatus(recorded);
+			const detail = String(r.detail);
+			return {
+				jobName: String(r.job_name),
+				name: String(r.name),
+				task: String(r.task),
+				status: known ? recorded : "error",
+				reward: r.reward === null ? null : Number(r.reward),
+				costUsd: optionalNumber(r.cost_usd),
+				durationMs: Number(r.duration_ms),
+				detail: known ? detail : `recorded status "${recorded}" is not one this build knows`,
+				updatedAt: Number(r.updated_at),
+				tracePath: r.trace_path === null ? null : String(r.trace_path),
+			};
+		});
 	}
 }
 

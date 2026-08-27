@@ -1,11 +1,15 @@
 import { useState } from "react";
-import type { ArmSummary, ExperimentDetail } from "../../wire";
+import { type ArmSummary, type ExperimentDetail, isTrialStatus, type TrialStatus } from "../../wire";
 import { isDecided, type TaskStat } from "./focus-panel";
 import { shortTask } from "./task-chips";
 
 export type TaskFilter = "all" | "split" | "focus-fail" | "focus-pass";
 
-export const CELL_CLASS: Record<string, string> = {
+/**
+ * One colour per status. Keyed by the union, so a status added to the wire fails this file to
+ * compile rather than rendering as an unlabelled grey square that reads as "not run yet".
+ */
+export const CELL_CLASS: Record<TrialStatus, string> = {
 	pass: "bg-emerald-500",
 	fail: "bg-red-500",
 	error: "bg-amber-500",
@@ -130,6 +134,17 @@ export function TaskMatrix({
 									</td>
 									{arms.map(arm => {
 										const cell = matrix[arm.arm]?.[task];
+										// A bundle older than the server can receive a status it has no colour for. It
+										// says so rather than borrowing the "not run yet" shade.
+										const known = cell !== undefined && isTrialStatus(cell.status);
+										const shade =
+											cell === undefined ? "bg-zinc-800" : known ? CELL_CLASS[cell.status] : "bg-zinc-600";
+										const reported =
+											cell === undefined
+												? "pending"
+												: known
+													? cell.status
+													: `unrecognised status "${cell.status}"`;
 										return (
 											<td
 												key={arm.arm}
@@ -137,8 +152,8 @@ export function TaskMatrix({
 											>
 												<a
 													href={`#/runs/${encodeURIComponent(arm.run.jobName)}`}
-													title={`${arm.run.label || arm.arm} · ${task}: ${cell ? cell.status : "pending"}${cell && cell.reward !== null ? ` · reward ${cell.reward.toFixed(2)}` : ""}`}
-													className={`block h-3.5 w-3.5 rounded-sm ${cell ? (CELL_CLASS[cell.status] ?? "bg-zinc-600") : "bg-zinc-800"}`}
+													title={`${arm.run.label || arm.arm} · ${task}: ${reported}${cell && cell.reward !== null ? ` · reward ${cell.reward.toFixed(2)}` : ""}`}
+													className={`block h-3.5 w-3.5 rounded-sm ${shade}`}
 												/>
 											</td>
 										);
