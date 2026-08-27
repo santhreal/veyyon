@@ -227,7 +227,7 @@ export class ExtensionDashboard implements Component {
 			areaWidth: width,
 			areaHeight: height,
 			body,
-			shortcuts: [...EXT_SHORTCUTS],
+			shortcuts: EXT_SHORTCUTS.slice(),
 			hoveredShortcutId: this.#hoveredShortcutId,
 			showClose: true,
 		});
