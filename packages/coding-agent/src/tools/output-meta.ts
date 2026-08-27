@@ -43,6 +43,15 @@ export {
 import type { OutputMeta, TruncationMeta } from "./output-notice";
 import { formatFullOutputReference, formatOutputNotice, formatTruncationMetaNotice } from "./output-notice";
 
+/** Count `\n` occurrences in `text` via charCodeAt, avoiding `split("\n").length` allocation. */
+function countNewlines(text: string): number {
+	let count = 0;
+	for (let i = 0; i < text.length; i++) {
+		if (text.charCodeAt(i) === 0x0a) count++;
+	}
+	return count;
+}
+
 // =============================================================================
 // OutputMetaBuilder - Fluent API for building OutputMeta
 // =============================================================================
@@ -234,7 +243,7 @@ export class OutputMetaBuilder {
 
 	/** Add truncation info from truncated output text. No-op if truncation not detected. */
 	truncationFromText(text: string, options: TruncationTextOptions): this {
-		const outputLines = text.length > 0 ? text.split("\n").length : 0;
+		const outputLines = text.length > 0 ? countNewlines(text) + 1 : 0;
 		const outputBytes = Buffer.byteLength(text, "utf-8");
 		const totalLines = options.totalLines ?? outputLines;
 		const totalBytes = options.totalBytes ?? outputBytes;
