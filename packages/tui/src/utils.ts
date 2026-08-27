@@ -636,8 +636,9 @@ function correctedBunWidth(text: string): number {
 	}
 	if (!text.includes(ESC)) return correctedRunWidth(text);
 	let total = 0;
-	for (const run of text.split(ESCAPE_SEQUENCE_BOUNDARY)) {
-		if (run) total += correctedRunWidth(run);
+	const runs = text.split(ESCAPE_SEQUENCE_BOUNDARY);
+	for (let ri = 0; ri < runs.length; ri++) {
+		if (runs[ri]) total += correctedRunWidth(runs[ri]!);
 	}
 	return total;
 }
@@ -733,7 +734,9 @@ export function visibleWidth(str: string): number {
 		for (let m = OSC66_SPAN_REGEX.exec(str); m !== null; m = OSC66_SPAN_REGEX.exec(str)) {
 			let scale = 1;
 			let explicit: number | undefined;
-			for (const part of m[1].split(":")) {
+			const parts = m[1].split(":");
+			for (let pi = 0; pi < parts.length; pi++) {
+				const part = parts[pi]!;
 				// metadata keys are single chars, e.g. `s=2`, `w=5`
 				if (part.indexOf("=") !== 1) continue;
 				const value = parseOsc66MetaValue(part.slice(2));
