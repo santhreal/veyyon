@@ -357,9 +357,12 @@ export class MotionClock {
 	tick(now: number = this.#now()): void {
 		const dt = this.#lastTick === null ? FRAME_MS : now - this.#lastTick;
 		this.#lastTick = now;
-		const live = Array.from(this.#live);
-		for (let ai = 0; ai < live.length; ai++) {
-			if (!live[ai]!.step(dt)) this.#live.delete(live[ai]!);
+		const toRemove: Animation[] = [];
+		for (const anim of this.#live) {
+			if (!anim.step(dt)) toRemove.push(anim);
+		}
+		for (let ri = 0; ri < toRemove.length; ri++) {
+			this.#live.delete(toRemove[ri]!);
 		}
 		if (this.#live.size === 0) this.#stopTicking();
 	}
