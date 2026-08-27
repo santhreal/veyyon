@@ -1,6 +1,6 @@
 # Arms Reference
 
-Configuration arms are overlays in `arms/<name>.yml` that the runner applies on top of the default veyvon configuration. Each arm changes one variable so comparisons are single-variable and attributable.
+Configuration arms are overlays in `arms/<name>.yml` that the runner applies on top of the default veyyon configuration. Each arm changes one variable so comparisons are single-variable and attributable.
 
 ## Arm files
 
@@ -126,7 +126,7 @@ Arms prefixed with `spill` or `sig` control context window management:
 3. If the arm overrides a prompt statement, create `arms/<name>.statements.yml`.
 4. If the arm overrides a prompt registry item, create `arms/<name>.prompts.yml`.
 5. If the arm adds a behavioral rule, create `arms/<name>.rule.md`.
-6. Validate with `bun run.ts --arms <name> --dry-run`.
+6. Validate with `bun src/suites/deep-swe/run.ts --arms <name> --dry-run`.
 
 ### Single-variable principle
 

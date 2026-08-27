@@ -80,7 +80,7 @@ class OmpAgent(BaseInstalledAgent):
             user="root",
         )
         # A models.yml defining the model statically is staged by the omp
-        # adapter's stageAssets (using the veyvon binary's models.dev overlay
+        # adapter's stageAssets (using the veyyon binary's models.dev overlay
         # to fetch full metadata). Place it at ~/.omp/agent/models.yml so the
         # omp binary loads the model into its static catalog at startup,
         # bypassing the background-discovery race that loses dynamically-

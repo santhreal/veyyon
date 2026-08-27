@@ -52,13 +52,13 @@ Missing domains cause DNS resolution failures inside the container. If a new API
 
 ### Veyvon
 
-The veyvon binary has a synchronous model discovery fallback: when an explicit `--model` pattern does not resolve against the static catalog, it runs a cache-aware discovery pass before model resolution. This handles dynamically-discovered models (not in the bundled catalog) without requiring a `models refresh` before the agent starts.
+The veyyon binary has a synchronous model discovery fallback: when an explicit `--model` pattern does not resolve against the static catalog, it runs a cache-aware discovery pass before model resolution. This handles dynamically-discovered models (not in the bundled catalog) without requiring a `models refresh` before the agent starts.
 
 The `model-catalog-bootstrap.py` module runs `vey models refresh <provider> --json` before the agent starts, writing model metadata to a cache the agent reads at startup.
 
 ### Omp
 
-Omp's release binary does not have the synchronous discovery fallback. For dynamically-discovered models, the omp adapter's `stageAssets()` method generates a `models.yml` with full metadata using the veyvon binary's `models.dev` overlay. The omp agent copies this to `~/.omp/agent/models.yml` before starting the agent, which adds the model to omp's static catalog at startup.
+Omp's release binary does not have the synchronous discovery fallback. For dynamically-discovered models, the omp adapter's `stageAssets()` method generates a `models.yml` with full metadata using the veyyon binary's `models.dev` overlay. The omp agent copies this to `~/.omp/agent/models.yml` before starting the agent, which adds the model to omp's static catalog at startup.
 
 The `models.yml` includes:
 

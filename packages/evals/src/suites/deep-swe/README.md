@@ -6,19 +6,19 @@ Benchmark harness for evaluating coding agents against [DeepSWE](https://deepswe
 
 ```bash
 # List available arms, system adapters, and task sets
-bun run.ts --list
+bun src/suites/deep-swe/run.ts --list
 
 # Smoke test: 1 task, 1 arm, ~5 minutes
-bun run.ts --tasks tasks/smoke.txt --arms baseline --jobs 1
+bun src/suites/deep-swe/run.ts --tasks tasks/smoke.txt --arms baseline --jobs 1
 
 # Feature comparison: 10 tasks, 2 arms
-bun run.ts --tasks tasks/pilot-10.txt --arms baseline,full --jobs 2
+bun src/suites/deep-swe/run.ts --tasks tasks/pilot-10.txt --arms baseline,full --jobs 2
 
 # Cross-system comparison: veyyon vs omp on the same model
-bun run.ts --arms baseline,omp --model opencode-go/deepseek-v4-flash --tasks tasks/pilot-10.txt
+bun src/suites/deep-swe/run.ts --arms baseline,omp --model opencode-go/deepseek-v4-flash --tasks tasks/pilot-10.txt
 
 # Dry run: validate preflight without launching containers
-bun run.ts --tasks tasks/pilot-10.txt --arms baseline,full --dry-run
+bun src/suites/deep-swe/run.ts --tasks tasks/pilot-10.txt --arms baseline,full --dry-run
 ```
 
 ## Architecture
@@ -185,13 +185,13 @@ runs/<timestamp>/
 Re-aggregate an existing run without re-executing trials:
 
 ```bash
-bun run.ts --reaggregate runs/2026-08-01T12-00-00
+bun src/suites/deep-swe/run.ts --reaggregate runs/2026-08-01T12-00-00
 ```
 
 Merge multiple runs into a combined report:
 
 ```bash
-bun run.ts --merge runs/day1,runs/day2 --out runs/merged
+bun src/suites/deep-swe/run.ts --merge runs/day1,runs/day2 --out runs/merged
 ```
 
 ## Directory Structure
@@ -249,7 +249,7 @@ The veyyon native addon requires GLIBC 2.39+. DeepSWE containers ship older GLIB
 
 ### Model resolution failures in containers
 
-Dynamically-discovered models (not in the bundled catalog) require a `models refresh` before the agent starts. The veyyon binary has a synchronous discovery fallback for explicit `--model` patterns. For omp, the harness generates a `models.yml` with full metadata using the veyvon binary's models.dev overlay and stages it into the container.
+Dynamically-discovered models (not in the bundled catalog) require a `models refresh` before the agent starts. The veyyon binary has a synchronous discovery fallback for explicit `--model` patterns. For omp, the harness generates a `models.yml` with full metadata using the veyyon binary's models.dev overlay and stages it into the container.
 
 ### DNS timeout to ECR
 
