@@ -15,6 +15,7 @@
 
 ### Fixed
 
+- `extractHttpStatusFromError` reads the status line a provider error opens with when the response body follows it, so `503 {"type":"error",...}` reports 503 to a reader handed only the message instead of leaving the wording to decide, which had a transient 5xx classified as an authentication failure.
 - `extractHttpStatusFromError` reads a status field anywhere in an error's cause chain before falling back to prose anywhere in it, and matches the `status_code: 503` and `429 Too Many Requests` spellings it previously missed.
 - `extractHttpStatusFromError` reads a reason phrase only when it is the phrase that belongs to the code beside it, so `Processed 200 Total Records` and `gave up after 401 Failed Attempts` no longer report a status, the second of which reached credential rotation.
 - `onProcessExit` honors its `AbortSignal` for every process shape: waiting on a `Subprocess` ends when the caller cancels instead of running to the child's exit, and a cancelled wait on a pid returns `false` rather than throwing.

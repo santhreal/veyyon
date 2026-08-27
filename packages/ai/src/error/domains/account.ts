@@ -140,6 +140,14 @@ export const authDomain: ErrorDomain = {
 			flags: Flag.AuthFailed,
 			name: "auth-failure-prose",
 			why: "401/403 arrive as prose inside a wrapper as often as they arrive as a status, and 'no api key' has no status at all.",
+			// A 5xx is the server saying it failed, and an auth verdict is 401 or 403 — never 503. The
+			// prose is read only when the status does not already answer, for the reason
+			// `named-http2-retryable-code` gives: a fact about the response decides on its own and no
+			// wording heuristic is consulted over it. Anthropic returns
+			// `503 overloaded_error: Authentication service is temporarily unavailable. Retry the
+			// request.` — the word `authentication` walled a transient the provider had explicitly asked
+			// us to retry, and pointed credential recovery at an account with nothing wrong with it.
+			structural: signal => signal.status === undefined || signal.status < 500,
 			text: text => AUTH_FAILURE_PATTERN.test(text),
 		},
 	],

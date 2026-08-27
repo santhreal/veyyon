@@ -22,6 +22,10 @@
 
 ### Fixed
 
+- A stream that ended without a terminal finish reason is classified as the truncation it is whatever the provider called it, so an OpenAI completions turn that stopped early is retried like the identically-worded Cloud Code Assist one instead of ending the turn; an empty response body is the same fault and is classified with it.
+- A refusal spelled as a finish reason (`PROHIBITED_CONTENT`, `SAFETY`, `RECITATION`, `BLOCKLIST`, `SPII` and their `IMAGE_` forms), as `finish_reason: sensitive`, or as a Codex event carrying `code=cyber_policy` is classified as a content verdict and vetoes a retry, where only `MALFORMED_FUNCTION_CALL` had a rule.
+- An abnormal WebSocket closure is transport vocabulary, so a Codex stream that died with code 1006 is retried rather than reported.
+- A 5xx is no longer read as an authentication failure because its body names an authentication service, so Anthropic's `503 overloaded_error: Authentication service is temporarily unavailable. Retry the request.` is retried instead of walling the turn and pointing credential recovery at an account with nothing wrong with it.
 - A Cursor MCP tool call the exec channel already dispatched is marked resolved on the assistant message, so the agent loop no longer runs the same call a second time after the turn closes and appends a duplicate `toolResult` under an id that already had one.
 - A compact route that answers 404 is recorded as absent for that model for the rest of the process, so server-side compaction is asked once instead of once per compaction, and the error names the model rather than repeating "Server-side compaction failed".
 - `AIError.status` and `extractHttpStatusFromError` are one reader, so a provider message spelled `error(503)`, `status_code: 429` or `429 Too Many Requests` yields the same status to the auth ladder and the retry ladder instead of one of the two seeing nothing; a status field anywhere in the cause chain now outranks prose anywhere in it.
