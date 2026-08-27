@@ -2,19 +2,63 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { errorMessage, isRecord } from "@veyyon/utils";
-import { aggregate, type JobInfo, parseFinishedTrialResult, type Trial } from "../backends/harbor/runner/results";
+import { harborRunnerArgs } from "../backends/harbor/launch-args";
+import {
+	aggregate,
+	type JobInfo,
+	parseFinishedTrialResult,
+	readJobResult,
+	type Trial,
+} from "../backends/harbor/runner/results";
 import { sumOfMeasured } from "../core/scoring";
 import type { BackendId } from "../core/types";
 import { pathSegmentFrom } from "../paths";
-import type { BenchmarkDefinition, BenchmarkKind, MetricDefinition, TrialStatus } from "../wire";
+import type { BenchmarkDefinition, BenchmarkKind, LaunchRequest, MetricDefinition, TrialStatus } from "../wire";
 
-/** Adapter for a benchmark system, declaring its wire metadata, backend binding, and snapshot reader. */
+/** Paths and request one launch of a benchmark writes into. */
+export interface BenchmarkLaunchContext {
+	readonly request: LaunchRequest;
+	/** Directory holding every job of this manager. */
+	readonly jobsDir: string;
+	readonly jobName: string;
+	/** This job's own directory under `jobsDir`, already created. */
+	readonly jobDir: string;
+	/** Dataset the run drives, defaulted from the adapter when the request named none. */
+	readonly dataset: string;
+}
+
+/** What resuming an existing job of a benchmark knows. */
+export interface BenchmarkResumeContext {
+	readonly jobsDir: string;
+	readonly jobName: string;
+	readonly jobDir: string;
+	/** Exception types whose trials the resume re-runs. */
+	readonly filterErrorTypes: readonly string[];
+}
+
+/**
+ * Adapter for a benchmark system, declaring its wire metadata, backend binding, dataset default,
+ * runner invocation and snapshot reader. Every site that used to branch on the benchmark's name —
+ * the launch endpoint, the resume endpoint, the run store's suite inference and the dashboard's
+ * benchmark list — reads these fields instead, so a benchmark registered from anywhere is launchable
+ * without editing them.
+ */
 export interface BenchmarkAdapter {
 	readonly kind: BenchmarkKind;
 	readonly label: string;
 	readonly backend: BackendId;
 	readonly metrics: readonly MetricDefinition[];
+	/** Dataset a launch drives when the request names none. */
+	readonly defaultDataset: string;
+	/** Suite the dataset names, or undefined when this benchmark does not claim that dataset. */
+	suiteForDataset(dataset: string): string | undefined;
+	/** Whole argv of the runner process, run from the evals package directory. */
+	launchArgv(ctx: BenchmarkLaunchContext): readonly string[];
+	/** Argv that resumes an existing job in place, when this benchmark can resume one. */
+	resumeArgv?(ctx: BenchmarkResumeContext): readonly string[];
 	readSnapshot(jobDir: string): BenchmarkSnapshot;
+	/** Terminal state the job's own artifacts record, for a run whose runner process is gone. */
+	readTerminalState?(jobDir: string): { finishedAt: number } | null;
 }
 
 export class BenchmarkNotFoundError extends Error {
@@ -70,6 +114,8 @@ export class BenchmarkRegistry {
 			kind: b.kind,
 			label: b.label,
 			metrics: [...b.metrics],
+			defaultDataset: b.defaultDataset,
+			resumable: b.resumeArgv !== undefined,
 		}));
 	}
 
@@ -124,6 +170,22 @@ export function requireBenchmark(kind: string): BenchmarkAdapter {
 	return defaultBenchmarkRegistry.require(kind);
 }
 
+/**
+ * The adapter a record with no benchmark of its own belongs to. `DEFAULT_BENCHMARK_KIND` when it is
+ * registered, else the first registered adapter, so a registry that dropped the default still
+ * resolves rather than reporting every legacy row as unknown.
+ */
+export function requireDefaultBenchmark(): BenchmarkAdapter {
+	const fallback = defaultBenchmarkRegistry.get(DEFAULT_BENCHMARK_KIND) ?? defaultBenchmarkRegistry.list()[0];
+	if (!fallback) throw new BenchmarkNotFoundError(DEFAULT_BENCHMARK_KIND, defaultBenchmarkRegistry.listKinds());
+	return fallback;
+}
+
+/** Suite this benchmark's own default dataset names. */
+export function canonicalSuiteOf(adapter: BenchmarkAdapter): string {
+	return adapter.suiteForDataset(adapter.defaultDataset) ?? adapter.defaultDataset;
+}
+
 export function unregisterBenchmark(kind: string): boolean {
 	return defaultBenchmarkRegistry.unregister(kind);
 }
@@ -132,13 +194,48 @@ export function clearBenchmarkRegistry(): void {
 	defaultBenchmarkRegistry.clear();
 }
 
+/** Benchmark a launch or an old run record means when it names none. */
+export const DEFAULT_BENCHMARK_KIND = "harbor";
+
 export const BUILTIN_BENCHMARKS: readonly BenchmarkAdapter[] = [
 	{
 		kind: "harbor",
 		label: "Harbor",
 		backend: "harbor",
 		metrics: [{ key: "success_rate", label: "Success rate", format: "percent", higherIsBetter: true }],
+		defaultDataset: "terminal-bench@2.0",
+		suiteForDataset: dataset => {
+			if (dataset.startsWith("terminal-bench@3") || dataset === "terminal-bench-3") return "terminal-bench@3.0";
+			if (!dataset.startsWith("terminal-bench")) return undefined;
+			return dataset.includes("@") ? dataset : "terminal-bench@2.0";
+		},
+		launchArgv: ctx => [
+			"bun",
+			"src/backends/harbor/runner/cli.ts",
+			...harborRunnerArgs(ctx.request, { jobsDir: ctx.jobsDir, jobName: ctx.jobName, dataset: ctx.dataset }),
+		],
+		resumeArgv: ctx => {
+			// The runner rebuilds the original invocation from the job's own config, so a job
+			// directory without one cannot be resumed; refusing here names the missing file instead
+			// of failing inside the spawned runner.
+			if (!fs.existsSync(path.join(ctx.jobDir, "config.json"))) {
+				throw new Error(`${ctx.jobName} has no harbor config.json to resume from`);
+			}
+			return [
+				"bun",
+				"src/backends/harbor/runner/cli.ts",
+				"--resume",
+				ctx.jobName,
+				"--jobs-dir",
+				ctx.jobsDir,
+				...ctx.filterErrorTypes.flatMap(type => ["--filter-error-type", type]),
+			];
+		},
 		readSnapshot: readHarborSnapshot,
+		readTerminalState: jobDir => {
+			const finishedAt = readJobResult(jobDir)?.finishedAt;
+			return finishedAt == null ? null : { finishedAt };
+		},
 	},
 	{
 		kind: "edit",
@@ -148,6 +245,24 @@ export const BUILTIN_BENCHMARKS: readonly BenchmarkAdapter[] = [
 			{ key: "task_success_rate", label: "Task success", format: "percent", higherIsBetter: true },
 			{ key: "edit_success_rate", label: "Edit success", format: "percent", higherIsBetter: true },
 		],
+		defaultDataset: "typescript-edit",
+		suiteForDataset: dataset => (dataset === "typescript-edit" ? "typescript-edit" : undefined),
+		launchArgv: ({ request, jobDir }) => {
+			const argv = [
+				"bun",
+				"src/suites/typescript-edit/adapter/cli.ts",
+				"--model",
+				request.model,
+				"--output",
+				path.join(jobDir, "result.json"),
+			];
+			if (request.tasks !== undefined) argv.push("--max-tasks", String(request.tasks));
+			if (request.include?.length) argv.push("--tasks", request.include.join(","));
+			if (request.concurrency !== undefined) argv.push("--task-concurrency", String(request.concurrency));
+			if (request.attempts !== undefined) argv.push("--runs", String(request.attempts));
+			argv.push(...(request.extraArgs ?? []));
+			return argv;
+		},
 		readSnapshot: readEditSnapshot,
 	},
 	{
@@ -158,6 +273,15 @@ export const BUILTIN_BENCHMARKS: readonly BenchmarkAdapter[] = [
 			{ key: "reward_rate", label: "Full reward", format: "percent", higherIsBetter: true },
 			{ key: "mean_partial", label: "Mean partial", format: "percent", higherIsBetter: true },
 		],
+		defaultDataset: "deep-swe",
+		suiteForDataset: dataset => (dataset === "deep-swe" ? "deep-swe" : undefined),
+		launchArgv: ({ request, jobDir }) => {
+			const argv = ["bun", "src/suites/deep-swe/run.ts", "--model", request.model, "--out", jobDir];
+			if (request.tasks !== undefined) argv.push("--limit", String(request.tasks));
+			if (request.concurrency !== undefined) argv.push("--jobs", String(request.concurrency));
+			argv.push(...(request.extraArgs ?? []));
+			return argv;
+		},
 		readSnapshot: readDeepsweSnapshot,
 	},
 ];

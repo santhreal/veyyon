@@ -8,8 +8,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { getProcessStartIdentity, isProcessAlive, isProcessInstanceAlive } from "@veyyon/utils";
 import type { Subprocess } from "bun";
-import { harborRunnerArgs } from "../backends/harbor/launch-args";
-import { requireBenchmark } from "../manager/benchmarks";
+import { DEFAULT_BENCHMARK_KIND, requireBenchmark } from "../manager/benchmarks";
 import { experimentOf, knownExperimentIds } from "../manager/experiments";
 import { assertSafeJobName, type LaunchRecord, type RunRow, type RunStore } from "../manager/store";
 import { evalsPackageDir, requirePathSegment } from "../paths";
@@ -132,11 +131,9 @@ export class RunnerManager {
 	/** Launch any supported benchmark and register it in the uniform run store. */
 	launch(request: LaunchRequest): { jobName: string; pid: number } {
 		if (!request.model) throw new Error("model is required");
-		const benchmark = request.benchmark ?? "harbor";
-		requireBenchmark(benchmark);
-		const dataset =
-			request.dataset ??
-			(benchmark === "harbor" ? "terminal-bench@2.0" : benchmark === "deepswe" ? "deep-swe" : "typescript-edit");
+		const benchmark = request.benchmark ?? DEFAULT_BENCHMARK_KIND;
+		const adapter = requireBenchmark(benchmark);
+		const dataset = request.dataset ?? adapter.defaultDataset;
 		const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
 		const modelSlug = request.model.replace(/[^a-zA-Z0-9]+/g, "-");
 		const jobName = request.jobName ?? `${modelSlug}-${stamp}`;
@@ -164,38 +161,9 @@ export class RunnerManager {
 		}
 		fs.mkdirSync(jobDir, { recursive: true });
 
-		let argv: string[];
-		let cwd: string;
-		if (benchmark === "deepswe") {
-			cwd = evalsPackageDir();
-			argv = ["bun", "src/suites/deep-swe/run.ts", "--model", request.model, "--out", jobDir];
-			if (request.tasks !== undefined) argv.push("--limit", String(request.tasks));
-			if (request.concurrency !== undefined) argv.push("--jobs", String(request.concurrency));
-		} else if (benchmark === "edit") {
-			cwd = evalsPackageDir();
-			argv = [
-				"bun",
-				"src/suites/typescript-edit/adapter/cli.ts",
-				"--model",
-				request.model,
-				"--output",
-				path.join(jobDir, "result.json"),
-			];
-			if (request.tasks !== undefined) argv.push("--max-tasks", String(request.tasks));
-			if (request.include?.length) argv.push("--tasks", request.include.join(","));
-			if (request.concurrency !== undefined) argv.push("--task-concurrency", String(request.concurrency));
-			if (request.attempts !== undefined) argv.push("--runs", String(request.attempts));
-		} else {
-			cwd = evalsPackageDir();
-			argv = [
-				"bun",
-				"src/backends/harbor/runner/cli.ts",
-				...harborRunnerArgs(request, { jobsDir: this.#jobsDir, jobName, dataset }),
-			];
-		}
-		if (benchmark !== "harbor") argv.push(...(request.extraArgs ?? []));
+		const argv = [...adapter.launchArgv({ request, jobsDir: this.#jobsDir, jobName, jobDir, dataset })];
 
-		const pid = this.#spawnRunner(argv, cwd, {
+		const pid = this.#spawnRunner(argv, evalsPackageDir(), {
 			benchmark,
 			jobName,
 			dataset,
@@ -222,19 +190,24 @@ export class RunnerManager {
 		assertSafeJobName(jobName);
 		const run = this.#store.getRun(jobName);
 		if (!run) throw new Error(`run ${jobName} not found`);
-		if (run.benchmark !== "harbor") {
-			throw new Error(`resume supports only harbor runs (${jobName} is ${run.benchmark})`);
+		const adapter = requireBenchmark(run.benchmark);
+		const buildResumeArgv = adapter.resumeArgv;
+		if (!buildResumeArgv) {
+			throw new Error(`benchmark ${adapter.kind} cannot resume a run in place (${jobName})`);
 		}
 		if (this.isLive(run)) {
 			throw new Error(`run ${jobName} is already running`);
 		}
 		if (run.status === "running") this.#store.markExit(jobName, null, true);
 		const jobDir = path.join(this.#jobsDir, jobName);
-		if (!fs.existsSync(path.join(jobDir, "config.json"))) {
-			throw new Error(`${jobName} has no harbor config.json to resume from`);
-		}
-		const argv = ["bun", "src/backends/harbor/runner/cli.ts", "--resume", jobName, "--jobs-dir", this.#jobsDir];
-		for (const t of opts.filterErrorTypes ?? erroredExceptionTypes(jobDir)) argv.push("--filter-error-type", t);
+		const argv = [
+			...buildResumeArgv({
+				jobsDir: this.#jobsDir,
+				jobName,
+				jobDir,
+				filterErrorTypes: opts.filterErrorTypes ?? erroredExceptionTypes(jobDir),
+			}),
+		];
 		let prewalk: LaunchRequest["prewalk"];
 		try {
 			prewalk = run.prewalk ? (JSON.parse(run.prewalk) as { into?: string }) : undefined;
@@ -242,7 +215,7 @@ export class RunnerManager {
 			prewalk = undefined;
 		}
 		const pid = this.#spawnRunner(argv, evalsPackageDir(), {
-			benchmark: "harbor",
+			benchmark: adapter.kind,
 			jobName,
 			dataset: run.dataset,
 			experiment: run.experiment,

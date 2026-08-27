@@ -87,6 +87,10 @@ export interface BenchmarkDefinition {
 	kind: BenchmarkKind;
 	label: string;
 	metrics: MetricDefinition[];
+	/** Dataset a launch drives when the request names none. */
+	defaultDataset: string;
+	/** Whether a settled run of this benchmark can be resumed in place. */
+	resumable: boolean;
 }
 
 /** A managed benchmark run row as serialized across /api/runs and /api/events. */

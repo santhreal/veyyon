@@ -1,10 +1,22 @@
 import { useCallback, useState } from "react";
-import type { BenchmarkKind, LaunchRequest, LaunchResponse, RunRole } from "../../wire";
+import type { BenchmarkDefinition, BenchmarkKind, LaunchRequest, LaunchResponse, RunRole } from "../../wire";
 import { mutate } from "../api";
+import { usePolled } from "../hooks/use-polled";
 import { INPUT_CLASS } from "./ui";
+
+/**
+ * The benchmark list comes from the manager's registry rather than this file, so a benchmark
+ * registered on the server appears in the form without an edit here. The registry does not change
+ * while a manager runs, so this refetches rarely.
+ */
+const BENCHMARKS_REFRESH_MS = 600_000;
 
 export function LaunchForm({ onDone }: { onDone: () => void }) {
 	const [msg, setMsg] = useState("");
+	const [benchmarks] = usePolled<BenchmarkDefinition[]>("/api/benchmarks", BENCHMARKS_REFRESH_MS);
+	const [selected, setSelected] = useState("");
+	const offered = benchmarks ?? [];
+	const chosen = offered.find(b => b.kind === selected) ?? offered[0];
 	const submit = useCallback(
 		async (ev: React.FormEvent<HTMLFormElement>) => {
 			ev.preventDefault();
@@ -43,13 +55,28 @@ export function LaunchForm({ onDone }: { onDone: () => void }) {
 	const input = INPUT_CLASS;
 	return (
 		<form onSubmit={submit} className="grid grid-cols-4 gap-2 border-b border-zinc-800 bg-zinc-900/70 p-4 text-sm">
-			<select name="benchmark" className={input}>
-				<option value="harbor">Harbor</option>
-				<option value="edit">TypeScript edit</option>
-				<option value="deepswe">DeepSWE arms</option>
+			<select
+				name="benchmark"
+				className={input}
+				value={chosen?.kind ?? ""}
+				onChange={ev => setSelected(ev.target.value)}
+			>
+				{offered.length === 0 ? (
+					<option value="">loading benchmarks…</option>
+				) : (
+					offered.map(b => (
+						<option key={b.kind} value={b.kind}>
+							{b.label}
+						</option>
+					))
+				)}
 			</select>
 			<input name="model" placeholder="model (required)" required className={input} />
-			<input name="dataset" placeholder="dataset (terminal-bench@2.0)" className={input} />
+			<input
+				name="dataset"
+				placeholder={chosen ? `dataset (${chosen.defaultDataset})` : "dataset"}
+				className={input}
+			/>
 			<input name="jobName" placeholder="job name (exp-arm)" className={input} />
 			<input name="tasks" type="number" placeholder="task/passages limit" className={input} />
 			<input name="concurrency" type="number" placeholder="concurrency" className={input} />

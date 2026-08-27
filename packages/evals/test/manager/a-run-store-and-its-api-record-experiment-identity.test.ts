@@ -306,7 +306,7 @@ describe("ManagerServer API", () => {
 		).json()) as { entries: Array<{ kind: string; text: string }> };
 		expect(editTrace.entries).toEqual([{ kind: "conversation", text: "# conversation\n\nassistant answer" }]);
 	});
-	it("guards resume: unknown, non-harbor, running, and config-less runs are rejected", async () => {
+	it("guards resume: unknown, unresumable, running, and config-less runs are rejected", async () => {
 		const jobsDir = makeJobsDir();
 		const manager = new ManagerServer(jobsDir);
 		manager.store.registerLaunch({
@@ -327,7 +327,8 @@ describe("ManagerServer API", () => {
 			models: ["m/x"],
 			pid: process.pid,
 		});
-		// A failed harbor run whose job dir has no harbor config.json.
+		// A failed harbor run whose job dir has no harbor config.json. Harbor is the one benchmark that
+		// resumes in place, and its adapter names the file it cannot resume without.
 		manager.store.registerLaunch({
 			benchmark: "harbor",
 			jobName: "job-bare",
@@ -351,7 +352,7 @@ describe("ManagerServer API", () => {
 			return ((await res.json()) as { error: string }).error;
 		};
 		expect(await resumeError("nope")).toMatch(/not found/);
-		expect(await resumeError("edit-x")).toMatch(/only harbor/);
+		expect(await resumeError("edit-x")).toMatch(/benchmark edit cannot resume a run in place/);
 		expect(await resumeError("job-live")).toMatch(/already running/);
 		expect(await resumeError("job-bare")).toMatch(/no harbor config.json/);
 	});
