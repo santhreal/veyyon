@@ -72,7 +72,7 @@ export class TanCommandController {
 		// populated the cache under — same rule as advisor and handoff calls.
 		const parentPromptCacheKey = session.agent.promptCacheKey ?? parentSessionId;
 		const thinkingLevel = session.configuredThinkingLevel();
-		const systemPrompt = [...session.systemPrompt];
+		const systemPrompt = session.systemPrompt.slice();
 		const toolNames = session.getActiveToolNames();
 		const modelRegistry = session.modelRegistry;
 		const ownerId = session.getAgentId() ?? MAIN_AGENT_ID;

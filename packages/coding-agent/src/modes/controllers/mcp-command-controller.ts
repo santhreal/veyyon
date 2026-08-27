@@ -1208,7 +1208,7 @@ export class MCPCommandController {
 					const currentActive = this.ctx.session.getActiveToolNames();
 					const toActivate = serverTools.map(t => t.name).filter(n => this.ctx.session.getToolByName(n));
 					if (toActivate.length > 0) {
-						await this.ctx.session.setActiveToolsByName([...new Set([...currentActive, ...toActivate])]);
+						await this.ctx.session.setActiveToolsByName(Array.from(new Set(currentActive.concat(toActivate))));
 					}
 				}
 			}
@@ -1362,7 +1362,7 @@ export class MCPCommandController {
 			}
 
 			// Show servers disabled via /mcp disable (from third-party configs)
-			const relevantDisabled = [...disabledServerNames].filter(n => !configServerNames.has(n));
+			const relevantDisabled = Array.from(disabledServerNames).filter(n => !configServerNames.has(n));
 			if (relevantDisabled.length > 0) {
 				lines.push(theme.fg("accent", "Disabled") + theme.fg("muted", " (discovered servers):"));
 				for (const name of relevantDisabled) {

@@ -618,7 +618,7 @@ export class ExtensionUiController {
 			options: toWireSelectOptions(options),
 			initialIndex: dialogOptions?.initialIndex,
 			selectionMarker: dialogOptions?.selectionMarker,
-			checkedIndices: dialogOptions?.checkedIndices ? [...dialogOptions.checkedIndices] : undefined,
+			checkedIndices: dialogOptions?.checkedIndices ? dialogOptions.checkedIndices.slice() : undefined,
 			markableCount: dialogOptions?.markableCount,
 			helpText: dialogOptions?.helpText,
 		};
@@ -837,7 +837,7 @@ export class ExtensionUiController {
 				// (PRRT_kwDOQxs0bc6OFbDW). The remote select has no "disabled" row
 				// concept, so we omit rather than dim it.
 				const hasAnswer = selected.size > 0 || customInput !== undefined;
-				const options = [...baseOptions, ASK_OTHER_OPTION_LABEL];
+				const options = baseOptions.concat([ASK_OTHER_OPTION_LABEL]);
 				if (hasAnswer) options.push(ASK_NEXT_OPTION_LABEL);
 				options.push(ASK_CHAT_OPTION_LABEL);
 				const choice = await this.#requestGuestUiString(
@@ -884,7 +884,7 @@ export class ExtensionUiController {
 					{
 						kind: "select",
 						title: question.question,
-						options: [...baseOptions, ASK_OTHER_OPTION_LABEL, ASK_CHAT_OPTION_LABEL],
+						options: baseOptions.concat([ASK_OTHER_OPTION_LABEL, ASK_CHAT_OPTION_LABEL]),
 						initialIndex,
 						selectionMarker: "radio",
 						markableCount: question.options.length,
