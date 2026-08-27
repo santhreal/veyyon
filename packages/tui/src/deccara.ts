@@ -49,6 +49,17 @@ export function encodeDeccara(top: number, left: number, bottom: number, right: 
 const BAIL = Symbol("deccara-bail");
 type BgState = string | null;
 
+/** Parse a non-negative integer from `line[start..end)` via charCodeAt. Returns -1 if any byte is not a digit. */
+function parseSgrInt(line: string, start: number, end: number): number {
+	let n = 0;
+	for (let i = start; i < end; i++) {
+		const c = line.charCodeAt(i);
+		if (c < 0x30 || c > 0x39) return -1;
+		n = n * 10 + (c - 0x30);
+	}
+	return n;
+}
+
 /**
  * Fold one SGR parameter list into the active background-color parameter string.
  * Returns the new background (`null` = default/no background) or {@link BAIL}
@@ -67,8 +78,8 @@ function nextBackground(bg: BgState, line: string, start: number, end: number): 
 		while (semi < end && line.charCodeAt(semi) !== 0x3b) semi++;
 		const tokenLen = semi - pos;
 		// An empty parameter defaults to 0 (reset), matching terminal behavior.
-		const n = tokenLen === 0 ? 0 : Number(line.slice(pos, semi));
-		if (tokenLen > 0 && !Number.isInteger(n)) return BAIL;
+		const n = tokenLen === 0 ? 0 : parseSgrInt(line, pos, semi);
+		if (tokenLen > 0 && n < 0) return BAIL;
 		if (n === 0 || n === 49) {
 			result = null;
 			pos = semi + 1;
