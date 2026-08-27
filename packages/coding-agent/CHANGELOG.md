@@ -15,6 +15,8 @@
 - `ast-grep.ts` replaces `match.text.split("\n").length` with a `charCodeAt` newline count in the line number width `reduce`, avoiding an intermediate array per match.
 - `truncateForPersistence` in `session-persistence.ts` replaces `content.split("\n").length` with a `charCodeAt` newline count, avoiding an intermediate array per session save.
 - `match.ts` replaces `content.slice(0, idx).split("\n").length` with `countNewlinesTo` (charCodeAt scan of `text[0..end)`) at three call sites in `findMatch` and `resolveStartLine`, eliminating slice and split allocations per match.
+- `git-file-diff.ts` replaces `content.split("\n").length` with a `charCodeAt` newline count in the truncation threshold check.
+
 
 
 
