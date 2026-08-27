@@ -277,6 +277,7 @@
 - `loading/policy.ts`, `path-utils.ts`, `todo.ts`, `output-schema-validator.ts`, `secret-use-boundary.ts`, `sqlite-reader.ts`, `write.ts`, `image-gen.ts`, `reroot-hint.ts`, and `jtd-to-json-schema.ts` replace array spreads with `.slice()`/`.concat()`/`Array.from()` in tool loading, search path resolution, todo operations, and schema validation.
 - `interactive-mode.ts`, `acp-agent.ts`, `session-observer-registry.ts`, `input-controller.ts`, `model-hub.ts`, and `agent-dashboard.ts` replace array spreads with `.slice()`/`.concat()`/`Array.from()` and backward for loops in command merging, MCP server status, image handling, tool set construction, and agent_end message search paths.
 - `settings-selector.ts`, `ask-dialog.ts`, `ttsr-notification.ts`, `custom-editor.ts`, `oauth-selector.ts`, `plugin-settings.ts`, `agent-transcript-viewer.ts`, `advisor-config.ts`, `status-line/segments.ts`, and `task/discovery.ts` replace array spreads with `.slice()`/`.concat()`/`Array.from()` in settings chain persistence, rule toggling, agent discovery, OAuth validation, and plugin feature management.
+- `repology.ts`, `spdx.ts`, `gemini.ts`, `perplexity.ts`, `public.ts`, and `streaming-player.ts` replace array spreads with `.slice()`/`.concat()`/`Array.from()` in web scraping, search result merging, and TTS audio player command construction.
 
 ### Added
 
