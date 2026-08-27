@@ -138,4 +138,50 @@ describe("a search result never advises a field the tool rejects", () => {
 			expect(TYPE_FIELDS.files.has("limit")).toBe(true);
 		});
 	});
+
+	it("states the per-file cap on a single-file text search", async () => {
+		// `skip` pages files, so nothing pages past this cap. Left unsaid the
+		// capped count reads as the file's total.
+		await withWorkspace(async dir => {
+			const wide = Array.from({ length: 4000 }, (_unused, index) => `needle row ${index}`);
+			await fs.writeFile(path.join(dir, "wide.txt"), `${wide.join("\n")}\n`);
+			const text = await searchText(dir, {
+				callId: "advice-text-wide",
+				args: { type: "text", input: "needle", path: "wide.txt" },
+			});
+			expect(text).toContain("Showing the first 200 matches in this file; more matched.");
+			expect(text).not.toMatch(/\blimit\s*[=:]/);
+		});
+	});
+
+	it("states the per-file cap on a multi-file text search", async () => {
+		await withWorkspace(async dir => {
+			const wide = Array.from({ length: 100 }, (_unused, index) => `needle row ${index}`);
+			for (const name of ["wide-a.md", "wide-b.md"]) {
+				await fs.writeFile(path.join(dir, name), `${wide.join("\n")}\n`);
+			}
+			const text = await searchText(dir, {
+				callId: "advice-text-multi",
+				args: { type: "text", input: "needle", path: "*.md" },
+			});
+			expect(text).toContain("matches; each file's count is a floor.");
+		});
+	});
+
+	it("states that the search stopped at its internal ceiling", async () => {
+		// Files past the ceiling were never opened, so a caller reading the file
+		// count as a total concludes the pattern appears nowhere else.
+		await withWorkspace(async dir => {
+			const wide = Array.from({ length: 900 }, (_unused, index) => `needle row ${index}`);
+			for (const name of ["cap-a.md", "cap-b.md", "cap-c.md"]) {
+				await fs.writeFile(path.join(dir, name), `${wide.join("\n")}\n`);
+			}
+			const text = await searchText(dir, {
+				callId: "advice-text-ceiling",
+				args: { type: "text", input: "needle", path: "cap-*.md" },
+			});
+			expect(text).toContain("internal ceiling of 2000 matches");
+			expect(text).toContain("the file count is a floor");
+		});
+	});
 });
