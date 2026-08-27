@@ -308,6 +308,7 @@
 - `assistant-message.ts`, `rail-motion.ts`, and `ground-tints.ts` replace `toString(16).padStart`/`slice` hex encoding with `toHexColor` from `@veyyon/tui`, using the pre-computed `HEX_BYTE` lookup table.
 - `follow.ts` and `shimmer.ts` use the exported `CHANNEL_STR` lookup table from `@veyyon/tui` for truecolor SGR channel emission in `sgrRgb` and `lavaAnsi`, eliminating `Number.toString` per channel per cell in the shimmer and lava animation paths.
 - `ground-tints.ts` replaces `Number.parseInt`+`slice` hex parsing with `charCodeAt`-based `hexVal` in the `channels` function, eliminating 3 substring allocations per ground tint computation.
+- `follow.ts` replaces regex trailing-space detection (`row.replace(/ +$/, "")`) with a backward `charCodeAt` loop in `paintHotTail`, eliminating a regex match and string replacement per shimmer frame.
 
 ### Added
 
