@@ -208,6 +208,17 @@
 - `plan-review-overlay.ts` replaces `for-of`, `.filter()`, and `.map()` closures with index loops in `invalidate`, `rebuildToc`, `deleteSelectedSection`, `recomputeFeedback`, `renderOptionLines`.
 - `tool-execution.ts` replaces `for-of` iterators with index loops in multi-file box cleanup, image cleanup, and path candidate search.
 - `tree-selector.ts` replaces `for-of` iterators with index loops in entryMap build, containsActive check, orderedChildren, content extraction, `updateNodeLabel`.
+- `settings-selector.ts` replaces `.map()` and `.filter().length` closures with index loops in section items rendering.
+- `copy-selector.ts` replaces `.forEach()` closure with index loop in flatten walk.
+- `segment-track.ts` replaces `.forEach()` closure with index loop in segment track render.
+- `autocomplete.ts` replaces `.flatMap()` closure with single-pass for loop in command ranking; replaces `.filter()` closure and `for-of` with index loops in file path autocomplete.
+- `settings-list.ts` replaces `.filter()` closure with in-place compaction in sections computation; replaces `.forEach()` with index loop in hit row mapping.
+- `markdown.ts` replaces `.flatMap()` with single-pass for loop in table cell wrapping.
+- `eval-render.ts` replaces `.map()`, `.flatMap()`, and `.split().map().join()` closures with index loops and for-loop string building in render paths.
+- `advisor-message.ts` replaces `.map()` closure with in-place for loop in line truncation.
+- `input-controller.ts` replaces `images.map(() => undefined)` with `new Array(n)` at 8 call sites.
+- `status-line/segments.ts` replaces `.filter(Boolean).join()` with direct string building in cache segments.
+- `status-line/state-grammar.ts` replaces `.filter().join()` with single-pass for loop in `joinStates`.
 ### Added
 
 - `/advisor` reports advisor status, opens the `WATCHDOG.yml` roster editor and applies a save to the running session, starts or stops the advisor for the session, and copies the advisor's own transcript; the subsystem shipped complete but no command, key or menu row reached it.
