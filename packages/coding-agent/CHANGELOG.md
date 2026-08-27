@@ -22,6 +22,8 @@
 - `copy-selector.ts` and `tree-selector.ts` replace `Array.from(symbol)` with direct string indexing for tree connector cells, avoiding an intermediate array per node; box-drawing characters are all BMP so indexing is equivalent.
 - `printableInput` in `move-overlay.ts` replaces `Array.from(string).filter().join()` with a `charCodeAt` scan that builds the result directly, avoiding a code-point array allocation per keystroke.
 - `segments.ts` pre-computes a `PAD2` lookup table for 0–59, replacing `toString().padStart(2, "0")` per frame for minutes and seconds in the time segment.
+- `agent-dashboard.ts` pre-computes a `PAD2` lookup table for `clockTime`, replacing `String(value).padStart(2, "0")` per agent roster row.
+
 
 
 
