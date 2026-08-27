@@ -18,6 +18,7 @@ import {
 	nearestNames,
 	truncate,
 } from "@veyyon/utils";
+import { advisorStatusNextStep, describeAdvisorToggle } from "../advisor/messages";
 import { runTrustSlashCommand } from "../cli/trust-cli";
 import { COLLAB_GUEST_ALLOWED_COMMANDS, CollabGuestLink } from "../collab/guest";
 import { CollabHost } from "../collab/host";
@@ -736,21 +737,6 @@ function startProviderLogin(rawArgs: string, runtime: TuiSlashCommandRuntime): v
 
 	void runtime.ctx.showLogin();
 	runtime.ctx.editor.setText("");
-}
-
-/**
- * What to report after `/advisor on|off`.
- *
- * Turning it on can leave it not running: the setting is one half, a model resolving
- * for the `advisor` role is the other. Echoing the request back ("Advisor enabled")
- * would claim a thing that did not happen, so the outcome is read from
- * `setAdvisorEnabled` and reported instead of the ask.
- */
-function describeAdvisorToggle(enabled: boolean, running: boolean): string {
-	if (!enabled) return "Advisor stopped for this session.";
-	return running
-		? "Advisor started for this session."
-		: "Advisor enabled, but no model resolved for the advisor role — assign one with /model.";
 }
 
 /**
@@ -1920,7 +1906,10 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 		handle: async (command, runtime) => {
 			const { verb } = parseSubcommand(command.args);
 			if (!verb || verb === "status") {
-				await runtime.output(runtime.session.formatAdvisorStatus());
+				const stats = runtime.session.getAdvisorStats();
+				await runtime.output(
+					`${runtime.session.formatAdvisorStatus()}\n${advisorStatusNextStep(stats.configured, stats.active)}`,
+				);
 				return commandConsumed();
 			}
 			if (verb === "on" || verb === "off") {

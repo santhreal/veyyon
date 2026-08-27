@@ -14,8 +14,16 @@ import {
 	BUILTIN_SLASH_COMMAND_DECLARATIONS,
 	type BuiltinSlashCommandDeclaration,
 } from "@veyyon/coding-agent/slash-commands/builtin-declarations";
-import { executeBuiltinSlashCommand } from "@veyyon/coding-agent/slash-commands/builtin-registry";
-import type { SubcommandDef, TuiSlashCommandRuntime } from "@veyyon/coding-agent/slash-commands/types";
+import {
+	executeBuiltinSlashCommand,
+	lookupBuiltinSlashCommand,
+} from "@veyyon/coding-agent/slash-commands/builtin-registry";
+import type {
+	ParsedSlashCommand,
+	SlashCommandRuntime,
+	SubcommandDef,
+	TuiSlashCommandRuntime,
+} from "@veyyon/coding-agent/slash-commands/types";
 import { TempDir } from "@veyyon/utils";
 
 /**
@@ -69,7 +77,10 @@ interface Probe {
 	errors: string[];
 	touched: string[];
 	toggledWith: boolean[];
+	/** What the text-mode handler emitted, which is a separate route from `statuses`. */
+	printed: string[];
 	runtime: TuiSlashCommandRuntime;
+	textRuntime: SlashCommandRuntime;
 }
 
 function probe(shape: Partial<AdvisorSessionShape> = {}): Probe {
@@ -123,7 +134,17 @@ function probe(shape: Partial<AdvisorSessionShape> = {}): Probe {
 		},
 	} as unknown as InteractiveModeContext;
 
-	return { statuses, errors, touched, toggledWith, runtime: { ctx } };
+	const printed: string[] = [];
+	// The text-mode runtime carries the same session; only the two fields the advisor handler
+	// reaches are real, which is why the shape is asserted once here rather than at each use.
+	const textRuntime = {
+		session,
+		output: (text: string) => {
+			printed.push(text);
+		},
+	} as unknown as SlashCommandRuntime;
+
+	return { statuses, errors, touched, toggledWith, printed, runtime: { ctx }, textRuntime };
 }
 
 describe("the /advisor command reaches the advisor", () => {
@@ -208,6 +229,24 @@ describe("the /advisor command reaches the advisor", () => {
 
 		expect(p.statuses).toEqual([USAGE_LINE]);
 		for (const verb of declaredVerbs()) expect(USAGE_LINE).toContain(verb);
+	});
+
+	/**
+	 * The headless surface answers the same question as the TUI one, and answered it one line
+	 * shorter: it reported the state and stopped, leaving a text client at "Advisor is disabled."
+	 * with nothing to act on. Both routes now read the next step from `advisorStatusNextStep`.
+	 */
+	it("tells a text client how to act on the status it just reported", async () => {
+		const spec = lookupBuiltinSlashCommand("advisor");
+		expect(spec?.handle).toBeDefined();
+		const p = probe({ configured: false, startsWhenEnabled: false });
+		const command: ParsedSlashCommand = { name: "advisor", args: "status", text: "/advisor status" };
+
+		await spec?.handle?.(command, p.textRuntime);
+
+		const said = p.printed.join("\n");
+		expect(said).toContain("Advisor is disabled.");
+		expect(said).toContain("/advisor on");
 	});
 });
 
