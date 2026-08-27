@@ -426,11 +426,9 @@ export function layoutShortcutRows(
 		w: visibleWidth(s.label),
 	}));
 	const sepW = visibleWidth(SHORTCUT_SEP);
-	const groups = packChipRows(
-		chips.map(c => c.w),
-		width,
-		sepW,
-	);
+	const chipWidths = new Array<number>(chips.length);
+	for (let ci = 0; ci < chips.length; ci++) chipWidths[ci] = chips[ci]!.w;
+	const groups = packChipRows(chipWidths, width, sepW);
 
 	const groupWidth = (indices: number[]): number =>
 		indices.reduce((w, idx, pos) => w + chips[idx]!.w + (pos > 0 ? sepW : 0), 0);
