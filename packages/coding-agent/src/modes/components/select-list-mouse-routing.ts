@@ -28,10 +28,12 @@ export function renderTrackingChild(
 ): { lines: string[]; trackedLineOffset: number } {
 	const lines: string[] = [];
 	let trackedLineOffset = 0;
-	for (const child of container.children) {
+	for (let ci = 0; ci < container.children.length; ci++) {
+		const child = container.children[ci]!;
 		const childLines = child.render(Math.max(1, width));
 		if (child === tracked) trackedLineOffset = lines.length;
-		lines.push(...childLines);
+		const cl = childLines;
+		for (let li = 0; li < cl.length; li++) lines.push(cl[li]!);
 	}
 	return { lines, trackedLineOffset };
 }
