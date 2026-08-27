@@ -25,6 +25,8 @@
 - `tui.ts` removes a dead `" ".repeat(afterPad)` expression in overlay compositing, a no-op left from the `padding()` migration.
 - `select-list.ts` and `settings-list.ts` replace `Array.from(filterQuery).pop().join("")` in the backspace handler with a `charCodeAt` surrogate-pair check and `slice`, eliminating an intermediate array allocation per backspace.
 - `fuzzy.ts` replaces `Array.from(needed)` with `for...of` in `hasDistinctWordsForRepeatedTokens`, avoiding an intermediate array allocation per fuzzy match.
+- `matchPositions` in `fuzzy.ts` replaces `Array.from(hits).sort()` with a pre-sized array filled via `for...of` and sorted in-place, avoiding an intermediate array allocation.
+
 
 
 
