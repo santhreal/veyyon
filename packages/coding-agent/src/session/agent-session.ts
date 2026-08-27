@@ -14400,11 +14400,14 @@ export class AgentSession {
 	}
 
 	#assistantMessageHasSuccessfulYieldToolCall(assistantMessage: AssistantMessage, toolCallId: string): boolean {
-		const lastToolCall = assistantMessage.content
-			.slice()
-			.reverse()
-			.find((content): content is ToolCall => content.type === "toolCall");
-		return lastToolCall?.name === TOOL.yield && lastToolCall.id === toolCallId;
+		const content = assistantMessage.content;
+		for (let i = content.length - 1; i >= 0; i--) {
+			const block = content[i]!;
+			if (block.type === "toolCall") {
+				return block.name === TOOL.yield && block.id === toolCallId;
+			}
+		}
+		return false;
 	}
 
 	#assistantEndedWithSuccessfulYield(assistantMessage: AssistantMessage): boolean {
