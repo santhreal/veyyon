@@ -257,6 +257,8 @@
 - `ask-dialog.ts` replaces spread+`.map()` and `.map()` closures with pre-allocated arrays in `#renderHeader` and `#questionRows` render paths.
 - `agent-dashboard.ts` fuses 4 `widest()` closure calls into a single for loop in the roster render path, and hoists the ScrollView theme to a module-level constant.
 - `selector-helpers.ts` exports `SCROLL_LIST_THEME` as a shared module-level constant; 10 files replace inline `{ track: t => ..., thumb: t => ... }` closures with the shared constant, eliminating per-frame closure allocation in ScrollView render paths.
+- `fitLine` in the setup wizard theme scene pads to width in the native `truncateToWidth` call instead of a separate `visibleWidth` scan plus `padding` concatenation.
+
 ### Added
 
 - `/advisor` reports advisor status, opens the `WATCHDOG.yml` roster editor and applies a save to the running session, starts or stops the advisor for the session, and copies the advisor's own transcript; the subsystem shipped complete but no command, key or menu row reached it.

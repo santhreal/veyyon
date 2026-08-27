@@ -213,16 +213,15 @@ export class ScrollView implements Component {
 		for (let row = 0; row < this.#height; row++) {
 			const sourceIndex = this.#totalRows === undefined ? this.#scrollOffset + row : row;
 			const source = this.#lines[sourceIndex] ?? "";
-			const truncated = truncateToWidth(replaceTabs(source), contentWidth, this.#ellipsis);
+			const truncated = truncateToWidth(replaceTabs(source), contentWidth, this.#ellipsis, showScrollbar);
 			if (!showScrollbar) {
 				lines.push(truncated);
 				continue;
 			}
-			const content = `${truncated}${" ".repeat(Math.max(0, contentWidth - visibleWidth(truncated)))}`;
 			const barGlyph = thumb && row >= thumb.start && row < thumb.end ? this.#thumbChar : this.#trackChar;
 			const styledBar =
 				thumb && row >= thumb.start && row < thumb.end ? this.#theme.thumb(barGlyph) : this.#theme.track(barGlyph);
-			lines.push(`${content} ${styledBar}`);
+			lines.push(`${truncated} ${styledBar}`);
 		}
 		return lines;
 	}

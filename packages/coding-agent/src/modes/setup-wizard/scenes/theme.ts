@@ -56,8 +56,7 @@ const COLORBLIND_TOGGLE = "toggle:colorblind";
 const ASCII_TOGGLE = "toggle:ascii";
 
 function fitLine(line: string, width: number): string {
-	const truncated = truncateToWidth(line, width);
-	return truncated + padding(Math.max(0, width - visibleWidth(truncated)));
+	return truncateToWidth(line, width, undefined, true);
 }
 
 function fillStyledLine(content: string, width: number): string {

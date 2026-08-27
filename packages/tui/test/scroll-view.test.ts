@@ -22,6 +22,25 @@ describe("ScrollView", () => {
 		expect(view.render(6)).toEqual(["alp… B", "beta T", "gam… T"]);
 	});
 
+	// Regression: ScrollView.render passes pad: true to truncateToWidth for
+	// scrollbar rows, so the native function pads content to exactly contentWidth
+	// in a single pass. The old code called visibleWidth() separately on every row
+	// to compute the padding — a redundant scan the native truncation already did
+	// internally. This locks the exact-width contract: each scrollbar row is
+	// exactly `width` cells (contentWidth + gap + bar glyph).
+	it("pads short scrollbar rows to exactly width via native pad", () => {
+		const view = new ScrollView(["a", "bb", "ccc", "dddd", "eeeee"], { height: 3, theme });
+		const rendered = view.render(10);
+		expect(rendered).toHaveLength(3);
+		for (const line of rendered) {
+			expect(visibleWidth(line)).toBe(10);
+		}
+		// "a" padded to contentWidth(8) + gap + thumb glyph
+		expect(rendered[0]).toBe("a        B");
+		expect(rendered[1]).toBe("bb       T");
+		expect(rendered[2]).toBe("ccc      T");
+	});
+
 	it("scrolls and clamps offsets", () => {
 		const view = new ScrollView(["one", "two", "three", "four", "five"], { height: 3, theme });
 

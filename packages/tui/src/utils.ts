@@ -301,8 +301,7 @@ export function padding(n: number): string {
  * truncated line's real width to guarantee the result is always exactly `width`.
  */
 export function padLineToWidth(line: string, width: number): string {
-	const truncated = truncateToWidth(line, width);
-	return truncated + padding(width - visibleWidth(truncated));
+	return truncateToWidth(line, width, undefined, true);
 }
 
 // Grapheme segmenter (shared instance)
