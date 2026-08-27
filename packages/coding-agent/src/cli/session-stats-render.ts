@@ -45,8 +45,9 @@ function table(
  * looks first, and `--json` still carries the full sequence.
  */
 function selectTurns(turns: readonly TurnStat[]): { shown: TurnStat[]; note?: string } {
-	if (turns.length <= TURN_CAP) return { shown: [...turns] };
-	const slowest = [...turns]
+	if (turns.length <= TURN_CAP) return { shown: turns.slice() };
+	const slowest = turns
+		.slice()
 		.sort((a, b) => (b.requestMs ?? 0) - (a.requestMs ?? 0))
 		.slice(0, TURN_CAP)
 		.sort((a, b) => a.index - b.index);
