@@ -2443,10 +2443,13 @@ export class StatusLineComponent implements Component {
 			return [];
 		}
 
-		const sortedStatuses = Array.from(this.#hookStatuses.entries())
-			.sort(([a], [b]) => a.localeCompare(b))
-			.map(([, text]) => sanitizeStatusText(text));
-		const hookLine = sortedStatuses.join(" ");
+		const entries = Array.from(this.#hookStatuses.entries());
+		entries.sort(([a], [b]) => a.localeCompare(b));
+		let hookLine = "";
+		for (let si = 0; si < entries.length; si++) {
+			const sanitized = sanitizeStatusText(entries[si]![1]);
+			hookLine = hookLine ? `${hookLine} ${sanitized}` : sanitized;
+		}
 		return [truncateToWidth(hookLine, width)];
 	}
 }
