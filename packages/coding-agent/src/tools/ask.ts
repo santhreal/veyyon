@@ -1194,13 +1194,14 @@ function renderNoteLines(uiTheme: Theme, note: string, width: number): string[] 
 	const continuationPrefix = "       ";
 	const firstLineWidth = Math.max(1, width - visibleWidth(prefix));
 	const continuationWidth = Math.max(1, width - visibleWidth(continuationPrefix));
-	return replaceTabs(note)
-		.split("\n")
-		.map((line, index) => {
-			const linePrefix = index === 0 ? `${uiTheme.fg("dim", " Note:")} ` : continuationPrefix;
-			const maxWidth = index === 0 ? firstLineWidth : continuationWidth;
-			return `${linePrefix}${uiTheme.fg("toolOutput", truncateToWidth(line, maxWidth))}`;
-		});
+	const noteLines = replaceTabs(note).split("\n");
+	const result: string[] = new Array(noteLines.length);
+	for (let li = 0; li < noteLines.length; li++) {
+		const linePrefix = li === 0 ? `${uiTheme.fg("dim", " Note:")} ` : continuationPrefix;
+		const maxWidth = li === 0 ? firstLineWidth : continuationWidth;
+		result[li] = `${linePrefix}${uiTheme.fg("toolOutput", truncateToWidth(noteLines[li]!, maxWidth))}`;
+	}
+	return result;
 }
 
 /**
@@ -1294,7 +1295,9 @@ export const askToolRenderer = {
 		if (questions && questions.length > 0) {
 			const header = `${label} ${uiTheme.fg("muted", `${questions.length} questions`)}`;
 			return framedBlock(uiTheme, width => {
-				const sections = questions.map(q => {
+				const sections: FramedSection[] = new Array(questions.length);
+				for (let qi = 0; qi < questions.length; qi++) {
+					const q = questions[qi]!;
 					const meta: string[] = [];
 					if (q.multi) meta.push("multi");
 					if (q.options?.length) meta.push(`options:${q.options.length}`);
@@ -1304,8 +1307,8 @@ export const askToolRenderer = {
 					const lines = q.options?.length
 						? [...mdLines, ...renderQuestionOptionLines(uiTheme, mdTheme, q.options, q.multi)]
 						: mdLines;
-					return { label: `${uiTheme.fg("dim", `[${q.id}]`)}${metaStr}`, lines };
-				});
+					sections[qi] = { label: `${uiTheme.fg("dim", `[${q.id}]`)}${metaStr}`, lines };
+				}
 				return { header, sections, state: "pending", borderColor: "borderMuted", width };
 			});
 		}
@@ -1395,7 +1398,9 @@ export const askToolRenderer = {
 				uiTheme,
 			);
 			return framedBlock(uiTheme, width => {
-				const sections = results.map(r => {
+				const sections: FramedSection[] = new Array(results.length);
+				for (let ri = 0; ri < results.length; ri++) {
+					const r = results[ri]!;
 					// md() returns a shared cached array (module-level Markdown LRU) — copy before appending.
 					const lines = [
 						...md(r.question, width),
@@ -1410,8 +1415,8 @@ export const askToolRenderer = {
 							width,
 						),
 					];
-					return { label: uiTheme.fg("dim", `[${r.id}]`), lines };
-				});
+					sections[ri] = { label: uiTheme.fg("dim", `[${r.id}]`), lines };
+				}
 				return {
 					header,
 					sections,

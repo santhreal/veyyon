@@ -70,9 +70,13 @@ function cell(text: string, width: number): string {
  * reason.
  */
 export function renderSubagentHudLines(sessions: readonly ObservableSession[], options: SubagentHudOptions): string[] {
-	const running = sessions.filter(
-		session => session.kind === "subagent" && session.status === "active" && session.detached === true,
-	);
+	const running: ObservableSession[] = [];
+	for (let si = 0; si < sessions.length; si++) {
+		const session = sessions[si]!;
+		if (session.kind === "subagent" && session.status === "active" && session.detached === true) {
+			running.push(session);
+		}
+	}
 	if (running.length === 0) return [];
 
 	const dot = theme.styledSymbol("status.done", "accent");

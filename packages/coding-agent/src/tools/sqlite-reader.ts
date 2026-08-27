@@ -180,17 +180,18 @@ function buildVerticalBlocks(columns: string[], rows: SqliteRow[]): string {
 		nameWidth = Math.max(nameWidth, Bun.stringWidth(sanitizeCell(column)));
 	}
 	nameWidth = Math.min(MAX_COLUMN_WIDTH, nameWidth);
-	return rows
-		.map((row, index) => {
-			const block = [`── Row ${index + 1} ──`];
-			for (const column of columns) {
-				const name = padCell(column, nameWidth);
-				const value = sanitizeCell(stringifySqliteValue(row[column]));
-				block.push(truncateToWidth(`${name}: ${value}`, MAX_RENDER_WIDTH));
-			}
-			return block.join("\n");
-		})
-		.join("\n\n");
+	const blocks: string[] = new Array(rows.length);
+	for (let ri = 0; ri < rows.length; ri++) {
+		const block: string[] = [`── Row ${ri + 1} ──`];
+		for (let ci = 0; ci < columns.length; ci++) {
+			const column = columns[ci]!;
+			const name = padCell(column, nameWidth);
+			const value = sanitizeCell(stringifySqliteValue(rows[ri]![column]));
+			block.push(truncateToWidth(`${name}: ${value}`, MAX_RENDER_WIDTH));
+		}
+		blocks[ri] = block.join("\n");
+	}
+	return blocks.join("\n\n");
 }
 
 function buildAsciiTable(columns: string[], rows: SqliteRow[]): string {
@@ -834,18 +835,26 @@ export function renderTableList(tables: SqliteTableSummary[]): string {
 		return "(no tables)";
 	}
 
-	return tables
-		.map(table => truncateToWidth(replaceTabs(`${table.name} (${formatRowCount(table.count)})`), MAX_RENDER_WIDTH))
-		.join("\n");
+	let result = "";
+	for (let ti = 0; ti < tables.length; ti++) {
+		if (ti > 0) result += "\n";
+		result += truncateToWidth(
+			replaceTabs(`${tables[ti]!.name} (${formatRowCount(tables[ti]!.count)})`),
+			MAX_RENDER_WIDTH,
+		);
+	}
+	return result;
 }
 
 export function renderSchema(
 	createSql: string,
 	sampleRows: { columns: string[]; rows: Record<string, unknown>[] },
 ): string {
-	const schemaLines = replaceTabs(createSql)
-		.split("\n")
-		.map(line => truncateToWidth(line, MAX_RENDER_WIDTH));
+	const schemaRaw = replaceTabs(createSql).split("\n");
+	const schemaLines: string[] = new Array(schemaRaw.length);
+	for (let li = 0; li < schemaRaw.length; li++) {
+		schemaLines[li] = truncateToWidth(schemaRaw[li]!, MAX_RENDER_WIDTH);
+	}
 	const parts = [schemaLines.join("\n"), "", "Sample rows:", buildAsciiTable(sampleRows.columns, sampleRows.rows)];
 	return parts.join("\n");
 }

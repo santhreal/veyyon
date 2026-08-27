@@ -286,12 +286,14 @@ export const resolveToolRenderer = {
 			render(width: number): readonly string[] {
 				const lineWidth = Math.max(3, width);
 				const innerWidth = Math.max(1, lineWidth - 2);
-				return lines.map(line => {
-					const truncated = truncateToWidth(line, innerWidth, Ellipsis.Omit);
+				const result: string[] = new Array(lines.length);
+				for (let li = 0; li < lines.length; li++) {
+					const truncated = truncateToWidth(lines[li]!, innerWidth, Ellipsis.Omit);
 					const framed = ` ${padToWidth(truncated, innerWidth)} `;
 					const padded = padToWidth(framed, lineWidth);
-					return uiTheme.inverse(uiTheme.fg(bgColor, padded));
-				});
+					result[li] = uiTheme.inverse(uiTheme.fg(bgColor, padded));
+				}
+				return result;
 			},
 			invalidate() {},
 		};

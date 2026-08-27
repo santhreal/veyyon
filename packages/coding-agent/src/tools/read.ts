@@ -232,7 +232,12 @@ function isRemoteMountPath(absolutePath: string): boolean {
 
 function prependLineNumbers(text: string, startNum: number): string {
 	const textLines = text.split("\n");
-	return textLines.map((line, i) => `${startNum + i}|${line}`).join("\n");
+	let result = "";
+	for (let li = 0; li < textLines.length; li++) {
+		if (li > 0) result += "\n";
+		result += `${startNum + li}|${textLines[li]!}`;
+	}
+	return result;
 }
 
 interface HashlineHeaderContext {

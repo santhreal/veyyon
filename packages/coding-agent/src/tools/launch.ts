@@ -307,7 +307,9 @@ export function toolContent(result: DaemonRpcResult, params: LaunchParams): stri
 				.filter(isTerminal)
 				.sort((left, right) => (right.exitedAt ?? 0) - (left.exitedAt ?? 0));
 			const shownExited = exited.slice(0, TERMINAL_SHOWN);
-			const lines = [...live, ...shownExited].map(daemon => `- ${daemonLabel(daemon)}`);
+			const lines: string[] = new Array(live.length + shownExited.length);
+			for (let di = 0; di < live.length; di++) lines[di] = `- ${daemonLabel(live[di]!)}`;
+			for (let di = 0; di < shownExited.length; di++) lines[live.length + di] = `- ${daemonLabel(shownExited[di]!)}`;
 			const hidden = exited.length - shownExited.length;
 			if (hidden > 0) {
 				lines.push(
@@ -317,12 +319,11 @@ export function toolContent(result: DaemonRpcResult, params: LaunchParams): stri
 			// Retained completion records whose terminal event is NOT already a row
 			// above: a daemon replaced by a same-name start, or one a dead broker
 			// never settled. Keyed by id+exitedAt so a restarted daemon's earlier
-			// generation still shows while its live row does not duplicate.
-			const settled = new Set(
-				result.daemons
-					.filter(daemon => daemon.exitedAt !== undefined)
-					.map(daemon => `${daemon.id}${daemon.exitedAt}`),
-			);
+			const settled = new Set<string>();
+			for (let di = 0; di < result.daemons.length; di++) {
+				const daemon = result.daemons[di]!;
+				if (daemon.exitedAt !== undefined) settled.add(`${daemon.id}${daemon.exitedAt}`);
+			}
 			const completions = result.completions.filter(record => !settled.has(`${record.id}${record.exitedAt}`));
 			if (completions.length > 0) {
 				const COMPLETIONS_SHOWN = 10;
@@ -330,8 +331,10 @@ export function toolContent(result: DaemonRpcResult, params: LaunchParams): stri
 				lines.push(
 					"",
 					`Recently completed (records retained: last ${DAEMON_COMPLETIONS_LIMIT} or 24h, across broker restarts):`,
-					...shown.map(record => `- ${completionLabel(record)}`),
 				);
+				for (let si = 0; si < shown.length; si++) {
+					lines.push(`- ${completionLabel(shown[si]!)}`);
+				}
 				if (completions.length > shown.length) {
 					lines.push(`… and ${completions.length - shown.length} older retained record(s).`);
 				}

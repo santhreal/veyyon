@@ -282,7 +282,11 @@ function formatSshCommandLines(command: string, uiTheme: Theme): string[] {
 	const sanitized = replaceTabs(command);
 	const rawLines = sanitized.length > 0 ? sanitized.split("\n") : ["…"];
 	const prefix = uiTheme.fg("dim", "$ ");
-	return rawLines.map((line, i) => (i === 0 ? `${prefix}${line}` : line));
+	const result: string[] = new Array(rawLines.length);
+	for (let li = 0; li < rawLines.length; li++) {
+		result[li] = li === 0 ? `${prefix}${rawLines[li]!}` : rawLines[li]!;
+	}
+	return result;
 }
 
 export const sshToolRenderer = {
