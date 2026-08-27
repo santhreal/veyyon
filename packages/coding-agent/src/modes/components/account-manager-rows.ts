@@ -254,11 +254,8 @@ export function accountPlanLine(row: AccountRow): string {
 	// The plan leads the line: it is the fact that distinguishes two accounts on one email and the
 	// one a user checks before switching. Absent until the usage probe reports a tier.
 	if (row.planTier) parts.push(sanitizeAccountText(row.planTier));
-	parts.push(
-		...accountIdentityDetail(row)
-			.slice(1)
-			.map(part => sanitizeAccountText(part)),
-	);
+	const identityDetail = accountIdentityDetail(row).slice(1);
+	for (let pi = 0; pi < identityDetail.length; pi++) parts.push(sanitizeAccountText(identityDetail[pi]!));
 	const origin = accountOriginLabel(row);
 	if (origin) parts.push(sanitizeAccountText(origin));
 	return parts.join(" · ");
@@ -272,15 +269,19 @@ export function accountPlanLine(row: AccountRow): string {
  * are plain out to the same width.
  */
 export function accountUsageLines(row: AccountRow, nowMs: number): string[] {
-	const labels = row.usage.map(window => sanitizeAccountText(window.label));
+	const labels = new Array<string>(row.usage.length);
+	for (let wi = 0; wi < row.usage.length; wi++) labels[wi] = sanitizeAccountText(row.usage[wi]!.label);
 	const column = usageWindowLabelColumn(labels);
-	return row.usage.map((window, index) => {
+	const result = new Array<string>(row.usage.length);
+	for (let wi = 0; wi < row.usage.length; wi++) {
+		const window = row.usage[wi]!;
 		const resets =
 			window.resetsAtMs === undefined
 				? undefined
 				: `   resets in ${formatDurationCoarse(Math.max(0, window.resetsAtMs - nowMs))}`;
-		return formatUsageWindowLine(labels[index] ?? "", window.usedFraction, USAGE_BAR_WIDTH, resets, column);
-	});
+		result[wi] = formatUsageWindowLine(labels[wi] ?? "", window.usedFraction, USAGE_BAR_WIDTH, resets, column);
+	}
+	return result;
 }
 
 /**

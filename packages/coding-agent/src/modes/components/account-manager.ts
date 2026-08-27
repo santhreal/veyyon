@@ -856,7 +856,9 @@ export class AccountManagerComponent implements Component {
 		// included, carries the indent. Wrapping the already-indented string instead let continuation
 		// lines start at column 0, so a three-line warning stepped left of its own first line.
 		const inner = Math.max(8, width - indent.length);
-		const wrapped = wrapTextWithAnsi(text, inner).map(part => `${indent}${part}`);
+		const wrappedRaw = wrapTextWithAnsi(text, inner);
+		const wrapped = new Array<string>(wrappedRaw.length);
+		for (let wi = 0; wi < wrappedRaw.length; wi++) wrapped[wi] = `${indent}${wrappedRaw[wi]!}`;
 		if (wrapped.length <= NOTE_MAX_LINES) return wrapped;
 		const kept = wrapped.slice(0, NOTE_MAX_LINES);
 		const last = truncateToWidth(kept[NOTE_MAX_LINES - 1] ?? "", Math.max(1, width - 1));
@@ -874,9 +876,9 @@ export class AccountManagerComponent implements Component {
 		// the fact at its END is the one a user is looking for. Truncated, the recording read
 		// `Anthropic · 3 accounts · 1 needs attenti…`, which cuts the only clause that says something
 		// is wrong.
-		const lines: BodyLine[] = this.#wrapNote(providerHeaderLine(entry.label, rows), "", width).map(wrapped => ({
-			text: theme.bold(wrapped),
-		}));
+		const headerWrapped = this.#wrapNote(providerHeaderLine(entry.label, rows), "", width);
+		const lines: BodyLine[] = new Array<BodyLine>(headerWrapped.length);
+		for (let hi = 0; hi < headerWrapped.length; hi++) lines[hi] = { text: theme.bold(headerWrapped[hi]!) };
 		// The scope, stated once per provider, because the choice below is not what a user
 		// assumes. Every account here is shared by every profile and every session on this
 		// machine, so pressing enter changes what a different terminal will use too. The
@@ -1132,9 +1134,12 @@ export class AccountManagerComponent implements Component {
 				width: bodyWidth,
 				visibleRows: splitRows,
 				totalRows: this.#bodyLines.length,
-				scrollOffset: this.#bodyScroll,
 			},
-			rowWidth => window.map(line => truncateToWidth(line.text, rowWidth)),
+			rowWidth => {
+				const out = new Array<string>(window.length);
+				for (let li = 0; li < window.length; li++) out[li] = truncateToWidth(window[li]!.text, rowWidth);
+				return out;
+			},
 		);
 
 		const sidebarLines = this.#renderSidebar(sidebarWidth);
