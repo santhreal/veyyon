@@ -165,7 +165,11 @@ async function buildDirectoryListing(absolutePath: string): Promise<{ output: st
 		output += `\n\n[${notices.join(". ")}]`;
 	}
 
-	return { output, lineCount: output.split("\n").length };
+	let lc = 1;
+	for (let i = 0; i < output.length; i++) {
+		if (output.charCodeAt(i) === 0x0a) lc++;
+	}
+	return { output, lineCount: lc };
 }
 
 /** Extract all @filepath mentions from text */

@@ -200,7 +200,13 @@ function assistantText(msg: AgentMessage): string | undefined {
 }
 
 function pluralLines(text: string): string {
-	const count = text.length === 0 ? 0 : text.split("\n").length;
+	let count = 0;
+	if (text.length > 0) {
+		count = 1;
+		for (let i = 0; i < text.length; i++) {
+			if (text.charCodeAt(i) === 0x0a) count++;
+		}
+	}
 	return formatCount("line", count);
 }
 

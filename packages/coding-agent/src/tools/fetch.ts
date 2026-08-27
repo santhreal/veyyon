@@ -2105,7 +2105,10 @@ export async function executeReadUrl(
 	if (needsArtifact) {
 		resultBuilder.truncation(truncation, { direction: "head", artifactId: cacheEntry.artifactId });
 	} else if (cacheEntry.details.truncated) {
-		const outputLines = cacheEntry.output.split("\n").length;
+		let outputLines = 1;
+		for (let i = 0; i < cacheEntry.output.length; i++) {
+			if (cacheEntry.output.charCodeAt(i) === 0x0a) outputLines++;
+		}
 		const outputBytes = Buffer.byteLength(cacheEntry.output, "utf-8");
 		const totalBytes = Math.max(outputBytes + 1, MAX_OUTPUT_CHARS + 1);
 		const totalLines = outputLines + 1;

@@ -128,6 +128,15 @@ import { arrayValuedLabels, assembleYieldResult } from "./yield-assembly";
 
 export type { YieldItem } from "./types";
 
+/** Count `\n` occurrences via charCodeAt, avoiding `split("\n").length` allocation. */
+function countNewlines(text: string): number {
+	let count = 0;
+	for (let i = 0; i < text.length; i++) {
+		if (text.charCodeAt(i) === 0x0a) count++;
+	}
+	return count;
+}
+
 const MCP_CALL_TIMEOUT_MS = 60_000;
 
 /**
@@ -2327,7 +2336,7 @@ async function finalizeRunResult(args: FinalizeRunArgs): Promise<SingleResult> {
 		try {
 			await Bun.write(outputPath, rawOutput);
 			outputMeta = {
-				lineCount: rawOutput.split("\n").length,
+				lineCount: countNewlines(rawOutput) + 1,
 				charCount: rawOutput.length,
 			};
 		} catch {

@@ -87,7 +87,11 @@ const contentToText = (content: string | readonly (TextContent | ImageContent)[]
 
 function lineCount(text: string): number {
 	if (!text) return 0;
-	return text.split("\n").length;
+	let count = 1;
+	for (let i = 0; i < text.length; i++) {
+		if (text.charCodeAt(i) === 0x0a) count++;
+	}
+	return count;
 }
 
 function primaryArgValue(value: unknown): string {

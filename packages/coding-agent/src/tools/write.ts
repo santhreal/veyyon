@@ -1175,7 +1175,11 @@ const WRITE_STREAMING_PREVIEW_LINES = 12;
 
 function countLines(text: string): number {
 	if (!text) return 0;
-	return text.split("\n").length;
+	let count = 1;
+	for (let i = 0; i < text.length; i++) {
+		if (text.charCodeAt(i) === 0x0a) count++;
+	}
+	return count;
 }
 
 /** Bounded newline scan: whether `text` spans more than `maxLines` lines.

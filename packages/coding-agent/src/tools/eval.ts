@@ -28,6 +28,15 @@ import { ToolAbortError, ToolError } from "./tool-errors";
 import { toolResult } from "./tool-result";
 import { clampTimeout, describeTimeoutParam, formatTimeoutClampNotice, TOOL_TIMEOUTS } from "./tool-timeouts";
 
+/** Count `\n` occurrences via charCodeAt, avoiding `split("\n").length` allocation. */
+function countNewlines(text: string): number {
+	let count = 0;
+	for (let i = 0; i < text.length; i++) {
+		if (text.charCodeAt(i) === 0x0a) count++;
+	}
+	return count;
+}
+
 /** Language tokens the eval tool accepts, in stable display order. */
 export type EvalLanguageToken = "py" | "js" | "rb" | "jl";
 const EVAL_LANGUAGE_ORDER: readonly EvalLanguageToken[] = ["py", "js", "rb", "jl"];
@@ -904,7 +913,7 @@ async function summarizeFinal(
 		outputLines: 0,
 		outputBytes: 0,
 	};
-	const outputLines = cellOutput.length > 0 ? cellOutput.split("\n").length : 0;
+	const outputLines = cellOutput.length > 0 ? countNewlines(cellOutput) + 1 : 0;
 	const outputBytes = Buffer.byteLength(cellOutput, "utf-8");
 	const missingLines = Math.max(0, rawSummary.totalLines - rawSummary.outputLines);
 	const missingBytes = Math.max(0, rawSummary.totalBytes - rawSummary.outputBytes);

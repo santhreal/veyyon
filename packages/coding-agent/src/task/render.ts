@@ -630,10 +630,18 @@ function formatScalarInline(value: unknown, maxLen: number, _theme: Theme): stri
 	if (typeof value === "number") return String(value);
 	if (typeof value === "string") {
 		const sanitizedValue = sanitizeText(value);
-		const firstLine = sanitizedValue.split("\n")[0].trim();
-		if (firstLine.length === 0) return `"" (${sanitizedValue.split("\n").length} lines)`;
+		let firstNl = -1;
+		let lineCount = 1;
+		for (let i = 0; i < sanitizedValue.length; i++) {
+			if (sanitizedValue.charCodeAt(i) === 0x0a) {
+				if (firstNl === -1) firstNl = i;
+				lineCount++;
+			}
+		}
+		const firstLine = (firstNl === -1 ? sanitizedValue : sanitizedValue.slice(0, firstNl)).trim();
+		if (firstLine.length === 0) return `"" (${lineCount} lines)`;
 		const preview = truncateToWidth(firstLine, maxLen);
-		if (sanitizedValue.includes("\n")) return `"${preview}…" (${sanitizedValue.split("\n").length} lines)`;
+		if (firstNl !== -1) return `"${preview}…" (${lineCount} lines)`;
 		return `"${preview}"`;
 	}
 	if (Array.isArray(value)) return `[${value.length} items]`;
