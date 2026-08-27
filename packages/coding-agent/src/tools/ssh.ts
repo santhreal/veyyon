@@ -1,13 +1,14 @@
 import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
 import type { ToolExample } from "@veyyon/ai";
 import type { Component } from "@veyyon/tui";
-import { formatMoreLines, prompt } from "@veyyon/utils";
+import { prompt } from "@veyyon/utils";
 import { type } from "arktype";
 import type { SSHHost } from "../capability/ssh";
 import { sshCapability } from "../capability/ssh";
 import { loadCapability } from "../discovery";
 import { formatExitCodeNotice } from "../exec/exit-notice";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
+import { truncateToVisualLines } from "../modes/components/visual-truncate";
 import type { Theme } from "../modes/theme/theme";
 import { expandHintSuffix } from "../modes/utils/key-hint";
 import { toolsPrompts } from "../prompts/tools/rows";
@@ -16,12 +17,12 @@ import type { SSHHostInfo } from "../ssh/connection-manager";
 import { ensureHostInfo, getCachedHostInfoSync } from "../ssh/connection-manager";
 import { executeSSH } from "../ssh/ssh-executor";
 import { renderStatusLine } from "../tui";
-import { CachedOutputBlock, markFramedBlockComponent } from "../tui/output-block";
+import { CachedOutputBlock, markFramedBlockComponent, outputBlockContentWidth } from "../tui/output-block";
 import type { ToolSession } from ".";
 import { truncateForPrompt } from "./approval";
 import { inlineBudgetFor } from "./output-artifact";
 import { formatStyledTruncationWarning, type OutputMeta, stripOutputNotice } from "./output-meta";
-import { capPreviewLines, replaceTabs } from "./render-utils";
+import { capPreviewLines, PREVIEW_LIMITS, replaceTabs } from "./render-utils";
 import { ToolError } from "./tool-errors";
 import { toolResult } from "./tool-result";
 import { clampTimeout, describeTimeoutParam, formatTimeoutClampNotice } from "./tool-timeouts";
@@ -348,37 +349,37 @@ export const sshToolRenderer = {
 		return markFramedBlockComponent({
 			render: (width: number): readonly string[] => {
 				// REACTIVE: read mutable options at render time
-				const { expanded, renderContext } = options;
+				const { expanded } = options;
 				// Strip LLM-facing notice so we don't echo it next to the styled warning.
 				const output = stripOutputNotice(textContent, details?.meta).trimEnd();
 				const outputLines: string[] = [];
 
 				if (output) {
 					if (expanded) {
-						outputLines.push(...output.split("\n").map(line => uiTheme.fg("toolOutput", line)));
-					} else if (renderContext?.visualLines) {
-						const { visualLines, skippedCount = 0, totalVisualLines = visualLines.length } = renderContext;
-						if (skippedCount > 0) {
+						outputLines.push(...output.split("\n").map(line => uiTheme.fg("toolOutput", replaceTabs(line))));
+					} else {
+						// Measured at the box's inner width, the same way `bash` measures
+						// its own tail, so a wrapped remote line spends the lines it
+						// actually occupies. This branch used to read
+						// `renderContext.visualLines`, which nothing ever populated for
+						// `ssh` — the render context is built for `bash` only — so every
+						// collapsed remote result fell through to a flat five-line slice
+						// with tabs left in it, opening holes in the frame.
+						const sanitized = output.split("\n").map(replaceTabs).join("\n");
+						const result = truncateToVisualLines(
+							sanitized,
+							PREVIEW_LIMITS.OUTPUT_COLLAPSED,
+							outputBlockContentWidth(width),
+						);
+						if (result.skippedCount > 0) {
 							outputLines.push(
 								uiTheme.fg(
 									"dim",
-									`… (${skippedCount} earlier lines, showing ${visualLines.length} of ${totalVisualLines})${expandHintSuffix()}`,
+									`… (${result.skippedCount} earlier lines, showing ${result.visualLines.length} of ${result.skippedCount + result.visualLines.length})${expandHintSuffix()}`,
 								),
 							);
 						}
-						const styledVisual = visualLines.map(line =>
-							line.includes("\x1b[") ? line : uiTheme.fg("toolOutput", line),
-						);
-						outputLines.push(...styledVisual);
-					} else {
-						const outputLinesRaw = output.split("\n");
-						const maxLines = 5;
-						const displayLines = outputLinesRaw.slice(0, maxLines);
-						const remaining = outputLinesRaw.length - maxLines;
-						outputLines.push(...displayLines.map(line => uiTheme.fg("toolOutput", line)));
-						if (remaining > 0) {
-							outputLines.push(uiTheme.fg("dim", `… (${formatMoreLines(remaining)})${expandHintSuffix()}`));
-						}
+						outputLines.push(...result.visualLines.map(line => uiTheme.fg("toolOutput", line)));
 					}
 				}
 

@@ -92,6 +92,7 @@
 
 ### Fixed
 
+- A collapsed `ssh` result measures its preview in rendered rows at the frame's inner width and shows the newest three lines with a count of what was hidden, instead of slicing the first five newlines and overflowing the frame whenever a remote line wrapped.
 - A terminal resize, theme switch or session switch no longer seals a backgrounded subagent's tool card mid-flight, so the progress it reports afterwards still reaches the card instead of being dropped for the rest of the turn.
 - The composer defect oracle counts only the prompt glyph the frame states, so a transcript row opening with `$`, `>` or `!` is no longer reported as a second composer prompt.
 - An exported or shared session escapes quotes in every value it places in an HTML attribute, so a link target, link title or image mime type carrying a `"` renders as text instead of closing the attribute and adding an event handler that runs on the share origin.
