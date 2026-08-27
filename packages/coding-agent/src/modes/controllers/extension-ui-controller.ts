@@ -827,9 +827,10 @@ export class ExtensionUiController {
 		);
 		if (question.multi) {
 			while (true) {
-				const checkedIndices = question.options
-					.map((option, index) => (selected.has(option.label) ? index : -1))
-					.filter(index => index >= 0);
+				const checkedIndices: number[] = [];
+				for (let oi = 0; oi < question.options.length; oi++) {
+					if (selected.has(question.options[oi]!.label)) checkedIndices.push(oi);
+				}
 				// Mirror the local dialog's Next gating: omit the Next option until
 				// at least one option is checked or a custom answer exists, so a
 				// guest cannot submit an empty multi-select result
@@ -910,12 +911,18 @@ export class ExtensionUiController {
 				break;
 			}
 		}
+		const allOptionLabels = new Array<string>(question.options.length);
+		for (let oi = 0; oi < question.options.length; oi++) allOptionLabels[oi] = question.options[oi]!.label;
+		const selectedLabels: string[] = [];
+		for (let oi = 0; oi < question.options.length; oi++) {
+			if (selected.has(allOptionLabels[oi]!)) selectedLabels.push(allOptionLabels[oi]!);
+		}
 		return {
 			id: question.id,
 			question: question.question,
-			options: question.options.map(option => option.label),
+			options: allOptionLabels,
 			multi: question.multi ?? false,
-			selectedOptions: question.options.map(option => option.label).filter(label => selected.has(label)),
+			selectedOptions: selectedLabels,
 			customInput,
 		};
 	}
