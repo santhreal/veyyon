@@ -7,6 +7,7 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { Project, SyntaxKind } from "ts-morph";
+import { existingOnly } from "./check-doc-links";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 const BASELINE_FILE = path.join(REPO_ROOT, "scripts", "data", "dynamic-import-boundaries.txt");
@@ -33,10 +34,10 @@ function trackedSourceFiles(): string[] {
 		throw new Error(`git ls-files failed: ${new TextDecoder().decode(listed.stderr)}`);
 	}
 	const raw = new TextDecoder().decode(listed.stdout).split("\0").filter(Boolean);
-	return raw
-		.filter(f => (f.endsWith(".ts") || f.endsWith(".tsx")) && !f.endsWith(".d.ts"))
-		.filter(f => fs.existsSync(path.join(REPO_ROOT, f)))
-		.sort();
+	return existingOnly(
+		REPO_ROOT,
+		raw.filter(f => (f.endsWith(".ts") || f.endsWith(".tsx")) && !f.endsWith(".d.ts")),
+	).sort();
 }
 
 interface ScanResult {

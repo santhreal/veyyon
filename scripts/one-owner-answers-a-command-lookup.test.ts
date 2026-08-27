@@ -8,6 +8,7 @@ import { describe, expect, it } from "bun:test";
 import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { existingOnly } from "./check-doc-links";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 const OWNER_FILE = "packages/utils/src/which.ts";
@@ -25,6 +26,7 @@ export const ALLOWLIST: Readonly<Record<string, string>> = {
 	"packages/natives/test/native.test.ts": "native addon test suite running without @veyyon/utils dependency",
 	"python/veybot/web/scripts/verify-cards.ts": "standalone python extension verification script",
 	"python/veybot/web/scripts/verify-live.ts": "standalone python extension verification script",
+	"scripts/one-owner-answers-a-command-lookup.test.ts": "quotes the owner call to assert the owner implements it",
 	"scripts/tests-never-touch-real-home.test.ts": "quotes Bun.which in static test fixture string",
 };
 
@@ -33,10 +35,13 @@ function trackedTsFiles(): string[] {
 		cwd: REPO_ROOT,
 		encoding: "utf8",
 	});
-	return stdout
-		.split("\n")
-		.map(s => s.trim())
-		.filter(file => file.length > 0 && fs.existsSync(path.join(REPO_ROOT, file)));
+	return existingOnly(
+		REPO_ROOT,
+		stdout
+			.split("\n")
+			.map(s => s.trim())
+			.filter(file => file.length > 0),
+	);
 }
 
 describe("one owner answers a command lookup", () => {
