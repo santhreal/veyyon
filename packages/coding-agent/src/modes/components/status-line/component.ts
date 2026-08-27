@@ -1910,7 +1910,7 @@ export class StatusLineComponent implements Component {
 			if (LOCATION_IDS[id]) push(id, location);
 			else push(id, capRight);
 		}
-		capRight.push(...contextFromLeft);
+		for (let i = 0; i < contextFromLeft.length; i++) capRight.push(contextFromLeft[i]!);
 		const runningBackgroundJobs = this.#backgroundJobBadgeCount();
 		const badgeParts: string[] = [];
 		if (runningBackgroundJobs > 0) {
