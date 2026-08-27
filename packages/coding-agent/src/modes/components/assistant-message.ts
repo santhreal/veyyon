@@ -378,7 +378,9 @@ export class AssistantMessageComponent extends Container {
 	#shouldAnimateThinking(message: AssistantMessage): boolean {
 		if (!this.hideThinkingBlock || this.#transcriptBlockFinalized) return false;
 		let tail: "text" | "thinking" | undefined;
-		for (const content of message.content) {
+		const blocks = message.content;
+		for (let ci = 0; ci < blocks.length; ci++) {
+			const content = blocks[ci]!;
 			if (content.type === "toolCall") return false;
 			if (content.type === "text" && canonicalizeMessage(content.text)) tail = "text";
 			else if (content.type === "thinking" && canonicalizeMessage(content.thinking)) tail = "thinking";
@@ -704,7 +706,9 @@ export class AssistantMessageComponent extends Container {
 
 	#computeShapeKey(message: AssistantMessage): string {
 		const parts: string[] = [`htb:${this.hideThinkingBlock ? 1 : 0}|pot:${this.proseOnlyThinking ? 1 : 0}`];
-		for (const content of message.content) {
+		const blocks = message.content;
+		for (let ci = 0; ci < blocks.length; ci++) {
+			const content = blocks[ci]!;
 			if (content.type === "text") {
 				parts.push(canonicalizeMessage(content.text) ? "T1" : "T0");
 			} else if (content.type === "thinking") {
@@ -723,8 +727,9 @@ export class AssistantMessageComponent extends Container {
 	}
 
 	#canFastPath(message: AssistantMessage): boolean {
-		for (const content of message.content) {
-			if (content.type === "toolCall") return false;
+		const blocks = message.content;
+		for (let ci = 0; ci < blocks.length; ci++) {
+			if (blocks[ci]!.type === "toolCall") return false;
 		}
 		if (this.#toolImagesByCallId.size > 0) return false;
 		const errorPresentation = resolveAssistantErrorPresentation(message);
