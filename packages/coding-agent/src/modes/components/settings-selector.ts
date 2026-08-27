@@ -3241,7 +3241,7 @@ export class SettingsSelectorComponent implements Component {
 			listLines = this.#pluginComponent.render(paneWidth);
 		}
 
-		const paneLines: string[] = [...listLines, ...previewLines];
+		const paneLines: string[] = listLines.concat(previewLines);
 		const bar = theme.fg("borderAccent", theme.boxSharp.vertical);
 		const bodyRows = Math.max(sidebarLines.length, paneLines.length);
 		// The accented hairline is what makes the split read as a split; the category
@@ -3583,7 +3583,7 @@ export class SettingsSelectorComponent implements Component {
 			short: theme.icon.package,
 			muted: true,
 		});
-		return [...matched, ...empty];
+		return matched.concat(empty);
 	}
 
 	#syncTabBarToSelection(item: SettingItem | undefined): void {

@@ -1710,7 +1710,7 @@ export class StatusLineComponent implements Component {
 		};
 		const locationContents = new Array<string>(location.length);
 		for (let li = 0; li < location.length; li++) locationContents[li] = location[li]!.content;
-		const rightParts = [...capLeft, ...capRight];
+		const rightParts = capLeft.concat(capRight);
 		let left = this.#locationWithRunClock(locationContents, sep);
 		if (extras?.locationRight) rightParts.push({ id: "location_right", content: extras.locationRight });
 		let right = joinContents(rightParts, sep);
