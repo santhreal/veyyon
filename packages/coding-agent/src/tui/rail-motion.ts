@@ -223,19 +223,42 @@ function ansi256Hex(index: number): string | undefined {
 }
 
 /** The `#rrggbb` an SGR parameter list sets as a foreground, if it sets one. */
-function fgHexOf(params: string): string | undefined {
-	const parts = params.split(";");
-	if (parts[0] !== "38") return undefined;
-	if (parts[1] === "5" && parts.length === 3) {
-		const index = Number(parts[2]);
+function fgHexOf(line: string, start: number, end: number): string | undefined {
+	// Scan first token: must be "38".
+	let pos = start;
+	while (pos < end && line.charCodeAt(pos) !== 0x3b) pos++;
+	if (pos - start !== 2 || line.charCodeAt(start) !== 0x33 || line.charCodeAt(start + 1) !== 0x38) return undefined;
+	// Second token: mode ("5" or "2").
+	pos++; // skip ';'
+	const modeStart = pos;
+	while (pos < end && line.charCodeAt(pos) !== 0x3b) pos++;
+	const modeLen = pos - modeStart;
+	if (modeLen === 1 && line.charCodeAt(modeStart) === 0x35) {
+		// 256-color: one more token (index).
+		pos++; // skip ';'
+		const idxStart = pos;
+		while (pos < end && line.charCodeAt(pos) !== 0x3b) pos++;
+		if (pos !== end) return undefined; // must be exactly 3 tokens
+		const index = Number(line.slice(idxStart, end));
 		return Number.isInteger(index) ? ansi256Hex(index) : undefined;
 	}
-	if (parts[1] !== "2" || parts.length !== 5) return undefined;
-	const r = Number(parts[2]);
-	const g = Number(parts[3]);
-	const b = Number(parts[4]);
-	if (!Number.isInteger(r) || !Number.isInteger(g) || !Number.isInteger(b)) return undefined;
-	return hexOf(r, g, b);
+	if (modeLen === 1 && line.charCodeAt(modeStart) === 0x32) {
+		// Truecolor: three more tokens (r;g;b).
+		const rStart = pos + 1;
+		let rEnd = rStart;
+		while (rEnd < end && line.charCodeAt(rEnd) !== 0x3b) rEnd++;
+		const gStart = rEnd + 1;
+		let gEnd = gStart;
+		while (gEnd < end && line.charCodeAt(gEnd) !== 0x3b) gEnd++;
+		const bStart = gEnd + 1;
+		if (bStart >= end) return undefined;
+		const r = Number(line.slice(rStart, rEnd));
+		const g = Number(line.slice(gStart, gEnd));
+		const b = Number(line.slice(bStart, end));
+		if (!Number.isInteger(r) || !Number.isInteger(g) || !Number.isInteger(b)) return undefined;
+		return hexOf(r, g, b);
+	}
+	return undefined;
 }
 
 /**
@@ -267,7 +290,7 @@ export function findRailCell(line: string, rail: string): RailCell | undefined {
 		if (line.startsWith("\x1b[", i)) {
 			const m = line.indexOf("m", i + 2);
 			if (m === -1) return undefined;
-			const found = fgHexOf(line.slice(i + 2, m));
+			const found = fgHexOf(line, i + 2, m);
 			if (found !== undefined) {
 				fgStart = i;
 				fgEnd = m + 1;
