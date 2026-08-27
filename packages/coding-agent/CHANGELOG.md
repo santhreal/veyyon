@@ -248,7 +248,10 @@
 - `job.ts` replaces `.filter()`, `for-of`, `[...jobs].sort()`, `.slice().map()`, and spread + `.map()` closures with index loops and `.slice()` in render path.
 - `read.ts` replaces `.split().map()` closure with split + for loop in error render path.
 - `gh-renderer.ts` replaces `.map()`, `.forEach()`, `for-of`, and `.split().filter()` closures with index loops in `formatRunLine`, `renderRunBlock`, `buildWatchSections`, `renderFailedLogs`, and `extractText`.
+- `vibe-render.ts` replaces `.map()`, `.filter()`, and `.slice().map()` closures with single-pass for loops in `composerRows`, `linesComponent`, and `renderResult` builder.
+- `gh-renderer.ts` replaces `.map()`, `.forEach()`, `for-of`, and `.split().filter()` closures with index loops in `formatRunLine`, `renderRunBlock`, `buildWatchSections`, `renderFailedLogs`, and `extractText`.
 - `search-tool-bm25.ts` replaces `.split().map()` and `.filter().map().filter().join()` with split + for loops in `renderFallbackResult` and `renderResult` fallback.
+- `status-line/component.ts` caches `visibleWidth()` results in `renderQuietLine` and `renderQuietLines`, eliminating redundant width computations in shed loops and final line assembly.
 ### Added
 
 - `/advisor` reports advisor status, opens the `WATCHDOG.yml` roster editor and applies a save to the running session, starts or stops the advisor for the session, and copies the advisor's own transcript; the subsystem shipped complete but no command, key or menu row reached it.
