@@ -185,7 +185,7 @@ export class Text implements Component {
 			emptyLines.push(line);
 		}
 
-		const result = [...emptyLines, ...contentLines, ...emptyLines];
+		const result = emptyLines.concat(contentLines, emptyLines);
 
 		// Update cache
 		this.#cachedText = this.#text;
