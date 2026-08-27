@@ -44,6 +44,7 @@ import {
 } from "./journal";
 import type { RunPlan } from "./plan";
 import { planIdentity } from "./plan-identity";
+import { writeRunOutput } from "./report-out";
 
 export class BackendPreflightError extends Error {
 	readonly backendId: string;
@@ -121,6 +122,8 @@ export interface ExecuteRunOptions {
 	/** When true, read existing trials.jsonl and skip already-settled cells. */
 	readonly resume?: boolean;
 	readonly options?: Readonly<Record<string, unknown>>;
+	/** Called when the suite's report renderer failed. The run and its record stand. */
+	readonly onReportFailure?: (reason: string) => void;
 	readonly now?: () => number;
 	/** Waits between attempts. Injected so a suite does not sit through the backoff. */
 	readonly sleep?: (ms: number) => Promise<void>;
@@ -326,7 +329,7 @@ export async function executeRun(options: ExecuteRunOptions): Promise<EvalRunRec
 		await journal.close();
 	}
 
-	return createRunRecord({
+	const record = createRunRecord({
 		id: plan.runId,
 		suite: {
 			name: plan.suite.name,
@@ -340,4 +343,19 @@ export async function executeRun(options: ExecuteRunOptions): Promise<EvalRunRec
 		provenance: options.provenance,
 		completedAt: new Date(clock()).toISOString(),
 	});
+
+	// The run's own directory states what it measured. Without this a finished run left one
+	// journal of raw rows: `mergeIntoReport` refused the directory, the manager's snapshot
+	// found no results, and the only report was the summary already scrolled off a terminal.
+	const reportFailure = await writeRunOutput({
+		runsDir: options.runsDir,
+		suite: plan.suite,
+		record,
+		models: plan.variants.map(variant => variant.model),
+		tasks: record.tasks,
+		repeats: plan.repeats,
+	});
+	if (reportFailure !== null) options.onReportFailure?.(reportFailure);
+
+	return record;
 }

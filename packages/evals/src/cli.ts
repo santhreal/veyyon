@@ -867,6 +867,9 @@ async function runOneSuite(args: EvalsCliArgs, suite: EvalSuite, running: readon
 					`resumed run ${plan.runId}: skipping ${skipped} already-settled trial(s) out of ${totalCount}\n`,
 				);
 			},
+			onReportFailure: (reason: string) => {
+				process.stderr.write(`\nRun ${plan.runId} produced no report: ${reason}\n`);
+			},
 			onTrial: (trial, index) => {
 				const outcome = trial.score.error !== null ? `error: ${trial.score.error}` : `reward ${trial.score.reward}`;
 				process.stdout.write(`[${index + 1}/${total}] ${trial.cell.variant} ${trial.cell.task} — ${outcome}\n`);
