@@ -6,10 +6,10 @@ Example extensions for `@veyyon/coding-agent`.
 
 ```bash
 # Load an extension with --extension flag
-pi --extension examples/extensions/permission-gate.ts
+veyyon --extension examples/extensions/permission-gate.ts
 
-# Or copy to extensions directory for auto-discovery
-cp permission-gate.ts ~/.veyyon/agent/extensions/
+# Or copy to the profile's extensions directory for auto-discovery
+cp permission-gate.ts ~/.veyyon/profiles/<profile>/agent/extensions/
 ```
 
 ## Examples
