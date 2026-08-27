@@ -14031,9 +14031,14 @@ export class AgentSession {
 			return;
 		}
 
-		const lastAssistant = [...activeMessages]
-			.reverse()
-			.find((message): message is AssistantMessage => message.role === "assistant");
+		let lastAssistant: AssistantMessage | undefined;
+		for (let i = activeMessages.length - 1; i >= 0; i--) {
+			const message = activeMessages[i]!;
+			if (message.role === "assistant") {
+				lastAssistant = message;
+				break;
+			}
+		}
 		if (!lastAssistant || lastAssistant.stopReason === "aborted" || lastAssistant.stopReason === "error") return;
 
 		if (!(await this.#persistTurnMessagesForMidRunCompaction(context))) return;
