@@ -48,6 +48,7 @@ import {
 import type { SessionContext, StrippedToolCallsMarker } from "../../session/session-context";
 import { replaceTabs } from "../../tools/render-utils";
 import { buildSkillCommandPrompt, invokeSkillCommandFromText, isKnownSkillCommand } from "../skill-command";
+import { isLiveBackgroundTask } from "./async-tool-state";
 import { createAssistantMessageComponent } from "./interactive-context-helpers";
 import {
 	assistantHasVisibleContent,
@@ -396,6 +397,11 @@ export class UiHelpers {
 			// updateResult armed.
 			previous.seal();
 		};
+		// Calls whose recorded result says the work is still running. The trailing
+		// sweep below seals whatever is left pending on the premise that no result
+		// is coming; for a backgrounded subagent one is, from the job rather than
+		// from the stream, so these are held back from it.
+		const liveBackgroundCalls = new Set<string>();
 		let todoSnapshot: ToolExecutionComponent | null = null;
 		const resolveTodoSnapshot = (nextToolName?: string) => {
 			const previous = todoSnapshot;
@@ -591,7 +597,11 @@ export class UiHelpers {
 				// A recorded result means this call's card is final in the rebuilt
 				// transcript, whichever branch below paints it. Settle before the
 				// branching so a new branch cannot be added without the ledger entry.
-				this.ctx.settledToolCalls.add(message.toolCallId);
+				// A backgrounded subagent's first result is the exception: the work
+				// continues, so the card is not history and must stay re-mountable.
+				const backgroundStillRunning = isLiveBackgroundTask(message.toolName, message.details);
+				if (backgroundStillRunning) liveBackgroundCalls.add(message.toolCallId);
+				else this.ctx.settledToolCalls.add(message.toolCallId);
 				const pendingReadComponent = this.ctx.pendingTools.get(message.toolCallId);
 				const isReadGroupResult =
 					message.toolName === "read" &&
@@ -636,7 +646,13 @@ export class UiHelpers {
 				// Match tool results to pending tool components
 				const component = this.ctx.pendingTools.get(message.toolCallId);
 				if (component) {
-					component.updateResult(message, false, message.toolCallId);
+					// A subagent still running is not history. Settling it here sealed
+					// the card mid-flight on every resize, theme switch and session
+					// switch, and dropping it from `pendingTools` left its later
+					// progress with nowhere to land. The live event path in
+					// `event-controller.ts` reads the same predicate.
+					component.updateResult(message, backgroundStillRunning, message.toolCallId);
+					if (backgroundStillRunning) continue;
 					this.ctx.pendingTools.delete(message.toolCallId);
 					if (
 						message.toolName === "job" &&
@@ -703,12 +719,17 @@ export class UiHelpers {
 			}
 		} else {
 			for (const [toolCallId, component] of this.ctx.pendingTools) {
+				// A backgrounded subagent is the one pending entry with a result
+				// still coming while the viewed session sits idle — it arrives from
+				// the job, not the stream. Sealing it here undid the whole point of
+				// keeping it: the card froze mid-flight and its id left the map.
+				if (liveBackgroundCalls.has(toolCallId)) continue;
 				component.seal();
 				// Sealed as history: no result is coming, so nothing may re-mount
 				// this call as a live card later.
 				this.ctx.settledToolCalls.add(toolCallId);
+				this.ctx.pendingTools.delete(toolCallId);
 			}
-			this.ctx.pendingTools.clear();
 		}
 		this.ctx.ui.requestRender();
 	}

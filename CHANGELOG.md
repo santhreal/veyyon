@@ -92,6 +92,7 @@
 
 ### Fixed
 
+- A terminal resize, theme switch or session switch no longer seals a backgrounded subagent's tool card mid-flight, so the progress it reports afterwards still reaches the card instead of being dropped for the rest of the turn.
 - The composer defect oracle counts only the prompt glyph the frame states, so a transcript row opening with `$`, `>` or `!` is no longer reported as a second composer prompt.
 - An exported or shared session escapes quotes in every value it places in an HTML attribute, so a link target, link title or image mime type carrying a `"` renders as text instead of closing the attribute and adding an event handler that runs on the share origin.
 - An exported or shared session escapes the model names in its header, so a model name carrying markup renders as text.
@@ -218,6 +219,7 @@
 - A tool that blocks on only some of its operations declares interruptibility per call, so an interrupt arriving beside a non-blocking or malformed call no longer replaces that call's own result with a skipped placeholder.
 - A tool result that ran and failed no longer supersedes an earlier successful read of the same path, which replaced that file's content with a supersede notice and left the conversation only the error text.
 - A stream that ended without a terminal finish reason is classified as the truncation it is whatever the provider called it, so an OpenAI completions turn that stopped early is retried like the identically-worded Cloud Code Assist one instead of ending the turn; an empty response body is the same fault and is classified with it.
+- A turn that ended on an error finish reason is retried whichever provider reported it: Amazon Bedrock said "Generation failed with stop reason: error" and both Google paths "Generation failed with finish reason: error", neither of which the turn domain's pattern matched, so the identical failure retried on OpenAI and ended the turn on the other three.
 - A refusal spelled as a finish reason (`PROHIBITED_CONTENT`, `SAFETY`, `RECITATION`, `BLOCKLIST`, `SPII` and their `IMAGE_` forms), as `finish_reason: sensitive`, or as a Codex event carrying `code=cyber_policy` is classified as a content verdict and vetoes a retry, where only `MALFORMED_FUNCTION_CALL` had a rule.
 - An abnormal WebSocket closure is transport vocabulary, so a Codex stream that died with code 1006 is retried rather than reported.
 - A 5xx is no longer read as an authentication failure because its body names an authentication service, so Anthropic's `503 overloaded_error: Authentication service is temporarily unavailable. Retry the request.` is retried instead of walling the turn and pointing credential recovery at an account with nothing wrong with it.
@@ -265,6 +267,7 @@
 - `extractHttpStatusFromError` reads the status line a message opens with whatever wording follows it, so `401 Your session has expired`, `403 You have run out of credits` and `503 {"type":"error",...}` report their codes again; pinning a reason phrase to its own code had also stopped a status line naming its own reason from reporting anything, and 401 is what credential rotation reads.
 - `extractHttpStatusFromError` reads a status field anywhere in an error's cause chain before falling back to prose anywhere in it, and matches the `status_code: 503` and `429 Too Many Requests` spellings it previously missed.
 - `extractHttpStatusFromError` reads a reason phrase only when it is the phrase that belongs to the code beside it, so `Processed 200 Total Records` and `gave up after 401 Failed Attempts` no longer report a status, the second of which reached credential rotation.
+- `extractRetryHint` reads `x-ratelimit-reset` through the same owner as `x-ratelimit-reset-ms`, so the common delta form `x-ratelimit-reset: 60` waits the 60 seconds the server asked for instead of computing a negative delay from it and falling back to the caller's default backoff.
 - `onProcessExit` honors its `AbortSignal` for every process shape: waiting on a `Subprocess` ends when the caller cancels instead of running to the child's exit, and a cancelled wait on a pid returns `false` rather than throwing.
 - Ending a child process no longer throws on a host where the native addon cannot load, such as a container whose glibc predates the modern build; the direct child is terminated through the runtime and process liveness falls back to signal 0, so the tree walk is the only capability lost ([#917](https://github.com/santhreal/veyyon/issues/917)).
 - `splitTrailingPartialEscape` lets a streaming reader hold back an escape sequence a chunk ended inside, so a sequence divided across two reads is stripped whole instead of losing its head and leaking its tail as text.
