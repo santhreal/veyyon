@@ -145,7 +145,13 @@ export function isComposerPromptLine(plainLine: string, expectedGlyph?: string):
 	if (trimmedLeading.length === 0) return false;
 	const leadingSpaces = plainLine.length - trimmedLeading.length;
 	const glyphs: readonly string[] = expectedGlyph ? [expectedGlyph] : PROMPT_GLYPHS;
-	const glyph = glyphs.find(g => trimmedLeading.startsWith(g));
+	let glyph: string | undefined;
+	for (let gi = 0; gi < glyphs.length; gi++) {
+		if (trimmedLeading.startsWith(glyphs[gi]!)) {
+			glyph = glyphs[gi];
+			break;
+		}
+	}
 	if (glyph === undefined) return false;
 
 	// A narrow terminal collapses the inset, so an unambiguous glyph counts at any
@@ -184,7 +190,13 @@ export function checkExactlyOneComposerPrompt(state: ComposerOracleFrameState): 
 		}
 	}
 
-	const editorSegment = state.segments.find(s => s.componentName === "Editor");
+	let editorSegment: (typeof state.segments)[number] | undefined;
+	for (let si = 0; si < state.segments.length; si++) {
+		if (state.segments[si]!.componentName === "Editor") {
+			editorSegment = state.segments[si];
+			break;
+		}
+	}
 	let expectedPromptInView = state.pinnedFooterRows > 0;
 
 	if (state.virtualScrollTop !== null) {
