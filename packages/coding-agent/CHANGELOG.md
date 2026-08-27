@@ -42,6 +42,7 @@
 - `messagePersistenceKey` in `assistant-message.ts` replaces a 6-element array `.join()` with a template literal, eliminating an intermediate array allocation per assistant message persistence key computation.
 - `fillLocation` in `status-line/component.ts` hoists the `["preferred", "readable"]` stage tuple to a module-level constant, avoiding a per-call array allocation during location fitting.
 - `highlightCached` in `highlight.ts` uses a nested per-language LRU cache keyed on the code string directly, avoiding a `${lang}\x00${code}` template literal that copied the entire code body on every cache lookup — a 100 KB block repainted at ~30 fps allocated that much per frame just for the key.
+- `Theme` class symbol-category getters (`sep`, `icon`, `thinking`, `status`, `nav`, `tree`, `boxRound`, `boxSharp`, `checkbox`, `radio`, `format`, `md`) now return objects cached at construction time instead of allocating a fresh object literal on every access, eliminating ~100+ short-lived object allocations per frame across the status line and component rendering.
 
 
 

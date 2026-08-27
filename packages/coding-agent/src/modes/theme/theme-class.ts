@@ -146,6 +146,22 @@ export class Theme {
 	readonly #hexBgColors: Record<ThemeBg, string>;
 	#symbols: SymbolMap;
 	#spinnerFramesOverrides: Partial<Record<SpinnerType, string[]>>;
+	// Cached symbol-category objects. `#symbols` is immutable after construction, so each
+	// getter's return value is constant for the life of the Theme instance. The getters used
+	// to allocate a fresh object literal on every access — `theme.sep` alone was hit ~10× per
+	// frame across the status line, each call building a 12-property object.
+	readonly #statusCache;
+	readonly #navCache;
+	readonly #treeCache;
+	readonly #boxRoundCache;
+	readonly #boxSharpCache;
+	readonly #sepCache;
+	readonly #iconCache;
+	readonly #thinkingCache;
+	readonly #checkboxCache;
+	readonly #radioCache;
+	readonly #formatCache;
+	readonly #mdCache;
 	/**
 	 * Perceptual luma (0..1) of the status-line background — used to classify the
 	 * theme light/dark. Undefined when it can't be resolved. Classified against the
@@ -206,6 +222,155 @@ export class Theme {
 			}
 		}
 		this.#spinnerFramesOverrides = spinnerFramesOverrides;
+		this.#statusCache = {
+			success: this.#symbols["status.success"],
+			error: this.#symbols["status.error"],
+			warning: this.#symbols["status.warning"],
+			info: this.#symbols["status.info"],
+			pending: this.#symbols["status.pending"],
+			disabled: this.#symbols["status.disabled"],
+			enabled: this.#symbols["status.enabled"],
+			running: this.#symbols["status.running"],
+			connecting: this.#symbols["status.connecting"],
+			active: this.#symbols["status.active"],
+			shadowed: this.#symbols["status.shadowed"],
+			aborted: this.#symbols["status.aborted"],
+			done: this.#symbols["status.done"],
+		};
+		this.#navCache = {
+			cursor: this.#symbols["nav.cursor"],
+			selected: this.#symbols["nav.selected"],
+			expand: this.#symbols["nav.expand"],
+			collapse: this.#symbols["nav.collapse"],
+			back: this.#symbols["nav.back"],
+			prev: this.#symbols["nav.prev"],
+			next: this.#symbols["nav.next"],
+		};
+		this.#treeCache = {
+			branch: this.#symbols["tree.branch"],
+			last: this.#symbols["tree.last"],
+			vertical: this.#symbols["tree.vertical"],
+			horizontal: this.#symbols["tree.horizontal"],
+			hook: this.#symbols["tree.hook"],
+		};
+		this.#boxRoundCache = {
+			topLeft: this.#symbols["boxRound.topLeft"],
+			topRight: this.#symbols["boxRound.topRight"],
+			bottomLeft: this.#symbols["boxRound.bottomLeft"],
+			bottomRight: this.#symbols["boxRound.bottomRight"],
+			horizontal: this.#symbols["boxRound.horizontal"],
+			vertical: this.#symbols["boxRound.vertical"],
+			cross: this.#symbols["boxSharp.cross"],
+			teeDown: this.#symbols["boxSharp.teeDown"],
+			teeUp: this.#symbols["boxSharp.teeUp"],
+			teeRight: this.#symbols["boxSharp.teeRight"],
+			teeLeft: this.#symbols["boxSharp.teeLeft"],
+		};
+		this.#boxSharpCache = {
+			topLeft: this.#symbols["boxSharp.topLeft"],
+			topRight: this.#symbols["boxSharp.topRight"],
+			bottomLeft: this.#symbols["boxSharp.bottomLeft"],
+			bottomRight: this.#symbols["boxSharp.bottomRight"],
+			horizontal: this.#symbols["boxSharp.horizontal"],
+			vertical: this.#symbols["boxSharp.vertical"],
+			cross: this.#symbols["boxSharp.cross"],
+			teeDown: this.#symbols["boxSharp.teeDown"],
+			teeUp: this.#symbols["boxSharp.teeUp"],
+			teeRight: this.#symbols["boxSharp.teeRight"],
+			teeLeft: this.#symbols["boxSharp.teeLeft"],
+		};
+		this.#sepCache = {
+			powerline: this.#symbols["sep.powerline"],
+			powerlineThin: this.#symbols["sep.powerlineThin"],
+			powerlineLeft: this.#symbols["sep.powerlineLeft"],
+			powerlineRight: this.#symbols["sep.powerlineRight"],
+			powerlineThinLeft: this.#symbols["sep.powerlineThinLeft"],
+			powerlineThinRight: this.#symbols["sep.powerlineThinRight"],
+			block: this.#symbols["sep.block"],
+			space: this.#symbols["sep.space"],
+			asciiLeft: this.#symbols["sep.asciiLeft"],
+			asciiRight: this.#symbols["sep.asciiRight"],
+			dot: this.#symbols["sep.dot"],
+			slash: this.#symbols["sep.slash"],
+			pipe: this.#symbols["sep.pipe"],
+		};
+		this.#iconCache = {
+			model: this.#symbols["icon.model"],
+			plan: this.#symbols["icon.plan"],
+			prewalk: this.#symbols["icon.prewalk"],
+			goal: this.#symbols["icon.goal"],
+			pause: this.#symbols["icon.pause"],
+			loop: this.#symbols["icon.loop"],
+			folder: this.#symbols["icon.folder"],
+			worktree: this.#symbols["icon.worktree"],
+			scratchFolder: this.#symbols["icon.scratchFolder"],
+			file: this.#symbols["icon.file"],
+			git: this.#symbols["icon.git"],
+			branch: this.#symbols["icon.branch"],
+			pr: this.#symbols["icon.pr"],
+			tokens: this.#symbols["icon.tokens"],
+			context: this.#symbols["icon.context"],
+			cost: this.#symbols["icon.cost"],
+			time: this.#symbols["icon.time"],
+			pi: this.#symbols["icon.pi"],
+			ghost: this.#symbols["icon.ghost"],
+			agents: this.#symbols["icon.agents"],
+			job: this.#symbols["icon.job"],
+			cache: this.#symbols["icon.cache"],
+			cacheMiss: this.#symbols["icon.cacheMiss"],
+			input: this.#symbols["icon.input"],
+			output: this.#symbols["icon.output"],
+			throughput: this.#symbols["icon.throughput"],
+			host: this.#symbols["icon.host"],
+			profile: this.#symbols["icon.profile"],
+			session: this.#symbols["icon.session"],
+			package: this.#symbols["icon.package"],
+			warning: this.#symbols["icon.warning"],
+			rewind: this.#symbols["icon.rewind"],
+			auto: this.#symbols["icon.auto"],
+			fast: this.#symbols["icon.fast"],
+			extensionSkill: this.#symbols["icon.extensionSkill"],
+			extensionTool: this.#symbols["icon.extensionTool"],
+			extensionSlashCommand: this.#symbols["icon.extensionSlashCommand"],
+			extensionMcp: this.#symbols["icon.extensionMcp"],
+			extensionRule: this.#symbols["icon.extensionRule"],
+			extensionHook: this.#symbols["icon.extensionHook"],
+			extensionPrompt: this.#symbols["icon.extensionPrompt"],
+			extensionContextFile: this.#symbols["icon.extensionContextFile"],
+			extensionInstruction: this.#symbols["icon.extensionInstruction"],
+			mic: this.#symbols["icon.mic"],
+			camera: this.#symbols["icon.camera"],
+		};
+		this.#thinkingCache = {
+			minimal: this.#symbols["thinking.minimal"],
+			low: this.#symbols["thinking.low"],
+			medium: this.#symbols["thinking.medium"],
+			high: this.#symbols["thinking.high"],
+			xhigh: this.#symbols["thinking.xhigh"],
+			max: this.#symbols["thinking.max"],
+			autoPending: this.#symbols["thinking.autoPending"],
+		};
+		this.#checkboxCache = {
+			checked: this.#symbols["checkbox.checked"],
+			unchecked: this.#symbols["checkbox.unchecked"],
+			progress: this.#symbols["checkbox.progress"],
+		};
+		this.#radioCache = {
+			selected: this.#symbols["radio.selected"],
+			unselected: this.#symbols["radio.unselected"],
+		};
+		this.#formatCache = {
+			bullet: this.#symbols["format.bullet"],
+			dash: this.#symbols["format.dash"],
+			bracketLeft: this.#symbols["format.bracketLeft"],
+			bracketRight: this.#symbols["format.bracketRight"],
+		};
+		this.#mdCache = {
+			quoteBorder: this.#symbols["md.quoteBorder"],
+			hrChar: this.#symbols["md.hrChar"],
+			bullet: this.#symbols["md.bullet"],
+			colorSwatch: this.#symbols["md.colorSwatch"],
+		};
 	}
 
 	/** True when the active theme has a light status-line background. */
@@ -522,158 +687,35 @@ export class Theme {
 	// ============================================================================
 
 	get status() {
-		return {
-			success: this.#symbols["status.success"],
-			error: this.#symbols["status.error"],
-			warning: this.#symbols["status.warning"],
-			info: this.#symbols["status.info"],
-			pending: this.#symbols["status.pending"],
-			disabled: this.#symbols["status.disabled"],
-			enabled: this.#symbols["status.enabled"],
-			running: this.#symbols["status.running"],
-			connecting: this.#symbols["status.connecting"],
-			active: this.#symbols["status.active"],
-			shadowed: this.#symbols["status.shadowed"],
-			aborted: this.#symbols["status.aborted"],
-			done: this.#symbols["status.done"],
-		};
+		return this.#statusCache;
 	}
 
 	get nav() {
-		return {
-			cursor: this.#symbols["nav.cursor"],
-			selected: this.#symbols["nav.selected"],
-			expand: this.#symbols["nav.expand"],
-			collapse: this.#symbols["nav.collapse"],
-			back: this.#symbols["nav.back"],
-			prev: this.#symbols["nav.prev"],
-			next: this.#symbols["nav.next"],
-		};
+		return this.#navCache;
 	}
 
 	get tree() {
-		return {
-			branch: this.#symbols["tree.branch"],
-			last: this.#symbols["tree.last"],
-			vertical: this.#symbols["tree.vertical"],
-			horizontal: this.#symbols["tree.horizontal"],
-			hook: this.#symbols["tree.hook"],
-		};
+		return this.#treeCache;
 	}
 
 	get boxRound() {
-		return {
-			topLeft: this.#symbols["boxRound.topLeft"],
-			topRight: this.#symbols["boxRound.topRight"],
-			bottomLeft: this.#symbols["boxRound.bottomLeft"],
-			bottomRight: this.#symbols["boxRound.bottomRight"],
-			horizontal: this.#symbols["boxRound.horizontal"],
-			vertical: this.#symbols["boxRound.vertical"],
-			// Junctions have no rounded Unicode variant, so a rounded box reuses the
-			// sharp tee/cross glyphs. Sourcing them from the boxSharp.* tokens keeps a
-			// theme's `boxSharp.tee*` overrides effective for rounded-box dividers.
-			cross: this.#symbols["boxSharp.cross"],
-			teeDown: this.#symbols["boxSharp.teeDown"],
-			teeUp: this.#symbols["boxSharp.teeUp"],
-			teeRight: this.#symbols["boxSharp.teeRight"],
-			teeLeft: this.#symbols["boxSharp.teeLeft"],
-		};
+		return this.#boxRoundCache;
 	}
 
 	get boxSharp() {
-		return {
-			topLeft: this.#symbols["boxSharp.topLeft"],
-			topRight: this.#symbols["boxSharp.topRight"],
-			bottomLeft: this.#symbols["boxSharp.bottomLeft"],
-			bottomRight: this.#symbols["boxSharp.bottomRight"],
-			horizontal: this.#symbols["boxSharp.horizontal"],
-			vertical: this.#symbols["boxSharp.vertical"],
-			cross: this.#symbols["boxSharp.cross"],
-			teeDown: this.#symbols["boxSharp.teeDown"],
-			teeUp: this.#symbols["boxSharp.teeUp"],
-			teeRight: this.#symbols["boxSharp.teeRight"],
-			teeLeft: this.#symbols["boxSharp.teeLeft"],
-		};
+		return this.#boxSharpCache;
 	}
 
 	get sep() {
-		return {
-			powerline: this.#symbols["sep.powerline"],
-			powerlineThin: this.#symbols["sep.powerlineThin"],
-			powerlineLeft: this.#symbols["sep.powerlineLeft"],
-			powerlineRight: this.#symbols["sep.powerlineRight"],
-			powerlineThinLeft: this.#symbols["sep.powerlineThinLeft"],
-			powerlineThinRight: this.#symbols["sep.powerlineThinRight"],
-			block: this.#symbols["sep.block"],
-			space: this.#symbols["sep.space"],
-			asciiLeft: this.#symbols["sep.asciiLeft"],
-			asciiRight: this.#symbols["sep.asciiRight"],
-			dot: this.#symbols["sep.dot"],
-			slash: this.#symbols["sep.slash"],
-			pipe: this.#symbols["sep.pipe"],
-		};
+		return this.#sepCache;
 	}
 
 	get icon() {
-		return {
-			model: this.#symbols["icon.model"],
-			plan: this.#symbols["icon.plan"],
-			prewalk: this.#symbols["icon.prewalk"],
-			goal: this.#symbols["icon.goal"],
-			pause: this.#symbols["icon.pause"],
-			loop: this.#symbols["icon.loop"],
-			folder: this.#symbols["icon.folder"],
-			worktree: this.#symbols["icon.worktree"],
-			scratchFolder: this.#symbols["icon.scratchFolder"],
-			file: this.#symbols["icon.file"],
-			git: this.#symbols["icon.git"],
-			branch: this.#symbols["icon.branch"],
-			pr: this.#symbols["icon.pr"],
-			tokens: this.#symbols["icon.tokens"],
-			context: this.#symbols["icon.context"],
-			cost: this.#symbols["icon.cost"],
-			time: this.#symbols["icon.time"],
-			pi: this.#symbols["icon.pi"],
-			ghost: this.#symbols["icon.ghost"],
-			agents: this.#symbols["icon.agents"],
-			job: this.#symbols["icon.job"],
-			cache: this.#symbols["icon.cache"],
-			cacheMiss: this.#symbols["icon.cacheMiss"],
-			input: this.#symbols["icon.input"],
-			output: this.#symbols["icon.output"],
-			throughput: this.#symbols["icon.throughput"],
-			host: this.#symbols["icon.host"],
-			profile: this.#symbols["icon.profile"],
-			session: this.#symbols["icon.session"],
-			package: this.#symbols["icon.package"],
-			warning: this.#symbols["icon.warning"],
-			rewind: this.#symbols["icon.rewind"],
-			auto: this.#symbols["icon.auto"],
-			fast: this.#symbols["icon.fast"],
-			extensionSkill: this.#symbols["icon.extensionSkill"],
-			extensionTool: this.#symbols["icon.extensionTool"],
-			extensionSlashCommand: this.#symbols["icon.extensionSlashCommand"],
-			extensionMcp: this.#symbols["icon.extensionMcp"],
-			extensionRule: this.#symbols["icon.extensionRule"],
-			extensionHook: this.#symbols["icon.extensionHook"],
-			extensionPrompt: this.#symbols["icon.extensionPrompt"],
-			extensionContextFile: this.#symbols["icon.extensionContextFile"],
-			extensionInstruction: this.#symbols["icon.extensionInstruction"],
-			mic: this.#symbols["icon.mic"],
-			camera: this.#symbols["icon.camera"],
-		};
+		return this.#iconCache;
 	}
 
 	get thinking() {
-		return {
-			minimal: this.#symbols["thinking.minimal"],
-			low: this.#symbols["thinking.low"],
-			medium: this.#symbols["thinking.medium"],
-			high: this.#symbols["thinking.high"],
-			xhigh: this.#symbols["thinking.xhigh"],
-			max: this.#symbols["thinking.max"],
-			autoPending: this.#symbols["thinking.autoPending"],
-		};
+		return this.#thinkingCache;
 	}
 
 	/** Three task states, not two plus a colour. `progress` is total the same way
@@ -681,36 +723,19 @@ export class Theme {
 	 *  omit the key, and the override loop above only assigns keys already
 	 *  present rather than introducing or deleting any. */
 	get checkbox() {
-		return {
-			checked: this.#symbols["checkbox.checked"],
-			unchecked: this.#symbols["checkbox.unchecked"],
-			progress: this.#symbols["checkbox.progress"],
-		};
+		return this.#checkboxCache;
 	}
 
 	get radio() {
-		return {
-			selected: this.#symbols["radio.selected"],
-			unselected: this.#symbols["radio.unselected"],
-		};
+		return this.#radioCache;
 	}
 
 	get format() {
-		return {
-			bullet: this.#symbols["format.bullet"],
-			dash: this.#symbols["format.dash"],
-			bracketLeft: this.#symbols["format.bracketLeft"],
-			bracketRight: this.#symbols["format.bracketRight"],
-		};
+		return this.#formatCache;
 	}
 
 	get md() {
-		return {
-			quoteBorder: this.#symbols["md.quoteBorder"],
-			hrChar: this.#symbols["md.hrChar"],
-			bullet: this.#symbols["md.bullet"],
-			colorSwatch: this.#symbols["md.colorSwatch"],
-		};
+		return this.#mdCache;
 	}
 
 	/**
