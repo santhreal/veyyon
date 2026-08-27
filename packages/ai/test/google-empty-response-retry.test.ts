@@ -437,7 +437,7 @@ describe("Google empty-response retry (Cloud Code Assist path)", () => {
 		const result = await stream.result();
 
 		expect(result.stopReason).toBe("error");
-		expect(result.errorMessage).toContain("Generation failed with finish reason: SAFETY");
+		expect(result.errorMessage).toContain("Provider finish_reason: SAFETY");
 		expect(calls).toBe(1);
 	});
 });

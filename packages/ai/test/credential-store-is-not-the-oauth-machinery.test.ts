@@ -99,8 +99,15 @@ const ROWS_CEILING = 8;
  * is a leaf inside `ai/src/error/`: their own imports (`../classes`, `../flag`, `../aws`,
  * `../rate-limit`, `@veyyon/utils/fetch-retry`) were already on this reach before the split, so the
  * store gained no edge outside the subsystem. `.internal/reach-delta.ts` prints the names.
+ *
+ * RE-MEASURED 2026-08-26 at 44. The one new module is `error/provider.ts`, which `error/domains/turn.ts`
+ * now imports for `PROVIDER_FINISH_ERROR_PATTERN`. That pattern had been declared twice — once in the
+ * domain and once beside the producer that emits the wording — and the two drifted, so a Bedrock or
+ * Google `finish_reason: error` matched neither and was classified with no flags at all. The owner is a
+ * sibling leaf inside `ai/src/error/`, its own imports were already on this reach, and the neighbouring
+ * assertion still refuses `auth-storage.ts`, the registry and `stream.ts` by name.
  */
-const STORE_CEILING = 43;
+const STORE_CEILING = 44;
 
 describe("the row helpers are pure", () => {
 	/**

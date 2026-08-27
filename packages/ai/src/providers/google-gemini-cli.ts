@@ -877,7 +877,7 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli"> = (
 						} else {
 							output.stopReason = mapped;
 							if (mapped === "error") {
-								output.errorMessage = `Generation failed with finish reason: ${candidate.finishReason}`;
+								output.errorMessage = AIError.providerFinishErrorMessage(candidate.finishReason);
 							}
 						}
 					}

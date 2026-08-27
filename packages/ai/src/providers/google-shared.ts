@@ -884,7 +884,7 @@ export async function consumeGoogleStream<T extends GoogleApiType>(args: {
 			} else {
 				output.stopReason = mapped;
 				if (mapped === "error") {
-					output.errorMessage = `Generation failed with finish reason: ${candidate.finishReason}`;
+					output.errorMessage = AIError.providerFinishErrorMessage(candidate.finishReason);
 				}
 			}
 		}
