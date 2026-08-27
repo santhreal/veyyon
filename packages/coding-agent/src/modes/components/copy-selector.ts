@@ -57,8 +57,7 @@ interface FlatNode {
 
 /** Render one tree connector as exactly three cells (e.g. "├─ ", "└─ ", "|--"). */
 function connectorCells(symbol: string): string {
-	const chars = Array.from(symbol);
-	return (chars[0] ?? " ") + (chars[1] ?? theme.tree.horizontal) + (chars[2] ?? " ");
+	return (symbol[0] ?? " ") + (symbol[1] ?? theme.tree.horizontal) + (symbol[2] ?? " ");
 }
 
 /** The 3-cell ancestor gutter: a vertical guide when the ancestor continues. */
