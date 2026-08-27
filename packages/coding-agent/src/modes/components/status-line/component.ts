@@ -1417,13 +1417,7 @@ export class StatusLineComponent implements Component {
 		const routing = authStorage.sessionCredentialRouting(activeProvider, session.sessionId);
 		const servingId = routing?.activeCredentialId ?? routing?.selectedCredentialId ?? stored[0]?.id;
 		if (servingId === undefined) return null;
-		const key = [
-			activeProvider,
-			servingId,
-			stored.length,
-			authStorage.getAccountName(activeProvider, servingId) ?? "",
-			routing?.activeIsPrediction === true ? "next" : "serving",
-		].join("\0");
+		const key = `${activeProvider}\0${servingId}\0${stored.length}\0${authStorage.getAccountName(activeProvider, servingId) ?? ""}\0${routing?.activeIsPrediction === true ? "next" : "serving"}`;
 		const cached = this.#cachedServingAccount;
 		if (cached?.key === key) return cached.value;
 		const rows = accountsForProvider(
