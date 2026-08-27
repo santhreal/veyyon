@@ -323,6 +323,43 @@ const EDITOR_MIN_RENDERED_ROWS = 3; // bordered editor floor: top+bottom border 
  */
 const GOAL_FAILED_TURN_LIMIT = 3;
 
+/** How long the composer stays idle before goal mode opens a continuation turn. */
+const GOAL_CONTINUATION_DELAY_MS = 800;
+
+/**
+ * How long goal mode keeps waiting for a busy session to go idle before it gives up on the
+ * continuation it owes. Post-turn maintenance — a compaction of a large context, a queued
+ * hook — routinely outlasts one delay window, and the goal must still be driving afterwards.
+ */
+const GOAL_CONTINUATION_BUSY_WAIT_MS = 300_000;
+
+/** Why goal mode is not opening a continuation turn right now. */
+type GoalContinuationBlock =
+	| "loop-mode"
+	| "no-input-callback"
+	| "continuation-mode-off"
+	| "plan-mode"
+	| "goal-mode-off"
+	| "suppressed"
+	| "busy"
+	| "submission-pending"
+	| "draft-in-composer"
+	| "images-attached"
+	| "goal-not-active"
+	| "no-prompt";
+
+/**
+ * Blocks that are an ordinary handoff rather than a goal declining to drive. `no-input-callback`
+ * is the common one: every `agent_end` arms the continuation before the loop has returned to
+ * `getUserInput`, and that call is expected to do nothing.
+ */
+const GOAL_CONTINUATION_QUIET_BLOCKS: ReadonlySet<GoalContinuationBlock> = new Set([
+	"loop-mode",
+	"no-input-callback",
+	"continuation-mode-off",
+	"goal-mode-off",
+]);
+
 /**
  * Whether the turn that just ended died rather than finished. An aborted turn is
  * the user's own interrupt and is handled by the goal runtime's pause path, so
@@ -610,6 +647,11 @@ export class InteractiveMode implements InteractiveModeContext {
 	#goalSuppressNextContinuation = false;
 	#goalUserContinuationSuppressed = false;
 	#goalUserTurnInFlight = false;
+	/**
+	 * Deadline for the continuation goal mode owes a busy session, set when the first tick finds
+	 * the session busy and cleared by the tick that gets through. Undefined while nothing is owed.
+	 */
+	#goalContinuationBusyUntil: number | undefined;
 	#planModePreviousModelState: { model: Model; thinkingLevel?: ConfiguredThinkingLevel } | undefined;
 	#pendingModelSwitch: { model: Model; thinkingLevel?: ConfiguredThinkingLevel } | undefined;
 	#planModeHasEntered = false;
@@ -1701,47 +1743,94 @@ export class InteractiveMode implements InteractiveModeContext {
 		}
 	}
 
+	/**
+	 * Why goal mode must not open a continuation turn at this instant, or `undefined` when it may.
+	 *
+	 * ONE owner for the question, asked when the timer is armed and again when it fires. The two
+	 * lists used to be separate copies that disagreed on one entry, and that entry was the defect:
+	 * `busy` existed only at fire time, where it discarded the tick and left a comment saying the
+	 * next `agent_end` would reschedule. For a goal whose post-turn maintenance outlives the delay
+	 * window there is no next `agent_end` — the turn that armed this tick was the last one — so the
+	 * goal sat `active` with every re-arm edge already behind it.
+	 */
+	#goalContinuationBlock(phase: "arm" | "fire"): GoalContinuationBlock | undefined {
+		if (this.loopModeEnabled) return "loop-mode";
+		if (!this.onInputCallback) return "no-input-callback";
+		if (!this.session.settings.get("goal.continuationModes").includes("interactive")) {
+			return "continuation-mode-off";
+		}
+		if (this.planModeEnabled || this.planModePaused) return "plan-mode";
+		if (!this.goalModeEnabled || this.goalModePaused) return "goal-mode-off";
+		if (this.#goalSuppressNextContinuation || this.#goalUserContinuationSuppressed) return "suppressed";
+		// The one transient block: mid-turn, compacting, or draining post-turn maintenance, each of
+		// which ends on its own. Asked at fire time only — at arm time the turn that scheduled this
+		// tick is still settling, which is what the delay is for.
+		if (phase === "fire" && this.#isAutoSubmitBlocked()) return "busy";
+		if (this.#pendingSubmittedInput) return "submission-pending";
+		if (this.editor.getText().trim().length > 0) return "draft-in-composer";
+		if ((this.editor.pendingImages?.length ?? 0) > 0) return "images-attached";
+		const state = this.session.getGoalModeState();
+		if (!state?.enabled || state.goal.status !== "active") return "goal-not-active";
+		return undefined;
+	}
+
+	#reportGoalContinuationBlock(reason: GoalContinuationBlock, phase: "arm" | "fire"): void {
+		if (GOAL_CONTINUATION_QUIET_BLOCKS.has(reason)) return;
+		logger.debug("Goal mode is not opening a continuation turn", {
+			reason,
+			phase,
+			goalId: this.session.getGoalModeState()?.goal.id,
+		});
+	}
+
 	#scheduleGoalContinuation(): void {
 		this.#cancelGoalContinuation();
-		if (this.loopModeEnabled) return;
-		if (!this.onInputCallback) return;
-		if (!this.session.settings.get("goal.continuationModes").includes("interactive")) return;
-		if (this.planModeEnabled || this.planModePaused) return;
-		if (!this.goalModeEnabled || this.goalModePaused) return;
-		if (this.#goalSuppressNextContinuation || this.#goalUserContinuationSuppressed) return;
-		if (this.#pendingSubmittedInput) return;
-		if (this.editor.getText().trim().length > 0) return;
-		if ((this.editor.pendingImages?.length ?? 0) > 0) return;
-		const state = this.session.getGoalModeState();
-		if (!state?.enabled || state.goal.status !== "active") return;
+		this.#goalContinuationBusyUntil = undefined;
+		this.#armGoalContinuation();
+	}
+
+	#armGoalContinuation(): void {
+		this.#cancelGoalContinuation();
+		const blocked = this.#goalContinuationBlock("arm");
+		if (blocked) {
+			this.#reportGoalContinuationBlock(blocked, "arm");
+			return;
+		}
 		const prompt = this.session.goalRuntime.buildContinuationPrompt();
-		if (!prompt) return;
+		if (!prompt) {
+			this.#reportGoalContinuationBlock("no-prompt", "arm");
+			return;
+		}
 		this.#goalContinuationTimer = setTimeout(() => {
 			this.#goalContinuationTimer = undefined;
-			if (!this.onInputCallback) return;
-			if (!this.goalModeEnabled || this.goalModePaused) return;
-			// The 800ms timer can outlive the idle window that scheduled it: a
-			// `/goal set` taken via the streaming branch (or any extension/hook
-			// path that starts a turn while we wait) leaves the agent busy. Firing
-			// the continuation now would route through `submitInteractiveInput` →
-			// `promptCustomMessage` with no `streamingBehavior` and resurface
-			// `AgentBusyError`. Drop this tick; `#handleGoalSessionEvent` reschedules
-			// on the next `agent_end`.
-			if (this.#isAutoSubmitBlocked()) return;
-			if (this.#pendingSubmittedInput) return;
-			if (this.editor.getText().trim().length > 0) return;
-			if ((this.editor.pendingImages?.length ?? 0) > 0) return;
-			const latestState = this.session.getGoalModeState();
-			if (!latestState?.enabled || latestState.goal.status !== "active") return;
+			const blockedNow = this.#goalContinuationBlock("fire");
+			if (blockedNow === "busy") {
+				this.#goalContinuationBusyUntil ??= Date.now() + GOAL_CONTINUATION_BUSY_WAIT_MS;
+				if (Date.now() < this.#goalContinuationBusyUntil) {
+					this.#armGoalContinuation();
+					return;
+				}
+				this.#goalContinuationBusyUntil = undefined;
+				this.#reportGoalContinuationBlock("busy", "fire");
+				this.showWarning("Goal mode stopped waiting for the session to go idle. Send a message to resume it.");
+				return;
+			}
+			this.#goalContinuationBusyUntil = undefined;
+			if (blockedNow) {
+				this.#reportGoalContinuationBlock(blockedNow, "fire");
+				return;
+			}
+			const submit = this.onInputCallback;
+			if (!submit) return;
 			this.#goalContinuationTurnInFlight = true;
-			this.onInputCallback(
+			submit(
 				this.startPendingSubmission({
 					text: prompt,
 					customType: "goal-continuation",
 					display: false,
 				}),
 			);
-		}, 800);
+		}, GOAL_CONTINUATION_DELAY_MS);
 	}
 
 	#cancelGoalContinuation(): void {
