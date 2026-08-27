@@ -5,10 +5,14 @@
  * turn limits, logs tool execution events, and invokes early-stop triggers.
  */
 
+import { setTimeout as sleepFor } from "node:timers/promises";
 import type { EarlyStopOptions } from "./early-stop";
 import type { BenchmarkPromptDelivery } from "./prompt-delivery";
 import { isMutationTool, PromptTimeoutError, PromptTurnLimitError } from "./telemetry";
 import type { BenchmarkClient, BenchmarkConfig } from "./types";
+
+/** How long a client gets to unwind its stream after the wait that aborted it has ended. */
+export const PROMPT_UNWIND_GRACE_MS = 1_000;
 
 export async function collectPromptEvents(
 	client: BenchmarkClient,
@@ -161,25 +165,55 @@ export async function collectPromptEvents(
 		});
 	});
 
-	// Prevent unhandled rejection if events reject eventsPromise during prompt()
-	eventsPromise.catch(() => {});
+	let waitFailure: unknown;
+	// Also prevents an unhandled rejection when the wait ends while the delivery is still in flight.
+	const waitSettled = eventsPromise.then(
+		() => {},
+		(err: unknown) => {
+			waitFailure = err;
+		},
+	);
 
-	try {
-		if (delivery.kind === "followUp") {
-			await client.followUp(delivery.message);
-		} else {
-			await client.prompt(delivery.message);
-		}
-	} catch (err) {
-		if (earlyStopTriggered) {
-			// Abort raised inside prompt(); the run already short-circuited successfully.
-			clearTimeout(timer);
-			unsubscribe?.();
-			return events;
-		}
+	let delivered = false;
+	let deliveryFailed = false;
+	let deliveryError: unknown;
+	const deliverySettled = (
+		delivery.kind === "followUp" ? client.followUp(delivery.message) : client.prompt(delivery.message)
+	).then(
+		() => {
+			delivered = true;
+		},
+		(err: unknown) => {
+			delivered = true;
+			deliveryFailed = true;
+			deliveryError = err;
+		},
+	);
+
+	// The deadline fires inside the wait, and `abort` is optional on a client: one that does not
+	// implement it, or whose abort does not unblock its own stream, would hold this await after the
+	// deadline was already spent, and no deadline covers a trial above this layer. So the delivery is
+	// raced against the wait, and once the wait has ended the unwind gets a bounded grace.
+	await Promise.race([deliverySettled, waitSettled]);
+	if (!delivered) {
+		const unwind = new AbortController();
+		await Promise.race([
+			deliverySettled,
+			sleepFor(PROMPT_UNWIND_GRACE_MS, undefined, { signal: unwind.signal }).catch(() => {}),
+		]);
+		unwind.abort();
+	}
+
+	// The deadline and the turn limit win over the delivery's own failure, because the abort error a
+	// client raises here is a consequence of this wait ending, and the attempt's retry accounting
+	// reads the wait's error.
+	if (waitFailure !== undefined) throw waitFailure;
+	if (deliveryFailed) {
 		clearTimeout(timer);
 		unsubscribe?.();
-		throw err;
+		// Abort raised inside prompt(); the run already short-circuited successfully.
+		if (earlyStopTriggered) return events;
+		throw deliveryError;
 	}
 	await eventsPromise;
 	return events;
