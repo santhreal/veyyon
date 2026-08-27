@@ -130,13 +130,13 @@ function buildToolCallSeries(points: ToolTimeSeriesPoint[]): {
 } {
 	const totals = new Map<string, number>();
 	for (const p of points) totals.set(p.tool, (totals.get(p.tool) ?? 0) + p.calls);
-	const ranked = [...totals.entries()].sort((a, b) => b[1] - a[1]);
+	const ranked = Array.from(totals.entries()).sort((a, b) => b[1] - a[1]);
 	const top = ranked.slice(0, TOP_TOOLS).map(([tool]) => tool);
 	const topSet = new Set(top);
 	const hasOther = ranked.length > top.length;
-	const tools = hasOther ? [...top, "Other"] : top;
+	const tools = hasOther ? top.concat(["Other"]) : top;
 
-	const buckets = [...new Set(points.map(p => p.timestamp))].sort((a, b) => a - b);
+	const buckets = Array.from(new Set(points.map(p => p.timestamp))).sort((a, b) => a - b);
 	const data = new Map<number, Record<string, number>>();
 	for (const bucket of buckets) data.set(bucket, {});
 	for (const p of points) {

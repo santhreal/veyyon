@@ -93,7 +93,7 @@ export default function App() {
 				updatedAt={updatedAt}
 				onSyncComplete={handleSyncComplete}
 			>
-				{[...mountedRef.current].map(target => (
+				{Array.from(mountedRef.current).map(target => (
 					<div key={target} hidden={target !== active}>
 						{renderRoute(target)}
 					</div>
