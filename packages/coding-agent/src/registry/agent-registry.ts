@@ -548,7 +548,7 @@ export class AgentRegistry {
 	}
 
 	list(): AgentRef[] {
-		return [...this.#refs.values()];
+		return Array.from(this.#refs.values());
 	}
 
 	/**

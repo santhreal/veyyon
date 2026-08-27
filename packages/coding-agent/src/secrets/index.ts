@@ -137,7 +137,7 @@ function mergeSecretEntries(profileEntries: SecretEntry[], projectEntries: Secre
 	if (projectEntries.length === 0) return profileEntries;
 
 	const projectContents = new Set(projectEntries.map(e => e.content));
-	return [...profileEntries.filter(e => !projectContents.has(e.content)), ...projectEntries];
+	return profileEntries.filter(e => !projectContents.has(e.content)).concat(projectEntries);
 }
 
 /**

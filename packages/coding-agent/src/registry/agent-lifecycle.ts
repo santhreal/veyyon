@@ -519,7 +519,7 @@ export class AgentLifecycleManager {
 		this.#unsubscribe?.();
 		this.#unsubscribe = undefined;
 		this.#clearTimer();
-		const ids = [...this.#adopted.keys()];
+		const ids = Array.from(this.#adopted.keys());
 		await Promise.all(ids.map(id => this.release(id)));
 		this.#revivals.clear();
 		this.#parking.clear();

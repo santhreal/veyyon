@@ -699,7 +699,7 @@ function confidentialityTransformError(): HindsightError {
 function composeProviderTextTransform(
 	transforms: ReadonlySet<HindsightProviderTextTransform>,
 ): HindsightProviderTextTransform {
-	const active = [...transforms];
+	const active = Array.from(transforms);
 	return (text: string): string => {
 		let transformed = text;
 		try {

@@ -433,7 +433,7 @@ export function compileSecretRegex(pattern: string, flags?: string): RegExp {
 
 	// Each source is validated before de-duplication so `/secret/ii` remains an error, while a
 	// deliberate `g` in both supported flag locations is harmless.
-	const mergedFlags = [...new Set([...explicitFlags, ...literalFlags])].join("");
+	const mergedFlags = Array.from(new Set(explicitFlags + literalFlags)).join("");
 	const resolvedFlags = enforceGlobalFlag(mergedFlags);
 	validatePatternSafety(resolvedPattern, resolvedFlags);
 	let compiled: RegExp;

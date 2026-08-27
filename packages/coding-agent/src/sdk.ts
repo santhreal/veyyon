@@ -430,7 +430,7 @@ function collectPendingMCPToolNames(
 		const normalized = name.toLowerCase();
 		if (isMCPToolName(normalized)) names.add(normalized);
 	}
-	return [...names];
+	return Array.from(names);
 }
 
 function logMCPLoadErrors(errors: MCPLoadResult["errors"]): void {
@@ -1733,7 +1733,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			}
 			const placeholderKey = placeholderKeyResult.value;
 			const vaultRevision = vault.revision();
-			const nextObfuscator = new SecretObfuscator([...envEntries, ...fileEntries, ...vaultEntries], {
+			const nextObfuscator = new SecretObfuscator(envEntries.concat(fileEntries, vaultEntries), {
 				placeholderKey,
 				onRejection: rejection => operatorNotices.warn("secrets", describeSecretRejection(rejection)),
 				// A notice only. The placeholder is already forgotten by the time this fires, so
@@ -2660,7 +2660,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			// registered with the manager and bucketed out before rulebook/always,
 			// so without this a TTSR-only rule (e.g. a triggered builtin) is not
 			// addressable and `rule://` reports "Available: none".
-			setActiveRules([...rulebookRules, ...alwaysApplyRules, ...ttsrManager.getRules()]);
+			setActiveRules(rulebookRules.concat(alwaysApplyRules, ttsrManager.getRules()));
 			if (asyncJobManager) AsyncJobManager.setInstance(asyncJobManager);
 		}
 		const localProtocolOptions = options.localProtocolOptions ?? {
@@ -2885,7 +2885,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		// re-bind under their own `CustomToolAPI` while skipping the FS scan.
 		toolSession.customToolPaths = customToolPaths;
 
-		const inlineExtensions: ExtensionFactory[] = options.extensions ? [...options.extensions] : [];
+		const inlineExtensions: ExtensionFactory[] = options.extensions ? options.extensions.slice() : [];
 		inlineExtensions.push((await import("./autoresearch")).createAutoresearchExtension);
 		if (customTools.length > 0) {
 			inlineExtensions.push(createCustomToolsExtension(customTools, text => secretRuntimeLease.obfuscateText(text)));
@@ -2922,7 +2922,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		if (options.preloadedExtensions) {
 			extensionsResult = {
 				...options.preloadedExtensions,
-				extensions: [...options.preloadedExtensions.extensions],
+				extensions: options.preloadedExtensions.extensions.slice(),
 			};
 			// Capture paths for downstream forwarding; filter inline-factory
 			// entries (`<inline-N>`) — those are per-session, not source paths.
@@ -3461,10 +3461,10 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			mcpTools: CustomTool[],
 		): Promise<boolean> {
 			if (mcpDiscoveryEnabled) return true;
-			const nonMCPToolNames = [...toolRegistry.keys()].filter(name => !isMCPToolName(name));
+			const nonMCPToolNames = Array.from(toolRegistry.keys()).filter(name => !isMCPToolName(name));
 			const projectedMode = resolveEffectiveToolDiscoveryMode(
 				settings,
-				countToolsForAutoDiscovery([...nonMCPToolNames, ...mcpTools.map(tool => tool.name)]),
+				countToolsForAutoDiscovery(nonMCPToolNames.concat(mcpTools.map(tool => tool.name))),
 			);
 			if (projectedMode === "off") return false;
 
@@ -3479,7 +3479,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				);
 			}
 			if (!liveSession.getActiveToolNames().includes(TOOL.search_tool_bm25)) {
-				await liveSession.setActiveToolsByName([...liveSession.getActiveToolNames(), TOOL.search_tool_bm25]);
+				await liveSession.setActiveToolsByName(liveSession.getActiveToolNames().concat([TOOL.search_tool_bm25]));
 			}
 			return true;
 		}
@@ -3608,7 +3608,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 						throw error;
 					}
 
-					const nextAdvisorWatchdogPrompts = [...nextWatchdogFiles];
+					const nextAdvisorWatchdogPrompts = nextWatchdogFiles.slice();
 					if (nextActiveRepoContext) {
 						nextAdvisorWatchdogPrompts.push(formatActiveRepoWatchdogPrompt(nextActiveRepoContext));
 					}
@@ -3676,7 +3676,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 							});
 						})
 					: [];
-			const discoverableToolsForDesc: DiscoverableTool[] = [...discoverableLocalTools, ...discoverableMCPTools];
+			const discoverableToolsForDesc: DiscoverableTool[] = discoverableLocalTools.concat(discoverableMCPTools);
 			const discoverableToolSummary = summarizeDiscoverableTools(discoverableToolsForDesc);
 			const hasDiscoverableTools =
 				mcpDiscoveryEnabled && toolNames.includes(TOOL.search_tool_bm25) && discoverableToolsForDesc.length > 0;
@@ -4326,7 +4326,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			.filter((tool): tool is Tool => tool != null)
 			.map(wrapToolWithMetaNotice);
 
-		const advisorWatchdogPrompts = [...watchdogFiles];
+		const advisorWatchdogPrompts = watchdogFiles.slice();
 		if (activeRepoContext) {
 			advisorWatchdogPrompts.push(formatActiveRepoWatchdogPrompt(activeRepoContext));
 		}
@@ -4408,7 +4408,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			initialSelectedMCPToolNames,
 			defaultSelectedMCPToolNames,
 			persistInitialMCPToolSelection: !hasExistingSession,
-			defaultSelectedMCPServerNames: [...discoveryDefaultServers],
+			defaultSelectedMCPServerNames: Array.from(discoveryDefaultServers),
 			ttsrManager,
 			obfuscator,
 			secretRuntime: secretRuntimeLease,

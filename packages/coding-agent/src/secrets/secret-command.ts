@@ -1697,7 +1697,7 @@ async function clearEveryVault(context: { vault: SecretVault }): Promise<SecretC
 	}
 	// A survivor means a scope was written back while this ran, or one could not be read at all. It
 	// is still spendable, so it is reported rather than covered by "removed from every vault".
-	const live = [...new Set((await context.vault.load()).map(entry => entry.name))].sort();
+	const live = Array.from(new Set((await context.vault.load()).map(entry => entry.name))).sort();
 	if (live.length > 0) {
 		lines.push(
 			`${live.join(", ")} ${live.length === 1 ? "is" : "are"} still stored and still spendable. ` +
