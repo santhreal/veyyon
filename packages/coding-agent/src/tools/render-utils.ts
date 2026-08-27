@@ -265,10 +265,14 @@ export function renderCollapsedOutputLines(
 	theme: Theme,
 	styleLine: (line: string) => string = line => theme.fg("toolOutput", replaceTabs(line)),
 ): string[] {
-	return collapseProgressRuns(lines).map(row => {
+	const rows = collapseProgressRuns(lines);
+	const result = new Array<string>(rows.length);
+	for (let ri = 0; ri < rows.length; ri++) {
+		const row = rows[ri]!;
 		const text = styleLine(row.text);
-		return row.hidden === 0 ? text : `${text}${theme.fg("dim", ` … +${row.hidden} earlier`)}`;
-	});
+		result[ri] = row.hidden === 0 ? text : `${text}${theme.fg("dim", ` … +${row.hidden} earlier`)}`;
+	}
+	return result;
 }
 
 // =============================================================================
@@ -607,7 +611,8 @@ export function getDiffStats(diffText: string): DiffStats {
 	let hunks = 0;
 	let inHunk = false;
 
-	for (const line of lines) {
+	for (let li = 0; li < lines.length; li++) {
+		const line = lines[li]!;
 		const isAdded = line.startsWith("+");
 		const isRemoved = line.startsWith("-");
 		const isChange = isAdded || isRemoved;
@@ -643,8 +648,8 @@ interface DiffSegment {
 function parseDiffSegments(lines: string[]): DiffSegment[] {
 	const segments: DiffSegment[] = [];
 	let current: DiffSegment | null = null;
-
-	for (const line of lines) {
+	for (let li = 0; li < lines.length; li++) {
+		const line = lines[li]!;
 		const isChange = line.startsWith("+") || line.startsWith("-");
 		const isEllipsis = line.trimStart().startsWith("...") || line.trim().length === 0;
 
@@ -709,7 +714,8 @@ export function truncateDiffByHunk(
 		const kept: string[] = [];
 		let keptHunks = 0;
 
-		for (const seg of segments) {
+		for (let si = 0; si < segments.length; si++) {
+			const seg = segments[si]!;
 			if (seg.isChange) {
 				keptHunks++;
 				if (keptHunks > maxHunks) break;
@@ -741,7 +747,8 @@ export function truncateDiffByHunk(
 	let keptHunks = 0;
 
 	if (totalContextLines <= contextBudget) {
-		for (const seg of segments) {
+		for (let si = 0; si < segments.length; si++) {
+			const seg = segments[si]!;
 			if (seg.isChange) {
 				keptHunks++;
 				if (keptHunks > maxHunks) break;
@@ -912,10 +919,10 @@ export function dedupeParseErrors(errors: string[] | undefined): string[] {
 	if (!errors || errors.length === 0) return [];
 	const seen = new Set<string>();
 	const deduped: string[] = [];
-	for (const error of errors) {
-		if (seen.has(error)) continue;
-		seen.add(error);
-		deduped.push(error);
+	for (let ei = 0; ei < errors.length; ei++) {
+		if (seen.has(errors[ei]!)) continue;
+		seen.add(errors[ei]!);
+		deduped.push(errors[ei]!);
 	}
 	return deduped;
 }
@@ -926,7 +933,10 @@ export function formatParseErrors(errors: string[], total?: number): string[] {
 	const fullCount = total ?? deduped.length;
 	const capped = deduped.slice(0, PARSE_ERRORS_LIMIT);
 	const header = fullCount > capped.length ? `Parse issues (${capped.length} / ${fullCount}):` : "Parse issues:";
-	return [header, ...capped.map(err => `- ${err}`)];
+	const result = new Array<string>(capped.length + 1);
+	result[0] = header;
+	for (let ei = 0; ei < capped.length; ei++) result[ei + 1] = `- ${capped[ei]!}`;
+	return result;
 }
 
 /**
@@ -966,8 +976,15 @@ export function createCachedComponent(
 			const paddingX = Math.max(0, options.paddingX ?? 0);
 			const innerWidth = Math.max(1, width - paddingX * 2);
 			const lines = compute(innerWidth, expanded);
-			const pad = paddingX === 0 ? "" : " ".repeat(paddingX);
-			const paddedLines = paddingX === 0 ? lines : lines.map(line => `${pad}${line}${pad}`);
+			const pad = paddingX === 0 ? "" : padding(paddingX);
+			const paddedLines =
+				paddingX === 0
+					? lines
+					: (() => {
+							const pl = new Array<string>(lines.length);
+							for (let li = 0; li < lines.length; li++) pl[li] = `${pad}${lines[li]!}${pad}`;
+							return pl;
+						})();
 			cached = { key, lines: paddedLines };
 			return paddedLines;
 		},
@@ -1047,8 +1064,8 @@ export function appendParseErrorsBulletList(
 	if (!parseErrors || parseErrors.length === 0) return;
 	const fullCount = total ?? parseErrors.length;
 	const capped = parseErrors.slice(0, PARSE_ERRORS_LIMIT);
-	for (const err of capped) {
-		lines.push(theme.fg("warning", `  - ${err}`));
+	for (let ei = 0; ei < capped.length; ei++) {
+		lines.push(theme.fg("warning", `  - ${capped[ei]!}`));
 	}
 	if (fullCount > capped.length) {
 		lines.push(theme.fg("dim", `  … ${fullCount - capped.length} more`));
