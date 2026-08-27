@@ -83,10 +83,16 @@ describe("the classification rule set", () => {
 	 * failure family that owns them and applied in any order, so their sequence in the registry is
 	 * the recovery precedence and says nothing about classification.
 	 *
-	 * `AuthFailed` used to be in this set and is not any more. Reading `authentication` out of a
-	 * sentence with no other evidence walled a `503 overloaded_error` whose body named an
-	 * authentication service as the thing that was busy, so the rule now declines a 5xx: an auth
-	 * verdict is 401 or 403, and a status the server sent outranks a word in the prose beside it.
+	 * `AuthFailed` reads the wording in two rules and only one of them is here. `auth-failure-prose`
+	 * declines a 5xx, because reading `authentication` out of a sentence with no other evidence
+	 * walled a `503 overloaded_error` whose body named an authentication service as the thing that
+	 * was busy: an auth verdict is 401 or 403, and a status the server sent outranks a word in the
+	 * prose beside it. `named-auth-refusal-code` is unguarded and stays here, because it matches a
+	 * machine token rather than an English word — a gateway that holds no credential answers
+	 * `503 auth_unavailable`, and no sentence about a busy auth service contains that token. The
+	 * distinction is the one the paragraph above draws: a provider rewording a sentence must not
+	 * move a verdict, and a provider renaming a code would cost this rule its match rather than
+	 * hand it a wrong one.
 	 */
 	it("decides on prose alone only for the failures that arrive without structure", () => {
 		const proseOnly = CLASSIFICATION_RULES.filter(rule => rule.structural === undefined)
@@ -98,6 +104,9 @@ describe("the classification rule set", () => {
 			)
 			.sort();
 		expect(proseOnly).toEqual([
+			// `named-auth-refusal-code`: the `auth_unavailable` token, which carries a 503 the
+			// gateway sends when it holds no usable credential (issue #986).
+			"AuthFailed",
 			// Two content rules, because a refusal arrives as text by definition: `content_filter` is
 			// OpenAI's spelling and `content-verdict` covers the finish reasons and policy codes the
 			// other providers use for the same verdict.
@@ -177,6 +186,7 @@ describe("a classification names the rules that produced it", () => {
 			"fast-mode-entitlement-wall",
 			"fast-mode-parameter-rejected",
 			"malformed-function-call",
+			"named-auth-refusal-code",
 			"named-http2-refused-code",
 			"named-http2-retryable-code",
 			"opaque-or-exhausted-429",

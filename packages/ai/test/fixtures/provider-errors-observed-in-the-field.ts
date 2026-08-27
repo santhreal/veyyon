@@ -65,6 +65,11 @@ export const OBSERVED_PROVIDER_ERRORS: readonly ObservedProviderError[] = [
 		why: "A 503 the server asked us to retry. The word `Authentication` in the body describes which service was busy, not a verdict on the credential.",
 	},
 	{
+		message: "503 auth_unavailable: no auth available (providers=codex, model=gpt-5.4-mini)",
+		verdict: "wall",
+		why: "The pair to the entry above, and the reason the classifier reads a code differently from a word: the same 503 status, but `auth_unavailable` is the gateway stating it held no usable credential. Retrying the same credential returns the same answer, so the ladder stops and compaction switches to an authenticated model instead of failing outright (issue #986).",
+	},
+	{
 		message: "500 Internal server error\nInternal server error (type=error)",
 		verdict: "retry",
 		why: "A 5xx is the server stating it failed.",
