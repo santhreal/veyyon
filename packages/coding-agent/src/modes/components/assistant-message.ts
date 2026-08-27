@@ -822,7 +822,10 @@ export class AssistantMessageComponent extends Container {
 	 */
 	#shouldPaintTrail(message: AssistantMessage): boolean {
 		if (!this.#lastUpdateTransient || this.#transcriptBlockFinalized) return false;
-		return !message.content.some(c => c.type === "toolCall");
+		for (let ci = 0; ci < message.content.length; ci++) {
+			if (message.content[ci]!.type === "toolCall") return false;
+		}
+		return true;
 	}
 
 	updateContent(message: AssistantMessage, opts?: { transient?: boolean }): void {
@@ -873,14 +876,23 @@ export class AssistantMessageComponent extends Container {
 		// getTranscriptBlockSettledRows. Detected from raw source — a Markdown
 		// parser only resolves the fence once it closes, but the stale commits
 		// would happen mid-stream.
-		this.#containsMermaidSource = message.content.some(content => {
-			if (content.type === "text") return containsMermaidFence(content.text);
-			if (content.type === "thinking" && !this.hideThinkingBlock) {
+		let containsMermaid = false;
+		for (let ci = 0; ci < message.content.length; ci++) {
+			const content = message.content[ci]!;
+			if (content.type === "text") {
+				if (containsMermaidFence(content.text)) {
+					containsMermaid = true;
+					break;
+				}
+			} else if (content.type === "thinking" && !this.hideThinkingBlock) {
 				const display = resolveThinkingDisplay(content, this.proseOnlyThinking);
-				return display.visible && containsMermaidFence(display.text);
+				if (display.visible && containsMermaidFence(display.text)) {
+					containsMermaid = true;
+					break;
+				}
 			}
-			return false;
-		});
+		}
+		this.#containsMermaidSource = containsMermaid;
 
 		// Fast path: reuse Markdown children when shape is stable during streaming
 		if (this.#tryFastPathUpdate(message, opts)) return;
@@ -898,13 +910,22 @@ export class AssistantMessageComponent extends Container {
 			| Array<{ md: Markdown; contentIndex: number; blockType: "text" | "thinking"; lastText: string }>
 			| undefined = shouldCapture ? [] : undefined;
 
-		const hasVisibleContent = message.content.some(
-			c =>
-				(c.type === "text" && canonicalizeMessage(c.text)) ||
-				(!this.hideThinkingBlock &&
-					c.type === "thinking" &&
-					resolveThinkingDisplay(c, this.proseOnlyThinking).visible),
-		);
+		let hasVisibleContent = false;
+		for (let vci = 0; vci < message.content.length; vci++) {
+			const c = message.content[vci]!;
+			if (c.type === "text" && canonicalizeMessage(c.text)) {
+				hasVisibleContent = true;
+				break;
+			}
+			if (
+				!this.hideThinkingBlock &&
+				c.type === "thinking" &&
+				resolveThinkingDisplay(c, this.proseOnlyThinking).visible
+			) {
+				hasVisibleContent = true;
+				break;
+			}
+		}
 
 		// Render content in order
 		let thinkingIndex = 0;
