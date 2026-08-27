@@ -295,6 +295,9 @@
 - `search-tool-bm25.ts` replaces `.split().map()` and `.filter().map().filter().join()` with split + for loops in `renderFallbackResult` and `renderResult` fallback.
 - `status-line/component.ts` caches `visibleWidth()` results in `renderQuietLine` and `renderQuietLines`, eliminating redundant width computations in shed loops and final line assembly.
 - `status-line/component.ts` hoists `LOCATION_SEGMENT_IDS` and `CONTEXT_SEGMENT_IDS` lookup tables to module-level constants, eliminating per-frame object literal allocation in `#gatherQuietSegments`.
+- `fillLocation` and `assembleLocation` in `status-line/component.ts` replace `.map()`, `.slice()`, `.reduce()`, `.entries()`, and `.some()` closures with pre-allocated arrays and index-based for loops, eliminating 5 intermediate array/closure allocations per width-fit iteration.
+- `renderQuietLine` and `renderQuietLines` in `status-line/component.ts` replace `.map(part => part.content)` with pre-allocated arrays and index-based for loops at 4 call sites, eliminating closure allocation per frame.
+- `#expansionProgress` click-trade path in `status-line/component.ts` replaces `.reduce()`, `.findIndex()`, `.map().filter()`, and `.reduce()` closures with index-based for loops, eliminating 4 closure allocations per expansion frame.
 - `hook-selector.ts` replaces `.split().map().filter().map()` chain with a single-pass for loop in `#shortcuts`, and uses `.slice()` instead of spread for `SELECT_LIST_SHORTCUTS` copy.
 - `ask-dialog.ts` replaces spread+`.map()` and `.map()` closures with pre-allocated arrays in `#renderHeader` and `#questionRows` render paths.
 - `agent-dashboard.ts` fuses 4 `widest()` closure calls into a single for loop in the roster render path, and hoists the ScrollView theme to a module-level constant.

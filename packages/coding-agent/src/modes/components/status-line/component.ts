@@ -436,9 +436,17 @@ function fillLocation(
 	budget: number,
 	favour?: string,
 ): { contents: string[]; cramped: boolean } | null {
-	const full = parts.map(part => visibleWidth(part.content));
-	const allotted = full.slice();
-	let over = full.reduce((sum, width) => sum + width, 0) + sepWidth * (parts.length - 1) - budget;
+	const len = parts.length;
+	const full = new Array<number>(len);
+	const allotted = new Array<number>(len);
+	let sum = 0;
+	for (let i = 0; i < len; i++) {
+		const w = visibleWidth(parts[i]!.content);
+		full[i] = w;
+		allotted[i] = w;
+		sum += w;
+	}
+	let over = sum + sepWidth * (len - 1) - budget;
 	// Two passes: every clippable part down to the width a name still reads at, and only then
 	// down to the fewest cells the part is worth painting at all -- which counts its pinned
 	// icon, since the clipper spends the icon before the name.
@@ -453,18 +461,17 @@ function fillLocation(
 		while (over > 0) {
 			let widest = -1;
 			let widestFavoured = -1;
-			for (const [index, width] of allotted.entries()) {
-				const part = parts[index];
-				if (part === undefined) continue;
+			for (let index = 0; index < len; index++) {
+				const part = parts[index]!;
 				if ((full[index] ?? 0) <= MIN_LOCATION_PART) continue;
-				if (width <= (stage === "preferred" ? MIN_LOCATION_PART : readableFloor(part))) continue;
+				if ((allotted[index] ?? 0) <= (stage === "preferred" ? MIN_LOCATION_PART : readableFloor(part))) continue;
 				if (favour !== undefined && part.id === favour) {
 					widestFavoured = index;
 					continue;
 				}
 				// Ties go to the LATER part: the directory is the head a reader places the row
 				// by, so when two parts are equally wide the branch gives up the cell.
-				if (widest < 0 || width >= (allotted[widest] ?? 0)) widest = index;
+				if (widest < 0 || (allotted[index] ?? 0) >= (allotted[widest] ?? 0)) widest = index;
 			}
 			if (widest < 0) widest = widestFavoured;
 			if (widest < 0) break;
@@ -473,12 +480,15 @@ function fillLocation(
 		}
 	}
 	if (over > 0) return null;
-	return {
-		contents: parts.map((part, index) =>
-			(allotted[index] ?? 0) < (full[index] ?? 0) ? clipPartToWidth(part, allotted[index] ?? 0) : part.content,
-		),
-		cramped: allotted.some((width, index) => width < Math.min(full[index] ?? 0, MIN_LOCATION_PART)),
-	};
+	const contents = new Array<string>(len);
+	let cramped = false;
+	for (let i = 0; i < len; i++) {
+		const a = allotted[i] ?? 0;
+		const f = full[i] ?? 0;
+		contents[i] = a < f ? clipPartToWidth(parts[i]!, a) : parts[i]!.content;
+		if (a < Math.min(f, MIN_LOCATION_PART)) cramped = true;
+	}
+	return { contents, cramped };
 }
 
 /** Join `contents` and record the painted extent of each part, in columns of the join. */
@@ -490,9 +500,9 @@ function assembleLocation(
 	const sepWidth = visibleWidth(sep);
 	const slots: QuietSegmentBounds[] = [];
 	let col = 0;
-	for (const [index, part] of parts.entries()) {
+	for (let index = 0; index < parts.length; index++) {
 		const partWidth = visibleWidth(contents[index] ?? "");
-		slots.push({ id: part.id, start: col, end: col + partWidth });
+		slots.push({ id: parts[index]!.id, start: col, end: col + partWidth });
 		col += partWidth + sepWidth;
 	}
 	return { text: contents.join(sep), slots };
@@ -2073,7 +2083,8 @@ export class StatusLineComponent implements Component {
 			this.#quietLineBounds = [];
 			return badge === "" ? null : badge;
 		}
-		const locationContents = location.map(part => part.content);
+		const locationContents = new Array<string>(location.length);
+		for (let i = 0; i < location.length; i++) locationContents[i] = location[i]!.content;
 		let left = this.#locationWithRunClock(locationContents, sep);
 		const rightParts = capLeft.concat(capRight);
 		if (extras?.locationRight) rightParts.push({ id: "location_right", content: extras.locationRight });
@@ -2209,34 +2220,42 @@ export class StatusLineComponent implements Component {
 			// fitter hands any cells left over back to the other half afterwards, so this is a
 			// floor on what it keeps, not a cap.
 			const sepWidth = visibleWidth(sep);
-			const wanted =
-				location.reduce(
-					(sum, part) =>
-						sum +
-						(part.id === favour
-							? visibleWidth(part.content)
-							: Math.min(visibleWidth(part.content), MIN_LOCATION_PART)),
-					0,
-				) +
-				sepWidth * Math.max(0, location.length - 1);
+			let wanted = 0;
+			for (let i = 0; i < location.length; i++) {
+				const part = location[i]!;
+				wanted +=
+					part.id === favour
+						? visibleWidth(part.content)
+						: Math.min(visibleWidth(part.content), MIN_LOCATION_PART);
+			}
+			wanted += sepWidth * Math.max(0, location.length - 1);
 			const held = budget - visibleWidth(right) - (right ? 2 : 0);
 			// The chip goes first: it is the biggest single readout and the one the reader is
 			// trading away knowingly. After that the row gives up its weakest, which is the same
 			// order it uses under width pressure.
 			const order: number[] = [];
-			const chip = rightParts.findIndex(part => part.id === "model");
+			let chip = -1;
+			for (let i = 0; i < rightParts.length; i++) {
+				if (rightParts[i]!.id === "model") {
+					chip = i;
+					break;
+				}
+			}
 			if (chip >= 0) order.push(chip);
-			const remaining = rightParts.map((_, index) => index).filter(index => index !== chip);
+			const remaining: number[] = [];
+			for (let i = 0; i < rightParts.length; i++) {
+				if (i !== chip) remaining.push(i);
+			}
 			remaining.sort((a, b) => {
 				const rankA = RIGHT_PART_SHED_RANK[rightParts[a]?.id ?? ""] ?? 0;
 				const rankB = RIGHT_PART_SHED_RANK[rightParts[b]?.id ?? ""] ?? 0;
 				return rankA === rankB ? b - a : rankA - rankB;
 			});
 			order.push(...remaining);
-			const onOffer = order.reduce(
-				(sum, index) => sum + visibleWidth(rightParts[index]?.content ?? "") + sepWidth,
-				0,
-			);
+			let onOffer = 0;
+			for (let i = 0; i < order.length; i++) {
+				onOffer += visibleWidth(rightParts[order[i]!]?.content ?? "") + sepWidth;
+			}
 			// NOT scaled by the progress a second time. `wanted` is measured from the location's
 			// CURRENT text, and that text is already on the curve -- the path's own clamp travels
 			// from the preset budget out to the row. Scaling here as well put two interpolations
@@ -2404,9 +2423,12 @@ export class StatusLineComponent implements Component {
 		extras?: { locationRight?: string | null },
 	): { locationLine: string | null; capabilityLine: string | null } {
 		const gathered = this.#gatherQuietSegments(width);
-		const location = gathered.location.map(part => part.content);
-		const capLeft = gathered.capLeft.map(part => part.content);
-		const capRight = gathered.capRight.map(part => part.content);
+		const location = new Array<string>(gathered.location.length);
+		for (let i = 0; i < gathered.location.length; i++) location[i] = gathered.location[i]!.content;
+		const capLeft = new Array<string>(gathered.capLeft.length);
+		for (let i = 0; i < gathered.capLeft.length; i++) capLeft[i] = gathered.capLeft[i]!.content;
+		const capRight = new Array<string>(gathered.capRight.length);
+		for (let i = 0; i < gathered.capRight.length; i++) capRight[i] = gathered.capRight[i]!.content;
 		const sep = segmentSeparator();
 		// One cell of right margin, always — nothing kisses the terminal edge.
 		const budget = Math.max(1, width - 1);
