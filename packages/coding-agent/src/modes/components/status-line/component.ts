@@ -353,6 +353,7 @@ export const MIN_LOCATION_PART = 12;
  * cells on the directory.
  */
 const MIN_READABLE_PART = 2;
+const FILL_STAGES = ["preferred", "readable"] as const;
 
 /**
  * Fit the location parts into `budget` cells, keeping the RIGHT end of every one of them.
@@ -457,7 +458,7 @@ function fillLocation(
 	// at all. Without this the water-fill converged the two halves on a shared width and the
 	// click widened a path that was still clipped -- the row had the cells, and spent them
 	// keeping the OTHER half long.
-	for (const stage of ["preferred", "readable"] as const) {
+	for (const stage of FILL_STAGES) {
 		while (over > 0) {
 			let widest = -1;
 			let widestFavoured = -1;
