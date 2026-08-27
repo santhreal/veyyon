@@ -24,6 +24,8 @@
 - `segments.ts` pre-computes a `PAD2` lookup table for 0–59, replacing `toString().padStart(2, "0")` per frame for minutes and seconds in the time segment.
 - `agent-dashboard.ts` pre-computes a `PAD2` lookup table for `clockTime`, replacing `String(value).padStart(2, "0")` per agent roster row.
 - `segments.ts` pre-computes `GOAL_BAR_STRINGS` for the goal progress bar, replacing `"▰".repeat() + "▱".repeat()` per status line frame with a 9-entry lookup table.
+- `segments.ts` replaces `os.hostname().split(".")[0]` with `indexOf` + `slice` in the hostname segment, avoiding an intermediate array per status line frame.
+
 
 
 
