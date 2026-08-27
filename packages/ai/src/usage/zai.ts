@@ -200,7 +200,7 @@ function rankZaiRequestLimits(report: UsageReport): UsageLimit[] {
 	const requestLimits = report.limits.filter(limit => limit.id.startsWith("zai:requests:"));
 	const credentialLimits = getZaiCredentialLimits(report);
 	const limits = requestLimits.length > 0 ? requestLimits : credentialLimits;
-	const ranked = [...limits];
+	const ranked = limits.slice();
 	ranked.sort((left, right) => {
 		const leftDuration = left.window?.durationMs ?? Number.POSITIVE_INFINITY;
 		const rightDuration = right.window?.durationMs ?? Number.POSITIVE_INFINITY;

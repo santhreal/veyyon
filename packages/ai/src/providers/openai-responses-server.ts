@@ -956,7 +956,7 @@ export function encodeStream(
 			};
 
 			const closeOpenFunctionCalls = (): void => {
-				for (const call of [...openFunctionCalls.values()]) {
+				for (const call of Array.from(openFunctionCalls.values())) {
 					closeFunctionCall(call);
 				}
 			};

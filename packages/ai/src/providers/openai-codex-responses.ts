@@ -4040,7 +4040,7 @@ async function openCodexSseEventStream(
 		throw new CodexProviderStreamError("No response body", { retryable: false });
 	}
 	const events = readSseJson<Record<string, unknown>>(response.body, signal, event =>
-		notifyRawSseEvent(onSseEvent, { event: event.event, data: event.data, raw: [...event.raw] }),
+		notifyRawSseEvent(onSseEvent, { event: event.event, data: event.data, raw: event.raw.slice() }),
 	);
 	return { events, response, requestId: response.headers.get("x-request-id") };
 }

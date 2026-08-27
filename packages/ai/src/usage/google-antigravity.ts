@@ -101,9 +101,9 @@ function inferWindowDescriptors(
 	}
 
 	for (const group of groups.values()) {
-		const resetTimes = [...new Set(group.map(entry => entry.resetAt).filter(resetAt => resetAt !== undefined))].sort(
-			(a, b) => a - b,
-		);
+		const resetTimes = Array.from(
+			new Set(group.map(entry => entry.resetAt).filter(resetAt => resetAt !== undefined)),
+		).sort((a, b) => a - b);
 		const latestReset = resetTimes.length > 1 ? resetTimes.at(-1) : undefined;
 		for (const entry of group) {
 			const descriptor =
@@ -264,7 +264,7 @@ async function fetchAntigravityUsage(params: UsageFetchParams, ctx: UsageFetchCo
 	if (!accessToken) return null;
 
 	const baseUrl = params.baseUrl === undefined ? undefined : trimTrailingSlashes(params.baseUrl);
-	const endpoints = baseUrl ? [baseUrl] : [...ANTIGRAVITY_ENDPOINTS];
+	const endpoints = baseUrl ? [baseUrl] : ANTIGRAVITY_ENDPOINTS.slice();
 
 	let response: Response | undefined;
 	let successfulEndpoint = ANTIGRAVITY_PRIMARY_ENDPOINT;
