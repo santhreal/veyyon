@@ -26,6 +26,7 @@
 - `segments.ts` pre-computes `GOAL_BAR_STRINGS` for the goal progress bar, replacing `"▰".repeat() + "▱".repeat()` per status line frame with a 9-entry lookup table.
 - `segments.ts` replaces `os.hostname().split(".")[0]` with `indexOf` + `slice` in the hostname segment, avoiding an intermediate array per status line frame.
 - `getSessionAccentHex` in `session-color.ts` replaces `.map().filter()` on theme color hexes with a single for loop, eliminating two intermediate array allocations per session accent computation.
+- `#animatedBadgeSlot` in `status-line/component.ts` hoists the `stateSeparator()` call, eliminating a duplicate `theme.fg()` + `.trim()` chain per status-line frame when badge parts are present.
 
 
 

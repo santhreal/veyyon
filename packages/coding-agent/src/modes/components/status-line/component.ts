@@ -1993,12 +1993,13 @@ export class StatusLineComponent implements Component {
 	 * caller unshifts the slot so the group's left edge eases open instead of
 	 * jumping. */
 	#animatedBadgeSlot(badgeParts: string[]): string | null {
-		const targetWidth = badgeParts.length > 0 ? visibleWidth(badgeParts.join(stateSeparator())) : 0;
+		const sep = stateSeparator();
+		const targetWidth = badgeParts.length > 0 ? visibleWidth(badgeParts.join(sep)) : 0;
 		if (targetWidth !== this.#badgeSlotTargetWidth) {
 			this.#badgeSlotFromWidth = this.#badgeSlotCurrentWidth();
 			this.#badgeSlotTargetWidth = targetWidth;
 			this.#badgeSlotAnimStartMs = Date.now();
-			if (targetWidth > 0) this.#badgeSlotText = badgeParts.join(stateSeparator());
+			if (targetWidth > 0) this.#badgeSlotText = badgeParts.join(sep);
 		}
 		const width = this.#badgeSlotCurrentWidth();
 		if (width === 0) return null;
