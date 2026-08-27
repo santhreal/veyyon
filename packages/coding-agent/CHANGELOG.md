@@ -30,6 +30,7 @@
 - `updateRecentOutputLines` in `task/executor.ts` replaces `.filter().slice().reverse()` with a single backward pass, eliminating two intermediate array allocations per subagent output update.
 - `#getUsageContextKey` in `status-line/component.ts` replaces a 5-element array `.join()` with a template literal, eliminating an intermediate array allocation per status-line frame.
 - `renderGoalMode` in `status-line/segments.ts` replaces a `parts` array `.join()` with conditional concatenation, eliminating an intermediate array allocation per status-line frame when goal mode is active.
+- `costSegment` and `secretsSegment` in `status-line/segments.ts` replace small `parts` array `.join()` with conditional concatenation, eliminating intermediate array allocations per status-line frame.
 
 
 

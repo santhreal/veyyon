@@ -786,12 +786,11 @@ const costSegment: StatusLineSegment = {
 			return { content: "", visible: false };
 		}
 
-		const billingParts: string[] = [];
-		if (cost) billingParts.push(`$${cost.toFixed(2)}`);
-		if (normalizedPremiumRequests) billingParts.push(`* ${formatNumber(normalizedPremiumRequests)}`);
-		if (usingSubscription) billingParts.push("(sub)");
-
-		return { content: theme.fg("statusLineCost", billingParts.join(" ")), visible: true };
+		let body = "";
+		if (cost) body = `$${cost.toFixed(2)}`;
+		if (normalizedPremiumRequests) body = body ? `${body} * ${formatNumber(normalizedPremiumRequests)}` : `* ${formatNumber(normalizedPremiumRequests)}`;
+		if (usingSubscription) body = body ? `${body} (sub)` : "(sub)";
+		return { content: theme.fg("statusLineCost", body), visible: true };
 	},
 };
 
@@ -1031,10 +1030,10 @@ const secretsSegment: StatusLineSegment = {
 		const live = ctx.session.obfuscator?.liveSecrets();
 		if (!live || live.count === 0) return { content: "", visible: false };
 		const masked = live.count - live.named;
-		const parts: string[] = [];
-		if (live.named > 0) parts.push(`${live.named} ${live.named === 1 ? "secret" : "secrets"}`);
-		if (masked > 0) parts.push(`${masked} masked`);
-		const body = theme.fg("muted", parts.join(" · "));
+		const namedLabel = live.named > 0 ? `${live.named} ${live.named === 1 ? "secret" : "secrets"}` : "";
+		const maskedLabel = masked > 0 ? `${masked} masked` : "";
+		const bodyText = namedLabel && maskedLabel ? `${namedLabel} · ${maskedLabel}` : namedLabel || maskedLabel;
+		const body = theme.fg("muted", bodyText);
 		const left = live.nextExpiryAt === undefined ? undefined : live.nextExpiryAt - Date.now();
 		if (left === undefined || left > SECRET_EXPIRY_CHIP_WINDOW_MS) return { content: body, visible: true };
 		// The parentheses carry the body's colour and the phrase inside carries the warning, so the
