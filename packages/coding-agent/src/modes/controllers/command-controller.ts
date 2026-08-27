@@ -1803,26 +1803,52 @@ export function renderUsageReports(
 			for (const line of resetAccountLines) lines.push(uiTheme.fg("dim", line));
 		}
 
-		const renderableGroups = Array.from(limitGroups.values()).map(group => {
-			const entries = group.limits.map((limit, index) => ({
-				limit,
-				report: group.reports[index],
-				fraction: resolveUsedFraction(limit),
-				index,
-			}));
+		const groupList = Array.from(limitGroups.values());
+		const renderableGroups = new Array<{
+			group: (typeof groupList)[number];
+			sortedLimits: UsageLimit[];
+			sortedReports: (UsageReport | undefined)[];
+			amountText: string;
+		}>(groupList.length);
+		for (let gi = 0; gi < groupList.length; gi++) {
+			const group = groupList[gi]!;
+			const entries = new Array<{
+				limit: UsageLimit;
+				report: UsageReport | undefined;
+				fraction: number | null;
+				index: number;
+			}>(group.limits.length);
+			for (let li = 0; li < group.limits.length; li++) {
+				entries[li] = {
+					limit: group.limits[li]!,
+					report: group.reports[li],
+					fraction: resolveUsedFraction(group.limits[li]!),
+					index: li,
+				};
+			}
 			entries.sort((a, b) => {
 				const aFraction = a.fraction ?? -1;
 				const bFraction = b.fraction ?? -1;
 				if (aFraction !== bFraction) return bFraction - aFraction;
 				return a.index - b.index;
 			});
-			const sortedLimits = entries.map(entry => entry.limit);
-			const sortedReports = entries.map(entry => entry.report);
-			return { group, sortedLimits, sortedReports, amountText: formatAggregateAmount(sortedLimits) };
-		});
+			const sortedLimits = new Array<UsageLimit>(entries.length);
+			const sortedReports = new Array<UsageReport | undefined>(entries.length);
+			for (let ei = 0; ei < entries.length; ei++) {
+				sortedLimits[ei] = entries[ei]!.limit;
+				sortedReports[ei] = entries[ei]!.report;
+			}
+			renderableGroups[gi] = { group, sortedLimits, sortedReports, amountText: formatAggregateAmount(sortedLimits) };
+		}
 
-		const sectionCount = renderableGroups.reduce((max, g) => Math.max(max, g.sortedLimits.length), 0);
-		const sectionTrailing = renderableGroups.reduce((max, g) => Math.max(max, visibleWidth(g.amountText)), 0);
+		let sectionCount = 0;
+		let sectionTrailing = 0;
+		for (let gi = 0; gi < renderableGroups.length; gi++) {
+			const g = renderableGroups[gi]!;
+			if (g.sortedLimits.length > sectionCount) sectionCount = g.sortedLimits.length;
+			const aw = visibleWidth(g.amountText);
+			if (aw > sectionTrailing) sectionTrailing = aw;
+		}
 		const sectionColumnWidth = resolveColumnWidth(sectionCount, availableWidth, sectionTrailing);
 
 		for (const { group, sortedLimits, sortedReports, amountText } of renderableGroups) {
