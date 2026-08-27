@@ -1263,7 +1263,9 @@ async function runLoopBody(
 						invokeAgentSpan,
 					);
 
-					toolResults.push(...executionResult.toolResults);
+					for (let tr = 0; tr < executionResult.toolResults.length; tr++) {
+						toolResults.push(executionResult.toolResults[tr]!);
+					}
 
 					for (const result of toolResults) {
 						currentContext.messages.push(result);
