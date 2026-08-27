@@ -20,6 +20,7 @@
 - `module-reach.ts`, `module-timer.ts`, `process-liveness.ts`, `prompt-variables.ts`, and `yaml-sync.ts` replace array/Set/Map spreads with `Array.from()`, `.slice()`, and `.concat()` across import clause extraction, module timing, process identity queries, Handlebars prompt variable analysis, and YAML document synchronization.
 - `format.ts` replaces `[...str]` with `Array.from(str)` for grapheme-aware truncation, and `tab-spacing.ts` replaces two `[...pattern].filter()` passes with a single `charCodeAt` loop for brace counting.
 - `stream.ts` SSE line parser compares field names by char code and computes the value start position in one pass, eliminating the `fieldName` substring and the `value.slice(1)` space-strip allocation per line.
+- `json-parse.ts` `parseStreamingJson` tries `JSON.parse` on the raw input before calling `trimStart`, avoiding a string allocation on the fast path where the buffer is already valid JSON.
 
 ### Fixed
 

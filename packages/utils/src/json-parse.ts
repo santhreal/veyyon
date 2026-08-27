@@ -577,11 +577,12 @@ export function parseJsonWithRepair<T>(json: string): T {
  * best-effort object for truncated ones.
  */
 export function parseStreamingJson<T = Record<string, unknown>>(partialJson: string | undefined): T {
-	const trimmed = partialJson?.trimStart();
-	if (!trimmed) return {} as T;
+	if (!partialJson) return {} as T;
 	try {
-		return JSON.parse(trimmed) as T;
+		return JSON.parse(partialJson) as T;
 	} catch {
+		const trimmed = partialJson.trimStart();
+		if (!trimmed) return {} as T;
 		try {
 			return (new RelaxedJson(trimmed, true).parse() ?? {}) as T;
 		} catch {
