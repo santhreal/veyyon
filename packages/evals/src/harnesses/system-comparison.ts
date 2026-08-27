@@ -2,10 +2,9 @@
  * Generalized cross-system benchmark aggregation and paired gate evaluation.
  */
 import { errorMessage } from "@veyyon/utils";
+import type { ComparisonArmResult, ComparisonExecution } from "../core";
 import { requireHarness } from "../core/harness-registry";
 import {
-	type ComparisonArmResult,
-	type ComparisonExecution,
 	ComparisonRejected,
 	type CompetitorGates,
 	type GateStatus,

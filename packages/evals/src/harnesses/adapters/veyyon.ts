@@ -1,7 +1,13 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { errorMessage } from "@veyyon/utils";
-import { AGENT_IMPORT_PATH } from "../../backends/harbor/launch-args";
+import {
+	type SystemJobConfigContext,
+	type SystemPreflightContext,
+	type SystemPreflightResult,
+	type SystemStageContext,
+	sanitizeVariantName,
+} from "../../core";
 import { AUTH_DB_SOURCES, requireStagedAuthCanServeToken } from "../../core/auth-preflight";
 import { decideAuthSeed, probeCredentialStore } from "../../core/auth-seed";
 import type {
@@ -12,13 +18,6 @@ import type {
 	PreflightVerdict,
 } from "../../core/types";
 import { authDbPath, veyBinaryPath } from "../../paths";
-import {
-	type SystemJobConfigContext,
-	type SystemPreflightContext,
-	type SystemPreflightResult,
-	type SystemStageContext,
-	sanitizeVariantName,
-} from "../types";
 
 export class VeyyonAdapter implements HarnessAdapter {
 	readonly name = "veyyon";
@@ -44,7 +43,7 @@ export class VeyyonAdapter implements HarnessAdapter {
 		},
 		harbor: {
 			agentName: "veyyon",
-			agentImportPath: AGENT_IMPORT_PATH,
+			agentImportPath: "veyyon_local:VeyyonLocal",
 			sourceMount: true,
 			localTarball: true,
 			authGateway: true,

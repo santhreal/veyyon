@@ -27,9 +27,9 @@ import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { AuthStorage } from "@veyyon/ai";
-import { listHarnesses, type Variant } from "../../src/core";
+import { listHarnesses, sanitizeVariantName, type Variant } from "../../src/core";
 import { preflightHarnesses } from "../../src/core/harness-preflight";
-import { registerBuiltinHarnesses, sanitizeVariantName } from "../../src/harnesses";
+import { registerBuiltinHarnesses } from "../../src/harnesses";
 import { internalScratchDir } from "../../src/paths";
 
 registerBuiltinHarnesses();

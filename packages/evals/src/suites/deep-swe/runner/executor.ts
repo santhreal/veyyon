@@ -30,7 +30,8 @@ import {
 export const COMPARISON_TASK_LIST = "datasets/deep-swe/tasks/pilot-10.txt";
 export const COMPARISON_TASK_LIST_SHA256 = "439b07dfbf30a988286e614b6b200def41b56f2447b249583560a78152cbfa06";
 
-import type { ComparisonArmResult, ComparisonExecution, SystemComparison } from "../../../harnesses/types";
+import type { ComparisonArmResult, ComparisonExecution } from "../../../core";
+import type { SystemComparison } from "../../../harnesses/types";
 import {
 	armsDir,
 	comparisonTaskListPath,

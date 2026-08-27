@@ -11,7 +11,6 @@ import { codingAgentDir } from "../../paths";
 import type { LaunchRequest, RunRole } from "../../wire";
 
 export type { LaunchRequest, RunRole };
-export const AGENT_IMPORT_PATH = "veyyon_local:VeyyonLocal";
 
 export interface HarborRunArgsOptions {
 	/** Path to a specific task or dataset directory (-p). */

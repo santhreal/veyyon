@@ -2,6 +2,13 @@ import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { $which, errorMessage, logger } from "@veyyon/utils";
+import {
+	type SystemJobConfigContext,
+	type SystemPreflightContext,
+	type SystemPreflightResult,
+	type SystemStageContext,
+	sanitizeVariantName,
+} from "../../core";
 import { parseModelId } from "../../core/trial-model";
 import type {
 	HarnessAdapter,
@@ -11,13 +18,6 @@ import type {
 	PreflightVerdict,
 } from "../../core/types";
 import { veyBinaryPath } from "../../paths";
-import {
-	type SystemJobConfigContext,
-	type SystemPreflightContext,
-	type SystemPreflightResult,
-	type SystemStageContext,
-	sanitizeVariantName,
-} from "../types";
 
 /**
  * Parse `vey models refresh <provider> --json` output and build a models.yml

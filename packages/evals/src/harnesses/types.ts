@@ -1,36 +1,9 @@
 /**
- * Unified type contracts for cross-system benchmarking and adapter registration.
+ * The cross-system comparison contracts: one trial's portable result, per-system totals, the ratios
+ * and gates a comparison decides, and the refusal it raises. Adapter registration contracts are in
+ * `core/types.ts`.
  */
-import type {
-	ArmResult,
-	ComparisonArmResult,
-	ComparisonArtifacts,
-	ComparisonExecution,
-	HarnessPreflightReport,
-	NativeCompactionEvidence,
-	PreflightHarnessesContext,
-	ReplayCorpusTrial,
-	SystemJobConfigContext,
-	SystemPreflightContext,
-	SystemPreflightResult,
-	SystemStageContext,
-} from "../core";
-
-export { sanitizeVariantName } from "../core";
-export type {
-	ArmResult,
-	ComparisonArmResult,
-	ComparisonArtifacts,
-	ComparisonExecution,
-	HarnessPreflightReport,
-	NativeCompactionEvidence,
-	PreflightHarnessesContext,
-	ReplayCorpusTrial,
-	SystemJobConfigContext,
-	SystemPreflightContext,
-	SystemPreflightResult,
-	SystemStageContext,
-};
+import type { ComparisonArtifacts, ComparisonExecution, NativeCompactionEvidence, ReplayCorpusTrial } from "../core";
 
 /**
  * The portable result contract shared by all Pier adapters.
