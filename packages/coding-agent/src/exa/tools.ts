@@ -81,7 +81,7 @@ export async function getExaMcpTools(request: ExaMcpToolRequest): Promise<Custom
 
 async function discoverResearcherTools(apiKey: string | null): Promise<CustomTool<any, any>[]> {
 	try {
-		const tools = await fetchExaTools(apiKey, [...RESEARCHER_MCP_TOOL_NAMES]);
+		const tools = await fetchExaTools(apiKey, RESEARCHER_MCP_TOOL_NAMES.slice());
 		if (tools.length === 0) {
 			logger.error("Exa researcher is enabled but mcp.exa.ai returned no matching tools", {
 				requested: RESEARCHER_MCP_TOOL_NAMES,
