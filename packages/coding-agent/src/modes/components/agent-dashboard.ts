@@ -697,10 +697,13 @@ class CommsPane implements Component {
 		// stream resolves against what is on screen and a reply to a message the
 		// filter hid degrades to no link instead of to a stray name.
 		const senderOf = new Map<string, string>();
-		for (const entry of entries) senderOf.set(entry.message.id, entry.message.from);
+		for (let ei = 0; ei < entries.length; ei++) {
+			senderOf.set(entries[ei]!.message.id, entries[ei]!.message.from);
+		}
 
 		const rows: string[] = [];
-		for (const entry of entries) {
+		for (let ei2 = 0; ei2 < entries.length; ei2++) {
+			const entry = entries[ei2]!;
 			const { message } = entry;
 			const replyToSender = message.replyTo === undefined ? undefined : senderOf.get(message.replyTo);
 			rows.push(CommsPane.#head(entry, replyToSender, nameFor, width));
