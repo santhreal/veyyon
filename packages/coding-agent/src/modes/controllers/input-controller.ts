@@ -1443,12 +1443,16 @@ export class InputController {
 		// Alt+Up reports "No queued messages to restore".
 		const compactionQueued = this.ctx.compactionQueuedMessages;
 		this.ctx.compactionQueuedMessages = [];
-		const allQueued = [
-			...steering,
-			...compactionQueued.filter(e => e.mode === "steer").map(e => ({ text: e.text, images: e.images })),
-			...followUp,
-			...compactionQueued.filter(e => e.mode === "followUp").map(e => ({ text: e.text, images: e.images })),
-		];
+		const allQueued = [...steering];
+		for (let qi = 0; qi < compactionQueued.length; qi++) {
+			const e = compactionQueued[qi]!;
+			if (e.mode === "steer") allQueued.push({ text: e.text, images: e.images });
+		}
+		allQueued.push(...followUp);
+		for (let qi = 0; qi < compactionQueued.length; qi++) {
+			const e = compactionQueued[qi]!;
+			if (e.mode === "followUp") allQueued.push({ text: e.text, images: e.images });
+		}
 		if (allQueued.length === 0) {
 			this.ctx.updatePendingMessagesDisplay();
 			if (options?.abort) {
@@ -1469,18 +1473,28 @@ export class InputController {
 		// running offset keeps the merged text aligned with the merged
 		// `pendingImages` order; draft markers stay valid because draft images
 		// keep their original positions.
-		const queuedImages = allQueued.flatMap(e => e.images ?? []);
+		const queuedImages: (typeof allQueued)[0]["images"] = [];
+		for (let qi = 0; qi < allQueued.length; qi++) {
+			const imgs = allQueued[qi]!.images;
+			if (imgs) for (let ii = 0; ii < imgs.length; ii++) queuedImages.push(imgs[ii]);
+		}
 		let queuedText: string;
 		if (queuedImages.length > 0) {
 			const parts: string[] = [];
 			let imageOffset = this.ctx.editor.pendingImages.length;
-			for (const entry of allQueued) {
+			for (let qi = 0; qi < allQueued.length; qi++) {
+				const entry = allQueued[qi]!;
 				parts.push(shiftImageMarkers(entry.text, imageOffset));
 				if (entry.images && entry.images.length > 0) imageOffset += entry.images.length;
 			}
 			queuedText = parts.join("\n\n");
 		} else {
-			queuedText = allQueued.map(e => e.text).join("\n\n");
+			let textJoined = "";
+			for (let qi = 0; qi < allQueued.length; qi++) {
+				if (qi > 0) textJoined += "\n\n";
+				textJoined += allQueued[qi]!.text;
+			}
+			queuedText = textJoined;
 		}
 		const currentText = options?.currentText ?? this.ctx.editor.getText();
 		const combinedText = [queuedText, currentText].filter(t => t.trim()).join("\n\n");
