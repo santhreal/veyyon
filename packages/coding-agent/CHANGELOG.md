@@ -77,6 +77,7 @@
 - 22 modes files replace 42 `push(...spread)` calls with for loops across setup wizard scenes, inspector panel, model hub, ask dialog, advisor components, tree selector, MCP command controller, input controller, and settings selector.
 - Web scrapers, slash-command helpers, and secret command replace 10 `push(...spread)` calls with for loops in permission, comment, and line collection.
 - Benchmark and harness files (metaharness, deepswe-bench, typescript-edit-benchmark, stats scripts, natives bench) replace 22 `push(...spread)` calls with for loops.
+- `event-controller.ts` replaces `.filter().length` with a for-loop count and `.some()` with `timeline.hasToolCalls` in `#handleMessageUpdate`, eliminating an intermediate array and a second iteration on every streaming delta.
 ### Added
 
 - `/advisor` reports advisor status, opens the `WATCHDOG.yml` roster editor and applies a save to the running session, starts or stops the advisor for the session, and copies the advisor's own transcript; the subsystem shipped complete but no command, key or menu row reached it.
