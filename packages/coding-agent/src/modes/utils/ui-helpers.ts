@@ -927,12 +927,12 @@ export class UiHelpers {
 		this.ctx.pendingMessagesContainer.disposeChildren();
 		const queuedMessages = this.ctx.viewSession.getQueuedMessages() as QueuedMessages;
 
-		const steeringMessages = [...queuedMessages.steering];
+		const steeringMessages = queuedMessages.steering.slice();
 		for (const entry of this.ctx.compactionQueuedMessages as CompactionQueuedMessage[]) {
 			if (entry.mode === "steer") steeringMessages.push(entry.text);
 		}
 
-		const followUpMessages = [...queuedMessages.followUp];
+		const followUpMessages = queuedMessages.followUp.slice();
 		for (const entry of this.ctx.compactionQueuedMessages as CompactionQueuedMessage[]) {
 			if (entry.mode === "followUp") followUpMessages.push(entry.text);
 		}

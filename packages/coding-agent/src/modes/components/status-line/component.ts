@@ -425,7 +425,7 @@ function fillLocation(
 	favour?: string,
 ): { contents: string[]; cramped: boolean } | null {
 	const full = parts.map(part => visibleWidth(part.content));
-	const allotted = [...full];
+	const allotted = full.slice();
 	let over = full.reduce((sum, width) => sum + width, 0) + sepWidth * (parts.length - 1) - budget;
 	// Two passes: every clippable part down to the width a name still reads at, and only then
 	// down to the fewest cells the part is worth painting at all -- which counts its pinned
@@ -2065,7 +2065,7 @@ export class StatusLineComponent implements Component {
 		}
 		const locationContents = location.map(part => part.content);
 		let left = this.#locationWithRunClock(locationContents, sep);
-		const rightParts = [...capLeft, ...capRight];
+		const rightParts = capLeft.concat(capRight);
 		if (extras?.locationRight) rightParts.push({ id: "location_right", content: extras.locationRight });
 		let right = rightParts.map(part => part.content).join(sep);
 		// The run clock is comfort chrome; the capability segments (context
@@ -2417,7 +2417,7 @@ export class StatusLineComponent implements Component {
 		let capabilityLine: string | null = null;
 		if (capLeft.length > 0 || capRight.length > 0) {
 			const left = capLeft.join(sep);
-			const rightParts = [...capRight];
+			const rightParts = capRight.slice();
 			let right = rightParts.join(sep);
 			// Free space between the groups is the design; on narrow terminals the
 			// right group sheds parts before the gap closes below breathing room.

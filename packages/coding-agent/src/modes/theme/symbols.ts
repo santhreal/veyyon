@@ -1152,11 +1152,11 @@ export function spinnerRampOneLevelShallower(frames: readonly string[]): string[
 	// The mirror runs over indices 1..n-1, so its centre is n/2 and only an
 	// even-length ramp has one. A frame appearing twice at the centre is not a
 	// peak, so `frames[peak]` must be unique for the shape to be a rise and fall.
-	if (frames.length < 4 || frames.length % 2 !== 0) return [...frames];
+	if (frames.length < 4 || frames.length % 2 !== 0) return frames.slice();
 	const peak = frames.length / 2;
-	if (frames.filter(frame => frame === frames[peak]).length !== 1) return [...frames];
+	if (frames.filter(frame => frame === frames[peak]).length !== 1) return frames.slice();
 	for (let i = 1; i < frames.length; i++) {
-		if (i !== peak && frames[i] !== frames[frames.length - i]) return [...frames];
+		if (i !== peak && frames[i] !== frames[frames.length - i]) return frames.slice();
 	}
 	return frames.filter((_, i) => i !== peak && i !== peak - 1);
 }

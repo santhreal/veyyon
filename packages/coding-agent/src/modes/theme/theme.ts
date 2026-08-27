@@ -1098,7 +1098,7 @@ const BAND_FG_RESET = "\x1b[39m";
  * That is a colour boundary off by a cell, not a width change.
  */
 function spliceAtColumns(text: string, inserts: ReadonlyMap<number, string>): string {
-	const columns = [...inserts.keys()].sort((a, b) => a - b);
+	const columns = Array.from(inserts.keys()).sort((a, b) => a - b);
 	const escapes = BAND_ESCAPE_PATTERN;
 	escapes.lastIndex = 0;
 	let ansi = escapes.exec(text);

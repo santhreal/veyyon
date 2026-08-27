@@ -444,7 +444,7 @@ export class SetupWizardComponent implements Component, OverlayFocusOwner {
 		// say more existed — the "you can't see all of it" report.
 		const rendered = this.#activeScene?.render(contentWidth, maxBodyLines) ?? [];
 		const body = this.#clipBody(rendered, maxBodyLines);
-		const lines = [...header, ...body.map(line => indentLine(line, width, marginX))];
+		const lines = header.concat(body.map(line => indentLine(line, width, marginX)));
 		while (lines.length + footer.length < height) {
 			lines.push("");
 		}
