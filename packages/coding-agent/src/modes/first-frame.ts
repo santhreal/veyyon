@@ -106,15 +106,34 @@ const STARTUP_TYPEAHEAD_LIMIT = 4096;
  * the carriage return the gate exists to stop, so a queued newline still
  * cannot submit a turn.
  *
+ * Backspace is the exception the printable rule cannot express. It is a C0
+ * byte, so a chunk carrying one used to be rejected whole: a character typed
+ * by mistake at the card could not be taken back, the correction did nothing
+ * on screen, and the typo was what the composer received on mount. It is
+ * accepted here and applied by {@link applyTypedEdit}, which is safe because
+ * a probe reply opens with ESC and is still refused by the printable rule.
+ *
  * An empty chunk answers true and appends nothing, which is why there is no
  * guard for it: the guard could not be observed failing.
  */
 function isTypedText(data: string): boolean {
 	for (let i = 0; i < data.length; i++) {
 		const code = data.charCodeAt(i);
-		if (code < 0x20 || code === 0x7f) return false;
+		if (code === 0x7f || code === 0x08) continue;
+		if (code < 0x20) return false;
 	}
 	return true;
+}
+
+/** Apply one accepted chunk to the held draft: text appends, a backspace takes one character off. */
+function applyTypedEdit(draft: string, data: string): string {
+	let next = draft;
+	for (let i = 0; i < data.length; i++) {
+		const code = data.charCodeAt(i);
+		if (code === 0x7f || code === 0x08) next = next.slice(0, -1);
+		else next += data[i];
+	}
+	return next;
 }
 
 let painted: FirstFrame | undefined;
@@ -181,7 +200,7 @@ export function paintFirstFrame(version: string): FirstFrame {
 		// A relaunch that could not flush (Windows has no termios) cannot tell
 		// the stale queue from typing, so it degrades to discarding both.
 		if ((flushed || !relaunched) && isTypedText(data)) {
-			typeahead = (typeahead + data).slice(0, STARTUP_TYPEAHEAD_LIMIT);
+			typeahead = applyTypedEdit(typeahead, data).slice(0, STARTUP_TYPEAHEAD_LIMIT);
 			// Echo it. Holding the text is only half of the handover: the card
 			// paints a composer for the whole of startup, and one that shows
 			// nothing back reads as a composer that is not listening. Forced,
