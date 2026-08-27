@@ -410,8 +410,9 @@ export class HookSelectorComponent extends Container {
 	): number {
 		if (renderWidth === undefined) return option.description && descRows !== 0 ? 2 : 1;
 		let rows = 0;
-		for (const line of this.#renderOptionLines(option, isSelected, false, mdTheme, descRows, renderWidth)) {
-			rows += this.#renderedLineRowCount(line, renderWidth);
+		const optionLines = this.#renderOptionLines(option, isSelected, false, mdTheme, descRows, renderWidth);
+		for (let li = 0; li < optionLines.length; li++) {
+			rows += this.#renderedLineRowCount(optionLines[li]!, renderWidth);
 		}
 		return rows;
 	}
@@ -419,8 +420,8 @@ export class HookSelectorComponent extends Container {
 	#totalOptionRows(options: HookSelectorOption[], renderWidth?: number, mdTheme?: MarkdownTheme): number {
 		const themeForRows = mdTheme ?? getMarkdownTheme();
 		let rows = 0;
-		for (const option of options) {
-			rows += this.#optionRowCount(option, renderWidth, false, themeForRows, "full");
+		for (let oi = 0; oi < options.length; oi++) {
+			rows += this.#optionRowCount(options[oi]!, renderWidth, false, themeForRows, "full");
 		}
 		return rows;
 	}
@@ -531,7 +532,7 @@ export class HookSelectorComponent extends Container {
 			// under the label alone. Disabled rows never claim focus even if the
 			// index momentarily lands on one during initial coercion.
 			const highlight = isSelected && !isDisabled;
-			for (const text of this.#renderOptionLines(
+			const optionLines = this.#renderOptionLines(
 				filtered.option,
 				isSelected,
 				isDisabled,
@@ -539,8 +540,9 @@ export class HookSelectorComponent extends Container {
 				descMode,
 				renderWidth,
 				filtered.index,
-			)) {
-				rows.push({ text, highlight, option: i });
+			);
+			for (let li = 0; li < optionLines.length; li++) {
+				rows.push({ text: optionLines[li]!, highlight, option: i });
 			}
 		}
 
@@ -552,8 +554,8 @@ export class HookSelectorComponent extends Container {
 			rows.push({ text: this.#renderStatusLine(total), highlight: false });
 		}
 		this.#listContainer.clear();
-		this.#optionRows.clear();
-		for (const row of rows) {
+		for (let ri = 0; ri < rows.length; ri++) {
+			const row = rows[ri]!;
 			const bgFn = row.highlight ? paintSelectedRow : undefined;
 			const child = new Text(row.text, 1, 0, bgFn);
 			this.#listContainer.addChild(child);
@@ -815,26 +817,28 @@ export class HookSelectorComponent extends Container {
 		const body: string[] = [];
 		this.#hitRows = [];
 		const list = this.#listContainer;
-		for (const child of this.children) {
+		for (let ci = 0; ci < this.children.length; ci++) {
+			const child = this.children[ci]!;
 			if (child === list) {
-				for (const row of list.children) {
+				for (let ri = 0; ri < list.children.length; ri++) {
+					const row = list.children[ri]!;
 					const option = this.#optionRows.get(row);
-					for (const rendered of row.render(contentWidth)) {
+					const renderedLines = row.render(contentWidth);
+					for (let li = 0; li < renderedLines.length; li++) {
+						const rendered = renderedLines[li]!;
 						if (option === undefined) {
 							body.push(rendered);
 							continue;
 						}
 						this.#hitRows[body.length] = option;
-						// The cursor row is already painted with the `selectedBg` band by `paintSelectedRow`,
-						// so it answers the pointer with a band it already has; a second one over the top
-						// would blend to a different colour than every other hovered row.
 						const strength = option === this.#selectedIndex ? 0 : this.#hoverStrength(option);
 						body.push(strength > 0 ? hoverBandAt(rendered, contentWidth, strength) : rendered);
 					}
 				}
 				continue;
 			}
-			for (const rendered of child.render(contentWidth)) body.push(rendered);
+			const childLines = child.render(contentWidth);
+			for (let li = 0; li < childLines.length; li++) body.push(childLines[li]!);
 		}
 		return body;
 	}
