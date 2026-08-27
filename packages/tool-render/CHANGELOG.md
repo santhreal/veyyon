@@ -13,6 +13,7 @@
 ### Changed
 
 - A running tool card builds its streaming tail incrementally. It re-stripped the whole accumulated output on every arrival and then sliced the last 2048 characters, so a 1MiB stream delivered as 256 arrivals scanned 128MiB and grew from 0.23ms per arrival to 2.30ms; it now scans 1MiB total at a flat 0.09ms (211.7ms to 27.2ms overall). The displayed text is unchanged, including for bytes that arrive mid-sequence, and `PartialTail` retains only the visible window plus a sequence that has not closed — a rewound or restarted buffer starts over rather than concatenating two runs.
+- `ast-grep.tsx`, `eval.tsx`, `generate-image.tsx`, `job.tsx`, and `task.tsx` replace array/Set spreads with `.concat()`, `Array.from()`, and `.slice()` across badge rendering, language deduplication, image content merging, and job/task result sorting.
 
 ## [1.0.47] - 2026-08-13
 

@@ -14,6 +14,7 @@
 ### Fixed
 
 - Mnemopi cost log SQLite database (`cost_log.db`) manages schema migrations via `PRAGMA user_version` and dynamically backfills missing columns on legacy databases.
+- `conformance-boundary.ts`, `beam/consolidate.ts`, `beam/index.ts`, and `beam/recall.ts` replace Set/Map/array spreads with `Array.from()`, `.concat()`, and `.slice()` across word set sorting, memory consolidation events, extraction flushing, and recall query expansion.
 
 ## [1.2.0] - 2026-08-23
 

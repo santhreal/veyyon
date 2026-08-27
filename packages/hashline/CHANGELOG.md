@@ -23,6 +23,7 @@
 ### Changed
 
 - Applying a patch no longer builds a per-line origin table nothing read, cutting the cost of a single edit by 36% on a 100,000-line file and 22% on a 1,000,000-line one. Output is byte-identical.
+- `apply.ts`, `input.ts`, `messages.ts`, `parser.ts`, `patcher.ts`, `recovery.ts`, and `snapshots.ts` replace array/Set spreads with `.concat()`, `Array.from()`, and `.slice()` across edit merging, warning collection, anchor line sorting, and snapshot history merging.
 
 ### Fixed
 
