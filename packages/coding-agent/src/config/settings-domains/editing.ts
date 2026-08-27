@@ -114,7 +114,8 @@ export const EDITING_SETTINGS = {
 			tab: "files",
 			group: "Reading",
 			label: "Default Read Limit",
-			description: "Default number of lines returned when agent calls read without a limit",
+			description:
+				"Line count returned when read is called without one. The window also stops at the tool output budget, so a file of long lines returns fewer lines than this",
 			options: [
 				{ value: "200", label: "200 lines" },
 				{ value: "300", label: "300 lines" },

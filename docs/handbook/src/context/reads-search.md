@@ -19,13 +19,14 @@ to a budget:
   appended after a colon: `src/foo.ts:50-200` (inclusive range), `src/foo.ts:50` / `:50-` (from line 50
   on), `src/foo.ts:50+150` (150 lines from line 50), or `src/foo.ts:5-16,960-973` (multiple ranges in
   one call). `:raw` reads verbatim with no anchors or line prefixes.
-- **Dual budget, whichever is hit first:** a line cap (`DEFAULT_MAX_LINES = 3000`) and a byte cap
-  (`DEFAULT_MAX_BYTES`, 50 KB). A file that is short in lines but huge in bytes (minified JS, a data
-  blob) is bounded by bytes; a file with many short lines is bounded by lines. Both are compiled, not
-  configured, and `read` is deliberately the one tool exempt from artifact spilling: it is bounded by
-  LINES, so spilling on bytes would hand back fewer lines than you asked for and break the contract
-  the tool has. Every other tool's output is bounded by `tools.artifactSpillThreshold`, described
-  under [The `search` tool](#the-search-tool-toolssearchts) below.
+- **Dual budget, whichever is hit first:** a line cap and a byte cap. The line cap is
+  `read.defaultLimit` (300) when the call names no line count, the requested count when it does, and
+  `DEFAULT_MAX_LINES` (3000) at the ceiling. The byte cap is `tools.artifactSpillThreshold` (50 KB),
+  the same budget every other tool result carries; a call that names a line count raises it to hold
+  those lines, at about 512 bytes a line. So a file that is short in lines but huge in bytes
+  (minified JS, a data blob) is bounded by bytes, and a file of many short lines by lines. `read` is
+  bounded rather than spilled to an artifact: a paged window with a continuation selector is more use
+  than a truncated one with a link.
 - **Structural summaries for parseable code.** A read with no selector on a parseable source file
   returns declarations with bodies elided (`…`), and the footer states the recovery selector so the model
   re-issues only the ranges it actually needs instead of re-reading the whole file.
