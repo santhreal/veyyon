@@ -14,12 +14,13 @@ const FIELD_SAMPLES: Record<string, string | number | boolean> = {
 	gitignore: false,
 	limit: 10,
 	skip: 0,
+	paths: true,
 };
 
 /** The fields each mode's engine takes. Pinned by equality against the schema below. */
 const ACCEPTED_FIELDS: Record<SearchType, readonly string[]> = {
 	files: ["hidden", "gitignore", "limit"],
-	text: ["path", "case", "gitignore", "skip"],
+	text: ["path", "case", "gitignore", "skip", "paths"],
 	structure: ["path", "skip"],
 };
 

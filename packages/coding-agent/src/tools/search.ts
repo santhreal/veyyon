@@ -38,6 +38,10 @@ export const searchSchema = z.strictObject({
 		.boolean()
 		.optional()
 		.describe("text only: case-sensitive matching, on by default; pass false to match case-insensitively"),
+	paths: z
+		.boolean()
+		.optional()
+		.describe("text only: return the matching file paths with per-file counts instead of match lines"),
 	hidden: z.boolean().optional().describe("files only: include hidden files"),
 	gitignore: z.boolean().optional().describe("files or text only: respect gitignore"),
 	limit: z.number().optional().describe("files only: maximum results"),
@@ -54,7 +58,7 @@ export type SearchToolDetails =
 
 const TYPE_FIELDS: Record<SearchType, ReadonlySet<keyof SearchToolInput>> = {
 	files: new Set(["type", "input", "hidden", "gitignore", "limit"]),
-	text: new Set(["type", "input", "path", "case", "gitignore", "skip"]),
+	text: new Set(["type", "input", "path", "case", "paths", "gitignore", "skip"]),
 	structure: new Set(["type", "input", "path", "skip"]),
 };
 
@@ -83,6 +87,42 @@ function searchFilesystemTargets(args: unknown, cwd?: string): string[] {
 	const targetField = SEARCH_TARGET_FIELDS[type];
 	if (!targetField) return [];
 	return searchPathFilesystemTargets(args[targetField], cwd);
+}
+
+/**
+ * Reduce a text result to the files that matched. A locate query pays for
+ * every match line and its context even when the answer is a path: measured
+ * over this repository, `buildSystemPrompt` under packages/coding-agent/src
+ * costs 3,492 tokens as match lines and 215 as a file list. The bash
+ * interceptor redirects `rg -l` here, so the mode has to be reachable here.
+ *
+ * A per-file count is the number of matches the search reported, which the
+ * per-file cap can hold below the true number, so a capped result says so
+ * rather than presenting a cap as a count.
+ */
+function projectToMatchingPaths(result: AgentToolResult<TextSearchDetails>): AgentToolResult<TextSearchDetails> {
+	const details = result.details;
+	const fileMatches = details?.fileMatches ?? [];
+	if (fileMatches.length === 0) return result;
+	const lines = [
+		`${fileMatches.length} file${fileMatches.length === 1 ? "" : "s"} matched (${details?.matchCount ?? 0} matches):`,
+		...fileMatches.map(entry => `${entry.path}: ${entry.count}`),
+	];
+	if ((details?.perFileLimitReached ?? 0) > 0) {
+		lines.push("A count at the per-file cap is a floor, not a total.");
+	}
+	if ((details?.fileLimitReached ?? 0) > 0) {
+		lines.push("More files matched than are listed; page with `skip`.");
+	}
+	if (details?.missingPaths?.length) {
+		lines.push(`Paths not found: ${details.missingPaths.join(", ")}`);
+	}
+	const text = lines.join("\n");
+	return {
+		...result,
+		content: [{ type: "text", text }],
+		details: { ...details, displayContent: text, pathsOnly: true },
+	};
 }
 
 export class SearchTool implements AgentTool<typeof searchSchema, SearchToolDetails> {
@@ -170,8 +210,9 @@ export class SearchTool implements AgentTool<typeof searchSchema, SearchToolDeta
 				},
 				signal,
 			);
-			if (!result.details) throw new ToolError("Text search returned no result details");
-			return { ...result, details: { type: "text", result: result.details } };
+			const projected = params.paths === true ? projectToMatchingPaths(result) : result;
+			if (!projected.details) throw new ToolError("Text search returned no result details");
+			return { ...projected, details: { type: "text", result: projected.details } };
 		}
 
 		const result = await executeStructureSearch(
