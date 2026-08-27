@@ -2931,9 +2931,8 @@ export class TUI extends Container {
 		}
 		const roots = this.#partialComposeRootsScratch;
 		roots.clear();
-		const targets = Array.from(this.#componentRenderTargets);
-		for (let ti = 0; ti < targets.length; ti++) {
-			const root = this.#resolveComponentRoot(targets[ti]!);
+		for (const target of this.#componentRenderTargets) {
+			const root = this.#resolveComponentRoot(target);
 			if (root === null) return null;
 			roots.add(root);
 		}
@@ -3283,9 +3282,8 @@ export class TUI extends Container {
 		}
 		if (this.#inputListeners.size > 0) {
 			let current = data;
-			const listeners = Array.from(this.#inputListeners);
-			for (let li = 0; li < listeners.length; li++) {
-				const result = listeners[li]!(current);
+			for (const listener of this.#inputListeners) {
+				const result = listener(current);
 				if (result?.consume) {
 					return;
 				}
