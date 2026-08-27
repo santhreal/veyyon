@@ -149,6 +149,11 @@
 - `extension-dashboard.ts` replaces `.map()` closure with index-based for loop in `buildTabBarTabs`.
 - `model-browser.ts` replaces `.map()` closure with index-based for loop in `buildBrowserItems`.
 - `ask-dialog.ts` replaces `.map().filter()` and `.map()` closures with single-pass for loops in `renderAnswerSummary` and `#buildResults`.
+- `ast-grep.ts` replaces `.map()`, `.filter().map().map()`, and spread+`.map()` with index-based for loops in `renderResult`.
+- `ast-edit.ts` replaces `.map()`, `.filter().map().map()`, and spread+`.map()` with index-based for loops in `renderResult`.
+- `bash-interactive.ts` replaces `.map()` closure and spread+`.map()` with index-based for loops in `#readViewport` and `render`.
+- `bash.ts` replaces `.map()` closure with index-based for loop in `formatBashCommandLines`.
+- `browser.ts` replaces `.filter().map().join()` chain with single-pass for loop in text extraction.
 - `agent-dashboard.ts` replaces `.reduce()` closure with for loop in `widest` roster column measurement.
 - `status-line/component.ts` replaces `.reduce()` closure with for loop in `#backgroundJobBadgeCount`.
 - `modal-shell.ts` replaces `.reduce()` closure with for loop in `groupWidth`.
