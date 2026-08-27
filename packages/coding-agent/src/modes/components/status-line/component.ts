@@ -1901,12 +1901,14 @@ export class StatusLineComponent implements Component {
 		// group instead, so the live value is the line's last word. A gauge the user
 		// configured on the RIGHT keeps the position they gave it.
 		const contextFromLeft: QuietPart[] = [];
-		for (const id of leftCfg) {
+		for (let li = 0; li < leftCfg.length; li++) {
+			const id = leftCfg[li]!;
 			if (LOCATION_IDS[id]) push(id, location);
 			else if (CONTEXT_IDS[id]) push(id, contextFromLeft);
 			else push(id, capLeft);
 		}
-		for (const id of rightCfg) {
+		for (let ri = 0; ri < rightCfg.length; ri++) {
+			const id = rightCfg[ri]!;
 			if (LOCATION_IDS[id]) push(id, location);
 			else push(id, capRight);
 		}
