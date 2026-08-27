@@ -84,6 +84,17 @@
 - `chat-transcript-builder.ts` converts `for…of` over `message.content` in `#appendAssistantMessage` to an index-based `for` loop.
 - `transcript-render-helpers.ts` converts `for…of` over `message.content` in `splitAssistantMessageToolTimeline` to an index-based `for` loop, eliminating iterator allocation per streaming token.
 - `ui-helpers.ts` converts `for…of` loops in transcript rebuild and `extractAssistantText` to index-based `for` loops.
+- `agent-loop.ts` replaces `.map()` in `snapshotAssistantMessage` with a pre-allocated array + index-based `for` loop, eliminating iterator allocation per streaming token.
+- `streaming-reveal.ts` replaces two `.some()` closures in `begin` and `setTarget` with a shared `messageHasToolCall` helper using an index-based `for` loop.
+- `agent-dashboard.ts` replaces `.filter().length` in `#commsSummary` with a counting `for` loop, eliminating intermediate array allocation per frame.
+- `todo-board.ts` replaces `.filter().length` in `phaseLines` with a counting `for` loop, eliminating intermediate array allocation per frame.
+- `tui.ts` replaces `.some()` closures in `hasOverlay` and the `#doRender` cursorMarkers check with index-based `for` loops.
+- `keys.ts` replaces `[...data].some()` in `hasControlChars` with a direct `charCodeAt` scan, eliminating spread array allocation per key input event.
+- `command-controller.ts` replaces three `.some()` closures in `resolveAggregateStatus` with a single `for` loop that computes all three flags in one pass.
+- `assistant-message.ts` replaces three `.some()` closures in `#shouldPaintTrail`, mermaid source detection, and `hasVisibleContent` with index-based `for` loops in `updateContent` (per streaming token).
+- `tool-execution.ts` replaces `.filter().map().join()` chain in `#getTextOutput` with single-pass string build, and `.some()` closure in `#buildRenderContext` with index-based `for` loop.
+- `output-block.ts` replaces `[header, headerMeta].filter(Boolean).join()` with a conditional string build, eliminating array allocation + filter closure per render.
+- `bash-execution.ts` replaces two `.some(Boolean)` closures with index-based `for` loops in `#updateDisplay` and `#clampLinesPreservingSixel`.
 ### Added
 
 - `/advisor` reports advisor status, opens the `WATCHDOG.yml` roster editor and applies a save to the running session, starts or stops the advisor for the session, and copies the advisor's own transcript; the subsystem shipped complete but no command, key or menu row reached it.
