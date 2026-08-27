@@ -475,7 +475,8 @@ export function formatDocumentSymbol(symbol: DocumentSymbol, indent = 0): string
 
 	if (symbol.children) {
 		for (const child of symbol.children) {
-			results.push(...formatDocumentSymbol(child, indent + 1));
+			const childResults = formatDocumentSymbol(child, indent + 1);
+			for (let ri = 0; ri < childResults.length; ri++) results.push(childResults[ri]!);
 		}
 	}
 

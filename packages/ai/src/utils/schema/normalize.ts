@@ -1960,7 +1960,7 @@ function enforceStrictSchemaBody(
 				flattened.push(branch);
 				continue;
 			}
-			flattened.push(...branch.anyOf);
+			for (let ai = 0; ai < branch.anyOf.length; ai++) flattened.push(branch.anyOf[ai]!);
 			// Keep the inner annotation when the parent has none.
 			if (typeof branch.description === "string" && result.description === undefined) {
 				result.description = branch.description;

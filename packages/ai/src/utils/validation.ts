@@ -1855,7 +1855,7 @@ function healInbandArgSpill(value: unknown): { value: unknown; changed: boolean 
 		const split = splitSpilledValue(entry);
 		if (!split) continue;
 		out[key] = split.head;
-		recovered.push(...split.pairs);
+		for (let pi = 0; pi < split.pairs.length; pi++) recovered.push(split.pairs[pi]!);
 		changed = true;
 	}
 	if (!changed) return { value, changed: false };
@@ -1994,7 +1994,7 @@ function schemaLiteralValues(node: unknown, depth = 0): string[] | undefined {
 		// A branch with no literals (a bare `string`) means the field is not a
 		// closed set, so naming a partial list would mislead.
 		if (!values) return undefined;
-		collected.push(...values);
+		for (let vi = 0; vi < values.length; vi++) collected.push(values[vi]!);
 	}
 	return collected.length > 0 ? collected : undefined;
 }

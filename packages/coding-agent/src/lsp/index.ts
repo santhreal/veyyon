@@ -1186,7 +1186,7 @@ function mergeDiagnostics(
 			}
 		}
 		if (result.messages.length > 0) {
-			messages.push(...result.messages);
+			for (let mi = 0; mi < result.messages.length; mi++) messages.push(result.messages[mi]!);
 		}
 		if (result.formatter !== undefined) {
 			hasFormatter = true;
@@ -1754,7 +1754,7 @@ export class LspTool implements AgentTool<typeof lspSchema, LspToolDetails, Them
 						if (serverConfig.createClient) {
 							const linterClient = getLinterClient(serverName, serverConfig, this.session.cwd);
 							const diagnostics = await linterClient.lint(resolved);
-							allDiagnostics.push(...diagnostics);
+							for (let di = 0; di < diagnostics.length; di++) allDiagnostics.push(diagnostics[di]!);
 							continue;
 						}
 						const client = await getOrCreateClient(serverConfig, this.session.cwd, undefined, signal);
@@ -1771,7 +1771,7 @@ export class LspTool implements AgentTool<typeof lspSchema, LspToolDetails, Them
 							minVersion,
 							expectedDocumentVersion,
 						});
-						allDiagnostics.push(...diagnostics);
+						for (let di = 0; di < diagnostics.length; di++) allDiagnostics.push(diagnostics[di]!);
 					} catch (err) {
 						if (err instanceof ToolAbortError || signal?.aborted) {
 							throw err;
@@ -2312,7 +2312,8 @@ export class LspTool implements AgentTool<typeof lspSchema, LspToolDetails, Them
 						continue;
 					}
 					respondingServers.add(workspaceServerName);
-					aggregatedSymbols.push(...filterWorkspaceSymbols(workspaceResult, normalizedQuery));
+					const filtered = filterWorkspaceSymbols(workspaceResult, normalizedQuery);
+					for (let si = 0; si < filtered.length; si++) aggregatedSymbols.push(filtered[si]!);
 				} catch (err) {
 					if (err instanceof ToolAbortError || signal?.aborted) {
 						throw err;

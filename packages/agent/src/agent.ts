@@ -1098,7 +1098,7 @@ export class Agent {
 			}
 			const content: Array<TextContent | ImageContent> = [{ type: "text", text: input }];
 			if (images && images.length > 0) {
-				content.push(...images);
+				for (let ii = 0; ii < images.length; ii++) content.push(images[ii]!);
 			}
 			msgs = [
 				{

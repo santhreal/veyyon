@@ -1072,7 +1072,8 @@ function renderMultiFileResult(
 				if (i > 0) {
 					allLines.push("");
 				}
-				allLines.push(...fileComponents[i].render(width));
+				const rendered = fileComponents[i]!.render(width);
+				for (let li = 0; li < rendered.length; li++) allLines.push(rendered[li]!);
 			}
 
 			// Show pending indicator for files still being processed

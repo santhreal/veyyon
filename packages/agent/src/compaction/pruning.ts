@@ -322,7 +322,8 @@ export function pruneSupersededToolResults(entries: SessionEntry[], config: Supe
 		: [];
 	if (config.pruneUseless) {
 		const exclude = new Set(candidates.map(candidate => candidate.message));
-		candidates.push(...collectUselessResults(entries, toolCallsById, config.protectedTools, exclude));
+		const useless = collectUselessResults(entries, toolCallsById, config.protectedTools, exclude);
+		for (let ui = 0; ui < useless.length; ui++) candidates.push(useless[ui]!);
 		candidates.sort((a, b) => a.index - b.index);
 	}
 	if (candidates.length === 0) return { prunedCount: 0, tokensSaved: 0 };

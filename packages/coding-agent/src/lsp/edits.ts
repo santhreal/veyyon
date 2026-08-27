@@ -104,8 +104,9 @@ export function flattenWorkspaceTextEdits(edit: WorkspaceEdit): Map<string, Text
 	const push = (uri: string, edits: TextEdit[]) => {
 		if (edits.length === 0) return;
 		const prev = out.get(uri);
-		if (prev) prev.push(...edits);
-		else out.set(uri, [...edits]);
+		if (prev) {
+			for (let ei = 0; ei < edits.length; ei++) prev.push(edits[ei]!);
+		} else out.set(uri, [...edits]);
 	};
 	if (edit.changes) {
 		const changes = edit.changes;
@@ -180,8 +181,9 @@ function planDocumentChanges(documentChanges: NonNullable<WorkspaceEdit["documen
 			const textEdits = tdc.edits.filter((e): e is TextEdit => "range" in e && "newText" in e);
 			if (textEdits.length > 0) {
 				const prev = pending.get(uri);
-				if (prev) prev.push(...textEdits);
-				else pending.set(uri, [...textEdits]);
+				if (prev) {
+					for (let ei = 0; ei < textEdits.length; ei++) prev.push(textEdits[ei]!);
+				} else pending.set(uri, [...textEdits]);
 			}
 		} else if ("kind" in change && change.kind) {
 			if (change.kind === "create") {

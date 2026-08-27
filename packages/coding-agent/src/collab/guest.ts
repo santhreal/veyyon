@@ -410,7 +410,7 @@ export class CollabGuestLink {
 			logger.debug("collab guest dropping orphan snapshot-chunk");
 			return false;
 		}
-		pending.entries.push(...frame.entries.map(fromWireSessionEntry));
+		for (let ei = 0; ei < frame.entries.length; ei++) pending.entries.push(fromWireSessionEntry(frame.entries[ei]!));
 		const complete = frame.final || pending.entries.length >= pending.entryCount;
 		if (complete) {
 			this.#clearSnapshotProgressTimer();

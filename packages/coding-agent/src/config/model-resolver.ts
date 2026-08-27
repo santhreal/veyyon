@@ -625,7 +625,7 @@ function includeSyntheticAllowedModels(available: Model<Api>[], allowedModels: I
 		}
 	}
 
-	result.push(...allowedByKey.values());
+	for (const model of allowedByKey.values()) result.push(model);
 	return result;
 }
 

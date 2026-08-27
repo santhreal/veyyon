@@ -196,7 +196,7 @@ function buildClaudeCodeBetas(
 	}
 	if (!agentRequest) return betas;
 	if (thinkingRequest) betas.push(effortBeta);
-	betas.push(...claudeCodeAgentPostEffortBetas);
+	for (let bi = 0; bi < claudeCodeAgentPostEffortBetas.length; bi++) betas.push(claudeCodeAgentPostEffortBetas[bi]!);
 	return betas;
 }
 

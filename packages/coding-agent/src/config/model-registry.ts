@@ -1447,7 +1447,8 @@ export class ModelRegistry {
 						} as ModelSpec<Api>),
 					)
 				: withTransport.map(model => buildModel(model));
-			cachedModels.push(...this.#applyProviderModelOverrides(providerId, withCompat));
+			const overrides = this.#applyProviderModelOverrides(providerId, withCompat);
+			for (let oi = 0; oi < overrides.length; oi++) cachedModels.push(overrides[oi]!);
 		}
 		return { models: cachedModels, authoritativeFreshProviders };
 	}
@@ -1482,7 +1483,7 @@ export class ModelRegistry {
 					),
 				),
 			);
-			cachedModels.push(...models);
+			for (let mi = 0; mi < models.length; mi++) cachedModels.push(models[mi]!);
 			const stale =
 				providerConfig.discovery.type === "llama.cpp" || !cache.fresh || !cache.authoritative || configStale;
 			this.#providerDiscoveryStates.set(providerConfig.provider, {
@@ -1938,7 +1939,7 @@ export class ModelRegistry {
 		const authoritativeProviders = new Set<string>();
 		const models: Model<Api>[] = [];
 		for (const discovery of discoveries) {
-			models.push(...discovery.models);
+			for (let mi = 0; mi < discovery.models.length; mi++) models.push(discovery.models[mi]!);
 			for (const provider of discovery.authoritativeProviders) {
 				authoritativeProviders.add(provider);
 			}
