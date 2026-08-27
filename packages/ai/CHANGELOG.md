@@ -19,6 +19,17 @@
 - A message that names a dead socket reads the same everywhere: `namesDeadSocket` in `@veyyon/ai/error/flags` is the one list of errnos and phrases, and `ENETUNREACH`, `EHOSTUNREACH` and `EAI_AGAIN` now count as transient transport failures like the rest of them.
 - Formatted source files for Biome compliance.
 - `withAuth` imports the two error classes it throws from their owning modules instead of the `@veyyon/ai/error` barrel, so a consumer of the auth-retry wrapper no longer loads the provider-error registry and every error domain behind it; behavior is unchanged.
+- Usage provider backends are loaded lazily on first `AuthStorage.reload()` instead of at `@veyyon/ai` barrel import time, reducing idle memory by deferring the Google auth stack and eleven provider usage modules.
+- The `@veyyon/ai` barrel re-exports provider modules as types only (`export type *`), so importing the barrel no longer eagerly loads provider transport code; five provider modules are deferred to first stream.
+- The GitLab Duo Workflow provider loads the zod-dependent discovery module lazily on first namespace resolution instead of at module import, deferring 28 MiB of zod and its locale files from the static boot graph.
+- `mapAnthropicToolChoice` is extracted to `@veyyon/ai/tool-choice-mapping` so providers that only need tool-choice mapping no longer import `@veyyon/ai/stream` (23 MiB) transitively.
+- Provider modules import `getEnvApiKey` from `@veyyon/ai/env-api-key` (the owner) instead of re-export through `@veyyon/ai/stream`, removing the last static-graph path into the streaming engine.
+- `openai-completions.ts` replaces `[...pendingToolCallBlocks]` spread with `.slice()` in stream finish handler.
+- `openai-responses-server.ts` replaces `[...map.values()]` spread with `Array.from(...)` in close handler.
+- `openai-codex-responses.ts` replaces `[...event.raw]` spread with `.slice()` in SSE callback.
+- `openai-codex/request-transformer.ts` replaces two `[...a, ...b]` spreads with `a.concat(b)` and `[...options.include]` with `.slice()`.
+- `usage/zai.ts` replaces `[...limits]` spread with `limits.slice()` in request limit ranking.
+- `usage/google-antigravity.ts` replaces `[...new Set(...)].sort()` with `Array.from(new Set(...)).sort()` and `[...ANTIGRAVITY_ENDPOINTS]` with `.slice()`.
 
 ### Fixed
 

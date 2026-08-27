@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+### Changed
+
+- `FilterProviderReplayMessages` and `InstrumentedCompleteSimple` named function types are exported from their owning modules so consumers can import them as types without aliasing function values.
+- Streaming `message_update` snapshots share tool-call arguments by reference instead of deep-cloning them on every delta, cutting a large structured tool call's per-delta snapshot cost from ~0.5 s to ~8 ms, while terminal messages and the authoritative tool call a `toolcall_end` carries keep the sanitizing deep clone.
+- `agent-loop.ts` replaces `[...arr]` spreads with `.slice()`/`.concat()` in streaming setup, message merge, content deduplication, and schema injection paths.
+- `append-only-context.ts` replaces `[...context.systemPrompt]` spread with `.slice()` in snapshot.
+- `run-collector.ts` replaces 10 `[...set].sort()` patterns with `Array.from(set).sort()` in telemetry collection.
+- `telemetry.ts` replaces `[...arr]` spreads with `.slice()` in stop sequence and coverage attribute setting.
+- `compaction/shake.ts` replaces two `[...arr].sort()` patterns with `arr.slice().sort()` in range merge and shake region application.
+- `compaction/cache-aligned-context.ts` replaces `[...arr, elem]` spread with `.concat([elem])` in token estimation.
+- `compaction/remote-compaction.ts` replaces `[...a, ...b]` spread with `a.concat(b)` in LLM message preparation.
 ### Added
 
 - A ChatGPT OAuth (Codex) session compacts server-side via the Responses compaction endpoint, preserving encrypted reasoning state.

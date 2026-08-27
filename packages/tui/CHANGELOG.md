@@ -23,6 +23,7 @@
 - Extract LaTeX argument text by slicing the source rather than appending one character at a time, so a deeply nested optional-argument chain degrades linearly instead of quadratically.
 - `padLineToWidth` and `ScrollView` scrollbar rows pad to width in the native `truncateToWidth` call instead of a separate `visibleWidth` scan plus `padding` concatenation, removing a redundant width measurement from every padded row.
 - `padLineToWidth`, `ScrollView` scrollbar rows, and `TabBar` vertical render pad to width in the native `truncateToWidth` call instead of a separate `visibleWidth` scan plus `padding` concatenation, removing a redundant width measurement from every padded row.
+- `editor.ts` replaces `visibleWidth` + `padding` with `padLineToWidth` for gutter continuation, eliminating a redundant width scan per editor render frame.
 
 ## [1.2.0] - 2026-08-23
 

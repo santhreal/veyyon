@@ -260,6 +260,17 @@
 - `fitLine` in the setup wizard theme scene pads to width in the native `truncateToWidth` call instead of a separate `visibleWidth` scan plus `padding` concatenation.
 - `agent-dashboard.ts`, `extension-dashboard.ts`, `command-controller.ts`, `bash-interactive.ts`, and `tab-bar.ts` replace `truncateToWidth` + `visibleWidth` + `padding` with the native `truncateToWidth` `pad` parameter, eliminating a redundant width scan per padded row.
 - `ask-dialog.ts`, `modal-shell.ts`, `extension-dashboard.ts`, `history-search.ts`, `modal-select-list.ts`, `rollback-panel.ts`, and `text.ts` replace `[...array]` spread copies with `.slice()` / `.concat()`, avoiding spread iterator allocation in per-frame render paths.
+- `task/render.ts` replaces `[...arr]` spreads with `.slice()`/`.concat()` in subagent progress, recent output, findings sort, and recursive tree prefix building.
+- `extension-dashboard.ts` replaces `[...EXT_SHORTCUTS]` spread with `.slice()` in modal shell construction.
+- `read.ts`, `output-meta.ts`, `result-notice.ts`, `irc.ts`, and `job.ts` replace `[...arr]` spreads with `.slice()`/`.concat()` in tool result construction paths.
+- `editor.ts` replaces `visibleWidth` + `padding` with `padLineToWidth` for gutter continuation, eliminating a redundant width scan per editor render frame.
+- `emoji-autocomplete.ts`, `internal-url-autocomplete.ts`, and `prompt-action-autocomplete.ts` replace `[...lines]` spread with `.slice()` in insert handlers.
+- `interactive-mode.ts` replaces `[...event.messages].reverse().find()` with a backward for loop, eliminating array copy + reverse + iterator.
+- Setup wizard scenes (approvals, glyph, outro, theme, providers) replace `[...arr, elem]` and `[...a, ...b]` spreads with `.concat()` in render paths.
+- `input-controller.ts` replaces 27 `[...arr]` spread copies with `.slice()` across image array copies in submission handlers.
+- `extension-ui-controller.ts`, `mcp-command-controller.ts`, `tan-command-controller.ts`, and `selector-controller.ts` replace `[...arr]` spreads with `.slice()`/`.concat()`/`Array.from()` in dialog, tool activation, and selector construction paths.
+- `rpc-subagents.ts`, `host-uris.ts`, and `rpc-client.ts` replace `[...arr]` spreads with `.slice()`/`Array.from()` in RPC paths.
+- `model-hub.ts`, `model-browser.ts`, `read-tool-group.ts`, `tree-selector.ts`, `settings-selector.ts`, `plan-review-overlay.ts`, and `copy-selector.ts` replace remaining `[...arr]` spreads with `.slice()`/`.concat()`/`Array.from()` in sidebar, tree walk, and undo/redo paths.
 
 ### Added
 
