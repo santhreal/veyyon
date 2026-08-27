@@ -95,6 +95,12 @@
 - `tool-execution.ts` replaces `.filter().map().join()` chain in `#getTextOutput` with single-pass string build, and `.some()` closure in `#buildRenderContext` with index-based `for` loop.
 - `output-block.ts` replaces `[header, headerMeta].filter(Boolean).join()` with a conditional string build, eliminating array allocation + filter closure per render.
 - `bash-execution.ts` replaces two `.some(Boolean)` closures with index-based `for` loops in `#updateDisplay` and `#clampLinesPreservingSixel`.
+- `inspector-panel.ts` eliminates duplicate `split("/")` and `split("\n")` calls in path and instruction rendering.
+- `eval-execution.ts` replaces `.split().map()` with pre-allocated array + `for` loop in `appendOutput` and `#setOutput`.
+- `diff.ts` replaces `.map()` + `.reduce()` with single-pass `for` loop in `renderDiff`, eliminating two iterator allocations per frame.
+- `read-tool-group.ts` replaces three `.split().map().filter()` chains with single-pass `for` loops in `splitSelectorDisplayParts`.
+- `history-search.ts` replaces `.split().filter()` with `for` loop in `queryTokens`, eliminating intermediate array per keystroke.
+- `state-manager.ts` replaces `.split().filter(Boolean)` with `for` loop in extension search.
 ### Added
 
 - `/advisor` reports advisor status, opens the `WATCHDOG.yml` roster editor and applies a save to the running session, starts or stops the advisor for the session, and copies the advisor's own transcript; the subsystem shipped complete but no command, key or menu row reached it.
