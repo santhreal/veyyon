@@ -53,6 +53,12 @@ same trial twice under two arm names.
 trial that already settled. A run id with no journal is rejected rather than started, so a typo
 cannot bill a fresh run of every task under a name that looked half finished.
 
+A trial that threw measured nothing, so it is attempted again: twice by default, `--attempts N` up
+to 5. Each attempt cleans up after itself and the run holds one row per cell, which states
+`attempts` when it took more than one. Two outcomes earn no further attempt: a graded one, which
+includes a trial that spent its whole deadline, because the budget is gone and a second answer would
+favour whichever attempt read better; and a cancelled run. Backoff doubles from 2s to a 30s cap.
+
 A run id names one plan. The journal header records a digest of the suite version, dataset sha,
 backend, and every variant's harness, overlay paths, model and attachments, and an invocation that
 plans anything else under that run id is rejected — with or without `--resume`. A settled trial is
