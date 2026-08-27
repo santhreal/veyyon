@@ -2836,7 +2836,12 @@ function getLmStudioNativeInput(entry: Record<string, unknown>): ("text" | "imag
 }
 
 function getLmStudioNativeContextWindow(entry: Record<string, unknown>): number | undefined {
+	// `loaded_context_length` is the window the server was started with and the only one it
+	// accepts; `max_context_length` is the model's ceiling, which a load smaller than the
+	// ceiling never reaches. Reading the ceiling made a session plan for context the server
+	// refuses, so a long run failed with a provider error instead of compacting in time.
 	return (
+		toPositiveNumber(entry.loaded_context_length, null) ??
 		toPositiveNumber(entry.max_context_length, null) ??
 		toPositiveNumber(entry.context_length, null) ??
 		toPositiveNumber(entry.max_model_len, null) ??
