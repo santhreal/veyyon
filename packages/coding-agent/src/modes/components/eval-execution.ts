@@ -40,10 +40,13 @@ export class EvalExecutionComponent extends Container {
 		const prompt = theme.fg(colorKey, theme.bold(">>>"));
 		const continuation = theme.fg(colorKey, "    ");
 		const codeLines = highlightCode(this.code, this.#highlightLang());
-		const headerLines = codeLines.map((line, index) =>
-			index === 0 ? `${prompt} ${line}` : `${continuation}${line}`,
-		);
-		return new Text(headerLines.join("\n"), 2, 0);
+		let headerText = "";
+		for (let li = 0; li < codeLines.length; li++) {
+			const line = codeLines[li]!;
+			const styled = li === 0 ? `${prompt} ${line}` : `${continuation}${line}`;
+			headerText = headerText ? `${headerText}\n${styled}` : styled;
+		}
+		return new Text(headerText, 2, 0);
 	}
 
 	constructor(
@@ -132,10 +135,18 @@ export class EvalExecutionComponent extends Container {
 
 		if (availableLines.length > 0) {
 			if (this.#expanded) {
-				const displayText = availableLines.map(line => theme.fg("muted", line)).join("\n");
+				let displayText = "";
+				for (let li = 0; li < availableLines.length; li++) {
+					const styled = theme.fg("muted", availableLines[li]!);
+					displayText = displayText ? `${displayText}\n${styled}` : styled;
+				}
 				this.#contentContainer.addChild(new Text(`\n${displayText}`, 2, 0));
 			} else {
-				const styledOutput = previewLogicalLines.map(line => theme.fg("muted", line)).join("\n");
+				let styledOutput = "";
+				for (let li = 0; li < previewLogicalLines.length; li++) {
+					const styled = theme.fg("muted", previewLogicalLines[li]!);
+					styledOutput = styledOutput ? `${styledOutput}\n${styled}` : styled;
+				}
 				this.#contentContainer.addChild(createCollapsedPreview(`\n${styledOutput}`, EXECUTION_PREVIEW_LINES));
 			}
 		}
