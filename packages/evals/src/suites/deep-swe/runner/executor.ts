@@ -5,7 +5,7 @@ import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { clampLow, errorMessage, readPipeText } from "@veyyon/utils";
+import { $which, clampLow, errorMessage, readPipeText } from "@veyyon/utils";
 import YAML from "yaml";
 import { cleanupPierContainers } from "../../../backends/pier/runner";
 import { MINIMUM_DEEPSWE_PIER_VERSION, pierSupportsSeparateVerifierCollect } from "../../../backends/pier/version";
@@ -608,7 +608,7 @@ export async function runBench(argv: string[]): Promise<SystemComparison | null>
 	const truncation = truncationWarning(trialTimeouts);
 	if (truncation) console.error(truncation);
 
-	const pier = Bun.which("pier") ?? `${os.homedir()}/.local/bin/pier`;
+	const pier = $which("pier") ?? `${os.homedir()}/.local/bin/pier`;
 	if (!fs.existsSync(pier)) {
 		throw new PierMissingError(
 			`pier not found on PATH or ~/.local/bin — uv tool install 'datacurve-pier>=${MINIMUM_DEEPSWE_PIER_VERSION}'`,

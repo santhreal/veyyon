@@ -161,9 +161,7 @@ export class OmpAdapter implements HarnessAdapter {
 		const warnings: string[] = [];
 
 		const ompBinary =
-			typeof context.args["omp-binary"] === "string"
-				? path.resolve(context.args["omp-binary"])
-				: (Bun.which("omp") ?? null);
+			typeof context.args["omp-binary"] === "string" ? path.resolve(context.args["omp-binary"]) : $which("omp");
 
 		if (!ompBinary || !fs.existsSync(ompBinary)) {
 			errors.push("omp CLI binary unavailable; pass --omp-binary or install omp on PATH");

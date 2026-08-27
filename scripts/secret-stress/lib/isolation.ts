@@ -24,9 +24,11 @@
  * The override applies to the SPAWNED CHILD ONLY. Nothing here mutates `process.env`, so the
  * harness process, the agent running it, and every sibling tool keep the real `$HOME`.
  */
+
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { $which } from "@veyyon/utils";
 import { denyHostProviderAccess } from "../../../packages/coding-agent/test/helpers/hermetic-spawn-env";
 
 /** One isolated machine: the directories a run owns and the environment that reaches them. */
@@ -102,7 +104,7 @@ export function useCliEntry(entry: string): void {
  * `env -i` is the one mechanism that is identical for both spawners and cannot inherit anything:
  * the child starts from an empty environment and receives only the assignments listed after it.
  */
-export const ENV_BIN: string = Bun.which("env") ?? "/usr/bin/env";
+export const ENV_BIN: string = $which("env") ?? "/usr/bin/env";
 
 /** Executable plus argv that runs `argv` under exactly `iso.env` (+ `extra`) and nothing else. */
 export function isolatedArgv(

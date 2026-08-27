@@ -149,7 +149,7 @@ export class FactoryAdapter implements HarnessAdapter {
 		const factoryBinary =
 			typeof context.args["factory-binary"] === "string"
 				? path.resolve(context.args["factory-binary"])
-				: (Bun.which("droid") ?? null);
+				: $which("droid");
 		if (factoryBinary && fs.existsSync(factoryBinary)) {
 			fs.copyFileSync(factoryBinary, path.join(context.assetsDir, "droid"));
 			fs.chmodSync(path.join(context.assetsDir, "droid"), 0o755);

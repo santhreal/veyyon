@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { readPipeText } from "@veyyon/utils";
+import { $which, readPipeText } from "@veyyon/utils";
 import { awaitTrialProcessOutput, DEFAULT_GRACE_PERIOD_MS, runBoundedCommand, terminateProcessTree } from "../../core";
 import { boundRawOutput, resolveTrialTimeoutSec } from "../../core/trial-deadline";
 import type { PreflightVerdict, TrialArtifacts } from "../../core/types";
@@ -44,7 +44,7 @@ export function findPierBinary(explicitPath?: string | null): string | null {
 	if (explicitPath && fs.existsSync(explicitPath)) {
 		return path.resolve(explicitPath);
 	}
-	const fromPath = Bun.which("pier");
+	const fromPath = $which("pier");
 	if (fromPath && fs.existsSync(fromPath)) {
 		return fromPath;
 	}
