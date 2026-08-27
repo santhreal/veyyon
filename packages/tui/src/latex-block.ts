@@ -22,7 +22,7 @@
 // scratch here on this module's ANSI-aware Box model.
 
 import { latexColorScope, latexToUnicode, MATH_FONT_COMMANDS } from "./latex-to-unicode";
-import { clamp, visibleWidth } from "./utils";
+import { clamp, padding, visibleWidth } from "./utils";
 
 /**
  * A rectangular block of rendered text. Every entry in `lines` is padded to
@@ -196,7 +196,7 @@ interface Ctx {
 const ROOT_CTX: Ctx = { wrap: run => run };
 
 function spaces(n: number): string {
-	return n > 0 ? " ".repeat(n) : "";
+	return padding(n);
 }
 
 /** Pad `line` on the right to `width` visible columns. */
