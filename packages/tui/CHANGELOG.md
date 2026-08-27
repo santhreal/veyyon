@@ -15,6 +15,7 @@
 - `paint-columns.ts` and `tui.ts` replace `" ".repeat(n)` with `padding(n)` in line background padding and overlay compositing, using the pre-allocated space buffer for widths up to 512.
 - `motion-paint.ts` pre-computes a `HEX_BYTE` lookup table for `toHexColor`, eliminating `toString(16).padStart(2, "0")` per channel per truecolor SGR during animation.
 - `motion-paint.ts` exports `CHANNEL_STR` so callers in `coding-agent` can share the pre-computed 0–255 string table for truecolor SGR emission.
+- `motion-paint.ts` delegates `fadeLineTowards` to the already-optimized `fadeLineWithParsedGround`, eliminating a duplicate `split(/([;:])/)` + `tokens.join("")` code path that allocated a tokens array per SGR sequence.
 - `tui.ts` replaces `Array.from(Set)` with direct `for...of` iteration in partial compose root resolution and input listener dispatch, eliminating an intermediate array allocation per render frame.
 - `motion.ts` replaces `Array.from(Set)` snapshot with `for...of` and deferred delete in the animation tick, eliminating a per-tick array allocation.
 - `motion-hover.ts` replaces `Array.from(Map)` with direct `for...of` in `HoverFade.set`, eliminating an intermediate array allocation per hover change.
