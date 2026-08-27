@@ -227,9 +227,12 @@ class BashInteractiveOverlayComponent implements Component {
 	#readViewport(innerWidth: number, maxContentRows: number): string[] {
 		this.#terminal.resize(innerWidth, maxContentRows);
 		const viewportY = this.#terminal.buffer.active.viewportY;
-		return readTerminalRows(this.#terminal, viewportY, maxContentRows).map(line =>
-			truncateToWidth(styleTerminalRow(line, this.uiTheme.getFgAnsi("toolOutput")), innerWidth),
-		);
+		const rawRows = readTerminalRows(this.#terminal, viewportY, maxContentRows);
+		const result = new Array<string>(rawRows.length);
+		for (let ri = 0; ri < rawRows.length; ri++) {
+			result[ri] = truncateToWidth(styleTerminalRow(rawRows[ri]!, this.uiTheme.getFgAnsi("toolOutput")), innerWidth);
+		}
+		return result;
 	}
 	render(width: number): readonly string[] {
 		const safeWidth = Math.max(20, width);
@@ -275,13 +278,16 @@ class BashInteractiveOverlayComponent implements Component {
 		const borderVertical = this.uiTheme.fg("border", this.uiTheme.boxSharp.vertical);
 		const boxLine = (line: string) =>
 			`${borderVertical}${line}${padding(Math.max(0, innerWidth - visibleWidth(line)))}${borderVertical}`;
-		return [
+		const lines: string[] = [
 			`${this.uiTheme.fg("border", this.uiTheme.boxSharp.topLeft)}${borderHorizontal}${this.uiTheme.fg("border", this.uiTheme.boxSharp.topRight)}`,
 			boxLine(header),
-			...content.map(boxLine),
+		];
+		for (let ci = 0; ci < content.length; ci++) lines.push(boxLine(content[ci]!));
+		lines.push(
 			boxLine(footer),
 			`${this.uiTheme.fg("border", this.uiTheme.boxSharp.bottomLeft)}${borderHorizontal}${this.uiTheme.fg("border", this.uiTheme.boxSharp.bottomRight)}`,
-		];
+		);
+		return lines;
 	}
 
 	invalidate(): void {}
