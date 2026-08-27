@@ -4,6 +4,11 @@
 
 ## [Unreleased]
 
+### Changed
+
+- `apply.ts`, `input.ts`, `messages.ts`, `parser.ts`, and `patcher.ts` replace array spreads with `.concat()`, `Array.from()`, and `.slice()` to avoid iterator allocation on hot paths.
+
+
 ### Fixed
 
 - A numeric-keyed body whose values are `true`, `false` or `null` keeps its `N:` keys instead of being stripped as read-tool output.
