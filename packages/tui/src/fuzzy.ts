@@ -582,5 +582,9 @@ export function matchPositions(query: string, text: string): number[] {
 			}
 		}
 	}
-	return Array.from(hits).sort((a, b) => a - b);
+	const result = new Array<number>(hits.size);
+	let ri = 0;
+	for (const h of hits) result[ri++] = h;
+	result.sort((a, b) => a - b);
+	return result;
 }
