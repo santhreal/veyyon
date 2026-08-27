@@ -8,6 +8,8 @@
 - `nextBackground` in `deccara.ts` scans SGR parameters in-place via byte offsets, eliminating a `line.slice()` allocation per SGR sequence in `analyzeBgFillLine`.
 - `fgHexOf` in `rail-motion.ts` scans SGR parameters in-place via `charCodeAt`, eliminating `line.slice()` and `params.split(";")` allocations per SGR sequence in `findRailCell` during rail animation.
 - Hook status rendering in `status-line/component.ts` replaces `Array.from(entries()).sort().map().join()` with a single-pass array sort and direct string concatenation, eliminating two intermediate arrays per frame.
+- `assistant-message.ts` replaces `Array.from(Set)` with direct `for...of` in kitty image cleanup, eliminating intermediate array allocation when a tool result arrives.
+
 
 
 - `sun.ts` pre-computes truecolor and 256-color SGR string arrays for the EMBER and SKY ramps, eliminating per-cell template literal allocation across 400+ cells per animation frame in `renderSunField` and `renderSunsetField`.
