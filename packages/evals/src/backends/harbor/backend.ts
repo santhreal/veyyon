@@ -188,6 +188,19 @@ export class HarborBackend implements ExecutionBackend {
 		this.#gatewayHealth = options.gatewayHealth ?? gatewayHealthOk;
 	}
 
+	/**
+	 * Whether any arm of this run routes model calls through the host auth gateway.
+	 *
+	 * A run made entirely of harnesses that carry their own credentials never reaches the
+	 * gateway, so probing it refused runs that had no use for it. A run whose variants are not
+	 * known yet keeps the probe.
+	 */
+	#needsAuthGateway(context: RunContext): boolean {
+		const variants = context.options?.variants ?? [];
+		if (variants.length === 0) return true;
+		return variants.some(variant => getHarness(variant.harness)?.backends.harbor?.authGateway === true);
+	}
+
 	async preflight(context: RunContext): Promise<PreflightVerdict> {
 		const harborBin = this.#which("harbor");
 		if (!harborBin) {
@@ -226,7 +239,7 @@ export class HarborBackend implements ExecutionBackend {
 				};
 			}
 		}
-		if (context.options?.gateway !== false) {
+		if (context.options?.gateway !== false && this.#needsAuthGateway(context)) {
 			const gatewayUrl =
 				typeof context.options?.gatewayUrl === "string"
 					? context.options.gatewayUrl

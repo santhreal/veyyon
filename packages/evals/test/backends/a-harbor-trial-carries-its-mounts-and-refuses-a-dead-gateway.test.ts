@@ -25,6 +25,7 @@ import * as path from "node:path";
 import { agentSetupFailure, HarborBackend } from "../../src/backends/harbor/backend";
 import type { Config } from "../../src/backends/harbor/runner/config";
 import type { SourceMount } from "../../src/backends/harbor/runner/deps";
+import { listHarnesses } from "../../src/core/harness-registry";
 import type { EvalSuite, RunContext, TaskDescriptor, TrialCell, TrialScore, Variant } from "../../src/core/types";
 import { registerBuiltinHarnesses } from "../../src/harnesses/index";
 
@@ -203,6 +204,27 @@ describe("a harbor run refuses a dead auth gateway", () => {
 		});
 		const verdict = await backend.preflight(await makeContext({ gateway: false }));
 		expect(verdict.ok).toBe(true);
+	});
+
+	it("requires the gateway for exactly the harnesses whose harbor binding routes through it", async () => {
+		const backend = new HarborBackend({
+			which: (bin: string) => `/usr/bin/${bin}`,
+			exec: async () => ({ stdout: "", stderr: "" }),
+			gatewayHealth: () => false,
+		});
+
+		// Swept from the registry rather than listed: a harness that gains or loses
+		// `authGateway` moves between these two sets with no edit here.
+		for (const harness of listHarnesses()) {
+			const binding = harness.backends.harbor;
+			if (!binding) continue;
+			const variant: Variant = { ...VARIANT, name: harness.name, harness: harness.name };
+			const verdict = await backend.preflight(await makeContext({ variants: [variant] }));
+			expect({ harness: harness.name, ok: verdict.ok }).toEqual({
+				harness: harness.name,
+				ok: binding.authGateway !== true,
+			});
+		}
 	});
 });
 
