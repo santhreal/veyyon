@@ -49,6 +49,10 @@ applies is rejected by name. Harbor reads none of the three, so `--prompts a.jso
 harbor suite is rejected instead of expanding the matrix, naming the cells apart and running the
 same trial twice under two arm names.
 
+Arm attachments have no flag: a plan passes them in its selection, as one set for every arm or one
+set per arm. They expand like every other axis, so a plan that passes several sets gets one arm per
+set, and each arm name ends in `~<set>` naming the files it carries.
+
 `--resume` continues the run named by `--run-id` from its `trials.jsonl` journal, skipping every
 trial that already settled. A run id with no journal is rejected rather than started, so a typo
 cannot bill a fresh run of every task under a name that looked half finished.

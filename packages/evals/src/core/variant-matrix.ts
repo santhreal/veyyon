@@ -24,6 +24,7 @@ export const AXIS_PLURAL: Readonly<Record<string, string>> = {
 	configs: "configs",
 	promptVariants: "prompt variants",
 	models: "models",
+	attachments: "attachment sets",
 	corpus: "corpora",
 	corpora: "corpora",
 	suite: "suites",
@@ -224,6 +225,25 @@ function normalizePromptVariant(item: string | PromptVariantSpec | null): Prompt
 	};
 }
 
+/**
+ * One attachment set per cell, from either spelling of the selection: a flat list is the same set
+ * for every cell, a list of lists is one axis value per set. An absent or empty selection is the
+ * single empty set.
+ */
+export function attachmentSets(
+	selection: VariantMatrixSelection["attachments"],
+): readonly (readonly string[])[] | undefined {
+	if (!Array.isArray(selection)) return undefined;
+	if (selection.length === 0) return [[]];
+	if (Array.isArray(selection[0])) return selection as readonly (readonly string[])[];
+	return [selection as readonly string[]];
+}
+
+/** The name segment an attachment set contributes: its file base names, or `none` for the empty set. */
+export function attachmentLabel(values: readonly string[]): string {
+	return values.length === 0 ? "none" : values.map(value => cleanBaseName(value)).join("+");
+}
+
 export const VARIANT_MATRIX_AXES: readonly AxisDescriptor<unknown, unknown>[] = [
 	{
 		id: "harnesses",
@@ -263,6 +283,16 @@ export const VARIANT_MATRIX_AXES: readonly AxisDescriptor<unknown, unknown>[] = 
 			cell.model = value as string;
 		},
 	},
+	{
+		id: "attachments",
+		plural: AXIS_PLURAL.attachments ?? "attachment sets",
+		select: (selection: VariantMatrixSelection) => attachmentSets(selection.attachments),
+		defaultValues: [[]],
+		normalize: (values: unknown) => values as readonly string[],
+		project: (cell: MutableVariantCellInput, value: unknown) => {
+			cell.attachments = value as readonly string[];
+		},
+	},
 ];
 
 /**
@@ -293,6 +323,13 @@ function defaultVariantName(cell: VariantCellInput, selection: VariantMatrixSele
 
 	if (selection.models.length > 1) {
 		base = `${base}@${cell.model}`;
+	}
+
+	// An attachment set is an axis: two sets are two arms, and the name has to say which is which or
+	// the run reports one set's result under the other's name.
+	const sets = attachmentSets(selection.attachments);
+	if (sets && sets.length > 1) {
+		base = `${base}~${attachmentLabel(cell.attachments)}`;
 	}
 
 	return base;
@@ -326,8 +363,7 @@ export function expandVariantMatrix(
 	const variants: Variant[] = [];
 	const seenNames = new Set<string>();
 
-	for (let cellIndex = 0; cellIndex < product.length; cellIndex++) {
-		const row = product[cellIndex];
+	for (const row of product) {
 		const cell: MutableVariantCellInput = {
 			harness: "",
 			config: null,
@@ -339,17 +375,6 @@ export function expandVariantMatrix(
 		for (let axisIndex = 0; axisIndex < axes.length; axisIndex++) {
 			axes[axisIndex].project(cell, row[axisIndex]);
 		}
-
-		let attachments: readonly string[] = [];
-		if (Array.isArray(selection.attachments)) {
-			if (selection.attachments.length > 0 && Array.isArray(selection.attachments[0])) {
-				const list2d = selection.attachments as readonly (readonly string[])[];
-				attachments = list2d[cellIndex % list2d.length] ?? [];
-			} else {
-				attachments = selection.attachments as readonly string[];
-			}
-		}
-		cell.attachments = attachments;
 
 		const cellInput: VariantCellInput = {
 			...cell,

@@ -10,7 +10,8 @@
  * 3. Produced variant names contain axis components in declaration order.
  * 4. Produced variants strictly adhere to the declared outer-to-inner axis hierarchy.
  * 5. Adding an axis to the descriptor list multiplies the Cartesian product size accordingly.
- * 6. Attachment cycling is driven by the Cartesian product index across all matrix cells.
+ * 6. Attachments are a declared axis, so a list of sets multiplies the product; the pairing and the
+ *    naming of those sets live in an-attachment-set-is-an-axis-not-a-cell-index.test.ts.
  */
 
 import { describe, expect, it } from "bun:test";
@@ -109,35 +110,30 @@ describe("variant matrix declared axis contracts", () => {
 		}
 	});
 
-	it("cycles 2D attachment lists across the product index", () => {
-		const attachmentLists = [["rules/alpha.md"], ["rules/beta.md"], ["rules/gamma.md"]];
-
-		const variants = expandVariantMatrix({
-			harnesses: ["veyyon", "omp"],
-			models: ["claude", "gpt"],
-			attachments: attachmentLists,
-		});
-
-		// 4 variants total, cycled across 3 attachment lists:
-		// index 0 -> alpha
-		// index 1 -> beta
-		// index 2 -> gamma
-		// index 3 -> alpha (3 % 3 = 0)
-		expect(variants.length).toBe(4);
-		expect(variants[0].attachments).toEqual(["rules/alpha.md"]);
-		expect(variants[1].attachments).toEqual(["rules/beta.md"]);
-		expect(variants[2].attachments).toEqual(["rules/gamma.md"]);
-		expect(variants[3].attachments).toEqual(["rules/alpha.md"]);
-	});
-
 	it("each declared axis rejects an empty selection with its own id and plural in the refusal", () => {
+		// An axis whose empty selection is a value, not an absence of choices. Pinned by equality, so a
+		// new axis either joins the refusing sweep below or records its exception here.
+		const EMPTY_SELECTION_IS_A_VALUE: readonly string[] = ["attachments"];
+		expect(VARIANT_MATRIX_AXES.filter(a => EMPTY_SELECTION_IS_A_VALUE.includes(a.id)).map(a => a.id)).toEqual([
+			"attachments",
+		]);
+
 		for (const axis of VARIANT_MATRIX_AXES) {
 			const emptySelection: VariantMatrixSelection = {
 				harnesses: axis.id === "harnesses" ? [] : ["veyyon"],
 				configs: axis.id === "configs" ? [] : ["baseline"],
 				promptVariants: axis.id === "promptVariants" ? [] : ["concise"],
 				models: axis.id === "models" ? [] : ["claude-3-7-sonnet"],
+				attachments: axis.id === "attachments" ? [] : undefined,
 			};
+
+			if (EMPTY_SELECTION_IS_A_VALUE.includes(axis.id)) {
+				// An attachments flag with nothing after it is one arm carrying no attachments.
+				const variants = expandVariantMatrix(emptySelection);
+				expect(variants).toHaveLength(1);
+				expect(variants[0]?.attachments).toEqual([]);
+				continue;
+			}
 
 			let caughtError: EmptyAxisError | null = null;
 			try {

@@ -249,11 +249,14 @@ describe("a benchmark registered at run time", () => {
 describe("a settled run whose runner process is gone", () => {
 	const FINISHED_AT = Date.parse("2026-02-01T10:00:00.000Z");
 
-	/** A row whose runner exited without reporting, and the job directory it left behind. */
-	function abandonedRun(h: Harness, jobName: string, benchmark: string, jobResult: object | null): void {
+	/**
+	 * A row whose runner is gone with no exit recorded, and the job directory it left behind. The
+	 * store releases a dead pid in `syncActive`, which is the state the terminal-state read serves.
+	 */
+	function abandonedRun(h: Harness, jobName: string, benchmark: string, jobResult: object): void {
 		const jobDir = path.join(h.jobsDir, jobName);
 		fs.mkdirSync(jobDir, { recursive: true });
-		if (jobResult) fs.writeFileSync(path.join(jobDir, "result.json"), JSON.stringify(jobResult));
+		fs.writeFileSync(path.join(jobDir, "result.json"), JSON.stringify(jobResult));
 		h.store.registerLaunch({
 			benchmark,
 			jobName,
@@ -261,8 +264,9 @@ describe("a settled run whose runner process is gone", () => {
 			agent: "veyyon",
 			models: ["provider/model-id"],
 			config: {},
-			pid: null,
+			pid: 999999999, // certainly dead
 		});
+		h.store.syncActive();
 	}
 
 	it("takes its finish time from the benchmark that can read one", () => {
@@ -272,7 +276,8 @@ describe("a settled run whose runner process is gone", () => {
 			finished_at: "2026-02-01T10:00:00.000Z",
 		});
 
-		const row = h.store.syncRun("harbor-abandoned");
+		const row = h.store.getRun("harbor-abandoned");
+		expect(row?.pid).toBeNull();
 		expect(row?.status).toBe("complete");
 		expect(row?.finishedAt).toBe(FINISHED_AT);
 	});
@@ -287,7 +292,8 @@ describe("a settled run whose runner process is gone", () => {
 			finished_at: "2026-02-01T10:00:00.000Z",
 		});
 
-		const row = h.store.syncRun("fourth-abandoned");
+		const row = h.store.getRun("fourth-abandoned");
+		expect(row?.pid).toBeNull();
 		expect(row?.finishedAt).not.toBe(FINISHED_AT);
 		expect(row?.status).toBe("running");
 	});
