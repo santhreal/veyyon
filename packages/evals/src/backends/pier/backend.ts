@@ -3,6 +3,7 @@ import * as path from "node:path";
 import { requireBackendBinding, resolveCellVariant } from "../../core/cell-variant";
 import { containerProgramPath, programDirFor, stageHarnessProgram } from "../../core/container-program";
 import { requireHarness } from "../../core/harness-registry";
+import { containerLocalEndpointEnv } from "../../core/local-endpoint";
 import { trialTimeoutFromOptions } from "../../core/trial-deadline";
 import { resolveTrialModel } from "../../core/trial-model";
 import { runDirFor, trialJobName } from "../../core/trial-naming";
@@ -174,6 +175,9 @@ export class PierExecutionBackend implements ExecutionBackend {
 		}
 		const modelName = resolveTrialModel(variant, harness, context).id;
 
+		// A program-delivered harness carries its own environment in the program's env file,
+		// so only a bespoke agent needs the endpoint named here.
+		const localEndpoint = containerLocalEndpointEnv(modelName);
 		const kwargs: Record<string, unknown> = harness.containerProgram
 			? {
 					program_path: containerProgramPath(programDirFor(assetsDir, harness.name, variant.name)),
@@ -184,6 +188,7 @@ export class PierExecutionBackend implements ExecutionBackend {
 					arm_name: variant.name,
 					assets_dir: assetsDir,
 					binary_sha: (context.options?.binarySha as string | undefined) ?? this.#binarySha ?? "nosha",
+					...(localEndpoint ? { local_endpoint_env: localEndpoint } : {}),
 					...(pierBinding.extra ?? {}),
 				};
 

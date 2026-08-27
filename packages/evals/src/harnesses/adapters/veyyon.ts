@@ -2,6 +2,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { errorMessage } from "@veyyon/utils";
 import {
+	isLocalInferenceModel,
+	localEndpointRefusal,
 	type SystemJobConfigContext,
 	type SystemPreflightContext,
 	type SystemPreflightResult,
@@ -23,7 +25,10 @@ export class VeyyonAdapter implements HarnessAdapter {
 	readonly name = "veyyon";
 	readonly displayName = "Veyyon";
 	readonly description = "Main Veyyon headless agent CLI execution and replay in isolated Docker containers.";
-	readonly flags: readonly string[] = ["auth-db"];
+	// `vey-binary` names the build under test. A run comparing two builds of veyyon names
+	// one per run, so without the flag no invocation can measure anything but the
+	// checkout's own binary. The preflight below reads exactly this key.
+	readonly flags: readonly string[] = ["auth-db", "vey-binary"];
 	// Veyyon drives any provider-qualified model the run names, so it declares no
 	// default: a default here decided which model an unspecified run measured, and the
 	// arm's name never said which one. `resolveTrialModel` refuses instead.
@@ -105,12 +110,23 @@ export class VeyyonAdapter implements HarnessAdapter {
 			try {
 				// Preflight probes the credential the run's model needs. With no model named
 				// there is nothing to probe, so the probe is skipped rather than aimed at some
-				// other provider's pool, whose emptiness says nothing about this run.
+				// other provider's pool, whose emptiness says nothing about this run. A locally
+				// served model has no pool at all: the endpoint takes no credential, so a store
+				// that can serve nothing else still serves this run.
 				const model = typeof options.model === "string" ? options.model : null;
-				if (model !== null) await requireStagedAuthCanServeToken(model, true, candidateDb);
+				if (model !== null && !isLocalInferenceModel(model)) {
+					await requireStagedAuthCanServeToken(model, true, candidateDb);
+				}
 			} catch (err) {
 				missing.push(`staged auth DB at ${candidateDb}: ${errorMessage(err)} (log in first with: vey /login)`);
 			}
+		}
+
+		// A locally served endpoint the container cannot reach fails every trial the same way,
+		// so the run refuses here with the command that publishes it.
+		if (typeof options.model === "string") {
+			const endpointRefusal = await localEndpointRefusal(options.model);
+			if (endpointRefusal) missing.push(endpointRefusal);
 		}
 
 		if (missing.length > 0) {

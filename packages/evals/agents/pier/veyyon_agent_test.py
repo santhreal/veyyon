@@ -587,5 +587,64 @@ class VeyyonAgentReplayModeTest(unittest.TestCase):
             )
 
 
+class VeyyonAgentLocalEndpointTest(unittest.TestCase):
+    # The class this closes: a model served by the host that the trial container cannot
+    # reach. Two halves have to agree — the destination the egress policy permits, and the
+    # environment the agent process reads — and a run that gets one right still measures
+    # nothing. The fake allowlist helper records what it was handed, so the assertion is on
+    # the destinations declared rather than on a proxy that is never built here.
+    #
+    # What it does not catch: whether the address is published on a permitted port. That is
+    # the bridge script's contract, and the harness preflight probes it.
+
+    def _agent(self, root: Path, **kwargs):
+        module = _load_agent_module()
+        assets = root / "assets"
+        (assets / "arms").mkdir(parents=True)
+        (assets / "vey").write_text("#!/bin/sh\n")
+        (assets / "auth-agent.db").write_text("db")
+        (assets / "arms" / "baseline.yml").write_text("{}\n")
+        (assets / "attachments.json").write_text(
+            json.dumps({"version": 1, "arms": {"baseline": []}}), encoding="utf-8"
+        )
+        return module.VeyyonAgent(
+            assets_dir=str(assets), arm_name="baseline", model_name=EXACT_MODEL, **kwargs
+        )
+
+    def test_a_local_endpoint_is_the_only_destination_the_run_declares(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            agent = self._agent(
+                Path(temporary),
+                local_endpoint_env={"LM_STUDIO_BASE_URL": "http://172.17.0.1/v1"},
+            )
+            args, kwargs = agent.network_allowlist()
+            self.assertEqual([list(args[0])], [["http://172.17.0.1/v1"]])
+            self.assertEqual(kwargs, {})
+
+    def test_a_vendor_model_keeps_the_provider_destinations(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            agent = self._agent(Path(temporary))
+            _, kwargs = agent.network_allowlist()
+            self.assertIn(".anthropic.com", kwargs["default_domains"])
+
+    def test_the_endpoint_is_exported_before_the_catalog_refresh_reads_it(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            agent = self._agent(
+                Path(temporary),
+                local_endpoint_env={"LM_STUDIO_BASE_URL": "http://172.17.0.1/v1"},
+            )
+            environment = _Environment()
+            asyncio.run(agent.run("do the task", environment, SimpleNamespace()))
+            command = agent.commands[0]
+            export = "export LM_STUDIO_BASE_URL=http://172.17.0.1/v1"
+            self.assertIn(export, command)
+            # The refresh proves the selector exists before the trial spends anything, and it
+            # reads the endpoint, so an export placed after it proves nothing.
+            self.assertLess(
+                command.index(export), command.index("/logs/agent/model-catalog-refresh.txt")
+            )
+            self.assertLess(command.index(export), command.index("--print"))
+
+
 if __name__ == "__main__":
     unittest.main()
