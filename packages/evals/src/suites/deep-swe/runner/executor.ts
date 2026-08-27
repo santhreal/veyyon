@@ -17,7 +17,7 @@ import {
 	listHarnessNames,
 	requireHarness,
 } from "../../../core/harness-registry";
-import { terminateProcessTree } from "../../../core/process-tree";
+import { awaitTrialProcessOutput, terminateProcessTree } from "../../../core/process-tree";
 import type { HarnessAdapter } from "../../../core/types";
 import { registerBuiltinHarnesses } from "../../../harnesses";
 import {
@@ -807,24 +807,22 @@ export async function runBench(argv: string[]): Promise<void> {
 		const resolvedTimeout = trialTimeouts.get(task);
 		if (!resolvedTimeout) throw new Error(`internal: no resolved trial timeout for task ${task}`);
 		const trialTimeoutSec = resolvedTimeout.timeoutSec;
-		let timedOut = false;
-		// A killed child is not a stopped child: pier runs a Python process that blocks on a
-		// container wait and ignores SIGTERM, and awaiting its exit unconditionally ended the run
-		// here with no row and no error. Termination escalates and reports whether the tree is gone;
-		// an abandoned tree still holds its pipes, so its output is not read.
-		const abandoned = Promise.withResolvers<"abandoned">();
-		const timer = setTimeout(() => {
-			timedOut = true;
-			void terminateProcessTree(proc).then(outcome => {
-				if (outcome === "abandoned") abandoned.resolve("abandoned");
-			});
-		}, trialTimeoutSec * 1000);
-
-		const settled = await Promise.race([proc.exited, abandoned.promise]);
-		clearTimeout(timer);
-		const stdout = settled === "abandoned" ? "" : await readPipeText(proc.stdout);
-		const stderr = settled === "abandoned" ? "" : await readPipeText(proc.stderr);
-		const exitCode = settled === "abandoned" ? -1 : settled;
+		// The reads start now, not after the exit. A pipe nobody reads fills at 64KiB and the child
+		// blocks on its next write, so waiting for the exit first hung a chatty trial for its whole
+		// budget and then lost the output that said why. A killed child is not a stopped child
+		// either: pier runs a Python process that blocks on a container wait and ignores SIGTERM, so
+		// the wait terminates the tree and drains whatever the pipes produced under a bound.
+		const wait = await awaitTrialProcessOutput({
+			exited: proc.exited,
+			stdout: readPipeText(proc.stdout),
+			stderr: readPipeText(proc.stderr),
+			timeoutMs: trialTimeoutSec * 1000,
+			terminate: () => terminateProcessTree(proc).then(() => undefined),
+		});
+		const timedOut = wait.kind === "timed_out";
+		const stdout = wait.stdout;
+		const stderr = wait.stderr;
+		const exitCode = wait.exitCode;
 
 		let result: ComparisonArmResult;
 		try {

@@ -90,13 +90,18 @@ than awaited, and its pipes are not read, because a pipe a surviving descendant 
 EOF. Signalling the group reaches the container, the compose project and the agent process a child
 spawned; a child that is not its own group leader falls back to the pid.
 
-`awaitTrialProcessOutput` in the same module is the single wait the harbor and pier backends use. It
-races the trial's exit and its two pipe reads against the trial's deadline and the run's
-cancellation signal. A deadline and a cancel take the same path: terminate the tree, then drain the
-reads already in flight through `drainTrialOutput` under a 2s bound. Each pipe is bounded separately,
-so text from the pipe that closed is kept when a survivor holds the other one open, and a partial
-read is stated in the trial's error text. The result states which of the three ended the wait, so a
-cancelled trial reports a cancel rather than a timeout.
+`awaitTrialProcessOutput` in the same module is the single wait the harbor and pier backends and the
+deep-swe executor use. It races the trial's exit and its two pipe reads against the trial's deadline
+and the run's cancellation signal. A deadline and a cancel take the same path: terminate the tree,
+then drain the reads already in flight through `drainTrialOutput` under a 2s bound. Each pipe is
+bounded separately, so text from the pipe that closed is kept when a survivor holds the other one
+open, and a partial read is stated in the trial's error text. The result states which of the three
+ended the wait, so a cancelled trial reports a cancel rather than a timeout.
+
+A trial's exit does not close its pipes. A container or a stray background process it left behind
+inherits the write end, and a read of that pipe waits for an EOF that arrives when the descendant
+ends. The deadline therefore stays armed across the reads as well as the exit, and the reads are
+started before the wait rather than after it.
 
 The in-process backend has no child to signal. Its deadline and the run's cancellation signal both
 reject the trial's wait and call the client's `abort()`, and the listener the trial put on that
