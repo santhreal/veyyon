@@ -14,11 +14,7 @@ import { formatAge, formatBytes, isProbablyBinary, pathExistsQuietly, readImageM
 import { canonicalSnapshotKey } from "../edit/file-snapshot-store";
 import { normalizeToLF } from "../edit/normalize";
 import type { FileMentionMessage } from "../session/messages";
-import {
-	formatHeadTruncationNotice,
-	truncateHead,
-	truncateHeadBytes,
-} from "../session/streaming-output";
+import { formatHeadTruncationNotice, truncateHead, truncateHeadBytes } from "../session/streaming-output";
 import { type InlinePricingSource, inlineBudgetFor } from "../tools/output-artifact";
 import { resolveReadPath } from "../tools/path-utils";
 import { formatDimensionNote, resizeImage } from "./image-resize";
