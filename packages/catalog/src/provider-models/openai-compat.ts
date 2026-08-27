@@ -536,7 +536,7 @@ function getOllamaThinkingConfig(capabilities: string[] | undefined): ThinkingCo
 	if (!capabilities?.includes("thinking")) {
 		return undefined;
 	}
-	return { mode: "effort", efforts: [...OLLAMA_WIRE_EFFORTS] };
+	return { mode: "effort", efforts: OLLAMA_WIRE_EFFORTS.slice() };
 }
 
 /**
@@ -1065,7 +1065,7 @@ function isGeneratedOpenAIProReasoningAlias(model: ModelSpec<Api>): boolean {
 export function projectOpenAIProReasoningAliases(models: readonly ModelSpec<Api>[]): ModelSpec<Api>[] {
 	const kept = models.filter(model => !isGeneratedOpenAIProReasoningAlias(model));
 	const ids = new Set(kept.map(model => `${model.provider}/${model.id}`));
-	const out = [...kept];
+	const out = kept.slice();
 	for (const model of kept) {
 		if (model.provider !== "openai") continue;
 		if (!OPENAI_PRO_REASONING_BASE_IDS[model.id]) continue;
@@ -1519,7 +1519,7 @@ function applyXAIOAuthCuration(dynamic: readonly ModelSpec<"openai-responses">[]
 		(e): e is ModelSpec<"openai-responses"> => e !== undefined,
 	);
 	const rest = filtered.filter(e => !curatedIds.has(e.id)).map(withXaiOAuthCompatDefaults);
-	return [...curatedFirst, ...rest];
+	return curatedFirst.concat(rest);
 }
 
 /**

@@ -248,5 +248,5 @@ function normalizeDevinModels(
 			maxTokens: gatewayMaxTokens(id),
 		});
 	}
-	return [...byId.values()].sort((a, b) => a.id.localeCompare(b.id));
+	return Array.from(byId.values()).sort((a, b) => a.id.localeCompare(b.id));
 }

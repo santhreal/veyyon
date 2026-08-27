@@ -1135,7 +1135,7 @@ export function collapseEffortVariants<TSpec extends VariantSpecLike>(
 		}
 	}
 
-	if (replacement.size === 0) return [...specs];
+	if (replacement.size === 0) return specs.slice();
 
 	const emitted = new Set<string>();
 	const out: TSpec[] = [];

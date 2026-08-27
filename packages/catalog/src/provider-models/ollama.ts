@@ -69,7 +69,7 @@ function getThinkingConfig(modelId: string, capabilities: string[] | undefined):
 	if (isGlm52ReasoningEffortModelId(modelId)) {
 		return OLLAMA_CLOUD_GLM_52_THINKING;
 	}
-	return { mode: "effort", efforts: [...OLLAMA_WIRE_EFFORTS] };
+	return { mode: "effort", efforts: OLLAMA_WIRE_EFFORTS.slice() };
 }
 /**
  * Read one model's capabilities and size caps from `/api/show`.
