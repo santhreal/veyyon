@@ -22,6 +22,7 @@
 
 ### Fixed
 
+- A Cursor MCP tool call the exec channel already dispatched is marked resolved on the assistant message, so the agent loop no longer runs the same call a second time after the turn closes and appends a duplicate `toolResult` under an id that already had one.
 - A compact route that answers 404 is recorded as absent for that model for the rest of the process, so server-side compaction is asked once instead of once per compaction, and the error names the model rather than repeating "Server-side compaction failed".
 - `AIError.status` and `extractHttpStatusFromError` are one reader, so a provider message spelled `error(503)`, `status_code: 429` or `429 Too Many Requests` yields the same status to the auth ladder and the retry ladder instead of one of the two seeing nothing; a status field anywhere in the cause chain now outranks prose anywhere in it.
 - A Nous Portal call that a gateway answers with an HTML 502, 503 or 504 reports the gateway status instead of "returned invalid JSON".
