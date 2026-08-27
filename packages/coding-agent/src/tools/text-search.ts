@@ -1225,9 +1225,31 @@ export async function executeTextSearch(
 				}
 			}
 			const nextSkip = skipFiles + windowFiles.length;
-			const limitMessage = fileLimitReached
-				? `Showing files ${skipFiles + 1}-${nextSkip} of ${totalFilesLabel}. Use skip=${nextSkip} for the next page, or narrow paths/pattern.`
-				: "";
+			const limitNotices: string[] = [];
+			if (fileLimitReached) {
+				limitNotices.push(
+					`Showing files ${skipFiles + 1}-${nextSkip} of ${totalFilesLabel}. Use skip=${nextSkip} for the next page, or narrow paths/pattern.`,
+				);
+			}
+			if (perFileLimitReached) {
+				// `skip` pages files, so it reaches nothing past a per-file cap. Left
+				// unsaid, a capped count reads as the file's total and the caller
+				// stops looking.
+				limitNotices.push(
+					isMultiScope
+						? `At least one file had more than ${perFileMatchCap} matches; each file's count is a floor. Narrow the pattern, or search one file at a time.`
+						: `Showing the first ${perFileMatchCap} matches in this file; more matched. Narrow the pattern, or read the region.`,
+				);
+			}
+			if (result.limitReached) {
+				// The native fetch stopped at its own ceiling, so files past it were
+				// never opened: the file count is a lower bound, and a caller reading
+				// it as a total concludes the pattern appears nowhere else.
+				limitNotices.push(
+					`Search stopped at its internal ceiling of ${INTERNAL_TOTAL_CAP} matches; files past it were not examined, so the file count is a floor. Narrow the pattern or the path.`,
+				);
+			}
+			const limitMessage = limitNotices.join("\n");
 			const { record: recordFile, list: fileList } = createFileRecorder();
 			const fileMatchCounts = new Map<string, number>();
 			// Detect explicit file targets that exceed the native grep size cap.

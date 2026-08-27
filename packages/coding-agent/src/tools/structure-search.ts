@@ -52,6 +52,13 @@ export interface StructureSearchInput {
 /** Bytes a metavariable value may restate before the name alone stands for it. */
 export const META_VALUE_MAX_BYTES = 60;
 
+/**
+ * Opening words of the match-limit notice. The renderer's group filter matches
+ * this prefix to keep the notice out of the code-frame groups, so both sites
+ * read one definition rather than two copies of the same words.
+ */
+const MATCH_LIMIT_NOTICE_PREFIX = "Match limit reached";
+
 function compareAstFindMatch(left: AstFindMatch, right: AstFindMatch): number {
 	const pathCmp = left.path.localeCompare(right.path);
 	if (pathCmp !== 0) return pathCmp;
@@ -189,6 +196,9 @@ export interface StructureSearchDetails {
 	scopePath?: string;
 	files?: string[];
 	fileMatches?: Array<{ path: string; count: number }>;
+	/** Truncation and limit record the output layer reads to append a notice and
+	 * to skip re-spilling a result already written to an artifact. Structure
+	 * search writes its own match-limit line and leaves this to the spill layer. */
 	meta?: OutputMeta;
 	/** Pre-formatted text for the user-visible TUI render. Mirrors `result.text` lines but uses
 	 * a `│` gutter and `*` to mark match lines. The TUI uses this directly so it never parses model-facing text. */
@@ -479,7 +489,7 @@ export async function executeStructureSearch(
 			const nextSkip = skip + result.matches.length;
 			outputLines.push(
 				"",
-				`Match limit reached: ${result.totalMatches} found, ${result.matches.length} returned. Use skip=${nextSkip} for the next page, or narrow path or input.`,
+				`${MATCH_LIMIT_NOTICE_PREFIX}: ${result.totalMatches} found, ${result.matches.length} returned. Use skip=${nextSkip} for the next page, or narrow path or input.`,
 			);
 		}
 		if (proseNote) {
@@ -637,7 +647,7 @@ export const structureSearchRenderer = {
 		const matchGroups = groupLineIndicesByBlank(allLines)
 			.filter(indices => {
 				const first = allLines[indices[0]!]!;
-				return !first.startsWith("Match limit reached") && !first.startsWith("Parse issues:");
+				return !first.startsWith(MATCH_LIMIT_NOTICE_PREFIX) && !first.startsWith("Parse issues:");
 			})
 			.map(indices => indices.map(index => styledLines[index]!));
 

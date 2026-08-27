@@ -234,6 +234,8 @@ export class SearchTool implements AgentTool<typeof searchSchema, SearchToolDeta
 			signal,
 		);
 		if (!result.details) throw new ToolError("Structure search returned no result details");
+		// Each type's own meta is hoisted onto the wrapper, because the output layer
+		// reads `details.meta` and would otherwise see the wrapper's `undefined`.
 		return { ...result, details: { type: "structure", result: result.details, meta: result.details.meta } };
 	}
 }
