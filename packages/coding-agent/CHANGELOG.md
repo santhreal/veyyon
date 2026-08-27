@@ -52,6 +52,8 @@
 ### Fixed
 
 - A bash working directory on a different Windows drive from the project renders as the absolute path it is, instead of being reported as a path inside the project.
+- Web search keeps trying the next provider when one returns only follow-up suggestions or intermediate search queries, instead of counting that metadata as a result and handing the model a list of questions; a SearXNG "did you mean" on a misspelled query no longer ends the search.
+- Public Web search reports which engines did not answer within the deadline instead of reporting an empty web, so a slow or bot-walled engine no longer surfaces as "returned no renderable search content".
 - The `VEYYON_TINY_DEVICE` and `VEYYON_TINY_DTYPE` reference states the `providers.tinyModelDevice` and `providers.tinyModelDtype` defaults as the `default` sentinel each setting actually holds, and names what that sentinel selects, instead of listing `CPU` and `q4` as the stored values.
 - A collapsed `ssh` result measures its preview in rendered rows at the frame's inner width and shows the newest three lines with a count of what was hidden, instead of slicing the first five newlines and overflowing the frame whenever a remote line wrapped.
 - A terminal resize, theme switch or session switch no longer seals a backgrounded subagent's tool card mid-flight, so the progress it reports afterwards still reaches the card instead of being dropped for the rest of the turn.

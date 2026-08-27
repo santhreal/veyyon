@@ -279,7 +279,7 @@ describe("executeSearch abort propagation", () => {
 		expect(result.details?.error).toContain("upstream 500");
 	});
 
-	it("falls through when a provider returns no renderable search content", async () => {
+	it("falls through when a provider found no results", async () => {
 		const emptyProviderSearch = vi.fn(
 			async (): Promise<SearchResponse> => ({
 				provider: "searxng",

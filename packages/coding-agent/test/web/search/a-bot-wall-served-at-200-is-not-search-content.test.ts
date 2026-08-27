@@ -257,7 +257,7 @@ describe("Startpage 200 challenge refusal and zero-result distinction", () => {
 		expect(challengeVerdict).not.toEqual(zeroResultVerdict);
 	});
 
-	it("surfaces 429 challenge error through WebSearchTool and does NOT report 'no renderable search content' (204)", async () => {
+	it("surfaces 429 challenge error through WebSearchTool and does NOT report it as a zero-result search", async () => {
 		setPreferredSearchProvider("startpage");
 		const challengeFetch: FetchImpl = () =>
 			Promise.resolve(
@@ -283,11 +283,11 @@ describe("Startpage 200 challenge refusal and zero-result distinction", () => {
 		const text = block && "text" in block ? block.text : "";
 		expect(text).toContain("Error:");
 		expect(text).toContain("CAPTCHA challenge");
-		expect(text).not.toContain("returned no renderable search content");
+		expect(text).not.toContain("found no results");
 		expect(result.details?.error).toContain("CAPTCHA challenge");
 	});
 
-	it("reports 'no renderable search content' (204) for genuine zero-result search through WebSearchTool", async () => {
+	it("reports a zero-result search (204) for a genuine empty result page through WebSearchTool", async () => {
 		setPreferredSearchProvider("startpage");
 		const zeroResultFetch: FetchImpl = () =>
 			Promise.resolve(
@@ -311,7 +311,7 @@ describe("Startpage 200 challenge refusal and zero-result distinction", () => {
 		const block = result.content[0];
 		expect(block?.type).toBe("text");
 		const text = block && "text" in block ? block.text : "";
-		expect(text).toContain("Error: Startpage returned no renderable search content.");
+		expect(text).toContain("Error: Startpage found no results for this query.");
 	});
 });
 

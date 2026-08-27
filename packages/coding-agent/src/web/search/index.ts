@@ -207,7 +207,9 @@ async function executeSearch(
 			});
 
 			if (!hasRenderableSearchContent(response)) {
-				throw new SearchProviderError(provider.id, `${provider.label} returned no renderable search content.`, 204);
+				// "No renderable search content" is this file's vocabulary, and it reads as a rendering
+				// problem. After the check above it means one thing, so it says that thing.
+				throw new SearchProviderError(provider.id, `${provider.label} found no results for this query.`, 204);
 			}
 
 			const text = formatForLLM(response);
