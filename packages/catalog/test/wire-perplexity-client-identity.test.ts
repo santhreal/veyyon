@@ -36,7 +36,7 @@ const AI_SRC = path.resolve(import.meta.dir, "../../ai/src");
 const CODING_AGENT_SRC = path.resolve(import.meta.dir, "../../coding-agent/src");
 const LOGIN = path.join(AI_SRC, "registry/oauth/perplexity.ts");
 const SEARCH = path.join(CODING_AGENT_SRC, "web/search/providers/perplexity.ts");
-const BROWSER_HEADERS = path.join(CODING_AGENT_SRC, "web/search/providers/browser-headers.ts");
+const BROWSER_HEADERS = path.join(CODING_AGENT_SRC, "web/search/providers/browser-fingerprint-constants.ts");
 
 describe("the spoofed Perplexity app identity", () => {
 	/**
@@ -196,7 +196,9 @@ describe("the browser fingerprint states its version once", () => {
 	 * literals; this reads the shipped module and checks the version it interpolates appears in both.
 	 */
 	it("uses one Chrome version in the User-Agent and the client hint", async () => {
-		const { CHROME_DESKTOP_USER_AGENT } = await import("@veyyon/coding-agent/web/search/providers/browser-headers");
+		const { CHROME_DESKTOP_USER_AGENT } = await import(
+			"@veyyon/coding-agent/web/search/providers/browser-fingerprint-constants"
+		);
 		const version = /Chrome\/(\d+)\./.exec(CHROME_DESKTOP_USER_AGENT)?.[1];
 		expect(version, "no Chrome version in the User-Agent").toBeDefined();
 		const source = await Bun.file(BROWSER_HEADERS).text();
@@ -216,7 +218,7 @@ describe("the browser fingerprint states its version once", () => {
 	it("has the anonymous search path reading the shared browser User-Agent", async () => {
 		const search = await Bun.file(SEARCH).text();
 		expect(search).toContain("CHROME_DESKTOP_USER_AGENT");
-		expect(moduleSpecifiersIn(search)).toContain("./browser-headers");
+		expect(moduleSpecifiersIn(search)).toContain("./browser-fingerprint-constants");
 		expect(search).not.toContain("ANONYMOUS_USER_AGENT");
 	});
 
@@ -226,7 +228,7 @@ describe("the browser fingerprint states its version once", () => {
 	 */
 	it("has the scraper ladder reading the shared Windows User-Agent", async () => {
 		const { CHROME_DESKTOP_USER_AGENT, CHROME_WINDOWS_USER_AGENT } = await import(
-			"@veyyon/coding-agent/web/search/providers/browser-headers"
+			"@veyyon/coding-agent/web/search/providers/browser-fingerprint-constants"
 		);
 		const version = (agent: string) => /Chrome\/(\d+)\./.exec(agent)?.[1];
 		expect(version(CHROME_WINDOWS_USER_AGENT)).toBe(version(CHROME_DESKTOP_USER_AGENT));
