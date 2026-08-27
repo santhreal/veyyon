@@ -54,7 +54,10 @@ export function createAdvisorMessageCard(
 	uiTheme: Theme,
 ): Component {
 	const notes = details?.notes ?? [];
-	const blockers = notes.filter(note => note.severity === "blocker").length;
+	let blockers = 0;
+	for (let ni = 0; ni < notes.length; ni++) {
+		if (notes[ni]!.severity === "blocker") blockers++;
+	}
 	const meta: string[] = [formatCount("note", notes.length)];
 	if (blockers > 0) meta.push(uiTheme.fg("error", formatCount("blocker", blockers)));
 
@@ -83,7 +86,12 @@ export function createAdvisorMessageCard(
 				const w1 = Math.max(10, Math.min(NOTE_LINE_WIDTH, width) - quoteWidth - badgeWidth - whoWidth);
 				const w2 = Math.max(10, Math.min(NOTE_LINE_WIDTH, width) - quoteWidth);
 
-				const paragraphs = entry.note.split("\n").filter(p => p.trim());
+				const rawParagraphs = entry.note.split("\n");
+				const paragraphs: string[] = [];
+				for (let pi = 0; pi < rawParagraphs.length; pi++) {
+					const p = rawParagraphs[pi]!;
+					if (p.trim()) paragraphs.push(p);
+				}
 				const bodyLines: string[] = [];
 				for (let i = 0; i < paragraphs.length; i++) {
 					const p = paragraphs[i];
@@ -96,10 +104,10 @@ export function createAdvisorMessageCard(
 					}
 				}
 
-				bodyLines.forEach((line, index) => {
-					const prefix = index === 0 ? `${badge}${who}` : "";
-					lines.push(`  ${rail} ${prefix}${uiTheme.fg("customMessageText", replaceTabs(line))}`);
-				});
+				for (let bi = 0; bi < bodyLines.length; bi++) {
+					const prefix = bi === 0 ? `${badge}${who}` : "";
+					lines.push(`  ${rail} ${prefix}${uiTheme.fg("customMessageText", replaceTabs(bodyLines[bi]!))}`);
+				}
 			}
 			const hidden = notes.length - shown.length;
 			if (hidden > 0) {
