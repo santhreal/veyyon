@@ -98,9 +98,9 @@ export interface BuildTopLevelDirectoryListingOptions {
  * Build a concise, depth-1 listing of a directory: every top-level entry on
  * one line, each subdirectory annotated with its direct-child count. The scan
  * still walks two levels so the counts come from the same native pass; nothing
- * below the top level is rendered. Used by the read tool's default listing of
- * the session working directory root, where the model usually needs the
- * top-level convention rather than a recursive tree.
+ * below the top level is rendered. Used by the read tool for any directory read
+ * that names no depth, where the model needs the top-level convention rather
+ * than a recursive tree.
  */
 export async function buildTopLevelDirectoryListing(
 	cwd: string,

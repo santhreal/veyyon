@@ -27,7 +27,7 @@ A bounded range is padded with up to 1 line before (when you constrain the start
 
 # Files
 
-- Directory → depth-limited dirent listing (`depth`, `limit`). Reading the session working directory root with neither returns a concise top-level listing with per-subdirectory entry counts; pass `depth: 2` there for the recursive listing.
+- Directory → top-level listing with per-subdirectory entry counts. `depth: 2` recurses one level, `limit` caps entries; both are honored in full when named.
 {{#if IS_HL_MODE}}
 - File + selector → filename-only snapshot header + numbered lines: `[foo.ts#1A2B]` then `41:def alpha():`. Copy `[FILENAME#TAG]` for anchored edits; ops use bare line numbers. NEVER fabricate the tag.
 - A file that ends in a newline shows one extra numbered line with an empty body (a 2-line file `x\ny\n` reads as `1:x`, `2:y`, `3:`). That final empty line is not content: it marks the trailing newline and is the anchor you insert after to append at end of file.
