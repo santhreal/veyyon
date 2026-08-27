@@ -6,6 +6,8 @@
 
 - Classified runner output (cargo, bun, Go, ctest, dotnet, clippy, golangci-lint, Gradle lint, pytest, and tsc/eslint-family) now opens with a result-contract header: `[clean] <command>` or `[errors]` / `[errors N] <command>`. The header is the verdict and the body contains retained diagnostics.
 - `nextBackground` in `deccara.ts` scans SGR parameters in-place via byte offsets, eliminating a `line.slice()` allocation per SGR sequence in `analyzeBgFillLine`.
+- `fgHexOf` in `rail-motion.ts` scans SGR parameters in-place via `charCodeAt`, eliminating `line.slice()` and `params.split(";")` allocations per SGR sequence in `findRailCell` during rail animation.
+
 - `sun.ts` pre-computes truecolor and 256-color SGR string arrays for the EMBER and SKY ramps, eliminating per-cell template literal allocation across 400+ cells per animation frame in `renderSunField` and `renderSunsetField`.
 - `trackBackground` and `touchesBackground` in `paint-columns.ts` scan SGR parameters in-place via `charCodeAt`, eliminating per-token `slice()` allocations.
 - `fadeLineWithParsedGround` in `motion-paint.ts` uses a pre-computed channel-string lookup table and `charCodeAt` comparisons, eliminating `String()` calls and slice allocations per truecolor SGR during animation.
