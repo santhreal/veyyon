@@ -424,19 +424,46 @@ function pushSseLine(line: Uint8Array, state: SseEventState, maxEventBytes: numb
 	state.raw.push(text);
 
 	const colon = text.indexOf(":");
-	const fieldName = colon === -1 ? text : text.slice(0, colon);
-	let value = colon === -1 ? "" : text.slice(colon + 1);
-	if (value.charCodeAt(0) === 0x20 /* ' ' */) value = value.slice(1);
+	if (colon === -1) {
+		// No colon: the whole line is the field name with an empty value.
+		if (text === "data") {
+			if (state.data === null) state.data = "";
+			else state.data += "\n";
+		} else if (text === "event") {
+			state.event = "";
+		}
+		return null;
+	}
 
-	if (fieldName === "event") {
-		state.event = value;
-	} else if (fieldName === "data") {
+	// Strip a single optional leading space after the colon (SSE spec: at most one).
+	const valueStart = text.charCodeAt(colon + 1) === 0x20 ? colon + 2 : colon + 1;
+	const value = text.slice(valueStart);
+
+	// Compare the field-name prefix by char code to avoid allocating a substring.
+	// Only "data" (4 bytes) and "event" (5 bytes) are processed; "id" and "retry"
+	// are intentionally ignored.
+	if (
+		colon === 4 &&
+		text.charCodeAt(0) === 0x64 /* d */ &&
+		text.charCodeAt(1) === 0x61 /* a */ &&
+		text.charCodeAt(2) === 0x74 /* t */ &&
+		text.charCodeAt(3) === 0x61 /* a */
+	) {
 		if (state.data === null) {
 			state.data = value;
 		} else {
 			state.data += "\n";
 			state.data += value;
 		}
+	} else if (
+		colon === 5 &&
+		text.charCodeAt(0) === 0x65 /* e */ &&
+		text.charCodeAt(1) === 0x76 /* v */ &&
+		text.charCodeAt(2) === 0x65 /* e */ &&
+		text.charCodeAt(3) === 0x6e /* n */ &&
+		text.charCodeAt(4) === 0x74 /* t */
+	) {
+		state.event = value;
 	}
 	// `id` and `retry` are intentionally ignored — the providers we consume
 	// don't use them, and the underlying transport handles reconnects itself.
