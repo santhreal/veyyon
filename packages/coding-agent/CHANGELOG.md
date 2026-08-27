@@ -160,6 +160,23 @@
 - `modal-shell.ts` replaces `.reduce()` closure with for loop in `groupWidth`.
 - `agent-transcript-viewer.ts` replaces `.find()` closure with for loop in `#statsLine`.
 - `todo-board.ts` replaces `.filter()`, `.some()`, `.findIndex()` closures with for loops in `collapsedTasks`, `renderTodoBoardLines`, `activeTodoPhaseIndex`, and `todoBoardIsLive`.
+- `welcome.ts` replaces `.map()` and `.reduce()` closures with a fused index-based for loop in `pickWeightedTip`.
+- `box.ts` replaces five `for-of` iterator allocations with index-based for loops in `render` (child width measurement, content building, border/no-border result building).
+- `select-list.ts` replaces `for-of` iterator in render item rows and `.map()` closures in filter path with index-based for loops and pre-allocated arrays.
+- `text.ts` replaces `for-of` iterator in render with index-based for loop.
+- `editor.ts` replaces `for-of` token loop in `#wrapLine` and chunk loop in `#buildVisualLineMap` with index-based for loops.
+- `markdown.ts` replaces `for-of` iterator loops with index-based for loops in `#renderCodeBodyLines`, `#highlightStreamingDiffLines`, `#renderTokenInner`, `#renderListItem`, `#renderHtmlBlock`, table row iteration, `soleDisplayMath`, `plainInlineTokens`, `collapseInlineHtml`, `#renderInlineTokens`, and `renderInlineMarkdown`; replaces `.map().join()` in `renderInlineMarkdown` list rendering with a single-pass for loop.
+- `tab-bar.ts` replaces `for-of` iterators in collapse order, chunk layout, and hit-zone check with index-based for loops.
+- `settings-search.ts` replaces `for-of` iterators in `scoreToken` and `rankSettingItems` with index-based for loops.
+- `settings-list.ts` replaces `for-of` iterators in inline and split description wrapping with index-based for loops.
+- `latex-block.ts` replaces `.map()` closures, `.map().filter().map()` chains, nested `.map(row => row.map(cell => ...))`, `for-of` iterators, and `.forEach()` in `fracBox`, `binomBox`, `parseEnvironment`, segBoxes, and `latexToBlock` with index-based for loops and pre-allocated arrays.
+- `tui.ts` replaces `.map()` closure and `for-of` iterator in `#isAttached` with pre-allocated array and index-based for loop.
+- `ast-grep.ts` and `ast-edit.ts` replace `.map()`, `.filter().map().map()`, and spread+`.map()` in `renderResult` with pre-allocated arrays and for loops.
+- `bash-interactive.ts` replaces `.map()` closure and spread+`.map()` in `#readViewport` and `render` with for loops.
+- `bash.ts` replaces `.map()` closure in `formatBashCommandLines` with index-based for loop.
+- `browser.ts` replaces `.filter().map().join()` in text extraction with single-pass for loop.
+- `command-controller.ts` replaces `.map()` and `.reduce()` closures in `formatAccountHeaderRow` and `renderUsageSection` with for loops.
+- `extension-ui-controller.ts` replaces `.map().filter()` and `.map()` closures in `#runGuestAskQuestion` with single-pass for loops.
 ### Added
 
 - `/advisor` reports advisor status, opens the `WATCHDOG.yml` roster editor and applies a save to the running session, starts or stops the advisor for the session, and copies the advisor's own transcript; the subsystem shipped complete but no command, key or menu row reached it.
