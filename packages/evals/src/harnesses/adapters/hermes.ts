@@ -1,5 +1,12 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import {
+	type SystemJobConfigContext,
+	type SystemPreflightContext,
+	type SystemPreflightResult,
+	type SystemStageContext,
+	sanitizeVariantName,
+} from "../../core";
 import type {
 	HarnessAdapter,
 	HarnessCapabilities,
@@ -7,13 +14,6 @@ import type {
 	HarnessStageContext,
 	PreflightVerdict,
 } from "../../core/types";
-import {
-	type SystemJobConfigContext,
-	type SystemPreflightContext,
-	type SystemPreflightResult,
-	type SystemStageContext,
-	sanitizeVariantName,
-} from "../types";
 
 export class HermesAdapter implements HarnessAdapter {
 	readonly name = "hermes";

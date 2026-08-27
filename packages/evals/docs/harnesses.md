@@ -72,6 +72,15 @@ refuses the invocation instead of leaving the adapter on its PATH default. A fla
 without declaring, and a declared flag it never reads, both fail
 `test/harnesses/an-adapter-declares-the-flags-it-reads-and-the-runner-accepts-them.test.ts`.
 
+## Layering
+
+`src/core/**` and `src/harnesses/**` import neither a suite, a backend, the manager nor the server:
+every contract they share is declared in `src/core/types.ts` and supplied by the caller. An adapter
+states its own backend bindings — the pier agent class, harbor's agent name and import path — so
+adding a harness touches no backend. The boundary is a `noRestrictedImports` override on those two
+directories in the repo `biome.json`, so `bun run check:tools` fails on an upward import rather than
+a reviewer noticing it.
+
 ## Cross-harness comparison
 
 `src/harnesses/system-comparison.ts` aggregates one task set executed by two harnesses into a paired
