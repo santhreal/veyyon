@@ -367,7 +367,7 @@ function ToolsTable({ byTool }: { byTool: ToolUsageStats[] }) {
 function ToolModelPanel({ byToolModel }: { byToolModel: ToolModelStats[] }) {
 	const [tool, setTool] = useState<string | null>(null);
 
-	const tools = useMemo(() => [...new Set(byToolModel.map(row => row.tool))].sort(), [byToolModel]);
+	const tools = useMemo(() => Array.from(new Set(byToolModel.map(row => row.tool))).sort(), [byToolModel]);
 
 	const rows = useMemo(() => {
 		const filtered = tool ? byToolModel.filter(row => row.tool === tool) : byToolModel;
