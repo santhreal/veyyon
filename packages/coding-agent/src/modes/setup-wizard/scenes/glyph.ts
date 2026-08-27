@@ -153,7 +153,7 @@ class GlyphSceneController implements SetupSceneController {
 		// preset row: the scene asked you to pick between three options and
 		// showed one. The sample yields its rows instead.
 		const preview = renderGlyphPreview(rows === undefined ? undefined : rows - GLYPH_ITEMS.length - 1);
-		const lines = preview.length > 0 ? [...preview, ""] : [];
+		const lines = preview.length > 0 ? preview.concat("") : [];
 		this.#listRowStart = lines.length;
 		const sl = this.#selectList.render(width);
 		for (let li = 0; li < sl.length; li++) lines.push(sl[li]!);

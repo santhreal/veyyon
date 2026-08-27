@@ -118,7 +118,7 @@ export function applyInternalUrlCompletion(
 	const beforePrefix = currentLine.slice(0, cursorCol - prefix.length);
 	const afterCursor = currentLine.slice(cursorCol);
 	const insert = `${item.value} `;
-	const newLines = [...lines];
+	const newLines = lines.slice();
 	newLines[cursorLine] = beforePrefix + insert + afterCursor;
 	return {
 		lines: newLines,

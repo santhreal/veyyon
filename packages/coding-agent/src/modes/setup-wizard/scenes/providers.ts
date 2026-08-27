@@ -120,7 +120,7 @@ class ProvidersSceneController implements SetupSceneController {
 		this.#tabRowCount = tabLines.length;
 		const spacerRows = 1;
 		const panelRows = rows === undefined ? undefined : Math.max(1, rows - tabLines.length - spacerRows);
-		return [...tabLines, "", ...this.#activeTab().render(width, panelRows)];
+		return tabLines.concat([""], this.#activeTab().render(width, panelRows));
 	}
 
 	dispose(): void {

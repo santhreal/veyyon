@@ -366,9 +366,14 @@ const GOAL_CONTINUATION_QUIET_BLOCKS: ReadonlySet<GoalContinuationBlock> = new S
  * only a provider/transport error counts here.
  */
 function goalTurnEndedInError(event: Extract<AgentSessionEvent, { type: "agent_end" }>): boolean {
-	const lastAssistant = [...event.messages]
-		.reverse()
-		.find((message): message is AssistantMessage => message.role === "assistant");
+	let lastAssistant: AssistantMessage | undefined;
+	for (let i = event.messages.length - 1; i >= 0; i--) {
+		const message = event.messages[i]!;
+		if (message.role === "assistant") {
+			lastAssistant = message as AssistantMessage;
+			break;
+		}
+	}
 	return lastAssistant?.stopReason === "error";
 }
 

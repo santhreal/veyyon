@@ -123,9 +123,9 @@ function renderThemePreview(width: number, rows = Number.POSITIVE_INFINITY): str
 		`${theme.fg("success", `${theme.status.success} success`)}  ${theme.fg("warning", `${theme.status.warning} warning`)}  ${theme.fg("error", `${theme.status.error} error`)}  ${theme.fg("accent", "accent")}`,
 	];
 	const statusLine = ["", theme.fg("muted", "Status line"), renderMockStatusLine(previewWidth)];
-	const editor = [theme.fg("muted", "Editor"), ...renderMockEditor(previewWidth)];
-	if (rows >= swatch.length + statusLine.length + editor.length) return [...swatch, ...statusLine, ...editor];
-	if (rows >= swatch.length + statusLine.length) return [...swatch, ...statusLine];
+	const editor = [theme.fg("muted", "Editor")].concat(renderMockEditor(previewWidth));
+	if (rows >= swatch.length + statusLine.length + editor.length) return swatch.concat(statusLine, editor);
+	if (rows >= swatch.length + statusLine.length) return swatch.concat(statusLine);
 	return swatch;
 }
 

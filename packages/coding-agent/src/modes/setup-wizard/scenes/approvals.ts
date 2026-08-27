@@ -124,7 +124,7 @@ export class ApprovalsSceneController implements SetupSceneController {
 		// what yields. Two list rows is the floor worth keeping it above: one
 		// item plus the search row is not a list you can compare answers in.
 		const roomForIntro = rows === undefined || rows - statusRows - intro.length - 1 >= 2;
-		const lines = roomForIntro ? [...intro, ""] : [];
+		const lines = roomForIntro ? intro.concat("") : [];
 		this.#listRowStart = lines.length;
 		// Size the list to the rows the wizard actually has, the way every other
 		// list scene does. Without it the list always emitted all four rungs and

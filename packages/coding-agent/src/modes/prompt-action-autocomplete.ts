@@ -208,7 +208,7 @@ export class PromptActionAutocompleteProvider implements AutocompleteProvider {
 			const currentLine = lines[cursorLine] || "";
 			const beforePrefix = currentLine.slice(0, cursorCol - prefix.length);
 			const afterCursor = currentLine.slice(cursorCol);
-			const newLines = [...lines];
+			const newLines = lines.slice();
 			newLines[cursorLine] = beforePrefix + afterCursor;
 			return {
 				lines: newLines,
