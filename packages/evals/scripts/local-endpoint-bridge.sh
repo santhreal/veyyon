@@ -12,7 +12,13 @@
 # daemon owns the bind. Reaching the host endpoint from inside it needs the host firewall
 # to accept the bridge subnets on the endpoint's port.
 #
+# The endpoint is served by the docker host by default. ENDPOINT_HOST names another host
+# instead, which is what a run whose trials execute on one machine and whose model is
+# served by another needs: the container-side address stays 172.17.0.1:80, so nothing the
+# harness hands the container changes.
+#
 # Usage: local-endpoint-bridge.sh up [endpoint-port] | down | status
+#        ENDPOINT_HOST=<host> local-endpoint-bridge.sh up [endpoint-port]
 
 set -euo pipefail
 
@@ -22,28 +28,29 @@ SAFE_PORT=80
 IMAGE=alpine/socat:latest
 
 endpoint_port="${2:-1234}"
+endpoint_host="${ENDPOINT_HOST:-$BRIDGE_ADDRESS}"
 
 case "${1:-status}" in
 up)
 	if [ -n "$(docker ps -q -f "name=^${NAME}$")" ]; then
-		echo "already up: ${BRIDGE_ADDRESS}:${SAFE_PORT} -> ${BRIDGE_ADDRESS}:${endpoint_port}"
+		echo "already up: ${BRIDGE_ADDRESS}:${SAFE_PORT} -> ${endpoint_host}:${endpoint_port}"
 		exit 0
 	fi
 	docker rm -f "${NAME}" >/dev/null 2>&1 || true
 	docker run -d --restart unless-stopped --name "${NAME}" \
 		-p "${BRIDGE_ADDRESS}:${SAFE_PORT}:${SAFE_PORT}" \
 		"${IMAGE}" \
-		"TCP-LISTEN:${SAFE_PORT},fork,reuseaddr" "TCP:${BRIDGE_ADDRESS}:${endpoint_port}" >/dev/null
+		"TCP-LISTEN:${SAFE_PORT},fork,reuseaddr" "TCP:${endpoint_host}:${endpoint_port}" >/dev/null
 	for _ in $(seq 30); do
 		if curl -fsS -m 2 -o /dev/null "http://${BRIDGE_ADDRESS}:${SAFE_PORT}/v1/models"; then
-			echo "up: ${BRIDGE_ADDRESS}:${SAFE_PORT} -> ${BRIDGE_ADDRESS}:${endpoint_port}"
+			echo "up: ${BRIDGE_ADDRESS}:${SAFE_PORT} -> ${endpoint_host}:${endpoint_port}"
 			exit 0
 		fi
 		sleep 1
 	done
 	echo "REFUSED: ${BRIDGE_ADDRESS}:${SAFE_PORT} does not answer /v1/models." >&2
-	echo "Check the model server is listening on 0.0.0.0:${endpoint_port} and that the host" >&2
-	echo "firewall accepts the docker subnets on it:" >&2
+	echo "Check ${endpoint_host} serves the endpoint on 0.0.0.0:${endpoint_port}. When it is" >&2
+	echo "this host, its firewall also has to accept the docker subnets on that port:" >&2
 	echo "  sudo ufw allow from 172.16.0.0/12 to any port ${endpoint_port} proto tcp" >&2
 	docker logs --tail 20 "${NAME}" >&2 || true
 	exit 1
