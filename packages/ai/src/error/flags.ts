@@ -133,9 +133,40 @@ function classifyBareStatus(bare: number | undefined, api?: Api, trace?: string[
 	return classifySignal({ text: "", status: bare, api, http2: undefined, code: undefined }, trace);
 }
 
+/**
+ * The latches that REMOVE {@link Flag.Transient} after the rules ran, rather than setting a flag.
+ *
+ * Both name a failure whose next attempt reaches the same peer with the same input, so the retry
+ * ladder would spend every attempt on a result that cannot change. They live here, called by both
+ * {@link classify} and {@link classifyMessage}, because the same body arrives thrown from a request
+ * and recorded on an assistant message: llama.cpp's tool-call JSON parse failure used to be latched
+ * on the message path only, so the identical 500 was surfaced when it was recorded and retried to
+ * the end of the ladder when it was thrown.
+ */
+function clearDeterministicTransient(
+	kinds: number,
+	latches: { framingViolation: boolean; llamaCppToolCallParse: boolean },
+	trace?: string[],
+): number {
+	let cleared = kinds;
+	if (latches.framingViolation) {
+		trace?.push("framing-violation-clears-transient");
+		cleared &= ~Flag.Transient;
+	}
+	if (latches.llamaCppToolCallParse) {
+		// Deterministic local-model tool-call JSON parse failure: HTTP 500 is misleading because the
+		// same prompt reproduces the same malformed output. Strip Transient so the recovery message
+		// surfaces immediately instead of after the whole ladder.
+		trace?.push("llama-cpp-tool-call-parse-clears-transient");
+		cleared &= ~Flag.Transient;
+	}
+	return cleared;
+}
+
 export function classify(error: unknown, api?: Api, trace?: string[]): number {
 	let kinds = 0;
 	let framingViolation = false;
+	let llamaCppToolCallParse = false;
 	const seen = new Set<object>();
 	let link: unknown = error;
 	while (link !== undefined && link !== null) {
@@ -180,6 +211,8 @@ export function classify(error: unknown, api?: Api, trace?: string[]): number {
 			linkMessage = (link as { message: string }).message;
 		}
 
+		if (linkMessage && LLAMA_CPP_TOOL_CALL_PARSE_PATTERN.test(linkMessage)) llamaCppToolCallParse = true;
+
 		const textId = classifyText(linkMessage, status(link), api, providerCode(link), trace);
 		kinds |= textId & KIND_MASK;
 
@@ -188,10 +221,7 @@ export function classify(error: unknown, api?: Api, trace?: string[]): number {
 
 	// Cleared after the walk, not skipped during it: a wrapper's own prose is classified
 	// before the cause carrying the breach is even reached.
-	if (framingViolation) {
-		trace?.push("framing-violation-clears-transient");
-		kinds &= ~Flag.Transient;
-	}
+	kinds = clearDeterministicTransient(kinds, { framingViolation, llamaCppToolCallParse }, trace);
 	// A FAILURE THAT ARRIVED AS A STATUS AND NOTHING ELSE. The rules above run per link only when the
 	// link has something to read, so `{ status: 429 }` reached none of them and came back as the raw
 	// number, and the quota family answers a status on its own: an opaque 429 is a wall rather than a
@@ -219,9 +249,10 @@ export interface Explanation {
  * The id says what a failure is; it does not say which of the twenty-six rules decided that, so a
  * misclassification was diagnosed by re-running conditions by hand against the provider's sentence.
  * Every rule states a name and the walk collects them, so a failure record can carry the decision
- * instead of only its outcome. Two entries are not rules and say so: `status-401-403` is the
- * status-only fallback in `classifyText`, and `framing-violation-clears-transient` is the latch that
- * removes a flag after the walk rather than setting one.
+ * instead of only its outcome. Three entries are not rules and say so: `status-401-403` is the
+ * status-only fallback in `classifyText`, and `framing-violation-clears-transient` and
+ * `llama-cpp-tool-call-parse-clears-transient` are the latches in
+ * {@link clearDeterministicTransient}, which remove a flag after the walk rather than setting one.
  */
 export function explain(error: unknown, api?: Api): Explanation {
 	const trace: string[] = [];
@@ -304,13 +335,18 @@ export function classifyMessage(
 	const textId = classifyText(message.errorMessage, currentStatus, message.api, undefined, trace);
 
 	let kinds = ((existingId ?? 0) | textId) & KIND_MASK;
-	if (message.errorMessage && LLAMA_CPP_TOOL_CALL_PARSE_PATTERN.test(message.errorMessage)) {
-		// Deterministic local-model tool-call JSON parse failure: HTTP 500 is misleading
-		// because the same prompt reproduces the same malformed output, so the agent-level
-		// auto-retry would loop. Strip Transient so the recovery message surfaces immediately.
-		trace?.push("llama-cpp-tool-call-parse-clears-transient");
-		kinds &= ~Flag.Transient;
-	}
+	// A message record carries no error name, so the framing latch cannot fire here; the parse latch
+	// reads the same wording {@link classify} reads off a thrown link.
+	kinds = clearDeterministicTransient(
+		kinds,
+		{
+			framingViolation: false,
+			llamaCppToolCallParse: Boolean(
+				message.errorMessage && LLAMA_CPP_TOOL_CALL_PARSE_PATTERN.test(message.errorMessage),
+			),
+		},
+		trace,
+	);
 	// The same status-with-nothing-to-read case as in `classify`: a terminal error event can carry a
 	// status and no wording, and the flag has to be on the id there too, or the same failure means one
 	// thing thrown and another emitted.
