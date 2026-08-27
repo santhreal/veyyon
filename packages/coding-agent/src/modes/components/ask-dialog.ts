@@ -199,7 +199,9 @@ function splitPreviewSegments(preview: string): PreviewSegment[] {
 		fenceLanguage = undefined;
 	};
 
-	for (const line of replaceTabs(preview).split("\n")) {
+	const previewLines = replaceTabs(preview).split("\n");
+	for (let li = 0; li < previewLines.length; li++) {
+		const line = previewLines[li]!;
 		const fenceMatch = /^(\s{0,3})(`{3,}|~{3,})(.*)$/.exec(line);
 		if (fenceChar !== undefined) {
 			if (fenceMatch) {
@@ -237,7 +239,9 @@ function renderPreviewContent(preview: string, width: number): string[] {
 	const out: string[] = [];
 	const mdTheme = getMarkdownTheme();
 	const accentStyle = { color: (text: string) => theme.fg("muted", text) };
-	for (const segment of splitPreviewSegments(preview)) {
+	const segments = splitPreviewSegments(preview);
+	for (let si = 0; si < segments.length; si++) {
+		const segment = segments[si]!;
 		if (segment.kind === "code") {
 			const highlighted = highlightCode(segment.text, segment.language);
 			const text = new Text(highlighted.join("\n"), 0, 0);
@@ -328,8 +332,9 @@ function renderRowLabel(
 		if (option?.description?.trim()) {
 			const description = renderInlineMarkdown(option.description.trim(), mdTheme, t => theme.fg("muted", t));
 			const wrapped = wrapTextWithAnsi(description, Math.max(1, width - 6));
-			for (const line of wrapped.slice(0, 2)) {
-				lines.push(`      ${truncateToWidth(line, Math.max(1, width - 6), Ellipsis.Unicode)}`);
+			const wrappedLines = wrapped.slice(0, 2);
+			for (let li = 0; li < wrappedLines.length; li++) {
+				lines.push(`      ${truncateToWidth(wrappedLines[li]!, Math.max(1, width - 6), Ellipsis.Unicode)}`);
 			}
 		}
 	}
