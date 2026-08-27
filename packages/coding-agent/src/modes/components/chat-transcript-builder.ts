@@ -331,7 +331,9 @@ export class ChatTranscriptBuilder {
 			this.container.addChild(component);
 		};
 
-		for (const content of message.content) {
+		const blocks = message.content;
+		for (let ci = 0; ci < blocks.length; ci++) {
+			const content = blocks[ci]!;
 			if (content.type !== "toolCall") continue;
 			this.#resolveWaitingPoll(content.name);
 
