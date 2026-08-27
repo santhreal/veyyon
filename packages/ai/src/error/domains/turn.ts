@@ -14,10 +14,10 @@
  */
 import { isAbortError } from "@veyyon/utils/abortable";
 import { Flag } from "../flag";
+import { PROVIDER_FINISH_ERROR_PATTERN } from "../provider";
 import type { ErrorDomain } from "./types";
 
 const MALFORMED_FUNCTION_CALL_PATTERN = /\bmalformed.?function.?call\b/i;
-const PROVIDER_FINISH_ERROR_PATTERN = /\bProvider (?:returned error finish_reason|finish_reason:\s*error)\b/i;
 const STALE_RESPONSE_ITEM_PATTERNS = [/\bItem with id ['"][^'"]+['"] not found\.?/i, /previous[ _]?response/i] as const;
 const STALE_RESPONSE_ITEM_DETAIL_PATTERN = /not[ _]?found|invalid|expired|stale|zero[ _-]?data[ _-]?retention/i;
 

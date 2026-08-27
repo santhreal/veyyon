@@ -50,6 +50,33 @@ export const PROVIDER_RESPONSE_RETRYABLE: Record<ProviderResponseErrorKind, bool
 };
 
 /**
+ * The message a provider states when a turn ends on a finish reason that is a
+ * failure rather than a completion.
+ *
+ * ONE OWNER FOR THE WORDING AND THE MATCHER. Each provider used to phrase this
+ * itself and {@link PROVIDER_FINISH_ERROR_PATTERN} lived in the turn domain,
+ * matching one of those phrasings. OpenAI Completions worded its message to
+ * suit the regex on purpose and retried; Amazon Bedrock said "Generation failed
+ * with stop reason: error" and both Google paths said "Generation failed with
+ * finish reason: error", neither of which the regex matched, so the identical
+ * failure retried on one provider and walled on three. Minting the string here,
+ * beside the pattern that reads it, means a change to either is a change to
+ * both.
+ */
+export function providerFinishErrorMessage(reason: string | undefined): string {
+	return `Provider finish_reason: ${reason || "unknown"}`;
+}
+
+/**
+ * Matches the message {@link providerFinishErrorMessage} mints, and the three
+ * legacy phrasings that reached persisted sessions before it existed. A resumed
+ * transcript replays the wording of the version that wrote it, so dropping the
+ * legacy alternatives would reclassify history.
+ */
+export const PROVIDER_FINISH_ERROR_PATTERN =
+	/\bProvider (?:returned error finish_reason|finish_reason:\s*error)\b|\bGeneration failed with (?:stop|finish) reason:\s*error\b/i;
+
+/**
  * A non-HTTP provider failure: a truncated stream, an error stop reason, an
  * empty body, a malformed envelope, or a runtime fault. For non-2xx HTTP
  * responses use {@link ProviderHttpError} (or a provider subclass) instead.
