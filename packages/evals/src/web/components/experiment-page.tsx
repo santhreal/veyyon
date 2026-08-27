@@ -11,15 +11,26 @@ import { GoalEditor } from "./goal-editor";
 import { ScatterChart, type ScatterPt } from "./scatter-chart";
 import { SORT_START_DIR, SortHeader, type SortKey, type SortSpec, sortedArms } from "./sort-header";
 import { TaskMatrix } from "./task-matrix";
+import { StaleNotice } from "./ui";
 
 export function ExperimentPage({ id }: { id: string }) {
 	const [adding, setAdding] = useState(false);
 	const [sort, setSort] = useState<SortSpec | null>(null);
 	const [focusKey, setFocusKey] = useState<string | null>(null);
 	const [editing, setEditing] = useState<string | null>(null);
-	const [detail, refresh] = usePolled<ExperimentDetail>("/api/experiments/:id", 3000, { params: { id } });
+	const [detail, refresh, detailError] = usePolled<ExperimentDetail>("/api/experiments/:id", 3000, {
+		params: { id },
+	});
 	const toggleFocus = useCallback((key: string) => setFocusKey(f => (f === key ? null : key)), []);
-	if (!detail) return <div className="p-10 text-zinc-500">loading…</div>;
+	if (!detail) {
+		// A dropped poll failure left this pane reading "loading…" for as long as the manager stayed
+		// down, which is what an experiment that does not exist looks like.
+		return (
+			<div className="p-10 text-zinc-500">
+				{detailError ? <span className="text-amber-500">{detailError}</span> : "loading…"}
+			</div>
+		);
+	}
 	const { arms, tasks, matrix, goal } = detail;
 
 	const focusArm = focusKey ? (arms.find((a: ArmSummary) => a.arm === focusKey) ?? null) : null;
@@ -72,6 +83,7 @@ export function ExperimentPage({ id }: { id: string }) {
 
 	return (
 		<div className="mx-auto max-w-7xl p-6">
+			{detailError && <StaleNotice error={detailError} />}
 			<div className="mb-1 flex flex-wrap items-baseline gap-x-4 gap-y-1">
 				<h2 className="text-lg font-semibold">{id}</h2>
 				<span className="text-xs text-zinc-500">
