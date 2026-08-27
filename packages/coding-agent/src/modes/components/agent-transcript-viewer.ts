@@ -166,7 +166,7 @@ function readFileRangeSync(file: string, offset: number, length: number): Buffer
 function sentinelOffsets(size: number): number[] {
 	if (size <= 0) return [];
 	const length = Math.min(SENTINEL_BYTES, size);
-	return [...new Set([0, Math.max(0, Math.floor((size - length) / 2)), Math.max(0, size - length)])];
+	return Array.from(new Set([0, Math.max(0, Math.floor((size - length) / 2)), Math.max(0, size - length)]));
 }
 
 function sentinelsFromBuffer(buffer: Buffer): LocalTranscriptSentinel[] {

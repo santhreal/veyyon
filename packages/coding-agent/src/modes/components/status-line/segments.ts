@@ -171,8 +171,8 @@ function scratchRoots(): readonly string[] {
 			roots.add("/private/var/tmp");
 		}
 	}
-	return [...roots];
-}
+	return Array.from(roots);
+})();
 
 function classifyProjectDir(pwd: string): { scratch: boolean; relative: string | null } {
 	for (let ri = 0; ri < SCRATCH_ROOTS.length; ri++) {

@@ -108,7 +108,7 @@ export function boundPromptTitle(prefix: string, question: string): string {
 	if (wrapped.length <= MAX_PROMPT_TITLE_ROWS) return wrapped.join("\n");
 	const kept = wrapped.slice(0, MAX_PROMPT_TITLE_ROWS - 1);
 	const last = truncateToWidth(wrapped[MAX_PROMPT_TITLE_ROWS - 1] ?? "", width, Ellipsis.Unicode);
-	return [...kept, last].join("\n");
+	return kept.concat([last]).join("\n");
 }
 
 interface AskDialogCallbacks {
@@ -267,7 +267,7 @@ function renderAnswerSummary(question: ExtensionAskDialogQuestion, state: Questi
 		if (state.selectedOptions.has(label)) selected.push(label);
 	}
 	if (question.multi) {
-		const answers = [...selected];
+		const answers = selected.slice();
 		if (state.customInput !== undefined) answers.push(`Other: “${normalizedInlineInput(state.customInput)}”`);
 		return answers.length > 0 ? answers.join(", ") : theme.fg("warning", "unanswered");
 	}

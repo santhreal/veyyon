@@ -24,7 +24,7 @@ export class TtsrNotificationComponent extends TranscriptNoteComponent {
 
 	constructor(rules: Rule[]) {
 		super({ tone: "warning", headline: "", rows: [] });
-		this.#rules = [...rules];
+		this.#rules = rules.slice();
 		this.#rebuild();
 	}
 

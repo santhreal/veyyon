@@ -209,7 +209,14 @@ export class OAuthSelectorComponent implements Component {
 
 		if (generation !== this.#validationGeneration) return;
 		this.#authState.set(providerId, isValid ? "valid" : "invalid");
-		if (![...this.#authState.values()].includes("checking")) {
+		let anyChecking = false;
+		for (const state of this.#authState.values()) {
+			if (state === "checking") {
+				anyChecking = true;
+				break;
+			}
+		}
+		if (!anyChecking) {
 			this.#stopSpinner();
 		}
 		this.#requestRenderCallback?.();

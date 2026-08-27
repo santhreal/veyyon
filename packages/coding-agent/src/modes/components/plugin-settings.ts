@@ -379,7 +379,7 @@ export class PluginDetailComponent extends MouseRoutedSubmenu {
 					} else {
 						current.delete(featName);
 					}
-					this.plugin = { ...this.plugin, enabledFeatures: [...current] };
+					this.plugin = { ...this.plugin, enabledFeatures: Array.from(current) };
 				} else if (id.startsWith("config:")) {
 					const key = id.slice(7);
 					const schema = this.plugin.manifest.settings?.[key];
@@ -726,7 +726,7 @@ export class PluginSettingsComponent extends MouseRoutedSubmenu {
 				} else {
 					current.delete(feature);
 				}
-				await this.#manager.setEnabledFeatures(plugin.name, [...current]);
+				await this.#manager.setEnabledFeatures(plugin.name, Array.from(current));
 				await this.callbacks.onPluginChanged();
 			},
 			onConfigChange: async (key, value) => {

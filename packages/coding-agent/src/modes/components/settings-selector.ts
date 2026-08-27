@@ -813,7 +813,7 @@ export function replaceModelChainEntry(
 		(candidate, candidateIndex) => candidateIndex !== index && barePickerSelector(candidate, models) === bare,
 	);
 	if (duplicate) return undefined;
-	const next = [...chain];
+	const next = chain.slice();
 	if (index === null) {
 		next.push(trimmed);
 		return next;
@@ -1050,7 +1050,7 @@ class RulesSubmenu extends MouseRoutedSubmenu {
 			// toggle governs whichever copy actually loads.
 			const byName = new Map<string, Rule>();
 			for (const rule of result.items) if (!byName.has(rule.name)) byName.set(rule.name, rule);
-			this.#rules = [...byName.values()].sort(
+			this.#rules = Array.from(byName.values()).sort(
 				(a, b) => ruleSectionRank(a) - ruleSectionRank(b) || a.name.localeCompare(b.name),
 			);
 		} catch (error) {
@@ -1094,12 +1094,12 @@ class RulesSubmenu extends MouseRoutedSubmenu {
 			const enabled = this.#enabledExperiments();
 			if (enabled.has(name)) enabled.delete(name);
 			else enabled.add(name);
-			settings.set("ttsr.experimentalRules", [...enabled].sort());
+			settings.set("ttsr.experimentalRules", Array.from(enabled).sort());
 		} else {
 			const disabled = this.#disabled();
 			if (disabled.has(name)) disabled.delete(name);
 			else disabled.add(name);
-			settings.set("ttsr.disabledRules", [...disabled].sort());
+			settings.set("ttsr.disabledRules", Array.from(disabled).sort());
 		}
 		this.onChange();
 		this.#focused = name;
@@ -1534,7 +1534,7 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 	async #load(): Promise<void> {
 		try {
 			const { agents } = await discoverAgents(this.cwd);
-			this.#agents = [...agents].sort((a, b) => a.name.localeCompare(b.name));
+			this.#agents = agents.slice().sort((a, b) => a.name.localeCompare(b.name));
 		} catch (error) {
 			// Loud: a discovery failure means the list is incomplete, and quietly
 			// showing a short list reads as "these are all the agents there are".
@@ -2623,7 +2623,7 @@ export class ModelChainSubmenu extends MouseRoutedSubmenu {
 	}
 
 	#persistChain(): void {
-		const value = [...this.#chain];
+		const value = this.#chain.slice();
 		this.#persist(value.length === 0 ? undefined : value);
 		this.onChange(value.length === 0 ? undefined : value);
 		this.#showChain();

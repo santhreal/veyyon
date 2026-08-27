@@ -173,7 +173,7 @@ export async function discoverAgents(
 	// Always null: there is no project agents dir any more. The field stays on
 	// `DiscoveryResult` because ~30 call sites in `task/index.ts` plumb it into
 	// `TaskToolDetails` for display; retiring it is a separate mechanical pass.
-	return { agents: [...loadedAgents, ...bundledAgents], projectAgentsDir: null };
+	return { agents: loadedAgents.concat(bundledAgents), projectAgentsDir: null };
 }
 
 /**
