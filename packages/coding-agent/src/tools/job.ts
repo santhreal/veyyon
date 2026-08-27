@@ -667,15 +667,18 @@ export const jobToolRenderer = {
 		// not displaceable waiting frames — only agentless polls collapse their
 		// still-running rows once sealed.
 		if (!options.isPartial && isPollCall && agents.length === 0) {
-			jobs = jobs.filter(job => job.status !== "running");
+			const filteredJobs: JobSnapshot[] = [];
+			for (let ji = 0; ji < jobs.length; ji++) {
+				if (jobs[ji]!.status !== "running") filteredJobs.push(jobs[ji]!);
+			}
+			jobs = filteredJobs;
 			if (jobs.length === 0) {
 				return new Text("", 0, 0);
 			}
 		}
 
 		const counts = { completed: 0, failed: 0, cancelled: 0, running: 0 };
-		for (const job of jobs) counts[job.status]++;
-
+		for (let ji = 0; ji < jobs.length; ji++) counts[jobs[ji]!.status]++;
 		// The title already carries the running count, so meta lists only the
 		// settled categories — "waiting on 19 of 19 · 19 running" read awkward.
 		const meta: string[] = [];
@@ -715,7 +718,7 @@ export const jobToolRenderer = {
 			cancelled: 2,
 			completed: 3,
 		};
-		const sortedJobs = [...jobs].sort((a, b) => {
+		const sortedJobs = jobs.slice().sort((a, b) => {
 			const diff = statusOrder[a.status] - statusOrder[b.status];
 			if (diff !== 0) return diff;
 			return b.durationMs - a.durationMs;
@@ -755,9 +758,15 @@ export const jobToolRenderer = {
 							const idPart = job.label.trim() === job.id ? "" : ` ${uiTheme.fg("muted", job.id)}`;
 							const rawLabelLines = (job.label || "(no label)").split(/\r?\n/);
 							const maxLabelLines = expanded ? LABEL_LINES_EXPANDED : LABEL_LINES_COLLAPSED;
-							const visibleLabelLines = rawLabelLines
-								.slice(0, maxLabelLines)
-								.map(l => truncateToWidth(replaceTabs(l), LABEL_MAX_WIDTH, Ellipsis.Unicode));
+							const labelLimit = Math.min(rawLabelLines.length, maxLabelLines);
+							const visibleLabelLines: string[] = new Array(labelLimit);
+							for (let li = 0; li < labelLimit; li++) {
+								visibleLabelLines[li] = truncateToWidth(
+									replaceTabs(rawLabelLines[li]!),
+									LABEL_MAX_WIDTH,
+									Ellipsis.Unicode,
+								);
+							}
 							if (rawLabelLines.length > maxLabelLines && visibleLabelLines.length > 0) {
 								const last = visibleLabelLines[visibleLabelLines.length - 1]!;
 								visibleLabelLines[visibleLabelLines.length - 1] = `${last} …`;
@@ -786,8 +795,8 @@ export const jobToolRenderer = {
 								const maxLines = expanded ? PREVIEW_LINES_EXPANDED : PREVIEW_LINES_COLLAPSED;
 								const previewLines = getPreviewLines(preview, maxLines, PREVIEW_LINE_WIDTH, Ellipsis.Unicode);
 								const tone = job.errorText ? "error" : "dim";
-								for (const pl of previewLines) {
-									lines.push(`  ${uiTheme.fg(tone, pl)}`);
+								for (let pli = 0; pli < previewLines.length; pli++) {
+									lines.push(`  ${uiTheme.fg(tone, previewLines[pli]!)}`);
 								}
 							}
 							return lines;
@@ -821,7 +830,14 @@ export const jobToolRenderer = {
 								uiTheme,
 							);
 
-				const all = [header, ...itemLines, ...agentLines].map(l => truncateToWidth(l, width, Ellipsis.Unicode));
+				const all: string[] = new Array(1 + itemLines.length + agentLines.length);
+				all[0] = truncateToWidth(header, width, Ellipsis.Unicode);
+				for (let li = 0; li < itemLines.length; li++) {
+					all[1 + li] = truncateToWidth(itemLines[li]!, width, Ellipsis.Unicode);
+				}
+				for (let li = 0; li < agentLines.length; li++) {
+					all[1 + itemLines.length + li] = truncateToWidth(agentLines[li]!, width, Ellipsis.Unicode);
+				}
 				cached = { key, lines: all };
 				return all;
 			},
