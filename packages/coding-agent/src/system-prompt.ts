@@ -360,7 +360,7 @@ export async function loadProjectContextFilesWithWarnings(
 		cwd: resolvedCwd,
 		agentDir: resolvedAgentDir,
 	});
-	const warnings = [...result.warnings];
+	const warnings = result.warnings.slice();
 
 	// Materialize ContextFile items, expanding any `@path/to/file` includes
 	// in their content. The expansion uses the file's own directory as the
@@ -947,7 +947,7 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 	// Priority: explicit list > tools map > conservative SDK fallback.
 	let toolNames = providedToolNames;
 	if (!toolNames) {
-		toolNames = tools ? Array.from(tools.keys()) : [...DEFAULT_SYSTEM_PROMPT_TOOL_NAMES];
+		toolNames = tools ? Array.from(tools.keys()) : DEFAULT_SYSTEM_PROMPT_TOOL_NAMES.slice();
 	}
 
 	// Build tool descriptions for system prompt rendering.
@@ -1092,7 +1092,7 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		? TEMPLATE_SECTIONS.filter(section => Object.hasOwn(evalSectionOverrides, kebabToCamel(section.id))).map(
 				section => section.id,
 			)
-		: [...new Set(sectionOverrideFiles.filter(file => file.mode === "replace").map(file => file.id))];
+		: Array.from(new Set(sectionOverrideFiles.filter(file => file.mode === "replace").map(file => file.id)));
 	const overriddenStatementSections = new Set(overriddenStatementIds.map(id => id.slice(0, id.indexOf("/"))));
 	const overlappingSections = replacedStatementSections.filter(section => overriddenStatementSections.has(section));
 	if (overlappingSections.length > 0) {

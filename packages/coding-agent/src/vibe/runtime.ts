@@ -442,7 +442,7 @@ export class VibeSessionRegistry {
 		// session with a turn actually in flight.
 		const watched = args.sessions?.length
 			? args.sessions.map(id => this.#record(owner, id))
-			: [...this.#records.values()].filter(record => record.ownerId === owner && record.turn !== undefined);
+			: Array.from(this.#records.values()).filter(record => record.ownerId === owner && record.turn !== undefined);
 
 		// Snapshot each watched turn's job at entry: #finishTurn installs a
 		// queued follow-up turn inside the settling job's callback (before that
@@ -484,7 +484,7 @@ export class VibeSessionRegistry {
 			manager.watchJobs(watchedJobIds);
 			const { promise: timeoutPromise, resolve: timeoutResolve } = Promise.withResolvers<void>();
 			const timeoutHandle = setTimeout(() => timeoutResolve(), timeoutMs);
-			const racePromises: Promise<unknown>[] = [...runningJobs.map(job => job.promise), timeoutPromise];
+			const racePromises: Promise<unknown>[] = runningJobs.map(job => job.promise).concat([timeoutPromise]);
 			let abortCleanup: (() => void) | undefined;
 			if (args.signal) {
 				const { promise: abortPromise, resolve: abortResolve } = Promise.withResolvers<void>();

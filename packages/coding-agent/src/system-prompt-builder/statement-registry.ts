@@ -1010,7 +1010,7 @@ export const STATEMENT_SECTIONS: readonly string[] = TEMPLATE_SECTION_IDS;
 				"the zero-prose outer template has no fallback content.",
 		);
 	}
-	const stray = [...covered].filter(section => !STATEMENT_SECTIONS.includes(section));
+	const stray = Array.from(covered).filter(section => !STATEMENT_SECTIONS.includes(section));
 	if (stray.length > 0) {
 		throw new Error(
 			`statements name sections the document does not have: ${stray.join(", ")}. ` +

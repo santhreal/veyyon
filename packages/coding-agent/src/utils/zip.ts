@@ -57,7 +57,7 @@ export function resolveArchiveMemberPath(baseDir: string, ref: string): string {
 	const absolute = decoded.startsWith("/");
 	const baseSegments = absolute || !baseDir ? [] : baseDir.split("/");
 	const out: string[] = [];
-	for (const segment of [...baseSegments, ...decoded.split("/")]) {
+	for (const segment of baseSegments.concat(decoded.split("/"))) {
 		if (segment === "" || segment === ".") continue;
 		if (segment === "..") {
 			out.pop();
@@ -295,7 +295,7 @@ function upsertArchiveEntry(map: Map<string, ArchiveIndexEntry>, entry: ArchiveI
 }
 
 function ensureParentDirectories(map: Map<string, ArchiveIndexEntry>): void {
-	for (const entry of [...map.values()]) {
+	for (const entry of Array.from(map.values())) {
 		const parts = entry.path.split("/");
 		const stop = parts.length - 1;
 		for (let index = 1; index <= stop; index++) {
