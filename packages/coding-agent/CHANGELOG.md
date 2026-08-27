@@ -246,6 +246,9 @@
 - `settings-list.ts` replaces `[...render(width)]` spread with `.slice()` in submenu render to avoid iterator allocation.
 - `debug.ts` replaces `.filter().join()` and `.map()` closures with for loops in `formatDisassembly`, `formatSessions`, and render snapshot/output paths.
 - `job.ts` replaces `.filter()`, `for-of`, `[...jobs].sort()`, `.slice().map()`, and spread + `.map()` closures with index loops and `.slice()` in render path.
+- `read.ts` replaces `.split().map()` closure with split + for loop in error render path.
+- `gh-renderer.ts` replaces `.map()`, `.forEach()`, `for-of`, and `.split().filter()` closures with index loops in `formatRunLine`, `renderRunBlock`, `buildWatchSections`, `renderFailedLogs`, and `extractText`.
+- `search-tool-bm25.ts` replaces `.split().map()` and `.filter().map().filter().join()` with split + for loops in `renderFallbackResult` and `renderResult` fallback.
 ### Added
 
 - `/advisor` reports advisor status, opens the `WATCHDOG.yml` roster editor and applies a save to the running session, starts or stops the advisor for the session, and copies the advisor's own transcript; the subsystem shipped complete but no command, key or menu row reached it.
