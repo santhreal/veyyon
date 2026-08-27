@@ -76,9 +76,9 @@ export class HoverFade<K = number> {
 	set(key: K | null): boolean {
 		if (key === this.#key) return false;
 		this.#key = key;
-		// Iterating a copy: a settled fade-out deletes its own entry from `onDone`,
-		// which `#retarget` reaches synchronously when motion is off.
-		for (const [row, fade] of Array.from(this.#fades)) {
+		// Deleting from a Map during for-of is safe: `#retarget` only deletes
+		// (via `onDone`), never adds, so the iterator remains valid.
+		for (const [row, fade] of this.#fades) {
 			if (row === key) continue;
 			this.#retarget(row, fade, 0);
 		}
