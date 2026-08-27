@@ -1701,6 +1701,12 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 		return { ...(renderArgs as Record<string, unknown>), previewDiff: first.diff };
 	}
 
+	/** Whether the args object has at least one own enumerable key, without allocating a keys array. */
+	#hasArgs(args: Record<string, unknown>): boolean {
+		for (const _ in args) return true;
+		return false;
+	}
+
 	/**
 	 * Build render context for tools that need extra state (bash, python, edit)
 	 */
@@ -1809,7 +1815,7 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 		lines.push(renderStatusLine({ icon, spinnerFrame: this.#spinnerFrame, title: this.#toolLabel }, theme));
 
 		const argsObject = this.#args && typeof this.#args === "object" ? (this.#args as Record<string, unknown>) : null;
-		if (!this.#expanded && argsObject && Object.keys(argsObject).length > 0) {
+		if (!this.#expanded && argsObject && this.#hasArgs(argsObject)) {
 			// The preview is one row under the title inside the same card, so it is
 			// indented rather than hung off a connector: a flat row is not a
 			// hierarchy and the rail is already the block's left edge.
