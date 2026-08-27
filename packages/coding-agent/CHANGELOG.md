@@ -306,6 +306,7 @@
 - `#locationRightZone` in `interactive-mode.ts` replaces `.filter()` on 2-element zone array with direct null checks, eliminating closure and intermediate array allocation per status-line frame.
 - `cacheReadSegment` and `cacheWriteSegment` in `status-line/segments.ts` replace `[icon, num].filter(Boolean).join(" ")` with conditional concatenation, eliminating array and closure allocation per status-line frame.
 - `highlightCode` in `markdown-theme.ts` replaces `.map()` closure on code lines with pre-allocated array and for loop, eliminating closure allocation per code block render.
+- `cacheHitSegment` in `status-line/segments.ts` replaces `parts.join(" ")` on 2-element array with conditional concatenation, eliminating array and join allocation per status-line frame.
 - `renderQuietLine` and `renderQuietLines` in `status-line/component.ts` replace `.map(part => part.content)` with pre-allocated arrays and index-based for loops at 4 call sites, eliminating closure allocation per frame.
 - `#expansionProgress` click-trade path in `status-line/component.ts` replaces `.reduce()`, `.findIndex()`, `.map().filter()`, and `.reduce()` closures with index-based for loops, eliminating 4 closure allocations per expansion frame.
 - `hook-selector.ts` replaces `.split().map().filter().map()` chain with a single-pass for loop in `#shortcuts`, and uses `.slice()` instead of spread for `SELECT_LIST_SHORTCUTS` copy.

@@ -1082,12 +1082,11 @@ const cacheHitSegment: StatusLineSegment = {
 		// cacheWrite 0, so this still yields hit/(hit+miss).
 		const total = cacheRead + cacheWrite + input;
 
-		const rate = (cacheRead / total) * 100;
-		const rateStr = rate.toFixed(2);
-
-		const parts: string[] = [theme.icon.cache];
-		parts.push(theme.fg("statusLineSpend", `${rateStr}%`));
-		return { content: parts.join(" "), visible: true };
+		const rateStr = ((cacheRead / total) * 100).toFixed(2);
+		const icon = theme.icon.cache;
+		const rateColored = theme.fg("statusLineSpend", `${rateStr}%`);
+		const content = icon ? `${icon} ${rateColored}` : rateColored;
+		return { content, visible: true };
 	},
 };
 
