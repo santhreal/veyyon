@@ -256,9 +256,13 @@ export class Input implements Component, Focusable {
 	}
 
 	#insertCharacter(text: string): void {
-		const isWordChunk = Array.from(segmenter.segment(text)).every(
-			seg => getWordNavKind(seg.segment) !== "whitespace",
-		);
+		let isWordChunk = true;
+		for (const seg of segmenter.segment(text)) {
+			if (getWordNavKind(seg.segment) === "whitespace") {
+				isWordChunk = false;
+				break;
+			}
+		}
 		// Undo coalescing: consecutive word typing coalesces into one undo unit.
 		if (!isWordChunk || this.#lastAction !== "type-word") {
 			this.#pushUndo();

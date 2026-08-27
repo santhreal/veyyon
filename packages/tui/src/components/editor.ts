@@ -1826,9 +1826,13 @@ export class Editor implements Component, Focusable, MouseRoutable {
 		this.#exitHistoryForEditing();
 		// Undo coalescing: consecutive word typing collapses into one undo unit
 		// (mirrors Input); any other action resets the run via #lastAction.
-		const isWordChunk = Array.from(segmenter.segment(char)).every(
-			seg => getWordNavKind(seg.segment) !== "whitespace",
-		);
+		let isWordChunk = true;
+		for (const seg of segmenter.segment(char)) {
+			if (getWordNavKind(seg.segment) === "whitespace") {
+				isWordChunk = false;
+				break;
+			}
+		}
 		if (!isWordChunk || this.#lastAction !== "type-word") {
 			this.#recordUndoState();
 		}
