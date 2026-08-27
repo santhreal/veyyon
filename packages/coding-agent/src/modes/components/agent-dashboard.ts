@@ -1116,11 +1116,21 @@ export class AgentDashboard extends Container {
 	#scopedComms(): IrcLogEntry[] {
 		const scope = this.#effectiveScope();
 		if (!scope) return this.#irc.log();
-		return this.#irc.log().filter(entry => AgentRegistry.sameScope(entry.scope, scope));
+		const log = this.#irc.log();
+		const result: IrcLogEntry[] = [];
+		for (let si = 0; si < log.length; si++) {
+			if (AgentRegistry.sameScope(log[si]!.scope, scope)) result.push(log[si]!);
+		}
+		return result;
 	}
 
 	#observableFor(id: string): ObservableSession | undefined {
-		return this.#observers?.getSessions().find(session => session.id === id);
+		const sessions = this.#observers?.getSessions();
+		if (!sessions) return undefined;
+		for (let si = 0; si < sessions.length; si++) {
+			if (sessions[si]!.id === id) return sessions[si]!;
+		}
+		return undefined;
 	}
 
 	/**
@@ -1131,7 +1141,10 @@ export class AgentDashboard extends Container {
 	 * lookup shifts nothing but adds a name that was not there before.
 	 */
 	#callSignFor(id: string): string {
-		return this.#liveAgents.find(agent => agent.id === id)?.callSign ?? id;
+		for (let ai = 0; ai < this.#liveAgents.length; ai++) {
+			if (this.#liveAgents[ai]!.id === id) return this.#liveAgents[ai]!.callSign;
+		}
+		return id;
 	}
 
 	/** Mailbox depth, spawn description and model badge for one row. */
@@ -1165,7 +1178,12 @@ export class AgentDashboard extends Container {
 	#filteredComms(): IrcLogEntry[] {
 		const filter = this.#commsFilter;
 		if (!filter) return this.#comms;
-		return this.#comms.filter(entry => entry.message.from === filter || entry.message.to === filter);
+		const result: IrcLogEntry[] = [];
+		for (let fi = 0; fi < this.#comms.length; fi++) {
+			const entry = this.#comms[fi]!;
+			if (entry.message.from === filter || entry.message.to === filter) result.push(entry);
+		}
+		return result;
 	}
 
 	/**
