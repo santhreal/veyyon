@@ -58,9 +58,9 @@ export function cloneExperimentState(state: ExperimentState): ExperimentState {
 		...state,
 		results: state.results.map(cloneResult),
 		secondaryMetrics: state.secondaryMetrics.map(metric => ({ ...metric })),
-		scopePaths: [...state.scopePaths],
-		offLimits: [...state.offLimits],
-		constraints: [...state.constraints],
+		scopePaths: state.scopePaths.slice(),
+		offLimits: state.offLimits.slice(),
+		constraints: state.constraints.slice(),
 	};
 }
 
@@ -69,8 +69,8 @@ function cloneResult(result: ExperimentResult): ExperimentResult {
 		...result,
 		metrics: { ...result.metrics },
 		asi: result.asi ? structuredClone(result.asi) : undefined,
-		modifiedPaths: [...result.modifiedPaths],
-		scopeDeviations: [...result.scopeDeviations],
+		modifiedPaths: result.modifiedPaths.slice(),
+		scopeDeviations: result.scopeDeviations.slice(),
 	};
 }
 
@@ -133,7 +133,7 @@ export function findBaselineSecondary(
 
 export function sortedMedian(values: number[]): number {
 	if (values.length === 0) return 0;
-	const sorted = [...values].sort((left, right) => left - right);
+	const sorted = values.slice().sort((left, right) => left - right);
 	const midpoint = Math.floor(sorted.length / 2);
 	if (sorted.length % 2 === 0) {
 		return (sorted[midpoint - 1] + sorted[midpoint]) / 2;
@@ -176,9 +176,9 @@ export function buildExperimentState(session: SessionRow, loggedRuns: RunRow[]):
 	state.metricName = session.primaryMetric;
 	state.metricUnit = session.metricUnit;
 	state.bestDirection = session.direction;
-	state.scopePaths = [...session.scopePaths];
-	state.offLimits = [...session.offLimits];
-	state.constraints = [...session.constraints];
+	state.scopePaths = session.scopePaths.slice();
+	state.offLimits = session.offLimits.slice();
+	state.constraints = session.constraints.slice();
 	state.notes = session.notes;
 	state.branch = session.branch;
 	state.baselineCommit = session.baselineCommit;

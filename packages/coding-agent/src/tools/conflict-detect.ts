@@ -220,7 +220,7 @@ export class ConflictHistory {
 
 	/** Snapshot every registered entry in insertion (id) order. */
 	entries(): ConflictEntry[] {
-		return [...this.#entries.values()];
+		return Array.from(this.#entries.values());
 	}
 
 	/** Drop a single entry by id. Used after a successful resolve. */
@@ -371,7 +371,7 @@ export function spliceConflict(originalText: string, entry: ConflictEntry, repla
 			i < replacementLines.length - 1 || hasFollowingLine ? `${l}\r` : l,
 		);
 	}
-	const next = [...lines.slice(0, match.startIdx), ...replacementLines, ...lines.slice(match.endIdx + 1)];
+	const next = lines.slice(0, match.startIdx).concat(replacementLines, lines.slice(match.endIdx + 1));
 	return { text: next.join("\n"), trimmedLeading: echo.leading, trimmedTrailing: echo.trailing };
 }
 
@@ -609,10 +609,10 @@ export function renderConflictRegion(
 	scope: ConflictScope | undefined,
 ): { lines: string[]; startLine: number } {
 	if (scope === "ours") {
-		return { lines: [...entry.oursLines], startLine: entry.startLine + 1 };
+		return { lines: entry.oursLines.slice(), startLine: entry.startLine + 1 };
 	}
 	if (scope === "theirs") {
-		return { lines: [...entry.theirsLines], startLine: entry.separatorLine + 1 };
+		return { lines: entry.theirsLines.slice(), startLine: entry.separatorLine + 1 };
 	}
 	if (scope === "base") {
 		if (entry.baseLines === undefined || entry.baseLine === undefined) {
@@ -620,7 +620,7 @@ export function renderConflictRegion(
 				`Conflict #${entry.id} has no base section (2-way merge). 'conflict://${entry.id}/base' is only valid for diff3 conflicts.`,
 			);
 		}
-		return { lines: [...entry.baseLines], startLine: entry.baseLine + 1 };
+		return { lines: entry.baseLines.slice(), startLine: entry.baseLine + 1 };
 	}
 	const out: string[] = [];
 	out.push(markerLine("<<<<<<<", entry.oursLabel));

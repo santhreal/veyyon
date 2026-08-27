@@ -323,7 +323,7 @@ export function parseAgentFields(frontmatter: Record<string, unknown>): ParsedAg
 
 	// Subagents with explicit tool lists always need yield
 	if (tools && !tools.includes(TOOL.yield)) {
-		tools = [...tools, TOOL.yield];
+		tools = tools.concat([TOOL.yield]);
 	}
 
 	// Parse spawns field (array, "*", or CSV)
@@ -714,8 +714,8 @@ export async function discoverExtensionModulePaths(dir: string): Promise<string[
 		// Native glob does not follow linked extension directories.
 		discoverLinkedExtensionModuleFiles(dir),
 	]);
-	const indexFiles = [...globIndexFiles, ...linkedFiles.indexFiles];
-	const packageJsonFiles = [...globPackageJsonFiles, ...linkedFiles.packageJsonFiles];
+	const indexFiles = globIndexFiles.concat(linkedFiles.indexFiles);
+	const packageJsonFiles = globPackageJsonFiles.concat(linkedFiles.packageJsonFiles);
 
 	// The native glob walker runs with follow_links=false, so a symlinked extension
 	// directory is yielded as a Symlink entry but never descended into: its inner
@@ -780,7 +780,7 @@ export async function discoverExtensionModulePaths(dir: string): Promise<string[
 	for (const preferredPath of preferredIndexBySubdir.values()) {
 		discovered.add(path.join(dir, preferredPath));
 	}
-	return [...discovered];
+	return Array.from(discovered);
 }
 
 /**
@@ -1218,7 +1218,7 @@ export async function listClaudePluginRoots(
 export function clearClaudePluginRootsCache(): void {
 	pluginRootsCache.clear();
 	for (const invalidate of pluginCacheInvalidators) invalidate();
-	preloadedPluginRoots = [...injectedPluginDirRoots];
+	preloadedPluginRoots = injectedPluginDirRoots.slice();
 	// Re-warm preloaded roots asynchronously so sync LSP config reads stay valid
 	if (lastPreloadHome) {
 		void preloadPluginRoots(lastPreloadHome, getProjectDir());

@@ -128,7 +128,7 @@ async function captureUntrackedPatch(repoRoot: string, untracked: readonly strin
 	const nullPath = getGitNoIndexNullPath();
 	// Bound concurrent git spawns; large untracked sets would otherwise fork one
 	// process per file at once.
-	const { results: untrackedDiffs } = await mapWithConcurrencyLimit([...untracked], 8, entry =>
+	const { results: untrackedDiffs } = await mapWithConcurrencyLimit(untracked.slice(), 8, entry =>
 		git.diff(repoRoot, {
 			allowFailure: true,
 			binary: true,
@@ -248,7 +248,7 @@ function parseDiffGitLinePaths(line: string): string[] {
 		.slice(0, 2)
 		.map(unquoteGitDiffPath)
 		.filter(file => file && file !== "/dev/null");
-	return [...new Set(paths)];
+	return Array.from(new Set(paths));
 }
 
 function patchTouchedFiles(patch: string): string[] {
@@ -256,7 +256,7 @@ function patchTouchedFiles(patch: string): string[] {
 	for (const line of patch.split("\n")) {
 		for (const file of parseDiffGitLinePaths(line)) files.add(file);
 	}
-	return [...files];
+	return Array.from(files);
 }
 
 export interface DeltaPatchResult {
@@ -324,7 +324,7 @@ export async function applyNestedPatches(
 		}
 
 		const combinedDiff = repoPatches.map(p => p.patch).join("\n");
-		const touchedFiles = [...new Set(repoPatches.flatMap(p => patchTouchedFiles(p.patch)))];
+		const touchedFiles = Array.from(new Set(repoPatches.flatMap(p => patchTouchedFiles(p.patch))));
 
 		// Preserve any pre-existing dirty state (tracked + untracked) so we
 		// commit only the agent delta, not the user's in-flight work.
@@ -642,7 +642,7 @@ async function applyDeltaOverBaselineWip(
 
 	const wipFiles = new Set(wipPatches.flatMap(patchTouchedFiles));
 	const deltaFiles = new Set(patchTouchedFiles(patchText));
-	const wipOnly = [...wipFiles].filter(f => !deltaFiles.has(f));
+	const wipOnly = Array.from(wipFiles).filter(f => !deltaFiles.has(f));
 	if (wipOnly.length === 0) return;
 
 	// Any wipOnly file baselined as untracked cannot be in HEAD.
@@ -931,7 +931,7 @@ export async function mergeTaskBranches(
 					failed.push(branchName);
 					conflictResult = {
 						merged,
-						failed: [...failed, ...branches.slice(merged.length + failed.length).map(b => b.branchName)],
+						failed: failed.concat(branches.slice(merged.length + failed.length).map(b => b.branchName)),
 						conflict: `${branchName}: ${stderr}`,
 					};
 					break;
