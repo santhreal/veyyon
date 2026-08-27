@@ -192,6 +192,9 @@ export class PierExecutionBackend implements ExecutionBackend {
 					...(pierBinding.extra ?? {}),
 				};
 
+		// Pier catches its own agent timeout and still verifies, so bounding the agent phase
+		// yields a graded trial where bounding the trial deadline yields a killed process.
+		const agentTimeout = context.options?.agentTimeoutSec;
 		const configPath = writePierJobConfig({
 			jobName,
 			jobsDir,
@@ -200,6 +203,7 @@ export class PierExecutionBackend implements ExecutionBackend {
 			modelName,
 			kwargs,
 			configDir: configsDir,
+			agentTimeoutSec: typeof agentTimeout === "number" ? agentTimeout : null,
 		});
 
 		const trialTimeoutSec = trialTimeoutFromOptions(taskDescriptor.timeBudgetSec, context.options);

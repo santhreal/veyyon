@@ -85,6 +85,7 @@ export const VALUE_FLAGS: Record<string, true> = {
 	"--dataset-dir": true,
 	"--run-id": true,
 	"--trial-timeout": true,
+	"--agent-timeout": true,
 	"--timeout-multiplier": true,
 };
 
@@ -110,6 +111,12 @@ export interface EvalsCliArgs {
 	readonly datasetDir: string | null;
 	readonly runId: string | null;
 	readonly trialTimeoutSec: number | null;
+	/**
+	 * Seconds the agent phase may run, when a run must fit a window the task's own
+	 * budget does not. A backend that grades a timed-out agent still scores the trial,
+	 * which shortening the trial deadline does not.
+	 */
+	readonly agentTimeoutSec: number | null;
 	readonly timeoutMultiplier: number | null;
 	readonly dryRun: boolean;
 	readonly list: boolean;
@@ -162,6 +169,7 @@ export function parseEvalsArgs(
 	let datasetDir: string | null = null;
 	let runId: string | null = null;
 	let trialTimeoutSec: number | null = null;
+	let agentTimeoutSec: number | null = null;
 	let timeoutMultiplier: number | null = null;
 	let dryRun = false;
 	let list = false;
@@ -279,6 +287,14 @@ export function parseEvalsArgs(
 				trialTimeoutSec = parsed;
 				break;
 			}
+			case "--agent-timeout": {
+				const parsed = Number(value);
+				if (!Number.isInteger(parsed) || parsed < 1) {
+					throw new CliUsageError(`--agent-timeout must be an integer >= 1 seconds, got "${value}".`);
+				}
+				agentTimeoutSec = parsed;
+				break;
+			}
 			case "--timeout-multiplier": {
 				const parsed = Number(value);
 				if (!Number.isFinite(parsed) || parsed <= 0) {
@@ -312,6 +328,7 @@ export function parseEvalsArgs(
 		datasetDir,
 		runId,
 		trialTimeoutSec,
+		agentTimeoutSec,
 		timeoutMultiplier,
 		dryRun,
 		list,
@@ -368,6 +385,8 @@ Selection and execution:
   --run-id <name>           name the run instead of generating a timestamped id; with
                             several suites each run is named <name>-<suite>
   --trial-timeout <sec>     replace each task's own time budget (integer >= 1)
+  --agent-timeout <sec>     bound the agent phase alone (integer >= 1), on a backend that
+                            grades a timed-out agent instead of discarding the trial
   --timeout-multiplier <x>  scale whatever budget applies (number > 0). A scaled budget stops
                             at 3600s; a budget a task states for itself is honored to 86400s
   --dry-run                 print the plan and every preflight verdict, run nothing
@@ -649,6 +668,8 @@ export function suiteContext(args: EvalsCliArgs, suite: EvalSuite): SuiteContext
 			suite: suite.name,
 			// The deadline owner reads these two names off the options bag on every backend.
 			...(args.trialTimeoutSec === null ? {} : { trialTimeoutSec: args.trialTimeoutSec }),
+			// The backend that owns the agent phase reads this one.
+			...(args.agentTimeoutSec === null ? {} : { agentTimeoutSec: args.agentTimeoutSec }),
 			...(args.timeoutMultiplier === null ? {} : { timeoutMultiplier: args.timeoutMultiplier }),
 			// The retry owner reads this one.
 			...(args.attempts === null ? {} : { trialAttempts: args.attempts }),
@@ -831,7 +852,16 @@ async function runOneSuite(args: EvalsCliArgs, suite: EvalSuite, running: readon
 			jobs: args.jobs,
 			signal: controller.signal,
 			resume: args.resume,
-			options: { datasetDir: args.datasetDir ?? undefined },
+			// The whole bag every other call site hands a backend, plus the dataset directory
+			// `executeRun` validates. This passed `{ datasetDir }` alone, so on a real run a
+			// backend saw none of the options this file parsed: `--vey-binary` fell back to the
+			// checkout's own build, `--trial-timeout`, `--agent-timeout`,
+			// `--timeout-multiplier` and `--attempts` changed nothing, and a run comparing two
+			// builds measured one build twice. Only the dry-run path above was correct.
+			options: {
+				...context.options,
+				...(args.datasetDir === null ? {} : { datasetDir: args.datasetDir }),
+			},
 			onSkip: (skipped, totalCount) => {
 				process.stdout.write(
 					`resumed run ${plan.runId}: skipping ${skipped} already-settled trial(s) out of ${totalCount}\n`,

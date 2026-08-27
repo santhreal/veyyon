@@ -16,6 +16,16 @@ export interface PierJobConfigOptions {
 	readonly modelName: string;
 	readonly kwargs: Readonly<Record<string, unknown>>;
 	readonly configDir: string;
+	/**
+	 * Seconds the agent phase may run, overriding what the task granted.
+	 *
+	 * This is not the trial deadline. Pier catches its own agent timeout, collects the
+	 * artifacts and still runs the verifier, so a trial bounded here is graded on what
+	 * the agent produced. Bounding the trial from outside instead kills pier mid-phase
+	 * and scores nothing, which is why a run that must fit a fixed window states the
+	 * agent budget rather than shortening the deadline.
+	 */
+	readonly agentTimeoutSec?: number | null;
 }
 
 export interface PierTrialRunOptions {
@@ -92,6 +102,9 @@ export function writePierJobConfig(options: PierJobConfigOptions): string {
 		"agents:",
 		`  - import_path: ${options.agentImportPath}`,
 		`    model_name: ${JSON.stringify(options.modelName)}`,
+		...(typeof options.agentTimeoutSec === "number" && options.agentTimeoutSec > 0
+			? [`    override_timeout_sec: ${options.agentTimeoutSec}`]
+			: []),
 		"    kwargs:",
 		...Object.entries(options.kwargs).map(([k, v]) => `      ${k}: ${JSON.stringify(v)}`),
 		"",
