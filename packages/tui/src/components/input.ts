@@ -199,9 +199,9 @@ export class Input implements Component, Focusable {
 			this.#lastAction = null;
 			if (this.#cursor > 0) {
 				const beforeCursor = this.#value.slice(0, this.#cursor);
-				const graphemes = Array.from(segmenter.segment(beforeCursor));
-				const lastGrapheme = graphemes[graphemes.length - 1];
-				this.#cursor -= lastGrapheme ? lastGrapheme.segment.length : 1;
+				let lastGrapheme = "";
+				for (const seg of segmenter.segment(beforeCursor)) lastGrapheme = seg.segment;
+				this.#cursor -= lastGrapheme.length || 1;
 			}
 			return;
 		}
@@ -210,9 +210,12 @@ export class Input implements Component, Focusable {
 			this.#lastAction = null;
 			if (this.#cursor < this.#value.length) {
 				const afterCursor = this.#value.slice(this.#cursor);
-				const graphemes = Array.from(segmenter.segment(afterCursor));
-				const firstGrapheme = graphemes[0];
-				this.#cursor += firstGrapheme ? firstGrapheme.segment.length : 1;
+				let firstGrapheme = "";
+				for (const seg of segmenter.segment(afterCursor)) {
+					firstGrapheme = seg.segment;
+					break;
+				}
+				this.#cursor += firstGrapheme.length || 1;
 			}
 			return;
 		}
@@ -275,9 +278,9 @@ export class Input implements Component, Focusable {
 		this.#pushUndo();
 
 		const beforeCursor = this.#value.slice(0, this.#cursor);
-		const graphemes = Array.from(segmenter.segment(beforeCursor));
-		const lastGrapheme = graphemes[graphemes.length - 1];
-		const graphemeLength = lastGrapheme ? lastGrapheme.segment.length : 1;
+		let lastGrapheme = "";
+		for (const seg of segmenter.segment(beforeCursor)) lastGrapheme = seg.segment;
+		const graphemeLength = lastGrapheme.length || 1;
 
 		this.#value = this.#value.slice(0, this.#cursor - graphemeLength) + this.#value.slice(this.#cursor);
 		this.#cursor -= graphemeLength;
@@ -292,9 +295,12 @@ export class Input implements Component, Focusable {
 		this.#pushUndo();
 
 		const afterCursor = this.#value.slice(this.#cursor);
-		const graphemes = Array.from(segmenter.segment(afterCursor));
-		const firstGrapheme = graphemes[0];
-		const graphemeLength = firstGrapheme ? firstGrapheme.segment.length : 1;
+		let firstGrapheme = "";
+		for (const seg of segmenter.segment(afterCursor)) {
+			firstGrapheme = seg.segment;
+			break;
+		}
+		const graphemeLength = firstGrapheme.length || 1;
 
 		this.#value = this.#value.slice(0, this.#cursor) + this.#value.slice(this.#cursor + graphemeLength);
 	}
@@ -504,11 +510,14 @@ export class Input implements Component, Focusable {
 		cursorDisplay = clampLow(cursorDisplay, 0, visibleText.length);
 
 		// Build the visible line and insert the cursor marker at the buffer cursor.
-		const graphemes = Array.from(segmenter.segment(visibleText.slice(cursorDisplay)));
-		const cursorGrapheme = graphemes[0];
+		let cursorGrapheme = "";
+		for (const seg of segmenter.segment(visibleText.slice(cursorDisplay))) {
+			cursorGrapheme = seg.segment;
+			break;
+		}
 
 		const beforeCursor = visibleText.slice(0, cursorDisplay);
-		const atCursor = cursorGrapheme?.segment ?? "";
+		const atCursor = cursorGrapheme;
 		const afterCursor = visibleText.slice(cursorDisplay + atCursor.length);
 
 		// Hardware cursor marker (zero-width, emitted before the cursor cell for IME positioning)
