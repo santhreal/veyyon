@@ -637,7 +637,7 @@ describe("Coding Agent Tools", () => {
 			expect(result.details?.truncation?.outputLines).toBe(defaultLimit);
 		});
 
-		it("should render directories as a two-level tree without capping root entries", async () => {
+		it("should render a two-level tree without capping root entries when depth: 2 asks for it", async () => {
 			const targetDir = path.join(testDir, "dir-tree-fixture");
 			const childDir = path.join(targetDir, "child");
 			const base = Date.now() - 60_000;
@@ -655,7 +655,7 @@ describe("Coding Agent Tools", () => {
 			}
 			writeFileWithMtime(path.join(childDir, "nested", "deep.txt"), "deep", base + 30_000);
 
-			const result = await readTool.execute("test-call-directory-tree", { path: targetDir });
+			const result = await readTool.execute("test-call-directory-tree", { path: targetDir, depth: 2 });
 			const output = getTextOutput(result);
 
 			expect(result.details?.isDirectory).toBe(true);
