@@ -39,7 +39,7 @@ function titleSlotLine(title: string, source: SessionTitleSource | undefined, up
 }
 
 function truncateTitleForSlot(title: string, source: SessionTitleSource | undefined, updatedAt: string): string {
-	const codePoints = [...title];
+	const codePoints = Array.from(title);
 	let low = 0;
 	let high = codePoints.length;
 	let best = "";
