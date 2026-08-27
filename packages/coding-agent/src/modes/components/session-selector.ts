@@ -236,7 +236,7 @@ export function mergeSessionRanking(
 	if (historyMatches.length === 0) return fuzzy;
 
 	const metadataOnly = fuzzy.filter(session => !historyPaths.has(session.path));
-	return [...historyMatches, ...metadataOnly];
+	return historyMatches.concat(metadataOnly);
 }
 
 /**

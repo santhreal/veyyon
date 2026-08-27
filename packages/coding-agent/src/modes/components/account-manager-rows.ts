@@ -141,7 +141,7 @@ export function buildSidebarEntries(
 	}
 	populated.sort((a, b) => a.label.localeCompare(b.label));
 	empty.sort((a, b) => a.label.localeCompare(b.label));
-	return [...populated, ...empty];
+	return populated.concat(empty);
 }
 
 /** The sidebar's footer tally: `7 accounts · 1 error`. */

@@ -640,7 +640,7 @@ export class ModelBrowser implements Component {
 				selector: "separator",
 				model: virtualRowModel(),
 			};
-			return [...filtered.slice(0, firstNonRecentIndex), separatorItem, ...filtered.slice(firstNonRecentIndex)];
+			return filtered.slice(0, firstNonRecentIndex).concat([separatorItem], filtered.slice(firstNonRecentIndex));
 		}
 		return filtered;
 	}
