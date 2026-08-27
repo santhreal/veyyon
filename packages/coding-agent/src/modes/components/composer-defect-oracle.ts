@@ -227,7 +227,13 @@ export function checkNoOutputBleedPastComposer(state: ComposerOracleFrameState):
 
 	for (let r = 0; r < state.viewportLines.length; r++) {
 		const line = state.viewportLines[r] ?? "";
-		const hasTranscriptMarker = markers.some(m => line.includes(m));
+		let hasTranscriptMarker = false;
+		for (let mi = 0; mi < markers.length; mi++) {
+			if (line.includes(markers[mi]!)) {
+				hasTranscriptMarker = true;
+				break;
+			}
+		}
 
 		if (hasTranscriptMarker) {
 			// Transcript content must be strictly above footerTop (or in transcript region)
@@ -261,7 +267,13 @@ export function checkNoMixedTranscriptAndChromeRows(state: ComposerOracleFrameSt
 
 	for (let r = 0; r < state.viewportLines.length; r++) {
 		const line = state.viewportLines[r] ?? "";
-		const hasTranscript = markers.some(m => line.includes(m));
+		let hasTranscript = false;
+		for (let mi = 0; mi < markers.length; mi++) {
+			if (line.includes(markers[mi]!)) {
+				hasTranscript = true;
+				break;
+			}
+		}
 		if (!hasTranscript) continue;
 
 		const hasPrompt = isComposerPromptLine(line, state.expectedPromptGlyph);

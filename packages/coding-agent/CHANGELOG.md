@@ -299,6 +299,8 @@
 - `#backgroundJobBadgeCount` in `status-line/component.ts` replaces `.reduce()` closure with index-based for loop, eliminating closure allocation per frame.
 - Context usage gauge in `context-usage.ts` replaces `.map()`, two `.reduce()`, and two `for…of` closures with pre-allocated arrays and index-based for loops, eliminating 5 closure/iterator allocations per gauge render.
 - Footer ledger sum in `composer-defect-oracle.ts` replaces `.reduce()` closure with index-based for loop, eliminating closure allocation per oracle evaluation.
+- `checkNoOutputBleedPastComposer` and `checkNoMixedTranscriptAndChromeRows` in `composer-defect-oracle.ts` replace `.some()` closures with index-based for loops, eliminating closure allocation per viewport line per oracle evaluation.
+- Agent roster parent lookup in `agent-dashboard.ts` replaces `.some()` closure with index-based for loop, eliminating closure allocation per roster row per frame.
 - `renderQuietLine` and `renderQuietLines` in `status-line/component.ts` replace `.map(part => part.content)` with pre-allocated arrays and index-based for loops at 4 call sites, eliminating closure allocation per frame.
 - `#expansionProgress` click-trade path in `status-line/component.ts` replaces `.reduce()`, `.findIndex()`, `.map().filter()`, and `.reduce()` closures with index-based for loops, eliminating 4 closure allocations per expansion frame.
 - `hook-selector.ts` replaces `.split().map().filter().map()` chain with a single-pass for loop in `#shortcuts`, and uses `.slice()` instead of spread for `SELECT_LIST_SHORTCUTS` copy.

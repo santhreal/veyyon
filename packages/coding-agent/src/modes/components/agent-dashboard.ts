@@ -442,8 +442,16 @@ class LiveRosterPane implements Component {
 		// list of strangers. Omitted for the common case of a child of a driving
 		// agent, which is recognized by its role: its id names the conversation it
 		// drives, so there is no one name to compare against.
-		if (agent.parentId && !this.agents.some(row => row.id === agent.parentId && row.kind === "main")) {
-			parts.push(theme.fg("dim", `↳ ${replaceTabs(agent.parentId)}`));
+		if (agent.parentId) {
+			let parentIsMain = false;
+			for (let ri = 0; ri < this.agents.length; ri++) {
+				const row = this.agents[ri]!;
+				if (row.id === agent.parentId && row.kind === "main") {
+					parentIsMain = true;
+					break;
+				}
+			}
+			if (!parentIsMain) parts.push(theme.fg("dim", `↳ ${replaceTabs(agent.parentId)}`));
 		}
 		if (agent.kind === "advisor") parts.push(theme.fg("warning", "read-only"));
 		// The glyph comes from the symbol owner, not from this line: a hard-coded
