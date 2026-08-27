@@ -332,12 +332,15 @@ function formatDisassembly(instructions: DapDisassembledInstruction[]): string {
 		if (location) {
 			parts.push(`[${location}]`);
 		}
-		lines.push(
-			parts
-				.filter(part => part.length > 0)
-				.join("  ")
-				.trimEnd(),
-		);
+		let lineStr = "";
+		for (let pi = 0; pi < parts.length; pi++) {
+			const part = parts[pi]!;
+			if (part.length > 0) {
+				if (lineStr.length > 0) lineStr += "  ";
+				lineStr += part;
+			}
+		}
+		lines.push(lineStr.trimEnd());
 	}
 	return lines.join("\n");
 }
@@ -474,22 +477,21 @@ function formatCustomResponse(command: string, body: unknown): string {
 }
 
 function formatSessions(sessions: DapSessionSummary[]): string {
-	if (sessions.length === 0) {
-		return "No debug sessions.";
+	const parts: string[] = new Array(sessions.length);
+	for (let si = 0; si < sessions.length; si++) {
+		const session = sessions[si]!;
+		const location = formatLocation(session);
+		const lines = [
+			`${session.id}: ${session.status}`,
+			`  adapter=${session.adapter}`,
+			`  cwd=${session.cwd}`,
+			...(session.program ? [`  program=${session.program}`] : []),
+			...(location ? [`  location=${location}`] : []),
+			...(session.stopReason ? [`  reason=${session.stopReason}`] : []),
+		];
+		parts[si] = lines.join("\n");
 	}
-	return sessions
-		.map(session => {
-			const location = formatLocation(session);
-			return [
-				`${session.id}: ${session.status}`,
-				`  adapter=${session.adapter}`,
-				`  cwd=${session.cwd}`,
-				...(session.program ? [`  program=${session.program}`] : []),
-				...(location ? [`  location=${location}`] : []),
-				...(session.stopReason ? [`  reason=${session.stopReason}`] : []),
-			].join("\n");
-		})
-		.join("\n\n");
+	return parts.join("\n\n");
 }
 
 function formatEvaluation(evaluation: DapEvaluateResponse): string {
@@ -659,15 +661,19 @@ export const debugToolRenderer = {
 					? theme.styledSymbol("tool.debug", "accent")
 					: formatStatusIcon(options.isPartial ? "running" : "error", theme, options.spinnerFrame);
 				const header = `${statusIcon} Debug ${action}`;
-				const summaryLines = result.details?.snapshot
-					? formatSessionSnapshot(result.details.snapshot).map(line => replaceTabs(line))
-					: [];
+				const snapshotRaw = result.details?.snapshot ? formatSessionSnapshot(result.details.snapshot) : [];
+				const summaryLines: string[] = new Array(snapshotRaw.length);
+				for (let li = 0; li < snapshotRaw.length; li++) {
+					summaryLines[li] = replaceTabs(snapshotRaw[li]!);
+				}
 				const text = result.content.find(block => block.type === "text")?.text ?? "No output";
 				const rawLines = replaceTabs(text).split("\n");
 				const previewLimit = options.expanded ? PREVIEW_LIMITS.EXPANDED_LINES : PREVIEW_LIMITS.COLLAPSED_LINES;
-				const displayedLines = rawLines
-					.slice(0, previewLimit)
-					.map(line => truncateToWidth(line, TRUNCATE_LENGTHS.LINE));
+				const limit = Math.min(rawLines.length, previewLimit);
+				const displayedLines: string[] = new Array(limit);
+				for (let li = 0; li < limit; li++) {
+					displayedLines[li] = truncateToWidth(rawLines[li]!, TRUNCATE_LENGTHS.LINE);
+				}
 				const remaining = rawLines.length - displayedLines.length;
 				if (remaining > 0) {
 					displayedLines.push(
