@@ -215,7 +215,7 @@ export function estimateCacheAlignedRequestTokens(input: {
 	sessionMessages: readonly Message[];
 	instruction: string;
 }): number {
-	let total = countTokens([...input.sessionSystemPrompt, input.instruction]);
+	let total = countTokens(input.sessionSystemPrompt.concat([input.instruction]));
 	for (const message of input.sessionMessages) total += estimateTokens(message);
 	return total;
 }

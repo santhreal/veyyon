@@ -405,7 +405,7 @@ export class AgentRunCollector {
 			},
 			cost: {
 				estimatedUsd,
-				unavailableReasons: [...unavailableReasons].sort(),
+				unavailableReasons: Array.from(unavailableReasons).sort(),
 			},
 			errors: {
 				total: errorTotal,
@@ -416,8 +416,8 @@ export class AgentRunCollector {
 	}
 
 	#buildCoverage(): AgentRunCoverage {
-		const toolsAvailable = [...this.#availableTools].sort();
-		const toolsInvoked = [...this.#invokedTools].sort();
+		const toolsAvailable = Array.from(this.#availableTools).sort();
+		const toolsInvoked = Array.from(this.#invokedTools).sort();
 		const toolsUnused = toolsAvailable.filter(name => !this.#invokedTools.has(name));
 		// Tools the LLM invoked that were never declared on any request remain
 		// present in `toolsInvoked` but absent from `toolsAvailable`. Callers
@@ -426,8 +426,8 @@ export class AgentRunCollector {
 			toolsAvailable,
 			toolsInvoked,
 			toolsUnused,
-			modelsUsed: [...this.#modelsUsed].sort(),
-			providersUsed: [...this.#providersUsed].sort(),
+			modelsUsed: Array.from(this.#modelsUsed).sort(),
+			providersUsed: Array.from(this.#providersUsed).sort(),
 		};
 	}
 }
@@ -536,7 +536,7 @@ export function aggregateAgentRunSummaries(summaries: readonly AgentRunSummary[]
 			byName: sortedRecord(byName),
 		},
 		usage: { inputTokens, outputTokens, cachedInputTokens, cacheWriteTokens, reasoningOutputTokens, totalTokens },
-		cost: { estimatedUsd, unavailableReasons: [...unavailableReasons].sort() },
+		cost: { estimatedUsd, unavailableReasons: Array.from(unavailableReasons).sort() },
 		errors: { total: errorsTotal, byType: sortedRecord(errorsByType) },
 		stepCount,
 	};
@@ -556,13 +556,13 @@ export function aggregateAgentRunCoverage(coverages: readonly AgentRunCoverage[]
 		for (const m of c.modelsUsed) models.add(m);
 		for (const p of c.providersUsed) providers.add(p);
 	}
-	const toolsAvailable = [...available].sort();
+	const toolsAvailable = Array.from(available).sort();
 	return {
 		toolsAvailable,
-		toolsInvoked: [...invoked].sort(),
+		toolsInvoked: Array.from(invoked).sort(),
 		toolsUnused: toolsAvailable.filter(name => !invoked.has(name)),
-		modelsUsed: [...models].sort(),
-		providersUsed: [...providers].sort(),
+		modelsUsed: Array.from(models).sort(),
+		providersUsed: Array.from(providers).sort(),
 	};
 }
 

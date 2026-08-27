@@ -184,7 +184,7 @@ function scanTextForBlockRanges(text: string): Array<{ start: number; end: numbe
  */
 function mergeRanges(ranges: Array<{ start: number; end: number }>): Array<{ start: number; end: number }> {
 	if (ranges.length <= 1) return ranges;
-	const sorted = [...ranges].sort((a, b) => a.start - b.start);
+	const sorted = ranges.slice().sort((a, b) => a.start - b.start);
 	const kept: Array<{ start: number; end: number }> = [];
 	let lastEnd = -1;
 	for (const range of sorted) {
@@ -488,7 +488,7 @@ export function applyShakeRegion(region: ShakeRegion, replacement: string): void
  * block; tool-result regions are independent.
  */
 export function applyShakeRegions(items: Array<{ region: ShakeRegion; replacement: string }>): void {
-	const ordered = [...items].sort((a, b) => {
+	const ordered = items.slice().sort((a, b) => {
 		const aStart = a.region.kind === "block" ? a.region.start : -1;
 		const bStart = b.region.kind === "block" ? b.region.start : -1;
 		return bStart - aStart;

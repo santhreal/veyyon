@@ -315,7 +315,7 @@ export class AppendOnlyContextManager {
 // ---------------------------------------------------------------------------
 
 function takeSnapshot(context: AgentContext, options: BuildOptions): StablePrefixSnapshot {
-	const systemPrompt = [...context.systemPrompt];
+	const systemPrompt = context.systemPrompt.slice();
 	const tools =
 		normalizeTools(context.tools, options.intentTracing, options.exampleDialect, options.pruneToolDescriptions) ?? [];
 	return {

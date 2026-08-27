@@ -102,7 +102,7 @@ export async function compactWithProvider(
 	const convertToLlm = options?.convertToLlm ?? defaultConvertToLlm;
 	// In a split turn the discarded span is messagesToSummarize followed by
 	// turnPrefixMessages; concatenated they are the chronological window.
-	const llmMessages = convertToLlm([...span.messagesToSummarize, ...span.turnPrefixMessages]);
+	const llmMessages = convertToLlm(span.messagesToSummarize.concat(span.turnPrefixMessages));
 
 	// The operator's compaction instructions used to reach only the local
 	// summary. That summary is gone, so they must ride the provider call or
