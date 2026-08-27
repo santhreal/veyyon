@@ -798,6 +798,10 @@ export interface StatusLineMotionOptions {
 	clock?: MotionClock;
 }
 
+/** Stable empty array for the no-hooks render path, so the TUI engine's
+ * stableRows reference-equality check sees the same identity every frame. */
+const EMPTY_HOOK_ROWS: readonly string[] = [];
+
 export class StatusLineComponent implements Component {
 	#settings: StatusLineSettings = {};
 	#effectiveSettings: EffectiveStatusLineSettings | undefined;
@@ -815,6 +819,8 @@ export class StatusLineComponent implements Component {
 	#disposed = false;
 	#autoCompactEnabled: boolean = true;
 	#hookStatuses: Map<string, string> = new Map();
+	#cachedHookRows: readonly string[] = EMPTY_HOOK_ROWS;
+	#cachedHookSig = "";
 	#subagentCount: number = 0;
 	#backgroundSessionCount: number = 0;
 	/**
@@ -1199,6 +1205,8 @@ export class StatusLineComponent implements Component {
 
 	invalidate(): void {
 		this.#invalidateGitCaches();
+		this.#cachedHookSig = "";
+		this.#cachedHookRows = EMPTY_HOOK_ROWS;
 	}
 	#invalidateSessionCaches(): void {
 		this.#clearUsageStartTimer();
@@ -2492,9 +2500,15 @@ export class StatusLineComponent implements Component {
 		// Only render hook statuses - main status is in editor's top border
 		const showHooks = this.#settings.showHookStatus ?? true;
 		if (!showHooks || this.#hookStatuses.size === 0) {
-			return [];
+			if (this.#cachedHookRows.length !== 0) {
+				this.#cachedHookSig = "";
+				this.#cachedHookRows = EMPTY_HOOK_ROWS;
+			}
+			return this.#cachedHookRows;
 		}
 
+		// Cache by width + hook content signature so the TUI engine's stableRows
+		// tracking can skip re-ingesting this row when hook statuses are unchanged.
 		const entries = new Array<[string, string]>(this.#hookStatuses.size);
 		let ei = 0;
 		for (const entry of this.#hookStatuses) entries[ei++] = entry;
@@ -2504,6 +2518,10 @@ export class StatusLineComponent implements Component {
 			if (i > 0) hookLine += " ";
 			hookLine += sanitizeStatusText(entries[i]![1]);
 		}
-		return [truncateToWidth(hookLine, width)];
+		const sig = `${width}\0${hookLine}`;
+		if (sig === this.#cachedHookSig) return this.#cachedHookRows;
+		this.#cachedHookSig = sig;
+		this.#cachedHookRows = [truncateToWidth(hookLine, width)];
+		return this.#cachedHookRows;
 	}
 }

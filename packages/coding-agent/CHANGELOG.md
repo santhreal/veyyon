@@ -46,6 +46,7 @@
 - `highlightCached` in `highlight.ts` uses a nested per-language LRU cache keyed on the code string directly, avoiding a `${lang}\x00${code}` template literal that copied the entire code body on every cache lookup — a 100 KB block repainted at ~30 fps allocated that much per frame just for the key.
 - `Theme` class symbol-category getters (`sep`, `icon`, `thinking`, `status`, `nav`, `tree`, `boxRound`, `boxSharp`, `checkbox`, `radio`, `format`, `md`) now return objects cached at construction time instead of allocating a fresh object literal on every access, eliminating ~100+ short-lived object allocations per frame across the status line and component rendering.
 - `appendRecentOutputTail` in `task/executor.ts` mutates `progress.recentOutput[0]` in-place on the streaming fast path instead of allocating a new array via spread + slice on every text delta token.
+- Composer zone components (`CardPadRow`, `ComposerHairline`, `QuietZoneLine`, `ComposerShortcutsBar`, `StatusLineComponent.render`) now cache their render output and return stable array references across frames when content is unchanged, letting the TUI engine's `stableRows` tracking skip re-ingesting composer zone rows on every frame.
 
 
 

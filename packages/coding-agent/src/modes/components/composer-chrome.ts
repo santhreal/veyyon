@@ -182,6 +182,15 @@ export class QuietZoneLine implements Component, MouseRoutable {
 	// same amount, and it can differ from `indent` on very narrow widths.
 	#lastPad = 0;
 
+	// Render cache: when the provider's line content and width are unchanged
+	// between frames, return the same array reference so the TUI engine's
+	// stableRows tracking can skip re-ingesting this row. The provider callback
+	// still runs every frame (it owns the content), but the array identity stays
+	// stable, which is what the engine's reference-equality check reads.
+	#cachedWidth = -1;
+	#cachedLine: string | null = null;
+	#cachedRows: readonly string[] = [];
+
 	constructor(
 		private readonly line: (width: number) => string | null,
 		private readonly indent = 0,
@@ -191,7 +200,11 @@ export class QuietZoneLine implements Component, MouseRoutable {
 		const pad = Math.max(0, Math.min(this.indent, width - 1));
 		this.#lastPad = pad;
 		const line = this.line(width - pad);
-		return line === null ? [] : [" ".repeat(pad) + line];
+		if (width === this.#cachedWidth && line === this.#cachedLine) return this.#cachedRows as string[];
+		this.#cachedWidth = width;
+		this.#cachedLine = line;
+		this.#cachedRows = line === null ? [] : [" ".repeat(pad) + line];
+		return this.#cachedRows as string[];
 	}
 
 	routeMouse(event: SgrMouseEvent, _line: number, col: number): void {
@@ -218,7 +231,10 @@ export class QuietZoneLine implements Component, MouseRoutable {
 		return this.onClick !== undefined;
 	}
 
-	invalidate(): void {}
+	invalidate(): void {
+		this.#cachedWidth = -1;
+		this.#cachedLine = null;
+	}
 }
 
 /**
@@ -230,8 +246,12 @@ export class QuietZoneLine implements Component, MouseRoutable {
  * is a design regression locked out by the composer suites.
  */
 export class CardPadRow implements Component {
-	render(): string[] {
-		return [""];
+	// Cached: the content never changes, so a single array reference lets the
+	// TUI engine's stableRows tracking skip re-ingesting this row every frame.
+	readonly #rows: string[] = [""];
+
+	render(): readonly string[] {
+		return this.#rows;
 	}
 
 	invalidate(): void {}
@@ -259,8 +279,13 @@ export function emberTick(trueColor: boolean, cells = 3): string {
  * that mistake shipped once and is locked out by the composer-hairline suite.
  */
 export class ComposerHairline implements Component {
+	#cachedWidth = -1;
+	#cachedRows: readonly string[] = [];
+
 	render(width: number): string[] {
 		const w = Math.max(1, width);
+		if (w === this.#cachedWidth) return this.#cachedRows as string[];
+		this.#cachedWidth = w;
 		// Tone-on-tone means relative to the REAL ground: the static borderMuted
 		// hex is calibrated for near-black terminals and vanishes on a grey one.
 		// With an OSC 11-detected ground the hairline sits a fixed contrast step
@@ -268,10 +293,13 @@ export class ComposerHairline implements Component {
 		// the exact pre-detection rendering.
 		const derived = groundTintFgAnsi(groundHairlineHex(), TERMINAL.trueColor);
 		const rule = theme.boxSharp.horizontal.repeat(w);
-		return [derived !== undefined ? `${derived}${rule}\x1b[39m` : theme.fg("borderMuted", rule)];
+		this.#cachedRows = [derived !== undefined ? `${derived}${rule}\x1b[39m` : theme.fg("borderMuted", rule)];
+		return this.#cachedRows as string[];
 	}
 
-	invalidate(): void {}
+	invalidate(): void {
+		this.#cachedWidth = -1;
+	}
 }
 
 /** Rows the home screen reserves for the composer zone while the mode's init

@@ -4,6 +4,10 @@ import { COMPOSER_INSET_COLS } from "./composer-chrome";
 import { appKey } from "./keybinding-hints";
 import { layoutShortcutRows, type ModalShortcut, type ShortcutHitRect } from "./modal-shell";
 
+/** Stable empty-row array for the idle/no-chip render path, so the TUI
+ * engine's stableRows reference-equality check sees the same identity. */
+const EMPTY_SHORTCUT_ROWS: readonly string[] = [""];
+
 export interface ComposerShortcutContext {
 	/** Session is streaming/executing (turn in flight). */
 	busy: boolean;
@@ -81,6 +85,15 @@ export class ComposerShortcutsBar implements Component, MouseRoutable {
 	#shortcuts: readonly ModalShortcut[] = [];
 	#hits: ShortcutHitRect[] = [];
 
+	// Render cache: when shortcuts and width are unchanged between frames,
+	// return the same array reference so the TUI engine's stableRows tracking
+	// can skip re-ingesting this row. The hits are cached alongside the rows
+	// because they are a side product of the same layout pass.
+	#cachedWidth = -1;
+	#cachedShortcuts: readonly ModalShortcut[] | null = null;
+	#cachedRows: readonly string[] = [];
+	#cachedHits: ShortcutHitRect[] = [];
+
 	/** Host maps a clicked chip id to the action its keybinding runs. */
 	onChipClick?: (id: string) => void;
 
@@ -89,32 +102,53 @@ export class ComposerShortcutsBar implements Component, MouseRoutable {
 	}
 
 	invalidate(): void {
-		// Stateless; nothing to invalidate.
+		this.#cachedWidth = -1;
+		this.#cachedShortcuts = null;
 	}
 
 	render(width: number): string[] {
-		this.#hits = [];
+		// Cache hit: same width and same shortcuts reference as last frame.
+		if (width === this.#cachedWidth && this.#shortcuts === this.#cachedShortcuts) {
+			this.#hits = this.#cachedHits;
+			return this.#cachedRows as string[];
+		}
+		this.#cachedWidth = width;
+		this.#cachedShortcuts = this.#shortcuts;
 		// Fixed height: one row in every state, blank when idle, so the footer
 		// never jumps when a turn starts or the queue drains.
-		if (this.#shortcuts.length === 0) return [""];
+		if (this.#shortcuts.length === 0) {
+			this.#hits = [];
+			this.#cachedHits = [];
+			this.#cachedRows = EMPTY_SHORTCUT_ROWS;
+			return this.#cachedRows as string[];
+		}
 		const maxWidth = Math.max(0, width - COMPOSER_INSET_COLS);
 		const rows = layoutShortcutRows(this.#shortcuts, maxWidth);
-		if (rows.length === 0) return [""];
+		if (rows.length === 0) {
+			this.#hits = [];
+			this.#cachedHits = [];
+			this.#cachedRows = EMPTY_SHORTCUT_ROWS;
+			return this.#cachedRows as string[];
+		}
 		// One row in every state: on a narrow terminal the layout would wrap to
 		// two, so keep the first row and drop the rest rather than grow the band.
 		const first = rows[0]!;
+		const hits: ShortcutHitRect[] = [];
 		for (let ci = 0; ci < first.chips.length; ci++) {
 			const chip = first.chips[ci]!;
 			if (!chip.clickable || !chip.id) continue;
-			this.#hits.push({
+			hits.push({
 				id: chip.id,
 				row: 0,
 				colStart: COMPOSER_INSET_COLS + chip.offset,
 				colEnd: COMPOSER_INSET_COLS + chip.offset + chip.width,
 			});
 		}
+		this.#hits = hits;
+		this.#cachedHits = hits;
 		const inset = " ".repeat(COMPOSER_INSET_COLS);
-		return [inset + first.styled];
+		this.#cachedRows = [inset + first.styled];
+		return this.#cachedRows as string[];
 	}
 
 	/** The grab is worth taking only while a chip is actually on screen. */
