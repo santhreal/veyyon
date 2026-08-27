@@ -1173,11 +1173,12 @@ export function paintBand(text: string, background: ThemeBg, strength: number): 
 
 	const mode = theme.getColorMode();
 	const ground = visibleGroundHex();
-	const arriving = (hex: string): string => (strength >= 1 ? hex : blendHex(ground, hex, strength));
+	const fullStrength = strength >= 1;
 	const head = theme.getBgColorHex(background);
 	const inserts = new Map<number, string>();
 	// The leading edge. One cell of accent is what gives the band an end the cursor came from.
-	inserts.set(0, bgAnsi(arriving(theme.getAccentColorHex()), mode));
+	const accentHex = theme.getAccentColorHex();
+	inserts.set(0, bgAnsi(fullStrength ? accentHex : blendHex(ground, accentHex, strength), mode));
 
 	const bodyWidth = width - 1;
 	const spans = Math.min(bodyWidth, clamp(Math.round(width / BAND_COLUMNS_PER_SPAN), BAND_MIN_SPANS, BAND_MAX_SPANS));
@@ -1188,9 +1189,14 @@ export function paintBand(text: string, background: ThemeBg, strength: number): 
 		// whether the band is still the theme's, and a byte-equal recomputation is a coincidence
 		// rather than a guarantee.
 		const fill =
-			index === 0 && strength >= 1
+			index === 0 && fullStrength
 				? theme.getBgAnsi(background)
-				: bgAnsi(arriving(blendHex(head, ground, BAND_TRAIL_MIX * t ** BAND_RAMP_EASE)), mode);
+				: bgAnsi(
+						fullStrength
+							? blendHex(head, ground, BAND_TRAIL_MIX * t ** BAND_RAMP_EASE)
+							: blendHex(ground, blendHex(head, ground, BAND_TRAIL_MIX * t ** BAND_RAMP_EASE), strength),
+						mode,
+					);
 		inserts.set(1 + Math.floor((index * bodyWidth) / spans), fill);
 	}
 
