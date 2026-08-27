@@ -5,9 +5,11 @@
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { setTimeout as sleepFor } from "node:timers/promises";
 import { errorMessage, isRecord, tryParseJson } from "@veyyon/utils";
 import { syncCommandOptions } from "../../../core/external-command";
 import { requireHarness } from "../../../core/harness-registry";
+import { terminateProcessTree } from "../../../core/process-tree";
 import { requirePathSegment } from "../../../paths";
 import { requireHarborBinding } from "../backend";
 import { buildHarborArgs, harborRunnerArgs, type LaunchRequest } from "../launch-args";
@@ -25,6 +27,7 @@ import { buildTarball, newestTarball, prepareSourceDeps, readPkgVersion, type So
 import { gatewayHealthOk, startVmnetGatewayForward, writeModelsYaml } from "./gateway";
 import { buildMountsJson, writeComposeOverlay } from "./mounts";
 import { aggregate, readJobResult, readTrials, type Totals } from "./results";
+import { awaitHarborRun, type HarborRunOutcome, RUN_CEILING_EXIT_CODE, runCeilingMs } from "./run-watchdog";
 import {
 	bold,
 	CSI,
@@ -556,13 +559,25 @@ export async function runBenchmark(cfg: Config): Promise<BenchmarkRun> {
 	process.on("SIGINT", onSig);
 	process.on("SIGTERM", onSig);
 
+	let outcome: HarborRunOutcome = "finished";
 	try {
-		while (!finished) {
-			render(st);
-			st.tick++;
-			await Bun.sleep(isTTY ? 700 : 10000);
+		outcome = await awaitHarborRun({
+			finished: () => finished,
+			elapsedMs: () => Date.now() - st.startMs,
+			ceilingMs: runCeilingMs(expected, cfg.timeoutMultiplier),
+			onTick: () => {
+				render(st);
+				st.tick++;
+			},
+			intervalMs: isTTY ? 700 : 10000,
+			sleep: ms => sleepFor(ms),
+		});
+		if (outcome === "ceiling") {
+			// The child is still running and its pipes go to the log file, so there is nothing to
+			// drain: end the tree and report the ceiling as the run's exit.
+			await terminateProcessTree(proc);
+			exitCode = RUN_CEILING_EXIT_CODE;
 		}
-		render(st);
 	} finally {
 		gatewayForward?.stop();
 		if (isTTY) process.stdout.write(`${CSI}?25h${CSI}?1049l`);
@@ -586,7 +601,15 @@ export async function runBenchmark(cfg: Config): Promise<BenchmarkRun> {
 			`tokens: in ${fmtNum(totals.tokIn)} · out ${fmtNum(totals.tokOut)} · cache ${fmtNum(totals.tokCache)}\n` +
 			`${dim("report:")} ${reportPath}\n${dim("logs:  ")} ${logPath}\n${dim("trials:")} ${jobDir}\n`,
 	);
-	if (exitCode !== 0) process.stdout.write(yellow(`harbor exited ${exitCode}; see harbor.log\n`));
+	if (outcome === "ceiling") {
+		process.stdout.write(
+			yellow(
+				`harbor made no progress within its ceiling of ${fmtDur(runCeilingMs(expected, cfg.timeoutMultiplier))}; its process tree was ended\n`,
+			),
+		);
+	} else if (exitCode !== 0) {
+		process.stdout.write(yellow(`harbor exited ${exitCode}; see harbor.log\n`));
+	}
 	return { exitCode, jobName, jobDir, benchDir, tarball, elapsedMs, totals, reportPath };
 }
 
