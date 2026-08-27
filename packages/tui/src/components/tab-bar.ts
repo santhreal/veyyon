@@ -223,7 +223,7 @@ export class TabBar implements Component {
 			}
 			return chunks;
 		};
-		let totalWidth = (chunks: TabChunk[]): number => {
+		const totalWidth = (chunks: TabChunk[]): number => {
 			let sum = 0;
 			for (let ci = 0; ci < chunks.length; ci++) sum += visibleWidth(chunks[ci]!.text);
 			return sum;
