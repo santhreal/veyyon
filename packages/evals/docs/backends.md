@@ -57,6 +57,12 @@ an error, a missing reward is an error, a reward at 1 is a pass, anything lower 
 snapshot reader wraps it to attach the trace path — `test/backends/harbor/one-reader-parses-a-harbor-result-and-both-callers-agree.test.ts`
 drives both entry points over one fixture table and fails when they diverge.
 
+The harbor runner CLI renders a progress screen until its child exits, and stops at a ceiling of
+every expected trial's own budget taken serially plus a 10-minute grace
+(`src/backends/harbor/runner/run-watchdog.ts`). Harbor runs trials concurrently, so a legitimate run
+cannot reach that ceiling; a run that does has stopped making progress, and the runner ends its
+process tree and exits 124.
+
 ## in-process
 
 Drives an `AgentSession` inside this process, used by the TypeScript-edit suite. No container, no
