@@ -80,25 +80,33 @@ import { reportRendererFailure } from "./renderer-failure";
  */
 function stripTrailingUnbalancedRemoval(diff: string | undefined): string | undefined {
 	if (!diff) return diff;
-	const lines = diff.split("\n");
 	let lastAddIdx = -1;
-	for (let i = lines.length - 1; i >= 0; i--) {
-		if (lines[i].startsWith("+")) {
-			lastAddIdx = i;
+	for (let i = diff.length - 1; i >= 0; i--) {
+		if (diff.charCodeAt(i) === 10 && i + 1 < diff.length && diff[i + 1] === "+") {
+			lastAddIdx = i + 1;
+			break;
+		}
+		if (i === 0 && diff[0] === "+") {
+			lastAddIdx = 0;
 			break;
 		}
 	}
 	let hasTrailingUnbalanced = false;
-	for (let i = lastAddIdx + 1; i < lines.length; i++) {
-		const line = lines[i];
-		if (line.startsWith("-") || line.startsWith("@@")) {
+	let pos = lastAddIdx === -1 ? 0 : diff.indexOf("\n", lastAddIdx) + 1;
+	while (pos < diff.length) {
+		const nextNl = diff.indexOf("\n", pos);
+		const lineEnd = nextNl === -1 ? diff.length : nextNl;
+		const ch = diff[pos];
+		if (ch === "-" || (ch === "@" && diff[pos + 1] === "@")) {
 			hasTrailingUnbalanced = true;
 			break;
 		}
+		pos = lineEnd + 1;
 	}
 	if (!hasTrailingUnbalanced) return diff;
 	if (lastAddIdx === -1) return "";
-	return lines.slice(0, lastAddIdx + 1).join("\n");
+	const lineEnd = diff.indexOf("\n", lastAddIdx);
+	return diff.slice(0, lineEnd === -1 ? diff.length : lineEnd);
 }
 
 type DisplaceableToolName = "job" | "todo";
