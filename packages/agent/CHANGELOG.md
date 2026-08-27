@@ -13,6 +13,7 @@
 - `compaction/shake.ts` replaces two `[...arr].sort()` patterns with `arr.slice().sort()` in range merge and shake region application.
 - `compaction/cache-aligned-context.ts` replaces `[...arr, elem]` spread with `.concat([elem])` in token estimation.
 - `compaction/remote-compaction.ts` replaces `[...a, ...b]` spread with `a.concat(b)` in LLM message preparation.
+- `compaction/utils.ts` builds the modified file Set directly from Set iterators instead of spreading into an intermediate array; replaces Map.keys() spread with `Array.from()` in file operation formatting.
 ### Added
 
 - A ChatGPT OAuth (Codex) session compacts server-side via the Responses compaction endpoint, preserving encrypted reasoning state.
