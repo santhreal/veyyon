@@ -671,6 +671,10 @@ const NOT_NEWLINE = /[^\n]/g;
  * still points at the real one. String and template literals are walked so that a `//`
  * inside a URL does not swallow the rest of the line.
  *
+ * `@veyyon/utils/module-reach` exports this name for a regex that blanks whole-line comments
+ * only. This one preserves offsets and skips a `//` inside a literal, which the reported line
+ * numbers below depend on.
+ *
  * The scan keeps one chunk per span rather than a per-character array. The state machine is
  * the same one, byte for byte in its output; what changed is that a 40 KB file now costs a
  * handful of slices instead of 40,000 single-character strings and a 40,000-element join.
