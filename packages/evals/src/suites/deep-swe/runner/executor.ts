@@ -130,7 +130,12 @@ interface PriorRunResults {
 	} | null;
 }
 
-export function reaggregate(runDir: string): void {
+/**
+ * Recompute a finished run's aggregation and rewrite its report. Returns the cross-system
+ * comparison when the run recorded one, so a caller states the verdict; a library function never
+ * sets the host process's exit code.
+ */
+export function reaggregate(runDir: string): SystemComparison | null {
 	const configDir = path.join(runDir, "configs");
 	const jobsRoot = path.join(runDir, "jobs");
 	let prior: PriorRunResults | null = null;
@@ -247,11 +252,9 @@ export function reaggregate(runDir: string): void {
 		: renderReport(results, model, new Date().toISOString(), repeats, taskSet);
 	fs.writeFileSync(path.join(runDir, "report.md"), report);
 	console.log(`reaggregated ${results.length} runs into ${path.join(runDir, "report.md")}`);
-	if (systemComparison) {
-		if (systemComparison.overall !== "pass") process.exitCode = 1;
-	} else {
-		reportPredictedVsActual(runDir, [...new Set(results.map(r => r.arm))], results);
-	}
+	if (systemComparison) return systemComparison;
+	reportPredictedVsActual(runDir, [...new Set(results.map(r => r.arm))], results);
+	return null;
 }
 
 export function mergeIntoReport(runDirs: string[], outDir: string | null): void {
@@ -427,7 +430,12 @@ export function requirePierAgentImportPath(harness: HarnessAdapter): string {
 	return importPath;
 }
 
-export async function runBench(argv: string[]): Promise<void> {
+/**
+ * Run the bench. Returns the cross-system comparison a comparison run produced, and null for every
+ * other invocation (help, listing, a merge, a dry run, a config-arm run): the caller decides what a
+ * non-passing comparison means for its exit code.
+ */
+export async function runBench(argv: string[]): Promise<SystemComparison | null> {
 	// The harness axis is resolved from the registry, and the registry is process-wide: an entry
 	// point that never registers reads an empty one, so `--arms omp` becomes a config arm named
 	// omp and every adapter flag is refused as unknown.
@@ -435,22 +443,21 @@ export async function runBench(argv: string[]): Promise<void> {
 	const args = parseBenchCliArgs(argv, listHarnessFlags());
 	if (args.help) {
 		printHelp();
-		return;
+		return null;
 	}
 	if (args.reaggregate && args.runDir) {
-		reaggregate(path.resolve(args.runDir));
-		return;
+		return reaggregate(path.resolve(args.runDir));
 	}
 	if (args.mergeDirs && args.mergeDirs.length > 0) {
 		mergeIntoReport(
 			args.mergeDirs.map(dir => path.resolve(dir)),
 			args.outDir ? path.resolve(args.outDir) : null,
 		);
-		return;
+		return null;
 	}
 	if (args.list) {
 		printAvailable();
-		return;
+		return null;
 	}
 
 	const benchDir = getBenchDir();
@@ -699,7 +706,7 @@ export async function runBench(argv: string[]): Promise<void> {
 		console.log(`  model      ${model}`);
 		console.log(`  tasks      ${tasks.length} from ${args.tasksFile ?? "(full corpus)"}`);
 		console.log(`  arms       ${arms.join(", ")}`);
-		return;
+		return null;
 	}
 
 	const provenance = {
@@ -949,4 +956,5 @@ export async function runBench(argv: string[]): Promise<void> {
 	if (!pureSystemComparison) {
 		reportPredictedVsActual(outRoot, arms, results);
 	}
+	return systemComparison;
 }
