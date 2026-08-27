@@ -150,7 +150,8 @@ export function wordWrapLine(line: string, maxWidth: number): TextChunk[] {
 		}
 		return false;
 	}
-	for (const token of tokens) {
+	for (let ti = 0; ti < tokens.length; ti++) {
+		const token = tokens[ti]!;
 		const tokenWidth = visibleWidth(token.text);
 
 		// Skip leading whitespace at line start. Keep the skipped run mapped onto the
@@ -2726,7 +2727,8 @@ export class Editor implements Component, Focusable, MouseRoutable {
 			} else {
 				// Line needs wrapping - use word-aware wrapping
 				const chunks = this.#wrapLine(line, width);
-				for (const chunk of chunks) {
+				for (let ci = 0; ci < chunks.length; ci++) {
+					const chunk = chunks[ci]!;
 					visualLines.push({
 						logicalLine: i,
 						startCol: chunk.startIndex,
