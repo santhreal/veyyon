@@ -31,6 +31,7 @@
 - `#getUsageContextKey` in `status-line/component.ts` replaces a 5-element array `.join()` with a template literal, eliminating an intermediate array allocation per status-line frame.
 - `renderGoalMode` in `status-line/segments.ts` replaces a `parts` array `.join()` with conditional concatenation, eliminating an intermediate array allocation per status-line frame when goal mode is active.
 - `costSegment` and `secretsSegment` in `status-line/segments.ts` replace small `parts` array `.join()` with conditional concatenation, eliminating intermediate array allocations per status-line frame.
+- `usageSegment` in `status-line/segments.ts` replaces a `parts` array `.join()` with conditional concatenation, eliminating an intermediate array allocation per status-line frame.
 
 
 

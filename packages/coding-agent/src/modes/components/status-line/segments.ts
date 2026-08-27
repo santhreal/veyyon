@@ -1148,10 +1148,11 @@ const usageSegment: StatusLineSegment = {
 		if (!u || (!u.fiveHour && !u.sevenDay)) {
 			return { content: "", visible: false };
 		}
-		const parts: string[] = [];
+		const sep = theme.sep.dot;
+		let body = "";
 		if (u.tier) {
 			const tier = truncateToWidth(sanitizeStatusText(u.tier), TRUNCATE_LENGTHS.SHORT);
-			if (tier) parts.push(theme.fg("accent", tier));
+			if (tier) body = theme.fg("accent", tier);
 		}
 		if (u.fiveHour) {
 			const pct = u.fiveHour.percent;
@@ -1160,7 +1161,7 @@ const usageSegment: StatusLineSegment = {
 				u.fiveHour.resetMinutes !== undefined
 					? theme.fg("muted", ` (${formatUsageReset(u.fiveHour.resetMinutes, "m")})`)
 					: "";
-			parts.push(`5h ${pctText}${reset}`);
+			body = body ? `${body}${sep}5h ${pctText}${reset}` : `5h ${pctText}${reset}`;
 		}
 		if (u.sevenDay) {
 			const pct = u.sevenDay.percent;
@@ -1169,9 +1170,9 @@ const usageSegment: StatusLineSegment = {
 				u.sevenDay.resetHours !== undefined
 					? theme.fg("muted", ` (${formatUsageReset(u.sevenDay.resetHours, "h")})`)
 					: "";
-			parts.push(`7d ${pctText}${reset}`);
+			body = body ? `${body}${sep}7d ${pctText}${reset}` : `7d ${pctText}${reset}`;
 		}
-		const content = withIcon(theme.icon.time, parts.join(theme.sep.dot));
+		const content = withIcon(theme.icon.time, body);
 		return { content, visible: true };
 	},
 };
