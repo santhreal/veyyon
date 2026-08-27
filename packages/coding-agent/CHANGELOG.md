@@ -177,6 +177,15 @@
 - `browser.ts` replaces `.filter().map().join()` in text extraction with single-pass for loop.
 - `command-controller.ts` replaces `.map()` and `.reduce()` closures in `formatAccountHeaderRow` and `renderUsageSection` with for loops.
 - `extension-ui-controller.ts` replaces `.map().filter()` and `.map()` closures in `#runGuestAskQuestion` with single-pass for loops.
+- `subagent-hud.ts` replaces `for-of` iterator in `renderSubagentHudLines` with index-based for loop.
+- `pause-screen.ts` replaces `for-of` iterator in `renderPauseScreen` with index-based for loop.
+- `session-selector.ts` replaces `for-of` iterators in render method with index-based for loops.
+- `plan-review-overlay.ts` replaces `for-of` iterators in `#buildBody` and `#buildContent` with index-based for loops.
+- `status-line/component.ts` replaces `for-of` iterators in `quietSegmentAt`, report processing, and `structuralTextSize` with index-based for loops.
+- `select-list-mouse-routing.ts` replaces `for-of` iterator in `renderTrackingChild` with index-based for loop.
+- `read-tool-group.ts` replaces `for-of` iterator in preview entry iteration with index-based for loop.
+- `command-controller.ts` replaces `.flatMap().map().reduce()` chain, `.map()`, `.map().join()`, and `for-of` destructuring in `resolveProviderUsageTotal` and `renderUsageReports` with index-based for loops.
+- `input-controller.ts` replaces `.filter().map()` chains, `.flatMap()`, `for-of`, and `.map().join()` in `restoreQueuedMessagesToEditor` with index-based for loops.
 ### Added
 
 - `/advisor` reports advisor status, opens the `WATCHDOG.yml` roster editor and applies a save to the running session, starts or stops the advisor for the session, and copies the advisor's own transcript; the subsystem shipped complete but no command, key or menu row reached it.
