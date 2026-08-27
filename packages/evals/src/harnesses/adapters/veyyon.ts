@@ -27,7 +27,8 @@ export class VeyyonAdapter implements HarnessAdapter {
 	readonly description = "Main Veyyon headless agent CLI execution and replay in isolated Docker containers.";
 	// `vey-binary` names the build under test. A run comparing two builds of veyyon names
 	// one per run, so without the flag no invocation can measure anything but the
-	// checkout's own binary. The preflight below reads exactly this key.
+	// checkout's own binary. `#namedBinary` reads it wherever a build is resolved, and the
+	// grammar's own `--binary` is the same instruction under its general name.
 	readonly flags: readonly string[] = ["auth-db", "vey-binary"];
 	// Veyyon drives any provider-qualified model the run names, so it declares no
 	// default: a default here decided which model an unspecified run measured, and the
@@ -57,6 +58,23 @@ export class VeyyonAdapter implements HarnessAdapter {
 		"in-process": {},
 	} as const;
 
+	/**
+	 * The build the invocation's flags named, or null when they named none.
+	 *
+	 * `--binary` and `--vey-binary` are the same instruction, and the declared flag is the
+	 * second one, so a preflight that read only the first reported a typo in `--vey-binary`
+	 * as no pin at all and measured the checkout's own build instead. `pinnedBinary` is not
+	 * a flag: the executor sets it, so it is resolved where run options are read and never
+	 * against an invocation's arguments.
+	 */
+	#namedBinary(options: Readonly<Record<string, unknown>>): string | null {
+		for (const key of ["binary", "vey-binary"]) {
+			const value = options[key];
+			if (typeof value === "string" && value !== "") return path.resolve(value);
+		}
+		return null;
+	}
+
 	async preflight(context: HarnessPreflightContext): Promise<PreflightVerdict> {
 		if (context.backend === "in-process") {
 			return { ok: true };
@@ -64,14 +82,8 @@ export class VeyyonAdapter implements HarnessAdapter {
 		const options = context.options ?? {};
 		const missing: string[] = [];
 
-		const binary =
-			typeof options.binary === "string"
-				? path.resolve(options.binary)
-				: typeof options["vey-binary"] === "string"
-					? path.resolve(options["vey-binary"])
-					: typeof options.pinnedBinary === "string"
-						? path.resolve(options.pinnedBinary)
-						: veyBinaryPath();
+		const pinned = typeof options.pinnedBinary === "string" ? path.resolve(options.pinnedBinary) : null;
+		const binary = this.#namedBinary(options) ?? pinned ?? veyBinaryPath();
 
 		if (!fs.existsSync(binary)) {
 			missing.push(
@@ -143,7 +155,7 @@ export class VeyyonAdapter implements HarnessAdapter {
 		const errors: string[] = [];
 		const warnings: string[] = [];
 
-		const binaryPath = context.args.binary ? path.resolve(context.args.binary as string) : null;
+		const binaryPath = this.#namedBinary(context.args);
 		if (binaryPath) {
 			if (!fs.existsSync(binaryPath)) {
 				errors.push(`pinned vey binary not found: ${binaryPath}`);
