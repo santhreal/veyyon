@@ -255,28 +255,35 @@ function splitSelectorDisplayParts(sel: string | undefined): Array<string | unde
 	const chunks = sel.split(":");
 	if (chunks.length === 1) {
 		if (!selectorChunkIsLineRangeList(sel) || !sel.includes(",")) return [sel];
-		return sel
-			.split(",")
-			.map(chunk => chunk.trim())
-			.filter(chunk => chunk.length > 0);
+		const rawChunks = sel.split(",");
+		const out: string[] = [];
+		for (let ci = 0; ci < rawChunks.length; ci++) {
+			const trimmed = rawChunks[ci]!.trim();
+			if (trimmed.length > 0) out.push(trimmed);
+		}
+		return out;
 	}
 	if (chunks.length === 2) {
 		const [left, right] = chunks as [string, string];
 		const leftIsRange = selectorChunkIsLineRangeList(left);
 		const rightIsRange = selectorChunkIsLineRangeList(right);
 		if (leftIsRange && left.includes(",")) {
-			return left
-				.split(",")
-				.map(chunk => chunk.trim())
-				.filter(chunk => chunk.length > 0)
-				.map(chunk => `${chunk}:${right}`);
+			const rawLeft = left.split(",");
+			const leftOut: string[] = [];
+			for (let ci = 0; ci < rawLeft.length; ci++) {
+				const trimmed = rawLeft[ci]!.trim();
+				if (trimmed.length > 0) leftOut.push(`${trimmed}:${right}`);
+			}
+			return leftOut;
 		}
 		if (rightIsRange && right.includes(",")) {
-			return right
-				.split(",")
-				.map(chunk => chunk.trim())
-				.filter(chunk => chunk.length > 0)
-				.map(chunk => `${left}:${chunk}`);
+			const rawRight = right.split(",");
+			const rightOut: string[] = [];
+			for (let ci = 0; ci < rawRight.length; ci++) {
+				const trimmed = rawRight[ci]!.trim();
+				if (trimmed.length > 0) rightOut.push(`${left}:${trimmed}`);
+			}
+			return rightOut;
 		}
 	}
 	return [sel];
