@@ -492,7 +492,9 @@ export class FuzzyText {
  */
 export function fuzzyRank<T>(items: readonly T[], query: string, getText: (item: T) => string): FuzzyFilterResult<T>[] {
 	if (!query.trim()) {
-		return items.map(item => ({ item, score: 0 }));
+		const result = new Array<FuzzyFilterResult<T>>(items.length);
+		for (let ii = 0; ii < items.length; ii++) result[ii] = { item: items[ii]!, score: 0 };
+		return result;
 	}
 
 	// A non-blank query that normalizes to empty (pure punctuation) matches
@@ -500,7 +502,8 @@ export function fuzzyRank<T>(items: readonly T[], query: string, getText: (item:
 	// on its side effects (see fuzzy-cache.test.ts).
 	const pq = prepareQuery(query);
 	const results: FuzzyFilterResult<T>[] = [];
-	for (const item of items) {
+	for (let ii = 0; ii < items.length; ii++) {
+		const item = items[ii]!;
 		const text = getText(item);
 		const match = pq === null ? { matches: true, score: 0 } : fuzzyMatchCore(pq, buildSearchIndex(text));
 		if (match.matches) {
@@ -513,7 +516,10 @@ export function fuzzyRank<T>(items: readonly T[], query: string, getText: (item:
 }
 
 export function fuzzyFilter<T>(items: readonly T[], query: string, getText: (item: T) => string): T[] {
-	return fuzzyRank(items, query, getText).map(result => result.item);
+	const ranked = fuzzyRank(items, query, getText);
+	const result = new Array<T>(ranked.length);
+	for (let ri = 0; ri < ranked.length; ri++) result[ri] = ranked[ri]!.item;
+	return result;
 }
 
 /**
