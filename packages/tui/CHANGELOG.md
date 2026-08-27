@@ -25,6 +25,7 @@
 - `padLineToWidth`, `ScrollView` scrollbar rows, and `TabBar` vertical render pad to width in the native `truncateToWidth` call instead of a separate `visibleWidth` scan plus `padding` concatenation, removing a redundant width measurement from every padded row.
 - `editor.ts` replaces `visibleWidth` + `padding` with `padLineToWidth` for gutter continuation, eliminating a redundant width scan per editor render frame.
 - `autocomplete.ts`, `fuzzy.ts`, `keybindings.ts`, `latex-block.ts`, `motion-hover.ts`, `paint-surface.ts`, `terminal-capabilities.ts`, `tui.ts`, `scroll-view.ts`, `image.ts`, and `editor.ts` replace array spreads with `.slice()`/`.concat()`/`Array.from()` in line copying, Set/Map iteration, scroll tape merging, and OSC99 chunking.
+- `terminal-capabilities.ts`, `components/editor.ts`, `components/input.ts`, `components/select-list.ts`, and `components/settings-list.ts` replace array/string spreads with `Array.from()` and `.concat()` across OSC99 hyperlink construction, grapheme segmenter iteration, and filter query character manipulation.
 
 ## [1.2.0] - 2026-08-23
 
