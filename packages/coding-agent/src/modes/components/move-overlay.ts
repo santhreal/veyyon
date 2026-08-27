@@ -100,12 +100,12 @@ function entryIsDirectory(dir: string, entry: fs.Dirent): boolean {
 function printableInput(data: string): string {
 	const withoutPasteEnvelope = data.replaceAll("\x1b[200~", "").replaceAll("\x1b[201~", "");
 	if (withoutPasteEnvelope.includes("\x1b")) return "";
-	return Array.from(withoutPasteEnvelope)
-		.filter(ch => {
-			const code = ch.codePointAt(0);
-			return code !== undefined && code >= 32 && code !== 0x7f;
-		})
-		.join("");
+	let result = "";
+	for (let i = 0; i < withoutPasteEnvelope.length; i++) {
+		const c = withoutPasteEnvelope.charCodeAt(i);
+		if (c >= 32 && c !== 0x7f) result += withoutPasteEnvelope[i];
+	}
+	return result;
 }
 
 /** Resolve a user-typed path (`~`, absolute, or relative to `cwd`) to an absolute path. */
