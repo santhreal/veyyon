@@ -115,10 +115,10 @@ async function handleRun(yamlPath: string, ctx: ExtensionCommandContext, pi: Ext
 
 	// 6. Initialize state tracker
 	const stateTracker = new StateTracker(workspace, def.name);
-	await stateTracker.init([...def.agents.keys()], def.targetCount, def.mode);
+	await stateTracker.init(Array.from(def.agents.keys()), def.targetCount, def.mode);
 
 	// 7. Log start
-	const agentList = [...def.agents.keys()].join(", ");
+	const agentList = Array.from(def.agents.keys()).join(", ");
 	const waveDesc = waves.map((w, i) => `wave ${i + 1}: [${w.join(", ")}]`).join("; ");
 	pi.logger.debug("Swarm starting", {
 		name: def.name,
