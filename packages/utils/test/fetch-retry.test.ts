@@ -281,6 +281,31 @@ describe("extractRetryHint", () => {
 		expect(extractRetryHint(headerResponse({ "x-ratelimit-reset-ms": "1500" }))).toBe(1500);
 	});
 
+	// The epoch arm of the `-ms` header had no coverage at all: a mutation that
+	// returned the absolute instant instead of the wait left every test green.
+	it("treats a large x-ratelimit-reset-ms value as the epoch it is", () => {
+		const inThirtySeconds = Date.now() + 30_000;
+		const hint = extractRetryHint(headerResponse({ "x-ratelimit-reset-ms": String(inThirtySeconds) }));
+		expect(hint).toBeGreaterThan(28_000);
+		expect(hint).toBeLessThanOrEqual(30_000);
+	});
+
+	// `x-ratelimit-reset` conflates three shapes, and this branch read every one
+	// of them as a Unix epoch in seconds. A gateway sending the common delta form
+	// `60` produced `60000 - Date.now()`, a large negative, so the server's own
+	// wait was discarded and the caller fell back to its default backoff.
+	it("treats a small x-ratelimit-reset value as a delta in seconds", () => {
+		expect(extractRetryHint(headerResponse({ "x-ratelimit-reset": "60" }))).toBe(60_000);
+		expect(extractRetryHint(headerResponse({ "x-ratelimit-reset": "1" }))).toBe(1_000);
+	});
+
+	it("treats a large x-ratelimit-reset value as the epoch it is", () => {
+		const inThirtySeconds = Math.floor(Date.now() / 1000) + 30;
+		const hint = extractRetryHint(headerResponse({ "x-ratelimit-reset": String(inThirtySeconds) }));
+		expect(hint).toBeGreaterThan(28_000);
+		expect(hint).toBeLessThanOrEqual(30_000);
+	});
+
 	it("accepts a bare Headers object and returns undefined with no signal", () => {
 		expect(extractRetryHint(new Headers({ "retry-after-ms": "42" }))).toBe(42);
 		expect(extractRetryHint(new Headers())).toBeUndefined();
