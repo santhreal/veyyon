@@ -1,5 +1,5 @@
 import { THINKING_EFFORTS } from "@veyyon/catalog/effort";
-import { scope } from "arktype";
+import { scope, type Type } from "arktype";
 
 // Schema construction is deferred behind modelsConfigSchemas(): even with the
 // jitless scope below (~65% cheaper than default ArkType codegen), building
@@ -311,20 +311,162 @@ function buildModelsConfigSchemas() {
 		"providers?": { "[string]": ProviderConfigSchema },
 	});
 
-	return { OpenAICompatSchema, ModelOverrideSchema, ProviderDiscoverySchema, ProviderAuthSchema, ModelsConfigSchema };
+	const schemas: ModelsConfigSchemas = {
+		OpenAICompatSchema,
+		ModelOverrideSchema,
+		ProviderDiscoverySchema,
+		ProviderAuthSchema,
+		ModelsConfigSchema,
+	};
+	return schemas;
 }
 
-type Schemas = ReturnType<typeof buildModelsConfigSchemas>;
+export type ProviderAuthMode = "apiKey" | "none" | "oauth";
 
-let schemasCache: Schemas | undefined;
+export interface ProviderDiscovery {
+	type: "ollama" | "llama.cpp" | "lm-studio" | "openai-models-list" | "proxy" | "litellm";
+}
+
+export interface ModelCost {
+	input?: number;
+	output?: number;
+	cacheRead?: number;
+	cacheWrite?: number;
+}
+export interface OpenAICompatOverride {
+	supportsStore?: boolean;
+	supportsDeveloperRole?: boolean;
+	supportsMultipleSystemMessages?: boolean;
+	supportsReasoningEffort?: boolean;
+	reasoningEffortMap?: {
+		minimal?: string;
+		low?: string;
+		medium?: string;
+		high?: string;
+		xhigh?: string;
+		max?: string;
+	};
+	maxTokensField?: "max_completion_tokens" | "max_tokens";
+	supportsUsageInStreaming?: boolean;
+	requiresToolResultName?: boolean;
+	requiresMistralToolIds?: boolean;
+	requiresAssistantAfterToolResult?: boolean;
+	requiresThinkingAsText?: boolean;
+	reasoningContentField?: "reasoning_content" | "reasoning" | "reasoning_text";
+	requiresReasoningContentForToolCalls?: boolean;
+	allowsSyntheticReasoningContentForToolCalls?: boolean;
+	requiresAssistantContentForToolCalls?: boolean;
+	supportsToolChoice?: boolean;
+	supportsForcedToolChoice?: boolean;
+	disableReasoningOnForcedToolChoice?: boolean;
+	disableReasoningOnToolChoice?: boolean;
+	thinkingFormat?: "openai" | "openrouter" | "zai" | "qwen" | "qwen-chat-template";
+	openRouterRouting?: {
+		only?: string[];
+		order?: string[];
+	};
+	vercelGatewayRouting?: {
+		only?: string[];
+		order?: string[];
+	};
+	extraBody?: Record<string, unknown>;
+	cacheControlFormat?: "anthropic";
+	supportsStrictMode?: boolean;
+	toolStrictMode?: "all_strict" | "none";
+	streamIdleTimeoutMs?: number;
+	supportsLongPromptCacheRetention?: boolean;
+	supportsReasoningParams?: boolean;
+	alwaysSendMaxTokens?: boolean;
+	strictResponsesPairing?: boolean;
+	supportsImageDetailOriginal?: boolean;
+	supportsServerCompaction?: boolean;
+	requiresToolResultId?: boolean;
+	replayUnsignedThinking?: boolean;
+	whenThinking?: OpenAICompatOverride;
+}
+
+export interface ModelDefinition {
+	id: string;
+	name?: string;
+	api?: string;
+	baseUrl?: string;
+	reasoning?: boolean;
+	thinking?: {
+		type?: "enabled" | "disabled" | "thought-budget";
+		budgetTokens?: number;
+	};
+	input?: ("text" | "image")[];
+	supportsTools?: boolean;
+	cost?: {
+		input: number;
+		output: number;
+		cacheRead: number;
+		cacheWrite: number;
+	};
+	premiumMultiplier?: number;
+	contextWindow?: number;
+	maxTokens?: number;
+	omitMaxOutputTokens?: boolean;
+	headers?: Record<string, string>;
+	compat?: OpenAICompatOverride;
+	contextPromotionTarget?: string;
+	compactionModel?: string;
+	remoteCompaction?: unknown;
+}
+
+export interface ModelOverride {
+	name?: string;
+	reasoning?: boolean;
+	thinking?: {
+		type?: "enabled" | "disabled" | "thought-budget";
+		budgetTokens?: number;
+	};
+	input?: ("text" | "image")[];
+	supportsTools?: boolean;
+	cost?: ModelCost;
+	premiumMultiplier?: number;
+	contextWindow?: number;
+	maxTokens?: number;
+	omitMaxOutputTokens?: boolean;
+	headers?: Record<string, string>;
+	compat?: OpenAICompatOverride;
+	contextPromotionTarget?: string;
+	compactionModel?: string;
+	remoteCompaction?: unknown;
+}
+
+export interface ProviderConfig {
+	baseUrl?: string;
+	apiKey?: string;
+	api?: string;
+	headers?: Record<string, string>;
+	compat?: OpenAICompatOverride;
+	remoteCompaction?: unknown;
+	authHeader?: boolean;
+	auth?: ProviderAuthMode;
+	discovery?: ProviderDiscovery;
+	models?: ModelDefinition[];
+	modelOverrides?: Record<string, ModelOverride>;
+	disableStrictTools?: boolean;
+	transport?: "pi-native";
+}
+
+export interface ModelsConfig {
+	providers?: Record<string, ProviderConfig>;
+}
+
+export interface ModelsConfigSchemas {
+	OpenAICompatSchema: Type;
+	ModelOverrideSchema: Type;
+	ProviderDiscoverySchema: Type;
+	ProviderAuthSchema: Type;
+	ModelsConfigSchema: Type;
+}
+
+let schemasCache: ModelsConfigSchemas | undefined;
 
 /** The models-config schema set, built lazily on first config load. */
-export function modelsConfigSchemas(): Schemas {
+export function modelsConfigSchemas(): ModelsConfigSchemas {
 	schemasCache ??= buildModelsConfigSchemas();
 	return schemasCache;
 }
-
-export type ModelOverride = Schemas["ModelOverrideSchema"]["infer"];
-export type ProviderAuthMode = Schemas["ProviderAuthSchema"]["infer"];
-export type ProviderDiscovery = Schemas["ProviderDiscoverySchema"]["infer"];
-export type ModelsConfig = Schemas["ModelsConfigSchema"]["infer"];

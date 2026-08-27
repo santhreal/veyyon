@@ -16,9 +16,29 @@
  * ArkType types costs ~18ms, which only broker request/response paths ever
  * need — the boot path must not pay it.
  */
-import { type } from "arktype";
+import { type Type, type } from "arktype";
 import { REMOTE_REFRESH_SENTINEL } from "../auth-storage";
 import { usageWireSchemas } from "../usage/report-wire";
+import type {
+	CredentialBlockRequest,
+	CredentialBlockResponse,
+	CredentialBlocksDeleteResponse,
+	CredentialDisableRequest,
+	CredentialDisableResponse,
+	CredentialRefreshResponse,
+	CredentialUploadRequest,
+	CredentialUploadResponse,
+	HealthzResponse,
+	RefresherSchedule,
+	SnapshotEntry,
+	SnapshotResponse,
+	SnapshotStreamEntryEvent,
+	SnapshotStreamEvent,
+	SnapshotStreamRemovedEvent,
+	SnapshotStreamSnapshotEvent,
+	UsageResponse,
+	UsageStaleResponse,
+} from "./types";
 
 function buildWireSchemas() {
 	// ─── Credential payloads ─────────────────────────────────────────────────
@@ -235,7 +255,7 @@ function buildWireSchemas() {
 		entries: credentialSnapshotEntrySchema.array(),
 	});
 
-	return {
+	const schemas: WireSchemas = {
 		oauthCredentialSchema,
 		remoteOauthCredentialSchema,
 		apiKeyCredentialSchema,
@@ -262,12 +282,38 @@ function buildWireSchemas() {
 		credentialUploadRequestSchema,
 		credentialUploadResponseSchema,
 	};
+	return schemas;
 }
 
-type WireSchemas = ReturnType<typeof buildWireSchemas>;
+export interface WireSchemas {
+	oauthCredentialSchema: Type;
+	remoteOauthCredentialSchema: Type;
+	apiKeyCredentialSchema: Type;
+	writableAuthCredentialSchema: Type;
+	snapshotCredentialSchema: Type;
+	credentialSnapshotEntrySchema: Type;
+	credentialBlockSnapshotSchema: Type;
+	snapshotEntrySchema: Type<SnapshotEntry>;
+	refresherScheduleSchema: Type<RefresherSchedule>;
+	snapshotResponseSchema: Type<SnapshotResponse>;
+	snapshotStreamSnapshotEventSchema: Type<SnapshotStreamSnapshotEvent>;
+	snapshotStreamEntryEventSchema: Type<SnapshotStreamEntryEvent>;
+	snapshotStreamRemovedEventSchema: Type<SnapshotStreamRemovedEvent>;
+	snapshotStreamEventSchema: Type<SnapshotStreamEvent>;
+	healthzResponseSchema: Type<HealthzResponse>;
+	usageResponseSchema: Type<UsageResponse>;
+	credentialRefreshResponseSchema: Type<CredentialRefreshResponse>;
+	credentialDisableRequestSchema: Type<CredentialDisableRequest>;
+	credentialDisableResponseSchema: Type<CredentialDisableResponse>;
+	credentialBlockRequestSchema: Type<CredentialBlockRequest>;
+	credentialBlockResponseSchema: Type<CredentialBlockResponse>;
+	credentialBlocksDeleteResponseSchema: Type<CredentialBlocksDeleteResponse>;
+	usageStaleResponseSchema: Type<UsageStaleResponse>;
+	credentialUploadRequestSchema: Type<CredentialUploadRequest>;
+	credentialUploadResponseSchema: Type<CredentialUploadResponse>;
+}
 
 let schemasCache: WireSchemas | undefined;
-
 /** All auth-broker wire schemas, constructed on first use. */
 export function wireSchemas(): WireSchemas {
 	schemasCache ??= buildWireSchemas();

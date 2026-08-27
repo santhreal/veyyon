@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import type { Dirent } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import * as path from "node:path";
 import { clamp, clamp01, clampLow } from "../src/math";
@@ -89,7 +90,7 @@ const CLAMP_DEF = /function\s+clamp\s*\(/;
 const CLAMPLOW_DEF = /function\s+clampLow\s*\(/;
 
 async function walkTsSources(dir: string, out: string[], skipModes = false): Promise<void> {
-	let entries: import("node:fs").Dirent[];
+	let entries: Dirent[];
 	try {
 		entries = await readdir(dir, { withFileTypes: true });
 	} catch {

@@ -24,9 +24,10 @@
  */
 
 import { once } from "@veyyon/utils";
+import type * as PiIndex from "../index";
 
 /** The package's public surface, as an extension author sees it through `api.pi`. */
-export type CodingAgentApi = typeof import("../index");
+export type CodingAgentApi = typeof PiIndex;
 
 /**
  * The package namespace, imported on first use and reused afterwards.

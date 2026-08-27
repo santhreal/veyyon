@@ -7,10 +7,10 @@ import { isCancellation } from "@veyyon/utils/abortable";
 import { clamp } from "@veyyon/utils/math";
 import { errorMessage } from "@veyyon/utils/type-guards";
 import type TurndownService from "turndown";
-
 import type { AgentStorage } from "../../session/agent-storage";
 import { ToolAbortError, throwIfAborted } from "../../tools/tool-errors";
 import { isTimeoutError, scopedTimeoutSignal } from "../../utils/fetch-timeout";
+import type * as turndownModule from "../../utils/turndown";
 import { CHROME_WINDOWS_USER_AGENT } from "../search/providers/browser-headers";
 
 export { formatNumber } from "@veyyon/utils/format";
@@ -342,9 +342,9 @@ export async function loadPage(url: string, options: LoadPageOptions = {}): Prom
  * turndown-plugin-gfm stay off the startup graph; memoized so `createTurndown`
  * and `normalizeTablesHtml` share a single dynamic import.
  */
-let turndownModulePromise: Promise<typeof import("../../utils/turndown")> | undefined;
+let turndownModulePromise: Promise<typeof turndownModule> | undefined;
 
-function getTurndownModule(): Promise<typeof import("../../utils/turndown")> {
+function getTurndownModule(): Promise<typeof turndownModule> {
 	turndownModulePromise ||= import("../../utils/turndown");
 	return turndownModulePromise;
 }

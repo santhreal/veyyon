@@ -47,6 +47,7 @@ import {
 	MAX_BYTES,
 	MAX_OUTPUT_CHARS,
 	type RenderResult,
+	type ScraperDegrade,
 	type SpecialHandler,
 } from "../web/scrapers/types";
 import { convertWithMarkit, fetchBinary } from "../web/scrapers/utils";
@@ -1293,7 +1294,7 @@ export async function handleSpecialUrls(
 	const specialHandlers = handlers ?? (await loadSpecialHandlers());
 	for (const handler of specialHandlers) {
 		throwIfAborted(signal, "fetch");
-		let result: Awaited<ReturnType<SpecialHandler>>;
+		let result: RenderResult | ScraperDegrade | null;
 		try {
 			result = await handler(url, timeout, signal, storage);
 		} catch (error) {

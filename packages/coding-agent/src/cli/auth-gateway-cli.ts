@@ -14,6 +14,7 @@
  */
 import {
 	type Api,
+	type AssistantMessage,
 	type CompletionProbe,
 	type CompletionProbeInput,
 	type CredentialCompletionResult,
@@ -358,7 +359,7 @@ async function probeOneModel(
 	// are required" without it). `disableReasoning` is intentionally NOT set:
 	// providers like Fireworks reject the "none" effort it maps to, and we'd
 	// rather burn 16 reasoning tokens than misdiagnose a healthy credential.
-	let response: Awaited<ReturnType<typeof completeSimple>>;
+	let response: AssistantMessage;
 	try {
 		response = await completeSimple(
 			model,

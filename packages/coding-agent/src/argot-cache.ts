@@ -226,12 +226,22 @@ export async function rearmArgotForDecode(
  * Never throws for a missing project: that is a normal "nothing to load" answer,
  * surfaced to the caller as `undefined`, not an error.
  */
+export interface ArgotLoadResult {
+	root: string;
+	handles: number;
+}
+
+export interface ArgotUnloadResult {
+	root: string;
+	changed: boolean;
+}
+
 export async function loadArgotFolder(
 	argot: ArgotSession,
 	folder: string,
 	signal?: AbortSignal,
 	tokenBudget?: number,
-): Promise<{ root: string; handles: number } | undefined> {
+): Promise<ArgotLoadResult | undefined> {
 	const resolved = await resolveFolderVocab(folder, tokenBudget, signal);
 	if (resolved === undefined) {
 		return undefined;
@@ -250,7 +260,7 @@ export async function loadArgotFolder(
  * was never loaded or was already not taught), or `undefined` when `folder` has no
  * project marker to resolve.
  */
-export function unloadArgotFolder(argot: ArgotSession, folder: string): { root: string; changed: boolean } | undefined {
+export function unloadArgotFolder(argot: ArgotSession, folder: string): ArgotUnloadResult | undefined {
 	const root = resolveProjectRoot(folder);
 	if (root === undefined) {
 		return undefined;

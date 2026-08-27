@@ -65,6 +65,8 @@ import { scheduleMarketplaceAutoUpdate } from "./extensibility/plugins/marketpla
 import { registerDaemonProjectPresence } from "./launch/presence";
 import type { MCPManager } from "./mcp";
 import { setLaunchTip, updateInstalledTip } from "./modes/components/launch-tip";
+import type * as firstFrameModule from "./modes/first-frame";
+import type * as interactiveModeModule from "./modes/interactive-mode";
 import type { InteractiveMode } from "./modes/interactive-mode";
 import type { PrintModeOptions } from "./modes/print-mode";
 import { CURRENT_SETUP_VERSION, resolveOnboardingGeneration } from "./modes/setup-version";
@@ -232,7 +234,7 @@ export async function readStdinWithFirstByteBound(
 			const next = reader.read();
 			// Only the FIRST read races the deadline. `Promise.race` leaves the losing timer pending, so it
 			// is cleared explicitly rather than left to keep the process alive.
-			let timer: ReturnType<typeof setTimeout> | undefined;
+			let timer: NodeJS.Timeout | undefined;
 			const result =
 				chunks.length === 0
 					? await Promise.race([
@@ -506,16 +508,16 @@ export function createAcpSessionFactory(args: AcpSessionFactoryOptions): AcpSess
 	};
 }
 
-let interactiveModeLoad: Promise<typeof import("./modes/interactive-mode")> | undefined;
+let interactiveModeLoad: Promise<typeof interactiveModeModule> | undefined;
 
-function loadInteractiveMode(): Promise<typeof import("./modes/interactive-mode")> {
+function loadInteractiveMode(): Promise<typeof interactiveModeModule> {
 	interactiveModeLoad ??= import("./modes/interactive-mode");
 	return interactiveModeLoad;
 }
 
-let firstFrameLoad: Promise<typeof import("./modes/first-frame")> | undefined;
+let firstFrameLoad: Promise<typeof firstFrameModule> | undefined;
 
-function loadFirstFrame(): Promise<typeof import("./modes/first-frame")> {
+function loadFirstFrame(): Promise<typeof firstFrameModule> {
 	firstFrameLoad ??= import("./modes/first-frame");
 	return firstFrameLoad;
 }

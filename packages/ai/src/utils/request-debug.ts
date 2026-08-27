@@ -265,10 +265,10 @@ class FileRequestDebugSession implements RequestDebugSession {
 
 		// INFERRED, not annotated. Two `ReadableStreamDefaultReader`s are in scope here: the DOM one
 		// that `response.body.getReader()` actually returns, and Bun's, which is generic over its
-		// buffer and declares an extra `readMany`. Writing either name picked the wrong one -- the
-		// bare form resolved to Bun's and rejected the assignment, and `ReturnType<...>` selected a
-		// BYOB overload whose `read` wants an argument. Letting the initializer decide keeps this
-		// correct under both lib sets, and nothing here needs the type spelled out.
+		// buffer and declares an extra `readMany`. Writing either name picked the wrong one: the
+		// bare form resolved to Bun's and rejected the assignment, and deriving the return type
+		// selected a BYOB overload whose `read` wants an argument. Letting the initializer decide
+		// keeps this correct under both lib sets, and nothing here needs the type spelled out.
 		const reader = (() => {
 			try {
 				return response.body.getReader();
