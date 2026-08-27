@@ -208,9 +208,15 @@ export const TOOLS_SETTINGS = {
 		},
 	},
 
+	// Three trailing lines came from the retired `grep` tool, where the number was
+	// chosen for the terminal code frame a person reads. A tool result is also sent
+	// to the model on every later request of the session, so a line kept here is
+	// billed once per remaining request, not once. Measured over eight searches of
+	// this repository, three trailing lines cost 16,836 tokens against 11,483 at
+	// one, for context the model reaches by reading the file at a range instead.
 	"search.contextAfter": {
 		type: "number",
-		default: 3,
+		default: 1,
 		ui: {
 			tab: "tools",
 			group: "Search Context",

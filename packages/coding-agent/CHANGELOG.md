@@ -27,6 +27,7 @@
 
 ### Changed
 
+- `search.contextAfter` defaults to 1 line instead of 3. A tool result is sent again on every later request of the session, so each line of a search result is billed once per remaining request; over eight searches of this repository the wider window cost 16,836 tokens against 11,483.
 - The eval prompt-override registry, the system-prompt eval hooks, the argot cache and the reroot hint name `@veyyon/evals` paths instead of the retired `@veyyon/metaharness`, `@veyyon/typescript-edit-benchmark` and `@veyyon/deepswe-bench` packages. No behavior change.
 - `veyyon --help` renders its command list from registry summaries verified against command statics and loads only the hidden default command for its flag table, reducing a measured warm Windows invocation from 1.2 seconds to 0.13 seconds.
 - The default launch command imports the session runtime and ACP terminal authentication only when it runs, so loading its flag table no longer imports the runtime graph.
