@@ -469,7 +469,7 @@ describe("Public Web aggregate wait semantics, termination, and bounds", () => {
 		};
 
 		const startTime = Date.now();
-		const response = await searchPublicWeb(
+		const search = searchPublicWeb(
 			{
 				query: "hanging query",
 				systemPrompt: "",
@@ -478,11 +478,12 @@ describe("Public Web aggregate wait semantics, termination, and bounds", () => {
 			},
 			{ softMs: 10, hardMs: 40 },
 		);
-		const elapsed = Date.now() - startTime;
 
-		expect(response.provider).toBe("public");
-		expect(response.sources).toEqual([]);
-		// Hard deadline was 40ms; must terminate in bounded window without stalling
+		// Termination is the contract, and it still holds. The aggregate no longer terminates by
+		// handing back an empty result, which is indistinguishable from a web that had nothing: it
+		// names the deadline and the engines that never answered.
+		await expect(search).rejects.toThrow(/did not answer/);
+		const elapsed = Date.now() - startTime;
 		expect(elapsed).toBeGreaterThanOrEqual(30);
 		expect(elapsed).toBeLessThan(500);
 	});

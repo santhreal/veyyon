@@ -90,9 +90,9 @@ function mockProviderChain(providers: provider.SearchProvider[]) {
 	});
 }
 
-function textOf(result: { content: Array<{ type: string } & Record<string, unknown>> }): string {
-	const block = result.content[0];
-	return block && "text" in block ? String(block.text) : "";
+/** The tool's first text block. Same shape `renderSearchResult` reads a result through. */
+function textOf(result: { content: Array<{ type: string; text?: string }> }): string {
+	return result.content[0]?.text ?? "";
 }
 
 const REAL_RESULT = {

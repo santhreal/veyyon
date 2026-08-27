@@ -35,11 +35,13 @@
 // depend on history, and that a styled row gets its own bytes back.
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { getThemeByName, paintBand, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
+import { getThemeByName, paintBand, setThemeInstance, theme } from "@veyyon/coding-agent/modes/theme/theme";
+import type { Theme } from "@veyyon/coding-agent/modes/theme/theme-class";
 import { getAnsiPolicy, setAnsiPolicy, visibleWidth } from "@veyyon/tui";
 
 const originalColorterm = Bun.env.COLORTERM;
 const originalAnsiPolicy = getAnsiPolicy();
+let originalTheme: Theme | undefined;
 
 /**
  * Rows that already carry their own escapes, which is the only shape whose walk consumes the
@@ -74,6 +76,7 @@ function withoutBandBackground(row: string): string {
 }
 
 beforeAll(async () => {
+	originalTheme = theme;
 	setAnsiPolicy("full");
 	Bun.env.COLORTERM = "truecolor";
 	const loaded = await getThemeByName("titanium");
@@ -88,6 +91,9 @@ afterAll(() => {
 	setAnsiPolicy(originalAnsiPolicy);
 	if (originalColorterm === undefined) delete (Bun.env as Record<string, string | undefined>).COLORTERM;
 	else Bun.env.COLORTERM = originalColorterm;
+	// The theme is a process-wide binding, so a suite that switches it and walks away decides the
+	// colours every later file renders in. Put back the one that was live on entry.
+	if (originalTheme !== undefined) setThemeInstance(originalTheme);
 });
 
 describe("painting a band on a styled row does not depend on the row before it", () => {
