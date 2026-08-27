@@ -469,7 +469,9 @@ function formatCellOutputLines(
 	};
 	const outputLines = cell.output.split("\n");
 	if (expanded) {
-		return { lines: outputLines.map(styleLine), hiddenCount: 0 };
+		const expandedLines = new Array<string>(outputLines.length);
+		for (let li = 0; li < outputLines.length; li++) expandedLines[li] = styleLine(outputLines[li]!);
+		return { lines: expandedLines, hiddenCount: 0 };
 	}
 	// Progress runs collapse before the window is measured, so a wall of
 	// same-shape lines cannot spend the whole tail and push the interesting line
@@ -495,7 +497,13 @@ export const evalToolRenderer = {
 
 		return markFramedBlockComponent({
 			render: (width: number): readonly string[] => {
-				const key = `${options.expanded ? 1 : 0}|${options.spinnerFrame ?? "-"}|${previewWindowRows()}|${cells.map(c => `${c.language}:${c.title ?? ""}:${c.code.length}`).join("|")}`;
+				let cellKey = "";
+				for (let ci = 0; ci < cells.length; ci++) {
+					const c = cells[ci]!;
+					if (ci > 0) cellKey += "|";
+					cellKey += `${c.language}:${c.title ?? ""}:${c.code.length}`;
+				}
+				const key = `${options.expanded ? 1 : 0}|${options.spinnerFrame ?? "-"}|${previewWindowRows()}|${cellKey}`;
 				if (cached && cached.key === key && cached.width === width) {
 					return cached.result;
 				}
@@ -557,11 +565,14 @@ export const evalToolRenderer = {
 		const treeLineCap = treeExpanded ? JSON_TREE_MAX_LINES_EXPANDED : JSON_TREE_MAX_LINES_COLLAPSED;
 		const treeScalarLen = treeExpanded ? JSON_TREE_SCALAR_LEN_EXPANDED : JSON_TREE_SCALAR_LEN_COLLAPSED;
 		const labelOutputs = jsonOutputs.length > 1;
-		const jsonLines = jsonOutputs.flatMap((value, index) => {
+		const jsonLines: string[] = [];
+		for (let ji = 0; ji < jsonOutputs.length; ji++) {
+			const value = jsonOutputs[ji]!;
 			const tree = renderJsonTreeLines(value, uiTheme, treeDepth, treeLineCap, treeScalarLen);
-			const body = tree.truncated ? [...tree.lines, uiTheme.fg("dim", "…")] : tree.lines;
-			return labelOutputs ? [uiTheme.fg("dim", `display[${index + 1}]`), ...body] : body;
-		});
+			if (labelOutputs) jsonLines.push(uiTheme.fg("dim", `display[${ji + 1}]`));
+			for (let li = 0; li < tree.lines.length; li++) jsonLines.push(tree.lines[li]!);
+			if (tree.truncated) jsonLines.push(uiTheme.fg("dim", "…"));
+		}
 
 		const timeoutSeconds = options.renderContext?.timeout;
 		const timeoutLine =
@@ -700,10 +711,12 @@ export const evalToolRenderer = {
 		}
 
 		if (options.renderContext?.expanded ?? options.expanded) {
-			const styledOutput = combinedOutput
-				.split("\n")
-				.map(line => uiTheme.fg("toolOutput", line))
-				.join("\n");
+			const outputParts = combinedOutput.split("\n");
+			let styledOutput = "";
+			for (let oi = 0; oi < outputParts.length; oi++) {
+				if (oi > 0) styledOutput += "\n";
+				styledOutput += uiTheme.fg("toolOutput", outputParts[oi]!);
+			}
 			const lines = [
 				styledOutput,
 				...(statusLines.length > 0 ? [uiTheme.fg("dim", "Status"), ...statusLines] : []),

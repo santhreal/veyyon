@@ -114,7 +114,10 @@ export function createAdvisorMessageCard(
 				const rail = uiTheme.fg("dim", railGlyph);
 				lines.push(`  ${rail} ${uiTheme.fg("dim", `… +${hidden} more ${hidden === 1 ? "note" : "notes"}`)}`);
 			}
-			return lines.map(line => truncateToWidth(line, width, Ellipsis.Unicode));
+			for (let li = 0; li < lines.length; li++) {
+				lines[li] = truncateToWidth(lines[li]!, width, Ellipsis.Unicode);
+			}
+			return lines;
 		},
 		{ paddingX: 1 },
 	);
