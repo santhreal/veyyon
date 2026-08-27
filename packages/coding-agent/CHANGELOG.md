@@ -51,6 +51,7 @@
 
 ### Fixed
 
+- A prompt typed at the launch card while the session is still starting is carried into the composer instead of being discarded, and the terminal's own probe replies are still excluded so no escape sequence reaches the draft.
 - A bash working directory on a different Windows drive from the project renders as the absolute path it is, instead of being reported as a path inside the project.
 - Web search keeps trying the next provider when one returns only follow-up suggestions or intermediate search queries, instead of counting that metadata as a result and handing the model a list of questions; a SearXNG "did you mean" on a misspelled query no longer ends the search.
 - Public Web search reports which engines did not answer within the deadline instead of reporting an empty web, so a slow or bot-walled engine no longer surfaces as "returned no renderable search content".
