@@ -4,6 +4,7 @@
 
 ### Fixed
 
+- A `cargo nextest` run whose profile sets `failure-output = "final"` keeps its panic bodies, so the assertion diff, message, file and line survive the summary instead of being dropped and leaving a failure count with no evidence.
 - A native addon load that fails is reported once instead of once per native call; the failed pipeline is memoized, so a run that reached a hundred native calls no longer prints a hundred copies of the candidate report ([#917](https://github.com/santhreal/veyyon/issues/917)).
 - Fixed stock Windows AVX2 detection by trying PowerShell 7 before an isolated modern-addon trial; only explicit shell answers or illegal-instruction exits become verdicts, while missing, incompatible, timed-out, and unexpectedly crashing addons remain unknown.
 - Persisted AVX2 verdicts are schema-versioned and keyed by platform, architecture, and CPU model, so copied or stale caches cannot select a native variant for different hardware.
