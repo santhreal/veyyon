@@ -282,6 +282,7 @@
 - `usage-cli.ts` and browser tab management files (`handle-release.ts`, `launch.ts`, `tab-api-guard.ts`, `tab-supervisor.ts`, `tab-worker.ts`) replace Set/Map spreads with `Array.from()` and array copies with `.slice()` in usage report rendering and browser tab lifecycle management.
 - `edit/modes/patch.ts`, `tools/grep.ts`, and `tools/bash-guard.ts` replace array spreads with `.slice()`/`.concat()`/`Array.from()` in patch application, grep match merging, and bash command tracking.
 - `utils/git.ts` and extensibility plugin registries (`installed-registry.ts`, `legacy-pi-compat.ts`, `marketplace/registry.ts`) replace array spreads with `.slice()`/`.concat()`/`Array.from()` in git command construction and plugin registration.
+- `argot-cache.ts`, `advisor/config.ts`, `advisor/runtime.ts`, `autoresearch/git.ts`, `autoresearch/helpers.ts`, `autoresearch/index.ts`, `autoresearch/tools/log-experiment.ts`, `capability/index.ts`, and 11 CLI files (`agents-cli.ts`, `args.ts`, `auth-gateway-cli.ts`, `bench-cli.ts`, `completion-gen.ts`, `dry-balance-cli.ts`, `gallery-cli.ts`, `gc-cli.ts`, `install-health.ts`, `models-cli.ts`, `plugin-cli.ts`) replace Set/Map/array spreads with `Array.from()`, `.slice()`, and `.concat()` across advisor configuration, autoresearch tool management, capability snapshots, and CLI command paths.
 
 ### Added
 
