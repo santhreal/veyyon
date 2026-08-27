@@ -51,6 +51,10 @@ mention stays in the transcript and is billed on every later request. A capped m
 lines it showed and the selector that pages the rest. A file over 5 MB, a binary file, or an image
 over 25 MB is not read: the message carries the path and the reason.
 
+`tools.artifactSpillThreshold` bounds every model-visible result the same way: a file window, a
+directory listing, an archive listing, a `search` path list, a notebook or converted document, a URL
+body, and a `launch` log read. A capped result states what it carried and how to reach the rest.
+
 ## The `search` tool (`tools/search.ts`)
 
 Workspace discovery and searching are unified in the `search` tool, covering file path lookup,

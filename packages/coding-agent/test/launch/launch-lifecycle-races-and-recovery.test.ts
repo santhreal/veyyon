@@ -266,7 +266,7 @@ describe("launch lifecycle backoff, name reuse, and recovery", () => {
 			// Verify list output shows the current daemon and does not duplicate
 			const listed = await client.request({ op: "list" });
 			if (listed.op === "list") {
-				const rendered = toolContent(listed, { op: "list" });
+				const rendered = toolContent(listed, { op: "list" }, {});
 				expect(rendered).toContain("worker:");
 			}
 		} finally {
