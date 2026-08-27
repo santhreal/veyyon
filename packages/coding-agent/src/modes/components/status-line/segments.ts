@@ -48,6 +48,9 @@ export type { SegmentContext } from "./types";
  */
 const SECRET_EXPIRY_CHIP_WINDOW_MS = 60 * 60 * 1000;
 
+/** Pre-computed zero-padded 2-digit strings for 0–59, avoiding toString().padStart(2, "0") per frame. */
+const PAD2: readonly string[] = Array.from({ length: 60 }, (_, i) => String(i).padStart(2, "0"));
+
 /**
  * Clamp a path/label to `maxLen` CELLS, prepending an ellipsis when clipped.
  *
@@ -911,10 +914,10 @@ const timeSegment: StatusLineSegment = {
 			hours = hours % 12 || 12;
 		}
 
-		const mins = now.getMinutes().toString().padStart(2, "0");
+		const mins = PAD2[now.getMinutes()];
 		let timeStr = `${hours}:${mins}`;
 		if (opts.showSeconds) {
-			timeStr += `:${now.getSeconds().toString().padStart(2, "0")}`;
+			timeStr += `:${PAD2[now.getSeconds()]}`;
 		}
 		timeStr += suffix;
 
