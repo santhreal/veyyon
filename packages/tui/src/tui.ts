@@ -3571,7 +3571,8 @@ export class TUI extends Container {
 	 * native scrollback.
 	 */
 	#compositeOverlaysIntoWindow(window: string[], termWidth: number, termHeight: number): string[] {
-		const result = window.slice();
+		let result = window;
+		let copied = false;
 		for (let oi = 0; oi < this.overlayStack.length; oi++) {
 			const entry = this.overlayStack[oi]!;
 			if (!this.#isOverlayVisible(entry)) continue;
@@ -3588,6 +3589,10 @@ export class TUI extends Container {
 						: overlayLines.slice(0, maxHeight);
 			}
 			const { row, col } = this.#resolveOverlayLayout(options, overlayLines.length, termWidth, termHeight);
+			if (!copied) {
+				result = window.slice();
+				copied = true;
+			}
 			for (let i = 0; i < overlayLines.length; i++) {
 				const idx = row + i;
 				if (idx < 0 || idx >= result.length) continue;
