@@ -22,9 +22,27 @@ const HTML_DIR = path.join(import.meta.dirname, "../../src/export/html");
 const markdownRendererSource = fs.readFileSync(path.join(HTML_DIR, "markdown-renderer.js"), "utf8");
 const vendoredMarked = fs.readFileSync(path.join(HTML_DIR, "vendor/marked.min.js"), "utf8");
 
-function escapeHtml(value: string): string {
-	return String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-}
+/**
+ * The escaper the viewer ships, lifted out of `template.js` and executed.
+ *
+ * This was a hand-written stand-in that escaped `&`, `<`, `>` and `"`. The
+ * shipped function did the first three only, so every assertion below about an
+ * attribute passed against a sanitizer stricter than the deployed one and the
+ * `href="..."` quote breakout stayed invisible. A double must never be stricter
+ * than the thing it stands for.
+ */
+const templateSource = fs.readFileSync(path.join(HTML_DIR, "template.js"), "utf8");
+const escapeHtmlStart = templateSource.indexOf("function escapeHtml(");
+const escapeHtmlSource = (() => {
+	const open = templateSource.indexOf("{", escapeHtmlStart);
+	let depth = 0;
+	for (let i = open; i < templateSource.length; i++) {
+		if (templateSource[i] === "{") depth++;
+		else if (templateSource[i] === "}" && --depth === 0) return templateSource.slice(escapeHtmlStart, i + 1);
+	}
+	throw new Error("escapeHtml does not close in template.js");
+})();
+const escapeHtml = new Function(`${escapeHtmlSource}; return escapeHtml;`)() as (value: string) => string;
 
 /** Load the vendored parser and the shipped renderer exactly as the template inlines them. */
 function loadViewerParser(): (text: string) => string {

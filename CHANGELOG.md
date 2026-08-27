@@ -92,6 +92,8 @@
 
 ### Fixed
 
+- An exported or shared session escapes quotes in every value it places in an HTML attribute, so a link target, link title or image mime type carrying a `"` renders as text instead of closing the attribute and adding an event handler that runs on the share origin.
+- An exported or shared session escapes the model names in its header, so a model name carrying markup renders as text.
 - The `write` tool accepts a file holding an indented numeric mapping key, so a docker-compose `80: http`, a Kubernetes container port and a dict literal keyed by port number are written instead of being refused as pasted search output.
 - A read, write, grep or image target that reaches outside the working directory through a symlink asks for approval even when it carries a selector suffix, so `link.env:1-10`, `db.sqlite:users:42` and `archive.zip:dir/file.ts:5-9` are no longer auto-approved where the bare path would have prompted.
 - A server-side compaction failure states the reason once instead of wrapping it in its own prefix, so a host without the compact route reports "Server-side compaction is not available for openai-codex/… (404 Not Found); falling back to local compaction." rather than nesting the message inside itself.
