@@ -43,6 +43,14 @@ files (PNG, JPEG, GIF, WEBP) inline for direct visual analysis. When `inspect_im
 `read` returns image metadata instead and the model inspects the image by calling `inspect_image`
 with a question.
 
+## `@path` mentions (`utils/file-mentions.ts`)
+
+A `@path` token in a prompt auto-reads the file or lists the directory it names, and the result is
+bounded by `tools.artifactSpillThreshold`, the same budget a tool result carries, because the
+mention stays in the transcript and is billed on every later request. A capped mention states the
+lines it showed and the selector that pages the rest. A file over 5 MB, a binary file, or an image
+over 25 MB is not read: the message carries the path and the reason.
+
 ## The `search` tool (`tools/search.ts`)
 
 Workspace discovery and searching are unified in the `search` tool, covering file path lookup,

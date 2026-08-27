@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-a761b097.js";
+            window.path_to_searchindex_js = "searchindex-1723b1e2.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-a2abefc1.js"></script>
@@ -18416,6 +18416,12 @@ notebooks (editable cell text), images, URLs (reader-mode by default), and inter
 files (PNG, JPEG, GIF, WEBP) inline for direct visual analysis. When <code>inspect_image.enabled</code> is set,
 <code>read</code> returns image metadata instead and the model inspects the image by calling <code>inspect_image</code>
 with a question.</p>
+<h2 id="path-mentions-utilsfile-mentionsts"><a class="header" href="#path-mentions-utilsfile-mentionsts"><code>@path</code> mentions (<code>utils/file-mentions.ts</code>)</a></h2>
+<p>A <code>@path</code> token in a prompt auto-reads the file or lists the directory it names, and the result is
+bounded by <code>tools.artifactSpillThreshold</code>, the same budget a tool result carries, because the
+mention stays in the transcript and is billed on every later request. A capped mention states the
+lines it showed and the selector that pages the rest. A file over 5 MB, a binary file, or an image
+over 25 MB is not read: the message carries the path and the reason.</p>
 <h2 id="the-search-tool-toolssearchts"><a class="header" href="#the-search-tool-toolssearchts">The <code>search</code> tool (<code>tools/search.ts</code>)</a></h2>
 <p>Workspace discovery and searching are unified in the <code>search</code> tool, covering file path lookup,
 text/regex search, and structural code search through one canonical model-facing interface. It

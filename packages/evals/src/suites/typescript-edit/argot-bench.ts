@@ -29,18 +29,23 @@ import {
 	certifyArgot,
 } from "./argot-certify";
 import { extractBenchmarkFixtures } from "./extract";
-import forcedAdoptionPromptText from "./prompts/argot-forced-adoption.md" with { type: "text" };
-import sigilEmissionPromptText from "./prompts/argot-sigil-emission.md" with { type: "text" };
-import reproBarrelPromptText from "./prompts/repro-barrel-reexport.md" with { type: "text" };
-import reproFeaturePromptText from "./prompts/repro-new-feature.md" with { type: "text" };
+import { typescriptEditSuitePrompts } from "./prompts/registry";
 import type { EditTask } from "./tasks";
 import { loadTasksFromDir } from "./tasks";
 import { verifyExpectedFileSubset } from "./verify";
 
-const reproBarrelTemplate = Handlebars.compile(reproBarrelPromptText, { noEscape: true });
-const reproFeatureTemplate = Handlebars.compile(reproFeaturePromptText, { noEscape: true });
-const sigilEmissionTemplate = Handlebars.compile(sigilEmissionPromptText, { noEscape: true });
-const forcedAdoptionTemplate = Handlebars.compile(forcedAdoptionPromptText, { noEscape: true });
+const reproBarrelTemplate = Handlebars.compile(typescriptEditSuitePrompts.require("repro-barrel-reexport"), {
+	noEscape: true,
+});
+const reproFeatureTemplate = Handlebars.compile(typescriptEditSuitePrompts.require("repro-new-feature"), {
+	noEscape: true,
+});
+const sigilEmissionTemplate = Handlebars.compile(typescriptEditSuitePrompts.require("argot-sigil-emission"), {
+	noEscape: true,
+});
+const forcedAdoptionTemplate = Handlebars.compile(typescriptEditSuitePrompts.require("argot-forced-adoption"), {
+	noEscape: true,
+});
 
 /**
  * Apply this phase's argot policy to the LIVE settings singleton.
