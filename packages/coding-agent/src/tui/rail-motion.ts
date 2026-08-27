@@ -222,6 +222,17 @@ function ansi256Hex(index: number): string | undefined {
 	return BASE[index];
 }
 
+/** Parse a non-negative integer from `line[start..end)` via charCodeAt. Returns -1 if any byte is not a digit. */
+function parseSgrInt(line: string, start: number, end: number): number {
+	let n = 0;
+	for (let i = start; i < end; i++) {
+		const c = line.charCodeAt(i);
+		if (c < 0x30 || c > 0x39) return -1;
+		n = n * 10 + (c - 0x30);
+	}
+	return n;
+}
+
 /** The `#rrggbb` an SGR parameter list sets as a foreground, if it sets one. */
 function fgHexOf(line: string, start: number, end: number): string | undefined {
 	// Scan first token: must be "38".
@@ -239,8 +250,8 @@ function fgHexOf(line: string, start: number, end: number): string | undefined {
 		const idxStart = pos;
 		while (pos < end && line.charCodeAt(pos) !== 0x3b) pos++;
 		if (pos !== end) return undefined; // must be exactly 3 tokens
-		const index = Number(line.slice(idxStart, end));
-		return Number.isInteger(index) ? ansi256Hex(index) : undefined;
+		const index = parseSgrInt(line, idxStart, end);
+		return index >= 0 ? ansi256Hex(index) : undefined;
 	}
 	if (modeLen === 1 && line.charCodeAt(modeStart) === 0x32) {
 		// Truecolor: three more tokens (r;g;b).
@@ -252,10 +263,10 @@ function fgHexOf(line: string, start: number, end: number): string | undefined {
 		while (gEnd < end && line.charCodeAt(gEnd) !== 0x3b) gEnd++;
 		const bStart = gEnd + 1;
 		if (bStart >= end) return undefined;
-		const r = Number(line.slice(rStart, rEnd));
-		const g = Number(line.slice(gStart, gEnd));
-		const b = Number(line.slice(bStart, end));
-		if (!Number.isInteger(r) || !Number.isInteger(g) || !Number.isInteger(b)) return undefined;
+		const r = parseSgrInt(line, rStart, rEnd);
+		const g = parseSgrInt(line, gStart, gEnd);
+		const b = parseSgrInt(line, bStart, end);
+		if (r < 0 || g < 0 || b < 0) return undefined;
 		return hexOf(r, g, b);
 	}
 	return undefined;
