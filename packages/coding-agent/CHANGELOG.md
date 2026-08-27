@@ -275,6 +275,7 @@
 - `model-registry.ts`, `model-resolver.ts`, `settings.ts`, and `keybindings.ts` replace `[...arr]` spreads with `.slice()`/`.concat()`/`Array.from()` in model resolution, settings fork/clone, and keybinding config paths.
 - `child-environment.ts`, `config-commands.ts`, `config-writer.ts`, `manager.ts`, `smithery-registry.ts`, and `unattributable-error.ts` replace array spreads with `.slice()`/`.concat()`/`Array.from()` in MCP server management, environment baseline, and resource subscription paths.
 - `loading/policy.ts`, `path-utils.ts`, `todo.ts`, `output-schema-validator.ts`, `secret-use-boundary.ts`, `sqlite-reader.ts`, `write.ts`, `image-gen.ts`, `reroot-hint.ts`, and `jtd-to-json-schema.ts` replace array spreads with `.slice()`/`.concat()`/`Array.from()` in tool loading, search path resolution, todo operations, and schema validation.
+- `interactive-mode.ts`, `acp-agent.ts`, `session-observer-registry.ts`, `input-controller.ts`, `model-hub.ts`, and `agent-dashboard.ts` replace array spreads with `.slice()`/`.concat()`/`Array.from()` and backward for loops in command merging, MCP server status, image handling, tool set construction, and agent_end message search paths.
 
 ### Added
 
