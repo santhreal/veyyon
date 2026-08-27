@@ -49,7 +49,7 @@ describe("Ollama malformed tool-call JSON errors", () => {
 		expect(calls).toBe(1);
 		expect(result.stopReason).toBe("error");
 		expect(result.errorStatus).toBe(500);
-		expect(result.errorMessage).toContain("Local Ollama model emitted malformed tool-call JSON");
+		expect(result.errorMessage).toContain("The local model emitted malformed tool-call JSON");
 		expect(result.errorMessage).toContain("reload the model");
 	});
 
