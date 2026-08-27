@@ -18,6 +18,8 @@
 - `git-file-diff.ts` replaces `content.split("\n").length` with a `charCodeAt` newline count in the truncation threshold check.
 - `acp-agent.ts` consolidates two `planContent.split("\n")` calls into one for the plan preview and line count check.
 - `buildSkillPromptMessage` in `skills.ts` replaces `body.split("\n").length` with a `charCodeAt` newline count.
+- `agent-transcript-viewer.ts` replaces `" ".repeat(width)` with `padding(width)` in the blank fill path, using the pre-allocated space buffer for widths up to 512.
+
 
 
 
