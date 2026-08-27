@@ -9,6 +9,8 @@
 - `fgHexOf` in `rail-motion.ts` scans SGR parameters in-place via `charCodeAt`, eliminating `line.slice()` and `params.split(";")` allocations per SGR sequence in `findRailCell` during rail animation.
 - `fgHexOf` in `rail-motion.ts` parses SGR parameter integers via `charCodeAt` in `parseSgrInt`, eliminating 1–3 `line.slice()` allocations per SGR sequence during rail animation.
 
+- `maskNonProse` in `markdown-prose.ts` replaces `text.split("")` + `arr.join("")` with a single-pass `charCodeAt` string build, eliminating an intermediate character array allocation per text block during gradient highlighting.
+
 - Hook status rendering in `status-line/component.ts` replaces `Array.from(entries()).sort().map().join()` with a single-pass array sort and direct string concatenation, eliminating two intermediate arrays per frame.
 - `assistant-message.ts` replaces `Array.from(Set)` with direct `for...of` in kitty image cleanup, eliminating intermediate array allocation when a tool result arrives.
 
