@@ -37,6 +37,7 @@
 - `renderFramedMessage` in `message-frame.ts` replaces `split`/`slice`/`join` with a newline scan, eliminating two intermediate array allocations per framed message render.
 - `stripTrailingUnbalancedRemoval` in `tool-execution.ts` replaces `split`/`slice`/`join` with a newline scan, eliminating two intermediate array allocations per streaming diff render.
 - `#single` in `ttsr-notification.ts` replaces `split`/`slice`/`join` with a newline scan, eliminating two intermediate array allocations per collapsed rule notification render.
+- `renderQuietLines` in `status-line/component.ts` eliminates a redundant `capRight.slice()` since `capRight` is already a freshly-allocated array, removing one array allocation per two-line footline render.
 
 
 

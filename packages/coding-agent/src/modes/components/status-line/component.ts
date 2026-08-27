@@ -2446,13 +2446,12 @@ export class StatusLineComponent implements Component {
 		let capabilityLine: string | null = null;
 		if (capLeft.length > 0 || capRight.length > 0) {
 			const left = capLeft.join(sep);
-			const rightParts = capRight.slice();
-			let right = rightParts.join(sep);
+			let right = capRight.join(sep);
 			// Free space between the groups is the design; on narrow terminals the
 			// right group sheds parts before the gap closes below breathing room.
-			while (rightParts.length > 0 && visibleWidth(left) + visibleWidth(right) + 2 > budget) {
-				rightParts.pop();
-				right = rightParts.join(sep);
+			while (capRight.length > 0 && visibleWidth(left) + visibleWidth(right) + 2 > budget) {
+				capRight.pop();
+				right = capRight.join(sep);
 			}
 			if (left && right) {
 				capabilityLine = left + padding(budget - visibleWidth(left) - visibleWidth(right)) + right;
