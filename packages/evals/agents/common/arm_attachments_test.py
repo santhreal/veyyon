@@ -16,7 +16,7 @@ kind in `arm-attachments.ts` therefore needs no change here, and adding a DELIVE
 nothing implements turns this suite red.
 
 What it does not catch: that the delivered environment variable is the one veyyon reads
-(`arm-attachment-kinds.test.ts` pins the names against the shipped consumers), and that
+(`every-attachment-kind-an-arm-ships-is-declared-and-delivered.test.ts` pins the names against the shipped consumers), and that
 the container's shell interprets the emitted prefix as intended -- these are strings here,
 not a running container. It also cannot see a kind declared in TypeScript and never
 staged; the TypeScript suite covers that from the table.
