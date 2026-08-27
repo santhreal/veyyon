@@ -945,7 +945,9 @@ const sessionSegment: StatusLineSegment = {
 const hostnameSegment: StatusLineSegment = {
 	id: "hostname",
 	render(_ctx) {
-		const name = os.hostname().split(".")[0];
+		const full = os.hostname();
+		const dot = full.indexOf(".");
+		const name = dot === -1 ? full : full.slice(0, dot);
 		return { content: withIcon(theme.icon.host, name), visible: true };
 	},
 };
