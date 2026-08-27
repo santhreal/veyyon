@@ -232,7 +232,7 @@ import {
 	onThemeChange,
 	theme,
 } from "./theme/theme";
-import { flushPendingTtyInput } from "./tty-input-flush";
+import { flushPendingTtyInput, RELAUNCH_MARKER } from "./tty-input-flush";
 import type {
 	CompactionQueuedMessage,
 	InteractiveModeContext,
@@ -4454,6 +4454,8 @@ export class InteractiveMode implements InteractiveModeContext {
 			for (const [key, value] of Object.entries({ ...process.env, ...env })) {
 				if (value !== undefined) childEnv[key] = value;
 			}
+			// Tell the child that whatever is queued on the tty predates it.
+			childEnv[RELAUNCH_MARKER] = "1";
 			const child = Bun.spawn(argv, { stdio: ["inherit", "inherit", "inherit"], env: childEnv });
 			await postmortem.quit(await child.exited);
 			return;
