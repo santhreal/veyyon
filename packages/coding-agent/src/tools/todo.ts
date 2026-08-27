@@ -1639,7 +1639,11 @@ export const todoToolRenderer = {
 			}
 			keys.add(task.content);
 		}
-		const allTasks = phases.flatMap(phase => phase.tasks);
+		const allTasks: TodoTask[] = [];
+		for (let pi = 0; pi < phases.length; pi++) {
+			const phaseTasks = phases[pi]!.tasks;
+			for (let ti = 0; ti < phaseTasks.length; ti++) allTasks.push(phaseTasks[ti]!);
+		}
 		const header = renderStatusLine(
 			{
 				iconOverride: uiTheme.styledSymbol("tool.todo", "accent"),
@@ -1670,9 +1674,11 @@ export const todoToolRenderer = {
 			const active = allTasks.find(task => task.status === "in_progress");
 			const moved = active ?? completedTasks[completedTasks.length - 1];
 			const phaseOf = phases.find(phase => phase.tasks.some(task => task.content === moved?.content));
-			const parts = [
-				uiTheme.fg("dim", formatCount("done", allTasks.filter(task => task.status === "completed").length)),
-			];
+			let completedCount = 0;
+			for (let ti = 0; ti < allTasks.length; ti++) {
+				if (allTasks[ti]!.status === "completed") completedCount++;
+			}
+			const parts = [uiTheme.fg("dim", formatCount("done", completedCount))];
 			if (phaseOf && phases.length > 1) {
 				parts.push(uiTheme.fg("muted", boundedTodoPreviewText(phaseOf.name, TODO_ITEM_PREVIEW_WIDTH)));
 			}
@@ -1689,9 +1695,14 @@ export const todoToolRenderer = {
 			const multiPhase = phases.length > 1;
 			let bodyLines: string[];
 			if (!expanded && multiPhase) {
-				const collapsed = prioritizeTodoItems(
-					phases.flatMap(phase => phase.tasks.map(task => ({ ...task, phase: phase.name }))),
-				);
+				const collapsedItems: Array<TodoTask & { phase: string }> = [];
+				for (let pi = 0; pi < phases.length; pi++) {
+					const p = phases[pi]!;
+					for (let ti = 0; ti < p.tasks.length; ti++) {
+						collapsedItems.push({ ...p.tasks[ti]!, phase: p.name });
+					}
+				}
+				const collapsed = prioritizeTodoItems(collapsedItems);
 				bodyLines = renderTreeList(
 					{
 						items: collapsed,

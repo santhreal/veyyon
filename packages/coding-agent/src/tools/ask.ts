@@ -1371,13 +1371,20 @@ export const askToolRenderer = {
 		if (details.chatRedirect) {
 			const header = renderStatusLine({ icon: "info", title: "Ask", meta: ["chat redirect"] }, uiTheme);
 			const questions = details.questions ?? [];
-			return framedBlock(uiTheme, width => ({
-				header,
-				sections: questions.length > 0 ? [{ lines: questions.flatMap(q => md(q, width)) }] : [],
-				state: "warning",
-				borderColor: "borderMuted",
-				width,
-			}));
+			return framedBlock(uiTheme, width => {
+				const lines: string[] = [];
+				for (let qi = 0; qi < questions.length; qi++) {
+					const mdLines = md(questions[qi]!, width);
+					for (let li = 0; li < mdLines.length; li++) lines.push(mdLines[li]!);
+				}
+				return {
+					header,
+					sections: questions.length > 0 ? [{ lines }] : [],
+					state: "warning",
+					borderColor: "borderMuted",
+					width,
+				};
+			});
 		}
 
 		// Multi-part results: one divider-labelled section per question.
