@@ -304,10 +304,13 @@ export const workspaceTestPackages = [
 export const repoScriptTests = [
 	"scripts/a-generated-doc-says-so-on-its-first-line.test.ts",
 	"scripts/a-local-action-is-called-with-everything-it-requires.test.ts",
+	"scripts/a-module-is-imported-at-the-top-of-its-file.test.ts",
 	"scripts/a-shipped-module-arrives-with-a-test-that-names-it.test.ts",
+	"scripts/a-suite-is-named-for-the-behavior-it-defends.test.ts",
 	"scripts/a-test-proves-behavior-not-that-a-spy-was-called.test.ts",
 	"scripts/a-production-site-deploy-has-one-owner.test.ts",
 	"scripts/a-third-party-action-is-pinned-in-one-place.test.ts",
+	"scripts/a-type-is-named-not-derived-from-a-function.test.ts",
 	"scripts/ci-concurrency.test.ts",
 	"scripts/ci-test-partitioning-preserves-global-state-isolation.test.ts",
 	"scripts/simulation-watchdogs-do-not-run-under-test-fanout.test.ts",
@@ -459,6 +462,7 @@ export const repoScriptTests = [
 	// landed on disk unwired, which for a scan-the-whole-tree gate means the rule
 	// it enforces stops being enforced the moment nobody reruns it by hand.
 	"scripts/an-off-screen-raster-never-enters-assets.test.ts",
+	"scripts/one-owner-answers-a-command-lookup.test.ts",
 ];
 
 /**
