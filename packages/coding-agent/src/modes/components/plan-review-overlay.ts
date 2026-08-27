@@ -204,7 +204,7 @@ export class PlanReviewOverlay implements Component {
 	}
 
 	invalidate(): void {
-		for (const section of this.#sections) section.md.invalidate();
+		for (let si = 0; si < this.#sections.length; si++) this.#sections[si]!.md.invalidate();
 	}
 
 	/** Swap the displayed plan (e.g. after an external-editor round-trip) and
@@ -242,11 +242,26 @@ export class PlanReviewOverlay implements Component {
 		// so listing it adds noise. Plans with several top-level sections keep
 		// them all.
 		let minLevel = Number.POSITIVE_INFINITY;
-		for (const i of headings) minLevel = Math.min(minLevel, this.#sections[i]!.level);
-		const topLevel = headings.filter(i => this.#sections[i]!.level === minLevel);
-		const titleIndex = topLevel.length === 1 && headings[0] === topLevel[0] ? topLevel[0] : -1;
-		this.#toc = headings.filter(i => i !== titleIndex);
-		this.#tocBaseLevel = this.#toc.length > 0 ? Math.min(...this.#toc.map(i => this.#sections[i]!.level)) : 1;
+		for (let hi = 0; hi < headings.length; hi++) {
+			const level = this.#sections[headings[hi]!]!.level;
+			if (level < minLevel) minLevel = level;
+		}
+		const topLevel: number[] = [];
+		for (let hi = 0; hi < headings.length; hi++) {
+			if (this.#sections[headings[hi]!]!.level === minLevel) topLevel.push(headings[hi]!);
+		}
+		const titleIndex = topLevel.length === 1 && headings[0] === topLevel[0] ? topLevel[0]! : -1;
+		const toc: number[] = [];
+		for (let hi = 0; hi < headings.length; hi++) {
+			if (headings[hi] !== titleIndex) toc.push(headings[hi]!);
+		}
+		this.#toc = toc;
+		let tocBaseLevel = Number.POSITIVE_INFINITY;
+		for (let ti = 0; ti < toc.length; ti++) {
+			const level = this.#sections[toc[ti]!]!.level;
+			if (level < tocBaseLevel) tocBaseLevel = level;
+		}
+		this.#tocBaseLevel = toc.length > 0 ? tocBaseLevel : 1;
 	}
 
 	/** Clamp `index` to range, then walk to the nearest enabled option so the
@@ -605,8 +620,8 @@ export class PlanReviewOverlay implements Component {
 		this.#pushUndo();
 		// Record the removed headings so the Refine feedback can ask the model to
 		// drop them, then splice from the bottom up so earlier indices stay valid.
-		for (const i of span) {
-			const section = this.#sections[i]!;
+		for (let si = 0; si < span.length; si++) {
+			const section = this.#sections[span[si]!]!;
 			if (section.level >= 1 && section.title) this.#deleted.push(section.title);
 		}
 		for (let i = span.length - 1; i >= 0; i--) this.#sections.splice(span[i]!, 1);
@@ -655,7 +670,11 @@ export class PlanReviewOverlay implements Component {
 	}
 
 	#recomputeFeedback(): void {
-		const annotated = this.#sections.filter(section => section.level >= 1 && section.annotations.length > 0);
+		const annotated: typeof this.#sections = [];
+		for (let si = 0; si < this.#sections.length; si++) {
+			const section = this.#sections[si]!;
+			if (section.level >= 1 && section.annotations.length > 0) annotated.push(section);
+		}
 		if (annotated.length === 0 && this.#deleted.length === 0) {
 			this.callbacks.onFeedbackChange?.("");
 			return;
@@ -663,11 +682,14 @@ export class PlanReviewOverlay implements Component {
 		let feedback = "Refinement feedback on the plan:\n";
 		if (this.#deleted.length > 0) {
 			feedback += "\nRemove these sections:\n";
-			for (const title of this.#deleted) feedback += `- ${title}\n`;
+			for (let di = 0; di < this.#deleted.length; di++) feedback += `- ${this.#deleted[di]!}\n`;
 		}
-		for (const section of annotated) {
+		for (let si = 0; si < annotated.length; si++) {
+			const section = annotated[si]!;
 			feedback += `\n## ${section.title}\n`;
-			for (const note of section.annotations) feedback += this.#formatAnnotationFeedback(note);
+			for (let ni = 0; ni < section.annotations.length; ni++) {
+				feedback += this.#formatAnnotationFeedback(section.annotations[ni]!);
+			}
 		}
 		this.callbacks.onFeedbackChange?.(feedback);
 	}
@@ -692,7 +714,9 @@ export class PlanReviewOverlay implements Component {
 
 	#renderOptionLines(): string[] {
 		const active = this.#focus === "actions";
-		return this.#options.map((label, i) => {
+		const result: string[] = new Array(this.#options.length);
+		for (let i = 0; i < this.#options.length; i++) {
+			const label = this.#options[i]!;
 			const selected = i === this.#selectedIndex;
 			const isDisabled = this.#disabled.has(i);
 			const hovered = !isDisabled && i === this.#hoveredOption;
@@ -708,8 +732,9 @@ export class PlanReviewOverlay implements Component {
 			// distinct from the keyboard selection (cursor glyph + bold accent) which
 			// stays where it is. One space of padding gives the band a button shape.
 			if (hovered) text = theme.bg("selectedBg", ` ${text} `);
-			return cursor + text;
-		});
+			result[i] = cursor + text;
+		}
+		return result;
 	}
 
 	/** Footer chips for the current focus region, or the annotate mini-editor's
