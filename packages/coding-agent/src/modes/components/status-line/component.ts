@@ -2282,21 +2282,12 @@ export class StatusLineComponent implements Component {
 		const sepWidth = visibleWidth(sep);
 		const bounds: QuietSegmentBounds[] = [];
 		if (left) {
-			// Once the fitter has run it is the authority on where the parts landed: it is
-			// what dropped a part and what clipped the head, so it knows the painted columns
-			// and this loop would only be guessing at them. Otherwise the location is whole
-			// and each part sits where the join put it.
-			if (locationSlots !== null) {
-				bounds.push(...locationSlots);
-			} else {
-				let col = 0;
-				const leftWidth = visibleWidth(left);
-				for (const part of location) {
-					const partWidth = visibleWidth(part.content);
-					if (col >= leftWidth) break;
-					bounds.push({ id: part.id, start: col, end: Math.min(col + partWidth, leftWidth) });
-					col += partWidth + sepWidth;
-				}
+			let col = 0;
+			for (let pi = 0; pi < location.length; pi++) {
+				const part = location[pi]!;
+				const partWidth = visibleWidth(part.content);
+				bounds.push({ id: part.id, start: col, end: col + partWidth });
+				col += partWidth + sepWidth;
 			}
 		}
 		// The right group is anchored to the right edge whether or not a location shares the
@@ -2307,7 +2298,8 @@ export class StatusLineComponent implements Component {
 		const rightStart = right ? Math.max(0, budget - visibleWidth(right)) : 0;
 		if (right) {
 			let col = rightStart;
-			for (const part of rightParts) {
+			for (let rpi = 0; rpi < rightParts.length; rpi++) {
+				const part = rightParts[rpi]!;
 				const partWidth = visibleWidth(part.content);
 				bounds.push({ id: part.id, start: col, end: col + partWidth });
 				col += partWidth + sepWidth;
