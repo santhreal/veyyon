@@ -2191,8 +2191,6 @@ export class StatusLineComponent implements Component {
 		// budget of ZERO -- and when those two left a moment later nothing asked the fitter
 		// again, so the row rendered the directory and the branch as nothing at all.
 		const favour = this.#expansionProgress() > 0 ? this.#expandedHalf : undefined;
-		const fitToTheRoomLeft = () =>
-			fitLocation(location, sep, Math.max(0, budget - visibleWidth(right) - (right ? 2 : 0)), favour);
 		while (rightParts.length > 0 && visibleWidth(left) + visibleWidth(right) + (left && right ? 2 : 0) > budget) {
 			if (clockStage === 0) {
 				clockStage = 1;
@@ -2222,7 +2220,7 @@ export class StatusLineComponent implements Component {
 			// them: a clipped path still says where you are, and these do not degrade.
 			if (!locationShortened) {
 				locationShortened = true;
-				const fitted = fitToTheRoomLeft();
+				const fitted = fitLocation(location, sep, Math.max(0, budget - visibleWidth(right) - (right ? 2 : 0)), favour);
 				left = fitted.text;
 				locationSlots = fitted.slots;
 				locationCramped = fitted.cramped;
@@ -2251,7 +2249,7 @@ export class StatusLineComponent implements Component {
 		// defect, one shed later. At 40 columns it left the zone blank with the model chip and a
 		// mode rung standing in the middle of the row.
 		if (locationShortened) {
-			const settled = fitToTheRoomLeft();
+			const settled = fitLocation(location, sep, Math.max(0, budget - visibleWidth(right) - (right ? 2 : 0)), favour);
 			left = settled.text;
 			locationSlots = settled.slots;
 			locationCramped = settled.cramped;
@@ -2269,7 +2267,7 @@ export class StatusLineComponent implements Component {
 			if (index < 0) break;
 			rightParts.splice(index, 1);
 			right = joinContents(rightParts, sep);
-			const fitted = fitToTheRoomLeft();
+			const fitted = fitLocation(location, sep, Math.max(0, budget - visibleWidth(right) - (right ? 2 : 0)), favour);
 			left = fitted.text;
 			locationSlots = fitted.slots;
 			locationCramped = fitted.cramped;
@@ -2373,7 +2371,7 @@ export class StatusLineComponent implements Component {
 				// Descending, so an earlier removal cannot shift a later index.
 				for (const index of spent.sort((a, b) => b - a)) rightParts.splice(index, 1);
 				right = joinContents(rightParts, sep);
-				const widened = fitToTheRoomLeft();
+				const widened = fitLocation(location, sep, Math.max(0, budget - visibleWidth(right) - (right ? 2 : 0)), favour);
 				left = widened.text;
 				locationSlots = widened.slots;
 				locationCramped = widened.cramped;
