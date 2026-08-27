@@ -842,7 +842,8 @@ function renderMathToken(text: string): string {
 function soleDisplayMath(tokens?: Token[]): (Token & { text: string }) | null {
 	if (!tokens) return null;
 	let math: (Token & { text: string; display: boolean }) | null = null;
-	for (const token of tokens) {
+	for (let i = 0; i < tokens.length; i++) {
+		const token = tokens[i]!;
 		if (isMathToken(token) && token.display) {
 			if (math) return null;
 			math = token;
@@ -855,7 +856,8 @@ function soleDisplayMath(tokens?: Token[]): (Token & { text: string }) | null {
 
 function plainInlineTokens(tokens: Token[]): string {
 	let result = "";
-	for (const token of tokens) {
+	for (let i = 0; i < tokens.length; i++) {
+		const token = tokens[i]!;
 		if (isMathToken(token)) {
 			result += renderMathToken(token.text);
 			continue;
@@ -905,8 +907,8 @@ function inlineHtmlTag(token: Token): { name: string; closing: boolean } | null 
  */
 function collapseInlineHtml(tokens: Token[]): Token[] {
 	let hasCode = false;
-	for (const token of tokens) {
-		if (inlineHtmlTag(token)?.name === "code") {
+	for (let i = 0; i < tokens.length; i++) {
+		if (inlineHtmlTag(tokens[i]!)?.name === "code") {
 			hasCode = true;
 			break;
 		}
@@ -1603,8 +1605,8 @@ export class Markdown implements Component {
 
 		if (this.#theme.highlightCode && (!this.transientRenderCache || this.#renderingFrozenPrefix)) {
 			const highlightedLines = this.#theme.highlightCode(tokenText, lang);
-			for (const hlLine of highlightedLines) {
-				bodyLines.push(`${codeIndent}${hlLine}`);
+			for (let hi = 0; hi < highlightedLines.length; hi++) {
+				bodyLines.push(`${codeIndent}${highlightedLines[hi]!}`);
 			}
 			return bodyLines;
 		}
@@ -1614,20 +1616,23 @@ export class Markdown implements Component {
 			const lineEnd = tokenText.lastIndexOf("\n");
 			if (closedFence || lineEnd >= 0) {
 				const completedText = closedFence ? tokenText : tokenText.slice(0, lineEnd);
-				for (const hlLine of this.#highlightStreamingDiffLines(completedText, lang)) {
-					bodyLines.push(`${codeIndent}${hlLine}`);
+				const diffLines = this.#highlightStreamingDiffLines(completedText, lang);
+				for (let di = 0; di < diffLines.length; di++) {
+					bodyLines.push(`${codeIndent}${diffLines[di]!}`);
 				}
 				if (!closedFence) {
-					for (const codeLine of tokenText.slice(lineEnd + 1).split("\n")) {
-						bodyLines.push(`${codeIndent}${this.#theme.codeBlock(codeLine)}`);
+					const remainingLines = tokenText.slice(lineEnd + 1).split("\n");
+					for (let ri = 0; ri < remainingLines.length; ri++) {
+						bodyLines.push(`${codeIndent}${this.#theme.codeBlock(remainingLines[ri]!)}`);
 					}
 				}
 				return bodyLines;
 			}
 		}
 
-		for (const codeLine of tokenText.split("\n")) {
-			bodyLines.push(`${codeIndent}${this.#theme.codeBlock(codeLine)}`);
+		const fallbackLines = tokenText.split("\n");
+		for (let fi = 0; fi < fallbackLines.length; fi++) {
+			bodyLines.push(`${codeIndent}${this.#theme.codeBlock(fallbackLines[fi]!)}`);
 		}
 		return bodyLines;
 	}
@@ -1689,8 +1694,9 @@ export class Markdown implements Component {
 			if (completedText.length === cache.text.length) return cache.lines;
 			const lines = cache.lines.slice();
 			const addedText = completedText.slice(cache.text.length + 1);
-			for (const codeLine of addedText.split("\n")) {
-				const hl = highlightCode(codeLine, lang);
+			const addedLines = addedText.split("\n");
+			for (let ai = 0; ai < addedLines.length; ai++) {
+				const hl = highlightCode(addedLines[ai]!, lang);
 				for (let j = 0; j < hl.length; j++) lines.push(hl[j]);
 			}
 			this.#streamingDiffLineCache = { ...signature, lang, text: completedText, lines };
@@ -1698,8 +1704,9 @@ export class Markdown implements Component {
 		}
 
 		const lines: string[] = [];
-		for (const codeLine of completedText.split("\n")) {
-			const hl = highlightCode(codeLine, lang);
+		const fullLines = completedText.split("\n");
+		for (let fi = 0; fi < fullLines.length; fi++) {
+			const hl = highlightCode(fullLines[fi]!, lang);
 			for (let j = 0; j < hl.length; j++) lines.push(hl[j]);
 		}
 		if (signature) {
@@ -1850,7 +1857,8 @@ export class Markdown implements Component {
 		// Display math block (own-line `$$…$$` / `\[…\]`): stack `\frac` vertically
 		// and keep `\\` row breaks, so fractions and matrices span multiple lines.
 		if (isMathToken(token)) {
-			for (const mathLine of latexToBlock(token.text)) lines.push(this.#applyDefaultStyle(mathLine));
+			const mathLines = latexToBlock(token.text);
+			for (let mi = 0; mi < mathLines.length; mi++) lines.push(this.#applyDefaultStyle(mathLines[mi]!));
 			if (nextTokenType && nextTokenType !== "space") lines.push("");
 			return lines;
 		}
@@ -1894,7 +1902,9 @@ export class Markdown implements Component {
 			case "paragraph": {
 				const displayMath = soleDisplayMath(token.tokens);
 				if (displayMath) {
-					for (const mathLine of latexToBlock(displayMath.text)) lines.push(this.#applyDefaultStyle(mathLine));
+					const paraMathLines = latexToBlock(displayMath.text);
+					for (let mi = 0; mi < paraMathLines.length; mi++)
+						lines.push(this.#applyDefaultStyle(paraMathLines[mi]!));
 					if (nextTokenType && nextTokenType !== "list" && nextTokenType !== "space") lines.push("");
 					break;
 				}
@@ -1917,7 +1927,9 @@ export class Markdown implements Component {
 				if (token.lang === "mermaid" && this.#theme.resolveMermaidAscii) {
 					const ascii = this.#theme.resolveMermaidAscii(token.text, width);
 					if (ascii) {
-						for (const asciiLine of ascii.split("\n")) {
+						const asciiLines = ascii.split("\n");
+						for (let ai = 0; ai < asciiLines.length; ai++) {
+							const asciiLine = asciiLines[ai]!;
 							lines.push(
 								visibleWidth(asciiLine) > width ? truncateToWidth(asciiLine, width, Ellipsis.Omit) : asciiLine,
 							);
@@ -1931,8 +1943,9 @@ export class Markdown implements Component {
 
 				const codeIndent = padding(this.#codeBlockIndent);
 				lines.push(this.#codeFenceRow(token.lang, "open"));
-				for (const bodyLine of this.#renderCodeBodyLines(token, codeIndent)) {
-					lines.push(bodyLine);
+				const codeLines = this.#renderCodeBodyLines(token, codeIndent);
+				for (let bi = 0; bi < codeLines.length; bi++) {
+					lines.push(codeLines[bi]!);
 				}
 				lines.push(this.#codeFenceRow(token.lang, "close"));
 				if (nextTokenType && nextTokenType !== "space") {
@@ -2064,8 +2077,9 @@ export class Markdown implements Component {
 		const flushText = (chunk: string): void => {
 			const cleaned = normalizeHtmlForTerminal(chunk, state, codeHook);
 			if (cleaned.trim() === "") return;
-			for (const line of splitTerminalLines(cleaned)) {
-				const trimmed = line.trimEnd();
+			const termLines = splitTerminalLines(cleaned);
+			for (let ti = 0; ti < termLines.length; ti++) {
+				const trimmed = termLines[ti]!.trimEnd();
 				lines.push(trimmed.trim() === "" ? "" : this.#applyDefaultStyle(trimmed));
 			}
 		};
@@ -2227,21 +2241,23 @@ export class Markdown implements Component {
 	): Array<{ text: string; nested: boolean }> {
 		const lines: Array<{ text: string; nested: boolean }> = [];
 
-		for (const token of tokens) {
+		for (let ti = 0; ti < tokens.length; ti++) {
+			const token = tokens[ti]!;
 			if (token.type === "list") {
 				// Nested list - render with one additional indent level
 				// These lines carry their own indent, so tag them for pass-through
 				const nestedLines = this.#renderList(token as ListToken, parentDepth + 1, styleContext);
-				for (const nestedLine of nestedLines) {
-					lines.push({ text: nestedLine, nested: true });
+				for (let ni = 0; ni < nestedLines.length; ni++) {
+					lines.push({ text: nestedLines[ni]!, nested: true });
 				}
 			} else if (token.type === "text") {
 				// Text content (may have inline tokens, or a sole display-math token)
 				const displayMath = soleDisplayMath(token.tokens);
 				if (displayMath) {
 					const apply = styleContext?.applyText ?? ((t: string) => this.#applyDefaultStyle(t));
-					for (const mathLine of latexToBlock(displayMath.text))
-						lines.push({ text: apply(mathLine), nested: false });
+					const textMathLines = latexToBlock(displayMath.text);
+					for (let mi = 0; mi < textMathLines.length; mi++)
+						lines.push({ text: apply(textMathLines[mi]!), nested: false });
 				} else {
 					const text =
 						token.tokens && token.tokens.length > 0
@@ -2254,8 +2270,9 @@ export class Markdown implements Component {
 				const apply = styleContext?.applyText ?? ((t: string) => this.#applyDefaultStyle(t));
 				const displayMath = soleDisplayMath(token.tokens);
 				if (displayMath) {
-					for (const mathLine of latexToBlock(displayMath.text))
-						lines.push({ text: apply(mathLine), nested: false });
+					const paraMathLines = latexToBlock(displayMath.text);
+					for (let mi = 0; mi < paraMathLines.length; mi++)
+						lines.push({ text: apply(paraMathLines[mi]!), nested: false });
 				} else {
 					lines.push({ text: this.#renderInlineTokens(token.tokens || [], styleContext), nested: false });
 				}
@@ -2263,14 +2280,17 @@ export class Markdown implements Component {
 				// Code block in list item
 				const codeIndent = padding(this.#codeBlockIndent);
 				lines.push({ text: this.#codeFenceRow(token.lang, "open"), nested: false });
-				for (const bodyLine of this.#renderCodeBodyLines(token, codeIndent)) {
-					lines.push({ text: bodyLine, nested: false });
+				const codeBodyLines = this.#renderCodeBodyLines(token, codeIndent);
+				for (let bi = 0; bi < codeBodyLines.length; bi++) {
+					lines.push({ text: codeBodyLines[bi]!, nested: false });
 				}
 				lines.push({ text: this.#codeFenceRow(token.lang, "close"), nested: false });
 			} else if (isMathToken(token)) {
 				// Display math block inside a list item: stack fractions / matrix rows.
 				const apply = styleContext?.applyText ?? ((t: string) => this.#applyDefaultStyle(t));
-				for (const mathLine of latexToBlock(token.text)) lines.push({ text: apply(mathLine), nested: false });
+				const isMathLines = latexToBlock(token.text);
+				for (let mi = 0; mi < isMathLines.length; mi++)
+					lines.push({ text: apply(isMathLines[mi]!), nested: false });
 			} else {
 				// Other token types - try to render as inline
 				const text = this.#renderInlineTokens([token], styleContext);
@@ -2368,9 +2388,10 @@ export class Markdown implements Component {
 			naturalWidths[i] = maxLineWidth;
 			minWordWidths[i] = Math.max(1, this.#getLongestWordWidth(headerText, maxUnbrokenWordWidth));
 		}
-		for (const row of token.rows) {
+		for (let ri = 0; ri < token.rows.length; ri++) {
+			const row = token.rows[ri]!;
 			for (let i = 0; i < row.length; i++) {
-				const cellText = this.#renderInlineTokens(row[i].tokens || [], styleContext);
+				const cellText = this.#renderInlineTokens(row[i]!.tokens || [], styleContext);
 				const cellLineWidths = this.#terminalLineWidths(cellText);
 				let maxCellWidth = naturalWidths[i] || 0;
 				for (let j = 0; j < cellLineWidths.length; j++) maxCellWidth = Math.max(maxCellWidth, cellLineWidths[j]);
@@ -2581,7 +2602,9 @@ function walkInlineTokens(tokens: Token[], ctx: InlineWalkContext): string {
 		}
 	};
 
-	for (const token of collapseInlineHtml(tokens)) {
+	const collapsedTokens = collapseInlineHtml(tokens);
+	for (let ti = 0; ti < collapsedTokens.length; ti++) {
+		const token = collapsedTokens[ti]!;
 		if (isMathToken(token)) {
 			markContent(token.text);
 			result += ctx.applyTextWithNewlines(renderMathToken(token.text));
@@ -2717,7 +2740,8 @@ export function renderInlineMarkdown(text: string, mdTheme: MarkdownTheme, baseC
 	const tokens = markdownParser.lexer(text);
 	const applyText = baseColor ?? ((t: string) => t);
 	let result = "";
-	for (const token of tokens) {
+	for (let ti = 0; ti < tokens.length; ti++) {
+		const token = tokens[ti]!;
 		if (isMathToken(token)) {
 			result += applyText(renderMathToken(token.text));
 			continue;
@@ -2725,13 +2749,14 @@ export function renderInlineMarkdown(text: string, mdTheme: MarkdownTheme, baseC
 		if (token.type === "paragraph" && token.tokens) {
 			result += renderInlineTokens(token.tokens, mdTheme, applyText);
 		} else if (token.type === "list") {
-			result += token.items
-				.map((item: Tokens.ListItem, index: number) => {
-					const prefix = token.ordered ? `${(token.start || 1) + index}. ` : "• ";
-					const content = item.tokens ? renderInlineTokens(item.tokens, mdTheme, applyText) : applyText(item.text);
-					return `${applyText(prefix)}${content}`;
-				})
-				.join(applyText(" "));
+			const items = token.items;
+			for (let ii = 0; ii < items.length; ii++) {
+				if (ii > 0) result += applyText(" ");
+				const item = items[ii]!;
+				const prefix = token.ordered ? `${(token.start || 1) + ii}. ` : "• ";
+				const content = item.tokens ? renderInlineTokens(item.tokens, mdTheme, applyText) : applyText(item.text);
+				result += `${applyText(prefix)}${content}`;
+			}
 		} else if ("text" in token && typeof token.text === "string") {
 			result += applyText(normalizeHtmlEntitiesForTerminal(token.text));
 		}
