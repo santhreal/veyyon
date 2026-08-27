@@ -79,8 +79,42 @@ export interface FirstFrame {
 	readonly hero: WelcomeComponent;
 	/** Drop the placeholder rows, leaving an empty root for the mode's own tree. Idempotent. */
 	release(): void;
-	/** Let input through to the composer, which is mounted by the time this runs. Idempotent. */
-	releaseInput(): void;
+	/**
+	 * Let input through to the composer, which is mounted by the time this runs,
+	 * and return the text typed at the card while the gate held it. The caller
+	 * places that text in the composer. Idempotent: a second call returns "".
+	 */
+	releaseInput(): string;
+}
+
+/**
+ * How much of what is typed at the launch card carries into the composer. A
+ * held key repeats, and no startup draft needs more than this; past the cap
+ * the remainder is dropped rather than grown without bound.
+ */
+const STARTUP_TYPEAHEAD_LIMIT = 4096;
+
+/**
+ * True when a chunk is ordinary typed text rather than a control sequence.
+ *
+ * The gate receives everything the terminal sends, and during startup that
+ * includes the terminal's own answers to the probes the screen just issued
+ * (OSC 11 for the ground, the DA query, the sixel query), as well as arrow
+ * keys, mouse reports and bracketed-paste wrappers. Each of those carries ESC
+ * or another C0 byte, so accepting only printable characters keeps a probe
+ * reply out of the draft without enumerating the sequences. It also excludes
+ * the carriage return the gate exists to stop, so a queued newline still
+ * cannot submit a turn.
+ *
+ * An empty chunk answers true and appends nothing, which is why there is no
+ * guard for it: the guard could not be observed failing.
+ */
+function isTypedText(data: string): boolean {
+	for (let i = 0; i < data.length; i++) {
+		const code = data.charCodeAt(i);
+		if (code < 0x20 || code === 0x7f) return false;
+	}
+	return true;
 }
 
 let painted: FirstFrame | undefined;
@@ -121,13 +155,27 @@ export function paintFirstFrame(version: string): FirstFrame {
 	// (`/profile <name>` respawns the CLI) leaves whatever arrived while no one
 	// was reading fd 0 queued in the kernel, and starting the terminal delivers
 	// that backlog as this session's first input -- a queued carriage return
-	// submits a turn nobody typed. Drop the queue outright, then swallow
-	// everything except ctrl+c (which must stay live to abort a launch) until
-	// the composer is mounted.
+	// submits a turn nobody typed. Drop the queue outright, then hold what is
+	// typed afterwards and swallow the rest, except ctrl+c (which must stay
+	// live to abort a launch), until the composer is mounted.
 	const flushed = flushPendingTtyInput();
-	let inputGate: (() => void) | undefined = ui.addInputListener(data =>
-		matchesKey(data, "ctrl+c") ? undefined : { consume: true },
-	);
+	// What arrives from here on is the operator's. The queue that predates this
+	// session went out with the flush above, and the card already carries a
+	// composer frame, so a printable chunk arriving now was typed at something
+	// that looks ready to receive it. Hold it and hand it to the real composer
+	// at mount instead of discarding it: session startup runs for over a
+	// second, and every keystroke inside that window was being dropped. Control
+	// input is still swallowed, and ctrl+c still passes through so a launch can
+	// be aborted. Without the flush the pre-launch backlog is still queued and
+	// cannot be told apart from typing, so that degrade discards as before.
+	let typeahead = "";
+	let inputGate: (() => void) | undefined = ui.addInputListener(data => {
+		if (matchesKey(data, "ctrl+c")) return undefined;
+		if (flushed && isTypedText(data)) {
+			typeahead = (typeahead + data).slice(0, STARTUP_TYPEAHEAD_LIMIT);
+		}
+		return { consume: true };
+	});
 	if (!flushed) {
 		logger.debug("No tty input flush available at startup; discarding buffered input until mount completes");
 	}
@@ -155,9 +203,12 @@ export function paintFirstFrame(version: string): FirstFrame {
 			mounted = false;
 			for (const child of children) ui.removeChild(child);
 		},
-		releaseInput(): void {
+		releaseInput(): string {
 			inputGate?.();
 			inputGate = undefined;
+			const typed = typeahead;
+			typeahead = "";
+			return typed;
 		},
 	};
 	painted = frame;

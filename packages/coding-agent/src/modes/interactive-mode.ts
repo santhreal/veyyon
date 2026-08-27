@@ -1266,11 +1266,18 @@ export class InteractiveMode implements InteractiveModeContext {
 
 		// The tty handover. Owned by whoever started the screen: when the launch
 		// card was painted before this mode existed, `first-frame.ts` already
-		// flushed the queue, installed the swallow gate and started the UI, and
-		// the gate has been holding input for the whole of session startup. It
-		// releases here, where the composer exists to receive the next keystroke.
+		// flushed the queue, installed the gate and started the UI, and the gate
+		// has been holding input for the whole of session startup. It releases
+		// here, where the composer exists to receive the next keystroke.
+		//
+		// Startup takes over a second, and the card shows a composer frame for
+		// all of it, so an operator who starts typing straight away is typing at
+		// something that looks live. The gate kept that text instead of dropping
+		// it; it goes into the composer now, unsubmitted, so the draft reads as
+		// though the composer had been listening the whole time.
 		if (this.#firstFrame) {
-			this.#firstFrame.releaseInput();
+			const typedAtCard = this.#firstFrame.releaseInput();
+			if (typedAtCard) this.editor.insertText(typedAtCard);
 		} else {
 			// This process may be a relaunch (`/profile <name>` respawns the CLI),
 			// and between the parent restoring the terminal and the line below
