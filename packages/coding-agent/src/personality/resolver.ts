@@ -119,7 +119,14 @@ async function loadTiers(options: PersonalityCatalogOptions): Promise<Personalit
 }
 
 function resolveFromTiers(name: string, tiers: PersonalityTiers): string | undefined {
-	return tiers.project.get(name) ?? tiers.user.get(name) ?? BUILTIN_PERSONALITIES[name];
+	// `Object.hasOwn`, because a bare `BUILTIN_PERSONALITIES[name]` answers every name Object.prototype
+	// carries. `personality: "toString"` resolved to a function, `resolvePersonality` then called
+	// `.replace` on it and threw, and the system prompt builder's deadline wrapper turned that throw
+	// into the built-in default with no warning printed and any Tier-B `default.md` ignored, which is
+	// the one outcome the unknown-name fallback below exists to prevent.
+	if (tiers.project.has(name)) return tiers.project.get(name);
+	if (tiers.user.has(name)) return tiers.user.get(name);
+	return Object.hasOwn(BUILTIN_PERSONALITIES, name) ? BUILTIN_PERSONALITIES[name] : undefined;
 }
 
 function availableNames(tiers: PersonalityTiers): string[] {
@@ -130,18 +137,39 @@ function availableNames(tiers: PersonalityTiers): string[] {
 }
 
 /**
- * Matches a literal `<personality>` or `</personality>` tag (any whitespace
- * inside the brackets), case-insensitively. A Tier-B data file is untrusted
- * content; without this guard a stray closing tag in the file body would
- * prematurely end the wrapper the system-prompt template renders around it,
- * letting the rest of the file (or a spoofed `<personality>`/other tag that
- * follows) escape the fixed section and read as top-level prompt content.
+ * Matches a well-formed tag of any name: an optional slash, a name, optional attributes, a bracket.
+ *
+ * A Tier-B data file is untrusted content. A project-level `.veyyon/personalities/default.md` arrives
+ * with a cloned repository, outranks the operator's own user-level file, and is injected into every
+ * request with nothing said, so what it may spell has to be bounded. Escaping only `<personality>`
+ * closed the breakout but left every other tag live, and the block sits inside the DELIVERY CONTRACT
+ * section, so a file could spell `<critical>` — the tag the surrounding prompt uses for its hardest
+ * rules — and have it render as prompt structure rather than as the tone text it is.
+ *
+ * No whitespace is tolerated after `<`, which is what keeps this off ordinary prose. A pattern that
+ * allowed it read `Prefer a < b over a > b.` as one tag spanning the sentence, because `b` is a legal
+ * name and everything up to the `>` is legal attribute text. Markdown autolinks survive for a
+ * different reason: `<https://example.com>` and `<user@example.com>` both stop at a character the
+ * name class rejects. The three built-in specs contain no tags at all, so this is a no-op for them.
+ */
+const STRUCTURAL_TAG_RE = /<\/?[a-zA-Z][\w.:-]*(?:\s[^<>]*)?>/g;
+
+/**
+ * Matches `<personality>` and `</personality>` however they are spaced, case-insensitively.
+ *
+ * Kept lenient where {@link STRUCTURAL_TAG_RE} is strict, because this is the one tag that terminates
+ * the wrapper rather than merely reading as structure inside it, and `< personality >` in a tone spec
+ * is an evasion attempt where `a < b` is arithmetic. Knowing the name is what makes the tolerance safe.
  */
 const PERSONALITY_TAG_RE = /<\s*\/?\s*personality\s*>/gi;
 
-/** Neutralize literal `<personality>`/`</personality>` tags inside untrusted spec text. */
-function escapePersonalityTags(text: string): string {
-	return text.replace(PERSONALITY_TAG_RE, tag => tag.replace(/</g, "&lt;").replace(/>/g, "&gt;"));
+function escapeAngleBrackets(tag: string): string {
+	return tag.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+/** Neutralize tags inside untrusted spec text so it reads as content, not as prompt structure. */
+function escapeStructuralTags(text: string): string {
+	return text.replace(STRUCTURAL_TAG_RE, escapeAngleBrackets).replace(PERSONALITY_TAG_RE, escapeAngleBrackets);
 }
 
 /**
@@ -161,7 +189,7 @@ interface BoundedPersonalityText {
 
 /** Sanitize wrapper-breakout tags and enforce {@link MAX_PERSONALITY_CHARS}. */
 function boundPersonalityText(name: string, rawText: string): BoundedPersonalityText {
-	const sanitized = escapePersonalityTags(rawText);
+	const sanitized = escapeStructuralTags(rawText);
 	if (sanitized.length <= MAX_PERSONALITY_CHARS) return { text: sanitized };
 
 	const warning = `Personality "${name}" spec is ${sanitized.length} chars, exceeding the ${MAX_PERSONALITY_CHARS}-char budget; truncated to avoid inflating every request's prompt.`;
