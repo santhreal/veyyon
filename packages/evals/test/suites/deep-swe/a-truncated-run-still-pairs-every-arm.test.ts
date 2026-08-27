@@ -20,15 +20,15 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { trialQueue } from "../../../src/suites/deep-swe/aggregate/merge";
+import { type QueuedTrial, trialQueue } from "../../../src/suites/deep-swe/aggregate/merge";
 
 /** Arms present in the first `n` trials, which is what a run cut short at `n` would produce. */
-function armsInPrefix(queue: ReturnType<typeof trialQueue>, n: number): string[] {
+function armsInPrefix(queue: QueuedTrial[], n: number): string[] {
 	return [...new Set(queue.slice(0, n).map(t => t.arm))].sort();
 }
 
 /** Tasks for which the prefix contains a complete set of all arms. */
-function pairedTasks(queue: ReturnType<typeof trialQueue>, n: number, armCount: number): string[] {
+function pairedTasks(queue: QueuedTrial[], n: number, armCount: number): string[] {
 	const seen = new Map<string, Set<string>>();
 	for (const trial of queue.slice(0, n)) {
 		const arms = seen.get(trial.task) ?? new Set<string>();
