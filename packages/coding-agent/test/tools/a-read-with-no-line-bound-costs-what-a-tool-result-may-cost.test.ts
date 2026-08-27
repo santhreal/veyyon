@@ -16,6 +16,10 @@
 // What it does not catch: a new selector form is only covered once it is listed
 // in SELECTORS below, and the artifact read path shares the budget owner but is
 // exercised by the artifact suites rather than here.
+//
+// A directory listing is included because it is the same class: the unsliced
+// listing priced itself against the compiled constant, and the sliced listing
+// carried no byte bound at all.
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
@@ -78,6 +82,14 @@ describe("a read with no line bound costs what a tool result may cost", () => {
 				nbformat: 4,
 				nbformat_minor: 5,
 			}),
+		);
+		const wide = path.join(dir, "many");
+		await fs.mkdir(wide);
+		// 400 entries of 80-character names: a listing far past any budget under test.
+		await Promise.all(
+			Array.from({ length: 400 }, (_, index) =>
+				fs.writeFile(path.join(wide, `${String(index).padStart(4, "0")}-${"n".repeat(74)}.txt`), "x"),
+			),
 		);
 	});
 
@@ -145,5 +157,24 @@ describe("a read with no line bound costs what a tool result may cost", () => {
 		expect(text).toContain("three");
 		expect(text).not.toContain("output budget");
 		expect(text).not.toContain("limit). Use :");
+	});
+
+	it("holds a directory listing to the configured budget", async () => {
+		const small = Buffer.byteLength(await readText(await toolFor(dir, 8), "many"), "utf-8");
+		const large = Buffer.byteLength(await readText(await toolFor(dir, 64), "many"), "utf-8");
+		expect(small).toBeLessThan(8 * 1024 + 512);
+		expect(large).toBeGreaterThan(small * 2);
+	});
+
+	it("bounds a sliced directory listing and names the line that continues it", async () => {
+		const text = await readText(await toolFor(dir, 8), "many:1-400");
+		expect(Buffer.byteLength(text, "utf-8")).toBeLessThan(8 * 1024 + 512);
+		const notice = /\[(\d+) more lines? in listing\. Use :(\d+) to continue\]/.exec(text);
+		expect(notice).not.toBeNull();
+		// The continuation selector names the first listing line the result did not carry, so the
+		// shown rows plus one is exactly where the next read starts.
+		const shown = text.slice(0, notice?.index).trimEnd().split("\n").length;
+		expect(Number(notice?.[2])).toBe(shown + 1);
+		expect(Number(notice?.[1])).toBe(401 - shown);
 	});
 });

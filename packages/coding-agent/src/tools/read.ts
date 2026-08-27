@@ -3723,12 +3723,21 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 					.done();
 			}
 			const end = limit !== undefined ? Math.min(start + limit, allLines.length) : allLines.length;
-			const sliced = allLines.slice(start, end).join("\n");
+			// A sliced listing is a tool result like any other: the caller's line count says how many
+			// entries it wants, the budget says how many it may carry. Without this the slice was the
+			// one read path with no byte bound at all.
+			const bounded = truncateHead(allLines.slice(start, end).join("\n"), {
+				maxBytes: inlineBudgetFor(this.session),
+				maxLines: Number.MAX_SAFE_INTEGER,
+			});
+			if (bounded.truncated) listingTruncated = true;
+			const shownLines = bounded.content.length === 0 ? 0 : bounded.content.split("\n").length;
 			const resultBuilder = toolResult(details).sourcePath(tree.rootPath);
-			let text = sliced;
-			if (end < allLines.length) {
-				const remaining = allLines.length - end;
-				text += `\n\n[${formatMoreLines(remaining)} in listing. Use :${end + 1} to continue]`;
+			let text = bounded.content;
+			const nextLine = start + shownLines + 1;
+			if (nextLine <= allLines.length) {
+				const remaining = allLines.length - nextLine + 1;
+				text += `\n\n[${formatMoreLines(remaining)} in listing. Use :${nextLine} to continue]`;
 			}
 			if (rootFooter) text += `\n\n${rootFooter}`;
 			resultBuilder.text(text);
@@ -3739,6 +3748,7 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 		}
 
 		const truncation = truncateHead(rootFooter ? `${output}\n\n${rootFooter}` : output, {
+			maxBytes: inlineBudgetFor(this.session),
 			maxLines: Number.MAX_SAFE_INTEGER,
 		});
 		const resultBuilder = toolResult(details).text(truncation.content).sourcePath(tree.rootPath);
