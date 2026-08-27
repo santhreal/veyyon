@@ -9,6 +9,12 @@ export const MIN_STEP = 3;
 export const CATCHUP_FRAMES = 8;
 
 type AssistantContentBlock = AssistantMessage["content"][number];
+function messageHasToolCall(message: AssistantMessage): boolean {
+	for (let i = 0; i < message.content.length; i++) {
+		if (message.content[i]!.type === "toolCall") return true;
+	}
+	return false;
+}
 type DisplayThinkingContentBlock = Extract<AssistantContentBlock, { type: "thinking" }> & { rawThinking?: string };
 /** The concrete streaming-reveal target is an {@link AssistantMessageComponent}; the
  *  Component intersection is what lets the reveal request component-scoped renders
@@ -263,9 +269,8 @@ export class StreamingRevealController {
 			return;
 		}
 		const total = this.#visibleUnits(message);
-		if (message.content.some(block => block.type === "toolCall")) {
+		if (messageHasToolCall(message)) {
 			// A tool call is a transcript-order boundary: finish any leading
-			// assistant text before EventController renders the separate tool card.
 			this.#revealed = total;
 			component.updateContent(this.#build(message, this.#revealed), {
 				transient: true,
@@ -288,7 +293,7 @@ export class StreamingRevealController {
 			return;
 		}
 		const total = this.#visibleUnits(message);
-		if (message.content.some(block => block.type === "toolCall")) {
+		if (messageHasToolCall(message)) {
 			// A tool call is a transcript-order boundary: finish any leading
 			// assistant text before EventController renders the separate tool card.
 			this.#revealed = total;
