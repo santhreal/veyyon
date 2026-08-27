@@ -120,8 +120,8 @@ class TreeList implements Component {
 
 		// Build a map of id -> entry for parent lookup
 		const entryMap = new Map<string, FlatNode>();
-		for (const flatNode of this.#flatNodes) {
-			entryMap.set(flatNode.node.entry.id, flatNode);
+		for (let fi = 0; fi < this.#flatNodes.length; fi++) {
+			entryMap.set(this.#flatNodes[fi]!.node.entry.id, this.#flatNodes[fi]!);
 		}
 
 		// Walk from leaf to root
@@ -143,8 +143,8 @@ class TreeList implements Component {
 
 		// Build a map for parent lookup
 		const entryMap = new Map<string, FlatNode>();
-		for (const flatNode of this.#flatNodes) {
-			entryMap.set(flatNode.node.entry.id, flatNode);
+		for (let fi = 0; fi < this.#flatNodes.length; fi++) {
+			entryMap.set(this.#flatNodes[fi]!.node.entry.id, this.#flatNodes[fi]!);
 		}
 
 		// Build a map of visible entry IDs to their indices in filteredNodes
@@ -197,8 +197,8 @@ class TreeList implements Component {
 			for (let i = allNodes.length - 1; i >= 0; i--) {
 				const node = allNodes[i];
 				let has = leafId !== null && node.entry.id === leafId;
-				for (const child of node.children) {
-					if (containsActive.get(child)) {
+				for (let ci = 0; ci < node.children.length; ci++) {
+					if (containsActive.get(node.children[ci]!)) {
 						has = true;
 					}
 				}
@@ -223,7 +223,8 @@ class TreeList implements Component {
 			if (entry.type === "message" && entry.message.role === "assistant") {
 				const content = (entry.message as { content?: unknown }).content;
 				if (Array.isArray(content)) {
-					for (const block of content) {
+					for (let bi = 0; bi < content.length; bi++) {
+						const block = content[bi];
 						if (typeof block === "object" && block !== null && "type" in block && block.type === "toolCall") {
 							const tc = block as { id: string; name: string; arguments: Record<string, unknown> };
 							this.#toolCallMap.set(tc.id, { name: tc.name, arguments: tc.arguments });
@@ -241,7 +242,8 @@ class TreeList implements Component {
 			const orderedChildren = (() => {
 				const prioritized: SessionTreeNode[] = [];
 				const rest: SessionTreeNode[] = [];
-				for (const child of children) {
+				for (let ci = 0; ci < children.length; ci++) {
+					const child = children[ci]!;
 					if (containsActive.get(child)) {
 						prioritized.push(child);
 					} else {
@@ -507,9 +509,9 @@ class TreeList implements Component {
 	}
 
 	updateNodeLabel(entryId: string, label: string | undefined): void {
-		for (const flatNode of this.#flatNodes) {
-			if (flatNode.node.entry.id === entryId) {
-				flatNode.node.label = label;
+		for (let fi = 0; fi < this.#flatNodes.length; fi++) {
+			if (this.#flatNodes[fi]!.node.entry.id === entryId) {
+				this.#flatNodes[fi]!.node.label = label;
 				break;
 			}
 		}
@@ -806,7 +808,8 @@ class TreeList implements Component {
 		if (typeof content === "string") return content.slice(0, maxLen);
 		if (Array.isArray(content)) {
 			let result = "";
-			for (const c of content) {
+			for (let ci = 0; ci < content.length; ci++) {
+				const c = content[ci];
 				if (typeof c === "object" && c !== null && "type" in c && c.type === "text") {
 					result += (c as { text: string }).text;
 					if (result.length >= maxLen) return result.slice(0, maxLen);
@@ -820,7 +823,8 @@ class TreeList implements Component {
 	#hasTextContent(content: unknown): boolean {
 		if (typeof content === "string") return Boolean(canonicalizeMessage(content));
 		if (Array.isArray(content)) {
-			for (const c of content) {
+			for (let ci = 0; ci < content.length; ci++) {
+				const c = content[ci];
 				if (typeof c === "object" && c !== null && "type" in c && c.type === "text") {
 					const text = (c as { text?: string }).text;
 					if (text && canonicalizeMessage(text)) return true;
