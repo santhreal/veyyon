@@ -433,9 +433,9 @@ function renderGoalMode(ctx: SegmentContext, mode: { enabled: boolean; paused: b
 	// percent are this state's readout, not further states, and the separator
 	// grammar reserves `·` for a boundary between independent states.
 	const verbose = ctx.session.settings.get("goal.statusInFooter") === true;
-	const parts: string[] = [withIcon(icon, "Goal")];
-	if (goal) parts.push(formatGoalProgress(tokensUsed, tokenBudget, verbose));
-	return theme.fg(color, parts.join(" "));
+	const goalLabel = withIcon(icon, "Goal");
+	if (!goal) return theme.fg(color, goalLabel);
+	return theme.fg(color, `${goalLabel} ${formatGoalProgress(tokensUsed, tokenBudget, verbose)}`);
 }
 
 /**

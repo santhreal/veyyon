@@ -29,6 +29,7 @@
 - `#animatedBadgeSlot` in `status-line/component.ts` hoists the `stateSeparator()` call, eliminating a duplicate `theme.fg()` + `.trim()` chain per status-line frame when badge parts are present.
 - `updateRecentOutputLines` in `task/executor.ts` replaces `.filter().slice().reverse()` with a single backward pass, eliminating two intermediate array allocations per subagent output update.
 - `#getUsageContextKey` in `status-line/component.ts` replaces a 5-element array `.join()` with a template literal, eliminating an intermediate array allocation per status-line frame.
+- `renderGoalMode` in `status-line/segments.ts` replaces a `parts` array `.join()` with conditional concatenation, eliminating an intermediate array allocation per status-line frame when goal mode is active.
 
 
 
