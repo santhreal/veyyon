@@ -38,6 +38,7 @@ import {
 	checkNoOutputBleedPastComposer,
 	checkVirtualScrollPreservesFooterStability,
 	evaluateAllComposerOracles,
+	isComposerPromptLine,
 } from "../src/modes/components/composer-defect-oracle";
 
 function createBaselineFrameState(): ComposerOracleFrameState {
@@ -94,6 +95,9 @@ function createBaselineFrameState(): ComposerOracleFrameState {
 			[8, { routedTo: "footer:pad", localLine: 0, col: 0 }],
 			[9, { routedTo: "footer:quietZone", localLine: 0, col: 0 }],
 		]),
+		// The runner always states the glyph the composer painted; the baseline
+		// must too, or these gates exercise a frame shape the harness never emits.
+		expectedPromptGlyph: "›",
 		liveFooterLines: [...footerLines],
 	};
 }
@@ -128,6 +132,57 @@ describe("composer defect oracle mutation gates", () => {
 		const missingFailure = checkExactlyOneComposerPrompt(missingState);
 		expect(missingFailure).not.toBeNull();
 		expect(missingFailure?.oracle).toBe("exactlyOneComposerPrompt");
+	});
+
+	// The sweep auto-promotes a failing case to the committed corpus, so an oracle
+	// that reports a defect the frame does not contain writes a permanent fake
+	// regression. `!`, `$` and `>` are composer glyphs AND the first character of
+	// ordinary transcript rows, so a frame that states its glyph must be judged
+	// against that one alone.
+	it("1a. exactlyOneComposerPrompt stays green when the transcript holds glyph-led rows", () => {
+		const base = createBaselineFrameState();
+		expect(base.expectedPromptGlyph).toBeTruthy();
+
+		const decoys = [
+			"  $ bun run check:ts",
+			"  > a quoted line from a README",
+			"  !important; /* a css rule */",
+			"$ npm install at column zero",
+			"> blockquote at column zero",
+		];
+		for (const [offset, decoy] of decoys.entries()) {
+			const state = mutateViewportLine(base, offset, decoy);
+			expect(
+				checkExactlyOneComposerPrompt(state),
+				`transcript row ${decoy} was counted as a composer prompt`,
+			).toBeNull();
+		}
+	});
+
+	it("1b. exactlyOneComposerPrompt still counts a duplicate of the frame's own glyph", () => {
+		const base = createBaselineFrameState();
+		const glyph = base.expectedPromptGlyph ?? "›";
+		const state = mutateViewportLine(base, 2, `  ${glyph} duplicate of the real prompt`);
+		expect(checkExactlyOneComposerPrompt(state)).not.toBeNull();
+	});
+
+	// A frame that does not state its glyph falls back to the whole set, so `!`,
+	// `$` and `>` are only a prompt where the composer would paint one. This is a
+	// heuristic, and its limit is asserted below rather than left implied.
+	it("1c. a frame with no stated glyph does not read a column-zero shell line as a prompt", () => {
+		for (const inert of ["$ npm install", "> a quoted line", "!important"]) {
+			expect(isComposerPromptLine(inert), `${inert} was read as a prompt`).toBe(false);
+		}
+		// Unambiguous glyphs still count at column zero, where a narrow terminal
+		// collapses the composer's inset.
+		expect(isComposerPromptLine("› hello")).toBe(true);
+		expect(isComposerPromptLine("◈ hello")).toBe(true);
+		// Inset and led by the composer's own glyph.
+		expect(isComposerPromptLine("  › hello")).toBe(true);
+		// THE LIMIT: with no stated glyph, an indented shell line is still counted.
+		// Only the stated glyph separates them, which is why the runner supplies it.
+		expect(isComposerPromptLine("  $ npm install")).toBe(true);
+		expect(isComposerPromptLine("  $ npm install", "›")).toBe(false);
 	});
 
 	it("2. noOutputBleedPastComposer goes red when transcript bleeds into footer region", () => {
