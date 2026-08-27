@@ -2178,7 +2178,9 @@ export function renderReadUrlResult(
 		const urlText = details?.finalUrl ?? details?.url ?? "";
 		const description = urlText ? formatReadUrlDescription(urlText) : undefined;
 		const header = renderStatusLine({ icon: "error", title: "Read", description }, uiTheme);
-		const errorLines = errorText.split("\n").map(line => uiTheme.fg("error", replaceTabs(line)));
+		const errorParts = errorText.split("\n");
+		const errorLines: string[] = new Array(errorParts.length);
+		for (let ei = 0; ei < errorParts.length; ei++) errorLines[ei] = uiTheme.fg("error", replaceTabs(errorParts[ei]!));
 		const outputBlock = new CachedOutputBlock();
 		return markFramedBlockComponent({
 			render: (width: number) =>
@@ -2241,12 +2243,16 @@ export function renderReadUrlResult(
 			if (contentPreviewLines === undefined || lastExpanded !== expanded) {
 				const previewLimit = expanded ? 12 : 3;
 				const previewList = applyListLimit(contentLines, { headLimit: previewLimit });
-				const previewLines = previewList.items.map(line => line.trimEnd());
-				const remaining = Math.max(0, contentLines.length - previewList.items.length);
-				contentPreviewLines =
-					previewLines.length > 0
-						? previewLines.map(line => uiTheme.fg("dim", line))
-						: [uiTheme.fg("dim", "(no content)")];
+				const previewItems = previewList.items;
+				const remaining = Math.max(0, contentLines.length - previewItems.length);
+				if (previewItems.length > 0) {
+					contentPreviewLines = new Array<string>(previewItems.length);
+					for (let pi = 0; pi < previewItems.length; pi++) {
+						contentPreviewLines[pi] = uiTheme.fg("dim", previewItems[pi]!.trimEnd());
+					}
+				} else {
+					contentPreviewLines = [uiTheme.fg("dim", "(no content)")];
+				}
 				if (remaining > 0) {
 					const hint = formatExpandHint(uiTheme, expanded, true);
 					contentPreviewLines.push(

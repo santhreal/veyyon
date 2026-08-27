@@ -685,7 +685,13 @@ export const globToolRenderer = {
 				uiTheme,
 			);
 			const contentWidth = outputBlockContentWidth(width);
-			const bodyLines = [...fileLines, ...extraLines].map(l => truncateToWidth(l, contentWidth, Ellipsis.Omit));
+			const bodyLines: string[] = new Array(fileLines.length + extraLines.length);
+			for (let fi = 0; fi < fileLines.length; fi++) {
+				bodyLines[fi] = truncateToWidth(fileLines[fi]!, contentWidth, Ellipsis.Omit);
+			}
+			for (let ei = 0; ei < extraLines.length; ei++) {
+				bodyLines[fileLines.length + ei] = truncateToWidth(extraLines[ei]!, contentWidth, Ellipsis.Omit);
+			}
 			return {
 				header,
 				sections: [{ lines: bodyLines }],

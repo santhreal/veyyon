@@ -95,9 +95,11 @@ function bodyLines(
 	// A message body is indented text and carries no quote glyph of its own. The
 	// block already hangs from the house rail, and a second `▏` two cells inside
 	// it drew a second left edge for the same rows.
-	const lines = getPreviewLines(body, max, BODY_LINE_WIDTH, Ellipsis.Unicode).map(
-		line => `${indent}${theme.fg(tone, replaceTabs(line))}`,
-	);
+	const previewParts = getPreviewLines(body, max, BODY_LINE_WIDTH, Ellipsis.Unicode);
+	const lines: string[] = new Array(previewParts.length);
+	for (let pi = 0; pi < previewParts.length; pi++) {
+		lines[pi] = `${indent}${theme.fg(tone, replaceTabs(previewParts[pi]!))}`;
+	}
 	const hidden = total - Math.min(total, max);
 	if (hidden > 0) {
 		lines.push(`${indent}${theme.fg("dim", `… +${hidden} more ${hidden === 1 ? "line" : "lines"}`)}`);
@@ -186,7 +188,10 @@ export function createIrcMessageCard(
 				const bl = bodyLines(body, expanded, uiTheme, { indent: "  ", collapsedLines: 3 });
 				for (let li = 0; li < bl.length; li++) lines.push(bl[li]!);
 			}
-			return lines.map(line => truncateToWidth(line, width, Ellipsis.Unicode));
+			for (let li = 0; li < lines.length; li++) {
+				lines[li] = truncateToWidth(lines[li]!, width, Ellipsis.Unicode);
+			}
+			return lines;
 		},
 		{ paddingX: 1 },
 	);

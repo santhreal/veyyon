@@ -783,7 +783,8 @@ export const launchToolRenderer = {
 		if (op === "logs") {
 			return framedBlock(theme, width => {
 				const innerWidth = outputBlockContentWidth(width);
-				const rows = body.map(line => truncateToWidth(line, innerWidth));
+				const rows: string[] = new Array(body.length);
+				for (let ri = 0; ri < body.length; ri++) rows[ri] = truncateToWidth(body[ri]!, innerWidth);
 				return {
 					header,
 					state: options.isPartial ? "pending" : failed ? "error" : "success",
@@ -822,7 +823,10 @@ export const launchToolRenderer = {
 						),
 					];
 				}
-				return [header, ...visible].map(line => truncateToWidth(line, width));
+				const allLines: string[] = new Array(1 + visible.length);
+				allLines[0] = truncateToWidth(header, width);
+				for (let li = 0; li < visible.length; li++) allLines[li + 1] = truncateToWidth(visible[li]!, width);
+				return allLines;
 			},
 		);
 	},

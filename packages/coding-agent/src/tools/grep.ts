@@ -1861,14 +1861,20 @@ export const grepToolRenderer = {
 				const contentBudget = needsSummary ? Math.max(maxLines - 1, 0) : maxLines;
 				const visible = lines.slice(0, contentBudget);
 				const remaining = lines.length - visible.length;
-				const bodyLines: string[] = visible.map(line => uiTheme.fg("toolOutput", replaceTabs(line)));
+				const bodyLines: string[] = new Array(visible.length);
+				for (let vi = 0; vi < visible.length; vi++)
+					bodyLines[vi] = uiTheme.fg("toolOutput", replaceTabs(visible[vi]!));
 				if (needsSummary && remaining > 0) {
 					bodyLines.push(uiTheme.fg("dim", formatMoreItems(remaining, "item")));
 				}
 				const innerWidth = outputBlockContentWidth(width);
+				const truncatedLines: string[] = new Array(bodyLines.length);
+				for (let ti = 0; ti < bodyLines.length; ti++) {
+					truncatedLines[ti] = truncateToWidth(bodyLines[ti]!, innerWidth, Ellipsis.Omit);
+				}
 				return {
 					header,
-					sections: [{ lines: bodyLines.map(l => truncateToWidth(l, innerWidth, Ellipsis.Omit)) }],
+					sections: [{ lines: truncatedLines }],
 					state: "success",
 					width,
 				};
@@ -1930,7 +1936,14 @@ export const grepToolRenderer = {
 			details?.searchPath,
 			uiTheme,
 		);
-		const matchGroups = groupLineIndicesByBlank(allLines).map(indices => indices.map(i => renderedLines[i]!));
+		const groupIndices = groupLineIndicesByBlank(allLines);
+		const matchGroups: string[][] = new Array(groupIndices.length);
+		for (let gi = 0; gi < groupIndices.length; gi++) {
+			const indices = groupIndices[gi]!;
+			const group: string[] = new Array(indices.length);
+			for (let ii = 0; ii < indices.length; ii++) group[ii] = renderedLines[indices[ii]!]!;
+			matchGroups[gi] = group;
+		}
 
 		const extraLines: string[] = [];
 		if (missingNote) extraLines.push(missingNote);
@@ -1942,7 +1955,13 @@ export const grepToolRenderer = {
 			);
 			const matchLines = renderBudgetedSearchGroups(matchGroups, budget, matchCount, uiTheme, !options.expanded);
 			const innerWidth = outputBlockContentWidth(width);
-			const bodyLines = [...matchLines, ...extraLines].map(l => truncateToWidth(l, innerWidth, Ellipsis.Omit));
+			const bodyLines: string[] = new Array(matchLines.length + extraLines.length);
+			for (let mi = 0; mi < matchLines.length; mi++) {
+				bodyLines[mi] = truncateToWidth(matchLines[mi]!, innerWidth, Ellipsis.Omit);
+			}
+			for (let ei = 0; ei < extraLines.length; ei++) {
+				bodyLines[matchLines.length + ei] = truncateToWidth(extraLines[ei]!, innerWidth, Ellipsis.Omit);
+			}
 			return {
 				header,
 				sections: [{ lines: bodyLines }],

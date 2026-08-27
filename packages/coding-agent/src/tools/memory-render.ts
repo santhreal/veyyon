@@ -72,7 +72,10 @@ function retainComponent(contents: string[], header: string, getExpanded: () => 
 		if (remaining > 0) {
 			lines.push(`  ${theme.fg("dim", `… ${remaining} more`)} ${formatExpandHint(theme, expanded, true)}`);
 		}
-		return lines.map(line => truncateToWidth(line, width, Ellipsis.Omit));
+		for (let li = 0; li < lines.length; li++) {
+			lines[li] = truncateToWidth(lines[li]!, width, Ellipsis.Omit);
+		}
+		return lines;
 	});
 }
 
@@ -150,7 +153,10 @@ export const recallToolRenderer = {
 				} else {
 					lines.push(`  ${formatExpandHint(theme, false, true)}`);
 				}
-				return lines.map(line => truncateToWidth(line, width, Ellipsis.Omit));
+				for (let li = 0; li < lines.length; li++) {
+					lines[li] = truncateToWidth(lines[li]!, width, Ellipsis.Omit);
+				}
+				return lines;
 			},
 		);
 	},
@@ -196,7 +202,10 @@ export const reflectToolRenderer = {
 						`  ${theme.fg("dim", `… ${formatMoreLines(remaining)}`)} ${formatExpandHint(theme, expanded, true)}`,
 					);
 				}
-				return lines.map(line => truncateToWidth(line, width, Ellipsis.Omit));
+				for (let li = 0; li < lines.length; li++) {
+					lines[li] = truncateToWidth(lines[li]!, width, Ellipsis.Omit);
+				}
+				return lines;
 			},
 		);
 	},
