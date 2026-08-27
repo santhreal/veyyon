@@ -24,7 +24,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { createTools, type ToolSession } from "@veyyon/coding-agent/tools";
-import { type SearchType, searchSchema, TYPE_FIELDS } from "@veyyon/coding-agent/tools/search";
+import { type SearchToolInput, type SearchType, searchSchema, TYPE_FIELDS } from "@veyyon/coding-agent/tools/search";
 import { removeWithRetries } from "@veyyon/utils";
 
 const SCHEMA_FIELDS = Object.keys(searchSchema.shape);
@@ -182,6 +182,27 @@ describe("a search result never advises a field the tool rejects", () => {
 			});
 			expect(text).toContain("internal ceiling of 2000 matches");
 			expect(text).toContain("the file count is a floor");
+		});
+	});
+
+	it("names the accepted set when it rejects a cross-type field", async () => {
+		// A model in a real trial sent `limit` to a text search and spent a second
+		// call rediscovering the field by removing it.
+		await withWorkspace(async dir => {
+			for (const [type, fields] of Object.entries(TYPE_FIELDS) as Array<
+				[SearchType, ReadonlySet<keyof SearchToolInput>]
+			>) {
+				const foreign = SCHEMA_FIELDS.filter(field => !fields.has(field as keyof SearchToolInput));
+				expect(foreign.length).toBeGreaterThan(0);
+				const text = await searchText(dir, {
+					callId: `reject-${type}`,
+					args: { type, input: "needle", [foreign[0]!]: type === "files" ? "." : 1 },
+				}).catch(error => (error instanceof Error ? error.message : String(error)));
+				expect(text).toContain(`does not accept: ${foreign[0]}`);
+				for (const accepted of fields) {
+					expect(text).toContain(String(accepted));
+				}
+			}
 		});
 	});
 });

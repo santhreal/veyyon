@@ -84,7 +84,13 @@ function rejectCrossTypeFields(params: SearchToolInput): void {
 		key => params[key as keyof SearchToolInput] !== undefined && !allowed.has(key as keyof SearchToolInput),
 	);
 	if (invalid.length === 0) return;
-	throw new ToolError(`Search type "${params.type}" does not accept: ${invalid.join(", ")}`);
+	// The rejection is a whole request the caller paid for, so it states the set
+	// that would have worked rather than leaving the retry to a guess. A model in
+	// a real trial sent `limit` to a text search, read "does not accept: limit",
+	// and spent a second call rediscovering the field by removing it.
+	throw new ToolError(
+		`Search type "${params.type}" does not accept: ${invalid.join(", ")}. It accepts: ${[...allowed].join(", ")}.`,
+	);
 }
 
 const SEARCH_TARGET_FIELDS: Record<SearchType, "input" | "path"> = {
