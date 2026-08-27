@@ -63,14 +63,17 @@ function planCells(breakdown: ContextBreakdown): CellSpec[] {
 		return Math.max(1, Math.round(tokens / tokensPerCell));
 	};
 
-	const categoryCounts = breakdown.categories.map(category => ({
-		category,
-		count: ratioCells(category.tokens),
-	}));
+	const categoryCounts = new Array<{ category: (typeof breakdown.categories)[number]; count: number }>(
+		breakdown.categories.length,
+	);
+	for (let i = 0; i < breakdown.categories.length; i++) {
+		categoryCounts[i] = { category: breakdown.categories[i]!, count: ratioCells(breakdown.categories[i]!.tokens) };
+	}
 
 	let bufferCount = ratioCells(breakdown.autoCompactBufferTokens);
 
-	let usedCount = categoryCounts.reduce((sum, c) => sum + c.count, 0);
+	let usedCount = 0;
+	for (let i = 0; i < categoryCounts.length; i++) usedCount += categoryCounts[i]!.count;
 
 	// Prevent the visualization from over-running the grid.
 	const maxUsable = GRID_CELLS - bufferCount;
@@ -79,19 +82,22 @@ function planCells(breakdown: ContextBreakdown): CellSpec[] {
 		let overflow = usedCount - maxUsable;
 		// Trim from the largest categories first to preserve visibility for small ones.
 		const order = categoryCounts.slice().sort((a, b) => b.count - a.count);
-		for (const entry of order) {
+		for (let oi = 0; oi < order.length; oi++) {
+			const entry = order[oi]!;
 			while (overflow > 0 && entry.count > 1) {
 				entry.count -= 1;
 				overflow -= 1;
 			}
 		}
-		usedCount = categoryCounts.reduce((sum, c) => sum + c.count, 0);
+		usedCount = 0;
+		for (let i = 0; i < categoryCounts.length; i++) usedCount += categoryCounts[i]!.count;
 		if (usedCount + bufferCount > GRID_CELLS) {
 			bufferCount = Math.max(0, GRID_CELLS - usedCount);
 		}
 	}
 
-	for (const { category, count } of categoryCounts) {
+	for (let ci = 0; ci < categoryCounts.length; ci++) {
+		const { category, count } = categoryCounts[ci]!;
 		const style = CATEGORY_STYLE[category.id];
 		for (let i = 0; i < count; i++) {
 			cells.push({ glyph: style.glyph, color: style.color });

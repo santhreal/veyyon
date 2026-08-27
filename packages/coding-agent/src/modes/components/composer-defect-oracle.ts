@@ -517,7 +517,8 @@ export function checkFooterHeightMatchesComposedSegmentLedger(state: ComposerOra
 	}
 
 	const footerSegments = state.segments.slice(-state.pinnedFooterChildCount);
-	const ledgerSum = footerSegments.reduce((sum, s) => sum + s.rowCount, 0);
+	let ledgerSum = 0;
+	for (let i = 0; i < footerSegments.length; i++) ledgerSum += footerSegments[i]!.rowCount;
 
 	if (state.pinnedFooterRows !== ledgerSum) {
 		return {
