@@ -161,8 +161,8 @@ function firstSelectorLine(selector: string | undefined): number | undefined {
 
 function firstSelectorLineForTargets(targets: ReadDisplayTarget[]): number | undefined {
 	let line: number | undefined;
-	for (const target of targets) {
-		const targetLine = firstSelectorLine(target.selector);
+	for (let ti = 0; ti < targets.length; ti++) {
+		const targetLine = firstSelectorLine(targets[ti]!.selector);
 		if (targetLine === undefined) continue;
 		if (line === undefined || targetLine < line) line = targetLine;
 	}
@@ -170,8 +170,8 @@ function firstSelectorLineForTargets(targets: ReadDisplayTarget[]): number | und
 }
 
 function linkPathForTargets(targets: ReadDisplayTarget[]): string | undefined {
-	for (const target of targets) {
-		if (target.linkPath) return target.linkPath;
+	for (let ti = 0; ti < targets.length; ti++) {
+		if (targets[ti]!.linkPath) return targets[ti]!.linkPath;
 	}
 	return undefined;
 }
@@ -245,9 +245,15 @@ function splitReadDisplayPathSpecs(rawPath: string): string[] {
 	}
 	parts.push(normalized.slice(partStart).trim());
 
-	const cleanParts = parts.filter(part => part.length > 0);
+	const cleanParts: string[] = [];
+	for (let pi = 0; pi < parts.length; pi++) {
+		if (parts[pi]!.length > 0) cleanParts.push(parts[pi]!);
+	}
 	if (cleanParts.length <= 1) return [rawPath];
-	return cleanParts.every(part => splitPathAndSel(part).sel !== undefined) ? cleanParts : [rawPath];
+	for (let pi = 0; pi < cleanParts.length; pi++) {
+		if (splitPathAndSel(cleanParts[pi]!).sel === undefined) return [rawPath];
+	}
+	return cleanParts;
 }
 
 function splitSelectorDisplayParts(sel: string | undefined): Array<string | undefined> {
@@ -458,17 +464,21 @@ export class ReadToolGroupComponent extends Container implements ToolExecutionHa
 
 		const header = `${theme.fg("toolTitle", theme.bold("Read"))}${theme.fg("dim", ` (${displayRows.length})`)}`;
 		const lines = [` ${theme.format.bullet} ${header}`];
-		const entriesWithoutPreview = entries.filter(entry => !this.#shouldRenderPreview(entry));
+		const entriesWithoutPreview: ReadEntry[] = [];
+		for (let ei = 0; ei < entries.length; ei++) {
+			if (!this.#shouldRenderPreview(entries[ei]!)) entriesWithoutPreview.push(entries[ei]!);
+		}
 		const summaryTargets = this.#displayTargetsForEntries(entriesWithoutPreview);
 		const rows = this.#buildSummaryRows(summaryTargets);
-		for (const [index, row] of rows.entries()) {
-			this.#appendSummaryRow(lines, row, index, rows.length);
+		for (let ri = 0; ri < rows.length; ri++) {
+			this.#appendSummaryRow(lines, rows[ri]!, ri, rows.length);
 		}
 
 		this.#text.setText(lines.join("\n"));
 		this.addChild(this.#text);
 
-		for (const entry of entries) {
+		for (let ei = 0; ei < entries.length; ei++) {
+			const entry = entries[ei]!;
 			if (this.#shouldRenderPreview(entry)) {
 				this.#addContentPreview(entry);
 			}
@@ -477,13 +487,17 @@ export class ReadToolGroupComponent extends Container implements ToolExecutionHa
 
 	#displayTargetsForEntries(entries: ReadEntry[]): ReadDisplayTarget[] {
 		const targets: ReadDisplayTarget[] = [];
-		for (const entry of entries) {
+		for (let ei = 0; ei < entries.length; ei++) {
+			const entry = entries[ei]!;
 			const pathSpecs = entry.displayPaths ?? splitReadDisplayPathSpecs(entry.path);
 			const useEntryLinkPath = pathSpecs.length === 1;
-			for (const pathSpec of pathSpecs) {
+			for (let pi = 0; pi < pathSpecs.length; pi++) {
+				const pathSpec = pathSpecs[pi]!;
 				const split = splitPathAndSel(pathSpec);
 				const linkPath = readTargetLinkPath(split.path, useEntryLinkPath ? entry.linkPath : undefined);
-				for (const selector of splitSelectorDisplayParts(split.sel)) {
+				const selectors = splitSelectorDisplayParts(split.sel);
+				for (let si = 0; si < selectors.length; si++) {
+					const selector = selectors[si]!;
 					targets.push({
 						entry,
 						targetPath: selector ? `${split.path}:${selector}` : pathSpec,
@@ -499,7 +513,8 @@ export class ReadToolGroupComponent extends Container implements ToolExecutionHa
 
 	#buildSummaryRows(targets: ReadDisplayTarget[]): ReadSummaryRow[] {
 		const selectorTargetsByBasePath = new Map<string, ReadDisplayTarget[]>();
-		for (const target of targets) {
+		for (let ti = 0; ti < targets.length; ti++) {
+			const target = targets[ti]!;
 			if (!target.selector) continue;
 			const existing = selectorTargetsByBasePath.get(target.basePath);
 			if (existing) existing.push(target);
@@ -515,16 +530,18 @@ export class ReadToolGroupComponent extends Container implements ToolExecutionHa
 
 		const emittedMergedRows = new Set<string>();
 		const rows: ReadSummaryRow[] = [];
-		for (const target of targets) {
+		for (let ti = 0; ti < targets.length; ti++) {
+			const target = targets[ti]!;
 			if (target.selector && mergeableBasePaths.has(target.basePath)) {
 				if (!emittedMergedRows.has(target.basePath)) {
 					const mergedTargets = selectorTargetsByBasePath.get(target.basePath) ?? [target];
+					const selectors: string[] = [];
+					for (let mi = 0; mi < mergedTargets.length; mi++) {
+						const sel = mergedTargets[mi]!.selector;
+						if (sel !== undefined) selectors.push(sel);
+					}
 					rows.push({
-						targetPath: `${target.basePath}:${formatMergedSelectorParts(
-							mergedTargets
-								.map(mergedTarget => mergedTarget.selector)
-								.filter(selector => selector !== undefined),
-						)}`,
+						targetPath: `${target.basePath}:${formatMergedSelectorParts(selectors)}`,
 						basePath: target.basePath,
 						targets: mergedTargets,
 					});
@@ -559,26 +576,27 @@ export class ReadToolGroupComponent extends Container implements ToolExecutionHa
 
 	#statusForTargets(targets: ReadDisplayTarget[]): ReadEntry["status"] {
 		let status: ReadEntry["status"] = "success";
-		for (const target of targets) {
-			if (READ_STATUS_RANK[target.entry.status] > READ_STATUS_RANK[status]) {
-				status = target.entry.status;
+		for (let ti = 0; ti < targets.length; ti++) {
+			if (READ_STATUS_RANK[targets[ti]!.entry.status] > READ_STATUS_RANK[status]) {
+				status = targets[ti]!.entry.status;
 			}
 		}
 		return status;
 	}
 
 	#correctedFromForTargets(targets: ReadDisplayTarget[]): string | undefined {
-		for (const target of targets) {
-			if (target.entry.correctedFrom) return target.entry.correctedFrom;
+		for (let ti = 0; ti < targets.length; ti++) {
+			if (targets[ti]!.entry.correctedFrom) return targets[ti]!.entry.correctedFrom;
 		}
 		return undefined;
 	}
 
 	#conflictCountForTargets(targets: ReadDisplayTarget[]): number | undefined {
 		let conflictCount = 0;
-		for (const target of targets) {
-			if (target.entry.conflictCount && target.entry.conflictCount > conflictCount) {
-				conflictCount = target.entry.conflictCount;
+		for (let ti = 0; ti < targets.length; ti++) {
+			const cc = targets[ti]!.entry.conflictCount;
+			if (cc && cc > conflictCount) {
+				conflictCount = cc;
 			}
 		}
 		return conflictCount > 0 ? conflictCount : undefined;
@@ -587,7 +605,8 @@ export class ReadToolGroupComponent extends Container implements ToolExecutionHa
 	#previewEntriesForRow(row: ReadSummaryRow): ReadEntry[] {
 		const entries: ReadEntry[] = [];
 		const seen = new Set<string>();
-		for (const target of row.targets) {
+		for (let ti = 0; ti < row.targets.length; ti++) {
+			const target = row.targets[ti]!;
 			if (seen.has(target.entry.toolCallId) || !this.#shouldRenderPreview(target.entry)) continue;
 			entries.push(target.entry);
 			seen.add(target.entry.toolCallId);
