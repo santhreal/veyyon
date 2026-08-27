@@ -21,6 +21,7 @@ import { settings } from "../config/settings-instance";
 import type { Theme } from "../modes/theme/theme";
 import { Hasher } from "../tui/utils";
 import { formatDimensionNote, type ResizedImage } from "../utils/image-resize";
+import { isPathWithinCwd } from "./path-utils";
 
 export { Ellipsis } from "@veyyon/natives";
 export { replaceTabs, truncateToWidth, wrapTextWithAnsi } from "@veyyon/tui";
@@ -833,10 +834,15 @@ export function formatToolWorkingDirectory(workdir: string | undefined, projectD
 	if (resolvedWorkdir === resolvedProjectDir) {
 		return undefined;
 	}
+	// `isPathWithinCwd` is the package's containment owner, and it carries the
+	// clause this copy was missing: on win32 `path.relative("C:\\repo", "D:\\o")`
+	// returns `D:\\o`, which is non-empty and does not start with `..`, so the
+	// hand-rolled test called a different drive "inside the project" and printed
+	// an absolute path where a relative one belongs.
 	const relativePath = path.relative(resolvedProjectDir, resolvedWorkdir);
-	const isWithinProject =
-		relativePath.length > 0 && !relativePath.startsWith("..") && !relativePath.startsWith(`..${path.sep}`);
-	const displayWorkdir = isWithinProject ? relativePath : shortenPath(resolvedWorkdir);
+	const displayWorkdir = isPathWithinCwd(resolvedWorkdir, resolvedProjectDir)
+		? relativePath
+		: shortenPath(resolvedWorkdir);
 	return replaceTabs(displayWorkdir);
 }
 
