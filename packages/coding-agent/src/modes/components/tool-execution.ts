@@ -756,7 +756,9 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 	#imageSourceName(): string | undefined {
 		const details = this.#result?.details as { resolvedPath?: unknown; sourcePath?: unknown } | undefined;
 		const args = this.#args && typeof this.#args === "object" ? (this.#args as Record<string, unknown>) : undefined;
-		for (const candidate of [details?.resolvedPath, details?.sourcePath, args?.file_path, args?.path]) {
+		const candidates = [details?.resolvedPath, details?.sourcePath, args?.file_path, args?.path];
+		for (let ci = 0; ci < candidates.length; ci++) {
+			const candidate = candidates[ci];
 			if (typeof candidate === "string" && candidate.trim().length > 0) return shortenPath(candidate);
 		}
 		return undefined;
@@ -1417,8 +1419,8 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 			const renderer = toolRenderers[this.#toolName];
 
 			// Clean up previous multi-file boxes
-			for (const box of this.#multiFileBoxes) {
-				this.removeChild(box);
+			for (let bi = 0; bi < this.#multiFileBoxes.length; bi++) {
+				this.removeChild(this.#multiFileBoxes[bi]!);
 			}
 			this.#multiFileBoxes = [];
 
@@ -1573,12 +1575,12 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 		}
 
 		// Handle images (same for both custom and built-in)
-		for (const img of this.#imageComponents) {
-			this.removeChild(img);
+		for (let ii = 0; ii < this.#imageComponents.length; ii++) {
+			this.removeChild(this.#imageComponents[ii]!);
 		}
 		this.#imageComponents = [];
-		for (const spacer of this.#imageSpacers) {
-			this.removeChild(spacer);
+		for (let si = 0; si < this.#imageSpacers.length; si++) {
+			this.removeChild(this.#imageSpacers[si]!);
 		}
 		this.#imageSpacers = [];
 
