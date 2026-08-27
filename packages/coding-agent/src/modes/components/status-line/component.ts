@@ -546,7 +546,8 @@ export function messageFingerprint(msg: AgentMessage): string {
 			textLen += content.length;
 		} else if (Array.isArray(content)) {
 			blocks = content.length;
-			for (const block of content) {
+			for (let bi = 0; bi < content.length; bi++) {
+				const block = content[bi];
 				if (block?.type === "text" && typeof block.text === "string") textLen += block.text.length;
 			}
 		}
@@ -585,7 +586,8 @@ export function messageFingerprint(msg: AgentMessage): string {
 		const content = (msg as { content?: unknown }).content;
 		if (Array.isArray(content)) {
 			blocks = content.length;
-			for (const block of content) {
+			for (let bi = 0; bi < content.length; bi++) {
+				const block = content[bi];
 				if (!block || typeof block !== "object") continue;
 				const b = block as {
 					type?: string;
@@ -623,7 +625,8 @@ export function messageFingerprint(msg: AgentMessage): string {
 			textLen += content.length;
 		} else if (Array.isArray(content)) {
 			blocks = content.length;
-			for (const block of content) {
+			for (let bi = 0; bi < content.length; bi++) {
+				const block = content[bi];
 				if (!block || typeof block !== "object") continue;
 				const b = block as { type?: string; text?: string };
 				if (b.type === "text" && typeof b.text === "string") textLen += b.text.length;
