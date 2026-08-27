@@ -10,7 +10,7 @@ import { $which, errorMessage, isRecord, readPipeText } from "@veyyon/utils";
 import { type BackendRegistry, defaultBackendRegistry } from "../../core/backend-registry";
 import { resolveCellVariant } from "../../core/cell-variant";
 import { getHarness, listHarnesses, requireHarness } from "../../core/harness-registry";
-import { terminateProcessTree } from "../../core/process-tree";
+import { drainTrialOutput, terminateProcessTree } from "../../core/process-tree";
 import { boundRawOutput, DEFAULT_GRACE_PERIOD_MS, trialTimeoutFromOptions } from "../../core/trial-deadline";
 import { resolveTrialModel } from "../../core/trial-model";
 import { runDirFor, trialJobName } from "../../core/trial-naming";
@@ -428,6 +428,7 @@ export class HarborBackend implements ExecutionBackend {
 		let stderr = "";
 		let exitCode = 0;
 		let timedOut = false;
+		let outputComplete = true;
 
 		try {
 			const stdoutPromise = readPipeText(proc.stdout);
@@ -445,8 +446,12 @@ export class HarborBackend implements ExecutionBackend {
 			if (raceResult.kind === "timed_out") {
 				timedOut = true;
 				await killTrial();
-				stdout = boundRawOutput(await readPipeText(proc.stdout)) ?? "";
-				stderr = boundRawOutput(await readPipeText(proc.stderr)) ?? "";
+				// The reads started above still hold their streams; reading again returns nothing. A
+				// descendant the kill left behind keeps a pipe open, so the wait for EOF is bounded.
+				const drained = await drainTrialOutput(stdoutPromise, stderrPromise);
+				outputComplete = drained.complete;
+				stdout = boundRawOutput(drained.stdout) ?? "";
+				stderr = boundRawOutput(drained.stderr) ?? "";
 				exitCode = -1;
 			} else {
 				exitCode = raceResult.code;
@@ -458,7 +463,13 @@ export class HarborBackend implements ExecutionBackend {
 			if (context.signal) context.signal.removeEventListener("abort", onAbort);
 		}
 
-		if (timedOut) throw new Error(`Trial timed out after ${trialTimeoutSec}s (watchdog ceiling)`);
+		if (timedOut) {
+			throw new Error(
+				outputComplete
+					? `Trial timed out after ${trialTimeoutSec}s (watchdog ceiling)`
+					: `Trial timed out after ${trialTimeoutSec}s (watchdog ceiling); its process tree held its output open, so the trial's text is partial`,
+			);
+		}
 		if (context.signal?.aborted) {
 			await killTrial();
 			throw new Error(`Trial aborted: harbor exited with code ${exitCode}`);

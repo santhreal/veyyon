@@ -30,6 +30,50 @@ export const KILL_GRACE_PERIOD_MS = 500;
  */
 export type TerminationOutcome = "exited" | "abandoned";
 
+/** How long a terminated trial's pipes get to reach EOF before whatever arrived is kept. */
+export const OUTPUT_DRAIN_GRACE_MS = 2000;
+
+export interface DrainedTrialOutput {
+	readonly stdout: string;
+	readonly stderr: string;
+	/** False when a pipe never reached EOF, so the text below is whatever arrived first. */
+	readonly complete: boolean;
+}
+
+/**
+ * Whatever a terminated trial's pipes produced, bounded.
+ *
+ * A killed child closes its own pipe ends; a descendant it left behind does not, and the pipe stays
+ * open with a reader waiting on EOF that never comes. The harbor and pier backends read their pipes
+ * again after killing a timed-out trial, so a trial the deadline had already decided held the worker
+ * anyway. Pass the read promises started before the trial was killed: a second read of the same
+ * stream returns nothing, because the first reader still holds the lock.
+ */
+export async function drainTrialOutput(
+	stdout: Promise<string>,
+	stderr: Promise<string>,
+	graceMs = OUTPUT_DRAIN_GRACE_MS,
+): Promise<DrainedTrialOutput> {
+	const { promise: elapsed, resolve: markElapsed } = Promise.withResolvers<null>();
+	const timer = setTimeout(() => markElapsed(null), graceMs);
+	// Each pipe is bounded on its own, so output from the one that closed is kept when the other
+	// is held open by a survivor.
+	const bounded = (pipe: Promise<string>): Promise<string | null> =>
+		Promise.race([
+			pipe.then(
+				text => text,
+				() => "",
+			),
+			elapsed,
+		]);
+	try {
+		const [out, err] = await Promise.all([bounded(stdout), bounded(stderr)]);
+		return { stdout: out ?? "", stderr: err ?? "", complete: out !== null && err !== null };
+	} finally {
+		clearTimeout(timer);
+	}
+}
+
 function signalTree(proc: TerminableProcess, signal: "SIGTERM" | "SIGKILL"): void {
 	try {
 		proc.kill(signal);

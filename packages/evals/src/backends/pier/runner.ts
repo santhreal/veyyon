@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { readPipeText } from "@veyyon/utils";
-import { DEFAULT_GRACE_PERIOD_MS, terminateProcessTree } from "../../core";
+import { DEFAULT_GRACE_PERIOD_MS, drainTrialOutput, terminateProcessTree } from "../../core";
 import { boundRawOutput, resolveTrialTimeoutSec } from "../../core/trial-deadline";
 import type { PreflightVerdict, TrialArtifacts } from "../../core/types";
 import { MINIMUM_DEEPSWE_PIER_VERSION, pierSupportsSeparateVerifierCollect } from "./version";
@@ -232,6 +232,7 @@ export async function runPierTrial(options: PierTrialRunOptions): Promise<PierEx
 	let stderr = "";
 	let exitCode = 0;
 	let timedOut = false;
+	let outputComplete = true;
 
 	try {
 		const stdoutPromise = readPipeText(proc.stdout);
@@ -249,8 +250,12 @@ export async function runPierTrial(options: PierTrialRunOptions): Promise<PierEx
 		if (raceResult.kind === "timed_out") {
 			timedOut = true;
 			await killTrial();
-			stdout = boundRawOutput(await readPipeText(proc.stdout)) ?? "";
-			stderr = boundRawOutput(await readPipeText(proc.stderr)) ?? "";
+			// The reads started above still hold their streams; reading again returns nothing. A
+			// descendant the kill left behind keeps a pipe open, so the wait for EOF is bounded.
+			const drained = await drainTrialOutput(stdoutPromise, stderrPromise);
+			outputComplete = drained.complete;
+			stdout = boundRawOutput(drained.stdout) ?? "";
+			stderr = boundRawOutput(drained.stderr) ?? "";
 			exitCode = -1;
 		} else {
 			exitCode = raceResult.code;
@@ -283,7 +288,9 @@ export async function runPierTrial(options: PierTrialRunOptions): Promise<PierEx
 			trialDirPath,
 			durationMs,
 			timedOut: true,
-			error: `trial timed out after ${timeoutSec}s`,
+			error: outputComplete
+				? `trial timed out after ${timeoutSec}s`
+				: `trial timed out after ${timeoutSec}s; its process tree held its output open, so the text above is partial`,
 		};
 	}
 
