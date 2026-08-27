@@ -267,26 +267,30 @@ export class WelcomeComponent implements Component {
 			lines.push(
 				centerLine(theme.fg("dim", "more: ") + theme.fg("accent", "/welcome") + theme.fg("dim", more), termWidth),
 			);
-			for (const tipLine of this.#centeredTipBlock(termWidth)) lines.push(tipLine);
+			const tipBlock = this.#centeredTipBlock(termWidth);
+			for (let ti = 0; ti < tipBlock.length; ti++) lines.push(tipBlock[ti]!);
 			return lines;
 		}
 		// /welcome: the sunrise header, then a centred menu column. Open space is
 		// the frame here too — no box on the brand's front porch.
 		const colW = Math.min(56, termWidth - 4);
 		const colPad = padding(Math.max(0, Math.floor((termWidth - colW) / 2)));
-		lines.push("");
-		for (const [label, shortcut] of WELCOME_ACTIONS) lines.push(colPad + this.#menuRow(label, shortcut, colW));
+		for (let ai = 0; ai < WELCOME_ACTIONS.length; ai++) {
+			const [label, shortcut] = WELCOME_ACTIONS[ai]!;
+			lines.push(colPad + this.#menuRow(label, shortcut, colW));
+		}
 		const sessions = this.recentSessions.slice(0, WELCOME_SESSION_SLOTS);
 		if (sessions.length > 0) {
 			lines.push("");
-			lines.push(colPad + theme.fg("dim", "Recent"));
-			for (const session of sessions) lines.push(colPad + this.#sessionRow(session, colW));
+			for (let si = 0; si < sessions.length; si++) lines.push(colPad + this.#sessionRow(sessions[si]!, colW));
 		}
 		lines.push("");
 		// Drop only renderWelcomeTip's single indent space — trimStart here used
 		// to strip the continuation indent too, breaking the hanging alignment
 		// of wrapped tips.
-		for (const tipLine of this.#renderTip(colW)) {
+		const tipLines = this.#renderTip(colW);
+		for (let ti = 0; ti < tipLines.length; ti++) {
+			const tipLine = tipLines[ti]!;
 			lines.push(colPad + (tipLine.startsWith(" ") ? tipLine.slice(1) : tipLine));
 		}
 		return lines;
@@ -319,12 +323,13 @@ export class WelcomeComponent implements Component {
 		const sunH = Math.min(Math.max(7, Math.round((sunW * 0.6) / 2.1) + 2), sunRowBudget);
 		const sun = this.#currentLogoFrame(sunW, sunH);
 		const sunPad = padding(Math.max(0, Math.floor((termWidth - sunW) / 2)));
-		for (const row of sun) lines.push(sunPad + row);
+		for (let ri = 0; ri < sun.length; ri++) lines.push(sunPad + sun[ri]!);
 		lines.push("");
 		// The wordmark is text, not glyph art — it renders in the terminal's own
 		// font (JetBrains Mono), letterspaced to hold its own under the sun.
-		for (const row of gradientLogo([APP_NAME.split("").join(" ")])) {
-			lines.push(centerLine(theme.bold(row), termWidth));
+		const logoRows = gradientLogo([APP_NAME.split("").join(" ")]);
+		for (let ri = 0; ri < logoRows.length; ri++) {
+			lines.push(centerLine(theme.bold(logoRows[ri]!), termWidth));
 		}
 		lines.push("");
 		const model =
@@ -474,15 +479,19 @@ export function gradientEscape(): string {
 /** Paint multi-line art in Veyyon silver. */
 export function gradientLogo(lines: readonly string[]): string[] {
 	const reset = SGR_RESET;
-	return lines.map(line => {
-		let result = "";
-		for (const char of line) {
+	const result: string[] = new Array(lines.length);
+	for (let li = 0; li < lines.length; li++) {
+		const line = lines[li]!;
+		let painted = "";
+		for (let ci = 0; ci < line.length; ci++) {
+			const char = line[ci]!;
 			if (char === " ") {
-				result += char;
+				painted += char;
 				continue;
 			}
-			result += silverEscape(0.55) + char + reset;
+			painted += silverEscape(0.55) + char + reset;
 		}
-		return result;
-	});
+		result[li] = painted;
+	}
+	return result;
 }
