@@ -108,9 +108,13 @@ export function paintHotTail(
 	// The glow anchors at the LAST VISIBLE character, not the row edge:
 	// rendered rows arrive right-padded to the component width, and painting
 	// fg color onto trailing spaces is invisible ink — the trail never showed.
-	const paddingLen = row.length - row.replace(/ +$/, "").length;
-	const padding = row.slice(row.length - paddingLen);
-	const body = row.slice(0, row.length - paddingLen);
+	let paddingLen = 0;
+	for (let i = row.length - 1; i >= 0; i--) {
+		if (row.charCodeAt(i) !== 0x20) break;
+		paddingLen++;
+	}
+	const padding = paddingLen > 0 ? row.slice(row.length - paddingLen) : "";
+	const body = paddingLen > 0 ? row.slice(0, row.length - paddingLen) : row;
 	const plain = stripAnsi(body);
 	const width = visibleWidth(plain);
 	if (width === 0) return row;
