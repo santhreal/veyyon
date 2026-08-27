@@ -226,6 +226,13 @@
 - `memory-render.ts` replaces `.map(truncateToWidth)` closures with in-place for loops in retain, recall, and reflect components.
 - `irc-render.ts` replaces `.map()` closures with pre-allocated array + for loop in preview lines and in-place for loop in message card truncation.
 - `debug.ts` replaces `Math.max(...spread)` and nested `.map()` closures with index loops in `formatDisassembly` and `formatTable`.
+- `subagent-hud.ts` replaces `.map()` closure with pre-allocated array + for loop in per-frame agent row rendering.
+- `todo-reminder.ts` replaces `.map()` closure with pre-allocated array + for loop in preview rendering.
+- `transcript-note.ts` replaces spread + `.map()` and `Math.max(...spread)` with for loops in note rendering.
+- `welcome.ts` replaces `.map()` closure with pre-allocated array + for loop in tip block rendering.
+- `tiny-title-download-progress.ts` replaces `.filter().map()` with single-pass for loop in progress details.
+- `tool-execution.ts` replaces `.map()` closure with for loop in `stabilizeStreamingPreviews`.
+- `skill-message.ts` replaces `.filter().map().join()` with single-pass for loop in `extractText`.
 ### Added
 
 - `/advisor` reports advisor status, opens the `WATCHDOG.yml` roster editor and applies a save to the running session, starts or stops the advisor for the session, and copies the advisor's own transcript; the subsystem shipped complete but no command, key or menu row reached it.
