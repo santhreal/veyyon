@@ -161,10 +161,12 @@ function liveModelOf(ref: AgentRef): string | undefined {
  * tabs had, one level down.
  */
 export function collectLiveAgents(refs: readonly AgentRef[]): LiveAgent[] {
-	const ordered = [...refs].sort(rosterOrder);
+	const ordered = refs.slice().sort(rosterOrder);
 	let subOrder = 0;
 	let advisorOrder = 0;
-	return ordered.map(ref => {
+	const result = new Array<LiveAgent>(ordered.length);
+	for (let ri = 0; ri < ordered.length; ri++) {
+		const ref = ordered[ri]!;
 		let callSign: string;
 		if (ref.kind === "main") {
 			callSign = MAIN_CALL_SIGN;
@@ -175,7 +177,7 @@ export function collectLiveAgents(refs: readonly AgentRef[]): LiveAgent[] {
 			callSign = codeNameFor(subOrder);
 			subOrder += 1;
 		}
-		return {
+		result[ri] = {
 			id: ref.id,
 			kind: ref.kind,
 			status: ref.status,
@@ -190,7 +192,8 @@ export function collectLiveAgents(refs: readonly AgentRef[]): LiveAgent[] {
 			waitingOnPeer: ref.waitingOnPeer,
 			blockedOnApproval: ref.pendingApproval !== undefined,
 		};
-	});
+	}
+	return result;
 }
 
 /**
