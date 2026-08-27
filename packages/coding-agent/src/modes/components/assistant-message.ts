@@ -62,7 +62,9 @@ function resolveThinkingDisplay(block: ThinkingContentBlock, proseOnly: boolean)
  */
 function containsMermaidFence(text: string): boolean {
 	let fence: string | null = null;
-	for (const line of text.split("\n")) {
+	const lines = text.split("\n");
+	for (let li = 0; li < lines.length; li++) {
+		const line = lines[li]!;
 		const fenceMatch = CODE_FENCE_LINE.exec(line);
 		if (fence !== null) {
 			// Inside a code block: only a bare matching closing fence ends it.
@@ -690,7 +692,8 @@ export class AssistantMessageComponent extends Container {
 	}
 
 	#appendThinkingExtensions(contentIndex: number, thinkingIndex: number, text: string): void {
-		for (const renderer of this.thinkingRenderers) {
+		for (let ri = 0; ri < this.thinkingRenderers.length; ri++) {
+			const renderer = this.thinkingRenderers[ri]!;
 			try {
 				const component = renderer(
 					{
@@ -746,7 +749,8 @@ export class AssistantMessageComponent extends Container {
 		// Extension stability: if thinking renderers exist and any tracked thinking
 		// block's text changed, extensions may produce a different child count.
 		if (this.thinkingRenderers.length > 0 && this.#fastPathItems) {
-			for (const item of this.#fastPathItems) {
+			for (let fi = 0; fi < this.#fastPathItems.length; fi++) {
+				const item = this.#fastPathItems[fi]!;
 				if (item.blockType === "thinking") {
 					const content = message.content[item.contentIndex];
 					if (content?.type === "thinking") {
