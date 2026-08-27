@@ -67,15 +67,18 @@ const EXT_SHORTCUTS = [
  * re-enabled from the list. The "all" tab is never muted or marked.
  */
 export function buildTabBarTabs(tabs: ProviderTab[]): Tab[] {
-	return tabs.map(tab => {
+	const result = new Array<Tab>(tabs.length);
+	for (let ti = 0; ti < tabs.length; ti++) {
+		const tab = tabs[ti]!;
 		const isAll = tab.id === "all";
 		const isEmptyEnabled = tab.count === 0 && tab.enabled && !isAll;
 		const isDisabled = !tab.enabled && !isAll;
 		let label = tab.label;
 		if (tab.count > 0) label += ` (${tab.count})`;
 		if (isDisabled) label = `${theme.status.disabled} ${label}`;
-		return { id: tab.id, label, short: tab.label, muted: isEmptyEnabled };
-	});
+		result[ti] = { id: tab.id, label, short: tab.label, muted: isEmptyEnabled };
+	}
+	return result;
 }
 
 export class ExtensionDashboard implements Component {
