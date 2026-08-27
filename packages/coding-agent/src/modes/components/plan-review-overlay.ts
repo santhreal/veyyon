@@ -758,8 +758,8 @@ export class PlanReviewOverlay implements Component {
 			const rendered = section.md.render(bodyContentWidth);
 			if (section.level >= 1 && section.annotations.length > 0 && rendered.length > 0) {
 				lines.push(rendered[0]!);
-				for (const note of section.annotations) {
-					const noteLines = note.split(/\r?\n/);
+				for (let ni = 0; ni < section.annotations.length; ni++) {
+					const noteLines = section.annotations[ni]!.split(/\r?\n/);
 					for (let j = 0; j < noteLines.length; j++) {
 						const prefix =
 							j === 0
@@ -770,7 +770,7 @@ export class PlanReviewOverlay implements Component {
 				}
 				for (let k = 1; k < rendered.length; k++) lines.push(rendered[k]!);
 			} else {
-				for (const line of rendered) lines.push(line);
+				for (let li = 0; li < rendered.length; li++) lines.push(rendered[li]!);
 			}
 		}
 		this.#sectionOffsets = offsets;
@@ -908,19 +908,19 @@ export class PlanReviewOverlay implements Component {
 				content.push(this.#composeSplitLine(sidebar[i] ?? "", body[i] ?? "", sidebarWidth, bodyContentWidth));
 			}
 		} else {
-			for (const line of body) {
+			for (let bi = 0; bi < body.length; bi++) {
 				this.#bodyClickRows.add(content.length);
-				content.push(line);
+				content.push(body[bi]!);
 			}
 		}
 		content.push(this.#renderRegionRule(contentWidth));
-		for (const line of promptLines) content.push(line);
-		for (const line of sliderLines) content.push(line);
+		for (let li = 0; li < promptLines.length; li++) content.push(promptLines[li]!);
+		for (let li = 0; li < sliderLines.length; li++) content.push(sliderLines[li]!);
 		for (let i = 0; i < optionLines.length; i++) {
 			this.#optionClickRows.set(content.length, i);
 			content.push(optionLines[i]!);
 		}
-		for (const line of annotateLines) content.push(line);
+		for (let li = 0; li < annotateLines.length; li++) content.push(annotateLines[li]!);
 
 		const shell = renderModalShell({
 			title: OVERLAY_TITLE,

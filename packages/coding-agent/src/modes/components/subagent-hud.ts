@@ -142,6 +142,6 @@ export function renderSubagentHudLines(sessions: readonly ObservableSession[], o
 	// the sweep is the motion, and a gap in the edge reads as a broken block.
 	const railCell = theme.fg("dim", rail);
 	const lines = [`${railCell} ${theme.bold(theme.fg("accent", cell("Subagents", content)))}`];
-	for (const row of rows) lines.push(`${railCell} ${row}`.trimEnd());
+	for (let ri = 0; ri < rows.length; ri++) lines.push(`${railCell} ${rows[ri]!}`.trimEnd());
 	return ["", ...lines];
 }

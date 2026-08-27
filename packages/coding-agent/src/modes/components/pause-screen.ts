@@ -103,8 +103,8 @@ export function renderPauseScreen(width: number, height: number, elapsedMs: numb
 		content.push("");
 		content.push(centerLine(theme.bold(theme.fg("accent", TITLE)), width));
 		content.push("");
-		for (const line of BODY_LINES) {
-			content.push(centerLine(theme.fg("muted", line), width));
+		for (let bi = 0; bi < BODY_LINES.length; bi++) {
+			content.push(centerLine(theme.fg("muted", BODY_LINES[bi]!), width));
 		}
 		content.push("");
 		content.push(centerLine(theme.fg("dim", `paused for ${formatClock(elapsedMs)}`), width));

@@ -587,7 +587,8 @@ class SessionList implements Component {
 		this.#hitRows = [];
 
 		// Render search input
-		lines.push(...this.#searchInput.render(width));
+		const siLines = this.#searchInput.render(width);
+		for (let li = 0; li < siLines.length; li++) lines.push(siLines[li]!);
 		lines.push(""); // Blank line after search
 
 		if (this.#filteredSessions.length === 0) {
@@ -710,7 +711,8 @@ class SessionList implements Component {
 		const sessionRegionStart = lines.length;
 		const svLines = sv.render(width);
 		for (let k = 0; k < svLines.length; k++) this.#hitRows[sessionRegionStart + k] = sessionRowIndex[k];
-		lines.push(...svLines);
+		const sl = svLines;
+		for (let li = 0; li < sl.length; li++) lines.push(sl[li]!);
 
 		return lines;
 	}
@@ -1039,15 +1041,13 @@ export class SessionSelectorComponent extends Container {
 		}
 
 		const body: string[] = [];
-		for (const line of this.#headerText.render(dims.contentWidth)) body.push(line);
-		for (const line of this.#messageContainer.render(dims.contentWidth)) body.push(line);
+		const headerLines = this.#headerText.render(dims.contentWidth);
+		for (let li = 0; li < headerLines.length; li++) body.push(headerLines[li]!);
+		const msgLines = this.#messageContainer.render(dims.contentWidth);
+		for (let li = 0; li < msgLines.length; li++) body.push(msgLines[li]!);
 		this.#listLineOffset = body.length;
-		for (const line of this.#contentSlot.render(dims.contentWidth)) body.push(line);
-		if (this.#highWaterWidth !== dims.contentWidth) {
-			this.#highWaterWidth = dims.contentWidth;
-			this.#bodyRowsHighWater = 0;
-		}
-		this.#bodyRowsHighWater = Math.max(this.#bodyRowsHighWater, body.length);
+		const slotLines = this.#contentSlot.render(dims.contentWidth);
+		for (let li = 0; li < slotLines.length; li++) body.push(slotLines[li]!);
 
 		const scopeLabel = this.#scope === "all" ? "current folder" : "all projects";
 		// The confirmation owns the body while it is up, and it takes a different
