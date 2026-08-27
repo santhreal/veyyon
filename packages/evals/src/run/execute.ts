@@ -9,6 +9,7 @@
  * two runs of the same plan produce comparable records.
  */
 
+import { setTimeout as sleepFor } from "node:timers/promises";
 import { errorMessage } from "@veyyon/utils";
 import type {
 	EvalRunRecord,
@@ -22,9 +23,12 @@ import type {
 } from "../core";
 import {
 	createRunRecord,
+	isRetryableTrialFailure,
 	preflightHarnesses,
 	requireHarness,
 	requireVariantSupport,
+	resolveTrialAttempts,
+	trialRetryDelayMs,
 	variantSupportQuery,
 } from "../core";
 import { requireRunDirectories } from "./directories";
@@ -112,10 +116,14 @@ export interface ExecuteRunOptions {
 	readonly onTrial?: (record: TrialResultRecord, index: number) => void;
 	/** Called when resuming an existing run and skipping already-settled cells. */
 	readonly onSkip?: (skippedCount: number, total: number) => void;
+	/** Called before a retried attempt, with the attempt that just failed and why. */
+	readonly onRetry?: (cell: TrialCell, failedAttempt: number, cause: unknown) => void;
 	/** When true, read existing trials.jsonl and skip already-settled cells. */
 	readonly resume?: boolean;
 	readonly options?: Readonly<Record<string, unknown>>;
 	readonly now?: () => number;
+	/** Waits between attempts. Injected so a suite does not sit through the backoff. */
+	readonly sleep?: (ms: number) => Promise<void>;
 }
 
 function erroredScore(cause: unknown): TrialScore {
@@ -232,24 +240,46 @@ export async function executeRun(options: ExecuteRunOptions): Promise<EvalRunRec
 		}
 	}
 
+	const attemptsAllowed = resolveTrialAttempts(context.options);
+	const sleep =
+		options.sleep ??
+		(async (ms: number) => {
+			await sleepFor(ms);
+		});
+
 	const runOne = async (cell: TrialCell, index: number): Promise<void> => {
 		const startedAtMs = clock();
 		const startedAt = new Date(startedAtMs).toISOString();
 		let artifacts: TrialArtifacts | undefined;
 		let score: TrialScore;
-		try {
-			artifacts = await backend.runTrial(cell, context);
-			score = await plan.suite.scoreTrial(cell, artifacts);
-		} catch (cause) {
-			score = erroredScore(cause);
-		} finally {
+		let attempt = 0;
+		// A trial that threw measured nothing, so the task is lost unless it is attempted again.
+		// A graded outcome — including a trial that spent its whole deadline — is never retried.
+		// Every attempt cleans up after itself: a retry starts from the state a fresh trial would.
+		for (;;) {
+			attempt += 1;
 			try {
-				await backend.cleanup(cell, context);
-			} catch {
-				// A cleanup failure must not discard a scored trial. The backend owns
-				// reporting it; losing the row would be the larger loss.
+				artifacts = await backend.runTrial(cell, context);
+				score = await plan.suite.scoreTrial(cell, artifacts);
+				break;
+			} catch (cause) {
+				if (attempt >= attemptsAllowed || !isRetryableTrialFailure(cause, options.signal)) {
+					score = erroredScore(cause);
+					break;
+				}
+				options.onRetry?.(cell, attempt, cause);
+			} finally {
+				// Runs before either `break` takes effect, so every attempt cleans up exactly once.
+				try {
+					await backend.cleanup(cell, context);
+				} catch {
+					// A cleanup failure must not discard a scored trial, and must not stop a retry.
+					// The backend owns reporting it; losing the row would be the larger loss.
+				}
 			}
+			await sleep(trialRetryDelayMs(attempt + 1));
 		}
+		if (attempt > 1) score = { ...score, extra: { ...score.extra, attempts: attempt } };
 		const finishedAtMs = clock();
 		const record: TrialResultRecord = sanitizeTrialRecord({
 			cell,

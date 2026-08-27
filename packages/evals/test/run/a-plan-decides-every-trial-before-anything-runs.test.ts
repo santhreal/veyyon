@@ -412,7 +412,7 @@ describe("executeRun", () => {
 			},
 		});
 
-		const record = await executeRun({ plan, backend: probe.backend, workDir, runsDir });
+		const record = await executeRun({ plan, backend: probe.backend, workDir, runsDir, sleep: async () => {} });
 		const [summary] = summarizeRunCells(record);
 
 		expect(summary.total).toBe(3);
@@ -420,7 +420,7 @@ describe("executeRun", () => {
 		expect(summary.passes).toBe(1);
 	});
 
-	it("cleans up every cell, including one whose trial threw", async () => {
+	it("cleans up after every attempt, including each one whose trial threw", async () => {
 		const plan = await planRun({ suite: probeSuite({ tasks: ["ok", "boom"] }), selection: oneVariant });
 		const probe = probeBackend({
 			onRun: async cell => {
@@ -429,9 +429,10 @@ describe("executeRun", () => {
 			},
 		});
 
-		await executeRun({ plan, backend: probe.backend, workDir, runsDir });
+		await executeRun({ plan, backend: probe.backend, workDir, runsDir, sleep: async () => {} });
 
-		expect(probe.cleaned.sort()).toEqual(["boom/veyyon/1", "ok/veyyon/1"]);
+		// The throwing cell is attempted twice by default, and each attempt cleans up after itself.
+		expect(probe.cleaned.sort()).toEqual(["boom/veyyon/1", "boom/veyyon/1", "ok/veyyon/1"]);
 	});
 
 	it("keeps a scored trial when cleanup itself throws", async () => {

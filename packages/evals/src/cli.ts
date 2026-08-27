@@ -31,10 +31,12 @@ import type {
 } from "./core";
 import {
 	checkVariantSupport,
+	DEFAULT_TRIAL_ATTEMPTS,
 	judgeRunOutcome,
 	listBackendIds,
 	listHarnesses,
 	listSuites,
+	MAX_TRIAL_ATTEMPTS,
 	requireBackend,
 	requireHarness,
 	requireSuite,
@@ -68,6 +70,7 @@ export const VALUE_FLAGS: Record<string, true> = {
 	"--model": true,
 	"--tasks": true,
 	"--repeats": true,
+	"--attempts": true,
 	"--jobs": true,
 	"--runs-dir": true,
 	"--work-dir": true,
@@ -92,6 +95,7 @@ export interface EvalsCliArgs {
 	readonly models: readonly string[];
 	readonly tasks: readonly string[];
 	readonly repeats: number;
+	readonly attempts: number | null;
 	readonly jobs: number;
 	readonly runsDir: string | null;
 	readonly workDir: string | null;
@@ -127,6 +131,7 @@ export function parseEvalsArgs(argv: readonly string[]): EvalsCliArgs {
 	const tasks: string[] = [];
 	const suites: string[] = [];
 	let repeats = 1;
+	let attempts: number | null = null;
 	let jobs = 1;
 	let runsDir: string | null = null;
 	let workDir: string | null = null;
@@ -207,6 +212,16 @@ export function parseEvalsArgs(argv: readonly string[]): EvalsCliArgs {
 				repeats = parsed;
 				break;
 			}
+			case "--attempts": {
+				const parsed = Number(value);
+				if (!Number.isInteger(parsed) || parsed < 1 || parsed > MAX_TRIAL_ATTEMPTS) {
+					throw new CliUsageError(
+						`--attempts must be an integer between 1 and ${MAX_TRIAL_ATTEMPTS}, got "${value}".`,
+					);
+				}
+				attempts = parsed;
+				break;
+			}
 			case "--jobs": {
 				const parsed = Number(value);
 				if (!Number.isInteger(parsed) || parsed < 1) {
@@ -258,6 +273,7 @@ export function parseEvalsArgs(argv: readonly string[]): EvalsCliArgs {
 		models,
 		tasks,
 		repeats,
+		attempts,
 		jobs,
 		runsDir,
 		workDir,
@@ -293,6 +309,9 @@ Selection and execution:
                             suite name (--tasks deep-swe=smoke.txt) to scope it; an
                             unprefixed entry applies to every suite.
   --repeats <n>             trials per cell (default 1)
+  --attempts <n>            attempts per trial when one throws before it produces a result
+                            (1-${MAX_TRIAL_ATTEMPTS}, default ${DEFAULT_TRIAL_ATTEMPTS}). A graded outcome, a trial that
+                            spent its deadline, and a cancelled run are never retried
   --jobs <n>                trials in flight at once (default 1)
   --dataset-dir <path>      override the suite's dataset directory, which must exist (one
                             suite only)
@@ -570,6 +589,8 @@ export function suiteContext(args: EvalsCliArgs, suite: EvalSuite): SuiteContext
 			// The deadline owner reads these two names off the options bag on every backend.
 			...(args.trialTimeoutSec === null ? {} : { trialTimeoutSec: args.trialTimeoutSec }),
 			...(args.timeoutMultiplier === null ? {} : { timeoutMultiplier: args.timeoutMultiplier }),
+			// The retry owner reads this one.
+			...(args.attempts === null ? {} : { trialAttempts: args.attempts }),
 		},
 	};
 }
