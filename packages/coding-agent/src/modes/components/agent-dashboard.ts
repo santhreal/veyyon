@@ -404,15 +404,15 @@ class LiveRosterPane implements Component {
 		// prefix stays fixed while the pointer target appears.
 		const contentWidth = width;
 		const extras = this.extrasFor(agent);
-		const sign = truncateToWidth(replaceTabs(agent.callSign), columns.sign);
-		const name = theme.bold(sign) + padding(Math.max(0, columns.sign - visibleWidth(sign)));
+		const sign = truncateToWidth(replaceTabs(agent.callSign), columns.sign, undefined, true);
+		const name = theme.bold(sign);
 		// WHAT KIND OF AGENT IT IS, next to its name. A call sign is memorable but
 		// arbitrary: `Kestrel` says nothing about whether the thing burning tokens
 		// over there is a reviewer or a scout. The type used to be shown only when
 		// the agent had no activity to report, which is exactly when nobody is
 		// looking at the row.
-		const type = truncateToWidth(replaceTabs(agentType(agent)), columns.type);
-		const kind = theme.fg("link", type) + padding(Math.max(0, columns.type - visibleWidth(type)));
+		const type = truncateToWidth(replaceTabs(agentType(agent)), columns.type, undefined, true);
+		const kind = theme.fg("link", type);
 
 		// A CURSOR GLYPH, not only a selection colour. The row Enter will open has
 		// to be identifiable on a terminal that renders no colour at all (NO_COLOR,
