@@ -84,8 +84,8 @@ export class InspectorPanel implements Component {
 		const isValidDescription = typeof desc === "string" && desc.length > 0;
 		if (isValidDescription && width > 2) {
 			const wrapped = wrapTextWithAnsi(desc, width - 2);
-			for (const line of wrapped) {
-				lines.push(truncateToWidth(line, width));
+			for (let li = 0; li < wrapped.length; li++) {
+				lines.push(truncateToWidth(wrapped[li]!, width));
 			}
 			lines.push("");
 		} else if (isValidDescription) {
@@ -164,8 +164,9 @@ export class InspectorPanel implements Component {
 		}
 
 		const fileLines = content.split("\n");
-		for (const line of fileLines.slice(0, 20)) {
-			const highlighted = this.#highlightMarkdown(line);
+		const preview = fileLines.slice(0, 20);
+		for (let li = 0; li < preview.length; li++) {
+			const highlighted = this.#highlightMarkdown(preview[li]!);
 			lines.push(truncateToWidth(highlighted, width - 2));
 		}
 
