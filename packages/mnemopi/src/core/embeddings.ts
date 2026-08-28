@@ -66,13 +66,9 @@ let localModelInitializerGeneration = 0;
 let apiCallCount = 0;
 const queryCache = new LRUCache<string, Vector>({ max: QUERY_CACHE_MAX });
 const pendingQueryEmbeddings = new Map<string, Promise<Vector | null>>();
-// Per-process HMAC prevents low-entropy query text recovery.
 const queryCacheHmacKey = randomBytes(32);
 let queryCacheGeneration = 0;
 
-// Runtime object identities are process-local cache scope components. A
-// behavior-versioned sanitizer epoch is still mandatory: the same function can
-// close over a mutable obfuscator and change output without changing identity.
 const providerIds = new WeakMap<object, number>();
 const sanitizerIds = new WeakMap<object, number>();
 const credentialIds = new WeakMap<object, number>();
@@ -316,10 +312,6 @@ async function getLocalModel(): Promise<LocalEmbeddingModel | null> {
 
 	const modelName = fastembedModelName(configuredModel);
 	if (modelName === null) {
-		// Not "no local model available" but "the model you named does not exist here", and the two produce
-		// the same `null` and so the same keyword-only search. Reported through the one owner because a name
-		// that resolves to nothing is a config typo the operator can fix in one line, and it is otherwise
-		// invisible: semantic recall never starts and no log at any level records why.
 		reportEmbeddingFailure(
 			`the configured local embedding model "${configuredModel}" is not one this build can load`,
 			`local:${configuredModel}`,
@@ -386,8 +378,6 @@ async function embedApi(texts: readonly string[]): Promise<EmbeddingMatrix | nul
 					signal,
 					maxAttempts: 3,
 					defaultDelayMs: attempt => 2 ** attempt * 1000,
-					// This runs after every backoff and on every auth attempt. Re-read
-					// the live transform and build a fresh body at the last send seam.
 					prepareInit: () => {
 						const sanitize = activeEmbeddingOptions()?.sanitizeProviderText;
 						const providerTexts = sanitize === undefined ? texts : texts.map(sanitizeEmbeddingProviderText);
@@ -406,12 +396,6 @@ async function embedApi(texts: readonly string[]): Promise<EmbeddingMatrix | nul
 				}
 				return res;
 			});
-			// Every `null` below drops memory search back to keyword matching for this
-			// call. That is a real recall loss the user cannot see: results just get
-			// worse, with no error and no marker. The `!response.ok` and missing-rows
-			// branches reported NOTHING at all, and the throw reported at debug level,
-			// so a mistyped base URL or an expired key degraded memory indefinitely in
-			// silence (Law 10).
 			if (!response.ok) {
 				reportEmbeddingFailure(`the embeddings endpoint returned HTTP ${response.status}`, baseUrl);
 				return null;
@@ -459,9 +443,6 @@ async function providerAvailable(provider: EmbeddingProvider): Promise<boolean> 
 	try {
 		return (await provider.available()) === true;
 	} catch {
-		// A provider whose own availability check throws is not available, which is the answer this asks for.
-		// Quiet here on purpose: the caller that then tries to embed reports the loss through
-		// `reportEmbeddingFailure`, and warning twice for one unusable provider trains the reader to ignore it.
 		return false;
 	}
 }
@@ -573,9 +554,6 @@ export async function embed(texts: readonly string[]): Promise<EmbeddingMatrix |
 		try {
 			return await collectMatrix(await activeProvider.embed(texts), texts.length);
 		} catch (error) {
-			// Null makes every caller fall back to keyword-only search, which is the same thing "embeddings are
-			// switched off" produces, so a provider that is failing looked exactly like a provider nobody
-			// configured. Reported through the one owner so the operator learns semantic recall is gone.
 			reportEmbeddingFailure(String(error), `provider:${activeEmbeddingOptions()?.provider ?? "active"}`);
 			return null;
 		}
@@ -585,16 +563,11 @@ export async function embed(texts: readonly string[]): Promise<EmbeddingMatrix |
 		try {
 			return await collectMatrix(await providerOverride.embed(texts), texts.length);
 		} catch (error) {
-			// Same loss through the override path, which tests and embedders set: silent null here made a
-			// broken override indistinguishable from embeddings being disabled.
 			reportEmbeddingFailure(String(error), "provider:override");
 			return null;
 		}
 	}
 	if (isApiModel(defaultModel())) {
-		// Keep raw bytes intact until embedApi's credential-resolved physical
-		// attempt. Sanitizing here would freeze an obsolete projection across an
-		// auth or transient retry, and clipping here could split exact secrets.
 		return embedApi(texts);
 	}
 	texts = capInputs(texts);

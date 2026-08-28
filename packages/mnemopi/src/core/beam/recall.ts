@@ -83,7 +83,6 @@ export function clipRecallContent(
 }
 
 const DEFAULT_LIMIT = 500;
-// Use core query stop words for symmetric token-overlap filtering.
 const STOP_WORDS = CORE_QUERY_STOP_WORDS;
 
 const FACT_QUERY_FILLER_WORDS = new Set([
@@ -219,7 +218,6 @@ function lexicalGroupRelevance(
 	const contentLower = content.toLowerCase();
 	if (queryGroups.length > 1 && normalizedQuery.length > 0 && contentLower.includes(normalizedQuery)) return 1;
 	const contentTokens = new Set(tokenize(contentLower));
-	// Group matches if any of its tokens matches content.
 	let exact = 0;
 	for (const group of queryGroups) {
 		for (const token of group) {
@@ -340,7 +338,6 @@ function buildWhere(
 		clauses.push(`${prefix}source = ?`);
 		params.push(options.source);
 	}
-	// Topic filter fails closed on tables without topic column.
 	if (options.topic) {
 		throw new Error(
 			`recall() was given topic ${JSON.stringify(options.topic)}, but working and episodic memory have no ` +
@@ -432,9 +429,6 @@ function vectorSimilarities(
 	) {
 		return out;
 	}
-	// One scorer for the whole sweep: the query norm and finite-value check are
-	// computed once here, not per candidate. cosineScorer is byte-identical to
-	// cosineSimilarity(queryEmbedding, vector).
 	const score = cosineScorer(queryEmbedding);
 	for (const chunk of batched(memoryIds, SQLITE_IN_CLAUSE_BATCH)) {
 		const rows = queryAll(
@@ -536,11 +530,6 @@ function scoreCandidate(
 ): RecallResult | null {
 	const content = stringOrEmpty(candidate.row.content);
 	const searchableContent = stringOrEmpty(candidate.row.embed_text) || content;
-	// lexicalGroupRelevance is the single lexical scorer. When queryGroups is
-	// empty the query produced no lexical tokens at all (expandedTokens and
-	// expandedTokenGroups share one token/synonym loop, so a token joins both or
-	// neither), which means there is no lexical signal to score: the contribution
-	// is 0 and scoring falls to the dense/importance terms.
 	const lexical =
 		queryGroups.length > 0 ? lexicalGroupRelevance(queryGroups, searchableContent, normalizedQueryLower) : 0;
 	const minRel = minimumRelevance(queryTokens);
@@ -796,10 +785,6 @@ export async function recall(
 		temporalOptions.currentSensitive = true;
 	}
 	if (temporalOptions.queryEmbedding === undefined) {
-		// Honour `null` (explicit "no embedding"); `undefined` means "derive from query text".
-		// `embedQuery()` returns null when embeddings are disabled or no provider is configured,
-		// so this is a no-op when the user has not wired one up. Float32Array → number[]
-		// because RecallOptions exposes the narrower public shape.
 		const derived = query.length > 0 ? await embedQuery(query) : null;
 		temporalOptions.queryEmbedding = derived === null ? null : Array.from(derived);
 	}
@@ -1025,8 +1010,6 @@ export function factRecall(beam: BeamMemoryState, query: string, topK = 30): Fac
 			const content = object.length > 0 ? object : `${subject} ${predicate}`.trim();
 			const searchable = factSearchableText(subject, predicate, object);
 			const queryGroups = factExpandedTokenGroups(query, searchable);
-			// Empty queryGroups means no lexical tokens survived filtering, so the
-			// lexical contribution is 0 (see scoreCandidate for the same invariant).
 			const lexical = queryGroups.length > 0 ? lexicalGroupRelevance(queryGroups, searchable, normalized) : 0;
 			const rank = ranks.get(numberOrDefault(row.rowid)) ?? 0;
 			const result: FactRecallResult = {

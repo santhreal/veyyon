@@ -14,30 +14,14 @@ import { cosineSimilarity, decodeEmbeddingJson } from "./vector-math";
 
 export { cosineSimilarity };
 
-// Read through `../config`, the one owner of every MNEMOPI_* knob, rather than parsing the
-// same five names here. Each accessor falls back to its default instead of seeding NaN,
-// which matters most for the thresholds: a NaN threshold makes every `>= threshold`
-// comparison false, so clustering and harmonization would quietly produce nothing.
 export const SHMR_BATCH_SIZE = shmrBatchSize();
 export const SHMR_MAX_ITERATIONS = shmrMaxIterations();
 export const SHMR_SIMILARITY_THRESHOLD = shmrSimilarityThreshold();
 export const SHMR_HARMONY_THRESHOLD = shmrHarmonyThreshold();
 export const SHMR_MIN_CLUSTER_SIZE = shmrMinClusterSize();
-/**
- * The width of the SHA1 bag-of-words fallback vector, and of nothing else.
- *
- * It used to be called `EMBEDDING_DIM`, the same name `core/embeddings.ts` and
- * `core/binary-vectors.ts` use for the CONFIGURED MODEL'S width. Two meanings under one
- * name is how the mixed-space bug below survived review: reading `EMBEDDING_DIM` here it
- * looks as though the hash vectors and the provider's vectors are the same width, so
- * comparing them looks harmless. They are not the same width and they are not the same
- * space. This number is a property of `hashEmbedding` alone, chosen because 384 slots is
- * enough for a word-frequency sketch, and it moves independently of any model.
- */
+/** Fallback hash embedding dimension. */
 const HASH_EMBEDDING_DIM = 384;
 
-// Same as `core/embeddings.ts`: the dense `Float32Array` this module builds, defined once
-// in `../types` and re-exported under the name this module has always used.
 import type { DenseVector as Vector } from "../types";
 
 export type { DenseVector as Vector } from "../types";
@@ -148,16 +132,7 @@ function itemText(item: ShmrItem | undefined): string {
 	return item?.object ?? item?.content ?? "";
 }
 
-/**
- * Refuse to compare vectors that are not in one embedding space.
- *
- * A cosine between a 384-slot word-frequency sketch and a 1024-dimension bge vector is a
- * number, not a similarity, and `cosineSimilarity` will happily produce one: it zero-pads
- * the shorter side to the longer side's length. That is why the mixing was invisible.
- * Widths agreeing does not prove the spaces agree, but widths disagreeing PROVES they do
- * not, so this is the cheap check that catches the real cases: a store holding rows from
- * two different models, or provider vectors mixed with the hash fallback.
- */
+/** Verify that all vectors share identical length. */
 function assertOneEmbeddingSpace(vectors: readonly Vector[], context: string): void {
 	const first = vectors[0];
 	if (first === undefined) return;
@@ -172,27 +147,12 @@ function assertOneEmbeddingSpace(vectors: readonly Vector[], context: string): v
 	}
 }
 
-/**
- * Embed a batch of texts, returning exactly one vector per text, all in one space.
- *
- * When the provider is unavailable or fails, the WHOLE batch degrades to the
- * deterministic SHA1 bag-of-words hash. It degrades as a batch on purpose: a per-text
- * fallback would return some provider vectors and some hash vectors from a single call,
- * and comparing those is meaningless. Every degrade is logged, never silent, because the
- * only symptom otherwise is recall quietly getting worse.
- */
+/** Embed a batch of texts, returning one vector per text. */
 export async function embedBatch(texts: readonly string[]): Promise<Vector[]> {
 	return (await embedBatchTracked(texts)).vectors;
 }
 
-/**
- * `embedBatch`, plus whether the hash fallback was taken.
- *
- * Callers that hold vectors from an earlier call need to know, and they cannot infer it
- * from the width: the default model, `BAAI/bge-small-en-v1.5`, is itself 384 dimensions,
- * exactly the hash sketch's width. Guessing from the width would call every default-model
- * batch a degrade.
- */
+/** Embed batch with degraded flag. */
 async function embedBatchTracked(texts: readonly string[]): Promise<{ vectors: Vector[]; degraded: boolean }> {
 	if (texts.length === 0) return { vectors: [], degraded: false };
 	let matrix: embeddings.EmbeddingMatrix | null = null;
@@ -204,9 +164,6 @@ async function embedBatchTracked(texts: readonly string[]): Promise<{ vectors: V
 		});
 	}
 	if (matrix !== null && matrix.length !== texts.length) {
-		// Used to fall through to the hash unannounced. A provider that returns the wrong
-		// number of vectors is a defect in that provider, and swallowing it means the
-		// degrade is attributed to nothing.
 		logger.warn("mnemopi shmr embedding provider returned the wrong number of vectors; recall degraded to hash", {
 			requested: texts.length,
 			returned: matrix.length,
@@ -221,27 +178,12 @@ async function embedBatchTracked(texts: readonly string[]): Promise<{ vectors: V
 }
 
 export async function embed(text: string): Promise<Vector> {
-	// `embedBatch` returns one vector per text or throws, so the empty case cannot happen.
 	const [vector] = await embedBatch([text]);
 	if (vector === undefined) throw new Error("mnemopi shmr: embedBatch returned no vector for a single text");
 	return vector;
 }
 
-/**
- * Resolve one vector per item, all in one embedding space.
- *
- * Caller-provided embeddings (`item.embedding`, which `harmonize` seeds from the stored
- * `memory_embeddings` rows) are kept when the items that still need embedding can be
- * embedded by the provider, because both then come from the same model.
- *
- * WHEN THE PROVIDER IS UNAVAILABLE, EVERY ITEM IS RE-HASHED, INCLUDING THE ONES THAT
- * ARRIVED WITH A REAL VECTOR. That is the fix for a live mixed-space bug: this used to
- * keep the stored provider vectors and hash-fill only the rest, so `clusterBySimilarity`
- * compared 1024-dimension bge vectors against 384-slot word sketches, zero-padded to
- * match, and clustered on the resulting noise. Nothing threw and nothing logged. Losing
- * the provider vectors for one pass is a real cost, and it is the smaller one: a
- * consistent weaker space still clusters, a mixed space does not.
- */
+/** Resolve one vector per item in uniform embedding space. */
 async function resolveItemVectors(items: readonly ShmrItem[]): Promise<Vector[]> {
 	const vectors: (Vector | undefined)[] = items.map(item => item.embedding);
 	const missingIndices: number[] = [];
@@ -409,16 +351,7 @@ function deterministicBeliefs(cluster: readonly ShmrItem[]): Belief[] {
 	];
 }
 
-/**
- * Score how well a cluster's beliefs sit at the centre of the cluster itself.
- *
- * The items and the beliefs are embedded in ONE call. They used to be two: the items
- * through `resolveItemVectors` and the beliefs through a separate `embedBatch`. Two calls
- * can make two different decisions about the hash fallback, so a provider that failed
- * between them left the beliefs as word sketches and the items as provider vectors, and
- * the score was a cosine across two unrelated spaces. Embedding both together makes the
- * degrade decision cover both or neither.
- */
+/** Compute harmony score of beliefs against cluster centroid. */
 export async function computeHarmonyScore(beliefs: readonly Belief[], cluster: readonly ShmrItem[]): Promise<number> {
 	if (beliefs.length === 0 || cluster.length === 0) return 0;
 	const beliefTexts = beliefs.map(belief => `${belief.predicate} ${belief.object}`);
@@ -427,9 +360,6 @@ export async function computeHarmonyScore(beliefs: readonly Belief[], cluster: r
 	const beliefVectors = together.slice(cluster.length);
 	assertOneEmbeddingSpace(together, "a cluster's items and its beliefs");
 
-	// One space means one width, so the centroid is that width. It used to be built at
-	// `max(vector.length)`, which is only ever needed when the widths disagree: the code
-	// was shaped around the mixed-space bug rather than refusing it.
 	const dim = itemVectors[0]?.length ?? 0;
 	const centroid = new Float32Array(dim);
 	for (const vector of itemVectors)
@@ -629,10 +559,6 @@ export async function recallBeliefs(beam: BeamLike, query: string, topK = 10): P
 			"SELECT belief_id, subject, predicate, object, confidence, provenance, created_at FROM harmonic_beliefs ORDER BY confidence DESC LIMIT ?",
 		)
 		.all(topK * 2) as BeliefRow[];
-	// Query and rows in one call, so one degrade decision covers both. The per-vector
-	// `?? hashEmbedding(...)` that used to guard each read is gone: it could only fire
-	// when `embedBatch` returned short, which it no longer does, and when it fired it
-	// scored one hash sketch against provider vectors.
 	const vectors = await embedBatch([query, ...rows.map(row => row.object)]);
 	assertOneEmbeddingSpace(vectors, "a recall query and the beliefs it is scored against");
 	const queryEmbedding = vectors[0];

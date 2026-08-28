@@ -47,12 +47,6 @@ export interface MnemopiOptions {
 	readonly proactiveLinking?: boolean;
 	/** Escalate best-effort failure logs (embedding pipeline) from debug to warn. */
 	readonly debug?: boolean;
-	/**
-	 * When `false`, skip the embedding-model reconcile (wipe-and-rebuild) on open.
-	 * Read-only / ephemeral consumers (e.g. a stats snapshot) set this so an open
-	 * never triggers a destructive migration whose background rebuild the process
-	 * would exit before completing. Defaults to `true`.
-	 */
 	readonly reconcile?: boolean;
 }
 
@@ -80,16 +74,8 @@ export interface RememberFacadeOptions {
 	readonly extractEntities?: boolean;
 	readonly extract_entities?: boolean;
 	readonly extract?: boolean;
-	/**
-	 * Override the text passed to fact/entity extraction. When unset, the
-	 * stored content is used. See {@link RememberOptions.extractText}.
-	 */
 	readonly extractText?: string | null;
 	readonly extract_text?: string | null;
-	/**
-	 * Override the text passed to embeddings and FTS indexing. Stored content
-	 * remains unchanged; when unset, embeddings and FTS use stored content.
-	 */
 	readonly embedText?: string | null;
 	readonly embed_text?: string | null;
 	readonly trustTier?: string | null;
@@ -159,27 +145,11 @@ type FacadeRememberOptions = {
 	extractText: string | undefined;
 	embedText: string | undefined;
 	trustTier: string | undefined;
-	/**
-	 * Clamped before it gets here, which is why it is the closed vocabulary and not `string`.
-	 *
-	 * The facade's own option is `string | null`, because a caller reaches it from the CLI, an
-	 * MCP tool, or a JSON config and can pass anything. The boundary is the right place to
-	 * decide what an unrecognized label means, and `clampVeracity` says so out loud rather
-	 * than letting `"tru"` reach the store and score as an unlabelled memory.
-	 */
 	veracity: Veracity | undefined;
 	memoryType: string | undefined;
 	timestamp?: string;
 };
 
-/**
- * Clamp a caller's veracity, keeping "said nothing" distinct from "said unknown".
- *
- * `clampVeracity` maps a missing value to `"unknown"`, which is the right answer once a value
- * has to exist, but the store distinguishes the two: a batch item with no veracity inherits
- * the batch default, while one that says `"unknown"` means it. Collapsing them here would
- * make every item in a batch of stated memories unlabelled.
- */
 function clampVeracityOrUndefined(raw: string | null | undefined): Veracity | undefined {
 	if (raw === null || raw === undefined) return undefined;
 	return clampVeracity(raw, "remember");
@@ -349,9 +319,6 @@ function toRecallOptions(options: RecallFacadeOptions): BeamRecallFacadeOptions 
 		importanceWeight: options.importanceWeight ?? options.importance_weight ?? undefined,
 		contentPreviewChars: options.contentPreviewChars,
 	};
-	// Preserve the three-state semantics (`undefined` = auto-derive, `null` = explicitly
-	// FTS-only, `number[]` = caller-supplied) so callers can opt out of `recall()`'s
-	// auto-embed without being forced into it.
 	if ("queryEmbedding" in options) beamOptions.queryEmbedding = options.queryEmbedding;
 	return beamOptions;
 }
@@ -453,12 +420,6 @@ export class Mnemopi {
 		}
 		this.conn = this.beam.db;
 		this.db = this.beam.db;
-		// Wipe-and-rebuild stale embeddings when the configured model changed since
-		// the vectors were written. Runs inside the runtime scope so
-		// `currentEmbeddingModel()` reflects this instance's configured model.
-		// Skipped for read-only opens (`reconcile: false`) so an ephemeral stats
-		// reader never triggers a destructive migration whose async rebuild it would
-		// exit before completing — which would otherwise lose the embeddings.
 		if (options.reconcile !== false) {
 			this.#withRuntimeOptions(() => reconcileEmbeddingModel(this.beam));
 		}
@@ -590,17 +551,6 @@ export class Mnemopi {
 		return withMnemopiRuntimeOptions(this.runtimeOptions, fn);
 	}
 }
-
-/**
- * The module-level verbs below are the facade: each one resolves the default
- * instance for a bank and calls the same-named method on it, which calls the
- * same-named function in `beam/store.ts` with that instance's state. Three names
- * per verb, one implementation, and the store keeps the state parameter the
- * facade hides.
- *
- * `test/a-memory-verb-has-one-implementation.test.ts` writes through one layer
- * and reads through another, so a second store cannot appear behind this file.
- */
 
 export function setBank(bank: string): void {
 	defaultBank = bank;

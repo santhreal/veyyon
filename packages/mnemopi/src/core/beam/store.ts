@@ -177,8 +177,6 @@ function addTemporalAnnotations(beam: BeamMemoryState, memoryId: string, timesta
 			beam.annotations?.add?.(memoryId, "has_source", source);
 		}
 	} catch (error) {
-		// Non-blocking (matches Python's path), but dropped annotations degrade
-		// temporal recall — surface it.
 		logger.warn("mnemopi: temporal annotation enrichment failed for stored memory", {
 			memoryId,
 			error: errorMessage(error),
@@ -209,8 +207,6 @@ function proactiveLinkIfEnabled(
 			extractEntities,
 		});
 	} catch (error) {
-		// Must never block durable memory storage, but a silently missing graph
-		// link is invisible recall loss — surface it.
 		logger.warn("mnemopi: proactive graph linking failed; memory stored without episodic links", {
 			memoryId,
 			error: errorMessage(error),
@@ -226,8 +222,6 @@ async function runFactExtraction(beam: BeamMemoryState, memoryId: string, conten
 		storeExtractedFactCategories(beam, extracted, 0, memoryId);
 		invalidateCaches(beam);
 	} catch (error) {
-		// Never disrupts the `remember` that scheduled it, but a failed
-		// extraction means facts silently never became searchable — surface it.
 		logger.warn("mnemopi: background fact extraction failed; no facts stored for memory", {
 			memoryId,
 			error: errorMessage(error),
@@ -260,16 +254,12 @@ export function reconcileEmbeddingModel(beam: BeamMemoryState): void {
 	const active = currentEmbeddingModel().trim();
 	if (active === "") return;
 
-	// Re-embed in bounded batches so a corpus-wide rebuild never issues one giant
-	// embedding request; each batch is its own tracked background task.
 	const rebuild = (items: readonly EmbedItem[]): void => {
 		for (const batch of batched(items, EMBED_REBUILD_BATCH)) {
 			scheduleEmbedding(beam, batch);
 		}
 	};
 
-	// Stop at the first row whose stamped model differs from the active one
-	// (NULL/unstamped counts as a mismatch via `IS NOT`).
 	const mismatch = beam.db.query("SELECT 1 FROM memory_embeddings WHERE model IS NOT ? LIMIT 1").get(active);
 	if (mismatch) {
 		const staleModels = beam.db
@@ -289,9 +279,7 @@ export function reconcileEmbeddingModel(beam: BeamMemoryState): void {
 			if (vecAvailable(beam.db)) {
 				try {
 					beam.db.prepare("DELETE FROM vec_episodes").run();
-				} catch {
-					// sqlite-vec cleanup is best-effort; rebuild correctness takes precedence.
-				}
+				} catch {}
 			}
 		});
 
@@ -304,7 +292,6 @@ export function reconcileEmbeddingModel(beam: BeamMemoryState): void {
 		return;
 	}
 
-	// Re-enqueue live rows missing active-model embeddings.
 	const missing = beam.db
 		.query(`
 			SELECT id AS memoryId, COALESCE(embed_text, content) AS content FROM working_memory
@@ -408,9 +395,6 @@ export function remember(beam: BeamMemoryState, content: string, options: StoreR
 			trustTier,
 		);
 	addTemporalAnnotations(beam, memoryId, timestamp, source);
-	// `extractText` lets a caller decouple "what gets stored" from "what facts are
-	// mined". coding-agent retains full multi-author transcripts but wants
-	// fact/entity heuristics to read only the user-authored turns (issue #3372).
 	const extractionSource = options.extractText ?? options.extract_text ?? content;
 	proactiveLinkIfEnabled(
 		beam,

@@ -366,8 +366,6 @@ function ingestIntoEpisodicGraph(beam: BeamMemoryState, memoryId: string, summar
 			extractEntities: true,
 		});
 	} catch (error) {
-		// Best-effort: never blocks the consolidation that already landed, but
-		// the operator must see that the graph lost edges (Law 10).
 		logger.warn("mnemopi: episodic-graph enrichment failed; consolidated memory stored without graph edges", {
 			memoryId,
 			error: errorMessage(error),

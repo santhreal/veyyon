@@ -4,10 +4,6 @@ import { dirname, join } from "node:path";
 import { mnemopiHome } from "../config";
 import { toUtcIso } from "../util/datetime";
 
-/**
- * Resolved per call, for the reason given on `mnemopiHome`: a path decided at import
- * time is a path no test and no operator can redirect.
- */
 export function costLogDb(env: NodeJS.ProcessEnv = process.env): string {
 	return join(mnemopiHome(env), ".mnemopi", "data", "cost_log.db");
 }

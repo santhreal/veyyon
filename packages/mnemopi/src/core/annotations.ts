@@ -8,9 +8,6 @@ const ANNOTATION_KIND_VALUES = ["mentions", "fact", "occurred_on", "has_source"]
 
 export type AnnotationKind = (typeof ANNOTATION_KIND_VALUES)[number] | (string & {});
 
-// Backed by the canonical entity/mention stopword set in stopwords.ts. This
-// module formerly kept its own inline subset that was missing every function
-// word; see stopwords.ts for the divergence it fixed.
 export const ENTITY_STOP_WORDS: ReadonlySet<string> = ENTITY_STOPWORDS;
 export const ANNOTATION_KINDS: ReadonlySet<string> = new Set(ANNOTATION_KIND_VALUES);
 export const MIN_FACT_LENGTH = 10;

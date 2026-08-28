@@ -19,16 +19,6 @@ export class BankManager {
 	readonly dataDir: string;
 	readonly banksDir: string;
 
-	/**
-	 * Resolves the bank paths and creates NOTHING.
-	 *
-	 * This used to `mkdirSync(this.banksDir)`, which made every read a write. `bankDbPath()`,
-	 * `bankExists()`, `listBanks()` and `getBankStats()` each construct a manager to answer a
-	 * question, and `resolveDbPath()` in `core/memory.ts` constructs one just to spell a path,
-	 * so merely asking where a bank lives created `~/.hermes/mnemopi/data/banks` in the real
-	 * home. `createBank()` is the one operator action that needs the directory, and its own
-	 * recursive `mkdirSync` already makes it.
-	 */
 	constructor(dataDir?: string) {
 		this.dataDir = dataDir ?? configuredDataDir();
 		this.banksDir = join(this.dataDir, "banks");
@@ -48,12 +38,6 @@ export class BankManager {
 		this.#validateName(name);
 		if (name === "default") {
 			if (!force) throw new ValueError("Cannot delete 'default' bank without force=True");
-			// The default bank's DB lives at dataDir/mnemopi.db (the exact path
-			// getBankDbPath resolves), NOT under banksDir/default/. Deleting a
-			// banksDir/default dir here used to be a silent no-op: the caller was
-			// told nothing was deleted (or worse, believed the data was wiped)
-			// while the real default DB survived. Act on the same path the reads
-			// use, including the SQLite sidecars.
 			const dbPath = this.getBankDbPath("default");
 			if (!existsSync(dbPath)) return false;
 			for (const p of [dbPath, `${dbPath}-wal`, `${dbPath}-shm`, `${dbPath}-journal`]) {
@@ -86,12 +70,6 @@ export class BankManager {
 	}
 	renameBank(oldName: string, newName: string): string {
 		if (oldName === "default") throw new ValueError("Cannot rename 'default' bank");
-		// Validate BOTH names. Every other bank operation validates its name, but
-		// renameBank historically checked only newName — so an oldName containing a
-		// path separator or `..` escaped banksDir on the rename SOURCE, letting
-		// `renameBank("../../somedir", "captured")` move an out-of-tree directory
-		// into the bank store. The name charset (validateName) rejects `/` and `.`,
-		// so this closes the traversal boundary that newName already had.
 		this.#validateName(oldName);
 		this.#validateName(newName);
 		const oldDir = join(this.banksDir, oldName);
@@ -140,8 +118,6 @@ export function bankExists(name: string, dataDir?: string): boolean {
 	const manager = new BankManager(dataDir);
 	return manager.bankExists(name);
 }
-// `name` is required: the process default bank is owned by `core/memory.ts`, which is the
-// copy that actually routes the singleton. A second default here would be a silent fork.
 export function bankDbPath(name: string, dataDir?: string): string {
 	const manager = new BankManager(dataDir);
 	return manager.getBankDbPath(name);

@@ -68,14 +68,6 @@ export function storeBlob(rawBytes: Uint8Array): string {
 	const blobDir = join(blobRoot(), sha256.slice(0, 2), sha256.slice(0, 4));
 	mkdirSync(blobDir, { recursive: true });
 	const blobPath = join(blobDir, sha256);
-	// The store is content-addressed: `blobPath`'s basename IS the sha256 of its
-	// bytes, and readers trust that invariant. A plain `writeFileSync` streams
-	// into the final path, so a crash mid-write (SIGINT, OOM-kill, full disk)
-	// leaves a truncated blob whose bytes no longer hash to its name. Worse, the
-	// `existsSync` fast-path then treats that corrupt file as present and never
-	// rewrites it, so every later reader silently gets wrong bytes. Writing to a
-	// sibling temp and renaming makes the final path only ever appear complete,
-	// so a blob is always either absent or the exact correct bytes.
 	if (!existsSync(blobPath)) atomicWriteFileSync(blobPath, rawBytes);
 	return sha256;
 }
@@ -140,8 +132,6 @@ function isValidBase64(payload: string): boolean {
 		Buffer.from(payload, "base64");
 		return true;
 	} catch {
-		// This asks whether a payload IS base64, so a decode failure is the answer: not base64. False keeps
-		// the content as text, which is the conservative direction for a sanitizer.
 		return false;
 	}
 }

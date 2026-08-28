@@ -1,28 +1,11 @@
 import type { Database } from "bun:sqlite";
 
-// JSON and `Metadata` come from the package's own type module, which takes JSON from
-// `@veyyon/utils`. They were declared here as well, identically, and this module's
-// consumers import them from `./types`, so the re-export keeps every call site while
-// removing the second declaration.
 export type { JsonPrimitive, JsonValue, Metadata } from "../../types";
 
 import type { JsonValue, Metadata, StoredVeracity, Veracity } from "../../types";
 
 export type MemoryScope = "global" | "session" | "channel" | string;
 export type TrustTier = "STATED" | "OBSERVED" | "INFERRED" | "SYSTEM" | string;
-/**
- * Veracity, from the one module that owns the vocabulary, and the wide read-row spelling
- * beside it.
- *
- * This file declared a nine-member union ending in `| string`, and that trailing member made
- * the other nine decoration: `"stated" | string` IS `string` to the compiler, so nothing was
- * checked and no editor offered the values either. `"contested"` lived only in that list,
- * which is how it survived: no producer wrote it, no weight table scored it, and recall's
- * `??` chain gave it an unlabelled memory's 0.8. It is gone.
- *
- * Rows out of SQLite keep a wide type, because the column has no CHECK constraint, but they
- * say so now by name instead of by widening the vocabulary.
- */
 export type { StoredVeracity, Veracity };
 
 export interface BeamPluginManager {
@@ -126,19 +109,7 @@ export interface RememberOptions {
 	metadata?: Metadata | null;
 	extract?: boolean;
 	extractEntities?: boolean;
-	/**
-	 * Override the text passed to fact and graph extraction. When unset
-	 * (default) extraction runs over the stored `content`. Use this when the
-	 * stored memory is a multi-author transcript but only a subset (e.g. the
-	 * user-authored turns) should drive deterministic fact extraction — see
-	 * coding-agent issue #3372 where assistant prose was being mis-attributed
-	 * as user `Instruction:` memories.
-	 */
 	extractText?: string;
-	/**
-	 * Override the text passed to embeddings and FTS indexing. Stored `content`
-	 * remains unchanged; when unset, embeddings and FTS use `content`.
-	 */
 	embedText?: string;
 	veracity?: Veracity;
 	memoryType?: string;
@@ -178,14 +149,6 @@ export interface RecallOptions {
 	useIntent?: boolean;
 	useMmr?: boolean;
 	mmrLambda?: number;
-	/**
-	 * Maximum characters of `content` returned per {@link RecallResult}. When the
-	 * stored content exceeds this, the preview is clipped and the trailing
-	 * character is replaced with `…` so callers can see it was truncated. The
-	 * full row is always reachable via {@link BeamMemoryState.get}. `0` or a
-	 * negative value disables clipping. Defaults to
-	 * {@link RECALL_CONTENT_PREVIEW_CHARS} (500).
-	 */
 	contentPreviewChars?: number;
 }
 
@@ -253,12 +216,6 @@ export type RecallResult = RecallRowFields & {
 	[key: string]: unknown;
 	id: string;
 	content: string;
-	/**
-	 * True when {@link content} is a clipped preview of the stored row. The
-	 * clip is capped at {@link RecallOptions.contentPreviewChars} (default 500)
-	 * and the last character is replaced with `…`. Fetch the full row via
-	 * `memory://<id>` (mnemopi backend) or the `Mnemopi.get(id)` API.
-	 */
 	truncated?: boolean;
 	/** Original character count of `content` before {@link truncated} clipping. */
 	full_length?: number;

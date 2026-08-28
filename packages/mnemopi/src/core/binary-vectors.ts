@@ -8,18 +8,7 @@ export { cosineSimilarity } from "./vector-math";
 
 export const BITS_PER_BYTE = 8;
 
-/**
- * The configured width, ASKED FOR rather than frozen.
- *
- * These were module constants, evaluated once when this file was first imported.
- * That made them wrong in two ways at once. A `withMnemopiRuntimeOptions` scope
- * naming a different embedding model could not move them, whenever it was entered,
- * so the packer stayed on the process's startup model while the embedder followed
- * the scope. And a test that set `MNEMOPI_EMBEDDING_DIM` after import got the old
- * value, which is why the override had to be applied through a helper that reloads
- * the module. Both resolvers now answer at the moment of the call, from the one
- * owner in `../config`.
- */
+/** Configured embedding dimension. */
 export function configuredEmbeddingDim(): number {
 	return embeddingDim();
 }
@@ -137,23 +126,7 @@ export function quantizeInt8(embedding: readonly number[]): Int8Array {
 	return out;
 }
 
-/**
- * Pack an embedding to one bit per dimension, at the embedding's OWN width.
- *
- * IT USED TO CAP AT `EMBEDDING_DIM`, WHICH SILENTLY DISCARDED SIGNAL. That constant is
- * derived from `config.embeddingDim()`, which maps the configured model name through a
- * seventeen-entry table and falls back to 384 for anything it does not list. So
- * configuring any unlisted model (a new jina, voyage or cohere release, say) truncated
- * every vector to its first 384 dimensions: a 1536-dimension model kept a quarter of
- * its signal. Nothing threw and nothing logged. It surfaced only as recall quietly
- * getting worse, which is the hardest kind of defect to attribute.
- *
- * The width is not needed as a constant here. The schema stores `original_dim` per row
- * and `search` already compares at `min(queryDim, storedDim)`, so rows of differing
- * widths were always handled; the cap was an assumption that every embedding is exactly
- * the configured width, not a compression budget. Rows written before this change keep
- * working at the width they recorded.
- */
+/** Pack an embedding to one bit per dimension. */
 export function maximallyInformativeBinarization(embedding: readonly number[]): Uint8Array {
 	const dim = embedding.length;
 	const nBytes = Math.ceil(dim / BITS_PER_BYTE);
@@ -247,24 +220,7 @@ export class BinaryVectorStore {
 	static informationTheoreticScore(distance: number, dim: number = configuredEmbeddingDim()): number {
 		return informationTheoreticScore(distance, dim);
 	}
-	/**
-	 * Write one vector, at its own width, refusing a width that cannot be a vector.
-	 *
-	 * FAIL CLOSED, because the failure this replaces was invisible. A zero-length
-	 * embedding packs to an empty blob and records `original_dim = 0`, and `search`
-	 * then compares nothing against nothing: `hammingDistanceForDimension` returns 0
-	 * and `informationTheoreticScore` returns 0 for a zero width, so the row sits in
-	 * the store scoring against every query without ever having held a vector. An
-	 * embedder that failed and returned an empty array is the ordinary way to get
-	 * one, and nothing downstream would have said so. The message names the width
-	 * the configuration expects, because "you stored nothing" is not actionable on
-	 * its own.
-	 *
-	 * A width that merely DIFFERS from the configured one is not an error. Rows
-	 * carry `original_dim` and `search` compares at the narrower of the two, so a
-	 * store that outlived a model change keeps working; that is the whole reason the
-	 * old cap at a module constant was removed.
-	 */
+	/** Write one vector at its own width. */
 	storeVector(memoryId: string, embedding: readonly number[]): void {
 		if (embedding.length === 0) {
 			throw new Error(
@@ -280,9 +236,6 @@ export class BinaryVectorStore {
 				 (memory_id, binary_vector, original_dim, magnitude)
 				 VALUES (?, ?, ?, ?)`,
 			)
-			// The row's TRUE width. Recording the capped value made the truncation
-			// unrecoverable as well as invisible: a reader could not tell a genuine
-			// 384-dimension model from a 1536-dimension one that had been cut down.
 			.run(memoryId, binary, embedding.length, magnitude(embedding));
 	}
 	search(queryEmbedding: readonly number[], topK = 10): BinaryVectorSearchResult[] {
@@ -293,9 +246,6 @@ export class BinaryVectorStore {
 			.all() as VectorRow[];
 		const results: BinaryVectorSearchResult[] = [];
 		for (const row of rows) {
-			// Clamped to the QUERY's width, not to the module constant: a row wider than
-			// the configured default is a legitimate row, and clamping it to that
-			// constant reintroduced the truncation on the read side.
 			const storedDim = clampLow(Math.trunc(toFiniteNumber(row.original_dim)), 0, queryDim);
 			const comparedDim = Math.min(queryDim, storedDim);
 			const distance = hammingDistanceForDimension(queryBinary, bytesFromBlob(row.binary_vector), comparedDim);
@@ -323,11 +273,6 @@ export class BinaryVectorStore {
 			)
 			.get() as StatsRow;
 		const count = row.count;
-		// The MEASURED average across the rows on disk, which is not the theoretical
-		// width below: a store holding rows from two models has an average between
-		// them. It was called `bytesPerVector`, which now shadows the function of that
-		// name, and a shadowed call reads as the theoretical figure while returning
-		// the measured one.
 		const measuredBytesPerVector = row.avg_bytes ?? 0;
 		return {
 			total_vectors: count,

@@ -1,15 +1,4 @@
-/**
- * The half of the memory LLM client that actually calls a model.
- *
- * The configuration, prompt building, token budgeting and output cleaning live in
- * `local-llm-config.ts`, which reaches a handful of leaves. This file imports `completeSimple` and
- * therefore the streaming engine, which is correct for a module whose job is the round trip, and is
- * why the two halves are separate files: `core/extraction.ts` asks whether an LLM is available far
- * more often than it calls one, and the memory engine sits behind extraction.
- *
- * The configuration names are re-exported so the module's public surface is unchanged. There is no
- * cycle to worry about: the config half imports nothing from here.
- */
+/** Memory LLM client. */
 
 import type { FetchImpl } from "@veyyon/ai";
 import { withAuth } from "@veyyon/ai/auth-retry";
@@ -59,11 +48,7 @@ function sanitizeLlmProviderText(text: string): string {
 	}
 }
 
-/**
- * Build a fresh projection from raw prompt state every time a physical online
- * attempt invokes the hook. The placeholder is the only prompt text present
- * before then, so an adapter that skips the hook cannot leak the raw context.
- */
+/** Build projection from raw prompt state for online attempt. */
 function createAttemptPayloadHook(buildPrompt: () => string): MnemopiLlmPayloadHook {
 	return payload => {
 		let providerPrompt: string | undefined;
@@ -222,12 +207,7 @@ async function tryHostLlm(
 	}
 }
 
-// Run a summarization LLM call, surfacing any failure loudly and falling
-// through to the next backend. A thrown error here (network, timeout, HTTP
-// non-2xx, a crashed configured/host model) is a real failure, never "no
-// output": log it (never silently swallow, Law 10) and return null so the
-// caller tries the next path. This is the ONE place the summarization backends
-// (configured, remote) turn a failure into a loud, recall-preserving fallback.
+/** Run summarization LLM call with fallback logging. */
 async function summaryOrNull(label: string, call: () => Promise<string | null>): Promise<string | null> {
 	try {
 		const raw = await call();
@@ -253,28 +233,12 @@ export async function callRemoteLlm(
 	}
 
 	const fetchImpl = options.fetch ?? fetch;
-	// Do NOT wrap this in `catch { return null }`. A thrown error (network down,
-	// timeout, JSON parse failure) or a non-2xx HTTP response is a real failure
-	// and must reach the caller: extraction records it as remote_call_raised, and
-	// summarization logs it and falls through to a local backend. Swallowing it to
-	// null would misreport a hard failure as "the model produced no output",
-	// hiding the error from the operator (a Law 10 silent fallback).
-	//
-	// withAuth re-resolves the key on 401 (force-refresh, then sibling rotation)
-	// when the configured key is a resolver. An empty static key attempts without
-	// an Authorization header (local/proxy setups). One 60s fence spans every auth
-	// attempt AND the body read (a stalled stream is only interrupted by the armed
-	// signal); the timer clears on settle instead of lingering like a bare
-	// AbortSignal.timeout.
 	return await withScopedTimeoutSignal(60000, async signal => {
 		const response = await withAuth(llmApiKey(), async key => {
 			const headers: Record<string, string> = { "Content-Type": "application/json" };
 			if (key !== "") {
 				headers.Authorization = `Bearer ${key}`;
 			}
-			// Credentials are resolved before this callback, and every auth retry
-			// re-enters it. A summary hook reconstructs its capped/chunked prompt
-			// from raw memories here; ordinary calls sanitize their raw prompt here.
 			const projected =
 				options.onPayload === undefined
 					? sanitizeLlmProviderText(prompt)
@@ -315,17 +279,7 @@ export async function callRemoteLlm(
 	});
 }
 
-/**
- * Whether the remote HTTP backend may be called: the one owner of that three-part condition.
- *
- * It was written out twice, in `summarizeChunk` and in `complete`, so the two could disagree about
- * when memory traffic is allowed to leave the machine. That is the wrong thing to have two copies of.
- *
- * `MNEMOPI_FORCE_LOCAL` keeps its spelling even though it no longer names anything: an operator sets
- * it to keep memory traffic off the network, and renaming the variable would silently re-enable those
- * calls for everyone who set it. What it does is SUPPRESS the remote backend. It does not select a
- * local one, because the local-GGUF tier it was named for never had an implementation and is gone.
- */
+/** Whether the remote HTTP backend may be called. */
 function remoteBackendAllowed(): boolean {
 	return llmEnabled() && llmBaseUrl() !== "" && !forceLocalLlm();
 }
