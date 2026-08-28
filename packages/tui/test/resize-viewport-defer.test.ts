@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
+import { VirtualTerminal } from "@veyyon/render-oracle";
 import { type Component, type RenderScheduler, type RenderTimer, TUI, type ViewportTailProvider } from "@veyyon/tui";
-import { VirtualTerminal } from "./virtual-terminal";
 
 // Outside a multiplexer a resize used to erase-and-replay the whole transcript
 // on every SIGWINCH. A drag fires a burst of those, each at a fresh width that

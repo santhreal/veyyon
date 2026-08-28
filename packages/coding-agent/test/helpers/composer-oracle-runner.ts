@@ -11,8 +11,7 @@ import { ThinkingLevel } from "@veyyon/agent-core";
 import { type Component, Container, Editor, Spacer, TUI } from "@veyyon/tui";
 import type { MouseRoutable, SgrMouseEvent } from "@veyyon/tui/mouse";
 import { stripAnsi } from "@veyyon/utils";
-import { settleFrames } from "../../../tui/test/helpers/settle-frames";
-import { VirtualTerminal } from "../../../tui/test/virtual-terminal";
+import { type ComposerOracleFrameState, type CorpusCaseState, evaluateAllComposerOracles, type FrameSegmentSnapshot, type OracleEvaluationResult, settleFrames, VirtualTerminal } from "@veyyon/render-oracle";
 import {
 	CardPadRow,
 	COMPOSER_BOTTOM_MARGIN_ROWS,
@@ -21,14 +20,7 @@ import {
 	mountComposerZone,
 	resolveComposerAccents,
 } from "../../src/modes/components/composer-chrome";
-import {
-	type ComposerOracleFrameState,
-	evaluateAllComposerOracles,
-	type FrameSegmentSnapshot,
-	type OracleEvaluationResult,
-} from "../../src/modes/components/composer-defect-oracle";
 import { getEditorTheme } from "../../src/modes/theme/theme";
-import type { CorpusCaseState } from "./renderer-defect-corpus";
 
 /** Transcript content component */
 export class TranscriptMock implements Component {

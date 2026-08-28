@@ -1,8 +1,7 @@
 import "./warm-natives"; // load the native addon under the real platform before any process.platform mock
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
+import { settleFrames, VirtualTerminal } from "@veyyon/render-oracle";
 import { type Component, type RenderScheduler, type RenderTimer, TUI } from "@veyyon/tui";
-import { settleFrames } from "./helpers/settle-frames";
-import { VirtualTerminal } from "./virtual-terminal";
 
 // Regression test for https://github.com/can1357/oh-my-pi/issues/2095
 //

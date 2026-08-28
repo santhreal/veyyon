@@ -26,7 +26,7 @@ import { afterEach, describe, expect, it } from "bun:test";
 import { QuietZoneLine } from "@veyyon/coding-agent/modes/components/composer-chrome";
 import type { Component } from "@veyyon/tui";
 import { TUI } from "@veyyon/tui/tui";
-import { VirtualTerminal } from "../../../../../tui/test/virtual-terminal";
+import { VirtualTerminal } from "@veyyon/render-oracle";
 
 const COLS = 120;
 const ROWS = 24;

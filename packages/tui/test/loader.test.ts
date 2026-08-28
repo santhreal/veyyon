@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, setSystemTime, spyOn, vi } from "bun:test";
+import { VirtualTerminal } from "@veyyon/render-oracle";
 import { Container, TUI } from "@veyyon/tui";
 import { Loader, type LoaderMessageColorFn } from "@veyyon/tui/components/loader";
 import { visibleWidth } from "@veyyon/tui/utils";
-import { VirtualTerminal } from "./virtual-terminal";
 
 describe("Loader component", () => {
 	afterEach(() => {

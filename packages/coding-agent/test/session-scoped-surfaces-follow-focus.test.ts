@@ -49,7 +49,7 @@ import { type SubagentLifecyclePayload, TASK_SUBAGENT_LIFECYCLE_CHANNEL } from "
 import { EventBus } from "@veyyon/coding-agent/utils/event-bus";
 import { TUI } from "@veyyon/tui";
 import { TempDir } from "@veyyon/utils";
-import { VirtualTerminal } from "../../tui/test/virtual-terminal";
+import { VirtualTerminal } from "@veyyon/render-oracle";
 
 const WIDTH = 110;
 

@@ -27,8 +27,7 @@ import { TranscriptContainer } from "@veyyon/coding-agent/modes/components/trans
 import { HomeAnchorLayout } from "@veyyon/coding-agent/modes/controllers/home-anchor-layout";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { type Component, Container, CURSOR_MARKER, type Focusable, TUI } from "@veyyon/tui";
-import { settleFrames } from "../../../../tui/test/helpers/settle-frames";
-import { VirtualTerminal } from "../../../../tui/test/virtual-terminal";
+import { settleFrames, VirtualTerminal } from "@veyyon/render-oracle";
 
 class Block implements Component {
 	constructor(private readonly lines: readonly string[]) {}

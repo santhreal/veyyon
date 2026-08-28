@@ -37,7 +37,7 @@ import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { TUI } from "@veyyon/tui";
 import { TempDir } from "@veyyon/utils";
-import { VirtualTerminal } from "../../../tui/test/virtual-terminal";
+import { VirtualTerminal } from "@veyyon/render-oracle";
 
 /**
  * Whether the anchored board drew a phase row for `Phase One` carrying `tally`.

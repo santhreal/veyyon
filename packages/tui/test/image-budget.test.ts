@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
+import { settleFrames, VirtualTerminal } from "@veyyon/render-oracle";
 import { TUI } from "@veyyon/tui";
 import { Image, ImageBudget } from "@veyyon/tui/components/image";
 import { Text } from "@veyyon/tui/components/text";
@@ -20,8 +21,6 @@ import {
 	TERMINAL,
 	wrapTmuxPassthrough,
 } from "@veyyon/tui/terminal-capabilities";
-import { settleFrames } from "./helpers/settle-frames";
-import { VirtualTerminal } from "./virtual-terminal";
 
 type MutableTerminalInfo = { id: string; imageProtocol: ImageProtocol | null };
 const terminal = TERMINAL as unknown as MutableTerminalInfo;

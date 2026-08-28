@@ -1,5 +1,5 @@
 import type { RenderScheduler } from "@veyyon/tui/tui";
-import type { VirtualTerminal } from "./virtual-terminal";
+import type { VirtualTerminal } from "../terminal/virtual-terminal";
 
 export class StressRenderScheduler implements RenderScheduler {
 	#time = 0;

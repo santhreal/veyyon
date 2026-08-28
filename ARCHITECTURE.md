@@ -56,6 +56,7 @@ subcommand (`commit`, `grep`, `models`, `exec`, …).
 | `packages/mnemopi` | Local SQLite memory engine: triples, embeddings, recall. |
 | `packages/wire` | Dependency-free collab live-session wire types, so a browser or test client need not depend on `coding-agent`. |
 | `packages/tool-render` | Shared React tool-call renderers for the HTML export and `collab-web`. |
+| `packages/render-oracle` | Terminal renderer defect oracle: virtual terminal, frame capture, state-relative invariant detectors, fuzz driver and a replayable defect corpus. Owns every renderer regression test. |
 | `packages/collab-web` | Browser guest client and local relay for collab live sessions (private). |
 | `packages/swarm-extension` | Swarm orchestration extension. |
 | `packages/metaharness` | Benchmark runners plus Harbor run storage, its REST/SSE API, and the live dashboard (private). |

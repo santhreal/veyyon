@@ -47,7 +47,7 @@ import { type TodoPhase, todoToolRenderer } from "@veyyon/coding-agent/tools/tod
 import { type AnsiPolicy, getAnsiPolicy, setAnsiPolicy, TUI } from "@veyyon/tui";
 import { TempDir } from "@veyyon/utils";
 import { isTodoListDone, TODO_DONE_SUMMARY, TODO_STATUSES, type TodoStatus } from "@veyyon/wire";
-import { VirtualTerminal } from "../../../tui/test/virtual-terminal";
+import { VirtualTerminal } from "@veyyon/render-oracle";
 
 const COLUMNS = 100;
 

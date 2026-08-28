@@ -40,9 +40,8 @@
  * and this suite owns what it contains.
  */
 import { describe, expect, it } from "bun:test";
+import { StressRenderScheduler, VirtualTerminal } from "@veyyon/render-oracle";
 import { type Component, type RenderStablePrefix, TUI } from "@veyyon/tui";
-import { StressRenderScheduler } from "./render-stress-scheduler";
-import { VirtualTerminal } from "./virtual-terminal";
 
 const COLUMNS = 40;
 const ROWS = 12;

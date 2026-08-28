@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, setDefaultTimeout } from "bun:test";
+import { settleFrames, VirtualTerminal } from "@veyyon/render-oracle";
 import { type Component, CURSOR_MARKER, type Focusable, type OverlayFocusOwner, TUI } from "@veyyon/tui";
-import { settleFrames } from "./helpers/settle-frames";
-import { VirtualTerminal } from "./virtual-terminal";
 
 // Several arms here drive dozens of full render passes over 180-row content and awaited frame
 // settles, which is a few hundred milliseconds idle and past Bun's 5s default when the bucket runs

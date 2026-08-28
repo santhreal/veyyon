@@ -1,7 +1,6 @@
 import { describe, expect, it } from "bun:test";
+import { StressRenderScheduler, VirtualTerminal } from "@veyyon/render-oracle";
 import { type Component, CURSOR_MARKER, type Focusable, TUI } from "@veyyon/tui";
-import { StressRenderScheduler } from "./render-stress-scheduler";
-import { VirtualTerminal } from "./virtual-terminal";
 
 // Scroll isolation (2026-07-22 operator requirement): the wheel scrolls the
 // transcript region while the pinned footer (composer zone) stays live at the

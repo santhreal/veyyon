@@ -43,7 +43,7 @@ import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { EventBus } from "@veyyon/coding-agent/utils/event-bus";
 import { TUI } from "@veyyon/tui";
-import { VirtualTerminal } from "../../tui/test/virtual-terminal";
+import { VirtualTerminal } from "@veyyon/render-oracle";
 
 const WIDTH = 120;
 const TEST_PARENT = path.resolve(import.meta.dirname, "../../../.internal/running-subagent-rebuild");

@@ -39,7 +39,7 @@ import {
 	checkVirtualScrollPreservesFooterStability,
 	evaluateAllComposerOracles,
 	isComposerPromptLine,
-} from "../src/modes/components/composer-defect-oracle";
+} from "@veyyon/render-oracle";
 
 function createBaselineFrameState(): ComposerOracleFrameState {
 	const width = 80;

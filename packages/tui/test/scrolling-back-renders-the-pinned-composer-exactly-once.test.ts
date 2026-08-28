@@ -21,9 +21,8 @@
  * scrollable flow) and sessions with scroll isolation disabled.
  */
 import { describe, expect, it } from "bun:test";
+import { settleFrames, VirtualTerminal } from "@veyyon/render-oracle";
 import { type Component, CURSOR_MARKER, type Focusable, TUI } from "@veyyon/tui";
-import { settleFrames } from "./helpers/settle-frames";
-import { VirtualTerminal } from "./virtual-terminal";
 
 class Transcript implements Component {
 	lines: string[] = [];
