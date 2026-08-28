@@ -1,17 +1,7 @@
 import { formatBytes, formatPercent } from "@veyyon/utils/format";
 import { formatDistanceToNow } from "date-fns";
 
-// Byte counts and percentages render with the shared pi-utils owners (binary units,
-// "1.5MB"; one decimal place, "12.3%") so the dashboard matches every other product
-// surface. `@veyyon/utils/format` has no imports of its own, which is what makes it safe
-// to pull into a browser bundle — the rest of `@veyyon/utils` is not.
-//
-// `formatPercent` used to be a second implementation right here, with the same name and
-// the same one-decimal output, and the two disagreed on one input: this copy rendered
-// `NaN%` where the shared owner renders `0.0%`. A rate arriving as 0/0 is not a rare
-// case for a dashboard — a project with no requests yet has exactly that error rate —
-// and `packages/stats/src/index.ts` already used the shared owner, so the CLI and the
-// dashboard printed different things for the same number.
+// Re-export shared format utilities for dashboard consistency.
 export { formatBytes, formatPercent };
 
 export function formatInteger(value: number): string {

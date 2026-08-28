@@ -192,26 +192,7 @@ export async function initDb(): Promise<Database> {
 		messagesTableExisted ? BACKFILL_PENDING : BACKFILL_COMPLETE,
 	);
 	db.run("CREATE INDEX IF NOT EXISTS idx_messages_timestamp_agent_type ON messages(timestamp, agent_type)");
-	// Each behavior-metric bump invalidates previously-ingested rows. We detect
-	// the stale schema by column name and drop the table; `IF NOT EXISTS` above
-	// already produced the new schema, but we want a clean wipe + re-ingest.
-	// `backfillUserMessages` then clears `file_offsets` so the next sync
-	// re-parses every session under the current metric definitions.
-	//   v1 -> v2: yelling sentences replace `caps_words`.
-	//   v2 -> v3: `drama_runs` folded into a single `anguish` signal that
-	//             also captures elongated interjections, `dude`, and dot runs,
-	//             gated on a stripped prose-line budget.
-	//   v3 -> v4: added `negation`, `repetition`, `blame` frustration signals
-	//             plus profanity dictionary expansion + word-boundary fix.
-	//   v4 -> v5: column `yelling_sentences` renamed to `yelling` to match
-	//             the other single-word signal columns.
-	//   v5 -> v6: dropped `git` from the profanity word list.
-	//   v6 -> v7: dropped dot runs from `anguish`, technical-collision and
-	//             opinion words from the profanity list; gated yelling on
-	//             multi-word caps and bare `no` on interjection use.
-	//   v7 -> v8: `no-op` compounds no longer count as negation; recovered
-	//             measured false negatives: `:(` emoticons -> anguish,
-	//             `why (would|did) you` -> blame, `makes no sense` -> negation.
+	// Behavior-metric schema version check: drop stale tables to trigger re-ingest.
 	const userMessageColumns = db.prepare("PRAGMA table_info(user_messages)").all() as {
 		name: string;
 	}[];
