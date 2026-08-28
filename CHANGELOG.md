@@ -287,6 +287,9 @@
 - The vey harness mounts the host's `~/node_modules` into the container at `/opt/omp-assets/node_modules`, so the vey binary can resolve its external dependencies (`@oh-my-pi/pi-natives`, `turndown`, etc.).
 - The vey harbor binding declares `authGateway: true`, so the compose overlay includes `extra_hosts: host.docker.internal:host-gateway` for vey runs.
 - The Harbor compose overlay supports `cfg.extraVolumes` for harness-specific bind mounts in addition to source-tree mounts.
+- The Harbor backend strips `VEYYON_AUTH_BROKER_URL` and `VEYYON_AUTH_BROKER_TOKEN` from the subprocess environment and the forward-env denylist, so the host's loopback broker address does not leak into containers that can only reach the gateway at `host.docker.internal:4000`.
+- The vey harness uses the gateway bearer token as the `apiKey` in `models.yml` when routing through the gateway, so vey sends an authorized request instead of `no-auth` and getting 401.
+- The Harbor backend passes `gatewayToken` through to the harness staging options, so a harness with a `containerProgram` (omp) receives the gateway token alongside the gateway URL.
 - A wide line clipped in the unseen-line reveal is cut at a code point rather than a UTF-16 code unit, so an emoji or rare CJK character sitting at the column limit is no longer split into an invalid lone surrogate.
 - Mnemopi cost log SQLite database (`cost_log.db`) manages schema migrations via `PRAGMA user_version` and dynamically backfills missing columns on legacy databases.
 - A load failure carries `code: "VEYYON_NATIVE_ADDON_UNAVAILABLE"`, exported as `NATIVE_ADDON_UNAVAILABLE_CODE` with `isNativeAddonUnavailable` from `@veyyon/natives/loader-state`, so a caller that catches a native call can tell an unavailable addon from a scan that found nothing.
