@@ -89,6 +89,7 @@ import {
 import {
 	executeReadUrl,
 	loadReadUrlCacheEntry,
+	type ParsedReadUrlTarget,
 	parseReadUrlTarget,
 	type ReadUrlToolDetails,
 	renderReadUrlCall,
@@ -140,17 +141,6 @@ import {
 import { ToolAbortError, ToolError, throwIfAborted, toolFailure } from "./tool-errors";
 import { toolResult } from "./tool-result";
 
-// Per-session memo for tree-sitter summaries. `summarizeCode` is a pure function
-// of (code, path, fold settings) but costs ~12-18ms for a ~1500-line file, and a
-// repeat summary read of the same unchanged file re-parses from scratch. Key on
-// the content hash of the freshly-read bytes (+ path + fold settings): the file
-// is still read fresh on every call, so a hit only reuses the deterministic
-// parse — there is no staleness window and no stat guard is needed. Bounded LRU,
-// aged out with the session via WeakMap.
-// Unusable results (not parsed, or nothing elided) are memoized as `false`: the
-// full SummaryResult embeds the whole source in kept segments, and the caller
-// only ever renders `parsed && elided` summaries — caching the segments would
-// retain up to 48 near-2MiB sources just to remember "no summary".
 const SUMMARY_CACHE_MAX = 48;
 const summaryParseCaches = new WeakMap<object, LRUCache<string, SummaryResult | false>>();
 function getSummaryParseCache(session: object): LRUCache<string, SummaryResult | false> {
@@ -165,67 +155,31 @@ function getSummaryParseCache(session: object): LRUCache<string, SummaryResult |
 const MAX_SUMMARY_BYTES = 2 * 1024 * 1024;
 const MAX_SUMMARY_LINES = 20_000;
 const MAX_ARTIFACT_RAW_INLINE_BYTES = DEFAULT_MAX_BYTES;
-/**
- * Per-line column cap for file reads. Lines wider than the value of
- * `tools.outputMaxColumns` are ellipsis-truncated at display time; the file
- * on disk is unchanged. Shared with the streaming sink path so one setting
- * covers `bash`/`ssh`/`python`/`js eval` and `read` uniformly.
- */
+
 const PROSE_SUMMARY_EXTENSIONS = new Set([".md", ".txt"]);
 
-/**
- * The one materialization of a file a read is allowed to make.
- *
- * A bounded range read used to touch the same file three times: the streamer scanned it for
- * the window and the total line count, bracket context read and split all of it, and the
- * snapshot read and normalized all of it again. Measured on a 3.5MiB, 100k-line source,
- * `read path:50000-50019` read 3.08x the file's bytes and cost 463ms.
- *
- * `windowLines` is the same split the streamer produces, and is present only when the file
- * has no CR: byte accounting (`outputBytes`, `totalBytes`, the byte-limit decisions) counts
- * source bytes, and a CRLF file's raw lines carry a byte the normalized ones do not. A file
- * with CRLF therefore keeps the streaming path for its window and shares only the text.
- */
 interface MaterializedFile {
-	/** Every line ending normalized to LF; what the snapshot tag fingerprints. */
 	text: string;
-	/** `text` split on LF. Bracket context and the multi-range display slice this. */
 	lines: string[];
-	/** `lines` again when the file's bytes are already LF-only, else undefined. */
 	windowLines: string[] | undefined;
 }
 
-/** Preserves a leading BOM, which `Bun.file().text()` silently drops. */
 const BOM_PRESERVING_DECODER = new TextDecoder("utf-8", { ignoreBOM: true });
 
 async function materializeFile(absolutePath: string, fileSize: number): Promise<MaterializedFile | undefined> {
 	if (fileSize > SNAPSHOT_MAX_BYTES) return undefined;
 	try {
-		// Decoded with the BOM intact because the line streamer keeps it on line 1: a decode that
-		// drops it reports a file whose first line differs from the one the reader is shown.
 		const raw = BOM_PRESERVING_DECODER.decode(await Bun.file(absolutePath).bytes());
 		const hasBom = raw.startsWith("\uFEFF");
-		// The snapshot tag and the bracket context both fingerprint the file the way every other
-		// reader of it does, BOM stripped, so a tag minted here still matches one minted by a
-		// plain read of the same bytes.
 		const text = normalizeToLF(hasBom ? raw.slice(1) : raw);
 		const lines = text.split("\n");
-		// A lone CR normalizes to LF without changing the string's length, so length equality is
-		// not the test; and a BOM is a character the streamer displays and `text` does not. Either
-		// one makes the raw and normalized splits different files to display.
 		const sharesTheSplit = !raw.includes("\r") && !hasBom;
 		return { text, lines, windowLines: sharesTheSplit ? lines : undefined };
 	} catch {
-		// Reading the whole file here is an optimization and a source of extras (bracket context,
-		// the snapshot tag). The caller's own read of the same file reports the failure with the
-		// path; undefined only means no context lines and no tag.
 		return undefined;
 	}
 }
 
-// Remote mount path prefix (sshfs mounts) - skip fuzzy matching to avoid
-// hangs. Resolved per call, not frozen at module load: the dirs resolver is
-// rebuilt after profile/agent `.env` files apply, AFTER this module imports.
 function isRemoteMountPath(absolutePath: string): boolean {
 	return absolutePath.startsWith(getRemoteDir() + path.sep);
 }
@@ -247,15 +201,6 @@ interface HashlineHeaderContext {
 }
 
 function formatReadHashlineHeader(displayPath: string, tag: string): string {
-	// In-workspace reads collapse to the bare filename for brevity: the edit
-	// tool's snapshot-tag recovery rebinds a bare `[name#tag]` onto the in-tree
-	// file it uniquely names. Out-of-workspace reads can't lean on that —
-	// recovery refuses to redirect a write outside the cwd/sandbox
-	// (HashlineFilesystem.allowTagPathRecovery) — so an absolute displayPath
-	// must stay directly resolvable, otherwise the basename resolves against
-	// cwd, misses, and the edit fails with "File not found" (e.g. ~/.claude/*).
-	// `shortenPath` keeps `~/.claude/...` (round-trips through resolveToCwd's ~
-	// expansion) instead of leaking the full home path into the read output.
 	const anchor = path.isAbsolute(displayPath) ? shortenPath(displayPath) : path.basename(displayPath);
 	return formatHashlineHeader(anchor, tag);
 }
@@ -377,9 +322,7 @@ function formatMergedBraceLine(
 
 function countTextLines(text: string): number {
 	if (text.length === 0) return 0;
-	// Count newlines directly instead of allocating an array via split("\n").
-	// Called on every read of file content; the result is identical (N newlines
-	// ⇒ N+1 lines for non-empty text).
+
 	let lines = 1;
 	for (let i = 0; i < text.length; i++) {
 		if (text.charCodeAt(i) === 10) lines++;
@@ -422,14 +365,6 @@ interface ElidedRange {
 /** Sample ranges shown in the footer to demonstrate the multi-range syntax. */
 const FOOTER_RANGE_SAMPLES = 2;
 
-/**
- * Footer appended to summarized reads telling the model how to recover the
- * elided body. Without this hint, agents either ignore the `…`/`{ … }`
- * markers or burn a turn guessing the right selector (see issue #1046). The
- * footer demonstrates the multi-range selector syntax with concrete sample
- * ranges drawn from the actual elision so the model re-reads only what it
- * needs instead of falling back to `:raw` or whole-file reads.
- */
 function formatSummaryElisionFooter(
 	readPath: string,
 	elidedRanges: ReadonlyArray<ElidedRange>,
@@ -447,31 +382,9 @@ function formatSummaryElisionFooter(
 }
 const READ_CHUNK_SIZE = 8 * 1024;
 
-/**
- * Context lines added around an explicit range read. Anchor-stale failures
- * cluster on edits whose anchors land just outside the most recent read
- * window, but the data (`scripts/session-stats/analyze_selector_reads.py`)
- * shows most follow-up reads are disjoint hops, not adjacent extensions —
- * so symmetric padding rarely pays for itself.
- *
- * Leading=1 catches accidental single-line reads where the anchor is the
- * line immediately above the requested start. Trailing=3 buffers the
- * common case where the agent asks for a narrow range and then needs the
- * next few lines to disambiguate an anchor.
- */
 const RANGE_LEADING_CONTEXT_LINES = 1;
 const RANGE_TRAILING_CONTEXT_LINES = 3;
 
-/**
- * How many context lines a range read gets on each side. The one owner of that
- * arithmetic: the in-memory range path and both streaming range paths (plain
- * file, artifact) each need the same two numbers, and each used to derive them
- * from the two constants itself.
- *
- * A start of 0 (no explicit offset) gets no leading context — that is already
- * an open-ended read from the top — and leading padding never runs past the
- * top of the file.
- */
 function rangeContextLines(
 	requestedStart: number,
 	expandStart: boolean,
@@ -483,10 +396,6 @@ function rangeContextLines(
 	};
 }
 
-/**
- * Expand a [start, end) range with leading/trailing context lines on the
- * sides where the user actually constrained the range.
- */
 function expandRangeWithContext(
 	requestedStart: number,
 	requestedEnd: number,
@@ -501,20 +410,6 @@ function expandRangeWithContext(
 	};
 }
 
-/**
- * Say, in the result itself, that some of the returned lines are padding.
- *
- * A bounded selector returns more lines than it asked for: `read file:1-3`
- * answers with six lines, three requested and three of trailing context. The
- * expansion is deliberate (it saves the follow-up read that a one-line-off
- * anchor would need), and documenting it in `docs/tools/read.md` was not
- * enough: the surprise happens at CALL TIME, where the result looked like the
- * selector had been ignored. A dogfooder flagged the same read twice for that
- * reason, which is what this notice answers.
- *
- * Returns `undefined` when nothing was padded, so an exact read stays exact
- * and unannotated. Line numbers are 1-indexed and inclusive, as displayed.
- */
 function formatContextPaddingNotice(options: {
 	requestedFirstLine: number;
 	/** Undefined for an open-ended read, which never gets trailing padding. */
@@ -548,15 +443,6 @@ interface CollectedWindow {
 	reachedEof: boolean;
 }
 
-/**
- * The same window {@link streamLinesFromFile} collects, taken from lines already in memory.
- *
- * The byte accounting is deliberately the streamer's, rule for rule: a line is dropped when it
- * alone exceeds the budget, the separator counts as one byte from the second line on, and the
- * first line's length is recorded whether or not it was kept. It is written twice because the
- * two sources are different shapes -- one decodes byte segments as it goes, the other has every
- * line already -- and a caller cannot tell which one answered it.
- */
 function collectWindowFromLines(
 	lines: readonly string[],
 	startLine: number,
@@ -578,9 +464,6 @@ function collectWindowFromLines(
 
 		if (selectedLineLimit !== null && selectedLinesSeen < selectedLineLimit) selectedLinesSeen++;
 		if (doneCollecting) {
-			// The streamer records the first selected line's length even when collection had already
-			// stopped, which is reachable with a zero-line window: the caller still reports how long
-			// the line it refused to show was.
 			firstLineByteLength ??= lineBytes;
 			if (selectedLineLimit !== null && selectedLinesSeen >= selectedLineLimit) break;
 			continue;
@@ -590,9 +473,6 @@ function collectWindowFromLines(
 		if (collected.length >= maxLinesToCollect) {
 			doneCollecting = true;
 		} else if (collected.length === 0 && lineBytes > maxBytes) {
-			// The streamer captures the head of an over-long first line for the preview, capped at
-			// the same budget, and reports the line's full length so the caller can say how far over.
-			stoppedByByteLimit = true;
 			doneCollecting = true;
 			firstLineByteLength ??= lineBytes;
 			firstLinePreview = truncateHeadBytes(Buffer.from(line, "utf-8").subarray(0, maxBytes), maxBytes);
@@ -836,13 +716,6 @@ async function streamLinesFromFile(
 const MAX_IMAGE_SIZE = MAX_IMAGE_INPUT_BYTES;
 const GLOB_TIMEOUT_MS = 5000;
 
-/**
- * Escape glob metacharacters so a literal path (e.g. `foo[1].ts`) interpolated
- * into a suffix-glob pattern matches itself. Each metachar is wrapped in a
- * character class (the native glob engine rewrites `\` to `/`, so backslash
- * escaping is unavailable). `]`/`}` need no escaping once their openers are
- * neutralized — unmatched closers are literal.
- */
 function escapeGlobMetachars(value: string): string {
 	return value.replace(/[*?[{]/g, "[$&]");
 }
@@ -904,17 +777,6 @@ async function findUniqueSuffixMatch(
 	};
 }
 
-/**
- * Whether a failed summarize attempt is worth reporting, and what to say about it.
- *
- * Summarizing a read is optional: when it fails you get the whole file where you would have got an
- * outline, which is still a correct read, so the failure must not propagate. It used to be swallowed
- * entirely, and a file that could not be parsed then looked like a file with nothing to fold.
- *
- * Cancellation is the one case that stays quiet, because it is not a failure of summarizing: the
- * caller asked for the read to stop, and the read path reports that itself. Returns the message to
- * log, or null when there is nothing to report.
- */
 export function summarizeFailureReport(error: unknown): string | null {
 	if (isAbortError(error) || isTimeoutError(error) || isCancellation(error)) return null;
 	return errorMessage(error);
@@ -926,9 +788,6 @@ function decodeUtf8Text(bytes: Uint8Array): string | null {
 	try {
 		return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
 	} catch {
-		// Invalid UTF-8 is the same answer as the header sniff above: this is not text. `null` means
-		// "treat as binary", which the caller reports to the model as a binary file rather than handing
-		// it replacement characters and pretending they are content.
 		return null;
 	}
 }
@@ -1005,13 +864,7 @@ export interface ReadToolDetails {
 	conflictCount?: number;
 	/** Paths recovered from a delimited read argument; used only by the TUI to render one call as multiple read rows. */
 	displayReadTargets?: string[];
-	/**
-	 * Set when the tool could not deliver the target's content as text (a binary
-	 * file or archive entry, or a failed document conversion). The result is left
-	 * non-`isError` on purpose so the agent gets the bracketed guidance (for
-	 * example the `:raw` hint) without a retry storm; this marker lets the
-	 * `veyyon read` CLI exit non-zero instead of reporting the refusal as success.
-	 */
+
 	contentUnavailable?: { reason: "binary" | "conversion-failed" };
 }
 
@@ -1085,11 +938,6 @@ function parseSel(sel: string | undefined): ParsedSelector {
 	return { kind: "none" };
 }
 
-/**
- * Convert a single-range selector to the offset/limit pair used by internal pagination.
- * Returns the FIRST range only — multi-range callers MUST branch on `isMultiRange` before
- * calling this helper.
- */
 function selToOffsetLimit(parsed: ParsedSelector): { offset?: number; limit?: number } {
 	if (parsed.kind === "lines") {
 		const first = parsed.ranges[0];
@@ -1115,16 +963,6 @@ interface ResolvedSqliteReadPath {
 /** Per-execute memo of suffix-glob lookups; `null` records a confirmed miss. */
 type SuffixMatchCache = Map<string, { absolutePath: string; displayPath: string } | null>;
 
-/**
- * Filesystem path(s) a read call targets, for the cwd boundary (cwd-boundary.ts).
- * A selector suffix stays attached (it cannot introduce `../` traversal), and
- * URL/ssh/internal targets are filtered by the boundary.
- *
- * A semicolon-delimited argument reads every entry it names, so every entry is
- * measured, the way the search tools measure theirs. Measuring the joint string
- * instead resolves `a.md;/etc/passwd` to one path inside the working directory
- * that no read ever opens, and the entry outside it is never gated.
- */
 export function readFilesystemTargets(args: unknown, cwd = process.cwd()): string[] {
 	if (!args || typeof args !== "object" || !("path" in args)) return [];
 	const rawPath = args.path;
@@ -1230,14 +1068,6 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 		return toolResult<ReadToolDetails>({ notes, displayReadTargets }).content(content).done();
 	}
 
-	/**
-	 * One internal URL, or a semicolon-delimited list of them.
-	 *
-	 * An internal resource cannot be probed on disk the way a file can, so the
-	 * literal URL is resolved first and the list only after it fails: a resource
-	 * whose own name contains a semicolon still resolves, and
-	 * `skill://a/one.md;two.md` fans out into one read per entry.
-	 */
 	async #readInternalUrlOrList(
 		rawPath: string,
 		urlPath: string,
@@ -1262,13 +1092,6 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 		}
 	}
 
-	/**
-	 * Memoized {@link findUniqueSuffixMatch} for a single read call. A missing
-	 * path with archive/sqlite extensions probes the workspace once per stage
-	 * (archive candidates, sqlite candidates, plain path) — each glob carries a
-	 * 5s timeout, so repeated lookups of the same string stack into a long
-	 * stall before erroring. The cache collapses repeats within one execute().
-	 */
 	async #findSuffixMatchCached(
 		cache: SuffixMatchCache,
 		rawPath: string,
@@ -2429,6 +2252,777 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 		return { text: modelParts.join("\n"), displayText: displayParts.join("\n"), elidedRanges, elidedLines };
 	}
 
+	async #readExternalUrl(
+		parsedUrlTarget: ParsedReadUrlTarget,
+		signal?: AbortSignal,
+	): Promise<AgentToolResult<ReadToolDetails>> {
+		if (!this.session.settings.get("fetch.enabled")) {
+			throw new ToolError("URL reads are disabled by settings.");
+		}
+		const urlRaw = parsedUrlTarget.raw;
+		const urlRanges = parsedUrlTarget.ranges;
+		if (urlRanges !== undefined && urlRanges.length > 1) {
+			const cached = await loadReadUrlCacheEntry(this.session, { path: parsedUrlTarget.path, raw: urlRaw }, signal, {
+				ensureArtifact: true,
+				preferCached: true,
+			});
+			return this.#buildInMemoryMultiRangeResult(cached.output, urlRanges, {
+				details: { ...cached.details },
+				sourceUrl: cached.details.finalUrl,
+				entityLabel: "URL output",
+				raw: urlRaw,
+				immutable: true,
+			});
+		}
+		const urlOffset = parsedUrlTarget.offset;
+		const urlLimit = parsedUrlTarget.limit;
+		if (urlOffset !== undefined || urlLimit !== undefined) {
+			const cached = await loadReadUrlCacheEntry(this.session, { path: parsedUrlTarget.path, raw: urlRaw }, signal, {
+				ensureArtifact: true,
+				preferCached: true,
+			});
+			return this.#buildInMemoryTextResult(cached.output, urlOffset, urlLimit, {
+				details: { ...cached.details },
+				sourceUrl: cached.details.finalUrl,
+				entityLabel: "URL output",
+				raw: urlRaw,
+				immutable: true,
+			});
+		}
+		return executeReadUrl(this.session, { path: parsedUrlTarget.path, raw: urlRaw }, signal);
+	}
+
+	async #handleInternalUrlEntry(
+		readPath: string,
+		params: ReadParams,
+		signal?: AbortSignal,
+	): Promise<
+		| { toolResult: AgentToolResult<ReadToolDetails>; readPath?: undefined; promotedSelector?: undefined }
+		| { toolResult?: undefined; readPath: string; promotedSelector?: string }
+	> {
+		const internalTarget = splitInternalUrlSel(readPath);
+		const parsed = parseSel(internalTarget.sel);
+		if (internalTarget.sel !== undefined && parsed.kind === "none") {
+			throw new ToolError(
+				`Invalid selector ':${internalTarget.sel}' on '${internalTarget.path}'. Use :N, :N-M, :N+K, :N- (open-ended), a comma-separated list of ranges, :raw, or a range combined with raw (e.g. :raw:50-100).`,
+			);
+		}
+		const urlMeta = parseInternalUrl(internalTarget.path);
+		const scheme = urlMeta.protocol.replace(/:$/, "").toLowerCase();
+		if (scheme === "local") {
+			const localFile = await resolveLocalUrlToFile(urlMeta, {
+				cwd: this.session.cwd,
+				settings: this.session.settings,
+				signal,
+				localProtocolOptions: this.session.localProtocolOptions,
+				skills: this.session.skills,
+			});
+			if (localFile) {
+				return { readPath: localFile.path, promotedSelector: internalTarget.sel };
+			}
+		}
+		const toolResult = await this.#readInternalUrlOrList(readPath, internalTarget.path, parsed, signal, {
+			depth: params.depth,
+			limit: params.limit,
+		});
+		return { toolResult };
+	}
+
+	async #tryReadArchive(
+		readPath: string,
+		promotedSelector: string | undefined,
+		suffixCache: SuffixMatchCache,
+		signal?: AbortSignal,
+	): Promise<AgentToolResult<ReadToolDetails> | null> {
+		const archivePath = await this.#resolveArchiveReadPath(readPath, suffixCache, signal);
+		if (!archivePath) return null;
+		const archiveSubPath =
+			promotedSelector === undefined
+				? splitPathAndSel(archivePath.archiveSubPath)
+				: { path: archivePath.archiveSubPath, sel: promotedSelector };
+		const archiveParsed = parseSel(archiveSubPath.sel);
+		return this.#readArchive(
+			readPath,
+			archiveParsed,
+			{ ...archivePath, archiveSubPath: archiveSubPath.path },
+			signal,
+		);
+	}
+
+	async #tryReadSqlite(
+		readPath: string,
+		suffixCache: SuffixMatchCache,
+		signal?: AbortSignal,
+	): Promise<AgentToolResult<ReadToolDetails> | null> {
+		const sqlitePath = await this.#resolveSqliteReadPath(readPath, suffixCache, signal);
+		if (!sqlitePath) return null;
+		return this.#readSqlite(sqlitePath, signal);
+	}
+
+	async #tryReadPdfImage(
+		readPath: string,
+		suffixCache: SuffixMatchCache,
+		signal?: AbortSignal,
+	): Promise<AgentToolResult<ReadToolDetails> | null> {
+		const pdfImageMemberPath = splitPdfImageMemberReadPath(readPath);
+		if (!pdfImageMemberPath) return null;
+		let absolutePdfPath = resolveReadPath(pdfImageMemberPath.pdfPath, this.session.cwd);
+		let suffixResolution: { from: string; to: string } | undefined;
+		try {
+			const stat = await Bun.file(absolutePdfPath).stat();
+			if (stat.isDirectory()) {
+				throw new ToolError(`Path '${pdfImageMemberPath.pdfPath}' is a directory, not a PDF file`);
+			}
+		} catch (error) {
+			if (!isMissingPath(error) || isRemoteMountPath(absolutePdfPath)) throw error;
+			const suffixMatch = await this.#findSuffixMatchCached(suffixCache, pdfImageMemberPath.pdfPath, signal);
+			if (!suffixMatch) throw new ToolError(`Path '${pdfImageMemberPath.pdfPath}' not found`);
+			absolutePdfPath = suffixMatch.absolutePath;
+			suffixResolution = { from: pdfImageMemberPath.pdfPath, to: suffixMatch.displayPath };
+		}
+		return this.#readPdfImageMember(
+			absolutePdfPath,
+			pdfImageMemberPath.pdfPath,
+			pdfImageMemberPath.member,
+			suffixResolution,
+			signal,
+		);
+	}
+
+	async #resolveFilesystemTarget(
+		readPath: string,
+		localReadPath: string,
+		suffixCache: SuffixMatchCache,
+		params: ReadParams,
+		signal?: AbortSignal,
+	): Promise<{
+		absolutePath: string;
+		suffixResolution?: { from: string; to: string };
+		isDirectory: boolean;
+		fileSize: number;
+		delimitedResult?: AgentToolResult<ReadToolDetails>;
+	}> {
+		let absolutePath = resolveReadPath(localReadPath, this.session.cwd);
+		let suffixResolution: { from: string; to: string } | undefined;
+		let isDirectory = false;
+		let fileSize = 0;
+
+		try {
+			const stat = await Bun.file(absolutePath).stat();
+			fileSize = stat.size;
+			isDirectory = stat.isDirectory();
+		} catch (error) {
+			if (isMissingPath(error)) {
+				if (!isRemoteMountPath(absolutePath)) {
+					const suffixMatch = await this.#findSuffixMatchCached(suffixCache, localReadPath, signal);
+					if (suffixMatch) {
+						try {
+							const retryStat = await Bun.file(suffixMatch.absolutePath).stat();
+							absolutePath = suffixMatch.absolutePath;
+							fileSize = retryStat.size;
+							isDirectory = retryStat.isDirectory();
+							suffixResolution = { from: localReadPath, to: suffixMatch.displayPath };
+						} catch {
+							// Suffix match candidate no longer stats
+						}
+					}
+				}
+
+				if (!suffixResolution) {
+					const delimitedResult = await this.#tryReadDelimitedPaths(
+						readPath,
+						signal,
+						{},
+						{
+							depth: params.depth,
+							limit: params.limit,
+						},
+					);
+					if (delimitedResult) return { absolutePath, isDirectory: false, fileSize: 0, delimitedResult };
+					throw new ToolError(`Path '${localReadPath}' not found`);
+				}
+			} else {
+				throw error;
+			}
+		}
+
+		return { absolutePath, suffixResolution, isDirectory, fileSize };
+	}
+
+	async #readLocalNotebook(
+		absolutePath: string,
+		localReadPath: string,
+		parsed: ParsedSelector,
+	): Promise<AgentToolResult<ReadToolDetails>> {
+		const notebookText = await readEditableNotebookText(absolutePath, localReadPath);
+		if (isMultiRange(parsed) && parsed.kind === "lines") {
+			return this.#buildInMemoryMultiRangeResult(notebookText, parsed.ranges, {
+				details: { resolvedPath: absolutePath },
+				sourcePath: absolutePath,
+				entityLabel: "notebook",
+			});
+		}
+		const { offset, limit } = selToOffsetLimit(parsed);
+		return this.#buildInMemoryTextResult(notebookText, offset, limit, {
+			details: { resolvedPath: absolutePath },
+			sourcePath: absolutePath,
+			entityLabel: "notebook",
+		});
+	}
+
+	async #readConvertibleDocument(
+		absolutePath: string,
+		localReadPath: string,
+		ext: string,
+		parsed: ParsedSelector,
+		signal?: AbortSignal,
+	): Promise<{
+		toolResult?: AgentToolResult<ReadToolDetails>;
+		content?: Array<TextContent | ImageContent>;
+		details?: ReadToolDetails;
+	}> {
+		const result = await convertFileWithMarkit(absolutePath, signal);
+		if (result.ok) {
+			const renderedContent =
+				ext === ".pdf" ? rewritePdfImagePlaceholders(result.content, localReadPath) : result.content;
+			if (isMultiRange(parsed) && parsed.kind === "lines") {
+				const toolResult = this.#buildInMemoryMultiRangeResult(renderedContent, parsed.ranges, {
+					details: { resolvedPath: absolutePath },
+					sourcePath: absolutePath,
+					entityLabel: "document",
+				});
+				return { toolResult };
+			}
+			const { offset, limit } = selToOffsetLimit(parsed);
+			const toolResult = this.#buildInMemoryTextResult(renderedContent, offset, limit, {
+				details: { resolvedPath: absolutePath },
+				sourcePath: absolutePath,
+				entityLabel: "document",
+				raw: isRawSelector(parsed),
+			});
+			return { toolResult };
+		}
+		const errorMsg = result.error || "conversion failed";
+		return {
+			content: [{ type: "text", text: `[Cannot read ${ext} file: ${errorMsg}]` }],
+			details: { contentUnavailable: { reason: "conversion-failed" } },
+		};
+	}
+
+	async #readSingleRangeFile(
+		absolutePath: string,
+		fileSize: number,
+		parsed: ParsedSelector,
+		suffixResolution?: { from: string; to: string },
+	): Promise<
+		| { toolResult: AgentToolResult<ReadToolDetails> }
+		| {
+				content: Array<TextContent | ImageContent>;
+				details: ReadToolDetails;
+				sourcePath: string;
+				columnTruncated: number;
+				truncationInfo?: {
+					result: TruncationResult;
+					options: { direction: "head"; startLine?: number; totalFileLines?: number };
+				};
+		  }
+	> {
+		const { offset, limit } = selToOffsetLimit(parsed);
+		const bridgePromise = this.#routeReadThroughBridge(absolutePath);
+		if (bridgePromise !== undefined) {
+			try {
+				const bridgeText = await bridgePromise;
+				const bridgeResult = this.#buildInMemoryTextResult(bridgeText, offset, limit, {
+					details: { resolvedPath: absolutePath, suffixResolution },
+					sourcePath: absolutePath,
+					entityLabel: "file",
+					raw: isRawSelector(parsed),
+				});
+				if (suffixResolution) {
+					const notice = `[Path '${suffixResolution.from}' not found; resolved to '${suffixResolution.to}' via suffix match]`;
+					const firstText = bridgeResult.content.find((c): c is TextContent => c.type === "text");
+					if (firstText) firstText.text = `${notice}\n${firstText.text}`;
+				}
+				return { toolResult: bridgeResult };
+			} catch (error) {
+				logger.warn("ACP fs readTextFile failed; falling back to disk", { path: absolutePath, error });
+			}
+		}
+
+		const rawSelector = isRawSelector(parsed);
+		const requestedStart = offset ? Math.max(0, offset - 1) : 0;
+		const expandStart = !rawSelector && offset !== undefined && offset > 1;
+		const expandEnd = !rawSelector && limit !== undefined;
+		const { leading: leadingContext, trailing: trailingContext } = rangeContextLines(
+			requestedStart,
+			expandStart,
+			expandEnd,
+		);
+		const startLine = requestedStart - leadingContext;
+		const startLineDisplay = startLine + 1;
+
+		const DEFAULT_LIMIT = this.#defaultLimit;
+		const effectiveLimit = limit ?? DEFAULT_LIMIT;
+		const maxLinesToCollect = Math.min(effectiveLimit + leadingContext + trailingContext, DEFAULT_MAX_LINES);
+		const selectedLineLimit = effectiveLimit + leadingContext + trailingContext;
+		const maxBytesForRead = Math.max(DEFAULT_MAX_BYTES, maxLinesToCollect * 512);
+
+		const materialized = rawSelector ? undefined : await materializeFile(absolutePath, fileSize);
+		const streamResult = materialized?.windowLines
+			? collectWindowFromLines(
+					materialized.windowLines,
+					startLine,
+					maxLinesToCollect,
+					maxBytesForRead,
+					selectedLineLimit,
+				)
+			: await streamLinesFromFile(
+					absolutePath,
+					startLine,
+					maxLinesToCollect,
+					maxBytesForRead,
+					selectedLineLimit,
+					undefined,
+					fileSize > SNAPSHOT_MAX_BYTES,
+				);
+
+		const {
+			lines: collectedLines,
+			totalFileLines,
+			collectedBytes,
+			stoppedByByteLimit,
+			firstLinePreview,
+			firstLineByteLength,
+			reachedEof,
+		} = streamResult;
+
+		if (requestedStart >= totalFileLines) {
+			const suggestion =
+				totalFileLines === 0
+					? "The file is empty."
+					: `Use :1 to read from the start, or :${totalFileLines} to read the last line.`;
+			const toolResultOut = toolResult<ReadToolDetails>({ resolvedPath: absolutePath, suffixResolution })
+				.text(`Line ${requestedStart + 1} is beyond end of file (${totalFileLines} lines total). ${suggestion}`)
+				.done();
+			return { toolResult: toolResultOut };
+		}
+
+		let columnTruncated = 0;
+		const maxColumns = resolveOutputMaxColumns(this.session.settings);
+		let displayLines: string[] = collectedLines;
+		const clippedLines = new Set<number>();
+		if (!rawSelector && maxColumns > 0) {
+			let cloned: string[] | undefined;
+			for (let i = 0; i < collectedLines.length; i++) {
+				const { text, wasTruncated } = truncateLine(collectedLines[i], maxColumns);
+				if (wasTruncated) {
+					if (!cloned) cloned = collectedLines.slice();
+					cloned[i] = text;
+					columnTruncated = maxColumns;
+					clippedLines.add(startLineDisplay + i);
+				}
+			}
+			if (cloned) displayLines = cloned;
+		}
+
+		const displayLineByNumber = new Map<number, string>();
+		for (let i = 0; i < displayLines.length; i++) {
+			displayLineByNumber.set(startLineDisplay + i, displayLines[i] ?? "");
+		}
+		const bracketContextFullLines = materialized?.lines;
+		const displayedEndLine = startLineDisplay + Math.max(0, displayLines.length - 1);
+		const selectedContent = displayLines.join("\n");
+		const userLimitedLines = collectedLines.length;
+
+		const totalSelectedLines = totalFileLines - startLine;
+		const totalSelectedBytes = collectedBytes;
+		const wasTruncated = collectedLines.length < totalSelectedLines || stoppedByByteLimit;
+		const firstLineExceedsLimit = firstLineByteLength !== undefined && firstLineByteLength > maxBytesForRead;
+
+		const truncation: TruncationResult = {
+			content: selectedContent,
+			truncated: wasTruncated,
+			truncatedBy: stoppedByByteLimit ? "bytes" : wasTruncated ? "lines" : undefined,
+			totalLines: totalSelectedLines,
+			totalBytes: totalSelectedBytes,
+			outputLines: collectedLines.length,
+			outputBytes: collectedBytes,
+			lastLinePartial: false,
+			firstLineExceedsLimit,
+		};
+
+		const displayMode = resolveFileDisplayMode(this.session);
+		const shouldAddHashLines = !rawSelector && displayMode.hashLines;
+		const shouldAddLineNumbers = rawSelector ? false : shouldAddHashLines ? false : displayMode.lineNumbers;
+		let hashContext: HashlineHeaderContext | undefined;
+		if (shouldAddHashLines && collectedLines.length > 0 && !firstLineExceedsLimit) {
+			const isWholeFile = offset === undefined && limit === undefined && !wasTruncated;
+			const tag = isWholeFile
+				? getFileSnapshotStore(this.session).record(
+						canonicalSnapshotKey(absolutePath),
+						normalizeToLF(collectedLines.join("\n")),
+					)
+				: await recordFileSnapshot(this.session, absolutePath, undefined, materialized?.text);
+			if (tag) {
+				hashContext = hashlineHeaderContext(formatPathRelativeToCwd(absolutePath, this.session.cwd), tag);
+			}
+		}
+
+		let capturedDisplayContent: { text: string; startLine: number; lineNumbers?: Array<number | null> } | undefined;
+		let emittedHashlineHeader = false;
+		const formatText = (text: string, startNum: number): string => {
+			const lineCount = countTextLines(text);
+			capturedDisplayContent = {
+				text,
+				startLine: startNum,
+				lineNumbers: Array.from({ length: lineCount }, (_, i) => startNum + i),
+			};
+			const formatted = formatTextWithMode(text, startNum, shouldAddHashLines, shouldAddLineNumbers);
+			if (!hashContext || emittedHashlineHeader) return formatted;
+			emittedHashlineHeader = true;
+			return prependHashlineHeader(formatted, hashContext);
+		};
+		const formatBracketAwareText = (): string | undefined => {
+			if (!bracketContextFullLines) return undefined;
+			const entries = buildLineEntriesWithBlockContext(
+				bracketContextFullLines,
+				[{ startLine: startLineDisplay, endLine: displayedEndLine }],
+				{ path: absolutePath, text: materialized?.text },
+				{
+					lineText: (lineNumber, sourceText) => {
+						const visibleText = displayLineByNumber.get(lineNumber);
+						if (visibleText !== undefined) return visibleText;
+						if (maxColumns <= 0) return sourceText;
+						const truncated = truncateLine(sourceText, maxColumns);
+						if (truncated.wasTruncated) {
+							columnTruncated = maxColumns;
+							clippedLines.add(lineNumber);
+						}
+						return truncated.text;
+					},
+				},
+			);
+			const firstLine = entries.find(entry => entry.kind === "line");
+			capturedDisplayContent = {
+				text: lineEntriesToPlainText(entries, BRACKET_CONTEXT_ELLIPSIS),
+				startLine: firstLine?.kind === "line" ? firstLine.lineNumber : startLineDisplay,
+				lineNumbers: entries.map(entry => (entry.kind === "line" ? entry.lineNumber : null)),
+			};
+			const formatted = formatLineEntriesWithMode(entries, shouldAddHashLines, shouldAddLineNumbers);
+			if (!hashContext || emittedHashlineHeader) return formatted;
+			emittedHashlineHeader = true;
+			return prependHashlineHeader(formatted, hashContext);
+		};
+
+		let outputText: string;
+		let details: ReadToolDetails = {};
+		let truncationInfo:
+			| { result: TruncationResult; options: { direction: "head"; startLine?: number; totalFileLines?: number } }
+			| undefined;
+
+		if (truncation.firstLineExceedsLimit) {
+			const firstLineBytes = firstLineByteLength ?? 0;
+			const snippet = firstLinePreview ?? { text: "", bytes: 0 };
+			if (shouldAddHashLines) {
+				outputText = `[Line ${startLineDisplay} is ${formatBytes(
+					firstLineBytes,
+				)}, exceeds ${formatBytes(maxBytesForRead)} limit. Hashline output requires full lines; cannot emit an editable numbered preview for a truncated line.]`;
+			} else {
+				outputText = formatText(snippet.text, startLineDisplay);
+			}
+			if (snippet.text.length === 0) {
+				outputText = `[Line ${startLineDisplay} is ${formatBytes(
+					firstLineBytes,
+				)}, exceeds ${formatBytes(maxBytesForRead)} limit. Unable to display a valid UTF-8 snippet.]`;
+			}
+			details = { truncation };
+			truncationInfo = {
+				result: truncation,
+				options: {
+					direction: "head",
+					startLine: startLineDisplay,
+					totalFileLines: reachedEof ? totalFileLines : undefined,
+				},
+			};
+		} else if (truncation.truncated) {
+			outputText = formatBracketAwareText() ?? formatText(truncation.content, startLineDisplay);
+			details = { truncation };
+			truncationInfo = {
+				result: truncation,
+				options: {
+					direction: "head",
+					startLine: startLineDisplay,
+					totalFileLines: reachedEof ? totalFileLines : undefined,
+				},
+			};
+		} else if (startLine + userLimitedLines < totalFileLines || !reachedEof) {
+			const nextOffset = startLine + userLimitedLines + 1;
+			outputText = formatBracketAwareText() ?? formatText(truncation.content, startLineDisplay);
+			outputText += reachedEof
+				? `\n\n[${formatMoreLines(totalFileLines - (startLine + userLimitedLines))} in file. Use :${nextOffset} to continue]`
+				: `\n\n[More lines in file (${formatBytes(fileSize)} total; not scanned to EOF). Use :${nextOffset} to continue]`;
+		} else {
+			outputText = formatBracketAwareText() ?? formatText(truncation.content, startLineDisplay);
+		}
+
+		const paddingNotice = formatContextPaddingNotice({
+			requestedFirstLine: requestedStart + 1,
+			requestedLastLine: limit !== undefined ? requestedStart + limit : undefined,
+			displayedFirstLine: startLineDisplay,
+			displayedLastLine: displayedEndLine,
+		});
+		if (paddingNotice) outputText += `\n\n${paddingNotice}`;
+
+		if (hashContext?.tag) {
+			recordSeenLinesFromBody(this.session, absolutePath, hashContext.tag, outputText, clippedLines);
+		}
+		if (rawSelector && !firstLineExceedsLimit && collectedLines.length > 0) {
+			await recordFileSnapshot(
+				this.session,
+				absolutePath,
+				contiguousLineNumbers(startLineDisplay, collectedLines.length),
+			);
+		}
+
+		if (capturedDisplayContent) {
+			details.displayContent = capturedDisplayContent;
+		}
+
+		if (!firstLineExceedsLimit && collectedLines.length > 0) {
+			const blocks = scanConflictLines(collectedLines, startLineDisplay);
+			if (blocks.length > 0) {
+				const history = getConflictHistory(this.session);
+				const displayPathForWarning = formatPathRelativeToCwd(absolutePath, this.session.cwd);
+				const entries = blocks.map(block =>
+					history.register({
+						absolutePath,
+						displayPath: displayPathForWarning,
+						...block,
+					}),
+				);
+				let totalInFile = entries.length;
+				let scanTruncated = false;
+				try {
+					const fileScan = await scanFileForConflicts(absolutePath);
+					totalInFile = Math.max(entries.length, fileScan.blocks.length);
+					scanTruncated = fileScan.scanTruncated;
+				} catch {
+					// Best-effort enrichment
+				}
+				outputText += formatConflictWarning(entries, {
+					totalInFile,
+					displayPath: displayPathForWarning,
+					scanTruncated,
+				});
+				details.conflictCount = entries.length;
+			}
+		}
+
+		return {
+			content: [{ type: "text", text: outputText }],
+			details,
+			sourcePath: absolutePath,
+			columnTruncated,
+			truncationInfo,
+		};
+	}
+
+	async #readPlainTextFile(
+		absolutePath: string,
+		localReadPath: string,
+		fileSize: number,
+		ext: string,
+		parsed: ParsedSelector,
+		suffixResolution?: { from: string; to: string },
+		signal?: AbortSignal,
+	): Promise<{
+		toolResult?: AgentToolResult<ReadToolDetails>;
+		content?: Array<TextContent | ImageContent>;
+		details?: ReadToolDetails;
+		sourcePath?: string;
+		columnTruncated?: number;
+		truncationInfo?: {
+			result: TruncationResult;
+			options: { direction: "head"; startLine?: number; totalFileLines?: number };
+		};
+	}> {
+		if (!isRawSelector(parsed) && (await isProbablyBinary(absolutePath))) {
+			const toolResultOut = toolResult<ReadToolDetails>({
+				resolvedPath: absolutePath,
+				suffixResolution,
+				contentUnavailable: { reason: "binary" },
+			})
+				.text(
+					prependSuffixResolutionNotice(
+						`[Cannot read binary file '${formatPathRelativeToCwd(absolutePath, this.session.cwd)}' (${formatBytes(fileSize)}); not valid UTF-8 text. Use ':raw' to read bytes verbatim.]`,
+						suffixResolution,
+					),
+				)
+				.sourcePath(absolutePath)
+				.done();
+			return { toolResult: toolResultOut };
+		}
+
+		const displayMode = resolveFileDisplayMode(this.session);
+		if (
+			parsed.kind === "none" &&
+			this.session.settings.get("read.summarize.enabled") &&
+			(this.session.settings.get("read.summarize.prose") || !PROSE_SUMMARY_EXTENSIONS.has(ext))
+		) {
+			const summary = await this.#trySummarize(absolutePath, fileSize, signal);
+			if (summary?.parsed && summary.elided) {
+				const renderedSummary = this.#renderSummary(summary);
+				const footer = formatSummaryElisionFooter(
+					localReadPath,
+					renderedSummary.elidedRanges,
+					renderedSummary.elidedLines,
+				);
+				const summaryHashContext = displayMode.hashLines
+					? await readHashlineHeaderContext(this.session, absolutePath, this.session.cwd)
+					: undefined;
+				const bodyText = footer ? `${renderedSummary.text}\n\n${footer}` : renderedSummary.text;
+				const modelText = prependHashlineHeader(bodyText, summaryHashContext);
+				if (summaryHashContext?.tag) {
+					recordSeenLinesFromBody(this.session, absolutePath, summaryHashContext.tag, renderedSummary.text);
+				}
+				const details: ReadToolDetails = {
+					displayContent: { text: renderedSummary.displayText, startLine: 1 },
+					summary: {
+						lines: countTextLines(renderedSummary.text),
+						elidedSpans: renderedSummary.elidedRanges.length,
+						elidedLines: renderedSummary.elidedLines,
+					},
+				};
+				return {
+					content: [{ type: "text", text: modelText }],
+					details,
+					sourcePath: absolutePath,
+				};
+			}
+		}
+
+		if (isMultiRange(parsed) && parsed.kind === "lines") {
+			const multiResult = await this.#readLocalFileMultiRange(
+				absolutePath,
+				parsed.ranges,
+				fileSize,
+				parsed,
+				displayMode,
+				suffixResolution,
+				undefined,
+			);
+			if (multiResult.bridgeResult) return { toolResult: multiResult.bridgeResult };
+			return {
+				content: [{ type: "text", text: multiResult.outputText }],
+				details: multiResult.displayContent ? { displayContent: multiResult.displayContent } : {},
+				sourcePath: absolutePath,
+				columnTruncated: multiResult.columnTruncated > 0 ? multiResult.columnTruncated : undefined,
+			};
+		}
+
+		const singleResult = await this.#readSingleRangeFile(absolutePath, fileSize, parsed, suffixResolution);
+		if ("toolResult" in singleResult) return { toolResult: singleResult.toolResult };
+		return singleResult;
+	}
+
+	async #readFilesystemTarget(
+		readPath: string,
+		literalSplit: { path: string; sel?: string },
+		params: ReadParams,
+		suffixCache: SuffixMatchCache,
+		signal?: AbortSignal,
+	): Promise<AgentToolResult<ReadToolDetails>> {
+		const localReadPath = literalSplit.path;
+		const parsed = parseSel(literalSplit.sel);
+
+		const resolved = await this.#resolveFilesystemTarget(readPath, localReadPath, suffixCache, params, signal);
+		if (resolved.delimitedResult) return resolved.delimitedResult;
+		const { absolutePath, suffixResolution, isDirectory, fileSize } = resolved;
+
+		if (isDirectory) {
+			if (isMultiRange(parsed)) {
+				throw new ToolError("Multi-range line selectors are not supported for directory listings.");
+			}
+			const { offset, limit } = selToOffsetLimit(parsed);
+			const dirResult = await this.#readDirectory(absolutePath, offset, limit, {
+				depth: params.depth,
+				entryLimit: params.limit,
+			});
+			if (suffixResolution) {
+				dirResult.details ??= {};
+				dirResult.details.suffixResolution = suffixResolution;
+			}
+			return dirResult;
+		}
+
+		if (parsed.kind === "conflicts") {
+			return this.#readFileConflicts(absolutePath, suffixResolution, signal);
+		}
+
+		const imageMetadata = await readImageMetadata(absolutePath);
+		const mimeType = imageMetadata?.mimeType;
+		const ext = path.extname(absolutePath).toLowerCase();
+		const shouldConvertWithMarkit = CONVERTIBLE_EXTENSIONS.has(ext);
+
+		let content: Array<TextContent | ImageContent> | undefined;
+		let details: ReadToolDetails = {};
+		let sourcePath: string | undefined;
+		let columnTruncated = 0;
+		let truncationInfo:
+			| { result: TruncationResult; options: { direction: "head"; startLine?: number; totalFileLines?: number } }
+			| undefined;
+
+		if (mimeType) {
+			({ content, details, sourcePath } = await this.#loadImageContent({
+				readPath,
+				absolutePath,
+				mimeType,
+				imageMetadata,
+				fileSize,
+			}));
+		} else if (isNotebookPath(absolutePath) && !isRawSelector(parsed)) {
+			return this.#readLocalNotebook(absolutePath, localReadPath, parsed);
+		} else if (shouldConvertWithMarkit) {
+			const docResult = await this.#readConvertibleDocument(absolutePath, localReadPath, ext, parsed, signal);
+			if (docResult.toolResult) return docResult.toolResult;
+			content = docResult.content;
+			details = docResult.details ?? {};
+		} else {
+			const plainResult = await this.#readPlainTextFile(
+				absolutePath,
+				localReadPath,
+				fileSize,
+				ext,
+				parsed,
+				suffixResolution,
+				signal,
+			);
+			if (plainResult.toolResult) return plainResult.toolResult;
+			content = plainResult.content;
+			details = plainResult.details ?? {};
+			sourcePath = plainResult.sourcePath;
+			if (plainResult.columnTruncated) columnTruncated = plainResult.columnTruncated;
+			truncationInfo = plainResult.truncationInfo;
+		}
+
+		if (suffixResolution && content) {
+			details.suffixResolution = suffixResolution;
+			const notice = `[Path '${suffixResolution.from}' not found; resolved to '${suffixResolution.to}' via suffix match]`;
+			const firstText = content.find((c): c is TextContent => c.type === "text");
+			if (firstText) {
+				firstText.text = `${notice}\n${firstText.text}`;
+			} else {
+				content = [{ type: "text", text: notice }, ...content];
+			}
+		}
+
+		const resultBuilder = toolResult(details).content(content ?? []);
+		if (sourcePath) resultBuilder.sourcePath(sourcePath);
+		if (truncationInfo) resultBuilder.truncation(truncationInfo.result, truncationInfo.options);
+		if (columnTruncated > 0) resultBuilder.limits({ columnMax: columnTruncated });
+		return resultBuilder.done();
+	}
+
 	async execute(
 		_toolCallId: string,
 		params: ReadParams,
@@ -2450,103 +3044,22 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 			}
 			return this.#readConflictRegion(conflictUri.id, conflictUri.scope);
 		}
-		const displayMode = resolveFileDisplayMode(this.session);
 
 		const parsedUrlTarget = parseReadUrlTarget(readPath);
 		if (parsedUrlTarget) {
-			if (!this.session.settings.get("fetch.enabled")) {
-				throw new ToolError("URL reads are disabled by settings.");
-			}
-			const urlRaw = parsedUrlTarget.raw;
-			const urlRanges = parsedUrlTarget.ranges;
-			if (urlRanges !== undefined && urlRanges.length > 1) {
-				const cached = await loadReadUrlCacheEntry(
-					this.session,
-					{ path: parsedUrlTarget.path, raw: urlRaw },
-					signal,
-					{ ensureArtifact: true, preferCached: true },
-				);
-				return this.#buildInMemoryMultiRangeResult(cached.output, urlRanges, {
-					details: { ...cached.details },
-					sourceUrl: cached.details.finalUrl,
-					entityLabel: "URL output",
-					raw: urlRaw,
-					immutable: true,
-				});
-			}
-			const urlOffset = parsedUrlTarget.offset;
-			const urlLimit = parsedUrlTarget.limit;
-			if (urlOffset !== undefined || urlLimit !== undefined) {
-				const cached = await loadReadUrlCacheEntry(
-					this.session,
-					{ path: parsedUrlTarget.path, raw: urlRaw },
-					signal,
-					{
-						ensureArtifact: true,
-						preferCached: true,
-					},
-				);
-				return this.#buildInMemoryTextResult(cached.output, urlOffset, urlLimit, {
-					details: { ...cached.details },
-					sourceUrl: cached.details.finalUrl,
-					entityLabel: "URL output",
-					raw: urlRaw,
-					immutable: true,
-				});
-			}
-			return executeReadUrl(this.session, { path: parsedUrlTarget.path, raw: urlRaw }, signal);
+			return this.#readExternalUrl(parsedUrlTarget, signal);
 		}
 
-		// Handle internal URLs (agent://, artifact://, memory://, skill://, rule://, local://, mcp://, veyyon://, issue://, pr://).
-		// Use the internal-URL-aware splitter so malformed selectors are peeled
-		// off the URL and surfaced via parseSel rather than confusing handlers.
-		const internalRouter = InternalUrlRouter.instance();
 		let promotedSelector: string | undefined;
+		const internalRouter = InternalUrlRouter.instance();
 		if (internalRouter.canHandle(readPath)) {
-			const internalTarget = splitInternalUrlSel(readPath);
-			const parsed = parseSel(internalTarget.sel);
-			if (internalTarget.sel !== undefined && parsed.kind === "none") {
-				throw new ToolError(
-					`Invalid selector ':${internalTarget.sel}' on '${internalTarget.path}'. Use :N, :N-M, :N+K, :N- (open-ended), a comma-separated list of ranges, :raw, or a range combined with raw (e.g. :raw:50-100).`,
-				);
-			}
-			const urlMeta = parseInternalUrl(internalTarget.path);
-			const scheme = urlMeta.protocol.replace(/:$/, "").toLowerCase();
-			if (scheme === "local") {
-				const localFile = await resolveLocalUrlToFile(urlMeta, {
-					cwd: this.session.cwd,
-					settings: this.session.settings,
-					signal,
-					localProtocolOptions: this.session.localProtocolOptions,
-					skills: this.session.skills,
-				});
-				if (localFile) {
-					readPath = localFile.path;
-					// Preserve a local:// selector separately so a sibling literal file
-					// cannot shadow the URL's selector semantics during filesystem routing.
-					promotedSelector = internalTarget.sel;
-				} else {
-					return this.#readInternalUrlOrList(readPath, internalTarget.path, parsed, signal, {
-						depth: params.depth,
-						limit: params.limit,
-					});
-				}
-			} else {
-				return this.#readInternalUrlOrList(readPath, internalTarget.path, parsed, signal, {
-					depth: params.depth,
-					limit: params.limit,
-				});
-			}
+			const internalResult = await this.#handleInternalUrlEntry(readPath, params, signal);
+			if (internalResult.toolResult) return internalResult.toolResult;
+			readPath = internalResult.readPath;
+			promotedSelector = internalResult.promotedSelector;
 		}
 
-		// One suffix-glob memo per read call — archive, sqlite, and plain-path
-		// resolution share misses instead of re-globbing the workspace.
 		const suffixCache: SuffixMatchCache = new Map();
-
-		// Prefer a literal filesystem match over selector interpretation so real
-		// POSIX filenames containing selector-looking suffixes win over structured
-		// archive / sqlite / pdf-image dispatch. A selector promoted from local://
-		// remains separate so it cannot be mistaken for part of the resolved path.
 		const literalSplit =
 			promotedSelector === undefined
 				? await splitPathAndSelPreferringLiteral(readPath, this.session.cwd)
@@ -2557,630 +3070,19 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 				: literalSplit.sel === undefined && splitPathAndSel(readPath).sel !== undefined;
 
 		if (!rawPathIsLiteral) {
-			const archivePath = await this.#resolveArchiveReadPath(readPath, suffixCache, signal);
-			if (archivePath) {
-				const archiveSubPath =
-					promotedSelector === undefined
-						? splitPathAndSel(archivePath.archiveSubPath)
-						: { path: archivePath.archiveSubPath, sel: promotedSelector };
-				const archiveParsed = parseSel(archiveSubPath.sel);
-				return this.#readArchive(
-					readPath,
-					archiveParsed,
-					{ ...archivePath, archiveSubPath: archiveSubPath.path },
-					signal,
-				);
-			}
+			const archiveResult = await this.#tryReadArchive(readPath, promotedSelector, suffixCache, signal);
+			if (archiveResult) return archiveResult;
 
-			const sqlitePath = await this.#resolveSqliteReadPath(readPath, suffixCache, signal);
-			if (sqlitePath) {
-				return this.#readSqlite(sqlitePath, signal);
-			}
+			const sqliteResult = await this.#tryReadSqlite(readPath, suffixCache, signal);
+			if (sqliteResult) return sqliteResult;
 
-			const pdfImageMemberPath = splitPdfImageMemberReadPath(readPath);
-			if (pdfImageMemberPath) {
-				let absolutePdfPath = resolveReadPath(pdfImageMemberPath.pdfPath, this.session.cwd);
-				let suffixResolution: { from: string; to: string } | undefined;
-				try {
-					const stat = await Bun.file(absolutePdfPath).stat();
-					if (stat.isDirectory())
-						throw new ToolError(`Path '${pdfImageMemberPath.pdfPath}' is a directory, not a PDF file`);
-				} catch (error) {
-					if (!isMissingPath(error) || isRemoteMountPath(absolutePdfPath)) throw error;
-					const suffixMatch = await this.#findSuffixMatchCached(suffixCache, pdfImageMemberPath.pdfPath, signal);
-					if (!suffixMatch) throw new ToolError(`Path '${pdfImageMemberPath.pdfPath}' not found`);
-					absolutePdfPath = suffixMatch.absolutePath;
-					suffixResolution = { from: pdfImageMemberPath.pdfPath, to: suffixMatch.displayPath };
-				}
-				return this.#readPdfImageMember(
-					absolutePdfPath,
-					pdfImageMemberPath.pdfPath,
-					pdfImageMemberPath.member,
-					suffixResolution,
-					signal,
-				);
-			}
+			const pdfImageResult = await this.#tryReadPdfImage(readPath, suffixCache, signal);
+			if (pdfImageResult) return pdfImageResult;
 		}
 
-		const localTarget = literalSplit;
-		const localReadPath = localTarget.path;
-		const parsed = parseSel(localTarget.sel);
-
-		let absolutePath = resolveReadPath(localReadPath, this.session.cwd);
-		let suffixResolution: { from: string; to: string } | undefined;
-
-		let isDirectory = false;
-		let fileSize = 0;
-		try {
-			const stat = await Bun.file(absolutePath).stat();
-			fileSize = stat.size;
-			isDirectory = stat.isDirectory();
-		} catch (error) {
-			if (isMissingPath(error)) {
-				// Attempt unique suffix resolution before falling back to fuzzy suggestions
-				if (!isRemoteMountPath(absolutePath)) {
-					const suffixMatch = await this.#findSuffixMatchCached(suffixCache, localReadPath, signal);
-					if (suffixMatch) {
-						try {
-							const retryStat = await Bun.file(suffixMatch.absolutePath).stat();
-							absolutePath = suffixMatch.absolutePath;
-							fileSize = retryStat.size;
-							isDirectory = retryStat.isDirectory();
-							suffixResolution = { from: localReadPath, to: suffixMatch.displayPath };
-						} catch {
-							// Suffix match candidate no longer stats — fall through to error path
-						}
-					}
-				}
-
-				if (!suffixResolution) {
-					const delimitedResult = await this.#tryReadDelimitedPaths(
-						readPath,
-						signal,
-						{},
-						{
-							depth: params.depth,
-							limit: params.limit,
-						},
-					);
-					if (delimitedResult) return delimitedResult;
-					throw new ToolError(`Path '${localReadPath}' not found`);
-				}
-			} else {
-				throw error;
-			}
-		}
-
-		if (isDirectory) {
-			if (isMultiRange(parsed)) {
-				throw new ToolError("Multi-range line selectors are not supported for directory listings.");
-			}
-			const { offset, limit } = selToOffsetLimit(parsed);
-			// Directory listings are deterministic and fast; never abort them mid-scan
-			// (an interrupt would otherwise surface a misleading "Operation aborted").
-			const dirResult = await this.#readDirectory(absolutePath, offset, limit, {
-				depth: params.depth,
-				entryLimit: params.limit,
-			});
-			if (suffixResolution) {
-				dirResult.details ??= {};
-				dirResult.details.suffixResolution = suffixResolution;
-			}
-			return dirResult;
-		}
-
-		if (parsed.kind === "conflicts") {
-			return this.#readFileConflicts(absolutePath, suffixResolution, signal);
-		}
-
-		const imageMetadata = await readImageMetadata(absolutePath);
-		const mimeType = imageMetadata?.mimeType;
-		const ext = path.extname(absolutePath).toLowerCase();
-		const shouldConvertWithMarkit = CONVERTIBLE_EXTENSIONS.has(ext);
-		// Read the file based on type
-		let content: Array<TextContent | ImageContent> | undefined;
-		let details: ReadToolDetails = {};
-		let sourcePath: string | undefined;
-		let columnTruncated = 0;
-		let truncationInfo:
-			| { result: TruncationResult; options: { direction: "head"; startLine?: number; totalFileLines?: number } }
-			| undefined;
-
-		if (mimeType) {
-			({ content, details, sourcePath } = await this.#loadImageContent({
-				readPath,
-				absolutePath,
-				mimeType,
-				imageMetadata,
-				fileSize,
-			}));
-		} else if (isNotebookPath(absolutePath) && !isRawSelector(parsed)) {
-			const notebookText = await readEditableNotebookText(absolutePath, localReadPath);
-			if (isMultiRange(parsed) && parsed.kind === "lines") {
-				return this.#buildInMemoryMultiRangeResult(notebookText, parsed.ranges, {
-					details: { resolvedPath: absolutePath },
-					sourcePath: absolutePath,
-					entityLabel: "notebook",
-				});
-			}
-			const { offset, limit } = selToOffsetLimit(parsed);
-			return this.#buildInMemoryTextResult(notebookText, offset, limit, {
-				details: { resolvedPath: absolutePath },
-				sourcePath: absolutePath,
-				entityLabel: "notebook",
-			});
-		} else if (shouldConvertWithMarkit) {
-			// Convert document via markit.
-			const result = await convertFileWithMarkit(absolutePath, signal);
-			if (result.ok) {
-				const renderedContent =
-					ext === ".pdf" ? rewritePdfImagePlaceholders(result.content, localReadPath) : result.content;
-				// Route the converted markdown through the in-memory text builder
-				// so line-range selectors (`file.pdf:50-100`, `:5-16,40-80`) and
-				// raw mode apply against the converted output. Without this,
-				// `file.pdf:50-100` silently returned the head of the document
-				// because only `truncateHead` was being applied.
-				if (isMultiRange(parsed) && parsed.kind === "lines") {
-					return this.#buildInMemoryMultiRangeResult(renderedContent, parsed.ranges, {
-						details: { resolvedPath: absolutePath },
-						sourcePath: absolutePath,
-						entityLabel: "document",
-					});
-				}
-				const { offset, limit } = selToOffsetLimit(parsed);
-				return this.#buildInMemoryTextResult(renderedContent, offset, limit, {
-					details: { resolvedPath: absolutePath },
-					sourcePath: absolutePath,
-					entityLabel: "document",
-					raw: isRawSelector(parsed),
-				});
-			} else if (result.error) {
-				content = [{ type: "text", text: `[Cannot read ${ext} file: ${result.error || "conversion failed"}]` }];
-				details.contentUnavailable = { reason: "conversion-failed" };
-			} else {
-				content = [{ type: "text", text: `[Cannot read ${ext} file: conversion failed]` }];
-				details.contentUnavailable = { reason: "conversion-failed" };
-			}
-		} else {
-			// Binary sniff before any UTF-8 text materialization. A binary file
-			// (font, object, archive, packed blob) decodes to NUL/control bytes and
-			// U+FFFD mojibake that corrupts the terminal and burns context. Images,
-			// notebooks, and markit-convertible documents were already routed above;
-			// everything reaching here is meant to be plain text. `:raw` stays the
-			// explicit escape hatch for reading bytes verbatim. This single guard
-			// covers both the multi-range and single-range disk paths below.
-			if (!isRawSelector(parsed) && (await isProbablyBinary(absolutePath))) {
-				return toolResult<ReadToolDetails>({
-					resolvedPath: absolutePath,
-					suffixResolution,
-					contentUnavailable: { reason: "binary" },
-				})
-					.text(
-						prependSuffixResolutionNotice(
-							`[Cannot read binary file '${formatPathRelativeToCwd(absolutePath, this.session.cwd)}' (${formatBytes(fileSize)}); not valid UTF-8 text. Use ':raw' to read bytes verbatim.]`,
-							suffixResolution,
-						),
-					)
-					.sourcePath(absolutePath)
-					.done();
-			}
-
-			if (
-				parsed.kind === "none" &&
-				this.session.settings.get("read.summarize.enabled") &&
-				(this.session.settings.get("read.summarize.prose") || !PROSE_SUMMARY_EXTENSIONS.has(ext))
-			) {
-				const summary = await this.#trySummarize(absolutePath, fileSize, signal);
-				if (summary?.parsed && summary.elided) {
-					const renderedSummary = this.#renderSummary(summary);
-					const footer = formatSummaryElisionFooter(
-						localReadPath,
-						renderedSummary.elidedRanges,
-						renderedSummary.elidedLines,
-					);
-					const summaryHashContext = displayMode.hashLines
-						? await readHashlineHeaderContext(this.session, absolutePath, this.session.cwd)
-						: undefined;
-					const bodyText = footer ? `${renderedSummary.text}\n\n${footer}` : renderedSummary.text;
-					const modelText = prependHashlineHeader(bodyText, summaryHashContext);
-					if (summaryHashContext?.tag) {
-						recordSeenLinesFromBody(this.session, absolutePath, summaryHashContext.tag, renderedSummary.text);
-					}
-					details = {
-						displayContent: { text: renderedSummary.displayText, startLine: 1 },
-						summary: {
-							lines: countTextLines(renderedSummary.text),
-							elidedSpans: renderedSummary.elidedRanges.length,
-							elidedLines: renderedSummary.elidedLines,
-						},
-					};
-
-					sourcePath = absolutePath;
-					content = [{ type: "text", text: modelText }];
-				}
-			}
-
-			if (!content) {
-				if (isMultiRange(parsed) && parsed.kind === "lines") {
-					const multiResult = await this.#readLocalFileMultiRange(
-						absolutePath,
-						parsed.ranges,
-						fileSize,
-						parsed,
-						displayMode,
-						suffixResolution,
-						undefined, // plain-file read: deterministic and fast, never abort mid-read
-					);
-					if (multiResult.bridgeResult) return multiResult.bridgeResult;
-					content = [{ type: "text", text: multiResult.outputText }];
-					sourcePath = absolutePath;
-					details = multiResult.displayContent ? { displayContent: multiResult.displayContent } : {};
-					if (multiResult.columnTruncated > 0) {
-						columnTruncated = multiResult.columnTruncated;
-					}
-				} else {
-					// Raw text or line-range mode
-					const { offset, limit } = selToOffsetLimit(parsed);
-					// Try ACP bridge first — editor's in-memory buffer is source of truth.
-					// Request full text so local range rendering keeps normal context and line numbers.
-					const bridgePromise = this.#routeReadThroughBridge(absolutePath);
-					if (bridgePromise !== undefined) {
-						try {
-							const bridgeText = await bridgePromise;
-							const bridgeResult = this.#buildInMemoryTextResult(bridgeText, offset, limit, {
-								details: { resolvedPath: absolutePath, suffixResolution },
-								sourcePath: absolutePath,
-								entityLabel: "file",
-								raw: isRawSelector(parsed),
-							});
-							if (suffixResolution) {
-								const notice = `[Path '${suffixResolution.from}' not found; resolved to '${suffixResolution.to}' via suffix match]`;
-								const firstText = bridgeResult.content.find((c): c is TextContent => c.type === "text");
-								if (firstText) firstText.text = `${notice}\n${firstText.text}`;
-							}
-							return bridgeResult;
-						} catch (error) {
-							logger.warn("ACP fs readTextFile failed; falling back to disk", { path: absolutePath, error });
-						}
-					}
-
-					// User-requested 0-indexed range start. Lines BEFORE this become
-					// leading context (added below if offset is explicit). Raw mode
-					// never adds context: without line numbers the padding is
-					// indistinguishable from requested content, so `raw:31-31` must
-					// return line 31 and nothing else.
-					const rawSelector = isRawSelector(parsed);
-					const requestedStart = offset ? Math.max(0, offset - 1) : 0;
-					const expandStart = !rawSelector && offset !== undefined && offset > 1;
-					const expandEnd = !rawSelector && limit !== undefined;
-					const { leading: leadingContext, trailing: trailingContext } = rangeContextLines(
-						requestedStart,
-						expandStart,
-						expandEnd,
-					);
-					const startLine = requestedStart - leadingContext;
-					const startLineDisplay = startLine + 1;
-
-					const DEFAULT_LIMIT = this.#defaultLimit;
-					const effectiveLimit = limit ?? DEFAULT_LIMIT;
-					const maxLinesToCollect = Math.min(effectiveLimit + leadingContext + trailingContext, DEFAULT_MAX_LINES);
-					const selectedLineLimit = effectiveLimit + leadingContext + trailingContext;
-					// Scale byte budget with line limit so the configured line count actually fits.
-					// Assume ~512 bytes/line average; never go below the shared default.
-					const maxBytesForRead = Math.max(DEFAULT_MAX_BYTES, maxLinesToCollect * 512);
-
-					// One materialization, three consumers: this window, the bracket context below, and
-					// the snapshot tag. A file over the snapshot cap, or one whose raw bytes and
-					// normalized text split differently, still streams -- see materializeFile.
-					const materialized = rawSelector ? undefined : await materializeFile(absolutePath, fileSize);
-					const streamResult = materialized?.windowLines
-						? collectWindowFromLines(
-								materialized.windowLines,
-								startLine,
-								maxLinesToCollect,
-								maxBytesForRead,
-								selectedLineLimit,
-							)
-						: await streamLinesFromFile(
-								absolutePath,
-								startLine,
-								maxLinesToCollect,
-								maxBytesForRead,
-								selectedLineLimit,
-								undefined, // plain-file read: deterministic and fast, never abort mid-read
-								fileSize > SNAPSHOT_MAX_BYTES, // giant file: don't scan to EOF just for an exact line count
-							);
-
-					const {
-						lines: collectedLines,
-						totalFileLines,
-						collectedBytes,
-						stoppedByByteLimit,
-						firstLinePreview,
-						firstLineByteLength,
-						reachedEof,
-					} = streamResult;
-
-					// Check if offset is out of bounds - return graceful message instead of throwing
-					if (requestedStart >= totalFileLines) {
-						const suggestion =
-							totalFileLines === 0
-								? "The file is empty."
-								: `Use :1 to read from the start, or :${totalFileLines} to read the last line.`;
-						return toolResult<ReadToolDetails>({ resolvedPath: absolutePath, suffixResolution })
-							.text(
-								`Line ${requestedStart + 1} is beyond end of file (${totalFileLines} lines total). ${suggestion}`,
-							)
-							.done();
-					}
-
-					// Per-line column cap. Skipped in raw mode so `:raw` always returns
-					// verbatim bytes for paste-back-into-tool workflows. Total byte/line
-					// counts in `truncation` keep reflecting the source, not the trimmed
-					// view — column truncation surfaces separately via `.limits()`.
-					const maxColumns = resolveOutputMaxColumns(this.session.settings);
-					// Column truncation is display-only. `collectedLines` MUST stay
-					// byte-for-byte with the on-disk content so the snapshot recorded
-					// below can be verified against the live file. Mutating it with
-					// ellipsis-truncated text made every long-line file uneditable on
-					// the next edit attempt.
-					let displayLines: string[] = collectedLines;
-					const clippedLines = new Set<number>();
-					if (!rawSelector && maxColumns > 0) {
-						let cloned: string[] | undefined;
-						for (let i = 0; i < collectedLines.length; i++) {
-							const { text, wasTruncated } = truncateLine(collectedLines[i], maxColumns);
-							if (wasTruncated) {
-								if (!cloned) cloned = collectedLines.slice();
-								cloned[i] = text;
-								columnTruncated = maxColumns;
-								clippedLines.add(startLineDisplay + i);
-							}
-						}
-						if (cloned) displayLines = cloned;
-					}
-
-					const displayLineByNumber = new Map<number, string>();
-					for (let i = 0; i < displayLines.length; i++) {
-						displayLineByNumber.set(startLineDisplay + i, displayLines[i] ?? "");
-					}
-					const bracketContextFullLines = materialized?.lines;
-					const displayedEndLine = startLineDisplay + Math.max(0, displayLines.length - 1);
-
-					const selectedContent = displayLines.join("\n");
-					const userLimitedLines = collectedLines.length;
-
-					const totalSelectedLines = totalFileLines - startLine;
-					const totalSelectedBytes = collectedBytes;
-					const wasTruncated = collectedLines.length < totalSelectedLines || stoppedByByteLimit;
-					const firstLineExceedsLimit = firstLineByteLength !== undefined && firstLineByteLength > maxBytesForRead;
-
-					const truncation: TruncationResult = {
-						content: selectedContent,
-						truncated: wasTruncated,
-						truncatedBy: stoppedByByteLimit ? "bytes" : wasTruncated ? "lines" : undefined,
-						totalLines: totalSelectedLines,
-						totalBytes: totalSelectedBytes,
-						outputLines: collectedLines.length,
-						outputBytes: collectedBytes,
-						lastLinePartial: false,
-						firstLineExceedsLimit,
-					};
-
-					const shouldAddHashLines = !rawSelector && displayMode.hashLines;
-					const shouldAddLineNumbers = rawSelector ? false : shouldAddHashLines ? false : displayMode.lineNumbers;
-					let hashContext: HashlineHeaderContext | undefined;
-					if (shouldAddHashLines && collectedLines.length > 0 && !firstLineExceedsLimit) {
-						// The tag is a content hash of the WHOLE file. A whole-file read
-						// already holds every line in memory; a range read re-reads the
-						// file (bounded by SNAPSHOT_MAX_BYTES) so the tag fingerprints the
-						// full file and any anchor validates while the file is unchanged.
-						const isWholeFile = offset === undefined && limit === undefined && !wasTruncated;
-						const tag = isWholeFile
-							? getFileSnapshotStore(this.session).record(
-									canonicalSnapshotKey(absolutePath),
-									normalizeToLF(collectedLines.join("\n")),
-								)
-							: await recordFileSnapshot(this.session, absolutePath, undefined, materialized?.text);
-						if (tag) {
-							hashContext = hashlineHeaderContext(formatPathRelativeToCwd(absolutePath, this.session.cwd), tag);
-						}
-					}
-
-					let capturedDisplayContent:
-						| { text: string; startLine: number; lineNumbers?: Array<number | null> }
-						| undefined;
-					let emittedHashlineHeader = false;
-					const formatText = (text: string, startNum: number): string => {
-						const lineCount = countTextLines(text);
-						capturedDisplayContent = {
-							text,
-							startLine: startNum,
-							lineNumbers: Array.from({ length: lineCount }, (_, i) => startNum + i),
-						};
-						const formatted = formatTextWithMode(text, startNum, shouldAddHashLines, shouldAddLineNumbers);
-						if (!hashContext || emittedHashlineHeader) return formatted;
-						emittedHashlineHeader = true;
-						return prependHashlineHeader(formatted, hashContext);
-					};
-					const formatBracketAwareText = (): string | undefined => {
-						if (!bracketContextFullLines) return undefined;
-						const entries = buildLineEntriesWithBlockContext(
-							bracketContextFullLines,
-							[{ startLine: startLineDisplay, endLine: displayedEndLine }],
-							{ path: absolutePath, text: materialized?.text },
-							{
-								lineText: (lineNumber, sourceText) => {
-									const visibleText = displayLineByNumber.get(lineNumber);
-									if (visibleText !== undefined) return visibleText;
-									if (maxColumns <= 0) return sourceText;
-									const truncated = truncateLine(sourceText, maxColumns);
-									if (truncated.wasTruncated) {
-										columnTruncated = maxColumns;
-										clippedLines.add(lineNumber);
-									}
-									return truncated.text;
-								},
-							},
-						);
-						const firstLine = entries.find(entry => entry.kind === "line");
-						capturedDisplayContent = {
-							text: lineEntriesToPlainText(entries, BRACKET_CONTEXT_ELLIPSIS),
-							startLine: firstLine?.kind === "line" ? firstLine.lineNumber : startLineDisplay,
-							lineNumbers: entries.map(entry => (entry.kind === "line" ? entry.lineNumber : null)),
-						};
-						const formatted = formatLineEntriesWithMode(entries, shouldAddHashLines, shouldAddLineNumbers);
-						if (!hashContext || emittedHashlineHeader) return formatted;
-						emittedHashlineHeader = true;
-						return prependHashlineHeader(formatted, hashContext);
-					};
-
-					let outputText: string;
-
-					if (truncation.firstLineExceedsLimit) {
-						const firstLineBytes = firstLineByteLength ?? 0;
-						const snippet = firstLinePreview ?? { text: "", bytes: 0 };
-
-						if (shouldAddHashLines) {
-							outputText = `[Line ${startLineDisplay} is ${formatBytes(
-								firstLineBytes,
-							)}, exceeds ${formatBytes(maxBytesForRead)} limit. Hashline output requires full lines; cannot emit an editable numbered preview for a truncated line.]`;
-						} else {
-							outputText = formatText(snippet.text, startLineDisplay);
-						}
-						if (snippet.text.length === 0) {
-							outputText = `[Line ${startLineDisplay} is ${formatBytes(
-								firstLineBytes,
-							)}, exceeds ${formatBytes(maxBytesForRead)} limit. Unable to display a valid UTF-8 snippet.]`;
-						}
-						details = { truncation };
-						sourcePath = absolutePath;
-						truncationInfo = {
-							result: truncation,
-							options: {
-								direction: "head",
-								startLine: startLineDisplay,
-								totalFileLines: reachedEof ? totalFileLines : undefined,
-							},
-						};
-					} else if (truncation.truncated) {
-						outputText = formatBracketAwareText() ?? formatText(truncation.content, startLineDisplay);
-						details = { truncation };
-						sourcePath = absolutePath;
-						truncationInfo = {
-							result: truncation,
-							options: {
-								direction: "head",
-								startLine: startLineDisplay,
-								totalFileLines: reachedEof ? totalFileLines : undefined,
-							},
-						};
-					} else if (startLine + userLimitedLines < totalFileLines || !reachedEof) {
-						const nextOffset = startLine + userLimitedLines + 1;
-
-						outputText = formatBracketAwareText() ?? formatText(truncation.content, startLineDisplay);
-						outputText += reachedEof
-							? `\n\n[${formatMoreLines(totalFileLines - (startLine + userLimitedLines))} in file. Use :${nextOffset} to continue]`
-							: `\n\n[More lines in file (${formatBytes(fileSize)} total; not scanned to EOF). Use :${nextOffset} to continue]`;
-						details = {};
-						sourcePath = absolutePath;
-					} else {
-						// No truncation, no user limit exceeded
-						outputText = formatBracketAwareText() ?? formatText(truncation.content, startLineDisplay);
-						details = {};
-						sourcePath = absolutePath;
-					}
-
-					const paddingNotice = formatContextPaddingNotice({
-						requestedFirstLine: requestedStart + 1,
-						requestedLastLine: limit !== undefined ? requestedStart + limit : undefined,
-						displayedFirstLine: startLineDisplay,
-						displayedLastLine: displayedEndLine,
-					});
-					if (paddingNotice) outputText += `\n\n${paddingNotice}`;
-
-					if (hashContext?.tag) {
-						recordSeenLinesFromBody(this.session, absolutePath, hashContext.tag, outputText, clippedLines);
-					}
-					if (rawSelector && !firstLineExceedsLimit && collectedLines.length > 0) {
-						await recordFileSnapshot(
-							this.session,
-							absolutePath,
-							contiguousLineNumbers(startLineDisplay, collectedLines.length),
-						);
-					}
-
-					if (capturedDisplayContent) {
-						details.displayContent = capturedDisplayContent;
-					}
-
-					if (!firstLineExceedsLimit && collectedLines.length > 0) {
-						const blocks = scanConflictLines(collectedLines, startLineDisplay);
-						if (blocks.length > 0) {
-							const history = getConflictHistory(this.session);
-							const displayPathForWarning = formatPathRelativeToCwd(absolutePath, this.session.cwd);
-							const entries = blocks.map(block =>
-								history.register({
-									absolutePath,
-									displayPath: displayPathForWarning,
-									...block,
-								}),
-							);
-							// Cheap full-file scan only when the window already showed
-							// at least one conflict — otherwise pay nothing on clean files.
-							let totalInFile = entries.length;
-							let scanTruncated = false;
-							try {
-								const fileScan = await scanFileForConflicts(absolutePath);
-								totalInFile = Math.max(entries.length, fileScan.blocks.length);
-								scanTruncated = fileScan.scanTruncated;
-							} catch {
-								// Best-effort enrichment; fall back to window-only count.
-							}
-							outputText += formatConflictWarning(entries, {
-								totalInFile,
-								displayPath: displayPathForWarning,
-								scanTruncated,
-							});
-							details.conflictCount = entries.length;
-						}
-					}
-
-					content = [{ type: "text", text: outputText }];
-				}
-			}
-		}
-
-		if (suffixResolution) {
-			details.suffixResolution = suffixResolution;
-			// Inline resolution notice into first text block so the model sees the actual path
-			const notice = `[Path '${suffixResolution.from}' not found; resolved to '${suffixResolution.to}' via suffix match]`;
-			const firstText = content.find((c): c is TextContent => c.type === "text");
-			if (firstText) {
-				firstText.text = `${notice}\n${firstText.text}`;
-			} else {
-				content = [{ type: "text", text: notice }, ...content];
-			}
-		}
-		const resultBuilder = toolResult(details).content(content);
-		if (sourcePath) {
-			resultBuilder.sourcePath(sourcePath);
-		}
-		if (truncationInfo) {
-			resultBuilder.truncation(truncationInfo.result, truncationInfo.options);
-		}
-		if (columnTruncated > 0) {
-			resultBuilder.limits({ columnMax: columnTruncated });
-		}
-		return resultBuilder.done();
+		return this.#readFilesystemTarget(readPath, literalSplit, params, suffixCache, signal);
 	}
 
-	/**
-	 * Render a `conflict://<N>` (or `conflict://<N>/<scope>`) region as
-	 * regular file content. The lines are emitted with their original
-	 * file line numbers so hashline anchors line up with the source
-	 * file, and no truncation footer is appended.
-	 */
 	async #readConflictRegion(id: number, scope: ConflictScope | undefined): Promise<AgentToolResult<ReadToolDetails>> {
 		const entry: ConflictEntry | undefined = getConflictHistory(this.session).get(id);
 		if (!entry) {
@@ -3209,12 +3111,6 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 		return toolResult<ReadToolDetails>(details).text(formattedText).sourcePath(entry.absolutePath).done();
 	}
 
-	/**
-	 * Implement the `<path>:conflicts` read selector: scan the whole file once, register
-	 * every block in the session's conflict history, and return a compact
-	 * `#N L_a-L_b` index instead of file content. Designed for heavily
-	 * conflicted files where dumping every body would be wasteful.
-	 */
 	async #readFileConflicts(
 		absolutePath: string,
 		suffixResolution: { from: string; to: string } | undefined,
@@ -3555,8 +3451,6 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 				localProtocolOptions: this.session.localProtocolOptions,
 			});
 		} catch {
-			// Not found / containment escape / no session — let the text path
-			// surface the router's canonical error.
 			return null;
 		}
 		if (!file) return null;
@@ -3587,17 +3481,11 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 	): Promise<AgentToolResult<ReadToolDetails>> {
 		const READ_DIRECTORY_MAX_DEPTH = 2;
 		const READ_DIRECTORY_CHILD_LIMIT = 12;
-		// Top-level cap for the concise session-root listing. Generous enough
-		// that an ordinary project root fits whole; a monorepo root gets the
-		// omission notice naming how to see the rest.
+
 		const ROOT_LISTING_ENTRY_LIMIT = 100;
 
 		throwIfAborted(signal);
-		// Field feedback: `read('.')` on a large workspace usually needs the
-		// top-level convention, not a recursive tree. Default the session
-		// working directory root to a concise depth-1 listing with per-
-		// subdirectory entry counts; an explicit `depth`/`limit`, or any other
-		// directory, keeps the full recursive listing.
+
 		const conciseRoot =
 			directory.depth === undefined &&
 			directory.entryLimit === undefined &&
