@@ -169,6 +169,7 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/ai/src/providers/gitlab-duo-workflow-helpers.ts",
 	"packages/ai/src/providers/google-gemini-cli-helpers.ts",
 	"packages/ai/src/providers/grammar.ts",
+	"packages/ai/src/providers/google-shared-helpers.ts",
 	"packages/ai/src/providers/ollama-helpers.ts",
 	"packages/ai/src/providers/openai-anthropic-shim.ts",
 	"packages/ai/src/providers/openai-chat-server-schema.ts",
